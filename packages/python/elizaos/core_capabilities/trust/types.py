@@ -7,10 +7,11 @@ for multi-dimensional trust scoring, evidence tracking, and security events.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
+EntityId = UUID | str
 
 # ---------------------------------------------------------------------------
 # Trust Dimensions
@@ -45,7 +46,7 @@ class TrustDimensions:
 # ---------------------------------------------------------------------------
 
 
-class TrustEvidenceType(str, Enum):
+class TrustEvidenceType(StrEnum):
     """Evidence types that impact trust scores."""
 
     # Positive
@@ -71,7 +72,7 @@ class TrustEvidenceType(str, Enum):
     CONTEXT_SWITCH = "CONTEXT_SWITCH"
 
 
-class SecurityEventType(str, Enum):
+class SecurityEventType(StrEnum):
     """Types of security events detected by the security module."""
 
     PROMPT_INJECTION_ATTEMPT = "prompt_injection_attempt"
@@ -88,13 +89,13 @@ class SecurityEventType(str, Enum):
     MALICIOUS_LINK_CAMPAIGN = "malicious_link_campaign"
 
 
-class TrustTrendDirection(str, Enum):
+class TrustTrendDirection(StrEnum):
     INCREASING = "increasing"
     DECREASING = "decreasing"
     STABLE = "stable"
 
 
-class SecurityCheckType(str, Enum):
+class SecurityCheckType(StrEnum):
     PROMPT_INJECTION = "prompt_injection"
     SOCIAL_ENGINEERING = "social_engineering"
     CREDENTIAL_THEFT = "credential_theft"
@@ -102,14 +103,14 @@ class SecurityCheckType(str, Enum):
     NONE = "none"
 
 
-class SecuritySeverity(str, Enum):
+class SecuritySeverity(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
 
 
-class SecurityActionResponse(str, Enum):
+class SecurityActionResponse(StrEnum):
     BLOCK = "block"
     REQUIRE_VERIFICATION = "require_verification"
     ALLOW = "allow"
@@ -125,9 +126,9 @@ class SecurityActionResponse(str, Enum):
 class TrustContext:
     """Context for trust calculations."""
 
-    evaluator_id: UUID
-    world_id: UUID | None = None
-    room_id: UUID | None = None
+    evaluator_id: EntityId
+    world_id: EntityId | None = None
+    room_id: EntityId | None = None
     platform: str | None = None
     action: str | None = None
     time_window: tuple[float, float] | None = None
@@ -145,9 +146,9 @@ class TrustEvidence:
     weight: float
     """Weight/importance of this evidence (0-1)."""
     description: str
-    reported_by: UUID
-    target_entity_id: UUID
-    evaluator_id: UUID
+    reported_by: EntityId
+    target_entity_id: EntityId
+    evaluator_id: EntityId
     verified: bool = False
     context: TrustContext | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -167,7 +168,7 @@ class TrustTrend:
 class TrustProfile:
     """Trust profile for an entity."""
 
-    entity_id: UUID
+    entity_id: EntityId
     dimensions: TrustDimensions
     overall_trust: float
     confidence: float
@@ -177,7 +178,7 @@ class TrustProfile:
     last_calculated: float
     calculation_method: str
     trend: TrustTrend
-    evaluator_id: UUID
+    evaluator_id: EntityId
 
 
 @dataclass
@@ -208,8 +209,8 @@ class TrustDecision:
 class TrustInteraction:
     """Trust interaction to be recorded."""
 
-    source_entity_id: UUID
-    target_entity_id: UUID
+    source_entity_id: EntityId
+    target_entity_id: EntityId
     type: TrustEvidenceType
     timestamp: float
     impact: float
@@ -227,13 +228,15 @@ class TrustCalculationConfig:
     """Points per day."""
     minimum_evidence_count: int = 3
     verification_multiplier: float = 1.5
-    dimension_weights: TrustDimensions = field(default_factory=lambda: TrustDimensions(
-        reliability=0.25,
-        competence=0.20,
-        integrity=0.25,
-        benevolence=0.20,
-        transparency=0.10,
-    ))
+    dimension_weights: TrustDimensions = field(
+        default_factory=lambda: TrustDimensions(
+            reliability=0.25,
+            competence=0.20,
+            integrity=0.25,
+            benevolence=0.20,
+            transparency=0.10,
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -245,8 +248,8 @@ class TrustCalculationConfig:
 class PermissionContext:
     """Context for permission evaluation."""
 
-    world_id: UUID | None = None
-    room_id: UUID | None = None
+    world_id: EntityId | None = None
+    room_id: EntityId | None = None
     platform: str | None = None
     server_id: str | None = None
     channel_id: str | None = None
@@ -257,7 +260,7 @@ class PermissionContext:
 class SecurityContext(PermissionContext):
     """Extended security context."""
 
-    entity_id: UUID | None = None
+    entity_id: EntityId | None = None
     requested_action: str | None = None
     message_history: list[str] | None = None
 
@@ -286,11 +289,11 @@ class SecurityEvent:
     """A security event."""
 
     type: SecurityEventType
-    entity_id: UUID
+    entity_id: EntityId
     severity: SecuritySeverity
     context: PermissionContext
     details: dict[str, Any]
-    id: UUID | None = None
+    id: EntityId | None = None
     timestamp: float | None = None
     handled: bool = False
 
@@ -299,20 +302,20 @@ class SecurityEvent:
 class SecurityMessage:
     """A message for security analysis."""
 
-    id: UUID
-    entity_id: UUID
+    id: EntityId
+    entity_id: EntityId
     content: str
     timestamp: float
-    room_id: UUID | None = None
-    reply_to: UUID | None = None
+    room_id: EntityId | None = None
+    reply_to: EntityId | None = None
 
 
 @dataclass
 class SecurityAction:
     """An action for security tracking."""
 
-    id: UUID
-    entity_id: UUID
+    id: EntityId
+    entity_id: EntityId
     type: str
     timestamp: float
     target: str | None = None

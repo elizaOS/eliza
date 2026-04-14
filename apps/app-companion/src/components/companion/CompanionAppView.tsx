@@ -1,4 +1,4 @@
-import { PtyConsoleSidePanel } from "@elizaos/app-coding";
+import { PtyConsoleSidePanel } from "@elizaos/app-task-coordinator";
 import type { OverlayAppContext } from "@elizaos/app-core/components/apps/overlay-app-api";
 import { ChatModalView } from "@elizaos/app-core/components/pages/ChatModalView";
 import { useRenderGuard } from "@elizaos/app-core/hooks/useRenderGuard";

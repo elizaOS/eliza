@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
-
 # JSON type aliases matching TypeScript definitions
 JsonPrimitive = str | int | float | bool | None
 JsonValue = JsonPrimitive | list[Any] | dict[str, Any]

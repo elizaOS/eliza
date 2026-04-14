@@ -39,6 +39,15 @@ export * from "./trajectory-utils";
 // Export everything from types (type-only, safe for browser)
 export * from "./types";
 export * from "./types/message-service";
+// Keep proto JSON helpers as explicit runtime exports so browser plugin
+// bundles don't depend on Bun preserving the ./types barrel namespace export.
+export * as proto from "./types/proto";
+export {
+	fromJson,
+	type JsonObject,
+	type JsonValue,
+	toJson,
+} from "./types/proto";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
 export { Semaphore } from "./utils/batch-queue/semaphore.js";

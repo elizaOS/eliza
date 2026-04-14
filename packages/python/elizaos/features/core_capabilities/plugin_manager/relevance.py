@@ -240,6 +240,7 @@ def build_keyword_regex(keywords: list[str]) -> re.Pattern[str]:
 # Memory / State text extraction
 # ---------------------------------------------------------------------------
 
+
 def _get_memory_text(memory: object | None) -> str:
     if memory is None:
         return ""
@@ -260,16 +261,13 @@ def _get_recent_messages(state: object | None) -> list[object]:
 
 
 def _get_recent_message_texts(state: object | None) -> list[str]:
-    return [
-        t
-        for msg in _get_recent_messages(state)
-        if (t := _get_memory_text(msg))
-    ]
+    return [t for msg in _get_recent_messages(state) if (t := _get_memory_text(msg))]
 
 
 # ---------------------------------------------------------------------------
 # Relevance check
 # ---------------------------------------------------------------------------
+
 
 def _validate_keywords(
     message: object,

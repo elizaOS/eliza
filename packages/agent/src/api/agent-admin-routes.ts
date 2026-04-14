@@ -6,8 +6,8 @@ import {
   getDefaultStylePreset,
   normalizeCharacterLanguage,
 } from "../onboarding-presets.js";
-import { clearPersistedOnboardingConfig } from "./provider-switch-config.js";
 import { detectRuntimeModel } from "./agent-model.js";
+import { clearPersistedOnboardingConfig } from "./provider-switch-config.js";
 import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
 
 type AgentStateStatus =
@@ -83,7 +83,8 @@ function resolveResetPgliteDataDir(
     return resolveUserPath(configuredDataDir);
   }
 
-  const workspaceDir = config.agents?.defaults?.workspace ?? `${stateDir}/workspace`;
+  const workspaceDir =
+    config.agents?.defaults?.workspace ?? `${stateDir}/workspace`;
   return path.join(resolveUserPath(workspaceDir), ".eliza", ".elizadb");
 }
 

@@ -48,11 +48,6 @@
 			"import": "./dist/testing/index.js",
 			"default": "./dist/testing/index.js"
 		},
-		"./orchestrator": {
-			"types": "./src/features/orchestrator/index.ts",
-			"import": "./dist/index.node.js",
-			"default": "./dist/index.node.js"
-		},
 		"./advanced-capabilities/clipboard/index": {
 			"types": "./src/features/advanced-capabilities/clipboard/index.ts",
 			"import": "./dist/node/features/advanced-capabilities/clipboard/index.js",
@@ -63,7 +58,6 @@
 		"dist"
 	],
 	"scripts": {
-		"postinstall": "node ./scripts/ensure-node-pty.mjs",
 		"prebuild": "[ -d src/types/generated ] || (cd ../schemas && bunx buf generate); [ -f src/i18n/generated/validation-keyword-data.ts ] || node ../shared/scripts/generate-keywords.mjs --target ts",
 		"build": "bun run build.ts",
 		"build:node": "bun run build.ts --node-only",
@@ -128,9 +122,6 @@
 		"mammoth": "^1.9.0",
 		"markdown-it": "^14.1.0",
 		"pdfjs-dist": "^5.4.530",
-		"pty-console": "0.3.1",
-		"pty-manager": "1.11.0",
-		"pty-state-capture": "0.2.0",
 		"undici": "^7.0.0",
 		"unique-names-generator": "^4.7.1",
 		"unpdf": "^1.4.0",

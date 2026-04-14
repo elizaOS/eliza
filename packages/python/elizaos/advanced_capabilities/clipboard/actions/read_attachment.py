@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from elizaos.types import Action, ActionResult, Content
 
 from ..services.task_clipboard_service import create_task_clipboard_service
+from ..types import TaskClipboardSourceType
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
@@ -44,23 +45,23 @@ async def _list_conversation_attachments(
         if isinstance(att, dict):
             attachments.append(att)
         elif hasattr(att, "id"):
-            attachments.append({
-                "id": att.id,
-                "title": getattr(att, "title", None) or getattr(att, "name", ""),
-                "url": getattr(att, "url", ""),
-                "content_type": getattr(att, "content_type", None)
-                or getattr(att, "contentType", None),
-                "content": getattr(att, "content", None)
-                or getattr(att, "text", None)
-                or getattr(att, "description", ""),
-            })
+            attachments.append(
+                {
+                    "id": att.id,
+                    "title": getattr(att, "title", None) or getattr(att, "name", ""),
+                    "url": getattr(att, "url", ""),
+                    "content_type": getattr(att, "content_type", None)
+                    or getattr(att, "contentType", None),
+                    "content": getattr(att, "content", None)
+                    or getattr(att, "text", None)
+                    or getattr(att, "description", ""),
+                }
+            )
 
     # Try to get attachments from recent memory
     if hasattr(runtime, "get_memories"):
         try:
-            recent = await runtime.get_memories(
-                room_id=message.room_id, count=20
-            )
+            recent = await runtime.get_memories(room_id=message.room_id, count=20)
             for mem in recent or []:
                 mem_atts = getattr(mem.content, "attachments", None) or []
                 for att in mem_atts:
@@ -69,16 +70,19 @@ async def _list_conversation_attachments(
                             attachments.append(att)
                     elif hasattr(att, "id"):
                         if att.id not in {a.get("id") for a in attachments}:
-                            attachments.append({
-                                "id": att.id,
-                                "title": getattr(att, "title", None) or getattr(att, "name", ""),
-                                "url": getattr(att, "url", ""),
-                                "content_type": getattr(att, "content_type", None)
-                                or getattr(att, "contentType", None),
-                                "content": getattr(att, "content", None)
-                                or getattr(att, "text", None)
-                                or getattr(att, "description", ""),
-                            })
+                            attachments.append(
+                                {
+                                    "id": att.id,
+                                    "title": getattr(att, "title", None)
+                                    or getattr(att, "name", ""),
+                                    "url": getattr(att, "url", ""),
+                                    "content_type": getattr(att, "content_type", None)
+                                    or getattr(att, "contentType", None),
+                                    "content": getattr(att, "content", None)
+                                    or getattr(att, "text", None)
+                                    or getattr(att, "description", ""),
+                                }
+                            )
         except Exception:
             pass
 
@@ -123,10 +127,7 @@ async def _read_attachment_record(
         return None
 
     content = (
-        attachment.get("content")
-        or attachment.get("text")
-        or attachment.get("description")
-        or ""
+        attachment.get("content") or attachment.get("text") or attachment.get("description") or ""
     )
 
     return {
@@ -141,17 +142,13 @@ async def _read_attachment_record(
 # ---------------------------------------------------------------------------
 
 
-async def _validate(
-    runtime: IAgentRuntime, message: Memory, _state: State | None = None
-) -> bool:
+async def _validate(runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
     is_request = isinstance(getattr(message.content, "attachmentId", None), str) or isinstance(
         getattr(message.content, "attachment_id", None), str
     )
     if not is_request:
         text = (message.content.text if message.content else "") or ""
-        is_request = bool(
-            re.search(r"attachment|image|screenshot|file", text, re.IGNORECASE)
-        )
+        is_request = bool(re.search(r"attachment|image|screenshot|file", text, re.IGNORECASE))
     if not is_request:
         return False
 
@@ -168,9 +165,8 @@ async def _handler(
     responses: list[Memory] | None = None,
 ) -> ActionResult:
     try:
-        explicit_id = (
-            getattr(message.content, "attachmentId", None)
-            or getattr(message.content, "attachment_id", None)
+        explicit_id = getattr(message.content, "attachmentId", None) or getattr(
+            message.content, "attachment_id", None
         )
         if isinstance(explicit_id, str):
             explicit_id = explicit_id.strip() or None
@@ -185,9 +181,7 @@ async def _handler(
             else:
                 fallback = "No attachments are available in the current conversation window."
             if callback:
-                await callback(
-                    Content(text=fallback, actions=["READ_ATTACHMENT_FAILED"])
-                )
+                await callback(Content(text=fallback, actions=["READ_ATTACHMENT_FAILED"]))
             return ActionResult(text=fallback, success=False)
 
         stored_content = result["content"].strip()
@@ -204,10 +198,14 @@ async def _handler(
                 from ..types import AddTaskClipboardItemInput
 
                 entity_id = (
-                    str(message.entity_id) if hasattr(message, "entity_id") and message.entity_id else None
+                    str(message.entity_id)
+                    if hasattr(message, "entity_id") and message.entity_id
+                    else None
                 )
                 ct = attachment.get("content_type") or attachment.get("contentType")
-                source_type = "image_attachment" if ct and "image" in str(ct) else "attachment"
+                source_type: TaskClipboardSourceType = (
+                    "image_attachment" if ct and "image" in str(ct) else "attachment"
+                )
                 item, replaced, snapshot = await service.add_item(
                     AddTaskClipboardItemInput(
                         title=attachment.get("title") or attachment.get("id", ""),
@@ -235,16 +233,13 @@ async def _handler(
             parts.append(clipboard_msg)
         parts.append("")
         parts.append(
-            stored_content
-            or "No stored attachment content is available for this attachment."
+            stored_content or "No stored attachment content is available for this attachment."
         )
 
         response_text = "\n".join(parts)
 
         if callback:
-            await callback(
-                Content(text=response_text, actions=["READ_ATTACHMENT_SUCCESS"])
-            )
+            await callback(Content(text=response_text, actions=["READ_ATTACHMENT_SUCCESS"]))
 
         return ActionResult(
             text=response_text,

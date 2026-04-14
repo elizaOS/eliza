@@ -10,7 +10,7 @@ message and:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from elizaos.types import ActionResult, Evaluator, ModelType
 from elizaos.utils.xml import parse_key_value_xml
@@ -78,8 +78,17 @@ Respond with XML:
     if parsed:
         raw_intent = parsed.get("intent", "other")
         if isinstance(raw_intent, str) and raw_intent in (
-            "fill_form", "submit", "stash", "cancel", "undo", "skip",
-            "explain", "example", "progress", "autofill", "other",
+            "fill_form",
+            "submit",
+            "stash",
+            "cancel",
+            "undo",
+            "skip",
+            "explain",
+            "example",
+            "progress",
+            "autofill",
+            "other",
         ):
             intent = raw_intent  # type: ignore[assignment]
 
@@ -88,11 +97,13 @@ Respond with XML:
         if isinstance(raw_extractions, dict):
             for field_key, value in raw_extractions.items():
                 if isinstance(value, dict):
-                    extractions.append(ExtractionResult(
-                        field=field_key,
-                        value=value.get("value", value),
-                        confidence=float(value.get("confidence", 0.5)),
-                    ))
+                    extractions.append(
+                        ExtractionResult(
+                            field=field_key,
+                            value=value.get("value", value),
+                            confidence=float(value.get("confidence", 0.5)),
+                        )
+                    )
 
     return IntentResult(intent=intent, extractions=extractions)
 
@@ -132,12 +143,10 @@ async def _handler(
         if definition:
             field_desc = "\n".join(
                 f"- {c.key} ({c.type}): {c.description or c.label}"
-                + (f" [required]" if c.required else "")
+                + (" [required]" if c.required else "")
                 for c in definition.controls
             )
-            intent_result = await _llm_intent_and_extract(
-                runtime, message_text, field_desc
-            )
+            intent_result = await _llm_intent_and_extract(runtime, message_text, field_desc)
         else:
             intent_result = IntentResult(intent="other")
 
@@ -205,14 +214,21 @@ async def _handler(
             if "." in extraction.field:
                 parent, sub = extraction.field.split(".", 1)
                 await form_service.update_sub_field(
-                    session.id, entity_id, parent, sub,
-                    extraction.value, extraction.confidence,
+                    session.id,
+                    entity_id,
+                    parent,
+                    sub,
+                    extraction.value,
+                    extraction.confidence,
                     message_id=str(message.id) if message.id else None,
                 )
             else:
                 await form_service.update_field(
-                    session.id, entity_id, extraction.field,
-                    extraction.value, extraction.confidence,
+                    session.id,
+                    entity_id,
+                    extraction.field,
+                    extraction.value,
+                    extraction.confidence,
                     "extraction",
                     message_id=str(message.id) if message.id else None,
                 )

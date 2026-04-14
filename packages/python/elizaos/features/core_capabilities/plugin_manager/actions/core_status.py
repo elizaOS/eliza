@@ -46,9 +46,7 @@ class CoreStatusAction:
                 break
 
         if pm_svc is None:
-            return ActionResult(
-                text="Plugin manager service is not available.", success=False
-            )
+            return ActionResult(text="Plugin manager service is not available.", success=False)
 
         plugins = pm_svc.get_all_plugins()
         status_summary = pm_svc.get_status_summary()
@@ -77,9 +75,7 @@ class CoreStatusAction:
                 if parts:
                     comp_info = f" ({', '.join(parts)})"
 
-            lines.append(
-                f"- {plugin.name}: {plugin.status.value}{comp_info}{error_info}"
-            )
+            lines.append(f"- {plugin.name}: {plugin.status.value}{comp_info}{error_info}")
 
         text = "\n".join(lines)
 

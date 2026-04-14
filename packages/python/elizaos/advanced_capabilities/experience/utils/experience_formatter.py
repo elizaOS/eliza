@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -27,9 +27,9 @@ def _get_type_marker(exp_type: ExperienceType) -> str:
 
 def format_experience_for_display(experience: Experience) -> str:
     marker = _get_type_marker(experience.type)
-    timestamp = datetime.fromtimestamp(
-        experience.created_at / 1000, tz=timezone.utc
-    ).strftime("%Y-%m-%d %H:%M:%S UTC")
+    timestamp = datetime.fromtimestamp(experience.created_at / 1000, tz=UTC).strftime(
+        "%Y-%m-%d %H:%M:%S UTC"
+    )
 
     return (
         f"[{marker}] {experience.type.upper()} - {timestamp}\n"
@@ -57,9 +57,7 @@ def format_experience_list(experiences: list[Experience]) -> str:
 
 def format_pattern_summary(pattern: dict[str, object]) -> str:
     significance = str(pattern.get("significance", ""))
-    significance_marker = {"high": "[!!!]", "medium": "[!!]", "low": "[!]"}.get(
-        significance, "[ ]"
-    )
+    significance_marker = {"high": "[!!!]", "medium": "[!!]", "low": "[!]"}.get(significance, "[ ]")
     description = pattern.get("description", "")
     frequency = pattern.get("frequency", 0)
     return f"{significance_marker} {description} (observed {frequency} times)"

@@ -3,9 +3,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
+import type { SwarmCoordinator } from "@elizaos/plugin-agent-orchestrator";
+import { PTYService } from "@elizaos/plugin-agent-orchestrator";
 import { createTestRuntime } from "../helpers/pglite-runtime";
-import { PTYService } from "../../eliza/packages/typescript/src/agent-orchestrator/src/services/pty-service.ts";
-import type { SwarmCoordinator } from "../../eliza/packages/typescript/src/agent-orchestrator/src/services/swarm-coordinator.ts";
 
 async function waitFor(
   predicate: () => Promise<boolean>,

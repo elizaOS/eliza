@@ -69,9 +69,7 @@ async def get_registry_plugins(
     # Build dynamic keywords
     dynamic_keywords: list[str] = []
     if pm_svc is not None:
-        dynamic_keywords = keywords_from_plugin_names(
-            [p.name for p in pm_svc.get_all_plugins()]
-        )
+        dynamic_keywords = keywords_from_plugin_names([p.name for p in pm_svc.get_all_plugins()])
     relevance_keywords = build_provider_keywords(
         REGISTRY_PROVIDER_KEYWORDS,
         dynamic_keywords,
@@ -111,9 +109,7 @@ async def get_registry_plugins(
             ]
         except Exception as exc:
             msg = str(exc)
-            logger.warning(
-                "[registryPluginsProvider] Failed to fetch registry: %s", msg
-            )
+            logger.warning("[registryPluginsProvider] Failed to fetch registry: %s", msg)
             registry_error = msg
     else:
         registry_error = "Plugin registry service not available"
@@ -123,8 +119,7 @@ async def get_registry_plugins(
     try:
         ejected = await pm_svc.list_ejected_plugins()
         installed_plugins = [
-            {"name": p.name, "version": p.version, "path": p.path}
-            for p in ejected
+            {"name": p.name, "version": p.version, "path": p.path} for p in ejected
         ]
     except Exception:
         pass

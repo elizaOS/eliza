@@ -17,12 +17,15 @@ import {
 } from "./selfcontrol/selfcontrol.ts";
 import { WebsiteBlockerService } from "./selfcontrol/service.ts";
 
-// LifeOps core actions (calendar, gmail, life/tasks, goals)
+// LifeOps core actions (calendar, gmail, life/tasks, goals, inbox, owner profile)
 import { calendarAction } from "./actions/calendar.js";
 import { gmailAction } from "./actions/gmail.js";
+import { inboxAction } from "./actions/inbox.js";
 import { lifeAction } from "./actions/life.js";
+import { updateOwnerProfileAction } from "./actions/update-owner-profile.js";
 
-// LifeOps core provider
+// LifeOps core providers
+import { inboxTriageProvider } from "./providers/inbox-triage.js";
 import { lifeOpsProvider } from "./providers/lifeops.js";
 
 // LifeOps runtime (scheduler task worker + registration)
@@ -43,9 +46,16 @@ const rawAppLifeOpsPlugin: Plugin = {
     unblockWebsitesAction,
     calendarAction,
     gmailAction,
+    inboxAction,
     lifeAction,
+    updateOwnerProfileAction,
   ],
-  providers: [lifeOpsBrowserProvider, websiteBlockerProvider, lifeOpsProvider],
+  providers: [
+    lifeOpsBrowserProvider,
+    websiteBlockerProvider,
+    lifeOpsProvider,
+    inboxTriageProvider,
+  ],
   services: [LifeOpsBrowserPluginService, WebsiteBlockerService],
   init: async (
     pluginConfig: Record<string, unknown>,
@@ -106,7 +116,10 @@ export {
 // LifeOps core exports
 export { calendarAction } from "./actions/calendar.js";
 export { gmailAction } from "./actions/gmail.js";
+export { inboxAction } from "./actions/inbox.js";
 export { lifeAction } from "./actions/life.js";
+export { updateOwnerProfileAction } from "./actions/update-owner-profile.js";
+export { inboxTriageProvider } from "./providers/inbox-triage.js";
 export { lifeOpsProvider } from "./providers/lifeops.js";
 
 // Routes (consumed by agent server.ts via import)

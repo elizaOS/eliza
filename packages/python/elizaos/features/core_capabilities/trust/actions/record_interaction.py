@@ -15,7 +15,7 @@ from elizaos.types import Action, ActionResult, Content
 from ..types import TrustEvidenceType, TrustInteraction
 
 if TYPE_CHECKING:
-    from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State, UUID
+    from elizaos.types import UUID, HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
 
     from ..service import TrustEngineService
 

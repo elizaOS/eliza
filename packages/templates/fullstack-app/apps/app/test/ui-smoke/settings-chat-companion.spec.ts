@@ -1,9 +1,5 @@
 import { expect, test } from "@playwright/test";
-import {
-  openAppPath,
-  readLocalStorage,
-  seedAppStorage,
-} from "./helpers";
+import { openAppPath, readLocalStorage, seedAppStorage } from "./helpers";
 
 const VRM_POWER_KEY = "eliza:companion-vrm-power";
 const HALF_FRAMERATE_KEY = "eliza:companion-half-framerate";

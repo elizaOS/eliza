@@ -42,10 +42,7 @@ async def get_roles(
             data={"roles": []},
         )
 
-    server_id = (
-        getattr(room, "message_server_id", None)
-        or getattr(room, "messageServerId", None)
-    )
+    server_id = getattr(room, "message_server_id", None) or getattr(room, "messageServerId", None)
     if not server_id:
         return ProviderResult(
             text="No role information available for this server.",
@@ -103,12 +100,10 @@ async def get_roles(
                 if entity:
                     names = getattr(entity, "names", None) or []
                     entity_meta = getattr(entity, "metadata", None) or {}
-                    default_meta = entity_meta.get("default", {}) if isinstance(entity_meta, dict) else {}
-                    name = (
-                        default_meta.get("name")
-                        or (names[0] if names else None)
-                        or entity_id
+                    default_meta = (
+                        entity_meta.get("default", {}) if isinstance(entity_meta, dict) else {}
                     )
+                    name = default_meta.get("name") or (names[0] if names else None) or entity_id
             except Exception:
                 pass
 

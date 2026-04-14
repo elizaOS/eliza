@@ -39,19 +39,13 @@ FormIntent = Literal[
     "other",
 ]
 
-FieldStatus = Literal[
-    "empty", "filled", "uncertain", "invalid", "skipped", "pending"
-]
+FieldStatus = Literal["empty", "filled", "uncertain", "invalid", "skipped", "pending"]
 
-FieldSource = Literal[
-    "extraction", "autofill", "default", "manual", "correction", "external"
-]
+FieldSource = Literal["extraction", "autofill", "default", "manual", "correction", "external"]
 
 ExternalStatus = Literal["pending", "confirmed", "failed", "expired"]
 
-SessionStatus = Literal[
-    "active", "ready", "submitted", "stashed", "cancelled", "expired"
-]
+SessionStatus = Literal["active", "ready", "submitted", "stashed", "cancelled", "expired"]
 
 DependencyCondition = Literal["exists", "equals", "not_equals"]
 
@@ -426,9 +420,7 @@ class FormContextState:
     status: SessionStatus | None = None
     stashed_count: int = 0
     pending_cancel_confirmation: bool = False
-    pending_external_fields: list[PendingExternalFieldSummary] = field(
-        default_factory=list
-    )
+    pending_external_fields: list[PendingExternalFieldSummary] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

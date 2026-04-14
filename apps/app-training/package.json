@@ -6,6 +6,10 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./ui": "./src/ui/index.ts",
+    "./ui/FineTuningView": "./src/ui/FineTuningView.tsx",
+    "./ui/fine-tuning-panels": "./src/ui/fine-tuning-panels.tsx",
+    "./ui/*": "./src/ui/*",
     "./routes": "./src/routes/index.ts",
     "./routes/training": "./src/routes/training-routes.ts",
     "./routes/trajectory": "./src/routes/trajectory-routes.ts",
@@ -26,6 +30,8 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/ui": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/agent": "workspace:*"
   },

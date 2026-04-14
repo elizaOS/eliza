@@ -19,11 +19,11 @@ from .providers import (
 from .service import PluginManagerService
 from .services import CoreManagerService, PluginRegistryService, plugin_manager_services
 from .types import (
+    PROTECTED_PLUGINS,
     ComponentRegistration,
     EjectedPluginInfo,
     InstallProgress,
     InstallResult,
-    PROTECTED_PLUGINS,
     PluginComponents,
     PluginManagerConfig,
     PluginMetadata,

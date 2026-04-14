@@ -26,8 +26,8 @@ import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
 const OPTIONAL_CORE_PLUGIN_NAMES = new Set<string>(OPTIONAL_CORE_PLUGINS);
 
 /**
- * Agent orchestrator ships inside @elizaos/core (`src/features/orchestrator`); Eliza
- * loads it via STATIC_ELIZA_PLUGINS["agent-orchestrator"].
+ * Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package;
+ * Eliza loads it via STATIC_ELIZA_PLUGINS["agent-orchestrator"].
  */
 function orchestratorCompatPluginRequested(config: ElizaConfig): boolean {
   const agentEntry = config.agents?.list?.[0];
@@ -269,7 +269,7 @@ export function collectPluginNames(
     pluginsToLoad.add("agent-orchestrator");
     track(
       "agent-orchestrator",
-      "agent-orchestrator (@elizaos/core/orchestrator)",
+      "agent-orchestrator (@elizaos/plugin-agent-orchestrator)",
     );
   }
   if (localEmbeddingsExplicitlyDisabled) {

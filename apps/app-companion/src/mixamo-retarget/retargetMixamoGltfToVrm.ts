@@ -91,7 +91,7 @@ export function retargetMixamoGltfToVrm(
       rawRigName,
       normalizedRigName,
     );
-    if (!mixamoRigNode || !mixamoRigNode.parent) continue;
+    if (!mixamoRigNode?.parent) continue;
 
     if (
       propertyName === "quaternion" &&

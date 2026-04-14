@@ -70,6 +70,7 @@ The current working directory is dynamically provided.`,
  * Initialize the Eliza runtime with coding capabilities
  */
 import {
+  AgentOrchestratorService,
   agentOrchestratorPlugin,
   configureAgentOrchestratorPlugin,
   createSubAgentProvider,
@@ -136,6 +137,7 @@ export async function initializeAgent(): Promise<AgentRuntime> {
     getWorkingDirectory: () => process.cwd(),
   });
 
+  await runtime.registerService(AgentOrchestratorService as any);
   await runtime.initialize();
 
   return runtime;

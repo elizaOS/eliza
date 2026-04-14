@@ -31,22 +31,20 @@ async def get_secrets_status(
             break
 
     if secrets_svc is None:
-        return ProviderResult(
-            text="", values={"secretsAvailable": False}, data={}
-        )
+        return ProviderResult(text="", values={"secretsAvailable": False}, data={})
 
-    context = SecretContext(
-        level=SecretLevel.GLOBAL, agent_id=str(runtime.agent_id)
-    )
+    context = SecretContext(level=SecretLevel.GLOBAL, agent_id=str(runtime.agent_id))
     metadata = await secrets_svc.list(context)
 
     total = len(metadata)
     valid_count = sum(
-        1 for cfg in metadata.values()
+        1
+        for cfg in metadata.values()
         if (cfg.status.value if hasattr(cfg.status, "value") else cfg.status) == "valid"
     )
     missing_count = sum(
-        1 for cfg in metadata.values()
+        1
+        for cfg in metadata.values()
         if (cfg.status.value if hasattr(cfg.status, "value") else cfg.status) == "missing"
     )
 

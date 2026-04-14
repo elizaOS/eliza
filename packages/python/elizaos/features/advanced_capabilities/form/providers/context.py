@@ -92,18 +92,14 @@ async def _get_form_context(
             lines.append("\nInstruction: Confirm cancel -- user has invested effort.")
         elif ctx.uncertain_fields:
             uf = ctx.uncertain_fields[0]
-            lines.append(
-                f"\nInstruction: Confirm '{uf.label}' value with the user."
-            )
+            lines.append(f"\nInstruction: Confirm '{uf.label}' value with the user.")
         elif ctx.missing_required:
             nf = ctx.missing_required[0]
-            lines.append(
-                f"\nInstruction: Ask for {nf.label}."
-            )
+            lines.append(f"\nInstruction: Ask for {nf.label}.")
         elif ctx.status == "ready":
             lines.append("\nInstruction: All required fields collected. Confirm and submit.")
 
-        lines.append(f"[/ACTIVE FORM]")
+        lines.append("[/ACTIVE FORM]")
 
         text = "\n".join(lines)
 

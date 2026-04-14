@@ -13,7 +13,7 @@ import {
   readEntityAction,
   searchEntityAction,
 } from "../actions/entity-actions.js";
-import { inboxAction } from "../actions/inbox.js";
+import { manageTasksAction } from "../actions/manage-tasks.js";
 import { readChannelAction } from "../actions/read-channel.js";
 import { restartAction } from "../actions/restart.js";
 import { searchConversationsAction } from "../actions/search-conversations.js";
@@ -25,7 +25,6 @@ import {
   skillCommandAction,
 } from "../actions/skill-command.js";
 import { terminalAction } from "../actions/terminal.js";
-import { updateOwnerProfileAction } from "../actions/update-owner-profile.js";
 import { webSearchAction } from "../actions/web-search.js";
 import {
   ensureProactiveAgentTask,
@@ -36,7 +35,6 @@ import { activityProfileProvider } from "../providers/activity-profile.js";
 import { adminPanelProvider } from "../providers/admin-panel.js";
 import { adminTrustProvider } from "../providers/admin-trust.js";
 import { escalationTriggerProvider } from "../providers/escalation-trigger.js";
-import { inboxTriageProvider } from "../providers/inbox-triage.js";
 import { recentConversationsProvider } from "../providers/recent-conversations.js";
 import { relevantConversationsProvider } from "../providers/relevant-conversations.js";
 import { roleBackfillProvider } from "../providers/role-backfill.js";
@@ -54,7 +52,6 @@ import { createUserNameProvider } from "../providers/user-name.js";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
 import { createWorkspaceProvider } from "../providers/workspace-provider.js";
 import { ElizaCharacterPersistenceService } from "../services/character-persistence.js";
-import { manageTasksAction } from "../actions/manage-tasks.js";
 import { createTriggerTaskAction } from "../triggers/action.js";
 import { registerTriggerTaskWorker } from "../triggers/runtime.js";
 import { setCustomActionsRuntime } from "./custom-actions.js";
@@ -248,7 +245,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       uiCatalogProvider,
       roleBackfillProvider,
       escalationTriggerProvider,
-      inboxTriageProvider,
     ],
 
     evaluators: [lateJoinWhitelistEvaluator],
@@ -262,14 +258,12 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       createTriggerTaskAction,
       manageTasksAction,
       setUserNameAction,
-      updateOwnerProfileAction,
       skillCommandAction,
       webSearchAction,
       readChannelAction,
       searchConversationsAction,
       searchEntityAction,
       readEntityAction,
-      inboxAction,
     ],
   };
 

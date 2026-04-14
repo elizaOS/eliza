@@ -7,8 +7,10 @@ import {
   buildFullstackTemplateValues,
   buildPluginTemplateValues,
   ensurePackageJsonWorkspaces,
+  ensureUpstreamCompatibilityFiles,
   getFullstackReplacementEntries,
   getPluginReplacementEntries,
+  renderTemplateTree,
   updateManagedFiles,
 } from "../scaffold.js";
 import type { ProjectTemplateMetadata } from "../types.js";
@@ -28,6 +30,7 @@ afterEach(() => {
 describe("template value builders", () => {
   test("builds plugin naming defaults", () => {
     const values = buildPluginTemplateValues({
+      elizaVersion: "2.0.0-alpha.139",
       githubUsername: "octocat",
       pluginDescription: "Plugin Foo",
       projectName: "foo",
@@ -64,6 +67,46 @@ describe("template value builders", () => {
 });
 
 describe("managed file upgrades", () => {
+  test("renders replacement values into file paths as well as file contents", () => {
+    const sourceDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "elizaos-render-src-"),
+    );
+    const destinationDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "elizaos-render-dest-"),
+    );
+    tempDirs.push(sourceDir, destinationDir);
+
+    fs.mkdirSync(path.join(sourceDir, "src", "e2e"), { recursive: true });
+    fs.writeFileSync(
+      path.join(sourceDir, "src", "e2e", "plugin-starter.e2e.ts"),
+      'export const value = "plugin-starter";\n',
+    );
+
+    const values = buildPluginTemplateValues({
+      elizaVersion: "2.0.0-alpha.139",
+      githubUsername: "octocat",
+      pluginDescription: "Plugin Foo",
+      projectName: "plugin-foo",
+      repoUrl: "https://github.com/octocat/plugin-foo",
+    });
+
+    const managedFiles = renderTemplateTree({
+      destinationDir,
+      replacements: getPluginReplacementEntries(values),
+      sourceDir,
+    });
+
+    const renderedPath = path.join(
+      destinationDir,
+      "src",
+      "e2e",
+      "plugin-foo.e2e.ts",
+    );
+    expect(fs.existsSync(renderedPath)).toBe(true);
+    expect(fs.readFileSync(renderedPath, "utf8")).toContain("plugin-foo");
+    expect(managedFiles).toHaveProperty("src/e2e/plugin-foo.e2e.ts");
+  });
+
   test("adds missing workspace entries without duplicating existing ones", () => {
     const projectRoot = fs.mkdtempSync(
       path.join(os.tmpdir(), "elizaos-workspaces-"),
@@ -99,6 +142,38 @@ describe("managed file upgrades", () => {
       "plugins/plugin-sql/typescript",
       "plugins/plugin-elizacloud/typescript",
     ]);
+  });
+
+  test("materializes required upstream compatibility shims", () => {
+    const submoduleRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "elizaos-upstream-compat-"),
+    );
+    tempDirs.push(submoduleRoot);
+
+    const siblingPath = path.join(
+      submoduleRoot,
+      "packages",
+      "shared",
+      "src",
+      "env-utils.impl.ts",
+    );
+    fs.mkdirSync(path.dirname(siblingPath), { recursive: true });
+    fs.writeFileSync(
+      siblingPath,
+      "export function isTruthyEnvValue() { return true; }\n",
+    );
+
+    const created = ensureUpstreamCompatibilityFiles(submoduleRoot);
+
+    expect(created).toEqual([
+      "packages/shared/src/env-utils.impl.d.ts",
+      "packages/shared/src/env-utils.impl.js",
+    ]);
+    expect(
+      fs.existsSync(
+        path.join(submoduleRoot, "packages/shared/src/env-utils.impl.js"),
+      ),
+    ).toBe(true);
   });
 
   test("updates untouched managed files and reports conflicts", () => {

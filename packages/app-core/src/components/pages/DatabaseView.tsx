@@ -398,6 +398,7 @@ export function DatabaseView({
 
     return (
       <PageLayout
+        data-testid="database-view"
         sidebar={dbSidebar}
         contentHeader={contentHeader}
         contentInnerClassName="w-full min-h-0"

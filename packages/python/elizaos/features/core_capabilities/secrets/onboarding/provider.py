@@ -46,19 +46,19 @@ def _generate_status_message(
     for key, setting in entries:
         if setting.visible_if and not setting.visible_if(settings):
             continue
-        formatted.append({
-            "key": key,
-            "name": setting.name,
-            "value": _format_setting_value(setting, is_onboarding),
-            "description": setting.description,
-            "usage_description": setting.usage_description or setting.description,
-            "required": setting.required,
-            "configured": setting.value is not None,
-        })
+        formatted.append(
+            {
+                "key": key,
+                "name": setting.name,
+                "value": _format_setting_value(setting, is_onboarding),
+                "description": setting.description,
+                "usage_description": setting.usage_description or setting.description,
+                "required": setting.required,
+                "configured": setting.value is not None,
+            }
+        )
 
-    required_unconfigured = sum(
-        1 for s in formatted if s["required"] and not s["configured"]
-    )
+    required_unconfigured = sum(1 for s in formatted if s["required"] and not s["configured"])
 
     if is_onboarding:
         settings_list = "\n\n".join(

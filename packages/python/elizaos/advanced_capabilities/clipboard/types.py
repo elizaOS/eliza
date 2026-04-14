@@ -76,9 +76,7 @@ class ClipboardConfig:
 
     base_path: str = ""
     max_file_size: int = 1024 * 1024  # 1MB
-    allowed_extensions: list[str] = field(
-        default_factory=lambda: [".md", ".txt"]
-    )
+    allowed_extensions: list[str] = field(default_factory=lambda: [".md", ".txt"])
 
 
 @dataclass

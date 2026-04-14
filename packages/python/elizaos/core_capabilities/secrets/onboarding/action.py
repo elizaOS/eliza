@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from elizaos.types import Action, ActionResult, Content, ModelType
 
 from ..types import SecretContext, SecretLevel
-from .config import OnboardingSetting, get_unconfigured_required, is_onboarding_complete
+from .config import OnboardingSetting
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
@@ -37,9 +37,7 @@ async def _extract_setting_values(
     settings: dict[str, OnboardingSetting],
 ) -> list[dict[str, Any]]:
     """Extract setting values from user message using LLM."""
-    unconfigured = [
-        (key, s) for key, s in settings.items() if s.value is None
-    ]
+    unconfigured = [(key, s) for key, s in settings.items() if s.value is None]
     if not unconfigured:
         return []
 
@@ -108,8 +106,7 @@ async def _process_setting_updates(
         # Check dependencies
         if setting.depends_on:
             deps_met = all(
-                updated_settings.get(dep) is not None
-                and updated_settings[dep].value is not None
+                updated_settings.get(dep) is not None and updated_settings[dep].value is not None
                 for dep in setting.depends_on
             )
             if not deps_met:
@@ -184,8 +181,7 @@ def _get_next_required_setting(
         if not setting.required or setting.value is not None:
             continue
         deps_met = all(
-            settings.get(dep) is not None
-            and settings[dep].value is not None
+            settings.get(dep) is not None and settings[dep].value is not None
             for dep in (setting.depends_on or [])
         )
         if deps_met:
@@ -202,9 +198,7 @@ def _count_unconfigured_required(settings: dict[str, OnboardingSetting]) -> int:
 # ---------------------------------------------------------------------------
 
 
-async def _validate(
-    runtime: IAgentRuntime, message: Memory, _state: State | None = None
-) -> bool:
+async def _validate(runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
     text = (message.content.text if message.content else "") or ""
     text_lower = text.lower()
     has_intent = "update" in text_lower and "settings" in text_lower
@@ -226,7 +220,8 @@ async def _validate(
     if not world or not getattr(world, "metadata", None):
         return False
 
-    settings = (world.metadata or {}).get("settings")
+    metadata: dict[str, Any] = world.metadata if isinstance(world.metadata, dict) else {}
+    settings = metadata.get("settings")
     if not settings:
         return False
 
@@ -269,7 +264,25 @@ async def _handler(
             success=False,
         )
 
-    settings: dict[str, OnboardingSetting] = (world.metadata or {}).get("settings", {})
+    metadata: dict[str, Any] = world.metadata if isinstance(world.metadata, dict) else {}
+    raw_settings = metadata.get("settings")
+    settings: dict[str, OnboardingSetting] = (
+        {
+            key: value
+            for key, value in raw_settings.items()
+            if isinstance(key, str) and isinstance(value, OnboardingSetting)
+        }
+        if isinstance(raw_settings, dict)
+        else {}
+    )
+    if not settings:
+        await callback(Content(text="No settings configured for this world."))
+        return ActionResult(
+            text="No settings found",
+            values={"success": False},
+            data={"actionName": "UPDATE_SETTINGS"},
+            success=False,
+        )
 
     # Get secrets service
     secrets_service: SecretsService | None = None
@@ -284,17 +297,22 @@ async def _handler(
     logger.info("[UpdateSettings] Extracted %d settings", len(extracted))
 
     # Process updates
-    results = await _process_setting_updates(
-        runtime, world, settings, extracted, secrets_service
-    )
+    results = await _process_setting_updates(runtime, world, settings, extracted, secrets_service)
 
     # Get updated settings
     updated_world = await runtime.get_world(room.world_id)
-    updated_settings: dict[str, OnboardingSetting] = (
-        (updated_world.metadata or {}).get("settings", settings)
-        if updated_world and getattr(updated_world, "metadata", None)
-        else settings
-    )
+    updated_settings: dict[str, OnboardingSetting] = settings
+    if updated_world and getattr(updated_world, "metadata", None):
+        updated_metadata: dict[str, Any] = (
+            updated_world.metadata if isinstance(updated_world.metadata, dict) else {}
+        )
+        updated_raw_settings = updated_metadata.get("settings")
+        if isinstance(updated_raw_settings, dict):
+            updated_settings = {
+                key: value
+                for key, value in updated_raw_settings.items()
+                if isinstance(key, str) and isinstance(value, OnboardingSetting)
+            } or settings
 
     if results["updated_any"]:
         remaining = _count_unconfigured_required(updated_settings)

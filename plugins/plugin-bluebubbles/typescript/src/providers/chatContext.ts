@@ -77,7 +77,7 @@ export const chatContextProvider: Provider = {
 			BLUEBUBBLES_SERVICE_NAME,
 		);
 
-		if (!bbService || !bbService.isConnected()) {
+		if (!bbService?.isConnected()) {
 			return {
 				values: { connected: false },
 				text: "",

@@ -1908,29 +1908,22 @@ class AgentRuntime(IAgentRuntime):
         world_id: UUID | None = None,
         source_entity_id: UUID | None = None,
     ) -> bool:
-        existing_components = await self.get_components(
-            entity_id, component_type, source_entity_id
-        )
+        existing_components = await self.get_components(entity_id, component_type, source_entity_id)
         existing = existing_components[0] if existing_components else None
         component = Component(
             id=(
-                str(getattr(existing, "id", ""))
-                or string_to_uuid(f"{entity_id}:{component_type}")
+                str(getattr(existing, "id", "")) or string_to_uuid(f"{entity_id}:{component_type}")
             ),
             entity_id=str(entity_id),
             agent_id=str(self.agent_id),
             room_id=str(getattr(existing, "room_id", "") or room_id or DEFAULT_UUID),
             world_id=str(getattr(existing, "world_id", "") or world_id or DEFAULT_UUID),
             source_entity_id=str(
-                getattr(existing, "source_entity_id", "")
-                or source_entity_id
-                or entity_id
+                getattr(existing, "source_entity_id", "") or source_entity_id or entity_id
             ),
             type=component_type,
             data=data,
-            created_at=int(
-                getattr(existing, "created_at", 0) or self.get_current_time_ms()
-            ),
+            created_at=int(getattr(existing, "created_at", 0) or self.get_current_time_ms()),
         )
         if existing is not None:
             await self.update_component(component)
@@ -1941,9 +1934,7 @@ class AgentRuntime(IAgentRuntime):
         if self._adapter:
             await self._adapter.update_component(component)
 
-    async def delete_component(
-        self, component_id: UUID, component_type: str | None = None
-    ) -> None:
+    async def delete_component(self, component_id: UUID, component_type: str | None = None) -> None:
         if self._adapter:
             if component_type is None:
                 await self._adapter.delete_component(component_id)

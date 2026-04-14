@@ -13,6 +13,11 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { hasAdminAccess } from "../security/access.js";
+import {
+  formatContactCandidates,
+  resolveContact,
+  resolveContactCandidates,
+} from "./connector-resolver.js";
 import { hasContextSignalSyncForKey } from "./context-signal.js";
 
 type MessageTransportService = {
@@ -29,22 +34,19 @@ type SendMessageParams = {
   target?: string;
   text?: string;
   urgency?: "normal" | "important" | "urgent";
+  /** Person name for rolodex resolution (alternative to explicit target). */
+  recipient?: string;
+  /** Platform hint for rolodex resolution. */
+  platform?: string;
 };
 
 const ADMIN_TARGETS = new Set(["admin", "owner"]);
 const VALID_URGENCIES = new Set(["normal", "important", "urgent"]);
 
 // ---------------------------------------------------------------------------
-// Admin pathway helpers (absorbed from send-admin-message.ts)
+// Admin pathway helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Resolve the admin/owner entity ID.
- *
- * Priority:
- * 1. World ownership metadata (room-aware path -- mirrors admin-trust provider)
- * 2. Deterministic fallback from agent name (mirrors chat-routes / lifeops service)
- */
 export async function resolveAdminEntityId(
   runtime: IAgentRuntime,
   message: Memory,
@@ -58,10 +60,6 @@ export async function resolveAdminEntityId(
   return stringToUuid(`${agentName}-admin-entity`) as UUID;
 }
 
-/**
- * Handle sending a message to the admin/owner, optionally with urgency
- * escalation.
- */
 async function handleAdminMessage(
   runtime: IAgentRuntime,
   message: Memory,
@@ -70,8 +68,6 @@ async function handleAdminMessage(
 ): Promise<ActionResult> {
   const adminEntityId = await resolveAdminEntityId(runtime, message);
 
-  // Urgent messages trigger multi-channel escalation (fire-and-forget --
-  // the primary send below still runs for immediate delivery).
   if (urgency === "urgent") {
     try {
       const { EscalationService } = await import("../services/escalation.js");
@@ -113,14 +109,140 @@ async function handleAdminMessage(
   };
 }
 
-/**
- * Detect whether the params indicate an admin/owner target.
- */
 function isAdminTarget(params: SendMessageParams): boolean {
   const { target, source } = params;
   if (target && ADMIN_TARGETS.has(target.toLowerCase())) return true;
   if (source && ADMIN_TARGETS.has(source.toLowerCase())) return true;
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Rolodex-based send pathway
+// ---------------------------------------------------------------------------
+
+async function handleRolodexSend(
+  runtime: IAgentRuntime,
+  recipientName: string,
+  text: string,
+  platformHint?: string,
+): Promise<ActionResult> {
+  // Resolve contact via rolodex
+  const resolved = await resolveContact(runtime, recipientName, platformHint);
+
+  if (!resolved) {
+    // Try to get candidates for disambiguation
+    const candidates = await resolveContactCandidates(runtime, recipientName);
+    if (candidates.length > 0) {
+      return {
+        text:
+          `Found ${candidates.length} contacts matching "${recipientName}" but none have a reachable platform:\n` +
+          formatContactCandidates(candidates) +
+          "\nSpecify a platform or use a more specific name.",
+        success: false,
+        values: { success: false, error: "NO_REACHABLE_PLATFORM" },
+        data: {
+          actionName: "SEND_MESSAGE",
+          recipient: recipientName,
+          candidateCount: candidates.length,
+        },
+      };
+    }
+
+    return {
+      text: `No contacts found matching "${recipientName}" in the Rolodex. Use SEARCH_ENTITY to find contacts.`,
+      success: false,
+      values: { success: false, error: "CONTACT_NOT_FOUND" },
+      data: { actionName: "SEND_MESSAGE", recipient: recipientName },
+    };
+  }
+
+  if (!resolved.recommendedPlatform) {
+    return {
+      text:
+        `Found ${resolved.person.displayName} in the Rolodex, but no connected platform is available to reach them.\n` +
+        `Known platforms: ${resolved.person.platforms.join(", ") || "none"}.\n` +
+        `Active connectors: check that the relevant connector is configured and running.`,
+      success: false,
+      values: { success: false, error: "NO_ACTIVE_CONNECTOR" },
+      data: {
+        actionName: "SEND_MESSAGE",
+        recipient: recipientName,
+        resolvedName: resolved.person.displayName,
+        knownPlatforms: resolved.person.platforms,
+      },
+    };
+  }
+
+  // Multiple reachable platforms and no clear preference — inform the user
+  // which platform we're using
+  const platform = resolved.recommendedPlatform;
+  const entityId = resolved.platformEntityIds.get(platform);
+
+  if (!entityId) {
+    return {
+      text: `Could not resolve entity ID for ${resolved.person.displayName} on ${platform}.`,
+      success: false,
+      values: { success: false, error: "ENTITY_RESOLUTION_FAILED" },
+      data: { actionName: "SEND_MESSAGE", recipient: recipientName, platform },
+    };
+  }
+
+  try {
+    await runtime.sendMessageToTarget(
+      { source: platform, entityId } as Parameters<
+        typeof runtime.sendMessageToTarget
+      >[0],
+      {
+        text,
+        source: platform,
+        metadata: {
+          resolvedFrom: recipientName,
+          resolvedPerson: resolved.person.displayName,
+        },
+      },
+    );
+  } catch (err: unknown) {
+    logger.error(
+      `[SEND_MESSAGE] Failed to send to ${resolved.person.displayName} on ${platform}:`,
+      String(err),
+    );
+    return {
+      text: `Failed to send message to ${resolved.person.displayName} on ${platform}: ${err instanceof Error ? err.message : String(err)}`,
+      success: false,
+      values: { success: false, error: "SEND_FAILED" },
+      data: {
+        actionName: "SEND_MESSAGE",
+        recipient: recipientName,
+        platform,
+        entityId,
+      },
+    };
+  }
+
+  const platformNote =
+    resolved.reachablePlatforms.length > 1
+      ? ` (also reachable on: ${resolved.reachablePlatforms.filter((p) => p !== platform).join(", ")})`
+      : "";
+
+  return {
+    text: `Message sent to ${resolved.person.displayName} on ${platform}${platformNote}.`,
+    success: true,
+    values: {
+      success: true,
+      recipient: resolved.person.displayName,
+      platform,
+      entityId,
+    },
+    data: {
+      actionName: "SEND_MESSAGE",
+      recipient: recipientName,
+      resolvedName: resolved.person.displayName,
+      platform,
+      entityId,
+      reachablePlatforms: resolved.reachablePlatforms,
+      text,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -134,17 +256,21 @@ export const sendMessageAction: Action = {
     "MESSAGE",
     "SEND_DM",
     "POST_MESSAGE",
-    // Absorbed from SEND_ADMIN_MESSAGE:
+    "TEXT_SOMEONE",
+    "MESSAGE_SOMEONE",
+    // Admin pathway:
     "MESSAGE_ADMIN",
     "NOTIFY_OWNER",
     "ALERT_ADMIN",
     "SEND_OWNER_MESSAGE",
   ],
   description:
-    "Send a message to a user, room, or the admin/owner. " +
+    "Send a message to a person, room, or the admin/owner. " +
+    "Use 'recipient' with a person's name to resolve via the Rolodex — " +
+    "the agent will find the right platform and handle automatically. " +
     "For admin messages, set target to 'admin' or 'owner'. " +
-    "Supports urgency levels for admin messages (normal, important, urgent). " +
-    "Urgent admin messages trigger multi-channel escalation.",
+    "For explicit routing, provide source + target + targetType directly. " +
+    "Supports urgency levels for admin messages (normal, important, urgent).",
 
   validate: async (runtime, message, state) => {
     if (!(await hasAdminAccess(runtime, message))) return false;
@@ -163,7 +289,8 @@ export const sendMessageAction: Action = {
 
     const params = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as SendMessageParams;
-    const { targetType, source, target, text, urgency } = params;
+    const { targetType, source, target, text, urgency, recipient, platform } =
+      params;
 
     if (!text || typeof text !== "string" || text.trim().length === 0) {
       return {
@@ -176,16 +303,6 @@ export const sendMessageAction: Action = {
 
     // ── Admin/owner pathway ───────────────────────────────────────────
     if (isAdminTarget(params)) {
-      // Only the agent itself or admin/owner callers may send admin messages
-      if (!(await hasAdminAccess(runtime, message))) {
-        return {
-          text: "Permission denied: only the agent or admin/owner may send admin messages.",
-          success: false,
-          values: { success: false, error: "PERMISSION_DENIED" },
-          data: { actionName: "SEND_MESSAGE" },
-        };
-      }
-
       const adminUrgency = urgency ?? "normal";
       if (!VALID_URGENCIES.has(adminUrgency)) {
         return {
@@ -198,10 +315,22 @@ export const sendMessageAction: Action = {
       return handleAdminMessage(runtime, message, text.trim(), adminUrgency);
     }
 
-    // ── Standard service-based send ───────────────────────────────────
+    // ── Rolodex-based send (recipient name resolution) ────────────────
+    if (recipient && typeof recipient === "string" && recipient.trim()) {
+      return handleRolodexSend(
+        runtime,
+        recipient.trim(),
+        text.trim(),
+        platform,
+      );
+    }
+
+    // ── Explicit service-based send ───────────────────────────────────
     if (!targetType || !source || !target) {
       return {
-        text: "SEND_MESSAGE requires targetType, source, and target parameters for non-admin messages.",
+        text:
+          "SEND_MESSAGE requires either 'recipient' (person name for Rolodex lookup) " +
+          "or explicit 'targetType' + 'source' + 'target' parameters.",
         success: false,
         values: { success: false, error: "INVALID_PARAMETERS" },
         data: {
@@ -217,12 +346,34 @@ export const sendMessageAction: Action = {
       source,
     ) as MessageTransportService | null;
     if (!service) {
-      return {
-        text: `Message service '${source}' is not available.`,
-        success: false,
-        values: { success: false, error: "SERVICE_NOT_FOUND" },
-        data: { actionName: "SEND_MESSAGE", targetType, source, target },
-      };
+      // Fall back to runtime.sendMessageToTarget which uses registered send handlers
+      try {
+        await runtime.sendMessageToTarget(
+          { source, entityId: target as UUID } as Parameters<
+            typeof runtime.sendMessageToTarget
+          >[0],
+          { text: text.trim(), source },
+        );
+        return {
+          text: `Message sent to ${targetType} ${target} on ${source}.`,
+          success: true,
+          values: { success: true, targetType, source, target },
+          data: {
+            actionName: "SEND_MESSAGE",
+            targetType,
+            source,
+            target,
+            text: text.trim(),
+          },
+        };
+      } catch {
+        return {
+          text: `Message service '${source}' is not available.`,
+          success: false,
+          values: { success: false, error: "SERVICE_NOT_FOUND" },
+          data: { actionName: "SEND_MESSAGE", targetType, source, target },
+        };
+      }
     }
 
     if (targetType === "user") {
@@ -274,16 +425,38 @@ export const sendMessageAction: Action = {
 
   parameters: [
     {
+      name: "recipient",
+      description:
+        "Person's name for Rolodex-based resolution. The agent will automatically find " +
+        "the right platform and handle. Preferred over explicit target/source.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "platform",
+      description:
+        'Platform hint for Rolodex resolution (e.g. "telegram", "discord", "signal"). ' +
+        "Optional — omit to let the agent pick the best platform.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "text",
+      description: "Message text to send.",
+      required: true,
+      schema: { type: "string" as const },
+    },
+    {
       name: "targetType",
       description:
-        "Target entity type: user or room. Not required when target is 'admin' or 'owner'.",
+        "Target entity type: user or room. Only needed for explicit routing (not Rolodex).",
       required: false,
       schema: { type: "string" as const, enum: ["user", "room"] },
     },
     {
       name: "source",
       description:
-        "Messaging source/service name (e.g. telegram, discord). Not required when target is 'admin' or 'owner'.",
+        "Messaging source/service name (e.g. telegram, discord). Only needed for explicit routing.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -291,14 +464,8 @@ export const sendMessageAction: Action = {
       name: "target",
       description:
         "Target identifier. Use 'admin' or 'owner' for admin messages. " +
-        "For users: entity ID/username. For rooms: room ID/name.",
-      required: true,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "text",
-      description: "Message text to send.",
-      required: true,
+        "For users: entity ID/username. For rooms: room ID/name. Only needed for explicit routing.",
+      required: false,
       schema: { type: "string" as const },
     },
     {

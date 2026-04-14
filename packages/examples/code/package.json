@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.5",
-    "@elizaos/plugin-agent-orchestrator": "file:../../plugins/plugin-agent-orchestrator/typescript",
+    "@elizaos/plugin-agent-orchestrator": "file:../../plugins/plugin-agent-orchestrator",
     "@elizaos/core": "file:../../eliza/packages/typescript",
     "@elizaos/plugin-anthropic": "file:../../plugins/plugin-anthropic",
     "@elizaos/plugin-code": "file:../../plugins/plugin-code",

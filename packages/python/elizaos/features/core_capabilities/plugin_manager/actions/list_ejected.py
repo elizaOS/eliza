@@ -77,9 +77,7 @@ class ListEjectedPluginsAction:
                     await callback(Content(text=msg))
                 return ActionResult(text=msg, success=True)
 
-            lines = [
-                f"- {p.name} (v{p.version}) at {p.path}" for p in plugins
-            ]
+            lines = [f"- {p.name} (v{p.version}) at {p.path}" for p in plugins]
             text = "Ejected Plugins:\n" + "\n".join(lines)
             if callback:
                 await callback(Content(text=text))
@@ -90,8 +88,7 @@ class ListEjectedPluginsAction:
                 data={
                     "actionName": "LIST_EJECTED_PLUGINS",
                     "ejectedPlugins": [
-                        {"name": p.name, "version": p.version, "path": p.path}
-                        for p in plugins
+                        {"name": p.name, "version": p.version, "path": p.path} for p in plugins
                     ],
                 },
                 success=True,

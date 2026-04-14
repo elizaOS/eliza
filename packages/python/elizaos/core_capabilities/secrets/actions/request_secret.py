@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from elizaos.types import Action, ActionResult, Content, ModelType
@@ -49,9 +48,7 @@ def _get_secrets_service(runtime: IAgentRuntime) -> SecretsService | None:
     return None
 
 
-async def _validate(
-    runtime: IAgentRuntime, message: Memory, _state: State | None = None
-) -> bool:
+async def _validate(runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
     text = (message.content.text if message.content else "") or ""
     text_lower = text.lower()
     has_keyword = any(kw in text_lower for kw in ("request", "secret"))

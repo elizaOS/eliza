@@ -16,15 +16,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..types import (
-    AddTaskClipboardItemInput,
     TASK_CLIPBOARD_MAX_ITEMS,
+    AddTaskClipboardItemInput,
     TaskClipboardItem,
     TaskClipboardSnapshot,
 )
 
 if TYPE_CHECKING:
-    from ..types import ClipboardConfig
     from elizaos.types import IAgentRuntime
+
+    from ..types import ClipboardConfig
 
 logger = logging.getLogger(__name__)
 
@@ -71,23 +72,23 @@ class TaskClipboardService:
     def _get_store_path(self, entity_id: str | None = None) -> str:
         if entity_id:
             safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", entity_id)
-            return os.path.join(
-                self._config.base_path, CLIPBOARD_DIR, f"{safe_id}.json"
-            )
+            return os.path.join(self._config.base_path, CLIPBOARD_DIR, f"{safe_id}.json")
         return os.path.join(self._config.base_path, TASK_CLIPBOARD_FILE)
 
     def _read_store(self, entity_id: str | None = None) -> dict:
         store_path = self._get_store_path(entity_id)
         parent = os.path.dirname(store_path)
-        rel = os.path.relpath(parent, self._config.base_path) if parent != self._config.base_path else None
+        rel = (
+            os.path.relpath(parent, self._config.base_path)
+            if parent != self._config.base_path
+            else None
+        )
         self._ensure_directory(rel)
 
         try:
-            with open(store_path, "r", encoding="utf-8") as f:
+            with open(store_path, encoding="utf-8") as f:
                 parsed = json.load(f)
-            if not isinstance(parsed, dict) or not isinstance(
-                parsed.get("items"), list
-            ):
+            if not isinstance(parsed, dict) or not isinstance(parsed.get("items"), list):
                 return {"version": 1, "maxItems": TASK_CLIPBOARD_MAX_ITEMS, "items": []}
 
             items = [
@@ -117,7 +118,11 @@ class TaskClipboardService:
     def _write_store(self, store: dict, entity_id: str | None = None) -> None:
         store_path = self._get_store_path(entity_id)
         parent = os.path.dirname(store_path)
-        rel = os.path.relpath(parent, self._config.base_path) if parent != self._config.base_path else None
+        rel = (
+            os.path.relpath(parent, self._config.base_path)
+            if parent != self._config.base_path
+            else None
+        )
         self._ensure_directory(rel)
 
         tmp_path = f"{store_path}.tmp-{uuid.uuid4().hex[:8]}"
@@ -155,18 +160,14 @@ class TaskClipboardService:
             d["mimeType"] = item.mime_type
         return d
 
-    async def get_snapshot(
-        self, entity_id: str | None = None
-    ) -> TaskClipboardSnapshot:
+    async def get_snapshot(self, entity_id: str | None = None) -> TaskClipboardSnapshot:
         store = self._read_store(entity_id)
         return TaskClipboardSnapshot(
             max_items=store["maxItems"],
             items=[self._item_from_dict(d) for d in store["items"]],
         )
 
-    async def list_items(
-        self, entity_id: str | None = None
-    ) -> list[TaskClipboardItem]:
+    async def list_items(self, entity_id: str | None = None) -> list[TaskClipboardItem]:
         snapshot = await self.get_snapshot(entity_id)
         return snapshot.items
 
@@ -209,9 +210,7 @@ class TaskClipboardService:
                 "Remove an unused item before adding another."
             )
 
-        existing_item = (
-            store["items"][replacement_idx] if replacement_idx >= 0 else None
-        )
+        existing_item = store["items"][replacement_idx] if replacement_idx >= 0 else None
 
         item_dict: dict = {
             "id": existing_item["id"] if existing_item else f"cb-{uuid.uuid4().hex[:8]}",
@@ -234,9 +233,7 @@ class TaskClipboardService:
         else:
             store["items"].insert(0, item_dict)
 
-        store["items"].sort(
-            key=lambda x: x.get("updatedAt", ""), reverse=True
-        )
+        store["items"].sort(key=lambda x: x.get("updatedAt", ""), reverse=True)
         self._write_store(store, entity_id)
 
         item = self._item_from_dict(item_dict)

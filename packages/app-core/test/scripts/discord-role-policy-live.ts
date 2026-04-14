@@ -14,11 +14,13 @@ import {
 	type Room,
 	type World,
 } from "@elizaos/core";
+import {
+	PTYService,
+	sendToAgentAction,
+	startCodingTaskAction,
+} from "@elizaos/plugin-agent-orchestrator";
 import { v4 as uuid } from "uuid";
 import { createTestRuntime } from "../helpers/pglite-runtime";
-import { PTYService } from "../../eliza/packages/typescript/src/agent-orchestrator/src/services/pty-service.ts";
-import { startCodingTaskAction } from "../../eliza/packages/typescript/src/agent-orchestrator/src/actions/start-coding-task.ts";
-import { sendToAgentAction } from "../../eliza/packages/typescript/src/agent-orchestrator/src/actions/send-to-agent.ts";
 
 type DiscordConfig = {
 	env?: {

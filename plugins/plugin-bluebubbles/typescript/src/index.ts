@@ -14,9 +14,12 @@ import { BlueBubblesService } from "./service.js";
 export * from "./constants.js";
 // Re-export types and service
 export * from "./types.js";
-export { BlueBubblesService };
-export { sendMessageAction, sendReactionAction };
-export { chatContextProvider };
+export {
+	BlueBubblesService,
+	chatContextProvider,
+	sendMessageAction,
+	sendReactionAction,
+};
 
 /**
  * BlueBubbles plugin for ElizaOS agents.

@@ -52,6 +52,8 @@ import {
 } from "../bridge";
 import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
+import { AppBootContext } from "../config/boot-config-react";
+import { getBootConfig } from "../config/boot-config-store";
 import {
   dispatchAppEmoteEvent,
   dispatchElizaCloudStatusUpdated,
@@ -59,7 +61,9 @@ import {
 import type { UiLanguage } from "../i18n";
 import {
   COMPANION_ENABLED,
+  isRouteRootPath,
   resolveInitialTabForPath,
+  tabFromPath,
   type Tab,
 } from "../navigation";
 import {
@@ -1156,6 +1160,17 @@ function AppProviderInner({
     switchShellView,
     navigation,
   } = navHook;
+
+  useEffect(() => {
+    const navPath = getNavigationPathFromWindow();
+    if (isRouteRootPath(navPath)) {
+      return;
+    }
+    const routeTab = tabFromPath(navPath);
+    if (routeTab && routeTab !== tab) {
+      setTabRaw(routeTab);
+    }
+  }, [tab, setTabRaw]);
 
   // loadLogs is now in useLogsState (logsHook)
 
@@ -2740,26 +2755,36 @@ function AppProviderInner({
     ],
   );
 
+  const bootConfig = getBootConfig();
+  const bootConfigValue = useMemo(
+    () => ({
+      ...bootConfig,
+      branding: { ...bootConfig.branding, ...brandingOverride },
+    }),
+    [bootConfig, brandingOverride],
+  );
   const mergedBranding = useMemo(
-    () => ({ ...DEFAULT_BRANDING, ...brandingOverride }),
-    [brandingOverride],
+    () => ({ ...DEFAULT_BRANDING, ...bootConfigValue.branding }),
+    [bootConfigValue],
   );
 
   return (
-    <BrandingContext.Provider value={mergedBranding}>
-      <CompanionSceneConfigCtx.Provider value={companionSceneConfig}>
-        <PtySessionsCtx.Provider value={ptySessionsValue}>
-          <ChatInputRefCtx.Provider value={chatInputRef}>
-            <ChatComposerCtx.Provider value={composerValue}>
-              <AppContext.Provider value={value}>
-                {children}
-                <ConfirmDialog {...modalProps} />
-                <PromptDialog {...promptModalProps} />
-              </AppContext.Provider>
-            </ChatComposerCtx.Provider>
-          </ChatInputRefCtx.Provider>
-        </PtySessionsCtx.Provider>
-      </CompanionSceneConfigCtx.Provider>
-    </BrandingContext.Provider>
+    <AppBootContext.Provider value={bootConfigValue}>
+      <BrandingContext.Provider value={mergedBranding}>
+        <CompanionSceneConfigCtx.Provider value={companionSceneConfig}>
+          <PtySessionsCtx.Provider value={ptySessionsValue}>
+            <ChatInputRefCtx.Provider value={chatInputRef}>
+              <ChatComposerCtx.Provider value={composerValue}>
+                <AppContext.Provider value={value}>
+                  {children}
+                  <ConfirmDialog {...modalProps} />
+                  <PromptDialog {...promptModalProps} />
+                </AppContext.Provider>
+              </ChatComposerCtx.Provider>
+            </ChatInputRefCtx.Provider>
+          </PtySessionsCtx.Provider>
+        </CompanionSceneConfigCtx.Provider>
+      </BrandingContext.Provider>
+    </AppBootContext.Provider>
   );
 }

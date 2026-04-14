@@ -39,7 +39,10 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
   } = useVincentDashboard();
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-bg h-[100vh] overflow-hidden supports-[height:100dvh]:h-[100dvh]">
+    <div
+      data-testid="vincent-shell"
+      className="fixed inset-0 z-50 flex flex-col bg-bg h-[100vh] overflow-hidden supports-[height:100dvh]:h-[100dvh]"
+    >
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
         <div className="flex items-center gap-3">

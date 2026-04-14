@@ -23,8 +23,13 @@ async def _validate(
     """Validate: check if user wants to restore a stashed form."""
     text = (message.content.text or "").lower()
     restore_keywords = [
-        "restore", "resume", "continue", "pick up where",
-        "get back to", "my form", "unfinished form",
+        "restore",
+        "resume",
+        "continue",
+        "pick up where",
+        "get back to",
+        "my form",
+        "unfinished form",
     ]
     if not any(kw in text for kw in restore_keywords):
         return False
@@ -32,6 +37,7 @@ async def _validate(
     # Check if user has stashed sessions
     try:
         from ..service import FormService
+
         form_service = runtime.get_service("FORM")
         if not isinstance(form_service, FormService):
             return False
@@ -67,10 +73,12 @@ async def _handler(
         active = await form_service.get_active_session(entity_id, str(message.room_id))
         if active:
             if callback:
-                await callback(Content(
-                    text="You already have an active form in this room. "
-                    "Please complete or stash it before restoring another.",
-                ))
+                await callback(
+                    Content(
+                        text="You already have an active form in this room. "
+                        "Please complete or stash it before restoring another.",
+                    )
+                )
             return ActionResult(
                 text="Active form conflict",
                 success=False,
