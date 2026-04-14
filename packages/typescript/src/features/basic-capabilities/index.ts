@@ -78,7 +78,7 @@ import {
 	pluginManagerCapability,
 	secretsCapability,
 	trustCapability,
-} from "../core-capabilities/index.ts";
+} from "../../core-capabilities/index.ts";
 // Import for local use
 import * as actions from "./actions/index.ts";
 import * as providers from "./providers/index.ts";
@@ -103,7 +103,7 @@ export {
 	pluginManagerCapability,
 	secretsCapability,
 	trustCapability,
-} from "../core-capabilities/index.ts";
+} from "../../core-capabilities/index.ts";
 
 // ============================================================================
 // XML Response Interfaces

@@ -9,7 +9,16 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  type ChannelType,
+  type Content,
+  ContentType,
+  createMessageMemory,
+  logger,
+  type Media,
+  type UUID,
+} from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import {
@@ -33,6 +42,19 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
+import { isPrivyWalletProvisioningEnabled } from "../services/privy-wallets.js";
+import { extractCompatTextContent } from "./compat-utils.js";
+import { sendJsonError } from "./http-helpers.js";
+import {
+  getKnowledgeService,
+  type KnowledgeServiceResult,
+} from "./knowledge-service-loader.js";
+import type { ChatAttachmentWithData, ServerState } from "./server-types.js";
+import { getWalletAddresses } from "./wallet.js";
+import {
+  resolvePluginEvmLoaded,
+  resolveWalletCapabilityStatus,
+} from "./wallet-capability.js";
 
 // ---------------------------------------------------------------------------
 // Pi AI plugin lazy loader
