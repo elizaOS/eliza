@@ -113,6 +113,17 @@ interface SecretEntry {
   usedBy: Array<{ pluginId: string; pluginName: string; enabled: boolean }>;
 }
 
+type CoreToggleDriftFlag = "entries_vs_allowlist" | "entries_vs_compat";
+
+interface CoreToggleDriftDiagnostic {
+  pluginId: string;
+  npmName: string;
+  enabled_allowlist: boolean;
+  enabled_entries: boolean | null;
+  enabled_compat: boolean | null;
+  drift_flags: CoreToggleDriftFlag[];
+}
+
 export interface PluginRouteContext {
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -174,6 +185,59 @@ const pluginsListInFlight = new WeakMap<
   PluginRouteContext["state"],
   Promise<PluginEntry[]>
 >();
+
+function readCompatEnabledFromConfig(
+  config: ElizaConfig,
+  pluginId: string,
+): boolean | null {
+  const asRecord = (
+    value: unknown,
+  ): Record<string, unknown> | null => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return null;
+    }
+    return value as Record<string, unknown>;
+  };
+
+  const container =
+    asRecord(config.connectors)?.[pluginId] ?? asRecord(config.streaming)?.[pluginId];
+  const value = asRecord(container)?.enabled;
+  return typeof value === "boolean" ? value : null;
+}
+
+function buildCoreToggleDiagnostics(
+  config: ElizaConfig,
+  npmName: string,
+): CoreToggleDriftDiagnostic | null {
+  const pluginId = optionalPluginListId(npmName);
+  const isOptional = (OPTIONAL_CORE_PLUGINS as readonly string[]).includes(npmName);
+  if (!isOptional) {
+    return null;
+  }
+  const allowList = new Set(config.plugins?.allow ?? []);
+  const enabledAllowList = allowList.has(npmName) || allowList.has(pluginId);
+  const entryEnabledRaw = config.plugins?.entries?.[pluginId]?.enabled;
+  const enabledEntries =
+    typeof entryEnabledRaw === "boolean" ? entryEnabledRaw : null;
+  const enabledCompat = readCompatEnabledFromConfig(config, pluginId);
+  const driftFlags: CoreToggleDriftFlag[] = [];
+
+  if (enabledEntries !== null && enabledEntries !== enabledAllowList) {
+    driftFlags.push("entries_vs_allowlist");
+  }
+  if (enabledEntries !== null && enabledCompat !== null && enabledEntries !== enabledCompat) {
+    driftFlags.push("entries_vs_compat");
+  }
+
+  return {
+    pluginId,
+    npmName,
+    enabled_allowlist: enabledAllowList,
+    enabled_entries: enabledEntries,
+    enabled_compat: enabledCompat,
+    drift_flags: driftFlags,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Route handler
@@ -1597,6 +1661,15 @@ export async function handlePluginRoutes(
       loadedPackages: runtimeApply.loadedPackages,
       unloadedPackages: runtimeApply.unloadedPackages,
       reloadedPackages: runtimeApply.reloadedPackages,
+      diagnostics: (() => {
+        const diagnostic = buildCoreToggleDiagnostics(state.config, body.npmName);
+        return diagnostic && diagnostic.drift_flags.length > 0
+          ? {
+              withDrift: true,
+              plugin: diagnostic,
+            }
+          : undefined;
+      })(),
       message: runtimeApply.requiresRestart
         ? `${shortId} ${body.enabled ? "enabled" : "disabled"}. Restart required.`
         : `${shortId} ${body.enabled ? "enabled" : "disabled"}.`,
