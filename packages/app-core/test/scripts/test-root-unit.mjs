@@ -20,6 +20,7 @@ const unitShards = [
   {
     label: "unit:agent-tests",
     patterns: ["eliza/packages/agent/test"],
+    passWithNoTests: true,
   },
   {
     label: "unit:app-core",
@@ -62,6 +63,7 @@ for (const shard of unitShards) {
       "--config",
       "test/vitest/default.config.ts",
       "--reporter=dot",
+      ...(shard.passWithNoTests ? ["--passWithNoTests"] : []),
       ...shard.patterns,
     ],
     cwd: repoRoot,

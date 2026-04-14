@@ -19,14 +19,17 @@ type ResolveFilename = (
 ) => string;
 
 // ── React deduplication ──────────────────────────────────────────────
-// bun hoists react-test-renderer's peer react into a separate .bun/ path,
-// creating two React instances that break hooks.  Intercept Node's CJS
-// resolution so every `require("react")` returns the root copy.
+// bun hoists React packages into separate .bun/ paths across nested
+// workspaces, which can leave tests with mismatched React/React DOM copies.
+// Intercept Node's CJS resolution so every require resolves to the repo-root
+// installation.
 // Wrapped in try/catch so CI environments without react don't crash.
 try {
-  const _require = Module.createRequire(import.meta.url);
-  const rootReactDir = require("node:path").dirname(
-    _require.resolve("react/package.json"),
+  const path = require("node:path") as typeof import("node:path");
+  const rootRequire = Module.createRequire(import.meta.url);
+  const rootReactDir = path.dirname(rootRequire.resolve("react/package.json"));
+  const rootReactDomDir = path.dirname(
+    rootRequire.resolve("react-dom/package.json"),
   );
 
   const moduleInternals = Module as unknown as {
@@ -50,23 +53,29 @@ try {
         isMain,
         options,
       );
-      // Redirect any .bun/-hoisted react files to the root copy so
-      // react-test-renderer and component code share one React instance.
-      if (
-        resolved.includes("node_modules/.bun/") &&
-        resolved.includes("/node_modules/react/") &&
-        !resolved.includes("react-dom") &&
-        !resolved.includes("react-test-renderer")
-      ) {
-        // Extract the relative path within the react package
-        const reactPkgIdx = resolved.lastIndexOf("/node_modules/react/");
-        if (reactPkgIdx !== -1) {
-          const relPath = resolved.slice(
-            reactPkgIdx + "/node_modules/react/".length,
-          );
-          return require("node:path").join(rootReactDir, relPath);
+      if (!resolved.includes("node_modules/.bun/")) {
+        return resolved;
+      }
+
+      const packageRedirects = [
+        {
+          needle: "/node_modules/react/",
+          targetDir: rootReactDir,
+        },
+        {
+          needle: "/node_modules/react-dom/",
+          targetDir: rootReactDomDir,
+        },
+      ];
+
+      for (const { needle, targetDir } of packageRedirects) {
+        const packageIndex = resolved.lastIndexOf(needle);
+        if (packageIndex !== -1) {
+          const relPath = resolved.slice(packageIndex + needle.length);
+          return path.join(targetDir, relPath);
         }
       }
+
       return resolved;
     } as typeof moduleInternals._resolveFilename;
     patchedResolve[REACT_RESOLVE_PATCH_MARK] = true;
