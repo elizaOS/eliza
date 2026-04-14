@@ -11,6 +11,10 @@ import type { State } from "./state";
 /**
  * Unified pipeline hooks (`registerPipelineHook` / `applyPipelineHooks`).
  *
+ * **Why one subsystem:** plugins historically needed many bespoke extension points; a single
+ * registration + ordering model keeps behavior discoverable and lets the runtime attach one
+ * metrics/logging envelope (`PIPELINE_HOOK_METRIC`, `PIPELINE_HOOK_*_MS`) everywhere.
+ *
  * Phases include message/reply steps (`incoming_before_compose`, …, `outgoing_before_deliver`),
  * model I/O (`pre_model` / `post_model` around `useModel`), `after_memory_persisted` after
  * `createMemory` commits, and **stream** hooks (`model_stream_chunk` / `model_stream_end`) on
@@ -18,7 +22,10 @@ import type { State } from "./state";
  *
  * **Observability:** each handler invocation emits `EventType.PIPELINE_HOOK_METRIC` (when
  * listeners are registered) and logs at debug / warn / error thresholds — see
- * `PIPELINE_HOOK_*_MS` constants below.
+ * `PIPELINE_HOOK_*_MS` constants below. **Why:** slow or flaky hooks are a top production
+ * failure mode; comparable timings across phases avoid one-off timing code per feature.
+ *
+ * @see `docs/PIPELINE_HOOKS.md` for rationale (outgoing, stream dedupe, DPE, contributor checklist).
  */
 
 /**

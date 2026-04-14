@@ -167,6 +167,11 @@ export function getStreamingContext(): StreamingContext | undefined {
 // ---------------------------------------------------------------------------
 // useModel → chunk callback delivery (dedupe `model_stream_chunk` hooks)
 // ---------------------------------------------------------------------------
+// The same provider chunk is often forwarded from useModel's textStream loop *and* from
+// DefaultMessageService. Without a turn-scoped marker, pipeline hooks would run twice per
+// token (inflated metrics, duplicate side effects). Node uses AsyncLocalStorage depth so
+// nested async work stays scoped; non-Node has no ALS store and returns depth 0 (no skip).
+// See docs/PIPELINE_HOOKS.md § "Stream hook dedupe (Node)".
 
 let modelStreamChunkDeliveryDepthStorage:
 	| import("node:async_hooks").AsyncLocalStorage<number>
