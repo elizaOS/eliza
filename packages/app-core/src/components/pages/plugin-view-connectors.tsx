@@ -401,18 +401,9 @@ function ConnectorPluginCard({
           data-testid={`connector-header-${plugin.id}`}
           className="flex min-w-0 flex-wrap items-center gap-2"
         >
-          <StatusBadge
-            label={allParamsSet ? readyLabel : needsSetupLabel}
-            tone={allParamsSet ? "success" : "warning"}
-          />
           <span className="whitespace-normal break-words [overflow-wrap:anywhere] text-sm font-semibold leading-snug text-txt">
             {plugin.name}
           </span>
-          {plugin.version ? (
-            <PagePanel.Meta compact tone="strong" className="font-mono">
-              v{plugin.version}
-            </PagePanel.Meta>
-          ) : null}
           {hasParams ? (
             <span className="text-xs-tight font-medium text-muted">
               {setCount}/{totalCount} {t("pluginsview.configured")}
@@ -437,11 +428,15 @@ function ConnectorPluginCard({
           )}
         </div>
       </div>
-      <div className="inline-flex shrink-0 items-start justify-end gap-2 self-start">
+      <div className="inline-flex shrink-0 items-center justify-end gap-2 self-start">
+        <StatusBadge
+          label={allParamsSet ? readyLabel : needsSetupLabel}
+          tone={allParamsSet ? "success" : "warning"}
+        />
         <Button
           variant="outline"
           size="sm"
-          className={`h-auto min-w-[3.75rem] rounded-full border px-3 py-1.5 text-2xs font-bold tracking-[0.16em] transition-colors ${
+          className={`h-auto min-w-[3.75rem] rounded-[var(--radius-sm)] border px-3 py-1.5 text-2xs font-bold tracking-[0.16em] transition-colors ${
             plugin.enabled
               ? "border-accent bg-accent text-accent-fg"
               : "border-border bg-transparent text-muted hover:border-accent/40 hover:text-txt"
@@ -461,7 +456,7 @@ function ConnectorPluginCard({
         <Button
           variant="ghost"
           size="icon"
-          className={`h-8 w-8 shrink-0 rounded-full border border-border/40 transition-colors ${
+          className={`h-8 w-8 shrink-0 rounded-[var(--radius-sm)] border border-border/40 transition-colors ${
             isExpanded
               ? "bg-bg/25 text-txt"
               : "text-muted hover:border-accent/40 hover:text-txt"
@@ -676,6 +671,14 @@ function ConnectorPluginCard({
             ))}
           </PagePanel.Notice>
         )}
+
+        {plugin.version ? (
+          <div className="mt-4">
+            <PagePanel.Meta compact tone="strong" className="font-mono">
+              v{plugin.version}
+            </PagePanel.Meta>
+          </div>
+        ) : null}
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {plugin.isActive && (

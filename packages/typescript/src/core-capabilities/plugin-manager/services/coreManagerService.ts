@@ -156,8 +156,9 @@ export class CoreManagerService extends Service {
   private async resolveInstalledCoreVersion(): Promise<string> {
     try {
       const entry = await getRegistryEntry(CORE_PACKAGE_NAME);
-      const npmVersion = entry?.npm.v2Version ?? entry?.npm.v1Version ?? entry?.npm.package;
+      const _npmVersion = entry?.npm.v2Version ?? entry?.npm.v1Version ?? entry?.npm.package;
       if (entry && (entry.npm.v2Version || entry.npm.v1Version)) {
+        // biome-ignore lint/style/noNonNullAssertion: guarded by if condition above
         return (entry.npm.v2Version || entry.npm.v1Version)!;
       }
     } catch {

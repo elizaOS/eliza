@@ -10,7 +10,7 @@ import type {
   CodingAgentTaskThreadDetail,
 } from "../../../../api/client-types-cloud";
 
-import { Activity } from "lucide-react";
+import { Activity, SquareArrowOutUpRight } from "lucide-react";
 import {
   type ReactNode,
   startTransition,
@@ -952,26 +952,17 @@ export function CodingAgentTasksPanel({
       title={t("taskseventspanel.Tasks", { defaultValue: "Tasks" })}
       icon={<Activity className="h-4 w-4" />}
       action={
-        <div className="flex items-center gap-1.5">
-          {!fullPage ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-2xs"
-              onClick={() => setTab("tasks")}
-            >
-              Open View
-            </Button>
-          ) : null}
+        !fullPage ? (
           <Button
-            variant={showArchived ? "secondary" : "ghost"}
+            variant="ghost"
             size="sm"
-            className="h-6 px-2 text-2xs"
-            onClick={() => setShowArchived((value) => !value)}
+            className="h-6 gap-1 px-2 text-2xs"
+            onClick={() => setTab("tasks")}
           >
-            {showArchived ? "Show Open" : "Show Archive"}
+            <SquareArrowOutUpRight className="h-3 w-3" />
+            Open View
           </Button>
-        </div>
+        ) : null
       }
       testId="chat-widget-orchestrator"
     >

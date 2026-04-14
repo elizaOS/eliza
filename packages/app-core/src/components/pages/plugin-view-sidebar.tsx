@@ -193,7 +193,7 @@ export function ConnectorSidebar({
                     <Button
                       variant="outline"
                       size="sm"
-                      className={`h-7 min-h-0 min-w-[3.5rem] shrink-0 rounded-full border px-2.5 py-0 text-2xs font-bold leading-none tracking-[0.16em] transition-colors ${
+                      className={`h-7 min-h-0 min-w-[3.5rem] shrink-0 rounded-[var(--radius-sm)] border px-2.5 py-0 text-2xs font-bold leading-none tracking-[0.16em] transition-colors ${
                         plugin.enabled
                           ? "border-accent bg-accent text-accent-fg"
                           : "border-border bg-transparent text-muted hover:border-accent/40 hover:text-txt"
