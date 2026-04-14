@@ -9,22 +9,23 @@ import crypto from "node:crypto";
 
 import {
   type AgentRuntime,
-  ChannelType,
+  type ChannelType,
   type Content,
   ContentType,
   createMessageMemory,
   type Media,
   type UUID,
 } from "@elizaos/core";
+import { normalizeCharacterLanguage } from "../onboarding-presets.js";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { extractCompatTextContent } from "./compat-utils.js";
-import { getKnowledgeService } from "./knowledge-service-loader.js";
-import { resolvePluginEvmLoaded } from "./wallet-capability.js";
-import { getWalletAddresses } from "./wallet.js";
 import {
-  normalizeCharacterLanguage,
-} from "../onboarding-presets.js";
+  getKnowledgeService,
+  type KnowledgeServiceResult,
+} from "./knowledge-service-loader.js";
+import { getWalletAddresses } from "./wallet.js";
+import { resolvePluginEvmLoaded } from "./wallet-capability.js";
 
 // ---------------------------------------------------------------------------
 // Language augmentation
@@ -65,7 +66,10 @@ export function maybeAugmentChatMessageWithLanguage(
 // Error message helper
 // ---------------------------------------------------------------------------
 
-export function getErrorMessage(err: unknown, fallback = "generation failed"): string {
+export function getErrorMessage(
+  err: unknown,
+  fallback = "generation failed",
+): string {
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err;
   return fallback;
@@ -91,7 +95,9 @@ export function getChatKnowledgeTimeoutMs(): number {
   return Math.min(parsed, MAX_CHAT_KNOWLEDGE_TIMEOUT_MS);
 }
 
-export function shouldAugmentChatMessageWithKnowledge(userPrompt: string): boolean {
+export function shouldAugmentChatMessageWithKnowledge(
+  userPrompt: string,
+): boolean {
   const normalizedPrompt = userPrompt.toLowerCase();
   return [
     "uploaded",
@@ -258,8 +264,7 @@ export async function buildAgentAwarenessContextPrompt(
   const cloudAuth = runtime.getService?.("CLOUD_AUTH") as
     | CloudAuthAwarenessService
     | undefined;
-  const cloudConnected =
-    cloudHosted || Boolean(cloudAuth?.isAuthenticated?.());
+  const cloudConnected = cloudHosted || Boolean(cloudAuth?.isAuthenticated?.());
   const cloudCredits = cloudConnected
     ? await resolveCloudCreditsBalance(runtime)
     : "not connected";
@@ -296,8 +301,7 @@ export async function maybeAugmentChatMessageWithAgentAwareness(
   if (!userPrompt) return message;
 
   const shouldInject =
-    AGENT_AWARENESS_INTENT_RE.test(userPrompt) ||
-    isCloudProvisionedContainer();
+    AGENT_AWARENESS_INTENT_RE.test(userPrompt) || isCloudProvisionedContainer();
   if (!shouldInject) return message;
 
   return {
@@ -322,7 +326,8 @@ export async function maybeAugmentChatMessageWithKnowledge(
   }
 
   try {
-    const knowledge = await getKnowledgeService(runtime);
+    const knowledge: KnowledgeServiceResult =
+      await getKnowledgeService(runtime);
     if (!knowledge.service) {
       return message;
     }
@@ -514,6 +519,7 @@ export function buildUserMessages(params: {
   roomId: UUID;
   channelType: ChannelType;
   conversationMode?: "simple" | "power";
+  messageSource?: string;
   metadata?: Record<string, unknown>;
 }): { userMessage: MessageMemory; messageToStore: MessageMemory } {
   const {
@@ -524,8 +530,10 @@ export function buildUserMessages(params: {
     roomId,
     channelType,
     conversationMode,
+    messageSource,
     metadata,
   } = params;
+  const source = messageSource?.trim() || "client_chat";
   const { attachments, compactAttachments } = buildChatAttachments(images);
   const id = crypto.randomUUID() as UUID;
   // In-memory message carries _data/_mimeType so action handlers can upload.
@@ -536,7 +544,7 @@ export function buildUserMessages(params: {
     roomId,
     content: {
       text: prompt,
-      source: "client_chat",
+      source,
       channelType,
       ...(conversationMode ? { conversationMode } : {}),
       ...(attachments?.length ? { attachments } : {}),
@@ -552,7 +560,7 @@ export function buildUserMessages(params: {
         roomId,
         content: {
           text: prompt,
-          source: "client_chat",
+          source,
           channelType,
           ...(conversationMode ? { conversationMode } : {}),
           attachments: compactAttachments,

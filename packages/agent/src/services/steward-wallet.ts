@@ -1,3 +1,9 @@
+/**
+ * @deprecated This file is maintained for backward compatibility.
+ * The canonical source has moved to `@elizaos/app-steward/services/steward-wallet`.
+ * New development should target the app-steward package.
+ */
+
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

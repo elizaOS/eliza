@@ -6,12 +6,12 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasAdminAccess } from "../security/access.js";
-import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { resolveCurrentBucket } from "../activity-profile/analyzer.js";
-import { getLocalDateKey, getZonedDateParts } from "../lifeops/time.js";
-import { readProfileFromMetadata } from "../activity-profile/service.js";
 import { PROACTIVE_TASK_TAGS } from "../activity-profile/proactive-worker.js";
+import { readProfileFromMetadata } from "../activity-profile/service.js";
+import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
+import { getLocalDateKey, getZonedDateParts } from "../lifeops/time.js";
+import { hasAdminAccess } from "../security/access.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -56,9 +56,9 @@ export const activityProfileProvider: Provider = {
       const metadata = isRecord(task?.metadata) ? task.metadata : null;
       const profile = readProfileFromMetadata(metadata);
 
-        if (profile) {
-          const parts: string[] = [];
-          const localDateKey = getLocalDateKey(getZonedDateParts(now, timezone));
+      if (profile) {
+        const parts: string[] = [];
+        const localDateKey = getLocalDateKey(getZonedDateParts(now, timezone));
 
         const hasActiveScreen =
           profile.screenContextAvailable &&
@@ -66,7 +66,11 @@ export const activityProfileProvider: Provider = {
           profile.screenContextFocus !== "idle" &&
           profile.screenContextFocus !== "unknown";
 
-        if (!hasActiveScreen && profile.lastSeenPlatform && profile.lastSeenAt > 0) {
+        if (
+          !hasActiveScreen &&
+          profile.lastSeenPlatform &&
+          profile.lastSeenAt > 0
+        ) {
           const ago = formatAgo(now.getTime() - profile.lastSeenAt);
           parts.push(
             profile.isCurrentlyActive
@@ -114,7 +118,8 @@ export const activityProfileProvider: Provider = {
             userIsSleeping: profile.isCurrentlySleeping,
             userLastSleepSignalAt: profile.lastSleepSignalAt,
             userLastWakeSignalAt: profile.lastWakeSignalAt,
-            userTypicalSleepDurationMinutes: profile.typicalSleepDurationMinutes,
+            userTypicalSleepDurationMinutes:
+              profile.typicalSleepDurationMinutes,
             userScreenContextFocus: profile.screenContextFocus,
             userScreenContextSource: profile.screenContextSource,
             userScreenContextSampledAt: profile.screenContextSampledAt,

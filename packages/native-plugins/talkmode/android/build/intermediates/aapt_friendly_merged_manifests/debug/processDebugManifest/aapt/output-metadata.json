@@ -4,7 +4,7 @@
     "type": "AAPT_FRIENDLY_MERGED_MANIFESTS",
     "kind": "Directory"
   },
-  "applicationId": "ai.milady.plugins.talkmode",
+  "applicationId": "ai.elizaos.plugins.talkmode",
   "variantName": "debug",
   "elements": [
     {

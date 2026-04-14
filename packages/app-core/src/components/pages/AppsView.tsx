@@ -1,11 +1,4 @@
-/**
- * Apps View — browse and launch agent games/experiences.
- *
- * Fetches apps from the registry API and shows them as cards.
- * Clicking a card immediately launches the app (no detail pane).
- */
-
-import { PagePanel } from "@elizaos/app-core";
+import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
 import { getAppSlugFromPath } from "../../navigation";
@@ -60,6 +53,7 @@ export function AppsView() {
     () => new Set(appRuns.map((run) => run.appName)),
     [appRuns],
   );
+  const hasActiveApps = activeAppNames.size > 0;
   const favoriteAppNames = useMemo(() => new Set(favoriteApps), [favoriteApps]);
   const activeGameRun = useMemo(
     () => appRuns.find((run) => run.runId === activeGameRunId) ?? null,
@@ -231,7 +225,6 @@ export function AppsView() {
   }, [refreshRuns]);
 
   useEffect(() => {
-    if (appsSubTab !== "running") return;
     if (sortedRuns.length === 0) {
       if (selectedRunId !== null) setSelectedRunId(null);
       return;
@@ -247,7 +240,18 @@ export function AppsView() {
         ? activeGameRunId
         : (attentionRuns[0]?.runId ?? sortedRuns[0].runId);
     setSelectedRunId(preferredRunId);
-  }, [activeGameRunId, appsSubTab, attentionRuns, selectedRunId, sortedRuns]);
+  }, [activeGameRunId, attentionRuns, selectedRunId, sortedRuns]);
+
+  useEffect(() => {
+    if (appsSubTab !== "running") return;
+    setState("appsSubTab", "browse");
+    setShowActiveOnly(hasActiveApps);
+  }, [appsSubTab, hasActiveApps, setState]);
+
+  useEffect(() => {
+    if (hasActiveApps || !showActiveOnly) return;
+    setShowActiveOnly(false);
+  }, [hasActiveApps, showActiveOnly]);
 
   const handleLaunch = useCallback(
     async (app: RegistryAppInfo) => {
@@ -302,7 +306,8 @@ export function AppsView() {
 
         if (primaryRun) {
           setSelectedRunId(primaryRun.runId);
-          setState("appsSubTab", "running");
+          setState("appsSubTab", "browse");
+          setShowActiveOnly(true);
           pushAppsUrl(getAppSlug(app.name));
         }
 
@@ -353,7 +358,15 @@ export function AppsView() {
         );
       }
     },
-    [mergeRun, pushAppsUrl, setActionNotice, setState, setTab, t],
+    [
+      mergeRun,
+      pushAppsUrl,
+      setActionNotice,
+      setShowActiveOnly,
+      setState,
+      setTab,
+      t,
+    ],
   );
 
   const handleOpenCurrentGame = useCallback(() => {
@@ -460,7 +473,8 @@ export function AppsView() {
         mergeRun(nextRun);
         if (activeGameRunId === run.runId) {
           setState("activeGameRunId", "");
-          setState("appsSubTab", "running");
+          setState("appsSubTab", "browse");
+          setShowActiveOnly(true);
           pushAppsUrl();
         }
         setActionNotice(result.message, "success", 2200);
@@ -477,7 +491,15 @@ export function AppsView() {
         setBusyRunId(null);
       }
     },
-    [activeGameRunId, mergeRun, pushAppsUrl, setActionNotice, setState, t],
+    [
+      activeGameRunId,
+      mergeRun,
+      pushAppsUrl,
+      setActionNotice,
+      setShowActiveOnly,
+      setState,
+      t,
+    ],
   );
 
   const handleStopRun = useCallback(
@@ -488,7 +510,8 @@ export function AppsView() {
         const nextRuns = removeRun(run.runId);
         if (activeGameRunId === run.runId) {
           setState("activeGameRunId", "");
-          setState("appsSubTab", nextRuns.length > 0 ? "running" : "browse");
+          setState("appsSubTab", "browse");
+          setShowActiveOnly(nextRuns.length > 0);
           pushAppsUrl();
         }
         setActionNotice(
@@ -509,7 +532,15 @@ export function AppsView() {
         setBusyRunId(null);
       }
     },
-    [activeGameRunId, pushAppsUrl, removeRun, setActionNotice, setState, t],
+    [
+      activeGameRunId,
+      pushAppsUrl,
+      removeRun,
+      setActionNotice,
+      setShowActiveOnly,
+      setState,
+      t,
+    ],
   );
 
   const visibleApps = useMemo(() => {
@@ -537,48 +568,37 @@ export function AppsView() {
         <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
           Apps
         </h1>
-        <div className="flex flex-wrap items-center gap-2">
+        {hasActiveRun ? (
           <button
             type="button"
-            className={`rounded-full border px-3 py-1.5 text-xs-tight font-medium transition-colors ${
-              appsSubTab === "browse"
-                ? "border-accent/35 bg-accent/10 text-accent"
-                : "border-border/35 bg-card/72 text-muted-strong hover:border-accent/20 hover:text-txt"
-            }`}
-            onClick={() => {
-              setState("appsSubTab", "browse");
-              pushAppsUrl();
-            }}
+            className="rounded-full border border-ok/35 bg-ok/10 px-3 py-1.5 text-xs-tight font-medium text-ok transition-colors hover:bg-ok/15"
+            onClick={handleOpenCurrentGame}
           >
-            Browse
+            {hasCurrentGame ? "Live viewer" : "Active run"}
           </button>
-          <button
-            type="button"
-            className={`rounded-full border px-3 py-1.5 text-xs-tight font-medium transition-colors ${
-              appsSubTab === "running"
-                ? "border-accent/35 bg-accent/10 text-accent"
-                : "border-border/35 bg-card/72 text-muted-strong hover:border-accent/20 hover:text-txt"
-            }`}
-            onClick={() => setState("appsSubTab", "running")}
-          >
-            Running ({sortedRuns.length})
-          </button>
-          {hasActiveRun ? (
-            <button
-              type="button"
-              className="rounded-full border border-ok/35 bg-ok/10 px-3 py-1.5 text-xs-tight font-medium text-ok transition-colors hover:bg-ok/15"
-              onClick={handleOpenCurrentGame}
-            >
-              {hasCurrentGame ? "Live viewer" : "Active run"}
-            </button>
-          ) : null}
-        </div>
+        ) : null}
       </div>
 
-      {appsSubTab === "running" ? (
+      <AppsCatalogGrid
+        activeAppNames={activeAppNames}
+        error={error}
+        favoriteAppNames={favoriteAppNames}
+        loading={loading}
+        searchQuery={searchQuery}
+        showActiveOnly={showActiveOnly}
+        visibleApps={visibleApps}
+        onLaunch={(app) => void handleLaunch(app)}
+        onRefresh={() => void refreshApps()}
+        onSearchQueryChange={setSearchQuery}
+        onToggleActiveOnly={() => setShowActiveOnly((current) => !current)}
+        onToggleFavorite={handleToggleFavorite}
+      />
+
+      {sortedRuns.length > 0 ? (
         <PagePanel variant="inset" className="rounded-2xl p-4 lg:p-5">
           <RunningAppsPanel
             runs={sortedRuns}
+            catalogApps={apps}
             selectedRunId={selectedRunId}
             busyRunId={busyRunId}
             onSelectRun={setSelectedRunId}
@@ -587,22 +607,7 @@ export function AppsView() {
             onStopRun={(run) => void handleStopRun(run)}
           />
         </PagePanel>
-      ) : (
-        <AppsCatalogGrid
-          activeAppNames={activeAppNames}
-          error={error}
-          favoriteAppNames={favoriteAppNames}
-          loading={loading}
-          searchQuery={searchQuery}
-          showActiveOnly={showActiveOnly}
-          visibleApps={visibleApps}
-          onLaunch={(app) => void handleLaunch(app)}
-          onRefresh={() => void refreshApps()}
-          onSearchQueryChange={setSearchQuery}
-          onToggleActiveOnly={() => setShowActiveOnly((current) => !current)}
-          onToggleFavorite={handleToggleFavorite}
-        />
-      )}
+      ) : null}
     </div>
   );
 }

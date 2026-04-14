@@ -186,7 +186,7 @@ function resolveGateLevel(
   overrideGate: RoleGate | undefined,
 ): RoleGate | null {
   if (!pluginGate && !overrideGate) return null;
-  if (!pluginGate) return overrideGate!;
+  if (!pluginGate) return overrideGate ?? null;
   if (!overrideGate) return pluginGate;
   return ROLE_GATE_RANK[overrideGate] > ROLE_GATE_RANK[pluginGate]
     ? overrideGate
@@ -240,9 +240,7 @@ function gateAction(action: Action, gate: RoleGate): void {
       return false;
     }
 
-    return originalValidate
-      ? originalValidate(runtime, message, state)
-      : true;
+    return originalValidate ? originalValidate(runtime, message, state) : true;
   };
 }
 
@@ -299,8 +297,7 @@ export function applyPluginRoleGating(plugins: Plugin[]): void {
     // Gate providers
     if (plugin.providers?.length) {
       for (const provider of plugin.providers) {
-        const providerName =
-          (provider as { name?: string }).name ?? "";
+        const providerName = (provider as { name?: string }).name ?? "";
         const providerGate = PROVIDER_ROLE_OVERRIDES[providerName];
         if (providerGate) {
           gateProvider(provider, providerGate);
@@ -327,8 +324,4 @@ export function applyPluginRoleGating(plugins: Plugin[]): void {
 }
 
 /** Exported for testing. */
-export {
-  ACTION_ROLE_OVERRIDES,
-  PROVIDER_ROLE_OVERRIDES,
-  ROLE_GATED_PLUGINS,
-};
+export { ACTION_ROLE_OVERRIDES, PROVIDER_ROLE_OVERRIDES, ROLE_GATED_PLUGINS };

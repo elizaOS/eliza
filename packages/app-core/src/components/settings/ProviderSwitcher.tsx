@@ -7,14 +7,14 @@
 
 import { resolveServiceRoutingInConfig } from "@elizaos/shared/contracts/onboarding";
 import { buildElizaCloudServiceRoute } from "@elizaos/shared/contracts/service-routing";
+import { Button } from "@elizaos/ui/components/ui/button";
 import {
-  Button,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/select";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client, type OnboardingOptions, type PluginParamDef } from "../../api";
 import {

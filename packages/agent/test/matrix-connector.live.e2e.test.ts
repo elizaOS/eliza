@@ -34,7 +34,7 @@ import { logger, type Plugin } from "@elizaos/core";
 import {
   extractPlugin,
   resolveMatrixPluginImportSpecifier,
-} from "@elizaos/app-core/test-support/test-helpers";
+} from "@elizaos/app-core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
@@ -438,7 +438,7 @@ describe("Matrix Connector - Integration", () => {
   it("Matrix is mapped in CONNECTOR_PLUGINS", async () => {
     const mod = await tryWorkspaceImport<{
       CONNECTOR_PLUGINS: Record<string, string>;
-    }>("@elizaos/app-core/src/config/plugin-auto-enable");
+    }>("@elizaos/app-core");
     if (!mod) {
       logger.warn("[matrix-connector] Workspace not built — skipping");
       return;
@@ -451,7 +451,7 @@ describe("Matrix Connector - Integration", () => {
     try {
       mod = await tryWorkspaceImport<{
         CHANNEL_PLUGIN_MAP: Record<string, string>;
-      }>("@elizaos/app-core/src/runtime/eliza");
+      }>("@elizaos/app-core");
     } catch {
       mod = null;
     }

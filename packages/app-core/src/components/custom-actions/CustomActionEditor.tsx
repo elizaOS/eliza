@@ -1,26 +1,28 @@
+import { client } from "../../api/client";
+import type {
+  CustomActionDef,
+  CustomActionHandler,
+} from "@elizaos/agent/contracts/config";
+import { useApp } from "../../state/useApp";
+import { Banner } from "@elizaos/ui/components/ui/banner";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Checkbox } from "@elizaos/ui/components/ui/checkbox";
 import {
-  type CustomActionDef,
-  type CustomActionHandler,
-  client,
-} from "@elizaos/app-core/api";
-import { useApp } from "@elizaos/app-core/state";
-import {
-  Banner,
-  Button,
-  Checkbox,
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  Input,
+} from "@elizaos/ui/components/ui/dialog";
+import { Input } from "@elizaos/ui/components/ui/input";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Textarea,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/select";
+import { Textarea } from "@elizaos/ui/components/ui/textarea";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import {

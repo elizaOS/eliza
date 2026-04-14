@@ -1,6 +1,6 @@
-import type { CodingAgentSession } from "@elizaos/app-core/api";
+import type { CodingAgentSession } from "../../api/client-types-cloud";
 import { useApp } from "../../state";
-import { PULSE_STATUSES, STATUS_DOT } from "@elizaos/app-coding/pty-status-dots";
+import { PULSE_STATUSES, STATUS_DOT } from "../../chat/coding-agent-session-state";
 
 /** Derive activity text for sessions hydrated from the server (no lastActivity yet). */
 function deriveActivity(

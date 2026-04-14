@@ -1,10 +1,10 @@
 /**
  * PR 8 settings verification — drives the exact same code path the
- * milady UI uses to populate `/api/secrets`, and asserts the scape
+ * eliza UI uses to populate `/api/secrets`, and asserts the scape
  * plugin's parameters show up.
  *
  * This is the definitive proof that an end user can open the
- * milady UI → Secrets panel → enter `SCAPE_BOT_SDK_TOKEN` and
+ * eliza UI → Secrets panel → enter `SCAPE_BOT_SDK_TOKEN` and
  * `SCAPE_AGENT_PASSWORD` without touching any shell env var.
  */
 
@@ -102,7 +102,7 @@ function main(): void {
     );
     // SCAPE_AGENT_PASSWORD is intentionally optional now — the plugin
     // auto-generates and persists a fresh identity at
-    // ~/.milady/scape-agent-identity.json on first launch. This field
+    // ~/.eliza/scape-agent-identity.json on first launch. This field
     // only needs to be set when pinning to a pre-existing account, and
     // agent-identity.ts logs a loud WARN if the operator sets it (the
     // value lands on disk in plaintext). Per the PR body: "The

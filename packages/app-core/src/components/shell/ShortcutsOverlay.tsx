@@ -1,4 +1,9 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@elizaos/app-core";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@elizaos/ui/components/ui/dialog";
 import { useEffect, useState } from "react";
 import { COMMON_SHORTCUTS } from "../../hooks";
 import { useApp } from "../../state";

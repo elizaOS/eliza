@@ -7,11 +7,11 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared/validation-keywords";
+import { hasAdminAccess } from "../security/access.js";
 import type {
   RelationshipsGraphService,
   RelationshipsPersonSummary,
 } from "../services/relationships-graph.js";
-import { hasAdminAccess } from "../security/access.js";
 
 const MAX_CONTACTS = 10;
 

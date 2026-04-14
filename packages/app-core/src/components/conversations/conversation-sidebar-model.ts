@@ -1,4 +1,4 @@
-import { getChatSourceMeta } from "@elizaos/app-core";
+import { getChatSourceMeta } from "@elizaos/ui/components/composites/chat/chat-source";
 import { normalizeConnectorSource } from "@elizaos/shared/connectors";
 import type * as React from "react";
 
@@ -160,7 +160,7 @@ function buildSourceOptions(
     {
       count: appRows.length,
       icon: getChatSourceMeta("eliza").Icon,
-      label: t("conversations.scopeApp", { defaultValue: "App" }),
+      label: t("conversations.scopeApp", { defaultValue: "Terminal" }),
       value: ELIZA_SOURCE_SCOPE,
     },
   ];
@@ -268,7 +268,7 @@ function buildSections(
   const groups = new Map<string, ConversationsSidebarSection>();
   for (const row of rows) {
     let key = sourceScope;
-    let label = t("conversations.scopeApp", { defaultValue: "App" });
+    let label = t("conversations.scopeApp", { defaultValue: "Terminal" });
 
     if (row.kind === "inbox") {
       if (sourceScope === ALL_CONNECTORS_SOURCE_SCOPE) {

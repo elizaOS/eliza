@@ -1,12 +1,12 @@
+import { Button } from "@elizaos/ui/components/ui/button";
 import {
-  Button,
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  Input,
-  Switch,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/dialog";
+import { Input } from "@elizaos/ui/components/ui/input";
+import { Switch } from "@elizaos/ui/components/ui/switch";
 import {
   AlertCircle,
   CircleDollarSign,
@@ -38,9 +38,6 @@ import {
   buildAutoTopUpFormState,
   consumeManagedDiscordCallbackUrl,
   consumeManagedGithubCallbackUrl,
-  CLOUD_ACCENT_CONTROL_TEXT_CLASSNAME,
-  CLOUD_INSET_PANEL_CLASSNAME,
-  CLOUD_PANEL_CLASSNAME,
   ELIZA_CLOUD_INSTANCES_URL,
   ELIZA_CLOUD_WEB_URL,
   getBillingAutoTopUp,
@@ -1016,7 +1013,7 @@ export function CloudDashboard() {
               className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium ${
                 activeView !== "billing"
                   ? "text-muted-strong hover:text-txt"
-                  : CLOUD_ACCENT_CONTROL_TEXT_CLASSNAME
+                  : "text-txt-strong hover:text-txt-strong"
               }`}
               onClick={() => setState("cloudDashboardView", "billing")}
             >
@@ -1031,7 +1028,7 @@ export function CloudDashboard() {
               className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium ${
                 activeView !== "agents"
                   ? "text-muted-strong hover:text-txt"
-                  : CLOUD_ACCENT_CONTROL_TEXT_CLASSNAME
+                  : "text-txt-strong hover:text-txt-strong"
               }`}
               onClick={() => setState("cloudDashboardView", "agents")}
             >
@@ -1132,7 +1129,9 @@ export function CloudDashboard() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <div className={CLOUD_INSET_PANEL_CLASSNAME}>
+              <div
+                className={"rounded-xl border border-border/50 bg-bg/30 p-4"}
+              >
                 <div className="flex items-center gap-2 mb-3">
                   <CreditCard className="h-4 w-4 text-muted" />
                   <span className="text-xs font-semibold">
@@ -1150,7 +1149,7 @@ export function CloudDashboard() {
                       className={`rounded-lg px-2.5 py-1 text-xs font-medium ${
                         billingAmount !== String(amount)
                           ? "border-border/50 bg-bg/40 text-txt hover:border-accent/40"
-                          : CLOUD_ACCENT_CONTROL_TEXT_CLASSNAME
+                          : "text-txt-strong hover:text-txt-strong"
                       }`}
                       onClick={() => setBillingAmount(String(amount))}
                     >
@@ -1174,7 +1173,7 @@ export function CloudDashboard() {
                   />
                   <Button
                     variant="default"
-                    className={`rounded-lg font-semibold h-9 px-4 ${CLOUD_ACCENT_CONTROL_TEXT_CLASSNAME}`}
+                    className="rounded-lg font-semibold h-9 px-4 text-txt-strong hover:text-txt-strong"
                     disabled={checkoutBusy || billingLoading}
                     onClick={() => void handleStartCheckout()}
                   >
@@ -1186,7 +1185,9 @@ export function CloudDashboard() {
                   </Button>
                 </div>
               </div>
-              <div className={CLOUD_INSET_PANEL_CLASSNAME}>
+              <div
+                className={"rounded-xl border border-border/50 bg-bg/30 p-4"}
+              >
                 <div className="flex items-center gap-2 mb-3">
                   <Wallet className="h-4 w-4 text-muted" />
                   <span className="text-xs font-semibold">
@@ -1415,9 +1416,7 @@ export function CloudDashboard() {
                   ))}
 
                   {showDeployForm ? (
-                    <div
-                      className={`${CLOUD_PANEL_CLASSNAME} flex flex-col gap-2 py-2 sm:flex-row sm:items-center`}
-                    >
+                    <div className="rounded-2xl border border-border/60 bg-card/88 p-4 shadow-sm flex flex-col gap-2 py-2 sm:flex-row sm:items-center">
                       <Input
                         placeholder={t("elizaclouddashboard.AgentName")}
                         value={deployAgentName}
@@ -1454,7 +1453,7 @@ export function CloudDashboard() {
                   ) : (
                     <Button
                       variant="ghost"
-                      className={`${CLOUD_PANEL_CLASSNAME} h-auto w-full justify-start gap-2 py-3 text-xs text-muted-strong hover:text-txt`}
+                      className="rounded-2xl border border-border/60 bg-card/88 p-4 shadow-sm h-auto w-full justify-start gap-2 py-3 text-xs text-muted-strong hover:text-txt"
                       onClick={() => setShowDeployForm(true)}
                     >
                       <Plus className="w-4 h-4" />

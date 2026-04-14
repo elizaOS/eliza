@@ -30,7 +30,10 @@ function binaryExists(name: string): boolean {
 
   const pathDirs = [
     ...new Set(
-      [(process.env.PATH ?? "").split(delimiter), dirname(process.execPath)].flat(),
+      [
+        (process.env.PATH ?? "").split(delimiter),
+        dirname(process.execPath),
+      ].flat(),
     ),
   ].filter(Boolean);
   for (const dir of pathDirs) {

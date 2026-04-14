@@ -4,7 +4,7 @@
     "type": "AAPT_FRIENDLY_MERGED_MANIFESTS",
     "kind": "Directory"
   },
-  "applicationId": "ai.milady.plugins.swabble",
+  "applicationId": "ai.elizaos.plugins.swabble",
   "variantName": "debug",
   "elements": [
     {

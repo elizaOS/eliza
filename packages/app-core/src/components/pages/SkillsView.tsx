@@ -1,26 +1,16 @@
-/**
- * Skills management view — create, enable/disable, and install skills.
- *
- * Professional card-grid layout with search, stats, polished toggle switches,
- * and a structured install modal. Follows the CSS variable design system used
- * throughout the app (--bg, --card, --border, --accent, --muted, --txt, etc.).
- */
-
-import {
-  Button,
-  ConfirmDelete,
-  Input,
-  PageLayout,
-  PagePanel,
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-  SkillSidebarItem,
-  StatusBadge,
-  Switch,
-} from "@elizaos/app-core";
+import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
+import { SidebarHeader } from "@elizaos/ui/components/composites/sidebar/sidebar-header";
+import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
+import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
+import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
+import { SkillSidebarItem } from "@elizaos/ui/components/composites/skills/skill-sidebar-item";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { ConfirmDelete } from "@elizaos/ui/components/ui/confirm-delete";
+import { Input } from "@elizaos/ui/components/ui/input";
+import { StatusBadge } from "@elizaos/ui/components/ui/status-badge";
+import { Switch } from "@elizaos/ui/components/ui/switch";
+import { PageLayout } from "@elizaos/ui/layouts/page-layout/page-layout";
 import { RefreshCw } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 

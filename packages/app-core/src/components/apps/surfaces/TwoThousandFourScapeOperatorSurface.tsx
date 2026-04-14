@@ -1,4 +1,5 @@
-import { Button, Input } from "@elizaos/app-core";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
 import { useCallback, useMemo, useState } from "react";
 import { type AppSessionJsonValue, client } from "../../../api";
 import { useApp } from "../../../state";

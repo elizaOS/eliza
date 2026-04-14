@@ -1,4 +1,6 @@
-import { Button, StatusBadge, Switch } from "@elizaos/app-core";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { StatusBadge } from "@elizaos/ui/components/ui/status-badge";
+import { Switch } from "@elizaos/ui/components/ui/switch";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AllPermissionsState,

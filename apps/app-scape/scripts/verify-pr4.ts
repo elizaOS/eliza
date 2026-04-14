@@ -16,7 +16,7 @@
  *        - Wait for perception
  *        - Call each provider against a mock runtime that returns the
  *          live service → verify each produces a TOON string
- *      This exercises the full read path without booting the milady
+ *      This exercises the full read path without booting the eliza
  *      runtime.
  */
 

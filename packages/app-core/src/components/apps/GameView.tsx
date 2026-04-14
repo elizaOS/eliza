@@ -9,7 +9,8 @@
  */
 
 import { packageNameToAppRouteSlug } from "@elizaos/shared/contracts/apps";
-import { Button, Input } from "@elizaos/app-core";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type AppRunSummary,

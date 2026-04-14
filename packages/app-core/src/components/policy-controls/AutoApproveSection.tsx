@@ -1,4 +1,5 @@
-import { Input, Label } from "@elizaos/app-core";
+import { Input } from "@elizaos/ui/components/ui/input";
+import { Label } from "@elizaos/ui/components/ui/label";
 import { ShieldCheck } from "lucide-react";
 import { parseAmount } from "./helpers";
 import type { AutoApproveConfig } from "./types";

@@ -10,13 +10,13 @@ import {
   getOnboardingProviderSignalEnvKeys,
   getStoredOnboardingProviderId,
   migrateLegacyRuntimeConfig,
-  normalizeOnboardingProviderId,
   normalizeOnboardingCredentialInputs,
-  requiresAdditionalRuntimeProvider,
-  type OnboardingCredentialInputs,
+  normalizeOnboardingProviderId,
   type OnboardingConnection,
+  type OnboardingCredentialInputs,
   type OnboardingLlmPersistenceSelection,
   type OnboardingLocalProviderId,
+  requiresAdditionalRuntimeProvider,
 } from "../contracts/onboarding.js";
 import type {
   DeploymentTargetConfig,
@@ -481,7 +481,11 @@ function toOnboardingConnectionFromSelection(
         ? { megaModel: trimToUndefined(selection.megaModel) }
         : {}),
       ...(trimToUndefined(selection.responseHandlerModel)
-        ? { responseHandlerModel: trimToUndefined(selection.responseHandlerModel) }
+        ? {
+            responseHandlerModel: trimToUndefined(
+              selection.responseHandlerModel,
+            ),
+          }
         : {}),
       ...(trimToUndefined(selection.shouldRespondModel)
         ? { shouldRespondModel: trimToUndefined(selection.shouldRespondModel) }
@@ -496,7 +500,11 @@ function toOnboardingConnectionFromSelection(
         ? { responseModel: trimToUndefined(selection.responseModel) }
         : {}),
       ...(trimToUndefined(selection.mediaDescriptionModel)
-        ? { mediaDescriptionModel: trimToUndefined(selection.mediaDescriptionModel) }
+        ? {
+            mediaDescriptionModel: trimToUndefined(
+              selection.mediaDescriptionModel,
+            ),
+          }
         : {}),
     };
   }
@@ -904,13 +912,17 @@ export async function applyOnboardingCredentialPersistence(
   },
 ): Promise<string | null> {
   const plan = deriveOnboardingCredentialPersistencePlan({
-    credentialInputs: normalizeOnboardingCredentialInputs(args.credentialInputs),
+    credentialInputs: normalizeOnboardingCredentialInputs(
+      args.credentialInputs,
+    ),
     deploymentTarget: args.deploymentTarget,
     serviceRouting: args.serviceRouting,
   });
 
   if (plan.llmSelection) {
-    const llmConnection = toOnboardingConnectionFromSelection(plan.llmSelection);
+    const llmConnection = toOnboardingConnectionFromSelection(
+      plan.llmSelection,
+    );
     if (llmConnection) {
       await applyOnboardingConnectionConfig(config, llmConnection);
     }

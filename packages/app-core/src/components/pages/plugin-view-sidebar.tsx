@@ -1,16 +1,16 @@
+import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
+import { SidebarHeader } from "@elizaos/ui/components/composites/sidebar/sidebar-header";
+import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
+import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
+import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
+import { Button } from "@elizaos/ui/components/ui/button";
 import {
-  Button,
   Select,
   SelectContent,
   SelectItem,
   SelectValue,
-  SettingsControls,
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/select";
+import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
 import { ChevronRight } from "lucide-react";
 import type { ReactNode, RefCallback } from "react";
 import type { PluginInfo } from "../../api";

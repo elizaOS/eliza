@@ -1,12 +1,5 @@
-/**
- * Centered step list for the onboarding wizard.
- * WHY getOnboardingNavMetas from flow.ts: step order and labels must match
- * the same track as handleOnboardingNext/Back. WHY buttons only for completed
- * steps: backward-only jumps—forward jumps would bypass finish/login validation
- * (enforced in AppContext via canRevertOnboardingTo).
- */
-import { useApp } from "@elizaos/app-core/state";
-import { Button } from "@elizaos/app-core";
+import { useApp } from "../../state/useApp";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { useBranding } from "../../config/branding";
 import { getOnboardingNavMetas } from "../../onboarding/flow";
 

@@ -64,10 +64,7 @@ type DurationFormatOptions = {
    * Optional translation function for localized duration labels.
    * When provided, uses i18n keys like "format.duration.seconds" etc.
    */
-  t?: (
-    key: string,
-    vars?: Record<string, string | number>,
-  ) => string;
+  t?: (key: string, vars?: Record<string, string | number>) => string;
 };
 
 /**
@@ -166,7 +163,8 @@ export function formatDurationMs(
   }
   if (ms < 86_400_000) {
     const hours = ms / 3_600_000;
-    const value = hours === Math.floor(hours) ? hours : Number(hours.toFixed(1));
+    const value =
+      hours === Math.floor(hours) ? hours : Number(hours.toFixed(1));
     return t ? t("format.duration.hours", { value }) : `${value}h`;
   }
   const days = ms / 86_400_000;

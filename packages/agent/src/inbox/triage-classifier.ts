@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType, logger } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import type {
   InboundMessage,
   InboxTriageConfig,
@@ -20,7 +20,7 @@ import type {
 export function applyTriageRules(
   message: InboundMessage,
   rules: InboxTriageRules | undefined,
-  config: InboxTriageConfig | undefined,
+  _config: InboxTriageConfig | undefined,
 ): TriageClassification | null {
   if (!rules) return null;
 
@@ -121,10 +121,7 @@ async function classifyBatch(
     const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     rawResponse = typeof result === "string" ? result : "";
   } catch (error) {
-    logger.warn(
-      "[inbox-classifier] LLM classification failed:",
-      String(error),
-    );
+    logger.warn("[inbox-classifier] LLM classification failed:", String(error));
     // Fall back: classify everything as "notify" with low confidence
     return messages.map(() => ({
       classification: "notify" as const,
@@ -202,7 +199,8 @@ function buildTriagePrompt(
     const msg = messages[i];
     const gmailHints: string[] = [];
     if (msg.gmailIsImportant) gmailHints.push("Gmail-marked-important");
-    if (msg.gmailLikelyReplyNeeded) gmailHints.push("Gmail-likely-reply-needed");
+    if (msg.gmailLikelyReplyNeeded)
+      gmailHints.push("Gmail-likely-reply-needed");
     const hintsStr = gmailHints.length > 0 ? ` [${gmailHints.join(", ")}]` : "";
 
     sections.push(
@@ -233,7 +231,9 @@ function parseTriageResults(
   // Try to extract JSON array from the response
   const jsonMatch = raw.match(/\[[\s\S]*\]/);
   if (!jsonMatch) {
-    logger.warn("[inbox-classifier] Could not extract JSON array from LLM response");
+    logger.warn(
+      "[inbox-classifier] Could not extract JSON array from LLM response",
+    );
     return fallbackResults(expectedCount);
   }
 
@@ -283,7 +283,10 @@ const VALID_CLASSIFICATIONS = new Set<TriageClassification>([
 const VALID_URGENCIES = new Set(["low", "medium", "high"]);
 
 function validClassification(v: unknown): TriageClassification | null {
-  if (typeof v === "string" && VALID_CLASSIFICATIONS.has(v as TriageClassification)) {
+  if (
+    typeof v === "string" &&
+    VALID_CLASSIFICATIONS.has(v as TriageClassification)
+  ) {
     return v as TriageClassification;
   }
   return null;

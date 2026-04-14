@@ -1,4 +1,4 @@
-import { cn } from "@elizaos/app-core";
+import { cn } from "@elizaos/ui/lib/utils";
 import type { ButtonHTMLAttributes, CSSProperties } from "react";
 import { useId } from "react";
 import {

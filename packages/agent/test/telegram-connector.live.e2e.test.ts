@@ -32,7 +32,7 @@ import {
 import {
   extractPlugin,
   resolveTelegramPluginImportSpecifier,
-} from "@elizaos/app-core/test-support/test-helpers";
+} from "@elizaos/app-core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../test/helpers/conditional-tests.ts";

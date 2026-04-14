@@ -2,7 +2,7 @@
  * PR 3 runtime smoke test for `@elizaos/app-scape`.
  *
  * Exercises the SDK / BotManager / ScapeGameService layer WITHOUT
- * requiring the full milady runtime to be booted. Flow:
+ * requiring the full eliza runtime to be booted. Flow:
  *
  *   1. Import the SDK types + codec and round-trip an action frame
  *      through TOON encode/decode.

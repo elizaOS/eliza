@@ -1,26 +1,17 @@
-/**
- * config-field.tsx — React port of the 19 Lit field renderers from config-field.ts.
- *
- * Each renderer is a plain function (props: FieldRenderProps) => JSX.Element.
- * Styling uses Tailwind utility classes + CSS custom properties from base.css.
- *
- * Also exports:
- *  - defaultRenderers map (field type name -> renderer)
- *  - ConfigField wrapper component (label + renderer + help + errors)
- */
-
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Checkbox } from "@elizaos/ui/components/ui/checkbox";
 import {
-  Button,
-  Checkbox,
   Select,
   SelectContent,
   SelectItem,
-  SELECT_FLOATING_LAYER_NAME,
-  SELECT_FLOATING_LAYER_Z_INDEX,
   SelectTrigger,
   SelectValue,
-  Switch,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/select";
+import { Switch } from "@elizaos/ui/components/ui/switch";
+import {
+  SELECT_FLOATING_LAYER_NAME,
+  SELECT_FLOATING_LAYER_Z_INDEX,
+} from "@elizaos/ui/lib/floating-layers";
 import { ChevronDown, X } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";

@@ -1,4 +1,5 @@
-import { Button, ConnectionStatus } from "@elizaos/app-core";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { ConnectionStatus } from "@elizaos/ui/components/ui/connection-status";
 import { useApp } from "../../state";
 
 export type CloudSourceMode = "cloud" | "own-key";

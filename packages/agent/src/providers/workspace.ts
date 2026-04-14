@@ -92,8 +92,12 @@ export function resolveDefaultAgentWorkspaceDir(
   }
 
   if (!hasExplicitStateDirOverride(env)) {
-    const runtimeCwd = cwd()?.trim();
-    if (runtimeCwd && shouldUseRuntimeCwdWorkspace(runtimeCwd)) {
+    const runtimeCwd = typeof cwd === "function" ? cwd() : undefined;
+    if (
+      typeof runtimeCwd === "string" &&
+      runtimeCwd.trim() &&
+      shouldUseRuntimeCwdWorkspace(runtimeCwd.trim())
+    ) {
       return resolveUserPath(runtimeCwd);
     }
   }
@@ -110,10 +114,7 @@ const EXPLICIT_WORKSPACE_DIR_KEYS = [
   "ELIZA_WORKSPACE_DIR",
   "ELIZA_WORKSPACE_DIR",
 ] as const;
-const EXPLICIT_STATE_DIR_KEYS = [
-  "ELIZA_STATE_DIR",
-  "ELIZA_STATE_DIR",
-] as const;
+const EXPLICIT_STATE_DIR_KEYS = ["ELIZA_STATE_DIR", "ELIZA_STATE_DIR"] as const;
 const PROJECT_WORKSPACE_MARKERS = [
   "AGENTS.md",
   "CLAUDE.md",
@@ -244,6 +245,7 @@ function hasExplicitStateDirOverride(env: NodeJS.ProcessEnv): boolean {
 }
 
 function isLikelyPackagedRuntimeDir(dir: string): boolean {
+  if (typeof dir !== "string") return false;
   const normalized = dir.replace(/\\/g, "/").toLowerCase();
   return (
     normalized.includes("/eliza-dist") ||
@@ -255,7 +257,11 @@ function isLikelyPackagedRuntimeDir(dir: string): boolean {
 
 function shouldUseRuntimeCwdWorkspace(candidateDir: string): boolean {
   const resolvedDir = resolveUserPath(candidateDir);
-  if (!resolvedDir || isLikelyPackagedRuntimeDir(resolvedDir)) {
+  if (
+    !resolvedDir ||
+    typeof resolvedDir !== "string" ||
+    isLikelyPackagedRuntimeDir(resolvedDir)
+  ) {
     return false;
   }
 

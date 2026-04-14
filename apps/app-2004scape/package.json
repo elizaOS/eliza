@@ -5,13 +5,16 @@
   "type": "module",
   "main": "src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    "./package.json": "./package.json",
+    ".": "./src/index.ts",
+    "./routes": "./src/routes.ts"
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*"
   },
   "peerDependencies": {
-    "@elizaos/core": ">=2.0.0-alpha.100"
+    "@elizaos/core": "workspace:*"
   }
 }

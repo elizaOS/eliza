@@ -1,40 +1,21 @@
-/**
- * Knowledge management view — upload, search, and manage knowledge documents.
- *
- * Features:
- * - Stats display (document count, fragment count)
- * - Document upload (file picker + drag-and-drop)
- * - URL upload (with YouTube auto-transcription)
- * - Search across knowledge base
- * - Document list with delete functionality
- * - Document detail view with fragments
- */
-
 import type {
   KnowledgeDocument,
   KnowledgeSearchResult,
-} from "@elizaos/app-core/api";
-import { client } from "@elizaos/app-core/api";
-import {
-  ConfirmDeleteControl,
-  formatByteSize,
-  formatShortDate,
-} from "@elizaos/app-core/components";
-import { useApp } from "@elizaos/app-core/state";
-import { confirmDesktopAction } from "@elizaos/app-core/utils";
-import { Button, PagePanel } from "@elizaos/app-core";
+} from "../../api/client-types-chat";
+import { client } from "../../api/client";
+import { useApp } from "../../state/useApp";
+import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { confirmDesktopAction } from "../../utils/desktop-dialogs";
+import { formatByteSize } from "../../utils/format";
+import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   isKnowledgeImageFile,
   MAX_KNOWLEDGE_IMAGE_PROCESSING_BYTES,
   maybeCompressKnowledgeUploadImage,
 } from "../../utils/knowledge-upload-image";
-import {
-  DocumentViewer,
-  getKnowledgeDocumentSummary,
-  getKnowledgeSourceLabel,
-  getKnowledgeTypeLabel,
-} from "./knowledge-detail";
+import { DocumentViewer } from "./knowledge-detail";
 import {
   BULK_UPLOAD_TARGET_BYTES,
   getKnowledgeUploadFilename,
@@ -73,17 +54,17 @@ function SearchResultListItem({
       onClick={() => onSelect(result.documentId || result.id)}
       type="button"
       aria-current={active ? "page" : undefined}
-      className={`group flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors ${
+      className={`group flex w-full items-start border-b px-0 py-3 text-left transition-colors ${
         active
-          ? "border-accent/30 bg-accent/8"
-          : "border-border/30 bg-card/50 hover:border-border/50 hover:bg-card/80"
+          ? "border-accent/30 bg-transparent"
+          : "border-border/10 bg-transparent hover:border-border/30 hover:bg-white/[0.03]"
       }`}
     >
       <span
-        className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-2xs font-bold ${
+        className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-2xs font-bold ${
           active
-            ? "bg-accent/20 text-accent-fg"
-            : "bg-bg-hover text-muted-strong"
+            ? "border-accent/25 bg-accent/10 text-accent-fg"
+            : "border-border/15 bg-transparent text-muted-strong"
         }`}
       >
         {(result.similarity * 100).toFixed(0)}%
@@ -98,9 +79,6 @@ function SearchResultListItem({
         <div className="mt-1 line-clamp-2 text-xs text-muted">
           {result.text}
         </div>
-        <span className="mt-2 block text-2xs font-semibold uppercase tracking-[0.12em] text-accent-fg/85">
-          {(result.similarity * 100).toFixed(0)}% {t("knowledgeview.Match")}
-        </span>
       </div>
     </button>
   );
@@ -124,10 +102,10 @@ function DocumentListItem({
   const { t } = useApp();
   return (
     <div
-      className={`group relative flex w-full rounded-xl border transition-colors ${
+      className={`group relative flex w-full border-b transition-colors ${
         active
-          ? "border-accent/30 bg-accent/8"
-          : "border-border/30 bg-card/50 hover:border-border/50 hover:bg-card/80"
+          ? "border-accent/30 bg-transparent"
+          : "border-border/10 bg-transparent hover:border-border/30 hover:bg-white/[0.03]"
       }`}
     >
       <button
@@ -138,28 +116,16 @@ function DocumentListItem({
           filename: doc.filename,
         })}
         aria-current={active ? "page" : undefined}
-        title={getKnowledgeDocumentSummary(doc, t)}
-        className="flex min-w-0 flex-1 flex-col px-3.5 py-3 text-left"
+        title={doc.filename}
+        className="flex min-w-0 flex-1 items-center gap-3 px-3.5 py-3 text-left"
       >
+        <span
+          className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+            active ? "bg-accent" : "bg-border"
+          }`}
+        />
         <div className="truncate text-sm font-semibold leading-snug text-txt">
           {doc.filename}
-        </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-          <span
-            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-3xs font-bold uppercase leading-none tracking-wider ${
-              active
-                ? "border-accent/30 bg-accent/18 text-txt-strong"
-                : "border-border/45 bg-bg/30 text-muted/80"
-            }`}
-          >
-            {getKnowledgeTypeLabel(doc.contentType)}
-          </span>
-          <span className="inline-flex items-center rounded-md border border-border/45 bg-bg/30 px-1.5 py-0.5 text-3xs font-bold uppercase leading-none tracking-wider text-muted/80">
-            {getKnowledgeSourceLabel(doc.source, t)}
-          </span>
-          <span className="text-2xs text-muted/50 opacity-0 transition-opacity group-hover:opacity-100">
-            {formatShortDate(doc.createdAt, { fallback: "\u2014" })}
-          </span>
         </div>
       </button>
       <span className="absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
@@ -180,7 +146,7 @@ function DocumentListItem({
 
 export function KnowledgeView({
   inModal,
-  embedded,
+  embedded: _embedded,
 }: {
   inModal?: boolean;
   embedded?: boolean;
@@ -729,10 +695,6 @@ export function KnowledgeView({
     [loadData, setActionNotice, t],
   );
 
-  const totalFragments = useMemo(
-    () => documents.reduce((sum, d) => sum + (d.fragmentCount || 0), 0),
-    [documents],
-  );
   const isShowingSearchResults = searchResults !== null;
   const visibleSearchResults = searchResults ?? [];
   const filteredDocuments = useMemo(() => {
@@ -803,6 +765,7 @@ export function KnowledgeView({
         viewBox="0 0 24 24"
         strokeWidth={2}
         stroke="currentColor"
+        aria-hidden="true"
       >
         <path
           strokeLinecap="round"
@@ -829,14 +792,114 @@ export function KnowledgeView({
     </div>
   );
 
-  /* ── Main content: upload + doc list ─────────────────────────── */
+  const documentContent = (
+    <div className="order-2 flex min-w-0 flex-1 lg:order-1">
+      <DocumentViewer documentId={selectedDocId} />
+    </div>
+  );
 
-  const mainContent = (
-    <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto custom-scrollbar">
+  const selectorRail = (
+    <div className="order-1 flex w-full shrink-0 flex-col gap-3 lg:order-2 lg:w-[22rem] xl:w-[24rem]">
+      <PagePanel
+        variant="inset"
+        className="p-3 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+      >
+        <UploadZone
+          onFilesUpload={handleFilesUpload}
+          onUrlUpload={handleUrlUpload}
+          uploading={uploading}
+          uploadStatus={uploadStatus}
+        />
+      </PagePanel>
+
+      <PagePanel
+        variant="inset"
+        className="flex min-h-[18rem] flex-1 flex-col overflow-hidden p-2.5 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+      >
+        {searchInput}
+
+        <div className="custom-scrollbar mt-2 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-0.5 py-0.5">
+          {loading && !isShowingSearchResults && documents.length === 0 && (
+            <PagePanel.Empty
+              variant="inset"
+              className="px-0 py-10 text-center text-sm font-medium !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+              title={t("knowledgeview.LoadingDocuments")}
+            >
+              {t("knowledgeview.LoadingDocuments")}
+            </PagePanel.Empty>
+          )}
+
+          {!loading && !isShowingSearchResults && documents.length === 0 && (
+            <PagePanel.Empty
+              variant="inset"
+              className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+              description={t("knowledgeview.UploadFilesOrImpo")}
+              title={t("knowledgeview.NoDocumentsYet")}
+            />
+          )}
+
+          {!loading &&
+            !isShowingSearchResults &&
+            documents.length > 0 &&
+            filteredDocuments.length === 0 && (
+              <PagePanel.Empty
+                variant="inset"
+                className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+                description={t("knowledgeview.SearchTips", {
+                  defaultValue:
+                    "Try a filename, topic, or phrase from the document body.",
+                })}
+                title={t("knowledgeview.NoMatchingDocuments", {
+                  defaultValue: "No matching documents",
+                })}
+              />
+            )}
+
+          {isShowingSearchResults && visibleSearchResults.length === 0 && (
+            <PagePanel.Empty
+              variant="inset"
+              className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+              description={t("knowledgeview.SearchTips", {
+                defaultValue:
+                  "Try a filename, topic, or phrase from the document body.",
+              })}
+              title={t("knowledgeview.NoResultsFound")}
+            />
+          )}
+
+          {isShowingSearchResults
+            ? visibleSearchResults.map((result) => (
+                <SearchResultListItem
+                  key={result.id}
+                  result={result}
+                  active={selectedDocId === (result.documentId || result.id)}
+                  onSelect={setSelectedDocId}
+                />
+              ))
+            : filteredDocuments.map((doc) => (
+                <DocumentListItem
+                  key={doc.id}
+                  doc={doc}
+                  active={selectedDocId === doc.id}
+                  onSelect={setSelectedDocId}
+                  onDelete={handleDelete}
+                  deleting={deleting === doc.id}
+                />
+              ))}
+        </div>
+      </PagePanel>
+    </div>
+  );
+
+  return (
+    <div
+      className={`flex flex-1 min-h-0 flex-col gap-4 ${inModal ? "min-h-0" : ""}`}
+      data-testid="knowledge-view"
+    >
       {isServiceLoading && (
         <PagePanel
           variant="inset"
-          className="flex items-center gap-2 px-4 py-3 text-sm text-muted-strong"
+          className="flex items-center gap-2 px-0 py-3 text-sm text-muted-strong !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
         >
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
           {t("knowledgeview.KnowledgeServiceIs")}
@@ -861,119 +924,10 @@ export function KnowledgeView({
         </PagePanel.Notice>
       )}
 
-      {searchInput}
-
-      <PagePanel variant="inset" className="p-4">
-        <UploadZone
-          onFilesUpload={handleFilesUpload}
-          onUrlUpload={handleUrlUpload}
-          uploading={uploading}
-          uploadStatus={uploadStatus}
-        />
-      </PagePanel>
-
-      <div className="flex flex-wrap gap-2">
-        <PagePanel.Meta compact>
-          {t("knowledgeview.DocumentsCount", {
-            defaultValue: "{{count}} docs",
-            count: documents.length,
-          })}
-        </PagePanel.Meta>
-        <PagePanel.Meta compact tone="strong">
-          {t("knowledgeview.TotalFragmentsCount", {
-            defaultValue: "{{count}} fragments",
-            count: totalFragments,
-          })}
-        </PagePanel.Meta>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+        {documentContent}
+        {selectorRail}
       </div>
-
-      <div className="space-y-1.5">
-        {loading && !isShowingSearchResults && documents.length === 0 && (
-          <PagePanel.Empty
-            variant="inset"
-            className="px-4 py-10 text-center text-sm font-medium"
-            title={t("knowledgeview.LoadingDocuments")}
-          >
-            {t("knowledgeview.LoadingDocuments")}
-          </PagePanel.Empty>
-        )}
-
-        {!loading && !isShowingSearchResults && documents.length === 0 && (
-          <PagePanel.Empty
-            variant="inset"
-            className="min-h-[12rem] px-4 py-8"
-            description={t("knowledgeview.UploadFilesOrImpo")}
-            title={t("knowledgeview.NoDocumentsYet")}
-          />
-        )}
-
-        {!loading &&
-          !isShowingSearchResults &&
-          documents.length > 0 &&
-          filteredDocuments.length === 0 && (
-            <PagePanel.Empty
-              variant="inset"
-              className="min-h-[12rem] px-4 py-8"
-              description={t("knowledgeview.SearchTips", {
-                defaultValue:
-                  "Try a filename, topic, or phrase from the document body.",
-              })}
-              title={t("knowledgeview.NoMatchingDocuments", {
-                defaultValue: "No matching documents",
-              })}
-            />
-          )}
-
-        {isShowingSearchResults && visibleSearchResults.length === 0 && (
-          <PagePanel.Empty
-            variant="inset"
-            className="min-h-[12rem] px-4 py-8"
-            description={t("knowledgeview.SearchTips", {
-              defaultValue:
-                "Try a filename, topic, or phrase from the document body.",
-            })}
-            title={t("knowledgeview.NoResultsFound")}
-          />
-        )}
-
-        {isShowingSearchResults
-          ? visibleSearchResults.map((result) => (
-              <SearchResultListItem
-                key={result.id}
-                result={result}
-                active={selectedDocId === (result.documentId || result.id)}
-                onSelect={setSelectedDocId}
-              />
-            ))
-          : filteredDocuments.map((doc) => (
-              <DocumentListItem
-                key={doc.id}
-                doc={doc}
-                active={selectedDocId === doc.id}
-                onSelect={setSelectedDocId}
-                onDelete={handleDelete}
-                deleting={deleting === doc.id}
-              />
-            ))}
-      </div>
-    </div>
-  );
-
-  /* ── Right sidebar: document detail ──────────────────────────── */
-
-  const detailSidebar = (
-    <div className="hidden w-[22rem] shrink-0 flex-col overflow-y-auto custom-scrollbar lg:flex xl:w-[26rem]">
-      <DocumentViewer documentId={selectedDocId} />
-    </div>
-  );
-
-  return (
-    <div
-      className={`flex flex-1 min-h-0 gap-5 ${inModal ? "min-h-0" : ""}`}
-      data-testid="knowledge-view"
-    >
-      {mainContent}
-      {detailSidebar}
     </div>
   );
 }

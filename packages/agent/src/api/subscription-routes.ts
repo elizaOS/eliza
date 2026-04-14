@@ -51,9 +51,7 @@ export async function handleSubscriptionRoutes(
       const { getSubscriptionStatus } = await loadSubscriptionAuth();
       json(res, { providers: getSubscriptionStatus() });
     } catch (err) {
-      logger.error(
-        `[api] Failed to get subscription status: ${String(err)}`,
-      );
+      logger.error(`[api] Failed to get subscription status: ${String(err)}`);
       error(res, "Failed to get subscription status", 500);
     }
     return true;
@@ -66,9 +64,7 @@ export async function handleSubscriptionRoutes(
       state._anthropicFlow = flow;
       json(res, { authUrl: flow.authUrl });
     } catch (err) {
-      logger.error(
-        `[api] Failed to start Anthropic login: ${String(err)}`,
-      );
+      logger.error(`[api] Failed to start Anthropic login: ${String(err)}`);
       error(res, "Failed to start Anthropic login", 500);
     }
     return true;
@@ -100,9 +96,7 @@ export async function handleSubscriptionRoutes(
       json(res, { success: true, expiresAt: credentials.expires });
     } catch (err) {
       delete state._anthropicFlow;
-      logger.error(
-        `[api] Anthropic exchange failed: ${String(err)}`,
-      );
+      logger.error(`[api] Anthropic exchange failed: ${String(err)}`);
       error(res, "Anthropic exchange failed", 500);
     }
     return true;
@@ -115,7 +109,7 @@ export async function handleSubscriptionRoutes(
     const body = await readJsonBody<{ token: string }>(req, res);
     if (!body) return true;
     const trimmedToken = body.token?.trim();
-    if (!trimmedToken || !trimmedToken.startsWith("sk-ant-")) {
+    if (!trimmedToken?.startsWith("sk-ant-")) {
       error(res, "Invalid token format — expected sk-ant-oat01-...", 400);
       return true;
     }
@@ -126,17 +120,16 @@ export async function handleSubscriptionRoutes(
       // The task-agent orchestrator spawns `claude` CLI subprocesses
       // which use the token legitimately.
       if (!state.config.env) state.config.env = {};
-      (state.config.env as Record<string, unknown>).__anthropicSubscriptionToken =
-        trimmedToken;
+      (
+        state.config.env as Record<string, unknown>
+      ).__anthropicSubscriptionToken = trimmedToken;
       ctx.saveConfig(state.config);
       logger.info(
         "[api] Saved Anthropic setup token for task agents (not applied to runtime — TOS restriction)",
       );
       json(res, { success: true });
     } catch (err) {
-      logger.error(
-        `[api] Failed to save setup token: ${String(err)}`,
-      );
+      logger.error(`[api] Failed to save setup token: ${String(err)}`);
       error(res, "Failed to save setup token", 500);
     }
     return true;
@@ -179,9 +172,7 @@ export async function handleSubscriptionRoutes(
           "Open the URL in your browser. After login, if auto-redirect doesn't work, paste the full redirect URL.",
       });
     } catch (err) {
-      logger.error(
-        `[api] Failed to start OpenAI login: ${String(err)}`,
-      );
+      logger.error(`[api] Failed to start OpenAI login: ${String(err)}`);
       error(res, "Failed to start OpenAI login", 500);
     }
     return true;
@@ -224,9 +215,7 @@ export async function handleSubscriptionRoutes(
         delete state._codexFlow;
         clearTimeout(state._codexFlowTimer);
         delete state._codexFlowTimer;
-        logger.error(
-          `[api] OpenAI exchange failed: ${String(err)}`,
-        );
+        logger.error(`[api] OpenAI exchange failed: ${String(err)}`);
         error(res, "OpenAI exchange failed", 500);
         return true;
       }
@@ -241,9 +230,7 @@ export async function handleSubscriptionRoutes(
         expiresAt: credentials.expires,
       });
     } catch (err) {
-      logger.error(
-        `[api] OpenAI exchange failed: ${String(err)}`,
-      );
+      logger.error(`[api] OpenAI exchange failed: ${String(err)}`);
       error(res, "OpenAI exchange failed", 500);
     }
     return true;
@@ -275,9 +262,7 @@ export async function handleSubscriptionRoutes(
         ctx.saveConfig(state.config);
         json(res, { success: true });
       } catch (err) {
-        logger.error(
-          `[api] Failed to delete credentials: ${String(err)}`,
-        );
+        logger.error(`[api] Failed to delete credentials: ${String(err)}`);
         error(res, "Failed to delete credentials", 500);
       }
     } else {

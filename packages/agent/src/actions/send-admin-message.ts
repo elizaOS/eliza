@@ -3,11 +3,13 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
-  State,
   UUID,
 } from "@elizaos/core";
-import { logger, stringToUuid } from "@elizaos/core";
-import { resolveCanonicalOwnerIdForMessage } from "@elizaos/core";
+import {
+  logger,
+  resolveCanonicalOwnerIdForMessage,
+  stringToUuid,
+} from "@elizaos/core";
 import { hasAdminAccess } from "../security/access.js";
 import { hasContextSignalSyncForKey } from "./context-signal.js";
 
@@ -53,11 +55,7 @@ export const sendAdminMessageAction: Action = {
 
   validate: async (runtime, message, state) => {
     if (!(await hasAdminAccess(runtime, message))) return false;
-    return hasContextSignalSyncForKey(
-      message,
-      state,
-      "send_admin_message",
-    );
+    return hasContextSignalSyncForKey(message, state, "send_admin_message");
   },
 
   handler: async (runtime, message, _state, options) => {

@@ -18,12 +18,12 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import type { RoleName } from "./types";
 import {
   extractRoleIntentWithLlm,
   looksLikeRoleIntent,
   normalizeNaturalRoleLabel,
 } from "./intent";
+import type { RoleName } from "./types";
 import {
   canModifyRole,
   getLiveEntityMetadataFromMessage,

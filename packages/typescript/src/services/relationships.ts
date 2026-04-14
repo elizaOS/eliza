@@ -443,9 +443,8 @@ export class RelationshipsService extends Service {
 	private async loadContactInfoFromComponents(): Promise<void> {
 		this.contactInfoCache.clear();
 		const relationshipsWorldId = this.getRelationshipsWorldId();
-		let loadedFromRelationshipsWorld = false;
 
-		// First load directly from the synthetic relationships world where contacts are stored.
+		// Load contacts from the synthetic relationships world where they are stored.
 		if (typeof this.runtime.queryEntities === "function") {
 			try {
 				const entities = await this.runtime.queryEntities({
@@ -456,24 +455,26 @@ export class RelationshipsService extends Service {
 				if (entities.length > 0) {
 					this.cacheContactInfoFromEntities(entities);
 				}
-				// Query succeeded — the world exists, even if there are no contacts yet.
-				loadedFromRelationshipsWorld = true;
+				logger.info(
+					`[RelationshipsService] Loaded ${this.contactInfoCache.size} contacts from components`,
+				);
+				return;
 			} catch (err) {
 				logger.warn(
-					`[RelationshipsService] Failed to query contact components directly: ${err}`,
+					`[RelationshipsService] Failed to query contact components: ${err}`,
 				);
 			}
-		}
-
-		if (loadedFromRelationshipsWorld) {
-			logger.info(
-				`[RelationshipsService] Loaded ${this.contactInfoCache.size} contacts from components`,
+		} else {
+			logger.warn(
+				"[RelationshipsService] runtime.queryEntities is not available; starting with an empty contact cache",
 			);
-			return;
 		}
 
-		throw new Error(
-			"[RelationshipsService] Failed to load contacts from the relationships world; legacy room-scan fallback has been removed",
+		// Start with an empty cache — contacts will be populated as they are added.
+		// This avoids crashing on fresh databases or adapters that do not yet
+		// support queryEntities.
+		logger.info(
+			"[RelationshipsService] Starting with empty contact cache (contacts will load on demand)",
 		);
 	}
 

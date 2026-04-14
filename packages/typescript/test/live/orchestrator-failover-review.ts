@@ -111,7 +111,7 @@ for (let index = 0; index < runCount; index += 1) {
       cwd: repoRoot,
       env: {
         ...process.env,
-        MILADY_KEEP_LIVE_ARTIFACTS: "1",
+        ELIZA_KEEP_LIVE_ARTIFACTS: "1",
         ORCHESTRATOR_LIVE_PRIMARY: process.env.ORCHESTRATOR_LIVE_PRIMARY ?? "codex",
         ORCHESTRATOR_LIVE_FALLBACK: process.env.ORCHESTRATOR_LIVE_FALLBACK ?? "claude",
       },

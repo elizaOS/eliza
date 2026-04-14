@@ -26,26 +26,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ELECTROBUN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_DIR="$(cd "$ELECTROBUN_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$ELECTROBUN_DIR/../../.." && pwd)"
+APP_CORE_SCRIPTS_DIR="$REPO_ROOT/eliza/packages/app-core/scripts"
+PACKAGED_DIST_DIR="$REPO_ROOT/dist"
 BUILD_ENV="${BUILD_ENV:-canary}"
 SKIP_SIGNATURE_CHECK="${SKIP_SIGNATURE_CHECK:-0}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 STARTUP_TIMEOUT="${STARTUP_TIMEOUT:-180}"
 LIVENESS_TIMEOUT="${LIVENESS_TIMEOUT:-8}"
 PACKAGED_HANDOFF_GRACE_SECONDS="${PACKAGED_HANDOFF_GRACE_SECONDS:-90}"
+RUN_PACKAGED_PLAYWRIGHT="${RUN_PACKAGED_PLAYWRIGHT:-1}"
 BUILD_SKIP_CODESIGN="${ELECTROBUN_SKIP_CODESIGN:-}"
 BUILD_DEVELOPER_ID="${ELECTROBUN_DEVELOPER_ID:-}"
 ARTIFACTS_DIR_OVERRIDE="${ARTIFACTS_DIR:-}"
 SMOKE_DIAGNOSTICS_DIR="${SMOKE_DIAGNOSTICS_DIR:-}"
-EXPECTED_BUNDLE_IDENTIFIER="${EXPECTED_BUNDLE_IDENTIFIER:-com.miladyai.milady}"
+EXPECTED_BUNDLE_IDENTIFIER="${EXPECTED_BUNDLE_IDENTIFIER:-com.elizaai.eliza}"
 MOUNT_POINT=""
 LAUNCH_APP_BUNDLE=""
-STARTUP_LOG="$HOME/.config/Milady/milady-startup.log"
+STARTUP_LOG="$HOME/.config/Eliza/eliza-startup.log"
 STARTUP_SESSION_ID=""
 STARTUP_STATE_FILE=""
 STARTUP_EVENTS_FILE=""
 STARTUP_BOOTSTRAP_FILE=""
 MAC_DIRECT_EXEC_PROBE_RC=""
-MAC_LAUNCH_MODE="${MILADY_SMOKE_MAC_LAUNCH_MODE:-auto}"
+MAC_LAUNCH_MODE="${ELIZA_SMOKE_MAC_LAUNCH_MODE:-auto}"
 OPEN_LAUNCH_OUTPUT=""
 OPEN_LAUNCH_ATTEMPTED="0"
 OPEN_LAUNCH_EXIT_CODE=""
@@ -140,14 +143,14 @@ backend_health_probe_satisfied() {
 
 ensure_diagnostics_dir() {
   if [[ -z "$SMOKE_DIAGNOSTICS_DIR" ]]; then
-    SMOKE_DIAGNOSTICS_DIR="$(mktemp -d /tmp/milady-smoke-diagnostics.XXXXXX)"
+    SMOKE_DIAGNOSTICS_DIR="$(mktemp -d /tmp/eliza-smoke-diagnostics.XXXXXX)"
   fi
   mkdir -p "$SMOKE_DIAGNOSTICS_DIR"
 }
 
 init_startup_session() {
   ensure_diagnostics_dir
-  STARTUP_SESSION_ID="${MILADY_STARTUP_SESSION_ID:-milady-smoke-${BUILD_ENV}-$$-${RANDOM:-0}-$(date +%s)}"
+  STARTUP_SESSION_ID="${ELIZA_STARTUP_SESSION_ID:-eliza-smoke-${BUILD_ENV}-$$-${RANDOM:-0}-$(date +%s)}"
   STARTUP_STATE_FILE="$SMOKE_DIAGNOSTICS_DIR/startup-state.json"
   STARTUP_EVENTS_FILE="$SMOKE_DIAGNOSTICS_DIR/startup-events.jsonl"
   STARTUP_BOOTSTRAP_FILE="$LAUNCH_APP_BUNDLE/Contents/Resources/startup-session.json"
@@ -253,7 +256,7 @@ copy_supporting_diagnostics() {
   ensure_diagnostics_dir
 
   if [[ -f "$STARTUP_LOG" ]]; then
-    cp "$STARTUP_LOG" "$SMOKE_DIAGNOSTICS_DIR/milady-startup.log" 2>/dev/null || true
+    cp "$STARTUP_LOG" "$SMOKE_DIAGNOSTICS_DIR/eliza-startup.log" 2>/dev/null || true
   fi
   if [[ -f "$STARTUP_STATE_FILE" ]]; then
     cp "$STARTUP_STATE_FILE" "$SMOKE_DIAGNOSTICS_DIR/startup-state.json" 2>/dev/null || true
@@ -416,19 +419,19 @@ kill_stale_processes() {
     [[ -z "$pid" ]] && continue
     if kill -0 "$pid" >/dev/null 2>&1; then
       if [[ $found -eq 0 ]]; then
-        echo "Stopping stale Milady launcher/backend processes..."
+        echo "Stopping stale Eliza launcher/backend processes..."
         found=1
       fi
       kill "$pid" >/dev/null 2>&1 || true
     fi
   done < <(
-    pgrep -f '/(Applications|tmp|private/tmp|Volumes)/.*Milady[^/]*\.app/Contents/MacOS/launcher|milady-dist/entry\.js' || true
+    pgrep -f '/(Applications|tmp|private/tmp|Volumes)/.*Eliza[^/]*\.app/Contents/MacOS/launcher|eliza-dist/entry\.js' || true
   )
 
   pid="$(lsof -nP -tiTCP:2138 -sTCP:LISTEN 2>/dev/null | head -1 || true)"
   if [[ -n "$pid" ]]; then
     if [[ $found -eq 0 ]]; then
-      echo "Stopping stale Milady launcher/backend processes..."
+      echo "Stopping stale Eliza launcher/backend processes..."
       found=1
     fi
     kill "$pid" >/dev/null 2>&1 || true
@@ -475,19 +478,19 @@ build_launcher_command() {
       LANG="$launch_lang"
       LC_ALL="$launch_lc_all"
       TERM="${TERM:-dumb}"
-      MILADY_STARTUP_SESSION_ID="$STARTUP_SESSION_ID"
-      MILADY_STARTUP_STATE_FILE="$STARTUP_STATE_FILE"
-      MILADY_STARTUP_EVENTS_FILE="$STARTUP_EVENTS_FILE"
-      MILADY_FORCE_AUTOSTART_AGENT=1
+      ELIZA_STARTUP_SESSION_ID="$STARTUP_SESSION_ID"
+      ELIZA_STARTUP_STATE_FILE="$STARTUP_STATE_FILE"
+      ELIZA_STARTUP_EVENTS_FILE="$STARTUP_EVENTS_FILE"
+      ELIZA_FORCE_AUTOSTART_AGENT=1
       "$LAUNCHER_PATH"
     )
   else
     LAUNCH_COMMAND=(
       /usr/bin/env
-      MILADY_STARTUP_SESSION_ID="$STARTUP_SESSION_ID"
-      MILADY_STARTUP_STATE_FILE="$STARTUP_STATE_FILE"
-      MILADY_STARTUP_EVENTS_FILE="$STARTUP_EVENTS_FILE"
-      MILADY_FORCE_AUTOSTART_AGENT=1
+      ELIZA_STARTUP_SESSION_ID="$STARTUP_SESSION_ID"
+      ELIZA_STARTUP_STATE_FILE="$STARTUP_STATE_FILE"
+      ELIZA_STARTUP_EVENTS_FILE="$STARTUP_EVENTS_FILE"
+      ELIZA_FORCE_AUTOSTART_AGENT=1
       "$LAUNCHER_PATH"
     )
   fi
@@ -502,7 +505,7 @@ probe_macos_bundle_exec_support() {
 
   local probe_root=""
   local probe_exec=""
-  probe_root="$(mktemp -d /tmp/milady-smoke-probe.XXXXXX)"
+  probe_root="$(mktemp -d /tmp/eliza-smoke-probe.XXXXXX)"
   probe_exec="$probe_root/Probe.app/Contents/MacOS/hello"
   mkdir -p "$(dirname "$probe_exec")"
   cat >"$probe_exec" <<'EOF'
@@ -535,7 +538,7 @@ EOF
 
 launch_packaged_app_with_open() {
   OPEN_LAUNCH_ATTEMPTED="1"
-  OPEN_LAUNCH_OUTPUT="$(mktemp /tmp/milady-smoke-open.stderr.XXXXXX)"
+  OPEN_LAUNCH_OUTPUT="$(mktemp /tmp/eliza-smoke-open.stderr.XXXXXX)"
   if /usr/bin/open -n "$LAUNCH_APP_BUNDLE" >"$LAUNCHER_STDOUT" 2>"$OPEN_LAUNCH_OUTPUT"; then
     OPEN_LAUNCH_EXIT_CODE="0"
   else
@@ -545,8 +548,8 @@ launch_packaged_app_with_open() {
 }
 
 launch_packaged_app() {
-  LAUNCHER_STDOUT="$(mktemp /tmp/milady-smoke-launcher.stdout.XXXXXX)"
-  LAUNCHER_STDERR="$(mktemp /tmp/milady-smoke-launcher.stderr.XXXXXX)"
+  LAUNCHER_STDOUT="$(mktemp /tmp/eliza-smoke-launcher.stdout.XXXXXX)"
+  LAUNCHER_STDERR="$(mktemp /tmp/eliza-smoke-launcher.stderr.XXXXXX)"
 
   if [[ "$(uname)" == "Darwin" ]]; then
     local requested_launch_mode="$MAC_LAUNCH_MODE"
@@ -584,7 +587,7 @@ find_live_packaged_pid() {
 
   local bundle_regex=""
   bundle_regex="$(escape_regex "$LAUNCH_APP_BUNDLE")"
-  pgrep -f "${bundle_regex}/Contents/MacOS/launcher|${bundle_regex}/Contents/MacOS/bun|${bundle_regex}/Contents/Resources/main\\.js|${bundle_regex}/Contents/Resources/app/bun/index\\.js|${bundle_regex}/Contents/Resources/app/milady-dist/entry\\.js" | head -1 || true
+  pgrep -f "${bundle_regex}/Contents/MacOS/launcher|${bundle_regex}/Contents/MacOS/bun|${bundle_regex}/Contents/Resources/main\\.js|${bundle_regex}/Contents/Resources/app/bun/index\\.js|${bundle_regex}/Contents/Resources/app/eliza-dist/entry\\.js" | head -1 || true
 }
 
 assert_packaged_asset() {
@@ -694,9 +697,9 @@ verify_packaged_renderer_assets() {
   if [[ -d "$renderer_dir" ]]; then
     assert_packaged_asset "$renderer_dir/index.html" "renderer entrypoint" 256
     assert_packaged_asset_variants "default avatar VRM" 1024 \
-      "$renderer_dir/vrms/milady-1.vrm.gz" \
-      "$renderer_dir/vrms/milady-1.vrm"
-    assert_packaged_asset "$renderer_dir/vrms/backgrounds/milady-1.png" "default avatar background" 1024
+      "$renderer_dir/vrms/eliza-1.vrm.gz" \
+      "$renderer_dir/vrms/eliza-1.vrm"
+    assert_packaged_asset "$renderer_dir/vrms/backgrounds/eliza-1.png" "default avatar background" 1024
     assert_packaged_asset_variants "default idle animation" 1024 \
       "$renderer_dir/animations/idle.glb.gz" \
       "$renderer_dir/animations/idle.glb"
@@ -709,9 +712,9 @@ verify_packaged_renderer_assets() {
     archive_bundle_root="$(basename "$LAUNCH_APP_BUNDLE")/Contents/Resources/app/renderer"
     assert_packaged_archive_asset "$RUNTIME_ARCHIVE" "$archive_bundle_root/index.html" "renderer entrypoint" 256
     assert_packaged_archive_asset_variants "$RUNTIME_ARCHIVE" "default avatar VRM" 1024 \
-      "$archive_bundle_root/vrms/milady-1.vrm.gz" \
-      "$archive_bundle_root/vrms/milady-1.vrm"
-    assert_packaged_archive_asset "$RUNTIME_ARCHIVE" "$archive_bundle_root/vrms/backgrounds/milady-1.png" "default avatar background" 1024
+      "$archive_bundle_root/vrms/eliza-1.vrm.gz" \
+      "$archive_bundle_root/vrms/eliza-1.vrm"
+    assert_packaged_archive_asset "$RUNTIME_ARCHIVE" "$archive_bundle_root/vrms/backgrounds/eliza-1.png" "default avatar background" 1024
     assert_packaged_archive_asset_variants "$RUNTIME_ARCHIVE" "default idle animation" 1024 \
       "$archive_bundle_root/animations/idle.glb.gz" \
       "$archive_bundle_root/animations/idle.glb"
@@ -728,7 +731,7 @@ verify_packaged_renderer_assets() {
 trap cleanup EXIT
 
 echo "============================================================"
-echo " Milady Electrobun Smoke Test"
+echo " Eliza Electrobun Smoke Test"
 echo " Build env  : $BUILD_ENV"
 echo " Working dir: $ELECTROBUN_DIR"
 echo "============================================================"
@@ -739,12 +742,12 @@ if [[ "$SKIP_BUILD" == "1" ]]; then
   echo "[1/7] Reusing existing packaged artifact (SKIP_BUILD=1)..."
 else
   echo "[1/7] Building core dist + renderer assets..."
-  (cd "$REPO_ROOT" && bunx tsdown && echo '{"type":"module"}' > dist/package.json && node --import tsx scripts/write-build-info.ts)
+  (cd "$REPO_ROOT" && bunx tsdown && echo '{"type":"module"}' > "$PACKAGED_DIST_DIR/package.json" && node --import tsx "$APP_CORE_SCRIPTS_DIR/write-build-info.ts")
   (cd "$APP_DIR" && npx vite build)
   echo ""
 
   echo "[2/7] Bundling runtime node_modules into dist/..."
-  (cd "$REPO_ROOT" && node --import tsx scripts/copy-runtime-node-modules.ts --scan-dir dist --target-dist dist)
+  (cd "$REPO_ROOT" && node --import tsx "$APP_CORE_SCRIPTS_DIR/copy-runtime-node-modules.ts" --scan-dir "$PACKAGED_DIST_DIR" --target-dist "$PACKAGED_DIST_DIR")
   echo ""
 
   if [[ "$(uname)" == "Darwin" ]]; then
@@ -821,7 +824,7 @@ echo "Size : $(du -sh "$APP_BUNDLE" | cut -f1)"
 
 RUNTIME_ARCHIVE="$(find "$APP_BUNDLE/Contents/Resources" -maxdepth 1 -name "*.tar.zst" -type f -print -quit 2>/dev/null || true)"
 DIRECT_WGPU_DYLIB="$APP_BUNDLE/Contents/MacOS/libwebgpu_dawn.dylib"
-DIRECT_RUNTIME_DIR="$APP_BUNDLE/Contents/Resources/app/milady-dist"
+DIRECT_RUNTIME_DIR="$APP_BUNDLE/Contents/Resources/app/eliza-dist"
 if [[ -n "$RUNTIME_ARCHIVE" ]]; then
   if ! tar --zstd -tf "$RUNTIME_ARCHIVE" | grep -q "Contents/MacOS/libwebgpu_dawn\\.dylib$"; then
     echo "ERROR: Bundled Dawn runtime not found inside $RUNTIME_ARCHIVE"
@@ -883,7 +886,7 @@ echo ""
 # ── 7. Launch + backend health + liveness check ──────────────────────────────
 echo "[7/7] Launching app for backend + liveness check..."
 if [[ -n "$MOUNT_POINT" ]]; then
-  LAUNCH_APP_DIR="$(mktemp -d /tmp/milady-smoke-app.XXXXXX)"
+  LAUNCH_APP_DIR="$(mktemp -d /tmp/eliza-smoke-app.XXXXXX)"
   LAUNCH_APP_BUNDLE="$LAUNCH_APP_DIR/$(basename "$APP_BUNDLE")"
   ditto "$APP_BUNDLE" "$LAUNCH_APP_BUNDLE"
   if [[ "$(uname)" == "Darwin" ]]; then
@@ -1063,6 +1066,19 @@ else
   cat "$LAUNCHER_STDERR" 2>/dev/null || true
   dump_failure_diagnostics "packaged app process did not stay alive"
   exit 1
+fi
+
+if [[ "$RUN_PACKAGED_PLAYWRIGHT" != "0" ]]; then
+  echo "Running packaged desktop regression assertions..."
+  kill_stale_processes
+  (
+    cd "$APP_DIR"
+    bunx playwright test \
+      --config playwright.electrobun.packaged.config.ts \
+      test/electrobun-packaged/electrobun-packaged-regressions.e2e.spec.ts
+  )
+  kill_stale_processes
+  echo "Packaged desktop regression assertions PASSED."
 fi
 
 echo ""

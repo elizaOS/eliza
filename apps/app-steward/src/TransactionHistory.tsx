@@ -6,14 +6,14 @@ import type {
   StewardTxRecord,
   StewardTxStatus,
 } from "@elizaos/shared/contracts/wallet";
+import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Spinner } from "@elizaos/ui/components/ui/spinner";
 import {
-  Button,
-  PagePanel,
-  Spinner,
   StatusBadge,
   statusLabelForState,
   statusToneForState,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/status-badge";
 import { Copy, ExternalLink, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {

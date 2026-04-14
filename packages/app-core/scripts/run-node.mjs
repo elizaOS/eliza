@@ -7,7 +7,7 @@ import {
   chooseElizaRuntime,
   resolveRuntimeExecPath,
 } from "./run-node-runtime.mjs";
-import { syncElizaEnvAliases } from "../../../../scripts/lib/sync-eliza-env-aliases.mjs";
+import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.mjs";
 
 const args = process.argv.slice(2);
 const cwd = process.cwd();

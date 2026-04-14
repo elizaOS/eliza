@@ -1,11 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
+import { registerEscalationChannel } from "../services/escalation.js";
 import type {
   SignalPairingEvent,
   SignalPairingSnapshot,
   SignalPairingStatus,
 } from "../services/signal-pairing.js";
-import { registerEscalationChannel } from "../services/escalation.js";
 import { readJsonBody as parseJsonBody, sendJson } from "./http-helpers.js";
 import { setOwnerContact } from "./owner-contact-helpers.js";
 
@@ -94,8 +94,11 @@ export async function handleSignalRoute(
   state: SignalRouteState,
   deps: SignalRouteDeps,
 ): Promise<boolean> {
-  const signalPairingSnapshots =
-    state.signalPairingSnapshots ?? (state.signalPairingSnapshots = new Map());
+  let signalPairingSnapshots = state.signalPairingSnapshots;
+  if (!signalPairingSnapshots) {
+    signalPairingSnapshots = new Map();
+    state.signalPairingSnapshots = signalPairingSnapshots;
+  }
 
   if (!pathname.startsWith("/api/signal")) return false;
 
@@ -132,8 +135,9 @@ export async function handleSignalRoute(
     state.signalPairingSessions.get(accountId)?.stop();
     signalPairingSnapshots.delete(accountId);
     const signalConfig =
-      (state.config.connectors?.signal as Record<string, unknown> | undefined) ??
-      {};
+      (state.config.connectors?.signal as
+        | Record<string, unknown>
+        | undefined) ?? {};
     const configuredCliPath =
       typeof signalConfig.cliPath === "string" && signalConfig.cliPath.trim()
         ? signalConfig.cliPath.trim()
@@ -250,11 +254,7 @@ export async function handleSignalRoute(
             Boolean(sigService.connected) ||
             Boolean(sigService.isConnected) ||
             (typeof sigService.isServiceConnected === "function" &&
-              Boolean(
-                (
-                  sigService.isServiceConnected as () => boolean
-                )(),
-              ));
+              Boolean((sigService.isServiceConnected as () => boolean)()));
         }
       } catch {
         /* service not yet registered */

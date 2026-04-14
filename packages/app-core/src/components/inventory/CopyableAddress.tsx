@@ -1,9 +1,5 @@
-/**
- * Truncated wallet address with a copy button.
- */
-
-import { useTimeout } from "@elizaos/app-core/hooks";
-import { Button } from "@elizaos/app-core";
+import { useTimeout } from "@elizaos/ui/hooks/useTimeout";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { useState } from "react";
 
 export function CopyableAddress({

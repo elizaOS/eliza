@@ -1,33 +1,21 @@
-/**
- * Chat view component.
- *
- * Layout: flex column filling parent. Header row (title + clear + toggles).
- * Scrollable messages area. Share/file notices below messages.
- * Input row at bottom with mic + textarea + send button.
- */
-
 import type {
   ConversationMessage,
   ImageAttachment,
-} from "@elizaos/app-core/api";
-import { client } from "@elizaos/app-core/api";
-import { isRoutineCodingAgentMessage } from "@elizaos/app-core/chat";
-import { useChatAvatarVoiceBridge } from "@elizaos/app-core/hooks";
-import {
-  getVrmPreviewUrl,
-  useApp,
-  useChatComposer,
-  usePtySessions,
-} from "@elizaos/app-core/state";
-import {
-  ChatAttachmentStrip,
-  ChatComposer,
-  ChatComposerShell,
-  ChatSourceIcon,
-  ChatThreadLayout,
-  ChatTranscript,
-  TypingIndicator,
-} from "@elizaos/app-core";
+} from "../../api/client-types-chat";
+import { client } from "../../api/client";
+import { isRoutineCodingAgentMessage } from "../../chat";
+import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
+import { useChatComposer } from "../../state/ChatComposerContext";
+import { usePtySessions } from "../../state/PtySessionsContext";
+import { useApp } from "../../state/useApp";
+import { getVrmPreviewUrl } from "../../state/vrm";
+import { ChatAttachmentStrip } from "@elizaos/ui/components/composites/chat/chat-attachment-strip";
+import { ChatComposer } from "@elizaos/ui/components/composites/chat/chat-composer";
+import { ChatComposerShell } from "@elizaos/ui/components/composites/chat/chat-composer-shell";
+import { ChatSourceIcon } from "@elizaos/ui/components/composites/chat/chat-source";
+import { ChatThreadLayout } from "@elizaos/ui/components/composites/chat/chat-thread-layout";
+import { ChatTranscript } from "@elizaos/ui/components/composites/chat/chat-transcript";
+import { TypingIndicator } from "@elizaos/ui/components/composites/chat/chat-typing-indicator";
 import {
   type ChangeEvent,
   type DragEvent,

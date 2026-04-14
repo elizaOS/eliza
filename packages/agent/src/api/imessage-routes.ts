@@ -110,9 +110,7 @@ export interface IMessageRouteState {
 const IMESSAGE_SERVICE_NAME = "imessage";
 const MAX_BODY_BYTES = 256 * 1024; // Contacts payloads are tiny; cap aggressively.
 
-function resolveService(
-  state: IMessageRouteState,
-): IMessageServiceLike | null {
+function resolveService(state: IMessageRouteState): IMessageServiceLike | null {
   if (!state.runtime) return null;
   const raw = state.runtime.getService(IMESSAGE_SERVICE_NAME);
   return (raw as IMessageServiceLike | null | undefined) ?? null;

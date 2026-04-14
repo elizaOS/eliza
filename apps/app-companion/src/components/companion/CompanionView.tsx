@@ -1,5 +1,8 @@
-import { useRenderGuard } from "@elizaos/app-core/hooks";
-import { useApp, usePtySessions } from "@elizaos/app-core/state";
+import { PtyConsoleSidePanel } from "@elizaos/app-coding";
+import { ChatModalView } from "@elizaos/app-core/components/pages/ChatModalView";
+import { useRenderGuard } from "@elizaos/app-core/hooks/useRenderGuard";
+import { usePtySessions } from "@elizaos/app-core/state/PtySessionsContext";
+import { useApp } from "@elizaos/app-core/state/useApp";
 import {
   lazy,
   memo,
@@ -9,16 +12,14 @@ import {
   useMemo,
   useState,
 } from "react";
-import { ChatModalView } from "@elizaos/app-core/components/pages/ChatModalView";
-import { useCompanionSceneStatus } from "./companion-scene-status-context";
 import { CompanionHeader, type CompanionShellView } from "./CompanionHeader";
 import { CompanionSceneHost } from "./CompanionSceneHost";
+import { useCompanionSceneStatus } from "./companion-scene-status-context";
 import { InferenceCloudAlertButton } from "./InferenceCloudAlertButton";
 import { resolveCompanionInferenceNotice } from "./resolve-companion-inference-notice";
-import { PtyConsoleSidePanel } from "@elizaos/app-coding";
 
 const CharacterEditor = lazy(() =>
-  import("@elizaos/app-core/components/character/CharacterEditor").then((m) => ({
+  import("@elizaos/app-core").then((m) => ({
     default: m.CharacterEditor,
   })),
 );
@@ -94,8 +95,7 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
     () => setPtySidePanelSessionId(null),
     [],
   );
-  const { avatarReady: sceneAvatarReady, teleportKey } =
-    useCompanionSceneStatus();
+  const { avatarReady: sceneAvatarReady } = useCompanionSceneStatus();
 
   // Gate chat + header behind avatar load — don't show chat or play
   // greeting speech until the VRM finishes its teleport-in animation.
@@ -112,7 +112,7 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
     return () => {
       window.clearTimeout(fallbackTimer);
     };
-  }, [sceneAvatarReady, teleportKey]);
+  }, [sceneAvatarReady]);
   const avatarReady = sceneAvatarReady || avatarReadyFallback;
 
   const handleExitToDesktop = useCallback(() => {

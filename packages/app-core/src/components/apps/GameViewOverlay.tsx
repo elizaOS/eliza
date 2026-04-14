@@ -1,11 +1,4 @@
-/**
- * GameViewOverlay — compact floating iframe overlay that persists across tabs.
- *
- * Rendered at the App.tsx level so it stays visible when the user navigates
- * away from the Apps tab. Provides drag, resize, and close controls.
- */
-
-import { Button } from "@elizaos/app-core";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../../state";
 import {

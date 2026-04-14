@@ -17,7 +17,7 @@ import {
 type Framework = "claude" | "codex";
 type Mode = "sequential" | "web";
 
-const KEEP_ARTIFACTS = process.env.MILADY_KEEP_LIVE_ARTIFACTS === "1";
+const KEEP_ARTIFACTS = process.env.ELIZA_KEEP_LIVE_ARTIFACTS === "1";
 
 async function createRuntime(settings: Record<string, unknown> = {}): Promise<{
   runtime: AgentRuntime;
@@ -289,7 +289,7 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
   const reference = await startReferenceServer(`<!doctype html>
 <html>
   <body>
-    <h1>Milady Benchmark Ready</h1>
+    <h1>Benchmark Ready</h1>
     <p>Task agents stay reusable.</p>
     <p>Codex and Claude Code should both handle research and serving tasks.</p>
   </body>
@@ -306,7 +306,7 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
         workdir,
         task:
           `Open the reference page at ${reference.url} and read it using your web or browser tools. ` +
-          `Create an index.html in the current directory that includes the exact phrases "Milady Benchmark Ready" and "Task agents stay reusable." ` +
+          `Create an index.html in the current directory that includes the exact phrases "Benchmark Ready" and "Task agents stay reusable." ` +
           `Then start a local HTTP server in the background from the current directory with ` +
           `"python3 -m http.server ${agentPort} >/tmp/${serveSentinel}.log 2>&1 & echo $! > server.pid", ` +
           `print exactly "${serveSentinel}", and keep the server available until I stop you. ` +
@@ -344,7 +344,7 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
       const html = await fetchTextIfAvailable(`http://127.0.0.1:${agentPort}/index.html`);
       if (!html) return false;
       return (
-        html.includes("Milady Benchmark Ready") &&
+        html.includes("Benchmark Ready") &&
         html.includes("Task agents stay reusable.") &&
         (cleanForChat(await service.getSessionOutput(sessionId)).includes(serveSentinel) ||
           sawTaskCompletion(events, webTaskEventStart))

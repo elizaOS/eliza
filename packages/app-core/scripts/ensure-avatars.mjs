@@ -46,7 +46,7 @@ const UNUSED_ANIMATION_PATHS = [
 // Pinned to a specific commit for reproducible installs (supply-chain safety).
 const AVATARS_REPO = "https://github.com/elizaos/avatars.git";
 const AVATARS_COMMIT = "50f6bf0ad6db583581d4cbaeb377ca005b45195b";
-const AVATARS_REF = process.env.MILADY_AVATARS_REF?.trim() || "";
+const AVATARS_REF = process.env.ELIZA_AVATARS_REF?.trim() || "";
 const TAG = "[ensure-avatars]";
 const CHARACTERS_VRM = join(ROOT, "apps", "app", "characters", "vrm");
 
@@ -217,7 +217,7 @@ export function runEnsureAvatars({
 
     // Clone and checkout pinned commit for reproducibility.
     // Uses --depth 1 + fetch for speed (avoids full history). When an explicit
-    // ref/tag is supplied via MILADY_AVATARS_REF we clone that shallow ref first.
+    // ref/tag is supplied via ELIZA_AVATARS_REF we clone that shallow ref first.
     const cloneArgs = AVATARS_REF
       ? `git clone --depth 1 --branch "${AVATARS_REF}" ${AVATARS_REPO} "${tmpDir}"`
       : `git clone --depth 1 ${AVATARS_REPO} "${tmpDir}"`;

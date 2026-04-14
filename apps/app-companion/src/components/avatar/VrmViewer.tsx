@@ -5,16 +5,14 @@
  * the `mouthOpen` prop. Sized to fill its parent container.
  */
 
-import { useEffect, useEffectEvent, useRef } from "react";
-import {
-  CHAT_AVATAR_VOICE_EVENT,
-  type ChatAvatarVoiceEventDetail,
-} from "@elizaos/app-core/events";
+import type { ChatAvatarVoiceEventDetail } from "@elizaos/app-core/events";
+import { CHAT_AVATAR_VOICE_EVENT } from "@elizaos/app-core/events";
 import type {
   CompanionHalfFramerateMode,
   CompanionVrmPowerMode,
-} from "@elizaos/app-core/state";
-import { getVrmCount, getVrmUrl } from "@elizaos/app-core/state";
+} from "@elizaos/app-core/state/types";
+import { getVrmCount, getVrmUrl } from "@elizaos/app-core/state/vrm";
+import { useEffect, useEffectEvent, useRef } from "react";
 import {
   type CameraProfile,
   type InteractionMode,
@@ -290,7 +288,7 @@ export function VrmViewer(props: VrmViewerProps) {
     mountedRef.current = true;
 
     let engine = engineRef.current;
-    if (!engine || !engine.isInitialized()) {
+    if (!engine?.isInitialized()) {
       engine = props.createEngine ? props.createEngine() : new VrmEngine();
       engineRef.current = engine;
     }
@@ -403,7 +401,7 @@ export function VrmViewer(props: VrmViewerProps) {
       }
       syncDebugRegistry();
     };
-  }, []);
+  }, [props.createEngine]);
 
   useEffect(() => {
     const engine = engineRef.current;

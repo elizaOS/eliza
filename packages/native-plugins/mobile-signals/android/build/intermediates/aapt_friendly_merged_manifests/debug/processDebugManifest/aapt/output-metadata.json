@@ -4,7 +4,7 @@
     "type": "AAPT_FRIENDLY_MERGED_MANIFESTS",
     "kind": "Directory"
   },
-  "applicationId": "ai.milady.plugins.mobilesignals",
+  "applicationId": "ai.elizaos.plugins.mobilesignals",
   "variantName": "debug",
   "elements": [
     {

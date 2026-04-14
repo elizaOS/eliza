@@ -191,7 +191,7 @@ if [[ -n "$CONFIG_FILE" ]]; then
   load_env_file "$CONFIG_FILE"
 fi
 
-APP_IMAGE="${APP_IMAGE:-${MILADY_IMAGE:-eliza:local}}"
+APP_IMAGE="${APP_IMAGE:-eliza:local}"
 APP_REGISTRY="${APP_REGISTRY:-}"
 DEFAULT_IMAGE="$(default_image_ref)"
 

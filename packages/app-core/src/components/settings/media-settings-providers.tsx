@@ -1,17 +1,13 @@
-/**
- * Provider-specific config panels and desktop media controls for media settings.
- */
-
+import { Button } from "@elizaos/ui/components/ui/button";
 import {
-  Button,
   Select,
   SelectContent,
   SelectGroup,
   SelectItem,
   SelectLabel,
   SelectValue,
-  SettingsControls,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/select";
+import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getPlugins,

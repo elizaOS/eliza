@@ -1,14 +1,7 @@
-/**
- * MediaSettingsSection — provider selection + config for media generation.
- *
- * Follows the TTS pattern from CharacterView:
- *   - "cloud" vs "own-key" mode toggle
- *   - Provider button grid
- *   - Conditional API key inputs
- *   - Status badges (Configured / Needs Setup)
- */
-
-import { Button, SaveFooter, SettingsControls, Switch } from "@elizaos/app-core";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { SaveFooter } from "@elizaos/ui/components/ui/save-footer";
+import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
+import { Switch } from "@elizaos/ui/components/ui/switch";
 import { useCallback, useEffect, useState } from "react";
 import {
   type AudioGenProvider,
@@ -36,9 +29,6 @@ import {
   getNestedValue,
   getProvidersForCategory,
   MEDIA_API_SOURCE_CATEGORY_KEYS,
-  MEDIA_SEGMENT_BUTTON_ACTIVE_CLASSNAME,
-  MEDIA_SEGMENT_BUTTON_CLASSNAME,
-  MEDIA_SEGMENT_BUTTON_INACTIVE_CLASSNAME,
   type MediaCategory,
   setNestedValue,
 } from "./media-settings-types";
@@ -222,10 +212,10 @@ export function MediaSettingsSection() {
                   type="button"
                   variant={active ? "default" : "ghost"}
                   size="sm"
-                  className={`${MEDIA_SEGMENT_BUTTON_CLASSNAME} ${
+                  className={`flex-1 basis-[calc(50%-0.125rem)] sm:basis-0 min-h-touch rounded-lg border px-2 py-1.5 text-xs-tight font-semibold !whitespace-normal ${
                     active
-                      ? MEDIA_SEGMENT_BUTTON_ACTIVE_CLASSNAME
-                      : MEDIA_SEGMENT_BUTTON_INACTIVE_CLASSNAME
+                      ? "border-accent/45 bg-accent/16 text-txt-strong shadow-sm"
+                      : "border-border/40 text-muted-strong hover:border-border-strong hover:bg-bg-hover hover:text-txt"
                   }`}
                   onClick={() => setCompanionVrmPowerMode(mode)}
                   aria-pressed={active}
@@ -256,10 +246,10 @@ export function MediaSettingsSection() {
                     type="button"
                     variant={active ? "default" : "ghost"}
                     size="sm"
-                    className={`${MEDIA_SEGMENT_BUTTON_CLASSNAME} ${
+                    className={`flex-1 basis-[calc(50%-0.125rem)] sm:basis-0 min-h-touch rounded-lg border px-2 py-1.5 text-xs-tight font-semibold !whitespace-normal ${
                       active
-                        ? MEDIA_SEGMENT_BUTTON_ACTIVE_CLASSNAME
-                        : MEDIA_SEGMENT_BUTTON_INACTIVE_CLASSNAME
+                        ? "border-accent/45 bg-accent/16 text-txt-strong shadow-sm"
+                        : "border-border/40 text-muted-strong hover:border-border-strong hover:bg-bg-hover hover:text-txt"
                     }`}
                     onClick={() => setCompanionHalfFramerateMode(mode)}
                     aria-pressed={active}
@@ -329,8 +319,8 @@ export function MediaSettingsSection() {
                 size="sm"
                 className={`flex-1 basis-[calc(50%-0.125rem)] sm:basis-0 min-h-touch rounded-lg border px-2 py-2 text-2xs sm:text-xs font-semibold !whitespace-normal ${
                   active
-                    ? MEDIA_SEGMENT_BUTTON_ACTIVE_CLASSNAME
-                    : MEDIA_SEGMENT_BUTTON_INACTIVE_CLASSNAME
+                    ? "border-accent/45 bg-accent/16 text-txt-strong shadow-sm"
+                    : "border-border/40 text-muted-strong hover:border-border-strong hover:bg-bg-hover hover:text-txt"
                 }`}
                 onClick={() => setActiveTab(cat)}
               >

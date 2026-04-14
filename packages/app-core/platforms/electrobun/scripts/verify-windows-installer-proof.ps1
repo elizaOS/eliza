@@ -9,12 +9,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-function Stop-MiladyProcesses() {
+function Stop-ElizaProcesses() {
   Get-Process -ErrorAction SilentlyContinue |
     Where-Object {
       $_.ProcessName -in @("launcher", "bun") -or
-      $_.ProcessName -like "Milady*" -or
-      $_.ProcessName -like "Milady-Setup*"
+      $_.ProcessName -like "Eliza*" -or
+      $_.ProcessName -like "Eliza-Setup*"
     } |
     Stop-Process -Force
 }
@@ -37,7 +37,7 @@ try {
   $resolvedBuildDir = $null
 }
 
-$startupLog = Join-Path $env:APPDATA "Milady\\milady-startup.log"
+$startupLog = Join-Path $env:APPDATA "Eliza\\eliza-startup.log"
 $proofTimestamp = (Get-Date).ToString("o")
 $summaryPath = Join-Path $OutputDir "proof-summary.json"
 $summary = [ordered]@{
@@ -68,26 +68,26 @@ Remove-Item $OutputDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 try {
-  Stop-MiladyProcesses
+  Stop-ElizaProcesses
   Remove-Item $ProofInstallDir -Recurse -Force -ErrorAction SilentlyContinue
 
-  $installer = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "Milady-Setup-*.exe" -ErrorAction SilentlyContinue |
+  $installer = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "Eliza-Setup-*.exe" -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
   if (-not $installer) {
-    throw "No canonical installer found in $resolvedArtifactsDir (Milady-Setup-*.exe)."
+    throw "No canonical installer found in $resolvedArtifactsDir (Eliza-Setup-*.exe)."
   }
 
   $summary.installer = $installer.FullName
   $summary.installerSizeBytes = [int64]$installer.Length
 
-  $env:MILADY_WINDOWS_SMOKE_REQUIRE_INSTALLER = "1"
-  $env:MILADY_TEST_WINDOWS_INSTALL_DIR = $ProofInstallDir
-  $env:MILADY_TEST_WINDOWS_LAUNCHER_DIR = Join-Path $env:RUNNER_TEMP "milady-windows-proof-launcher"
-  $env:MILADY_TEST_WINDOWS_LAUNCHER_PATH_FILE = Join-Path $env:RUNNER_TEMP "milady-windows-proof-launcher.txt"
+  $env:ELIZA_WINDOWS_SMOKE_REQUIRE_INSTALLER = "1"
+  $env:ELIZA_TEST_WINDOWS_INSTALL_DIR = $ProofInstallDir
+  $env:ELIZA_TEST_WINDOWS_LAUNCHER_DIR = Join-Path $env:RUNNER_TEMP "eliza-windows-proof-launcher"
+  $env:ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE = Join-Path $env:RUNNER_TEMP "eliza-windows-proof-launcher.txt"
 
-  Remove-Item $env:MILADY_TEST_WINDOWS_LAUNCHER_DIR -Recurse -Force -ErrorAction SilentlyContinue
-  Remove-Item $env:MILADY_TEST_WINDOWS_LAUNCHER_PATH_FILE -Force -ErrorAction SilentlyContinue
+  Remove-Item $env:ELIZA_TEST_WINDOWS_LAUNCHER_DIR -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item $env:ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE -Force -ErrorAction SilentlyContinue
 
   pwsh -File (Join-Path $PSScriptRoot "smoke-test-windows.ps1") `
     -ArtifactsDir $resolvedArtifactsDir `
@@ -123,7 +123,7 @@ try {
     }
 
     $candidate = Get-ChildItem -Path $root -Recurse -File -Filter "*.lnk" -ErrorAction SilentlyContinue |
-      Where-Object { $_.Name -match "Milady" } |
+      Where-Object { $_.Name -match "Eliza" } |
       Sort-Object LastWriteTime -Descending |
       Select-Object -First 1
     if ($candidate) {
@@ -133,7 +133,7 @@ try {
   }
 
   if (-not $shortcut) {
-    throw "Start Menu shortcut containing 'Milady' was not found."
+    throw "Start Menu shortcut containing 'Eliza' was not found."
   }
 
   $summary.startMenuShortcut = $shortcut.FullName
@@ -152,7 +152,7 @@ try {
   }
   $summary.uninstallerPath = $uninstaller.FullName
 
-  Stop-MiladyProcesses
+  Stop-ElizaProcesses
 
   $uninstallArgs = @(
     "/VERYSILENT",
@@ -179,9 +179,9 @@ try {
   throw
 } finally {
   if (Test-Path $startupLog) {
-    Copy-Item $startupLog -Destination (Join-Path $OutputDir "milady-startup.log") -Force -ErrorAction SilentlyContinue
+    Copy-Item $startupLog -Destination (Join-Path $OutputDir "eliza-startup.log") -Force -ErrorAction SilentlyContinue
   }
 
   $summary | ConvertTo-Json -Depth 8 | Set-Content -Path $summaryPath -Encoding utf8
-  Stop-MiladyProcesses
+  Stop-ElizaProcesses
 }

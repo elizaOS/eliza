@@ -1,4 +1,4 @@
 export {
   useDocumentVisibility,
   useIntervalWhenDocumentVisible,
-} from "../ui/hooks/useDocumentVisibility";
+} from "@elizaos/ui/hooks/useDocumentVisibility";

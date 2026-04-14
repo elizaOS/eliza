@@ -6,13 +6,10 @@
  * **ElevenLabs** voice and model ids; the cloud runs ElevenLabs server-side.
  */
 import type http from "node:http";
-import { sanitizeSpeechText } from "@elizaos/agent";
 import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared/contracts";
+import { sanitizeSpeechText } from "@elizaos/shared/spoken-text";
 import { loadElizaConfig } from "../config/config";
-import {
-  ttsDebug,
-  ttsDebugTextPreview,
-} from "../utils/tts-debug";
+import { ttsDebug, ttsDebugTextPreview } from "../utils/tts-debug";
 import { getCloudSecret } from "./cloud-secrets";
 
 // ---------------------------------------------------------------------------

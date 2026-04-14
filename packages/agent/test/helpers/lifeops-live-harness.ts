@@ -12,12 +12,13 @@ import {
 import { createLiveRuntimeChildEnv } from "../../../../../test/helpers/live-child-env.ts";
 
 export const LIVE_TESTS_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" ||
+  process.env.ELIZA_LIVE_TEST === "1";
 export const LIVE_PROVIDER_OVERRIDE =
   process.env.ELIZA_LIVE_PROVIDER?.trim().toLowerCase() ?? "";
 export const LIVE_CHAT_TEST_TIMEOUT_MS = 300_000;
 export const LIVE_RUNTIME_BOOT_TIMEOUT_MS = 180_000;
-/** Milady monorepo root (parent of `eliza/`). */
+/** Monorepo root (parent of `eliza/`). */
 export const REPO_ROOT = path.resolve(
   import.meta.dirname,
   "..",
@@ -631,8 +632,6 @@ export async function startLifeOpsLiveRuntime(options?: {
     env: createLiveRuntimeChildEnv({
       ...buildSelectedLiveProviderEnv(selectedProvider),
       ELIZA_CONFIG_PATH: configPath,
-      ELIZA_CONFIG_PATH: configPath,
-      ELIZA_STATE_DIR: stateDir,
       ELIZA_STATE_DIR: stateDir,
       PGLITE_DATA_DIR: pgliteDir,
       ELIZA_PORT: String(apiPort),

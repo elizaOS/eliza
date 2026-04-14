@@ -144,7 +144,7 @@ class WakeWordGate {
   private fuzzyMatch(word: string, target: string): boolean {
     if (word === target) return true;
     const variations: Record<string, string[]> = {
-      milady: ["melody", "milady", "my lady", "malady"],
+      eliza: ["melody", "eliza", "my lady", "malady"],
       alexa: ["alexia", "alexis"],
       hey: ["hay", "hi"],
       ok: ["okay", "o.k."],
@@ -165,7 +165,7 @@ export class SwabbleManager {
   private sendToWebview: SendToWebview | null = null;
   private listening = false;
   private config: SwabbleConfig = {
-    triggers: ["hey milady", "milady"],
+    triggers: ["hey eliza", "eliza"],
     minPostTriggerGap: 0.45,
     minCommandLength: 1,
     enabled: true,
@@ -284,7 +284,7 @@ export class SwabbleManager {
       // Write to temp WAV file
       const tmpPath = path.join(
         os.tmpdir(),
-        `milady-swabble-${Date.now()}.wav`,
+        `elizaos-swabble-${Date.now()}.wav`,
       );
       writeWavFile(tmpPath, float32, 16000, 1);
 

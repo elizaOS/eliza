@@ -12,12 +12,14 @@ import {
   AdminDialogContent,
   AdminDialogHeader,
   AdminMonoMeta,
-  Button,
+} from "@elizaos/ui/components/ui/admin-dialog";
+import { Button } from "@elizaos/ui/components/ui/button";
+import {
   Dialog,
   DialogDescription,
   DialogTitle,
-  Input,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/dialog";
+import { Input } from "@elizaos/ui/components/ui/input";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { InstallModal } from "./skill-marketplace";
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { actionsProvider } from "../basic-capabilities/providers/actions";
-import { providersProvider } from "../basic-capabilities/providers/providers";
+import { actionsProvider } from "../features/basic-capabilities/providers/actions";
+import { providersProvider } from "../features/basic-capabilities/providers/providers";
 import type { IAgentRuntime, Memory } from "../types";
 import type { Action, Provider } from "../types/components";
 import type { State } from "../types/state";

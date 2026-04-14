@@ -469,7 +469,7 @@ export interface DesktopBugReportBundleInfo {
 // ============================================================================
 
 /** @deprecated Use ElizaDesktopRPCSchema instead. */
-export type MiladyRPCSchema = ElizaDesktopRPCSchema;
+export type ElizaDesktopRPCSchema = ElizaDesktopRPCSchema;
 
 export type ElizaDesktopRPCSchema = {
   bun: RPCSchema<{

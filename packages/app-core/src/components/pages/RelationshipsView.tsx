@@ -1,22 +1,20 @@
-import {
-  client,
-  type RelationshipsActivityItem,
-  type RelationshipsGraphQuery,
-  type RelationshipsGraphSnapshot,
-  type RelationshipsPersonDetail,
-  type RelationshipsPersonSummary,
-} from "@elizaos/app-core/api";
-import {
-  Button,
-  MetaPill,
-  PageLayout,
-  PagePanel,
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/app-core";
+import { client } from "../../api/client";
+import type {
+  RelationshipsActivityItem,
+  RelationshipsGraphQuery,
+  RelationshipsGraphSnapshot,
+  RelationshipsPersonDetail,
+  RelationshipsPersonSummary,
+} from "../../api/client-types-relationships";
+import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+import { MetaPill } from "@elizaos/ui/components/composites/page-panel/page-panel-header";
+import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
+import { SidebarHeader } from "@elizaos/ui/components/composites/sidebar/sidebar-header";
+import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
+import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
+import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { PageLayout } from "@elizaos/ui/layouts/page-layout/page-layout";
 import {
   type ReactNode,
   useCallback,

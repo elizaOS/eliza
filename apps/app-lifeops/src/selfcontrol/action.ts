@@ -59,20 +59,20 @@ function formatPermissionText(
   if (permission.status === "granted") {
     return (
       permission.reason ??
-      "Website blocking permission is ready. Milady can edit the system hosts file directly on this machine."
+      "Website blocking permission is ready. Eliza can edit the system hosts file directly on this machine."
     );
   }
 
   if (permission.canRequest) {
     return (
       permission.reason ??
-      "Milady can ask the OS for administrator/root approval whenever it needs to edit the system hosts file."
+      "Eliza can ask the OS for administrator/root approval whenever it needs to edit the system hosts file."
     );
   }
 
   return (
     permission.reason ??
-    "Milady cannot raise an administrator/root prompt for website blocking on this machine."
+    "Eliza cannot raise an administrator/root prompt for website blocking on this machine."
   );
 }
 
@@ -269,7 +269,8 @@ export const blockWebsitesAction: Action = {
   ],
   description:
     "Admin-only. Start a local website block by editing the system hosts file. " +
-    "Use recent conversation context to block public websites like x.com for a fixed duration or until manually unblocked.",
+    "Use recent conversation context to block public websites like x.com for a fixed duration or until manually unblocked. " +
+    "If the user confirms a block in a follow-up message without repeating the hostnames, reuse the recent conversation context.",
   validate: async (runtime, message) => {
     const access = await getSelfControlAccess(runtime, message);
     return (
@@ -329,14 +330,14 @@ export const blockWebsitesAction: Action = {
           await stopSelfControlBlock();
           return {
             success: false,
-            text: "Milady started the website block but could not schedule its automatic unblock task, so it rolled the block back.",
+            text: "Eliza started the website block but could not schedule its automatic unblock task, so it rolled the block back.",
           };
         }
       } catch (error) {
         await stopSelfControlBlock();
         return {
           success: false,
-          text: `Milady could not schedule the automatic unblock task, so it rolled the website block back. ${error instanceof Error ? error.message : String(error)}`,
+          text: `Eliza could not schedule the automatic unblock task, so it rolled the website block back. ${error instanceof Error ? error.message : String(error)}`,
         };
       }
     }
@@ -358,7 +359,7 @@ export const blockWebsitesAction: Action = {
     {
       name: "websites",
       description:
-        "Website hostnames or URLs to block, for example ['x.com', 'twitter.com']. When omitted, Milady derives them from the recent conversation context.",
+        "Website hostnames or URLs to block, for example ['x.com', 'twitter.com']. When omitted, Eliza derives them from the recent conversation context.",
       required: false,
       schema: {
         type: "array" as const,
@@ -378,6 +379,33 @@ export const blockWebsitesAction: Action = {
       {
         name: "{{name1}}",
         content: { text: "Block x.com and twitter.com for 2 hours." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Started a website block for x.com, twitter.com until 2026-04-04T13:44:54.000Z.",
+          action: "BLOCK_WEBSITES",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "The websites distracting me are x.com and twitter.com. Do not block them yet.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I noted those websites and will wait for your confirmation before blocking them.",
+        },
+      },
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Use self control now. Actually block the websites for 1 minute instead of giving advice.",
+        },
       },
       {
         name: "{{agentName}}",
@@ -501,7 +529,7 @@ export const requestWebsiteBlockingPermissionAction: Action = {
       {
         name: "{{agentName}}",
         content: {
-          text: "The approval prompt completed successfully. Milady can ask the OS for administrator/root approval whenever it needs to edit the system hosts file. That approval is per operation, so you may see the prompt again when starting or stopping a block.",
+          text: "The approval prompt completed successfully. Eliza can ask the OS for administrator/root approval whenever it needs to edit the system hosts file. That approval is per operation, so you may see the prompt again when starting or stopping a block.",
           action: "REQUEST_WEBSITE_BLOCKING_PERMISSION",
         },
       },
@@ -518,7 +546,7 @@ export const unblockWebsitesAction: Action = {
     "STOP_BLOCKING_SITES",
   ],
   description:
-    "Admin-only. Remove the current local website block by restoring the system hosts file entries Milady added.",
+    "Admin-only. Remove the current local website block by restoring the system hosts file entries Eliza added.",
   validate: async (runtime, message) => {
     const access = await getSelfControlAccess(runtime, message);
     return access.allowed;

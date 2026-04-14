@@ -11,7 +11,7 @@
 #   54                → normalised to 2.0.0-alpha.54
 #
 # Options:
-#   --no-fix-imports   Skip fixing renamed imports (resolveMiladyVersion etc.)
+#   --no-fix-imports   Skip fixing renamed imports (resolveElizaVersion etc.)
 #   --no-core-check    Skip the @elizaos/core tarball health check
 #   --dry-run          Show what would change without writing files
 #   -h, --help         Show this help
@@ -26,9 +26,9 @@
 #   4. If core is broken at that version, finds the latest working version
 #      and sets an override in package.json
 #   5. Scans src/ for renamed APIs introduced in alpha.54:
-#        resolveMiladyVersion  → resolveElizaVersion
-#        dispatchMiladyEvent   → dispatchElizaEvent
-#        MILADY_*              → ELIZA_* (env var references in code)
+#        resolveElizaVersion  → resolveElizaVersion
+#        dispatchElizaEvent   → dispatchElizaEvent
+#        ELIZA_*              → ELIZA_* (env var references in code)
 #      and reports or auto-fixes them
 #
 # Examples:
@@ -75,7 +75,7 @@ done
 
 # ── Verify we're in the milaidy-dev repo root ─────────────────────────────────
 [[ -f "package.json" ]] || die "package.json not found — run from repo root"
-grep -q '"miladyai"' package.json 2>/dev/null || die "This doesn't look like the miladyai repo"
+grep -q '"elizaos"' package.json 2>/dev/null || die "This doesn't look like the elizaos repo"
 
 # ── Normalise version ─────────────────────────────────────────────────────────
 # Accepts: "54", "alpha.54", "2.0.0-alpha.54"
@@ -305,15 +305,15 @@ fi
 # alpha.54 renamed several APIs. We scan source files and fix them.
 #
 # Function renames:
-#   resolveMiladyVersion → resolveElizaVersion
-#   dispatchMiladyEvent  → dispatchElizaEvent
-#   resolveMiladyAgent   → resolveElizaAgent
-#   getMiladyVersion     → getElizaVersion
+#   resolveElizaVersion → resolveElizaVersion
+#   dispatchElizaEvent  → dispatchElizaEvent
+#   resolveElizaAgent   → resolveElizaAgent
+#   getElizaVersion     → getElizaVersion
 #
 # Env var references in source code (not actual .env files):
-#   MILADY_API_TOKEN       → ELIZA_API_TOKEN
-#   MILADY_API_BIND        → ELIZA_API_BIND
-#   MILADY_BUNDLED_VERSION → ELIZA_BUNDLED_VERSION
+#   ELIZA_API_TOKEN       → ELIZA_API_TOKEN
+#   ELIZA_API_BIND        → ELIZA_API_BIND
+#   ELIZA_BUNDLED_VERSION → ELIZA_BUNDLED_VERSION
 # ─────────────────────────────────────────────────────────────────────────────
 hdr "Step 3: Fix renamed imports and API calls"
 
@@ -340,10 +340,10 @@ if $FIX_IMPORTS; then
 
   # Function/method renames
   declare -A FUNC_RENAMES=(
-    ["resolveMiladyVersion"]="resolveElizaVersion"
-    ["dispatchMiladyEvent"]="dispatchElizaEvent"
-    ["resolveMiladyAgent"]="resolveElizaAgent"
-    ["getMiladyVersion"]="getElizaVersion"
+    ["resolveElizaVersion"]="resolveElizaVersion"
+    ["dispatchElizaEvent"]="dispatchElizaEvent"
+    ["resolveElizaAgent"]="resolveElizaAgent"
+    ["getElizaVersion"]="getElizaVersion"
   )
 
   for old_name in "${!FUNC_RENAMES[@]}"; do
@@ -373,10 +373,10 @@ if $FIX_IMPORTS; then
   # Env var references in source code
   # (Only in code strings — not actual .env files or docker-compose.yml)
   declare -A ENV_RENAMES=(
-    ["MILADY_API_TOKEN"]="ELIZA_API_TOKEN"
-    ["MILADY_API_BIND"]="ELIZA_API_BIND"
-    ["MILADY_BUNDLED_VERSION"]="ELIZA_BUNDLED_VERSION"
-    ["MILADY_ALLOWED_ORIGINS"]="ELIZA_ALLOWED_ORIGINS"
+    ["ELIZA_API_TOKEN"]="ELIZA_API_TOKEN"
+    ["ELIZA_API_BIND"]="ELIZA_API_BIND"
+    ["ELIZA_BUNDLED_VERSION"]="ELIZA_BUNDLED_VERSION"
+    ["ELIZA_ALLOWED_ORIGINS"]="ELIZA_ALLOWED_ORIGINS"
   )
 
   for old_env in "${!ENV_RENAMES[@]}"; do

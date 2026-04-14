@@ -1,22 +1,11 @@
-/**
- * HeartbeatForm.tsx — Editor panel for creating/editing a heartbeat trigger.
- *
- * Extracted from HeartbeatsView.tsx. Consumes the HeartbeatsViewContext
- * to access form state and CRUD handlers.
- */
-
-import {
-  Button,
-  FieldLabel,
-  FieldSwitch,
-  FormSelect,
-  FormSelectItem,
-  Input,
-  PagePanel,
-  StatusBadge,
-  StatusDot,
-  Textarea,
-} from "@elizaos/app-core";
+import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { FieldLabel } from "@elizaos/ui/components/ui/field";
+import { FieldSwitch } from "@elizaos/ui/components/ui/field-switch";
+import { FormSelect, FormSelectItem } from "@elizaos/ui/components/ui/form-select";
+import { Input } from "@elizaos/ui/components/ui/input";
+import { StatusBadge, StatusDot } from "@elizaos/ui/components/ui/status-badge";
+import { Textarea } from "@elizaos/ui/components/ui/textarea";
 import type { TriggerSummary } from "../../api/client";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import {

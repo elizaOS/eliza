@@ -1,11 +1,11 @@
+import { Button } from "@elizaos/ui/components/ui/button";
 import {
-  Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
-  StatusBadge,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/card";
+import { StatusBadge } from "@elizaos/ui/components/ui/status-badge";
 import { useState } from "react";
 import { isElectrobunRuntime } from "../../bridge";
 import { useApp } from "../../state";

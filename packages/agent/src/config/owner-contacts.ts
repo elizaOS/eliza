@@ -49,7 +49,10 @@ type RelationshipsServiceLike = {
 
 type RuntimeLike = Pick<
   IAgentRuntime,
-  "getService" | "getEntityById" | "getRoomsForParticipant" | "getMemoriesByRoomIds"
+  | "getService"
+  | "getEntityById"
+  | "getRoomsForParticipant"
+  | "getMemoriesByRoomIds"
 >;
 
 function getRelationshipsService(
@@ -58,7 +61,9 @@ function getRelationshipsService(
   if (!runtime?.getService) {
     return null;
   }
-  return runtime.getService("relationships") as unknown as RelationshipsServiceLike | null;
+  return runtime.getService(
+    "relationships",
+  ) as unknown as RelationshipsServiceLike | null;
 }
 
 function ownerContactSourceCandidates(source: string): string[] {
@@ -86,10 +91,7 @@ function canonicalOwnerContactSource(source: string): string {
 }
 
 function sourceSupportsOwnerEntityFallback(source: string): boolean {
-  return (
-    source === "client_chat" ||
-    source === "discord"
-  );
+  return source === "client_chat" || source === "discord";
 }
 
 export function resolveOwnerContactSource(
@@ -158,13 +160,17 @@ export function loadOwnerContactsConfig(
   }
 }
 
-function normalizePlatformIdentity(value: unknown): OwnerContactPlatformIdentity | null {
+function normalizePlatformIdentity(
+  value: unknown,
+): OwnerContactPlatformIdentity | null {
   if (value === null || typeof value !== "object") {
     return null;
   }
   const identity = value as Record<string, unknown>;
-  const platform = typeof identity.platform === "string" ? identity.platform.trim() : "";
-  const handle = typeof identity.handle === "string" ? identity.handle.trim() : "";
+  const platform =
+    typeof identity.platform === "string" ? identity.platform.trim() : "";
+  const handle =
+    typeof identity.handle === "string" ? identity.handle.trim() : "";
   if (!platform || !handle) {
     return null;
   }
@@ -214,7 +220,9 @@ export async function loadOwnerContactRoutingHints(
 
     if (contact.entityId && relationships) {
       try {
-        const relationshipsContact = await relationships.getContact(contact.entityId as UUID);
+        const relationshipsContact = await relationships.getContact(
+          contact.entityId as UUID,
+        );
         if (relationshipsContact) {
           resolvedFrom = "config+relationships";
           preferredCommunicationChannel = normalizeChatSource(
@@ -286,9 +294,15 @@ export async function loadOwnerContactRoutingHints(
       }
     }
 
-    if (runtime?.getRoomsForParticipant && runtime?.getMemoriesByRoomIds && contact.entityId) {
+    if (
+      runtime?.getRoomsForParticipant &&
+      runtime?.getMemoriesByRoomIds &&
+      contact.entityId
+    ) {
       try {
-        const rooms = await runtime.getRoomsForParticipant(contact.entityId as UUID);
+        const rooms = await runtime.getRoomsForParticipant(
+          contact.entityId as UUID,
+        );
         if (rooms.length > 0) {
           const messages = await runtime.getMemoriesByRoomIds({
             roomIds: rooms as UUID[],

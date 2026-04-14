@@ -72,7 +72,7 @@
     "tags": ["connector", "messaging", "matrix", "chat"]
   },
   "minecraft": {
-    "description": "Minecraft automation app for driving Mineflayer bots from Milady agents.",
+    "description": "Minecraft automation app for driving Mineflayer bots from Eliza agents.",
     "tags": ["app", "games", "minecraft", "automation"]
   },
   "moltbook": {

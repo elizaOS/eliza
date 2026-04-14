@@ -1,4 +1,4 @@
-import { names } from "unique-names-generator";
+import { EXAMPLE_NAMES } from "./example-names";
 
 const UINT32_MAX = 0x100000000;
 
@@ -79,7 +79,7 @@ export function getDeterministicNames(
 	}
 
 	const ordered = deterministicShuffle(
-		names,
+		EXAMPLE_NAMES,
 		buildDeterministicSeed(seed, "names"),
 	);
 	return Array.from({ length: count }, (_, index) => {

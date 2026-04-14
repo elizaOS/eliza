@@ -1,17 +1,13 @@
-/**
- * Pairing view component — simple pairing screen for authentication.
- */
-
+import { Button } from "@elizaos/ui/components/ui/button";
 import {
-  Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-  Input,
-  Label,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/card";
+import { Input } from "@elizaos/ui/components/ui/input";
+import { Label } from "@elizaos/ui/components/ui/label";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { useApp } from "../../state";
 

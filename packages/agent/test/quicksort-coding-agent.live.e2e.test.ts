@@ -11,7 +11,8 @@ import { cleanForChat } from "../../../plugins/plugin-agent-orchestrator/src/ser
 import { spawnAgentAction } from "../../../plugins/plugin-agent-orchestrator/src/actions/spawn-agent.js";
 
 const LIVE_TESTS_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" ||
+  process.env.ELIZA_LIVE_TEST === "1";
 const KEEP_ARTIFACTS = process.env.ELIZA_KEEP_LIVE_ARTIFACTS === "1";
 
 type CommandResult = {

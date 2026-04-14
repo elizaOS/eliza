@@ -1,18 +1,16 @@
 import { Button, StatusBadge } from "@elizaos/app-core";
 import { startTransition, useCallback, useEffect, useState } from "react";
-import { client } from "@elizaos/app-core/api";
-import { useApp } from "@elizaos/app-core/state";
+import { client } from "@elizaos/app-core";
+import { useApp } from "@elizaos/app-core";
+import type { PermissionState } from "@elizaos/shared/contracts/permissions";
 import type {
   WebsiteBlockerSettingsCardProps,
   WebsiteBlockerSettingsMode,
-} from "@elizaos/app-core/types";
+} from "@elizaos/app-core";
 import {
   getPermissionAction,
-  SETTINGS_PANEL_ACTIONS_CLASSNAME,
-  SETTINGS_PANEL_CLASSNAME,
-  SETTINGS_PANEL_HEADER_CLASSNAME,
   translateWithFallback,
-} from "@elizaos/app-core/components/settings/permission-types";
+} from "@elizaos/app-core";
 
 type WebsiteBlockerStatus = Awaited<
   ReturnType<typeof client.getWebsiteBlockerStatus>
@@ -291,8 +289,8 @@ export function WebsiteBlockerSettingsCard({
   }
 
   return (
-    <div className={SETTINGS_PANEL_CLASSNAME}>
-      <div className={SETTINGS_PANEL_HEADER_CLASSNAME}>
+    <div className="rounded-2xl border border-border/60 bg-card/92 shadow-sm">
+      <div className="flex flex-col gap-3 border-b border-border/50 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <div className="font-bold text-sm text-txt">
@@ -311,7 +309,7 @@ export function WebsiteBlockerSettingsCard({
             {getModeDescription(mode, t, status)}
           </div>
         </div>
-        <div className={SETTINGS_PANEL_ACTIONS_CLASSNAME}>
+        <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
             size="sm"

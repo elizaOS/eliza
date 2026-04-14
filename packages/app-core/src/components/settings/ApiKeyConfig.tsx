@@ -1,6 +1,4 @@
-/** ApiKeyConfig — Local AI provider settings (API key input forms). */
-
-import { Button } from "@elizaos/app-core";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { useCallback, useState } from "react";
 import { client, type PluginParamDef } from "../../api";
 import {

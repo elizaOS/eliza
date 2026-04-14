@@ -1,29 +1,24 @@
-/**
- * TrajectoriesView — desktop trajectory workspace with a sidebar rail and
- * detail viewer. The right pane shows the selected trajectory (default: latest).
- */
-
+import { client } from "../../api/client";
+import type {
+  TrajectoryListResult,
+  TrajectoryRecord,
+} from "../../api/client-types-cloud";
+import { useApp } from "../../state/useApp";
+import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
+import { SidebarHeader } from "@elizaos/ui/components/composites/sidebar/sidebar-header";
+import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
+import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
+import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
+import { TrajectorySidebarItem } from "@elizaos/ui/components/composites/trajectories/trajectory-sidebar-item";
+import { Button } from "@elizaos/ui/components/ui/button";
 import {
-  client,
-  type TrajectoryListResult,
-  type TrajectoryRecord,
-} from "@elizaos/app-core/api";
-import { useApp } from "@elizaos/app-core/state";
-import {
-  Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  PageLayout,
-  PagePanel,
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-  TrajectorySidebarItem,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/dropdown-menu";
+import { PageLayout } from "@elizaos/ui/layouts/page-layout/page-layout";
 import {
   type ReactNode,
   useCallback,

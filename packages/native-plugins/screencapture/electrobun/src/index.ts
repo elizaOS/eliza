@@ -5,7 +5,7 @@
  * fast-path through the shared desktop bridge when available.
  */
 
-import { invokeDesktopBridgeRequest } from "@elizaos/app-core/bridge/electrobun-rpc.js";
+import { invokeDesktopBridgeRequest } from "@elizaos/app-core";
 import type {
   ScreenCapturePlugin,
   ScreenshotOptions,

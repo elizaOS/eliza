@@ -94,22 +94,12 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     order: 150,
     defaultEnabled: true,
   },
-  // Todo
-  {
-    id: "todo.items",
-    pluginId: "todo",
-    slot: "chat-sidebar",
-    label: "Tasks",
-    icon: "ListTodo",
-    order: 100,
-    defaultEnabled: true,
-  },
   // Agent Orchestrator — app runs
   {
     id: "agent-orchestrator.apps",
     pluginId: "agent-orchestrator",
     slot: "chat-sidebar",
-    label: "App Runs",
+    label: "Apps",
     icon: "Activity",
     order: 150,
     defaultEnabled: true,
@@ -141,21 +131,46 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
 /** Minimal plugin state needed for widget resolution. */
 export type WidgetPluginState = Pick<PluginInfo, "id" | "enabled" | "isActive">;
 
+/**
+ * Some bundled widgets intentionally stay visible even when the runtime plugin
+ * snapshot omits their feature IDs because the UI has compat-backed data
+ * sources for them. Generic todo widgets do not qualify here — Milady does not
+ * ship a runtime todo plugin, and leaving the fallback enabled crowds out the
+ * LifeOps-first sidebar with a stale generic tasks panel.
+ */
+const BUILTIN_WIDGET_FALLBACK_PLUGIN_IDS = new Set([
+  "lifeops",
+  "agent-orchestrator",
+]);
+
 interface ResolvedWidget {
   declaration: PluginWidgetDeclaration;
   Component: React.ComponentType<WidgetProps> | null;
 }
 
+type WidgetDeclarationSource = "builtin" | "server";
+
 function isWidgetEnabled(
   declaration: PluginWidgetDeclaration,
   plugins: readonly WidgetPluginState[],
+  source: WidgetDeclarationSource,
 ): boolean {
   if (plugins.length === 0) {
-    return declaration.defaultEnabled !== false;
+    return (
+      declaration.defaultEnabled !== false &&
+      (source !== "builtin" ||
+        BUILTIN_WIDGET_FALLBACK_PLUGIN_IDS.has(declaration.pluginId))
+    );
   }
 
   const plugin = plugins.find((p) => p.id === declaration.pluginId);
-  if (!plugin) return false;
+  if (!plugin) {
+    return (
+      source === "builtin" &&
+      declaration.defaultEnabled !== false &&
+      BUILTIN_WIDGET_FALLBACK_PLUGIN_IDS.has(declaration.pluginId)
+    );
+  }
 
   return plugin.isActive === true || plugin.enabled !== false;
 }
@@ -172,26 +187,38 @@ export function resolveWidgetsForSlot(
   serverDeclarations?: readonly PluginWidgetDeclaration[],
 ): ResolvedWidget[] {
   // Merge: server declarations override built-in by id
-  const declarationMap = new Map<string, PluginWidgetDeclaration>();
+  const declarationMap = new Map<
+    string,
+    {
+      declaration: PluginWidgetDeclaration;
+      source: WidgetDeclarationSource;
+    }
+  >();
 
   for (const decl of BUILTIN_WIDGET_DECLARATIONS) {
     if (decl.slot === slot) {
-      declarationMap.set(`${decl.pluginId}/${decl.id}`, decl);
+      declarationMap.set(`${decl.pluginId}/${decl.id}`, {
+        declaration: decl,
+        source: "builtin",
+      });
     }
   }
 
   if (serverDeclarations) {
     for (const decl of serverDeclarations) {
       if (decl.slot === slot) {
-        declarationMap.set(`${decl.pluginId}/${decl.id}`, decl);
+        declarationMap.set(`${decl.pluginId}/${decl.id}`, {
+          declaration: decl,
+          source: "server",
+        });
       }
     }
   }
 
   const results: ResolvedWidget[] = [];
 
-  for (const declaration of declarationMap.values()) {
-    if (!isWidgetEnabled(declaration, plugins)) continue;
+  for (const { declaration, source } of declarationMap.values()) {
+    if (!isWidgetEnabled(declaration, plugins, source)) continue;
 
     const Component = getWidgetComponent(declaration.pluginId, declaration.id);
 

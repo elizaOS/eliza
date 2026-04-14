@@ -1,22 +1,11 @@
-/**
- * StatusBar — Minimal stream control bar with go-live/offline button and status.
- */
-
-import { isElectrobunRuntime } from "@elizaos/app-core/bridge";
-import { getBootConfig } from "@elizaos/app-core/config";
-import { useApp } from "@elizaos/app-core/state";
-import { Button } from "@elizaos/app-core";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { getBootConfig } from "../../config/boot-config";
+import { useApp } from "../../state/useApp";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { ExternalLink } from "lucide-react";
 import { type CSSProperties, useEffect, useRef } from "react";
 import { formatUptime } from "../../utils/format";
 import { IS_POPOUT } from "./helpers";
-
-const STATUS_PILL_CLASSNAME =
-  "inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-border/45 bg-card/92 px-2.5 py-1.5 text-xs-tight text-muted-strong shadow-sm";
-const ICON_BUTTON_CLASSNAME =
-  "inline-flex min-h-9 h-9 w-9 items-center justify-center rounded-xl border border-border/45 bg-card/92 px-0 py-1.5 text-xs-tight text-muted-strong shadow-sm transition-[border-color,background-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-accent/35 hover:border-border-strong hover:bg-bg-hover hover:text-txt hover:shadow-md";
-const LIVE_ACTION_BUTTON_CLASSNAME =
-  "inline-flex h-9 min-h-9 items-center justify-center rounded-xl border px-3 text-xs-tight font-semibold uppercase tracking-[0.16em] shadow-sm transition-[border-color,background-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-accent/35 disabled:cursor-wait disabled:opacity-50";
 
 export function StatusBar({
   agentName,
@@ -83,7 +72,7 @@ export function StatusBar({
       >
         {/* Health stats — live only */}
         {streamLive && (
-          <span className={`${STATUS_PILL_CLASSNAME} font-mono text-2xs`}>
+          <span className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-border/45 bg-card/92 px-2.5 py-1.5 text-xs-tight text-muted-strong shadow-sm font-mono text-2xs">
             <span className="text-txt">{formatUptime(uptime)}</span>
             <span className="text-border">|</span>
             <span className="text-txt">{frameCount.toLocaleString()}f</span>
@@ -93,7 +82,7 @@ export function StatusBar({
         <Button
           size="sm"
           disabled={!streamAvailable || streamLoading}
-          className={`${LIVE_ACTION_BUTTON_CLASSNAME} ${
+          className={`inline-flex h-9 min-h-9 items-center justify-center rounded-xl border px-3 text-xs-tight font-semibold uppercase tracking-[0.16em] shadow-sm transition-[border-color,background-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-accent/35 disabled:cursor-wait disabled:opacity-50 ${
             streamLive
               ? "border-danger/35 bg-danger/10 text-danger hover:border-danger/50 hover:bg-danger/16"
               : "border-ok/35 bg-ok/10 text-ok hover:border-ok/50 hover:bg-ok/16"
@@ -120,7 +109,7 @@ export function StatusBar({
           <Button
             variant="ghost"
             size="sm"
-            className={ICON_BUTTON_CLASSNAME}
+            className="inline-flex min-h-9 h-9 w-9 items-center justify-center rounded-xl border border-border/45 bg-card/92 px-0 py-1.5 text-xs-tight text-muted-strong shadow-sm transition-[border-color,background-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-accent/35 hover:border-border-strong hover:bg-bg-hover hover:text-txt hover:shadow-md"
             title={t("statusbar.PopOutStreamView")}
             onClick={() => {
               const apiBase = getBootConfig().apiBase;

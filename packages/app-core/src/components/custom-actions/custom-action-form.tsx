@@ -1,9 +1,4 @@
-/**
- * Parsing utilities, normalization helpers, and types for the custom action editor form.
- * Extracted from CustomActionEditor.tsx.
- */
-
-import type { CustomActionHandler } from "@elizaos/app-core/api";
+import type { CustomActionHandler } from "@elizaos/agent/contracts/config";
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 

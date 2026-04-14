@@ -6,7 +6,7 @@
  *   4. Malformed file → regenerates gracefully
  *
  * Uses a tmpdir so it can run in parallel / repeatedly without
- * stomping on the real ~/.milady/scape-agent-identity.json.
+ * stomping on the real ~/.eliza/scape-agent-identity.json.
  */
 
 import {

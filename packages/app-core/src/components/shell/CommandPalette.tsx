@@ -1,12 +1,12 @@
+import { Button } from "@elizaos/ui/components/ui/button";
 import {
-  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  Input,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/dialog";
+import { Input } from "@elizaos/ui/components/ui/input";
 import {
   useCallback,
   useEffect,

@@ -1,36 +1,21 @@
-// Re-exported from ../ui (same package; avoids barrel cycles via the main entry)
+// Re-export selected reusable UI from @elizaos/ui while keeping app-core's
+// higher-level component surface intact.
 export {
   ConfirmDialog as ConfirmModal,
   type ConfirmDialogProps as ConfirmModalProps,
-  type ConfirmOptions,
-  ErrorBoundary,
   PromptDialog as PromptModal,
   type PromptDialogProps as PromptModalProps,
-  type PromptOptions,
   SaveFooter as ConfigSaveFooter,
-  Skeleton,
-  SkeletonCard,
-  SkeletonChat,
-  SkeletonLine,
-  SkeletonMessage,
-  SkeletonSidebar,
-  SkeletonText,
-  StatCard,
-  StatusBadge,
-  StatusDot,
-  type StatusVariant,
-  Switch,
-  statusToneForBoolean,
-  useConfirm,
-  usePrompt,
-} from "../ui";
-export * from "../utils/format";
+} from "@elizaos/ui";
 export * from "../utils/knowledge-upload-image";
 export * from "../utils/labels";
 export * from "../utils/trajectory-format";
 export * from "./apps/GameView";
 export * from "./apps/GameViewOverlay";
+export * from "./apps/overlay-app-api";
+export * from "./apps/overlay-app-registry";
 export * from "./character/CharacterEditor";
+export * from "./character/character-greeting";
 export * from "./character/CharacterRoster";
 export * from "./chat/AgentActivityBox";
 export * from "./chat/MessageContent";
@@ -53,6 +38,7 @@ export * from "./inventory/BscTradePanel";
 export type { ChainIconProps, ChainIconSize } from "./inventory/ChainIcon";
 export { ChainIcon } from "./inventory/ChainIcon";
 export * from "./inventory/chainConfig";
+export * from "./inventory/constants";
 export * from "./onboarding/OnboardingWizard";
 export * from "./pages/AdvancedPageView";
 export * from "./pages/AppsPageView";
@@ -88,6 +74,7 @@ export * from "./pages/TrajectoryDetailView";
 export * from "./pages/TriggersView";
 export * from "./pages/VectorBrowserView";
 export * from "./settings/ApiKeyConfig";
+export * from "./settings/permission-types";
 export * from "./settings/DesktopWorkspaceSection";
 export * from "./settings/FineTuningView";
 export * from "./settings/MediaSettingsSection";

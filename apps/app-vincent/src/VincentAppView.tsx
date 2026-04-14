@@ -16,8 +16,8 @@
 
 import { Button, PagePanel, Spinner } from "@elizaos/app-core";
 import { ArrowLeft, RefreshCw } from "lucide-react";
-import { useApp } from "@elizaos/app-core/state";
-import type { OverlayAppContext } from "@elizaos/app-core/components/apps/overlay-app-api";
+import { useApp } from "@elizaos/app-core";
+import type { OverlayAppContext } from "@elizaos/app-core";
 import { TradingProfileCard } from "./TradingProfileCard";
 import { TradingStrategyPanel } from "./TradingStrategyPanel";
 import { useVincentDashboard } from "./useVincentDashboard";

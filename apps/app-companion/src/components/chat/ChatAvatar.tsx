@@ -1,16 +1,8 @@
-/**
- * Chat avatar panel component.
- *
- * Renders a 3D VRM avatar within the parent container (used in the
- * Autonomous Loop sidebar). Voice controls are managed externally.
- */
-import {
-  APP_EMOTE_EVENT,
-  type AppEmoteEventDetail,
-  STOP_EMOTE_EVENT,
-} from "@elizaos/app-core/events";
-import { getVrmPreviewUrl, getVrmUrl, useApp } from "@elizaos/app-core/state";
-import { resolveAppAssetUrl } from "@elizaos/app-core/utils";
+import type { AppEmoteEventDetail } from "@elizaos/app-core/events";
+import { APP_EMOTE_EVENT, STOP_EMOTE_EVENT } from "@elizaos/app-core/events";
+import { useApp } from "@elizaos/app-core/state/useApp";
+import { getVrmPreviewUrl, getVrmUrl } from "@elizaos/app-core/state/vrm";
+import { resolveAppAssetUrl } from "@elizaos/app-core/utils/asset-url";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { VrmEngine, VrmEngineState } from "../avatar/VrmEngine";

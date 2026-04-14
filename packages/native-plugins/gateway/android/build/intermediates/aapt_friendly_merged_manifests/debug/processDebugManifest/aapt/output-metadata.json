@@ -4,7 +4,7 @@
     "type": "AAPT_FRIENDLY_MERGED_MANIFESTS",
     "kind": "Directory"
   },
-  "applicationId": "ai.milady.plugins.gateway",
+  "applicationId": "ai.elizaos.plugins.gateway",
   "variantName": "debug",
   "elements": [
     {

@@ -1,10 +1,10 @@
+import { AdminDialog } from "@elizaos/ui/components/ui/admin-dialog";
+import { Button } from "@elizaos/ui/components/ui/button";
 import {
-  AdminDialog,
-  Button,
   Dialog,
   DialogDescription,
   DialogTitle,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/dialog";
 import type { PluginInfo } from "../../api";
 import { ConnectorSetupPanel } from "../connectors/ConnectorSetupPanel";
 import { PluginConfigForm, TelegramPluginConfig } from "./PluginConfigForm";

@@ -18,14 +18,16 @@
  *
  * @module first-time-setup
  */
+import { persistConfigEnv } from "../api/config-env.js";
 import { type ElizaConfig, saveElizaConfig } from "../config/config.js";
+import { isCloudWalletEnabled } from "../config/feature-flags.js";
 import type { AgentConfig } from "../config/types.agents.js";
 import type { StylePreset } from "../contracts/onboarding.js";
+import { migrateLegacyRuntimeConfig } from "../contracts/onboarding.js";
 import {
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
 } from "../contracts/service-routing.js";
-import { migrateLegacyRuntimeConfig } from "../contracts/onboarding.js";
 import { getStylePresets } from "../onboarding-presets.js";
 import { pickRandomNames } from "./onboarding-names.js";
 
@@ -141,10 +143,150 @@ function cancelOnboarding(): never {
 // Main function
 // ---------------------------------------------------------------------------
 
-export async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfig> {
+/**
+ * Read whether the runtime config holds cached cloud-wallet descriptors.
+ * Uses defensive accessors because `wallet.cloud` is introduced by the
+ * cloud-wallet module (Phase 3) and may not exist in older configs.
+ */
+function hasCloudWalletBinding(config: ElizaConfig): boolean {
+  const walletSection = (config as unknown as { wallet?: unknown }).wallet;
+  if (!walletSection || typeof walletSection !== "object") return false;
+  const cloud = (walletSection as { cloud?: unknown }).cloud;
+  if (!cloud || typeof cloud !== "object") return false;
+  const cloudObj = cloud as Record<string, unknown>;
+  return Boolean(cloudObj.evm || cloudObj.solana);
+}
+
+function readCloudWalletAddress(
+  config: ElizaConfig,
+  chain: "evm" | "solana",
+): string | null {
+  const walletSection = (
+    config as unknown as {
+      wallet?: {
+        cloud?: Partial<
+          Record<
+            "evm" | "solana",
+            { walletAddress?: unknown; address?: unknown } | undefined
+          >
+        >;
+      };
+    }
+  ).wallet;
+  const descriptor = walletSection?.cloud?.[chain];
+  if (!descriptor || typeof descriptor !== "object") return null;
+
+  const raw =
+    typeof descriptor.walletAddress === "string"
+      ? descriptor.walletAddress
+      : typeof descriptor.address === "string"
+        ? descriptor.address
+        : null;
+  return raw?.trim() ? raw.trim() : null;
+}
+
+/**
+ * Read the user's saved primary wallet source selection from config.
+ * Returns { evm, solana } where each can be:
+ *  - "cloud": user explicitly chose cloud
+ *  - "local": user explicitly chose local
+ *  - null: user has not made an explicit choice (should auto-bind to cloud)
+ */
+function readUserPrimarySelection(config: ElizaConfig): {
+  evm: "local" | "cloud" | null;
+  solana: "local" | "cloud" | null;
+} {
+  const wallet = (config as unknown as { wallet?: unknown }).wallet;
+  const raw =
+    wallet && typeof wallet === "object"
+      ? (wallet as { primary?: unknown }).primary
+      : undefined;
+  const result: {
+    evm: "local" | "cloud" | null;
+    solana: "local" | "cloud" | null;
+  } = { evm: null, solana: null };
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const record = raw as Record<string, unknown>;
+    if (record.evm === "cloud" || record.evm === "local") {
+      result.evm = record.evm;
+    }
+    if (record.solana === "cloud" || record.solana === "local") {
+      result.solana = record.solana;
+    }
+  }
+  return result;
+}
+
+/**
+ * When cloud mode + cloud wallet are both on and the cloud cache holds
+ * descriptors, mark the runtime env so plugin-evm / plugin-solana bind
+ * against the cloud signer rather than a local private key. Writes
+ * `WALLET_SOURCE_EVM=cloud` / `WALLET_SOURCE_SOLANA=cloud` and the resolved
+ * cloud wallet addresses to config.env (durable across restarts) and to
+ * `process.env` (visible to the in-flight runtime).
+ *
+ * IMPORTANT: Only binds to cloud if the user has not explicitly selected
+ * local as primary for that chain. This preserves user-made primary selection
+ * changes across restarts.
+ *
+ * No-ops if `ENABLE_CLOUD_WALLET` is off or if the cache is empty.
+ */
+export async function bindCloudProvider(config: ElizaConfig): Promise<void> {
+  if (!isCloudWalletEnabled()) return;
+  if (!hasCloudWalletBinding(config)) return;
+
+  const walletSection = (
+    config as unknown as { wallet?: { cloud?: Record<string, unknown> } }
+  ).wallet;
+  const cloud = walletSection?.cloud ?? {};
+  const evmAddress = readCloudWalletAddress(config, "evm");
+  const solanaAddress = readCloudWalletAddress(config, "solana");
+  const userPrimary = readUserPrimarySelection(config);
+  const shouldBindEvm = Boolean(cloud.evm) && userPrimary.evm !== "local";
+  const shouldBindSolana =
+    Boolean(cloud.solana) && userPrimary.solana !== "local";
+
+  if (
+    shouldBindEvm &&
+    evmAddress &&
+    process.env.MILADY_CLOUD_EVM_ADDRESS !== evmAddress
+  ) {
+    await persistConfigEnv("MILADY_CLOUD_EVM_ADDRESS", evmAddress);
+  }
+  if (
+    shouldBindSolana &&
+    solanaAddress &&
+    process.env.MILADY_CLOUD_SOLANA_ADDRESS !== solanaAddress
+  ) {
+    await persistConfigEnv("MILADY_CLOUD_SOLANA_ADDRESS", solanaAddress);
+  }
+
+  // Only bind WALLET_SOURCE_* to cloud if:
+  //   1. User has explicitly set it to "cloud", OR
+  //   2. User has NOT made an explicit choice yet (null = auto-bind as default)
+  // DO NOT bind if user has explicitly set it to "local".
+  if (shouldBindEvm && process.env.WALLET_SOURCE_EVM !== "cloud") {
+    await persistConfigEnv("WALLET_SOURCE_EVM", "cloud");
+  }
+  if (shouldBindSolana && process.env.WALLET_SOURCE_SOLANA !== "cloud") {
+    await persistConfigEnv("WALLET_SOURCE_SOLANA", "cloud");
+  }
+}
+
+export async function runFirstTimeSetup(
+  config: ElizaConfig,
+): Promise<ElizaConfig> {
   const agentEntry = config.agents?.list?.[0];
   const hasName = Boolean(agentEntry?.name || config.ui?.assistant?.name);
-  if (hasName) return config;
+
+  // hasName short-circuits the interactive onboarding prompts but must NOT
+  // bypass runtime-rebind steps (e.g. cloud-wallet → WALLET_SOURCE_*). Those
+  // need to re-run every restart so cloud state changes made while the agent
+  // was offline are reflected in env before plugins load.
+  if (hasName) {
+    await bindCloudProvider(config);
+    return config;
+  }
 
   // Only prompt when stdin is a TTY (interactive terminal)
   if (!process.stdin.isTTY) return config;
@@ -274,99 +416,99 @@ export async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfi
   const hasSolKey = Boolean(process.env.SOLANA_PRIVATE_KEY?.trim());
 
   const PROVIDER_OPTIONS = [
-      ...(cloudOnboardingResult?.apiKey
-        ? ([
-            {
-              id: "elizacloud",
-              label: "Eliza Cloud",
-              envKey: null,
-              detectKeys: [] as string[],
-              hint: "use linked Eliza Cloud inference",
-            },
-          ] as const)
-        : []),
-      {
-        id: "anthropic",
-        label: "Anthropic (Claude)",
-        envKey: "ANTHROPIC_API_KEY",
-        detectKeys: ["ANTHROPIC_API_KEY"],
-        hint: "sk-ant-...",
-      },
-      {
-        id: "openai",
-        label: "OpenAI (GPT)",
-        envKey: "OPENAI_API_KEY",
-        detectKeys: ["OPENAI_API_KEY"],
-        hint: "sk-...",
-      },
-      {
-        id: "openrouter",
-        label: "OpenRouter",
-        envKey: "OPENROUTER_API_KEY",
-        detectKeys: ["OPENROUTER_API_KEY"],
-        hint: "sk-or-...",
-      },
-      {
-        id: "vercel-ai-gateway",
-        label: "Vercel AI Gateway",
-        envKey: "AI_GATEWAY_API_KEY",
-        detectKeys: ["AI_GATEWAY_API_KEY", "AIGATEWAY_API_KEY"],
-        hint: "aigw_...",
-      },
-      {
-        id: "gemini",
-        label: "Google Gemini",
-        envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
-        detectKeys: [
-          "GOOGLE_GENERATIVE_AI_API_KEY",
-          "GOOGLE_API_KEY",
-          "GEMINI_API_KEY",
-        ],
-        hint: "AI...",
-      },
-      {
-        id: "grok",
-        label: "xAI (Grok)",
-        envKey: "XAI_API_KEY",
-        detectKeys: ["XAI_API_KEY"],
-        hint: "xai-...",
-      },
-      {
-        id: "groq",
-        label: "Groq",
-        envKey: "GROQ_API_KEY",
-        detectKeys: ["GROQ_API_KEY"],
-        hint: "gsk_...",
-      },
-      {
-        id: "deepseek",
-        label: "DeepSeek",
-        envKey: "DEEPSEEK_API_KEY",
-        detectKeys: ["DEEPSEEK_API_KEY"],
-        hint: "sk-...",
-      },
-      {
-        id: "mistral",
-        label: "Mistral",
-        envKey: "MISTRAL_API_KEY",
-        detectKeys: ["MISTRAL_API_KEY"],
-        hint: "",
-      },
-      {
-        id: "together",
-        label: "Together AI",
-        envKey: "TOGETHER_API_KEY",
-        detectKeys: ["TOGETHER_API_KEY"],
-        hint: "",
-      },
-      {
-        id: "ollama",
-        label: "Ollama (local, free)",
-        envKey: "OLLAMA_BASE_URL",
-        detectKeys: ["OLLAMA_BASE_URL"],
-        hint: "http://localhost:11434",
-      },
-    ] as const;
+    ...(cloudOnboardingResult?.apiKey
+      ? ([
+          {
+            id: "elizacloud",
+            label: "Eliza Cloud",
+            envKey: null,
+            detectKeys: [] as string[],
+            hint: "use linked Eliza Cloud inference",
+          },
+        ] as const)
+      : []),
+    {
+      id: "anthropic",
+      label: "Anthropic (Claude)",
+      envKey: "ANTHROPIC_API_KEY",
+      detectKeys: ["ANTHROPIC_API_KEY"],
+      hint: "sk-ant-...",
+    },
+    {
+      id: "openai",
+      label: "OpenAI (GPT)",
+      envKey: "OPENAI_API_KEY",
+      detectKeys: ["OPENAI_API_KEY"],
+      hint: "sk-...",
+    },
+    {
+      id: "openrouter",
+      label: "OpenRouter",
+      envKey: "OPENROUTER_API_KEY",
+      detectKeys: ["OPENROUTER_API_KEY"],
+      hint: "sk-or-...",
+    },
+    {
+      id: "vercel-ai-gateway",
+      label: "Vercel AI Gateway",
+      envKey: "AI_GATEWAY_API_KEY",
+      detectKeys: ["AI_GATEWAY_API_KEY", "AIGATEWAY_API_KEY"],
+      hint: "aigw_...",
+    },
+    {
+      id: "gemini",
+      label: "Google Gemini",
+      envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
+      detectKeys: [
+        "GOOGLE_GENERATIVE_AI_API_KEY",
+        "GOOGLE_API_KEY",
+        "GEMINI_API_KEY",
+      ],
+      hint: "AI...",
+    },
+    {
+      id: "grok",
+      label: "xAI (Grok)",
+      envKey: "XAI_API_KEY",
+      detectKeys: ["XAI_API_KEY"],
+      hint: "xai-...",
+    },
+    {
+      id: "groq",
+      label: "Groq",
+      envKey: "GROQ_API_KEY",
+      detectKeys: ["GROQ_API_KEY"],
+      hint: "gsk_...",
+    },
+    {
+      id: "deepseek",
+      label: "DeepSeek",
+      envKey: "DEEPSEEK_API_KEY",
+      detectKeys: ["DEEPSEEK_API_KEY"],
+      hint: "sk-...",
+    },
+    {
+      id: "mistral",
+      label: "Mistral",
+      envKey: "MISTRAL_API_KEY",
+      detectKeys: ["MISTRAL_API_KEY"],
+      hint: "",
+    },
+    {
+      id: "together",
+      label: "Together AI",
+      envKey: "TOGETHER_API_KEY",
+      detectKeys: ["TOGETHER_API_KEY"],
+      hint: "",
+    },
+    {
+      id: "ollama",
+      label: "Ollama (local, free)",
+      envKey: "OLLAMA_BASE_URL",
+      detectKeys: ["OLLAMA_BASE_URL"],
+      hint: "http://localhost:11434",
+    },
+  ] as const;
 
   // Detect if any provider key is already configured
   const detectedProvider = PROVIDER_OPTIONS.find((p) =>
@@ -443,7 +585,6 @@ export async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfi
   // longer implies a specific inference provider, but these device-bound
   // setup steps still only make sense for local runs.
   if (!isCloudMode) {
-
     // ── Step 4b: Embedding model preset ────────────────────────────────────
     // (Simplified: always use the standard/reliable model preset. No user choice.)
 
@@ -451,9 +592,8 @@ export async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfi
     // Offer to generate or import wallets for EVM and Solana. Keys are
     // stored in config.env and process.env, making them available to
     // plugins at runtime.
-    const { generateWalletKeys, importWallet, setSolanaWalletEnv } = await import(
-      "../api/wallet.js"
-    );
+    const { generateWalletKeys, importWallet, setSolanaWalletEnv } =
+      await import("../api/wallet.js");
 
     // hasEvmKey and hasSolKey are hoisted above the if (!isCloudMode) block
     // so they're also available in the persistence section.
@@ -665,6 +805,17 @@ export async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfi
     // Non-fatal: the agent can still start, but choices won't persist.
     clack.log.warn(`Could not save config: ${formatError(err)}`);
   }
+
+  // If cloud-mode onboarding already left cloud-wallet descriptors in the
+  // config (rare on first run, but possible when resuming a partial flow),
+  // make sure plugin-evm / plugin-solana see WALLET_SOURCE_*=cloud before
+  // they load.
+  try {
+    await bindCloudProvider(topologyUpdated);
+  } catch (err) {
+    clack.log.warn(`Could not bind cloud wallet provider: ${formatError(err)}`);
+  }
+
   clack.log.message(`${name}: ${styleChoice} Alright, that's me.`);
   clack.outro(
     isCloudMode ? "Your agent is live in the cloud! ☁️" : "Let's get started!",

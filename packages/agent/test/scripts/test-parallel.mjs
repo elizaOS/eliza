@@ -2,6 +2,10 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(here, "..", "..", "..", "..", "..");
 
 /**
  * Each entry describes a test suite to run in parallel.
@@ -15,13 +19,15 @@ import path from "node:path";
 const runs = [
   {
     name: "unit",
-    args: ["vitest", "run", "--config", "vitest.unit.config.ts"],
+    args: ["vitest", "run", "--config", "test/vitest/unit.config.ts"],
+    cwd: repoRoot,
     vitest: true,
     reportFile: path.join(os.tmpdir(), "eliza-vitest-unit-report.json"),
   },
   {
     name: "e2e",
-    args: ["vitest", "run", "--config", "vitest.e2e.config.ts"],
+    args: ["vitest", "run", "--config", "test/vitest/e2e.config.ts"],
+    cwd: repoRoot,
     vitest: true,
     forceSerial: true,
     maxWorkers: 1,

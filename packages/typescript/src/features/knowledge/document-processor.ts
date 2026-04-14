@@ -9,8 +9,8 @@ import {
 	ModelType,
 	type UUID,
 } from "../../types";
-import { BatchProcessor } from "../../utils/batch-queue";
 import { splitChunks } from "../../utils";
+import { BatchProcessor } from "../../utils/batch-queue";
 import { getProviderRateLimits, validateModelConfig } from "./config.ts";
 import {
 	DEFAULT_CHUNK_OVERLAP_TOKENS,
@@ -567,7 +567,9 @@ async function generateBatchEmbeddingsViaRuntime(
 				if (isEmbeddingVector(result)) {
 					slots[idx] = result;
 				} else {
-					const embeddingResult = result as { embedding?: number[] } | undefined;
+					const embeddingResult = result as
+						| { embedding?: number[] }
+						| undefined;
 					slots[idx] = embeddingResult?.embedding ?? [];
 				}
 			},

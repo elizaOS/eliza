@@ -23,7 +23,7 @@ async function formatWorkspaceSummary(): Promise<{
     : [];
 
   const lines = [
-    `Milady browser workspace (${mode}): ${tabs.length} tab${tabs.length === 1 ? "" : "s"} open.`,
+    `Eliza browser workspace (${mode}): ${tabs.length} tab${tabs.length === 1 ? "" : "s"} open.`,
   ];
   if (tabs.length === 0) {
     lines.push("- No tabs are open.");
@@ -35,14 +35,14 @@ async function formatWorkspaceSummary(): Promise<{
   }
 
   if (!steward.configured) {
-    lines.push("Milady wallet: Steward not configured.");
+    lines.push("Eliza wallet: Steward not configured.");
   } else if (!steward.connected) {
     lines.push(
-      `Milady wallet: Steward unavailable${steward.error ? ` (${steward.error})` : "."}`,
+      `Eliza wallet: Steward unavailable${steward.error ? ` (${steward.error})` : "."}`,
     );
   } else {
     lines.push(
-      `Milady wallet: Steward connected${pendingApprovals.length > 0 ? ` with ${pendingApprovals.length} pending approval${pendingApprovals.length === 1 ? "" : "s"}` : " with no pending approvals"}.`,
+      `Eliza wallet: Steward connected${pendingApprovals.length > 0 ? ` with ${pendingApprovals.length} pending approval${pendingApprovals.length === 1 ? "" : "s"}` : " with no pending approvals"}.`,
     );
   }
 
@@ -58,7 +58,7 @@ async function formatWorkspaceSummary(): Promise<{
 export const appBrowserWorkspaceProvider: Provider = {
   name: "app_browser_workspace",
   description:
-    "Summarizes Milady browser workspace tabs plus Steward wallet signing state for the agent.",
+    "Summarizes Eliza browser workspace tabs plus Steward wallet signing state for the agent.",
   get: async () => {
     try {
       const summary = await formatWorkspaceSummary();
@@ -75,7 +75,7 @@ export const appBrowserWorkspaceProvider: Provider = {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return {
-        text: `Milady browser workspace error: ${message}`,
+        text: `Eliza browser workspace error: ${message}`,
         data: { available: true, error: message },
       };
     }

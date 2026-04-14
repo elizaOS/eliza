@@ -1,17 +1,17 @@
 import { getBrandConfig } from "./brand-config";
 
 /**
- * Main-process "Reset Milady" menu flow — **testable** fetch/restart/poll core.
+ * Main-process "Reset the app" menu flow — **testable** fetch/restart/poll core.
  *
  * **WHY extract from `index.ts`:** menu reset is security- and UX-sensitive; unit
  * tests need mocked `fetch` without booting Electrobun. **WHY `pickReachable*`
  * uses `res.ok`:** 4xx/5xx must not count as a valid API base for
  * `POST /api/agent/reset`. **WHY embedded port first in candidates:** external
- * `MILADY_DESKTOP_API_BASE` often points at a dev server that is down while the
+ * `ELIZA_DESKTOP_API_BASE` often points at a dev server that is down while the
  * embedded agent still listens on a dynamic loopback port.
  *
  * Native confirm, `Utils.showNotification`, and `getAgentManager()` stay in
- * `index.ts` (`resetMiladyFromApplicationMenu`).
+ * `index.ts` (`resetthe appFromApplicationMenu`).
  */
 
 export type FetchLike = (
@@ -127,7 +127,7 @@ export type MainMenuResetPostConfirmDeps = {
   postExternalAgentRestart: () => Promise<void>;
   resolveApiBaseForStatusPoll: () => string;
   sendMenuResetAppliedToRenderer: (payload: {
-    itemId: "menu-reset-milady-applied";
+    itemId: "menu-reset-app-applied";
     agentStatus: Record<string, unknown>;
   }) => void;
 };
@@ -205,7 +205,7 @@ export async function runMainMenuResetAfterApiBaseResolved(
   }
 
   d.sendMenuResetAppliedToRenderer({
-    itemId: "menu-reset-milady-applied",
+    itemId: "menu-reset-app-applied",
     agentStatus: statusPayload,
   });
 }

@@ -1,22 +1,12 @@
-/**
- * Media Gallery — browse photos, videos, and audio stored in agent databases.
- *
- * Queries known tables for records containing media URLs (image/video/audio
- * file extensions or data URIs). All data flows through the generic database
- * APIs (getDatabaseTables, executeDatabaseQuery).
- */
-
-import {
-  Button,
-  Input,
-  MetaPill,
-  PageLayout,
-  PagePanel,
-  Sidebar,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/app-core";
+import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+import { MetaPill } from "@elizaos/ui/components/composites/page-panel/page-panel-header";
+import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
+import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
+import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
+import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
+import { PageLayout } from "@elizaos/ui/layouts/page-layout/page-layout";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client, type QueryResult } from "../../api";

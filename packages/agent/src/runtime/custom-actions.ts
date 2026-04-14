@@ -16,7 +16,12 @@ import {
 import { request as requestHttps } from "node:https";
 import net from "node:net";
 import { Readable } from "node:stream";
-import { type Action, type HandlerOptions, type IAgentRuntime, logger } from "@elizaos/core";
+import {
+  type Action,
+  type HandlerOptions,
+  type IAgentRuntime,
+  logger,
+} from "@elizaos/core";
 import { loadElizaConfig } from "../config/config.js";
 import {
   resolveApiToken,

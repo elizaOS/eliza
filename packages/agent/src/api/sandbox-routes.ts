@@ -177,7 +177,7 @@ export async function handleSandboxRoute(
   // Returns base64-encoded screenshot for easy consumption by agents
   if (method === "POST" && pathname === "/api/sandbox/screen/screenshot") {
     const rawBody = await readBody(req);
-    if (!rawBody || !rawBody.trim()) {
+    if (!rawBody?.trim()) {
       sendJson(res, 200, {
         format: "png",
         encoding: "base64",

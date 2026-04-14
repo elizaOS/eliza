@@ -75,7 +75,8 @@ export async function handleAppPackageRoutes(
   // handlers can call readJsonBody() with no arguments.
   const boundCtx: AppPackageRouteContext = {
     ...ctx,
-    readJsonBody: (() => ctx.readJsonBody(ctx.req, ctx.res)) as typeof ctx.readJsonBody,
+    readJsonBody: (() =>
+      ctx.readJsonBody(ctx.req, ctx.res)) as typeof ctx.readJsonBody,
   };
 
   return handler(boundCtx);

@@ -1,4 +1,4 @@
-import { ContentLayout } from "@elizaos/app-core";
+import { ContentLayout } from "@elizaos/ui/layouts/content-layout/content-layout";
 import type { ReactNode } from "react";
 import { LogsView } from "./LogsView";
 

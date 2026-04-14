@@ -1,12 +1,4 @@
-/**
- * Databases page — wrapper with Tables / Media / Vectors sub-tabs.
- *
- * Each sub-view owns its own PageLayout + Sidebar from @elizaos/app-core.
- * DatabasePageView only decides which sub-view to render and passes
- * through the leftNav toggle and contentHeader.
- */
-
-import { SegmentedControl } from "@elizaos/app-core";
+import { SegmentedControl } from "@elizaos/ui/components/ui/segmented-control";
 import type { ReactNode } from "react";
 import { useApp } from "../../state";
 import { DatabaseView } from "./DatabaseView";

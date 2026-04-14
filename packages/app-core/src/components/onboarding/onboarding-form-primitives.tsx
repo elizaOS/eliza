@@ -1,10 +1,10 @@
 import {
-  cn,
   Field,
   FieldDescription,
   FieldLabel,
   FieldMessage,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/field";
+import { cn } from "@elizaos/ui/lib/utils";
 import * as React from "react";
 
 export const onboardingDetailStackClassName =

@@ -4,8 +4,11 @@
  */
 
 import type { Tab } from "../navigation";
-import type { DesktopClickAuditItem, DesktopWorkspaceSurface } from "../utils";
-import { DESKTOP_WORKSPACE_SURFACES } from "../utils";
+import type {
+  DesktopClickAuditItem,
+  DesktopWorkspaceSurface,
+} from "../utils/desktop-workspace";
+import { DESKTOP_WORKSPACE_SURFACES } from "../utils/desktop-workspace";
 
 const ROUTINE_CODING_AGENT_RE =
   /^\[.+?\] (?:Approved:|Responded:|Sent keys:|Turn done, continuing:|Idle for \d+[smh])/;
@@ -93,6 +96,8 @@ export function isRoutineCodingAgentMessage(message: {
     ROUTINE_CODING_AGENT_RE.test(message.text)
   );
 }
+
+export * from "./coding-agent-session-state";
 
 // ── Typed command registry ───────────────────────────────────────────────
 

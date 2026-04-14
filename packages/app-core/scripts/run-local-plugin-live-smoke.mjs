@@ -12,7 +12,7 @@ const liveTestPath = path.join(
   "test",
   "plugin-lifecycle.live.e2e.test.ts",
 );
-const vitestConfigPath = path.join(repoRoot, "vitest.live-e2e.config.ts");
+const vitestConfigPath = path.join(repoRoot, "test/vitest/live-e2e.config.ts");
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -101,7 +101,7 @@ const result = spawnSync(
     "vitest",
     "run",
     "--config",
-    "vitest.live-e2e.config.ts",
+    "test/vitest/live-e2e.config.ts",
     "eliza/agent/test/plugin-lifecycle.live.e2e.test.ts",
   ],
   {
@@ -109,9 +109,9 @@ const result = spawnSync(
     stdio: "inherit",
     env: {
       ...process.env,
-      MILADY_LIVE_TEST: "1",
       ELIZA_LIVE_TEST: "1",
-      MILADY_PLUGIN_LIFECYCLE_FILTER: pluginId,
+      ELIZA_LIVE_TEST: "1",
+      ELIZA_PLUGIN_LIFECYCLE_FILTER: pluginId,
     },
   },
 );

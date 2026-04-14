@@ -5,7 +5,7 @@ export interface ElectrobunRendererRpc {
 }
 
 interface RuntimeWindow extends Window {
-  __MILADY_ELECTROBUN_RPC__?: ElectrobunRendererRpc;
+  __ELIZA_ELECTROBUN_RPC__?: ElectrobunRendererRpc;
   __electrobunWindowId?: number;
   __electrobunWebviewId?: number;
 }
@@ -21,7 +21,7 @@ function getRuntimeWindow(): RuntimeWindow | null {
 
 export function getElectrobunRendererRpc(): ElectrobunRendererRpc | undefined {
   const runtimeWindow = getRuntimeWindow();
-  return runtimeWindow?.__MILADY_ELECTROBUN_RPC__ ?? undefined;
+  return runtimeWindow?.__ELIZA_ELECTROBUN_RPC__ ?? undefined;
 }
 
 function hasElectrobunRendererBridge(): boolean {

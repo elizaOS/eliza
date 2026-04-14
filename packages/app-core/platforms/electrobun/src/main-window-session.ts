@@ -43,14 +43,14 @@ export function shouldForceMainWindowCef(
     return false;
   }
 
-  return parseEnabledFlag(trimToNull(env.MILADY_DESKTOP_FORCE_CEF));
+  return parseEnabledFlag(trimToNull(env.ELIZA_DESKTOP_FORCE_CEF));
 }
 
 export function resolveMainWindowPartition(
   env: NodeJS.ProcessEnv = process.env,
 ): string | null {
   const explicit = trimToNull(
-    env.ELIZA_DESKTOP_TEST_PARTITION ?? env.MILADY_DESKTOP_TEST_PARTITION,
+    env.ELIZA_DESKTOP_TEST_PARTITION ?? env.ELIZA_DESKTOP_TEST_PARTITION,
   );
   if (explicit) {
     return normalizePersistentPartition(explicit);
@@ -58,7 +58,7 @@ export function resolveMainWindowPartition(
 
   if (
     trimToNull(
-      env.ELIZA_DESKTOP_TEST_API_BASE ?? env.MILADY_DESKTOP_TEST_API_BASE,
+      env.ELIZA_DESKTOP_TEST_API_BASE ?? env.ELIZA_DESKTOP_TEST_API_BASE,
     )
   ) {
     // The Windows smoke harness redirects APPDATA/LOCALAPPDATA before launch,

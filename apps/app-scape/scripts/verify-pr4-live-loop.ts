@@ -2,7 +2,7 @@
  * PR 4 end-to-end loop test — boots a standalone `ScapeGameService`
  * against a live xRSPS bot-SDK, with a hand-rolled runtime stub that
  * fakes `useModel` so we can watch the full loop execute ONE step
- * without spinning up the milady LLM runtime.
+ * without spinning up the eliza LLM runtime.
  *
  * Success condition:
  *   - Agent spawns in the world

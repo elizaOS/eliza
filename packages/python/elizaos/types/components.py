@@ -31,16 +31,11 @@ HandlerCallback = Callable[[Content], Awaitable[list["Memory"]]]
 # Note: designed for simplicity; accumulated parameter handled in TypeScript for sync.
 StreamChunkCallback = Callable[[str, str | None], Awaitable[None]]
 
-Handler = Callable[
-    [
-        "IAgentRuntime",
-        "Memory",
-        "State | None",
-        HandlerOptions | None,
-        HandlerCallback | None,
-        "list[Memory] | None",
-    ],
-    Awaitable[ActionResult | None],
+Handler = Callable[..., Awaitable[ActionResult | None]]
+EvaluatorHandler = Callable[..., Awaitable[Any]]
+ProviderGetter = Callable[
+    ["IAgentRuntime", "Memory", "State | None"],
+    Awaitable[ProviderResult | dict[str, Any]],
 ]
 
 Validator = Callable[["IAgentRuntime", "Memory", "State | None"], Awaitable[bool]]
@@ -54,7 +49,7 @@ class ActionDefinition:  # runtime interface
     handler: Handler
     validate: Validator
     similes: list[str] | None
-    examples: list[list[ActionExample]] | None
+    examples: list[list[Any]] | None
     priority: int | None
     tags: list[str] | None
     parameters: list[ActionParameter] | None
@@ -66,7 +61,7 @@ class ActionDefinition:  # runtime interface
         handler: Handler,
         validate: Validator,
         similes: list[str] | None = None,
-        examples: list[list[ActionExample]] | None = None,
+        examples: list[list[Any]] | None = None,
         priority: int | None = None,
         tags: list[str] | None = None,
         parameters: list[ActionParameter] | None = None,
@@ -88,8 +83,8 @@ class EvaluatorDefinition:  # runtime interface
     always_run: bool | None
     description: str
     similes: list[str] | None
-    examples: list[EvaluationExample]
-    handler: Handler
+    examples: list[Any]
+    handler: EvaluatorHandler
     name: str
     validate: Validator
 
@@ -97,9 +92,9 @@ class EvaluatorDefinition:  # runtime interface
         self,
         name: str,
         description: str,
-        handler: Handler,
+        handler: EvaluatorHandler,
         validate: Validator,
-        examples: list[EvaluationExample] | None = None,
+        examples: list[Any] | None = None,
         similes: list[str] | None = None,
         always_run: bool | None = None,
     ) -> None:
@@ -139,12 +134,12 @@ class ProviderDefinition:  # runtime interface
     dynamic: bool | None
     position: int | None
     private: bool | None
-    get: Callable[[IAgentRuntime, Memory, State], Awaitable[ProviderResult]]
+    get: ProviderGetter
 
     def __init__(
         self,
         name: str,
-        get: Callable[[IAgentRuntime, Memory, State], Awaitable[ProviderResult]],
+        get: ProviderGetter,
         description: str | None = None,
         dynamic: bool | None = None,
         position: int | None = None,
@@ -177,8 +172,10 @@ __all__ = [
     "EvaluationExample",
     "EvaluatorResult",
     "Handler",
+    "EvaluatorHandler",
     "Validator",
     "HandlerCallback",
     "StreamChunkCallback",
+    "ProviderGetter",
     "JsonPrimitive",
 ]

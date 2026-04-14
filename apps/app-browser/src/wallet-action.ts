@@ -145,10 +145,10 @@ function parseApprovalRequest(
   };
 }
 
-export const signWithMiladyWalletAction: Action = {
-  name: "SIGN_WITH_MILADY_WALLET",
+export const signWithElizaWalletAction: Action = {
+  name: "SIGN_WITH_ELIZA_WALLET",
   description:
-    "Send a transaction through the Milady Steward-managed wallet while browsing. Use this when the user or agent needs the Milady wallet to sign and optionally broadcast a transaction.",
+    "Send a transaction through the Eliza Steward-managed wallet while browsing. Use this when the user or agent needs the Eliza wallet to sign and optionally broadcast a transaction.",
   similes: [
     "sign transaction with wallet",
     "send with steward wallet",
@@ -238,7 +238,7 @@ export const signWithMiladyWalletAction: Action = {
       {
         name: "user",
         content: {
-          text: "Use the Milady wallet to send 1000000000000000 wei to 0xabc0000000000000000000000000000000000000 on chain 8453",
+          text: "Use the Eliza wallet to send 1000000000000000 wei to 0xabc0000000000000000000000000000000000000 on chain 8453",
         },
       },
       {
@@ -251,10 +251,10 @@ export const signWithMiladyWalletAction: Action = {
   ] as ActionExample[][],
 };
 
-export const approveMiladyWalletRequestAction: Action = {
-  name: "APPROVE_MILADY_WALLET_REQUEST",
+export const approveElizaWalletRequestAction: Action = {
+  name: "APPROVE_ELIZA_WALLET_REQUEST",
   description:
-    "Approve a pending Milady Steward wallet request by transaction/request ID.",
+    "Approve a pending Eliza Steward wallet request by transaction/request ID.",
   similes: ["approve wallet request", "approve steward request"],
   parameters: [
     {
@@ -302,10 +302,10 @@ export const approveMiladyWalletRequestAction: Action = {
   },
 };
 
-export const rejectMiladyWalletRequestAction: Action = {
-  name: "REJECT_MILADY_WALLET_REQUEST",
+export const rejectElizaWalletRequestAction: Action = {
+  name: "REJECT_ELIZA_WALLET_REQUEST",
   description:
-    "Reject a pending Milady Steward wallet request by transaction/request ID.",
+    "Reject a pending Eliza Steward wallet request by transaction/request ID.",
   similes: ["reject wallet request", "deny steward request"],
   parameters: [
     {
@@ -359,5 +359,5 @@ export const rejectMiladyWalletRequestAction: Action = {
   },
 };
 
-export const miladyWalletUnavailableMessage =
+export const elizaWalletUnavailableMessage =
   getStewardWalletUnavailableMessage();

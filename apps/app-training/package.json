@@ -1,0 +1,36 @@
+{
+  "name": "@elizaos/app-training",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./routes": "./src/routes/index.ts",
+    "./routes/training": "./src/routes/training-routes.ts",
+    "./routes/trajectory": "./src/routes/trajectory-routes.ts",
+    "./services": "./src/services/index.ts",
+    "./core": "./src/core/index.ts",
+    "./core/*": "./src/core/*.ts",
+    "./core/context-types": "./src/core/context-types.ts",
+    "./core/context-catalog": "./src/core/context-catalog.ts",
+    "./core/context-audit": "./src/core/context-audit.ts",
+    "./core/dataset-generator": "./src/core/dataset-generator.ts",
+    "./core/replay-validator": "./src/core/replay-validator.ts",
+    "./core/roleplay-executor": "./src/core/roleplay-executor.ts",
+    "./core/roleplay-trajectories": "./src/core/roleplay-trajectories.ts",
+    "./core/scenario-blueprints": "./src/core/scenario-blueprints.ts",
+    "./core/trajectory-task-datasets": "./src/core/trajectory-task-datasets.ts",
+    "./core/vertex-tuning": "./src/core/vertex-tuning.ts",
+    "./core/cli": "./src/core/cli.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/agent": "workspace:*"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  }
+}

@@ -179,8 +179,7 @@ export async function handleAgentStatusRoutes(
 
     if (state.runtime && Array.isArray(state.runtime.plugins)) {
       for (const plugin of state.runtime.plugins) {
-        const name =
-          typeof plugin?.name === "string" ? plugin.name.trim() : "";
+        const name = typeof plugin?.name === "string" ? plugin.name.trim() : "";
         if (!name) continue;
         pluginNames.push(name);
         const lower = name.toLowerCase();
@@ -372,7 +371,7 @@ export async function handleAgentStatusRoutes(
       return true;
     }
     const body = await readJsonBody<{ tokenURI?: string }>(req, res);
-    if (!body || !body.tokenURI) {
+    if (!body?.tokenURI) {
       error(res, "tokenURI is required");
       return true;
     }

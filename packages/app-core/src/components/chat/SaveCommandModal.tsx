@@ -1,17 +1,13 @@
-/**
- * Modal for naming and saving a custom /command from selected text.
- */
-
+import { Button } from "@elizaos/ui/components/ui/button";
 import {
-  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  Input,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/dialog";
+import { Input } from "@elizaos/ui/components/ui/input";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useApp } from "../../state";
 

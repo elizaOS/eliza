@@ -1,12 +1,12 @@
+import { Banner } from "@elizaos/ui/components/ui/banner";
+import { Button } from "@elizaos/ui/components/ui/button";
 import {
-  Banner,
-  Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
-  StatusBadge,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/card";
+import { StatusBadge } from "@elizaos/ui/components/ui/status-badge";
 import { useState } from "react";
 import { client } from "../../api";
 import { useBranding } from "../../config/branding";

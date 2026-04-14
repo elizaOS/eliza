@@ -201,7 +201,10 @@ export type SlackStatus = {
   lastProbeAt?: number | null;
 };
 
-export type { WebsiteBlockerSettingsCardProps, WebsiteBlockerSettingsMode } from "./lifeops-ui";
+export type {
+  WebsiteBlockerSettingsCardProps,
+  WebsiteBlockerSettingsMode,
+} from "./lifeops-ui";
 
 export type SignalProbe = {
   ok: boolean;
@@ -466,13 +469,6 @@ export interface PluginUiTheme {
 
 export type ConfigUiHints = Record<string, ConfigUiHint>;
 
-export type ConfigSchemaResponse = {
-  schema: unknown;
-  uiHints: ConfigUiHints;
-  version: string;
-  generatedAt: string;
-};
-
 export type PresenceEntry = {
   deviceFamily?: string | null;
   host?: string | null;
@@ -716,12 +712,3 @@ export type StatusSummary = Record<string, unknown>;
 export type HealthSnapshot = Record<string, unknown>;
 
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
-
-export type LogEntry = {
-  raw: string;
-  time?: string | null;
-  level?: LogLevel | null;
-  subsystem?: string | null;
-  message?: string | null;
-  meta?: Record<string, unknown> | null;
-};

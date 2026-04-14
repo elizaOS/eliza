@@ -1,5 +1,6 @@
-import { useApp } from "@elizaos/app-core/state";
-import { Button, Input } from "@elizaos/app-core";
+import { useApp } from "../../state/useApp";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
 import {
   OnboardingField,
   OnboardingStatusBanner,

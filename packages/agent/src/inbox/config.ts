@@ -47,14 +47,7 @@ const DEFAULT_CONFIG: InboxTriageConfig = {
   triageCron: "0 * * * *",
   digestCron: "0 8 * * *",
   digestTimezone: undefined,
-  channels: [
-    "discord",
-    "telegram",
-    "signal",
-    "imessage",
-    "whatsapp",
-    "gmail",
-  ],
+  channels: ["discord", "telegram", "signal", "imessage", "whatsapp", "gmail"],
   prioritySenders: [],
   priorityChannels: [],
   autoReply: {

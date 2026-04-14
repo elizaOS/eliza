@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildRawGitHubAssetBase } from "./lib/asset-cdn.mjs";
 
-const REPOSITORY = "milady-ai/milady";
+const REPOSITORY = "elizaos/eliza";
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..");
 const OUTPUT_PATH = path.resolve(
@@ -17,7 +17,7 @@ const OUTPUT_PATH = path.resolve(
 const RELEASES_URL = `https://api.github.com/repos/${REPOSITORY}/releases?per_page=20`;
 const RELEASES_PAGE_URL = `https://github.com/${REPOSITORY}/releases`;
 
-const installBaseUrl = "https://milady.ai";
+const installBaseUrl = "https://eliza.ai";
 const scripts = {
   shell: {
     url: `${installBaseUrl}/install.sh`,

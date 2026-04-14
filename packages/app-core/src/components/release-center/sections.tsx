@@ -1,4 +1,5 @@
-import { Button, Input } from "@elizaos/app-core";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
 import { createElement } from "react";
 import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";

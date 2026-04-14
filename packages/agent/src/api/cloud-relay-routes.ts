@@ -34,7 +34,7 @@ export interface CloudRelayRouteState {
 }
 
 export async function handleCloudRelayRoute(
-  req: http.IncomingMessage,
+  _req: http.IncomingMessage,
   res: http.ServerResponse,
   pathname: string,
   method: string,
@@ -55,10 +55,10 @@ export async function handleCloudRelayRoute(
   }
 
   // Try both possible service names
-  const service = (
-    state.runtime.getService("cloud-managed-gateway-relay") ??
-    state.runtime.getService("cloudManagedGatewayRelay")
-  ) as RelayServiceLike | null;
+  const service = (state.runtime.getService("cloud-managed-gateway-relay") ??
+    state.runtime.getService(
+      "cloudManagedGatewayRelay",
+    )) as RelayServiceLike | null;
 
   if (!service || typeof service.getSessionInfo !== "function") {
     helpers.json(res, {

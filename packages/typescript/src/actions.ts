@@ -473,7 +473,7 @@ function toActionParameterValue(value: unknown): ActionParameters[string] {
 		typeof value === "boolean" ||
 		value === null
 	) {
-		return value;
+		return value as ActionParameterValue;
 	}
 
 	if (Array.isArray(value)) {
@@ -481,12 +481,11 @@ function toActionParameterValue(value: unknown): ActionParameters[string] {
 	}
 
 	if (value && typeof value === "object") {
-		return Object.fromEntries(
-			Object.entries(value).map(([key, entry]) => [
-				key,
-				toActionParameterValue(entry),
-			]),
-		);
+		const normalized: ActionParameters = {};
+		for (const [key, entry] of Object.entries(value)) {
+			normalized[key] = toActionParameterValue(entry);
+		}
+		return normalized;
 	}
 
 	return value === undefined ? null : String(value);

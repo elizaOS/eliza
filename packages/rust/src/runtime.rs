@@ -1098,6 +1098,7 @@ impl AgentRuntime {
                     enable_extended,
                     enable_autonomy,
                     skip_character_provider: self.capability_options.skip_character_provider,
+                    ..Default::default()
                 },
             );
         self.register_plugin(basic_capabilities_plugin).await?;

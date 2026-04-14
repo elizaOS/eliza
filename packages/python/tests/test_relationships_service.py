@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from elizaos.advanced_capabilities.services.relationships import RelationshipsService
+from elizaos.features.advanced_capabilities.services.relationships import RelationshipsService
 from elizaos.types import as_uuid
 
 
