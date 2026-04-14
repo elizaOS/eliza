@@ -125,7 +125,7 @@
     "@elizaos/app-training": "workspace:*",
     "@elizaos/app-vincent": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-wechat": "github:milady-ai/plugin-wechat",
+    "@elizaos/plugin-wechat": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@radix-ui/react-checkbox": "^1.3.3",
