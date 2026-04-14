@@ -8,7 +8,7 @@
     "skipLibCheck": true,
     "outDir": "./dist",
     "rootDir": "./typescript",
-    "types": ["node", "bun"],
+    "types": ["node", "bun-types"],
     "noEmit": false,
     "declaration": true,
     "allowImportingTsExtensions": false,
