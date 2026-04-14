@@ -1468,6 +1468,18 @@ export async function saveTrajectory(
     trajectory.createdAt || new Date(summary.startTime).toISOString();
   const updatedAt =
     trajectory.updatedAt || new Date(endTime ?? summary.endTime).toISOString();
+  const serializedSteps = sqlQuote(JSON.stringify(trajectory.steps));
+  const serializedMetadata = sqlQuote(JSON.stringify(trajectory.metadata));
+  const serializedCompatMetrics = sqlQuote(
+    JSON.stringify({
+      episodeLength: trajectory.steps.length,
+      finalStatus: trajectory.status,
+      llmCallCount: summary.llmCallCount,
+      providerAccessCount: summary.providerAccessCount,
+      totalPromptTokens: summary.totalPromptTokens,
+      totalCompletionTokens: summary.totalCompletionTokens,
+    }),
+  );
 
   const sql = `INSERT INTO trajectories (
       id,
@@ -1506,8 +1518,8 @@ export async function saveTrajectory(
       ${sqlNumber(trajectory.totalReward)},
       ${trajectory.scenarioId ? sqlQuote(trajectory.scenarioId) : "NULL"},
       ${trajectory.batchId ? sqlQuote(trajectory.batchId) : "NULL"},
-      ${sqlQuote(JSON.stringify(trajectory.steps))},
-      ${sqlQuote(JSON.stringify(trajectory.metadata))},
+      ${serializedSteps},
+      ${serializedMetadata},
       ${sqlQuote(createdAt)},
       ${sqlQuote(updatedAt)},
       ${sqlNumber(trajectory.steps.length)}
@@ -1533,12 +1545,88 @@ export async function saveTrajectory(
       updated_at = EXCLUDED.updated_at,
       episode_length = EXCLUDED.episode_length`;
 
+  const compatSql = `INSERT INTO trajectories (
+      id,
+      agent_id,
+      source,
+      status,
+      start_time,
+      end_time,
+      duration_ms,
+      step_count,
+      llm_call_count,
+      provider_access_count,
+      total_prompt_tokens,
+      total_completion_tokens,
+      total_reward,
+      scenario_id,
+      batch_id,
+      steps_json,
+      metadata_json,
+      metrics_json,
+      created_at,
+      updated_at
+    ) VALUES (
+      ${sqlQuote(trajectory.id)},
+      ${sqlQuote(runtime.agentId)},
+      ${sqlQuote(trajectory.source)},
+      ${sqlQuote(trajectory.status)},
+      ${sqlNumber(summary.startTime)},
+      ${sqlNumber(endTime)},
+      ${sqlNumber(durationMs)},
+      ${sqlNumber(trajectory.steps.length)},
+      ${sqlNumber(summary.llmCallCount)},
+      ${sqlNumber(summary.providerAccessCount)},
+      ${sqlNumber(summary.totalPromptTokens)},
+      ${sqlNumber(summary.totalCompletionTokens)},
+      ${sqlNumber(trajectory.totalReward)},
+      ${trajectory.scenarioId ? sqlQuote(trajectory.scenarioId) : "NULL"},
+      ${trajectory.batchId ? sqlQuote(trajectory.batchId) : "NULL"},
+      ${serializedSteps},
+      ${serializedMetadata},
+      ${serializedCompatMetrics},
+      ${sqlQuote(createdAt)},
+      ${sqlQuote(updatedAt)}
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      agent_id = EXCLUDED.agent_id,
+      source = EXCLUDED.source,
+      status = EXCLUDED.status,
+      start_time = EXCLUDED.start_time,
+      end_time = EXCLUDED.end_time,
+      duration_ms = EXCLUDED.duration_ms,
+      step_count = EXCLUDED.step_count,
+      llm_call_count = EXCLUDED.llm_call_count,
+      provider_access_count = EXCLUDED.provider_access_count,
+      total_prompt_tokens = EXCLUDED.total_prompt_tokens,
+      total_completion_tokens = EXCLUDED.total_completion_tokens,
+      total_reward = EXCLUDED.total_reward,
+      scenario_id = EXCLUDED.scenario_id,
+      batch_id = EXCLUDED.batch_id,
+      steps_json = EXCLUDED.steps_json,
+      metadata_json = EXCLUDED.metadata_json,
+      metrics_json = EXCLUDED.metrics_json,
+      created_at = EXCLUDED.created_at,
+      updated_at = EXCLUDED.updated_at`;
+
   try {
     await executeRawSql(runtime, sql);
     return true;
   } catch (err) {
-    console.error("[trajectory-persistence] saveTrajectory error:", err);
-    return false;
+    try {
+      await executeRawSql(runtime, compatSql);
+      return true;
+    } catch (compatErr) {
+      console.error("[trajectory-persistence] saveTrajectory error:", {
+        modern:
+          err instanceof Error ? err.message : String(err),
+        compat:
+          compatErr instanceof Error
+            ? compatErr.message
+            : String(compatErr),
+      });
+      return false;
+    }
   }
 }
 

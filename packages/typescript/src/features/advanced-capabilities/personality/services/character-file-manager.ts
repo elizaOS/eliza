@@ -242,13 +242,13 @@ export class CharacterFileManager extends Service {
 		try {
 			const files = await fs.readdir(this.backupDir);
 			const backupFiles = files
-				.filter((file) => file.endsWith(".json"))
-				.map((file) => ({
+				.filter((file: string) => file.endsWith(".json"))
+				.map((file: string) => ({
 					name: file,
 					path: path.join(this.backupDir, file),
 					stat: fs.statSync(path.join(this.backupDir, file)),
 				}))
-				.sort((a, b) => b.stat.mtime.getTime() - a.stat.mtime.getTime());
+				.sort((a: { stat: { mtime: Date } }, b: { stat: { mtime: Date } }) => b.stat.mtime.getTime() - a.stat.mtime.getTime());
 
 			// Keep only the most recent backups
 			const filesToDelete = backupFiles.slice(this.maxBackups);
