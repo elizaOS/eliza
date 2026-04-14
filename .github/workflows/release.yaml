@@ -424,37 +424,73 @@ jobs:
       - name: Push to git
         if: steps.commit.outputs.has_changes == 'true'
         run: |
+          TAG_NAME="${{ steps.tag.outputs.tag_name }}"
+
           # Determine target branch for push
           if [[ "${{ github.event_name }}" == "release" ]]; then
             # For GitHub releases, push to main branch
             TARGET_BRANCH="main"
             echo "Pushing changes to main branch..."
-            
-            # Push the changes to main branch
-            if ! git push origin HEAD:${TARGET_BRANCH} --follow-tags; then
-              echo "❌ Error: Failed to push to git repository"
-              echo "This could be due to:"
-              echo "  - Protected branch restrictions"
-              echo "  - Network issues"
-              echo "  - Permission problems"
-              echo ""
-              echo "The version has been updated locally but not published."
-              echo "Manual intervention required to resolve the git push issue."
-              exit 1
-            fi
           else
             # For other triggers, push to current branch
-            if ! git push origin HEAD --follow-tags; then
-              echo "❌ Error: Failed to push to git repository"
-              echo "This could be due to:"
-              echo "  - Protected branch restrictions"
-              echo "  - Network issues"
-              echo "  - Permission problems"
-              echo ""
-              echo "The version has been updated locally but not published."
-              echo "Manual intervention required to resolve the git push issue."
-              exit 1
+            TARGET_BRANCH="${{ github.ref_name }}"
+          fi
+
+          retry_rebase_release_commit() {
+            git fetch origin "${TARGET_BRANCH}"
+
+            if ! git rebase "origin/${TARGET_BRANCH}"; then
+              echo "❌ Error: Failed to rebase release commit onto origin/${TARGET_BRANCH}"
+              return 1
             fi
+
+            if [[ -n "${TAG_NAME}" ]]; then
+              if git ls-remote --exit-code --tags origin "refs/tags/${TAG_NAME}" >/dev/null 2>&1; then
+                echo "❌ Error: Tag ${TAG_NAME} already exists on origin after retry fetch"
+                return 1
+              fi
+
+              if git rev-parse "${TAG_NAME}" >/dev/null 2>&1; then
+                git tag -d "${TAG_NAME}"
+              fi
+
+              git tag "${TAG_NAME}"
+            fi
+          }
+
+          push_release_state() {
+            git push origin HEAD:${TARGET_BRANCH} --follow-tags
+          }
+
+          PUSHED=false
+          MAX_PUSH_ATTEMPTS=3
+          for ATTEMPT in $(seq 1 "${MAX_PUSH_ATTEMPTS}"); do
+            if push_release_state; then
+              PUSHED=true
+              break
+            fi
+
+            if [[ "${ATTEMPT}" -eq "${MAX_PUSH_ATTEMPTS}" ]]; then
+              break
+            fi
+
+            echo "⚠️ Push attempt ${ATTEMPT}/${MAX_PUSH_ATTEMPTS} failed — rebasing onto origin/${TARGET_BRANCH} and retrying..."
+            if ! retry_rebase_release_commit; then
+              break
+            fi
+          done
+
+          if [[ "${PUSHED}" != "true" ]]; then
+            echo "❌ Error: Failed to push to git repository"
+            echo "This could be due to:"
+            echo "  - Protected branch restrictions"
+            echo "  - Network issues"
+            echo "  - Permission problems"
+            echo "  - The target branch changing too quickly to rebase cleanly"
+            echo ""
+            echo "The version has been updated locally but not published."
+            echo "Manual intervention required to resolve the git push issue."
+            exit 1
           fi
 
           echo "✅ Successfully pushed version changes and tags to git"
