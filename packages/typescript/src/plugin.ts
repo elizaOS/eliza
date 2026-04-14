@@ -5,6 +5,29 @@ import { detectEnvironment } from "./utils/environment";
 
 const attemptedInstalls = new Set<string>();
 
+type BunSpawnResult = {
+	exited: Promise<number>;
+};
+
+type BunLike = {
+	spawn(
+		command: string[],
+		options?: {
+			cwd?: string;
+			env?: Record<string, string>;
+			stdout?: unknown;
+			stderr?: unknown;
+		},
+	): BunSpawnResult;
+};
+
+function getBunRuntime(): BunLike | null {
+	const bunRuntime = (globalThis as { Bun?: BunLike }).Bun;
+	return bunRuntime && typeof bunRuntime.spawn === "function"
+		? bunRuntime
+		: null;
+}
+
 function isAutoInstallAllowed(): boolean {
 	if (process.env.ELIZA_NO_AUTO_INSTALL === "true") return false;
 	if (process.env.ELIZA_NO_PLUGIN_AUTO_INSTALL === "true") return false;
@@ -30,22 +53,23 @@ export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
 				"Auto-install already attempted, skipping",
 			);
 			return false;
-		}
-		attemptedInstalls.add(pluginName);
+			}
+			attemptedInstalls.add(pluginName);
 
-		if (typeof Bun === "undefined" || typeof Bun.spawn !== "function") {
-			logger.warn(
-				{ src: "core:plugin", pluginName },
-				"Bun runtime not available, cannot auto-install",
-			);
-			return false;
-		}
+			const bunRuntime = getBunRuntime();
+			if (!bunRuntime) {
+				logger.warn(
+					{ src: "core:plugin", pluginName },
+					"Bun runtime not available, cannot auto-install",
+				);
+				return false;
+			}
 
-		try {
-			const check = Bun.spawn(["bun", "--version"], {
-				stdout: "pipe",
-				stderr: "pipe",
-			});
+			try {
+				const check = bunRuntime.spawn(["bun", "--version"], {
+					stdout: "pipe",
+					stderr: "pipe",
+				});
 			const code = await check.exited;
 			if (code !== 0) {
 				logger.warn(
@@ -62,14 +86,14 @@ export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
 			return false;
 		}
 
-		logger.info(
-			{ src: "core:plugin", pluginName },
-			"Auto-installing missing plugin",
-		);
-		const install = Bun.spawn(["bun", "add", pluginName], {
-			cwd: process.cwd(),
-			env: process.env as Record<string, string>,
-			stdout: "inherit",
+			logger.info(
+				{ src: "core:plugin", pluginName },
+				"Auto-installing missing plugin",
+			);
+			const install = bunRuntime.spawn(["bun", "add", pluginName], {
+				cwd: process.cwd(),
+				env: process.env as Record<string, string>,
+				stdout: "inherit",
 			stderr: "inherit",
 		});
 		const exit = await install.exited;
