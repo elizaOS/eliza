@@ -14,9 +14,13 @@
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "types": ["node", "bun-types", "react", "react-dom"],
     "typeRoots": [
+      "../../node_modules/@types",
+      "../../node_modules/.bun/node_modules/@types",
       "../../../node_modules/@types",
       "../../../node_modules/.bun/node_modules/@types",
       "node_modules/@types",
+      "../../node_modules",
+      "../../node_modules/.bun/node_modules",
       "../../../node_modules",
       "../../../node_modules/.bun/node_modules"
     ]
