@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # syntax=docker/dockerfile:1.7
 # ─────────────────────────────────────────────────────────────────────────────
 # elizaOS Cloud Agent Container
@@ -11,6 +12,32 @@ FROM node:22-bookworm-slim
 ARG APP_PORT
 ARG APP_BRIDGE_PORT
 
+=======
+# ─────────────────────────────────────────────────────────────────────────────
+# elizaOS Cloud Agent Container
+#
+# Pre-built image for deploying Eliza agents to ElizaCloud (AWS ECS).
+# Runs an elizaOS agent runtime with the ElizaCloud plugin for inference,
+# exposes a health endpoint on $PORT (default 2138), and a bridge HTTP
+# server on $BRIDGE_PORT (default 18790) for communication with milady.
+#
+# Configuration is injected via environment variables:
+#   ELIZAOS_CLOUD_API_KEY — for cloud inference
+#   OPENAI_API_KEY / ANTHROPIC_API_KEY — for BYOK mode
+#   SMALL_MODEL / LARGE_MODEL — model selection
+#
+# Build:
+#   docker build -f deploy/Dockerfile.cloud-agent -t elizaos/agent:latest .
+#
+# Run:
+#   docker run -p 2138:2138 -p 18790:18790 \
+#     -e ELIZAOS_CLOUD_API_KEY=eliza_xxx \
+#     elizaos/agent:latest
+# ─────────────────────────────────────────────────────────────────────────────
+
+FROM node:22-bookworm-slim
+
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       curl ca-certificates && \
@@ -20,21 +47,36 @@ RUN apt-get update && \
 WORKDIR /app
 
 # Copy the entrypoint (standalone Node.js script, no build step needed)
+<<<<<<< HEAD
 COPY eliza/packages/app-core/deploy/cloud-agent-entrypoint.ts ./entrypoint.ts
+=======
+COPY deploy/cloud-agent-entrypoint.ts ./entrypoint.ts
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 # Install tsx for running TypeScript directly
 RUN npm install -g tsx@4
 
 ENV NODE_ENV=production
+<<<<<<< HEAD
 ENV PORT=${APP_PORT}
 ENV BRIDGE_PORT=${APP_BRIDGE_PORT}
+=======
+# PORT is used by cloud platforms (Railway, Fly.io); maps to MILADY_PORT locally
+ENV PORT=2138
+ENV BRIDGE_PORT=18790
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 # Health check endpoint
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:${PORT}/health || exit 1
 
+<<<<<<< HEAD
 EXPOSE ${APP_PORT}
 EXPOSE ${APP_BRIDGE_PORT}
+=======
+EXPOSE ${PORT}
+EXPOSE ${BRIDGE_PORT}
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 # Security: run as non-root
 RUN useradd -m agent

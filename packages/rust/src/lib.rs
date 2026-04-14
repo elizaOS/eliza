@@ -31,16 +31,23 @@
 
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub mod basic_capabilities_core;
+<<<<<<< HEAD
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub mod features;
+=======
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 #[cfg(all(
     feature = "basic_capabilities-internal",
     feature = "native",
     not(feature = "wasm")
 ))]
+<<<<<<< HEAD
 pub use features::{advanced_capabilities, basic_capabilities, core_capabilities};
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub use features::{advanced_memory, advanced_planning, autonomy};
+=======
+pub mod core_capabilities;
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 pub mod agent_orchestrator_env;
 pub mod character;
 #[cfg(all(

@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 #
 # Ensure the requested whisper.cpp model exists in both the working tree and the
+<<<<<<< HEAD
 # shared Eliza cache. This is intentionally separate from the native binary
+=======
+# shared Milady cache. This is intentionally separate from the native binary
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 # build so CI can prepare the model once and fan it out to all desktop jobs.
 #
 # Usage:
@@ -15,10 +19,17 @@ WHISPER_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)/node_modules/whisper-node/li
 WHISPER_MODEL_DIR="$WHISPER_DIR/models"
 WHISPER_MODEL_FILENAME="ggml-${MODEL}.bin"
 WHISPER_MODEL_PATH="$WHISPER_MODEL_DIR/$WHISPER_MODEL_FILENAME"
+<<<<<<< HEAD
 WHISPER_MODEL_CACHE_DIR="${ELIZA_WHISPER_MODEL_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/eliza/whisper}"
 WHISPER_MODEL_CACHE_PATH="$WHISPER_MODEL_CACHE_DIR/$WHISPER_MODEL_FILENAME"
 DOWNLOAD_ATTEMPTS="${ELIZA_WHISPER_DOWNLOAD_ATTEMPTS:-4}"
 RETRY_DELAY_SECONDS="${ELIZA_WHISPER_DOWNLOAD_RETRY_DELAY_SECONDS:-15}"
+=======
+WHISPER_MODEL_CACHE_DIR="${MILADY_WHISPER_MODEL_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/milady/whisper}"
+WHISPER_MODEL_CACHE_PATH="$WHISPER_MODEL_CACHE_DIR/$WHISPER_MODEL_FILENAME"
+DOWNLOAD_ATTEMPTS="${MILADY_WHISPER_DOWNLOAD_ATTEMPTS:-4}"
+RETRY_DELAY_SECONDS="${MILADY_WHISPER_DOWNLOAD_RETRY_DELAY_SECONDS:-15}"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 if [ ! -d "$WHISPER_DIR" ]; then
   echo "Error: whisper.cpp not found at $WHISPER_DIR" >&2

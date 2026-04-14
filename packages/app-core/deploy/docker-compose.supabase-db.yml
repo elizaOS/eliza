@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Local Postgres for an elizaOS app using Supabase's Postgres image.
 #
 # You only need a PostgreSQL database (plugin-sql). You do NOT need the
@@ -16,10 +17,29 @@ services:
     # If this tag ever fails to pull, try: supabase/postgres:latest
     image: supabase/postgres:15.1.0.147
     container_name: ${APP_NAME:-eliza}-db
+=======
+# Local Postgres for Milady using Supabase's Postgres image.
+#
+# Milady only needs a PostgreSQL database (plugin-sql). You do NOT need the
+# full Supabase stack (auth/rest/realtime/storage) unless you want Studio.
+#
+# Usage:
+#   docker compose -f deploy/docker-compose.supabase-db.yml up -d
+#   # then set in ~/.milady/milady.json:
+#   #   database.provider = "postgres"
+#   #   database.postgres.connectionString = "postgresql://postgres:postgres@localhost:54322/milady"
+#
+services:
+  milady-db:
+    # If this tag ever fails to pull, try: supabase/postgres:latest
+    image: supabase/postgres:15.1.0.147
+    container_name: milady-db
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
     restart: unless-stopped
     ports:
       - "54322:5432"
     environment:
+<<<<<<< HEAD
       POSTGRES_DB: ${APP_DB_NAME:-eliza}
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -27,10 +47,23 @@ services:
       - db-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ${APP_DB_NAME:-eliza}"]
+=======
+      POSTGRES_DB: milady
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - milady-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d milady"]
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
       interval: 5s
       timeout: 3s
       retries: 20
 
 volumes:
+<<<<<<< HEAD
   db-data:
     name: ${APP_NAME:-eliza}-db-data
+=======
+  milady-db-data:
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
