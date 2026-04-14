@@ -29,7 +29,7 @@ export const mediaSchema = z
 			.optional()
 			.describe("Type of media content"),
 	})
-	.loose()
+	.passthrough()
 	.describe("Media attachment with URL and metadata");
 
 const jsonPrimitiveSchema = z.union([
