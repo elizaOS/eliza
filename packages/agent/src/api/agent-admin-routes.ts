@@ -139,7 +139,11 @@ export async function handleAgentAdminRoutes(
     return true;
   }
 
-  if (method === "POST" && pathname === "/api/agent/reset") {
+  if (
+    method === "POST" &&
+    (pathname === "/api/agent/reset" ||
+      pathname === "/api@elizaos/agent/reset")
+  ) {
     try {
       if (state.runtime) {
         await state.runtime.stop();

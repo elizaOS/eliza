@@ -5,22 +5,22 @@
 <title>VRM Screenshotter</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #111; color: #eee; font-family: system-ui, sans-serif; padding: 24px; }
-  h1 { font-size: 20px; margin-bottom: 16px; }
-  .status { color: #999; margin-bottom: 20px; font-size: 13px; }
-  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-  .card { background: #222; border: 1px solid #333; border-radius: 8px; padding: 12px; text-align: center; }
-  .card canvas { width: 100%; aspect-ratio: 3/4; display: block; border-radius: 4px; background: radial-gradient(ellipse at 50% 80%, rgba(124,58,237,0.12), transparent 60%), #0b0f14; }
-  .card .label { font-size: 13px; margin-top: 8px; color: #ccc; }
-  .card .dl { display: inline-block; margin-top: 6px; padding: 4px 12px; font-size: 12px; background: #7c3aed; color: #fff; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; }
-  .card .dl:hover { background: #6d28d9; }
-  .card.loading .label { color: #f59e0b; }
-  .card.done .label { color: #22c55e; }
-  .card.error .label { color: #ef4444; }
-  #run-all { padding: 8px 20px; font-size: 14px; background: #7c3aed; color: #fff; border: none; border-radius: 6px; cursor: pointer; margin-bottom: 20px; }
-  #run-all:hover { background: #6d28d9; }
-  #run-all:disabled { opacity: 0.4; cursor: not-allowed; }
-  #download-all { padding: 8px 20px; font-size: 14px; background: #22c55e; color: #fff; border: none; border-radius: 6px; cursor: pointer; margin-left: 8px; display: none; }
+    body { background: #111; color: #eee; font-family: system-ui, sans-serif; padding: 24px; }
+    h1 { font-size: 20px; margin-bottom: 16px; }
+    .status { color: #999; margin-bottom: 20px; font-size: 13px; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .card { background: #222; border: 1px solid #333; border-radius: 8px; padding: 12px; text-align: center; }
+    .card canvas { width: 100%; aspect-ratio: 3/4; display: block; border-radius: 4px; background: radial-gradient(ellipse at 50% 80%, rgba(124,58,237,0.12), transparent 60%), #0b0f14; }
+    .card .label { font-size: 13px; margin-top: 8px; color: #ccc; }
+    .card .dl { display: inline-block; margin-top: 6px; padding: 4px 12px; font-size: 12px; background: #7c3aed; color: #fff; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; }
+    .card .dl:hover { background: #6d28d9; }
+    .card.loading .label { color: #f59e0b; }
+    .card.done .label { color: #22c55e; }
+    .card.error .label { color: #ef4444; }
+    #run-all { padding: 8px 20px; font-size: 14px; background: #7c3aed; color: #fff; border: none; border-radius: 6px; cursor: pointer; margin-bottom: 20px; }
+    #run-all:hover { background: #6d28d9; }
+    #run-all:disabled { opacity: 0.4; cursor: not-allowed; }
+    #download-all { padding: 8px 20px; font-size: 14px; background: #22c55e; color: #fff; border: none; border-radius: 6px; cursor: pointer; margin-left: 8px; display: none; }
 </style>
 </head>
 <body>

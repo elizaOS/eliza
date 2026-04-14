@@ -14,6 +14,8 @@ export interface FormSelectProps extends React.ComponentProps<typeof Select> {
   placeholder?: string;
   triggerClassName?: string;
   contentClassName?: string;
+  value?: string;
+  onValueChange?: (value: string) => void;
 }
 
 export function FormSelect({

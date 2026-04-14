@@ -6456,7 +6456,8 @@ export async function startApiServer(opts?: {
   });
 
   // Handle WebSocket connections
-  wss.on("connection", (ws: WebSocket, request: http.IncomingMessage) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ws module typing workaround
+  (wss as any).on("connection", (ws: WebSocket, request: http.IncomingMessage) => {
     let wsUrl: URL;
     try {
       wsUrl = new URL(
@@ -6509,7 +6510,7 @@ export async function startApiServer(opts?: {
 
     ws.on("message", (data: unknown) => {
       try {
-        const msg = JSON.parse(data.toString());
+        const msg = JSON.parse(String(data));
         if (!isAuthenticated) {
           const expected = getConfiguredApiToken();
           if (
@@ -7048,7 +7049,7 @@ export async function startApiServer(opts?: {
               }
               for (const ws of wsClients) {
                 if (ws.readyState === 1 || ws.readyState === 0) {
-                  ws.terminate();
+                  (ws as unknown as { terminate(): void }).terminate();
                 }
               }
               wsClients.clear();

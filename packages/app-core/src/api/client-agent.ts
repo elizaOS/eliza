@@ -934,11 +934,11 @@ ElizaClient.prototype.restartAndWait = async function (
 };
 
 ElizaClient.prototype.resetAgent = async function (this: ElizaClient) {
-  console.info("[eliza][reset][client] POST /api@elizaos/agent/reset", {
+  console.info("[eliza][reset][client] POST /api/agent/reset", {
     baseUrl: this.getBaseUrl(),
   });
-  await this.fetch("/api@elizaos/agent/reset", { method: "POST" });
-  console.info("[eliza][reset][client] POST /api@elizaos/agent/reset OK");
+  await this.fetch("/api/agent/reset", { method: "POST" });
+  console.info("[eliza][reset][client] POST /api/agent/reset OK");
 };
 
 ElizaClient.prototype.restart = async function (this: ElizaClient) {

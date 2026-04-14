@@ -6,11 +6,11 @@ export const sidebarRootVariants = cva(
     variants: {
       variant: {
         default:
-          "relative isolate min-h-0 h-[calc(100%-1rem)] w-full shrink-0 rounded-l-none rounded-tr-none rounded-br-none border-y-0 border-l-0 border-b border-border/34 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_76%,transparent),color-mix(in_srgb,var(--bg-muted)_97%,transparent))] ring-1 ring-border/12 backdrop-blur-md before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.26),transparent)] after:pointer-events-none after:absolute after:bottom-0 after:right-0 after:top-[1.25rem] after:w-[2px] after:bg-[linear-gradient(180deg,rgba(255,255,255,0.06),transparent_24%,transparent)] lg:border-b-0 lg:border-r dark:ring-white/5 dark:before:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.12),transparent)] dark:after:bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent_22%,transparent)]",
+          "relative isolate min-h-0 h-[calc(100%-1rem)] w-full shrink-0 rounded-l-none rounded-tr-none rounded-br-none border-y-0 border-l-0 border-b border-border/34 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_76%,transparent),color-mix(in_srgb,var(--bg-muted)_97%,transparent))] backdrop-blur-md lg:border-b-0 lg:border-r",
         mobile:
           "h-full w-full min-w-0 border-0 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_96%,transparent),color-mix(in_srgb,var(--bg)_92%,transparent))] shadow-none ring-0",
         "game-modal":
-          "h-full rounded-sm border border-white/10 bg-[linear-gradient(180deg,rgba(11,12,17,0.9),rgba(8,10,14,0.82))] shadow-[0_20px_60px_rgba(0,0,0,0.28)] backdrop-blur-xl",
+          "h-full rounded-sm border border-white/10 bg-[linear-gradient(180deg,rgba(11,12,17,0.9),rgba(8,10,14,0.82))] shadow-2xl backdrop-blur-xl",
       },
       collapsed: {
         true: "!w-[4.75rem] !min-w-[4.75rem] rounded-tr-none xl:!w-[4.75rem] xl:!min-w-[4.75rem]",
@@ -27,14 +27,12 @@ export const sidebarRootVariants = cva(
       {
         variant: "default",
         collapsed: false,
-        className:
-          "shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_-1px_0_0_rgba(255,255,255,0.05),0_20px_40px_-26px_rgba(15,23,42,0.18),12px_0_24px_-20px_rgba(15,23,42,0.1)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_-1px_0_0_rgba(255,255,255,0.03),0_22px_42px_-28px_rgba(0,0,0,0.58),14px_0_24px_-18px_rgba(0,0,0,0.28),8px_-8px_16px_-24px_rgba(var(--accent-rgb),0.04)]",
+        className: "shadow-lg",
       },
       {
         variant: "default",
         collapsed: true,
-        className:
-          "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),inset_-1px_0_0_rgba(255,255,255,0.04),0_16px_30px_-24px_rgba(15,23,42,0.16),9px_0_18px_-16px_rgba(15,23,42,0.08)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05),inset_-1px_0_0_rgba(255,255,255,0.025),0_18px_32px_-24px_rgba(0,0,0,0.5),10px_0_18px_-16px_rgba(0,0,0,0.24),6px_-6px_12px_-22px_rgba(var(--accent-rgb),0.035)]",
+        className: "shadow-md",
       },
     ],
     defaultVariants: {
@@ -64,11 +62,11 @@ export const sidebarPanelVariants = cva("", {
   variants: {
     variant: {
       default:
-        "flex min-h-full flex-col gap-2 rounded-sm border border-border/12 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_16%,transparent),transparent_48%)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]",
+        "flex min-h-full flex-col gap-2 rounded-sm p-1.5 shadow-inset",
       mobile:
-        "flex min-h-full flex-col gap-2 rounded-sm border border-border/12 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_16%,transparent),transparent_48%)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]",
+        "flex min-h-full flex-col gap-2 rounded-sm p-1.5 shadow-inset",
       "game-modal":
-        "flex min-h-full flex-col gap-1.5 rounded-sm border border-white/10 bg-black/12 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]",
+        "flex min-h-full flex-col gap-1.5 rounded-sm bg-black/12 p-2",
     },
   },
   defaultVariants: {
@@ -80,11 +78,11 @@ export const sidebarHeaderVariants = cva("", {
   variants: {
     variant: {
       default:
-        "shrink-0 border-b border-border/25 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_34%,transparent),transparent)] px-3.5 pb-4 pt-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
+        "shrink-0 border-b border-border/25 px-3.5 pb-4 pt-3.5",
       mobile:
-        "shrink-0 border-b border-border/25 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_34%,transparent),transparent)] px-3.5 pb-4 pt-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
+        "shrink-0 border-b border-border/25 px-3.5 pb-4 pt-3.5",
       "game-modal":
-        "shrink-0 border-b border-white/10 bg-black/10 px-3.5 pb-3 pt-3.5",
+        "shrink-0 border-b border-border/25 px-3.5 pb-3 pt-3.5",
     },
     collapsed: {
       true: "flex min-h-0 flex-1 flex-col pb-0",
@@ -96,7 +94,7 @@ export const sidebarHeaderVariants = cva("", {
       variant: "default",
       collapsed: true,
       className:
-        "border-b border-border/25 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_34%,transparent),transparent)] px-3.5 pt-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
+        "border-b border-border/25 px-3.5 pt-3.5",
     },
   ],
   defaultVariants: {
@@ -106,11 +104,11 @@ export const sidebarHeaderVariants = cva("", {
 });
 
 export const sidebarFooterVariants = cva(
-  "relative z-10 mt-auto flex shrink-0 justify-end border-t border-border/25 bg-[linear-gradient(0deg,color-mix(in_srgb,var(--card)_34%,transparent),transparent)] px-3.5 pb-3.5 pt-2 shadow-[inset_0_-1px_0_rgba(255,255,255,0.03)]",
+  "relative z-10 mt-auto flex shrink-0 justify-end border-t border-border/25 px-3.5 pb-3.5 pt-2",
 );
 
 export const sidebarControlButtonClassName =
-  "h-11 w-11 rounded-sm border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_20px_-18px_rgba(15,23,42,0.14)] backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(15,23,42,0.16)] active:scale-95 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_16px_24px_-20px_rgba(0,0,0,0.24)]";
+  "h-11 w-11 rounded-sm border border-border/32 bg-card text-muted-strong shadow-sm transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:text-txt hover:shadow-md active:scale-95";
 
 export const sidebarMobileHeaderBarClassName =
   "sticky top-0 z-10 flex items-center justify-between border-b border-border/40 bg-card/88 px-3.5 py-2.5 backdrop-blur-md";

@@ -33,7 +33,7 @@ function LabeledSlider({
         min={min}
         max={max}
         step={step}
-        onValueChange={([v]) => onChange(v)}
+        onValueChange={([v]: number[]) => onChange(v)}
       />
     </div>
   );

@@ -17,7 +17,7 @@ import type {
 import type {
   AutonomyEventStore,
   AutonomyRunHealthMap,
-} from "@elizaos/agent/autonomy";
+} from "@elizaos/agent";
 import {
   loadChatAvatarVisible,
   loadChatMode,

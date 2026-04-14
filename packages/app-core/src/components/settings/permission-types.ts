@@ -158,6 +158,13 @@ export const PERMISSION_BADGE_LABELS: Record<
   },
 };
 
+/** Reusable settings-panel Tailwind class names. */
+export const SETTINGS_PANEL_CLASSNAME =
+  "rounded-2xl border border-border/60 bg-bg/40 p-4 space-y-4";
+export const SETTINGS_PANEL_HEADER_CLASSNAME =
+  "flex flex-wrap items-start justify-between gap-3";
+export const SETTINGS_PANEL_ACTIONS_CLASSNAME = "flex items-center gap-2";
+
 export const SETTINGS_REFRESH_DELAYS_MS = [1500, 4000] as const;
 
 export function translateWithFallback(

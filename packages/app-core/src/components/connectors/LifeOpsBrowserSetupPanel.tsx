@@ -918,7 +918,7 @@ export function LifeOpsBrowserSetupPanel() {
                 </div>
                 <Switch
                   checked={draft.enabled}
-                  onCheckedChange={(checked: boolean | "indeterminate") => updateDraft("enabled", checked)}
+                  onCheckedChange={(checked: boolean | "indeterminate") => updateDraft("enabled", checked === true)}
                 />
               </div>
 
@@ -934,7 +934,7 @@ export function LifeOpsBrowserSetupPanel() {
                 <Switch
                   checked={draft.allowBrowserControl}
                   onCheckedChange={(checked: boolean | "indeterminate") =>
-                    updateDraft("allowBrowserControl", checked)
+                    updateDraft("allowBrowserControl", checked === true)
                   }
                 />
               </div>
@@ -953,7 +953,7 @@ export function LifeOpsBrowserSetupPanel() {
                   onCheckedChange={(checked: boolean | "indeterminate") =>
                     updateDraft(
                       "requireConfirmationForAccountAffecting",
-                      checked,
+                      checked === true,
                     )
                   }
                 />
@@ -971,7 +971,7 @@ export function LifeOpsBrowserSetupPanel() {
                 <Switch
                   checked={draft.incognitoEnabled}
                   onCheckedChange={(checked: boolean | "indeterminate") =>
-                    updateDraft("incognitoEnabled", checked)
+                    updateDraft("incognitoEnabled", checked === true)
                   }
                 />
               </div>

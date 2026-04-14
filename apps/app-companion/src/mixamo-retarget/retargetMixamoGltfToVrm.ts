@@ -1,5 +1,4 @@
 import type { VRM, VRMHumanBoneName } from "@pixiv/three-vrm";
-// @ts-ignore: three types might not be available
 import * as THREE from "three";
 import { mixamoVRMRigMap } from "./mixamoVRMRigMap";
 
@@ -112,7 +111,9 @@ export function retargetMixamoGltfToVrm(
         new THREE.QuaternionKeyframeTrack(
           `${vrmNode.name}.quaternion`,
           track.times,
-          values.map((v: number, i: number) => (isVrm0(vrm) && i % 2 === 0 ? -v : v)),
+          values.map((v: number, i: number) =>
+            isVrm0(vrm) && i % 2 === 0 ? -v : v,
+          ),
         ),
       );
       continue;

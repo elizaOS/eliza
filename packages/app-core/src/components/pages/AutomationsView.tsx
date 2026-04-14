@@ -5,7 +5,7 @@
  * single /automations route with filter tabs.
  */
 
-import { CheckCircle2, Circle, Clock3, ListTodo, Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, Circle, Clock3, ListTodo, Plus, Settings, Trash2 } from "lucide-react";
 import {
   createContext,
   type ReactNode,
@@ -62,7 +62,41 @@ import {
 
 // ── Filter types ──────────────────────────────────────────────────
 
-type AutomationFilter = "all" | "my-tasks" | "scheduled" | "agent-tasks";
+type AutomationFilter = "all" | "my-tasks" | "scheduled" | "system";
+
+// ── System task detection ─────────────────────────────────────────
+
+/** Runtime-internal task names that are not user-created. */
+const SYSTEM_TASK_NAMES = new Set([
+  "EMBEDDING_DRAIN",
+  "PROACTIVE_AGENT",
+  "LIFEOPS_SCHEDULER",
+  "TRIGGER_DISPATCH",
+  "heartbeat",
+]);
+
+function isSystemTask(task: WorkbenchTask): boolean {
+  if (SYSTEM_TASK_NAMES.has(task.name)) return true;
+  // Tasks with queue+repeat tags are runtime-internal
+  const tags = new Set(task.tags ?? []);
+  if (tags.has("queue") && tags.has("repeat")) return true;
+  return false;
+}
+
+/**
+ * Deduplicate system tasks by name — keep only one per name,
+ * preferring the one with a description.
+ */
+function deduplicateSystemTasks(tasks: WorkbenchTask[]): WorkbenchTask[] {
+  const byName = new Map<string, WorkbenchTask>();
+  for (const task of tasks) {
+    const existing = byName.get(task.name);
+    if (!existing || (task.description && !existing.description)) {
+      byName.set(task.name, task);
+    }
+  }
+  return [...byName.values()];
+}
 
 // ── Item union ────────────────────────────────────────────────────
 
@@ -78,6 +112,7 @@ interface AutomationItemTask {
   id: string;
   name: string;
   task: WorkbenchTask;
+  system: boolean;
 }
 
 type AutomationItem = AutomationItemTrigger | AutomationItemTask;
@@ -265,14 +300,40 @@ function useAutomationsViewController() {
         trigger,
       });
     }
+
+    // Separate user tasks from system tasks
+    const userTasks: WorkbenchTask[] = [];
+    const systemTasks: WorkbenchTask[] = [];
     for (const task of workbenchTasks) {
+      if (isSystemTask(task)) {
+        systemTasks.push(task);
+      } else {
+        userTasks.push(task);
+      }
+    }
+
+    // Add user-created tasks
+    for (const task of userTasks) {
       items.push({
         kind: "task",
         id: `task:${task.id}`,
         name: task.name,
         task,
+        system: false,
       });
     }
+
+    // Add deduplicated system tasks
+    for (const task of deduplicateSystemTasks(systemTasks)) {
+      items.push({
+        kind: "task",
+        id: `task:${task.id}`,
+        name: task.name,
+        task,
+        system: true,
+      });
+    }
+
     return items;
   }, [triggers, workbenchTasks]);
 
@@ -281,14 +342,14 @@ function useAutomationsViewController() {
       case "scheduled":
         return allItems.filter((item) => item.kind === "trigger");
       case "my-tasks":
-        return allItems.filter((item) => item.kind === "task");
-      case "agent-tasks":
+        return allItems.filter(
+          (item) => item.kind === "task" && !item.system,
+        );
+      case "system":
         return allItems.filter(
           (item) =>
-            item.kind === "task" &&
-            item.task.tags?.some(
-              (tag) => tag === "agent" || tag === "coding-agent",
-            ),
+            (item.kind === "task" && item.system) ||
+            item.kind === "trigger",
         );
       default:
         return allItems;
@@ -537,11 +598,10 @@ function useAutomationsViewController() {
       ? editingId
         ? t("heartbeatsview.editTitle", {
             name:
-              form.displayName.trim() || t("heartbeatsview.heartbeatSingular"),
+              form.displayName.trim() || "Automation",
+            defaultValue: "Edit {{name}}",
           })
-        : t("heartbeatsview.newHeartbeat", {
-            defaultValue: "New Automation",
-          })
+        : "New Automation"
       : editingTaskId
         ? "Edit Task"
         : "New Task";
@@ -650,22 +710,26 @@ function useAutomationsViewContext(): AutomationsViewController {
 // ── Filter tabs ───────────────────────────────────────────────────
 
 function FilterTabs() {
-  const { filter, setFilter, triggers, workbenchTasks, t } =
+  const { filter, setFilter, allItems } =
     useAutomationsViewContext();
 
-  const filters: { key: AutomationFilter; label: string; count: number }[] = [
-    {
-      key: "all",
-      label: "All",
-      count: triggers.length + workbenchTasks.length,
-    },
-    { key: "scheduled", label: "Scheduled", count: triggers.length },
-    { key: "my-tasks", label: "My Tasks", count: workbenchTasks.length },
+  const triggerCount = allItems.filter((i) => i.kind === "trigger").length;
+  const userTaskCount = allItems.filter(
+    (i) => i.kind === "task" && !i.system,
+  ).length;
+  const systemCount =
+    allItems.filter((i) => i.kind === "task" && i.system).length +
+    triggerCount;
+
+  const filters: { key: AutomationFilter; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "scheduled", label: "Scheduled" },
+    { key: "system", label: "System" },
   ];
 
   return (
     <div className="flex gap-1 px-1 pb-2">
-      {filters.map(({ key, label, count }) => (
+      {filters.map(({ key, label }) => (
         <button
           key={key}
           type="button"
@@ -677,9 +741,6 @@ function FilterTabs() {
           }`}
         >
           {label}
-          {count > 0 && (
-            <span className="ml-1 opacity-60">{count}</span>
-          )}
         </button>
       ))}
     </div>
@@ -991,7 +1052,7 @@ function TriggerDetailPane({ trigger }: { trigger: TriggerSummary }) {
 
 // ── Task detail pane ──────────────────────────────────────────────
 
-function TaskDetailPane({ task }: { task: WorkbenchTask }) {
+function TaskDetailPane({ task, system }: { task: WorkbenchTask; system: boolean }) {
   const {
     openEditTask,
     onDeleteTask,
@@ -1005,12 +1066,15 @@ function TaskDetailPane({ task }: { task: WorkbenchTask }) {
         <div className="max-w-3xl space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <FieldLabel variant="kicker">
-              <ListTodo className="mr-1.5 inline h-3.5 w-3.5" />
-              Task
+              {system ? (
+                <><Settings className="mr-1.5 inline h-3.5 w-3.5" />System Automation</>
+              ) : (
+                <><ListTodo className="mr-1.5 inline h-3.5 w-3.5" />Task</>
+              )}
             </FieldLabel>
             <StatusBadge
-              label={task.isCompleted ? "Completed" : "Active"}
-              variant={task.isCompleted ? "muted" : "success"}
+              label={system ? "System" : task.isCompleted ? "Completed" : "Active"}
+              variant={system ? "muted" : task.isCompleted ? "muted" : "success"}
               withDot
             />
           </div>
@@ -1035,32 +1099,34 @@ function TaskDetailPane({ task }: { task: WorkbenchTask }) {
             </div>
           )}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
-          <Button
-            variant="outline"
-            size="sm"
-            className={`h-8 px-3 text-xs ${task.isCompleted ? "border-ok/30 text-ok hover:bg-ok/10" : "border-accent/30 text-accent hover:bg-accent/10"}`}
-            onClick={() => void onToggleTaskCompleted(task.id, task.isCompleted)}
-          >
-            {task.isCompleted ? "Reopen" : "Complete"}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 px-3 text-xs"
-            onClick={() => openEditTask(task)}
-          >
-            {t("triggersview.Edit")}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 px-3 text-xs border-danger/30 text-danger hover:bg-danger/10"
-            onClick={() => void onDeleteTask(task.id)}
-          >
-            {t("triggersview.Delete")}
-          </Button>
-        </div>
+        {!system && (
+          <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              className={`h-8 px-3 text-xs ${task.isCompleted ? "border-ok/30 text-ok hover:bg-ok/10" : "border-accent/30 text-accent hover:bg-accent/10"}`}
+              onClick={() => void onToggleTaskCompleted(task.id, task.isCompleted)}
+            >
+              {task.isCompleted ? "Reopen" : "Complete"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-3 text-xs"
+              onClick={() => openEditTask(task)}
+            >
+              {t("triggersview.Edit")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-3 text-xs border-danger/30 text-danger hover:bg-danger/10"
+              onClick={() => void onDeleteTask(task.id)}
+            >
+              {t("triggersview.Delete")}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1152,19 +1218,7 @@ function AutomationsLayout() {
       expandButtonTestId="automations-sidebar-expand-toggle"
       collapseButtonAriaLabel="Collapse automations"
       expandButtonAriaLabel="Expand automations"
-      header={
-        <SidebarHeader
-          search={{
-            value: searchQuery,
-            onChange: (event) => setSearchQuery(event.target.value),
-            onClear: () => setSearchQuery(""),
-            placeholder: searchLabel,
-            "aria-label": searchLabel,
-            autoComplete: "off",
-            spellCheck: false,
-          }}
-        />
-      }
+      header={null}
       collapsedRailAction={
         <SidebarCollapsedActionButton
           aria-label="New automation"
@@ -1199,16 +1253,27 @@ function AutomationsLayout() {
     >
       <SidebarScrollRegion>
         <SidebarPanel>
-          {/* Create buttons */}
-          <div className="mb-3 flex gap-2">
-            <NewActionButton className="flex-1" onClick={openCreateTrigger}>
-              <Clock3 className="mr-1.5 h-3.5 w-3.5" />
-              New Automation
-            </NewActionButton>
-            <NewActionButton className="flex-1" onClick={openCreateTask}>
-              <ListTodo className="mr-1.5 h-3.5 w-3.5" />
-              New Task
-            </NewActionButton>
+          {/* New + Search on same row */}
+          <div className="mb-3 flex items-center gap-2">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={searchLabel}
+              aria-label={searchLabel}
+              autoComplete="off"
+              spellCheck={false}
+              className="min-w-0 flex-1 rounded-lg border border-border/30 bg-bg/30 px-3 py-1.5 text-sm text-txt placeholder:text-muted/50 focus:border-accent/40 focus:outline-none"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0 gap-1 px-3 text-xs font-medium"
+              onClick={openCreateTrigger}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New
+            </Button>
           </div>
 
           {/* Filter tabs */}
@@ -1289,31 +1354,34 @@ function AutomationsLayout() {
 
               // Task item
               const task = item.task;
+              const isSys = item.system;
               return (
                 <SidebarContent.Item
                   key={item.id}
                   onClick={() => selectItem(item)}
-                  onDoubleClick={() => ctx.openEditTask(task)}
+                  onDoubleClick={isSys ? undefined : () => ctx.openEditTask(task)}
                   active={isActive}
-                  className="h-auto"
+                  className={`h-auto ${isSys ? "opacity-60" : ""}`}
                 >
                   <div className="flex min-w-0 flex-col gap-1.5">
                     <div className="flex items-center justify-between gap-1">
                       <div className="flex items-center gap-1.5 truncate">
-                        {task.isCompleted ? (
+                        {isSys ? (
+                          <Settings className="h-3 w-3 shrink-0 text-muted/50" />
+                        ) : task.isCompleted ? (
                           <CheckCircle2 className="h-3 w-3 shrink-0 text-ok/60" />
                         ) : (
                           <Circle className="h-3 w-3 shrink-0 text-muted/60" />
                         )}
                         <span
-                          className={`truncate text-sm font-semibold ${task.isCompleted ? "text-muted line-through" : "text-txt"}`}
+                          className={`truncate text-sm font-semibold ${isSys ? "text-muted" : task.isCompleted ? "text-muted line-through" : "text-txt"}`}
                         >
                           {task.name}
                         </span>
                       </div>
                       <StatusBadge
-                        label={task.isCompleted ? "Done" : "Active"}
-                        variant={task.isCompleted ? "muted" : "success"}
+                        label={isSys ? "System" : task.isCompleted ? "Done" : "Active"}
+                        variant={isSys ? "muted" : task.isCompleted ? "muted" : "success"}
                         withDot
                       />
                     </div>
@@ -1461,7 +1529,7 @@ function AutomationsLayout() {
           resolvedSelectedItem.kind === "trigger" ? (
             <TriggerDetailPane trigger={resolvedSelectedItem.trigger} />
           ) : (
-            <TaskDetailPane task={resolvedSelectedItem.task} />
+            <TaskDetailPane task={resolvedSelectedItem.task} system={resolvedSelectedItem.system} />
           )
         ) : (
           <div className="flex min-h-0 flex-1 items-center justify-center px-8 py-10 text-center">

@@ -530,7 +530,7 @@ function SliderField({
         min={min}
         max={max}
         step={1}
-        onValueChange={([v]) => onChange(v)}
+        onValueChange={([v]: number[]) => onChange(v)}
       />
     </div>
   );
