@@ -3138,7 +3138,7 @@ dependencies = [
  "elizaos",
  "elizaos-plugin-sql",
  "elizaos-plugin-xai",
- "rand 0.8.5",
+ "rand 0.9.2",
  "serde_json",
  "tokio",
  "tracing",

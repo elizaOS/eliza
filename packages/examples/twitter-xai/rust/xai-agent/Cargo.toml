@@ -19,7 +19,7 @@ elizaos-plugin-xai = "2.0.0"
 
 # Async runtime
 tokio = { version = "1.42", features = ["rt-multi-thread", "macros", "signal", "time"] }
-rand = "0.8"
+rand = "0.9"
 
 # Error handling
 anyhow = "1.0"
