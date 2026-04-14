@@ -39,6 +39,13 @@ on:
           - beta
           # Note: 'latest' removed - production releases MUST be done via GitHub releases
 
+concurrency:
+  # Release runs create and push commits/tags. Serialize them per branch so
+  # later runs don't fail with non-fast-forward pushes while an earlier release
+  # is still updating the branch.
+  group: npm-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -948,14 +955,45 @@ jobs:
           - Follow the appropriate recovery steps above
           EOF
 
-      - name: Create failure issue
+      - name: Check for existing failure issue
         if: failure() && steps.version.outputs.version
-        uses: peter-evans/create-issue-from-file@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          title: "Release Failed: v${{ steps.version.outputs.version }}"
-          content-filepath: /tmp/issue-content.md
-          labels: |
-            bug
-            release
-            automated issue
+        id: existing_failure_issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          EXISTING_ISSUE="$(
+            gh issue list \
+              --repo "${{ github.repository }}" \
+              --search "is:issue is:open in:title \"Release Failed: v${VERSION}\"" \
+              --json number \
+              --jq '.[0].number // ""'
+          )"
+
+          if [[ -n "${EXISTING_ISSUE}" ]]; then
+            echo "Found existing failure issue #${EXISTING_ISSUE} for v${VERSION}"
+            echo "should_create=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "No open failure issue exists for v${VERSION}"
+            echo "should_create=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "issue_number=${EXISTING_ISSUE}" >> "$GITHUB_OUTPUT"
+
+      - name: Create failure issue
+        if: failure() && steps.version.outputs.version && steps.existing_failure_issue.outputs.should_create == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "Release Failed: v${{ steps.version.outputs.version }}" \
+            --body-file /tmp/issue-content.md \
+            --label bug \
+            --label release \
+            --label "automated issue"
+
+      - name: Reuse existing failure issue
+        if: failure() && steps.version.outputs.version && steps.existing_failure_issue.outputs.should_create != 'true'
+        run: |
+          echo "Reusing existing failure issue #${{ steps.existing_failure_issue.outputs.issue_number }}"

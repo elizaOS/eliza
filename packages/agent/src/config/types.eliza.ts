@@ -795,6 +795,8 @@ export type ElizaConfig = {
   media?: MediaConfig;
   /** Messaging connector configuration (Telegram, Discord, Slack, etc.). */
   connectors?: Record<string, ConnectorConfig>;
+  /** Streaming destination configuration (RTMP, Twitch, YouTube, etc.). */
+  streaming?: Record<string, ConnectorConfig>;
   /** MCP server configuration. */
   mcp?: {
     servers?: Record<
