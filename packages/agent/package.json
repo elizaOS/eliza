@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/agent",
-  "version": "2.0.0-alpha.141",
+  "version": "2.0.0-alpha.142",
   "description": "Standalone elizaOS-based agent and backend server package.",
   "type": "module",
   "license": "MIT",
@@ -134,9 +134,9 @@
     "@elizaos/plugin-pdf": "workspace:*",
     "@elizaos/plugin-solana": "1.2.6",
     "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/skills": "workspace:*",
     "@elizaos/plugin-wechat": "github:milady-ai/plugin-wechat",
     "@elizaos/shared": "workspace:*",
+    "@elizaos/skills": "workspace:*",
     "@hapi/boom": "^10.0.1",
     "@noble/curves": "^2.0.1",
     "@whiskeysockets/baileys": "7.0.0-rc.9",

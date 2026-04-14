@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-core",
-  "version": "2.0.0-alpha.141",
+  "version": "2.0.0-alpha.142",
   "description": "Shared application core for elizaOS white-label agent apps.",
   "type": "module",
   "license": "MIT",
@@ -111,11 +111,11 @@
     "react-dom": "^19.0.0"
   },
   "dependencies": {
-    "@clack/prompts": "^1.0.0",
     "@capacitor/core": "8.0.2",
     "@capacitor/haptics": "8.0.0",
     "@capacitor/keyboard": "8.0.0",
     "@capacitor/preferences": "^8.0.1",
+    "@clack/prompts": "^1.0.0",
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-coding": "workspace:*",
     "@elizaos/app-shopify": "workspace:*",
