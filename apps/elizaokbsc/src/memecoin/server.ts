@@ -2586,10 +2586,13 @@ canvas#airdrop-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opaci
 [data-theme="light"] #airdrop-theme-toggle{border-color:var(--border);}
 .a-wrap{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:32px 24px 64px;}
 .a-topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;flex-wrap:wrap;gap:12px;}
-.a-logo{font-size:18px;font-weight:700;color:var(--yellow);letter-spacing:.08em;text-decoration:none;}
-.a-nav{display:flex;gap:10px;align-items:center;}
-.a-nav a{color:var(--muted);font-size:11px;text-decoration:none;padding:5px 12px;border:1px solid var(--border);border-radius:var(--r-sm);transition:all .2s;}
-.a-nav a:hover{color:var(--yellow);border-color:var(--yellow);box-shadow:0 0 8px rgba(246,231,15,.25);}
+.a-logo{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:700;color:var(--yellow);letter-spacing:.08em;text-decoration:none;}
+.a-logo-avatar{width:32px;height:32px;border-radius:50%;border:2px solid rgba(var(--yr),.35);box-shadow:0 0 14px rgba(var(--yr),.25),0 0 30px rgba(var(--yr),.08);animation:aLogoGlow 3s ease-in-out infinite;transition:transform .35s cubic-bezier(.34,1.56,.64,1),box-shadow .35s ease;}
+.a-logo:hover .a-logo-avatar{transform:translateY(-3px) scale(1.1);box-shadow:0 0 22px rgba(var(--yr),.5),0 0 48px rgba(var(--yr),.18);border-color:rgba(var(--yr),.7);}
+@keyframes aLogoGlow{0%,100%{box-shadow:0 0 14px rgba(var(--yr),.25),0 0 30px rgba(var(--yr),.08);}50%{box-shadow:0 0 20px rgba(var(--yr),.4),0 0 40px rgba(var(--yr),.15);}}
+.a-nav{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.a-nav a,.a-nav button.a-nav-btn{color:var(--muted);font-size:11px;text-decoration:none;padding:5px 12px;border:1px solid var(--border);border-radius:var(--r-sm);transition:all .2s;background:transparent;font-family:inherit;cursor:pointer;}
+.a-nav a:hover,.a-nav button.a-nav-btn:hover{color:var(--yellow);border-color:var(--yellow);box-shadow:0 0 8px rgba(246,231,15,.25);}
 .a-nav a.active{color:var(--yellow);border-color:var(--yellow);}
 .a-hero{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:32px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;}
 .a-hero h1{font-size:24px;font-weight:700;letter-spacing:.04em;margin-bottom:8px;display:flex;align-items:center;gap:14px;}
@@ -2636,7 +2639,17 @@ canvas#airdrop-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opaci
 .a-kv strong{text-align:left;}
 .a-stat__val{font-size:18px;}
 }
-.a-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:20px;overflow:hidden;}
+.a-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:20px;overflow:hidden;opacity:0;transform:translateY(16px);animation:aCardIn .5s ease forwards;}
+.a-stat{opacity:0;transform:translateY(12px);animation:aCardIn .4s ease forwards;}
+.a-checker{opacity:0;transform:translateY(14px);animation:aCardIn .45s ease forwards;}
+.a-hero{opacity:0;transform:translateY(10px);animation:aCardIn .35s ease forwards;}
+.a-table-wrap{opacity:0;transform:translateY(16px);animation:aCardIn .5s ease forwards;}
+.a-note{opacity:0;transform:translateY(12px);animation:aCardIn .4s ease forwards;}
+.a-pub{opacity:0;transform:translateY(16px);animation:aCardIn .5s ease forwards;}
+@keyframes aCardIn{to{opacity:1;transform:translateY(0);}}
+.a-stat:nth-child(1){animation-delay:.05s;}.a-stat:nth-child(2){animation-delay:.1s;}.a-stat:nth-child(3){animation-delay:.15s;}.a-stat:nth-child(4){animation-delay:.2s;}.a-stat:nth-child(5){animation-delay:.25s;}.a-stat:nth-child(6){animation-delay:.3s;}
+.a-grid .a-card:nth-child(1){animation-delay:.2s;}.a-grid .a-card:nth-child(2){animation-delay:.28s;}
+.a-card:hover{border-color:rgba(var(--yr),.25);box-shadow:0 0 18px rgba(var(--yr),.08);}
 .a-card h2{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border);}
 .a-kv{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;min-width:0;}
 .a-kv:last-child{border-bottom:none;}
@@ -2667,13 +2680,18 @@ th.a-th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(-
 <div class="a-wrap">
 
   <div class="a-topbar">
-    <a class="a-logo" href="/">elizaOK</a>
+    <a class="a-logo" href="/"><img class="a-logo-avatar" src="/assets/avatar.png" alt="" />elizaOK</a>
     <nav class="a-nav">
+      <a href="/">Home</a>
+      <a href="/dashboard">Dashboard</a>
+      <a href="/docs">Docs</a>
+      <a href="/goo">Goo</a>
       <a href="/airdrop" class="active">Airdrop</a>
+      <button class="a-nav-btn" onclick="airToggleLang()" id="airdrop-lang-toggle">中</button>
       ${cloudUser
         ? `<a href="/auth/eliza-cloud/logout" style="color:var(--yellow);border-color:var(--yellow);">${escapeHtml(cloudUser)} &middot; Logout</a>`
         : `<a href="#" id="airdrop-cloud-btn" style="cursor:pointer;color:var(--yellow);border-color:rgba(246,231,15,.4);">Connect Cloud</a>`}
-      <button id="airdrop-theme-toggle" onclick="airToggleTheme()" style="background:transparent;border:1px solid var(--border2);border-radius:6px;color:var(--muted);font-family:inherit;font-size:11px;padding:4px 10px;cursor:pointer;transition:all .2s;">☀</button>
+      <button id="airdrop-theme-toggle" class="a-nav-btn" onclick="airToggleTheme()">☀</button>
     </nav>
   </div>
 
@@ -2809,6 +2827,60 @@ window.airToggleTheme = function() {
     if (btn) btn.textContent = '🌙';
   }
 })();
+
+var _airI18n = {
+  'Airdrop Eligibility': '空投资格',
+  'The treasury flywheel distributes gains back to qualified $ElizaOK holders. Check if your wallet qualifies for the current airdrop cycle and view the distribution plan.':
+    '国库飞轮将收益分配给合格的 $ElizaOK 持有者。检查你的钱包是否有资格参与当前空投周期。',
+  'Distribution Pool': '分配池',
+  'treasury allocation': '国库分配',
+  'Eligible Holders': '合格持有者',
+  'qualified $ElizaOK wallets': '合格 $ElizaOK 钱包',
+  'Executed Sends': '已执行发送',
+  'this cycle': '本周期',
+  'Dry Run Count': '模拟次数',
+  'simulated sends': '模拟发送',
+  'Portfolio Value': '组合价值',
+  'gross treasury': '国库总值',
+  'Recipients in Plan': '计划接收者',
+  'snapshot recipients': '快照接收者',
+  'Check Wallet Eligibility': '检查钱包资格',
+  'Enter wallet address (0x…)': '输入钱包地址 (0x…)',
+  'Check': '检查',
+  'Airdrop Asset': '空投资产',
+  'Execution State': '执行状态',
+  'Recipient List': '接收者列表',
+  'Distribution Ledger': '分配账本',
+  'No recipients in current distribution plan.': '当前分配计划中没有接收者。',
+  'No ledger records yet.': '暂无账本记录。',
+  'Home': '首页',
+  'Dashboard': '仪表盘',
+  'Docs': '文档',
+  'Airdrop': '空投',
+  'Connect Cloud': '连接云端',
+  'Mode': '模式', 'Token': '代币', 'Total Amount': '总数量',
+  'Wallet Balance': '钱包余额', 'Quote USD': '报价 USD', 'Reason': '原因',
+  'Enabled': '已启用', 'Max/Run': '每次最大', 'Wallet': '钱包', 'Next Action': '下一步操作',
+};
+var _airLangActive = false;
+window.airToggleLang = function() {
+  _airLangActive = !_airLangActive;
+  var btn = document.getElementById('airdrop-lang-toggle');
+  if (btn) btn.textContent = _airLangActive ? 'EN' : '中';
+  var allText = document.querySelectorAll('.a-wrap *:not(script):not(style)');
+  for (var i = 0; i < allText.length; i++) {
+    var el = allText[i];
+    if (el.children.length > 0) continue;
+    var txt = el.textContent.trim();
+    if (_airLangActive && _airI18n[txt]) {
+      el.setAttribute('data-orig', txt);
+      el.textContent = _airI18n[txt];
+    } else if (!_airLangActive && el.getAttribute('data-orig')) {
+      el.textContent = el.getAttribute('data-orig');
+      el.removeAttribute('data-orig');
+    }
+  }
+};
 
 (function(){
   const canvas=document.getElementById('airdrop-canvas');
