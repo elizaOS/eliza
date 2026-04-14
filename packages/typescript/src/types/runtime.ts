@@ -413,13 +413,22 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	 * @returns Parsed structured response object, or null on failure
 	 */
 	dynamicPromptExecFromState(args: {
-		state: State;
+		state?: State;
 		params: Omit<GenerateTextParams, "prompt"> & {
 			prompt: string | ((ctx: { state: State }) => string);
 		};
 		schema: import("./state").SchemaRow[];
 		options?: {
 			key?: string;
+			/**
+			 * Human-readable name for this prompt task, used as the optimization
+			 * artifact lookup key. When provided, artifacts are stored/retrieved
+			 * under this name (e.g. "shouldRespond"). When absent, the system
+			 * uses an MD5 hash of the serialized schema instead.
+			 *
+			 * This is separate from `key` (which is used for response caching).
+			 */
+			promptName?: string;
 			modelSize?: "nano" | "small" | "medium" | "large" | "mega";
 			modelType?: TextGenerationModelType;
 			model?: string;
@@ -440,6 +449,50 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 			abortSignal?: AbortSignal;
 		};
 	}): Promise<Record<string, unknown> | null>;
+
+	/**
+	 * Enrich an in-flight execution trace with an additional score signal.
+	 *
+	 * Traces are keyed by runId and held in memory until finalization (e.g. RUN_ENDED
+	 * in prompt-optimization plugins). Evaluators and actions can attach signals after DPE.
+	 */
+	enrichTrace(
+		runId: string,
+		signal: import("./prompt-optimization-trace").ScoreSignal,
+	): void;
+
+	/** Retrieve the most recent in-flight optimization trace for a runId. */
+	getActiveTrace(
+		runId: string,
+	): import("./prompt-optimization-trace").ExecutionTrace | undefined;
+
+	/** Retrieve all in-flight optimization traces for a runId (multiple DPE calls per run). */
+	getActiveTracesForRun?(
+		runId: string,
+	): import("./prompt-optimization-trace").ExecutionTrace[];
+
+	/** Remove all in-flight optimization traces for a runId after finalization. */
+	deleteActiveTrace(runId: string): void;
+
+	/** Remove a single in-flight trace by its unique trace id. */
+	deleteActiveTraceById?(traceId: string): void;
+
+	/**
+	 * Register disk-backed or custom prompt optimization hooks (merge, registry, traces).
+	 * When `null`, DPE performs no optimization I/O.
+	 */
+	registerPromptOptimizationHooks(
+		hooks:
+			| import("./prompt-optimization-hooks").PromptOptimizationRuntimeHooks
+			| null,
+	): void;
+
+	getPromptOptimizationHooks():
+		| import("./prompt-optimization-hooks").PromptOptimizationRuntimeHooks
+		| null;
+
+	/** Resolved `OPTIMIZATION_DIR` (see `getOptimizationRootDir`). */
+	getOptimizationDir(): string;
 
 	stop(): Promise<void>;
 
@@ -469,6 +522,18 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
 	registerSendHandler(source: string, handler: SendHandlerFunction): void;
 	sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
+
+	/**
+	 * Pipeline hooks: register with `registerPipelineHook`, run with `applyPipelineHooks`.
+	 * Same `id` replaces any prior registration (any phase). Outgoing phase always finishes with `redactSecrets` on `content.text`.
+	 */
+	registerPipelineHook(spec: import("./pipeline-hooks").PipelineHookSpec): void;
+	unregisterPipelineHook(id: string): void;
+	applyPipelineHooks(
+		phase: import("./pipeline-hooks").PipelineHookPhase,
+		ctx: import("./pipeline-hooks").PipelineHookContext,
+		pipelineHookTelemetry?: boolean,
+	): Promise<void>;
 
 	/**
 	 * Redact secrets from a text string.
