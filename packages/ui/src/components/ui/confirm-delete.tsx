@@ -20,14 +20,6 @@ export interface ConfirmDeleteProps {
   promptClassName?: string;
 }
 
-const DEFAULT_TRIGGER =
-  "rounded-md border border-border px-2 py-1 text-xs text-muted transition-colors hover:border-destructive hover:text-destructive";
-const DEFAULT_CONFIRM =
-  "rounded-md border border-destructive bg-destructive px-2 py-0.5 text-2xs font-medium text-destructive-fg transition-opacity hover:opacity-90 disabled:opacity-50";
-const DEFAULT_CANCEL =
-  "rounded-md border border-border px-2 py-0.5 text-2xs text-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-50";
-const DEFAULT_PROMPT = "text-xs-tight text-destructive";
-
 export function ConfirmDelete({
   onConfirm,
   disabled = false,
@@ -48,7 +40,13 @@ export function ConfirmDelete({
     return (
       <button
         type="button"
-        className={triggerClassName ?? cn(DEFAULT_TRIGGER, className)}
+        className={
+          triggerClassName ??
+          cn(
+            "rounded-md border border-border px-2 py-1 text-xs text-muted transition-colors hover:border-destructive hover:text-destructive",
+            className,
+          )
+        }
         onClick={() => setConfirming(true)}
         disabled={disabled}
       >
@@ -59,10 +57,19 @@ export function ConfirmDelete({
 
   return (
     <span className={cn("inline-flex items-center gap-1.5", className)}>
-      <span className={promptClassName ?? DEFAULT_PROMPT}>{promptText}</span>
+      <span
+        className={
+          promptClassName ?? "text-xs-tight text-destructive"
+        }
+      >
+        {promptText}
+      </span>
       <button
         type="button"
-        className={confirmClassName ?? DEFAULT_CONFIRM}
+        className={
+          confirmClassName ??
+          "rounded-md border border-destructive bg-destructive px-2 py-0.5 text-2xs font-medium text-destructive-fg transition-opacity hover:opacity-90 disabled:opacity-50"
+        }
         onClick={() => {
           onConfirm();
           setConfirming(false);
@@ -73,7 +80,10 @@ export function ConfirmDelete({
       </button>
       <button
         type="button"
-        className={cancelClassName ?? DEFAULT_CANCEL}
+        className={
+          cancelClassName ??
+          "rounded-md border border-border px-2 py-0.5 text-2xs text-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+        }
         onClick={() => setConfirming(false)}
         disabled={disabled}
       >

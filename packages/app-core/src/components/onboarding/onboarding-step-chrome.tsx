@@ -25,7 +25,7 @@ export const onboardingDescriptionClass = `mx-auto max-w-[36ch] text-center text
 export const onboardingHeaderBlockClass = "mb-5 max-md:mb-4";
 
 export const onboardingFooterClass =
-  "mt-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-[var(--onboarding-footer-border)] pt-4";
+  "mt-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 pt-4";
 
 export const onboardingSecondaryActionClass = `inline-flex min-h-touch min-w-touch items-center justify-center gap-2 rounded-md border border-transparent bg-transparent px-3 py-2 text-xs-tight uppercase tracking-[0.14em] transition-[color,background-color,box-shadow] duration-300 hover:bg-[var(--onboarding-secondary-hover-bg)] hover:text-[var(--onboarding-text-strong)] active:bg-[var(--onboarding-secondary-pressed-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--onboarding-secondary-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:pointer-events-none disabled:opacity-50 ${onboardingReadableTextMutedClassName}`;
 

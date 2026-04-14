@@ -401,7 +401,7 @@ const SeparatorComponent: ComponentFn = (props) => {
   return isVert ? (
     <div className="w-px bg-border self-stretch" />
   ) : (
-    <hr className="border-t border-border my-2" />
+    <hr className="my-2" />
   );
 };
 
@@ -798,7 +798,7 @@ const TableComponent: ComponentFn = (props) => {
             {columns.map((col) => (
               <th
                 key={col}
-                className="text-left px-2.5 py-1.5 border-b border-border font-semibold text-muted"
+                className="text-left px-2.5 py-1.5 font-semibold text-muted"
               >
                 {col}
               </th>
@@ -809,7 +809,7 @@ const TableComponent: ComponentFn = (props) => {
           {rows.map((row) => (
             <tr
               key={row.join("|")}
-              className="border-b border-border last:border-b-0"
+              className=""
             >
               {row.map((cell) => (
                 <td key={cell} className="px-2.5 py-1.5">
@@ -1147,7 +1147,7 @@ const TabsComponent: ComponentFn = (props, _children, ctx) => {
   const activeTab = tabs.find((t) => t.value === active);
   return (
     <div>
-      <div className="flex border-b border-border">
+      <div className="flex">
         {tabs.map((tab) => (
           <Button
             key={tab.value}
@@ -1532,7 +1532,7 @@ const DrawerComponent: ComponentFn = (props, children, ctx) => {
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-h-[80vh] border-t border-border bg-card p-5 shadow-lg overflow-y-auto animate-[slide-up_200ms_ease]">
+      <div className="w-full max-h-[80vh] bg-card p-5 shadow-lg overflow-y-auto animate-[slide-up_200ms_ease]">
         <div className="w-10 h-1 bg-border mx-auto mb-3 rounded-full" />
         {props.title ? (
           <div className="font-bold text-sm">{String(props.title)}</div>

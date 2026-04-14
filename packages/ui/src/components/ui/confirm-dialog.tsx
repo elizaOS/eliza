@@ -26,14 +26,6 @@ export interface ConfirmDialogProps {
   onCancel: () => void;
 }
 
-const VARIANT_CLASSES: Record<ConfirmVariant, string> = {
-  danger:
-    "border-destructive/70 bg-destructive text-destructive-fg hover:border-destructive hover:bg-destructive",
-  warn: "border-warn/55 bg-warn/92 !text-black hover:border-warn hover:bg-warn",
-  default:
-    "border-accent/55 bg-accent/22 text-accent-fg hover:border-accent/75 hover:bg-accent/32",
-};
-
 export function ConfirmDialog({
   open,
   title = "Confirm",
@@ -65,7 +57,16 @@ export function ConfirmDialog({
           <Button variant="outline" onClick={onCancel}>
             {cancelLabel}
           </Button>
-          <Button className={VARIANT_CLASSES[variant]} onClick={onConfirm}>
+          <Button
+            className={
+              variant === "danger"
+                ? "border-destructive/70 bg-destructive text-destructive-fg hover:border-destructive hover:bg-destructive"
+                : variant === "warn"
+                  ? "border-warn/55 bg-warn/92 !text-black hover:border-warn hover:bg-warn"
+                  : "border-accent/55 bg-accent/22 text-accent-fg hover:border-accent/75 hover:bg-accent/32"
+            }
+            onClick={onConfirm}
+          >
             {confirmLabel}
           </Button>
         </DialogFooter>

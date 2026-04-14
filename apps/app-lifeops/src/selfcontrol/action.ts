@@ -263,6 +263,8 @@ export const blockWebsitesAction: Action = {
   similes: [
     "SELFCONTROL_BLOCK_WEBSITES",
     "BLOCK_WEBSITES",
+    "WEBSITE_BLOCKER",
+    "WEBSITEBLOCKER",
     "START_FOCUS_BLOCK",
     "BLOCK_SITE",
     "BLOCK_DISTRACTING_SITES",

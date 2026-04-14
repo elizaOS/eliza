@@ -609,7 +609,7 @@ export const ConfigRenderer = forwardRef<
       ))}
 
       {advanced.length > 0 && (
-        <div className="mt-5 pt-4 border-t border-border">
+        <div className="mt-5 pt-4">
           <AdvancedSectionToggle
             advanced={advanced}
             advancedOpen={advancedOpen}

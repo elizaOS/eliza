@@ -41,7 +41,6 @@ export type CodingAgentType = "shell" | "pi" | AdapterType;
 
 const PI_AGENT_ALIASES = new Set([
 	"pi",
-	"pi-ai",
 	"piai",
 	"pi-coding-agent",
 	"picodingagent",

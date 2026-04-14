@@ -55,7 +55,7 @@ export function ChatComposerShell({
     <div
       ref={shellRef}
       className={cn(
-        "relative border-t border-border/20 bg-transparent px-3 pb-3 pt-3 sm:px-4 sm:pb-4 xl:px-5",
+        "relative bg-transparent px-3 pb-3 pt-3 sm:px-4 sm:pb-4 xl:px-5",
         className,
       )}
       style={{

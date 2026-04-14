@@ -374,7 +374,7 @@ export function BugReportModal() {
         }}
       >
         <DialogContent className="w-[min(100%-2rem,28rem)] rounded-2xl border border-border/70 bg-card/96 p-0 shadow-2xl backdrop-blur-xl">
-          <DialogHeader className="border-b border-border/70 px-5 py-4 text-left">
+          <DialogHeader className="px-5 py-4 text-left">
             <DialogTitle
               ref={successHeadingRef as unknown as React.Ref<never>}
               tabIndex={-1}
@@ -409,7 +409,7 @@ export function BugReportModal() {
               </p>
             )}
           </div>
-          <DialogFooter className="border-t border-border/70 px-5 py-4 sm:justify-end">
+          <DialogFooter className="px-5 py-4 sm:justify-end">
             <Button variant="outline" size="sm" onClick={close}>
               {t("bugreportmodal.Close")}
             </Button>
@@ -433,7 +433,7 @@ export function BugReportModal() {
           descRef.current?.focus();
         }}
       >
-        <DialogHeader className="border-b border-border/70 px-5 py-4 text-left">
+        <DialogHeader className="px-5 py-4 text-left">
           <DialogTitle className="text-sm font-bold text-txt">
             {t("bugreportmodal.ReportABug")}
           </DialogTitle>
@@ -664,7 +664,7 @@ export function BugReportModal() {
             </Field>
           </div>
 
-          <DialogFooter className="border-t border-border/70 px-5 py-4 sm:items-center sm:justify-between sm:space-x-0">
+          <DialogFooter className="px-5 py-4 sm:items-center sm:justify-between sm:space-x-0">
             <Button variant="outline" size="sm" onClick={close}>
               {t("common.cancel")}
             </Button>

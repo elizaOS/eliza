@@ -334,7 +334,7 @@ export function Header({
             showCloseButton={false}
             className="fixed left-auto right-0 top-0 z-[240] flex h-[100dvh] w-[min(22rem,88vw)] max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-l border-border/60 bg-bg/98 p-0 shadow-[0_24px_70px_rgba(2,8,23,0.34)] backdrop-blur-2xl data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right max-sm:!bottom-0 max-sm:!left-auto max-sm:!right-0 max-sm:!top-0 max-sm:!max-h-[100dvh] max-sm:!w-[min(22rem,88vw)] max-sm:!translate-x-0 max-sm:!translate-y-0 max-sm:!rounded-none max-sm:data-[state=closed]:slide-out-to-right max-sm:data-[state=open]:slide-in-from-right sm:hidden"
           >
-            <DialogHeader className="border-b border-border/50 px-4 py-3 text-left">
+            <DialogHeader className="px-4 py-3 text-left">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
@@ -412,7 +412,7 @@ export function Header({
                   })}
                 </div>
               </div>
-              <div className="mt-3 flex flex-col gap-3 border-t border-border/50 pt-3">
+              <div className="mt-3 flex flex-col gap-3 pt-3">
                 <div className="flex items-center justify-end gap-2">
                   {renderMobileMenuLanguageDropdown()}
                   {renderMobileMenuThemeToggle()}

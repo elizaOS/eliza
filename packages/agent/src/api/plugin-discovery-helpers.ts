@@ -998,7 +998,6 @@ export function categorizePlugin(
     "qwen",
     "minimax",
     "zai",
-    "pi-ai",
   ];
   const connectors = [
     "telegram",

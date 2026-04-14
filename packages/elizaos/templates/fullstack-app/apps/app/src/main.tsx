@@ -12,9 +12,9 @@ import { App } from "@elizaos/app-core/App";
 import { client } from "@elizaos/app-core/api";
 import {
   initializeCapacitorBridge,
+  subscribeDesktopBridgeEvent,
   initializeStorageBridge,
   isElectrobunRuntime,
-  subscribeDesktopBridgeEvent,
 } from "@elizaos/app-core/bridge";
 import { CharacterEditor } from "@elizaos/app-core/components/character/CharacterEditor";
 import type { AppBootConfig, BrandingConfig } from "@elizaos/app-core/config";
@@ -52,11 +52,7 @@ import {
   DesktopTrayRuntime,
   DetachedShellRoot,
 } from "@elizaos/app-core/shell";
-import {
-  AppProvider,
-  applyUiTheme,
-  loadUiTheme,
-} from "@elizaos/app-core/state";
+import { AppProvider, applyUiTheme, loadUiTheme } from "@elizaos/app-core/state";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
 import { StrictMode } from "react";

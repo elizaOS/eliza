@@ -1282,7 +1282,7 @@ export function VectorBrowserView({
         </SidebarScrollRegion>
 
         {viewMode === "list" && totalPages > 1 ? (
-          <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/30 pt-3">
+          <div className="mt-3 flex items-center justify-between gap-2 pt-3">
             <Button
               variant="outline"
               size="sm"

@@ -1,7 +1,6 @@
 declare module "@elizaos/plugin-agent-orchestrator";
 declare module "@elizaos/plugin-agent-skills";
 declare module "@elizaos/plugin-elizacloud";
-declare module "@elizaos/plugin-pi-ai";
 declare module "@elizaos/plugin-commands";
 declare module "@elizaos/plugin-cron";
 declare module "@elizaos/plugin-edge-tts";

@@ -1886,8 +1886,6 @@
   "providerswitcher.noAiProvidersAvailable": "当前没有可用的 AI 提供商。请在",
   "providerswitcher.opensABrowserWindow": "将打开浏览器窗口以完成登录。",
   "providerswitcher.page": "页面中启用一个。",
-  "providerswitcher.piAi": "Pi（pi-ai）",
-  "providerswitcher.piSettings": "Pi（pi-ai）设置",
   "providerswitcher.primaryModelOverride": "主模型覆盖",
   "providerswitcher.providerModelPlaceholder": "provider/model（例如 ollama/qwen2.5）",
   "providerswitcher.reportIssueWithTemplate": "用预填模板报告此问题",

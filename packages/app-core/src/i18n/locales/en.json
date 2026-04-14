@@ -1886,8 +1886,6 @@
   "providerswitcher.noAiProvidersAvailable": "No AI providers available. Enable one from the",
   "providerswitcher.opensABrowserWindow": "Opens a browser window to complete login.",
   "providerswitcher.page": "page.",
-  "providerswitcher.piAi": "Pi (pi-ai)",
-  "providerswitcher.piSettings": "Pi (pi-ai) Settings",
   "providerswitcher.primaryModelOverride": "Primary model override",
   "providerswitcher.providerModelPlaceholder": "provider/model (e.g. ollama/qwen2.5)",
   "providerswitcher.reportIssueWithTemplate": "Report this issue with a prefilled template",

@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Z_OVERLAY, Z_TOOLTIP } from "../../lib/floating-layers";
+import { cn } from "../../lib/utils";
 import { Button } from "./button";
 
 export interface HoverTooltipProps {
@@ -46,22 +47,6 @@ export function HoverTooltip({
     };
   }, []);
 
-  const positionClasses = {
-    top: "bottom-full left-1/2 -translate-x-1/2 mb-2",
-    bottom: "top-full left-1/2 -translate-x-1/2 mt-2",
-    left: "right-full top-1/2 -translate-y-1/2 mr-2",
-    right: "left-full top-1/2 -translate-y-1/2 ml-2",
-  };
-
-  const arrowClasses = {
-    top: "top-full left-1/2 -translate-x-1/2 border-t-border border-l-transparent border-r-transparent border-b-transparent",
-    bottom:
-      "bottom-full left-1/2 -translate-x-1/2 border-b-border border-l-transparent border-r-transparent border-t-transparent",
-    left: "left-full top-1/2 -translate-y-1/2 border-l-border border-t-transparent border-b-transparent border-r-transparent",
-    right:
-      "right-full top-1/2 -translate-y-1/2 border-r-border border-t-transparent border-b-transparent border-l-transparent",
-  };
-
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: this wrapper centralizes hover/focus handling for arbitrary child content.
     <div
@@ -76,7 +61,17 @@ export function HoverTooltip({
 
       {isVisibleState && (
         <div
-          className={`absolute z-50 ${positionClasses[position]} ${className}`}
+          className={cn(
+            "absolute z-50",
+            position === "top"
+              ? "bottom-full left-1/2 -translate-x-1/2 mb-2"
+              : position === "bottom"
+                ? "top-full left-1/2 -translate-x-1/2 mt-2"
+                : position === "left"
+                  ? "right-full top-1/2 -translate-y-1/2 mr-2"
+                  : "left-full top-1/2 -translate-y-1/2 ml-2",
+            className,
+          )}
         >
           <div className="relative bg-bg-elevated border border-border rounded-lg shadow-xl p-3 min-w-[10rem] max-w-xs">
             {onDismiss && (
@@ -94,7 +89,16 @@ export function HoverTooltip({
 
             {showArrow && (
               <div
-                className={`absolute w-0 h-0 border-4 ${arrowClasses[position]}`}
+                className={cn(
+                  "absolute w-0 h-0 border-4",
+                  position === "top"
+                    ? "top-full left-1/2 -translate-x-1/2 border-t-border border-l-transparent border-r-transparent border-b-transparent"
+                    : position === "bottom"
+                      ? "bottom-full left-1/2 -translate-x-1/2 border-b-border border-l-transparent border-r-transparent border-t-transparent"
+                      : position === "left"
+                        ? "left-full top-1/2 -translate-y-1/2 border-l-border border-t-transparent border-b-transparent border-r-transparent"
+                        : "right-full top-1/2 -translate-y-1/2 border-r-border border-t-transparent border-b-transparent border-l-transparent",
+                )}
               />
             )}
           </div>
@@ -118,29 +122,30 @@ export function IconTooltip({
   /** Long labels: wrap and cap width. */
   multiline?: boolean;
 }) {
-  const posClass =
-    position === "top"
-      ? "bottom-full left-1/2 -translate-x-1/2 mb-2"
-      : "top-full left-1/2 -translate-x-1/2 mt-2";
-  const arrowClass =
-    position === "top"
-      ? "top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-bg-elevated"
-      : "bottom-full left-1/2 -translate-x-1/2 -mb-1 border-4 border-transparent border-b-bg-elevated";
-
-  const bodyClass = multiline
-    ? "min-w-[10rem] max-w-[min(22rem,calc(100vw-1.5rem))] whitespace-normal text-left leading-snug"
-    : "min-w-[6rem] whitespace-nowrap";
-
   return (
     <div className="relative isolate group">
       {children}
       <div
-        className={`absolute ${posClass} px-3 py-2 bg-bg-elevated border border-border text-xs text-txt-strong rounded-lg ${bodyClass} opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-opacity duration-200 z-[${Z_OVERLAY}] shadow-lg pointer-events-none`}
+        className={cn(
+          `absolute px-3 py-2 bg-bg-elevated border border-border text-xs text-txt-strong rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-opacity duration-200 z-[${Z_OVERLAY}] shadow-lg pointer-events-none`,
+          position === "top"
+            ? "bottom-full left-1/2 -translate-x-1/2 mb-2"
+            : "top-full left-1/2 -translate-x-1/2 mt-2",
+          multiline
+            ? "min-w-[10rem] max-w-[min(22rem,calc(100vw-1.5rem))] whitespace-normal text-left leading-snug"
+            : "min-w-[6rem] whitespace-nowrap",
+        )}
         role="tooltip"
       >
         <div className="font-medium">{label}</div>
         {shortcut && <div className="text-muted mt-0.5">{shortcut}</div>}
-        <div className={`absolute ${arrowClass}`} />
+        <div
+          className={
+            position === "top"
+              ? "absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-bg-elevated"
+              : "absolute bottom-full left-1/2 -translate-x-1/2 -mb-1 border-4 border-transparent border-b-bg-elevated"
+          }
+        />
       </div>
     </div>
   );

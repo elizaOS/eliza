@@ -57,19 +57,6 @@ import {
 } from "./wallet-capability.js";
 
 // ---------------------------------------------------------------------------
-// Pi AI plugin lazy loader
-// ---------------------------------------------------------------------------
-
-type PiAiPluginModule = typeof import("@elizaos/plugin-pi-ai");
-let _piAiPluginModule: PiAiPluginModule | null = null;
-export async function loadPiAiPluginModule(): Promise<PiAiPluginModule> {
-  if (!_piAiPluginModule) {
-    _piAiPluginModule = await import("@elizaos/plugin-pi-ai");
-  }
-  return _piAiPluginModule;
-}
-
-// ---------------------------------------------------------------------------
 // Service accessors
 // ---------------------------------------------------------------------------
 

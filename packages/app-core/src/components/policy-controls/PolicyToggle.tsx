@@ -68,7 +68,7 @@ export function PolicyToggle({
 
       {/* Content — only when enabled + expanded */}
       {enabled && expanded && children && (
-        <div className="border-t border-border/30 px-3.5 py-3">{children}</div>
+        <div className="px-3.5 py-3">{children}</div>
       )}
     </div>
   );

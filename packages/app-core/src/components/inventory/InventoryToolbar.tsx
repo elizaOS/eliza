@@ -60,7 +60,7 @@ export function InventoryToolbar({
     addresses.length > 0 && typeof onCopyAddress === "function";
 
   return (
-    <div className="space-y-2 border-b border-border pb-3">
+    <div className="space-y-2 pb-3">
       <div className="flex flex-wrap items-center gap-2">
         <div
           className="mr-auto text-xl font-bold text-txt-strong"
