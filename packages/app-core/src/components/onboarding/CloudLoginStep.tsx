@@ -1,5 +1,6 @@
-import { useApp } from "@elizaos/app-core/state";
-import { Button, Spinner } from "@elizaos/app-core";
+import { useApp } from "../../state/useApp";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Spinner } from "@elizaos/ui/components/ui/spinner";
 import { useEffect, useRef } from "react";
 import { useBranding } from "../../config";
 import { openExternalUrl } from "../../utils";

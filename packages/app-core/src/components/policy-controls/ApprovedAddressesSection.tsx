@@ -1,4 +1,5 @@
-import { Button, Input } from "@elizaos/app-core";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
 import { Plus, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { chainTypeLabel, isValidAddress } from "./helpers";
@@ -18,8 +19,13 @@ export function ApprovedAddressesSection({
   const entries: ApprovedAddressEntry[] = useMemo(
     () =>
       (config.addresses ?? []).map((addr) => {
-        if (typeof addr === "object" && addr !== null && "address" in addr) {
-          const obj = addr as unknown as { address: string; label?: string };
+        const addressEntry =
+          typeof addr === "object" && addr !== null ? addr : null;
+        if (addressEntry && "address" in addressEntry) {
+          const obj = addressEntry as unknown as {
+            address: string;
+            label?: string;
+          };
           return { address: obj.address, label: obj.label ?? "" };
         }
         return {

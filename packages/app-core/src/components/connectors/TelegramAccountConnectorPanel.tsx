@@ -1,4 +1,5 @@
-import { Button, PagePanel } from "@elizaos/app-core";
+import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
 import { useApp } from "../../state";

@@ -6,7 +6,7 @@
 import { SegmentedControl, Skeleton } from "@elizaos/app-core";
 import { ChevronDown, ChevronUp, ShoppingCart } from "lucide-react";
 import { useState } from "react";
-import { formatShortDate } from "@elizaos/app-core/utils/format";
+import { formatShortDate } from "@elizaos/app-core";
 import type { ShopifyOrder } from "./useShopifyDashboard";
 
 // ── Status badges ─────────────────────────────────────────────────────────

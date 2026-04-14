@@ -140,13 +140,7 @@ export class EmbeddingGenerationService extends Service {
 			return;
 		}
 
-		const {
-			memory,
-			priority = "normal",
-			retryCount = 0,
-			maxRetries = 3,
-			runId,
-		} = payload;
+		const { memory, priority = "normal", runId } = payload;
 
 		if (memory.embedding) {
 			this.runtime.logger.debug(

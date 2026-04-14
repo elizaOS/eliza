@@ -6,7 +6,7 @@
  * @module actions/stream-control
  */
 
-import type { Action, Memory } from "@elizaos/core";
+import type { Action } from "@elizaos/core";
 import { hasOwnerAccess } from "../security/access.js";
 import { hasContextSignalSyncForKey } from "./context-signal.js";
 

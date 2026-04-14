@@ -98,7 +98,8 @@ async function seedGoogleCalendar(
   stateDir: string,
 ): Promise<void> {
   const repository = new LifeOpsRepository(runtime);
-  const tokenRef = `${AGENT_ID}/owner/local.json`;
+  const agentId = runtime.agentId;
+  const tokenRef = `${agentId}/owner/local.json`;
   const tokenPath = path.join(
     resolveOAuthDir(process.env, stateDir),
     "lifeops",
@@ -113,7 +114,7 @@ async function seedGoogleCalendar(
     JSON.stringify(
       {
         provider: "google",
-        agentId: AGENT_ID,
+        agentId: agentId,
         side: "owner",
         mode: "local",
         clientId: "lifeops-calendar-chat-client",
@@ -140,7 +141,7 @@ async function seedGoogleCalendar(
 
   await repository.upsertConnectorGrant(
     createLifeOpsConnectorGrant({
-      agentId: AGENT_ID,
+      agentId: agentId,
       provider: "google",
       side: "owner",
       identity: { email: "shaw@example.com", name: "Shaw" },
@@ -162,7 +163,7 @@ async function seedGoogleCalendar(
     {
       id: "evt-dentist",
       externalId: "dentist-ext",
-      agentId: AGENT_ID,
+      agentId: agentId,
       provider: "google" as const,
       side: "owner" as const,
       calendarId: "primary",
@@ -185,7 +186,7 @@ async function seedGoogleCalendar(
     {
       id: "evt-hotel",
       externalId: "hotel-ext",
-      agentId: AGENT_ID,
+      agentId: agentId,
       provider: "google" as const,
       side: "owner" as const,
       calendarId: "primary",
@@ -214,7 +215,7 @@ async function seedGoogleCalendar(
     {
       id: "evt-outbound-flight",
       externalId: "flight-denver-ext",
-      agentId: AGENT_ID,
+      agentId: agentId,
       provider: "google" as const,
       side: "owner" as const,
       calendarId: "primary",
@@ -243,7 +244,7 @@ async function seedGoogleCalendar(
     {
       id: "evt-meeting",
       externalId: "meeting-ext",
-      agentId: AGENT_ID,
+      agentId: agentId,
       provider: "google" as const,
       side: "owner" as const,
       calendarId: "primary",
@@ -272,7 +273,7 @@ async function seedGoogleCalendar(
     {
       id: "evt-return-flight",
       externalId: "flight-sfo-ext",
-      agentId: AGENT_ID,
+      agentId: agentId,
       provider: "google" as const,
       side: "owner" as const,
       calendarId: "primary",
@@ -305,7 +306,7 @@ async function seedGoogleCalendar(
   }
   await repository.upsertCalendarSyncState(
     createLifeOpsCalendarSyncState({
-      agentId: AGENT_ID,
+      agentId: agentId,
       provider: "google",
       side: "owner",
       calendarId: "primary",
@@ -348,11 +349,17 @@ function callCalendarAction(
  * so checking them is stable and language-agnostic.
  */
 function responseContainsEvent(
-  result: { text?: string } | null | undefined,
+  result: { text?: string; data?: { events?: Array<{ title?: string }> } } | null | undefined,
   eventTitle: string,
 ): boolean {
   const text = result?.text ?? "";
-  return text.includes(eventTitle);
+  if (text.includes(eventTitle)) return true;
+  // Also check structured event data in case LLM reformulates titles
+  const events = result?.data?.events;
+  if (Array.isArray(events)) {
+    return events.some((e) => e.title === eventTitle);
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------

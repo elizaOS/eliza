@@ -28,9 +28,11 @@ import {
   type HeartbeatMenuSnapshot,
   parseSettingsWindowAction,
 } from "./application-menu";
+import { setApplicationMenuActionHandler } from "./application-menu-action-registry";
 import { showBackgroundNoticeOnce } from "./background-notice";
 import { getBrandConfig } from "./brand-config";
 import { startBrowserWorkspaceBridgeServer } from "./browser-workspace-bridge-server";
+import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import { readNavigationEventUrl } from "./cloud-auth-window";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { getFloatingChatManager } from "./floating-chat-window";
@@ -112,6 +114,11 @@ import {
   onAgentReadyChange,
   setAgentReady,
 } from "./agent-ready-state";
+import {
+  clearCurrentMainWindow,
+  setCurrentMainWindow,
+  updateCurrentMainWindowEffectsState,
+} from "./main-window-runtime";
 import {
   isStewardLocalEnabled,
   onStewardStatusChange,
@@ -196,7 +203,7 @@ function resolveHeartbeatMenuApiBase(): string | null {
  * Picks a loopback API base the main process can actually reach.
  *
  * **WHY:** `resolveHeartbeatMenuApiBase()` falls back to `resolveInitialApiBase`,
- * which in **external** mode is `MILADY_DESKTOP_API_BASE` (often :31337). If that
+ * which in **external** mode is `ELIZA_DESKTOP_API_BASE` (often :31337). If that
  * dev server is down but the **embedded** agent is still running on a dynamic
  * port, menu Reset must not blindly POST to the dead env URL.
  */
@@ -227,17 +234,17 @@ async function resolveReachableApiBaseForMainReset(): Promise<string | null> {
 }
 
 /**
- * App menu "Reset Milady…" — confirm + HTTP reset + restart in the **main process**.
+ * App menu "Reset the app…" — confirm + HTTP reset + restart in the **main process**.
  *
  * **WHY not renderer `fetch`:** after native `showMessageBox`, WKWebView may not run
  * network/bridge work on the same turn, so reset appeared hung. **WHY push
- * `menu-reset-milady-applied`:** renderer must still run the same local wipe as
+ * `menu-reset-app-applied`:** renderer must still run the same local wipe as
  * Settings (`completeResetLocalStateAfterServerWipe`); main only supplies a fresh
  * `/api/status` snapshot as `agentStatus`. Orchestration core: `menu-reset-from-main.ts`.
  *
  * @see `docs/apps/desktop-main-process-reset.md`
  */
-async function resetMiladyFromApplicationMenu(): Promise<void> {
+async function resetTheAppFromApplicationMenu(): Promise<void> {
   console.info(
     `[Main][reset] App menu: Reset ${BRAND.appName} — confirm + POST /api/agent/reset + restart (main process)`,
   );
@@ -250,23 +257,28 @@ async function resetMiladyFromApplicationMenu(): Promise<void> {
       );
     });
 
-  const box = await Utils.showMessageBox({
-    type: "warning",
-    title: "Reset Agent",
-    message:
-      "This will reset the agent: config, cloud keys, and local agent database (conversations / memory).",
-    detail:
-      "Downloaded GGUF embedding models are kept. You will return to the onboarding wizard.",
-    buttons: ["Reset", "Cancel"],
-    defaultId: 0,
-    cancelId: 1,
-  });
-  const response =
-    box && typeof box === "object" && "response" in box
-      ? (box as { response: number }).response
-      : typeof box === "number"
-        ? box
-        : 1;
+  const autoConfirm =
+    process.env.MILADY_DESKTOP_TEST_AUTO_CONFIRM_DIALOGS === "1" ||
+    process.env.MILADY_DESKTOP_TEST_AUTO_CONFIRM_RESET === "1";
+  const response = autoConfirm
+    ? 0
+    : await Utils.showMessageBox({
+        type: "warning",
+        title: "Reset Agent",
+        message:
+          "This will reset the agent: config, cloud keys, and local agent database (conversations / memory).",
+        detail:
+          "Downloaded GGUF embedding models are kept. You will return to the onboarding wizard.",
+        buttons: ["Reset", "Cancel"],
+        defaultId: 0,
+        cancelId: 1,
+      }).then((box) =>
+        box && typeof box === "object" && "response" in box
+          ? (box as { response: number }).response
+          : typeof box === "number"
+            ? box
+            : 1,
+      );
   if (response !== 0) {
     console.info("[Main][reset] User cancelled native confirm");
     return;
@@ -330,7 +342,7 @@ async function resetMiladyFromApplicationMenu(): Promise<void> {
       },
     });
     console.info(
-      "[Main][reset] Pushed menu-reset-milady-applied to renderer with /api/status snapshot",
+      "[Main][reset] Pushed menu-reset-app-applied to renderer with /api/status snapshot",
     );
   } catch (err) {
     console.error("[Main][reset] Main-process reset failed:", err);
@@ -477,8 +489,14 @@ function applyMacOSWindowEffects(win: BrowserWindow): void {
     return;
   }
 
-  enableVibrancy(ptr as Parameters<typeof enableVibrancy>[0]);
-  ensureShadow(ptr as Parameters<typeof ensureShadow>[0]);
+  const vibrancyEnabled = enableVibrancy(
+    ptr as Parameters<typeof enableVibrancy>[0],
+  );
+  const shadowEnabled = ensureShadow(ptr as Parameters<typeof ensureShadow>[0]);
+  updateCurrentMainWindowEffectsState({
+    vibrancyEnabled,
+    shadowEnabled,
+  });
 
   const alignButtons = () =>
     setTrafficLightsPosition(
@@ -701,7 +719,7 @@ async function startRendererServer(): Promise<string> {
   // HTML before the renderer JS runs. This prevents a 404 fatal-error loop
   // where the renderer fetches /api/auth/status relative to the static server.
   // If the agent falls back to a dynamic port, apiBaseUpdate messages will
-  // update window.__MILADY_API_BASE__ and the client will pick it up lazily.
+  // update window.__ELIZA_API_BASE__ and the client will pick it up lazily.
   const initialApiBase = resolveInitialApiBase(
     process.env as Record<string, string | undefined>,
   );
@@ -716,7 +734,7 @@ async function startRendererServer(): Promise<string> {
     if (!initialApiBase) {
       return html;
     }
-    const script = `<script>window.__MILADY_API_BASE__=${JSON.stringify(initialApiBase)};${initialApiToken ? `Object.defineProperty(window,"__MILADY_API_TOKEN__",{value:${JSON.stringify(initialApiToken)},configurable:true,writable:true,enumerable:false});` : ""}</script>`;
+    const script = `<script>window.__ELIZA_API_BASE__=${JSON.stringify(initialApiBase)};${initialApiToken ? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${JSON.stringify(initialApiToken)},configurable:true,writable:true,enumerable:false});` : ""}</script>`;
     // Inject before </head> if present, otherwise before <body>
     if (html.includes("</head>")) {
       return html.replace("</head>", `${script}</head>`);
@@ -811,11 +829,11 @@ async function startRendererServer(): Promise<string> {
 }
 
 async function resolveRendererUrl(): Promise<string> {
-  // Prefer MILADY_RENDERER_URL / VITE_DEV_SERVER_URL when set (e.g. dev-platform.mjs watch mode).
+  // Prefer ELIZA_RENDERER_URL / VITE_DEV_SERVER_URL when set (e.g. dev-platform.mjs watch mode).
   // Why: Vite HMR only works against the dev server; serving pre-built dist from this static
   // server would force a full rebuild for every UI change.
   let rendererUrl =
-    process.env.MILADY_RENDERER_URL ?? process.env.VITE_DEV_SERVER_URL ?? "";
+    process.env.ELIZA_RENDERER_URL ?? process.env.VITE_DEV_SERVER_URL ?? "";
 
   if (!rendererUrl) {
     rendererUrlPromise ??= startRendererServer();
@@ -871,7 +889,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
 
   if (forceMainWindowCef && !canUseCefView) {
     console.warn(
-      "[Main] MILADY_DESKTOP_FORCE_CEF=1 requested, but this Electrobun build does not bundle the CEF renderer. Falling back to the native renderer.",
+      "[Main] ELIZA_DESKTOP_FORCE_CEF=1 requested, but this Electrobun build does not bundle the CEF renderer. Falling back to the native renderer.",
     );
   }
 
@@ -952,6 +970,10 @@ function attachMainWindow(win: BrowserWindow): BrowserWindow {
   const sendToWebview = wireRpcAndModules(win);
   currentWindow = win;
   currentSendToWebview = sendToWebview;
+  setCurrentMainWindow(win, {
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    transparent: process.platform === "darwin",
+  });
   trackFocusedWindow(win);
 
   win.webview.on("dom-ready", () => {
@@ -998,6 +1020,7 @@ function attachMainWindow(win: BrowserWindow): BrowserWindow {
       currentWindow = null;
       currentSendToWebview = null;
     }
+    clearCurrentMainWindow(win);
     getDesktopManager().clearMainWindow(win);
 
     if (!isQuitting) {
@@ -1486,102 +1509,106 @@ async function setupUpdater(): Promise<void> {
       void runUpdateCheck(true);
     };
 
+    const handleApplicationMenuAction = async (
+      action: string | undefined,
+    ): Promise<void> => {
+      if (!currentWindow && action && !action.startsWith("focus-window:")) {
+        await restoreWindow();
+      }
+      if (action === "check-for-updates") {
+        triggerManualUpdateCheck();
+      } else if (action === "open-about") {
+        const updaterState = await getDesktopManager().getUpdaterState();
+        const version = updaterState.currentVersion || "unknown";
+        Utils.showNotification({
+          title: `About ${BRAND.appName}`,
+          body: `Version ${version} (${process.platform}/${process.arch})`,
+        });
+        void createSettingsWindow("updates");
+      } else if (action === "export-config") {
+        void exportConfigFromMenu();
+      } else if (action === "import-config") {
+        void importConfigFromMenu();
+      } else if (action === "toggle-devtools") {
+        toggleFocusedWindowDevTools();
+      } else if (action === "refresh-heartbeats") {
+        void refreshHeartbeatMenuSnapshot();
+      } else if (action === "relaunch") {
+        void getDesktopManager().relaunch();
+      } else if (action === "reset-app") {
+        void resetTheAppFromApplicationMenu();
+      } else if (
+        action === "open-settings" ||
+        action?.startsWith("open-settings-")
+      ) {
+        void createSettingsWindow(parseSettingsWindowAction(action));
+      } else if (action?.startsWith("new-window:")) {
+        const surface = action.slice("new-window:".length);
+        if (surfaceWindowManager && isDetachedSurface(surface)) {
+          void surfaceWindowManager.openSurfaceWindow(surface);
+        }
+      } else if (action?.startsWith("focus-window:")) {
+        const windowId = action.slice("focus-window:".length);
+        surfaceWindowManager?.focusWindow(windowId);
+      } else if (action?.startsWith("show-main:")) {
+        const surface = action.slice("show-main:".length);
+        showMainSurface(surface);
+      } else if (action === "focus-main-window") {
+        void getDesktopManager().focusWindow();
+      } else if (action === "hide-main-window") {
+        void getDesktopManager().hideWindow();
+      } else if (action === "maximize-main-window") {
+        void getDesktopManager().maximizeWindow();
+      } else if (action === "restore-main-window") {
+        void getDesktopManager().unmaximizeWindow();
+      } else if (action === "desktop-notify") {
+        void getDesktopManager().showNotification({
+          title: `${BRAND.appName} Desktop`,
+          body: `${BRAND.appName} native application menu actions are wired and responding.`,
+          urgency: "normal",
+        });
+      } else if (action === "restart-steward") {
+        if (isStewardLocalEnabled()) {
+          restartSteward().catch((err: unknown) => {
+            console.error("[Main] Steward restart failed:", err);
+            Utils.showNotification({
+              title: "Steward Restart Failed",
+              body: err instanceof Error ? err.message : "Unknown error",
+            });
+          });
+        }
+      } else if (action === "reset-steward") {
+        if (isStewardLocalEnabled()) {
+          resetSteward().catch((err: unknown) => {
+            console.error("[Main] Steward reset failed:", err);
+            Utils.showNotification({
+              title: "Steward Reset Failed",
+              body: err instanceof Error ? err.message : "Unknown error",
+            });
+          });
+        }
+      } else if (action === "restart-agent") {
+        getAgentManager()
+          .restart()
+          .catch((err: unknown) => {
+            console.error("[Main] Agent restart failed:", err);
+          });
+      } else if (action === "quit") {
+        void getDesktopManager().quit();
+      } else if (action === "show") {
+        void getDesktopManager().showWindow();
+      } else if (action?.startsWith("navigate-")) {
+        void getDesktopManager().showWindow();
+        sendToActiveRenderer("desktopTrayMenuClick", { itemId: action });
+      }
+    };
+
+    setApplicationMenuActionHandler(handleApplicationMenuAction);
+
     Electrobun.events.on(
       "application-menu-clicked",
-      async (e: { data?: { action?: string } }) => {
-        const action = e?.data?.action;
-
-        // If the main window is gone and the action targets it, restore first.
-        if (!currentWindow && action && !action.startsWith("focus-window:")) {
-          await restoreWindow();
-        }
-        if (action === "check-for-updates") {
-          triggerManualUpdateCheck();
-        } else if (action === "open-about") {
-          const updaterState = await getDesktopManager().getUpdaterState();
-          const version = updaterState.currentVersion || "unknown";
-          Utils.showNotification({
-            title: `About ${BRAND.appName}`,
-            body: `Version ${version} (${process.platform}/${process.arch})`,
-          });
-          void createSettingsWindow("updates");
-        } else if (action === "export-config") {
-          void exportConfigFromMenu();
-        } else if (action === "import-config") {
-          void importConfigFromMenu();
-        } else if (action === "toggle-devtools") {
-          toggleFocusedWindowDevTools();
-        } else if (action === "refresh-heartbeats") {
-          void refreshHeartbeatMenuSnapshot();
-        } else if (action === "relaunch") {
-          void getDesktopManager().relaunch();
-        } else if (action === "reset-milady") {
-          void resetMiladyFromApplicationMenu();
-        } else if (
-          action === "open-settings" ||
-          action?.startsWith("open-settings-")
-        ) {
-          void createSettingsWindow(parseSettingsWindowAction(action));
-        } else if (action?.startsWith("new-window:")) {
-          const surface = action.slice("new-window:".length);
-          if (surfaceWindowManager && isDetachedSurface(surface)) {
-            void surfaceWindowManager.openSurfaceWindow(surface);
-          }
-        } else if (action?.startsWith("focus-window:")) {
-          const windowId = action.slice("focus-window:".length);
-          surfaceWindowManager?.focusWindow(windowId);
-        } else if (action?.startsWith("show-main:")) {
-          const surface = action.slice("show-main:".length);
-          showMainSurface(surface);
-        } else if (action === "focus-main-window") {
-          void getDesktopManager().focusWindow();
-        } else if (action === "hide-main-window") {
-          void getDesktopManager().hideWindow();
-        } else if (action === "maximize-main-window") {
-          void getDesktopManager().maximizeWindow();
-        } else if (action === "restore-main-window") {
-          void getDesktopManager().unmaximizeWindow();
-        } else if (action === "desktop-notify") {
-          void getDesktopManager().showNotification({
-            title: `${BRAND.appName} Desktop`,
-            body: `${BRAND.appName} native application menu actions are wired and responding.`,
-            urgency: "normal",
-          });
-        } else if (action === "restart-steward") {
-          if (isStewardLocalEnabled()) {
-            restartSteward().catch((err: unknown) => {
-              console.error("[Main] Steward restart failed:", err);
-              Utils.showNotification({
-                title: "Steward Restart Failed",
-                body: err instanceof Error ? err.message : "Unknown error",
-              });
-            });
-          }
-        } else if (action === "reset-steward") {
-          if (isStewardLocalEnabled()) {
-            resetSteward().catch((err: unknown) => {
-              console.error("[Main] Steward reset failed:", err);
-              Utils.showNotification({
-                title: "Steward Reset Failed",
-                body: err instanceof Error ? err.message : "Unknown error",
-              });
-            });
-          }
-        } else if (action === "restart-agent") {
-          getAgentManager()
-            .restart()
-            .catch((err: unknown) => {
-              console.error("[Main] Agent restart failed:", err);
-            });
-        } else if (action === "quit") {
-          void getDesktopManager().quit();
-        } else if (action === "show") {
-          void getDesktopManager().showWindow();
-        } else if (action?.startsWith("navigate-")) {
-          // Show main window + push tab change to renderer
-          void getDesktopManager().showWindow();
-          sendToActiveRenderer("desktopTrayMenuClick", { itemId: action });
-        }
+      (e: { data?: { action?: string } }) => {
+        void handleApplicationMenuAction(e?.data?.action);
       },
     );
 
@@ -1631,16 +1658,16 @@ function setupShutdown(): void {
 
 /**
  * Load repo-root and ~/.eliza/.env into `process.env` (non-destructive) so the
- * main process can send the same `MILADY_API_TOKEN` as `dev-server.ts` when
+ * main process can send the same `ELIZA_API_TOKEN` as `dev-server.ts` when
  * calling loopback APIs (app menu reset, export, etc.). The dev API child
  * already loads dotenv; Electrobun did not until this ran.
  *
  * Packaged desktop builds must not load these files. On machines that also
- * have a Milady/Eliza dev checkout, ~/.eliza/.env can contain
- * MILADY_DESKTOP_API_BASE and related overrides that switch the packaged app
+ * have a the app/Eliza dev checkout, ~/.eliza/.env can contain
+ * ELIZA_DESKTOP_API_BASE and related overrides that switch the packaged app
  * into external mode and make launcher startup appear dead.
  */
-async function loadMiladyEnvFilesForMain(): Promise<void> {
+async function loadTheAppEnvFilesForMain(): Promise<void> {
   const normalizedModuleDir = import.meta.dir.replaceAll("\\", "/");
   const isPackagedBuild = !normalizedModuleDir.includes("/src/");
   if (isPackagedBuild) {
@@ -1720,13 +1747,13 @@ async function main(): Promise<void> {
     exec_path: process.execPath,
     bundle_path: resolveStartupBundlePath(process.execPath),
   });
-  await loadMiladyEnvFilesForMain();
+  await loadTheAppEnvFilesForMain();
   console.log(`[Main] Starting ${BRAND.appName} (Electrobun)`);
   const normalizedModuleDir = import.meta.dir.replaceAll("\\", "/");
   const runtimeResolution = resolveDesktopRuntimeMode(
     process.env as Record<string, string | undefined>,
   );
-  // Structured startup environment block — visible in CI logs and milady-startup.log
+  // Structured startup environment block — visible in CI logs and eliza-startup.log
   console.log(
     `[Env] platform=${process.platform} arch=${process.arch} bun=${Bun.version} ` +
       `execPath=${process.execPath} cwd=${process.cwd()} moduleDir=${import.meta.dir} ` +
@@ -1797,10 +1824,14 @@ async function main(): Promise<void> {
   checkWebGpuBrowserSupport();
   cleanupFns.length = 0;
   cleanupFns.push(await startBrowserWorkspaceBridgeServer());
+  const stopDesktopTestBridgeServer = await startDesktopTestBridgeServer();
+  if (stopDesktopTestBridgeServer) {
+    cleanupFns.push(stopDesktopTestBridgeServer);
+  }
 
   // WHY push API base on every status tick with a port: embedded startup can
   // settle on a different loopback port than env/static HTML (allocation + stdout).
-  // Detached surfaces must not keep a stale __MILADY_API_BASE__ while the main
+  // Detached surfaces must not keep a stale __ELIZA_API_BASE__ while the main
   // window was already updated—menu reset, chat, and settings each own a webview.
   cleanupFns.push(
     getAgentManager().onStatusChange((status) => {
@@ -1951,7 +1982,7 @@ async function main(): Promise<void> {
 
   // ── Steward sidecar startup (must happen BEFORE agent) ────────────
   // When STEWARD_LOCAL=true, start the steward sidecar first so it can
-  // set STEWARD_API_URL / STEWARD_AGENT_TOKEN env vars. The Milady agent's
+  // set STEWARD_API_URL / STEWARD_AGENT_TOKEN env vars. The the app agent's
   // steward-bridge.ts reads these on boot to discover local steward.
   if (isStewardLocalEnabled()) {
     console.log("[Main] STEWARD_LOCAL=true — starting steward sidecar...");
@@ -1993,7 +2024,7 @@ async function main(): Promise<void> {
   // Agent startup: in external mode, push the API base via injectApiBase
   // (the agent is already running externally). In local mode, start the
   // embedded agent first — injectApiBaseIntoHtml already set the initial
-  // window.__MILADY_API_BASE__ but _startAgent will push the actual port
+  // window.__ELIZA_API_BASE__ but _startAgent will push the actual port
   // once the agent reports it.
   if (currentWindow) {
     const rt = resolveDesktopRuntimeMode(

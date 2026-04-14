@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { describe, expect, test } from "vitest";
-import { AutonomyService } from "../autonomy/service";
+import { AutonomyService } from "../features/autonomy/service";
 import type { IAgentRuntime, Memory, UUID } from "../types";
 
 const asTestUuid = (id: string): UUID => id as UUID;

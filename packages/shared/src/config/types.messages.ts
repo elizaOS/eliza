@@ -26,7 +26,7 @@ export type QueueModeByProvider = {
 
 // --- TTS types (merged from types.tts.ts) ---
 
-export type TtsProvider = "elevenlabs" | "openai" | "edge";
+export type TtsProvider = "elevenlabs" | "openai" | "edge" | (string & {});
 
 export type TtsMode = "final" | "all";
 

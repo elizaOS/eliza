@@ -1,11 +1,11 @@
-import { useRenderGuard } from "@elizaos/app-core/hooks";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
 import {
-  ChatPanelLayout,
   DrawerSheet,
   DrawerSheetContent,
   DrawerSheetHeader,
   DrawerSheetTitle,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/drawer-sheet";
+import { ChatPanelLayout } from "@elizaos/ui/layouts/chat-panel-layout/chat-panel-layout";
 import { memo } from "react";
 import { useTranslation } from "../../state";
 import { ChatView } from "./ChatView.js";

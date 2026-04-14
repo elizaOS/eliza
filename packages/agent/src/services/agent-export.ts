@@ -878,9 +878,7 @@ export async function importAgent(
         "Incorrect password — decryption failed. Please check your password and try again.",
       );
     }
-    throw new AgentExportError(
-      `Decryption failed: ${String(err)}`,
-    );
+    throw new AgentExportError(`Decryption failed: ${String(err)}`);
   }
 
   // 3. Decompress

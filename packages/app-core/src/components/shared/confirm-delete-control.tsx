@@ -1,4 +1,4 @@
-import { Button } from "@elizaos/app-core";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { type ReactNode, useState } from "react";
 import { useApp } from "../../state";
 

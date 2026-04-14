@@ -145,7 +145,11 @@ export async function createRealTestRuntime(
   if (options?.withLLM) {
     try {
       const pluginModule = await import("@elizaos/plugin-local-embedding");
-      const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
+      const plugin =
+        pluginModule.default ??
+        ("localAiPlugin" in pluginModule
+          ? pluginModule.localAiPlugin
+          : undefined);
       if (plugin) {
         configureLocalEmbeddingPlugin(plugin);
         await runtime.registerPlugin(plugin);
@@ -196,9 +200,13 @@ export async function createRealTestRuntime(
   if (options?.withDiscord && process.env.DISCORD_BOT_TOKEN?.trim()) {
     try {
       const discordModule = await import("@elizaos/plugin-discord");
-      const plugin = discordModule.default ?? discordModule.discordPlugin;
-      if (plugin) {
-        await runtime.registerPlugin(plugin);
+      const plugin =
+        discordModule.default ??
+        ("discordPlugin" in discordModule
+          ? discordModule.discordPlugin
+          : undefined);
+      if (plugin && typeof plugin === "object" && "name" in plugin) {
+        await runtime.registerPlugin(plugin as Plugin);
         logger.info("[real-runtime] Registered Discord plugin");
       }
     } catch (err) {
@@ -210,9 +218,13 @@ export async function createRealTestRuntime(
   if (options?.withTelegram && process.env.TELEGRAM_BOT_TOKEN?.trim()) {
     try {
       const telegramModule = await import("@elizaos/plugin-telegram");
-      const plugin = telegramModule.default ?? telegramModule.telegramPlugin;
-      if (plugin) {
-        await runtime.registerPlugin(plugin);
+      const plugin =
+        telegramModule.default ??
+        ("telegramPlugin" in telegramModule
+          ? telegramModule.telegramPlugin
+          : undefined);
+      if (plugin && typeof plugin === "object" && "name" in plugin) {
+        await runtime.registerPlugin(plugin as Plugin);
         logger.info("[real-runtime] Registered Telegram plugin");
       }
     } catch (err) {

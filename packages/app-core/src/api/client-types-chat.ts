@@ -111,12 +111,6 @@ export interface ChatTokenUsage {
 
 export type ConversationMode = "simple" | "power";
 
-export interface ChatMessage {
-  role: "user" | "assistant";
-  text: string;
-  timestamp: number;
-}
-
 // Knowledge types
 export interface KnowledgeStats {
   documentCount: number;

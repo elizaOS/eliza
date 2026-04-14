@@ -1,7 +1,6 @@
 import fs from "node:fs";
-import { FRAME_FILE } from "../services/browser-capture.js";
-
 import sharp from "sharp";
+import { FRAME_FILE } from "../services/browser-capture.js";
 
 export type LifeOpsScreenFocus =
   | "work"
@@ -120,7 +119,9 @@ async function analyzeImage(buffer: Buffer): Promise<ImageStats> {
     withoutEnlargement: true,
     fit: "inside",
   });
-  const { data, info } = await image.raw().toBuffer({ resolveWithObject: true });
+  const { data, info } = await image
+    .raw()
+    .toBuffer({ resolveWithObject: true });
   const pixels = data;
   let sum = 0;
   let sumSquares = 0;
@@ -309,7 +310,9 @@ export async function analyzeLifeOpsScreenBuffer(args: {
     contextTags: args.stale ? ["stale-frame"] : inference.contextTags,
     cues: args.stale ? [] : inference.cues,
     confidence: args.stale ? 0.2 : inference.confidence,
-    disabledReason: args.stale ? "The latest browser-capture frame is stale." : null,
+    disabledReason: args.stale
+      ? "The latest browser-capture frame is stale."
+      : null,
   };
 }
 
@@ -324,7 +327,9 @@ export class LifeOpsScreenContextSampler {
   shouldSample(nowMs = Date.now()): boolean {
     const minIntervalMs =
       this.options.minSampleIntervalMs ?? DEFAULT_MIN_SAMPLE_INTERVAL_MS;
-    return this.lastSampleAtMs === 0 || nowMs - this.lastSampleAtMs >= minIntervalMs;
+    return (
+      this.lastSampleAtMs === 0 || nowMs - this.lastSampleAtMs >= minIntervalMs
+    );
   }
 
   getLastSummary(): LifeOpsScreenContextSummary | null {
@@ -388,7 +393,10 @@ export class LifeOpsScreenContextSampler {
 export async function tryCreateVisionOcrAdapter(): Promise<LifeOpsScreenOcrAdapter | null> {
   const visionImportCandidates = [
     "@elizaos/plugin-vision",
-    new URL("../../../../plugins/plugin-vision/typescript/src/ocr-service.ts", import.meta.url).href,
+    new URL(
+      "../../../../plugins/plugin-vision/typescript/src/ocr-service.ts",
+      import.meta.url,
+    ).href,
   ];
 
   for (const specifier of visionImportCandidates) {
@@ -397,7 +405,9 @@ export async function tryCreateVisionOcrAdapter(): Promise<LifeOpsScreenOcrAdapt
       const OCRService = mod.OCRService as
         | (new () => {
             initialize(): Promise<void>;
-            extractText(imageBuffer: Buffer): Promise<{ fullText?: string; text?: string }>;
+            extractText(
+              imageBuffer: Buffer,
+            ): Promise<{ fullText?: string; text?: string }>;
           })
         | undefined;
       if (!OCRService) {
@@ -415,9 +425,7 @@ export async function tryCreateVisionOcrAdapter(): Promise<LifeOpsScreenOcrAdapt
           return normalizeText(result.fullText ?? result.text ?? null) || null;
         },
       };
-    } catch {
-      continue;
-    }
+    } catch {}
   }
 
   return null;

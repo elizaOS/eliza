@@ -4,16 +4,20 @@
  * Safety-first scope:
  * - No execution/signing here.
  * - Validate wallet/rpc/chain/gas/token before producing a quote.
+ *
+ * @deprecated This file is maintained for backward compatibility.
+ * The canonical source has moved to `@elizaos/app-steward/api/bsc-trade`.
+ * New development should target the app-steward package.
  */
 
 import { logger } from "@elizaos/core";
 import { ethers } from "ethers";
 import type {
-  BscTradeRoutePreference,
-  BscTradeRouteProvider,
   BscTradePreflightResponse,
   BscTradeQuoteRequest,
   BscTradeQuoteResponse,
+  BscTradeRoutePreference,
+  BscTradeRouteProvider,
   BscTradeSide,
   BscUnsignedApprovalTx,
   BscUnsignedTradeTx,
@@ -389,30 +393,36 @@ async function readWrappedNativeAddress(
   }
 }
 
-export async function readTokenDecimals(rpcUrls: string[], tokenAddress: string): Promise<number> {
+export async function readTokenDecimals(
+  rpcUrls: string[],
+  tokenAddress: string,
+): Promise<number> {
   const encoded = ERC20_IFACE.encodeFunctionData("decimals", []);
   const call = await ethCall(rpcUrls, tokenAddress, encoded);
   const decoded = ERC20_IFACE.decodeFunctionResult("decimals", call.result);
   const decimals = decoded[0];
-  
+
   if (typeof decimals !== "bigint") return 18;
-  
+
   const parsed = Number(decimals);
   if (!Number.isFinite(parsed) || parsed < 0) return 18;
-  
+
   return parsed;
 }
 
-async function readTokenSymbol(rpcUrls: string[], tokenAddress: string): Promise<string> {
+async function readTokenSymbol(
+  rpcUrls: string[],
+  tokenAddress: string,
+): Promise<string> {
   const encoded = ERC20_IFACE.encodeFunctionData("symbol", []);
   const call = await ethCall(rpcUrls, tokenAddress, encoded);
   const decoded = ERC20_IFACE.decodeFunctionResult("symbol", call.result);
   const symbol = decoded[0];
-  
+
   if (typeof symbol === "string" && symbol.trim()) {
     return symbol.trim().slice(0, 16);
   }
-  
+
   return `TKN-${tokenAddress.slice(2, 6).toUpperCase()}`;
 }
 
@@ -498,7 +508,8 @@ async function fetchZeroXQuote(input: {
     to,
     data,
     value,
-    allowanceTarget: normalizeAddress(parsed.allowanceTarget ?? null) ?? undefined,
+    allowanceTarget:
+      normalizeAddress(parsed.allowanceTarget ?? null) ?? undefined,
     buyAmount: buyAmount.toString(),
     sellAmount: sellAmount.toString(),
   };
@@ -825,7 +836,8 @@ export async function buildBscTradeQuote(
     routeProvider,
     routeProviderRequested,
     routeProviderFallbackUsed,
-    routeProviderNotes: routeProviderNotes.length > 0 ? routeProviderNotes : undefined,
+    routeProviderNotes:
+      routeProviderNotes.length > 0 ? routeProviderNotes : undefined,
     routerAddress:
       routeProvider === "0x"
         ? (swapTargetAddress ?? context.routerAddress)
@@ -901,7 +913,8 @@ export function buildBscBuyUnsignedTx(
       to: quote.swapTargetAddress,
       data: quote.swapCallData,
       valueWei: quote.swapValueWei ?? quote.quoteIn.amountWei,
-      deadline: Math.floor(Date.now() / 1000) + clampDeadlineSeconds(deadlineSeconds),
+      deadline:
+        Math.floor(Date.now() / 1000) + clampDeadlineSeconds(deadlineSeconds),
       explorerUrl: context.explorerBaseUrl,
     };
   }
@@ -952,7 +965,8 @@ export function buildBscSellUnsignedTx(
       to: quote.swapTargetAddress,
       data: quote.swapCallData,
       valueWei: quote.swapValueWei ?? "0",
-      deadline: Math.floor(Date.now() / 1000) + clampDeadlineSeconds(deadlineSeconds),
+      deadline:
+        Math.floor(Date.now() / 1000) + clampDeadlineSeconds(deadlineSeconds),
       explorerUrl: context.explorerBaseUrl,
     };
   }
@@ -1028,7 +1042,10 @@ export function buildBscApproveUnsignedTx(
 }
 
 export function resolveBscApprovalSpender(
-  quote: Pick<BscTradeQuoteResponse, "routeProvider" | "allowanceTarget" | "routerAddress">,
+  quote: Pick<
+    BscTradeQuoteResponse,
+    "routeProvider" | "allowanceTarget" | "routerAddress"
+  >,
 ): string {
   if (quote.routeProvider === "0x" && quote.allowanceTarget) {
     return quote.allowanceTarget;

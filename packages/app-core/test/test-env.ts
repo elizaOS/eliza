@@ -54,8 +54,8 @@ function loadProfileEnv(): void {
 export function installTestEnv(): { cleanup: () => void; tempHome: string } {
   const live =
     process.env.LIVE === "1" ||
-    process.env.MILADY_LIVE_TEST === "1" ||
-    process.env.MILADY_LIVE_GATEWAY === "1";
+    process.env.ELIZA_LIVE_TEST === "1" ||
+    process.env.ELIZA_LIVE_GATEWAY === "1";
 
   // Live tests must use the real user environment (keys, profiles, config).
   // The default test env isolates HOME to avoid touching real state.
@@ -65,27 +65,27 @@ export function installTestEnv(): { cleanup: () => void; tempHome: string } {
   }
 
   const restore: RestoreEntry[] = [
-    { key: "MILADY_TEST_FAST", value: process.env.MILADY_TEST_FAST },
+    { key: "ELIZA_TEST_FAST", value: process.env.ELIZA_TEST_FAST },
     { key: "HOME", value: process.env.HOME },
     { key: "USERPROFILE", value: process.env.USERPROFILE },
     { key: "XDG_CONFIG_HOME", value: process.env.XDG_CONFIG_HOME },
     { key: "XDG_DATA_HOME", value: process.env.XDG_DATA_HOME },
     { key: "XDG_STATE_HOME", value: process.env.XDG_STATE_HOME },
     { key: "XDG_CACHE_HOME", value: process.env.XDG_CACHE_HOME },
-    { key: "MILADY_STATE_DIR", value: process.env.MILADY_STATE_DIR },
-    { key: "MILADY_CONFIG_PATH", value: process.env.MILADY_CONFIG_PATH },
-    { key: "MILADY_GATEWAY_PORT", value: process.env.MILADY_GATEWAY_PORT },
+    { key: "ELIZA_STATE_DIR", value: process.env.ELIZA_STATE_DIR },
+    { key: "ELIZA_CONFIG_PATH", value: process.env.ELIZA_CONFIG_PATH },
+    { key: "ELIZA_GATEWAY_PORT", value: process.env.ELIZA_GATEWAY_PORT },
     {
-      key: "MILADY_BRIDGE_ENABLED",
-      value: process.env.MILADY_BRIDGE_ENABLED,
+      key: "ELIZA_BRIDGE_ENABLED",
+      value: process.env.ELIZA_BRIDGE_ENABLED,
     },
-    { key: "MILADY_BRIDGE_HOST", value: process.env.MILADY_BRIDGE_HOST },
-    { key: "MILADY_BRIDGE_PORT", value: process.env.MILADY_BRIDGE_PORT },
+    { key: "ELIZA_BRIDGE_HOST", value: process.env.ELIZA_BRIDGE_HOST },
+    { key: "ELIZA_BRIDGE_PORT", value: process.env.ELIZA_BRIDGE_PORT },
     {
-      key: "MILADY_CANVAS_HOST_PORT",
-      value: process.env.MILADY_CANVAS_HOST_PORT,
+      key: "ELIZA_CANVAS_HOST_PORT",
+      value: process.env.ELIZA_CANVAS_HOST_PORT,
     },
-    { key: "MILADY_TEST_HOME", value: process.env.MILADY_TEST_HOME },
+    { key: "ELIZA_TEST_HOME", value: process.env.ELIZA_TEST_HOME },
     { key: "TELEGRAM_BOT_TOKEN", value: process.env.TELEGRAM_BOT_TOKEN },
     { key: "DISCORD_BOT_TOKEN", value: process.env.DISCORD_BOT_TOKEN },
     { key: "SLACK_BOT_TOKEN", value: process.env.SLACK_BOT_TOKEN },
@@ -97,23 +97,23 @@ export function installTestEnv(): { cleanup: () => void; tempHome: string } {
     { key: "NODE_OPTIONS", value: process.env.NODE_OPTIONS },
   ];
 
-  const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "milady-test-home-"));
+  const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-test-home-"));
 
   process.env.HOME = tempHome;
   process.env.USERPROFILE = tempHome;
-  process.env.MILADY_TEST_HOME = tempHome;
-  process.env.MILADY_TEST_FAST = "1";
+  process.env.ELIZA_TEST_HOME = tempHome;
+  process.env.ELIZA_TEST_FAST = "1";
 
   // Ensure test runs never touch the developer's real config/state, even if they have overrides set.
-  delete process.env.MILADY_CONFIG_PATH;
+  delete process.env.ELIZA_CONFIG_PATH;
   // Prefer deriving state dir from HOME so nested tests that change HOME also isolate correctly.
-  delete process.env.MILADY_STATE_DIR;
+  delete process.env.ELIZA_STATE_DIR;
   // Prefer test-controlled ports over developer overrides (avoid port collisions across tests/workers).
-  delete process.env.MILADY_GATEWAY_PORT;
-  delete process.env.MILADY_BRIDGE_ENABLED;
-  delete process.env.MILADY_BRIDGE_HOST;
-  delete process.env.MILADY_BRIDGE_PORT;
-  delete process.env.MILADY_CANVAS_HOST_PORT;
+  delete process.env.ELIZA_GATEWAY_PORT;
+  delete process.env.ELIZA_BRIDGE_ENABLED;
+  delete process.env.ELIZA_BRIDGE_HOST;
+  delete process.env.ELIZA_BRIDGE_PORT;
+  delete process.env.ELIZA_CANVAS_HOST_PORT;
   // Avoid leaking real GitHub/Copilot tokens into non-live test runs.
   delete process.env.TELEGRAM_BOT_TOKEN;
   delete process.env.DISCORD_BOT_TOKEN;
@@ -128,7 +128,7 @@ export function installTestEnv(): { cleanup: () => void; tempHome: string } {
 
   // Windows: prefer the default state dir so auth/profile tests match real paths.
   if (process.platform === "win32") {
-    process.env.MILADY_STATE_DIR = path.join(tempHome, ".milady");
+    process.env.ELIZA_STATE_DIR = path.join(tempHome, ".eliza");
   }
 
   process.env.XDG_CONFIG_HOME = path.join(tempHome, ".config");

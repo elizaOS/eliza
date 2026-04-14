@@ -3,7 +3,7 @@
  * agent, persisted so subsequent runs reuse the same xRSPS account.
  *
  * Why self-generate: the dev workflow should be zero-friction. The
- * operator starts `bun run dev` (or the milady runtime) and the agent
+ * operator starts `bun run dev` (or the eliza runtime) and the agent
  * connects without the operator having to think about credentials.
  * The SAME identity is reused on every subsequent run so skills,
  * inventory, position, and the Scape Journal accumulate across
@@ -14,21 +14,21 @@
  *   1. Explicit runtime setting (`SCAPE_AGENT_NAME`, `SCAPE_AGENT_PASSWORD`,
  *      `SCAPE_AGENT_ID`) — lets an operator pin a specific identity.
  *   2. Previously-persisted identity file at
- *      `~/.milady/scape-agent-identity.json` (or the override path
+ *      `~/.eliza/scape-agent-identity.json` (or the override path
  *      passed to the function).
  *   3. Freshly generated value — written to the identity file so
  *      the next run picks it up.
  *
  * The identity file is co-located with the Scape Journal directory
- * (`~/.milady/scape-journals/`) so everything 'scape writes to disk
+ * (`~/.eliza/scape-journals/`) so everything 'scape writes to disk
  * lives in one place and can be backed up / wiped together.
  *
  * SECURITY: the password is persisted in plaintext. For the default
  * auto-generated throwaway account, this is fine — the password only
  * authorizes this one machine to play one xRSPS character, and a
- * compromised laptop already leaks everything else in `~/.milady/`.
+ * compromised laptop already leaks everything else in `~/.eliza/`.
  * But if an operator passes `SCAPE_AGENT_PASSWORD` (or an override
- * from a plugin parameter in the milady UI) pointing at a real
+ * from a plugin parameter in the eliza UI) pointing at a real
  * account, that password will silently land on disk. We log a WARN
  * at write time so it's visible in the service startup log, and the
  * `SCAPE_AGENT_PASSWORD` plugin parameter description spells this out
@@ -73,7 +73,7 @@ export interface AgentIdentityOptions {
 }
 
 function defaultIdentityPath(): string {
-  return join(homedir(), ".milady", "scape-agent-identity.json");
+  return join(homedir(), ".eliza", "scape-agent-identity.json");
 }
 
 /**

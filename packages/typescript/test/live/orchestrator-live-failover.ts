@@ -32,9 +32,9 @@ const FALLBACK_FRAMEWORK =
 	(PRIMARY_FRAMEWORK === "claude" ? "codex" : "claude");
 const USE_REAL_PRIMARY_FAILURE =
 	process.env.ORCHESTRATOR_LIVE_REAL_PRIMARY_FAILURE === "1";
-const KEEP_ARTIFACTS = process.env.MILADY_KEEP_LIVE_ARTIFACTS === "1";
+const KEEP_ARTIFACTS = process.env.ELIZA_KEEP_LIVE_ARTIFACTS === "1";
 
-type MiladyConfig = {
+type AppConfig = {
 	cloud?: {
 		apiKey?: string;
 	};
@@ -46,12 +46,12 @@ function loadCloudApiKey(): string {
 		return fromEnv;
 	}
 
-	const configPath = path.join(os.homedir(), ".milady", "milady.json");
-	const parsed = JSON.parse(fs.readFileSync(configPath, "utf8")) as MiladyConfig;
+	const configPath = path.join(os.homedir(), ".eliza", "eliza.json");
+	const parsed = JSON.parse(fs.readFileSync(configPath, "utf8")) as AppConfig;
 	const fromConfig = parsed.cloud?.apiKey?.trim();
 	if (!fromConfig) {
 		throw new Error(
-			"ELIZAOS_CLOUD_API_KEY is not configured in the environment or ~/.milady/milady.json",
+			"ELIZAOS_CLOUD_API_KEY is not configured in the environment or ~/.eliza/eliza.json",
 		);
 	}
 	return fromConfig;
@@ -120,7 +120,7 @@ async function main(): Promise<void> {
 		"Expected both live failover frameworks to be installed",
 	);
 
-	workdir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-live-failover-"));
+	workdir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-live-failover-"));
 	const outputFile = path.join(workdir, "failover-proof.txt");
 	const sentinel = `LIVE_FAILOVER_${Date.now()}`;
 	const thread = await coordinator.createTaskThread({

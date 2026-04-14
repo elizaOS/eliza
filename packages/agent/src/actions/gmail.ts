@@ -23,7 +23,6 @@ import type {
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { hasContextSignalForKey } from "./context-signal.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import {
   extractActionResultsFromState,
   extractRecentMessageEntriesFromState,
@@ -32,6 +31,7 @@ import {
   summarizeActiveTrajectory,
   summarizeRecentActionHistory,
 } from "./grounded-action-reply.js";
+import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import {
   detailArray,
   detailBoolean,

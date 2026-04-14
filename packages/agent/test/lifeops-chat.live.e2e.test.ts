@@ -16,7 +16,8 @@ import { loadElizaConfig } from "../src/config/config";
 import { judgeTextWithLlm } from "./helpers/lifeops-live-judge.ts";
 
 const LIVE_TESTS_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" ||
+  process.env.ELIZA_LIVE_TEST === "1";
 const LIVE_PROVIDER_OVERRIDE =
   process.env.ELIZA_LIVE_PROVIDER?.trim().toLowerCase();
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");

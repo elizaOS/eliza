@@ -18,11 +18,11 @@ const __dirname = path.dirname(__filename);
 const DEFAULT_REPO_ROOT = path.resolve(__dirname, "..");
 
 export const LOCAL_UPSTREAM_SKIP_ENVS = [
-  "MILADY_SKIP_LOCAL_UPSTREAMS",
+  "ELIZA_SKIP_LOCAL_UPSTREAMS",
   "ELIZA_SKIP_LOCAL_UPSTREAMS",
 ];
 export const LOCAL_UPSTREAM_FORCE_ENVS = [
-  "MILADY_FORCE_LOCAL_UPSTREAMS",
+  "ELIZA_FORCE_LOCAL_UPSTREAMS",
   "ELIZA_FORCE_LOCAL_UPSTREAMS",
 ];
 export const ELIZA_GIT_URL = "https://github.com/elizaos/eliza.git";

@@ -1,14 +1,14 @@
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
+import { SectionCard } from "@elizaos/ui/components/ui/section-card";
 import {
-  Button,
-  Input,
-  SectionCard,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Switch,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/select";
+import { Switch } from "@elizaos/ui/components/ui/switch";
 import {
   ChevronDown,
   ExternalLink,

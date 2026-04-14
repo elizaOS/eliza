@@ -1,17 +1,4 @@
-/**
- * ConfigRenderer — Schema-driven plugin config form (React port).
- *
- * Takes a JSON Schema + ConfigUiHints, resolves each property to a field type
- * via the catalog, and renders via the registry.
- *
- * Phase 2 features (json-render parity):
- *   - Rich visibility: evaluateVisibility() with LogicExpression support
- *   - Validation checks: declarative checks alongside Zod validation
- *   - Actions: onAction() callback for executing catalog actions
- *   - Prompt generation: registry.catalog.prompt() for AI system prompts
- */
-
-import { Button } from "@elizaos/app-core";
+import { Button } from "@elizaos/ui/components/ui/button";
 import React, {
   forwardRef,
   useCallback,

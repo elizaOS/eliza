@@ -9,7 +9,6 @@
  */
 
 export * from "./actions";
-export * from "./basic-capabilities/index";
 export * from "./character";
 export * from "./character-utils";
 export * from "./connection";
@@ -28,6 +27,7 @@ export {
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
+export * from "./features/basic-capabilities/index";
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
 export * from "./logger";
@@ -39,7 +39,6 @@ export * from "./providers/onboarding-progress";
 export * from "./providers/skill-eligibility";
 export * from "./roles";
 export * from "./runtime";
-export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./schemas/character";
 export * from "./schemas/index";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
@@ -68,6 +67,7 @@ export * from "./types/message-service";
 export * from "./types/onboarding";
 export * from "./types/plugin-manifest";
 export * from "./utils";
+export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 export * from "./utils/channel-utils";
 export * from "./utils/environment";

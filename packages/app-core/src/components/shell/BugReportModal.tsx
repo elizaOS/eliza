@@ -1,24 +1,28 @@
+import { Banner } from "@elizaos/ui/components/ui/banner";
+import { Button } from "@elizaos/ui/components/ui/button";
 import {
-  Banner,
-  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+} from "@elizaos/ui/components/ui/dialog";
+import {
   Field,
   FieldDescription,
   FieldLabel,
   FieldMessage,
-  Input,
+} from "@elizaos/ui/components/ui/field";
+import { Input } from "@elizaos/ui/components/ui/input";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Textarea,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/select";
+import { Textarea } from "@elizaos/ui/components/ui/textarea";
 import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";

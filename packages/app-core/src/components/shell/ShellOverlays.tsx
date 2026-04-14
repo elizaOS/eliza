@@ -1,8 +1,9 @@
-import { Spinner, Z_SHELL_OVERLAY } from "@elizaos/app-core";
+import { Spinner } from "@elizaos/ui/components/ui/spinner";
+import { Z_SHELL_OVERLAY } from "@elizaos/ui/lib/floating-layers";
 import type { ActionNotice } from "../../state/types";
 import { BugReportModal } from "./BugReportModal";
 import { CommandPalette } from "./CommandPalette";
-import { GlobalEmoteOverlay } from "@elizaos/app-companion/ui";
+import { GlobalEmoteOverlay } from "@elizaos/app-companion/components/companion/GlobalEmoteOverlay";
 import { RestartBanner } from "./RestartBanner";
 import { ShortcutsOverlay } from "./ShortcutsOverlay";
 

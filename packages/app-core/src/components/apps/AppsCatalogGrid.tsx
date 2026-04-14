@@ -1,12 +1,14 @@
-import { Button, Input } from "@elizaos/app-core";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
+import type { KeyboardEvent, MouseEvent } from "react";
 import type { RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
 import {
   getAppCatalogSectionLabel,
-  getAppEmoji,
   getAppShortName,
   groupAppsForCatalog,
 } from "./helpers";
+import { AppIdentityTile } from "./app-identity";
 
 interface AppsCatalogGridProps {
   activeAppNames: Set<string>;
@@ -39,6 +41,16 @@ export function AppsCatalogGrid({
 }: AppsCatalogGridProps) {
   const { t } = useApp();
   const sections = groupAppsForCatalog(visibleApps, favoriteAppNames);
+  const launchFromKeyboard = (
+    event: KeyboardEvent<HTMLDivElement>,
+    app: RegistryAppInfo,
+  ) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    onLaunch(app);
+  };
 
   return (
     <div data-testid="apps-catalog-grid">
@@ -62,10 +74,18 @@ export function AppsCatalogGrid({
         <Button
           variant={showActiveOnly ? "default" : "outline"}
           size="sm"
-          className="rounded-xl px-3 shadow-sm"
+          className="rounded-xl px-3 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
           onClick={onToggleActiveOnly}
+          disabled={activeAppNames.size === 0}
+          title={
+            activeAppNames.size === 0
+              ? t("appsview.NoActiveAppsForFilter", {
+                  defaultValue: "No active apps are available to filter.",
+                })
+              : undefined
+          }
         >
-          {t("appsview.ActiveOnly")}
+          {t("appsview.ActiveOnly", { defaultValue: "Active Only" })}
         </Button>
       </div>
 
@@ -100,9 +120,6 @@ export function AppsCatalogGrid({
                   {section.label}
                 </h2>
                 <div className="h-px flex-1 bg-border/30" />
-                <span className="text-2xs text-muted">
-                  {section.apps.length}
-                </span>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -112,23 +129,24 @@ export function AppsCatalogGrid({
                   const displayName = app.displayName ?? getAppShortName(app);
 
                   return (
-                    <button
+                    <div
                       key={app.name}
-                      type="button"
+                      role="button"
+                      tabIndex={0}
                       data-testid={`app-card-${app.name.replace(/[^a-z0-9]+/gi, "-")}`}
                       title={displayName}
                       aria-label={displayName}
-                      className="group flex flex-col rounded-2xl border border-border/35 bg-card/72 p-4 text-left transition-all hover:border-accent/25 hover:bg-bg-hover/70"
+                      className="group flex flex-col rounded-2xl border border-border/35 bg-card/72 p-4 text-left transition-all hover:border-accent/25 hover:bg-bg-hover/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35"
                       onClick={() => onLaunch(app)}
+                      onKeyDown={(event) => launchFromKeyboard(event, app)}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3">
-                          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/35 bg-bg/80 text-lg">
-                            {isActive ? (
-                              <span className="absolute -right-0.5 -top-0.5 z-10 h-2 w-2 rounded-full border-[1.5px] border-card bg-ok" />
-                            ) : null}
-                            <span>{getAppEmoji(app)}</span>
-                          </div>
+                          <AppIdentityTile
+                            app={app}
+                            active={isActive}
+                            size="sm"
+                          />
                           <div>
                             <div className="text-sm font-semibold text-txt">
                               {displayName}
@@ -150,7 +168,7 @@ export function AppsCatalogGrid({
                               ? "text-warn"
                               : "text-muted/40 opacity-0 group-hover:opacity-100 hover:text-warn"
                           }`}
-                          onClick={(e: React.MouseEvent) => {
+                          onClick={(e: MouseEvent<HTMLButtonElement>) => {
                             e.stopPropagation();
                             onToggleFavorite(app.name);
                           }}
@@ -173,7 +191,7 @@ export function AppsCatalogGrid({
                         {app.description ||
                           "Launch and manage this agent experience."}
                       </p>
-                    </button>
+                    </div>
                   );
                 })}
               </div>

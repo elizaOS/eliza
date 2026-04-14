@@ -1,4 +1,4 @@
-import { Button } from "@elizaos/app-core";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { useEffect, useRef } from "react";
 import { useSignalPairing } from "../../hooks";
 import { useApp } from "../../state";

@@ -17,10 +17,10 @@
  * remote -- it simply connects to `http://localhost:{port}`.
  *
  * **Port policy (WHY):** we resolve a **free** loopback desktop API port from
- * `ELIZA_API_PORT`, `MILADY_API_PORT`, or `ELIZA_PORT` (see
+ * `ELIZA_API_PORT`, `ELIZA_API_PORT`, or `ELIZA_PORT` (see
  * `findFirstAvailableLoopbackPort`) instead of SIGKILL-ing listeners by
  * default, so two desktop apps can run side by side. Optional
- * `ELIZA_AGENT_RECLAIM_STALE_PORT=1` (legacy: `MILADY_AGENT_RECLAIM_STALE_PORT`)
+ * `ELIZA_AGENT_RECLAIM_STALE_PORT=1` (legacy: `ELIZA_AGENT_RECLAIM_STALE_PORT`)
  * restores lsof-based reclaim for single-instance dev.
  */
 
@@ -109,7 +109,7 @@ export function getHealthPollTimeoutMs(
   env: NodeJS.ProcessEnv = process.env,
   platform: string = process.platform,
 ): number {
-  const raw = (env.ELIZA_AGENT_HEALTH_TIMEOUT_MS ?? env.MILADY_AGENT_HEALTH_TIMEOUT_MS)?.trim();
+  const raw = (env.ELIZA_AGENT_HEALTH_TIMEOUT_MS ?? env.ELIZA_AGENT_HEALTH_TIMEOUT_MS)?.trim();
   if (raw) {
     const parsed = Number.parseInt(raw, 10);
     if (Number.isFinite(parsed) && parsed > 0) {
@@ -184,10 +184,10 @@ function buildExistingElizaInstallCandidates(opts?: {
   const homedir = opts?.homedir ?? os.homedir();
   const configPathFromEnv =
     normalizeEnvPath(env.ELIZA_CONFIG_PATH) ??
-    normalizeEnvPath(env.MILADY_CONFIG_PATH);
+    normalizeEnvPath(env.ELIZA_CONFIG_PATH);
   const stateDirFromEnv =
     normalizeEnvPath(env.ELIZA_STATE_DIR) ??
-    normalizeEnvPath(env.MILADY_STATE_DIR);
+    normalizeEnvPath(env.ELIZA_STATE_DIR);
   const defaultStateDir = joinPortable(homedir, ".eliza");
 
   const candidates = [
@@ -322,7 +322,7 @@ export function configureDesktopLocalApiAuth(
 ): string {
   const token = ensureDesktopApiToken(env);
   env.ELIZA_PAIRING_DISABLED = "1";
-  env.MILADY_PAIRING_DISABLED = "1";
+  env.ELIZA_PAIRING_DISABLED = "1";
   return token;
 }
 
@@ -399,7 +399,7 @@ function shortError(err: unknown, maxLen = 280): string {
   return `${oneLine.slice(0, maxLen)}... (see logs for full details)`;
 }
 
-function redactSensitiveDiagnostics(input: string): string {
+export function redactSensitiveDiagnostics(input: string): string {
   return input
     .replace(
       /(authorization\s*[:=]\s*bearer\s+)([a-z0-9._-]+)/gi,
@@ -546,7 +546,7 @@ export function createBugReportBundle(options: {
  * Resolve the runtime dist directory.
  *
  * Priority:
- *   1. ELIZA_DIST_PATH / MILADY_DIST_PATH env var (explicit override)
+ *   1. ELIZA_DIST_PATH / ELIZA_DIST_PATH env var (explicit override)
  *   2. Walk up from import.meta.dir to find the runtime dist dir as a sibling
  */
 export function getRuntimeDistFallbackCandidates(
@@ -566,16 +566,16 @@ export function getRuntimeDistFallbackCandidates(
     resolveRelativePortable(moduleDir, `../${distDir}`),
     resolveRelativePortable(moduleDir, `../app/${distDir}`),
     resolveRelativePortable(moduleDir, `../../../${distDir}`),
-    // Legacy milady-dist fallback for existing packaged builds
-    resolveRelativePortable(execDir, "../Resources/app/milady-dist"),
-    resolveRelativePortable(execDir, "resources/app/milady-dist"),
-    resolveRelativePortable(moduleDir, "../milady-dist"),
-    resolveRelativePortable(moduleDir, "../../../milady-dist"),
+    // Legacy eliza-dist fallback for existing packaged builds
+    resolveRelativePortable(execDir, "../Resources/app/eliza-dist"),
+    resolveRelativePortable(execDir, "resources/app/eliza-dist"),
+    resolveRelativePortable(moduleDir, "../eliza-dist"),
+    resolveRelativePortable(moduleDir, "../../../eliza-dist"),
   ].filter((candidate, index, all) => all.indexOf(candidate) === index);
 }
 
 /** @deprecated Use getRuntimeDistFallbackCandidates instead. */
-export const getMiladyDistFallbackCandidates = getRuntimeDistFallbackCandidates;
+export const getAppDistFallbackCandidates = getRuntimeDistFallbackCandidates;
 
 export function isPackagedDesktopRuntime(
   moduleDir: string = getDefaultModuleDir(),
@@ -588,7 +588,7 @@ export function isPackagedDesktopRuntime(
     normalizedExecPath.includes("/self-extraction/") ||
     normalizedExecPath.endsWith("/launcher") ||
     normalizedExecPath.endsWith("/launcher.exe");
-  if ((process.env.ELIZA_DIST_PATH ?? process.env.MILADY_DIST_PATH)?.trim() && !looksLikePackagedExec) {
+  if ((process.env.ELIZA_DIST_PATH ?? process.env.ELIZA_DIST_PATH)?.trim() && !looksLikePackagedExec) {
     return false;
   }
   if (!normalizedModuleDir.includes("/src/")) {
@@ -713,7 +713,7 @@ export function resolveRuntimeDistPath(opts?: {
   }
 
   // 1. Env override
-  const envPath = env.ELIZA_DIST_PATH ?? env.MILADY_DIST_PATH;
+  const envPath = env.ELIZA_DIST_PATH ?? env.ELIZA_DIST_PATH;
   if (envPath) {
     const resolved = resolvePortablePath(envPath);
     if (fs.existsSync(resolved)) {
@@ -733,8 +733,8 @@ export function resolveRuntimeDistPath(opts?: {
     if (fs.existsSync(runtimeDist)) {
       return runtimeDist;
     }
-    // Legacy milady-dist sibling (existing packaged builds)
-    const legacyDist = joinPortable(dir, "milady-dist");
+    // Legacy eliza-dist sibling (existing packaged builds)
+    const legacyDist = joinPortable(dir, "eliza-dist");
     if (fs.existsSync(legacyDist)) {
       return legacyDist;
     }
@@ -766,7 +766,7 @@ export function resolveRuntimeDistPath(opts?: {
 }
 
 /** @deprecated Use resolveRuntimeDistPath instead. */
-export const resolveMiladyDistPath = resolveRuntimeDistPath;
+export const resolveAppDistPath = resolveRuntimeDistPath;
 
 export function buildChildNodePaths(
   runtimeDistPath: string,
@@ -960,11 +960,11 @@ function shouldAutoRecoverPgliteFailure(line: string): boolean {
 /**
  * Opt-in: kill processes listening on `port` (lsof + SIGKILL). Default off so a
  * second desktop instance can coexist on the same machine when ports differ.
- * Set ELIZA_AGENT_RECLAIM_STALE_PORT=1 (legacy: MILADY_AGENT_RECLAIM_STALE_PORT)
+ * Set ELIZA_AGENT_RECLAIM_STALE_PORT=1 (legacy: ELIZA_AGENT_RECLAIM_STALE_PORT)
  * to restore the old “take over default port” behavior.
  */
 async function maybeReclaimPortWithSigkill(port: number): Promise<void> {
-  const raw = (process.env.ELIZA_AGENT_RECLAIM_STALE_PORT ?? process.env.MILADY_AGENT_RECLAIM_STALE_PORT)?.trim().toLowerCase();
+  const raw = (process.env.ELIZA_AGENT_RECLAIM_STALE_PORT ?? process.env.ELIZA_AGENT_RECLAIM_STALE_PORT)?.trim().toLowerCase();
   if (raw !== "1" && raw !== "true" && raw !== "yes") {
     return;
   }
@@ -979,7 +979,7 @@ async function maybeReclaimPortWithSigkill(port: number): Promise<void> {
       const numPid = parseInt(pid, 10);
       if (!Number.isNaN(numPid) && numPid !== process.pid) {
         diagnosticLog(
-          `[Agent] Reclaim: killing process ${numPid} on port ${port} (MILADY_AGENT_RECLAIM_STALE_PORT)`,
+          `[Agent] Reclaim: killing process ${numPid} on port ${port} (ELIZA_AGENT_RECLAIM_STALE_PORT)`,
         );
         try {
           process.kill(numPid, "SIGKILL");
@@ -1150,7 +1150,7 @@ export class AgentManager {
     }
     if (apiPort !== preferredPort) {
       diagnosticLog(
-        `[Agent] Port ${preferredPort} busy — using ${apiPort} for embedded API (set MILADY_AGENT_RECLAIM_STALE_PORT=1 to try reclaiming the preferred port first)`,
+        `[Agent] Port ${preferredPort} busy — using ${apiPort} for embedded API (set ELIZA_AGENT_RECLAIM_STALE_PORT=1 to try reclaiming the preferred port first)`,
       );
     }
     recordStartupPhase("port_selected", {
@@ -1170,7 +1170,7 @@ export class AgentManager {
     try {
       // Resolve the bundled runtime dist path.
       this.setStartupPhase("resolving_runtime");
-      const runtimeDistPath = resolveMiladyDistPath();
+      const runtimeDistPath = resolveAppDistPath();
       diagnosticLog(`[Agent] Resolved runtime dist: ${runtimeDistPath}`);
 
       // Packaged builds can expose the runnable entry either at the dist root
@@ -1242,23 +1242,23 @@ export class AgentManager {
 
       const childEnv: Record<string, string> = {
         ...(process.env as Record<string, string>),
-        MILADY_API_PORT: String(apiPort),
+        ELIZA_API_PORT: String(apiPort),
         ELIZA_API_PORT: String(apiPort),
         ELIZA_PORT: String(apiPort),
       };
-      childEnv.MILADY_NAMESPACE =
-        childEnv.MILADY_NAMESPACE?.trim() ||
+      childEnv.ELIZA_NAMESPACE =
+        childEnv.ELIZA_NAMESPACE?.trim() ||
         childEnv.ELIZA_NAMESPACE?.trim() ||
         getBrandConfig().namespace;
       childEnv.ELIZA_NAMESPACE =
-        childEnv.ELIZA_NAMESPACE?.trim() || childEnv.MILADY_NAMESPACE;
-      delete childEnv.MILADY_PORT;
+        childEnv.ELIZA_NAMESPACE?.trim() || childEnv.ELIZA_NAMESPACE;
+      delete childEnv.ELIZA_PORT;
       delete childEnv.NODE_PATH;
 
       // node-llama-cpp crashes Bun on Windows during packaged startup.
       // Disable local embeddings until upstream fix lands.
       if (process.platform === "win32") {
-        childEnv.MILADY_DISABLE_LOCAL_EMBEDDINGS = "1";
+        childEnv.ELIZA_DISABLE_LOCAL_EMBEDDINGS = "1";
       }
 
       // Propagate PGlite data dir from parent env so CI/smoke test overrides
@@ -1329,7 +1329,7 @@ export class AgentManager {
           (line: string) => {
             diagnosticLog(`[Agent][stdout] ${line}`);
             const lower = line.toLowerCase();
-            // Parse dynamic port from "[milady-api] Listening on http://host:PORT"
+            // Parse dynamic port from "[eliza-api] Listening on http://host:PORT"
             const portMatch = line.match(
               /Listening on https?:\/\/[^:]+:(\d+)/i,
             );
@@ -1546,7 +1546,7 @@ export class AgentManager {
    * default ~/.eliza/models), env-backed wallet keys, or eliza.json (the API
    * reset already rewrote config on disk).
    *
-   * When `MILADY_DESKTOP_API_BASE` points at an external dev API (e.g. :31337),
+   * When `ELIZA_DESKTOP_API_BASE` points at an external dev API (e.g. :31337),
    * the embedded child is never used — this is a no-op so the renderer can
    * bounce the real API via `POST /api/agent/restart` instead.
    */

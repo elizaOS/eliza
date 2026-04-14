@@ -235,13 +235,7 @@ function readPersistedConnectorConfig(
   const appHash = readTrimmedString(record.appHash);
   const deviceModel = readTrimmedString(record.deviceModel);
   const systemVersion = readTrimmedString(record.systemVersion);
-  if (
-    !phone ||
-    !appId ||
-    !appHash ||
-    !deviceModel ||
-    !systemVersion
-  ) {
+  if (!phone || !appId || !appHash || !deviceModel || !systemVersion) {
     return null;
   }
   // Older persisted connector snapshots could save `enabled: false` while the

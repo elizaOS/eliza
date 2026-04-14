@@ -57,11 +57,11 @@ function materializeRuntimePath(inputPath: string): string {
       "Contents",
       "Resources",
       "app",
-      "milady-dist",
+      "eliza-dist",
       "node_modules",
     );
   }
-  if (path.basename(resolved) === "milady-dist") {
+  if (path.basename(resolved) === "eliza-dist") {
     return joinPortable(resolved, "node_modules");
   }
   return resolved;

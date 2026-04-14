@@ -1,24 +1,14 @@
-/**
- * BrowserWorkspaceView — web-compatible pseudo-browser workspace.
- *
- * In web mode the backend owns logical tabs and this page renders them as
- * persistent iframes. Tabs stay mounted while hidden so the agent can switch
- * between them without destroying page state.
- */
-
-import {
-  Button,
-  Input,
-  MetaPill,
-  PageLayout,
-  PagePanel,
-  Sidebar,
-  SidebarCollapsedActionButton,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/app-core";
+import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+import { MetaPill } from "@elizaos/ui/components/composites/page-panel/page-panel-header";
+import { SidebarCollapsedActionButton } from "@elizaos/ui/components/composites/sidebar/sidebar-collapsed-rail";
+import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
+import { SidebarHeader } from "@elizaos/ui/components/composites/sidebar/sidebar-header";
+import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
+import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
+import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
+import { PageLayout } from "@elizaos/ui/layouts/page-layout/page-layout";
 import { ExternalLink, Plus, RefreshCw, X } from "lucide-react";
 import {
   type JSX,
@@ -47,9 +37,6 @@ import { WidgetHost } from "../../widgets";
 
 const POLL_INTERVAL_MS = 2_500;
 const DEFAULT_BROWSER_WALLET_CHAIN_ID = 1;
-const ADDRESS_INPUT_CLASSNAME =
-  "h-10 rounded-full border-border/35 bg-card/70 px-4 text-sm text-txt shadow-sm transition-colors focus-visible:border-accent/40";
-
 function normalizeBrowserWorkspaceInputUrl(rawUrl: string): string | null {
   const trimmed = rawUrl.trim();
   if (!trimmed) {
@@ -1104,7 +1091,7 @@ export function BrowserWorkspaceView(): JSX.Element {
               placeholder={t("browserworkspace.AddressPlaceholder", {
                 defaultValue: "Enter a URL",
               })}
-              className={`w-full ${ADDRESS_INPUT_CLASSNAME}`}
+              className="w-full h-10 rounded-full border-border/35 bg-card/70 px-4 text-sm text-txt shadow-sm transition-colors focus-visible:border-accent/40"
             />
             <div className="flex gap-1.5">
               <Button

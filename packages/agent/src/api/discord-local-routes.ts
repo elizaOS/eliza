@@ -1,9 +1,7 @@
 import type http from "node:http";
 import type { ElizaConfig } from "../config/config.js";
 import type { ConnectorConfig } from "../config/types.eliza.js";
-import {
-  DISCORD_LOCAL_SERVICE_NAME,
-} from "../runtime/discord-local-plugin.js";
+import { DISCORD_LOCAL_SERVICE_NAME } from "../runtime/discord-local-plugin.js";
 import { registerEscalationChannel } from "../services/escalation.js";
 import { setOwnerContact } from "./owner-contact-helpers.js";
 import type { RouteHelpers } from "./route-helpers.js";
@@ -176,7 +174,10 @@ export async function handleDiscordLocalRoute(
       return true;
     }
 
-    const body = await helpers.readJsonBody<{ channelIds?: string[] }>(req, res);
+    const body = await helpers.readJsonBody<{ channelIds?: string[] }>(
+      req,
+      res,
+    );
     if (!body) {
       return true;
     }
@@ -192,9 +193,8 @@ export async function handleDiscordLocalRoute(
       : [];
 
     try {
-      const subscribedChannelIds = await service.subscribeChannelMessages(
-        channelIds,
-      );
+      const subscribedChannelIds =
+        await service.subscribeChannelMessages(channelIds);
       const connectorConfig = getConnectorConfig(state);
       updateConnectorConfig(state, {
         ...connectorConfig,
@@ -203,13 +203,10 @@ export async function handleDiscordLocalRoute(
       });
       // Auto-populate owner contact so LifeOps can deliver reminders
       if (subscribedChannelIds.length > 0) {
-        setOwnerContact(
-          state.config as Parameters<typeof setOwnerContact>[0],
-          {
-            source: "discord",
-            channelId: subscribedChannelIds[0],
-          },
-        );
+        setOwnerContact(state.config as Parameters<typeof setOwnerContact>[0], {
+          source: "discord",
+          channelId: subscribedChannelIds[0],
+        });
         // Add Discord to the escalation channel list so it is reachable
         // without the user explicitly configuring escalation.
         registerEscalationChannel("discord");

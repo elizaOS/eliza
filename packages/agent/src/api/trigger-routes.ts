@@ -5,6 +5,7 @@ import {
   type Task,
   type UUID,
 } from "@elizaos/core";
+import type { TriggerExecutionResult } from "../triggers/runtime.js";
 import type { TriggerSummary } from "../triggers/types.js";
 import type { RouteHelpers, RouteRequestContext } from "./route-helpers.js";
 
@@ -51,7 +52,7 @@ export interface TriggerRouteContext extends RouteRequestContext {
     runtime: AgentRuntime,
     task: Task,
     options: { source: string; force: boolean },
-  ) => Promise<any>;
+  ) => Promise<TriggerExecutionResult>;
   getTriggerHealthSnapshot: (runtime: AgentRuntime) => Promise<object>;
   getTriggerLimit: (runtime: AgentRuntime) => number;
   listTriggerTasks: (runtime: AgentRuntime) => Promise<Task[]>;
@@ -320,7 +321,9 @@ export async function handleTriggerRoutes(
     return true;
   }
 
-  const execMatch = /^\/api\/triggers\/([^/]+)\/execute$/.exec(normalizedPathname);
+  const execMatch = /^\/api\/triggers\/([^/]+)\/execute$/.exec(
+    normalizedPathname,
+  );
   if (method === "POST" && execMatch) {
     const task = await findTask(
       runtime,
@@ -332,14 +335,18 @@ export async function handleTriggerRoutes(
       error(res, "Trigger not found", 404);
       return true;
     }
-    const result = await executeTriggerTask(runtime, task, {
-      source: "manual",
-      force: true,
-    });
+    const result: TriggerExecutionResult = await executeTriggerTask(
+      runtime,
+      task,
+      {
+        source: "manual",
+        force: true,
+      },
+    );
     const refreshed = task.id ? await runtime.getTask(task.id) : null;
     const summary = refreshed
       ? taskToTriggerSummary(refreshed)
-      : result.trigger ?? null;
+      : (result.trigger ?? null);
     json(
       res,
       usingHeartbeatsAlias

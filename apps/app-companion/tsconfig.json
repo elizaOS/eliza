@@ -4,19 +4,53 @@
     "composite": false,
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node", "bun"],
+    "typeRoots": [
+      "./node_modules/@types",
+      "../../node_modules/@types",
+      "../../../node_modules/@types"
+    ],
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
+    "baseUrl": "../../",
     "paths": {
+      "@elizaos/app-lifeops": ["./apps/app-lifeops/src/index.ts"],
+      "@elizaos/app-lifeops/*": ["./apps/app-lifeops/src/*"],
+      "@elizaos/app-coding": ["./apps/app-coding/src/index.ts"],
+      "@elizaos/app-coding/*": ["./apps/app-coding/src/*"],
+      "@elizaos/app-steward": ["./apps/app-steward/src/index.ts"],
+      "@elizaos/app-steward/*": ["./apps/app-steward/src/*"],
       "@elizaos/app-core": ["./packages/app-core/src/index.ts"],
       "@elizaos/app-core/*": ["./packages/app-core/src/*"],
+      "@elizaos/ui": ["./packages/ui/src/index.ts"],
+      "@elizaos/ui/*": ["./packages/ui/src/*"],
+      "@elizaos/agent": ["./packages/agent/src/index.ts"],
+      "@elizaos/agent/*": ["./packages/agent/src/*"],
+      "@elizaos/app-companion": ["./apps/app-companion/src/index.ts"],
+      "@elizaos/app-companion/*": ["./apps/app-companion/src/*"],
+      "@elizaos/shared": ["./packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["./packages/shared/src/*"],
       "@elizaos/core": ["./packages/typescript/src/index.ts"],
       "@elizaos/core/*": ["./packages/typescript/src/*"],
-      "@elizaos/agent/*": ["./packages/agent/src/*"]
+      "@elizaos/*": ["./node_modules/@elizaos/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
-  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts",
+    "../../packages/agent/src/external-modules.d.ts",
+    "../../packages/app-core/src/ambient-modules.d.ts"
+  ],
+  "exclude": [
+    "src/**/*.stories.ts",
+    "src/**/*.stories.tsx",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ]
 }

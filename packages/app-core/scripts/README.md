@@ -7,7 +7,7 @@ Most scripts here are invoked from **root `package.json`** (`bun run …`). **Ap
 | npm script | Entry |
 |------------|--------|
 | `bun run dev:desktop` | `bun eliza/packages/app-core/scripts/dev-platform.mjs` |
-| `bun run dev:desktop:watch` | `MILADY_DESKTOP_VITE_WATCH=1` + same |
+| `bun run dev:desktop:watch` | `ELIZA_DESKTOP_VITE_WATCH=1` + same |
 
 **Why a dedicated script:** Electrobun needs a renderer URL, often a running API, and (in dev) a root `dist/` bundle. Starting each piece by hand drifts on ports and env vars; one orchestrator keeps **startup and shutdown** symmetric.
 

@@ -7,6 +7,7 @@ import {
   packageNameToAppRouteSlug,
 } from "../contracts/apps.js";
 import { importAppRouteModule } from "../services/app-package-modules.js";
+import { setOverlayAppPresence } from "../services/overlay-app-presence.js";
 import type {
   InstallProgressLike,
   PluginManagerLike,
@@ -17,7 +18,6 @@ import {
   scoreEntries,
   toSearchResults,
 } from "../services/registry-client-queries.js";
-import { setOverlayAppPresence } from "../services/overlay-app-presence.js";
 import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
 
 export interface AppManagerLike {

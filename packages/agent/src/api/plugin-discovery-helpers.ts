@@ -12,27 +12,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger, type UUID } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
-import {
-  isConnectorConfigured,
-  isStreamingDestinationConfigured,
-} from "../config/plugin-auto-enable.js";
-import {
-  getBundledRuntimePluginIds,
-  classifyRegistryPluginRelease,
-} from "../runtime/release-plugin-policy.js";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
-import {
-  applyWhatsAppQrOverride,
-} from "./whatsapp-routes.js";
-import {
-  applySignalQrOverride,
-} from "./signal-routes.js";
+import { getBundledRuntimePluginIds } from "../runtime/release-plugin-policy.js";
 import { signalAuthExists } from "../services/signal-pairing.js";
 import {
   type PluginParamInfo,
   validatePluginConfig,
 } from "./plugin-validation.js";
-import { findOwnPackageRoot } from "./server.js";
+import { findOwnPackageRoot } from "./server-helpers.js";
+import { applySignalQrOverride } from "./signal-routes.js";
+import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
 
 const require = createRequire(import.meta.url);
 
@@ -42,7 +31,7 @@ function findPluginsManifestRoot(startDir: string): string {
 
   for (let i = 0; i < 16; i += 1) {
     if (fs.existsSync(path.join(dir, "plugins.json"))) {
-      // Keep walking so wrapper repos like Milady can override the nested
+      // Keep walking so wrapper wrapper repos can override the nested
       // upstream eliza checkout's package root with the outer workspace manifest.
       manifestRoot = dir;
     }
@@ -57,71 +46,9 @@ function findPluginsManifestRoot(startDir: string): string {
   return manifestRoot ?? findOwnPackageRoot(startDir);
 }
 
-export interface PluginParamDef {
-  key: string;
-  type: string;
-  description: string;
-  required: boolean;
-  sensitive: boolean;
-  default?: string;
-  /** Predefined options for dropdown selection (e.g. model names). */
-  options?: string[];
-  /** Current value from process.env (masked if sensitive). */
-  currentValue: string | null;
-  /** Whether a value is currently set in the environment. */
-  isSet: boolean;
-}
+export type { PluginEntry, PluginParamDef } from "./server-types.js";
 
-export interface PluginEntry {
-  id: string;
-  name: string;
-  description: string;
-  tags: string[];
-  enabled: boolean;
-  configured: boolean;
-  envKey: string | null;
-  category:
-    | "ai-provider"
-    | "connector"
-    | "streaming"
-    | "database"
-    | "app"
-    | "feature";
-  /** Where the plugin comes from: "bundled" (ships with Eliza) or "store" (user-installed from registry). */
-  source: "bundled" | "store";
-  configKeys: string[];
-  parameters: PluginParamDef[];
-  validationErrors: Array<{ field: string; message: string }>;
-  validationWarnings: Array<{ field: string; message: string }>;
-  npmName?: string;
-  version?: string;
-  releaseStream?: "latest" | "alpha";
-  requestedVersion?: string;
-  latestVersion?: string | null;
-  alphaVersion?: string | null;
-  pluginDeps?: string[];
-  /** Whether this plugin is currently active in the runtime. */
-  isActive?: boolean;
-  /** Error message when plugin is enabled/installed but failed to load. */
-  loadError?: string;
-  /** Server-provided UI hints for plugin configuration fields. */
-  configUiHints?: Record<string, Record<string, unknown>>;
-  /** Optional icon URL or emoji for the plugin card header. */
-  icon?: string | null;
-  homepage?: string;
-  repository?: string;
-  setupGuideUrl?: string;
-  autoEnabled?: boolean;
-  managementMode?: "standard" | "core-optional";
-  capabilityStatus?:
-    | "loaded"
-    | "auto-enabled"
-    | "blocked"
-    | "missing-prerequisites"
-    | "disabled";
-  capabilityReason?: string | null;
-  prerequisites?: Array<{ label: string; met: boolean }>;
-}
+import type { PluginEntry, PluginParamDef } from "./server-types.js";
 
 export interface SkillEntry {
   id: string;
@@ -159,7 +86,6 @@ export interface StreamEventEnvelope {
   payload: object;
 }
 
-
 export function getReleaseBundledPluginIds(): Set<string> {
   const packageRoot = findOwnPackageRoot(
     import.meta.dirname ?? path.dirname(fileURLToPath(import.meta.url)),
@@ -180,7 +106,6 @@ export function getReleaseBundledPluginIds(): Set<string> {
     return new Set();
   }
 }
-
 
 export interface PluginIndexEntry {
   id: string;
@@ -311,40 +236,39 @@ function normalizePluginParameters(
   }
 
   const normalized = Object.fromEntries(
-    Object.entries(rawParameters)
-      .flatMap(([key, definition]) => {
-        if (!isPluginParameterDefinition(definition)) {
-          return [];
-        }
-        const options = Array.isArray(definition.options)
-          ? definition.options.filter(
-              (value: unknown): value is string => typeof value === "string",
-            )
-          : undefined;
+    Object.entries(rawParameters).flatMap(([key, definition]) => {
+      if (!isPluginParameterDefinition(definition)) {
+        return [];
+      }
+      const options = Array.isArray(definition.options)
+        ? definition.options.filter(
+            (value: unknown): value is string => typeof value === "string",
+          )
+        : undefined;
 
-        const normalizedDefinition: NormalizedPluginParameter = {
-          type: typeof definition.type === "string" ? definition.type : "string",
-          description:
-            typeof definition.description === "string" &&
-            definition.description.trim().length > 0
-              ? definition.description
-              : inferDescription(key),
-          required:
-            definition.required === true ||
-            (definition.optional === false && definition.required !== false),
-          sensitive:
-            definition.sensitive === true || inferSensitiveConfigKey(key),
-        };
+      const normalizedDefinition: NormalizedPluginParameter = {
+        type: typeof definition.type === "string" ? definition.type : "string",
+        description:
+          typeof definition.description === "string" &&
+          definition.description.trim().length > 0
+            ? definition.description
+            : inferDescription(key),
+        required:
+          definition.required === true ||
+          (definition.optional === false && definition.required !== false),
+        sensitive:
+          definition.sensitive === true || inferSensitiveConfigKey(key),
+      };
 
-        if (definition.default !== undefined) {
-          normalizedDefinition.default = String(definition.default);
-        }
-        if (options && options.length > 0) {
-          normalizedDefinition.options = options;
-        }
+      if (definition.default !== undefined) {
+        normalizedDefinition.default = String(definition.default);
+      }
+      if (options && options.length > 0) {
+        normalizedDefinition.options = options;
+      }
 
-        return [[key, normalizedDefinition] as const];
-      }),
+      return [[key, normalizedDefinition] as const];
+    }),
   );
 
   return Object.keys(normalized).length > 0 ? normalized : undefined;
@@ -887,10 +811,10 @@ export function discoverInstalledPlugins(
       name,
       npmName: packageName,
       version: installedVersion,
-      releaseStream:
-        (record as { releaseStream?: "latest" | "alpha" }).releaseStream,
-      requestedVersion:
-        (record as { requestedVersion?: string }).requestedVersion,
+      releaseStream: (record as { releaseStream?: "latest" | "alpha" })
+        .releaseStream,
+      requestedVersion: (record as { requestedVersion?: string })
+        .requestedVersion,
       description: resolvedDescription,
       tags: resolvedTags,
       enabled: false, // Will be updated against the runtime below
@@ -1017,7 +941,7 @@ export function discoverPluginsFromManifest(): PluginEntry[] {
             npmName: p.npmName,
             version: p.version,
             pluginDeps: p.pluginDeps,
-            ...(p.configUiHints ?? bundledMeta.configUiHints
+            ...((p.configUiHints ?? bundledMeta.configUiHints)
               ? { configUiHints: p.configUiHints ?? bundledMeta.configUiHints }
               : {}),
             icon: p.logoUrl ?? p.icon ?? bundledMeta.icon ?? null,
@@ -1432,7 +1356,10 @@ export function readBundledPluginPackageMetadata(
       if (metadata.icon == null && extracted.icon != null) {
         metadata.icon = extracted.icon;
       }
-      if ((metadata.tags?.length ?? 0) === 0 && (extracted.tags?.length ?? 0) > 0) {
+      if (
+        (metadata.tags?.length ?? 0) === 0 &&
+        (extracted.tags?.length ?? 0) > 0
+      ) {
         metadata.tags = extracted.tags;
       }
       if (

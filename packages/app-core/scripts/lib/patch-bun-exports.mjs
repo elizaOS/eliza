@@ -371,7 +371,7 @@ const ELIZA_CORE_BROWSER_TTS_REPLACEMENTS = [
 
 /**
  * Eliza core's message handler synthesizes voice audio whenever `onStreamChunk`
- * is provided. Milady's SSE chat always passes that callback, so the runtime
+ * is provided. Eliza's SSE chat always passes that callback, so the runtime
  * calls `useModel(TEXT_TO_SPEECH)` — unrelated to the dashboard "agent voice"
  * toggle. If no handler is registered yet (e.g. race before Edge TTS loads) or
  * no provider is configured, that throws and logs
@@ -834,7 +834,7 @@ export function patchMissingLifecycleScript(
   return patched;
 }
 
-function loadMiladyOnboardingPresetsSource(root, targetPath) {
+function loadElizaOnboardingPresetsSource(root, targetPath) {
   const sourcePath = resolve(
     root,
     "eliza/packages/app-core/src/onboarding-presets.ts",
@@ -854,12 +854,12 @@ function loadMiladyOnboardingPresetsSource(root, targetPath) {
 }
 
 /**
- * Milady owns the onboarding preset roster, but the published autonomous
+ * Eliza owns the onboarding preset roster, but the published autonomous
  * package still serves upstream style presets. Replace the installed module
- * with Milady's local preset source so the onboarding API and runtime expose
- * the same Milady-specific characters that app-core is patched to display.
+ * with Eliza's local preset source so the onboarding API and runtime expose
+ * the same Eliza-specific characters that app-core is patched to display.
  */
-export function applyAutonomousMiladyOnboardingPresetsPatch(filePath, source) {
+export function applyAutonomousElizaOnboardingPresetsPatch(filePath, source) {
   if (!existsSync(filePath)) return false;
 
   // When writing to a .js file, strip TypeScript-only syntax so Bun can
@@ -900,7 +900,7 @@ function stripTypeScriptSyntax(src) {
   return src;
 }
 
-export function patchAutonomousMiladyOnboardingPresets(
+export function patchAutonomousElizaOnboardingPresets(
   root,
   log = console.log,
   source,
@@ -926,13 +926,13 @@ export function patchAutonomousMiladyOnboardingPresets(
   let patched = false;
   for (const filePath of candidates) {
     const nextSource =
-      source ?? loadMiladyOnboardingPresetsSource(root, filePath);
-    if (!applyAutonomousMiladyOnboardingPresetsPatch(filePath, nextSource)) {
+      source ?? loadElizaOnboardingPresetsSource(root, filePath);
+    if (!applyAutonomousElizaOnboardingPresetsPatch(filePath, nextSource)) {
       continue;
     }
     patched = true;
     log(
-      "[patch-deps] Patched @elizaos/agent eliza/agent/src/onboarding-presets.js: onboarding presets now derive from Milady.",
+      "[patch-deps] Patched @elizaos/agent eliza/agent/src/onboarding-presets.js: onboarding presets now derive from Eliza.",
     );
   }
 

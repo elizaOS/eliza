@@ -41,8 +41,8 @@
       <pre id="status">booting</pre>
     </div>
     <script type="module">
-      import { DEFAULT_MILADY_CHARACTER_ASSET } from "@elizaos/app-core/character-catalog";
-      import { VrmEngine } from "@elizaos/app-core/components/avatar/VrmEngine";
+      import { DEFAULT_ELIZA_CHARACTER_ASSET } from "@elizaos/app-core";
+      import { VrmEngine } from "@elizaos/app-core";
 
       const canvas = document.getElementById("canvas");
       const status = document.getElementById("status");
@@ -50,8 +50,8 @@
       const params = new URLSearchParams(window.location.search);
       const vrmPath =
         params.get("path") ??
-        DEFAULT_MILADY_CHARACTER_ASSET?.compressedVrmPath ??
-        "/vrms/milady-1.vrm.gz";
+        DEFAULT_ELIZA_CHARACTER_ASSET?.compressedVrmPath ??
+        "/vrms/eliza-1.vrm.gz";
 
       const setStatus = (value) => {
         status.textContent = value;

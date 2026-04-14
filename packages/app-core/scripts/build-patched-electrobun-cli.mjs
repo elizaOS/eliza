@@ -195,7 +195,7 @@ function main() {
 
   const tempRoot = path.join(
     process.env.RUNNER_TEMP ?? os.tmpdir(),
-    `milady-electrobun-src-${electrobunVersion}`,
+    `eliza-electrobun-src-${electrobunVersion}`,
   );
   rmSync(tempRoot, { recursive: true, force: true });
 

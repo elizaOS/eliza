@@ -8,5 +8,9 @@
     ".": "./src/index.ts",
     "./register": "./src/register.ts",
     "./*": "./src/*"
+  },
+  "dependencies": {
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/core": "workspace:*"
   }
 }

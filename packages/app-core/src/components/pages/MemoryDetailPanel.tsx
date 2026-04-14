@@ -1,11 +1,4 @@
-/**
- * Memory Detail Panel — displays full content, metadata, and embedding values
- * for a selected memory record.
- *
- * Extracted from VectorBrowserView.tsx.
- */
-
-import { PagePanel } from "@elizaos/app-core";
+import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import { useApp } from "../../state";
 import type { MemoryRecord } from "./vector-browser-utils";
 

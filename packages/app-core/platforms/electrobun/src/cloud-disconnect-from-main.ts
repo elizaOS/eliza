@@ -50,14 +50,14 @@ export function buildMainApiHeaders(
   return headers;
 }
 
-export const buildMiladyMainApiHeaders = buildMainApiHeaders;
+export const buildAppMainApiHeaders = buildMainApiHeaders;
 
 export async function postCloudDisconnectFromMain(options?: {
   fetchImpl?: FetchLike;
   disconnectTimeoutMs?: number;
-  /** MiladyClient base URL from the renderer (e.g. Vite :2138 proxy vs direct :31337). */
+  /** the appClient base URL from the renderer (e.g. Vite :2138 proxy vs direct :31337). */
   apiBaseOverride?: string | null;
-  /** Renderer bearer token when main `MILADY_API_TOKEN` is unset (external desktop mode). */
+  /** Renderer bearer token when main `ELIZA_API_TOKEN` is unset (external desktop mode). */
   bearerTokenOverride?: string | null;
 }): Promise<CloudDisconnectMainResult> {
   const fetchImpl = options?.fetchImpl ?? fetch;

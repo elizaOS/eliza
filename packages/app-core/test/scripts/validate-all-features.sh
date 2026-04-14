@@ -7,7 +7,7 @@
 # 2. Computer Use (Rust tests)
 # 3. Browser Use (TypeScript plugin tests)
 # 4. Browser Extension (WebSocket test harness)
-# 5. Milady Core Tests
+# 5. Eliza Core Tests
 #
 # Usage:
 #   ./test/scripts/validate-all-features.sh [options]
@@ -17,7 +17,7 @@
 #   --computeruse-only Run only Computer Use tests
 #   --browser-only     Run only Browser Use tests
 #   --extension-only   Run only Browser Extension tests
-#   --milady-only     Run only Milady core tests
+#   --app-only     Run only Eliza core tests
 #   --quick            Skip slow tests (Rust build, integration tests)
 #   --report           Generate detailed HTML report
 #   --verbose          Show all output
@@ -41,12 +41,12 @@ BOLD='\033[1m'
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MILADY_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-ELIZA_ROOT="$MILADY_ROOT/eliza"
-PLUGINS_ROOT="$(cd "$MILADY_ROOT/plugins" 2>/dev/null && pwd || echo "")"
+ELIZA_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+ELIZA_ROOT="$ELIZA_ROOT/eliza"
+PLUGINS_ROOT="$(cd "$ELIZA_ROOT/plugins" 2>/dev/null && pwd || echo "")"
 
 # Results tracking
-RESULTS_FILE="$(mktemp "${TMPDIR:-/tmp}/milady-feature-results.XXXXXX")"
+RESULTS_FILE="$(mktemp "${TMPDIR:-/tmp}/eliza-feature-results.XXXXXX")"
 TOTAL_PASSED=0
 TOTAL_FAILED=0
 TOTAL_SKIPPED=0
@@ -63,7 +63,7 @@ RUN_VISION=true
 RUN_COMPUTERUSE=true
 RUN_BROWSER=true
 RUN_EXTENSION=true
-RUN_MILADY=true
+RUN_APP=true
 QUICK_MODE=false
 GENERATE_REPORT=false
 VERBOSE=false
@@ -75,31 +75,31 @@ while [[ $# -gt 0 ]]; do
             RUN_COMPUTERUSE=false
             RUN_BROWSER=false
             RUN_EXTENSION=false
-            RUN_MILADY=false
+            RUN_APP=false
             shift
             ;;
         --computeruse-only)
             RUN_VISION=false
             RUN_BROWSER=false
             RUN_EXTENSION=false
-            RUN_MILADY=false
+            RUN_APP=false
             shift
             ;;
         --browser-only)
             RUN_VISION=false
             RUN_COMPUTERUSE=false
             RUN_EXTENSION=false
-            RUN_MILADY=false
+            RUN_APP=false
             shift
             ;;
         --extension-only)
             RUN_VISION=false
             RUN_COMPUTERUSE=false
             RUN_BROWSER=false
-            RUN_MILADY=false
+            RUN_APP=false
             shift
             ;;
-        --milady-only)
+        --app-only)
             RUN_VISION=false
             RUN_COMPUTERUSE=false
             RUN_BROWSER=false
@@ -174,7 +174,7 @@ record_result() {
 run_test_suite() {
     local name="$1"
     local command="$2"
-    local working_dir="${3:-$MILADY_ROOT}"
+    local working_dir="${3:-$ELIZA_ROOT}"
 
     log_section "Running: $name"
 
@@ -250,7 +250,7 @@ run_vision_tests() {
     run_test_suite \
         "Computer Vision (media-provider.test.ts)" \
         "npx vitest run src/providers/media-provider.test.ts --reporter=basic" \
-        "$MILADY_ROOT" || true
+        "$ELIZA_ROOT" || true
 }
 
 # ============================================================================
@@ -356,23 +356,23 @@ run_extension_tests() {
 }
 
 # ============================================================================
-# MILADY CORE TESTS
+# APP CORE TESTS
 # ============================================================================
-run_milady_tests() {
-    log_header "MILADY CORE TESTS"
-    log_info "Testing Milady core functionality"
+run_app_tests() {
+    log_header "APP CORE TESTS"
+    log_info "Testing Eliza core functionality"
 
     if $QUICK_MODE; then
         # Run only a subset of tests
         run_test_suite \
-            "Milady - Quick (config + utils)" \
+            "Eliza - Quick (config + utils)" \
             "npx vitest run src/config/*.test.ts src/utils/*.test.ts --reporter=basic" \
-            "$MILADY_ROOT" || true
+            "$ELIZA_ROOT" || true
     else
         run_test_suite \
-            "Milady - Full Test Suite" \
+            "Eliza - Full Test Suite" \
             "npm test" \
-            "$MILADY_ROOT" || true
+            "$ELIZA_ROOT" || true
     fi
 }
 
@@ -380,7 +380,7 @@ run_milady_tests() {
 # REPORT GENERATION
 # ============================================================================
 generate_report() {
-    local report_file="$MILADY_ROOT/test-results/feature-validation-report.html"
+    local report_file="$ELIZA_ROOT/test-results/feature-validation-report.html"
     mkdir -p "$(dirname "$report_file")"
 
     local end_time=$(date +%s)
@@ -522,7 +522,7 @@ EOF
 # ============================================================================
 main() {
     log_header "FEATURE VALIDATION SUITE"
-    echo -e "${BOLD}Milady Root:${NC} $MILADY_ROOT"
+    echo -e "${BOLD}Eliza Root:${NC} $ELIZA_ROOT"
     echo -e "${BOLD}Eliza Root:${NC} $ELIZA_ROOT"
     echo -e "${BOLD}Plugins Root:${NC} ${PLUGINS_ROOT:-'Not found'}"
     echo -e "${BOLD}Quick Mode:${NC} $QUICK_MODE"
@@ -533,7 +533,7 @@ main() {
     $RUN_COMPUTERUSE && run_computeruse_tests
     $RUN_BROWSER && run_browser_tests
     $RUN_EXTENSION && run_extension_tests
-    $RUN_MILADY && run_milady_tests
+    $RUN_APP && run_app_tests
 
     # Generate report if requested
     $GENERATE_REPORT && generate_report

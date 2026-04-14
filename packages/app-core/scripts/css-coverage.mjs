@@ -26,7 +26,7 @@ const CSS_FILES = [
 // Directories to search for selector usage
 const SEARCH_DIRS = [
   "eliza/packages/app-core/src",
-  "eliza/packages/app-core/src/ui",
+  "eliza/packages/ui/src",
   "apps/app/src",
   "apps/homepage/src",
 ];

@@ -83,8 +83,7 @@ export function formatApiDevSettingsBannerText(
       source: hostsWin
         ? `env set — ${hostsWin.key}`
         : "default (unset — empty list)",
-      change:
-        "export ELIZA_ALLOWED_HOSTS=host1,host2 (or ELIZA_ALLOWED_HOSTS)",
+      change: "export ELIZA_ALLOWED_HOSTS=host1,host2 (or ELIZA_ALLOWED_HOSTS)",
     },
     {
       setting: "ELIZA_ALLOW_NULL_ORIGIN / ELIZA_ALLOW_NULL_ORIGIN",
@@ -92,8 +91,7 @@ export function formatApiDevSettingsBannerText(
       source: sec.allowNullOrigin
         ? "env set — flag enabled"
         : "default (unset — off)",
-      change:
-        "export ELIZA_ALLOW_NULL_ORIGIN=1 to allow; unset to default off",
+      change: "export ELIZA_ALLOW_NULL_ORIGIN=1 to allow; unset to default off",
     },
     {
       setting: "ELIZA_DISABLE_AUTO_API_TOKEN",

@@ -15,8 +15,7 @@
     "composite": false,
     "baseUrl": "../..",
     "paths": {
-      "@elizaos/core": ["packages/typescript/src/index.node.ts"],
-      "@elizaos/core/*": ["packages/typescript/src/*"]
+      "@elizaos/core": ["packages/typescript/dist/index.node.d.ts"]
     }
   },
   "include": ["typescript/**/*.ts"],

@@ -1,17 +1,5 @@
-/**
- * CloudInstancePanel — shows instance routing status in Settings.
- *
- * Displays whether this local instance is registered with
- * Eliza Cloud's gateway relay, allowing messages from Discord,
- * Telegram, Signal, WhatsApp, iMessage, etc. to be routed here
- * from the cloud.
- *
- * This is complementary to the existing CloudDashboard which handles
- * login, billing, and cloud inference settings. This panel focuses
- * specifically on the "is my instance reachable?" question.
- */
-
-import { Button, PagePanel } from "@elizaos/app-core";
+import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
 import { useApp } from "../../state";

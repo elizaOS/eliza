@@ -180,7 +180,10 @@ export function resolveCloudApiBaseUrl(rawBaseUrl?: string): string {
 
 export function resolveCloudApiKey(
   config: Pick<ElizaConfig, "cloud"> | Record<string, unknown>,
-  runtime?: { character?: { secrets?: Record<string, unknown> } } | null,
+  runtime?: {
+    character?: { secrets?: Record<string, unknown> };
+    getSetting?: (key: string) => unknown;
+  } | null,
 ): string | undefined {
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
   // 1. Config file (disk)
@@ -204,7 +207,13 @@ export function resolveCloudApiKey(
   const envKey = normalizeEnvValue(process.env.ELIZAOS_CLOUD_API_KEY);
   if (envKey) return envKey;
 
-  // 4. Runtime character secrets (persisted in database, survives restarts)
+  // 4. Runtime settings (persisted in database, survives restarts)
+  const runtimeSettingKey = normalizeEnvValue(
+    runtime?.getSetting?.("ELIZAOS_CLOUD_API_KEY") as string | undefined,
+  );
+  if (runtimeSettingKey) return runtimeSettingKey;
+
+  // 5. Runtime character secrets (persisted in database, survives restarts)
   const runtimeKey = normalizeEnvValue(
     runtime?.character?.secrets?.ELIZAOS_CLOUD_API_KEY as string | undefined,
   );

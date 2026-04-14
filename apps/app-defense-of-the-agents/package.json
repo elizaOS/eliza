@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Milady app integration for Defense of the Agents.",
+  "description": "Eliza app integration for Defense of the Agents.",
   "main": "./src/index.ts",
   "exports": {
     "./package.json": "./package.json",
@@ -13,7 +13,7 @@
   "homepage": "https://www.defenseoftheagents.com/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/milady-ai/milady.git"
+    "url": "https://github.com/elizaos/eliza.git"
   },
   "keywords": [
     "game",

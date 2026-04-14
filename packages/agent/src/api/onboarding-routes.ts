@@ -3,23 +3,21 @@ import { logger, stringToUuid, type UUID } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import { configFileExists, loadElizaConfig } from "../config/config.js";
 import {
-  inferOnboardingConnectionFromConfig,
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
   normalizeOnboardingCredentialInputs,
-  stripOnboardingConnectionSecrets,
 } from "../contracts/onboarding.js";
 import {
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountsConfig,
   normalizeServiceRoutingConfig,
 } from "../contracts/service-routing.js";
+import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
+import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import {
   applyCanonicalOnboardingConfig,
   applyOnboardingCredentialPersistence,
 } from "./provider-switch-config.js";
-import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
 
 // ---------------------------------------------------------------------------
 // Cloud container character default bootstrapping
@@ -35,7 +33,9 @@ import type { ReadJsonBodyOptions } from "./http-helpers.js";
  * Only runs once: subsequent requests see ui.presetId already set and bail.
  */
 let _cloudDefaultsApplied = false;
-function ensureCloudContainerCharacterDefaults(ctx: OnboardingRouteContext): void {
+function ensureCloudContainerCharacterDefaults(
+  ctx: OnboardingRouteContext,
+): void {
   if (_cloudDefaultsApplied) return;
 
   let config: ElizaConfig;
@@ -279,7 +279,7 @@ export async function handleOnboardingRoutes(
 
     const maskKey = (key: string): string => {
       if (!key || key.length <= 4) return key ? "****" : "";
-      return "****" + key.slice(-4);
+      return `****${key.slice(-4)}`;
     };
 
     json(res, {
@@ -314,7 +314,11 @@ export async function handleOnboardingRoutes(
     if (!body) return true;
 
     // ── Validate required fields ──────────────────────────────────────────
-    if (!body.name || typeof body.name !== "string" || !(body.name as string).trim()) {
+    if (
+      !body.name ||
+      typeof body.name !== "string" ||
+      !(body.name as string).trim()
+    ) {
       error(res, "Missing or invalid agent name", 400);
       return true;
     }
@@ -739,7 +743,9 @@ export async function handleOnboardingRoutes(
         await state.runtime.updateAgent(state.runtime.agentId, {
           name: runtimeCharacter.name,
           metadata: {
-            ...(runtimeCharacter.metadata as Record<string, unknown> | undefined),
+            ...(runtimeCharacter.metadata as
+              | Record<string, unknown>
+              | undefined),
             character: {
               name: runtimeCharacter.name,
               bio: runtimeCharacter.bio,

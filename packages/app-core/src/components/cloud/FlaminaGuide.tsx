@@ -1,4 +1,4 @@
-import { Button } from "@elizaos/app-core";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { useApp } from "../../state";
 import type { AppState, FlaminaGuideTopic } from "../../state/types";
 

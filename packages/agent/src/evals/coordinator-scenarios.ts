@@ -51,9 +51,7 @@ const ALL_CHANNELS: CoordinatorEvalChannel[] = [
   "wechat",
 ];
 
-function scenario(
-  value: CoordinatorScenario,
-): CoordinatorScenario {
+function scenario(value: CoordinatorScenario): CoordinatorScenario {
   return value;
 }
 
@@ -66,11 +64,21 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     summary:
       "The user asks for a small web page, then asks to view it and refine it without restating the whole task.",
     channels: ALL_CHANNELS,
-    requiredCapabilities: ["create_task", "continue_task", "artifact_visibility"],
+    requiredCapabilities: [
+      "create_task",
+      "continue_task",
+      "artifact_visibility",
+    ],
     turns: [
-      { speaker: "user", text: "Can you make a little web page for me that shows my birthday, March 14, 1991, and my astrological sign?" },
+      {
+        speaker: "user",
+        text: "Can you make a little web page for me that shows my birthday, March 14, 1991, and my astrological sign?",
+      },
       { speaker: "user", text: "Can I view that?" },
-      { speaker: "user", text: "Change it so it also shows the weekday I was born on." },
+      {
+        speaker: "user",
+        text: "Change it so it also shows the weekday I was born on.",
+      },
     ],
     doneWhen: [
       "A task thread exists for the work.",
@@ -92,9 +100,16 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     summary:
       "The user gives an intentionally fuzzy request and the agent must still create a concrete artifact and continue refining it.",
     channels: ALL_CHANNELS,
-    requiredCapabilities: ["create_task", "clarify_or_execute", "artifact_visibility"],
+    requiredCapabilities: [
+      "create_task",
+      "clarify_or_execute",
+      "artifact_visibility",
+    ],
     turns: [
-      { speaker: "user", text: "Make me a small homepage that feels kind of dreamy and strange." },
+      {
+        speaker: "user",
+        text: "Make me a small homepage that feels kind of dreamy and strange.",
+      },
       { speaker: "user", text: "Can you make it less cute and more severe?" },
       { speaker: "user", text: "Can I see the current version?" },
     ],
@@ -113,9 +128,16 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     summary:
       "The user asks for code and then asks how to execute it locally and from another machine.",
     channels: ALL_CHANNELS,
-    requiredCapabilities: ["create_task", "continue_task", "share_or_run_guidance"],
+    requiredCapabilities: [
+      "create_task",
+      "continue_task",
+      "share_or_run_guidance",
+    ],
     turns: [
-      { speaker: "user", text: "Write a script that takes a folder of markdown files and makes one combined HTML page." },
+      {
+        speaker: "user",
+        text: "Write a script that takes a folder of markdown files and makes one combined HTML page.",
+      },
       { speaker: "user", text: "How do I run it?" },
       { speaker: "user", text: "Can I run it from a remote computer too?" },
     ],
@@ -124,7 +146,12 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
       "The agent gives concrete run instructions tied to the produced artifact.",
       "The remote-view question is handled as the next step of the same task.",
     ],
-    evidence: ["task thread", "artifacts", "trajectory records", "changed files"],
+    evidence: [
+      "task thread",
+      "artifacts",
+      "trajectory records",
+      "changed files",
+    ],
   }),
   scenario({
     id: "B004",
@@ -136,7 +163,10 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     channels: ALL_CHANNELS,
     requiredCapabilities: ["create_task", "continue_task", "iterative_editing"],
     turns: [
-      { speaker: "user", text: "Build me a tiny notes page with local storage." },
+      {
+        speaker: "user",
+        text: "Build me a tiny notes page with local storage.",
+      },
       { speaker: "user", text: "Looks close. Do a final polish pass." },
     ],
     doneWhen: [
@@ -155,7 +185,10 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     channels: ALL_CHANNELS,
     requiredCapabilities: ["repo_tasking", "create_task", "worktree_artifacts"],
     turns: [
-      { speaker: "user", text: "In the same repo, add a tiny diagnostics page that lists the current task threads." },
+      {
+        speaker: "user",
+        text: "In the same repo, add a tiny diagnostics page that lists the current task threads.",
+      },
       { speaker: "user", text: "Can you show me where you put it?" },
     ],
     doneWhen: [
@@ -163,7 +196,12 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
       "Changed files are present in the repo.",
       "The agent identifies the files or route that was added.",
     ],
-    evidence: ["task thread", "changed files", "artifacts", "trajectory records"],
+    evidence: [
+      "task thread",
+      "changed files",
+      "artifacts",
+      "trajectory records",
+    ],
   }),
   scenario({
     id: "C001",
@@ -176,7 +214,10 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     requiredCapabilities: ["continue_task", "thread_lookup", "history_search"],
     turns: [
       { speaker: "user", text: "Can you make a little calendar view for me?" },
-      { speaker: "user", text: "Actually add that thing where I can jump to today." },
+      {
+        speaker: "user",
+        text: "Actually add that thing where I can jump to today.",
+      },
       { speaker: "user", text: "Now make it work on mobile too." },
     ],
     doneWhen: [
@@ -193,10 +234,20 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     summary:
       "The user briefly asks a side question and then returns to the original task.",
     channels: ALL_CHANNELS,
-    requiredCapabilities: ["continue_task", "conversation_memory", "thread_lookup"],
+    requiredCapabilities: [
+      "continue_task",
+      "conversation_memory",
+      "thread_lookup",
+    ],
     turns: [
-      { speaker: "user", text: "Build me a page that shows my next three reminders." },
-      { speaker: "user", text: "By the way, what model are you using for task work right now?" },
+      {
+        speaker: "user",
+        text: "Build me a page that shows my next three reminders.",
+      },
+      {
+        speaker: "user",
+        text: "By the way, what model are you using for task work right now?",
+      },
       { speaker: "user", text: "Okay continue with the reminder page." },
     ],
     doneWhen: [
@@ -215,7 +266,10 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     channels: ALL_CHANNELS,
     requiredCapabilities: ["implicit_approval", "task_execution"],
     turns: [
-      { speaker: "user", text: "Can you sketch the approach for a tiny dashboard that shows active tasks and recent completions?" },
+      {
+        speaker: "user",
+        text: "Can you sketch the approach for a tiny dashboard that shows active tasks and recent completions?",
+      },
       { speaker: "user", text: "Yeah I'm down." },
     ],
     doneWhen: [
@@ -232,9 +286,16 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     summary:
       "The user pauses to inspect the current result and then asks for one more edit.",
     channels: ALL_CHANNELS,
-    requiredCapabilities: ["preview_visibility", "continue_task", "artifact_lookup"],
+    requiredCapabilities: [
+      "preview_visibility",
+      "continue_task",
+      "artifact_lookup",
+    ],
     turns: [
-      { speaker: "user", text: "Build me a compact dashboard for active tasks." },
+      {
+        speaker: "user",
+        text: "Build me a compact dashboard for active tasks.",
+      },
       { speaker: "user", text: "Can I see it?" },
       { speaker: "user", text: "Okay now add a tiny recent-history section." },
     ],
@@ -254,7 +315,10 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     channels: ALL_CHANNELS,
     requiredCapabilities: ["preview_visibility", "artifact_lookup"],
     turns: [
-      { speaker: "user", text: "Make a tiny webpage that just says hello in a dramatic font." },
+      {
+        speaker: "user",
+        text: "Make a tiny webpage that just says hello in a dramatic font.",
+      },
       { speaker: "user", text: "Can I see it?" },
     ],
     doneWhen: [
@@ -271,9 +335,16 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     summary:
       "The user asks to view the result from a remote machine and the agent must discover viable sharing options.",
     channels: ALL_CHANNELS,
-    requiredCapabilities: ["share_discovery", "preview_visibility", "environment_detection"],
+    requiredCapabilities: [
+      "share_discovery",
+      "preview_visibility",
+      "environment_detection",
+    ],
     turns: [
-      { speaker: "user", text: "Build a tiny page for me with today's moon phase." },
+      {
+        speaker: "user",
+        text: "Build a tiny page for me with today's moon phase.",
+      },
       { speaker: "user", text: "How do I view that from a remote computer?" },
     ],
     doneWhen: [
@@ -290,11 +361,18 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     summary:
       "The user wants the output link sent back in the same channel context.",
     channels: ALL_CHANNELS,
-    requiredCapabilities: ["share_discovery", "connector_response", "artifact_lookup"],
+    requiredCapabilities: [
+      "share_discovery",
+      "connector_response",
+      "artifact_lookup",
+    ],
     turns: [
       { speaker: "user", text: "Build a one-page weather card." },
       { speaker: "user", text: "Pull it up for me." },
-      { speaker: "user", text: "If I'm on Discord, just send me the link there." },
+      {
+        speaker: "user",
+        text: "If I'm on Discord, just send me the link there.",
+      },
     ],
     doneWhen: [
       "The resulting message is emitted on the originating channel.",
@@ -312,7 +390,10 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     channels: ALL_CHANNELS,
     requiredCapabilities: ["artifact_lookup", "share_discovery"],
     turns: [
-      { speaker: "user", text: "Generate a tiny printable HTML birthday card." },
+      {
+        speaker: "user",
+        text: "Generate a tiny printable HTML birthday card.",
+      },
       { speaker: "user", text: "What's the easiest way for me to get that?" },
     ],
     doneWhen: [
@@ -331,7 +412,10 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     requiredCapabilities: ["task_control", "pause_task", "resume_task"],
     turns: [
       { speaker: "user", text: "Build a tiny portfolio page for me." },
-      { speaker: "user", text: "Hold on a second, can you pause that and let's discuss if it's right?" },
+      {
+        speaker: "user",
+        text: "Hold on a second, can you pause that and let's discuss if it's right?",
+      },
       { speaker: "user", text: "Okay, make it so." },
     ],
     doneWhen: [
@@ -339,7 +423,11 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
       "The state is preserved across the discussion turn.",
       "The task resumes instead of starting over.",
     ],
-    evidence: ["task thread status changes", "task events", "trajectory records"],
+    evidence: [
+      "task thread status changes",
+      "task events",
+      "trajectory records",
+    ],
   }),
   scenario({
     id: "S002",
@@ -370,7 +458,10 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     channels: ALL_CHANNELS,
     requiredCapabilities: ["task_control", "clarification_after_pause"],
     turns: [
-      { speaker: "user", text: "Build a mini stats panel for my current tasks." },
+      {
+        speaker: "user",
+        text: "Build a mini stats panel for my current tasks.",
+      },
       { speaker: "user", text: "Hey wait, that's not right." },
     ],
     doneWhen: [
@@ -391,7 +482,10 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     turns: [
       { speaker: "user", text: "Build me a tiny status page." },
       { speaker: "user", text: "Pause that." },
-      { speaker: "user", text: "Okay continue, but make it text-only and minimal." },
+      {
+        speaker: "user",
+        text: "Okay continue, but make it text-only and minimal.",
+      },
     ],
     doneWhen: [
       "The original thread is resumed with new instructions.",
@@ -408,9 +502,7 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
       "The user asks for active task status without wanting raw logs dumped into context.",
     channels: ALL_CHANNELS,
     requiredCapabilities: ["task_history", "active_status"],
-    turns: [
-      { speaker: "user", text: "What are you working on right now?" },
-    ],
+    turns: [{ speaker: "user", text: "What are you working on right now?" }],
     doneWhen: [
       "The answer comes from coordinator state or task history lookup.",
       "The response summarizes active tasks without dumping huge raw transcripts.",
@@ -426,12 +518,8 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
       "The agent should enumerate ongoing tracked tasks and their states.",
     channels: ALL_CHANNELS,
     requiredCapabilities: ["task_history", "active_status"],
-    turns: [
-      { speaker: "user", text: "What tasks do you have going on?" },
-    ],
-    doneWhen: [
-      "The response includes currently active or waiting threads.",
-    ],
+    turns: [{ speaker: "user", text: "What tasks do you have going on?" }],
+    doneWhen: ["The response includes currently active or waiting threads."],
     evidence: ["task history query", "task thread summaries"],
   }),
   scenario({
@@ -439,8 +527,7 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     family: "history_and_reporting",
     profile: "core",
     title: "show tasks from yesterday",
-    summary:
-      "The user asks for prior work by time window.",
+    summary: "The user asks for prior work by time window.",
     channels: ALL_CHANNELS,
     requiredCapabilities: ["task_history", "time_window_lookup"],
     turns: [
@@ -457,16 +544,20 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     family: "history_and_reporting",
     profile: "core",
     title: "search last week by topic",
-    summary:
-      "The user asks for a topical search over the previous week.",
+    summary: "The user asks for a topical search over the previous week.",
     channels: ALL_CHANNELS,
-    requiredCapabilities: ["task_history", "time_window_lookup", "search_lookup"],
+    requiredCapabilities: [
+      "task_history",
+      "time_window_lookup",
+      "search_lookup",
+    ],
     turns: [
-      { speaker: "user", text: "In the last week, give me all tasks where we were working on the Discord connector." },
+      {
+        speaker: "user",
+        text: "In the last week, give me all tasks where we were working on the Discord connector.",
+      },
     ],
-    doneWhen: [
-      "The response combines time window and topic filtering.",
-    ],
+    doneWhen: ["The response combines time window and topic filtering."],
     evidence: ["task thread search", "task history query"],
   }),
   scenario({
@@ -474,13 +565,10 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     family: "history_and_reporting",
     profile: "core",
     title: "count task volume without polluting context",
-    summary:
-      "The user asks for counts and expects a concise answer.",
+    summary: "The user asks for counts and expects a concise answer.",
     channels: ALL_CHANNELS,
     requiredCapabilities: ["task_history", "count_lookup"],
-    turns: [
-      { speaker: "user", text: "How many tasks have we done so far?" },
-    ],
+    turns: [{ speaker: "user", text: "How many tasks have we done so far?" }],
     doneWhen: [
       "The answer is produced from durable state.",
       "The response is concise and count-oriented.",
@@ -492,13 +580,10 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     family: "history_and_reporting",
     profile: "full",
     title: "explain why a task is blocked",
-    summary:
-      "The user asks for status plus reason, not just a state label.",
+    summary: "The user asks for status plus reason, not just a state label.",
     channels: ALL_CHANNELS,
     requiredCapabilities: ["task_history", "task_detail_lookup"],
-    turns: [
-      { speaker: "user", text: "Why is that task blocked?" },
-    ],
+    turns: [{ speaker: "user", text: "Why is that task blocked?" }],
     doneWhen: [
       "The response identifies the relevant thread and summarizes the blocking reason.",
     ],
@@ -512,10 +597,20 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     summary:
       "The user asks for research that should run on live providers and produce a report artifact.",
     channels: ALL_CHANNELS,
-    requiredCapabilities: ["create_task", "live_provider_execution", "artifact_reporting"],
+    requiredCapabilities: [
+      "create_task",
+      "live_provider_execution",
+      "artifact_reporting",
+    ],
     turns: [
-      { speaker: "user", text: "Research the best current options for local-first connector observability and write me a recommendation." },
-      { speaker: "user", text: "Can you put the findings somewhere I can read them?" },
+      {
+        speaker: "user",
+        text: "Research the best current options for local-first connector observability and write me a recommendation.",
+      },
+      {
+        speaker: "user",
+        text: "Can you put the findings somewhere I can read them?",
+      },
     ],
     doneWhen: [
       "A research task runs on a live provider-backed framework.",
@@ -533,7 +628,10 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     channels: ALL_CHANNELS,
     requiredCapabilities: ["planning", "implicit_approval", "task_execution"],
     turns: [
-      { speaker: "user", text: "Plan how you'd test the coordinator against lots of nuanced user requests." },
+      {
+        speaker: "user",
+        text: "Plan how you'd test the coordinator against lots of nuanced user requests.",
+      },
       { speaker: "user", text: "Yeah sounds good, do it." },
     ],
     doneWhen: [
@@ -547,12 +645,14 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     family: "research_and_planning",
     profile: "full",
     title: "parallel subtasks for research and synthesis",
-    summary:
-      "The user asks for parallel work and expects coordinated output.",
+    summary: "The user asks for parallel work and expects coordinated output.",
     channels: ALL_CHANNELS,
     requiredCapabilities: ["multi_agent_coordination", "artifact_reporting"],
     turns: [
-      { speaker: "user", text: "Split this into a few parallel task agents: one researches, one compares tradeoffs, one writes the summary." },
+      {
+        speaker: "user",
+        text: "Split this into a few parallel task agents: one researches, one compares tradeoffs, one writes the summary.",
+      },
     ],
     doneWhen: [
       "Multiple sessions attach to one logical thread or clearly related threads.",
@@ -570,7 +670,10 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     channels: ["discord"],
     requiredCapabilities: ["connector_ingress", "task_execution"],
     turns: [
-      { speaker: "user", text: "Build me a tiny page that says hi from Discord." },
+      {
+        speaker: "user",
+        text: "Build me a tiny page that says hi from Discord.",
+      },
       { speaker: "user", text: "Can I see it?" },
     ],
     doneWhen: [
@@ -592,9 +695,7 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
       { speaker: "user", text: "Build a tiny countdown page." },
       { speaker: "user", text: "Now add a darker version too." },
     ],
-    doneWhen: [
-      "The same connector session or thread is reused for follow-up.",
-    ],
+    doneWhen: ["The same connector session or thread is reused for follow-up."],
     evidence: ["task thread", "connector trajectory", "changed files"],
   }),
   scenario({
@@ -607,12 +708,19 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     channels: ["discord"],
     requiredCapabilities: ["connector_ingress", "policy_enforcement"],
     turns: [
-      { speaker: "user", text: "Start a background task agent to make a little site for me." },
+      {
+        speaker: "user",
+        text: "Start a background task agent to make a little site for me.",
+      },
     ],
     doneWhen: [
       "If policy blocks the action, the denial is explicit and auditable.",
     ],
-    evidence: ["task policy events", "connector response", "trajectory records"],
+    evidence: [
+      "task policy events",
+      "connector response",
+      "trajectory records",
+    ],
   }),
   scenario({
     id: "F001",
@@ -624,7 +732,10 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     channels: ALL_CHANNELS,
     requiredCapabilities: ["framework_failover", "task_recovery"],
     turns: [
-      { speaker: "user", text: "Take a deep pass on this problem and keep going even if one provider fails." },
+      {
+        speaker: "user",
+        text: "Take a deep pass on this problem and keep going even if one provider fails.",
+      },
     ],
     doneWhen: [
       "A failover event is recorded when the first framework becomes unavailable.",
@@ -637,16 +748,13 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     family: "recovery_and_failover",
     profile: "full",
     title: "runtime restart leaves tasks auditable",
-    summary:
-      "Interrupted tasks must still be queryable after restart.",
+    summary: "Interrupted tasks must still be queryable after restart.",
     channels: ALL_CHANNELS,
     requiredCapabilities: ["interrupt_recovery", "task_history"],
     turns: [
       { speaker: "user", text: "What task was interrupted most recently?" },
     ],
-    doneWhen: [
-      "Interrupted sessions are visible in history.",
-    ],
+    doneWhen: ["Interrupted sessions are visible in history."],
     evidence: ["task history query", "task status", "task events"],
   }),
   scenario({
@@ -698,11 +806,12 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     requiredCapabilities: ["task_control", "continue_task"],
     turns: [
       { speaker: "user", text: "Pause that task for now." },
-      { speaker: "user", text: "Okay continue, but prioritize the mobile layout first." },
+      {
+        speaker: "user",
+        text: "Okay continue, but prioritize the mobile layout first.",
+      },
     ],
-    doneWhen: [
-      "The same thread resumes with the new directive.",
-    ],
+    doneWhen: ["The same thread resumes with the new directive."],
     evidence: ["task thread events", "changed files"],
   }),
   scenario({
@@ -713,16 +822,28 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     summary:
       "The scenario system should be able to prove that chat, coordinator, and PTY evidence all exist.",
     channels: ALL_CHANNELS,
-    requiredCapabilities: ["trajectory_logging", "task_thread_logging", "artifact_logging"],
+    requiredCapabilities: [
+      "trajectory_logging",
+      "task_thread_logging",
+      "artifact_logging",
+    ],
     turns: [
-      { speaker: "user", text: "Make a tiny file that says the eval is working." },
+      {
+        speaker: "user",
+        text: "Make a tiny file that says the eval is working.",
+      },
     ],
     doneWhen: [
       "At least one trajectory exists for the run.",
       "A task thread exists when task work was required.",
       "Artifacts or changed files are recorded.",
     ],
-    evidence: ["trajectory records", "task thread", "artifacts", "changed files"],
+    evidence: [
+      "trajectory records",
+      "task thread",
+      "artifacts",
+      "changed files",
+    ],
   }),
   scenario({
     id: "V002",
@@ -732,7 +853,11 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     summary:
       "A completed scenario run should export a durable bundle of everything needed for review.",
     channels: ALL_CHANNELS,
-    requiredCapabilities: ["bundle_export", "trajectory_export", "report_generation"],
+    requiredCapabilities: [
+      "bundle_export",
+      "trajectory_export",
+      "report_generation",
+    ],
     turns: [
       { speaker: "user", text: "Run the scenario and save all the evidence." },
     ],
@@ -750,10 +875,12 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     summary:
       "The evaluator must be able to retrieve trajectories by scenario and batch.",
     channels: ALL_CHANNELS,
-    requiredCapabilities: ["scenario_tagging", "batch_tagging", "trajectory_export"],
-    turns: [
-      { speaker: "user", text: "Run a tagged evaluation batch." },
+    requiredCapabilities: [
+      "scenario_tagging",
+      "batch_tagging",
+      "trajectory_export",
     ],
+    turns: [{ speaker: "user", text: "Run a tagged evaluation batch." }],
     doneWhen: [
       "Trajectory filters by scenario and batch return the expected runs.",
     ],
@@ -769,8 +896,14 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     channels: ALL_CHANNELS,
     requiredCapabilities: ["create_task", "continue_task", "iterative_editing"],
     turns: [
-      { speaker: "user", text: "Make me a tiny CLI that prints my birthday countdown in days." },
-      { speaker: "user", text: "Actually make the output JSON instead of plain text." },
+      {
+        speaker: "user",
+        text: "Make me a tiny CLI that prints my birthday countdown in days.",
+      },
+      {
+        speaker: "user",
+        text: "Actually make the output JSON instead of plain text.",
+      },
     ],
     doneWhen: [
       "The CLI is created in files.",
@@ -786,9 +919,16 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     summary:
       "The user references the current repo implicitly and expects the agent to stay in that project.",
     channels: ALL_CHANNELS,
-    requiredCapabilities: ["repo_tasking", "continue_task", "worktree_artifacts"],
+    requiredCapabilities: [
+      "repo_tasking",
+      "continue_task",
+      "worktree_artifacts",
+    ],
     turns: [
-      { speaker: "user", text: "In the same repo, add a small page that lists archived tasks too." },
+      {
+        speaker: "user",
+        text: "In the same repo, add a small page that lists archived tasks too.",
+      },
       { speaker: "user", text: "Show me which files changed." },
     ],
     doneWhen: [
@@ -811,9 +951,7 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
       { speaker: "user", text: "Okay keep going with that." },
       { speaker: "user", text: "Now make it feel a little more serious." },
     ],
-    doneWhen: [
-      "All turns stay on one task thread.",
-    ],
+    doneWhen: ["All turns stay on one task thread."],
     evidence: ["task thread updates", "changed files"],
   }),
   scenario({
@@ -827,7 +965,10 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     requiredCapabilities: ["continue_task", "thread_lookup", "repo_tasking"],
     turns: [
       { speaker: "user", text: "Build me a tiny changelog viewer." },
-      { speaker: "user", text: "Cool, in that same project add a filter for only today." },
+      {
+        speaker: "user",
+        text: "Cool, in that same project add a filter for only today.",
+      },
     ],
     doneWhen: [
       "The follow-up is attached to the prior work item or clearly linked task history.",
@@ -847,23 +988,28 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
       { speaker: "user", text: "Make me a little printable checklist page." },
       { speaker: "user", text: "Where is the actual file?" },
     ],
-    doneWhen: [
-      "A direct artifact path or attachment route is returned.",
-    ],
+    doneWhen: ["A direct artifact path or attachment route is returned."],
     evidence: ["artifacts", "task thread", "trajectory records"],
   }),
   scenario({
     id: "S005",
     family: "pause_resume_stop",
     profile: "core",
-    title: "pause a research task and then convert the pause into a new direction",
+    title:
+      "pause a research task and then convert the pause into a new direction",
     summary:
       "The user interrupts the current direction and redirects the same task after discussion.",
     channels: ALL_CHANNELS,
     requiredCapabilities: ["task_control", "pause_task", "continue_task"],
     turns: [
-      { speaker: "user", text: "Research options for connector observability." },
-      { speaker: "user", text: "Hold that thought. I care more about logging and trajectories than dashboards." },
+      {
+        speaker: "user",
+        text: "Research options for connector observability.",
+      },
+      {
+        speaker: "user",
+        text: "Hold that thought. I care more about logging and trajectories than dashboards.",
+      },
       { speaker: "user", text: "Okay continue with that new emphasis." },
     ],
     doneWhen: [
@@ -877,12 +1023,18 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     family: "history_and_reporting",
     profile: "full",
     title: "list blocked tasks from the last week",
-    summary:
-      "The user wants a filtered operational view, not a raw dump.",
+    summary: "The user wants a filtered operational view, not a raw dump.",
     channels: ALL_CHANNELS,
-    requiredCapabilities: ["task_history", "time_window_lookup", "search_lookup"],
+    requiredCapabilities: [
+      "task_history",
+      "time_window_lookup",
+      "search_lookup",
+    ],
     turns: [
-      { speaker: "user", text: "Show me every blocked task from the last week." },
+      {
+        speaker: "user",
+        text: "Show me every blocked task from the last week.",
+      },
     ],
     doneWhen: [
       "The answer is bounded to blocked tasks in the requested window.",
@@ -894,12 +1046,18 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     family: "history_and_reporting",
     profile: "full",
     title: "search recent work by topic and completion state",
-    summary:
-      "The user asks for recent finished work on a topic.",
+    summary: "The user asks for recent finished work on a topic.",
     channels: ALL_CHANNELS,
-    requiredCapabilities: ["task_history", "time_window_lookup", "search_lookup"],
+    requiredCapabilities: [
+      "task_history",
+      "time_window_lookup",
+      "search_lookup",
+    ],
     turns: [
-      { speaker: "user", text: "What finished work did we do recently on calendar stuff?" },
+      {
+        speaker: "user",
+        text: "What finished work did we do recently on calendar stuff?",
+      },
     ],
     doneWhen: [
       "The response combines topical search with status-aware filtering.",
@@ -914,9 +1072,16 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     summary:
       "The user wants a comparative output that should result in a concrete written artifact.",
     channels: ALL_CHANNELS,
-    requiredCapabilities: ["create_task", "live_provider_execution", "artifact_reporting"],
+    requiredCapabilities: [
+      "create_task",
+      "live_provider_execution",
+      "artifact_reporting",
+    ],
     turns: [
-      { speaker: "user", text: "Compare Codex and Claude for coordinator task work and put it in a small table I can read." },
+      {
+        speaker: "user",
+        text: "Compare Codex and Claude for coordinator task work and put it in a small table I can read.",
+      },
       { speaker: "user", text: "Can you save that somewhere?" },
     ],
     doneWhen: [
@@ -939,9 +1104,7 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
       { speaker: "user", text: "Now give it a second style too." },
       { speaker: "user", text: "Can I see both?" },
     ],
-    doneWhen: [
-      "The WhatsApp-origin thread persists across follow-up turns.",
-    ],
+    doneWhen: ["The WhatsApp-origin thread persists across follow-up turns."],
     evidence: ["connector trajectory", "task thread", "artifacts"],
   }),
   scenario({
@@ -954,7 +1117,10 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     channels: ["matrix"],
     requiredCapabilities: ["connector_ingress", "task_control", "resume_task"],
     turns: [
-      { speaker: "user", text: "Build a tiny status card for my current tasks." },
+      {
+        speaker: "user",
+        text: "Build a tiny status card for my current tasks.",
+      },
       { speaker: "user", text: "Pause that." },
       { speaker: "user", text: "Okay continue and add a recent history list." },
     ],
@@ -967,13 +1133,17 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     id: "F003",
     family: "recovery_and_failover",
     profile: "full",
-    title: "missing provider readiness is surfaced as a concrete failure reason",
+    title:
+      "missing provider readiness is surfaced as a concrete failure reason",
     summary:
       "If a framework cannot run because auth or installation is missing, the failure should be explicit and auditable.",
     channels: ALL_CHANNELS,
     requiredCapabilities: ["framework_failover", "task_recovery"],
     turns: [
-      { speaker: "user", text: "Use whichever task agent can actually run this and tell me clearly if one is unavailable." },
+      {
+        speaker: "user",
+        text: "Use whichever task agent can actually run this and tell me clearly if one is unavailable.",
+      },
     ],
     doneWhen: [
       "Any framework readiness issue is surfaced explicitly in task evidence or response text.",
@@ -985,13 +1155,15 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     family: "task_management",
     profile: "full",
     title: "stop one task while leaving the rest alone",
-    summary:
-      "The user wants granular task control rather than a global stop.",
+    summary: "The user wants granular task control rather than a global stop.",
     channels: ALL_CHANNELS,
     requiredCapabilities: ["task_control", "task_detail_lookup", "stop_task"],
     turns: [
       { speaker: "user", text: "Show me the current task list." },
-      { speaker: "user", text: "Stop the most recent one, but leave the others running." },
+      {
+        speaker: "user",
+        text: "Stop the most recent one, but leave the others running.",
+      },
     ],
     doneWhen: [
       "One task is interrupted or stopped without wiping the rest of the task list.",
@@ -1006,14 +1178,25 @@ export const coordinatorScenarios: CoordinatorScenario[] = [
     summary:
       "The evaluator must be able to retrieve coordinator task state with the same scenario and batch tags used for trajectories.",
     channels: ALL_CHANNELS,
-    requiredCapabilities: ["scenario_tagging", "batch_tagging", "task_thread_logging"],
+    requiredCapabilities: [
+      "scenario_tagging",
+      "batch_tagging",
+      "task_thread_logging",
+    ],
     turns: [
-      { speaker: "user", text: "Run this as a tagged coordinator evaluation and make sure the task history is grouped with it." },
+      {
+        speaker: "user",
+        text: "Run this as a tagged coordinator evaluation and make sure the task history is grouped with it.",
+      },
     ],
     doneWhen: [
       "Task thread queries scoped by scenario and batch return the expected run.",
     ],
-    evidence: ["task thread query filters", "trajectory records", "bundle manifest"],
+    evidence: [
+      "task thread query filters",
+      "trajectory records",
+      "bundle manifest",
+    ],
   }),
 ];
 
@@ -1032,7 +1215,9 @@ export function listCoordinatorScenarios(
     profile === "smoke"
       ? new Set<CoordinatorScenarioProfile>(["smoke"])
       : new Set<CoordinatorScenarioProfile>(["smoke", "core"]);
-  return coordinatorScenarios.filter((item) => allowedProfiles.has(item.profile));
+  return coordinatorScenarios.filter((item) =>
+    allowedProfiles.has(item.profile),
+  );
 }
 
 export function countCoordinatorScenariosByFamily(): Record<

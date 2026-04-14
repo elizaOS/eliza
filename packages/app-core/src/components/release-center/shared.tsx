@@ -1,4 +1,5 @@
-import { StatusBadge, type StatusVariant } from "@elizaos/app-core";
+import { StatusBadge } from "@elizaos/ui/components/ui/status-badge";
+import type { StatusVariant } from "@elizaos/ui/components/ui/status-badge";
 import { useApp } from "../../state";
 
 export function summarizeError(error: unknown): string {

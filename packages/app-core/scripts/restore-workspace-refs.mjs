@@ -2,7 +2,7 @@
 /**
  * Restore workspace:* for dependencies that exactly match the current version
  * of an in-repo workspace package. Inverse of replace-workspace-versions.mjs
- * (eliza does the same with a single lerna version; Milady uses per-package versions).
+ * (eliza does the same with a single lerna version; Eliza uses per-package versions).
  *
  * Usage: bun scripts/restore-workspace-refs.mjs [--dry-run] [--verbose]
  */

@@ -1,6 +1,6 @@
 # @elizaos/app-browser
 
-Milady **app-browser** slice: agent plugin for the desktop-owned browser workspace plus Steward wallet actions. Naming matches other app packages (for example `@elizaos/app-lifeops`).
+Eliza **app-browser** slice: agent plugin for the desktop-owned browser workspace plus Steward wallet actions. Naming matches other app packages (for example `@elizaos/app-lifeops`).
 
 ## What this slice does
 
@@ -12,7 +12,7 @@ Milady **app-browser** slice: agent plugin for the desktop-owned browser workspa
 ## Isolation vs `eliza/packages/app-core`
 
 - **Native shell** (real windows, preload, bridge server) stays in `apps/app/electrobun/` — that code cannot run inside the plugin package.
-- **Dashboard UI** for the browser workspace should live in this package (or be re-exported from here) once wired, and `app-core` should import it. Moving the **entire** `app-core` tree into this package would duplicate the Milady UI shell; the intended split is **browser-specific** surfaces here, thin imports in `app-core`.
+- **Dashboard UI** for the browser workspace should live in this package (or be re-exported from here) once wired, and `app-core` should import it. Moving the **entire** `app-core` tree into this package would duplicate the Eliza UI shell; the intended split is **browser-specific** surfaces here, thin imports in `app-core`.
 - **Agent/runtime** pieces stay as they are: `@elizaos/agent` services (`browser-workspace`, Steward) plus this plugin’s actions, providers, and service.
 
 ## What it does not do yet
@@ -25,4 +25,4 @@ Milady **app-browser** slice: agent plugin for the desktop-owned browser workspa
 
 - Cross-origin iframes do not give the agent full browser control
 - Wallet injection for external sites needs a privileged webview/preload boundary
-- Background persistence and tab/session storage belong in the desktop shell, not in the Milady app frame
+- Background persistence and tab/session storage belong in the desktop shell, not in the Eliza app frame

@@ -1,17 +1,17 @@
+import { client } from "@elizaos/app-core/api/client";
+import type { AgentPreflightResult } from "@elizaos/app-core/api/client-types-cloud";
+import { useApp } from "@elizaos/app-core/state/useApp";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AgentPreflightResult } from "@elizaos/app-core/api";
-import { client } from "@elizaos/app-core/api";
-import { useApp } from "@elizaos/app-core/state";
 import { AgentTabsSection } from "./AgentTabsSection";
 import {
   ADAPTER_NAME_TO_TAB,
   AGENT_LABELS,
   AGENT_PROVIDER_MAP,
   AGENT_TABS,
-  AIDER_MODELS,
-  AIDER_PROVIDER_MAP,
   type AgentSelectionStrategy,
   type AgentTab,
+  AIDER_MODELS,
+  AIDER_PROVIDER_MAP,
   type AiderProvider,
   type ApprovalPreset,
   type AuthResult,
@@ -229,7 +229,11 @@ export function CodingAgentSettingsSection() {
     const envPatch: Record<string, string> = {};
     for (const [k, v] of Object.entries(prefs)) {
       if (k.startsWith("_")) continue;
-      if (v != null) envPatch[k] = v;
+      if (typeof v === "string") {
+        envPatch[k] = v;
+      } else if (typeof v === "number" || typeof v === "boolean") {
+        envPatch[k] = String(v);
+      }
     }
     const timer = setTimeout(() => {
       client

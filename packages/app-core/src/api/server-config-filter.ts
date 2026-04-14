@@ -9,6 +9,7 @@ export const SENSITIVE_ENV_RESPONSE_KEYS = new Set([
   // Wallet private keys
   "EVM_PRIVATE_KEY",
   "SOLANA_PRIVATE_KEY",
+  "MILADY_CLOUD_CLIENT_ADDRESS_KEY",
   // Auth / step-up tokens
   "ELIZA_API_TOKEN",
   "ELIZA_API_TOKEN",

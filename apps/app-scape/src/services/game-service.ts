@@ -153,7 +153,7 @@ function resolveSetting(
  * The elizaOS Service contract allows either a class with
  * `static async start(runtime)` or an already-instantiated object.
  * 2004scape uses the static-start pattern — we mirror it so the
- * milady runtime loads us the same way.
+ * eliza runtime loads us the same way.
  */
 export class ScapeGameService extends Service {
   static readonly serviceType = "scape_game";
@@ -218,7 +218,7 @@ export class ScapeGameService extends Service {
 
     // Resolve the agent's account credentials. Priority order:
     //   1. Explicit runtime settings (SCAPE_AGENT_NAME / _PASSWORD / _ID)
-    //   2. Persisted identity file at ~/.milady/scape-agent-identity.json
+    //   2. Persisted identity file at ~/.eliza/scape-agent-identity.json
     //   3. Freshly generated + persisted (zero-friction first-run UX)
     //
     // Self-generation is the important change here: the operator
@@ -363,7 +363,7 @@ export class ScapeGameService extends Service {
   /**
    * Apply an operator message coming through the session-scoped
    * route `/api/apps/scape/session/:id/message`. This is the path
-   * the milady Apps UI uses for run-steering. We recognize a couple
+   * the eliza Apps UI uses for run-steering. We recognize a couple
    * of inline control verbs (`pause` / `resume`) and otherwise
    * treat the whole text as an operator goal.
    */

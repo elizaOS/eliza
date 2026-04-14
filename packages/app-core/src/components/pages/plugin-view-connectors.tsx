@@ -1,13 +1,13 @@
+import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+import { Button } from "@elizaos/ui/components/ui/button";
 import {
-  Button,
-  PagePanel,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  StatusBadge,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/select";
+import { StatusBadge } from "@elizaos/ui/components/ui/status-badge";
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, type RefCallback, useState } from "react";
 import { type CloudCompatAgent, client, type PluginInfo } from "../../api";

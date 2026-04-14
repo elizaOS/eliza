@@ -72,7 +72,7 @@ export async function startBrowserWorkspaceBridgeServer(): Promise<() => void> {
     Number.parseInt(
       (
         process.env.ELIZA_BROWSER_WORKSPACE_PORT ??
-        process.env.MILADY_BROWSER_WORKSPACE_PORT ??
+        process.env.ELIZA_BROWSER_WORKSPACE_PORT ??
         ""
       ).trim(),
       10,
@@ -84,7 +84,7 @@ export async function startBrowserWorkspaceBridgeServer(): Promise<() => void> {
   const token =
     (
       process.env.ELIZA_BROWSER_WORKSPACE_TOKEN ??
-      process.env.MILADY_BROWSER_WORKSPACE_TOKEN ??
+      process.env.ELIZA_BROWSER_WORKSPACE_TOKEN ??
       ""
     ).trim() || crypto.randomBytes(18).toString("hex");
   const baseUrl = `http://127.0.0.1:${port}`;
@@ -93,8 +93,8 @@ export async function startBrowserWorkspaceBridgeServer(): Promise<() => void> {
   process.env.ELIZA_BROWSER_WORKSPACE_URL = baseUrl;
   process.env.ELIZA_BROWSER_WORKSPACE_TOKEN = token;
   // Legacy fallbacks
-  process.env.MILADY_BROWSER_WORKSPACE_URL = baseUrl;
-  process.env.MILADY_BROWSER_WORKSPACE_TOKEN = token;
+  process.env.ELIZA_BROWSER_WORKSPACE_URL = baseUrl;
+  process.env.ELIZA_BROWSER_WORKSPACE_TOKEN = token;
 
   const server = http.createServer(async (req, res) => {
     try {

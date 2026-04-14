@@ -1,5 +1,16 @@
-import type { Action } from "@elizaos/core";
-import { listEjectedPlugins } from "../services/plugin-eject";
+import type { Action, IAgentRuntime } from "@elizaos/core";
+
+interface EjectedPluginInfo {
+  name: string;
+  path: string;
+  upstream?: { branch?: string };
+}
+
+function getPluginManager(runtime: IAgentRuntime) {
+  return runtime.getService("plugin_manager") as {
+    listEjectedPlugins(): Promise<EjectedPluginInfo[]>;
+  } | null;
+}
 
 export const listEjectedAction: Action = {
   name: "LIST_EJECTED_PLUGINS",
@@ -10,8 +21,16 @@ export const listEjectedAction: Action = {
 
   validate: async () => true,
 
-  handler: async () => {
-    const plugins = await listEjectedPlugins();
+  handler: async (runtime) => {
+    const mgr = getPluginManager(runtime);
+    if (!mgr) {
+      return {
+        text: "Plugin manager service is not available.",
+        success: false,
+      };
+    }
+
+    const plugins = await mgr.listEjectedPlugins();
     if (plugins.length === 0) {
       return {
         text: "No ejected plugins found.",

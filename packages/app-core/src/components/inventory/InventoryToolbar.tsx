@@ -1,21 +1,17 @@
-/**
- * Unified wallet header row: total, view toggle, chain filter, sort, refresh.
- */
-
 import type {
   WalletBalancesResponse,
   WalletNftsResponse,
-} from "@elizaos/app-core/api";
-import type { createTranslator } from "@elizaos/app-core/i18n";
-import type { AppState } from "@elizaos/app-core/state";
+} from "@elizaos/shared/contracts/wallet";
+import type { createTranslator } from "../../i18n";
+import type { AppState } from "../../state/types";
+import { Button } from "@elizaos/ui/components/ui/button";
 import {
-  Button,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/select";
 import { CHAIN_CONFIGS, PRIMARY_CHAIN_KEYS } from "./chainConfig";
 
 type InventoryToolbarStateKey = "inventoryView" | "inventorySort";

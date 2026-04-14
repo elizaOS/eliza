@@ -1,3 +1,4 @@
+import { Badge } from "@elizaos/ui/components/ui/badge";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
@@ -7,7 +8,6 @@ import type {
   LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
 } from "@elizaos/shared/contracts/lifeops";
-import { Badge } from "@elizaos/app-core";
 import { CalendarDays, Mail, Plug2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -121,26 +121,13 @@ function formatReceivedAt(value: string): string | null {
   }).format(new Date(receivedAt));
 }
 
-function SectionHeading({
-  icon,
-  title,
-  count,
-}: {
-  icon: ReactNode;
-  title: string;
-  count?: number;
-}) {
+function SectionHeading({ icon, title }: { icon: ReactNode; title: string }) {
   return (
     <div className="flex items-center gap-2 px-0.5">
       <span className="text-muted">{icon}</span>
       <span className="text-xs-tight font-semibold uppercase tracking-[0.08em] text-muted">
         {title}
       </span>
-      {typeof count === "number" ? (
-        <Badge variant="secondary" className="text-3xs">
-          {count}
-        </Badge>
-      ) : null}
     </div>
   );
 }
@@ -399,7 +386,6 @@ export function GoogleSidebarWidget(_props: ChatSidebarWidgetProps) {
             <SectionHeading
               icon={<CalendarDays className="h-3.5 w-3.5" />}
               title={`Calendar (${sideLabel(dataStatus?.side ?? "owner")})`}
-              count={calendarEvents.length}
             />
             {connectorError ? null : calendarEvents.length === 0 ? (
               <div className="px-0.5 text-xs-tight text-muted">
@@ -424,10 +410,6 @@ export function GoogleSidebarWidget(_props: ChatSidebarWidgetProps) {
             <SectionHeading
               icon={<Mail className="h-3.5 w-3.5" />}
               title={`Inbox (${sideLabel(dataStatus?.side ?? "owner")})`}
-              count={
-                gmailFeed?.summary.likelyReplyNeededCount ??
-                gmailMessages.length
-              }
             />
             {connectorError ? null : gmailMessages.length === 0 ? (
               <div className="px-0.5 text-xs-tight text-muted">

@@ -1,24 +1,14 @@
-/**
- * VoiceConfigView — TTS/STT provider selection and configuration.
- *
- * Similar to MediaSettingsSection pattern:
- *   - Provider selection (ElevenLabs, Edge TTS, etc.)
- *   - API key inputs where needed
- *   - Voice preset selection
- *   - Test functionality
- */
-
+import { Button } from "@elizaos/ui/components/ui/button";
 import {
-  Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-  Input,
-  SaveFooter,
-  Switch,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/card";
+import { Input } from "@elizaos/ui/components/ui/input";
+import { SaveFooter } from "@elizaos/ui/components/ui/save-footer";
+import { Switch } from "@elizaos/ui/components/ui/switch";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   client,
@@ -58,10 +48,6 @@ const MODEL_SIZES: Array<{
   { id: "medium", hintKey: "voiceconfigview.hintAccurate" },
   { id: "large", hintKey: "voiceconfigview.hintAccurate" },
 ];
-
-const VOICE_CARD_CLASSNAME = "border-border/60 bg-card/92 shadow-sm";
-const VOICE_SUBSECTION_CLASSNAME =
-  "rounded-2xl border border-border/60 bg-card/92 p-4 shadow-sm";
 
 export const DESKTOP_TALKMODE_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
   {
@@ -204,7 +190,7 @@ export function DesktopTalkModePanel() {
 
   if (!desktopRuntime) {
     return (
-      <Card className={VOICE_CARD_CLASSNAME}>
+      <Card className="border-border/60 bg-card/92 shadow-sm">
         <CardContent className="px-4 py-4 text-xs leading-5 text-muted">
           {t("voiceconfigview.DesktopTalkModeDesktopOnly")}
         </CardContent>
@@ -213,7 +199,7 @@ export function DesktopTalkModePanel() {
   }
 
   return (
-    <Card className={VOICE_CARD_CLASSNAME}>
+    <Card className="border-border/60 bg-card/92 shadow-sm">
       <CardHeader className="px-4 py-4 pb-0">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -852,7 +838,7 @@ export function VoiceConfigView() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className={VOICE_SUBSECTION_CLASSNAME}>
+      <div className="rounded-2xl border border-border/60 bg-card/92 p-4 shadow-sm">
         <div className="text-xs font-semibold text-muted">
           {t("voiceconfigview.TTSProvider")}
         </div>
@@ -867,8 +853,12 @@ export function VoiceConfigView() {
                 className="h-auto min-h-14 flex-col rounded-xl py-2"
                 onClick={() => handleProviderChange(p.id)}
               >
-                <div className="font-semibold">{t(p.labelKey, { defaultValue: p.label })}</div>
-                <div className="text-2xs opacity-70 mt-0.5">{t(p.hintKey, { defaultValue: p.hint })}</div>
+                <div className="font-semibold">
+                  {t(p.labelKey, { defaultValue: p.label })}
+                </div>
+                <div className="text-2xs opacity-70 mt-0.5">
+                  {t(p.hintKey, { defaultValue: p.hint })}
+                </div>
               </Button>
             );
           })}
@@ -893,7 +883,7 @@ export function VoiceConfigView() {
         </span>
       </div>
       {currentProvider === "elevenlabs" && (
-        <div className={`${VOICE_SUBSECTION_CLASSNAME} flex flex-col gap-4`}>
+        <div className="rounded-2xl border border-border/60 bg-card/92 p-4 shadow-sm flex flex-col gap-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <span className="text-xs font-semibold text-muted">
               {t("voiceconfigview.APISource")}
@@ -960,10 +950,14 @@ export function VoiceConfigView() {
                     onClick={() => handleVoiceSelect(preset.voiceId)}
                   >
                     <div className="font-semibold text-xs truncate w-full">
-                      {preset.nameKey ? t(preset.nameKey, { defaultValue: preset.name }) : preset.name}
+                      {preset.nameKey
+                        ? t(preset.nameKey, { defaultValue: preset.name })
+                        : preset.name}
                     </div>
                     <div className="text-2xs text-muted truncate w-full">
-                      {preset.hintKey ? t(preset.hintKey, { defaultValue: preset.hint }) : preset.hint}
+                      {preset.hintKey
+                        ? t(preset.hintKey, { defaultValue: preset.hint })
+                        : preset.hint}
                     </div>
                   </Button>
                 );

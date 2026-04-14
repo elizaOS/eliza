@@ -32,8 +32,7 @@ function ttsDebugEnabled(): boolean {
   try {
     // Use static `import.meta.env.*` so Vite `define` can replace ELIZA_TTS_DEBUG at build time.
     if (truthy(String(import.meta.env.ELIZA_TTS_DEBUG ?? ""))) return true;
-    if (truthy(String(import.meta.env.VITE_ELIZA_TTS_DEBUG ?? "")))
-      return true;
+    if (truthy(String(import.meta.env.VITE_ELIZA_TTS_DEBUG ?? ""))) return true;
   } catch {
     /* no import.meta */
   }

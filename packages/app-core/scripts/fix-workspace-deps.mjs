@@ -14,7 +14,7 @@
  *   bun scripts/fix-workspace-deps.mjs --restore
  *   bun scripts/fix-workspace-deps.mjs --restore --ref origin/main
  *
- * Why this exists: Milady often uses repo-local ./eliza and plugins/* checkouts.
+ * Why this exists: Eliza often uses repo-local ./eliza and plugins/* checkouts.
  * Running upstream tooling or hand-editing package.json leaves semver pins where
  * workspace:* is required (or the reverse). Normalizing in one place avoids
  * "Cannot find module" and review-noise from inconsistent edges across 50+ packages.

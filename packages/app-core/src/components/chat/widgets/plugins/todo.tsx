@@ -1,7 +1,7 @@
-import type { WorkbenchTodo } from "@elizaos/app-core/api";
-import { Badge } from "@elizaos/app-core";
+import type { WorkbenchTodo } from "../../../../api/client-types-config";
+import { Badge } from "@elizaos/ui/components/ui/badge";
 import { ListTodo } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { client } from "../../../../api";
 import { useApp } from "../../../../state";
 import { EmptyWidgetState, WidgetSection } from "../shared";
@@ -146,11 +146,6 @@ function TodoSidebarWidget(_props: ChatSidebarWidgetProps) {
   );
   const [todosLoading, setTodosLoading] = useState(false);
 
-  const openTodoCount = useMemo(
-    () => todos.filter((todo) => !todo.isCompleted).length,
-    [todos],
-  );
-
   useEffect(() => {
     setTodos(dedupeTodos(workbench?.todos ?? []));
   }, [workbench?.todos]);
@@ -198,7 +193,6 @@ function TodoSidebarWidget(_props: ChatSidebarWidgetProps) {
     <WidgetSection
       title={t("taskseventspanel.Todos", { defaultValue: "Todos" })}
       icon={<ListTodo className="h-4 w-4" />}
-      count={openTodoCount}
       testId="chat-widget-todos"
     >
       <TodoItemsContent todos={todos} loading={todosLoading} />

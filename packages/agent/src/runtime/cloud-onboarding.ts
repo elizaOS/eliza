@@ -205,9 +205,7 @@ async function provisionCloudAgent(
         }
       } catch (pollErr) {
         // Transient polling error — keep trying
-        logger.debug(
-          `[cloud-onboarding] Poll error: ${String(pollErr)}`,
-        );
+        logger.debug(`[cloud-onboarding] Poll error: ${String(pollErr)}`);
       }
     }
 

@@ -580,15 +580,17 @@ ElizaClient.prototype.linkCloudCompatAgentManagedGithub = async function (
   );
 };
 
-ElizaClient.prototype.disconnectCloudCompatAgentManagedGithub =
-  async function (this: ElizaClient, agentId) {
-    return this.fetch(
-      `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/github`,
-      {
-        method: "DELETE",
-      },
-    );
-  };
+ElizaClient.prototype.disconnectCloudCompatAgentManagedGithub = async function (
+  this: ElizaClient,
+  agentId,
+) {
+  return this.fetch(
+    `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/github`,
+    {
+      method: "DELETE",
+    },
+  );
+};
 
 ElizaClient.prototype.listCloudOauthConnections = async function (
   this: ElizaClient,
@@ -815,9 +817,7 @@ ElizaClient.prototype.importAgent = async function (
   };
 };
 
-ElizaClient.prototype.getSandboxPlatform = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.getSandboxPlatform = async function (this: ElizaClient) {
   return this.fetch("/api/sandbox/platform");
 };
 
@@ -983,9 +983,7 @@ ElizaClient.prototype.provisionCloudSandbox = async function (
   throw new Error("Provisioning timed out after 2 minutes");
 };
 
-ElizaClient.prototype.checkBugReportInfo = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.checkBugReportInfo = async function (this: ElizaClient) {
   return this.fetch("/api/bug-report/info");
 };
 

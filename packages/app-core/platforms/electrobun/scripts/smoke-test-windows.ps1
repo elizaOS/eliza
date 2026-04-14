@@ -19,19 +19,19 @@ $tempRoot = if ($env:RUNNER_TEMP) {
 } else {
   [System.IO.Path]::GetTempPath()
 }
-$testAppDataRoot = if ($env:MILADY_TEST_WINDOWS_APPDATA_PATH) {
-  $env:MILADY_TEST_WINDOWS_APPDATA_PATH
+$testAppDataRoot = if ($env:ELIZA_TEST_WINDOWS_APPDATA_PATH) {
+  $env:ELIZA_TEST_WINDOWS_APPDATA_PATH
 } else {
-  Join-Path $tempRoot ("milady-windows-appdata-" + [Guid]::NewGuid().ToString("N"))
+  Join-Path $tempRoot ("eliza-windows-appdata-" + [Guid]::NewGuid().ToString("N"))
 }
-$testLocalAppDataRoot = if ($env:MILADY_TEST_WINDOWS_LOCALAPPDATA_PATH) {
-  $env:MILADY_TEST_WINDOWS_LOCALAPPDATA_PATH
+$testLocalAppDataRoot = if ($env:ELIZA_TEST_WINDOWS_LOCALAPPDATA_PATH) {
+  $env:ELIZA_TEST_WINDOWS_LOCALAPPDATA_PATH
 } else {
-  Join-Path $tempRoot ("milady-windows-localappdata-" + [Guid]::NewGuid().ToString("N"))
+  Join-Path $tempRoot ("eliza-windows-localappdata-" + [Guid]::NewGuid().ToString("N"))
 }
 $env:APPDATA = $testAppDataRoot
 $env:LOCALAPPDATA = $testLocalAppDataRoot
-$env:MILADY_DESKTOP_TEST_PARTITION = "persist:bootstrap-isolated"
+$env:ELIZA_DESKTOP_TEST_PARTITION = "persist:bootstrap-isolated"
 New-Item -ItemType Directory -Force -Path $env:APPDATA | Out-Null
 New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA | Out-Null
 # Pre-create PGlite data directory with a short path to avoid MAX_PATH issues
@@ -41,18 +41,18 @@ $pgliteDataDir = Join-Path $tempRoot "pglite"
 New-Item -ItemType Directory -Force -Path $pgliteDataDir | Out-Null
 $env:PGLITE_DATA_DIR = $pgliteDataDir
 if ($env:GITHUB_ENV) {
-  Add-Content -Path $env:GITHUB_ENV -Value "MILADY_TEST_WINDOWS_APPDATA_PATH=$($env:APPDATA)"
-  Add-Content -Path $env:GITHUB_ENV -Value "MILADY_TEST_WINDOWS_LOCALAPPDATA_PATH=$($env:LOCALAPPDATA)"
+  Add-Content -Path $env:GITHUB_ENV -Value "ELIZA_TEST_WINDOWS_APPDATA_PATH=$($env:APPDATA)"
+  Add-Content -Path $env:GITHUB_ENV -Value "ELIZA_TEST_WINDOWS_LOCALAPPDATA_PATH=$($env:LOCALAPPDATA)"
   Add-Content -Path $env:GITHUB_ENV -Value "PGLITE_DATA_DIR=$pgliteDataDir"
 }
-# Milady writes its startup log to AppData\Roaming\Milady on Windows, not the
-# Unix-style ~/.config/Milady path used on macOS/Linux.
-$startupLog = Join-Path $env:APPDATA "Milady\\milady-startup.log"
-$selfExtractionRoot = Join-Path $env:LOCALAPPDATA "com.miladyai.milady"
-$tempExtractDir = Join-Path $tempRoot ("milady-windows-smoke-" + [Guid]::NewGuid().ToString("N"))
-$persistLauncherDir = $env:MILADY_TEST_WINDOWS_LAUNCHER_DIR
-$persistLauncherPathFile = $env:MILADY_TEST_WINDOWS_LAUNCHER_PATH_FILE
-$startupSessionId = "milady-windows-smoke-" + [Guid]::NewGuid().ToString("N")
+# Eliza writes its startup log to AppData\Roaming\Eliza on Windows, not the
+# Unix-style ~/.config/Eliza path used on macOS/Linux.
+$startupLog = Join-Path $env:APPDATA "Eliza\\eliza-startup.log"
+$selfExtractionRoot = Join-Path $env:LOCALAPPDATA "com.elizaai.eliza"
+$tempExtractDir = Join-Path $tempRoot ("eliza-windows-smoke-" + [Guid]::NewGuid().ToString("N"))
+$persistLauncherDir = $env:ELIZA_TEST_WINDOWS_LAUNCHER_DIR
+$persistLauncherPathFile = $env:ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE
+$startupSessionId = "eliza-windows-smoke-" + [Guid]::NewGuid().ToString("N")
 $startupStateFile = Join-Path $tempRoot ($startupSessionId + ".state.json")
 $startupEventsFile = Join-Path $tempRoot ($startupSessionId + ".events.jsonl")
 $startupBootstrapFile = $null
@@ -102,7 +102,7 @@ function Write-ReusableLauncherPath([System.IO.FileInfo]$Launcher, [string]$Temp
     $launcherPath.StartsWith($TemporaryRoot, [System.StringComparison]::OrdinalIgnoreCase)
   ) {
     $stageDir = if ([string]::IsNullOrWhiteSpace($persistLauncherDir)) {
-      Join-Path $tempRoot "milady-windows-ui-launcher"
+      Join-Path $tempRoot "eliza-windows-ui-launcher"
     } else {
       $persistLauncherDir
     }
@@ -122,14 +122,14 @@ function Write-ReusableLauncherPath([System.IO.FileInfo]$Launcher, [string]$Temp
   return Get-Item $launcherPath
 }
 
-function Stop-MiladyProcesses() {
+function Stop-ElizaProcesses() {
   Get-Process -ErrorAction SilentlyContinue |
     Where-Object {
       -not $stopProtectedProcessIds.Contains([int]$_.Id) -and
       (
         $_.ProcessName -in @("launcher", "bun") -or
-        $_.ProcessName -like "Milady*" -or
-        $_.ProcessName -like "Milady-Setup*"
+        $_.ProcessName -like "Eliza*" -or
+        $_.ProcessName -like "Eliza-Setup*"
       )
     } |
     Stop-Process -Force
@@ -211,7 +211,7 @@ function Assert-PackagedArchiveAssetVariants(
       continue
     }
 
-    $extractDir = Join-Path $tempRoot ("milady-archive-asset-check-" + [Guid]::NewGuid().ToString("N"))
+    $extractDir = Join-Path $tempRoot ("eliza-archive-asset-check-" + [Guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
     try {
       & $tarCommand -xf $ArchivePath -C $extractDir $member 2>$null | Out-Null
@@ -241,14 +241,14 @@ function Verify-PackagedRendererAssets([string]$LauncherPath) {
       (Join-Path $rendererDir "index.html")
     )
     Assert-PackagedAssetVariants -Description "default avatar VRM" -MinSizeBytes 1024 -Candidates @(
-      (Join-Path $rendererDir "vrms\\milady-1.vrm.gz"),
-      (Join-Path $rendererDir "vrms\\milady-1.vrm")
+      (Join-Path $rendererDir "vrms\\eliza-1.vrm.gz"),
+      (Join-Path $rendererDir "vrms\\eliza-1.vrm")
     )
     Assert-PackagedAssetVariants -Description "default avatar preview" -MinSizeBytes 1024 -Candidates @(
-      (Join-Path $rendererDir "vrms\\previews\\milady-1.png")
+      (Join-Path $rendererDir "vrms\\previews\\eliza-1.png")
     )
     Assert-PackagedAssetVariants -Description "default avatar background" -MinSizeBytes 1024 -Candidates @(
-      (Join-Path $rendererDir "vrms\\backgrounds\\milady-1.png")
+      (Join-Path $rendererDir "vrms\\backgrounds\\eliza-1.png")
     )
     Write-Host "Packaged renderer asset check PASSED (direct app bundle)."
     return
@@ -267,14 +267,14 @@ function Verify-PackagedRendererAssets([string]$LauncherPath) {
     "renderer/index.html"
   )
   Assert-PackagedArchiveAssetVariants -ArchivePath $runtimeArchive.FullName -Description "default avatar VRM" -MinSizeBytes 1024 -Suffixes @(
-    "renderer/vrms/milady-1.vrm.gz",
-    "renderer/vrms/milady-1.vrm"
+    "renderer/vrms/eliza-1.vrm.gz",
+    "renderer/vrms/eliza-1.vrm"
   )
   Assert-PackagedArchiveAssetVariants -ArchivePath $runtimeArchive.FullName -Description "default avatar preview" -MinSizeBytes 1024 -Suffixes @(
-    "renderer/vrms/previews/milady-1.png"
+    "renderer/vrms/previews/eliza-1.png"
   )
   Assert-PackagedArchiveAssetVariants -ArchivePath $runtimeArchive.FullName -Description "default avatar background" -MinSizeBytes 1024 -Suffixes @(
-    "renderer/vrms/backgrounds/milady-1.png"
+    "renderer/vrms/backgrounds/eliza-1.png"
   )
   Write-Host "Packaged renderer asset check PASSED (runtime archive)."
 }
@@ -350,19 +350,19 @@ if ($resolvedBuildDir) {
 Write-Host "Smoke APPDATA: $($env:APPDATA)"
 Write-Host "Smoke LOCALAPPDATA: $($env:LOCALAPPDATA)"
 
-Stop-MiladyProcesses
+Stop-ElizaProcesses
 $env:ELECTROBUN_CONSOLE = "1"
-$env:MILADY_FORCE_AUTOSTART_AGENT = "1"
-$env:MILADY_STARTUP_SESSION_ID = $startupSessionId
-$env:MILADY_STARTUP_STATE_FILE = $startupStateFile
-$env:MILADY_STARTUP_EVENTS_FILE = $startupEventsFile
+$env:ELIZA_FORCE_AUTOSTART_AGENT = "1"
+$env:ELIZA_STARTUP_SESSION_ID = $startupSessionId
+$env:ELIZA_STARTUP_STATE_FILE = $startupStateFile
+$env:ELIZA_STARTUP_EVENTS_FILE = $startupEventsFile
 $BackendPort = Resolve-BackendPort $BackendPort
-$env:MILADY_API_PORT = "$BackendPort"
+$env:ELIZA_API_PORT = "$BackendPort"
 $env:ELIZA_API_PORT = "$BackendPort"
 $env:ELIZA_PORT = "$BackendPort"
 Write-Host "Smoke backend port: $BackendPort"
 if ($env:GITHUB_ENV) {
-  Add-Content -Path $env:GITHUB_ENV -Value "MILADY_TEST_WINDOWS_BACKEND_PORT=$BackendPort"
+  Add-Content -Path $env:GITHUB_ENV -Value "ELIZA_TEST_WINDOWS_BACKEND_PORT=$BackendPort"
 }
 
 # Reset stale startup logs before launch so fatal classification only applies
@@ -383,11 +383,11 @@ $installer = $null
 $installerProcess = $null
 $launcherProcess = $null
 $launcherStarted = $false
-$requireInstaller = $env:MILADY_WINDOWS_SMOKE_REQUIRE_INSTALLER -eq "1"
-$installerRoot = if ($env:MILADY_TEST_WINDOWS_INSTALL_DIR) {
-  $env:MILADY_TEST_WINDOWS_INSTALL_DIR
+$requireInstaller = $env:ELIZA_WINDOWS_SMOKE_REQUIRE_INSTALLER -eq "1"
+$installerRoot = if ($env:ELIZA_TEST_WINDOWS_INSTALL_DIR) {
+  $env:ELIZA_TEST_WINDOWS_INSTALL_DIR
 } else {
-  Join-Path $tempRoot ("milady-windows-installed-" + [Guid]::NewGuid().ToString("N"))
+  Join-Path $tempRoot ("eliza-windows-installed-" + [Guid]::NewGuid().ToString("N"))
 }
 if ($requireInstaller) {
   $launcher = $null
@@ -432,7 +432,7 @@ if (-not $requireInstaller -and -not $launcher) {
 
 # Installer-required runs skip build/tarball reuse and validate the installed package directly.
 if (-not $launcher) {
-  $installer = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "Milady-Setup-*.exe" -ErrorAction SilentlyContinue |
+  $installer = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "Eliza-Setup-*.exe" -ErrorAction SilentlyContinue |
     Select-Object -First 1
 
   if (-not $installer) {
@@ -441,7 +441,7 @@ if (-not $launcher) {
   }
 
   if (-not $installer) {
-    $installerZip = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "Milady-Setup-*.exe.zip" -ErrorAction SilentlyContinue |
+    $installerZip = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "Eliza-Setup-*.exe.zip" -ErrorAction SilentlyContinue |
       Select-Object -First 1
     if (-not $installerZip) {
       $installerZip = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "*Setup*.zip" -ErrorAction SilentlyContinue |
@@ -465,7 +465,7 @@ if (-not $launcher) {
   Remove-Item $installerRoot -Recurse -Force -ErrorAction SilentlyContinue
   New-Item -ItemType Directory -Force -Path $installerRoot | Out-Null
 
-  $installerLogPath = Join-Path $tempRoot "milady-inno-setup.log"
+  $installerLogPath = Join-Path $tempRoot "eliza-inno-setup.log"
   $installerArgs = @(
     "/VERYSILENT",
     "/SUPPRESSMSGBOXES",
@@ -531,7 +531,7 @@ Write-StartupBootstrap
 # Propagate PGlite data dir and disable local embeddings in the launcher env.
 # The launcher spawns agent.ts which spawns the runtime child process; these
 # env vars must be set in the outermost process for correct propagation.
-$env:MILADY_DISABLE_LOCAL_EMBEDDINGS = "1"
+$env:ELIZA_DISABLE_LOCAL_EMBEDDINGS = "1"
 $launcherProcess = Start-Process -FilePath $launcher.FullName -WorkingDirectory $launcherDir -PassThru
 $launcherStarted = $true
 
@@ -566,7 +566,7 @@ function Dump-ProcessDiagnostics() {
     Get-Process -ErrorAction SilentlyContinue |
       Where-Object {
         $_.ProcessName -in @("launcher", "bun") -or
-        $_.ProcessName -like "Milady*"
+        $_.ProcessName -like "Eliza*"
       } |
       Format-Table -Property Id, ProcessName, StartTime, Responding -AutoSize |
       Out-String |
@@ -630,10 +630,10 @@ function Dump-FailureDiagnostics([int]$Port) {
 
   # 5. Firewall state for port
   Write-Host ""
-  Write-Host "[5/6] Firewall rules mentioning port $Port or Bun/Milady:"
+  Write-Host "[5/6] Firewall rules mentioning port $Port or Bun/Eliza:"
   try {
     netsh advfirewall firewall show rule name=all dir=in |
-      Select-String -Pattern "($Port|bun|milady|launcher)" -Context 2 |
+      Select-String -Pattern "($Port|bun|eliza|launcher)" -Context 2 |
       ForEach-Object { Write-Host $_ }
   } catch {
     Write-Host "(firewall query failed: $($_.Exception.Message))"
@@ -643,12 +643,12 @@ function Dump-FailureDiagnostics([int]$Port) {
   Write-Host ""
   Write-Host "[6/7] Relevant environment variables:"
   foreach ($varName in @(
-    "MILADY_PORT", "MILADY_API_BIND", "MILADY_API_PORT",
-    "MILADY_DISABLE_LOCAL_EMBEDDINGS", "ANTHROPIC_API_KEY",
+    "ELIZA_PORT", "ELIZA_API_BIND", "ELIZA_API_PORT",
+    "ELIZA_DISABLE_LOCAL_EMBEDDINGS", "ANTHROPIC_API_KEY",
     "NO_PROXY", "HTTP_PROXY", "HTTPS_PROXY",
     "ELECTROBUN_CONSOLE", "APPDATA", "LOCALAPPDATA",
-    "MILADY_TEST_WINDOWS_APPDATA_PATH", "MILADY_TEST_WINDOWS_LOCALAPPDATA_PATH",
-    "MILADY_DESKTOP_TEST_PARTITION", "ELIZA_API_PORT", "ELIZA_PORT"
+    "ELIZA_TEST_WINDOWS_APPDATA_PATH", "ELIZA_TEST_WINDOWS_LOCALAPPDATA_PATH",
+    "ELIZA_DESKTOP_TEST_PARTITION", "ELIZA_API_PORT", "ELIZA_PORT"
   )) {
     $val = [System.Environment]::GetEnvironmentVariable($varName)
     if ($varName -eq "ANTHROPIC_API_KEY" -and $val) {
@@ -659,8 +659,8 @@ function Dump-FailureDiagnostics([int]$Port) {
 
   Write-Host ""
   Write-Host "[7/7] Windows CEF profile state:"
-  $cefRoot = Join-Path $env:APPDATA "Milady\\CEF"
-  $cefMarker = Join-Path $cefRoot ".milady-version"
+  $cefRoot = Join-Path $env:APPDATA "Eliza\\CEF"
+  $cefMarker = Join-Path $cefRoot ".eliza-version"
   Write-Host "  CEF root: $cefRoot"
   Write-Host "  Marker: $cefMarker"
   Write-Host "  Root exists: $(Test-Path $cefRoot)"
@@ -830,7 +830,7 @@ try {
     throw "Windows packaged app did not become healthy within $TimeoutSeconds seconds."
   }
 } finally {
-  Stop-MiladyProcesses
+  Stop-ElizaProcesses
   if (-not [string]::IsNullOrWhiteSpace($startupBootstrapFile)) {
     Remove-Item $startupBootstrapFile -Force -ErrorAction SilentlyContinue
   }

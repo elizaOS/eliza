@@ -1,13 +1,13 @@
 import { ONBOARDING_PROVIDER_CATALOG } from "@elizaos/shared/contracts/onboarding";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
 import {
-  Button,
-  Input,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/select";
 import type { ChangeEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { OpenRouterModelOption, ProviderOption } from "../../../api";
@@ -386,7 +386,7 @@ export function ConnectionProviderDetailScreen({
       return;
     }
     const normalized = normalizeOpenAICallbackInput(openaiCallbackUrl);
-    if (!normalized.ok) {
+    if (normalized.ok === false) {
       setOpenaiError(t(normalized.error));
       return;
     }
@@ -785,9 +785,8 @@ export function ConnectionProviderDetailScreen({
                           if (rpc?.request?.desktopReadFromClipboard) {
                             const result =
                               await rpc.request.desktopReadFromClipboard();
-                            const nativeText = (
-                              result as { text?: string }
-                            )?.text;
+                            const nativeText = (result as { text?: string })
+                              ?.text;
                             if (nativeText) {
                               setAnthropicCode(nativeText.trim());
                               setAnthropicError("");
@@ -795,8 +794,7 @@ export function ConnectionProviderDetailScreen({
                             }
                           }
                           // Fallback: browser clipboard API (web mode)
-                          const text =
-                            await navigator.clipboard.readText();
+                          const text = await navigator.clipboard.readText();
                           if (text) {
                             setAnthropicCode(text.trim());
                             setAnthropicError("");

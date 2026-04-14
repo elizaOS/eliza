@@ -1,9 +1,40 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = path.resolve(import.meta.dirname, "..");
-const MANIFEST_PATH = path.join(ROOT, "test", "regression-matrix.json");
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const APP_CORE_ROOT = path.resolve(SCRIPT_DIR, "..");
+
+function findRepoRoot(startDir) {
+  let currentDir = startDir;
+  let matchedRoot = null;
+  while (true) {
+    if (
+      fs.existsSync(path.join(currentDir, "package.json")) &&
+      fs.existsSync(path.join(currentDir, ".github", "workflows"))
+    ) {
+      matchedRoot = currentDir;
+    }
+
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      if (matchedRoot) {
+        return matchedRoot;
+      }
+      throw new Error(`Unable to resolve repository root from ${startDir}.`);
+    }
+
+    currentDir = parentDir;
+  }
+}
+
+const REPO_ROOT = findRepoRoot(APP_CORE_ROOT);
+const MANIFEST_PATH = path.join(
+  APP_CORE_ROOT,
+  "test",
+  "regression-matrix.json",
+);
 const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
 
 function parseArgs(argv) {
@@ -43,7 +74,7 @@ function matchesAnyGlob(filePath, globs) {
 }
 
 function readText(relativePath) {
-  return fs.readFileSync(path.join(ROOT, relativePath), "utf8");
+  return fs.readFileSync(path.join(REPO_ROOT, relativePath), "utf8");
 }
 
 function expandScheduledSuites(suiteIds) {
@@ -78,7 +109,7 @@ function collectChangedFiles(args) {
   for (const command of commands) {
     try {
       const raw = execFileSync("git", command, {
-        cwd: ROOT,
+        cwd: REPO_ROOT,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -191,7 +222,7 @@ function ensurePackageScripts(failures) {
 }
 
 function ensureDesktopInventory(failures) {
-  const checklistPath = path.join(ROOT, manifest.manualChecklistDoc);
+  const checklistPath = path.join(REPO_ROOT, manifest.manualChecklistDoc);
   if (!fs.existsSync(checklistPath)) {
     failures.push(
       `Manual desktop checklist is missing: ${manifest.manualChecklistDoc}`,

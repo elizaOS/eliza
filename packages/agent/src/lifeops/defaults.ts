@@ -62,7 +62,9 @@ export function normalizeTimeZone(timeZone?: string | null): string {
   return resolveDefaultTimeZone();
 }
 
-export function resolveDefaultWindowPolicy(timeZone?: string | null): LifeOpsWindowPolicy {
+export function resolveDefaultWindowPolicy(
+  timeZone?: string | null,
+): LifeOpsWindowPolicy {
   const timezone = normalizeTimeZone(timeZone);
   return {
     timezone,
@@ -157,7 +159,10 @@ export function computeAdaptiveWindowPolicy(
   const eveningStartMinute = afternoonEndMinute;
 
   let eveningEndMinute: number;
-  if (profile.typicalSleepHour !== null && profile.typicalSleepHour !== undefined) {
+  if (
+    profile.typicalSleepHour !== null &&
+    profile.typicalSleepHour !== undefined
+  ) {
     // typicalSleepHour can exceed 24 (e.g. 25 = 1 AM next day).
     eveningEndMinute = Math.min(
       Math.round(profile.typicalSleepHour * 60),
@@ -168,7 +173,9 @@ export function computeAdaptiveWindowPolicy(
     profile.typicalLastActiveHour !== undefined
   ) {
     eveningEndMinute = Math.min(
-      Math.round((profile.typicalLastActiveHour + ADAPTIVE_LAST_ACTIVE_LAG_HOURS) * 60),
+      Math.round(
+        (profile.typicalLastActiveHour + ADAPTIVE_LAST_ACTIVE_LAG_HOURS) * 60,
+      ),
       ADAPTIVE_EVENING_END_CAP_MINUTES,
     );
   } else {
@@ -221,7 +228,9 @@ export function normalizeWindowPolicy(
 ): LifeOpsWindowPolicy {
   const fallback = resolveDefaultWindowPolicy(timeZone);
   if (!policy) return fallback;
-  const timezone = normalizeTimeZone(policy.timezone || timeZone || fallback.timezone);
+  const timezone = normalizeTimeZone(
+    policy.timezone || timeZone || fallback.timezone,
+  );
   const windows = Array.isArray(policy.windows)
     ? policy.windows
         .map((window) => {
@@ -245,7 +254,9 @@ export function normalizeWindowPolicy(
             endMinute,
           } satisfies LifeOpsTimeWindowDefinition;
         })
-        .filter((window): window is LifeOpsTimeWindowDefinition => window !== null)
+        .filter(
+          (window): window is LifeOpsTimeWindowDefinition => window !== null,
+        )
     : [];
   if (windows.length === 0) {
     return fallback;

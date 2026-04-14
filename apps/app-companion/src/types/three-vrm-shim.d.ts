@@ -12,9 +12,7 @@ declare module "@pixiv/three-vrm" {
         position?: ArrayLike<number>;
       };
     };
-    getNormalizedBoneNode: (
-      name: VRMHumanBoneName | string,
-    ) => Object3D | null;
+    getNormalizedBoneNode: (name: VRMHumanBoneName | string) => Object3D | null;
     getRawBoneNode: (name: VRMHumanBoneName | string) => Object3D | null;
     update?: () => void;
   }

@@ -66,9 +66,7 @@ export async function loadIdleClip(
   idleGlbUrl: string,
   ctx: AnimationLoaderContext,
 ): Promise<THREE.AnimationClip | null> {
-  const { retargetMixamoGltfToVrm } = await import(
-    "./retargetMixamoGltfToVrm"
-  );
+  const { retargetMixamoGltfToVrm } = await import("./retargetMixamoGltfToVrm");
   if (ctx.isAborted() || !ctx.isCurrentVrm(vrm)) return null;
 
   const gltfLoader = new GLTFLoader();

@@ -11,11 +11,13 @@ import {
   AdminDialogContent,
   AdminDialogHeader,
   AdminInput,
-  Button,
+} from "@elizaos/ui/components/ui/admin-dialog";
+import { Button } from "@elizaos/ui/components/ui/button";
+import {
   Dialog,
   DialogDescription,
   DialogTitle,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/dialog";
 import { useState } from "react";
 
 /* ── Marketplace Result Card ────────────────────────────────────────── */

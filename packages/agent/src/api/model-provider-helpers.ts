@@ -189,7 +189,13 @@ export function getModelOptions(): {
 // Dynamic model catalog — per-provider cache, fetch, and serve model lists
 // ---------------------------------------------------------------------------
 
-export type ModelCategory = "chat" | "embedding" | "image" | "tts" | "stt" | "other";
+export type ModelCategory =
+  | "chat"
+  | "embedding"
+  | "image"
+  | "tts"
+  | "stt"
+  | "other";
 
 export interface CachedModel {
   id: string;
@@ -345,7 +351,9 @@ export function restTypeToCategory(type: string): ModelCategory {
   return classifyModel(type);
 }
 
-export async function fetchAnthropicModels(apiKey: string): Promise<CachedModel[]> {
+export async function fetchAnthropicModels(
+  apiKey: string,
+): Promise<CachedModel[]> {
   try {
     const headers: Record<string, string> = {
       "anthropic-version": "2023-06-01",
@@ -373,7 +381,9 @@ export async function fetchAnthropicModels(apiKey: string): Promise<CachedModel[
   }
 }
 
-export async function fetchGoogleModels(apiKey: string): Promise<CachedModel[]> {
+export async function fetchGoogleModels(
+  apiKey: string,
+): Promise<CachedModel[]> {
   try {
     const url = apiKey
       ? `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`
@@ -399,7 +409,9 @@ export async function fetchGoogleModels(apiKey: string): Promise<CachedModel[]> 
   }
 }
 
-export async function fetchOllamaModels(baseUrl: string): Promise<CachedModel[]> {
+export async function fetchOllamaModels(
+  baseUrl: string,
+): Promise<CachedModel[]> {
   try {
     let urlStr = baseUrl.replace(/\/+$/, "");
     if (!urlStr.startsWith("http://") && !urlStr.startsWith("https://")) {
@@ -422,7 +434,9 @@ export async function fetchOllamaModels(baseUrl: string): Promise<CachedModel[]>
 }
 
 /** Fetch ALL OpenRouter models: chat (/api/v1/models) + embeddings (/api/v1/embeddings/models). */
-export async function fetchOpenRouterModels(apiKey: string): Promise<CachedModel[]> {
+export async function fetchOpenRouterModels(
+  apiKey: string,
+): Promise<CachedModel[]> {
   const headers: Record<string, string> = {};
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 

@@ -1,19 +1,20 @@
-import {
-  client,
-  type StartTrainingOptions,
-  type StreamEventEnvelope,
-  type TrainingDatasetRecord,
-  type TrainingJobRecord,
-  type TrainingModelRecord,
-  type TrainingStatus,
-  type TrainingStreamEvent,
-  type TrainingTrajectoryDetail,
-  type TrainingTrajectoryList,
-} from "@elizaos/app-core/api";
-import { useIntervalWhenDocumentVisible } from "@elizaos/app-core/hooks";
-import { useApp } from "@elizaos/app-core/state";
-import { confirmDesktopAction } from "@elizaos/app-core/utils";
-import { Button, ContentLayout } from "@elizaos/app-core";
+import { client } from "../../api/client";
+import type {
+  StartTrainingOptions,
+  TrainingDatasetRecord,
+  TrainingJobRecord,
+  TrainingModelRecord,
+  TrainingStatus,
+  TrainingStreamEvent,
+  TrainingTrajectoryDetail,
+  TrainingTrajectoryList,
+} from "../../api/client-types-config";
+import type { StreamEventEnvelope } from "../../api/client-types-core";
+import { useIntervalWhenDocumentVisible } from "@elizaos/ui/hooks/useDocumentVisibility";
+import { useApp } from "../../state/useApp";
+import { confirmDesktopAction } from "../../utils/desktop-dialogs";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { ContentLayout } from "@elizaos/ui/layouts/content-layout/content-layout";
 import {
   type ReactNode,
   useCallback,

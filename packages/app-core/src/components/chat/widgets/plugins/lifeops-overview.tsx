@@ -1,3 +1,5 @@
+import { Badge } from "@elizaos/ui/components/ui/badge";
+import { Button } from "@elizaos/ui/components/ui/button";
 import type {
   LifeOpsActiveReminderView,
   LifeOpsCadence,
@@ -8,7 +10,6 @@ import type {
   LifeOpsOverview,
   LifeOpsOverviewSection,
 } from "@elizaos/shared/contracts/lifeops";
-import { Badge, Button } from "@elizaos/app-core";
 import {
   BellRing,
   Bot,
@@ -1105,20 +1106,11 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
     [expandedGoalId, goalReviews],
   );
 
-  const count = useMemo(() => {
-    if (!overview) {
-      return 0;
-    }
-    return (
-      overview.owner.summary.activeOccurrenceCount +
-      overview.owner.summary.activeGoalCount +
-      overview.owner.summary.activeReminderCount
-    );
-  }, [overview]);
-
   const hasAnyContent = overview
     ? hasSectionContent(overview.owner) || hasSectionContent(overview.agentOps)
     : false;
+  const ownerSection = overview?.owner ?? null;
+  const agentOpsSection = overview?.agentOps ?? overview?.owner ?? null;
   const ownerBuckets = useMemo(
     () => bucketOccurrences(overview?.owner.occurrences ?? [], new Date()),
     [overview?.owner.occurrences],
@@ -1132,7 +1124,6 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
     <WidgetSection
       title="Life Ops"
       icon={<ListTodo className="h-4 w-4" />}
-      count={count}
       action={
         <Button
           size="sm"
@@ -1203,26 +1194,28 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
             onExplainOccurrence={onExplainOccurrence}
           />
           <GoalSection
-            goals={overview!.owner.goals}
+            goals={ownerSection?.goals ?? []}
             goalReviews={goalReviews}
             detailState={detailState}
             expandedGoalId={expandedGoalId}
             onReviewGoal={onReviewGoal}
           />
-          <ReminderSection reminders={overview!.owner.reminders} />
-          <AgentOpsSection
-            section={overview!.agentOps}
-            actionState={actionState}
-            detailState={detailState}
-            occurrenceExplanations={occurrenceExplanations}
-            goalReviews={goalReviews}
-            expandedOccurrenceId={expandedOccurrenceId}
-            expandedGoalId={expandedGoalId}
-            onOccurrenceAction={onOccurrenceAction}
-            onSnoozeOccurrence={onSnoozeOccurrence}
-            onExplainOccurrence={onExplainOccurrence}
-            onReviewGoal={onReviewGoal}
-          />
+          <ReminderSection reminders={ownerSection?.reminders ?? []} />
+          {agentOpsSection ? (
+            <AgentOpsSection
+              section={agentOpsSection}
+              actionState={actionState}
+              detailState={detailState}
+              occurrenceExplanations={occurrenceExplanations}
+              goalReviews={goalReviews}
+              expandedOccurrenceId={expandedOccurrenceId}
+              expandedGoalId={expandedGoalId}
+              onOccurrenceAction={onOccurrenceAction}
+              onSnoozeOccurrence={onSnoozeOccurrence}
+              onExplainOccurrence={onExplainOccurrence}
+              onReviewGoal={onReviewGoal}
+            />
+          ) : null}
           <div className="rounded-lg border border-border/50 bg-bg-accent/30 px-3 py-2 text-xs-tight text-muted">
             <div className="flex items-center gap-2">
               <BellRing className="h-3.5 w-3.5" />

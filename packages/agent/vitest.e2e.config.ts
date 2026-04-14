@@ -5,7 +5,8 @@ import { defineConfig } from "vitest/config";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(packageRoot, "..", "..");
-// See top-level vitest.config.ts for the rationale. Prefer the local
+// See `test/vitest/default.config.ts` (via root vitest.config.ts) for the
+// monorepo rationale. Prefer the local
 // eliza source; fall back to the committed shim when the checkout is
 // disabled (CI published-only mode).
 const elizaCoreRolesSource = path.join(

@@ -1,17 +1,6 @@
-/**
- * Connection wizard step — **shell only**.
- *
- * Why this file stays thin: `connection-flow.ts` cannot call `setState` or `useApp`. This component builds a
- * {@link ConnectionFlowSnapshot}, runs `applyConnectionTransition`, applies patches, and mounts `ConnectionUiRoot`.
- * Why `useEffect` for `forceCloudBootstrap`: same patch as tests — one implementation for cloud-only auto-advance.
- *
- * @see ../../onboarding/connection-flow.ts
- * @see ./connection/README.md
- */
-
-import type { ProviderOption } from "@elizaos/app-core/api";
-import { useBranding } from "@elizaos/app-core/config";
-import { isNative } from "@elizaos/app-core/platform";
+import type { ProviderOption } from "@elizaos/shared/contracts/onboarding";
+import { useBranding } from "../../config/branding";
+import { isNative } from "../../platform/init";
 import { ONBOARDING_PROVIDER_CATALOG } from "@elizaos/shared/contracts/onboarding";
 import { useCallback, useEffect, useMemo } from "react";
 import {

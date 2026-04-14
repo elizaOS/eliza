@@ -107,7 +107,10 @@ export async function handleBlueBubblesRoute(
 
     const url = new URL(req.url ?? pathname, "http://localhost");
     const limit = Math.min(
-      Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "100", 10) || 100),
+      Math.max(
+        1,
+        Number.parseInt(url.searchParams.get("limit") ?? "100", 10) || 100,
+      ),
       500,
     );
     const offset = Math.max(
@@ -149,7 +152,10 @@ export async function handleBlueBubblesRoute(
     }
 
     const limit = Math.min(
-      Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50),
+      Math.max(
+        1,
+        Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50,
+      ),
       500,
     );
     const offset = Math.max(

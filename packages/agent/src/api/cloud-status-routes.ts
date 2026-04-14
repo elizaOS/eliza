@@ -101,7 +101,7 @@ export async function handleCloudStatusRoutes(
       config as Record<string, unknown>,
       "tts",
     );
-    const configApiKey = resolveCloudApiKey(config);
+    const configApiKey = resolveCloudApiKey(config, runtime);
     const hasApiKey = Boolean(configApiKey);
     const cloudAuth = runtime
       ? runtime.getService<Service & CloudAuthIdentityService>("CLOUD_AUTH")
@@ -153,9 +153,9 @@ export async function handleCloudStatusRoutes(
     const cloudAuth = runtime
       ? runtime.getService<Service & CloudAuthCreditsService>("CLOUD_AUTH")
       : null;
-    const configApiKey = resolveCloudApiKey(config);
+    const configApiKey = resolveCloudApiKey(config, runtime);
 
-    if (!cloudAuth || !cloudAuth.isAuthenticated()) {
+    if (!cloudAuth?.isAuthenticated()) {
       if (!configApiKey) {
         json(res, { balance: null, connected: false });
         return true;

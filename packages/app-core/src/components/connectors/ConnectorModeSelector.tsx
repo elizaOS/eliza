@@ -35,8 +35,7 @@ export function getConnectorModes(
               {
                 id: "managed",
                 label: "Managed (Eliza Cloud)",
-                description:
-                  "Use a shared gateway bot via Eliza Cloud OAuth",
+                description: "Use a shared gateway bot via Eliza Cloud OAuth",
               },
             ]
           : []),

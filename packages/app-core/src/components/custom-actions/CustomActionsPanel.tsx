@@ -1,7 +1,10 @@
-import { type CustomActionDef, client } from "@elizaos/app-core/api";
-import { useApp } from "@elizaos/app-core/state";
-import { confirmDesktopAction } from "@elizaos/app-core/utils";
-import { Button, Input, Switch } from "@elizaos/app-core";
+import { client } from "../../api/client";
+import type { CustomActionDef } from "@elizaos/agent/contracts/config";
+import { useApp } from "../../state/useApp";
+import { confirmDesktopAction } from "../../utils/desktop-dialogs";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
+import { Switch } from "@elizaos/ui/components/ui/switch";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 interface CustomActionsPanelProps {

@@ -1,4 +1,4 @@
-import { Switch } from "@elizaos/app-core";
+import { Switch } from "@elizaos/ui/components/ui/switch";
 import type React from "react";
 import { useState } from "react";
 

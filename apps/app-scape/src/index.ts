@@ -9,7 +9,7 @@ import { ScapeGameService } from "./services/game-service.js";
  * `@elizaos/app-scape` plugin entry point.
  *
  * PR 2 scope: plugin shell only. Declares the app metadata that the
- * milady launcher reads (display name, capabilities, viewer URL) and
+ * eliza launcher reads (display name, capabilities, viewer URL) and
  * wires up the minimal route handler that serves the viewer iframe.
  *
  * PR 3+ will add `services`, `actions`, and `providers` so the LLM

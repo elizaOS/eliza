@@ -125,7 +125,7 @@ async function buildAndroid() {
   await run(
     "./gradlew",
     [
-      ":miladyai-capacitor-websiteblocker:testDebugUnitTest",
+      ":elizaos-capacitor-websiteblocker:testDebugUnitTest",
       ":app:assembleDebug",
     ],
     {

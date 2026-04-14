@@ -1,6 +1,6 @@
-/** SubscriptionStatus — Anthropic and OpenAI subscription connection panels. */
-
-import { Button, Input, Label } from "@elizaos/app-core";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
+import { Label } from "@elizaos/ui/components/ui/label";
 import { useCallback, useRef, useState } from "react";
 import { client } from "../../api";
 import { useTimeout } from "../../hooks";
@@ -226,7 +226,7 @@ export function SubscriptionStatus({
   const handleOpenAIExchange = useCallback(async () => {
     if (openaiExchangeBusyRef.current) return;
     const normalized = normalizeOpenAICallbackInput(openaiCallbackRef.current);
-    if (!normalized.ok) {
+    if (normalized.ok === false) {
       setOpenaiError(t(normalized.error));
       return;
     }

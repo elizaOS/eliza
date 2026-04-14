@@ -87,21 +87,20 @@ function patchAiSdk(webSearchTool: unknown): void {
     ): unknown {
       if (args.length > 0 && args[0] && typeof args[0] === "object") {
         const params = args[0] as Record<string, unknown>;
-        const model = params.model as
-          | { provider?: string }
-          | undefined;
+        const model = params.model as { provider?: string } | undefined;
         const provider = model?.provider ?? "";
 
         if (
           provider.toLowerCase().includes("anthropic") &&
-          (!params.tools ||
-            Object.keys(params.tools as object).length === 0)
+          (!params.tools || Object.keys(params.tools as object).length === 0)
         ) {
           args[0] = {
             ...params,
             tools: { web_search: webSearchTool },
           };
-          logger.debug(`[web-search] Injected web_search tool into ${name} call`);
+          logger.debug(
+            `[web-search] Injected web_search tool into ${name} call`,
+          );
         }
       }
       return original.apply(this, args);

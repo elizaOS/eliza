@@ -8,14 +8,7 @@
  * @module eliza
  */
 import crypto from "node:crypto";
-import type { Dirent } from "node:fs";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  symlinkSync,
-  unlinkSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -29,6 +22,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // ---------------------------------------------------------------------------
 import { runFirstTimeSetup } from "./first-time-setup.js";
 import { resolvePlugins } from "./plugin-resolver.js";
+import {
+  CUSTOM_PLUGINS_DIRNAME as CUSTOM_RUNTIME_PLUGINS_DIRNAME,
+  type ResolvedPlugin as RuntimeResolvedPlugin,
+  STATIC_ELIZA_PLUGINS,
+} from "./plugin-types.js";
 
 export {
   CHANNEL_PLUGIN_MAP,
@@ -36,9 +34,27 @@ export {
   OPTIONAL_PLUGIN_MAP,
   PROVIDER_PLUGIN_MAP,
 } from "./plugin-collector.js";
+export {
+  CUSTOM_PLUGINS_DIRNAME,
+  EJECTED_PLUGINS_DIRNAME,
+  ensureBrowserServerLink,
+  findPluginBrowserStagehandDir,
+  findRuntimePluginExport,
+  mergeDropInPlugins,
+  type PluginModuleShape,
+  type ResolvedPlugin,
+  repairBrokenInstallRecord,
+  resolveElizaPluginImportSpecifier,
+  resolvePackageEntry,
+  STATIC_ELIZA_PLUGINS,
+  scanDropInPlugins,
+  shouldIgnoreMissingPluginExport,
+} from "./plugin-types.js";
 
 // resolvePlugins is re-exported via index.ts from ./plugin-resolver
 
+import * as pluginAppCompanion from "@elizaos/app-companion/plugin";
+import * as pluginAppLifeops from "@elizaos/app-lifeops/plugin";
 import {
   AgentRuntime,
   AutonomyService,
@@ -64,13 +80,6 @@ import * as pluginAnthropic from "@elizaos/plugin-anthropic";
 import * as pluginLocalEmbedding from "@elizaos/plugin-local-embedding";
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginSql from "@elizaos/plugin-sql";
-import {
-  PGLITE_ERROR_CODES,
-  getPgliteErrorCode,
-  createPgliteInitError,
-} from "./pglite-error-compat";
-import * as pluginAppCompanion from "@elizaos/app-companion/plugin";
-import * as pluginAppLifeops from "@elizaos/app-lifeops/plugin";
 import {
   isElizaSettingsDebugEnabled,
   settingsDebugCloudSummary,
@@ -100,7 +109,6 @@ import {
 } from "../config/env-vars.js";
 import { resolveStateDir, resolveUserPath } from "../config/paths.js";
 import { resolveServerOnlyPort } from "../config/runtime-env.js";
-import type { PluginInstallRecord } from "../config/types.eliza.js";
 import {
   createHookEvent,
   type LoadHooksOptions,
@@ -132,6 +140,11 @@ import {
   runtimeKnowledgeEnabled,
   runtimeTrajectoriesEnabled,
 } from "./native-runtime-features.js";
+import {
+  createPgliteInitError,
+  getPgliteErrorCode,
+  PGLITE_ERROR_CODES,
+} from "./pglite-error-compat";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.js";
 import rolesPlugin from "./roles.js";
 import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.js";
@@ -282,7 +295,9 @@ function registerSignalShutdownHandlers(context: SignalShutdownContext): void {
  * ship a smaller baseline bundle. Those plugins fall through to dynamic
  * import() and can be installed later via the plugin installer.
  */
-export const STATIC_ELIZA_PLUGINS: Record<string, unknown> = {
+// Populate the shared STATIC_ELIZA_PLUGINS registry (defined in plugin-types.ts)
+// so plugin-resolver.ts can read it without importing this module directly.
+Object.assign(STATIC_ELIZA_PLUGINS, {
   "@elizaos/plugin-sql": pluginSql,
   "@elizaos/plugin-local-embedding": pluginLocalEmbedding,
   // secrets-manager: now built-in core capability (ENABLE_SECRETS_MANAGER)
@@ -306,7 +321,7 @@ export const STATIC_ELIZA_PLUGINS: Record<string, unknown> = {
   "@elizaos/app-companion": pluginAppCompanion,
   "@elizaos/plugin-discord-local": discordLocalPlugin,
   // personality: now built-in advanced capability (advancedCapabilities: true)
-};
+});
 
 // NODE_PATH so dynamic plugin imports (e.g. @elizaos/plugin-*) resolve.
 // WHY: When eliza is loaded from dist/ or by a test runner, Node's resolution does not
@@ -343,14 +358,6 @@ if (_rootModules) {
 // Types
 // ---------------------------------------------------------------------------
 
-/** A successfully resolved plugin ready for AgentRuntime registration. */
-export interface ResolvedPlugin {
-  /** npm package name (e.g. "@elizaos/plugin-anthropic"). */
-  name: string;
-  /** The Plugin instance extracted from the module. */
-  plugin: Plugin;
-}
-
 /**
  * Temporary local compatibility shim for `@elizaos/core` not exporting
  * `SandboxFetchAuditEvent` on the current dependency line in this repo.
@@ -364,13 +371,6 @@ type SandboxFetchAuditEvent = {
   url: string;
   tokenIds: string[];
 };
-
-/** Shape we expect from a dynamically-imported plugin package. */
-export interface PluginModuleShape {
-  default?: Plugin;
-  plugin?: Plugin;
-  [key: string]: Plugin | undefined;
-}
 
 export function configureLocalEmbeddingPlugin(
   _plugin: Plugin,
@@ -1000,191 +1000,9 @@ const _OPTIONAL_NATIVE_PLUGINS: readonly string[] = [
 // CHANNEL_PLUGIN_MAP, PROVIDER_PLUGIN_MAP, and OPTIONAL_PLUGIN_MAP live in
 // ./plugin-collector.ts and are re-exported from this module for backward compatibility.
 
-function looksLikePlugin(value: unknown): value is Plugin {
-  if (!value || typeof value !== "object") return false;
-  const obj = value as Record<string, unknown>;
-  if (typeof obj.name !== "string" || typeof obj.description !== "string") {
-    return false;
-  }
-
-  // Providers also expose { name, description } so we require at least one
-  // plugin-like capability field before accepting named exports as plugins.
-  return (
-    Array.isArray(obj.services) ||
-    Array.isArray(obj.providers) ||
-    Array.isArray(obj.actions) ||
-    Array.isArray(obj.routes) ||
-    Array.isArray(obj.events) ||
-    typeof obj.init === "function"
-  );
-}
-
-function looksLikePluginBasic(
-  value: unknown,
-): value is Pick<Plugin, "name" | "description"> {
-  if (!value || typeof value !== "object") return false;
-  const obj = value as Record<string, unknown>;
-  return typeof obj.name === "string" && typeof obj.description === "string";
-}
-
-export function findRuntimePluginExport(mod: PluginModuleShape): Plugin | null {
-  // 1. Prefer explicit default export
-  if (looksLikePlugin(mod.default)) return mod.default;
-  // 2. Check for a named `plugin` export
-  if (looksLikePlugin(mod.plugin)) return mod.plugin;
-  // 3. Check if the module itself looks like a Plugin (CJS default pattern).
-  if (looksLikePlugin(mod)) return mod as Plugin;
-
-  // 4. Scan named exports in a deterministic order.
-  // Prefer keys ending with "Plugin" before generic exports like providers.
-  const namedKeys = Object.keys(mod).filter(
-    (key) => key !== "default" && key !== "plugin",
-  );
-  const preferredKeys = namedKeys.filter(
-    (key) => /plugin$/i.test(key) || /^plugin/i.test(key),
-  );
-  const fallbackKeys = namedKeys.filter((key) => !preferredKeys.includes(key));
-
-  for (const key of [...preferredKeys, ...fallbackKeys]) {
-    const value = mod[key];
-    if (looksLikePlugin(value)) return value;
-  }
-
-  // 5. Final compatibility fallback: accept minimal plugin-like exports only
-  // when the export name itself indicates it's a plugin.
-  for (const key of preferredKeys) {
-    const value = mod[key];
-    if (looksLikePluginBasic(value)) return value as Plugin;
-  }
-
-  // 6. Legacy CJS compatibility for modules that export only { name, description }.
-  if (looksLikePluginBasic(mod)) return mod as unknown as Plugin;
-  const modDefault = (mod as Record<string, unknown>).default;
-  const modPlugin = (mod as Record<string, unknown>).plugin;
-  if (looksLikePluginBasic(modDefault)) return modDefault as Plugin;
-  if (looksLikePluginBasic(modPlugin)) return modPlugin as Plugin;
-
-  return null;
-}
-
 // ---------------------------------------------------------------------------
-// Custom / drop-in plugin discovery
+// Custom / drop-in plugin discovery (moved to plugin-types.ts)
 // ---------------------------------------------------------------------------
-
-/** Subdirectory under the Eliza state dir for drop-in custom plugins. */
-export const CUSTOM_PLUGINS_DIRNAME = "plugins/custom";
-/** Subdirectory under the Eliza state dir for ejected plugins. */
-export const EJECTED_PLUGINS_DIRNAME = "plugins/ejected";
-
-/**
- * Scan a directory for drop-in plugin packages. Each immediate subdirectory
- * is treated as a plugin; name comes from package.json or the directory name.
- */
-export async function scanDropInPlugins(
-  dir: string,
-): Promise<Record<string, PluginInstallRecord>> {
-  const records: Record<string, PluginInstallRecord> = {};
-
-  let entries: Dirent[];
-  try {
-    entries = await fs.readdir(dir, { withFileTypes: true });
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      return records;
-    }
-    throw err;
-  }
-
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-
-    const pluginDir = path.join(dir, entry.name);
-    let pluginName = entry.name;
-    let version = "0.0.0";
-
-    try {
-      const raw = await fs.readFile(
-        path.join(pluginDir, "package.json"),
-        "utf-8",
-      );
-      const pkg = JSON.parse(raw) as { name?: string; version?: string };
-      if (typeof pkg.name === "string" && pkg.name.trim())
-        pluginName = pkg.name.trim();
-      if (typeof pkg.version === "string" && pkg.version.trim())
-        version = pkg.version.trim();
-    } catch (err) {
-      if (
-        (err as NodeJS.ErrnoException).code !== "ENOENT" &&
-        !(err instanceof SyntaxError)
-      ) {
-        throw err;
-      }
-    }
-
-    records[pluginName] = { source: "path", installPath: pluginDir, version };
-  }
-
-  return records;
-}
-
-/**
- * Merge drop-in plugins into the load set. Filters out denied, core-colliding,
- * and already-installed names. Mutates `pluginsToLoad` and `installRecords`.
- */
-export function mergeDropInPlugins(params: {
-  dropInRecords: Record<string, PluginInstallRecord>;
-  installRecords: Record<string, PluginInstallRecord>;
-  corePluginNames: ReadonlySet<string>;
-  denyList: ReadonlySet<string>;
-  pluginsToLoad: Set<string>;
-}): { accepted: string[]; skipped: string[] } {
-  const {
-    dropInRecords,
-    installRecords,
-    corePluginNames,
-    denyList,
-    pluginsToLoad,
-  } = params;
-  const accepted: string[] = [];
-  const skipped: string[] = [];
-
-  for (const [name, record] of Object.entries(dropInRecords)) {
-    if (denyList.has(name) || installRecords[name]) continue;
-    if (corePluginNames.has(name)) {
-      skipped.push(
-        `[eliza] Custom plugin "${name}" collides with core plugin — skipping`,
-      );
-      continue;
-    }
-    pluginsToLoad.add(name);
-    installRecords[name] = record;
-    accepted.push(name);
-  }
-
-  return { accepted, skipped };
-}
-
-export function resolveElizaPluginImportSpecifier(
-  pluginName: string,
-  runtimeModuleUrl = import.meta.url,
-): string {
-  if (!pluginName.startsWith("@elizaos/plugin-")) {
-    return pluginName;
-  }
-
-  const shortName = pluginName.replace("@elizaos/plugin-", "");
-  const thisDir = path.dirname(fileURLToPath(runtimeModuleUrl));
-  const distRoot = thisDir.endsWith("runtime")
-    ? path.resolve(thisDir, "..")
-    : thisDir;
-  const indexPath = path.resolve(distRoot, "plugins", shortName, "index.js");
-
-  return existsSync(indexPath) ? pathToFileURL(indexPath).href : pluginName;
-}
-
-export function shouldIgnoreMissingPluginExport(pluginName: string): boolean {
-  return pluginName === "@elizaos/plugin-streaming-base";
-}
 
 // ---------------------------------------------------------------------------
 // Plugin resolution
@@ -1270,209 +1088,8 @@ function isElizaCloudManagedProcessEnvKey(key: string): boolean {
   );
 }
 
-/**
- * Locate `plugins/plugin-browser/stagehand-server` by walking parents of
- * `startDir`. Supports upstream eliza (`<workspace>/eliza/packages/agent/...` →
- * stagehand under workspace) and app monorepos that nest the agent package.
- *
- * **Why walk parents:** A fixed number of `../` segments fails when the agent
- * runtime lives at different depths; the checkout is always at
- * `<workspace>/plugins/plugin-browser/stagehand-server`.
- *
- * @internal Exported for unit tests.
- */
-export function findPluginBrowserStagehandDir(startDir: string): string | null {
-  let dir = path.resolve(startDir);
-  for (let depth = 0; depth < 14; depth++) {
-    const candidate = path.join(
-      dir,
-      "plugins",
-      "plugin-browser",
-      "stagehand-server",
-    );
-    const distIndex = path.join(candidate, "dist", "index.js");
-    const srcEntry = path.join(candidate, "src", "index.ts");
-    if (existsSync(distIndex) || existsSync(srcEntry)) {
-      return candidate;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return null;
-}
-
-/**
- * `@elizaos/plugin-browser` expects `dist/server/` with the stagehand binary
- * tree inside the npm package, but the published tarball does not ship it.
- * When missing, symlink to a repo checkout at `plugins/plugin-browser/stagehand-server`
- * (discovered via {@link findPluginBrowserStagehandDir}) so the plugin's
- * process-manager can spawn the server.
- *
- * **Why:** Without the symlink, browser automation fails at runtime even when
- * the user built stagehand locally — the plugin only looks under its package root.
- *
- * @returns `true` when `dist/server` already resolves or symlink succeeded.
- */
-export function ensureBrowserServerLink(): boolean {
-  try {
-    // Resolve the plugin-browser package root via its package.json.
-    const req = createRequire(import.meta.url);
-    const pkgJsonPath = req.resolve("@elizaos/plugin-browser/package.json");
-    const pluginRoot = path.dirname(pkgJsonPath);
-    const serverDir = path.join(pluginRoot, "dist", "server");
-    const serverIndex = path.join(serverDir, "dist", "index.js");
-
-    // Already linked / available — nothing to do.
-    if (existsSync(serverIndex)) return true;
-
-    const thisDir = path.dirname(fileURLToPath(import.meta.url));
-    const stagehandDir = findPluginBrowserStagehandDir(thisDir);
-    if (!stagehandDir) {
-      logger.debug(
-        "[eliza] plugin-browser: no stagehand-server under plugins/plugin-browser — " +
-          "run node scripts/link-browser-server.mjs or add the plugin checkout",
-      );
-      return false;
-    }
-    const stagehandIndex = path.join(stagehandDir, "dist", "index.js");
-
-    // Auto-build if source exists but dist doesn't
-    if (
-      !existsSync(stagehandIndex) &&
-      existsSync(path.join(stagehandDir, "src", "index.ts"))
-    ) {
-      logger.info(
-        `[eliza] Stagehand server not built — attempting auto-build...`,
-      );
-      try {
-        const cp = createRequire(import.meta.url)(
-          "node:child_process",
-        ) as typeof import("node:child_process");
-        if (!existsSync(path.join(stagehandDir, "node_modules"))) {
-          cp.execSync("pnpm install --ignore-scripts", {
-            cwd: stagehandDir,
-            stdio: "ignore",
-            timeout: 60_000,
-          });
-        }
-        // Prefer local tsc binary, fall back to pnpm exec
-        const localTsc = path.join(stagehandDir, "node_modules", ".bin", "tsc");
-        const tscCmd = existsSync(localTsc) ? localTsc : "pnpm exec tsc";
-        cp.execSync(tscCmd, {
-          cwd: stagehandDir,
-          stdio: "ignore",
-          timeout: 60_000,
-        });
-        logger.info(`[eliza] Stagehand server built successfully`);
-      } catch (buildErr) {
-        logger.debug(`[eliza] Auto-build failed: ${formatError(buildErr)}`);
-      }
-    }
-
-    if (!existsSync(stagehandIndex)) {
-      logger.debug(
-        "[eliza] plugin-browser: stagehand-server present but dist/index.js missing — build it",
-      );
-      return false;
-    }
-
-    // Create symlink: dist/server -> stagehand-server
-    symlinkSync(stagehandDir, serverDir, "dir");
-    logger.info(
-      `[eliza] Linked browser server: ${serverDir} -> ${stagehandDir}`,
-    );
-    return true;
-  } catch (err) {
-    logger.debug(`[eliza] Could not link browser server: ${formatError(err)}`);
-    return false;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Plugin resolution
-// ---------------------------------------------------------------------------
-
-/** @internal Exported for testing. */
-export function repairBrokenInstallRecord(
-  config: ElizaConfig,
-  pluginName: string,
-): boolean {
-  const record = config.plugins?.installs?.[pluginName];
-  if (!record || typeof record.installPath !== "string") return false;
-  if (!record.installPath.trim()) return false;
-
-  // Keep the plugin listed as installed but force node_modules resolution.
-  record.installPath = "";
-  record.source = "npm";
-  return true;
-}
-
-/** Read package.json exports/main to find the importable entry file. */
-/** @internal Exported for testing. */
-export async function resolvePackageEntry(pkgRoot: string): Promise<string> {
-  const fallback = path.join(pkgRoot, "dist", "index");
-  const fallbackCandidates = [
-    fallback,
-    path.join(pkgRoot, "index"),
-    path.join(pkgRoot, "index.mjs"),
-    path.join(pkgRoot, "index.ts"),
-    path.join(pkgRoot, "src", "index"),
-    path.join(pkgRoot, "src", "index.mjs"),
-    path.join(pkgRoot, "src", "index.ts"),
-  ];
-
-  const chooseExisting = (...paths: string[]): string => {
-    const seen = new Set<string>();
-    for (const p of paths) {
-      const resolved = path.resolve(p);
-      if (seen.has(resolved)) continue;
-      seen.add(resolved);
-      if (existsSync(resolved)) return resolved;
-    }
-    // Return first candidate even when missing so callers still get a useful path in errors.
-    return path.resolve(paths[0] ?? fallback);
-  };
-
-  try {
-    const raw = await fs.readFile(path.join(pkgRoot, "package.json"), "utf-8");
-    const pkg = JSON.parse(raw) as {
-      name?: string;
-      main?: string;
-      exports?: Record<string, string | Record<string, string>> | string;
-    };
-
-    if (typeof pkg.exports === "object" && pkg.exports["."] !== undefined) {
-      const dot = pkg.exports["."];
-      const resolved =
-        typeof dot === "string" ? dot : dot.import || dot.default;
-      if (typeof resolved === "string") {
-        return chooseExisting(
-          path.resolve(pkgRoot, resolved),
-          ...fallbackCandidates,
-        );
-      }
-    }
-    if (typeof pkg.exports === "string") {
-      return chooseExisting(
-        path.resolve(pkgRoot, pkg.exports),
-        ...fallbackCandidates,
-      );
-    }
-    if (pkg.main) {
-      return chooseExisting(
-        path.resolve(pkgRoot, pkg.main),
-        ...fallbackCandidates,
-      );
-    }
-    return chooseExisting(...fallbackCandidates);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      return chooseExisting(...fallbackCandidates);
-    }
-    throw err;
-  }
-}
+// findPluginBrowserStagehandDir, ensureBrowserServerLink,
+// repairBrokenInstallRecord, resolvePackageEntry — moved to plugin-types.ts
 
 // ---------------------------------------------------------------------------
 // Config → Character mapping
@@ -2079,7 +1696,7 @@ export function isRecoverablePgliteInitError(err: unknown): boolean {
 
   const hasAbort = haystack.includes("aborted(). build with -sassertions");
   const hasPglite = haystack.includes("pglite");
-  const hasSqlite = haystack.includes("sqlite");
+  const _hasSqlite = haystack.includes("sqlite");
   const hasMigrationsSchema =
     haystack.includes("create schema if not exists migrations") ||
     haystack.includes("failed query: create schema if not exists migrations");
@@ -2664,7 +2281,7 @@ function installActionAliases(runtime: AgentRuntime): void {
 
 async function registerSqlPluginWithRecovery(
   runtime: AgentRuntime,
-  sqlPlugin: ResolvedPlugin,
+  sqlPlugin: RuntimeResolvedPlugin,
   config: ElizaConfig,
 ): Promise<void> {
   let registerError: unknown = null;
@@ -3350,7 +2967,7 @@ export async function startEliza(
   await ensureAgentWorkspace({ dir: workspaceDir, ensureInitFiles: true });
 
   // 4b. Ensure custom plugins directory exists for drop-in plugins
-  await fs.mkdir(path.join(resolveStateDir(), CUSTOM_PLUGINS_DIRNAME), {
+  await fs.mkdir(path.join(resolveStateDir(), CUSTOM_RUNTIME_PLUGINS_DIRNAME), {
     recursive: true,
   });
 
@@ -3899,6 +3516,19 @@ export async function startEliza(
       logger.debug(`[eliza] Steward EVM pre-boot skipped: ${formatError(err)}`);
     }
 
+    // 7f. Pre-register ConnectorSetupService so connector plugins can access
+    //     shared config/escalation/owner-contact helpers via runtime.getService().
+    try {
+      const { ConnectorSetupService } = await import(
+        "../services/connector-setup-service.js"
+      );
+      await runtime.registerService(ConnectorSetupService);
+    } catch (err) {
+      logger.debug(
+        `[eliza] ConnectorSetupService registration skipped: ${formatError(err)}`,
+      );
+    }
+
     // 8. Initialize the runtime (registers remaining plugins, starts services)
     assertPersistentDatabaseRequired(runtime);
     await runtime.initialize();
@@ -4284,6 +3914,14 @@ export async function startEliza(
           }
 
           assertPersistentDatabaseRequired(newRuntime);
+          try {
+            const { ConnectorSetupService: CSSReload } = await import(
+              "../services/connector-setup-service.js"
+            );
+            await newRuntime.registerService(CSSReload);
+          } catch {
+            // non-fatal
+          }
           try {
             const { stewardEvmPreBoot: preBootHR } = await import(
               "../services/steward-evm-bridge.js"

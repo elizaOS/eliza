@@ -21,8 +21,8 @@ const nodeCmd = process.execPath || "node";
  * - `forceSerial: true` entries always run after parallel groups.
  * - `maxWorkers` lets a suite pin worker concurrency.
  *
- * Opt-in UI browser E2E (Playwright): set MILADY_TEST_UI_PLAYWRIGHT=1.
- * MILADY_TEST_UI_TESTCAFE remains as a legacy alias for the same suite.
+ * Opt-in UI browser E2E (Playwright): set ELIZA_TEST_UI_PLAYWRIGHT=1.
+ * ELIZA_TEST_UI_TESTCAFE remains as a legacy alias for the same suite.
  */
 const runs = [
   {
@@ -31,14 +31,14 @@ const runs = [
     args: [path.join(".", "node_modules", ".bin", "vitest"), "run"],
     vitest: true,
     cwd: "apps/app",
-    reportFile: path.join(os.tmpdir(), "milady-vitest-app-unit-report.json"),
+    reportFile: path.join(os.tmpdir(), "eliza-vitest-app-unit-report.json"),
   },
   {
     name: "unit",
     cmd: bunCmd,
-    args: ["x", "vitest", "run", "--config", "vitest.config.ts"],
+    args: ["x", "vitest", "run", "--config", "test/vitest/default.config.ts"],
     vitest: true,
-    reportFile: path.join(os.tmpdir(), "milady-vitest-unit-report.json"),
+    reportFile: path.join(os.tmpdir(), "eliza-vitest-unit-report.json"),
   },
   {
     name: "integration",
@@ -61,8 +61,8 @@ const runs = [
 ];
 
 if (
-  process.env.MILADY_TEST_UI_PLAYWRIGHT === "1" ||
-  process.env.MILADY_TEST_UI_TESTCAFE === "1"
+  process.env.ELIZA_TEST_UI_PLAYWRIGHT === "1" ||
+  process.env.ELIZA_TEST_UI_TESTCAFE === "1"
 ) {
   runs.push({
     name: "ui-playwright",
@@ -83,7 +83,7 @@ const isWindowsCi = isCI && isWindows;
 // teardown (known V8/jsdom interaction). Use dangerouslyIgnoreUnhandledErrors
 // to prevent spurious CI failures from these non-test-affecting worker exits.
 const needsDangerouslyIgnore = isWindowsCi || (isCI && isMacOS);
-const shardOverride = Number.parseInt(process.env.MILADY_TEST_SHARDS ?? "", 10);
+const shardOverride = Number.parseInt(process.env.ELIZA_TEST_SHARDS ?? "", 10);
 const shardCount = isWindowsCi
   ? Number.isFinite(shardOverride) && shardOverride > 1
     ? shardOverride
@@ -93,7 +93,7 @@ const ciWorkerArgs = needsDangerouslyIgnore
   ? ["--no-file-parallelism", "--dangerouslyIgnoreUnhandledErrors"]
   : [];
 const overrideWorkers = Number.parseInt(
-  process.env.MILADY_TEST_WORKERS ?? "",
+  process.env.ELIZA_TEST_WORKERS ?? "",
   10,
 );
 const resolvedOverride =
@@ -174,7 +174,7 @@ const runOnce = (entry, extraArgs = []) =>
       env: {
         ...buildChildEnv(process.env, entry.cwd),
         VITEST_GROUP: entry.name,
-        MILADY_LIVE_TEST: "0",
+        ELIZA_LIVE_TEST: "0",
         ELIZA_LIVE_TEST: "0",
         NODE_OPTIONS: sanitiseNodeOptions(nextNodeOptions),
         NODE_NO_WARNINGS: process.env.NODE_NO_WARNINGS ?? "1",

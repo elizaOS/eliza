@@ -1,7 +1,8 @@
-import { Button } from "@elizaos/app-core";
-import type { AppRunSummary } from "../../api";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { useMemo } from "react";
+import type { AppRunSummary, RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
-import { getAppEmoji } from "./helpers";
+import { AppIdentityTile } from "./app-identity";
 import { getAppOperatorSurface } from "./surfaces/registry";
 
 const HEARTBEAT_STALE_MS = 2 * 60 * 1000;
@@ -114,6 +115,7 @@ function getPrimaryRecoveryLabel(
 
 interface RunningAppsPanelProps {
   runs: AppRunSummary[];
+  catalogApps?: RegistryAppInfo[];
   selectedRunId: string | null;
   busyRunId: string | null;
   onSelectRun: (runId: string) => void;
@@ -158,6 +160,7 @@ function formatControls(
 
 export function RunningAppsPanel({
   runs,
+  catalogApps = [],
   selectedRunId,
   busyRunId,
   onSelectRun,
@@ -166,6 +169,10 @@ export function RunningAppsPanel({
   onStopRun,
 }: RunningAppsPanelProps) {
   const { t } = useApp();
+  const catalogAppByName = useMemo(
+    () => new Map(catalogApps.map((app) => [app.name, app] as const)),
+    [catalogApps],
+  );
   const selectedRun =
     runs.find((run) => run.runId === selectedRunId) ?? runs[0] ?? null;
   const SelectedOperatorSurface = selectedRun
@@ -185,14 +192,14 @@ export function RunningAppsPanel({
     return (
       <div className="rounded-2xl border border-dashed border-border/35 bg-card/72 px-6 py-16 text-center">
         <div className="text-xs font-medium text-muted-strong">
-          {t("appsview.NoRunningApps", {
-            defaultValue: "No app runs are active right now.",
+          {t("appsview.NoActiveApps", {
+            defaultValue: "No active app runs are available right now.",
           })}
         </div>
         <div className="mt-2 text-xs-tight leading-5 text-muted">
-          {t("appsview.NoRunningAppsHint", {
+          {t("appsview.NoActiveAppsHint", {
             defaultValue:
-              "Launch a game from the catalog and it will appear here as a reattachable run.",
+              "Launch an app from the catalog and it will appear here as a reattachable run.",
           })}
         </div>
       </div>
@@ -217,28 +224,18 @@ export function RunningAppsPanel({
               onClick={() => onSelectRun(run.runId)}
             >
               <div className="flex items-start gap-3">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-border/35 bg-bg/80 text-[1.5rem] shadow-sm">
-                  {getAppEmoji({
-                    name: run.appName,
-                    displayName: run.displayName,
-                    description: "",
-                    category: "game",
-                    launchType: run.launchType,
-                    launchUrl: run.launchUrl,
-                    icon: null,
-                    capabilities: [],
-                    stars: 0,
-                    repository: "",
-                    latestVersion: null,
-                    supports: { v0: false, v1: true, v2: true },
-                    npm: {
-                      package: run.appName,
-                      v0Version: null,
-                      v1Version: null,
-                      v2Version: null,
-                    },
-                  })}
-                </div>
+                <AppIdentityTile
+                  app={
+                    catalogAppByName.get(run.appName) ?? {
+                      name: run.appName,
+                      displayName: run.displayName,
+                      category: "utility",
+                      icon: null,
+                    }
+                  }
+                  active
+                  size="sm"
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="truncate text-sm font-semibold text-txt">
@@ -274,7 +271,7 @@ export function RunningAppsPanel({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-accent">
-                {t("appsview.RunningNow", { defaultValue: "Running now" })}
+                {t("appsview.ActiveNow", { defaultValue: "Active now" })}
               </div>
               <div className="mt-2 text-xl font-semibold tracking-[0.01em] text-txt">
                 {selectedRun.displayName}

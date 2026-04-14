@@ -47,11 +47,20 @@ jobs:
       - name: Build packages
         run: bun run build
 
+      - name: Run typecheck
+        run: bun run typecheck
+
       - name: Run tests
         timeout-minutes: 15
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: bun run test:core
+
+      - name: Run plugin tests
+        timeout-minutes: 15
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: bun run test:plugins
 
       - name: Run interop (TypeScript) tests
         timeout-minutes: 10

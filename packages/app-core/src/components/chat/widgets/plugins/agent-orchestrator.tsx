@@ -1,12 +1,16 @@
+import {
+  PULSE_STATUSES,
+  STATUS_DOT,
+  TERMINAL_STATUSES,
+} from "../../../../chat/coding-agent-session-state";
 import type {
   AppRunSummary,
-  CodingAgentFrameworkAvailability,
   CodingAgentSession,
-  CodingAgentStatus,
   CodingAgentTaskThread,
   CodingAgentTaskThreadDetail,
-} from "@elizaos/app-core/api";
-import { Badge, Button } from "@elizaos/app-core";
+} from "../../../../api/client-types-cloud";
+import { Badge } from "@elizaos/ui/components/ui/badge";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { Activity } from "lucide-react";
 import {
   type ReactNode,
@@ -17,16 +21,22 @@ import {
   useState,
 } from "react";
 import { client } from "../../../../api";
-import { TERMINAL_STATUSES } from "@elizaos/app-coding";
 import type { ActivityEvent } from "../../../../hooks/useActivityEvents";
 import { useApp, usePtySessions } from "../../../../state";
 import { getRunAttentionReasons } from "../../../apps/RunningAppsPanel";
-import { PULSE_STATUSES, STATUS_DOT } from "@elizaos/app-coding/pty-status-dots";
 import { EmptyWidgetState, WidgetSection } from "../shared";
 import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "../types";
+
+const ANSI_ESCAPE_PATTERN = new RegExp(
+  [
+    "\\u001b(?:",
+    "\\[[0-9;?]*[A-Za-z]|\\][^\\u0007]*\\u0007|[()][0-9A-Za-z])",
+  ].join(""),
+  "g",
+);
 
 function deriveSessionActivity(session: CodingAgentSession): string {
   if (session.status === "tool_running" && session.toolDescription) {
@@ -98,15 +108,6 @@ function TaskCard({ session }: { session: CodingAgentSession }) {
   );
 }
 
-function formatFrameworkState(
-  framework: CodingAgentFrameworkAvailability,
-): string {
-  if (framework.available) return "ready";
-  if (!framework.installed) return "install required";
-  if (!framework.authReady) return "login required";
-  return "unavailable";
-}
-
 function TaskItemsContent({ sessions }: { sessions: CodingAgentSession[] }) {
   if (sessions.length === 0) {
     return (
@@ -127,9 +128,7 @@ function TaskItemsContent({ sessions }: { sessions: CodingAgentSession[] }) {
 }
 
 function stripAnsi(str: string): string {
-  return str
-    .replace(/\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07]*\x07|[()][0-9A-Za-z])/g, "")
-    .trim();
+  return str.replace(ANSI_ESCAPE_PATTERN, "").trim();
 }
 
 function formatIsoTime(value?: string | null): string {
@@ -278,77 +277,6 @@ function DetailList({
         {title}
       </div>
       {children}
-    </div>
-  );
-}
-
-function ProviderRoutingPanel({ status }: { status: CodingAgentStatus }) {
-  const frameworks = Array.isArray(status.frameworks) ? status.frameworks : [];
-
-  if (
-    frameworks.length === 0 &&
-    !status.preferredAgentType &&
-    status.pendingConfirmations === 0
-  ) {
-    return null;
-  }
-
-  return (
-    <div className="rounded-lg border border-border/50 bg-bg-accent/20 p-3">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
-          Provider Routing
-        </div>
-        {status.preferredAgentType ? (
-          <Badge variant="secondary" className="bg-ok/15 text-3xs text-ok">
-            {status.preferredAgentReason === "user selected"
-              ? "Selected"
-              : "Preferred"}
-            : {status.preferredAgentType}
-          </Badge>
-        ) : null}
-        <Badge
-          variant="secondary"
-          className={
-            status.pendingConfirmations > 0
-              ? "bg-warn/15 text-3xs text-warn"
-              : "bg-bg-hover/70 text-3xs text-muted"
-          }
-        >
-          Pending approvals: {status.pendingConfirmations}
-        </Badge>
-      </div>
-      {status.preferredAgentReason ? (
-        <div className="mb-2 text-xs-tight text-muted">
-          {status.preferredAgentReason}
-        </div>
-      ) : null}
-      {frameworks.length > 0 ? (
-        <div className="space-y-1.5">
-          {frameworks.slice(0, 5).map((framework) => (
-            <div
-              key={framework.id}
-              className="rounded border border-border/40 bg-bg-hover/30 px-2 py-1.5 text-xs-tight text-txt"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="font-medium">{framework.label}</div>
-                <div
-                  className={
-                    framework.available
-                      ? "text-ok"
-                      : framework.installed && framework.authReady
-                        ? "text-warn"
-                        : "text-muted"
-                  }
-                >
-                  {formatFrameworkState(framework)}
-                </div>
-              </div>
-              <div className="text-muted">{framework.reason}</div>
-            </div>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -693,6 +621,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
   const attentionRuns = runs.filter(
     (run) => (attentionMap.get(run.runId)?.length ?? 0) > 0,
   );
+  const shouldHideWidget = !loading && runs.length === 0 && error === null;
 
   useEffect(() => {
     let cancelled = false;
@@ -730,11 +659,14 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
     };
   }, [setState]);
 
+  if (shouldHideWidget) {
+    return null;
+  }
+
   return (
     <WidgetSection
       title={t("appsview.Running", { defaultValue: "Apps" })}
       icon={<Activity className="h-4 w-4" />}
-      count={runs.length}
       action={
         <div className="flex items-center gap-1.5">
           {currentRun ? (
@@ -762,7 +694,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
               setState("appsSubTab", "running");
             }}
           >
-            Open Running
+            Open Apps
           </Button>
         </div>
       }
@@ -836,9 +768,14 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
   );
 }
 
-function OrchestratorTasksWidget(_props: ChatSidebarWidgetProps) {
+export function CodingAgentTasksPanel({
+  fullPage = false,
+}: {
+  fullPage?: boolean;
+} = {}) {
   const app = useApp() as ReturnType<typeof useApp> | undefined;
   const t = app?.t ?? fallbackTranslate;
+  const setTab = app?.setTab ?? (() => undefined);
   const { ptySessions } = usePtySessions();
   const activeSessions = useMemo(
     () =>
@@ -848,7 +785,6 @@ function OrchestratorTasksWidget(_props: ChatSidebarWidgetProps) {
     [ptySessions],
   );
   const [threads, setThreads] = useState<CodingAgentTaskThread[]>([]);
-  const [status, setStatus] = useState<CodingAgentStatus | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [selectedThread, setSelectedThread] =
     useState<CodingAgentTaskThreadDetail | null>(null);
@@ -871,19 +807,15 @@ function OrchestratorTasksWidget(_props: ChatSidebarWidgetProps) {
     const refreshThreads = async () => {
       setLoading(true);
       try {
-        const [nextThreads, nextStatus] = await Promise.all([
-          client.listCodingAgentTaskThreads({
-            includeArchived: showArchived,
-            search: deferredSearch || undefined,
-            limit: 30,
-          }),
-          client.getCodingAgentStatus(),
-        ]);
+        const nextThreads = await client.listCodingAgentTaskThreads({
+          includeArchived: showArchived,
+          search: deferredSearch || undefined,
+          limit: 30,
+        });
         if (cancelled) return;
         setLoadError(null);
         setMutationError(null);
         setThreads(nextThreads);
-        setStatus(nextStatus);
         setSelectedThreadId((current) => {
           // If the user explicitly collapsed (null), keep it collapsed.
           // Only drop the selection if the selected thread no longer exists.
@@ -899,7 +831,6 @@ function OrchestratorTasksWidget(_props: ChatSidebarWidgetProps) {
           getClientErrorMessage(error, "Failed to load task threads."),
         );
         setThreads([]);
-        setStatus(null);
         setSelectedThreadId(null);
         setSelectedThread(null);
       } finally {
@@ -967,19 +898,15 @@ function OrchestratorTasksWidget(_props: ChatSidebarWidgetProps) {
     setMutationError(null);
     try {
       await client.archiveCodingAgentTaskThread(selectedThread.id);
-      const [nextThreads, nextStatus] = await Promise.all([
-        client.listCodingAgentTaskThreads({
-          includeArchived: showArchived,
-          search: deferredSearch || undefined,
-          limit: 30,
-        }),
-        client.getCodingAgentStatus(),
-      ]);
+      const nextThreads = await client.listCodingAgentTaskThreads({
+        includeArchived: showArchived,
+        search: deferredSearch || undefined,
+        limit: 30,
+      });
       setLoadError(null);
       setDetailError(null);
       setMutationError(null);
       setThreads(nextThreads);
-      setStatus(nextStatus);
       setSelectedThreadId(nextThreads[0]?.id ?? null);
     } catch (error) {
       setMutationError(
@@ -998,19 +925,15 @@ function OrchestratorTasksWidget(_props: ChatSidebarWidgetProps) {
     setMutationError(null);
     try {
       await client.reopenCodingAgentTaskThread(selectedThread.id);
-      const [nextThreads, nextStatus] = await Promise.all([
-        client.listCodingAgentTaskThreads({
-          includeArchived: false,
-          search: deferredSearch || undefined,
-          limit: 30,
-        }),
-        client.getCodingAgentStatus(),
-      ]);
+      const nextThreads = await client.listCodingAgentTaskThreads({
+        includeArchived: false,
+        search: deferredSearch || undefined,
+        limit: 30,
+      });
       setLoadError(null);
       setDetailError(null);
       setMutationError(null);
       setThreads(nextThreads);
-      setStatus(nextStatus);
       setShowArchived(false);
       setSelectedThreadId(nextThreads[0]?.id ?? null);
     } catch (error) {
@@ -1024,15 +947,22 @@ function OrchestratorTasksWidget(_props: ChatSidebarWidgetProps) {
     }
   };
 
-  const count = threads.length > 0 ? threads.length : activeSessions.length;
-
   return (
     <WidgetSection
       title={t("taskseventspanel.Tasks", { defaultValue: "Tasks" })}
       icon={<Activity className="h-4 w-4" />}
-      count={count}
       action={
         <div className="flex items-center gap-1.5">
+          {!fullPage ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-2xs"
+              onClick={() => setTab("tasks")}
+            >
+              Open View
+            </Button>
+          ) : null}
           <Button
             variant={showArchived ? "secondary" : "ghost"}
             size="sm"
@@ -1065,7 +995,6 @@ function OrchestratorTasksWidget(_props: ChatSidebarWidgetProps) {
       ) : null}
       {threads.length > 0 ? (
         <div className="flex flex-col gap-2.5">
-          {status ? <ProviderRoutingPanel status={status} /> : null}
           {detailError ? (
             <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs-tight text-danger">
               Failed to load task detail: {detailError}
@@ -1093,12 +1022,15 @@ function OrchestratorTasksWidget(_props: ChatSidebarWidgetProps) {
         <div className="text-xs-tight text-muted">Loading tasks...</div>
       ) : (
         <div className="flex flex-col gap-2.5">
-          {status ? <ProviderRoutingPanel status={status} /> : null}
           <TaskItemsContent sessions={activeSessions} />
         </div>
       )}
     </WidgetSection>
   );
+}
+
+function OrchestratorTasksWidget(_props: ChatSidebarWidgetProps) {
+  return <CodingAgentTasksPanel />;
 }
 
 function OrchestratorActivityWidget({
@@ -1108,22 +1040,23 @@ function OrchestratorActivityWidget({
   const app = useApp() as ReturnType<typeof useApp> | undefined;
   const t = app?.t ?? fallbackTranslate;
 
+  if (events.length === 0) {
+    return null;
+  }
+
   return (
     <WidgetSection
       title={t("taskseventspanel.Activity", { defaultValue: "Activity" })}
       icon={<Activity className="h-4 w-4" />}
-      count={events.length}
       action={
-        events.length > 0 ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={clearEvents}
-            className="h-6 px-2 text-xs text-muted"
-          >
-            Clear
-          </Button>
-        ) : undefined
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={clearEvents}
+          className="h-6 px-2 text-xs text-muted"
+        >
+          Clear
+        </Button>
       }
       testId="chat-widget-events"
     >

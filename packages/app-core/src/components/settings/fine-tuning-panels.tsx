@@ -1,26 +1,21 @@
-/**
- * Sub-components and helpers for FineTuningView.
- * Extracted from FineTuningView.tsx.
- */
-
 import type {
-  StreamEventEnvelope,
   TrainingDatasetRecord,
   TrainingJobRecord,
   TrainingModelRecord,
   TrainingStreamEvent,
   TrainingTrajectoryDetail,
   TrainingTrajectoryList,
-} from "@elizaos/app-core/api";
-import { formatTime } from "@elizaos/app-core/components";
+} from "../../api/client-types-config";
+import type { StreamEventEnvelope } from "../../api/client-types-core";
+import { formatTime } from "../../utils/format";
+import { Button } from "@elizaos/ui/components/ui/button";
 import {
-  Button,
   Select,
   SelectContent,
   SelectItem,
   SelectValue,
-  SettingsControls,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/select";
+import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
 
 /* ── Constants ─────────────────────────────────────────────────────── */
 

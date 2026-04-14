@@ -18,7 +18,9 @@ import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
 import { req } from "../../../../test/helpers/http.ts";
 import { createLiveRuntimeChildEnv } from "../../../../test/helpers/live-child-env.ts";
 
-const LIVE = process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+const LIVE =
+  process.env.MILADY_LIVE_TEST === "1" ||
+  process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 const CONNECTOR_CASES = [
   {

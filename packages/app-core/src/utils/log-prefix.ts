@@ -30,11 +30,7 @@ export function getLogPrefix(): string {
       if (pkg.name) {
         let name = pkg.name;
         if (name.startsWith("@")) name = name.split("/")[1];
-        if (
-          name === "elizaos" ||
-          
-          name.includes("eliza")
-        ) {
+        if (name === "elizaos" || name.includes("eliza")) {
           cachedPrefix = "[eliza]";
           return cachedPrefix;
         }

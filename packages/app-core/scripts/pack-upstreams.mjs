@@ -8,16 +8,17 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const ROOT = path.resolve(__dirname, "..");
+const ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 const ARTIFACTS_DIR = path.join(ROOT, "artifacts");
 
-// Target packages to pack (MVP for Phase 5)
+// Target packages to pack (MVP for Phase 5).
+// @elizaos/core now contains the orchestrator runtime, so pairing it with one
+// vendored plugin proves both core and plugin tarballs build cleanly.
 const TARGETS = [
-  path.join(ROOT, "eliza", "packages", "typescript"), // @elizaos/core (includes embedded agent-orchestrator)
+  path.join(ROOT, "eliza", "packages", "typescript"), // @elizaos/core
+  path.join(ROOT, "eliza", "plugins", "plugin-sql", "typescript"), // representative vendored plugin
 ];
 
 function runCommand(command, args, cwd) {

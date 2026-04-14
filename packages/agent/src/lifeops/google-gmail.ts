@@ -1,5 +1,4 @@
 import type { LifeOpsGmailMessageSummary } from "@elizaos/shared/contracts/lifeops";
-import { GoogleApiError } from "./google-api-error.js";
 import { googleApiFetch } from "./google-fetch.js";
 
 const GOOGLE_GMAIL_MESSAGES_ENDPOINT =
@@ -68,7 +67,7 @@ function readGoogleGmailErrorPrefix(status: number): string {
   return `Google Gmail request failed with ${status}`;
 }
 
-async function readGoogleGmailError(response: Response): Promise<string> {
+async function _readGoogleGmailError(response: Response): Promise<string> {
   const text = await response.text();
   if (!text) {
     return readGoogleGmailErrorPrefix(response.status);

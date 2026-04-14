@@ -1,6 +1,6 @@
 import process from "node:process";
 
-export const MILADY_GITHUB_REPOSITORY = "milady-ai/milady";
+export const ELIZA_GITHUB_REPOSITORY = "elizaos/eliza";
 const CDN_ORIGIN = "https://cdn.jsdelivr.net/gh";
 const RAW_GITHUB_ORIGIN = "https://raw.githubusercontent.com";
 const HOMEPAGE_ASSET_ROOT = "apps/homepage/public";
@@ -14,24 +14,24 @@ function normalizeReleaseTag(value) {
   return normalized.startsWith("v") ? normalized : `v${normalized}`;
 }
 
-export function resolveMiladyReleaseTag({ env = process.env } = {}) {
+export function resolveElizaReleaseTag({ env = process.env } = {}) {
   return normalizeReleaseTag(
-    env.MILADY_RELEASE_TAG || env.RELEASE_TAG || env.GITHUB_REF_NAME,
+    env.ELIZA_RELEASE_TAG || env.RELEASE_TAG || env.GITHUB_REF_NAME,
   );
 }
 
-export function resolveMiladyAssetRepository({ env = process.env } = {}) {
+export function resolveElizaAssetRepository({ env = process.env } = {}) {
   const configured =
-    env.MILADY_ASSET_GITHUB_REPOSITORY?.trim() || env.GITHUB_REPOSITORY?.trim();
-  return configured || MILADY_GITHUB_REPOSITORY;
+    env.ELIZA_ASSET_GITHUB_REPOSITORY?.trim() || env.GITHUB_REPOSITORY?.trim();
+  return configured || ELIZA_GITHUB_REPOSITORY;
 }
 
-export function isCanonicalMiladyRepository(repository) {
-  return repository === MILADY_GITHUB_REPOSITORY;
+export function isCanonicalElizaRepository(repository) {
+  return repository === ELIZA_GITHUB_REPOSITORY;
 }
 
 export function buildJsDelivrAssetBase({
-  repository = MILADY_GITHUB_REPOSITORY,
+  repository = ELIZA_GITHUB_REPOSITORY,
   releaseTag,
   assetRoot,
 }) {
@@ -43,7 +43,7 @@ export function buildJsDelivrAssetBase({
 }
 
 export function buildRawGitHubAssetBase({
-  repository = MILADY_GITHUB_REPOSITORY,
+  repository = ELIZA_GITHUB_REPOSITORY,
   releaseTag,
   assetRoot,
 }) {
@@ -55,7 +55,7 @@ export function buildRawGitHubAssetBase({
 }
 
 export function buildManagedAssetUrl({
-  repository = MILADY_GITHUB_REPOSITORY,
+  repository = ELIZA_GITHUB_REPOSITORY,
   releaseTag,
   assetRoot,
   assetPath,
@@ -71,7 +71,7 @@ export function buildManagedAssetUrl({
 }
 
 export function buildReleaseValidationAssetUrl({
-  repository = MILADY_GITHUB_REPOSITORY,
+  repository = ELIZA_GITHUB_REPOSITORY,
   releaseTag,
   assetRoot,
   assetPath,
@@ -86,13 +86,13 @@ export function buildReleaseValidationAssetUrl({
   return new URL(normalizedAssetPath, base).toString();
 }
 
-export function resolveMiladyAssetBaseUrls({
+export function resolveElizaAssetBaseUrls({
   env = process.env,
-  releaseTag = resolveMiladyReleaseTag({ env }),
-  repository = resolveMiladyAssetRepository({ env }),
+  releaseTag = resolveElizaReleaseTag({ env }),
+  repository = resolveElizaAssetRepository({ env }),
 } = {}) {
   const explicitAppBase =
-    env.VITE_ASSET_BASE_URL?.trim() || env.MILADY_ASSET_BASE_URL?.trim() || "";
+    env.VITE_ASSET_BASE_URL?.trim() || env.ELIZA_ASSET_BASE_URL?.trim() || "";
   const explicitHomepageBase =
     env.VITE_HOMEPAGE_ASSET_BASE_URL?.trim() ||
     env.HOMEPAGE_ASSET_BASE_URL?.trim() ||
@@ -115,4 +115,10 @@ export function resolveMiladyAssetBaseUrls({
         assetRoot: HOMEPAGE_ASSET_ROOT,
       }),
   };
+}
+
+// Milady scripts still import the repo-local alias while the shared helper
+// remains named for the upstream elizaOS package.
+export function resolveMiladyAssetBaseUrls(options = {}) {
+  return resolveElizaAssetBaseUrls(options);
 }
