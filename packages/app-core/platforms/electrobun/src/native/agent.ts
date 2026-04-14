@@ -1243,7 +1243,6 @@ export class AgentManager {
       const childEnv: Record<string, string> = {
         ...(process.env as Record<string, string>),
         ELIZA_API_PORT: String(apiPort),
-        ELIZA_API_PORT: String(apiPort),
         ELIZA_PORT: String(apiPort),
       };
       childEnv.ELIZA_NAMESPACE =
