@@ -16,8 +16,6 @@ from elizaos.types import Action, ActionResult, Content
 from ..types import TrustContext, TrustRequirements
 
 if TYPE_CHECKING:
-    from uuid import UUID
-
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
 
     from ..service import TrustEngineService
@@ -50,9 +48,7 @@ class RequestElevationAction:
             "TEMPORARY_PERMISSION_REQUEST",
         ]
     )
-    description: str = (
-        "Request temporary elevation of permissions for a specific action"
-    )
+    description: str = "Request temporary elevation of permissions for a specific action"
 
     async def validate(
         self,
@@ -63,8 +59,14 @@ class RequestElevationAction:
         """Validate that the message mentions elevation/permission keywords."""
         text = (message.content.text if message.content else "").lower()
         elevation_keywords = {
-            "request", "elevation", "elevate", "permission", "privilege",
-            "access", "grant", "temporary",
+            "request",
+            "elevation",
+            "elevate",
+            "permission",
+            "privilege",
+            "access",
+            "grant",
+            "temporary",
         }
         return any(kw in text for kw in elevation_keywords)
 
@@ -77,7 +79,7 @@ class RequestElevationAction:
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> ActionResult:
-        entity_id: UUID | None = message.entity_id
+        entity_id = message.entity_id
         if entity_id is None:
             return ActionResult(
                 text="Cannot process elevation request: no entity specified.",
@@ -98,17 +100,17 @@ class RequestElevationAction:
             )
 
         # Parse the request from message content
-        text = (message.content.text if message.content else "")
+        text = message.content.text if message.content else ""
         request_data = _try_parse_json(text)
 
         requested_action = (request_data or {}).get("action", "")
         requested_resource = (request_data or {}).get("resource", "*")
-        justification = (request_data or {}).get("justification", text)
+        (request_data or {}).get("justification", text)
         duration_minutes = int((request_data or {}).get("duration", 60))
 
         if not requested_action:
             hint = (
-                'Please specify the action you need elevated permissions for. '
+                "Please specify the action you need elevated permissions for. "
                 'Example: "I need to manage roles to help moderate the channel"'
             )
             if callback:
@@ -131,18 +133,14 @@ class RequestElevationAction:
             "view_audit_log": 50.0,
         }
         default_threshold = 60.0
-        required_trust = action_trust_thresholds.get(
-            requested_action.lower(), default_threshold
-        )
+        required_trust = action_trust_thresholds.get(requested_action.lower(), default_threshold)
 
         requirements = TrustRequirements(
             minimum_trust=required_trust,
             minimum_interactions=3,
             minimum_confidence=0.2,
         )
-        decision = await trust_engine.evaluate_trust_decision(
-            entity_id, requirements, context
-        )
+        decision = await trust_engine.evaluate_trust_decision(entity_id, requirements, context)
 
         if decision.allowed:
             expiry_minutes = duration_minutes
@@ -155,9 +153,7 @@ class RequestElevationAction:
             )
 
             if callback:
-                await callback(
-                    Content(text=response_text, actions=["REQUEST_ELEVATION"])
-                )
+                await callback(Content(text=response_text, actions=["REQUEST_ELEVATION"]))
 
             return ActionResult(
                 text=response_text,
@@ -179,21 +175,15 @@ class RequestElevationAction:
             )
         else:
             denial_parts = [f"Elevation request denied: {decision.reason}"]
-            denial_parts.append(
-                f"\nYour current trust score is {profile.overall_trust:.0f}/100."
-            )
+            denial_parts.append(f"\nYour current trust score is {profile.overall_trust:.0f}/100.")
             if decision.suggestions:
-                suggestions_text = "\n".join(
-                    f"- {s}" for s in decision.suggestions
-                )
+                suggestions_text = "\n".join(f"- {s}" for s in decision.suggestions)
                 denial_parts.append(f"\nSuggestions:\n{suggestions_text}")
 
             denial_text = "\n".join(denial_parts)
 
             if callback:
-                await callback(
-                    Content(text=denial_text, actions=["REQUEST_ELEVATION"])
-                )
+                await callback(Content(text=denial_text, actions=["REQUEST_ELEVATION"]))
 
             return ActionResult(
                 text=denial_text,

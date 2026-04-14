@@ -50,12 +50,18 @@ async def _handler(
     result = await runtime.use_model(ModelType.TEXT_SMALL, prompt=prompt)
     parsed = parse_key_value_xml(str(result))
 
-    if not parsed or not isinstance(parsed.get("title"), str) or not isinstance(parsed.get("content"), str):
+    if (
+        not parsed
+        or not isinstance(parsed.get("title"), str)
+        or not isinstance(parsed.get("content"), str)
+    ):
         if callback:
-            await callback(Content(
-                text="I couldn't understand what you want me to save. Please provide a clear title and content.",
-                actions=["CLIPBOARD_WRITE_FAILED"],
-            ))
+            await callback(
+                Content(
+                    text="I couldn't understand what you want me to save. Please provide a clear title and content.",
+                    actions=["CLIPBOARD_WRITE_FAILED"],
+                )
+            )
         return ActionResult(text="Failed to extract write info", success=False)
 
     tags = None
@@ -67,7 +73,8 @@ async def _handler(
         from ..types import ClipboardWriteOptions
 
         entry = await service.write(
-            str(parsed["title"]), str(parsed["content"]),
+            str(parsed["title"]),
+            str(parsed["content"]),
             ClipboardWriteOptions(tags=tags),
         )
         msg = (
@@ -80,7 +87,9 @@ async def _handler(
         return ActionResult(text=msg, success=True, values={"entryId": entry.id})
     except Exception as e:
         if callback:
-            await callback(Content(text=f"Failed to save the note: {e}", actions=["CLIPBOARD_WRITE_FAILED"]))
+            await callback(
+                Content(text=f"Failed to save the note: {e}", actions=["CLIPBOARD_WRITE_FAILED"])
+            )
         return ActionResult(text="Failed to write to clipboard", success=False)
 
 

@@ -104,9 +104,7 @@ async def get_plugin_configuration_status(
     # Build dynamic keywords from loaded plugin names
     dynamic_keywords: list[str] = []
     if pm_svc is not None:
-        dynamic_keywords = keywords_from_plugin_names(
-            [p.name for p in pm_svc.get_all_plugins()]
-        )
+        dynamic_keywords = keywords_from_plugin_names([p.name for p in pm_svc.get_all_plugins()])
     relevance_keywords = build_provider_keywords(
         PLUGIN_CONFIGURATION_STATUS_KEYWORDS,
         dynamic_keywords,

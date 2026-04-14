@@ -165,7 +165,7 @@ export const StarterPluginTestSuite: TestSuite = {
 
           // Verify the response includes the expected action
           const responseActions = response.actions;
-          if (!responseActions || !responseActions.includes("HELLO_WORLD")) {
+          if (!responseActions?.includes("HELLO_WORLD")) {
             throw new Error("Response did not include HELLO_WORLD action");
           }
 

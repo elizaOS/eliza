@@ -7,16 +7,16 @@ entities in a world/server context.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from elizaos.types import Action, ActionResult, Content
 
 if TYPE_CHECKING:
-    from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State, UUID
+    from elizaos.types import UUID, HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
 
 
-class Role(str, Enum):
+class Role(StrEnum):
     """Standard role hierarchy."""
 
     OWNER = "OWNER"
@@ -24,9 +24,7 @@ class Role(str, Enum):
     NONE = "NONE"
 
 
-def _can_modify_role(
-    current_role: Role, target_role: Role | None, new_role: Role
-) -> bool:
+def _can_modify_role(current_role: Role, target_role: Role | None, new_role: Role) -> bool:
     """Check if *current_role* is allowed to change *target_role* to *new_role*."""
     if target_role == current_role:
         return False
@@ -59,8 +57,7 @@ class UpdateRoleAction:
         ]
     )
     description: str = (
-        "Assigns a role (Admin, Owner, None) to a user or list of users "
-        "in a channel."
+        "Assigns a role (Admin, Owner, None) to a user or list of users in a channel."
     )
 
     async def validate(
@@ -72,8 +69,14 @@ class UpdateRoleAction:
         """Validate that the message is in a group context with role keywords."""
         text = (message.content.text if message.content else "").lower()
         role_keywords = {
-            "role", "admin", "owner", "permission", "promote", "demote",
-            "assign", "make",
+            "role",
+            "admin",
+            "owner",
+            "permission",
+            "promote",
+            "demote",
+            "assign",
+            "make",
         }
         has_keyword = any(kw in text for kw in role_keywords)
 
@@ -135,7 +138,7 @@ class UpdateRoleAction:
         # Parse the message for role assignments
         # Simple heuristic: look for patterns like "make <name> admin" or
         # "<name> -> OWNER", etc.
-        text = (message.content.text if message.content else "")
+        text = message.content.text if message.content else ""
         assignments = _extract_assignments(text)
 
         if not assignments:
@@ -185,11 +188,13 @@ class UpdateRoleAction:
 
             roles[target_entity_id] = new_role.value
             world_updated = True
-            updated_roles.append({
-                "entityName": target_name,
-                "entityId": target_entity_id,
-                "newRole": new_role.value,
-            })
+            updated_roles.append(
+                {
+                    "entityName": target_name,
+                    "entityId": target_entity_id,
+                    "newRole": new_role.value,
+                }
+            )
 
             if callback:
                 await callback(
@@ -247,25 +252,19 @@ def _extract_assignments(text: str) -> list[tuple[str, str]]:
     role_names = {"owner", "admin", "none"}
 
     # Pattern: "make <name> (an) <role>"
-    for m in re.finditer(
-        r"\bmake\s+@?(\w+)\s+(?:an?\s+)?(\w+)", text, re.IGNORECASE
-    ):
+    for m in re.finditer(r"\bmake\s+@?(\w+)\s+(?:an?\s+)?(\w+)", text, re.IGNORECASE):
         name, role = m.group(1), m.group(2).lower()
         if role in role_names:
             results.append((name, role.upper()))
 
     # Pattern: "set <name> as <role>"
-    for m in re.finditer(
-        r"\bset\s+@?(\w+)\s+as\s+(\w+)", text, re.IGNORECASE
-    ):
+    for m in re.finditer(r"\bset\s+@?(\w+)\s+as\s+(\w+)", text, re.IGNORECASE):
         name, role = m.group(1), m.group(2).lower()
         if role in role_names:
             results.append((name, role.upper()))
 
     # Pattern: "assign <role> to <name>"
-    for m in re.finditer(
-        r"\bassign\s+(\w+)\s+to\s+@?(\w+)", text, re.IGNORECASE
-    ):
+    for m in re.finditer(r"\bassign\s+(\w+)\s+to\s+@?(\w+)", text, re.IGNORECASE):
         role, name = m.group(1).lower(), m.group(2)
         if role in role_names:
             results.append((name, role.upper()))
@@ -277,9 +276,7 @@ def _extract_assignments(text: str) -> list[tuple[str, str]]:
     return results
 
 
-def _find_entity_id(
-    name: str, roles: dict[str, str]
-) -> str | None:
+def _find_entity_id(name: str, roles: dict[str, str]) -> str | None:
     """Try to find an entity ID by name in the roles dict.
 
     In a full implementation this would query the runtime's entity store.

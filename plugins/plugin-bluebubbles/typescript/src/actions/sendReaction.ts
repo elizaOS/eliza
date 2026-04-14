@@ -73,7 +73,7 @@ export const sendReactionAction: Action = {
 		);
 		const currentState = state ?? (await runtime.composeState(message));
 
-		if (!bbService || !bbService.isConnected()) {
+		if (!bbService?.isConnected()) {
 			if (callback) {
 				await callback({
 					text: "BlueBubbles service is not available.",
@@ -107,7 +107,7 @@ export const sendReactionAction: Action = {
 			}
 		}
 
-		if (!reactionInfo || !reactionInfo.emoji) {
+		if (!reactionInfo?.emoji) {
 			if (callback) {
 				await callback({
 					text: "I couldn't understand the reaction. Please specify an emoji.",

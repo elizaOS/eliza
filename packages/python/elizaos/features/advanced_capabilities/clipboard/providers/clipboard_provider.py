@@ -27,20 +27,14 @@ async def _get_clipboard(
     state: State | None = None,
 ) -> ProviderResult:
     try:
-        entity_id = (
-            str(message.entity_id)
-            if message.entity_id
-            else None
-        )
+        entity_id = str(message.entity_id) if message.entity_id else None
         service = create_task_clipboard_service(runtime)
         snapshot = await service.get_snapshot(entity_id)
         count = len(snapshot.items)
 
         lines = [f"Clipboard usage: {count}/{snapshot.max_items}."]
         if count > 0:
-            lines.append(
-                "Clear unused clipboard state when it is no longer needed."
-            )
+            lines.append("Clear unused clipboard state when it is no longer needed.")
 
             if count >= snapshot.max_items - 1:
                 oldest = snapshot.items[-1]
@@ -80,9 +74,7 @@ async def _get_clipboard(
             values={
                 "clipboardCount": count,
                 "clipboardUsage": f"{count}/{snapshot.max_items}",
-                "clipboardItemIds": ", ".join(
-                    item.id for item in snapshot.items
-                ),
+                "clipboardItemIds": ", ".join(item.id for item in snapshot.items),
             },
         )
     except Exception as e:

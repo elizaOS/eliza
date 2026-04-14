@@ -22,6 +22,7 @@ export type ContextSignalKey =
   | "lifeops_update"
   | "negative"
   | "read_channel"
+  | "read_messages"
   | "search_conversations"
   | "search_entity"
   | "send_admin_message"
@@ -203,6 +204,12 @@ const CONTEXT_SIGNAL_SPECS: Record<ContextSignalKey, ContextSignalSpec> = {
     keywordKeys: {
       strong: "contextSignal.read_channel.strong",
       weak: "contextSignal.read_channel.weak",
+    },
+  },
+  read_messages: {
+    keywordKeys: {
+      strong: "contextSignal.read_messages.strong",
+      weak: "contextSignal.read_messages.weak",
     },
   },
   stream_control: {

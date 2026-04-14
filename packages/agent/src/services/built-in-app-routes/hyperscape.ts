@@ -48,7 +48,9 @@ function resolveAgentId(
   runtime: IAgentRuntime | null,
   viewer: AppLaunchResult["viewer"] | null,
 ): string | null {
-  const authMsg = viewer?.authMessage as unknown as Record<string, unknown> | undefined;
+  const authMsg = viewer?.authMessage as unknown as
+    | Record<string, unknown>
+    | undefined;
   const fromViewer =
     authMsg && typeof authMsg.agentId === "string" ? authMsg.agentId : null;
   const fromRuntime =
@@ -62,15 +64,18 @@ function resolveCharacterId(
   runtime: IAgentRuntime | null,
   viewer: AppLaunchResult["viewer"] | null,
 ): string | null {
-  const authMsg = viewer?.authMessage as unknown as Record<string, unknown> | undefined;
+  const authMsg = viewer?.authMessage as unknown as
+    | Record<string, unknown>
+    | undefined;
   const fromViewer =
     authMsg && typeof authMsg.characterId === "string"
       ? authMsg.characterId
       : null;
   if (fromViewer) return fromViewer;
-  const setting = typeof runtime?.getSetting === "function"
-    ? runtime.getSetting("HYPERSCAPE_CHARACTER_ID")
-    : null;
+  const setting =
+    typeof runtime?.getSetting === "function"
+      ? runtime.getSetting("HYPERSCAPE_CHARACTER_ID")
+      : null;
   return typeof setting === "string" ? setting : null;
 }
 

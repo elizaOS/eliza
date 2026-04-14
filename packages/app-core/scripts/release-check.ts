@@ -19,10 +19,10 @@ const requiredPaths = [
 ];
 const forbiddenPrefixes = ["dist/Eliza.app/"];
 const orchestratorBrokenLifecycleTarget = "./scripts/ensure-node-pty.mjs";
-const coreTypescriptPackageJsonPath = resolve(
+const orchestratorPluginPackageJsonPath = resolve(
   "eliza",
-  "packages",
-  "typescript",
+  "plugins",
+  "plugin-agent-orchestrator",
   "package.json",
 );
 const autonomousServerPathCandidates = [
@@ -663,39 +663,39 @@ function assertBundledAgentOrchestratorInstallFix() {
   const rootPackage = JSON.parse(
     readFileSync("package.json", "utf8"),
   ) as RootPackageJson;
-  if (!bundlesDependency(rootPackage, "@elizaos/core")) {
+  if (!bundlesDependency(rootPackage, "@elizaos/plugin-agent-orchestrator")) {
     console.error(
-      "release-check: package.json must bundle @elizaos/core so packaged Eliza includes the embedded agent-orchestrator implementation.",
+      "release-check: package.json must bundle @elizaos/plugin-agent-orchestrator so packaged Eliza includes the standalone orchestrator implementation.",
     );
     process.exit(1);
   }
 
-  if (!existsSync(coreTypescriptPackageJsonPath)) {
+  if (!existsSync(orchestratorPluginPackageJsonPath)) {
     console.error(
-      "release-check: eliza/packages/typescript/package.json is missing (embedded agent-orchestrator lives in @elizaos/core).",
+      "release-check: eliza/plugins/plugin-agent-orchestrator/package.json is missing.",
     );
     process.exit(1);
   }
 
-  const corePackage = JSON.parse(
-    readFileSync(coreTypescriptPackageJsonPath, "utf8"),
+  const orchestratorPackage = JSON.parse(
+    readFileSync(orchestratorPluginPackageJsonPath, "utf8"),
   ) as DependencyPackageJson;
-  if (!corePackage.dependencies?.["coding-agent-adapters"]) {
+  if (!orchestratorPackage.dependencies?.["coding-agent-adapters"]) {
     console.error(
-      "release-check: @elizaos/core must list coding-agent-adapters for the embedded agent-orchestrator.",
+      "release-check: @elizaos/plugin-agent-orchestrator must list coding-agent-adapters.",
     );
     process.exit(1);
   }
   if (
     hasLifecycleScriptReferencingMissingFile(
-      corePackage,
-      dirname(coreTypescriptPackageJsonPath),
+      orchestratorPackage,
+      dirname(orchestratorPluginPackageJsonPath),
       "postinstall",
       orchestratorBrokenLifecycleTarget,
     )
   ) {
     console.error(
-      "release-check: @elizaos/core references scripts/ensure-node-pty.mjs in postinstall, but that file is missing under eliza/packages/typescript/scripts/.",
+      "release-check: @elizaos/plugin-agent-orchestrator references scripts/ensure-node-pty.mjs in postinstall, but that file is missing under eliza/plugins/plugin-agent-orchestrator/scripts/.",
     );
     process.exit(1);
   }
@@ -704,15 +704,18 @@ function assertOrchestratorVersionPinned() {
   const rootPackage = JSON.parse(
     readFileSync("package.json", "utf8"),
   ) as RootPackageJson;
-  const version = rootPackage.dependencies?.["@elizaos/core"];
+  const version =
+    rootPackage.dependencies?.["@elizaos/plugin-agent-orchestrator"];
   if (!version) {
-    console.error("release-check: @elizaos/core is not in dependencies.");
+    console.error(
+      "release-check: @elizaos/plugin-agent-orchestrator is not in dependencies.",
+    );
     process.exit(1);
   }
   if (isWorkspaceSpecifier(version)) {
-    if (!existsSync(coreTypescriptPackageJsonPath)) {
+    if (!existsSync(orchestratorPluginPackageJsonPath)) {
       console.error(
-        "release-check: @elizaos/core is configured as workspace:*, but eliza/packages/typescript/package.json is missing.",
+        "release-check: @elizaos/plugin-agent-orchestrator is configured as workspace:*, but eliza/plugins/plugin-agent-orchestrator/package.json is missing.",
       );
       process.exit(1);
     }
@@ -720,7 +723,7 @@ function assertOrchestratorVersionPinned() {
   }
   if (!isExactVersion(version)) {
     console.error(
-      `release-check: @elizaos/core must either use workspace:* for the local checkout or be pinned to an exact version, but found "${version}".`,
+      `release-check: @elizaos/plugin-agent-orchestrator must either use workspace:* for the local checkout or be pinned to an exact version, but found "${version}".`,
     );
     process.exit(1);
   }

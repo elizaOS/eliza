@@ -1,0 +1,71 @@
+import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
+import { requestRestart } from "@elizaos/shared/restart";
+
+function getPluginManager(runtime: IAgentRuntime) {
+  return runtime.getService("plugin_manager") as unknown as {
+    ejectPlugin(id: string): Promise<{
+      success: boolean;
+      pluginName: string;
+      ejectedPath: string;
+      error?: string;
+    }>;
+  } | null;
+}
+
+export const ejectPluginAction: Action = {
+  name: "EJECT_PLUGIN",
+
+  similes: ["EJECT", "FORK_PLUGIN", "CLONE_PLUGIN", "EDIT_PLUGIN_SOURCE"],
+
+  description:
+    "Clone a plugin's source code locally so edits override the npm version " +
+    "at runtime. Use this before modifying upstream plugin code.",
+
+  validate: async () => true,
+
+  handler: async (runtime, _message, _state, options) => {
+    const params = (options as HandlerOptions | undefined)?.parameters;
+    const pluginId =
+      typeof params?.pluginId === "string" ? params.pluginId.trim() : "";
+
+    if (!pluginId) {
+      return { text: "I need a plugin ID to eject.", success: false };
+    }
+
+    const mgr = getPluginManager(runtime);
+    if (!mgr) {
+      return {
+        text: "Plugin manager service is not available.",
+        success: false,
+      };
+    }
+
+    const result = await mgr.ejectPlugin(pluginId);
+    if (!result.success) {
+      return {
+        text: `Failed to eject ${pluginId}: ${result.error ?? "unknown error"}`,
+        success: false,
+      };
+    }
+
+    setTimeout(() => {
+      requestRestart(`Plugin ${result.pluginName} ejected`);
+    }, 1_000);
+
+    return {
+      text: `Ejected ${result.pluginName} to ${result.ejectedPath}. Restarting to load local source.`,
+      success: true,
+      data: { ...result },
+    };
+  },
+
+  parameters: [
+    {
+      name: "pluginId",
+      description:
+        "Plugin ID or npm package to eject (e.g. 'discord' or '@elizaos/plugin-discord')",
+      required: true,
+      schema: { type: "string" as const },
+    },
+  ],
+};

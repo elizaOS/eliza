@@ -15,25 +15,40 @@ import {
   type State,
 } from "@elizaos/core";
 import { findKeywordTermMatch } from "@elizaos/shared/validation-keywords";
-import { hasOwnerAccess } from "../security/access.js";
 import {
-  WORKBENCH_TASK_TAG,
   readTaskCompleted,
   readTaskMetadata,
   toWorkbenchTask,
+  WORKBENCH_TASK_TAG,
 } from "../api/workbench-helpers.js";
+import { hasOwnerAccess } from "../security/access.js";
 import { readTriggerConfig } from "../triggers/runtime.js";
 
 const MANAGE_TASKS_ACTION = "MANAGE_TASKS";
 
 const TASK_INTENT_TERMS: string[] = [
-  "create task", "add task", "new task", "make task",
-  "complete task", "finish task", "done with task", "mark task done",
-  "delete task", "remove task",
-  "update task", "edit task", "change task",
-  "list tasks", "show tasks", "my tasks", "what are my tasks",
-  "add a todo", "add a to-do", "create a to do",
-  "task list", "check off",
+  "create task",
+  "add task",
+  "new task",
+  "make task",
+  "complete task",
+  "finish task",
+  "done with task",
+  "mark task done",
+  "delete task",
+  "remove task",
+  "update task",
+  "edit task",
+  "change task",
+  "list tasks",
+  "show tasks",
+  "my tasks",
+  "what are my tasks",
+  "add a todo",
+  "add a to-do",
+  "create a to do",
+  "task list",
+  "check off",
 ];
 
 interface TaskExtraction {
@@ -169,7 +184,8 @@ export const manageTasksAction: Action = {
       if (operation === "list") {
         if (workbenchTasks.length === 0) {
           const msg = "You have no tasks right now.";
-          if (callback) await callback({ text: msg, action: MANAGE_TASKS_ACTION });
+          if (callback)
+            await callback({ text: msg, action: MANAGE_TASKS_ACTION });
           return { success: true, text: msg };
         }
         const lines = workbenchTasks.map((t) => {
@@ -178,7 +194,8 @@ export const manageTasksAction: Action = {
           return `${done ? "✓" : "○"} ${t.name}${desc}`;
         });
         const msg = `Your tasks:\n${lines.join("\n")}`;
-        if (callback) await callback({ text: msg, action: MANAGE_TASKS_ACTION });
+        if (callback)
+          await callback({ text: msg, action: MANAGE_TASKS_ACTION });
         return { success: true, text: msg };
       }
 
@@ -215,14 +232,19 @@ export const manageTasksAction: Action = {
       if (operation === "complete") {
         const taskId = extraction.taskId;
         if (!taskId) {
-          return { success: false, text: "Could not identify which task to complete." };
+          return {
+            success: false,
+            text: "Could not identify which task to complete.",
+          };
         }
-        const task = await runtime.getTask(taskId as `${string}-${string}-${string}-${string}-${string}`);
-        if (!task) {
+        const task = await runtime.getTask(
+          taskId as `${string}-${string}-${string}-${string}-${string}`,
+        );
+        if (!task?.id) {
           return { success: false, text: `Task not found: ${taskId}` };
         }
         const metadata = readTaskMetadata(task);
-        await runtime.updateTask(task.id!, {
+        await runtime.updateTask(task.id, {
           metadata: { ...metadata, isCompleted: true },
         });
         const msg = `Completed task "${task.name}".`;
@@ -233,16 +255,25 @@ export const manageTasksAction: Action = {
             metadata: { taskId, operation: "complete" },
           });
         }
-        return { success: true, text: msg, data: { taskId, operation: "complete" } };
+        return {
+          success: true,
+          text: msg,
+          data: { taskId, operation: "complete" },
+        };
       }
 
       // ── DELETE ──
       if (operation === "delete") {
         const taskId = extraction.taskId;
         if (!taskId) {
-          return { success: false, text: "Could not identify which task to delete." };
+          return {
+            success: false,
+            text: "Could not identify which task to delete.",
+          };
         }
-        const task = await runtime.getTask(taskId as `${string}-${string}-${string}-${string}-${string}`);
+        const task = await runtime.getTask(
+          taskId as `${string}-${string}-${string}-${string}-${string}`,
+        );
         if (!task?.id) {
           return { success: false, text: `Task not found: ${taskId}` };
         }
@@ -255,16 +286,25 @@ export const manageTasksAction: Action = {
             metadata: { taskId, operation: "delete" },
           });
         }
-        return { success: true, text: msg, data: { taskId, operation: "delete" } };
+        return {
+          success: true,
+          text: msg,
+          data: { taskId, operation: "delete" },
+        };
       }
 
       // ── UPDATE ──
       if (operation === "update") {
         const taskId = extraction.taskId;
         if (!taskId) {
-          return { success: false, text: "Could not identify which task to update." };
+          return {
+            success: false,
+            text: "Could not identify which task to update.",
+          };
         }
-        const task = await runtime.getTask(taskId as `${string}-${string}-${string}-${string}-${string}`);
+        const task = await runtime.getTask(
+          taskId as `${string}-${string}-${string}-${string}-${string}`,
+        );
         if (!task?.id) {
           return { success: false, text: `Task not found: ${taskId}` };
         }
@@ -280,7 +320,11 @@ export const manageTasksAction: Action = {
             metadata: { taskId, operation: "update" },
           });
         }
-        return { success: true, text: msg, data: { taskId, operation: "update" } };
+        return {
+          success: true,
+          text: msg,
+          data: { taskId, operation: "update" },
+        };
       }
 
       return { success: false, text: `Unknown operation: ${operation}` };

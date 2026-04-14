@@ -11,19 +11,18 @@ so the service provides registry management and status reporting.
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from elizaos.types import Service
 
 from .types import (
+    PROTECTED_PLUGINS,
     ComponentRegistration,
     EjectedPluginInfo,
     PluginComponents,
     PluginManagerConfig,
-    PluginMetadata,
     PluginState,
     PluginStatus,
-    PROTECTED_PLUGINS,
 )
 
 if TYPE_CHECKING:
@@ -68,9 +67,7 @@ class PluginManagerService(Service):
         self._plugins.clear()
         self._component_registry.clear()
         if self._runtime:
-            self._runtime.logger.info(
-                "PluginManagerService stopped", src="service:plugin_manager"
-            )
+            self._runtime.logger.info("PluginManagerService stopped", src="service:plugin_manager")
 
     # ------------------------------------------------------------------
     # Registry
@@ -88,33 +85,25 @@ class PluginManagerService(Service):
             for action in getattr(plugin, "actions", []) or []:
                 action_name = getattr(action, "name", str(action))
                 components.actions.add(action_name)
-                self._register_component(
-                    plugin_id, "action", action_name
-                )
+                self._register_component(plugin_id, "action", action_name)
 
             # Track providers
             for provider in getattr(plugin, "providers", []) or []:
                 provider_name = getattr(provider, "name", str(provider))
                 components.providers.add(provider_name)
-                self._register_component(
-                    plugin_id, "provider", provider_name
-                )
+                self._register_component(plugin_id, "provider", provider_name)
 
             # Track evaluators
             for evaluator in getattr(plugin, "evaluators", []) or []:
                 evaluator_name = getattr(evaluator, "name", str(evaluator))
                 components.evaluators.add(evaluator_name)
-                self._register_component(
-                    plugin_id, "evaluator", evaluator_name
-                )
+                self._register_component(plugin_id, "evaluator", evaluator_name)
 
             # Track services
             for svc_cls in getattr(plugin, "services", []) or []:
                 svc_type = getattr(svc_cls, "service_type", str(svc_cls))
                 components.services.add(svc_type)
-                self._register_component(
-                    plugin_id, "service", svc_type
-                )
+                self._register_component(plugin_id, "service", svc_type)
 
             now = time.time()
             self._plugins[plugin_id] = PluginState(
@@ -126,9 +115,7 @@ class PluginManagerService(Service):
                 components=components,
             )
 
-    def _register_component(
-        self, plugin_id: str, component_type: str, component_name: str
-    ) -> None:
+    def _register_component(self, plugin_id: str, component_type: str, component_name: str) -> None:
         entry = ComponentRegistration(
             plugin_id=plugin_id,
             component_type=component_type,
@@ -186,9 +173,7 @@ class PluginManagerService(Service):
 
     def get_total_component_count(self) -> dict[str, int]:
         """Get total count of each component type across all plugins."""
-        counts: dict[str, int] = {
-            "actions": 0, "providers": 0, "evaluators": 0, "services": 0
-        }
+        counts: dict[str, int] = {"actions": 0, "providers": 0, "evaluators": 0, "services": 0}
         for plugin in self._plugins.values():
             if plugin.components:
                 counts["actions"] += len(plugin.components.actions)
@@ -206,7 +191,7 @@ class PluginManagerService(Service):
         if self._runtime is None:
             return []
 
-        core_mgr = None
+        core_mgr: Any | None = None
         for svc in (self._runtime.services or {}).values():
             if getattr(svc, "service_type", None) == "core_manager":
                 core_mgr = svc

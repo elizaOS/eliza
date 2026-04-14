@@ -1618,12 +1618,9 @@ export async function saveTrajectory(
       return true;
     } catch (compatErr) {
       console.error("[trajectory-persistence] saveTrajectory error:", {
-        modern:
-          err instanceof Error ? err.message : String(err),
+        modern: err instanceof Error ? err.message : String(err),
         compat:
-          compatErr instanceof Error
-            ? compatErr.message
-            : String(compatErr),
+          compatErr instanceof Error ? compatErr.message : String(compatErr),
       });
       return false;
     }

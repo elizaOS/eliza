@@ -137,7 +137,7 @@ type RendererLike = Pick<
   toneMappingExposure?: number;
   xr?: THREE.WebGLRenderer["xr"];
   setAnimationLoop?: (
-    callback: ((time: number, frame?: XRFrame) => void) | null,
+    callback: ((time: number, frame?: unknown) => void) | null,
   ) => void;
 };
 

@@ -120,6 +120,11 @@ function main() {
     const pluginDir = path.join(workspaceDir, "plugin-demo");
     assertPathExists(path.join(pluginDir, "package.json"));
     assertPathExists(path.join(pluginDir, ".elizaos", "template.json"));
+    if (shouldInstallGeneratedFullstack) {
+      run("bun", ["install"], { cwd: pluginDir });
+      run("bun", ["run", "typecheck"], { cwd: pluginDir });
+      run("bun", ["run", "build"], { cwd: pluginDir });
+    }
     runCli(smokeDir, pluginDir, ["upgrade", "--check"]);
 
     runCli(smokeDir, workspaceDir, [
@@ -136,6 +141,14 @@ function main() {
     assertPathExists(path.join(fullstackDir, "eliza"));
     if (shouldInstallGeneratedFullstack) {
       run("bun", ["install"], { cwd: fullstackDir, env: fullstackInstallEnv });
+      run("bun", ["run", "typecheck"], {
+        cwd: fullstackDir,
+        env: fullstackInstallEnv,
+      });
+      run("bun", ["run", "build"], {
+        cwd: fullstackDir,
+        env: fullstackInstallEnv,
+      });
     }
     runCli(smokeDir, fullstackDir, ["upgrade", "--check"]);
 

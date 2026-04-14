@@ -77,23 +77,28 @@ def _resolve_scope(scope_hint: str, is_admin: bool) -> str:
 
 _CHARACTER_KW = re.compile(
     r"\b(personality|character|tone|style|voice|behavior|response(?:\s+style|\s+format)?|"
-    r"interaction(?:\s+style)?|preferences?|bio|topics?|name|language)\b", re.I
+    r"interaction(?:\s+style)?|preferences?|bio|topics?|name|language)\b",
+    re.I,
 )
 _DIRECT_CHANGE = re.compile(r"\b(change|update|modify|adjust|set|rename|call)\b", re.I)
 _STYLISTIC_ADJ = re.compile(
     r"\b(be|sound|act|respond|reply|talk|speak)\b[\s\S]{0,80}"
     r"\b(more|less|warmer|cooler|friendlier|formal|casual|direct|verbose|concise|"
-    r"skeptical|encouraging|supportive|detailed|brief|professional|polite)\b", re.I
+    r"skeptical|encouraging|supportive|detailed|brief|professional|polite)\b",
+    re.I,
 )
 _INTERACTION_SCOPE = re.compile(
     r"\b(with me|to me|our interactions?|when talking to me|from now on)\b", re.I
 )
 _GROUP_BEHAVIOR = re.compile(
     r"\b(group conversations?|group chats?|chime in|jump in|mentioned by name|"
-    r"directly addressed|messaged directly|only respond when)\b", re.I
+    r"directly addressed|messaged directly|only respond when)\b",
+    re.I,
 )
 _REPLY_RULE = re.compile(r"\b(avoid|only|don't|do not|stop|reply|respond|chime|jump)\b", re.I)
-_RESET_PREF = re.compile(r"\b(reset|clear)\b[\s\S]{0,40}\b(interaction preferences?|preferences?)\b", re.I)
+_RESET_PREF = re.compile(
+    r"\b(reset|clear)\b[\s\S]{0,40}\b(interaction preferences?|preferences?)\b", re.I
+)
 _SOUND_LIKE_ME = re.compile(r"\b(sound like me|be more like me|mirror my|my voice)\b", re.I)
 _RESPOND_IN_LANG = re.compile(r"\b(respond|reply|speak|talk)\s+in\s+[a-z]", re.I)
 _DIRECT_STYLE = re.compile(
@@ -102,7 +107,8 @@ _DIRECT_STYLE = re.compile(
 _STYLE_CUE = re.compile(
     r"\b(chatty|responsive|quiet|silent|brief|verbose|concise|formal|casual|warm|direct|"
     r"skeptical|encouraging|supportive|mentioned|messaged directly|directly addressed|"
-    r"group conversations?|group chats?|follow-up questions?|emoji|language)\b", re.I
+    r"group conversations?|group chats?|follow-up questions?|emoji|language)\b",
+    re.I,
 )
 
 
@@ -127,7 +133,11 @@ def _detect_intent_by_rules(message_text: str) -> dict[str, Any]:
         or (_DIRECT_STYLE.search(normalized) and _STYLE_CUE.search(normalized))
     ):
         return {
-            "intent": {"isModificationRequest": True, "requestType": "explicit", "confidence": 0.95},
+            "intent": {
+                "isModificationRequest": True,
+                "requestType": "explicit",
+                "confidence": 0.95,
+            },
             "definitive": True,
             "potentialRequest": True,
         }
@@ -136,8 +146,13 @@ def _detect_intent_by_rules(message_text: str) -> dict[str, Any]:
     has_any_cue = any(
         pattern.search(normalized)
         for pattern in [
-            _CHARACTER_KW, _INTERACTION_SCOPE, _GROUP_BEHAVIOR,
-            _STYLISTIC_ADJ, _RESET_PREF, _SOUND_LIKE_ME, _RESPOND_IN_LANG,
+            _CHARACTER_KW,
+            _INTERACTION_SCOPE,
+            _GROUP_BEHAVIOR,
+            _STYLISTIC_ADJ,
+            _RESET_PREF,
+            _SOUND_LIKE_ME,
+            _RESPOND_IN_LANG,
         ]
     )
 
@@ -250,9 +265,7 @@ def _build_modification_from_record(
     return mod or None
 
 
-async def _detect_modification_intent(
-    runtime: IAgentRuntime, message_text: str
-) -> dict[str, Any]:
+async def _detect_modification_intent(runtime: IAgentRuntime, message_text: str) -> dict[str, Any]:
     """LLM-based intent detection with heuristic fallback."""
     heuristic = _detect_intent_by_rules(message_text)
     if heuristic["definitive"]:
@@ -283,8 +296,11 @@ confidence: 0.93"""
 
         confidence = _norm_num(raw.get("confidence")) or 0
         llm_result = {
-            "isModificationRequest": (_norm_bool(raw.get("isModificationRequest")) or False) and confidence > 0.5,
-            "requestType": raw.get("requestType", "none") if isinstance(raw.get("requestType"), str) else "none",
+            "isModificationRequest": (_norm_bool(raw.get("isModificationRequest")) or False)
+            and confidence > 0.5,
+            "requestType": raw.get("requestType", "none")
+            if isinstance(raw.get("requestType"), str)
+            else "none",
             "confidence": confidence,
         }
         return llm_result if llm_result["isModificationRequest"] else heuristic["intent"]
@@ -302,12 +318,14 @@ async def _build_recent_conversation(
     runtime: IAgentRuntime, message: Memory, max_messages: int = 6
 ) -> str:
     try:
-        recent = await runtime.get_memories({
-            "roomId": str(message.room_id),
-            "count": max_messages,
-            "unique": True,
-            "tableName": "messages",
-        })
+        recent = await runtime.get_memories(
+            {
+                "roomId": str(message.room_id),
+                "count": max_messages,
+                "unique": True,
+                "tableName": "messages",
+            }
+        )
         return "\n".join(
             f"{getattr(runtime.character, 'name', 'Agent') if m.entity_id == runtime.agent_id else 'User'}: {(m.content.text or '').strip()}"
             for m in recent[-max_messages:]
@@ -328,7 +346,9 @@ def _request_explicitly_renames(text: str) -> bool:
     return bool(
         re.search(r"\bcall yourself\b", n)
         or re.search(r"\brename\b[\s\S]{0,30}\b(?:yourself|the agent|the bot|it|you)\b", n)
-        or re.search(r"\b(?:change|update|set)\b[\s\S]{0,30}\b(?:your|its|the agent'?s)?\s*name\b", n)
+        or re.search(
+            r"\b(?:change|update|set)\b[\s\S]{0,30}\b(?:your|its|the agent'?s)?\s*name\b", n
+        )
     )
 
 
@@ -465,6 +485,7 @@ async def _check_admin(runtime: IAgentRuntime, message: Memory) -> bool:
     try:
         # Use the elizaOS role system
         from elizaos.types import check_sender_role  # type: ignore[attr-defined]
+
         role_result = await check_sender_role(runtime, message)
         if not role_result:
             return False
@@ -517,7 +538,8 @@ def _infer_preference_category(text: str) -> str:
         return "tone"
     if re.search(
         r"\b(chime|jump in|follow-up question|emoji|language|mentioned|directly addressed|messaged directly)\b",
-        text, re.I,
+        text,
+        re.I,
     ):
         return "style"
     return "other"
@@ -582,12 +604,14 @@ async def _handle_preference_reset(
     message: Memory,
     callback: HandlerCallback | None,
 ) -> ActionResult:
-    existing = await runtime.get_memories({
-        "entityId": str(message.entity_id),
-        "roomId": str(runtime.agent_id),
-        "tableName": USER_PREFS_TABLE,
-        "count": MAX_PREFS_PER_USER + 5,
-    })
+    existing = await runtime.get_memories(
+        {
+            "entityId": str(message.entity_id),
+            "roomId": str(runtime.agent_id),
+            "tableName": USER_PREFS_TABLE,
+            "count": MAX_PREFS_PER_USER + 5,
+        }
+    )
 
     if not existing:
         if callback:
@@ -606,7 +630,11 @@ async def _handle_preference_reset(
     msg = f"I've cleared {deleted_count} custom interaction preference(s). I'll go back to my default interaction style with you."
     if callback:
         await callback(Content(text=msg, actions=["MODIFY_CHARACTER"]))
-    return ActionResult(text=f"Reset {deleted_count} preferences", success=True, values={"resetCount": deleted_count})
+    return ActionResult(
+        text=f"Reset {deleted_count} preferences",
+        success=True,
+        values={"resetCount": deleted_count},
+    )
 
 
 async def _handle_user_preference(
@@ -619,30 +647,40 @@ async def _handle_user_preference(
         preference = await _parse_user_preference(runtime, message, message_text)
         if not preference:
             if callback:
-                await callback(Content(
-                    text="I couldn't understand your preference. Could you be more specific? "
-                    "For example: 'be more formal with me' or 'don't use emojis when talking to me'."
-                ))
-            return ActionResult(text="Could not parse preference", success=False, values={"error": "parse_failed"})
+                await callback(
+                    Content(
+                        text="I couldn't understand your preference. Could you be more specific? "
+                        "For example: 'be more formal with me' or 'don't use emojis when talking to me'."
+                    )
+                )
+            return ActionResult(
+                text="Could not parse preference", success=False, values={"error": "parse_failed"}
+            )
 
         if preference["action"] == "reset":
             return await _handle_preference_reset(runtime, message, callback)
 
         # Enforce per-user limit
-        existing = await runtime.get_memories({
-            "entityId": str(message.entity_id),
-            "roomId": str(runtime.agent_id),
-            "tableName": USER_PREFS_TABLE,
-            "count": MAX_PREFS_PER_USER + 1,
-        })
+        existing = await runtime.get_memories(
+            {
+                "entityId": str(message.entity_id),
+                "roomId": str(runtime.agent_id),
+                "tableName": USER_PREFS_TABLE,
+                "count": MAX_PREFS_PER_USER + 1,
+            }
+        )
 
         if len(existing) >= MAX_PREFS_PER_USER:
             if callback:
-                await callback(Content(
-                    text=f"You already have {MAX_PREFS_PER_USER} interaction preferences set. "
-                    'Please clear some first by saying "reset my interaction preferences".'
-                ))
-            return ActionResult(text="Preference limit reached", success=False, values={"error": "limit_exceeded"})
+                await callback(
+                    Content(
+                        text=f"You already have {MAX_PREFS_PER_USER} interaction preferences set. "
+                        'Please clear some first by saying "reset my interaction preferences".'
+                    )
+                )
+            return ActionResult(
+                text="Preference limit reached", success=False, values={"error": "limit_exceeded"}
+            )
 
         # Check for duplicates
         is_dup = any(
@@ -651,8 +689,12 @@ async def _handle_user_preference(
         )
         if is_dup:
             if callback:
-                await callback(Content(text="I already have that preference noted for our interactions."))
-            return ActionResult(text="Preference already exists", success=True, values={"duplicate": True})
+                await callback(
+                    Content(text="I already have that preference noted for our interactions.")
+                )
+            return ActionResult(
+                text="Preference already exists", success=True, values={"duplicate": True}
+            )
 
         # Store the preference
         await runtime.create_memory(
@@ -682,7 +724,9 @@ async def _handle_user_preference(
 
         logger.info(
             "Stored per-user preference: userId=%s, text=%s, category=%s",
-            message.entity_id, preference["text"], preference["category"],
+            message.entity_id,
+            preference["text"],
+            preference["category"],
         )
 
         return ActionResult(
@@ -694,8 +738,12 @@ async def _handle_user_preference(
     except Exception as e:
         logger.error("Error storing user preference: %s", e)
         if callback:
-            await callback(Content(text="I encountered an error saving your preference. Please try again."))
-        return ActionResult(text="Error storing preference", success=False, values={"error": str(e)})
+            await callback(
+                Content(text="I encountered an error saving your preference. Please try again.")
+            )
+        return ActionResult(
+            text="Error storing preference", success=False, values={"error": str(e)}
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -736,12 +784,14 @@ async def _validate(
     intent_result = _detect_intent_by_rules(message_text)
 
     # Check for evolution suggestions
-    evolution_suggestions = await runtime.get_memories({
-        "entityId": str(runtime.agent_id),
-        "roomId": str(message.room_id),
-        "count": 5,
-        "tableName": "character_evolution",
-    })
+    evolution_suggestions = await runtime.get_memories(
+        {
+            "entityId": str(runtime.agent_id),
+            "roomId": str(message.room_id),
+            "count": 5,
+            "tableName": "character_evolution",
+        }
+    )
 
     has_recent_evolution = False
     for suggestion in evolution_suggestions:
@@ -753,7 +803,10 @@ async def _validate(
                     has_recent_evolution = True
                     break
 
-    if intent_result["intent"]["isModificationRequest"] and intent_result["intent"]["requestType"] == "explicit":
+    if (
+        intent_result["intent"]["isModificationRequest"]
+        and intent_result["intent"]["requestType"] == "explicit"
+    ):
         logger.info("Explicit modification request detected")
         return True
 
@@ -808,22 +861,30 @@ async def _handler(
             modification = await _parse_user_modification(runtime, message, message_text)
         else:
             # Check for agent-initiated evolution
-            evolution_suggestions = await runtime.get_memories({
-                "entityId": str(runtime.agent_id),
-                "roomId": str(message.room_id),
-                "count": 1,
-                "tableName": "character_evolution",
-            })
+            evolution_suggestions = await runtime.get_memories(
+                {
+                    "entityId": str(runtime.agent_id),
+                    "roomId": str(message.room_id),
+                    "count": 1,
+                    "tableName": "character_evolution",
+                }
+            )
             if evolution_suggestions:
-                meta = evolution_suggestions[0].metadata if hasattr(evolution_suggestions[0], "metadata") else {}
+                meta = (
+                    evolution_suggestions[0].metadata
+                    if hasattr(evolution_suggestions[0], "metadata")
+                    else {}
+                )
                 if isinstance(meta, dict):
                     modification = _extract_evolution_modification(meta)
 
         if not modification:
             if callback:
-                await callback(Content(
-                    text="I don't see any clear modification instructions. Could you be more specific about how you'd like me to change?"
-                ))
+                await callback(
+                    Content(
+                        text="I don't see any clear modification instructions. Could you be more specific about how you'd like me to change?"
+                    )
+                )
             return ActionResult(
                 text="No modification found",
                 success=False,
@@ -841,7 +902,9 @@ async def _handler(
 
             acceptable = safety.get("acceptableChanges")
             if acceptable and isinstance(acceptable, dict) and acceptable:
-                response_text += " However, I can work on the appropriate improvements you mentioned."
+                response_text += (
+                    " However, I can work on the appropriate improvements you mentioned."
+                )
                 modification = acceptable
             else:
                 if callback:
@@ -921,7 +984,11 @@ async def _handler(
     except Exception as e:
         logger.error("Error in modify character action: %s", e)
         if callback:
-            await callback(Content(text="I encountered an error while trying to modify my character. Please try again."))
+            await callback(
+                Content(
+                    text="I encountered an error while trying to modify my character. Please try again."
+                )
+            )
         return ActionResult(
             text="Error in character modification",
             success=False,
@@ -937,12 +1004,25 @@ async def _handler(
 modify_character_action = Action(
     name="MODIFY_CHARACTER",
     similes=[
-        "UPDATE_PERSONALITY", "CHANGE_PERSONALITY", "UPDATE_CHARACTER",
-        "CHANGE_CHARACTER", "CHANGE_BEHAVIOR", "ADJUST_BEHAVIOR",
-        "CHANGE_TONE", "UPDATE_TONE", "CHANGE_STYLE", "UPDATE_STYLE",
-        "CHANGE_VOICE", "CHANGE_RESPONSE_STYLE", "UPDATE_RESPONSE_STYLE",
-        "EVOLVE_CHARACTER", "SELF_MODIFY", "SET_RESPONSE_STYLE",
-        "SET_LANGUAGE", "SET_INTERACTION_MODE", "SET_USER_PREFERENCE",
+        "UPDATE_PERSONALITY",
+        "CHANGE_PERSONALITY",
+        "UPDATE_CHARACTER",
+        "CHANGE_CHARACTER",
+        "CHANGE_BEHAVIOR",
+        "ADJUST_BEHAVIOR",
+        "CHANGE_TONE",
+        "UPDATE_TONE",
+        "CHANGE_STYLE",
+        "UPDATE_STYLE",
+        "CHANGE_VOICE",
+        "CHANGE_RESPONSE_STYLE",
+        "UPDATE_RESPONSE_STYLE",
+        "EVOLVE_CHARACTER",
+        "SELF_MODIFY",
+        "SET_RESPONSE_STYLE",
+        "SET_LANGUAGE",
+        "SET_INTERACTION_MODE",
+        "SET_USER_PREFERENCE",
     ],
     description=(
         "Updates the agent's character when a user asks to change personality, tone, "

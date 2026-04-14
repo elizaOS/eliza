@@ -1,7 +1,11 @@
 {
-  "root": true,
-  "parser": "@typescript-eslint/parser",
-  "plugins": ["@typescript-eslint"],
-  "extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended"],
-  "ignorePatterns": ["dist/", "build/", "node_modules/"]
+  "extends": ["@ionic/eslint-config"],
+  "ignorePatterns": [
+    "dist/",
+    "node_modules/",
+    "android/",
+    "ios/",
+    "coverage/",
+    "electrobun/src/**/*.bak"
+  ]
 }

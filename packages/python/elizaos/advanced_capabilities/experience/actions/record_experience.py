@@ -9,7 +9,6 @@ from elizaos.types import Action, ActionResult
 
 if TYPE_CHECKING:
     from elizaos.types import (
-        Content,
         HandlerCallback,
         HandlerOptions,
         IAgentRuntime,

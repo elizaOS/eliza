@@ -568,7 +568,7 @@ export function LifeOpsPageView() {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="lifeops-shell">
       <PagePanel variant="section" className="p-4 lg:p-5">
         <PagePanel.Header
           eyebrow="LifeOps"

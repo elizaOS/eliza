@@ -1,2 +1,1 @@
-export * from "./repository.js";
-export * from "./service.js";
+export * from "@elizaos/app-lifeops/lifeops";

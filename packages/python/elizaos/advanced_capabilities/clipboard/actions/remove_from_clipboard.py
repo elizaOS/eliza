@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from elizaos.types import Action, ActionResult, Content, ModelType
 from elizaos.utils.xml import parse_key_value_xml
@@ -28,14 +28,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-async def _resolve_item_id(
-    runtime: IAgentRuntime, message: Memory
-) -> str | None:
+async def _resolve_item_id(runtime: IAgentRuntime, message: Memory) -> str | None:
     """Resolve which clipboard item ID to remove."""
     # Check explicit attributes
-    item_id = getattr(message.content, "itemId", None) or getattr(
-        message.content, "item_id", None
-    )
+    item_id = getattr(message.content, "itemId", None) or getattr(message.content, "item_id", None)
     if isinstance(item_id, str) and item_id.strip():
         return item_id.strip()
 
@@ -79,12 +75,9 @@ async def _resolve_item_id(
 # ---------------------------------------------------------------------------
 
 
-async def _validate(
-    runtime: IAgentRuntime, message: Memory, _state: State | None = None
-) -> bool:
+async def _validate(runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
     has_explicit_id = isinstance(
-        getattr(message.content, "itemId", None)
-        or getattr(message.content, "item_id", None),
+        getattr(message.content, "itemId", None) or getattr(message.content, "item_id", None),
         str,
     )
     if has_explicit_id:

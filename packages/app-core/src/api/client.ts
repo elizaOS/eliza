@@ -211,7 +211,7 @@ import "./client-chat";
 import "./client-wallet";
 import "./client-cloud";
 import "./client-skills";
-import "./client-vincent";
+import "@elizaos/app-vincent/client";
 
 // ---------------------------------------------------------------------------
 // Singleton

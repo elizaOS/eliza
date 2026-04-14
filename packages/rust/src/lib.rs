@@ -41,7 +41,6 @@ pub mod features;
 pub use features::{advanced_capabilities, basic_capabilities, core_capabilities};
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub use features::{advanced_memory, advanced_planning, autonomy};
-pub mod agent_orchestrator_env;
 pub mod character;
 #[cfg(all(
     feature = "basic_capabilities-internal",

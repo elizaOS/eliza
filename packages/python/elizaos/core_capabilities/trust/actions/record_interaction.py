@@ -15,8 +15,6 @@ from elizaos.types import Action, ActionResult, Content
 from ..types import TrustEvidenceType, TrustInteraction
 
 if TYPE_CHECKING:
-    from uuid import UUID
-
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
 
     from ..service import TrustEngineService
@@ -49,7 +47,7 @@ class RecordInteractionAction:
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> ActionResult:
-        entity_id: UUID | None = message.entity_id
+        entity_id = message.entity_id
         if entity_id is None:
             return ActionResult(
                 text="Cannot record interaction: no entity specified.",

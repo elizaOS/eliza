@@ -8,9 +8,10 @@ notification support.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -28,13 +29,13 @@ MAX_ACCESS_LOG_ENTRIES = 1000
 # ---------------------------------------------------------------------------
 
 
-class SecretLevel(str, Enum):
+class SecretLevel(StrEnum):
     GLOBAL = "global"
     WORLD = "world"
     USER = "user"
 
 
-class SecretType(str, Enum):
+class SecretType(StrEnum):
     API_KEY = "api_key"
     PRIVATE_KEY = "private_key"
     PUBLIC_KEY = "public_key"
@@ -45,7 +46,7 @@ class SecretType(str, Enum):
     SECRET = "secret"
 
 
-class SecretStatus(str, Enum):
+class SecretStatus(StrEnum):
     MISSING = "missing"
     GENERATING = "generating"
     VALIDATING = "validating"
@@ -55,14 +56,14 @@ class SecretStatus(str, Enum):
     REVOKED = "revoked"
 
 
-class SecretPermissionType(str, Enum):
+class SecretPermissionType(StrEnum):
     READ = "read"
     WRITE = "write"
     DELETE = "delete"
     SHARE = "share"
 
 
-class ValidationStrategy(str, Enum):
+class ValidationStrategy(StrEnum):
     NONE = "none"
     API_KEY_OPENAI = "api_key:openai"
     API_KEY_ANTHROPIC = "api_key:anthropic"
@@ -73,7 +74,7 @@ class ValidationStrategy(str, Enum):
     CUSTOM = "custom"
 
 
-class StorageBackend(str, Enum):
+class StorageBackend(StrEnum):
     MEMORY = "memory"
     CHARACTER = "character"
     WORLD = "world"

@@ -6,11 +6,14 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["node", "bun"],
+    "types": ["node", "bun-types"],
     "typeRoots": [
       "./node_modules/@types",
       "../../node_modules/@types",
-      "../../../node_modules/@types"
+      "../../../node_modules/@types",
+      "../../../node_modules/.bun/node_modules/@types",
+      "../../../node_modules",
+      "../../../node_modules/.bun/node_modules"
     ],
     "allowImportingTsExtensions": true,
     "noEmit": true,
@@ -21,8 +24,8 @@
     "paths": {
       "@elizaos/app-lifeops": ["./apps/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["./apps/app-lifeops/src/*"],
-      "@elizaos/app-coding": ["./apps/app-coding/src/index.ts"],
-      "@elizaos/app-coding/*": ["./apps/app-coding/src/*"],
+      "@elizaos/app-task-coordinator": ["./apps/app-task-coordinator/src/index.ts"],
+      "@elizaos/app-task-coordinator/*": ["./apps/app-task-coordinator/src/*"],
       "@elizaos/app-steward": ["./apps/app-steward/src/index.ts"],
       "@elizaos/app-steward/*": ["./apps/app-steward/src/*"],
       "@elizaos/app-core": ["./packages/app-core/src/index.ts"],

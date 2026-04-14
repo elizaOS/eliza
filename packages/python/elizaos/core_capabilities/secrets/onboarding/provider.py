@@ -46,19 +46,19 @@ def _generate_status_message(
     for key, setting in entries:
         if setting.visible_if and not setting.visible_if(settings):
             continue
-        formatted.append({
-            "key": key,
-            "name": setting.name,
-            "value": _format_setting_value(setting, is_onboarding),
-            "description": setting.description,
-            "usage_description": setting.usage_description or setting.description,
-            "required": setting.required,
-            "configured": setting.value is not None,
-        })
+        formatted.append(
+            {
+                "key": key,
+                "name": setting.name,
+                "value": _format_setting_value(setting, is_onboarding),
+                "description": setting.description,
+                "usage_description": setting.usage_description or setting.description,
+                "required": setting.required,
+                "configured": setting.value is not None,
+            }
+        )
 
-    required_unconfigured = sum(
-        1 for s in formatted if s["required"] and not s["configured"]
-    )
+    required_unconfigured = sum(1 for s in formatted if s["required"] and not s["configured"])
 
     if is_onboarding:
         settings_list = "\n\n".join(
@@ -189,7 +189,16 @@ async def _missing_secrets_get(
     if not world or not getattr(world, "metadata", None):
         return {"data": {"missing": []}, "values": {"missingSecrets": ""}, "text": ""}
 
-    settings = (world.metadata or {}).get("settings")
+    metadata: dict[str, Any] = world.metadata if isinstance(world.metadata, dict) else {}
+    raw_settings = metadata.get("settings")
+    if not isinstance(raw_settings, dict):
+        return {"data": {"missing": []}, "values": {"missingSecrets": ""}, "text": ""}
+
+    settings: dict[str, OnboardingSetting] = {
+        key: value
+        for key, value in raw_settings.items()
+        if isinstance(key, str) and isinstance(value, OnboardingSetting)
+    }
     if not settings:
         return {"data": {"missing": []}, "values": {"missingSecrets": ""}, "text": ""}
 

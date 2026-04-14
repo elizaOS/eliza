@@ -7,11 +7,10 @@ for plugin state tracking, component registration, and plugin metadata.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any
+from enum import StrEnum
 
 
-class PluginStatus(str, Enum):
+class PluginStatus(StrEnum):
     READY = "ready"
     LOADED = "loaded"
     ERROR = "error"
@@ -171,16 +170,18 @@ class RegistryPlugin:
 
 
 # Protected plugins that cannot be manipulated externally
-PROTECTED_PLUGINS: frozenset[str] = frozenset({
-    "plugin-manager",
-    "@elizaos/plugin-sql",
-    "bootstrap",
-    "game-api",
-    "inference",
-    "autonomy",
-    "knowledge",
-    "@elizaos/plugin-personality",
-    "experience",
-    "goals",
-    "todo",
-})
+PROTECTED_PLUGINS: frozenset[str] = frozenset(
+    {
+        "plugin-manager",
+        "@elizaos/plugin-sql",
+        "bootstrap",
+        "game-api",
+        "inference",
+        "autonomy",
+        "knowledge",
+        "@elizaos/plugin-personality",
+        "experience",
+        "goals",
+        "todo",
+    }
+)

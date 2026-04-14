@@ -46,9 +46,7 @@ class SearchPluginAction:
                 break
 
         if pm_svc is None:
-            return ActionResult(
-                text="Plugin manager service is not available.", success=False
-            )
+            return ActionResult(text="Plugin manager service is not available.", success=False)
 
         query = (message.content.text if message.content else "").strip().lower()
         if not query:

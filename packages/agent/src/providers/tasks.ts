@@ -14,23 +14,21 @@ import type {
   Task,
 } from "@elizaos/core";
 import {
-  readTaskMetadata,
-  readTaskCompleted,
   isWorkbenchTodoTask,
-  WORKBENCH_TASK_TAG,
+  readTaskCompleted,
 } from "../api/workbench-helpers.js";
-import { readTriggerConfig, listTriggerTasks } from "../triggers/runtime.js";
+import { listTriggerTasks, readTriggerConfig } from "../triggers/runtime.js";
 
 const MAX_TASKS_IN_CONTEXT = 20;
 const MAX_TRIGGERS_IN_CONTEXT = 10;
 
 function formatTaskForContext(task: Task): string {
-  const metadata = readTaskMetadata(task);
   const completed = readTaskCompleted(task);
   const status = completed ? "completed" : "active";
-  const desc = typeof task.description === "string" && task.description.trim()
-    ? ` — ${task.description.trim()}`
-    : "";
+  const desc =
+    typeof task.description === "string" && task.description.trim()
+      ? ` — ${task.description.trim()}`
+      : "";
   return `- [${status}] ${task.name}${desc} (id: ${task.id})`;
 }
 
@@ -42,9 +40,8 @@ function formatTriggerForContext(task: Task): string | null {
   let schedule = "";
   if (trigger.triggerType === "interval" && trigger.intervalMs) {
     const mins = Math.round(trigger.intervalMs / 60_000);
-    schedule = mins >= 60
-      ? `every ${Math.round(mins / 60)}h`
-      : `every ${mins}m`;
+    schedule =
+      mins >= 60 ? `every ${Math.round(mins / 60)}h` : `every ${mins}m`;
   } else if (trigger.triggerType === "cron" && trigger.cronExpression) {
     schedule = `cron: ${trigger.cronExpression}`;
   } else if (trigger.triggerType === "once") {
@@ -69,7 +66,9 @@ export function createOngoingTasksProvider(): Provider {
 
       try {
         // Fetch all tasks
-        const allTasks = await runtime.getTasks({ agentIds: [runtime.agentId] });
+        const allTasks = await runtime.getTasks({
+          agentIds: [runtime.agentId],
+        });
 
         // Separate workbench tasks from triggers and todos
         const workbenchTasks: Task[] = [];

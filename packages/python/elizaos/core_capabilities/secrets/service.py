@@ -9,7 +9,9 @@ Ported from plugin-secrets-manager TypeScript ``SecretsService``.
 
 from __future__ import annotations
 
+import builtins
 import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from elizaos.types import Service
@@ -22,7 +24,7 @@ from .storage import (
     WorldMetadataStorage,
 )
 from .types import (
-    MAX_ACCESS_LOG_ENTRIES,
+    PluginRequirementStatus,
     PluginSecretRequirement,
     SecretAccessLog,
     SecretChangeCallback,
@@ -31,9 +33,7 @@ from .types import (
     SecretContext,
     SecretLevel,
     SecretMetadata,
-    SecretsError,
     SecretsServiceConfig,
-    ValidationResult,
 )
 
 if TYPE_CHECKING:
@@ -100,9 +100,7 @@ class SecretsService(Service):
         self._change_callbacks.clear()
         self._global_change_callbacks.clear()
         if self._runtime:
-            self._runtime.logger.info(
-                "SecretsService stopped", src="service:secrets"
-            )
+            self._runtime.logger.info("SecretsService stopped", src="service:secrets")
 
     # ------------------------------------------------------------------
     # Core operations
@@ -132,14 +130,16 @@ class SecretsService(Service):
         previous = await self._storage.get(key, context)
         success = await self._storage.set(key, value, context, config)
         if success:
-            await self._emit_change_event(SecretChangeEvent(
-                type="created" if previous is None else "updated",
-                key=key,
-                value=value,
-                previous_value=previous,
-                context=context,
-                timestamp=time.time(),
-            ))
+            await self._emit_change_event(
+                SecretChangeEvent(
+                    type="created" if previous is None else "updated",
+                    key=key,
+                    value=value,
+                    previous_value=previous,
+                    context=context,
+                    timestamp=time.time(),
+                )
+            )
         return success
 
     async def delete(self, key: str, context: SecretContext) -> bool:
@@ -150,14 +150,16 @@ class SecretsService(Service):
         previous = await self._storage.get(key, context)
         success = await self._storage.delete(key, context)
         if success:
-            await self._emit_change_event(SecretChangeEvent(
-                type="deleted",
-                key=key,
-                value=None,
-                previous_value=previous,
-                context=context,
-                timestamp=time.time(),
-            ))
+            await self._emit_change_event(
+                SecretChangeEvent(
+                    type="deleted",
+                    key=key,
+                    value=None,
+                    previous_value=previous,
+                    context=context,
+                    timestamp=time.time(),
+                )
+            )
         return success
 
     async def exists(self, key: str, context: SecretContext) -> bool:
@@ -175,9 +177,7 @@ class SecretsService(Service):
             return None
         return await self._storage.get_config(key, context)
 
-    async def update_config(
-        self, key: str, context: SecretContext, config: dict[str, Any]
-    ) -> bool:
+    async def update_config(self, key: str, context: SecretContext, config: dict[str, Any]) -> bool:
         if self._storage is None:
             return False
         return await self._storage.update_config(key, context, config)
@@ -210,8 +210,10 @@ class SecretsService(Service):
 
     async def get_user(self, key: str, user_id: str) -> str | None:
         ctx = SecretContext(
-            level=SecretLevel.USER, user_id=user_id,
-            agent_id=str(self.runtime.agent_id), requester_id=user_id,
+            level=SecretLevel.USER,
+            user_id=user_id,
+            agent_id=str(self.runtime.agent_id),
+            requester_id=user_id,
         )
         return await self.get(key, ctx)
 
@@ -219,8 +221,10 @@ class SecretsService(Service):
         self, key: str, value: str, user_id: str, config: dict[str, Any] | None = None
     ) -> bool:
         ctx = SecretContext(
-            level=SecretLevel.USER, user_id=user_id,
-            agent_id=str(self.runtime.agent_id), requester_id=user_id,
+            level=SecretLevel.USER,
+            user_id=user_id,
+            agent_id=str(self.runtime.agent_id),
+            requester_id=user_id,
         )
         return await self.set(key, value, ctx, config)
 
@@ -232,7 +236,7 @@ class SecretsService(Service):
         self,
         plugin_id: str,
         requirements: dict[str, PluginSecretRequirement],
-    ) -> dict[str, Any]:
+    ) -> PluginRequirementStatus:
         """Check which secrets are missing for a plugin."""
         missing_required: list[str] = []
         missing_optional: list[str] = []
@@ -247,18 +251,21 @@ class SecretsService(Service):
                     missing_optional.append(key)
                 continue
 
-        return {
-            "ready": len(missing_required) == 0 and len(invalid) == 0,
-            "missing_required": missing_required,
-            "missing_optional": missing_optional,
-            "invalid": invalid,
-        }
+        ready = len(missing_required) == 0 and len(invalid) == 0
+        return PluginRequirementStatus(
+            plugin_id=plugin_id,
+            ready=ready,
+            missing_required=missing_required,
+            missing_optional=missing_optional,
+            invalid=invalid,
+            message="All secrets available" if ready else f"Missing: {', '.join(missing_required)}",
+        )
 
     async def get_missing_secrets(
-        self, keys: list[str], level: str = "global"
-    ) -> list[str]:
+        self, keys: builtins.list[str], level: str = "global"
+    ) -> builtins.list[str]:
         """Get missing secrets for a set of keys."""
-        missing: list[str] = []
+        missing: builtins.list[str] = []
         for key in keys:
             ctx = SecretContext(level=SecretLevel(level), agent_id=str(self.runtime.agent_id))
             if not await self.exists(key, ctx):
@@ -269,12 +276,29 @@ class SecretsService(Service):
     # Change notifications
     # ------------------------------------------------------------------
 
-    def on_secret_changed(self, key: str, callback: SecretChangeCallback) -> None:
+    def on_secret_changed(self, key: str, callback: SecretChangeCallback) -> Callable[[], None]:
         cbs = self._change_callbacks.setdefault(key, [])
         cbs.append(callback)
 
-    def on_any_secret_changed(self, callback: SecretChangeCallback) -> None:
+        def unsubscribe() -> None:
+            current = self._change_callbacks.get(key)
+            if not current:
+                return
+            if callback in current:
+                current.remove(callback)
+            if not current:
+                self._change_callbacks.pop(key, None)
+
+        return unsubscribe
+
+    def on_any_secret_changed(self, callback: SecretChangeCallback) -> Callable[[], None]:
         self._global_change_callbacks.append(callback)
+
+        def unsubscribe() -> None:
+            if callback in self._global_change_callbacks:
+                self._global_change_callbacks.remove(callback)
+
+        return unsubscribe
 
     async def _emit_change_event(self, event: SecretChangeEvent) -> None:
         for cb in self._change_callbacks.get(event.key, []):
@@ -309,15 +333,15 @@ class SecretsService(Service):
         )
         self._access_logs.append(log)
         if len(self._access_logs) > self._secrets_config.max_access_log_entries:
-            self._access_logs = self._access_logs[-self._secrets_config.max_access_log_entries:]
+            self._access_logs = self._access_logs[-self._secrets_config.max_access_log_entries :]
 
     def get_access_logs(
         self,
         key: str | None = None,
         action: str | None = None,
         since: float | None = None,
-    ) -> list[SecretAccessLog]:
-        logs = list(self._access_logs)
+    ) -> builtins.list[SecretAccessLog]:
+        logs: builtins.list[SecretAccessLog] = list(self._access_logs)
         if key:
             logs = [l for l in logs if l.secret_key == key]
         if action:

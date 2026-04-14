@@ -362,9 +362,14 @@ declare module "ws" {
       request: IncomingMessage,
       socket: Duplex,
       head: Buffer,
-      callback: (ws: WebSocket) => void,
+      callback: (ws: WebSocket, request: IncomingMessage) => void,
     ): void;
+    emit(event: "connection", ws: WebSocket, request: IncomingMessage): boolean;
     emit(event: string, ...args: unknown[]): boolean;
+    on(
+      event: "connection",
+      listener: (ws: WebSocket, request: IncomingMessage) => void,
+    ): this;
     on(event: string, listener: (...args: unknown[]) => void): this;
     close(callback?: () => void): void;
     clients: Set<WebSocket>;

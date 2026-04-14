@@ -14,8 +14,7 @@ import type {
 import {
   resolveActionContexts,
   resolveProviderContexts,
-} from "../training/context-catalog.js";
-import type { AgentContext } from "../training/context-types.js";
+} from "../../../typescript/src/utils/context-catalog.ts";
 
 /** elizaOS runtime plugin lifecycle bookkeeping (not exported from @elizaos/core). */
 type ElizaPluginOwnership = {
@@ -82,19 +81,6 @@ type RuntimePluginWithLifecycleHooks = Plugin &
     dispose?: PluginDisposeHook;
     applyConfig?: PluginApplyConfigHook;
   };
-
-function toTrainingContexts(
-  contexts: AgentContext[] | undefined,
-): AgentContext[] | undefined {
-  if (!Array.isArray(contexts) || contexts.length === 0) {
-    return undefined;
-  }
-
-  return contexts.filter(
-    (context): context is AgentContext =>
-      typeof context === "string" && context.trim().length > 0,
-  );
-}
 
 type RuntimeServiceRegistrationStatus =
   | "pending"
@@ -229,13 +215,7 @@ function applyEffectiveActionContexts(
 
   return {
     ...inherited,
-    contexts: [
-      ...resolveActionContexts(
-        inherited.name,
-        toTrainingContexts(inherited.contexts as AgentContext[] | undefined),
-        toTrainingContexts(pluginContexts as AgentContext[] | undefined),
-      ),
-    ],
+    contexts: [...resolveActionContexts(inherited)],
   };
 }
 
@@ -250,13 +230,7 @@ function applyEffectiveProviderContexts(
 
   return {
     ...inherited,
-    contexts: [
-      ...resolveProviderContexts(
-        inherited.name,
-        toTrainingContexts(inherited.contexts as AgentContext[] | undefined),
-        toTrainingContexts(pluginContexts as AgentContext[] | undefined),
-      ),
-    ],
+    contexts: [...resolveProviderContexts(inherited)],
   };
 }
 

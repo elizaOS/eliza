@@ -4,8 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
+import { SwarmCoordinator } from "@elizaos/plugin-agent-orchestrator";
 import { createTestRuntime } from "../helpers/pglite-runtime";
-import { SwarmCoordinator } from "../../eliza/packages/typescript/src/agent-orchestrator/src/services/swarm-coordinator.ts";
 
 type CodexEvent =
 	| {

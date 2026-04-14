@@ -24,6 +24,7 @@ export * from "./api/index";
 
 export * from "./bridge/index";
 export * from "./config/index";
+export { CHANNEL_PLUGIN_MAP } from "./runtime/channel-plugin-map";
 export * from "./types/index";
 export * from "./events/index";
 export * from "./hooks/useActivityEvents";

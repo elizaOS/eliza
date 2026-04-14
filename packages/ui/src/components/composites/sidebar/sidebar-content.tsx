@@ -2,6 +2,16 @@ import * as React from "react";
 
 import { cn } from "../../../lib/utils";
 
+function assignRef<T>(ref: React.ForwardedRef<T>, value: T | null): void {
+  if (typeof ref === "function") {
+    ref(value);
+    return;
+  }
+  if (ref) {
+    ref.current = value;
+  }
+}
+
 export interface SidebarSectionLabelProps
   extends React.HTMLAttributes<HTMLDivElement> {}
 
@@ -171,7 +181,7 @@ export const SidebarItem = React.forwardRef<HTMLElement, SidebarItemProps>(
     if (as === "div") {
       return (
         <div
-          ref={ref as unknown as React.Ref<HTMLDivElement>}
+          ref={(node) => assignRef(ref, node)}
           data-sidebar-item
           className={sharedClassName}
           {...props}
@@ -181,7 +191,7 @@ export const SidebarItem = React.forwardRef<HTMLElement, SidebarItemProps>(
 
     return (
       <button
-        ref={ref as unknown as React.Ref<HTMLButtonElement>}
+        ref={(node) => assignRef(ref, node)}
         type="button"
         data-sidebar-item
         className={sharedClassName}

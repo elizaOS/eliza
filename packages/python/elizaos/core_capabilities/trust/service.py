@@ -10,17 +10,16 @@ from __future__ import annotations
 import math
 import time
 from typing import TYPE_CHECKING, ClassVar
-from uuid import UUID
 
-from elizaos.types import Service, ServiceType
+from elizaos.types import Service
 
 from .types import (
+    EntityId,
     SecurityActionResponse,
     SecurityCheck,
     SecurityCheckType,
     SecurityContext,
     SecurityEvent,
-    SecurityEventType,
     SecuritySeverity,
     ThreatAssessment,
     TrustCalculationConfig,
@@ -69,16 +68,25 @@ _EVIDENCE_IMPACT_MAP: dict[TrustEvidenceType, tuple[dict[str, float], float]] = 
 # Action-specific dimension weight overrides
 _ACTION_CONTEXT_WEIGHTS: dict[str, dict[str, float]] = {
     "financial": {
-        "integrity": 0.35, "reliability": 0.3, "competence": 0.15,
-        "benevolence": 0.1, "transparency": 0.1,
+        "integrity": 0.35,
+        "reliability": 0.3,
+        "competence": 0.15,
+        "benevolence": 0.1,
+        "transparency": 0.1,
     },
     "moderation": {
-        "benevolence": 0.3, "integrity": 0.25, "competence": 0.2,
-        "reliability": 0.15, "transparency": 0.1,
+        "benevolence": 0.3,
+        "integrity": 0.25,
+        "competence": 0.2,
+        "reliability": 0.15,
+        "transparency": 0.1,
     },
     "content_creation": {
-        "competence": 0.3, "integrity": 0.2, "reliability": 0.2,
-        "benevolence": 0.15, "transparency": 0.15,
+        "competence": 0.3,
+        "integrity": 0.2,
+        "reliability": 0.2,
+        "benevolence": 0.15,
+        "transparency": 0.15,
     },
 }
 
@@ -155,17 +163,13 @@ class TrustEngineService(Service):
         self._interactions.clear()
         self._rate_limits.clear()
         if self._runtime:
-            self._runtime.logger.info(
-                "TrustEngine stopped", src="service:trust_engine"
-            )
+            self._runtime.logger.info("TrustEngine stopped", src="service:trust_engine")
 
     # ------------------------------------------------------------------
     # Core API
     # ------------------------------------------------------------------
 
-    async def calculate_trust(
-        self, subject_id: UUID, context: TrustContext
-    ) -> TrustProfile:
+    async def calculate_trust(self, subject_id: EntityId, context: TrustContext) -> TrustProfile:
         """Calculate trust profile for an entity."""
         cache_key = f"{context.evaluator_id}-{subject_id}"
         cached = self._profile_cache.get(cache_key)
@@ -177,9 +181,7 @@ class TrustEngineService(Service):
 
         # Resolve dimension weights
         base_w = self._config.dimension_weights
-        overrides = (
-            _ACTION_CONTEXT_WEIGHTS.get(context.action) if context.action else None
-        )
+        overrides = _ACTION_CONTEXT_WEIGHTS.get(context.action) if context.action else None
         if overrides:
             active_weights = TrustDimensions(
                 reliability=overrides.get("reliability", base_w.reliability),
@@ -213,9 +215,7 @@ class TrustEngineService(Service):
 
     async def record_interaction(self, interaction: TrustInteraction) -> None:
         """Record a trust interaction with rate-limiting and diminishing returns."""
-        rate_result = self._check_rate_limit(
-            interaction.target_entity_id, interaction.type
-        )
+        rate_result = self._check_rate_limit(interaction.target_entity_id, interaction.type)
         if not rate_result[0]:
             if self._runtime:
                 self._runtime.logger.warn(
@@ -230,7 +230,7 @@ class TrustEngineService(Service):
 
         self._interactions.append(interaction)
         if len(self._interactions) > self._max_interactions:
-            self._interactions = self._interactions[-self._max_interactions:]
+            self._interactions = self._interactions[-self._max_interactions :]
 
         # Invalidate cache for the affected entity
         keys_to_remove = [
@@ -241,7 +241,7 @@ class TrustEngineService(Service):
 
     async def evaluate_trust_decision(
         self,
-        entity_id: UUID,
+        entity_id: EntityId,
         requirements: TrustRequirements,
         context: TrustContext,
     ) -> TrustDecision:
@@ -258,9 +258,7 @@ class TrustEngineService(Service):
                     f"Trust score {profile.overall_trust} is below "
                     f"required {requirements.minimum_trust}"
                 ),
-                suggestions=self._generate_trust_building_suggestions(
-                    profile, requirements
-                ),
+                suggestions=self._generate_trust_building_suggestions(profile, requirements),
             )
 
         if requirements.dimensions:
@@ -292,10 +290,7 @@ class TrustEngineService(Service):
                 suggestions=["Engage in more interactions to build history"],
             )
 
-        if (
-            requirements.minimum_confidence
-            and profile.confidence < requirements.minimum_confidence
-        ):
+        if requirements.minimum_confidence and profile.confidence < requirements.minimum_confidence:
             return TrustDecision(
                 allowed=False,
                 trust_score=profile.overall_trust,
@@ -317,7 +312,7 @@ class TrustEngineService(Service):
         )
 
     async def get_recent_interactions(
-        self, entity_id: UUID, days_back: int = 10
+        self, entity_id: EntityId, days_back: int = 10
     ) -> list[TrustInteraction]:
         """Get recent trust interactions for an entity."""
         cutoff = time.time() - days_back * 86400
@@ -333,7 +328,7 @@ class TrustEngineService(Service):
     # ------------------------------------------------------------------
 
     async def _load_evidence(
-        self, entity_id: UUID, context: TrustContext
+        self, entity_id: EntityId, context: TrustContext
     ) -> list[TrustEvidence]:
         """Load evidence from in-memory interactions.
 
@@ -377,9 +372,7 @@ class TrustEngineService(Service):
                 continue
             dim_deltas, _ = impact_info
             age_weight = self._calculate_age_weight(ev.timestamp)
-            ver_mult = (
-                self._config.verification_multiplier if ev.verified else 1.0
-            )
+            ver_mult = self._config.verification_multiplier if ev.verified else 1.0
             for dim_name, value in dim_deltas.items():
                 adjusted = value * ev.weight * age_weight * ver_mult
                 current = getattr(dims, dim_name)
@@ -424,7 +417,7 @@ class TrustEngineService(Service):
         )
 
     def _check_rate_limit(
-        self, entity_id: UUID, evidence_type: TrustEvidenceType
+        self, entity_id: EntityId, evidence_type: TrustEvidenceType
     ) -> tuple[bool, float]:
         now = time.time()
         hour_s = 3600.0
@@ -459,9 +452,7 @@ class TrustEngineService(Service):
         suggestions: list[str] = []
         if profile.overall_trust < requirements.minimum_trust:
             gap = requirements.minimum_trust - profile.overall_trust
-            suggestions.append(
-                f"Build {gap:.0f} more trust points through positive interactions"
-            )
+            suggestions.append(f"Build {gap:.0f} more trust points through positive interactions")
         weakest = min(
             ("reliability", "competence", "integrity", "benevolence", "transparency"),
             key=lambda d: getattr(profile.dimensions, d),
@@ -525,9 +516,7 @@ class SecurityModuleService(Service):
     async def stop(self) -> None:
         self._events.clear()
         if self._runtime:
-            self._runtime.logger.info(
-                "SecurityModule stopped", src="service:security_module"
-            )
+            self._runtime.logger.info("SecurityModule stopped", src="service:security_module")
 
     def set_trust_engine(self, engine: TrustEngineService) -> None:
         """Link the trust engine (called during plugin init)."""
@@ -560,12 +549,15 @@ class SecurityModuleService(Service):
                 confidence=confidence,
                 type=SecurityCheckType.PROMPT_INJECTION,
                 severity=(
-                    SecuritySeverity.CRITICAL if confidence > 0.7
-                    else SecuritySeverity.HIGH if confidence > 0.4
+                    SecuritySeverity.CRITICAL
+                    if confidence > 0.7
+                    else SecuritySeverity.HIGH
+                    if confidence > 0.4
                     else SecuritySeverity.MEDIUM
                 ),
                 action=(
-                    SecurityActionResponse.BLOCK if confidence > 0.7
+                    SecurityActionResponse.BLOCK
+                    if confidence > 0.7
                     else SecurityActionResponse.REQUIRE_VERIFICATION
                 ),
                 details=f"Detected injection patterns: {', '.join(matches)}",
@@ -578,15 +570,17 @@ class SecurityModuleService(Service):
             action=SecurityActionResponse.ALLOW,
         )
 
-    async def assess_threat_level(
-        self, context: SecurityContext
-    ) -> ThreatAssessment:
+    async def assess_threat_level(self, context: SecurityContext) -> ThreatAssessment:
         """Assess overall threat level for a security context."""
-        recent_events = [
-            e for e in self._events
-            if e.entity_id == context.entity_id
-            and (e.timestamp or 0) > time.time() - 3600
-        ] if context.entity_id else []
+        recent_events = (
+            [
+                e
+                for e in self._events
+                if e.entity_id == context.entity_id and (e.timestamp or 0) > time.time() - 3600
+            ]
+            if context.entity_id
+            else []
+        )
 
         if len(recent_events) >= 5:
             return ThreatAssessment(
@@ -621,10 +615,10 @@ class SecurityModuleService(Service):
             event.timestamp = time.time()
         self._events.append(event)
         if len(self._events) > self._max_events:
-            self._events = self._events[-self._max_events:]
+            self._events = self._events[-self._max_events :]
 
     async def get_recent_security_events(
-        self, room_id: UUID | None = None, hours: float = 24
+        self, room_id: EntityId | None = None, hours: float = 24
     ) -> list[SecurityEvent]:
         """Get recent security incidents."""
         cutoff = time.time() - hours * 3600

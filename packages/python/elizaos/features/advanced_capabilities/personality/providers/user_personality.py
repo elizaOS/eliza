@@ -29,12 +29,14 @@ async def _get_user_personality(
         return ProviderResult(text="", values={}, data={})
 
     try:
-        preferences = await runtime.get_memories({
-            "entityId": str(message.entity_id),
-            "roomId": str(runtime.agent_id),
-            "tableName": USER_PREFS_TABLE,
-            "count": MAX_PREFS_PER_USER,
-        })
+        preferences = await runtime.get_memories(
+            {
+                "entityId": str(message.entity_id),
+                "roomId": str(runtime.agent_id),
+                "tableName": USER_PREFS_TABLE,
+                "count": MAX_PREFS_PER_USER,
+            }
+        )
 
         if not preferences:
             return ProviderResult(text="", values={}, data={})
@@ -63,7 +65,8 @@ async def _get_user_personality(
 
         logger.debug(
             "Injecting user personality preferences: userId=%s, count=%d",
-            message.entity_id, len(pref_texts),
+            message.entity_id,
+            len(pref_texts),
         )
 
         return ProviderResult(

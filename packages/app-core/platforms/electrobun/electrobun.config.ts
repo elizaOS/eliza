@@ -4,15 +4,28 @@ import { fileURLToPath } from "node:url";
 import type { ElectrobunConfig } from "electrobun/bun";
 
 const electrobunDir = path.dirname(fileURLToPath(import.meta.url));
+
+function hasElectrobunWorkspaceRoot(candidateDir: string): boolean {
+  return (
+    fs.existsSync(path.join(candidateDir, "bun.lock")) &&
+    fs.existsSync(path.join(candidateDir, "package.json")) &&
+    fs.existsSync(path.join(candidateDir, "apps/app/package.json")) &&
+    (fs.existsSync(
+      path.join(candidateDir, "apps/app/electrobun/package.json"),
+    ) ||
+      fs.existsSync(
+        path.join(
+          candidateDir,
+          "eliza/packages/app-core/platforms/electrobun/package.json",
+        ),
+      ))
+  );
+}
+
 function findMiladyRepoRoot(startDir: string): string {
   let current = path.resolve(startDir);
   while (true) {
-    if (
-      fs.existsSync(path.join(current, "bun.lock")) &&
-      fs.existsSync(path.join(current, "package.json")) &&
-      fs.existsSync(path.join(current, "apps/app/electrobun/package.json")) &&
-      fs.existsSync(path.join(current, "eliza/packages/app-core/package.json"))
-    ) {
+    if (hasElectrobunWorkspaceRoot(current)) {
       return current;
     }
     const parent = path.dirname(current);
@@ -25,7 +38,7 @@ function findMiladyRepoRoot(startDir: string): string {
   }
 }
 
-const repoRoot = findMiladyRepoRoot(process.cwd());
+const repoRoot = findMiladyRepoRoot(electrobunDir);
 const rendererDistDir = path.relative(
   electrobunDir,
   path.join(repoRoot, "apps/app/dist"),
