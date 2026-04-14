@@ -22,7 +22,8 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/agent": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/shared": "workspace:*",
+    "drizzle-orm": "^0.45.1"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
