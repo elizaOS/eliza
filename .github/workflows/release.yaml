@@ -107,6 +107,7 @@ jobs:
             "plugins/plugin-sql/typescript",
             "plugins/plugin-ollama/typescript",
             "plugins/plugin-local-ai/typescript",
+            "plugins/plugin-pdf/typescript",
           ];
 
           if (!Array.isArray(pkg.workspaces)) {
@@ -504,15 +505,23 @@ jobs:
           # But verify critical packages built successfully afterward.
           bunx turbo run build --continue || echo "Some packages had build errors — checking critical packages..."
 
-          # Fail if critical packages didn't produce dist/
-          # packages/typescript is published as @elizaos/core
-          for pkg in packages/typescript; do
-            if [ ! -d "${pkg}/dist" ]; then
-              echo "❌ Critical package ${pkg} failed to build (no dist/ directory)"
+          # Fail fast if any publish-critical package is missing its release artifacts.
+          for artifact in \
+            packages/agent/dist/package.json \
+            packages/app-core/dist/package.json \
+            packages/elizaos/dist/index.js \
+            packages/interop/dist/index.d.ts \
+            packages/prompts/dist/typescript/index.ts \
+            packages/shared/dist/package.json \
+            packages/skills/dist/index.js \
+            packages/typescript/dist/index.node.js \
+            packages/ui/dist/package.json; do
+            if [ ! -f "${artifact}" ]; then
+              echo "❌ Missing publish artifact: ${artifact}"
               exit 1
             fi
           done
-          echo "✅ All critical packages built successfully"
+          echo "✅ All publish-critical packages built successfully"
 
       # Replace workspace:* references with actual versions before publishing
       # This is required because Bun workspaces use workspace:* protocol
