@@ -95,6 +95,8 @@
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
   --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+  --radius-3xl: var(--radius-3xl);
 
   /* Compact text sizes — replaces text-[9px] / text-[10px] / text-[11px] arbitraries */
   --font-size-3xs: var(--text-3xs);

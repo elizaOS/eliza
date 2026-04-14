@@ -108,7 +108,7 @@ export function InventoryToolbar({
 
         <Select
           value={chainFocus}
-          onValueChange={(value) => onChainChange(value)}
+          onValueChange={(value: string) => onChainChange(value)}
         >
           <SelectTrigger
             data-testid="wallet-chain-select"
@@ -130,7 +130,7 @@ export function InventoryToolbar({
         {inventoryView === "tokens" && (
           <Select
             value={inventorySort}
-            onValueChange={(nextSort) => {
+            onValueChange={(nextSort: string) => {
               if (isInventorySort(nextSort)) {
                 setState("inventorySort", nextSort);
               }

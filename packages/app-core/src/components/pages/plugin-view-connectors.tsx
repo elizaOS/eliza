@@ -540,7 +540,7 @@ function ConnectorPluginCard({
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                 <Select
                   value={managedDiscordSelectedAgentId ?? "__none__"}
-                  onValueChange={(next) =>
+                  onValueChange={(next: string) =>
                     setManagedDiscordSelectedAgentId(
                       next === "__none__" ? null : next,
                     )

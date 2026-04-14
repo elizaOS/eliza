@@ -88,7 +88,7 @@ export function LogsView() {
 
           <Select
             value={logLevelFilter === "" ? "all" : logLevelFilter}
-            onValueChange={(val) => {
+            onValueChange={(val: string) => {
               setState("logLevelFilter", val === "all" ? "" : val);
               void loadLogs();
             }}
@@ -107,7 +107,7 @@ export function LogsView() {
 
           <Select
             value={logSourceFilter === "" ? "all" : logSourceFilter}
-            onValueChange={(val) => {
+            onValueChange={(val: string) => {
               setState("logSourceFilter", val === "all" ? "" : val);
               void loadLogs();
             }}
@@ -128,7 +128,7 @@ export function LogsView() {
           {logTags.length > 0 && (
             <Select
               value={logTagFilter === "" ? "all" : logTagFilter}
-              onValueChange={(val) => {
+              onValueChange={(val: string) => {
                 setState("logTagFilter", val === "all" ? "" : val);
                 void loadLogs();
               }}

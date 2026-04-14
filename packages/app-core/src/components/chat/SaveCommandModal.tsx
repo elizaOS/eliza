@@ -67,7 +67,7 @@ export function SaveCommandModal({
   return (
     <Dialog
       open={open}
-      onOpenChange={(isOpen) => {
+      onOpenChange={(isOpen: boolean) => {
         if (!isOpen) onClose();
       }}
     >

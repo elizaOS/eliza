@@ -52,6 +52,7 @@ export * from "./pages/ConnectorsPageView";
 export * from "./pages/DatabasePageView";
 export * from "./pages/DatabaseView";
 export * from "./pages/ElizaCloudDashboard";
+export * from "./pages/AutomationsView";
 export * from "./pages/HeartbeatsView";
 export * from "./pages/InventoryView";
 export * from "./pages/KnowledgeView";

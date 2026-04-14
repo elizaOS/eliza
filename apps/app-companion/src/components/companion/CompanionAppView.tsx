@@ -14,6 +14,7 @@ import {
   useState,
 } from "react";
 import { CompanionHeader, type CompanionShellView } from "./CompanionHeader";
+import { EmotePicker } from "./EmotePicker";
 import { CompanionSceneHost } from "./CompanionSceneHost";
 import { useCompanionSceneStatus } from "./companion-scene-status-context";
 import { InferenceCloudAlertButton } from "./InferenceCloudAlertButton";
@@ -246,6 +247,8 @@ const CompanionOverlay = memo(function CompanionOverlay() {
           />
         </div>
       )}
+
+      <EmotePicker />
 
       <div className="flex-1 grid grid-cols-[1fr_auto] gap-6 min-h-0 relative">
         <div className="w-full h-full" />

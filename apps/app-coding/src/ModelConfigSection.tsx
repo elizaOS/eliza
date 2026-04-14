@@ -48,7 +48,7 @@ export function ModelConfigSection({
           </SettingsControls.FieldLabel>
           <Select
             value={aiderProvider}
-            onValueChange={(value) => setPref("PARALLAX_AIDER_PROVIDER", value)}
+            onValueChange={(value: string) => setPref("PARALLAX_AIDER_PROVIDER", value)}
           >
             <SettingsControls.SelectTrigger variant="compact">
               <SelectValue />
@@ -77,7 +77,7 @@ export function ModelConfigSection({
           </SettingsControls.FieldLabel>
           <Select
             value={powerfulValue}
-            onValueChange={(value) =>
+            onValueChange={(value: string) =>
               setPref(`${prefix}_MODEL_POWERFUL`, value)
             }
           >
@@ -104,7 +104,7 @@ export function ModelConfigSection({
           </SettingsControls.FieldLabel>
           <Select
             value={fastValue}
-            onValueChange={(value) => setPref(`${prefix}_MODEL_FAST`, value)}
+            onValueChange={(value: string) => setPref(`${prefix}_MODEL_FAST`, value)}
           >
             <SettingsControls.SelectTrigger variant="compact">
               <SelectValue

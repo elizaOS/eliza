@@ -1120,7 +1120,7 @@ export function VectorBrowserView({
             {tables.length > 1 && (
               <Select
                 value={selectedTable}
-                onValueChange={(value) => {
+                onValueChange={(value: string) => {
                   setSelectedTable(value);
                   setPage(0);
                   setSearch("");

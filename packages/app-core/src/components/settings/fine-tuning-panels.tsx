@@ -406,7 +406,7 @@ export function TrainingJobsSection({
       <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-3">
         <Select
           value={selectedDatasetId}
-          onValueChange={(value) => setSelectedDatasetId(value)}
+          onValueChange={(value: string) => setSelectedDatasetId(value)}
         >
           <SettingsControls.SelectTrigger variant="toolbar">
             <SelectValue placeholder={t("finetuningview.AutoBuildDatasetF")} />
@@ -426,7 +426,7 @@ export function TrainingJobsSection({
         </Select>
         <Select
           value={startBackend}
-          onValueChange={(value) =>
+          onValueChange={(value: string) =>
             setStartBackend(value as "mlx" | "cuda" | "cpu")
           }
         >

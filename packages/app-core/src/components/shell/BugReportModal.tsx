@@ -369,7 +369,7 @@ export function BugReportModal() {
     return (
       <Dialog
         open={isOpen}
-        onOpenChange={(open) => {
+        onOpenChange={(open: boolean) => {
           if (!open) close();
         }}
       >
@@ -422,13 +422,13 @@ export function BugReportModal() {
   return (
     <Dialog
       open={isOpen}
-      onOpenChange={(open) => {
+      onOpenChange={(open: boolean) => {
         if (!open) close();
       }}
     >
       <DialogContent
         className={modalContentClassName}
-        onOpenAutoFocus={(event) => {
+        onOpenAutoFocus={(event: Event) => {
           event.preventDefault();
           descRef.current?.focus();
         }}
@@ -546,7 +546,7 @@ export function BugReportModal() {
                 </FieldLabel>
                 <Select
                   value={form.environment}
-                  onValueChange={(value) => updateField("environment", value)}
+                  onValueChange={(value: string) => updateField("environment", value)}
                 >
                   <SelectTrigger
                     id="bug-report-environment"

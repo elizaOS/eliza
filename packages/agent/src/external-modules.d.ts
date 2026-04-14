@@ -332,6 +332,107 @@ declare module "@elizaos/plugin-sql" {
   export default plugin;
 }
 
+declare module "ws" {
+  import type { EventEmitter } from "events";
+  import type { Server as HttpServer, IncomingMessage } from "http";
+  import type { Duplex } from "stream";
+
+  export class WebSocket extends EventEmitter {
+    static readonly CONNECTING: 0;
+    static readonly OPEN: 1;
+    static readonly CLOSING: 2;
+    static readonly CLOSED: 3;
+    readonly readyState: number;
+    constructor(address: string | URL, options?: Record<string, unknown>);
+    close(code?: number, reason?: string): void;
+    send(
+      data: string | Buffer | ArrayBuffer | ArrayBufferView,
+      cb?: (err?: Error) => void,
+    ): void;
+    on(event: string, listener: (...args: unknown[]) => void): this;
+  }
+
+  export class WebSocketServer extends EventEmitter {
+    constructor(options?: {
+      noServer?: boolean;
+      server?: HttpServer;
+      path?: string;
+      [key: string]: unknown;
+    });
+    handleUpgrade(
+      request: IncomingMessage,
+      socket: Duplex,
+      head: Buffer,
+      callback: (ws: WebSocket) => void,
+    ): void;
+    emit(event: string, ...args: unknown[]): boolean;
+    on(event: string, listener: (...args: unknown[]) => void): this;
+    close(callback?: () => void): void;
+    clients: Set<WebSocket>;
+  }
+}
+
+declare module "fast-redact" {
+  interface FastRedactOptions {
+    paths: string[];
+    censor?: string | ((value: unknown, path: string) => unknown);
+    serialize?: boolean | ((value: unknown) => string);
+    strict?: boolean;
+    remove?: boolean;
+  }
+  function fastRedact(
+    opts: FastRedactOptions,
+  ): (obj: Record<string, unknown>) => string | Record<string, unknown>;
+  export = fastRedact;
+}
+
+declare module "markdown-it" {
+  interface Token {
+    type: string;
+    tag: string;
+    nesting: number;
+    content: string;
+    children: Token[] | null;
+    markup: string;
+    info: string;
+    level: number;
+    block: boolean;
+    hidden: boolean;
+    attrs: [string, string][] | null;
+    map: [number, number] | null;
+    meta: unknown;
+  }
+  class MarkdownIt {
+    constructor(preset?: string, options?: Record<string, unknown>);
+    parse(src: string, env?: Record<string, unknown>): Token[];
+    render(src: string, env?: Record<string, unknown>): string;
+  }
+  export = MarkdownIt;
+}
+
+declare module "three/examples/jsm/libs/meshopt_decoder.module.js" {
+  export const MeshoptDecoder: {
+    supported: boolean;
+    ready: Promise<void>;
+    decode(
+      target: Uint8Array,
+      count: number,
+      size: number,
+      source: Uint8Array,
+      mode?: number,
+    ): void;
+    decodeGltfBuffer(
+      target: Uint8Array,
+      count: number,
+      size: number,
+      source: Uint8Array,
+      mode: string,
+      filter?: string,
+    ): void;
+    useWorkers?(count: number): void;
+  };
+}
+
 declare module "jsdom" {
   export class JSDOM {
     constructor(

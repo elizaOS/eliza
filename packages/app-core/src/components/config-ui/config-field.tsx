@@ -374,12 +374,12 @@ export function RenderSelectField(props: FieldRenderProps) {
     <Select
       defaultValue={effectiveValue}
       disabled={props.readonly}
-      onValueChange={(value) => {
+      onValueChange={(value: string) => {
         props.onChange(value === "__none__" ? "" : value);
         fireAction(props, "change");
         fireAction(props, "blur");
       }}
-      onOpenChange={(open) => {
+      onOpenChange={(open: boolean) => {
         if (open) fireAction(props, "click");
       }}
     >

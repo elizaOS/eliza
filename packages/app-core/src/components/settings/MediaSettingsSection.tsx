@@ -273,7 +273,7 @@ export function MediaSettingsSection() {
               <Switch
                 className="shrink-0"
                 checked={companionAnimateWhenHidden}
-                onCheckedChange={(v) => setCompanionAnimateWhenHidden(v)}
+                onCheckedChange={(v: boolean) => setCompanionAnimateWhenHidden(v)}
                 aria-label={t("settings.companionAnimateWhenHidden.title")}
               />
             </div>

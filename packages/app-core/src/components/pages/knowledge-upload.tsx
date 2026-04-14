@@ -254,7 +254,7 @@ export function UploadZone({
           <Checkbox
             id="knowledge-upload-image-descriptions"
             checked={includeImageDescriptions}
-            onCheckedChange={(checked) =>
+            onCheckedChange={(checked: boolean | "indeterminate") =>
               setIncludeImageDescriptions(!!checked)
             }
             disabled={uploading}

@@ -358,7 +358,7 @@ export function CustomActionsView() {
                 <label className="flex min-h-touch cursor-pointer items-center gap-2">
                   <Switch
                     checked={action.enabled}
-                    onCheckedChange={(checked) =>
+                    onCheckedChange={(checked: boolean | "indeterminate") =>
                       handleToggleEnabled(action.id, !!checked)
                     }
                   />

@@ -377,7 +377,7 @@ function DiscordSettingsPanel({
                     </span>
                     <Switch
                       checked={config.dm?.enabled ?? true}
-                      onCheckedChange={(v) => patchDm({ enabled: v })}
+                      onCheckedChange={(v: boolean) => patchDm({ enabled: v })}
                       className="scale-75"
                     />
                   </div>
@@ -389,7 +389,7 @@ function DiscordSettingsPanel({
                     </span>
                     <Select
                       value={config.dm?.policy ?? "pairing"}
-                      onValueChange={(v) =>
+                      onValueChange={(v: string) =>
                         patchDm({
                           policy: v as "open" | "pairing" | "allowlist",
                         })
@@ -413,7 +413,7 @@ function DiscordSettingsPanel({
                     </span>
                     <Switch
                       checked={config.dm?.groupEnabled ?? false}
-                      onCheckedChange={(v) => patchDm({ groupEnabled: v })}
+                      onCheckedChange={(v: boolean) => patchDm({ groupEnabled: v })}
                       className="scale-75"
                     />
                   </div>
@@ -436,7 +436,7 @@ function DiscordSettingsPanel({
                     </span>
                     <Switch
                       checked={config.requireMention ?? false}
-                      onCheckedChange={(v) => patch({ requireMention: v })}
+                      onCheckedChange={(v: boolean) => patch({ requireMention: v })}
                       className="scale-75"
                     />
                   </div>
@@ -448,7 +448,7 @@ function DiscordSettingsPanel({
                     </span>
                     <Select
                       value={config.reactionNotifications ?? "off"}
-                      onValueChange={(v) =>
+                      onValueChange={(v: string) =>
                         patch({
                           reactionNotifications: v as
                             | "off"
@@ -490,7 +490,7 @@ function DiscordSettingsPanel({
                       </span>
                       <Switch
                         checked={config.actions?.[key] ?? true}
-                        onCheckedChange={(v) => patchActions(key, v)}
+                        onCheckedChange={(v: boolean) => patchActions(key, v)}
                         className="scale-[0.6]"
                       />
                     </div>
@@ -565,7 +565,7 @@ function DiscordSettingsPanel({
                     </span>
                     <Switch
                       checked={config.intents?.presence ?? false}
-                      onCheckedChange={(v) => patchIntents({ presence: v })}
+                      onCheckedChange={(v: boolean) => patchIntents({ presence: v })}
                       className="scale-75"
                     />
                   </div>
@@ -577,7 +577,7 @@ function DiscordSettingsPanel({
                     </span>
                     <Switch
                       checked={config.intents?.guildMembers ?? false}
-                      onCheckedChange={(v) => patchIntents({ guildMembers: v })}
+                      onCheckedChange={(v: boolean) => patchIntents({ guildMembers: v })}
                       className="scale-75"
                     />
                   </div>
@@ -606,7 +606,7 @@ function DiscordSettingsPanel({
                     </span>
                     <Switch
                       checked={config.pluralkit?.enabled ?? false}
-                      onCheckedChange={(v) => patchFlagSetting("pluralkit", v)}
+                      onCheckedChange={(v: boolean) => patchFlagSetting("pluralkit", v)}
                       className="scale-75"
                     />
                   </div>
@@ -618,7 +618,7 @@ function DiscordSettingsPanel({
                     </span>
                     <Switch
                       checked={config.execApprovals?.enabled ?? false}
-                      onCheckedChange={(v) =>
+                      onCheckedChange={(v: boolean) =>
                         patchFlagSetting("execApprovals", v)
                       }
                       className="scale-75"

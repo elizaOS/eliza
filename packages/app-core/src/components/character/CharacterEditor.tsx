@@ -1672,7 +1672,7 @@ export function CharacterEditor({
 
       <Dialog
         open={pendingNavigation !== null}
-        onOpenChange={(open) => {
+        onOpenChange={(open: boolean) => {
           if (!open) setPendingNavigation(null);
         }}
       >

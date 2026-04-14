@@ -32,7 +32,7 @@ export const ChatModalView = memo(function ChatModalView({
       mobileSidebar={
         <DrawerSheet
           open
-          onOpenChange={(open) => {
+          onOpenChange={(open: boolean) => {
             if (!open) {
               onSidebarClose?.();
             }

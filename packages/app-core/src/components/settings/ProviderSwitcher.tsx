@@ -513,7 +513,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         </label>
         <Select
           value={resolvedSelectedId ?? "__cloud__"}
-          onValueChange={(nextId) => {
+          onValueChange={(nextId: string) => {
             if (nextId === "__cloud__") {
               void handleSelectCloud();
               return;

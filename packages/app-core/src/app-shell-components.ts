@@ -20,6 +20,10 @@ export { ChatView } from "./components/pages/ChatView";
 export { ConnectorsPageView } from "./components/pages/ConnectorsPageView";
 export { DatabasePageView } from "./components/pages/DatabasePageView";
 export {
+  AutomationsView,
+  AutomationsDesktopShell,
+} from "./components/pages/AutomationsView";
+export {
   HeartbeatsDesktopShell,
   HeartbeatsView,
 } from "./components/pages/HeartbeatsView";

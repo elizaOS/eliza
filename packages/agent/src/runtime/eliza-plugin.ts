@@ -48,11 +48,13 @@ import {
 } from "../providers/session-utils.js";
 import { createChannelProfileProvider } from "../providers/simple-mode.js";
 import { createDynamicSkillProvider } from "../providers/skill-provider.js";
+import { createOngoingTasksProvider } from "../providers/tasks.js";
 import { uiCatalogProvider } from "../providers/ui-catalog.js";
 import { createUserNameProvider } from "../providers/user-name.js";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
 import { createWorkspaceProvider } from "../providers/workspace-provider.js";
 import { ElizaCharacterPersistenceService } from "../services/character-persistence.js";
+import { manageTasksAction } from "../actions/manage-tasks.js";
 import { createTriggerTaskAction } from "../triggers/action.js";
 import { registerTriggerTaskWorker } from "../triggers/runtime.js";
 import { setCustomActionsRuntime } from "./custom-actions.js";
@@ -85,6 +87,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     ...getSessionProviders({ storePath: sessionStorePath }),
     createDynamicSkillProvider(),
     createUserNameProvider(),
+    createOngoingTasksProvider(),
   ];
 
   // PLAY_EMOTE lives in @elizaos/app-companion (emote catalog + action).
@@ -257,6 +260,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       sendAdminMessageAction,
       terminalAction,
       createTriggerTaskAction,
+      manageTasksAction,
       setUserNameAction,
       updateOwnerProfileAction,
       skillCommandAction,

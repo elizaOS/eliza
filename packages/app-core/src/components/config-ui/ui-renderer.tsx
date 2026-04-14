@@ -541,7 +541,7 @@ const SelectComponent: ComponentFn = (props, _children, ctx, el) => {
       ) : null}
       <Select
         value={String(value ?? "") || "__none__"}
-        onValueChange={(v) => {
+        onValueChange={(v: string) => {
           handleChange(v === "__none__" ? "" : v);
           handleBlur();
         }}
@@ -588,7 +588,7 @@ const CheckboxComponent: ComponentFn = (props, _children, ctx) => {
     <label className="flex items-center gap-2 text-xs cursor-pointer">
       <Checkbox
         checked={!!value}
-        onCheckedChange={(checked) => setValue(!!checked)}
+        onCheckedChange={(checked: boolean | "indeterminate") => setValue(!!checked)}
       />
       <span className="font-semibold">{String(props.label ?? "")}</span>
     </label>

@@ -1127,7 +1127,9 @@ export function applyConnectorSecretsToEnv(config: ElizaConfig): void {
 
     for (const [configField, envKey] of Object.entries(envMap)) {
       const value = configObj[configField];
-      if (typeof value === "string" && value.trim()) {
+      if (typeof value === "boolean" || typeof value === "number") {
+        process.env[envKey] = String(value);
+      } else if (typeof value === "string" && value.trim()) {
         process.env[envKey] = value;
       }
     }
