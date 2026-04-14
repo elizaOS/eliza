@@ -2592,9 +2592,12 @@ canvas#airdrop-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opaci
 .a-nav a:hover{color:var(--yellow);border-color:var(--yellow);box-shadow:0 0 8px rgba(246,231,15,.25);}
 .a-nav a.active{color:var(--yellow);border-color:var(--yellow);}
 .a-hero{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:32px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;}
-.a-hero h1{font-size:24px;font-weight:700;letter-spacing:.04em;margin-bottom:8px;}
+.a-hero h1{font-size:24px;font-weight:700;letter-spacing:.04em;margin-bottom:8px;display:flex;align-items:center;gap:14px;}
 .a-hero h1 span{color:var(--yellow);}
 .a-hero p{color:var(--muted);font-size:13px;line-height:1.6;max-width:480px;}
+.a-hero-avatar{width:48px;height:48px;border-radius:50%;border:2px solid rgba(var(--yr),.4);box-shadow:0 0 18px rgba(var(--yr),.3),0 0 40px rgba(var(--yr),.1);animation:aHeroGlow 3s ease-in-out infinite;transition:transform .35s cubic-bezier(.34,1.56,.64,1),box-shadow .35s ease;}
+.a-hero-avatar:hover{transform:translateY(-4px) scale(1.08);box-shadow:0 0 28px rgba(var(--yr),.5),0 0 60px rgba(var(--yr),.2);border-color:rgba(var(--yr),.7);}
+@keyframes aHeroGlow{0%,100%{box-shadow:0 0 18px rgba(var(--yr),.3),0 0 40px rgba(var(--yr),.1);}50%{box-shadow:0 0 24px rgba(var(--yr),.45),0 0 50px rgba(var(--yr),.18);}}
 .a-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;border:1px solid;font-size:11px;font-weight:500;letter-spacing:.04em;}
 .a-badge--live{border-color:var(--green);color:var(--green);background:rgba(57,255,20,.07);}
 .a-badge--live::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);animation:live-pulse 1.2s infinite;}
@@ -2676,7 +2679,7 @@ th.a-th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(-
 
   <div class="a-hero">
     <div>
-      <h1><span>elizaOK</span> · Airdrop Eligibility</h1>
+      <h1><img class="a-hero-avatar" src="/assets/avatar.png" alt="elizaOK" /><span>elizaOK</span> · Airdrop Eligibility</h1>
       <p>The treasury flywheel distributes gains back to qualified $ElizaOK holders. Check if your wallet qualifies for the current airdrop cycle and view the distribution plan.</p>
     </div>
     <div>
