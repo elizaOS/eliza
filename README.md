@@ -162,35 +162,36 @@ elizaOK
 
 ---
 
-## Roadmap
-
-- [x] **Phase 1 — MVP**: BSC token discovery, scoring engine, paper trading, Goo Arena, Dashboard
-- [x] **Phase 2 — Strategy Evolution**: Multi-stage TP, trailing stop, Smart Exit, KOL-adaptive TP, strategy absorption
-- [x] **Phase 3 — Flywheel & UI**: Revenue flywheel, live notifications, event timeline, P&L charts, mobile responsive
-- [ ] **Phase 4 — Live Trading**: Real BNB execution, risk controls, wallet integration
-- [ ] **Phase 5 — Multi-Chain**: Expand to other EVM chains, cross-chain arbitrage
-- [ ] **Phase 6 — DAO Governance**: $ElizaOK holders vote on strategy parameters & profit distribution
-
----
-
 ## Team
 
 <table>
   <tr>
-    <td align="center">
-      <a href="https://x.com/baogerbao"><strong>Baoger</strong></a><br/>
-      <sub>Founder</sub><br/>
-      <a href="https://x.com/baogerbao"><img src="https://img.shields.io/badge/-@baogerbao-000?style=flat-square&logo=x&logoColor=white" /></a>
+    <td align="center" width="280">
+      <a href="https://x.com/baogerbao">
+        <img src="https://img.shields.io/badge/-@baogerbao-000?style=for-the-badge&logo=x&logoColor=white" />
+      </a>
+      <br/><br/>
+      <strong>Baoger</strong><br/>
+      <sub>Founder & Product</sub><br/>
+      <sub>Vision, product strategy, and ecosystem partnerships. Architecting the intersection of autonomous AI agents and on-chain value capture.</sub>
     </td>
-    <td align="center">
-      <a href="https://x.com/spaceodili"><strong>Odili</strong></a><br/>
+    <td align="center" width="280">
+      <a href="https://x.com/spaceodili">
+        <img src="https://img.shields.io/badge/-@spaceodili-000?style=for-the-badge&logo=x&logoColor=white" />
+      </a>
+      <br/><br/>
+      <strong>Odili</strong><br/>
       <sub>Head of Engineering</sub><br/>
-      <a href="https://x.com/spaceodili"><img src="https://img.shields.io/badge/-@spaceodili-000?style=flat-square&logo=x&logoColor=white" /></a>
+      <sub>Core architecture, Goo Protocol engine, scoring algorithms, and full-stack infrastructure. elizaOS framework integration lead.</sub>
     </td>
-    <td align="center">
-      <a href="https://x.com/friesmakesfries"><strong>Fries</strong></a><br/>
-      <sub>Operations & Marketing</sub><br/>
-      <a href="https://x.com/friesmakesfries"><img src="https://img.shields.io/badge/-@friesmakesfries-000?style=flat-square&logo=x&logoColor=white" /></a>
+    <td align="center" width="280">
+      <a href="https://x.com/friesmakesfries">
+        <img src="https://img.shields.io/badge/-@friesmakesfries-000?style=for-the-badge&logo=x&logoColor=white" />
+      </a>
+      <br/><br/>
+      <strong>Fries</strong><br/>
+      <sub>Operations & Growth</sub><br/>
+      <sub>Community building, social strategy, and go-to-market execution. Driving adoption across the BNB Chain ecosystem.</sub>
     </td>
   </tr>
 </table>
