@@ -1,6 +1,13 @@
 import type { UUID } from "./primitives";
 
-/** DPE optimization: signals, score card payload, execution trace rows. */
+/**
+ * DPE (dynamic prompt execution) **optimization payloads**: additive `ScoreSignal`s, an
+ * aggregated `ScoreCardData` snapshot, and one `ExecutionTrace` row per attempt.
+ *
+ * **Why JSON-friendly structs:** traces are appended to logs, object stores, or analytics
+ * pipelines; plain objects avoid ORM coupling. **Why `traceVersion`:** forward-compatible
+ * evolution without breaking offline consumers that pin parsers.
+ */
 export type SlotKey = string;
 export type PromptKey = string;
 

@@ -4,6 +4,13 @@ import {
 	type ScoreSignal,
 } from "./prompt-optimization-trace";
 
+/**
+ * In-memory aggregation of `ScoreSignal`s into a weighted `composite` for one trace row.
+ *
+ * **Why `addAll` calls `add`:** one validation path (truthy signal + numeric `value`) avoids
+ * drift between single and batch ingest. **Why `composite` skips NaN:** malformed signals from
+ * plugins should not poison the whole score; they are dropped at aggregate time.
+ */
 export class ScoreCard {
 	private _signals: ScoreSignal[] = [];
 	private _weightOverrides?: Record<string, number>;

@@ -1,3 +1,12 @@
+/**
+ * Optional **disk or service** hooks for dynamic prompt execution (DPE) optimization.
+ *
+ * **Why async + separate appendBaseline / appendFailure:** persistence may target remote
+ * storage or different files/retention for success vs failure; splitting keeps implementors
+ * from branching on trace shape inside one callback. **Why not inline in runtime:** hosts
+ * choose whether optimization runs at all (`getPromptOptimizationHooks()`), keeping core
+ * free of filesystem assumptions. @see `docs/PIPELINE_HOOKS.md`.
+ */
 import type { ExecutionTrace } from "./prompt-optimization-trace";
 import type { IAgentRuntime } from "./runtime";
 import type { SchemaRow } from "./state";
