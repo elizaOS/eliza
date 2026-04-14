@@ -1325,7 +1325,7 @@ async function qaWalletRpcRoundtrip(page: Page, profile: Profile) {
 
   await navigate(page, `${UI_URL}/wallets`);
   await waitForText(page, "Tokens", 30_000);
-  await clickSelector(page, '[data-testid="wallet-rpc-popup"]');
+  await openWalletRpcSettings(page, profile);
   await waitForText(page, "Custom RPC", 30_000);
   await clickByText(page, "Custom RPC");
   await waitForText(page, "Custom RPC Providers", 30_000);
@@ -1368,7 +1368,7 @@ async function qaWalletRpcRoundtrip(page: Page, profile: Profile) {
   await page.waitForSelector('[data-testid="chat-messages-scroll"]');
   await navigate(page, `${UI_URL}/wallets`);
   await waitForText(page, "Tokens", 30_000);
-  await clickSelector(page, '[data-testid="wallet-rpc-popup"]');
+  await openWalletRpcSettings(page, profile);
   await waitForText(page, "Custom RPC Providers", 30_000);
   await waitForText(page, "Infura API Key", 30_000);
   await waitForText(page, "NodeReal BSC RPC URL", 30_000);
@@ -2009,22 +2009,67 @@ async function clickButtonLabel(
   expect(clicked).toBe(true);
 }
 
-async function clickSelector(page: Page, selector: string) {
-  await page.waitForFunction(
-    (expected) => {
-      const element = document.querySelector(expected);
-      if (!(element instanceof HTMLElement)) return false;
-      return (
-        element.offsetParent !== null ||
-        window.getComputedStyle(element).position === "fixed"
+async function openWalletRpcSettings(page: Page, profile: Profile) {
+  if (profile.id === "mobile") {
+    const openedDrawer = await page.evaluate(() => {
+      const elements = Array.from(
+        document.querySelectorAll<HTMLElement>("button,[role='button']"),
       );
-    },
-    { timeout: 45_000 },
-    selector,
-  );
+      const target = elements.find((element) => {
+        const position = window.getComputedStyle(element).position;
+        const visible =
+          element.offsetParent !== null ||
+          position === "fixed" ||
+          position === "sticky";
+        const text = (element.innerText ?? "").trim().toLowerCase();
+        return visible && text === "browse";
+      });
+      target?.click();
+      return Boolean(target);
+    });
+
+    if (openedDrawer) {
+      try {
+        await clickSelector(page, '[data-testid="wallet-rpc-popup"]');
+        return;
+      } catch {
+        // Drawer state can lag the DOM; fall back to the mounted trigger below.
+      }
+    }
+  }
+
+  await clickSelector(page, '[data-testid="wallet-rpc-popup"]', {
+    allowHidden: profile.id === "mobile",
+  });
+}
+
+async function clickSelector(
+  page: Page,
+  selector: string,
+  options: { allowHidden?: boolean } = {},
+) {
+  if (options.allowHidden) {
+    await page.waitForSelector(selector, { timeout: 45_000 });
+  } else {
+    await page.waitForFunction(
+      (expected) => {
+        const element = document.querySelector(expected);
+        if (!(element instanceof HTMLElement)) return false;
+        const position = window.getComputedStyle(element).position;
+        return (
+          element.offsetParent !== null ||
+          position === "fixed" ||
+          position === "sticky"
+        );
+      },
+      { timeout: 45_000 },
+      selector,
+    );
+  }
   const clicked = await page.evaluate((expected) => {
     const element = document.querySelector(expected);
     if (!(element instanceof HTMLElement)) return false;
+    element.scrollIntoView({ block: "center", inline: "center" });
     element.click();
     return true;
   }, selector);

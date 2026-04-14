@@ -344,11 +344,6 @@ run_extension_tests() {
     fi
 }
 
-# ============================================================================
-run_app_tests() {
-    log_header "APP CORE TESTS"
-    log_info "Testing Eliza core functionality"
-=======
 # MILADY CORE TESTS
 # ============================================================================
 run_milady_tests() {
