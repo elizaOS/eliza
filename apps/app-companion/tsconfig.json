@@ -2,7 +2,6 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": false,
-    "typeRoots": ["./node_modules/@types"],
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
     "strict": true,
@@ -28,6 +27,8 @@
       "@elizaos/app-steward/*": ["./apps/app-steward/src/*"],
       "@elizaos/app-core": ["./packages/app-core/src/index.ts"],
       "@elizaos/app-core/*": ["./packages/app-core/src/*"],
+      "@elizaos/ui": ["./packages/ui/src/index.ts"],
+      "@elizaos/ui/*": ["./packages/ui/src/*"],
       "@elizaos/app-companion": ["./apps/app-companion/src/index.ts"],
       "@elizaos/app-companion/*": ["./apps/app-companion/src/*"],
       "@elizaos/core": ["./packages/typescript/src/index.ts"],
@@ -36,6 +37,17 @@
       "@elizaos/agent/*": ["./packages/agent/src/*"],
       "@elizaos/shared": ["./packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["./packages/shared/src/*"],
+      "react": ["./packages/app-core/node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": [
+        "./packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"
+      ],
+      "react/jsx-dev-runtime": [
+        "./packages/app-core/node_modules/@types/react/jsx-dev-runtime.d.ts"
+      ],
+      "react-dom": [
+        "./packages/app-core/node_modules/@types/react-dom/index.d.ts"
+      ],
+      "@elizaos/*": ["./node_modules/@elizaos/*"],
       "lucide-react": ["./apps/app-companion/node_modules/lucide-react"]
     }
   },
