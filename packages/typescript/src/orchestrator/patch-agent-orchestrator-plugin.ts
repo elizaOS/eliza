@@ -1878,7 +1878,7 @@ function patchPtyServiceClass(): void {
 	const ptyServiceClass = PTYService;
 	if (!ptyServiceClass || typeof ptyServiceClass !== "function") return;
 
-	const prototype = ptyServiceClass.prototype as Record<string, unknown>;
+	const prototype = ptyServiceClass.prototype as unknown as Record<string, unknown>;
 	const originalResolveAgentType = prototype.resolveAgentType as
 		| ((this: PTYServiceLike) => Promise<string>)
 		| undefined;
@@ -1929,7 +1929,10 @@ export function createCodingAgentRouteHandler(
 	runtime: IAgentRuntime,
 	coordinator?: unknown,
 ): PatchedRouteHandler {
-	const baseHandler = baseCreateCodingAgentRouteHandler(runtime, coordinator);
+	const baseHandler = baseCreateCodingAgentRouteHandler(
+		runtime,
+		coordinator as Parameters<typeof baseCreateCodingAgentRouteHandler>[1],
+	);
 
 	return async (
 		req: http.IncomingMessage,
@@ -2091,7 +2094,7 @@ export function createCodingAgentRouteHandler(
 			);
 			return true;
 		}
-		return baseHandler ? baseHandler(req, res, pathname, method) : false;
+		return baseHandler ? baseHandler(req, res, pathname) : false;
 	};
 }
 

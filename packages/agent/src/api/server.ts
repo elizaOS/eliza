@@ -23,14 +23,14 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
-import { handleLifeOpsRoutes } from "@elizaos/app-lifeops/routes/lifeops-routes";
+// Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
 // import { handleWalletTradeExecuteRoute } from "./wallet-trade-routes.js";
 // import {
 //   loadWalletTradingProfile,
 //   recordWalletTradeLedgerEntry,
 //   updateWalletTradeLedgerEntryStatus,
 // } from "./wallet-trading-profile.js";
-import { handleWebsiteBlockerRoutes } from "@elizaos/app-lifeops/routes/website-blocker-routes";
+// Phase 2 extraction: Website-blocker routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
 import { handleTrainingRoutes } from "@elizaos/app-training/routes/training";
 import { handleTrajectoryRoute } from "@elizaos/app-training/routes/trajectory";
 import {
@@ -269,7 +269,7 @@ type PermissionsExtraRouteArg = Parameters<
 type ConversationRouteArg = Parameters<typeof handleConversationRoutes>[0];
 type ChatRouteArg = Parameters<typeof handleChatRoutes>[0];
 type WorkbenchRouteArg = Parameters<typeof handleWorkbenchRoutes>[0];
-type LifeOpsRouteArg = Parameters<typeof handleLifeOpsRoutes>[0];
+// LifeOpsRouteArg removed — routes extracted to lifeopsPlugin
 type MiscRouteArg = Parameters<typeof handleMiscRoutes>[0];
 
 export {
@@ -5092,20 +5092,8 @@ async function handleRequest(
     return;
   }
 
-  if (
-    await handleWebsiteBlockerRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      runtime: state.runtime ?? undefined,
-      readJsonBody,
-      json,
-      error,
-    })
-  ) {
-    return;
-  }
+  // Website-blocker routes: now served via lifeopsPlugin.routes (rawPath)
+  // on the runtime plugin route system. See app-lifeops/src/routes/plugin.ts.
 
   if (
     await handleBrowserWorkspaceRoutes({
@@ -5475,26 +5463,9 @@ async function handleRequest(
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Life-ops routes
+  // Life-ops routes: now served via lifeopsPlugin.routes (rawPath) on the
+  // runtime plugin route system. See app-lifeops/src/routes/plugin.ts.
   // ═══════════════════════════════════════════════════════════════════════
-  if (pathname.startsWith("/api/lifeops")) {
-    if (
-      await handleLifeOpsRoutes({
-        req,
-        res,
-        method,
-        pathname,
-        url,
-        state: coerce<LifeOpsRouteArg["state"]>(state),
-        json,
-        error,
-        readJsonBody,
-        decodePathComponent,
-      })
-    ) {
-      return;
-    }
-  }
 
   // ═══════════════════════════════════════════════════════════════════════
   // MCP routes (extracted to mcp-routes.ts)

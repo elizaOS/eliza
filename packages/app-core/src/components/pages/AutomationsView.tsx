@@ -41,13 +41,10 @@ import {
   Textarea,
 } from "@elizaos/ui";
 import {
-  BUILT_IN_TEMPLATES,
   buildCreateRequest,
   buildUpdateRequest,
   emptyForm,
   formFromTrigger,
-  getTemplateInstructions,
-  getTemplateName,
   type HeartbeatTemplate,
   loadUserTemplates,
   localizedExecutionStatus,
@@ -598,10 +595,10 @@ function useAutomationsViewController() {
       ? editingId
         ? t("heartbeatsview.editTitle", {
             name:
-              form.displayName.trim() || "Automation",
+              form.displayName.trim() || "Task",
             defaultValue: "Edit {{name}}",
           })
-        : "New Automation"
+        : "New Task"
       : editingTaskId
         ? "Edit Task"
         : "New Task";
@@ -869,7 +866,7 @@ function TriggerDetailPane({ trigger }: { trigger: TriggerSummary }) {
           <div className="flex flex-wrap items-center gap-2">
             <FieldLabel variant="kicker">
               <Clock3 className="mr-1.5 inline h-3.5 w-3.5" />
-              Scheduled Automation
+              Scheduled Task
             </FieldLabel>
             <StatusBadge
               label={
@@ -1185,7 +1182,7 @@ function AutomationsLayout() {
   } = ctx;
 
   const [searchQuery, setSearchQuery] = useState("");
-  const searchLabel = "Search automations";
+  const searchLabel = "Search tasks";
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const visibleItems = useMemo(() => {
     if (!normalizedSearchQuery) return filteredItems;
@@ -1216,12 +1213,12 @@ function AutomationsLayout() {
       contentIdentity="automations"
       collapseButtonTestId="automations-sidebar-collapse-toggle"
       expandButtonTestId="automations-sidebar-expand-toggle"
-      collapseButtonAriaLabel="Collapse automations"
-      expandButtonAriaLabel="Expand automations"
+      collapseButtonAriaLabel="Collapse tasks"
+      expandButtonAriaLabel="Expand tasks"
       header={null}
       collapsedRailAction={
         <SidebarCollapsedActionButton
-          aria-label="New automation"
+          aria-label="New task"
           onClick={openCreateTrigger}
         >
           <Plus className="h-4 w-4" />
@@ -1279,11 +1276,6 @@ function AutomationsLayout() {
           {/* Filter tabs */}
           <FilterTabs />
 
-          {(triggerError || taskError) && (
-            <SidebarContent.Notice tone="danger" className="mb-1 text-xs">
-              {triggerError || taskError}
-            </SidebarContent.Notice>
-          )}
           {(triggersLoading || tasksLoading) && (
             <SidebarContent.Notice
               icon={
@@ -1396,76 +1388,6 @@ function AutomationsLayout() {
             })
           )}
 
-          {/* Templates section — only show in "all" or "scheduled" filter */}
-          {(filter === "all" || filter === "scheduled") && (
-            <div className="mt-3 border-t border-border/30 px-1 pb-1 pt-4">
-              <SidebarContent.SectionHeader>
-                <SidebarContent.SectionLabel>
-                  {t("heartbeatsview.Templates", {
-                    defaultValue: "Templates",
-                  })}
-                </SidebarContent.SectionLabel>
-              </SidebarContent.SectionHeader>
-              {[...userTemplates, ...BUILT_IN_TEMPLATES].map((template) => {
-                const isUserTemplate = !template.id.startsWith("__builtin_");
-                const templateName = getTemplateName(template, t);
-                const templateInstructions = getTemplateInstructions(
-                  template,
-                  t,
-                );
-                return (
-                  <div key={template.id} className="group relative mb-1.5">
-                    <SidebarContent.Item
-                      variant={isUserTemplate ? "accent-soft" : "dashed"}
-                      onClick={() => {
-                        setForm({
-                          ...emptyForm,
-                          displayName: templateName,
-                          instructions: templateInstructions,
-                          durationValue: template.interval,
-                          durationUnit: template.unit,
-                        });
-                        ctx.setEditorMode("trigger");
-                        setEditorOpen(true);
-                        setEditingId(null);
-                        setSelectedItemId(null);
-                        setSelectedItemKind(null);
-                        setTemplateNotice(
-                          t("heartbeatsview.TemplateLoadedNotice", {
-                            defaultValue:
-                              'Template "{{name}}" loaded. Customize and create.',
-                            name: templateName,
-                          }),
-                        );
-                        setTimeout(() => setTemplateNotice(null), 3000);
-                      }}
-                    >
-                      <div className="text-xs font-medium text-txt">
-                        {templateName}
-                      </div>
-                      <div className="mt-0.5 text-2xs text-muted/60">
-                        {t("heartbeatsview.EveryIntervalUnit", {
-                          defaultValue: "Every {{interval}} {{unit}}",
-                          interval: template.interval,
-                          unit: template.unit,
-                        })}
-                      </div>
-                    </SidebarContent.Item>
-                    {isUserTemplate && (
-                      <SidebarContent.ItemAction
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          deleteUserTemplate(template.id);
-                        }}
-                      >
-                        ×
-                      </SidebarContent.ItemAction>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </SidebarPanel>
       </SidebarScrollRegion>
     </Sidebar>

@@ -502,7 +502,7 @@
   "conversations.renameDialogSuggesting": "Suggesting…",
   "conversations.renameDialogTitle": "Rename chat topic",
   "conversations.scopeAllConnectors": "All connectors",
-  "conversations.scopeAllWorlds": "All worlds",
+  "conversations.scopeAllWorlds": "All",
   "conversations.scope{{appName}}": "{{appName}}",
   "conversations.scopeUnknownWorld": "Unknown world",
   "conversations.searchChats": "Search chats",

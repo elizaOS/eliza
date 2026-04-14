@@ -23,6 +23,8 @@ export {
 export type { LifeOpsRouteContext } from "./plugin.ts";
 export type { WebsiteBlockerRouteContext } from "./plugin.ts";
 
+export { lifeopsPlugin } from "./routes/plugin.ts";
+
 export * from "./selfcontrol/index.ts";
 
 // UI page views

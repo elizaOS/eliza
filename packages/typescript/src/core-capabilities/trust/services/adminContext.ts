@@ -1,6 +1,6 @@
+import { createUniqueUuid } from "../../../entities.ts";
 import {
 	ChannelType,
-	createUniqueUuid,
 	type IAgentRuntime,
 	type Memory,
 	Role,

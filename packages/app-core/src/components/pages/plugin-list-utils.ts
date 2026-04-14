@@ -135,6 +135,37 @@ export const ALWAYS_ON_PLUGIN_IDS = new Set([
   "computeruse",
 ]);
 
+/**
+ * Connector plugin IDs shown in the Connectors / Manage view.
+ * Connectors not in this set are hidden from the UI.
+ */
+export const VISIBLE_CONNECTOR_IDS = new Set([
+  "discord",
+  "google-chat",
+  "imessage",
+  "msteams",
+  "instagram",
+  "line",
+  "signal",
+  "slack",
+  "telegram",
+  "whatsapp",
+  "wechat",
+  "twitter",
+]);
+
+/** Human-friendly display names for connector plugins whose raw IDs don't read well. */
+export const CONNECTOR_DISPLAY_NAMES: Record<string, string> = {
+  msteams: "MS Teams",
+  imessage: "iMessage",
+  "google-chat": "Google Chat",
+};
+
+/** Returns a display-ready name for a plugin, falling back to `plugin.name`. */
+export function connectorDisplayName(plugin: { id: string; name: string }): string {
+  return CONNECTOR_DISPLAY_NAMES[plugin.id] ?? plugin.name;
+}
+
 /** Keys to hide when Telegram "Allow all chats" mode is active. */
 export const TELEGRAM_ALLOW_ALL_HIDDEN = new Set(["TELEGRAM_ALLOWED_CHATS"]);
 
@@ -945,7 +976,7 @@ export function buildPluginListState(options: {
     (plugin) =>
       plugin.category !== "database" &&
       !ALWAYS_ON_PLUGIN_IDS.has(plugin.id) &&
-      (!isConnectorLikeMode || plugin.category === "connector") &&
+      (!isConnectorLikeMode || (plugin.category === "connector" && VISIBLE_CONNECTOR_IDS.has(plugin.id))) &&
       (mode !== "streaming" || plugin.category === "streaming"),
   );
   const nonDbPlugins = [SHOWCASE_PLUGIN, ...categoryPlugins];

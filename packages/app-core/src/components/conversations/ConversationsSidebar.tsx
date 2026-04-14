@@ -1,6 +1,6 @@
 
 
-import { MessagesSquare, Plus, Settings2 } from "lucide-react";
+import { Globe, MessagesSquare, Plus, Search, Settings2, X } from "lucide-react";
 import type React from "react";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
@@ -9,11 +9,14 @@ import { useApp } from "../../state";
 import { ConversationRenameDialog } from "./ConversationRenameDialog";
 import {
   ALWAYS_ON_PLUGIN_IDS,
+  VISIBLE_CONNECTOR_IDS,
+  connectorDisplayName,
   iconImageSource,
   resolveIcon,
 } from "../pages/plugin-list-utils";
 import { ChatConversationItem, ChatSourceIcon, SidebarCollapsedActionButton, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, NewActionButton, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TooltipProvider } from "@elizaos/ui";
 import {
+  ALL_CONNECTORS_SOURCE_SCOPE,
   ALL_WORLDS_SCOPE,
   buildConversationsSidebarModel,
   type ConversationsSidebarRow,
@@ -292,7 +295,7 @@ export function ConversationsSidebar({
     () =>
       plugins.filter(
         (p) =>
-          p.category === "connector" && !ALWAYS_ON_PLUGIN_IDS.has(p.id),
+          p.category === "connector" && !ALWAYS_ON_PLUGIN_IDS.has(p.id) && VISIBLE_CONNECTOR_IDS.has(p.id),
       ),
     [plugins],
   );
@@ -447,26 +450,7 @@ export function ConversationsSidebar({
         expandButtonTestId="chat-sidebar-expand-toggle"
         collapseButtonAriaLabel={t("conversations.closePanel")}
         expandButtonAriaLabel={t("aria.expandChatsPanel")}
-        header={
-          isManageConnectionsActive ? undefined : (
-            <SidebarHeader
-              search={{
-                value: searchQuery,
-                onChange: (event) => setSearchQuery(event.target.value),
-                onClear: () => setSearchQuery(""),
-                placeholder: t("conversations.searchChats", {
-                  defaultValue: "Search chats",
-                }),
-                "aria-label": t("conversations.searchChats", {
-                  defaultValue: "Search chats",
-                }),
-                clearLabel: t("common.clear", { defaultValue: "Clear" }),
-                autoComplete: "off",
-                spellCheck: false,
-              }}
-            />
-          )
-        }
+        header={undefined}
         collapsedRailAction={
           showNewChatAction ? (
             <SidebarCollapsedActionButton
@@ -509,29 +493,21 @@ export function ConversationsSidebar({
         <SidebarScrollRegion variant={isGameModal ? "game-modal" : "default"}>
           <SidebarPanel variant={isGameModal ? "game-modal" : "default"}>
             <div className="mb-3 grid gap-2">
-              <div
-                className={
-                  !isManageConnectionsActive && sidebarModel.showWorldFilter
-                    ? "grid gap-2 sm:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]"
-                    : "grid gap-2"
-                }
-              >
+              <div className="grid gap-2">
                 <div className="grid gap-2">
                   <div className="flex items-center justify-between gap-2">
-                    {!isManageConnectionsActive && (
-                      <span className="px-1 text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
-                        {t("conversations.filterScope", {
-                          defaultValue: "Source",
-                        })}
-                      </span>
-                    )}
+                    <span className="px-1 text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
+                      {isManageConnectionsActive
+                        ? t("conversations.connectors", { defaultValue: "Connectors" })
+                        : t("conversations.filterScope", { defaultValue: "Source" })}
+                    </span>
                     <Button
                       type="button"
                       variant={
                         isManageConnectionsActive ? "default" : "outline"
                       }
                       size="sm"
-                      className={`h-8 gap-1.5 rounded-sm px-2.5 text-2xs font-semibold ${
+                      className={`ml-auto h-8 gap-1.5 rounded-sm px-2.5 text-2xs font-semibold ${
                         isManageConnectionsActive
                           ? "border-accent/45 bg-accent/14 text-txt"
                           : "border-border/45 bg-card/55 text-txt hover:border-accent/35"
@@ -549,6 +525,7 @@ export function ConversationsSidebar({
                   {!isManageConnectionsActive ? (
                     <div className="flex flex-wrap gap-2">
                       {sidebarModel.sourceOptions.map((option) => {
+                        if (option.value === ALL_CONNECTORS_SOURCE_SCOPE) return null;
                         const isActive =
                           sidebarModel.sourceScope === option.value;
                         return (
@@ -575,26 +552,51 @@ export function ConversationsSidebar({
                       })}
                     </div>
                   ) : null}
+                  {!isManageConnectionsActive ? (
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(event) => setSearchQuery(event.target.value)}
+                        placeholder={t("conversations.searchChats", {
+                          defaultValue: "Search chats...",
+                        })}
+                        aria-label={t("conversations.searchChats", {
+                          defaultValue: "Search chats",
+                        })}
+                        autoComplete="off"
+                        spellCheck={false}
+                        className="h-9 w-full rounded-sm border border-border/45 bg-card/55 pl-8 pr-8 text-sm text-txt placeholder:text-muted focus:border-accent/50 focus:outline-none"
+                      />
+                      {searchQuery ? (
+                        <button
+                          type="button"
+                          onClick={() => setSearchQuery("")}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-txt"
+                          aria-label={t("common.clear", { defaultValue: "Clear" })}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {!isManageConnectionsActive && showNewChatAction ? (<div>{newChatAction}</div>) : null}
                 </div>
 
                 {!isManageConnectionsActive && sidebarModel.showWorldFilter ? (
                   <div className="grid gap-1">
-                    <span className="px-1 text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
-                      {t("conversations.filterWorld", {
-                        defaultValue: "Server / world",
-                      })}
-                    </span>
                     <Select
                       value={sidebarModel.worldScope}
                       onValueChange={setWorldScope}
                     >
                       <SelectTrigger
-                        className="h-10 rounded-sm border-border/45 bg-card/55 text-left shadow-inset"
+                        className="h-10 rounded-sm border-border/45 bg-card/55 shadow-inset [&>span]:flex [&>span]:items-center [&>span]:gap-1.5 [&>span]:truncate"
                         aria-label={t("conversations.filterWorld", {
                           defaultValue: "Server / world",
                         })}
                       >
+                        <Globe className="h-3.5 w-3.5 shrink-0 text-muted" />
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -640,7 +642,7 @@ export function ConversationsSidebar({
                           </SidebarContent.ItemIcon>
                           <SidebarContent.ItemBody>
                             <span className="block truncate text-sm font-semibold leading-5 text-txt">
-                              {plugin.name}
+                              {connectorDisplayName(plugin)}
                             </span>
                           </SidebarContent.ItemBody>
                         </SidebarContent.ItemButton>

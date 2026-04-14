@@ -248,7 +248,10 @@ export class CharacterFileManager extends Service {
 					path: path.join(this.backupDir, file),
 					stat: fs.statSync(path.join(this.backupDir, file)),
 				}))
-				.sort((a: { stat: { mtime: Date } }, b: { stat: { mtime: Date } }) => b.stat.mtime.getTime() - a.stat.mtime.getTime());
+				.sort(
+					(a: { stat: { mtime: Date } }, b: { stat: { mtime: Date } }) =>
+						b.stat.mtime.getTime() - a.stat.mtime.getTime(),
+				);
 
 			// Keep only the most recent backups
 			const filesToDelete = backupFiles.slice(this.maxBackups);

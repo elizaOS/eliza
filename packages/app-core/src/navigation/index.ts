@@ -132,7 +132,7 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     label: "Automations",
     tabs: ["automations"],
     icon: Clock3,
-    description: "Tasks, scheduled automations, and recurring workflows",
+    description: "Tasks, scheduled tasks, and recurring workflows",
   },
   {
     label: "Settings",

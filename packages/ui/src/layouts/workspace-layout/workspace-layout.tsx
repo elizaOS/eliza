@@ -115,7 +115,7 @@ export function WorkspaceLayout({
         ) : null}
 
         <main
-          ref={contentRef}
+          ref={contentRef as unknown as React.Ref<HTMLElement>}
           className={cn(
             "chat-native-scrollbar relative flex min-w-0 flex-1 flex-col overflow-y-auto bg-transparent",
             contentPadding &&

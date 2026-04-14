@@ -799,10 +799,6 @@ async function maybeBackfillTrajectoryFromConversationMemory(
   runtime: AgentRuntime,
   traj: Trajectory,
 ): Promise<Trajectory> {
-  if (!needsConversationBackfill(traj)) {
-    return traj;
-  }
-
   const metadata = (traj.metadata ?? {}) as Record<string, unknown>;
   const roomId = toNullableString(metadata.roomId);
   if (!roomId) {
@@ -864,11 +860,35 @@ async function maybeBackfillTrajectoryFromConversationMemory(
       return traj;
     }
 
+    const normalizedUserPrompt = userPrompt.toLowerCase();
+    const normalizedResponse = response.toLowerCase();
+    const existingCalls = (traj.steps ?? []).flatMap((step) => step.llmCalls ?? []);
+    const alreadyCapturedConversation = existingCalls.some((call) => {
+      const callPrompt = String(call.userPrompt ?? "").trim().toLowerCase();
+      if (
+        callPrompt &&
+        (callPrompt.includes(normalizedUserPrompt) ||
+          normalizedUserPrompt.includes(callPrompt))
+      ) {
+        return true;
+      }
+
+      const callResponse = String(call.response ?? "").trim().toLowerCase();
+      return (
+        callResponse.length > 0 &&
+        (callResponse.includes(normalizedResponse) ||
+          normalizedResponse.includes(callResponse))
+      );
+    });
+    if (alreadyCapturedConversation) {
+      return traj;
+    }
+
     const baseSteps: TrajectoryStep[] =
       traj.steps && traj.steps.length > 0
         ? traj.steps.map((step) => ({
             ...step,
-            llmCalls: [] as TrajectoryLlmCall[],
+            llmCalls: [...(step.llmCalls ?? [])],
           }))
         : [
             {
@@ -901,6 +921,7 @@ async function maybeBackfillTrajectoryFromConversationMemory(
             Number(assistantMemory.createdAt ?? endTime) - userCreatedAt,
           ),
         },
+        ...(baseSteps[0].llmCalls ?? []),
       ],
     };
 
@@ -911,11 +932,17 @@ async function maybeBackfillTrajectoryFromConversationMemory(
     delete nextMetadata.syntheticLlmCall;
     delete nextMetadata.syntheticLlmCallSource;
 
-    return {
+    const enriched = {
       ...traj,
       steps: baseSteps,
       metadata: nextMetadata,
     };
+    try {
+      await saveTrajectory(runtime, toPersistedTrajectory(enriched));
+    } catch {
+      // Best-effort persistence only; still return the enriched detail payload.
+    }
+    return enriched;
   } catch {
     return traj;
   }

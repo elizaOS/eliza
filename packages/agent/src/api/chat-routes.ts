@@ -46,6 +46,7 @@ import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.js"
 import { syncCharacterIntoConfig } from "../services/character-persistence.js";
 import { detectRuntimeModel } from "./agent-model.js";
 import {
+  executeFallbackParsedActions,
   maybeHandleDirectBinanceSkillRequest,
   parseFallbackActionBlocks,
 } from "./binance-skill-helpers.js";
@@ -1346,13 +1347,30 @@ export async function generateChatResponse(
         responseText || resultText || "",
       );
       if (websiteBlockAttempt || websitePermissionAttempt) {
-        const failureText = buildWebsiteBlockingActionNotExecutedReply(
-          originalUserText.trim(),
+        const callbacksBeforeFallback = actionCallbacksSeen;
+        await executeFallbackParsedActions(
+          runtime,
+          message,
+          [
+            ...(websiteBlockAttempt ? [websiteBlockAttempt] : []),
+            ...(websitePermissionAttempt ? [websitePermissionAttempt] : []),
+          ],
+          appendIncomingText,
+          recordActionCallback,
+          {
+            getCurrentText: () => responseText || resultText || "",
+          },
         );
-        if (opts?.onSnapshot) {
-          emitSnapshot(failureText);
-        } else {
-          responseText = failureText;
+
+        if (actionCallbacksSeen === callbacksBeforeFallback) {
+          const failureText = buildWebsiteBlockingActionNotExecutedReply(
+            originalUserText.trim(),
+          );
+          if (opts?.onSnapshot) {
+            emitSnapshot(failureText);
+          } else {
+            responseText = failureText;
+          }
         }
       }
     }

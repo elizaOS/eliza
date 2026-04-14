@@ -58,7 +58,7 @@ export function createOngoingTasksProvider(): Provider {
   return {
     name: "ongoingTasks",
     description:
-      "Provides context about the user's active tasks and scheduled automations.",
+      "Provides context about the user's active tasks and scheduled tasks.",
     position: 20,
     async get(
       runtime: IAgentRuntime,

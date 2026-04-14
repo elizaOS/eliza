@@ -281,8 +281,9 @@ async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
   const { vincentPlugin } = await import("@elizaos/app-vincent/plugin");
   const { shopifyPlugin } = await import("@elizaos/app-shopify/plugin");
   const { stewardPlugin } = await import("@elizaos/app-steward/plugin");
+  const { lifeopsPlugin } = await import("@elizaos/app-lifeops/routes/plugin");
 
-  for (const plugin of [vincentPlugin, shopifyPlugin, stewardPlugin]) {
+  for (const plugin of [vincentPlugin, shopifyPlugin, stewardPlugin, lifeopsPlugin]) {
     try {
       await runtime.registerPlugin(plugin);
       logger.info(`[eliza] Registered app route plugin: ${plugin.name}`);

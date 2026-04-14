@@ -1311,19 +1311,21 @@ function PluginListView({
         <PagePanel.ContentArea>
           <div className="px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
             <PagePanel variant="section">
-              <PagePanel.Header
-                eyebrow={t("nav.advanced")}
-                heading={pluginSectionTitle}
-                className="border-border/35"
-                actions={
-                  <PagePanel.Meta className="border-border/45 px-2.5 py-1 font-bold tracking-[0.16em] text-muted">
-                    {t("pluginsview.VisibleCount", {
-                      defaultValue: "{{count}} shown",
-                      count: visiblePlugins.length,
-                    })}
-                  </PagePanel.Meta>
-                }
-              />
+              {!isConnectorShellMode && (
+                <PagePanel.Header
+                  eyebrow={t("nav.advanced")}
+                  heading={pluginSectionTitle}
+                  className="border-border/35"
+                  actions={
+                    <PagePanel.Meta className="border-border/45 px-2.5 py-1 font-bold tracking-[0.16em] text-muted">
+                      {t("pluginsview.VisibleCount", {
+                        defaultValue: "{{count}} shown",
+                        count: visiblePlugins.length,
+                      })}
+                    </PagePanel.Meta>
+                  }
+                />
+              )}
 
               <div className="bg-bg/18 px-4 py-4 sm:px-5">
                 {allowCustomOrder && pluginOrder.length > 0 ? (

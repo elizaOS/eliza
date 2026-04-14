@@ -41,7 +41,9 @@ export function extendRuntimeWithEventUnregistration(
 		) {
 			const handlers = this.events?.[event];
 			if (handlers) {
-				const filteredHandlers = handlers.filter((h) => h !== handler);
+				const filteredHandlers = handlers.filter(
+					(h) => h !== (handler as unknown as typeof h),
+				);
 				if (filteredHandlers.length > 0) {
 					this.events[event] = filteredHandlers;
 				} else {

@@ -596,7 +596,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 				} catch (error) {
 					logger.warn(
 						`[PluginManagerService] Failed to unload ${pluginState.name} during shutdown:`,
-						error,
+						String(error),
 					);
 				}
 			}
