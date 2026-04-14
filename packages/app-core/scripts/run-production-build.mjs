@@ -111,8 +111,7 @@ const writeBuildInfoScript = path.join(
 );
 const bunForScripts = resolveBunForScripts();
 const pruneCdnAssetsScript = path.join(
-  rootDir,
-  "scripts",
+  scriptDir,
   "prune-cdn-local-assets.mjs",
 );
 const { appAssetBaseUrl } = resolveElizaAssetBaseUrls();
