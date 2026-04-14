@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import type {
 	Plugin,
 	PluginEventRegistration,
@@ -71,6 +70,11 @@ type RuntimePluginServiceStartCapture = {
 	pluginName: string;
 };
 
+type AsyncContextStorage<T> = {
+	run<R>(store: T, callback: () => R): R;
+	getStore(): T | undefined;
+};
+
 type RuntimeWithPluginLifecycle = IAgentRuntime & {
 	__elizaPluginLifecycleInstalled?: boolean;
 	__elizaPluginOwnership?: Map<string, PluginOwnership>;
@@ -104,10 +108,56 @@ type RuntimePrivateState = {
 	registerSendHandler?: (source: string, handler: RuntimeSendHandler) => void;
 };
 
+class StackAsyncContextStorage<T> implements AsyncContextStorage<T> {
+	private readonly stack: T[] = [];
+
+	run<R>(store: T, callback: () => R): R {
+		this.stack.push(store);
+		try {
+			return callback();
+		} finally {
+			this.stack.pop();
+		}
+	}
+
+	getStore(): T | undefined {
+		return this.stack.length > 0
+			? this.stack[this.stack.length - 1]
+			: undefined;
+	}
+}
+
+function createAsyncContextStorage<T>(): AsyncContextStorage<T> {
+	if (
+		typeof process !== "undefined" &&
+		typeof process.versions !== "undefined" &&
+		typeof process.versions.node !== "undefined"
+	) {
+		try {
+			// eslint-disable-next-line @typescript-eslint/no-require-imports
+			const { AsyncLocalStorage } =
+				require("node:async_hooks") as typeof import("node:async_hooks");
+			const storage = new AsyncLocalStorage<T>();
+			return {
+				run<R>(store: T, callback: () => R): R {
+					return storage.run(store, callback);
+				},
+				getStore(): T | undefined {
+					return storage.getStore();
+				},
+			};
+		} catch {
+			// AsyncLocalStorage unavailable — fall back to stack storage.
+		}
+	}
+
+	return new StackAsyncContextStorage<T>();
+}
+
 const pluginRegistrationContext =
-	new AsyncLocalStorage<RuntimePluginRegistrationCapture>();
+	createAsyncContextStorage<RuntimePluginRegistrationCapture>();
 const pluginServiceStartContext =
-	new AsyncLocalStorage<RuntimePluginServiceStartCapture>();
+	createAsyncContextStorage<RuntimePluginServiceStartCapture>();
 const serviceClassOwners = new WeakMap<RuntimeServiceClass, string>();
 
 function getRuntimePrivateState(runtime: IAgentRuntime): RuntimePrivateState {
