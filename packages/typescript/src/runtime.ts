@@ -15,7 +15,7 @@ import { parseActionParams, validateActionParams } from "./actions";
 import {
 	type CapabilityConfig,
 	createBasicCapabilitiesPlugin,
-} from "./basic-capabilities/index";
+} from "./features/basic-capabilities/index";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { createLogger } from "./logger";
@@ -1387,7 +1387,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		if (this.character.advancedPlanning === true) {
 			const { createAdvancedPlanningPlugin } = await import(
-				"./advanced-planning/index.ts"
+				"./features/advanced-planning/index.ts"
 			);
 			pluginRegistrationPromises.push(
 				this.registerPlugin(createAdvancedPlanningPlugin()),
@@ -1396,7 +1396,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		if (this.character.advancedMemory === true) {
 			const { createAdvancedMemoryPlugin } = await import(
-				"./advanced-memory/index.ts"
+				"./features/advanced-memory/index.ts"
 			);
 			pluginRegistrationPromises.push(
 				this.registerPlugin(createAdvancedMemoryPlugin()),

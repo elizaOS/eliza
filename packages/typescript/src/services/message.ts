@@ -4,7 +4,7 @@ import {
 	formatTaskCompletionStatus,
 	getTaskCompletionCacheKey,
 	type TaskCompletionAssessment,
-} from "../advanced-capabilities/evaluators/task-completion";
+} from "../features/advanced-capabilities/evaluators/task-completion";
 import { createUniqueUuid } from "../entities";
 import { logger } from "../logger";
 import {
