@@ -12,7 +12,7 @@
     "rootDir": "../..",
     "rewriteRelativeImportExtensions": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
-    "types": ["node", "bun-types", "react", "react-dom", "vite/client"],
+    "types": ["node", "bun-types", "react", "react-dom"],
     "typeRoots": [
       "../../../node_modules/@types",
       "../../../node_modules/.bun/node_modules/@types",
@@ -22,5 +22,5 @@
     ]
   },
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
-  "include": ["src"]
+  "include": ["src", "vite-env.d.ts"]
 }
