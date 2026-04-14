@@ -7,8 +7,8 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
 import { useApp } from "../../state";
 import { ConversationRenameDialog } from "./ConversationRenameDialog";
-import {
 import { ChatConversationItem, ChatSourceIcon, SidebarCollapsedActionButton, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, NewActionButton, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TooltipProvider } from "@elizaos/ui";
+import {
   ALL_WORLDS_SCOPE,
   buildConversationsSidebarModel,
   type ConversationsSidebarRow,

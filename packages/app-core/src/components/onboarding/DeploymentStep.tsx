@@ -17,8 +17,8 @@ import {
   gatewayEndpointToApiBase,
 } from "../../bridge/gateway-discovery";
 import { isDesktopPlatform } from "../../platform/init";
-import {
 import { Button, Card, CardContent, Input, Spinner } from "@elizaos/ui";
+import {
   addAgentProfile,
   clearPersistedActiveServer,
   savePersistedActiveServer,

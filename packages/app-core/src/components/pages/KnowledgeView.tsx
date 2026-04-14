@@ -15,8 +15,8 @@ import {
   maybeCompressKnowledgeUploadImage,
 } from "../../utils/knowledge-upload-image";
 import { DocumentViewer } from "./knowledge-detail";
-import {
 import { PagePanel, Button } from "@elizaos/ui";
+import {
   BULK_UPLOAD_TARGET_BYTES,
   getKnowledgeUploadFilename,
   isSupportedKnowledgeFile,

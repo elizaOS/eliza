@@ -15,8 +15,8 @@ import {
 import { COMMAND_PALETTE_EVENT } from "../../events";
 import { useBugReport } from "../../hooks";
 import { useApp } from "../../state";
-import {
 import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input } from "@elizaos/ui";
+import {
   openDesktopSettingsWindow,
   openDesktopSurfaceWindow,
   requestDesktopBridge,

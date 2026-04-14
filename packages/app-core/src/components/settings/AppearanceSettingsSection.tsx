@@ -18,8 +18,8 @@ import {
   loadContentPackFromUrl,
   releaseLoadedContentPack,
 } from "../../content-packs";
-import {
 import { Button, Card, CardContent, Input } from "@elizaos/ui";
+import {
   loadPersistedActivePackUrl,
   savePersistedActivePackUrl,
   useApp,

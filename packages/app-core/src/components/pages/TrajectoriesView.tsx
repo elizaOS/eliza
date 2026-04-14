@@ -16,8 +16,8 @@ import {
 import { Download, RefreshCw, Trash2, XCircle } from "lucide-react";
 import { TrajectoryDetailView } from "./TrajectoryDetailView";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
-import {
 import { PagePanel, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, TrajectorySidebarItem, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, PageLayout } from "@elizaos/ui";
+import {
   formatTrajectoryDuration,
   formatTrajectoryTimestamp,
   formatTrajectoryTokenCount,

@@ -36,7 +36,7 @@ import {
   type WhitelistStatus,
   client,
 } from "../api";
-import type { PromptOptions } from "@elizaos/ui/components/ui/confirm-dialog";
+
 import { confirmDesktopAction } from "../utils";
 import {
   loadBrowserEnabled,
@@ -45,6 +45,7 @@ import {
   saveWalletEnabled,
 } from "./persistence";
 import type { InventoryChainFilters } from "./types";
+import { type PromptOptions } from "@elizaos/ui";
 
 // ── Types ──────────────────────────────────────────────────────────────
 

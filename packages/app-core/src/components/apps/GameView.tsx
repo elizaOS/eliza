@@ -31,8 +31,8 @@ import { openExternalUrl } from "../../utils";
 import type { DesktopClickAuditItem } from "../../utils/desktop-workspace";
 import { formatTime } from "../../utils/format";
 import { getAppOperatorSurface } from "./surfaces/registry";
-import {
 import { Button, Input } from "@elizaos/ui";
+import {
   buildViewerSessionKey,
   resolveEmbeddedViewerUrl,
   resolvePostMessageTargetOrigin,

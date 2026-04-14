@@ -1,4 +1,2 @@
-export {
-  useDocumentVisibility,
-  useIntervalWhenDocumentVisible,
-} from "@elizaos/ui/hooks/useDocumentVisibility";
+export { useDocumentVisibility, useIntervalWhenDocumentVisible } from "@elizaos/ui";
+

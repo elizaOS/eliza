@@ -16,8 +16,8 @@ import {
   THREE,
 } from "@elizaos/app-companion/components/avatar/vector-browser-three";
 import { MemoryDetailPanel } from "./MemoryDetailPanel";
-import {
 import { PagePanel, MetaPill, SidebarContent, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, PageLayout } from "@elizaos/ui";
+import {
   buildVectorGraph2DLayout,
   DIM_COLUMNS,
   hasEmbedding,

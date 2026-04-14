@@ -25,8 +25,8 @@ import { AgentActivityBox } from "../chat/AgentActivityBox";
 import { MessageContent } from "../chat/MessageContent";
 import { CodingAgentControlChip } from "@elizaos/app-coding";
 import { PtyConsoleDrawer } from "@elizaos/app-coding";
-import {
 import { ChatAttachmentStrip, ChatComposer, ChatComposerShell, ChatSourceIcon, ChatThreadLayout, ChatTranscript, TypingIndicator } from "@elizaos/ui";
+import {
   useChatVoiceController,
   useGameModalMessages,
 } from "./chat-view-hooks";

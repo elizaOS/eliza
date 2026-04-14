@@ -8,8 +8,8 @@ import {
   onboardingInfoPanelClassName,
   onboardingInputClassName,
 } from "./onboarding-form-primitives";
-import {
 import { Button, Input } from "@elizaos/ui";
+import {
   OnboardingStepHeader,
   onboardingFooterClass,
   onboardingPrimaryActionClass,

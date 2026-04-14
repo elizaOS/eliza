@@ -5,10 +5,6 @@ import type {
 } from "../../api/client-types-cloud";
 import { useApp } from "../../state/useApp";
 
-import type {
-  PipelineNode,
-  PipelineStageId,
-} from "@elizaos/ui/components/composites/trajectories/trajectory-pipeline-graph";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Brain,
@@ -23,7 +19,7 @@ import {
   formatTrajectoryTokenCount,
 } from "../../utils/trajectory-format";
 import { estimateTokenCost } from "../conversations/conversation-utils";
-import { PagePanel, TrajectoryLlmCallCard, TrajectoryPipelineGraph } from "@elizaos/ui";
+import { PagePanel, TrajectoryLlmCallCard, TrajectoryPipelineGraph, type PipelineNode, type PipelineStageId } from "@elizaos/ui";
 
 // ---------------------------------------------------------------------------
 // Pipeline stage mapping

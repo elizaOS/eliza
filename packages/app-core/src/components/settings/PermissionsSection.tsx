@@ -20,8 +20,8 @@ import {
   PermissionRow,
   useDesktopPermissionsState,
 } from "./permission-controls";
-import {
 import { Button } from "@elizaos/ui";
+import {
   CAPABILITIES,
   getPermissionAction,
   SYSTEM_PERMISSIONS,

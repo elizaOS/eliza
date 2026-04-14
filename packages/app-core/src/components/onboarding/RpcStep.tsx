@@ -12,8 +12,8 @@ import {
   onboardingRecommendedSurfaceClassName,
   onboardingRecommendedSurfaceHoverClassName,
 } from "./onboarding-form-primitives";
-import {
 import { Button, Input } from "@elizaos/ui";
+import {
   OnboardingSecondaryActionButton,
   OnboardingStepHeader,
   onboardingBodyTextShadowStyle,

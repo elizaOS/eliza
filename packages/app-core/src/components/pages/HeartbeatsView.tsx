@@ -17,8 +17,8 @@ import { WidgetHost } from "../../widgets";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import { HeartbeatForm } from "./HeartbeatForm";
-import {
 import { PagePanel, SidebarCollapsedActionButton, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, FieldLabel, NewActionButton, StatusBadge, StatusDot, PageLayout } from "@elizaos/ui";
+import {
   BUILT_IN_TEMPLATES,
   buildCreateRequest,
   buildUpdateRequest,

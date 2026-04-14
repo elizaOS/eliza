@@ -8,8 +8,8 @@ import { useBranding } from "../../config/branding";
 import { useBugReport } from "../../hooks";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
-import {
 import { Banner, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldDescription, FieldLabel, FieldMessage, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from "@elizaos/ui";
+import {
   createDesktopBugReportBundle,
   type DesktopBugReportDiagnostics,
   formatDesktopBugReportDiagnostics,
