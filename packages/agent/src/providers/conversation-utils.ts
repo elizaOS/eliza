@@ -21,7 +21,11 @@ function formatExternalSpeakerLabel(
   userName: string | undefined,
   source: string | undefined,
 ): string {
-  if (displayName && userName && normalizeName(displayName) !== normalizeName(userName)) {
+  if (
+    displayName &&
+    userName &&
+    normalizeName(displayName) !== normalizeName(userName)
+  ) {
     if (source === "discord") {
       return `${displayName} (discord username: ${userName})`;
     }

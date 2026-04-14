@@ -63,13 +63,6 @@ export const VECTOR_GRAPH_2D_PALETTE = [
   "#84cc16",
 ];
 
-export const VECTOR_VIEW_TOGGLE_BASE_CLASSNAME =
-  "h-auto min-h-[1.75rem] rounded-lg border px-4 py-1 text-left text-xs font-medium whitespace-normal break-words transition-all duration-300";
-export const VECTOR_VIEW_TOGGLE_ACTIVE_CLASSNAME =
-  "border-accent/45 bg-accent/16 text-txt-strong shadow-sm";
-export const VECTOR_VIEW_TOGGLE_INACTIVE_CLASSNAME =
-  "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt";
-
 /** Try to parse a JSON content field, returning the text content or the raw string. */
 export function parseContent(val: unknown): string {
   if (typeof val !== "string") {

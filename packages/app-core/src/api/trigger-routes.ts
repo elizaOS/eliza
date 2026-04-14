@@ -14,7 +14,7 @@ import {
   TRIGGER_TASK_TAGS,
   taskToTriggerSummary,
   triggersFeatureEnabled,
-} from "@elizaos/agent";
+} from "@elizaos/agent/triggers";
 import type { RouteHelpers, RouteRequestContext } from "@elizaos/agent/api";
 import {
   type TriggerRouteContext as AutonomousTriggerRouteContext,

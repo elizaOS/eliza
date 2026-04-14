@@ -132,6 +132,68 @@ IMPORTANT: Your response must ONLY contain the TOON document above.`;
 
 export const CHOOSE_OPTION_TEMPLATE = chooseOptionTemplate;
 
+export const extractSecretOperationTemplate = `You are helping manage secrets for an AI agent.
+
+Determine what operation the user wants to perform:
+- get: Retrieve a secret value
+- set: Store a new secret
+- delete: Remove a secret
+- list: Show all available secrets (without values)
+- check: Check if a secret exists
+
+Common patterns:
+- "What is my OpenAI key?" -> operation: get, key: OPENAI_API_KEY
+- "Do I have a Discord token set?" -> operation: check, key: DISCORD_BOT_TOKEN
+- "Show me my secrets" -> operation: list
+- "Delete my old API key" -> operation: delete
+- "Remove TWITTER_API_KEY" -> operation: delete, key: TWITTER_API_KEY
+- "Set my key to sk-..." -> operation: set, key: <infer>, value: sk-...
+
+{{recentMessages}}
+
+Extract the operation, key (if applicable), value (if applicable), and level from the user's message.`;
+
+export const EXTRACT_SECRET_OPERATION_TEMPLATE = extractSecretOperationTemplate;
+
+export const extractSecretRequestTemplate = `You are helping an AI agent request a missing secret.
+Determine what secret the agent needs and why based on the recent conversation.
+
+Common patterns:
+- "I need an API key for OpenAI" -> key: OPENAI_API_KEY
+- "Missing TWITTER_TOKEN" -> key: TWITTER_TOKEN
+- "I cannot proceed without a Discord token" -> key: DISCORD_TOKEN
+
+Recent Messages:
+{{recentMessages}}
+
+Output JSON with:
+- key: The name of the secret needed (e.g. OPENAI_API_KEY)
+- reason: Why it is needed (optional)
+
+If no specific secret is requested, return null json.`;
+
+export const EXTRACT_SECRET_REQUEST_TEMPLATE = extractSecretRequestTemplate;
+
+export const extractSecretsTemplate = `You are extracting secret/configuration values from the user's message.
+
+The user wants to set one or more secrets. Extract:
+1. The secret key (should be UPPERCASE_WITH_UNDERSCORES format)
+2. The secret value
+3. Optional description
+4. Secret type (api_key, secret, credential, url, or config)
+
+Common patterns:
+- "Set my OpenAI key to sk-..." -> key: OPENAI_API_KEY, value: sk-...
+- "My Anthropic API key is sk-ant-..." -> key: ANTHROPIC_API_KEY, value: sk-ant-...
+- "Use this Discord token: ..." -> key: DISCORD_BOT_TOKEN, value: ...
+- "Set DATABASE_URL to postgres://..." -> key: DATABASE_URL, value: postgres://...
+
+{{recentMessages}}
+
+Extract the secrets from the user's message. If the key name isn't explicitly specified, infer an appropriate UPPERCASE_WITH_UNDERSCORES name based on the context.`;
+
+export const EXTRACT_SECRETS_TEMPLATE = extractSecretsTemplate;
+
 export const imageDescriptionTemplate = `Task: Analyze the provided image and generate a comprehensive description with multiple levels of detail.
 
 Instructions:
@@ -171,6 +233,168 @@ prompt: Detailed image generation prompt
 IMPORTANT: Your response must ONLY contain the TOON document above.`;
 
 export const IMAGE_GENERATION_TEMPLATE = imageGenerationTemplate;
+
+export const initialSummarizationTemplate = `# Task: Summarize Conversation
+
+You are analyzing a conversation to create a concise summary that captures the key points, topics, and important details.
+
+# Recent Messages
+{{recentMessages}}
+
+# Instructions
+Generate a summary that:
+1. Captures the main topics discussed
+2. Highlights key information shared
+3. Notes any decisions made or questions asked
+4. Maintains context for future reference
+5. Is concise but comprehensive
+
+**IMPORTANT**: Keep the summary under 2500 tokens. Be comprehensive but concise.
+
+Also extract:
+- **Topics**: List of main topics discussed (comma-separated)
+- **Key Points**: Important facts or decisions (bullet points)
+
+Respond in TOON:
+text: Your comprehensive summary here
+topics[0]: topic1
+topics[1]: topic2
+topics[2]: topic3
+keyPoints[0]: First key point
+keyPoints[1]: Second key point`;
+
+export const INITIAL_SUMMARIZATION_TEMPLATE = initialSummarizationTemplate;
+
+export const longTermExtractionTemplate = `# Task: Extract Long-Term Memory (Strict Criteria)
+
+You are analyzing a conversation to extract ONLY the most critical, persistent information about the user using cognitive science memory categories.
+
+# Recent Messages
+{{recentMessages}}
+
+# Current Long-Term Memories
+{{existingMemories}}
+
+# Memory Categories (Based on Cognitive Science)
+
+## 1. EPISODIC Memory
+Personal experiences and specific events with temporal/spatial context.
+**Examples:**
+- "User completed migration project from MongoDB to PostgreSQL in Q2 2024"
+- "User encountered authentication bug in production on March 15th"
+- "User had a negative experience with Docker networking in previous job"
+
+**Requirements:**
+- Must include WHO did WHAT, WHEN/WHERE
+- Must be a specific, concrete event (not a pattern)
+- Must have significant impact or relevance to future work
+
+## 2. SEMANTIC Memory
+General facts, concepts, knowledge, and established truths about the user.
+**Examples:**
+- "User is a senior backend engineer with 8 years experience"
+- "User specializes in distributed systems and microservices architecture"
+- "User's primary programming language is TypeScript"
+- "User works at Acme Corp as technical lead"
+
+**Requirements:**
+- Must be factual, timeless information
+- Must be explicitly stated or demonstrated conclusively
+- No speculation or inference from single instances
+- Core identity, expertise, or knowledge only
+
+## 3. PROCEDURAL Memory
+Skills, workflows, methodologies, and how-to knowledge.
+**Examples:**
+- "User follows strict TDD workflow: write tests first, then implementation"
+- "User prefers git rebase over merge to maintain linear history"
+- "User's debugging process: check logs → reproduce locally → binary search"
+- "User always writes JSDoc comments before implementing functions"
+
+**Requirements:**
+- Must describe HOW user does something
+- Must be a repeated, consistent pattern (seen 3+ times or explicitly stated as standard practice)
+- Must be a workflow, methodology, or skill application
+- Not one-off preferences
+
+# ULTRA-STRICT EXTRACTION CRITERIA
+
+## DO EXTRACT (Only These):
+
+**EPISODIC:**
+- Significant completed projects or milestones
+- Important bugs, incidents, or problems encountered
+- Major decisions made with lasting impact
+- Formative experiences that shape future work
+
+**SEMANTIC:**
+- Professional identity (role, title, company)
+- Core expertise and specializations (stated explicitly or demonstrated conclusively)
+- Primary languages, frameworks, or tools (not exploratory use)
+- Established facts about their work context
+
+**PROCEDURAL:**
+- Consistent workflows demonstrated 3+ times or explicitly stated
+- Standard practices user always follows
+- Methodology preferences with clear rationale
+- Debugging, testing, or development processes
+
+## NEVER EXTRACT:
+
+- **One-time requests or tasks** (e.g., "can you generate an image", "help me debug this")
+- **Casual conversations** without lasting significance
+- **Exploratory questions** (e.g., "how does X work?")
+- **Temporary context** (current bug, today's task)
+- **Preferences from single occurrence** (e.g., user asked for code once)
+- **Social pleasantries** (thank you, greetings)
+- **Testing or experimentation** (trying out a feature)
+- **Common patterns everyone has** (likes clear explanations)
+- **Situational information** (working on feature X today)
+- **Opinions without persistence** (single complaint, isolated praise)
+- **General knowledge** (not specific to user)
+
+# Quality Gates (ALL Must Pass)
+
+1. **Significance Test**: Will this matter in 3+ months?
+2. **Specificity Test**: Is this concrete and actionable?
+3. **Evidence Test**: Is there strong evidence (3+ instances OR explicit self-identification)?
+4. **Uniqueness Test**: Is this specific to THIS user (not generic)?
+5. **Confidence Test**: Confidence must be >= 0.85 (be VERY conservative)
+6. **Non-Redundancy Test**: Does this add NEW information not in existing memories?
+
+# Confidence Scoring (Be Conservative)
+
+- **0.95-1.0**: User explicitly stated as core identity/practice AND demonstrated multiple times
+- **0.85-0.94**: User explicitly stated OR consistently demonstrated 5+ times
+- **0.75-0.84**: Strong pattern (3-4 instances) with supporting context
+- **Below 0.75**: DO NOT EXTRACT (insufficient evidence)
+
+# Critical Instructions
+
+1. **Default to NOT extracting** - When in doubt, skip it
+2. **Require overwhelming evidence** - One or two mentions is NOT enough
+3. **Focus on what's PERSISTENT** - Not what's temporary or situational
+4. **Verify against existing memories** - Don't duplicate or contradict
+5. **Maximum 2-3 extractions per run** - Quality over quantity
+
+**If there are no qualifying facts (which is common), return no memories entries.**
+
+# Response Format
+
+memories[0]:
+  category: semantic
+  content: User is a senior TypeScript developer with 8 years of backend experience
+  confidence: 0.95
+memories[1]:
+  category: procedural
+  content: User follows TDD workflow: writes tests before implementation, runs tests after each change
+  confidence: 0.88
+memories[2]:
+  category: episodic
+  content: User led database migration from MongoDB to PostgreSQL for payment system in Q2 2024
+  confidence: 0.92`;
+
+export const LONG_TERM_EXTRACTION_TEMPLATE = longTermExtractionTemplate;
 
 export const messageClassifierTemplate = `Analyze this user request and classify it for planning purposes:
 
@@ -941,6 +1165,39 @@ updates[1]{key,value}:
 IMPORTANT: Your response must ONLY contain the TOON document above.`;
 
 export const UPDATE_SETTINGS_TEMPLATE = updateSettingsTemplate;
+
+export const updateSummarizationTemplate = `# Task: Update and Condense Conversation Summary
+
+You are updating an existing conversation summary with new messages, while keeping the total summary concise.
+
+# Existing Summary
+{{existingSummary}}
+
+# Existing Topics
+{{existingTopics}}
+
+# New Messages Since Last Summary
+{{newMessages}}
+
+# Instructions
+Update the summary by:
+1. Merging the existing summary with insights from the new messages
+2. Removing redundant or less important details to stay under the token limit
+3. Keeping the most important context and decisions
+4. Adding new topics if they emerge
+5. **CRITICAL**: Keep the ENTIRE updated summary under 2500 tokens
+
+The goal is a rolling summary that captures the essence of the conversation without growing indefinitely.
+
+Respond in TOON:
+text: Your updated and condensed summary here
+topics[0]: topic1
+topics[1]: topic2
+topics[2]: topic3
+keyPoints[0]: First key point
+keyPoints[1]: Second key point`;
+
+export const UPDATE_SUMMARIZATION_TEMPLATE = updateSummarizationTemplate;
 
 export const booleanFooter = "Respond with only a YES or a NO.";
 

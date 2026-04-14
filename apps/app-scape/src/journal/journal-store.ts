@@ -42,13 +42,13 @@ export interface JournalStoreOptions {
   displayName: string;
   /**
    * Override the journal root. Defaults to
-   * `~/.milady/scape-journals/`. Mostly used by tests.
+   * `~/.eliza/scape-journals/`. Mostly used by tests.
    */
   rootDir?: string;
 }
 
 function defaultRootDir(): string {
-  return join(homedir(), ".milady", "scape-journals");
+  return join(homedir(), ".eliza", "scape-journals");
 }
 
 function sanitizeFilename(name: string): string {

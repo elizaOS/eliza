@@ -29,7 +29,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { useState } from "react";
-import type { OverlayAppContext } from "@elizaos/app-core/components/apps/overlay-app-api";
+import type { OverlayAppContext } from "@elizaos/app-core";
 import { CustomersPanel } from "./CustomersPanel";
 import { InventoryLevelsPanel } from "./InventoryLevelsPanel";
 import { OrdersPanel } from "./OrdersPanel";

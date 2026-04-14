@@ -1,20 +1,10 @@
-import {
-  Button,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectValue,
-  SettingsControls,
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/app-core";
+
+
 import { ChevronRight } from "lucide-react";
 import type { ReactNode, RefCallback } from "react";
 import type { PluginInfo } from "../../api";
 import type {
+import { SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Select, SelectContent, SelectItem, SelectValue, SettingsControls } from "@elizaos/ui";
   PluginsViewMode,
   SubgroupTag,
   TranslateFn,

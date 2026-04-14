@@ -12,13 +12,13 @@
  * `./server.js` or `./server-startup.js` — they re-export the same function.
  */
 
-export { startApiServer } from "./server.js";
 export type {
-  ServerState,
   AgentStartupDiagnostics,
-  StreamEventEnvelope,
   LogEntry,
-  SkillEntry,
+  ServerState,
   ShareIngestItem,
+  SkillEntry,
+  StreamEventEnvelope,
   StreamEventType,
 } from "./server.js";
+export { startApiServer } from "./server.js";

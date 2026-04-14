@@ -1,9 +1,5 @@
 import type http from "node:http";
-import {
-  type AgentRuntime,
-  type Task,
-  type UUID,
-} from "@elizaos/core";
+import type { AgentRuntime, Task, UUID } from "@elizaos/core";
 import type { LifeOpsOverview } from "../contracts/lifeops.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import type { TriggerSummary } from "../triggers/types.js";

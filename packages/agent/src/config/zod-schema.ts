@@ -28,8 +28,8 @@ import {
   PumpfunStreamConfigSchema,
   SignalConfigSchema,
   SlackConfigSchema,
-  TelegramConfigSchema,
   TelegramAccountConnectorSchema,
+  TelegramConfigSchema,
   TwitchConnectorConfigSchema,
   TwitchStreamConfigSchema,
   TwitterConfigSchema,
@@ -347,7 +347,9 @@ const DeploymentTargetSchema = z
       z.literal("cloud"),
       z.literal("remote"),
     ]),
-    provider: z.union([z.literal("elizacloud"), z.literal("remote")]).optional(),
+    provider: z
+      .union([z.literal("elizacloud"), z.literal("remote")])
+      .optional(),
     remoteApiBase: z.string().optional(),
     remoteAccessToken: z.string().optional(),
   })

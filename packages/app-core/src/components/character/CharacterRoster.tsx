@@ -1,13 +1,9 @@
-/**
- * Shared character roster grid — slant-clipped card selector used by both
- * onboarding (selection-only) and the character editor (with customization).
- */
-
-import { getVrmPreviewUrl } from "@elizaos/app-core/state";
+import { getVrmPreviewUrl } from "../../state/vrm";
 import type { StylePreset } from "@elizaos/shared/contracts/onboarding";
-import { Button } from "@elizaos/app-core";
+
 import { useEffect, useState } from "react";
 import { useApp } from "../../state";
+import { Button } from "@elizaos/ui";
 
 /* ── Shared constants ─────────────────────────────────────────────────── */
 

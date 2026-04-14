@@ -1,3 +1,9 @@
+/**
+ * @deprecated This file is maintained for backward compatibility.
+ * The canonical source has moved to `@elizaos/app-steward/api/wallet-trading-profile`.
+ * New development should target the app-steward package.
+ */
+
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "../config/paths.js";
@@ -95,7 +101,10 @@ const TRADE_STATUS_SET = new Set<BscTradeTxStatus>([
   "not_found",
 ]);
 
-const ALLOWED_STATUS_TRANSITIONS: Record<BscTradeTxStatus, Set<BscTradeTxStatus>> = {
+const ALLOWED_STATUS_TRANSITIONS: Record<
+  BscTradeTxStatus,
+  Set<BscTradeTxStatus>
+> = {
   pending: new Set(["pending", "success", "reverted", "not_found"]),
   not_found: new Set(["pending", "success", "reverted", "not_found"]),
   success: new Set(["success"]),

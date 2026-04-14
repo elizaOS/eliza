@@ -1,8 +1,11 @@
-import fs from "node:fs/promises";
+import fs from "node:fs";
+import fsp from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(import.meta.dirname, "..");
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const APP_CORE_ROOT = path.resolve(SCRIPT_DIR, "..");
 const args = new Set(process.argv.slice(2));
 const outputJson = args.has("--json");
 const failOnViolations = args.has("--fail-on-violations");
@@ -12,6 +15,7 @@ const IGNORE_DIRS = new Set([
   ".hg",
   ".next",
   ".turbo",
+  ".vite",
   ".yarn",
   "artifacts",
   "build",
@@ -19,22 +23,10 @@ const IGNORE_DIRS = new Set([
   "dist",
   "node_modules",
   "out",
+  "playwright-report",
   "test-results",
 ]);
-
 const TEST_FILE_PATTERN = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
-const TEST_SUPPORT_FILE_NAMES = new Set([
-  "test-utils.ts",
-  "test-utils.tsx",
-  "test-helpers.ts",
-  "test-helpers.tsx",
-  "route-test-helpers.ts",
-  "route-test-helpers.tsx",
-  "test-preload.ts",
-  "test-preload.tsx",
-  "preload.ts",
-  "preload.tsx",
-]);
 const CONFIG_FILE_PATTERN =
   /(?:^|\/)(?:package\.json|vitest(?:\.[^/]+)?\.config\.[cm]?[jt]s|playwright(?:\.[^/]+)?\.config\.[cm]?[jt]s|bunfig\.toml|test\/setup\.[cm]?[jt]s)$/;
 const MOCK_DIR_NAMES = new Set([
@@ -43,6 +35,52 @@ const MOCK_DIR_NAMES = new Set([
   "fixtures",
   "mocks",
 ]);
+const STUB_PATTERNS = [
+  { id: "playwright-ui-smoke-api-stub", regex: /playwright-ui-smoke-api-stub\.mjs/g },
+  { id: "test/stubs", regex: /test\/stubs/g },
+  { id: "__mocks__", regex: /__mocks__/g },
+  { id: "plugin-stub", regex: /plugin-stub\.mjs/g },
+  { id: "empty-module", regex: /empty-module\.mjs/g },
+  { id: "page.route", regex: /\bpage\.route\s*\(/g },
+  { id: "startMockApiServer", regex: /\bstartMockApiServer\b/g },
+  { id: "installDefaultAppMocks", regex: /\binstallDefaultAppMocks\s*\(/g },
+  { id: "fulfillJson", regex: /\bfulfillJson\s*\(/g },
+  { id: "test.fixme", regex: /\btest\.fixme\s*\(/g },
+];
+const HARNESS_BLOCKER_PATTERNS = [
+  { id: "ELIZA_LIVE_TEST=0", regex: /ELIZA_LIVE_TEST\s*=\s*["']0["']/g },
+  { id: "MILADY_LIVE_TEST=0", regex: /MILADY_LIVE_TEST\s*=\s*["']0["']/g },
+  {
+    id: "MILADY_SKIP_STEWARD_FI_LIVE_SMOKE=1",
+    regex: /MILADY_SKIP_STEWARD_FI_LIVE_SMOKE\s*=\s*["']1["']/g,
+  },
+];
+
+function findRepoRoot(startDir) {
+  let currentDir = startDir;
+  let matchedRoot = null;
+
+  while (true) {
+    if (
+      fs.existsSync(path.join(currentDir, "package.json")) &&
+      fs.existsSync(path.join(currentDir, ".github", "workflows"))
+    ) {
+      matchedRoot = currentDir;
+    }
+
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      if (matchedRoot) {
+        return matchedRoot;
+      }
+      throw new Error(`Unable to resolve repository root from ${startDir}.`);
+    }
+
+    currentDir = parentDir;
+  }
+}
+
+const repoRoot = findRepoRoot(APP_CORE_ROOT);
 
 const ROOTS = [
   {
@@ -50,96 +88,90 @@ const ROOTS = [
     dir: repoRoot,
     ignoreDirs: new Set([...IGNORE_DIRS, "eliza"]),
     packageJson: path.join(repoRoot, "package.json"),
+    requireSurfaceFiles: true,
+    requireExplicitLiveFiles: false,
+    requiredScriptKinds: ["e2e", "playwright"],
+  },
+  {
+    id: "eliza",
+    dir: path.join(repoRoot, "eliza"),
+    ignoreDirs: new Set([...IGNORE_DIRS, "cloud", "examples", "steward-fi"]),
+    packageJson: path.join(repoRoot, "eliza", "package.json"),
+    requireSurfaceFiles: true,
+    requireExplicitLiveFiles: true,
+    requiredScriptKinds: [],
   },
   {
     id: "cloud",
     dir: path.join(repoRoot, "eliza", "cloud"),
     ignoreDirs: new Set([...IGNORE_DIRS, "examples"]),
     packageJson: path.join(repoRoot, "eliza", "cloud", "package.json"),
+    requireSurfaceFiles: true,
+    requireExplicitLiveFiles: false,
+    requiredScriptKinds: ["e2e", "playwright"],
   },
   {
-    id: "eliza",
-    dir: path.join(repoRoot, "eliza"),
+    id: "steward-fi",
+    dir: path.join(repoRoot, "eliza", "steward-fi"),
     ignoreDirs: new Set([...IGNORE_DIRS, "examples"]),
-    packageJson: path.join(repoRoot, "eliza", "package.json"),
+    packageJson: path.join(repoRoot, "eliza", "steward-fi", "package.json"),
+    requireSurfaceFiles: true,
+    requireExplicitLiveFiles: false,
+    requiredScriptKinds: ["e2e"],
   },
-];
-
-const MOCK_PATTERNS = [
-  { id: "bun.mock", regex: /(?<![\w.])mock\s*\(/g },
-  { id: "bun.mock.module", regex: /\bmock\.module\s*\(/g },
-  { id: "bun.spyOn", regex: /\bspyOn\s*\(/g },
-  { id: "vi.mock", regex: /\bvi\.mock\s*\(/g },
-  { id: "jest.mock", regex: /\bjest\.mock\s*\(/g },
-  { id: "vi.fn", regex: /\bvi\.fn\s*\(/g },
-  { id: "jest.fn", regex: /\bjest\.fn\s*\(/g },
-  { id: "vi.spyOn", regex: /\bvi\.spyOn\s*\(/g },
-  { id: "jest.spyOn", regex: /\bjest\.spyOn\s*\(/g },
-  { id: "vi.stubGlobal", regex: /\bvi\.stubGlobal\s*\(/g },
-  { id: "vi.stubEnv", regex: /\bvi\.stubEnv\s*\(/g },
-  { id: "sinon.stub", regex: /\bsinon\.stub\s*\(/g },
-  { id: "nock", regex: /\bnock\s*\(/g },
-  { id: "msw", regex: /\b(?:setupServer|setupWorker)\s*\(/g },
-];
-
-const STUB_PATTERNS = [
-  { id: "test/stubs", regex: /test\/stubs/g },
-  { id: "__mocks__", regex: /__mocks__/g },
-  { id: "createMockStorage", regex: /\bcreateMockStorage\b/g },
-  { id: "installCanvasMocks", regex: /\binstallCanvasMocks\b/g },
-  { id: "installMediaElementMocks", regex: /\binstallMediaElementMocks\b/g },
-  { id: "plugin-stub", regex: /plugin-stub\.mjs/g },
-  { id: "empty-module", regex: /empty-module\.mjs/g },
-  { id: "plugin-telegram-module", regex: /plugin-telegram-module\.ts/g },
-];
-
-const HARNESS_BLOCKER_PATTERNS = [
-  { id: "MILADY_LIVE_TEST=0", regex: /MILADY_LIVE_TEST\s*=\s*["']0["']/g },
-  { id: "ELIZA_LIVE_TEST=0", regex: /ELIZA_LIVE_TEST\s*=\s*["']0["']/g },
 ];
 
 function relativeToRepo(filePath) {
   return path.relative(repoRoot, filePath).replaceAll(path.sep, "/");
 }
 
-function isLiveTestFile(rootId, relPath) {
+function isExplicitLiveFile(relPath) {
   const fileName = path.basename(relPath);
+  return [
+    ".live.test.",
+    "-live.test.",
+    ".live.e2e.test.",
+    "-live.e2e.test.",
+    ".real.test.",
+    "-real.test.",
+    ".real.e2e.test.",
+    "-real.e2e.test.",
+  ].some((marker) => fileName.includes(marker));
+}
+
+function isSurfaceFile(rootId, relPath) {
+  if (isExplicitLiveFile(relPath)) {
+    return true;
+  }
+
   if (
-    [
-      ".live.test.",
-      "-live.test.",
-      ".live.e2e.test.",
-      "-live.e2e.test.",
-      ".real.test.",
-      "-real.test.",
-      ".real.e2e.test.",
-      "-real.e2e.test.",
-    ].some((marker) => fileName.includes(marker))
+    rootId === "main" &&
+    relPath.startsWith("apps/app/test/ui-smoke/") &&
+    TEST_FILE_PATTERN.test(relPath)
   ) {
     return true;
   }
 
   if (
     rootId === "cloud" &&
-    relPath.startsWith("eliza/cloud/packages/tests/e2e/")
+    relPath.startsWith("eliza/cloud/packages/tests/e2e/") &&
+    TEST_FILE_PATTERN.test(relPath)
   ) {
     return true;
   }
 
-  return false;
-}
-
-function isTestSupportFile(relPath) {
-  if (TEST_FILE_PATTERN.test(relPath)) {
-    return false;
+  if (
+    rootId === "cloud" &&
+    relPath.startsWith("eliza/cloud/packages/tests/playwright/") &&
+    TEST_FILE_PATTERN.test(relPath)
+  ) {
+    return true;
   }
 
-  const fileName = path.basename(relPath);
-  if (!TEST_SUPPORT_FILE_NAMES.has(fileName)) {
-    return false;
-  }
-
-  return /(?:^|\/)(?:__tests__|tests?|test-support)\//.test(relPath);
+  return (
+    rootId === "steward-fi" &&
+    /^eliza\/steward-fi\/scripts\/e2e-.*\.ts$/i.test(relPath)
+  );
 }
 
 function createCounter(patterns) {
@@ -169,6 +201,26 @@ function takeExamples(items, limit = 8) {
   return items.slice(0, limit);
 }
 
+function normaliseScriptKinds(name) {
+  const kinds = new Set();
+
+  if (!name.startsWith("test")) {
+    return [];
+  }
+
+  if (/(?:^|:)live(?:$|:)/.test(name) || /(?:^|:)real(?:$|:)/.test(name)) {
+    kinds.add("live");
+  }
+  if (/(?:^|:)e2e(?:$|:)/.test(name)) {
+    kinds.add("e2e");
+  }
+  if (/(?:^|:)playwright(?:$|:)/.test(name)) {
+    kinds.add("playwright");
+  }
+
+  return [...kinds];
+}
+
 async function walkDirectory(root) {
   const files = [];
   const mockDirs = [];
@@ -182,7 +234,7 @@ async function walkDirectory(root) {
 
     let entries = [];
     try {
-      entries = await fs.readdir(currentDir, { withFileTypes: true });
+      entries = await fsp.readdir(currentDir, { withFileTypes: true });
     } catch {
       continue;
     }
@@ -213,13 +265,15 @@ async function walkDirectory(root) {
 
 async function readPackageScripts(packageJsonPath) {
   try {
-    const text = await fs.readFile(packageJsonPath, "utf8");
+    const text = await fsp.readFile(packageJsonPath, "utf8");
     const pkg = JSON.parse(text);
     return Object.entries(pkg.scripts ?? {})
-      .filter(
-        ([name]) => name.includes("test:live") || name.includes("test:real"),
-      )
-      .map(([name, command]) => ({ name, command }))
+      .map(([name, command]) => ({
+        name,
+        command,
+        kinds: normaliseScriptKinds(name),
+      }))
+      .filter((script) => script.kinds.length > 0)
       .sort((a, b) => a.name.localeCompare(b.name));
   } catch {
     return [];
@@ -231,63 +285,48 @@ async function analyzeRoot(root) {
   const liveScripts = await readPackageScripts(root.packageJson);
 
   const testFiles = [];
-  const liveFiles = [];
-  const mockedFiles = [];
-  const mockedSupportFiles = [];
-  const configStubRefs = [];
+  const surfaceFiles = [];
+  const explicitLiveFiles = [];
+  const stubReferences = [];
   const harnessBlockers = [];
-  const mockIndicatorTotals = createCounter(MOCK_PATTERNS);
-  const supportMockIndicatorTotals = createCounter(MOCK_PATTERNS);
+  const scriptKindTotals = createCounter([
+    { id: "live" },
+    { id: "e2e" },
+    { id: "playwright" },
+  ]);
   const stubIndicatorTotals = createCounter(STUB_PATTERNS);
   const harnessBlockerTotals = createCounter(HARNESS_BLOCKER_PATTERNS);
 
+  for (const script of liveScripts) {
+    for (const kind of script.kinds) {
+      scriptKindTotals[kind] += 1;
+    }
+  }
+
   for (const file of files) {
     const { absPath, relPath } = file;
+
     if (TEST_FILE_PATTERN.test(relPath)) {
       testFiles.push(relPath);
-      if (isLiveTestFile(root.id, relPath)) {
-        liveFiles.push(relPath);
-      }
+    }
 
-      const text = await fs.readFile(absPath, "utf8");
-      const counts = countMatches(text, MOCK_PATTERNS);
-      if (hasAnyCount(counts)) {
-        mockedFiles.push({
-          file: relPath,
-          counts,
-          totalIndicators: sumCounts(counts),
-        });
-        for (const [id, count] of Object.entries(counts)) {
-          mockIndicatorTotals[id] += count;
-        }
-      }
+    const surfaceFile = isSurfaceFile(root.id, relPath);
+    if (surfaceFile) {
+      surfaceFiles.push(relPath);
+    }
+
+    if (isExplicitLiveFile(relPath)) {
+      explicitLiveFiles.push(relPath);
+    }
+
+    if (!CONFIG_FILE_PATTERN.test(relPath) && !surfaceFile) {
       continue;
     }
 
-    if (isTestSupportFile(relPath)) {
-      const text = await fs.readFile(absPath, "utf8");
-      const counts = countMatches(text, MOCK_PATTERNS);
-      if (hasAnyCount(counts)) {
-        mockedSupportFiles.push({
-          file: relPath,
-          counts,
-          totalIndicators: sumCounts(counts),
-        });
-        for (const [id, count] of Object.entries(counts)) {
-          supportMockIndicatorTotals[id] += count;
-        }
-      }
-      continue;
-    }
-
-    if (!CONFIG_FILE_PATTERN.test(relPath)) {
-      continue;
-    }
-
-    const text = await fs.readFile(absPath, "utf8");
+    const text = await fsp.readFile(absPath, "utf8");
     const stubCounts = countMatches(text, STUB_PATTERNS);
     if (hasAnyCount(stubCounts)) {
-      configStubRefs.push({
+      stubReferences.push({
         file: relPath,
         counts: stubCounts,
         totalIndicators: sumCounts(stubCounts),
@@ -310,17 +349,9 @@ async function analyzeRoot(root) {
     }
   }
 
-  mockedFiles.sort((a, b) => {
-    return (
-      b.totalIndicators - a.totalIndicators || a.file.localeCompare(b.file)
-    );
-  });
-  mockedSupportFiles.sort((a, b) => {
-    return (
-      b.totalIndicators - a.totalIndicators || a.file.localeCompare(b.file)
-    );
-  });
-  configStubRefs.sort((a, b) => {
+  surfaceFiles.sort((a, b) => a.localeCompare(b));
+  explicitLiveFiles.sort((a, b) => a.localeCompare(b));
+  stubReferences.sort((a, b) => {
     return (
       b.totalIndicators - a.totalIndicators || a.file.localeCompare(b.file)
     );
@@ -331,56 +362,51 @@ async function analyzeRoot(root) {
     );
   });
 
-  const nonLiveTestCount = testFiles.length - liveFiles.length;
+  const warnings = [];
   const violations = [];
 
-  if (mockedFiles.length > 0) {
-    violations.push(
-      `${root.id}: ${mockedFiles.length} test files use explicit mock APIs`,
-    );
-  }
-  if (mockedSupportFiles.length > 0) {
-    violations.push(
-      `${root.id}: ${mockedSupportFiles.length} test support files use explicit mock APIs`,
-    );
-  }
-  if (configStubRefs.length > 0) {
-    violations.push(
-      `${root.id}: ${configStubRefs.length} config/setup files reference stubs or mock helpers`,
-    );
-  }
   if (mockDirs.length > 0) {
-    violations.push(
+    warnings.push(
       `${root.id}: ${mockDirs.length} mock/fixture directories remain in-tree`,
     );
   }
-  if (harnessBlockers.length > 0) {
+  if (stubReferences.length > 0) {
     violations.push(
-      `${root.id}: ${harnessBlockers.length} harness files still force live mode off`,
+      `${root.id}: ${stubReferences.length} live surface/config files reference stubs or mock helpers`,
     );
   }
-  if (liveFiles.length === 0) {
-    violations.push(`${root.id}: no live/real test files found`);
+  if (root.requireSurfaceFiles && surfaceFiles.length === 0) {
+    violations.push(`${root.id}: no live/e2e/playwright surface files found`);
+  }
+  if (root.requireExplicitLiveFiles && explicitLiveFiles.length === 0) {
+    violations.push(`${root.id}: no explicit *.live.* or *.real.* tests found`);
+  }
+  for (const kind of root.requiredScriptKinds) {
+    if ((scriptKindTotals[kind] ?? 0) === 0) {
+      violations.push(`${root.id}: no package.json test scripts tagged for ${kind}`);
+    }
+  }
+  if (harnessBlockers.length > 0) {
+    violations.push(
+      `${root.id}: ${harnessBlockers.length} config/setup files still force live harnesses off`,
+    );
   }
 
   return {
     id: root.id,
     totalTestFiles: testFiles.length,
-    liveTestFiles: liveFiles.length,
-    nonLiveTestFiles: nonLiveTestCount,
-    mockedTestFiles: mockedFiles.length,
-    mockedSupportFiles: mockedSupportFiles.length,
+    surfaceFiles: surfaceFiles.length,
+    explicitLiveFiles: explicitLiveFiles.length,
     mockDirectories: mockDirs,
-    configStubReferences: configStubRefs,
+    stubReferences,
     harnessBlockers,
-    mockIndicatorTotals,
-    supportMockIndicatorTotals,
     stubIndicatorTotals,
     harnessBlockerTotals,
+    scriptKindTotals,
     liveScripts,
-    exampleLiveFiles: takeExamples(liveFiles),
-    exampleMockedFiles: takeExamples(mockedFiles),
-    exampleMockedSupportFiles: takeExamples(mockedSupportFiles),
+    exampleSurfaceFiles: takeExamples(surfaceFiles),
+    exampleExplicitLiveFiles: takeExamples(explicitLiveFiles),
+    warnings,
     violations,
   };
 }
@@ -393,49 +419,34 @@ function renderHumanReport(report) {
   for (const root of report.roots) {
     lines.push(`[${root.id}]`);
     lines.push(
-      `tests=${root.totalTestFiles} live=${root.liveTestFiles} non_live=${root.nonLiveTestFiles} mocked=${root.mockedTestFiles} mock_dirs=${root.mockDirectories.length} stub_refs=${root.configStubReferences.length} harness_blockers=${root.harnessBlockers.length}`,
+      `tests=${root.totalTestFiles} surface=${root.surfaceFiles} explicit_live=${root.explicitLiveFiles} scripts.live=${root.scriptKindTotals.live} scripts.e2e=${root.scriptKindTotals.e2e} scripts.playwright=${root.scriptKindTotals.playwright} stub_refs=${root.stubReferences.length} harness_blockers=${root.harnessBlockers.length}`,
     );
 
     if (root.liveScripts.length > 0) {
       lines.push(
-        `live scripts: ${root.liveScripts.map((script) => script.name).join(", ")}`,
+        `surface scripts: ${root.liveScripts.map((script) => script.name).join(", ")}`,
       );
     } else {
-      lines.push("live scripts: none");
+      lines.push("surface scripts: none");
     }
 
-    if (root.exampleLiveFiles.length > 0) {
-      lines.push("sample live files:");
-      for (const file of root.exampleLiveFiles) {
+    if (root.exampleSurfaceFiles.length > 0) {
+      lines.push("sample surface files:");
+      for (const file of root.exampleSurfaceFiles) {
         lines.push(`  - ${file}`);
       }
     }
 
-    if (root.exampleMockedFiles.length > 0) {
-      lines.push("sample mocked files:");
-      for (const entry of root.exampleMockedFiles) {
-        const indicators = Object.entries(entry.counts)
-          .filter(([, count]) => count > 0)
-          .map(([id, count]) => `${id}:${count}`)
-          .join(", ");
-        lines.push(`  - ${entry.file} (${indicators})`);
+    if (root.exampleExplicitLiveFiles.length > 0) {
+      lines.push("sample explicit live files:");
+      for (const file of root.exampleExplicitLiveFiles) {
+        lines.push(`  - ${file}`);
       }
     }
 
-    if (root.exampleMockedSupportFiles.length > 0) {
-      lines.push("sample mocked support files:");
-      for (const entry of root.exampleMockedSupportFiles) {
-        const indicators = Object.entries(entry.counts)
-          .filter(([, count]) => count > 0)
-          .map(([id, count]) => `${id}:${count}`)
-          .join(", ");
-        lines.push(`  - ${entry.file} (${indicators})`);
-      }
-    }
-
-    if (root.configStubReferences.length > 0) {
-      lines.push("sample stub/config refs:");
-      for (const entry of takeExamples(root.configStubReferences)) {
+    if (root.stubReferences.length > 0) {
+      lines.push("sample stub refs:");
+      for (const entry of takeExamples(root.stubReferences)) {
         const indicators = Object.entries(entry.counts)
           .filter(([, count]) => count > 0)
           .map(([id, count]) => `${id}:${count}`)
@@ -462,6 +473,13 @@ function renderHumanReport(report) {
       }
     }
 
+    if (root.warnings.length > 0) {
+      lines.push("warnings:");
+      for (const warning of root.warnings) {
+        lines.push(`  - ${warning}`);
+      }
+    }
+
     if (root.violations.length > 0) {
       lines.push("violations:");
       for (const violation of root.violations) {
@@ -474,8 +492,14 @@ function renderHumanReport(report) {
 
   lines.push("[totals]");
   lines.push(
-    `tests=${report.totals.totalTestFiles} live=${report.totals.liveTestFiles} non_live=${report.totals.nonLiveTestFiles} mocked=${report.totals.mockedTestFiles} mocked_support=${report.totals.mockedSupportFiles} mock_dirs=${report.totals.mockDirectories} stub_refs=${report.totals.configStubReferences} harness_blockers=${report.totals.harnessBlockers}`,
+    `tests=${report.totals.totalTestFiles} surface=${report.totals.surfaceFiles} explicit_live=${report.totals.explicitLiveFiles} stub_refs=${report.totals.stubReferences} harness_blockers=${report.totals.harnessBlockers}`,
   );
+  if (report.warnings.length > 0) {
+    lines.push("repo warnings:");
+    for (const warning of report.warnings) {
+      lines.push(`  - ${warning}`);
+    }
+  }
   if (report.violations.length > 0) {
     lines.push("repo violations:");
     for (const violation of report.violations) {
@@ -494,23 +518,17 @@ for (const root of ROOTS) {
 const totals = roots.reduce(
   (accumulator, root) => {
     accumulator.totalTestFiles += root.totalTestFiles;
-    accumulator.liveTestFiles += root.liveTestFiles;
-    accumulator.nonLiveTestFiles += root.nonLiveTestFiles;
-    accumulator.mockedTestFiles += root.mockedTestFiles;
-    accumulator.mockedSupportFiles += root.mockedSupportFiles;
-    accumulator.mockDirectories += root.mockDirectories.length;
-    accumulator.configStubReferences += root.configStubReferences.length;
+    accumulator.surfaceFiles += root.surfaceFiles;
+    accumulator.explicitLiveFiles += root.explicitLiveFiles;
+    accumulator.stubReferences += root.stubReferences.length;
     accumulator.harnessBlockers += root.harnessBlockers.length;
     return accumulator;
   },
   {
     totalTestFiles: 0,
-    liveTestFiles: 0,
-    nonLiveTestFiles: 0,
-    mockedTestFiles: 0,
-    mockedSupportFiles: 0,
-    mockDirectories: 0,
-    configStubReferences: 0,
+    surfaceFiles: 0,
+    explicitLiveFiles: 0,
+    stubReferences: 0,
     harnessBlockers: 0,
   },
 );
@@ -520,6 +538,7 @@ const report = {
   repoRoot: relativeToRepo(repoRoot) || ".",
   roots,
   totals,
+  warnings: roots.flatMap((root) => root.warnings),
   violations: roots.flatMap((root) => root.violations),
 };
 

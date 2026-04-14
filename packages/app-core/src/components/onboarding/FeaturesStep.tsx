@@ -1,14 +1,4 @@
-/**
- * FeaturesStep — fourth onboarding step for enabling connectors and capabilities.
- *
- * Managed connectors (Telegram, Discord) use Eliza Cloud OAuth — shown only
- * when cloud is connected or the server target is elizacloud.
- * Local features (Crypto, Browser) are always available.
- *
- * The step is skippable — all features can be configured later from Settings.
- */
 
-import { Button } from "@elizaos/app-core";
 import {
   OnboardingSecondaryActionButton,
   onboardingFooterClass,
@@ -19,6 +9,7 @@ import {
 import { useCallback, useMemo } from "react";
 import { useApp } from "../../state";
 import { FeatureCard, type FeatureStatus } from "./features/FeatureCard";
+import { Button } from "@elizaos/ui";
 
 const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 

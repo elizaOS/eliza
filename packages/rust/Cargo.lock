@@ -435,6 +435,7 @@ dependencies = [
  "aes-gcm",
  "anyhow",
  "async-trait",
+ "base64",
  "cbc",
  "chrono",
  "cipher",

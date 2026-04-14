@@ -1,5 +1,8 @@
+import type {
+  LifeOpsOccurrenceView,
+  LifeOpsOverview,
+} from "@elizaos/shared/contracts/lifeops";
 import { describe, expect, it } from "vitest";
-import type { LifeOpsOccurrenceView, LifeOpsOverview } from "@elizaos/shared/contracts/lifeops";
 import { formatOverviewForQuery } from "./lifeops-google-helpers.js";
 
 function buildOccurrence(args: {
@@ -12,11 +15,14 @@ function buildOccurrence(args: {
   return {
     id: args.id,
     agentId: "agent-1",
+    domain: "user_lifeops",
     definitionId: args.definitionId,
+    occurrenceKey: `${args.definitionId}:${args.scheduledAt}`,
     subjectType: "owner",
     subjectId: "owner-1",
+    visibilityScope: "owner_only",
+    contextPolicy: "allowed_in_private_chat",
     state: "visible",
-    scheduledFor: "2026-04-12",
     scheduledAt: args.scheduledAt,
     dueAt: null,
     relevanceStartAt: args.scheduledAt,
@@ -40,9 +46,7 @@ function buildOccurrence(args: {
   };
 }
 
-function buildOverview(
-  occurrences: LifeOpsOccurrenceView[],
-): LifeOpsOverview {
+function buildOverview(occurrences: LifeOpsOccurrenceView[]): LifeOpsOverview {
   const summary = {
     activeOccurrenceCount: occurrences.length,
     overdueOccurrenceCount: 0,

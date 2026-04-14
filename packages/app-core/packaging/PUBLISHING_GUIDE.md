@@ -1,12 +1,22 @@
+<<<<<<< HEAD
+# elizaOS App — Package Publishing Guide
+
+This guide covers the **human steps** required to publish an elizaOS app across all five package managers. The packaging configs are ready — this document walks through account setup, credential configuration, and publishing commands.
+=======
 # Milady — Package Publishing Guide
 
 This guide covers the **human steps** required to publish Milady across all five package managers. The packaging configs are ready — this document walks through account setup, credential configuration, and publishing commands.
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 ---
 
 ## Table of Contents
 
+<<<<<<< HEAD
+1. [PyPI](#1-pypi-elizaos-app)
+=======
 1. [PyPI (milady)](#1-pypi-milady)
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 2. [Homebrew](#2-homebrew)
 3. [apt (Debian/Ubuntu)](#3-apt-debianubuntu)
 4. [Snap](#4-snap)
@@ -19,9 +29,15 @@ This guide covers the **human steps** required to publish Milady across all five
 
 ---
 
+<<<<<<< HEAD
+## 1. PyPI
+
+The app package on PyPI is a **dynamic loader** — a thin Python wrapper that auto-installs and delegates to the Node.js elizaOS CLI.
+=======
 ## 1. PyPI (milady)
 
 The `milady` package on PyPI is a **dynamic loader** — a thin Python wrapper that auto-installs and delegates to the Node.js milady CLI.
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 ### 1.1 Account Setup (one-time)
 
@@ -70,8 +86,13 @@ python -m build
 twine upload --repository testpypi dist/*
 
 # Test installation from TestPyPI
+<<<<<<< HEAD
+pip install elizaos-app
+elizaos-app --help
+=======
 pip install --index-url https://test.pypi.org/simple/ milady
 milady --help
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 ### 1.3 Publish to PyPI
@@ -86,13 +107,22 @@ python -m build
 twine upload dist/*
 
 # Verify
+<<<<<<< HEAD
+pip install elizaos-app
+elizaos-app --version
+=======
 pip install milady
 milady --version
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 ### 1.4 Reserve the Package Name
 
+<<<<<<< HEAD
+If you want to claim the package name immediately before the full release:
+=======
 If you want to claim the `milady` name immediately before the full release:
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 ```bash
 cd packaging/pypi
@@ -110,35 +140,59 @@ The alpha version (`2.0.0a7`) is fine for name reservation.
 
 A Homebrew "tap" is just a GitHub repo with a naming convention.
 
+<<<<<<< HEAD
+1. **Create a GitHub repo** named `homebrew-tap` under the `elizaos` org:
+   - URL will be: `https://github.com/elizaos/homebrew-tap`
+=======
 1. **Create a GitHub repo** named `homebrew-tap` under the `milady-ai` org:
    - URL will be: `https://github.com/milady-ai/homebrew-tap`
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 2. **Initialize the repo**:
 
 ```bash
 # Clone and set up
+<<<<<<< HEAD
+git clone https://github.com/elizaos/homebrew-tap.git
+=======
 git clone https://github.com/milady-ai/homebrew-tap.git
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 cd homebrew-tap
 
 # Copy the formula
 mkdir -p Formula
+<<<<<<< HEAD
+cp /path/to/elizaos-app/packaging/homebrew/elizaos-app.rb Formula/elizaos-app.rb
+=======
 cp /path/to/milady/packaging/homebrew/milady.rb Formula/milady.rb
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 3. **Get the SHA256 hash** of the npm tarball:
 
 ```bash
 # Download the tarball and compute hash
+<<<<<<< HEAD
+curl -fsSL "https://registry.npmjs.org/elizaos/-/elizaos-2.0.0-alpha.7.tgz" -o elizaos-app.tgz
+shasum -a 256 elizaos-app.tgz
+# Replace PLACEHOLDER_SHA256 in elizaos-app.rb with the actual hash
+=======
 curl -fsSL "https://registry.npmjs.org/miladyai/-/miladyai-2.0.0-alpha.7.tgz" -o milady.tgz
 shasum -a 256 milady.tgz
 # Replace PLACEHOLDER_SHA256 in milady.rb with the actual hash
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 4. **Push the formula**:
 
 ```bash
+<<<<<<< HEAD
+git add Formula/elizaos-app.rb
+git commit -m "Add elizaos-app formula"
+=======
 git add Formula/milady.rb
 git commit -m "Add milady formula"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 git push origin main
 ```
 
@@ -146,32 +200,54 @@ git push origin main
 
 ```bash
 # Test locally before pushing
+<<<<<<< HEAD
+brew install --build-from-source Formula/elizaos-app.rb
+
+# Or after pushing to the tap repo
+brew tap elizaos/tap
+brew install elizaos-app
+=======
 brew install --build-from-source Formula/milady.rb
 
 # Or after pushing to the tap repo
 brew tap milady-ai/tap
 brew install milady
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 ### 2.3 Users Install With
 
 ```bash
+<<<<<<< HEAD
+brew tap elizaos/tap
+brew install elizaos-app
+=======
 brew tap milady-ai/tap
 brew install milady
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 Or one-liner:
 
 ```bash
+<<<<<<< HEAD
+brew install elizaos/tap/elizaos-app
+=======
 brew install milady-ai/tap/milady
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 ### 2.4 Updating for New Releases
 
 ```bash
 # Compute new SHA256
+<<<<<<< HEAD
+curl -fsSL "https://registry.npmjs.org/elizaos/-/elizaos-NEW_VERSION.tgz" -o elizaos-app.tgz
+shasum -a 256 elizaos-app.tgz
+=======
 curl -fsSL "https://registry.npmjs.org/miladyai/-/miladyai-NEW_VERSION.tgz" -o milady.tgz
 shasum -a 256 milady.tgz
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 # Update the formula: change url and sha256
 # Push to homebrew-tap repo
@@ -201,13 +277,22 @@ gpg --send-keys YOUR_KEY_ID
 
 3. **Create a PPA**:
    - Go to https://launchpad.net/~/+activate-ppa
+<<<<<<< HEAD
+   - Name: `elizaos-app`
+   - Display name: "elizaOS App — Personal AI Assistant"
+=======
    - Name: `milady`
    - Display name: "Milady — Personal AI Assistant"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 4. **Build and upload the source package**:
 
 ```bash
+<<<<<<< HEAD
+cd /path/to/elizaos-app
+=======
 cd /path/to/milady
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 # Copy debian/ packaging into place
 cp -r packaging/debian .
@@ -216,15 +301,25 @@ cp -r packaging/debian .
 dpkg-buildpackage -S -sa -k"YOUR_GPG_KEY_ID"
 
 # Upload to PPA
+<<<<<<< HEAD
+dput ppa:YOUR_USERNAME/elizaos-app ../elizaos-app_2.0.0~alpha7-1_source.changes
+=======
 dput ppa:YOUR_USERNAME/milady ../milady_2.0.0~alpha7-1_source.changes
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 5. **Users install with**:
 
 ```bash
+<<<<<<< HEAD
+sudo add-apt-repository ppa:YOUR_USERNAME/elizaos-app
+sudo apt update
+sudo apt install elizaos-app
+=======
 sudo add-apt-repository ppa:YOUR_USERNAME/milady
 sudo apt update
 sudo apt install milady
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 ### 3.2 Option B: Self-Hosted apt Repository
@@ -234,7 +329,11 @@ This gives you more control and works across all Debian-based distros.
 1. **Build the .deb package**:
 
 ```bash
+<<<<<<< HEAD
+cd /path/to/elizaos-app
+=======
 cd /path/to/milady
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 cp -r packaging/debian .
 
 # Install build dependencies
@@ -244,18 +343,30 @@ sudo apt install debhelper nodejs npm
 dpkg-buildpackage -us -uc -b
 
 # The .deb will be in the parent directory
+<<<<<<< HEAD
+ls ../elizaos-app_*.deb
+=======
 ls ../milady_*.deb
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 2. **Set up a repo using GitHub Pages or a server**:
 
 ```bash
 # Create repo structure
+<<<<<<< HEAD
+mkdir -p apt-repo/pool/main/m/elizaos-app
+mkdir -p apt-repo/dists/stable/main/binary-amd64
+
+# Copy the .deb
+cp ../elizaos-app_*.deb apt-repo/pool/main/m/elizaos-app/
+=======
 mkdir -p apt-repo/pool/main/m/milady
 mkdir -p apt-repo/dists/stable/main/binary-amd64
 
 # Copy the .deb
 cp ../milady_*.deb apt-repo/pool/main/m/milady/
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 # Generate Packages index
 cd apt-repo
@@ -277,6 +388,16 @@ gpg --armor --clearsign -o InRelease Release
 
 ```bash
 # Add the GPG key
+<<<<<<< HEAD
+curl -fsSL https://apt.elizaos-app.ai/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/elizaos-app.gpg
+
+# Add the repo
+echo "deb [signed-by=/usr/share/keyrings/elizaos-app.gpg] https://apt.elizaos-app.ai stable main" | \
+  sudo tee /etc/apt/sources.list.d/elizaos-app.list
+
+sudo apt update
+sudo apt install elizaos-app
+=======
 curl -fsSL https://apt.milady.ai/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/milady.gpg
 
 # Add the repo
@@ -285,6 +406,7 @@ echo "deb [signed-by=/usr/share/keyrings/milady.gpg] https://apt.milady.ai stabl
 
 sudo apt update
 sudo apt install milady
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 ---
@@ -310,13 +432,21 @@ snapcraft login
 4. **Register the snap name**:
 
 ```bash
+<<<<<<< HEAD
+snapcraft register elizaos-app
+=======
 snapcraft register milady
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 ### 4.2 Build the Snap
 
 ```bash
+<<<<<<< HEAD
+cd /path/to/elizaos-app
+=======
 cd /path/to/milady
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 # Copy snapcraft.yaml into place
 mkdir -p snap
@@ -325,34 +455,57 @@ cp packaging/snap/snapcraft.yaml snap/
 # Build the snap (requires LXD or Multipass)
 snapcraft
 
+<<<<<<< HEAD
+# This produces: elizaos-app_2.0.0-alpha.7_amd64.snap
+=======
 # This produces: milady_2.0.0-alpha.7_amd64.snap
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 ### 4.3 Test Locally
 
 ```bash
 # Install the local snap
+<<<<<<< HEAD
+sudo snap install elizaos-app_*.snap --classic --dangerous
+
+# Test
+elizaos-app --version
+elizaos-app --help
+=======
 sudo snap install milady_*.snap --classic --dangerous
 
 # Test
 milady --version
 milady --help
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 ### 4.4 Publish to Snap Store
 
 ```bash
 # Upload to edge channel first
+<<<<<<< HEAD
+snapcraft upload elizaos-app_*.snap --release=edge
+
+# After testing, promote to stable
+snapcraft release elizaos-app <revision> stable
+=======
 snapcraft upload milady_*.snap --release=edge
 
 # After testing, promote to stable
 snapcraft release milady <revision> stable
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 ### 4.5 Users Install With
 
 ```bash
+<<<<<<< HEAD
+sudo snap install elizaos-app --classic
+=======
 sudo snap install milady --classic
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 ---
@@ -404,35 +557,59 @@ shasum -a 256 node-arm64.tar.xz
 cd packaging/flatpak
 
 # Build
+<<<<<<< HEAD
+flatpak-builder --repo=repo build-dir ai.elizaos-app.elizaOS App.yml
+
+# Create a bundle for testing
+flatpak build-bundle repo elizaos-app.flatpak ai.elizaos-app.elizaOS App
+=======
 flatpak-builder --repo=repo build-dir ai.milady.Milady.yml
 
 # Create a bundle for testing
 flatpak build-bundle repo milady.flatpak ai.milady.Milady
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 ### 5.4 Test Locally
 
 ```bash
 # Install from local bundle
+<<<<<<< HEAD
+flatpak --user install elizaos-app.flatpak
+
+# Run
+flatpak run ai.elizaos-app.elizaOS App --version
+flatpak run ai.elizaos-app.elizaOS App start
+=======
 flatpak --user install milady.flatpak
 
 # Run
 flatpak run ai.milady.Milady --version
 flatpak run ai.milady.Milady start
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 ### 5.5 Publish to Flathub
 
 1. Fork https://github.com/flathub/flathub
+<<<<<<< HEAD
+2. Create a new repo: `github.com/flathub/ai.elizaos-app.elizaOS App`
+=======
 2. Create a new repo: `github.com/flathub/ai.milady.Milady`
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 3. Add the manifest and supporting files
 4. Submit a PR — Flathub maintainers will review
 
 ### 5.6 Users Install With
 
 ```bash
+<<<<<<< HEAD
+flatpak install flathub ai.elizaos-app.elizaOS App
+flatpak run ai.elizaos-app.elizaOS App start
+=======
 flatpak install flathub ai.milady.Milady
 flatpak run ai.milady.Milady start
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 ---
@@ -448,7 +625,11 @@ flatpak run ai.milady.Milady start
 
 2. **Create the app listing**:
    - Go to Google Play Console → "Create app"
+<<<<<<< HEAD
+   - App name: "elizaOS App"
+=======
    - App name: "Milady"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
    - Default language: English (United States)
    - App type: App
    - Free / Paid: Free
@@ -459,16 +640,27 @@ flatpak run ai.milady.Milady start
    - Generate an **upload keystore** for CI:
 
 ```bash
+<<<<<<< HEAD
+keytool -genkeypair   -alias elizaos-app-upload   -keyalg RSA -keysize 2048   -validity 10000   -keystore elizaos-app-upload.jks   -storepass YOUR_STORE_PASSWORD   -dname "CN=elizaOS App AI, O=elizaos, L=Internet, C=US"
+=======
 keytool -genkeypair   -alias milady-upload   -keyalg RSA -keysize 2048   -validity 10000   -keystore milady-upload.jks   -storepass YOUR_STORE_PASSWORD   -dname "CN=Milady AI, O=milady-ai, L=Internet, C=US"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 4. **Upload the upload key certificate** to Play Console:
 
 ```bash
+<<<<<<< HEAD
+keytool -export -alias elizaos-app-upload   -keystore elizaos-app-upload.jks   -rfc > elizaos-app-upload-cert.pem
+```
+
+Upload `elizaos-app-upload-cert.pem` in Play Console → App signing.
+=======
 keytool -export -alias milady-upload   -keystore milady-upload.jks   -rfc > milady-upload-cert.pem
 ```
 
 Upload `milady-upload-cert.pem` in Play Console → App signing.
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 5. **Create a service account for CI**:
    - Go to Play Console → Setup → API access
@@ -480,9 +672,15 @@ Upload `milady-upload-cert.pem` in Play Console → App signing.
 
 | Secret | Description |
 |---|---|
+<<<<<<< HEAD
+| `ANDROID_KEYSTORE_BASE64` | `base64 -w0 elizaos-app-upload.jks` |
+| `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
+| `ANDROID_KEY_ALIAS` | `elizaos-app-upload` |
+=======
 | `ANDROID_KEYSTORE_BASE64` | `base64 -w0 milady-upload.jks` |
 | `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
 | `ANDROID_KEY_ALIAS` | `milady-upload` |
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 | `ANDROID_KEY_PASSWORD` | Key password |
 | `PLAY_STORE_SERVICE_ACCOUNT_JSON` | `base64 -w0 play-store-key.json` |
 
@@ -499,7 +697,11 @@ npx cap sync android
 
 # Build signed AAB
 cd android
+<<<<<<< HEAD
+ELIZA_KEYSTORE_PATH=/path/to/elizaos-app-upload.jks ELIZA_KEYSTORE_PASSWORD=yourpass ELIZA_KEY_ALIAS=elizaos-app-upload ELIZA_KEY_PASSWORD=yourpass ./gradlew bundleRelease
+=======
 MILADY_KEYSTORE_PATH=/path/to/milady-upload.jks MILADY_KEYSTORE_PASSWORD=yourpass MILADY_KEY_ALIAS=milady-upload MILADY_KEY_PASSWORD=yourpass ./gradlew bundleRelease
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 # AAB is at app/build/outputs/bundle/release/app-release.aab
 ```
@@ -513,7 +715,11 @@ cd apps/app/android
 bundle install
 
 # Upload to internal testing
+<<<<<<< HEAD
+PLAY_STORE_JSON_KEY=/path/to/play-store-key.json ELIZA_KEYSTORE_PATH=/path/to/elizaos-app-upload.jks ELIZA_KEYSTORE_PASSWORD=yourpass ELIZA_KEY_ALIAS=elizaos-app-upload ELIZA_KEY_PASSWORD=yourpass bundle exec fastlane internal
+=======
 PLAY_STORE_JSON_KEY=/path/to/play-store-key.json MILADY_KEYSTORE_PATH=/path/to/milady-upload.jks MILADY_KEYSTORE_PASSWORD=yourpass MILADY_KEY_ALIAS=milady-upload MILADY_KEY_PASSWORD=yourpass bundle exec fastlane internal
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 # Promote to beta
 bundle exec fastlane beta
@@ -583,10 +789,17 @@ gh workflow run release-orchestrator.yml -f version=2.0.0-alpha.87
 
 | Secret | Where to get it | Used by |
 |---|---|---|
+<<<<<<< HEAD
+| `SNAP_STORE_CREDENTIALS` | `snapcraft export-login --snaps=elizaos-app --acls=package_push -` | Snap publishing |
+| `HOMEBREW_TAP_TOKEN` | GitHub PAT with `repo` scope for `elizaos/homebrew-tap` | Homebrew formula updates |
+| `PYPI_API_TOKEN` | https://pypi.org/manage/account/token/ (or use trusted publishing) | PyPI uploads |
+| `ANDROID_KEYSTORE_BASE64` | `base64 -w0 elizaos-app-upload.jks` | Android AAB signing |
+=======
 | `SNAP_STORE_CREDENTIALS` | `snapcraft export-login --snaps=milady --acls=package_push -` | Snap publishing |
 | `HOMEBREW_TAP_TOKEN` | GitHub PAT with `repo` scope for `milady-ai/homebrew-tap` | Homebrew formula updates |
 | `PYPI_API_TOKEN` | https://pypi.org/manage/account/token/ (or use trusted publishing) | PyPI uploads |
 | `ANDROID_KEYSTORE_BASE64` | `base64 -w0 milady-upload.jks` | Android AAB signing |
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 | `ANDROID_KEYSTORE_PASSWORD` | Android upload keystore password | Android AAB signing |
 | `ANDROID_KEY_ALIAS` | Android upload key alias | Android AAB signing |
 | `ANDROID_KEY_PASSWORD` | Android upload key password | Android AAB signing |
@@ -598,10 +811,17 @@ gh workflow run release-orchestrator.yml -f version=2.0.0-alpha.87
 ### PyPI Trusted Publishing (recommended)
 
 Instead of API tokens, use OIDC trusted publishing:
+<<<<<<< HEAD
+1. Go to https://pypi.org/manage/project/elizaos-app/settings/publishing/
+2. Add a "GitHub Actions" publisher:
+   - Owner: `elizaos`
+   - Repository: `elizaos-app`
+=======
 1. Go to https://pypi.org/manage/project/milady/settings/publishing/
 2. Add a "GitHub Actions" publisher:
    - Owner: `milady-ai`
    - Repository: `milady`
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
    - Workflow: `publish-packages.yml`
    - Environment: (leave blank or set one)
 
@@ -614,9 +834,15 @@ This eliminates the need for `PYPI_API_TOKEN` — GitHub Actions authenticates d
 ### 8.1 Apple Developer Program (one-time)
 
 1. **Enroll** at https://developer.apple.com/programs/ ($99/year)
+<<<<<<< HEAD
+2. **Create App ID**: Bundle ID `ai.elizaos-app.app`, enable Push Notifications
+3. **Create private certificates repo** `elizaos/certificates` for Fastlane Match
+4. **Create App Store Connect app**: Platform iOS, Bundle ID `ai.elizaos-app.app`
+=======
 2. **Create App ID**: Bundle ID `ai.milady.app`, enable Push Notifications
 3. **Create private certificates repo** `milady-ai/certificates` for Fastlane Match
 4. **Create App Store Connect app**: Platform iOS, Bundle ID `ai.milady.app`
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 ### 8.2 Required GitHub Secrets
 
@@ -670,11 +896,19 @@ When releasing a new version, update these files:
 |---|---|
 | `package.json` | `version` |
 | `packaging/pypi/pyproject.toml` | `version` (use PEP 440: `2.0.0a7` not `2.0.0-alpha.7`) |
+<<<<<<< HEAD
+| `packaging/pypi/elizaos-app/__init__.py` | `__version__` |
+| `packaging/snap/snapcraft.yaml` | `version` |
+| `packaging/debian/changelog` | Add new entry at top |
+| `packaging/homebrew/elizaos-app.rb` | `url` + `sha256` (after npm publish) |
+| `packaging/flatpak/ai.elizaos-app.elizaOS App.metainfo.xml` | Add new `<release>` entry |
+=======
 | `packaging/pypi/milady/__init__.py` | `__version__` |
 | `packaging/snap/snapcraft.yaml` | `version` |
 | `packaging/debian/changelog` | Add new entry at top |
 | `packaging/homebrew/milady.rb` | `url` + `sha256` (after npm publish) |
 | `packaging/flatpak/ai.milady.Milady.metainfo.xml` | Add new `<release>` entry |
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 | `apps/app/android/app/build.gradle` | `versionCode` + `versionName` (via env vars in CI) |
 
 ### Version Format Mapping
@@ -694,6 +928,19 @@ When releasing a new version, update these files:
 
 | Platform | Command |
 |---|---|
+<<<<<<< HEAD
+| **npm** | `npm install -g elizaos` |
+| **PyPI** | `pip install elizaos-app` |
+| **Homebrew** | `brew install elizaos/tap/elizaos-app` |
+| **apt** | `sudo apt install elizaos-app` (after adding repo) |
+| **Snap** | `sudo snap install elizaos-app --classic` |
+| **Flatpak** | `flatpak install flathub ai.elizaos-app.elizaOS App` |
+| **Google Play** | Search "elizaOS App" on Play Store |
+| **iOS App Store** | Search "elizaOS App" on App Store |
+| **Mac App Store** | Search "elizaOS App" on Mac App Store |
+| **npx** | `npx elizaos` (no install) |
+| **pipx** | `pipx install elizaos-app` |
+=======
 | **npm** | `npm install -g miladyai` |
 | **PyPI** | `pip install milady` |
 | **Homebrew** | `brew install milady-ai/tap/milady` |
@@ -705,3 +952,4 @@ When releasing a new version, update these files:
 | **Mac App Store** | Search "Milady" on Mac App Store |
 | **npx** | `npx miladyai` (no install) |
 | **pipx** | `pipx install milady` |
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e

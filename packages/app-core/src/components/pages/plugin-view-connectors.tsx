@@ -1,13 +1,5 @@
-import {
-  Button,
-  PagePanel,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  StatusBadge,
-} from "@elizaos/app-core";
+
+
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, type RefCallback, useState } from "react";
 import { type CloudCompatAgent, client, type PluginInfo } from "../../api";
@@ -21,6 +13,7 @@ import {
   resolveManagedDiscordAgentChoice,
 } from "./cloud-dashboard-utils";
 import { PluginConfigForm, TelegramPluginConfig } from "./PluginConfigForm";
+import { PagePanel, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, StatusBadge } from "@elizaos/ui";
 import {
   getPluginResourceLinks,
   pluginResourceLinkLabel,

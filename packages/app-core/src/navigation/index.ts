@@ -29,6 +29,7 @@ export const COMPANION_ENABLED =
 export type BuiltinTab =
   | "chat"
   | "lifeops"
+  | "tasks"
   | "browser"
   | "companion"
   | "stream"
@@ -62,6 +63,7 @@ export type Tab = BuiltinTab | (string & {});
 
 export const APPS_TOOL_TABS = [
   "lifeops",
+  "tasks",
   "plugins",
   "skills",
   "fine-tuning",
@@ -91,10 +93,10 @@ export interface TabGroup {
 export const ALL_TAB_GROUPS: TabGroup[] = [
   {
     label: "Chat",
-    tabs: ["chat"],
+    tabs: ["chat", "connectors"],
     icon: MessageSquare,
     description:
-      "Conversations with your agent and inbound messages from every connector",
+      "Conversations with your agent, inbound messages from every connector, and connector management",
   },
   {
     label: "Apps",
@@ -134,7 +136,7 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
   },
   {
     label: "Settings",
-    tabs: ["settings", "connectors"],
+    tabs: ["settings"],
     icon: Settings,
     description: "Configuration and preferences",
   },
@@ -197,6 +199,7 @@ export function getTabGroups(
 const TAB_PATHS: Record<BuiltinTab, string> = {
   chat: "/chat",
   lifeops: "/apps/lifeops",
+  tasks: "/apps/tasks",
   browser: "/browser",
   companion: "/companion",
   stream: "/stream",
@@ -206,7 +209,7 @@ const TAB_PATHS: Record<BuiltinTab, string> = {
   triggers: "/triggers",
   inventory: "/inventory",
   knowledge: "/character/knowledge",
-  connectors: "/settings/connectors",
+  connectors: "/connectors",
   plugins: "/apps/plugins",
   skills: "/apps/skills",
   advanced: "/apps/fine-tuning",
@@ -237,6 +240,7 @@ const LEGACY_PATHS: Record<string, Tab> = {
   "/knowledge": "knowledge",
   // Old top-level paths that moved under /apps/
   "/lifeops": "lifeops",
+  "/tasks": "tasks",
   "/plugins": "plugins",
   "/skills": "skills",
   "/advanced": "fine-tuning",
@@ -247,8 +251,9 @@ const LEGACY_PATHS: Record<string, Tab> = {
   "/runtime": "runtime",
   "/database": "database",
   "/logs": "logs",
-  // Old top-level paths that moved under /settings/
+  // Old/legacy connector paths
   "/connectors": "connectors",
+  "/settings/connectors": "connectors",
   "/voice": "settings",
   // /companion stays as a legacy redirect — companion is now an overlay app at /apps/companion
   "/companion": "chat",
@@ -294,6 +299,7 @@ export function resolveInitialTabForPath(
 /** Known apps-tool sub-paths under /apps/ (not actual app slugs). */
 const APPS_SUB_TABS: Record<string, Tab> = {
   lifeops: "lifeops",
+  tasks: "tasks",
   plugins: "plugins",
   skills: "skills",
   "fine-tuning": "fine-tuning",

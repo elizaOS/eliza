@@ -1,7 +1,7 @@
-import { Button, IconTooltip } from "@elizaos/app-core";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { IconTooltip } from "@elizaos/ui/components/ui/tooltip-extended";
 import { AlertTriangle } from "lucide-react";
-import { memo, type CSSProperties, type PointerEvent } from "react";
-import { SHELL_ICON_BUTTON_CLASSNAME } from "./shell-control-styles";
+import { type CSSProperties, memo, type PointerEvent } from "react";
 import type { CompanionInferenceNotice } from "./resolve-companion-inference-notice";
 
 export interface InferenceCloudAlertButtonProps {
@@ -27,7 +27,7 @@ export const InferenceCloudAlertButton = memo(
         <Button
           size="icon"
           variant="outline"
-          className={SHELL_ICON_BUTTON_CLASSNAME}
+          className="inline-flex h-11 w-11 min-h-touch min-w-touch items-center justify-center rounded-xl border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_32px_rgba(3,5,10,0.14)] ring-1 ring-inset ring-white/6 backdrop-blur-xl supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_36px_rgba(3,5,10,0.18)] active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt"
           aria-label={notice.tooltip}
           data-testid="companion-inference-cloud-alert"
           onPointerDown={onPointerDown}

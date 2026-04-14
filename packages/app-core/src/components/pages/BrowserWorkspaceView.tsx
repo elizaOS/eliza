@@ -1,24 +1,5 @@
-/**
- * BrowserWorkspaceView — web-compatible pseudo-browser workspace.
- *
- * In web mode the backend owns logical tabs and this page renders them as
- * persistent iframes. Tabs stay mounted while hidden so the agent can switch
- * between them without destroying page state.
- */
 
-import {
-  Button,
-  Input,
-  MetaPill,
-  PageLayout,
-  PagePanel,
-  Sidebar,
-  SidebarCollapsedActionButton,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/app-core";
+
 import { ExternalLink, Plus, RefreshCw, X } from "lucide-react";
 import {
   type JSX,
@@ -44,12 +25,10 @@ import {
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { WidgetHost } from "../../widgets";
+import { PagePanel, MetaPill, SidebarCollapsedActionButton, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, PageLayout } from "@elizaos/ui";
 
 const POLL_INTERVAL_MS = 2_500;
 const DEFAULT_BROWSER_WALLET_CHAIN_ID = 1;
-const ADDRESS_INPUT_CLASSNAME =
-  "h-10 rounded-full border-border/35 bg-card/70 px-4 text-sm text-txt shadow-sm transition-colors focus-visible:border-accent/40";
-
 function normalizeBrowserWorkspaceInputUrl(rawUrl: string): string | null {
   const trimmed = rawUrl.trim();
   if (!trimmed) {
@@ -1104,7 +1083,7 @@ export function BrowserWorkspaceView(): JSX.Element {
               placeholder={t("browserworkspace.AddressPlaceholder", {
                 defaultValue: "Enter a URL",
               })}
-              className={`w-full ${ADDRESS_INPUT_CLASSNAME}`}
+              className="w-full h-10 rounded-full border-border/35 bg-card/70 px-4 text-sm text-txt shadow-sm transition-colors focus-visible:border-accent/40"
             />
             <div className="flex gap-1.5">
               <Button

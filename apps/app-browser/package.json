@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Milady app-browser: desktop browser workspace control, Steward wallet actions, and (eventually) browser UI exported for the dashboard.",
+  "description": "Eliza app-browser: desktop browser workspace control, Steward wallet actions, and (eventually) browser UI exported for the dashboard.",
   "main": "./src/index.ts",
   "exports": {
     "./package.json": "./package.json",
@@ -16,21 +16,21 @@
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
-      "MILADY_BROWSER_WORKSPACE_URL": {
+      "ELIZA_BROWSER_WORKSPACE_URL": {
         "type": "string",
-        "description": "Loopback bridge URL for the Milady desktop browser workspace.",
+        "description": "Loopback bridge URL for the Eliza desktop browser workspace.",
         "required": false,
         "sensitive": false
       },
-      "MILADY_BROWSER_WORKSPACE_TOKEN": {
+      "ELIZA_BROWSER_WORKSPACE_TOKEN": {
         "type": "string",
-        "description": "Bearer token for the Milady desktop browser workspace bridge.",
+        "description": "Bearer token for the Eliza desktop browser workspace bridge.",
         "required": false,
         "sensitive": true
       },
       "STEWARD_API_URL": {
         "type": "string",
-        "description": "Base URL for the Steward wallet API used by Milady wallet actions.",
+        "description": "Base URL for the Steward wallet API used by Eliza wallet actions.",
         "required": false,
         "sensitive": false
       },
@@ -52,7 +52,7 @@
         "required": false,
         "sensitive": false
       },
-      "MILADY_STEWARD_AGENT_ID": {
+      "ELIZA_STEWARD_AGENT_ID": {
         "type": "string",
         "description": "Optional Steward agent ID override for Eliza wallet requests.",
         "required": false,

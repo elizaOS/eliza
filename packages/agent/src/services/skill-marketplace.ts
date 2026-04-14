@@ -104,7 +104,7 @@ async function runSkillSecurityScan(
         }
       } else if (stats.isSymbolicLink()) {
         const resolved = await fsPromises.realpath(fullPath).catch(() => null);
-        if (!resolved || !resolved.startsWith(skillDir + pathMod.sep)) {
+        if (!resolved?.startsWith(skillDir + pathMod.sep)) {
           manifestFindings.push({
             ruleId: "symlink-escape",
             severity: "critical",
@@ -282,9 +282,7 @@ function parseGithubUrl(rawUrl: string): {
   try {
     url = new URL(rawUrl);
   } catch (err) {
-    throw new Error(
-      `Invalid GitHub URL: ${String(err)}`,
-    );
+    throw new Error(`Invalid GitHub URL: ${String(err)}`);
   }
 
   if (url.hostname !== "github.com") {
@@ -668,7 +666,7 @@ async function runGitCloneSubset(
       const sourceDir = path.join(cloneDir, skillPath);
       assertPathWithinRoot(cloneDir, sourceDir);
       const stat = await fs.stat(sourceDir).catch(() => null);
-      if (!stat || !stat.isDirectory()) {
+      if (!stat?.isDirectory()) {
         throw new Error(`Skill path not found in repository: ${skillPath}`);
       }
 

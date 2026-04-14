@@ -286,7 +286,7 @@ describe("LIFE action -- robustness scenarios", () => {
     const result = await send({ intent: "asdfghjkl gibberish" });
     // Without explicit action and with gibberish, handler should clarify (noop)
     expect(result).toMatchObject({ success: true });
-    expect((result as Record<string, unknown>).data).toMatchObject({
+    expect((result as { data?: { noop?: boolean } }).data).toMatchObject({
       noop: true,
     });
   }, 60_000);

@@ -1,24 +1,11 @@
-/**
- * AdvancedPageView — container for advanced configuration sub-tabs.
- *
- * Sub-tabs:
- *   - Plugins: Feature/connector plugin management
- *   - Skills: Custom agent skills
- *   - Fine-Tuning: Dataset and model training workflows
- *   - Trajectories: LLM call viewer and analysis
- *   - Relationships: Cross-channel people, identity, and relationship graph
- *   - Memories: Memory, fact, and extraction viewer
- *   - Runtime: Runtime object inspection
- *   - Databases: Tables/media/vector browser
- *   - Logs: Runtime log viewer
- */
 
-import { Button, SegmentedControl } from "@elizaos/app-core";
+
 import type React from "react";
 import type { Tab } from "../../navigation";
 import { useApp } from "../../state";
 import { DesktopWorkspaceSection } from "../settings/DesktopWorkspaceSection";
 import { FineTuningView } from "../settings/FineTuningView";
+import { Button, SegmentedControl } from "@elizaos/ui";
 
 type SubTab = "fine-tuning" | "desktop";
 
@@ -35,9 +22,6 @@ const SUB_TABS: Array<{
 ];
 
 const MODAL_SUB_TABS = SUB_TABS;
-
-const ADVANCED_TAB_BUTTON_RESET_CLASSNAME =
-  "select-none [&_*]:select-none [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] focus:outline-none focus-visible:outline-none";
 
 function mapTabToSubTab(tab: Tab): SubTab {
   switch (tab) {
@@ -88,7 +72,7 @@ export function AdvancedPageView({ inModal }: { inModal?: boolean } = {}) {
         variant="ghost"
         key={subTab.id}
         aria-current={isActive ? "page" : undefined}
-        className={`${ADVANCED_TAB_BUTTON_RESET_CLASSNAME} inline-flex select-none items-center rounded-xl border transition-all duration-150 ${
+        className={`select-none [&_*]:select-none [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] focus:outline-none focus-visible:outline-none inline-flex select-none items-center rounded-xl border transition-all duration-150 ${
           compact ? "px-3 py-2.5" : "min-h-9 whitespace-nowrap px-2.5 py-1.5"
         } ${
           isActive

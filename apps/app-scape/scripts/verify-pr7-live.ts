@@ -1,6 +1,6 @@
 /**
  * PR 7 LIVE cross-repo test — full ::steer path from xRSPS server
- * through the bot-SDK to the milady plugin's ScapeGameService.
+ * through the bot-SDK to the eliza plugin's ScapeGameService.
  *
  * Flow:
  *   1. Connect a BotSdk as an agent (with onOperatorCommand handler)

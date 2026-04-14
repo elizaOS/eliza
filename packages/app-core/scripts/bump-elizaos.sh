@@ -11,7 +11,11 @@
 #   54                → normalised to 2.0.0-alpha.54
 #
 # Options:
+<<<<<<< HEAD
+#   --no-fix-imports   Skip fixing renamed imports (resolveElizaVersion etc.)
+=======
 #   --no-fix-imports   Skip fixing renamed imports (resolveMiladyVersion etc.)
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 #   --no-core-check    Skip the @elizaos/core tarball health check
 #   --dry-run          Show what would change without writing files
 #   -h, --help         Show this help
@@ -26,9 +30,15 @@
 #   4. If core is broken at that version, finds the latest working version
 #      and sets an override in package.json
 #   5. Scans src/ for renamed APIs introduced in alpha.54:
+<<<<<<< HEAD
+#        resolveElizaVersion  → resolveElizaVersion
+#        dispatchElizaEvent   → dispatchElizaEvent
+#        ELIZA_*              → ELIZA_* (env var references in code)
+=======
 #        resolveMiladyVersion  → resolveElizaVersion
 #        dispatchMiladyEvent   → dispatchElizaEvent
 #        MILADY_*              → ELIZA_* (env var references in code)
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 #      and reports or auto-fixes them
 #
 # Examples:
@@ -75,7 +85,11 @@ done
 
 # ── Verify we're in the milaidy-dev repo root ─────────────────────────────────
 [[ -f "package.json" ]] || die "package.json not found — run from repo root"
+<<<<<<< HEAD
+grep -q '"elizaos"' package.json 2>/dev/null || die "This doesn't look like the elizaos repo"
+=======
 grep -q '"miladyai"' package.json 2>/dev/null || die "This doesn't look like the miladyai repo"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 # ── Normalise version ─────────────────────────────────────────────────────────
 # Accepts: "54", "alpha.54", "2.0.0-alpha.54"
@@ -305,6 +319,17 @@ fi
 # alpha.54 renamed several APIs. We scan source files and fix them.
 #
 # Function renames:
+<<<<<<< HEAD
+#   resolveElizaVersion → resolveElizaVersion
+#   dispatchElizaEvent  → dispatchElizaEvent
+#   resolveElizaAgent   → resolveElizaAgent
+#   getElizaVersion     → getElizaVersion
+#
+# Env var references in source code (not actual .env files):
+#   ELIZA_API_TOKEN       → ELIZA_API_TOKEN
+#   ELIZA_API_BIND        → ELIZA_API_BIND
+#   ELIZA_BUNDLED_VERSION → ELIZA_BUNDLED_VERSION
+=======
 #   resolveMiladyVersion → resolveElizaVersion
 #   dispatchMiladyEvent  → dispatchElizaEvent
 #   resolveMiladyAgent   → resolveElizaAgent
@@ -314,6 +339,7 @@ fi
 #   MILADY_API_TOKEN       → ELIZA_API_TOKEN
 #   MILADY_API_BIND        → ELIZA_API_BIND
 #   MILADY_BUNDLED_VERSION → ELIZA_BUNDLED_VERSION
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 # ─────────────────────────────────────────────────────────────────────────────
 hdr "Step 3: Fix renamed imports and API calls"
 
@@ -340,10 +366,17 @@ if $FIX_IMPORTS; then
 
   # Function/method renames
   declare -A FUNC_RENAMES=(
+<<<<<<< HEAD
+    ["resolveElizaVersion"]="resolveElizaVersion"
+    ["dispatchElizaEvent"]="dispatchElizaEvent"
+    ["resolveElizaAgent"]="resolveElizaAgent"
+    ["getElizaVersion"]="getElizaVersion"
+=======
     ["resolveMiladyVersion"]="resolveElizaVersion"
     ["dispatchMiladyEvent"]="dispatchElizaEvent"
     ["resolveMiladyAgent"]="resolveElizaAgent"
     ["getMiladyVersion"]="getElizaVersion"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
   )
 
   for old_name in "${!FUNC_RENAMES[@]}"; do
@@ -373,10 +406,17 @@ if $FIX_IMPORTS; then
   # Env var references in source code
   # (Only in code strings — not actual .env files or docker-compose.yml)
   declare -A ENV_RENAMES=(
+<<<<<<< HEAD
+    ["ELIZA_API_TOKEN"]="ELIZA_API_TOKEN"
+    ["ELIZA_API_BIND"]="ELIZA_API_BIND"
+    ["ELIZA_BUNDLED_VERSION"]="ELIZA_BUNDLED_VERSION"
+    ["ELIZA_ALLOWED_ORIGINS"]="ELIZA_ALLOWED_ORIGINS"
+=======
     ["MILADY_API_TOKEN"]="ELIZA_API_TOKEN"
     ["MILADY_API_BIND"]="ELIZA_API_BIND"
     ["MILADY_BUNDLED_VERSION"]="ELIZA_BUNDLED_VERSION"
     ["MILADY_ALLOWED_ORIGINS"]="ELIZA_ALLOWED_ORIGINS"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
   )
 
   for old_env in "${!ENV_RENAMES[@]}"; do
@@ -434,5 +474,9 @@ else
   echo "    2. Install: bun install"
   # Extract alpha number for tag
   ALPHA_NUM="${VERSION##*alpha.}"
+<<<<<<< HEAD
   echo "    3. Build:   bash eliza/packages/app-core/scripts/build-image.sh --tag v${ALPHA_NUM}"
+=======
+  echo "    3. Build:   ./scripts/build-image.sh --tag v${ALPHA_NUM}"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 fi

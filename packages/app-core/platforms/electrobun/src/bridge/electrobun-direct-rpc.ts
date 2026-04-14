@@ -1,13 +1,13 @@
 /**
  * Electrobun Renderer Bridge
  *
- * Exposes the direct Milady Electrobun RPC surface in the webview context.
+ * Exposes the direct the app Electrobun RPC surface in the webview context.
  *
  * This script runs in the webview context (injected as a preload).
  * It uses `Electroview.defineRPC()` + `new Electroview()` to connect to
  * the Bun main process via the Electrobun WebSocket RPC channel.
  *
- * `window.__MILADY_ELECTROBUN_RPC__` is the only public desktop bridge exposed
+ * `window.__ELIZA_ELECTROBUN_RPC__` is the only public desktop bridge exposed
  * to renderer code. It mirrors the native Electrobun RPC surface directly:
  * `request.<method>(params)` plus `onMessage(<message>, listener)`.
  */
@@ -22,9 +22,9 @@ type RendererBridgeRpc = {
 };
 
 const listenersByRpcMessage: Record<string, Set<RpcMessageListener>> = {};
-const BOOT_CONFIG_STORE_KEY = Symbol.for("milady.app.boot-config");
-const BOOT_CONFIG_WINDOW_KEY = "__MILADY_APP_BOOT_CONFIG__";
-const RENDERER_LOG_MIRROR_KEY = "__MILADY_ELECTROBUN_LOG_MIRROR__";
+const BOOT_CONFIG_STORE_KEY = Symbol.for("elizaos.app.boot-config");
+const BOOT_CONFIG_WINDOW_KEY = "__ELIZA_APP_BOOT_CONFIG__";
+const RENDERER_LOG_MIRROR_KEY = "__ELIZA_ELECTROBUN_LOG_MIRROR__";
 
 type BootConfig = {
   apiBase?: string;
@@ -64,17 +64,17 @@ function updateBootConfig(
 function dispatchMessage(messageName: string, payload: unknown): void {
   if (messageName === "apiBaseUpdate") {
     const apiBaseUpdate = payload as { base: string; token?: string };
-    window.__MILADY_API_BASE__ = apiBaseUpdate.base;
+    window.__ELIZA_API_BASE__ = apiBaseUpdate.base;
     if (apiBaseUpdate.token) {
-      Object.defineProperty(window, "__MILADY_API_TOKEN__", {
+      Object.defineProperty(window, "__ELIZA_API_TOKEN__", {
         value: apiBaseUpdate.token,
         configurable: true,
         writable: true,
         enumerable: false,
       });
     }
-    // Propagate to boot config so MiladyClient picks up port changes.
-    // We modify it directly instead of importing @elizaos/app-core/config
+    // Propagate to boot config so the appClient picks up port changes.
+    // We modify it directly instead of importing @elizaos/app-core
     // to prevent bundling React and the entire UI layer into the preload script.
     updateBootConfig({
       apiBase: apiBaseUpdate.base,
@@ -158,7 +158,7 @@ const instrumentedRequest = new Proxy(rpc.request, {
   },
 }) as RendererBridgeRpc["request"];
 
-const miladyElectrobunRpc = {
+const electrobunRpc = {
   request: instrumentedRequest,
   onMessage: (messageName: string, listener: RpcMessageListener): void => {
     if (!listenersByRpcMessage[messageName]) {
@@ -176,13 +176,13 @@ const miladyElectrobunRpc = {
 
 declare global {
   interface Window {
-    __MILADY_API_BASE__: string;
-    __MILADY_API_TOKEN__: string;
-    __MILADY_ELECTROBUN_RPC__: typeof miladyElectrobunRpc;
+    __ELIZA_API_BASE__: string;
+    __ELIZA_API_TOKEN__: string;
+    __ELIZA_ELECTROBUN_RPC__: typeof electrobunRpc;
   }
 }
 
-window.__MILADY_ELECTROBUN_RPC__ = miladyElectrobunRpc;
+window.__ELIZA_ELECTROBUN_RPC__ = electrobunRpc;
 
 function installRendererLogMirror(): void {
   const globalWindow = window as typeof window & {
@@ -327,9 +327,9 @@ function installRendererLogMirror(): void {
     ) {
       (
         this as XMLHttpRequest & {
-          __miladyDiag?: { method: string; url: string; startedAt: number };
+          __elizaDiag?: { method: string; url: string; startedAt: number };
         }
-      ).__miladyDiag = {
+      ).__elizaDiag = {
         method,
         url: String(url),
         startedAt: Date.now(),
@@ -344,10 +344,10 @@ function installRendererLogMirror(): void {
 
     XMLHttpRequest.prototype.send = function (...args: unknown[]) {
       const xhr = this as XMLHttpRequest & {
-        __miladyDiag?: { method: string; url: string; startedAt: number };
+        __elizaDiag?: { method: string; url: string; startedAt: number };
       };
       const handleComplete = () => {
-        const diag = xhr.__miladyDiag;
+        const diag = xhr.__elizaDiag;
         if (!diag) {
           return;
         }
@@ -366,7 +366,7 @@ function installRendererLogMirror(): void {
       };
 
       const handleError = () => {
-        const diag = xhr.__miladyDiag;
+        const diag = xhr.__elizaDiag;
         reportDiagnostic("error", "xhr", "XMLHttpRequest failed", {
           url: diag?.url,
           method: diag?.method,

@@ -9,7 +9,7 @@ import type {
 import {
   LifeOpsService,
   LifeOpsServiceError,
-} from "@elizaos/agent/lifeops/service";
+} from "./lifeops/service.js";
 import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
@@ -358,7 +358,7 @@ export const manageLifeOpsBrowserAction: Action = {
   name: "MANAGE_LIFEOPS_BROWSER",
   similes: ["PERSONAL_BROWSER", "LIFEOPS_BROWSER", "MANAGE_PERSONAL_BROWSER"],
   description:
-    "Read and control the user's personal LifeOps Browser companions for Chrome and Safari. This is not the Milady browser workspace.",
+    "Read and control the user's personal LifeOps Browser companions for Chrome and Safari. This is not the Eliza browser workspace.",
   validate: async (runtime, message) => hasAdminAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,

@@ -1,15 +1,10 @@
-/**
- * Tab panel components for the CharacterEditor.
- *
- * Extracted from the main CharacterEditor render to reduce file size.
- * Each panel renders the content for one tab in the character editor.
- */
+
 
 import type { MessageExampleGroup } from "@elizaos/core";
-import { Button, Input, Textarea, ThemedSelect } from "@elizaos/app-core";
 import type { ChangeEvent, KeyboardEvent } from "react";
 import type { CharacterData } from "../../api/client-types-config";
 import { EDGE_BACKUP_VOICES, PREMADE_VOICES } from "../../voice/types";
+import { Button, Input, Textarea, ThemedSelect } from "@elizaos/ui";
 
 /* ── Inline SVG icon helpers ─────────────────────────────────────── */
 const svgBase = {
@@ -37,20 +32,12 @@ const VolumeX = ({ className }: { className?: string }) => (
     <line x1="17" y1="9" x2="23" y2="15" />
   </svg>
 );
-
-/* ── Shared class names ──────────────────────────────────────────── */
-export const CHARACTER_EDITOR_SECTION_CLASSNAME =
-  "flex flex-col gap-2 rounded-xl border border-border bg-card p-3";
-export const CHARACTER_EDITOR_TEXTAREA_CLASSNAME =
-  "flex-1 min-h-12 resize-none overflow-y-auto rounded-lg border-border bg-white/[0.04] px-3 py-2 font-mono text-xs leading-relaxed text-txt";
-export const CHARACTER_EDITOR_INLINE_RULE_CLASSNAME =
-  "group flex items-start gap-2 rounded-md border border-border bg-white/[0.02] px-2.5 py-1.5";
-export const CHARACTER_EDITOR_INLINE_FIELD_CLASSNAME =
-  "h-7 flex-1 rounded-md border border-border bg-white/[0.03] px-2 font-mono text-xs-tight text-txt outline-none focus:border-accent";
-export const CHARACTER_EDITOR_SMALL_GOLD_ACTION_CLASSNAME =
-  "h-6 px-2 text-2xs font-bold text-accent";
-export const CHARACTER_EDITOR_ICON_GHOST_CLASSNAME =
-  "mt-0.5 h-auto w-auto shrink-0 p-0 text-muted opacity-0 transition-[opacity,color,box-shadow] duration-150 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-danger/40";
+const SparklesIcon = ({ className }: { className?: string }) => (
+  <svg {...svgBase} className={className} aria-hidden="true">
+    <path d="M12 2l1.7 5.1L19 9l-5.3 1.9L12 16l-1.7-5.1L5 9l5.3-1.9L12 2z" />
+    <path d="M19 13l.9 2.7L22 16l-2.1.3L19 19l-.9-2.7L16 16l2.1-.3L19 13z" />
+  </svg>
+);
 
 /* ── Inline close icon used by multiple panels ───────────────────── */
 const CloseIconSvg = () => (
@@ -167,7 +154,7 @@ export function CharacterIdentityPanel({
   return (
     <div className="flex flex-1 min-h-0 flex-col gap-5">
       {/* Name + Voice (50/50 split) */}
-      <section className={CHARACTER_EDITOR_SECTION_CLASSNAME}>
+      <section className="flex flex-col gap-3">
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-2 min-w-0">
             <div className="flex items-center justify-between">
@@ -265,9 +252,7 @@ export function CharacterIdentityPanel({
       </section>
 
       {/* Bio / About Me */}
-      <section
-        className={`${CHARACTER_EDITOR_SECTION_CLASSNAME} flex flex-1 min-h-[15rem] flex-col`}
-      >
+      <section className="flex flex-1 min-h-[15rem] flex-col gap-3">
         <div className="flex items-center justify-between">
           <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
             {t("charactereditor.AboutMe", {
@@ -276,18 +261,22 @@ export function CharacterIdentityPanel({
           </span>
           <Button
             variant="ghost"
-            size="sm"
-            className={CHARACTER_EDITOR_SMALL_GOLD_ACTION_CLASSNAME}
+            size="icon"
+            className="h-7 w-7 rounded-full p-0 text-accent"
             onClick={() => void handleGenerate("bio")}
             disabled={generating === "bio"}
+            title={t("charactereditor.Regenerate", {
+              defaultValue: "Regenerate",
+            })}
+            aria-label={t("charactereditor.Regenerate", {
+              defaultValue: "Regenerate",
+            })}
           >
-            {generating === "bio"
-              ? t("charactereditor.Generating", {
-                  defaultValue: "generating...",
-                })
-              : t("charactereditor.Regenerate", {
-                  defaultValue: "regenerate",
-                })}
+            {generating === "bio" ? (
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            ) : (
+              <SparklesIcon className="h-3.5 w-3.5" />
+            )}
           </Button>
         </div>
         <Textarea
@@ -299,14 +288,12 @@ export function CharacterIdentityPanel({
           onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
             handleFieldEdit("bio", e.target.value)
           }
-          className={`${CHARACTER_EDITOR_TEXTAREA_CLASSNAME} h-full min-h-[14rem] max-h-none`}
+          className="flex-1 min-h-12 resize-none overflow-y-auto rounded-lg border-border bg-white/[0.04] px-3 py-2 font-mono text-xs leading-relaxed text-txt h-full min-h-[14rem] max-h-none"
         />
       </section>
 
       {/* System Prompt / Directions */}
-      <section
-        className={`${CHARACTER_EDITOR_SECTION_CLASSNAME} flex flex-1 min-h-[15rem] flex-col`}
-      >
+      <section className="flex flex-1 min-h-[15rem] flex-col gap-3">
         <div className="flex items-center justify-between">
           <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
             {t("charactereditor.SystemPrompt", {
@@ -315,14 +302,22 @@ export function CharacterIdentityPanel({
           </span>
           <Button
             variant="ghost"
-            size="sm"
-            className={CHARACTER_EDITOR_SMALL_GOLD_ACTION_CLASSNAME}
+            size="icon"
+            className="h-7 w-7 rounded-full p-0 text-accent"
             onClick={() => void handleGenerate("system")}
             disabled={generating === "system"}
+            title={t("charactereditor.Regenerate", {
+              defaultValue: "Regenerate",
+            })}
+            aria-label={t("charactereditor.Regenerate", {
+              defaultValue: "Regenerate",
+            })}
           >
-            {generating === "system"
-              ? t("charactereditor.Generating")
-              : t("charactereditor.Regenerate")}
+            {generating === "system" ? (
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            ) : (
+              <SparklesIcon className="h-3.5 w-3.5" />
+            )}
           </Button>
         </div>
         <Textarea
@@ -335,7 +330,7 @@ export function CharacterIdentityPanel({
           onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
             handleFieldEdit("system", e.target.value)
           }
-          className={`${CHARACTER_EDITOR_TEXTAREA_CLASSNAME} h-full min-h-[14rem] max-h-none`}
+          className="flex-1 min-h-12 resize-none overflow-y-auto rounded-lg border-border bg-white/[0.04] px-3 py-2 font-mono text-xs leading-relaxed text-txt h-full min-h-[14rem] max-h-none"
         />
       </section>
     </div>
@@ -360,18 +355,26 @@ export function CharacterStylePanel({
   const style = d.style;
 
   return (
-    <section className={CHARACTER_EDITOR_SECTION_CLASSNAME}>
+    <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <Button
           variant="ghost"
-          size="sm"
-          className={CHARACTER_EDITOR_SMALL_GOLD_ACTION_CLASSNAME}
+          size="icon"
+          className="h-7 w-7 rounded-full p-0 text-accent"
           onClick={() => void handleGenerate("style", "replace")}
           disabled={generating === "style"}
+          title={t("charactereditor.Regenerate", {
+            defaultValue: "Regenerate",
+          })}
+          aria-label={t("charactereditor.Regenerate", {
+            defaultValue: "Regenerate",
+          })}
         >
-          {generating === "style"
-            ? t("charactereditor.Generating")
-            : t("charactereditor.Regenerate")}
+          {generating === "style" ? (
+            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+          ) : (
+            <SparklesIcon className="h-3.5 w-3.5" />
+          )}
         </Button>
       </div>
       <div className="flex flex-col gap-3 min-h-0">
@@ -388,7 +391,7 @@ export function CharacterStylePanel({
                   items.map((item, index) => (
                     <div
                       key={`${key}:${item}`}
-                      className={CHARACTER_EDITOR_INLINE_RULE_CLASSNAME}
+                      className="group flex items-start gap-2"
                     >
                       <span className="mt-0.5 shrink-0 text-2xs font-bold text-accent">
                         {index + 1}
@@ -416,7 +419,7 @@ export function CharacterStylePanel({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className={CHARACTER_EDITOR_ICON_GHOST_CLASSNAME}
+                        className="mt-0.5 h-auto w-auto shrink-0 p-0 text-muted opacity-0 transition-[opacity,color,box-shadow] duration-150 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-danger/40"
                         onClick={() => handleRemoveStyleEntry(key, index)}
                         title={t("common.remove")}
                         aria-label={`${t("common.remove")} ${t(
@@ -431,7 +434,7 @@ export function CharacterStylePanel({
                     </div>
                   ))
                 ) : (
-                  <div className="rounded-md border border-dashed border-border px-3 py-2 text-xs-tight text-muted">
+                  <div className="px-0 py-1 text-xs-tight text-muted">
                     {t(STYLE_SECTION_EMPTY_STATES[key].key, {
                       defaultValue:
                         STYLE_SECTION_EMPTY_STATES[key].defaultValue,
@@ -455,12 +458,12 @@ export function CharacterStylePanel({
                       handleAddStyleEntry(key);
                     }
                   }}
-                  className={`min-w-0 text-xs ${CHARACTER_EDITOR_INLINE_FIELD_CLASSNAME}`}
+                  className="min-w-0 text-xs h-7 flex-1 rounded-md border border-border bg-white/[0.03] px-2 font-mono text-xs-tight text-txt outline-none focus:border-accent"
                 />
                 <Button
                   variant="ghost"
                   size="sm"
-                  className={CHARACTER_EDITOR_SMALL_GOLD_ACTION_CLASSNAME}
+                  className="h-6 px-2 text-2xs font-bold text-accent"
                   onClick={() => handleAddStyleEntry(key)}
                   disabled={!pendingStyleEntries[key].trim()}
                 >
@@ -490,7 +493,7 @@ export function CharacterExamplesPanel({
   return (
     <>
       {/* Chat Examples */}
-      <section className={CHARACTER_EDITOR_SECTION_CLASSNAME}>
+      <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
             {t("charactereditor.ChatExamples", {
@@ -499,16 +502,22 @@ export function CharacterExamplesPanel({
           </span>
           <Button
             variant="ghost"
-            size="sm"
-            className={CHARACTER_EDITOR_SMALL_GOLD_ACTION_CLASSNAME}
+            size="icon"
+            className="h-7 w-7 rounded-full p-0 text-accent"
             onClick={() => void handleGenerate("chatExamples", "replace")}
             disabled={generating === "chatExamples"}
+            title={t("charactereditor.Generate", {
+              defaultValue: "Generate",
+            })}
+            aria-label={t("charactereditor.Generate", {
+              defaultValue: "Generate",
+            })}
           >
-            {generating === "chatExamples"
-              ? t("charactereditor.Generating")
-              : t("charactereditor.Generate", {
-                  defaultValue: "generate",
-                })}
+            {generating === "chatExamples" ? (
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            ) : (
+              <SparklesIcon className="h-3.5 w-3.5" />
+            )}
           </Button>
         </div>
         <div className="flex flex-col gap-1.5 overflow-y-auto min-h-0">
@@ -516,7 +525,7 @@ export function CharacterExamplesPanel({
             <div
               // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
               key={`convo-${ci}`}
-              className="rounded-lg border border-border p-2.5"
+              className="group py-2"
             >
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-3xs font-bold uppercase tracking-[0.12em] text-muted">
@@ -563,7 +572,7 @@ export function CharacterExamplesPanel({
                         updated[ci] = convoClone;
                         handleFieldEdit("messageExamples", updated);
                       }}
-                      className={CHARACTER_EDITOR_INLINE_FIELD_CLASSNAME}
+                      className="h-7 flex-1 rounded-md border border-border bg-white/[0.03] px-2 font-mono text-xs-tight text-txt outline-none focus:border-accent"
                     />
                   </div>
                 ))}
@@ -571,7 +580,7 @@ export function CharacterExamplesPanel({
             </div>
           ))}
           {normalizedMessageExamples.length === 0 && (
-            <div className="rounded-md border border-dashed border-border px-3 py-2 text-xs-tight text-muted">
+            <div className="px-0 py-1 text-xs-tight text-muted">
               {t("charactereditor.NoChatExamples", {
                 defaultValue: "No chat examples yet.",
               })}
@@ -581,7 +590,7 @@ export function CharacterExamplesPanel({
       </section>
 
       {/* Post Examples */}
-      <section className={CHARACTER_EDITOR_SECTION_CLASSNAME}>
+      <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
             {t("charactereditor.PostExamples", {
@@ -590,14 +599,22 @@ export function CharacterExamplesPanel({
           </span>
           <Button
             variant="ghost"
-            size="sm"
-            className={CHARACTER_EDITOR_SMALL_GOLD_ACTION_CLASSNAME}
+            size="icon"
+            className="h-7 w-7 rounded-full p-0 text-accent"
             onClick={() => void handleGenerate("postExamples", "replace")}
             disabled={generating === "postExamples"}
+            title={t("charactereditor.Generate", {
+              defaultValue: "Generate",
+            })}
+            aria-label={t("charactereditor.Generate", {
+              defaultValue: "Generate",
+            })}
           >
-            {generating === "postExamples"
-              ? t("charactereditor.Generating")
-              : t("charactereditor.Generate")}
+            {generating === "postExamples" ? (
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            ) : (
+              <SparklesIcon className="h-3.5 w-3.5" />
+            )}
           </Button>
         </div>
         <div className="flex flex-col gap-1.5 overflow-y-auto min-h-0">
@@ -614,12 +631,12 @@ export function CharacterExamplesPanel({
                   updated[pi] = e.target.value;
                   handleFieldEdit("postExamples", updated);
                 }}
-                className={CHARACTER_EDITOR_INLINE_FIELD_CLASSNAME}
+                className="h-7 flex-1 rounded-md border border-border bg-white/[0.03] px-2 font-mono text-xs-tight text-txt outline-none focus:border-accent"
               />
               <Button
                 variant="ghost"
                 size="icon"
-                className={CHARACTER_EDITOR_ICON_GHOST_CLASSNAME}
+                className="mt-0.5 h-auto w-auto shrink-0 p-0 text-muted opacity-0 transition-[opacity,color,box-shadow] duration-150 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-danger/40"
                 onClick={() => {
                   const updated = [...(d.postExamples ?? [])];
                   updated.splice(pi, 1);
@@ -631,7 +648,7 @@ export function CharacterExamplesPanel({
             </div>
           ))}
           {(d.postExamples ?? []).length === 0 && (
-            <div className="rounded-md border border-dashed border-border px-3 py-2 text-xs-tight text-muted">
+            <div className="px-0 py-1 text-xs-tight text-muted">
               {t("charactereditor.NoPostExamples", {
                 defaultValue: "No post examples yet.",
               })}

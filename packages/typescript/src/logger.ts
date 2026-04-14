@@ -560,6 +560,7 @@ export function logResponse(
 ): string {
 	if (!ensureFileLog()) return "";
 	const _agentName = metadata?.agentName ?? "unknown";
+	void _agentName;
 	// Use the same slug that was stored in the prompt's metadata for correlation
 	const slug = metadata?.promptSlug;
 	if (!slug) {

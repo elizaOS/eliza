@@ -1,24 +1,25 @@
 import { getLocalDateKey, getZonedDateParts } from "../lifeops/time.js";
 import {
-  type ActivitySignalRecord,
   type ActivityProfile,
-  type PlatformActivity,
-  type TimeBucket,
+  type ActivitySignalRecord,
   ALL_TIME_BUCKETS,
   emptyBucketCounts,
+  type PlatformActivity,
+  type TimeBucket,
 } from "./types.js";
 
 // ── Time bucket classification ─────────────────────────
 
-const BUCKET_RANGES: Array<{ bucket: TimeBucket; start: number; end: number }> = [
-  { bucket: "EARLY_MORNING", start: 5, end: 7 },
-  { bucket: "MORNING", start: 7, end: 10 },
-  { bucket: "MIDDAY", start: 10, end: 14 },
-  { bucket: "AFTERNOON", start: 14, end: 17 },
-  { bucket: "EVENING", start: 17, end: 21 },
-  { bucket: "NIGHT", start: 21, end: 24 },
-  // LATE_NIGHT wraps: 0-5
-];
+const BUCKET_RANGES: Array<{ bucket: TimeBucket; start: number; end: number }> =
+  [
+    { bucket: "EARLY_MORNING", start: 5, end: 7 },
+    { bucket: "MORNING", start: 7, end: 10 },
+    { bucket: "MIDDAY", start: 10, end: 14 },
+    { bucket: "AFTERNOON", start: 14, end: 17 },
+    { bucket: "EVENING", start: 17, end: 21 },
+    { bucket: "NIGHT", start: 21, end: 24 },
+    // LATE_NIGHT wraps: 0-5
+  ];
 
 export function classifyTimeBucket(hour: number): TimeBucket {
   if (hour >= 0 && hour < 5) return "LATE_NIGHT";
@@ -51,7 +52,7 @@ export interface CalendarEventRecord {
 
 export const SUSTAINED_INACTIVITY_GAP_MS = 3 * 60 * 60 * 1000; // 3 hours
 const ACTIVE_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
-const SIGNIFICANT_BUCKET_SHARE = 0.10; // 10% of total messages
+const SIGNIFICANT_BUCKET_SHARE = 0.1; // 10% of total messages
 const SCREEN_ACTIVE_FOCUS = new Set(["work", "leisure", "transition"]);
 const SCREEN_ACTIVITY_CONFIDENCE_FLOOR = 0.35;
 
@@ -101,7 +102,9 @@ function parseHealthSnapshot(
   if (signal.source !== "mobile_health") {
     return null;
   }
-  const health = signal.health ?? (isRecord(signal.metadata.health) ? signal.metadata.health : null);
+  const health =
+    signal.health ??
+    (isRecord(signal.metadata.health) ? signal.metadata.health : null);
   if (!health) {
     return null;
   }
@@ -174,7 +177,9 @@ function buildActivitySessionsFromTimestamps(
   for (let index = 1; index < sorted.length; index += 1) {
     const current = sorted[index] ?? 0;
     if (current - sessionEndAt > SUSTAINED_INACTIVITY_GAP_MS) {
-      sessions.push(buildActivitySession(sessionStartAt, sessionEndAt, timezone));
+      sessions.push(
+        buildActivitySession(sessionStartAt, sessionEndAt, timezone),
+      );
       sessionStartAt = current;
     }
     sessionEndAt = current;
@@ -321,7 +326,8 @@ export function resolveCurrentActivityState(
     !sleeping &&
     profile.currentActivityCycleStartedAt &&
     (profile.hasOpenActivityCycle ||
-      mostRecentActivityAt - profile.currentActivityCycleStartedAt <= thresholdMs)
+      mostRecentActivityAt - profile.currentActivityCycleStartedAt <=
+        thresholdMs)
       ? profile.currentActivityCycleStartedAt
       : hasOpenActivityCycle
         ? mostRecentActivityAt
@@ -334,12 +340,12 @@ export function resolveCurrentActivityState(
         : profile.currentActivityCycleLocalDate
       : profile.currentActivityCycleLocalDate;
   const effectiveDayKey = hasOpenActivityCycle
-    ? currentActivityCycleLocalDate ??
-      localDateKeyForTimestamp(currentTime, profile.timezone)
+    ? (currentActivityCycleLocalDate ??
+      localDateKeyForTimestamp(currentTime, profile.timezone))
     : sleeping
-      ? currentActivityCycleLocalDate ??
-        localDateKeyForTimestamp(currentTime, profile.timezone)
-    : localDateKeyForTimestamp(currentTime, profile.timezone);
+      ? (currentActivityCycleLocalDate ??
+        localDateKeyForTimestamp(currentTime, profile.timezone))
+      : localDateKeyForTimestamp(currentTime, profile.timezone);
 
   return {
     lastSeenAt: mostRecentActivityAt,
@@ -349,7 +355,7 @@ export function resolveCurrentActivityState(
       mostRecentActivityAt > 0 &&
       currentTime - mostRecentActivityAt < ACTIVE_THRESHOLD_MS,
     hasOpenActivityCycle,
-    currentActivityCycleStartedAt: sleeping ? null : cycleStart ?? null,
+    currentActivityCycleStartedAt: sleeping ? null : (cycleStart ?? null),
     currentActivityCycleLocalDate,
     effectiveDayKey,
   };
@@ -418,7 +424,10 @@ function resolveLatestActivityDayKey(
     if (profile.hasOpenActivityCycle && profile.currentActivityCycleStartedAt) {
       return (
         profile.currentActivityCycleLocalDate ??
-        localDateKeyForTimestamp(profile.currentActivityCycleStartedAt, timezone)
+        localDateKeyForTimestamp(
+          profile.currentActivityCycleStartedAt,
+          timezone,
+        )
       );
     }
     return localDateKeyForTimestamp(heartbeatAt, timezone);
@@ -433,7 +442,13 @@ export function analyzeMessages(
   timezone: string,
   windowDays: number,
   now?: Date,
-): Omit<ActivityProfile, "hasCalendarData" | "typicalFirstEventHour" | "typicalLastEventHour" | "avgWeekdayMeetings">;
+): Omit<
+  ActivityProfile,
+  | "hasCalendarData"
+  | "typicalFirstEventHour"
+  | "typicalLastEventHour"
+  | "avgWeekdayMeetings"
+>;
 export function analyzeMessages(
   messages: MessageRecord[],
   roomSourceMap: Map<string, string>,
@@ -442,7 +457,13 @@ export function analyzeMessages(
   windowDays: number,
   now: Date,
   activitySignals: ActivitySignalRecord[],
-): Omit<ActivityProfile, "hasCalendarData" | "typicalFirstEventHour" | "typicalLastEventHour" | "avgWeekdayMeetings">;
+): Omit<
+  ActivityProfile,
+  | "hasCalendarData"
+  | "typicalFirstEventHour"
+  | "typicalLastEventHour"
+  | "avgWeekdayMeetings"
+>;
 export function analyzeMessages(
   messages: MessageRecord[],
   roomSourceMap: Map<string, string>,
@@ -451,7 +472,13 @@ export function analyzeMessages(
   windowDays: number,
   activitySignals?: ActivitySignalRecord[],
   now?: Date,
-): Omit<ActivityProfile, "hasCalendarData" | "typicalFirstEventHour" | "typicalLastEventHour" | "avgWeekdayMeetings">;
+): Omit<
+  ActivityProfile,
+  | "hasCalendarData"
+  | "typicalFirstEventHour"
+  | "typicalLastEventHour"
+  | "avgWeekdayMeetings"
+>;
 export function analyzeMessages(
   messages: MessageRecord[],
   roomSourceMap: Map<string, string>,
@@ -460,7 +487,13 @@ export function analyzeMessages(
   windowDays: number,
   firstOptionalArg?: Date | ActivitySignalRecord[],
   secondOptionalArg?: Date | ActivitySignalRecord[],
-): Omit<ActivityProfile, "hasCalendarData" | "typicalFirstEventHour" | "typicalLastEventHour" | "avgWeekdayMeetings"> {
+): Omit<
+  ActivityProfile,
+  | "hasCalendarData"
+  | "typicalFirstEventHour"
+  | "typicalLastEventHour"
+  | "avgWeekdayMeetings"
+> {
   const currentTime =
     firstOptionalArg instanceof Date
       ? firstOptionalArg
@@ -476,7 +509,10 @@ export function analyzeMessages(
 
   // Filter to owner messages within window
   const ownerMessages = messages.filter(
-    (m) => m.entityId === ownerEntityId && m.createdAt >= windowStart && m.createdAt <= currentTime.getTime(),
+    (m) =>
+      m.entityId === ownerEntityId &&
+      m.createdAt >= windowStart &&
+      m.createdAt <= currentTime.getTime(),
   );
   const activeSignals = activitySignals.filter(
     (signal) =>
@@ -488,11 +524,14 @@ export function analyzeMessages(
     .filter((snapshot): snapshot is HealthSnapshot => snapshot !== null);
 
   // Group by platform
-  const platformMap = new Map<string, {
-    count: number;
-    buckets: Record<TimeBucket, number>;
-    lastAt: number;
-  }>();
+  const platformMap = new Map<
+    string,
+    {
+      count: number;
+      buckets: Record<TimeBucket, number>;
+      lastAt: number;
+    }
+  >();
 
   const aggregateBuckets = emptyBucketCounts();
 
@@ -514,7 +553,8 @@ export function analyzeMessages(
   }
 
   for (const signal of activeSignals) {
-    const source = signal.platform.trim().length > 0 ? signal.platform : "client_chat";
+    const source =
+      signal.platform.trim().length > 0 ? signal.platform : "client_chat";
     let entry = platformMap.get(source);
     if (!entry) {
       entry = { count: 0, buckets: emptyBucketCounts(), lastAt: 0 };
@@ -570,13 +610,16 @@ export function analyzeMessages(
   );
   const sleepHoursFromHealth = healthSnapshots
     .filter((snapshot) => snapshot.sleepStartedAt !== null)
-    .map((snapshot) =>
-      getZonedDateParts(new Date(snapshot.sleepStartedAt ?? 0), timezone).hour,
+    .map(
+      (snapshot) =>
+        getZonedDateParts(new Date(snapshot.sleepStartedAt ?? 0), timezone)
+          .hour,
     );
   const wakeHoursFromHealth = healthSnapshots
     .filter((snapshot) => snapshot.sleepEndedAt !== null)
-    .map((snapshot) =>
-      getZonedDateParts(new Date(snapshot.sleepEndedAt ?? 0), timezone).hour,
+    .map(
+      (snapshot) =>
+        getZonedDateParts(new Date(snapshot.sleepEndedAt ?? 0), timezone).hour,
     );
   const wakeHours = sessions
     .map((session) => session.startHour)
@@ -586,10 +629,8 @@ export function analyzeMessages(
     .map((session) => session.normalizedEndHour)
     .concat(sleepHoursFromHealth)
     .sort((left, right) => left - right);
-  const typicalWakeHour =
-    wakeHours.length > 0 ? median(wakeHours) : null;
-  const typicalSleepHour =
-    sleepHours.length > 0 ? median(sleepHours) : null;
+  const typicalWakeHour = wakeHours.length > 0 ? median(wakeHours) : null;
+  const typicalSleepHour = sleepHours.length > 0 ? median(sleepHours) : null;
   const sleepDurations = healthSnapshots
     .map((snapshot) => snapshot.durationMinutes)
     .filter((value): value is number => typeof value === "number");
@@ -602,8 +643,9 @@ export function analyzeMessages(
       : null;
   const latestHealthSnapshot =
     healthSnapshots.length > 0
-      ? [...healthSnapshots].sort((left, right) => right.observedAt - left.observedAt)[0] ??
-        null
+      ? ([...healthSnapshots].sort(
+          (left, right) => right.observedAt - left.observedAt,
+        )[0] ?? null)
       : null;
   const latestSleepingHealthSnapshot =
     [...healthSnapshots]
@@ -626,8 +668,8 @@ export function analyzeMessages(
   let lastSeenPlatform = latestInteraction.lastSeenPlatform;
   if (latestHealthSnapshot) {
     const healthBoundaryAt = latestHealthSnapshot.isSleeping
-      ? latestHealthSnapshot.sleepStartedAt ?? latestHealthSnapshot.observedAt
-      : latestHealthSnapshot.sleepEndedAt ?? latestHealthSnapshot.observedAt;
+      ? (latestHealthSnapshot.sleepStartedAt ?? latestHealthSnapshot.observedAt)
+      : (latestHealthSnapshot.sleepEndedAt ?? latestHealthSnapshot.observedAt);
     if (healthBoundaryAt > lastSeenAt) {
       lastSeenAt = healthBoundaryAt;
       lastSeenPlatform = latestHealthSnapshot.platform;
@@ -657,15 +699,15 @@ export function analyzeMessages(
     ? lastSeenAt
     : isCurrentlySleeping
       ? null
-      : currentActivityCycle?.startAt ?? lastSeenAt;
+      : (currentActivityCycle?.startAt ?? lastSeenAt);
   const currentActivityCycleLocalDate = latestInteractionStartsNewCycle
     ? localDateKeyForTimestamp(lastSeenAt, timezone)
     : isCurrentlySleeping
       ? lastSleepSignalAt !== null
         ? localDateKeyForTimestamp(lastSleepSignalAt, timezone)
         : localDateKeyForTimestamp(currentTime.getTime(), timezone)
-      : currentActivityCycle?.startDayKey ??
-        localDateKeyForTimestamp(lastSeenAt, timezone);
+      : (currentActivityCycle?.startDayKey ??
+        localDateKeyForTimestamp(lastSeenAt, timezone));
 
   return {
     ownerEntityId,
@@ -673,8 +715,7 @@ export function analyzeMessages(
     analysisWindowDays: windowDays,
     timezone,
     totalMessages,
-    sustainedInactivityThresholdMinutes:
-      SUSTAINED_INACTIVITY_GAP_MS / 60_000,
+    sustainedInactivityThresholdMinutes: SUSTAINED_INACTIVITY_GAP_MS / 60_000,
     platforms,
     primaryPlatform: platforms[0]?.source ?? null,
     secondaryPlatform: platforms[1]?.source ?? null,
@@ -702,10 +743,10 @@ export function analyzeMessages(
       ? (currentActivityCycleLocalDate ??
         localDateKeyForTimestamp(currentTime.getTime(), timezone))
       : isCurrentlySleeping
-        ? currentActivityCycleLocalDate ??
+        ? (currentActivityCycleLocalDate ??
           (lastSleepSignalAt !== null
             ? localDateKeyForTimestamp(lastSleepSignalAt, timezone)
-            : localDateKeyForTimestamp(currentTime.getTime(), timezone))
+            : localDateKeyForTimestamp(currentTime.getTime(), timezone)))
         : localDateKeyForTimestamp(currentTime.getTime(), timezone),
     screenContextFocus: null,
     screenContextSource: null,
@@ -720,7 +761,13 @@ export function analyzeMessages(
 // ── Calendar enrichment ────────────────────────────────
 
 export function enrichWithCalendar(
-  profile: Omit<ActivityProfile, "hasCalendarData" | "typicalFirstEventHour" | "typicalLastEventHour" | "avgWeekdayMeetings">,
+  profile: Omit<
+    ActivityProfile,
+    | "hasCalendarData"
+    | "typicalFirstEventHour"
+    | "typicalLastEventHour"
+    | "avgWeekdayMeetings"
+  >,
   calendarEvents: CalendarEventRecord[],
   timezone: string,
 ): ActivityProfile {
@@ -735,7 +782,11 @@ export function enrichWithCalendar(
   }
 
   // Filter to non-all-day events and extract local hours
-  const eventHours: { startHour: number; endHour: number; dayOfWeek: number }[] = [];
+  const eventHours: {
+    startHour: number;
+    endHour: number;
+    dayOfWeek: number;
+  }[] = [];
 
   for (const event of calendarEvents) {
     if (event.isAllDay) continue;
@@ -762,20 +813,26 @@ export function enrichWithCalendar(
   }
 
   // Weekday events only (Mon-Fri)
-  const weekdayEvents = eventHours.filter((e) => e.dayOfWeek >= 1 && e.dayOfWeek <= 5);
+  const weekdayEvents = eventHours.filter(
+    (e) => e.dayOfWeek >= 1 && e.dayOfWeek <= 5,
+  );
 
   // Compute median first event hour on weekdays
-  const firstHours = weekdayEvents.map((e) => e.startHour).sort((a, b) => a - b);
+  const firstHours = weekdayEvents
+    .map((e) => e.startHour)
+    .sort((a, b) => a - b);
   const lastHours = weekdayEvents.map((e) => e.endHour).sort((a, b) => a - b);
 
-  const typicalFirstEventHour = firstHours.length > 0 ? median(firstHours) : null;
+  const typicalFirstEventHour =
+    firstHours.length > 0 ? median(firstHours) : null;
   const typicalLastEventHour = lastHours.length > 0 ? median(lastHours) : null;
 
   // Average weekday meetings: count unique weekdays, divide total by that
   const weekdaySet = new Set(weekdayEvents.map((e) => e.dayOfWeek));
-  const avgWeekdayMeetings = weekdaySet.size > 0
-    ? Math.round((weekdayEvents.length / weekdaySet.size) * 10) / 10
-    : null;
+  const avgWeekdayMeetings =
+    weekdaySet.size > 0
+      ? Math.round((weekdayEvents.length / weekdaySet.size) * 10) / 10
+      : null;
 
   return {
     ...profile,
@@ -790,13 +847,20 @@ export function enrichWithCalendar(
 
 function bucketMidpointHour(bucket: TimeBucket): number {
   switch (bucket) {
-    case "EARLY_MORNING": return 6;
-    case "MORNING": return 8;
-    case "MIDDAY": return 12;
-    case "AFTERNOON": return 15;
-    case "EVENING": return 19;
-    case "NIGHT": return 22;
-    case "LATE_NIGHT": return 3;
+    case "EARLY_MORNING":
+      return 6;
+    case "MORNING":
+      return 8;
+    case "MIDDAY":
+      return 12;
+    case "AFTERNOON":
+      return 15;
+    case "EVENING":
+      return 19;
+    case "NIGHT":
+      return 22;
+    case "LATE_NIGHT":
+      return 3;
   }
 }
 

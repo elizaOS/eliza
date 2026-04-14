@@ -6,9 +6,9 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasAdminAccess } from "../security/access.js";
 import { InboxTriageRepository } from "../inbox/repository.js";
 import type { TriageEntry } from "../inbox/types.js";
+import { hasAdminAccess } from "../security/access.js";
 
 const EMPTY: ProviderResult = {
   text: "",
@@ -87,15 +87,11 @@ export const inboxTriageProvider: Provider = {
         const draftPreview = item.draftResponse
           ? `"${item.draftResponse.slice(0, 60)}..."`
           : "(no draft)";
-        lines.push(
-          `- Sent to ${item.channelName}: ${draftPreview}`,
-        );
+        lines.push(`- Sent to ${item.channelName}: ${draftPreview}`);
       }
     }
 
-    lines.push(
-      "\nSay 'respond to [name/channel]' to draft and send replies.",
-    );
+    lines.push("\nSay 'respond to [name/channel]' to draft and send replies.");
 
     return {
       text: lines.join("\n"),
@@ -114,9 +110,7 @@ export const inboxTriageProvider: Provider = {
 };
 
 function formatEntry(entry: TriageEntry): string {
-  const senderInfo = entry.senderName
-    ? ` from ${entry.senderName}`
-    : "";
+  const senderInfo = entry.senderName ? ` from ${entry.senderName}` : "";
   const link = entry.deepLink ? `\n  ${entry.deepLink}` : "";
   return (
     `- **${entry.channelName}**${senderInfo} (${entry.source}): "${entry.snippet.slice(0, 80)}"` +

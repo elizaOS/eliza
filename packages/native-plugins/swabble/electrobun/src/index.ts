@@ -4,7 +4,7 @@ import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
-} from "@elizaos/app-core/bridge/electrobun-rpc.js";
+} from "@elizaos/app-core";
 import type { EventCallback } from "../../../shared-types.js";
 import type {
   SwabbleAudioLevelEvent,

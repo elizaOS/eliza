@@ -45,15 +45,15 @@ const ROOT_BUN_NODE_MODULES = path.join(ROOT_NODE_MODULES, ".bun");
 const PACKAGE_JSON_PATH = path.join(ROOT, "package.json");
 const REGISTRY_PACKAGE_CACHE = path.join(
   os.tmpdir(),
-  "milady-runtime-package-cache",
+  "eliza-runtime-package-cache",
 );
 const TRACKED_PACKAGE_CACHE = path.join(
   os.tmpdir(),
-  "milady-tracked-package-cache",
+  "eliza-tracked-package-cache",
 );
 const PUBLISHED_PACKAGE_FETCH_TIMEOUT_MS = 10_000;
 const ALLOW_REGISTRY_FETCH =
-  process.env.MILADY_RUNTIME_COPY_ALLOW_REGISTRY_FETCH === "1";
+  process.env.ELIZA_RUNTIME_COPY_ALLOW_REGISTRY_FETCH === "1";
 const DEP_SKIP = new Set(["typescript", "@types/node", "lucide-react"]);
 const ALWAYS_HOISTED_PACKAGES = new Set(["@elizaos/core"]);
 const PACKAGED_DEPENDENCY_SKIPS = new Map<string, Set<string>>([

@@ -1,25 +1,9 @@
-/**
- * LanguageDropdown — language selector used in the app header and settings.
- *
- * Fully props-driven; no app context dependency. Takes the current language
- * and a setter from the caller. Works in both "native" and "companion"
- * visual variants.
- *
- * Uses DropdownMenu from @elizaos/app-core (Radix) for portaling, positioning,
- * keyboard navigation, and outside-click dismissal.
- */
 
-import {
-  Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@elizaos/app-core";
+
 import { Check, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import type { UiLanguage } from "../../i18n/messages";
-import { SHELL_EXPANDED_BUTTON_CLASSNAME } from "@elizaos/app-companion/ui";
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@elizaos/ui";
 
 /** Minimal translator function type. Receive key, return string. */
 export type TranslatorFn = (key: string) => string;
@@ -48,9 +32,6 @@ export interface LanguageDropdownProps {
   menuPlacement?: "bottom-end" | "top-end";
 }
 
-export const LANGUAGE_DROPDOWN_TRIGGER_CLASSNAME =
-  "!h-11 !min-h-touch !min-w-touch !rounded-xl !px-3.5 sm:!px-3.5 leading-none";
-
 export function LanguageDropdown({
   uiLanguage,
   setUiLanguage,
@@ -63,7 +44,6 @@ export function LanguageDropdown({
   const [open, setOpen] = useState(false);
 
   const current = LANGUAGES.find((l) => l.id === uiLanguage) ?? LANGUAGES[0];
-  const triggerClass = `${SHELL_EXPANDED_BUTTON_CLASSNAME} gap-1.5 text-xs font-medium ${open ? "border-accent/80 bg-accent/12 text-txt shadow-md" : ""} ${triggerClassName ?? ""}`;
 
   return (
     <div
@@ -75,7 +55,7 @@ export function LanguageDropdown({
         <DropdownMenuTrigger asChild>
           <Button
             variant="outline"
-            className={triggerClass}
+            className={`inline-flex h-11 min-h-touch min-w-touch items-center justify-center rounded-xl px-3.5 py-0 border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_32px_rgba(3,5,10,0.14)] ring-1 ring-inset ring-white/6 backdrop-blur-xl supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_36px_rgba(3,5,10,0.18)] active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt gap-1.5 text-xs font-medium ${open ? "border-accent/80 bg-accent/12 text-txt shadow-md" : ""} ${triggerClassName ?? ""}`}
             onPointerDown={(event) => event.stopPropagation()}
             aria-label={t?.("settings.language") ?? "Language"}
             data-testid="language-dropdown-trigger"

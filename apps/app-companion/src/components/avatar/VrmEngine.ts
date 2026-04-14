@@ -1,4 +1,4 @@
-import { resolveAppAssetUrl } from "@elizaos/app-core/utils";
+import { resolveAppAssetUrl } from "@elizaos/app-core/utils/asset-url";
 import {
   MToonMaterialLoaderPlugin,
   type VRM,
@@ -32,6 +32,9 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: Three.js TSL shader nodes are opaque chainable objects with no exported types.
 type TslNode = any;
+type VrmLoaderParser = ConstructorParameters<
+  typeof MToonMaterialLoaderPlugin
+>[0];
 
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
@@ -897,7 +900,7 @@ export class VrmEngine {
     ) {
       return;
     }
-    const lookAtState = vrm.lookAt as
+    const lookAtState = vrm.lookAt as unknown as
       | ({ _yaw?: number; _pitch?: number } & object)
       | null
       | undefined;
@@ -960,11 +963,7 @@ export class VrmEngine {
       yawWeight: number,
       pitchWeight: number,
     ) => {
-      if (
-        !bone ||
-        !bone.quaternion ||
-        typeof bone.quaternion.clone !== "function"
-      ) {
+      if (!bone?.quaternion || typeof bone.quaternion.clone !== "function") {
         return;
       }
       const offsetEuler = new THREE.Euler(
@@ -1036,7 +1035,9 @@ export class VrmEngine {
       rendererBackend: this.rendererBackend,
       cameraProfile: this.cameraProfile,
       sceneChildren:
-        this.scene?.children.map((child: THREE.Object3D) => child.name || child.type) ?? [],
+        this.scene?.children.map(
+          (child: THREE.Object3D) => child.name || child.type,
+        ) ?? [],
       camera: {
         parentName: this.camera?.parent?.name ?? null,
         position: this.toDebugVector3(this.camera?.position ?? null),
@@ -1685,8 +1686,7 @@ export class VrmEngine {
       this.rendererBackend === "webgpu"
         ? await import("@pixiv/three-vrm/nodes")
         : null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    loader.register((parser: any) => {
+    loader.register((parser: VrmLoaderParser) => {
       if (webGpuNodes) {
         const mtoonMaterialPlugin = new MToonMaterialLoaderPlugin(parser, {
           materialType: webGpuNodes.MToonNodeMaterial,
@@ -1938,9 +1938,11 @@ export class VrmEngine {
         this.teleportFallbackShaders.push(shaderRef);
 
         mat.alphaTest = Math.max(mat.alphaTest ?? 0, 0.01);
-        mat.onBeforeCompile = (
-          shader: { uniforms: Record<string, { value: unknown }>; vertexShader: string; fragmentShader: string },
-        ) => {
+        mat.onBeforeCompile = (shader: {
+          uniforms: Record<string, { value: unknown }>;
+          vertexShader: string;
+          fragmentShader: string;
+        }) => {
           shader.uniforms.uTeleportProgress =
             shaderRef.uniforms.uTeleportProgress;
           shader.vertexShader = `

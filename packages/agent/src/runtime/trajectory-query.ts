@@ -12,7 +12,6 @@ import {
   executeRawSql,
   extractRows,
   hasRuntimeDb,
-  toNumber,
 } from "./trajectory-internals.js";
 
 // ---------------------------------------------------------------------------

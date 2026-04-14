@@ -8,9 +8,6 @@
 
 // Export all core modules
 export * from "./actions";
-export * from "./advanced-memory";
-// Export capabilities and plugin creation
-export * from "./basic-capabilities/index";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 // Export character utilities
@@ -33,6 +30,12 @@ export {
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
+export * from "./features/advanced-memory";
+// Export capabilities and plugin creation
+export * from "./features/basic-capabilities/index";
+// Node-only task-agent orchestration surface.
+export * from "./features/orchestrator/index";
+export { default as orchestratorPluginDefault } from "./features/orchestrator/index";
 // Export generated action/provider/evaluator specs from centralized prompts
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
@@ -56,8 +59,6 @@ export * from "./providers/skill-eligibility";
 export * from "./provisioning";
 export * from "./roles";
 export * from "./runtime";
-/** Single implementation — see `utils/batch-queue/semaphore.ts` (was duplicated on `runtime.ts`). */
-export { Semaphore } from "./utils/batch-queue/semaphore.js";
 // Runtime composition (loadCharacters, createRuntimes, getBasicCapabilitiesSettings, mergeSettingsInto) - node only
 export * from "./runtime-composition";
 // Export character schemas
@@ -107,6 +108,8 @@ export * from "./types/onboarding";
 export * from "./types/plugin-manifest";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
+/** Single implementation — see `utils/batch-queue/semaphore.ts` (was duplicated on `runtime.ts`). */
+export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 // Export channel utilities (room/world helpers)
 export * from "./utils/channel-utils";

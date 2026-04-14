@@ -35,7 +35,7 @@ import { logger, type Plugin } from "@elizaos/core";
 import {
   extractPlugin,
   resolveFeishuPluginImportSpecifier,
-} from "@elizaos/app-core/test-support/test-helpers";
+} from "@elizaos/app-core";
 import dotenv from "dotenv";
 import { describe, expect, it } from "vitest";
 import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
@@ -269,7 +269,7 @@ async function isWorkspaceAvailable(): Promise<boolean> {
   if (_workspaceAvailable === null) {
     _workspaceAvailable =
       (await tryWorkspaceImport(
-        "@elizaos/app-core/src/config/plugin-auto-enable",
+        "@elizaos/app-core",
       )) !== null;
     if (!_workspaceAvailable) {
       logger.warn(
@@ -289,7 +289,7 @@ describeIfWorkspace("Feishu Connector - Integration", () => {
   it("Feishu is mapped in CONNECTOR_PLUGINS", async () => {
     const mod = (await tryWorkspaceImport<{
       CONNECTOR_PLUGINS: Record<string, string>;
-    }>("@elizaos/app-core/src/config/plugin-auto-enable"))!;
+    }>("@elizaos/app-core"))!;
     expect(mod.CONNECTOR_PLUGINS.feishu).toBe("@elizaos/plugin-feishu");
   });
 });

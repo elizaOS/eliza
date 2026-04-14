@@ -1,13 +1,6 @@
-/**
- * Companion shell — renders CompanionView (VRM + chat dock).
- *
- * Used when `uiShellMode === "companion"`. Settings, character, skills, etc.
- * require switching to native (advanced) mode via the header toggle.
- */
-
-import { useRenderGuard } from "@elizaos/app-core/hooks";
+import { useRenderGuard } from "@elizaos/app-core/hooks/useRenderGuard";
 import type { Tab } from "@elizaos/app-core/navigation";
-import type { ActionNotice } from "@elizaos/app-core/state";
+import type { ActionNotice } from "@elizaos/app-core/state/action-notice";
 import { memo } from "react";
 import { CompanionView } from "./CompanionView";
 

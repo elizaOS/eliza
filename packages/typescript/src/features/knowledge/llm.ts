@@ -4,12 +4,12 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText as aiGenerateText, embed, type ModelMessage } from "ai";
 import { logger } from "../../logger";
-import { BatchProcessor } from "../../utils/batch-queue";
 import {
 	logActiveTrajectoryLlmCall,
 	withStandaloneTrajectory,
 } from "../../trajectory-utils";
 import { type IAgentRuntime, ModelType } from "../../types";
+import { BatchProcessor } from "../../utils/batch-queue";
 
 type AIModel = Parameters<typeof aiGenerateText>[0]["model"];
 

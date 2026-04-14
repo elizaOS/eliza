@@ -1,28 +1,5 @@
-/**
- * Settings view — two-panel layout with section navigator and active section.
- */
 
-import {
-  Button,
-  Checkbox,
-  cn,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  Input,
-  Label,
-  PageLayout,
-  PagePanel,
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-  Spinner,
-  Switch,
-  useLinkedSidebarSelection,
-} from "@elizaos/app-core";
+
 import { AlertTriangle, Download, Upload } from "lucide-react";
 import {
   type ComponentPropsWithoutRef,
@@ -40,9 +17,9 @@ import { MediaSettingsSection } from "../settings/MediaSettingsSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
-import { ConnectorsPageView } from "./ConnectorsPageView";
 import { CloudDashboard } from "./ElizaCloudDashboard";
 import { ReleaseCenterView } from "./ReleaseCenterView";
+import { PagePanel, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Checkbox, Dialog, DialogContent, DialogHeader, DialogTitle, Input, Label, Spinner, Switch, useLinkedSidebarSelection, PageLayout, cn } from "@elizaos/ui";
 
 interface SettingsSectionDef {
   id: string;
@@ -90,8 +67,18 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   {
     id: "coding-agents",
     label: "settings.sections.codingagents.label",
-    description: "settings.sections.codingagents.desc",
-    keywords: ["codex", "agent", "reasoning", "parallel", "approval"],
+    description: "settings.codingAgentsDescription",
+    keywords: [
+      "codex",
+      "agent",
+      "reasoning",
+      "parallel",
+      "approval",
+      "routing",
+      "provider routing",
+      "task coordinator",
+      "task agents",
+    ],
   },
   {
     id: "media",
@@ -134,24 +121,6 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "settings.keyword.avatar",
       "settings.keyword.appearance",
     ],
-  },
-  {
-    id: "connectors",
-    label: "nav.social",
-    description: "settings.sections.connectors.desc",
-    keywords: [
-      "connectors",
-      "integration",
-      "discord",
-      "telegram",
-      "whatsapp",
-      "gmail",
-      "calendar",
-      "oauth",
-      "accounts",
-      "services",
-    ],
-    keywordKeys: ["settings.keyword.connectors"],
   },
   {
     id: "capabilities",
@@ -906,18 +875,6 @@ export function SettingsView({
           ref={registerContentItem("appearance")}
         >
           <AppearanceSettingsSection />
-        </SettingsSection>
-      )}
-
-      {visibleSectionIds.has("connectors") && (
-        <SettingsSection
-          id="connectors"
-          title={t("nav.social")}
-          description={t("settings.sections.connectors.desc")}
-          bodyClassName="p-0"
-          ref={registerContentItem("connectors")}
-        >
-          <ConnectorsPageView />
         </SettingsSection>
       )}
 

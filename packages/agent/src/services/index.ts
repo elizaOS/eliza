@@ -1,11 +1,11 @@
 export * from "./agent-export.js";
 export * from "./app-manager.js";
 export * from "./app-session-gate.js";
-export * from "./overlay-app-presence.js";
 export * from "./browser-capture.js";
 export * from "./browser-workspace.js";
 export { CodingTaskExecutor } from "./coding-task-executor.js";
 export { createDefaultExecutorRegistry } from "./executor-registry.js";
+export * from "./overlay-app-presence.js";
 export * from "./privy-wallets.js";
 export * from "./registry-client.js";
 export * from "./remote-signing-service.js";

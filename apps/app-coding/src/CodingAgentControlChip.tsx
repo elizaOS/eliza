@@ -1,8 +1,9 @@
+import { client } from "@elizaos/app-core/api/client";
+import { usePtySessions } from "@elizaos/app-core/state/PtySessionsContext";
+import { useApp } from "@elizaos/app-core/state/useApp";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { Square, Terminal } from "lucide-react";
 import { useCallback } from "react";
-import { client } from "@elizaos/app-core/api";
-import { useApp, usePtySessions } from "@elizaos/app-core/state";
-import { Button } from "@elizaos/app-core";
 
 /**
  * Compact composer-area strip when Parallax coding agents have active PTY sessions:

@@ -1,3 +1,4 @@
+import type React from "react";
 import { BlueBubblesStatusPanel } from "./BlueBubblesStatusPanel";
 import { DiscordLocalConnectorPanel } from "./DiscordLocalConnectorPanel";
 import { IMessageStatusPanel } from "./IMessageStatusPanel";
@@ -14,8 +15,31 @@ function normalizePluginId(pluginId: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
+// ---------------------------------------------------------------------------
+// Connector setup panel registry — allows plugins to register their own
+// setup panels at runtime without modifying the hardcoded switch statement.
+// ---------------------------------------------------------------------------
+
+const connectorSetupRegistry = new Map<string, React.ComponentType>();
+
+/**
+ * Register a custom connector setup panel component for a given connector ID.
+ * The connectorId is normalized (lowercased, non-alphanumeric stripped) before
+ * storage, so callers can pass raw plugin IDs.
+ */
+export function registerConnectorSetupPanel(
+  connectorId: string,
+  component: React.ComponentType,
+): void {
+  connectorSetupRegistry.set(normalizePluginId(connectorId), component);
+}
+
 export function hasConnectorSetupPanel(pluginId: string): boolean {
   const normalized = normalizePluginId(pluginId);
+  // Check registry first
+  if (connectorSetupRegistry.has(normalized)) {
+    return true;
+  }
   if (normalized.includes("lifeopsbrowser")) {
     return Boolean(getBootConfig().lifeOpsBrowserSetupPanel);
   }
@@ -40,6 +64,14 @@ export function hasConnectorSetupPanel(pluginId: string): boolean {
 
 export function ConnectorSetupPanel({ pluginId }: { pluginId: string }) {
   const normalized = normalizePluginId(pluginId);
+
+  // Check registry first — plugin-registered panels take precedence
+  const RegisteredPanel = connectorSetupRegistry.get(normalized);
+  if (RegisteredPanel) {
+    return <RegisteredPanel />;
+  }
+
+  // Fall back to hardcoded components
   if (normalized.includes("lifeopsbrowser")) {
     const LifeOpsBrowserSetupPanel = getBootConfig().lifeOpsBrowserSetupPanel;
     return LifeOpsBrowserSetupPanel ? <LifeOpsBrowserSetupPanel /> : null;

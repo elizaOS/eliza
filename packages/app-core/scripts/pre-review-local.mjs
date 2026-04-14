@@ -111,7 +111,7 @@ function runCommandArgs(command, args, options = {}) {
 
 export function getBaseRef() {
   const explicitBase =
-    process.env.MILADY_PRE_REVIEW_BASE ?? process.env.PRE_REVIEW_BASE_REF;
+    process.env.ELIZA_PRE_REVIEW_BASE ?? process.env.PRE_REVIEW_BASE_REF;
   if (explicitBase) {
     const explicitResult = runCommandArgs("git", [
       "rev-parse",
@@ -250,7 +250,7 @@ export function resolveRunnableTestFiles(testFiles, cwd = process.cwd()) {
 }
 
 export function buildRepoTestCommand(repoTests) {
-  return `bunx vitest run --config vitest.unit.config.ts ${repoTests.join(" ")}`;
+  return `bunx vitest run --config test/vitest/unit.config.ts ${repoTests.join(" ")}`;
 }
 
 export function shouldRunTargetedRegressionTests({
@@ -425,7 +425,7 @@ export function runChecks() {
 
         if (repoE2eTests.length > 0) {
           testCommands.push(
-            `bunx vitest run --config vitest.e2e.config.ts ${repoE2eTests.join(" ")}`,
+            `bunx vitest run --config test/vitest/e2e.config.ts ${repoE2eTests.join(" ")}`,
           );
         }
 

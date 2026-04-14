@@ -1,15 +1,11 @@
-/**
- * Plugin configuration form components — bridges PluginParamDef[] to ConfigRenderer,
- * plus Telegram-specific chat mode toggle.
- */
 
-import { Switch } from "@elizaos/app-core";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PluginInfo, PluginParamDef } from "../../api";
 import { ConfigRenderer, defaultRegistry } from "../../config";
 import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { paramsToSchema, TELEGRAM_ALLOW_ALL_HIDDEN } from "./plugin-list-utils";
+import { Switch } from "@elizaos/ui";
 
 /* ── Telegram chat mode ─────────────────────────────────────────────── */
 

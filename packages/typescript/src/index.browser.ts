@@ -8,32 +8,40 @@
 
 // Export core modules (all browser-compatible after refactoring)
 export * from "./actions";
-export * from "./advanced-memory";
 export * from "./character";
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
+export * from "./features/advanced-memory";
+export { AutonomyService } from "./features/autonomy/index";
+export { createBasicCapabilitiesPlugin } from "./features/basic-capabilities/index";
 export * from "./logger";
 export * from "./memory";
 export * from "./prompts";
 export * from "./roles";
 export * from "./runtime";
-export { Semaphore } from "./utils/batch-queue/semaphore.js";
 // Export schemas (including buildBaseTables for plugin-sql browser/PGLite builds)
 export * from "./schemas/character";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
 export * from "./services";
+export * from "./services/agentEvent";
+// Server/runtime entry points also register these; the browser bundle must
+// expose the same symbols so Vite/esbuild can statically resolve plugins that
+// list them in `services` (see @elizaos/agent runtime).
+export { AgentEventService } from "./services/agentEvent";
 export * from "./services/message";
 export * from "./services/trajectories";
 export * from "./settings";
 export * from "./streaming-context";
 export * from "./trajectory-context";
+export * from "./trajectory-utils";
 // Export everything from types (type-only, safe for browser)
 export * from "./types";
 export * from "./types/message-service";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
+export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 // Export browser-compatible utilities
 export * from "./utils/environment";

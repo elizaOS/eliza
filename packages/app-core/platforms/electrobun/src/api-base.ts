@@ -2,18 +2,18 @@ import { resolveDesktopApiPort } from "@elizaos/shared/runtime-env";
 import { DEFAULT_API_PORT } from "./constants";
 
 type ExternalApiBaseEnvKey =
-  | "MILADY_DESKTOP_TEST_API_BASE"
-  | "MILADY_DESKTOP_API_BASE"
-  | "MILADY_API_BASE_URL"
-  | "MILADY_API_BASE";
+  | "ELIZA_DESKTOP_TEST_API_BASE"
+  | "ELIZA_DESKTOP_API_BASE"
+  | "ELIZA_API_BASE_URL"
+  | "ELIZA_API_BASE";
 
 export type DesktopRuntimeMode = "local" | "external" | "disabled";
 
 const EXTERNAL_API_BASE_ENV_KEYS: readonly ExternalApiBaseEnvKey[] = [
-  "MILADY_DESKTOP_TEST_API_BASE",
-  "MILADY_DESKTOP_API_BASE",
-  "MILADY_API_BASE_URL",
-  "MILADY_API_BASE",
+  "ELIZA_DESKTOP_TEST_API_BASE",
+  "ELIZA_DESKTOP_API_BASE",
+  "ELIZA_API_BASE_URL",
+  "ELIZA_API_BASE",
 ];
 
 export interface ExternalApiBaseResolution {
@@ -77,7 +77,7 @@ export function resolveDesktopRuntimeMode(
     return { mode: "external", externalApi };
   }
 
-  if (isEnabledFlag(env.MILADY_DESKTOP_SKIP_EMBEDDED_AGENT)) {
+  if (isEnabledFlag(env.ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT)) {
     return { mode: "disabled", externalApi };
   }
 
@@ -114,7 +114,7 @@ export function resolveHttpLoopbackRendererOriginForApiClient(
   env: Record<string, string | undefined>,
 ): string | null {
   const raw =
-    env.MILADY_RENDERER_URL?.trim() || env.VITE_DEV_SERVER_URL?.trim() || "";
+    env.ELIZA_RENDERER_URL?.trim() || env.VITE_DEV_SERVER_URL?.trim() || "";
   if (!raw) return null;
   try {
     const u = new URL(raw);
@@ -127,8 +127,8 @@ export function resolveHttpLoopbackRendererOriginForApiClient(
 }
 
 /**
- * Base URL the **renderer** should use for `MiladyClient` (REST + relative `/api`).
- * Prefer the Vite/dev-server origin when `MILADY_RENDERER_URL` points at loopback;
+ * Base URL the **renderer** should use for `the appClient` (REST + relative `/api`).
+ * Prefer the Vite/dev-server origin when `ELIZA_RENDERER_URL` points at loopback;
  * otherwise the real API listen port on 127.0.0.1.
  */
 export function resolveRendererFacingApiBase(

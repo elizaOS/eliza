@@ -116,7 +116,9 @@ export function extractTeamConversations(
   };
 }
 
-export function extractAgentSummary(value: unknown): BabylonAgentSummaryEnvelope {
+export function extractAgentSummary(
+  value: unknown,
+): BabylonAgentSummaryEnvelope {
   const data = asRecord(value);
   return {
     agent: (asRecord(data?.agent) ??

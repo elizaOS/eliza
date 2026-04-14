@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 # CI / production dockerignore for `eliza/packages/app-core/deploy/Dockerfile.ci`.
+=======
+# CI / production dockerignore for `deploy/Dockerfile.ci`.
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 # Copy to the repo root as `.dockerignore` before `docker build` (context is `.`).
 # Pre-built `dist/` and `apps/app/dist/` are expected in the build context.
 
@@ -15,6 +19,7 @@
 node_modules/.cache
 packages/**/node_modules
 apps/**/node_modules
+<<<<<<< HEAD
 eliza/**/node_modules
 eliza/packages/app-core/deploy/**/node_modules
 eliza/.turbo
@@ -37,6 +42,14 @@ apps/app/screenshots
 apps/app/test-results
 apps/app/test
 apps/app/.eliza
+=======
+deploy/**/node_modules
+apps/app/android
+apps/app/ios
+apps/app/electrobun
+apps/app/screenshots
+apps/app/test-results
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 apps/homepage
 apps/home
 apps/landing
@@ -51,6 +64,7 @@ packaging/
 artifacts/
 .docker-home
 .tmp
+<<<<<<< HEAD
 deploy/
 
 # Other deploy Docker recipes — CI agent build only needs Dockerfile.ci
@@ -59,3 +73,13 @@ eliza/packages/app-core/deploy/Dockerfile.cloud-agent
 eliza/packages/app-core/deploy/Dockerfile.sandbox
 eliza/packages/app-core/deploy/Dockerfile.cloud.dockerignore
 !eliza/packages/app-core/deploy/Dockerfile.ci
+=======
+.milady
+
+# Other deploy Docker recipes — CI agent build only needs Dockerfile.ci
+deploy/Dockerfile.cloud
+deploy/Dockerfile.cloud-agent
+deploy/Dockerfile.sandbox
+deploy/Dockerfile.cloud.dockerignore
+!deploy/Dockerfile.ci
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e

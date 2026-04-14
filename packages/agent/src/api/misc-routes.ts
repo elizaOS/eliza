@@ -1,6 +1,10 @@
 import crypto from "node:crypto";
 import type http from "node:http";
-import { logger, ModelType, type AgentRuntime, type UUID } from "@elizaos/core";
+import {
+  EMOTE_BY_ID,
+  EMOTE_CATALOG,
+} from "@elizaos/app-companion/emotes/catalog";
+import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import type { CustomActionDef } from "../config/types.eliza.js";
@@ -8,13 +12,12 @@ import {
   buildTestHandler,
   registerCustomActionLive,
 } from "../runtime/custom-actions.js";
-import { EMOTE_BY_ID, EMOTE_CATALOG } from "@elizaos/app-companion/emotes/catalog";
-import { resolveTerminalRunLimits } from "./terminal-run-limits.js";
 import {
   ensurePrivyWalletsForCustomUser,
   isPrivyWalletProvisioningEnabled,
 } from "../services/privy-wallets.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
+import { resolveTerminalRunLimits } from "./terminal-run-limits.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -50,7 +53,10 @@ export interface MiscRouteContext {
     agentName: string;
     shellEnabled: boolean | undefined;
     broadcastWs?: ((data: Record<string, unknown>) => void) | null;
-    broadcastWsToClientId?: (clientId: string, data: Record<string, unknown>) => void;
+    broadcastWsToClientId?: (
+      clientId: string,
+      data: Record<string, unknown>,
+    ) => void;
     nextEventId: number;
     eventBuffer: StreamEventEnvelope[];
     shareIngestQueue: Array<{
@@ -186,7 +192,7 @@ export async function handleMiscRoutes(
       data?: Record<string, unknown>;
       roomId?: string;
     }>(req, res);
-    if (!body || !body.stream) {
+    if (!body?.stream) {
       error(res, "Missing 'stream' field");
       return true;
     }
@@ -325,10 +331,7 @@ export async function handleMiscRoutes(
     let stderr = "";
     let truncated = false;
 
-    const appendOutput = (
-      current: string,
-      chunkText: string,
-    ): string => {
+    const appendOutput = (current: string, chunkText: string): string => {
       if (!captureOutput || truncated || !chunkText) {
         return current;
       }
@@ -342,7 +345,10 @@ export async function handleMiscRoutes(
         return current + chunkText;
       }
       truncated = true;
-      return current + Buffer.from(chunkText, "utf8").subarray(0, remaining).toString("utf8");
+      return (
+        current +
+        Buffer.from(chunkText, "utf8").subarray(0, remaining).toString("utf8")
+      );
     };
 
     const finalize = () => {
@@ -452,7 +458,7 @@ export async function handleMiscRoutes(
 
     const handler = body.handler as CustomActionDef["handler"] | undefined;
     const validHandlerTypes = new Set(["http", "shell", "code"]);
-    if (!handler || !handler.type || !validHandlerTypes.has(handler.type)) {
+    if (!handler?.type || !validHandlerTypes.has(handler.type)) {
       error(
         res,
         "handler with valid type (http, shell, code) is required",
@@ -556,7 +562,7 @@ export async function handleMiscRoutes(
         "",
         "- name: string (UPPER_SNAKE_CASE action name)",
         "- description: string (clear description of what the action does)",
-        '- similes: optional string[] of alternative action names and phrases',
+        "- similes: optional string[] of alternative action names and phrases",
         '- handlerType: "http" | "shell" | "code"',
         "- handler: object with type-specific fields:",
         '  For http: { type: "http", method: "GET"|"POST"|etc, url: string, headers?: object, bodyTemplate?: string }',

@@ -15,18 +15,18 @@ export function resolveLifeOpsBaseUrls(
 ) {
   const argvBases = argv.map((value) => value.trim()).filter(Boolean);
   const envLists = [
-    env.MILADY_LIFEOPS_BASE_URLS,
     env.ELIZA_LIFEOPS_BASE_URLS,
-    env.MILADY_DEPLOY_BASE_URLS,
+    env.ELIZA_LIFEOPS_BASE_URLS,
+    env.ELIZA_DEPLOY_BASE_URLS,
     env.ELIZA_DEPLOY_BASE_URLS,
   ]
     .flatMap((value) => value?.split(",") ?? [])
     .map((value) => value.trim())
     .filter(Boolean);
   const singleBase =
-    env.MILADY_LIFEOPS_BASE_URL?.trim() ||
     env.ELIZA_LIFEOPS_BASE_URL?.trim() ||
-    env.MILADY_DEPLOY_BASE_URL?.trim() ||
+    env.ELIZA_LIFEOPS_BASE_URL?.trim() ||
+    env.ELIZA_DEPLOY_BASE_URL?.trim() ||
     env.ELIZA_DEPLOY_BASE_URL?.trim();
   if (singleBase) {
     envLists.push(singleBase);
@@ -36,9 +36,9 @@ export function resolveLifeOpsBaseUrls(
 
 export function resolveLifeOpsAuthHeaders(env = process.env) {
   const token =
-    env.MILADY_SMOKE_API_TOKEN?.trim() ||
     env.ELIZA_SMOKE_API_TOKEN?.trim() ||
-    env.MILADY_API_TOKEN?.trim() ||
+    env.ELIZA_SMOKE_API_TOKEN?.trim() ||
+    env.ELIZA_API_TOKEN?.trim() ||
     env.ELIZA_API_TOKEN?.trim();
   if (!token) {
     return { Accept: "application/json" };
@@ -133,18 +133,18 @@ export async function runSmokeLifeOps(options = {}) {
   const bases = resolveLifeOpsBaseUrls(argv, env);
   if (bases.length === 0) {
     error(
-      "[smoke-lifeops] Missing base URLs. Pass args or set MILADY_LIFEOPS_BASE_URLS.",
+      "[smoke-lifeops] Missing base URLs. Pass args or set ELIZA_LIFEOPS_BASE_URLS.",
     );
     return 2;
   }
 
   const headers = resolveLifeOpsAuthHeaders(env);
   const expectGoogleConnected = parseTruthy(
-    env.MILADY_LIFEOPS_EXPECT_GOOGLE_CONNECTED ||
+    env.ELIZA_LIFEOPS_EXPECT_GOOGLE_CONNECTED ||
       env.ELIZA_LIFEOPS_EXPECT_GOOGLE_CONNECTED,
   );
   const expectGmailTriage = parseTruthy(
-    env.MILADY_LIFEOPS_EXPECT_GMAIL_TRIAGE ||
+    env.ELIZA_LIFEOPS_EXPECT_GMAIL_TRIAGE ||
       env.ELIZA_LIFEOPS_EXPECT_GMAIL_TRIAGE,
   );
 

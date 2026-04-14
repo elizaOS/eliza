@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import path from "node:path";
+import { resolveStateDir } from "../config/paths.js";
 import type {
   AppRunAwaySummary,
   AppRunCapabilityAvailability,
@@ -9,11 +10,10 @@ import type {
   AppRunHealthFacet,
   AppRunHealthState,
   AppRunSummary,
-  AppSessionState,
   AppSessionJsonValue,
+  AppSessionState,
   AppViewerConfig,
 } from "../contracts/apps.js";
-import { resolveStateDir } from "../config/paths.js";
 
 const APP_RUN_STORE_VERSION = 2;
 const MAX_RECORDED_RUN_EVENTS = 20;
@@ -32,7 +32,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-function defaultStoreFile(): AppRunStoreFile {
+function _defaultStoreFile(): AppRunStoreFile {
   return {
     version: APP_RUN_STORE_VERSION,
     updatedAt: nowIso(),
@@ -63,18 +63,14 @@ function atomicWrite(filePath: string, payload: AppRunStoreFile): void {
   }
 }
 
-function normalizeAvailability(
-  value: unknown,
-): AppRunCapabilityAvailability {
+function normalizeAvailability(value: unknown): AppRunCapabilityAvailability {
   if (value === "available" || value === "unavailable") {
     return value;
   }
   return "unknown";
 }
 
-function normalizeHealthState(
-  value: unknown,
-): AppRunHealthState | "unknown" {
+function normalizeHealthState(value: unknown): AppRunHealthState | "unknown" {
   if (value === "healthy" || value === "degraded" || value === "offline") {
     return value;
   }
@@ -98,9 +94,7 @@ function normalizeHealthFacet(
   };
 }
 
-function deriveHealthStateFromStatus(
-  status: string,
-): AppRunHealth["state"] {
+function deriveHealthStateFromStatus(status: string): AppRunHealth["state"] {
   const normalized = status.trim().toLowerCase();
 
   if (
@@ -123,10 +117,7 @@ function deriveHealthStateFromStatus(
   return "degraded";
 }
 
-function deriveRunHealth(
-  status: string,
-  summary: string | null,
-): AppRunHealth {
+function deriveRunHealth(status: string, summary: string | null): AppRunHealth {
   return {
     state: deriveHealthStateFromStatus(status),
     message: summary,
@@ -358,7 +349,7 @@ function buildAwaySummary(run: AppRunSummary): AppRunAwaySummary {
   const message =
     latestMessages.length > 0
       ? latestMessages.join(" ")
-      : run.summary ?? `${run.displayName} is ${run.status}.`;
+      : (run.summary ?? `${run.displayName} is ${run.status}.`);
 
   return {
     generatedAt: run.updatedAt,
@@ -428,9 +419,9 @@ function normalizeRun(input: unknown): AppRunSummary | null {
   const characterId =
     typeof run.characterId === "string"
       ? run.characterId
-      : session?.characterId ?? null;
+      : (session?.characterId ?? null);
   const agentId =
-    typeof run.agentId === "string" ? run.agentId : session?.agentId ?? null;
+    typeof run.agentId === "string" ? run.agentId : (session?.agentId ?? null);
   const chatAvailability =
     typeof run.chatAvailability === "string"
       ? normalizeAvailability(run.chatAvailability)

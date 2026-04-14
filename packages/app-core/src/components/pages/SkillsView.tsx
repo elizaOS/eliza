@@ -1,26 +1,5 @@
-/**
- * Skills management view — create, enable/disable, and install skills.
- *
- * Professional card-grid layout with search, stats, polished toggle switches,
- * and a structured install modal. Follows the CSS variable design system used
- * throughout the app (--bg, --card, --border, --accent, --muted, --txt, etc.).
- */
 
-import {
-  Button,
-  ConfirmDelete,
-  Input,
-  PageLayout,
-  PagePanel,
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-  SkillSidebarItem,
-  StatusBadge,
-  Switch,
-} from "@elizaos/app-core";
+
 import { RefreshCw } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
@@ -28,6 +7,7 @@ import type { SkillInfo } from "../../api";
 import { useApp } from "../../state";
 import { EditSkillModal, SkillsModalView } from "./skill-detail-panel";
 import { InstallModal } from "./skill-marketplace";
+import { PagePanel, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, SkillSidebarItem, Button, ConfirmDelete, Input, StatusBadge, Switch, PageLayout } from "@elizaos/ui";
 
 /* ── Main Skills View ───────────────────────────────────────────────── */
 

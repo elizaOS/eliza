@@ -87,10 +87,10 @@ async function startRuntime(): Promise<SwarmCoordinator> {
 
 async function main(): Promise<void> {
   pgliteDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "milady-task-thread-restart-db-"),
+    path.join(os.tmpdir(), "eliza-task-thread-restart-db-"),
   );
   workdir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "milady-task-thread-restart-workdir-"),
+    path.join(os.tmpdir(), "eliza-task-thread-restart-workdir-"),
   );
 
   const outputFile = path.join(workdir, "restart-output.txt");
@@ -102,7 +102,7 @@ async function main(): Promise<void> {
     originalRequest:
       "Create a local artifact and make sure the task still exists after restart.",
     metadata: {
-      repo: "https://github.com/example/milady",
+      repo: "https://github.com/example/eliza",
       source: "task-thread-restart-script",
     },
   });

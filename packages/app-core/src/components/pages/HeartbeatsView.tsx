@@ -1,18 +1,5 @@
-import {
-  Button,
-  FieldLabel,
-  NewActionButton,
-  PageLayout,
-  PagePanel,
-  Sidebar,
-  SidebarCollapsedActionButton,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-  StatusBadge,
-  StatusDot,
-} from "@elizaos/app-core";
+
+
 import { Plus } from "lucide-react";
 import {
   createContext,
@@ -30,6 +17,7 @@ import { WidgetHost } from "../../widgets";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import { HeartbeatForm } from "./HeartbeatForm";
+import { PagePanel, SidebarCollapsedActionButton, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, FieldLabel, NewActionButton, StatusBadge, StatusDot, PageLayout } from "@elizaos/ui";
 import {
   BUILT_IN_TEMPLATES,
   buildCreateRequest,
@@ -82,6 +70,7 @@ function useHeartbeatsViewController() {
   );
   const [formError, setFormError] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const lastSelectedTriggerIdRef = useRef<string | null>(null);
   const [userTemplates, setUserTemplates] =
     useState<HeartbeatTemplate[]>(loadUserTemplates);
   const [templateNotice, setTemplateNotice] = useState<string | null>(null);
@@ -125,6 +114,54 @@ function useHeartbeatsViewController() {
       setSelectedTriggerId(null);
     }
   }, [selectedTriggerId, triggers]);
+
+  useEffect(() => {
+    if (selectedTriggerId) {
+      lastSelectedTriggerIdRef.current = selectedTriggerId;
+    }
+  }, [selectedTriggerId]);
+
+  useEffect(() => {
+    if (editorOpen || editingId || selectedTriggerId || triggers.length === 0) {
+      return;
+    }
+
+    const preferredTriggerId = lastSelectedTriggerIdRef.current;
+    const nextSelectedTriggerId =
+      preferredTriggerId &&
+      triggers.some((trigger) => trigger.id === preferredTriggerId)
+        ? preferredTriggerId
+        : (triggers[0]?.id ?? null);
+
+    if (nextSelectedTriggerId) {
+      setSelectedTriggerId(nextSelectedTriggerId);
+    }
+  }, [editorOpen, editingId, selectedTriggerId, triggers]);
+
+  const resolvedSelectedTrigger = useMemo(() => {
+    if (editorOpen || editingId) {
+      return null;
+    }
+
+    if (selectedTriggerId) {
+      const selectedTrigger =
+        triggers.find((trigger) => trigger.id === selectedTriggerId) ?? null;
+      if (selectedTrigger) {
+        return selectedTrigger;
+      }
+    }
+
+    const preferredTriggerId = lastSelectedTriggerIdRef.current;
+    if (preferredTriggerId) {
+      const preferredTrigger =
+        triggers.find((trigger) => trigger.id === preferredTriggerId) ?? null;
+      if (preferredTrigger) {
+        return preferredTrigger;
+      }
+    }
+
+    return triggers[0] ?? null;
+  }, [editorOpen, editingId, selectedTriggerId, triggers]);
 
   useEffect(() => {
     if (!editorOpen) return undefined;
@@ -245,7 +282,9 @@ function useHeartbeatsViewController() {
   const hasHeartbeats = triggers.length > 0;
   const showFirstRunEmptyState =
     !triggersLoading && !triggerError && !hasHeartbeats;
-  const showDetailPane = Boolean(editorOpen || editingId || selectedTriggerId);
+  const showDetailPane = Boolean(
+    editorOpen || editingId || resolvedSelectedTrigger,
+  );
   const newHeartbeatLabel = t("heartbeatsview.newHeartbeat");
 
   return {
@@ -277,6 +316,7 @@ function useHeartbeatsViewController() {
     setTemplateNotice,
     showDetailPane,
     showFirstRunEmptyState,
+    selectedTrigger: resolvedSelectedTrigger,
     t,
     templateNotice,
     triggers,
@@ -341,6 +381,7 @@ function HeartbeatsLayout() {
     setTemplateNotice,
     showDetailPane,
     showFirstRunEmptyState,
+    selectedTrigger,
     t,
     templateNotice,
     triggers,
@@ -376,11 +417,6 @@ function HeartbeatsLayout() {
       );
     });
   }, [normalizedSearchQuery, triggers]);
-
-  const selectedTrigger =
-    selectedTriggerId != null
-      ? (triggers.find((trigger) => trigger.id === selectedTriggerId) ?? null)
-      : null;
   const selectedRuns = selectedTrigger
     ? (triggerRunsById[selectedTrigger.id] ?? [])
     : [];
@@ -541,9 +577,7 @@ function HeartbeatsLayout() {
           )}
 
           <div className="mt-3 border-t border-border/30 px-1 pb-1 pt-4">
-            <SidebarContent.SectionHeader
-              meta={userTemplates.length + BUILT_IN_TEMPLATES.length}
-            >
+            <SidebarContent.SectionHeader>
               <SidebarContent.SectionLabel>
                 {t("heartbeatsview.Templates", { defaultValue: "Templates" })}
               </SidebarContent.SectionLabel>
@@ -823,7 +857,9 @@ function HeartbeatsLayout() {
                           variant={toneForLastStatus(run.status)}
                         />
                         <span className="font-mono text-xs-tight text-muted/70">
-                          {formatDateTime(run.startedAt, { locale: uiLanguage })}
+                          {formatDateTime(run.startedAt, {
+                            locale: uiLanguage,
+                          })}
                         </span>
                       </div>
                       <div className="text-xs-tight text-muted/80">

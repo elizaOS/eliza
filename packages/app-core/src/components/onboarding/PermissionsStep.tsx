@@ -1,5 +1,5 @@
-import { PermissionsOnboardingSection } from "@elizaos/app-core/components";
-import { useApp } from "@elizaos/app-core/state";
+import { PermissionsOnboardingSection } from "../settings/PermissionsSection";
+import { useApp } from "../../state/useApp";
 import { OnboardingStepHeader } from "./onboarding-step-chrome";
 
 export function PermissionsStep() {

@@ -14,40 +14,36 @@
 // Internal helpers (exported for testing / advanced consumers)
 // ---------------------------------------------------------------------------
 export {
+  computeBySource,
+  extractInsightsFromResponse,
+  extractRows,
+  flushObservationBuffer,
+  pushChatExchange,
+  readOrchestratorTrajectoryContext,
+  shouldEnableTrajectoryLoggingByDefault,
   // Testing helpers
   shouldRunObservationExtraction,
   truncateField,
   truncateRecord,
-  extractInsightsFromResponse,
-  pushChatExchange,
-  flushObservationBuffer,
-  extractRows,
-  computeBySource,
-  readOrchestratorTrajectoryContext,
-  shouldEnableTrajectoryLoggingByDefault,
 } from "./trajectory-internals.js";
-
+// ---------------------------------------------------------------------------
+// Query — read operations
+// ---------------------------------------------------------------------------
+export { loadPersistedTrajectoryRows } from "./trajectory-query.js";
 // ---------------------------------------------------------------------------
 // Storage — write operations
 // ---------------------------------------------------------------------------
 export {
-  installDatabaseTrajectoryLogger,
-  startTrajectoryStepInDatabase,
-  completeTrajectoryStepInDatabase,
-  deletePersistedTrajectoryRows,
   clearPersistedTrajectoryRows,
-  flushTrajectoryWrites,
-  pruneOldTrajectories,
-  DatabaseTrajectoryLogger,
+  completeTrajectoryStepInDatabase,
   createDatabaseTrajectoryLogger,
+  DatabaseTrajectoryLogger,
+  deletePersistedTrajectoryRows,
+  flushTrajectoryWrites,
+  installDatabaseTrajectoryLogger,
+  pruneOldTrajectories,
+  startTrajectoryStepInDatabase,
 } from "./trajectory-storage.js";
-
-// ---------------------------------------------------------------------------
-// Query — read operations
-// ---------------------------------------------------------------------------
-export {
-  loadPersistedTrajectoryRows,
-} from "./trajectory-query.js";
 
 // ---------------------------------------------------------------------------
 // Export — archive operations (available via "./trajectory-export" for

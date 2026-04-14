@@ -1,20 +1,5 @@
-/**
- * Plugins view — tag-filtered plugin management.
- *
- * Renders a unified plugin list with searchable/filterable cards and per-plugin settings.
- */
 
-import {
-  Button,
-  PageLayout,
-  PageLayoutHeader,
-  PagePanel,
-  Sidebar,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-  useLinkedSidebarSelection,
-} from "@elizaos/app-core";
+
 import { Package } from "lucide-react";
 import {
   type ReactNode,
@@ -54,6 +39,7 @@ import {
 import { PluginSettingsDialog } from "./plugin-view-dialogs";
 import { PluginGameModal } from "./plugin-view-modal";
 import { ConnectorSidebar } from "./plugin-view-sidebar";
+import { PagePanel, SidebarContent, SidebarPanel, Sidebar, SidebarScrollRegion, Button, useLinkedSidebarSelection, PageLayout, PageLayoutHeader } from "@elizaos/ui";
 
 /* ── Shared PluginListView ─────────────────────────────────────────── */
 
@@ -66,6 +52,8 @@ interface PluginListViewProps {
   mode?: PluginsViewMode;
   /** Whether the view is rendered in a full-screen gamified modal. */
   inModal?: boolean;
+  /** Desktop-only placement for the connector list sidebar. */
+  connectorDesktopPlacement?: "left" | "right";
 }
 
 function PluginListView({
@@ -73,6 +61,7 @@ function PluginListView({
   contentHeader,
   mode = "all",
   inModal,
+  connectorDesktopPlacement = "left",
 }: PluginListViewProps) {
   const {
     plugins = [],
@@ -1239,6 +1228,27 @@ function PluginListView({
     );
 
     if (desktopConnectorLayout && desktopSidebar) {
+      if (connectorDesktopPlacement === "right") {
+        return (
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            <main
+              ref={connectorContentRef}
+              className="chat-native-scrollbar relative flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto bg-transparent px-4 pb-4 pt-2 sm:px-6 sm:pb-6 sm:pt-3 lg:px-7 lg:pb-7 lg:pt-4"
+            >
+              {contentHeader ? (
+                <PageLayoutHeader>{contentHeader}</PageLayoutHeader>
+              ) : null}
+              <div className="flex min-h-0 flex-1 flex-col">
+                {connectorContent}
+              </div>
+            </main>
+            <div className="hidden min-h-0 shrink-0 items-stretch px-0 pb-0 pt-2 lg:flex lg:pt-4">
+              {desktopSidebar}
+            </div>
+          </div>
+        );
+      }
+
       return (
         <PageLayout
           sidebar={desktopSidebar}
@@ -1458,10 +1468,12 @@ export function PluginsView({
   contentHeader,
   mode = "all",
   inModal,
+  connectorDesktopPlacement = "left",
 }: {
   contentHeader?: ReactNode;
   mode?: PluginsViewMode;
   inModal?: boolean;
+  connectorDesktopPlacement?: "left" | "right";
 }) {
   const label =
     mode === "social"
@@ -1476,6 +1488,7 @@ export function PluginsView({
   return (
     <PluginListView
       contentHeader={contentHeader}
+      connectorDesktopPlacement={connectorDesktopPlacement}
       label={label}
       mode={mode}
       inModal={inModal}

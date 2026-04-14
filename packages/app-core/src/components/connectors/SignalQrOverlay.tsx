@@ -1,7 +1,8 @@
-import { Button } from "@elizaos/app-core";
+
 import { useEffect, useRef } from "react";
 import { useSignalPairing } from "../../hooks";
 import { useApp } from "../../state";
+import { Button } from "@elizaos/ui";
 
 interface SignalQrOverlayProps {
   accountId?: string;

@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from elizaos.advanced_planning.planning_service import ActionPlan, ActionStep
+from elizaos.features.advanced_planning.planning_service import ActionPlan, ActionStep
 from elizaos.runtime import AgentRuntime
 from elizaos.types import IAgentRuntime, State
 from elizaos.types.agent import Character

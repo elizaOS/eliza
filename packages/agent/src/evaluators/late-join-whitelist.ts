@@ -14,17 +14,15 @@
 
 import {
   type Evaluator,
+  getConnectorAdminWhitelist,
   type IAgentRuntime,
   logger,
   type Memory,
-  type State,
-  type UUID,
-} from "@elizaos/core";
-import {
-  getConnectorAdminWhitelist,
   matchEntityToConnectorAdminWhitelist,
   resolveWorldForMessage,
+  type State,
   setEntityRole,
+  type UUID,
 } from "@elizaos/core";
 import { loadElizaConfig } from "../config/config.js";
 

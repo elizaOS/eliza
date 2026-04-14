@@ -1,17 +1,5 @@
-/**
- * Provider-specific config panels and desktop media controls for media settings.
- */
 
-import {
-  Button,
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectValue,
-  SettingsControls,
-} from "@elizaos/app-core";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getPlugins,
@@ -22,6 +10,7 @@ import { useApp } from "../../state";
 import type { MediaCategory } from "./media-settings-types";
 import { getNestedValue } from "./media-settings-types";
 import type { MediaConfig } from "../../api";
+import { Button, Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectValue, SettingsControls } from "@elizaos/ui";
 
 type CameraPluginLike = {
   getDevices?: () => Promise<{

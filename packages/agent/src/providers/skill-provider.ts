@@ -227,10 +227,7 @@ interface ScoredSkill {
   score: number;
 }
 
-function scoreQuery(
-  index: BM25Index,
-  queryText: string,
-): ScoredSkill[] {
+function scoreQuery(index: BM25Index, queryText: string): ScoredSkill[] {
   const queryTerms = tokenize(queryText);
   if (queryTerms.length === 0) return [];
 
@@ -249,7 +246,8 @@ function scoreQuery(
       const doc = index.docs[docIdx];
       const termFreq = doc.tf.get(term) ?? 0;
       const dlNorm = 1 - BM25_B + BM25_B * (doc.totalTerms / index.avgDl);
-      const tfScore = (termFreq * (BM25_K1 + 1)) / (termFreq + BM25_K1 * dlNorm);
+      const tfScore =
+        (termFreq * (BM25_K1 + 1)) / (termFreq + BM25_K1 * dlNorm);
       scores[docIdx] += idf * tfScore;
     }
   }
@@ -355,7 +353,8 @@ export function createDynamicSkillProvider(): Provider {
       }
 
       // Score against current message + recent context
-      const messageText = ((message.content as Record<string, unknown>)?.text as string) ?? "";
+      const messageText =
+        ((message.content as Record<string, unknown>)?.text as string) ?? "";
       const recentContext = getRecentContext(state);
       const queryText = `${messageText} ${recentContext}`;
 

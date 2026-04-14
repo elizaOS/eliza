@@ -134,7 +134,7 @@ const SETUP_GUIDE_ANCHORS = {
   "local-ai": "#local-ai",
   "vercel-ai-gateway": "#vercel-ai-gateway",
   discord: "#discord",
-  telegram: "https://docs.milady.ai/guides/tutorial-telegram-bot",
+  telegram: "https://docs.elizaos.ai/guides/tutorial-telegram-bot",
   twitter: "#twitter--x",
   slack: "#slack",
   whatsapp: "#whatsapp",
@@ -171,7 +171,7 @@ const SETUP_GUIDE_ANCHORS = {
   "custom-rtmp": "#custom-rtmp",
 };
 
-const MILADY_REPO_ROOT = "https://github.com/milady-ai/milady";
+const ELIZA_REPO_ROOT = "https://github.com/elizaOS/eliza";
 const TAG_STOPWORDS = new Set([
   "plugin",
   "plugins",
@@ -247,12 +247,12 @@ export function normalizeRepositoryUrl(repository) {
   return undefined;
 }
 
-function deriveMiladyRepositoryUrl(npmName, dirName) {
-  if (!npmName?.startsWith("@elizaai/") && !npmName?.startsWith("@miladyai/")) {
+function deriveRepositoryUrl(npmName, dirName) {
+  if (!npmName?.startsWith("@elizaai/") && !npmName?.startsWith("@elizaos/")) {
     return undefined;
   }
   if (!dirName?.startsWith("plugin-")) return undefined;
-  return `${MILADY_REPO_ROOT}/tree/main/packages/${dirName}`;
+  return `${ELIZA_REPO_ROOT}/tree/main/packages/${dirName}`;
 }
 
 function isRecord(value) {
@@ -336,7 +336,7 @@ function extractPackageMetadata(pkg, dirName, npmName) {
     homepage: typeof pkg.homepage === "string" ? pkg.homepage : undefined,
     repository:
       normalizeRepositoryUrl(pkg.repository) ??
-      deriveMiladyRepositoryUrl(npmName, dirName),
+      deriveRepositoryUrl(npmName, dirName),
     icon: pkg.logoUrl ?? pkg.elizaos?.logoUrl ?? pkg.icon ?? undefined,
     tags: normalizeTags(pkg.keywords ?? []),
     configKeys,
@@ -376,7 +376,7 @@ function readLocalPackageMetadata(dirName, npmName) {
   ];
 
   let metadata = {
-    repository: deriveMiladyRepositoryUrl(npmName, dirName),
+    repository: deriveRepositoryUrl(npmName, dirName),
     tags: [],
     configKeys: [],
   };
@@ -545,13 +545,13 @@ export function inferDescription(id, name, category) {
       if (SOCIAL_FEED_CONNECTORS.has(id)) {
         return `${name} social connector for connecting your agent to ${name}.`;
       }
-      return `${name} connector for integrating external workflows with Milady agents.`;
+      return `${name} connector for integrating external workflows with agents.`;
     case "streaming":
       return `${name} streaming destination for broadcasting live agent output.`;
     case "database":
       return `${name} database adapter for persistent agent state and memory.`;
     case "app":
-      return `${name} interactive app for Milady agents.`;
+      return `${name} interactive app for agents.`;
     default:
       return `${name} plugin for ${id.replace(/-/g, " ")} workflows.`;
   }
@@ -901,7 +901,7 @@ async function main() {
     });
   }
 
-  // Milady-vendored @elizaos plugins not yet in elizaos-plugins/registry.
+  // Vendored @elizaos plugins not yet in elizaos-plugins/registry.
   const localAdditionsPath = path.join(
     __dirname,
     "plugin-index-local-additions.json",

@@ -6,10 +6,10 @@ import path from "node:path";
  *
  * All user-facing brand strings (app name, identifiers, URLs) are resolved
  * here from environment variables with sensible defaults. Brand-specific
- * apps (e.g. Milady) override via env or by importing and calling
+ * apps (e.g. the app) override via env or by importing and calling
  * `overrideBrandConfig()` before the shell boots.
  *
- * Env precedence: ELIZA_ > MILADY_ (legacy) > default.
+ * Env precedence: ELIZA_ > ELIZA_ (legacy) > default.
  */
 
 export interface DesktopBrandConfig {
@@ -25,7 +25,7 @@ export interface DesktopBrandConfig {
   configExportFileName: string;
   /** User-facing description. */
   appDescription: string;
-  /** Default namespace for state directory (~/.eliza/ or ~/.milady/). */
+  /** Default namespace for state directory (~/.eliza/ or ~/.eliza/). */
   namespace: string;
   /** Config directory name (used under ~/.config/ on Unix, %APPDATA% on Windows). */
   configDirName: string;
@@ -72,7 +72,7 @@ function envFallback(...keys: string[]): string {
 }
 
 function loadFileConfig(): Partial<DesktopBrandConfig> {
-  const envPath = envFallback("ELIZA_BRAND_CONFIG_PATH", "MILADY_BRAND_CONFIG_PATH");
+  const envPath = envFallback("ELIZA_BRAND_CONFIG_PATH", "ELIZA_BRAND_CONFIG_PATH");
   const candidatePaths = [
     envPath,
     path.resolve(process.cwd(), "brand-config.json"),
@@ -134,11 +134,11 @@ export function overrideBrandConfig(
 function resolveBrandConfig(): DesktopBrandConfig {
   const fileConfig = loadFileConfig();
   const appName =
-    envFallback("ELIZA_APP_NAME", "MILADY_APP_NAME") ||
+    envFallback("ELIZA_APP_NAME", "ELIZA_APP_NAME") ||
     fileConfig.appName ||
     DEFAULT_CONFIG.appName;
   const appId =
-    envFallback("ELIZA_APP_ID", "MILADY_APP_ID") ||
+    envFallback("ELIZA_APP_ID", "ELIZA_APP_ID") ||
     fileConfig.appId ||
     DEFAULT_CONFIG.appId;
 
@@ -148,18 +148,18 @@ function resolveBrandConfig(): DesktopBrandConfig {
     appName,
     appId,
     urlScheme:
-      envFallback("ELIZA_URL_SCHEME", "MILADY_URL_SCHEME") ||
+      envFallback("ELIZA_URL_SCHEME", "ELIZA_URL_SCHEME") ||
       fileConfig.urlScheme ||
       DEFAULT_CONFIG.urlScheme,
     releaseUrl:
-      envFallback("ELIZA_RELEASE_URL", "MILADY_RELEASE_URL") ||
+      envFallback("ELIZA_RELEASE_URL", "ELIZA_RELEASE_URL") ||
       fileConfig.releaseUrl ||
       DEFAULT_CONFIG.releaseUrl,
     configExportFileName:
       fileConfig.configExportFileName ??
       `${appName.toLowerCase().replace(/\s+/g, "-")}-config.json`,
     namespace:
-      envFallback("ELIZA_NAMESPACE", "MILADY_NAMESPACE") ||
+      envFallback("ELIZA_NAMESPACE", "ELIZA_NAMESPACE") ||
       fileConfig.namespace ||
       DEFAULT_CONFIG.namespace,
     configDirName: fileConfig.configDirName ?? appName,

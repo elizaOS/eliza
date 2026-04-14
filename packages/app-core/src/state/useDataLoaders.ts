@@ -30,6 +30,7 @@ import {
   type ConversationMessage,
   client,
   type ExtensionStatus,
+  type StewardWebhookEventType,
   type StreamEventEnvelope,
   type StylePreset,
   type UpdateStatus,
@@ -44,7 +45,7 @@ import {
   hasPendingAutonomyGaps,
   markPendingAutonomyGapsPartial,
   mergeAutonomyEvents,
-} from "../autonomy";
+} from "@elizaos/agent/autonomy";
 import type { UiLanguage } from "../i18n";
 import { normalizeOwnerName } from "../utils/owner-name";
 import type { LoadConversationMessagesResult } from "./internal";
@@ -355,6 +356,27 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     [],
   );
 
+  const getStewardAddresses = useCallback(
+    async () => client.getStewardAddresses(),
+    [],
+  );
+
+  const getStewardBalance = useCallback(
+    async (chainId?: number) => client.getStewardBalance(chainId),
+    [],
+  );
+
+  const getStewardTokens = useCallback(
+    async (chainId?: number) => client.getStewardTokens(chainId),
+    [],
+  );
+
+  const getStewardWebhookEvents = useCallback(
+    async (opts?: { event?: StewardWebhookEventType; since?: number }) =>
+      client.getStewardWebhookEvents(opts),
+    [],
+  );
+
   const getStewardHistory = useCallback(
     async (opts?: { status?: string; limit?: number; offset?: number }) =>
       client.getStewardHistory(opts),
@@ -584,6 +606,10 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     getBscTradeQuote,
     getBscTradeTxStatus,
     getStewardStatus,
+    getStewardAddresses,
+    getStewardBalance,
+    getStewardTokens,
+    getStewardWebhookEvents,
     getStewardHistory,
     getStewardPending,
     approveStewardTx,

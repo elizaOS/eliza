@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import {
   executeRawSql,
   getRuntimeDbCacheKey,
@@ -179,7 +178,8 @@ function parseTriageExample(row: Record<string, unknown>): TriageExample {
     snippet: toText(row.snippet),
     classification: toText(row.classification) as TriageClassification,
     ownerAction: toText(row.owner_action) as OwnerAction,
-    ownerClassification: (toText(row.owner_classification) || null) as TriageClassification | null,
+    ownerClassification: (toText(row.owner_classification) ||
+      null) as TriageClassification | null,
     contextJson,
     createdAt: toText(row.created_at),
   };
@@ -287,9 +287,7 @@ export class InboxTriageRepository {
     };
   }
 
-  async getUnresolved(opts?: {
-    limit?: number;
-  }): Promise<TriageEntry[]> {
+  async getUnresolved(opts?: { limit?: number }): Promise<TriageEntry[]> {
     await this.ready();
     const limit = opts?.limit ?? 50;
     const rows = await executeRawSql(
@@ -336,7 +334,9 @@ export class InboxTriageRepository {
     return rows.length > 0 ? parseTriageEntry(rows[0]) : null;
   }
 
-  async getBySourceMessageId(sourceMessageId: string): Promise<TriageEntry | null> {
+  async getBySourceMessageId(
+    sourceMessageId: string,
+  ): Promise<TriageEntry | null> {
     await this.ready();
     const rows = await executeRawSql(
       this.runtime,
@@ -348,7 +348,9 @@ export class InboxTriageRepository {
     return rows.length > 0 ? parseTriageEntry(rows[0]) : null;
   }
 
-  async getBySourceMessageIds(sourceMessageIds: string[]): Promise<Set<string>> {
+  async getBySourceMessageIds(
+    sourceMessageIds: string[],
+  ): Promise<Set<string>> {
     if (sourceMessageIds.length === 0) return new Set();
     await this.ready();
     const inClause = sourceMessageIds.map((id) => sqlText(id)).join(", ");

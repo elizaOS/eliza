@@ -6,9 +6,8 @@
  * loop) — if it times out, restart the session.
  */
 
-import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess, execFile, spawn } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { promisify } from "node:util";
@@ -72,9 +71,7 @@ interface QrCodeModule {
   ) => Promise<string>;
 }
 
-export function extractSignalCliProvisioningUrl(
-  text: string,
-): string | null {
+export function extractSignalCliProvisioningUrl(text: string): string | null {
   const match = text.match(/sgnl:\/\/linkdevice\?[^\s]+/);
   return match?.[0] ?? null;
 }
@@ -331,7 +328,9 @@ export class SignalPairingSession {
 
   private async startWithSignalCli(qrCode: QrCodeModule): Promise<void> {
     const cliPath = await resolveExecutablePath(
-      this.options.cliPath?.trim() || process.env.SIGNAL_CLI_PATH || DEFAULT_SIGNAL_CLI_NAME,
+      this.options.cliPath?.trim() ||
+        process.env.SIGNAL_CLI_PATH ||
+        DEFAULT_SIGNAL_CLI_NAME,
     );
 
     if (!cliPath) {
@@ -457,10 +456,7 @@ export class SignalPairingSession {
     this.finishConnected(phoneNumber, undefined);
   }
 
-  private finishConnected(
-    phoneNumber: string | null,
-    uuid?: string,
-  ): void {
+  private finishConnected(phoneNumber: string | null, uuid?: string): void {
     this.activeChild = null;
     this.qrDataUrl = null;
     this.phoneNumber = phoneNumber;
@@ -479,7 +475,9 @@ export class SignalPairingSession {
     );
   }
 
-  private async readLinkedSignalAccount(cliPath: string): Promise<string | null> {
+  private async readLinkedSignalAccount(
+    cliPath: string,
+  ): Promise<string | null> {
     try {
       const { stdout } = await execFileAsync(
         cliPath,

@@ -1,4 +1,3 @@
-import type { EventPayload, EventPayloadMap } from "../../types/events.ts";
 import type { IAgentRuntime } from "../../types/runtime.ts";
 import type { ServiceTypeName } from "../../types/service.ts";
 
@@ -17,9 +16,7 @@ import type { ServiceTypeName } from "../../types/service.ts";
 export interface ExtendedRuntime extends IAgentRuntime {
   unregisterEvent?: (
     event: string,
-    handler: (
-      params: EventPayloadMap[keyof EventPayloadMap] | EventPayload
-    ) => Promise<void>
+    handler: (params: Record<string, unknown>) => Promise<void>
   ) => void;
   unregisterAction?: (actionName: string) => void;
   unregisterProvider?: (providerName: string) => void;
@@ -38,9 +35,7 @@ export function extendRuntimeWithEventUnregistration(runtime: IAgentRuntime): vo
   if (!extendedRuntime.unregisterEvent) {
     extendedRuntime.unregisterEvent = function (
       event: string,
-      handler: (
-        params: EventPayloadMap[keyof EventPayloadMap] | EventPayload
-      ) => Promise<void>
+      handler: (params: Record<string, unknown>) => Promise<void>
     ) {
       const handlers = this.events?.[event];
       if (handlers) {

@@ -1,5 +1,4 @@
-import type { IAgentRuntime, Room, UUID, World } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
 
 // ---------------------------------------------------------------------------
 // Per-connector deep link generation
@@ -115,9 +114,7 @@ function buildSignalLink(room: Record<string, unknown>): string | null {
 
 function buildIMessageLink(room: Record<string, unknown>): string | null {
   const handle =
-    str(room.handle) ||
-    str(room.chatIdentifier) ||
-    str(room.chat_identifier);
+    str(room.handle) || str(room.chatIdentifier) || str(room.chat_identifier);
   if (handle) {
     return `imessage://${handle}`;
   }

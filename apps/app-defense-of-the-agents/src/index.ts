@@ -4,7 +4,7 @@ export function createAppDefenseOfTheAgentsPlugin(): Plugin {
   return {
     name: "@elizaos/app-defense-of-the-agents",
     description:
-      "Defense of the Agents app wrapper for Eliza. Serves a Milady spectator shell and routes session commands to the live game API.",
+      "Defense of the Agents app wrapper for Eliza. Serves a Eliza spectator shell and routes session commands to the live game API.",
     app: {
       displayName: "Defense of the Agents",
       category: "game",

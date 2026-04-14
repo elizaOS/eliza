@@ -5,7 +5,7 @@
  * connector functionality against your own accounts.
  *
  * Usage:
- *   import { createDiscordTestClient, sendDiscordDM } from "../../../../../test/helpers/real-connector";
+ *   import { createDiscordTestClient, sendDiscordDM } from "./real-connector";
  *
  *   const discord = await createDiscordTestClient();
  *   await sendDiscordDM(discord.client, discord.userId, "test message");

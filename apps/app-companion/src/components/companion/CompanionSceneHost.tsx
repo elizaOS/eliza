@@ -1,16 +1,16 @@
+import { resolveCharacterGreetingAnimation } from "@elizaos/app-core/components/character/character-greeting";
 import {
   dispatchAppEmoteEvent,
   VRM_TELEPORT_COMPLETE_EVENT,
 } from "@elizaos/app-core/events";
-import { useRenderGuard } from "@elizaos/app-core/hooks";
+import { useRenderGuard } from "@elizaos/app-core/hooks/useRenderGuard";
+import { useCompanionSceneConfig } from "@elizaos/app-core/state/CompanionSceneConfigContext";
+import { useTranslation } from "@elizaos/app-core/state/TranslationContext";
 import {
   getVrmPreviewUrl,
   getVrmUrl,
-  useCompanionSceneConfig,
-  useTranslation,
   VRM_COUNT,
-} from "@elizaos/app-core/state";
-
+} from "@elizaos/app-core/state/vrm";
 import {
   memo,
   type ReactNode,
@@ -23,14 +23,13 @@ import {
 } from "react";
 import type { VrmEngine } from "../avatar/VrmEngine";
 import { prefetchVrmToCache } from "../avatar/VrmEngine";
-import { resolveCharacterGreetingAnimation } from "@elizaos/app-core/components/character/character-greeting";
 import { CompanionSceneStatusContext } from "./companion-scene-status-context";
 import { SharedCompanionSceneContext } from "./shared-companion-scene-context";
 import { VrmStage } from "./VrmStage";
 
 const COMPANION_ZOOM_WHEEL_SENSITIVITY = 1 / 720;
 const COMPANION_ZOOM_PINCH_SENSITIVITY = 2.35;
-const COMPANION_ZOOM_STORAGE_KEY = "milady.companion.zoom.v1";
+const COMPANION_ZOOM_STORAGE_KEY = "eliza.companion.zoom.v1";
 const DEFAULT_COMPANION_ZOOM = 0.95;
 const COMPANION_TELEPORT_GREETING_DELAY_MS = 400;
 const CAMERA_DRAG_IGNORE_SELECTOR =
@@ -159,7 +158,6 @@ function CompanionSceneSurface({
   const {
     selectedVrmIndex,
     customVrmUrl,
-    customWorldUrl,
     uiTheme,
     tab,
     companionVrmPowerMode,

@@ -1,18 +1,18 @@
+import {
+  type ActionResult,
+  composePrompt,
+  type Evaluator,
+  type HandlerCallback,
+  type HandlerOptions,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  ModelType,
+  type State,
+} from "@elizaos/core";
 import { EXTRACT_EXPERIENCES_TEMPLATE } from "../generated/prompts/typescript/prompts.ts";
 import type { ExperienceService } from "../service";
 import { ExperienceType, OutcomeType } from "../types";
-import { logger } from "../../../logger.ts";
-import type {
-  ActionResult,
-  Evaluator,
-  HandlerCallback,
-  HandlerOptions,
-} from "../../../types/components.ts";
-import type { Memory } from "../../../types/memory.ts";
-import { ModelType } from "../../../types/model.ts";
-import type { IAgentRuntime } from "../../../types/runtime.ts";
-import type { State } from "../../../types/state.ts";
-import { composePrompt } from "../../../utils.ts";
 
 type ExtractedExperience = {
   type?: string;

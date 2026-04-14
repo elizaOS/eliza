@@ -1,11 +1,4 @@
-/**
- * Shared structural types used by platform client-patch modules.
- *
- * Each module monkey-patches a subset of the API client; the corresponding
- * `ClientLike` / `PatchState` pair captures the exact shape needed.
- */
-
-import type { client as appClient } from "@elizaos/app-core/api";
+import type { client as appClient } from "../api/client";
 
 // ── desktop-permissions-client ──────────────────────────────────────────
 

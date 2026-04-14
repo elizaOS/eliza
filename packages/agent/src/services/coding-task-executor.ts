@@ -122,7 +122,10 @@ export class CodingTaskExecutor implements TaskExecutor {
       const memory = buildSyntheticTaskMemory(runtime, spec);
       const callbackLines: string[] = [];
       const callback = async (content: Content): Promise<Memory[]> => {
-        if (typeof content.text === "string" && content.text.trim().length > 0) {
+        if (
+          typeof content.text === "string" &&
+          content.text.trim().length > 0
+        ) {
           callbackLines.push(content.text);
         }
         return [];

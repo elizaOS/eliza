@@ -1,4 +1,4 @@
-import type { PermissionState } from "../api";
+import type { PermissionState } from "@elizaos/shared/contracts/permissions";
 
 export type WebsiteBlockerSettingsMode = "desktop" | "mobile" | "web";
 

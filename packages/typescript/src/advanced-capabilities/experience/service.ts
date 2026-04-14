@@ -1,9 +1,12 @@
+import {
+  type IAgentRuntime,
+  logger,
+  ModelType,
+  Service,
+  type ServiceTypeName,
+  type UUID,
+} from "@elizaos/core";
 import type { JsonValue } from "../../types/primitives.ts";
-import { logger } from "../../logger.ts";
-import { ModelType } from "../../types/model.ts";
-import type { UUID } from "../../types/primitives.ts";
-import type { IAgentRuntime } from "../../types/runtime.ts";
-import { Service, type ServiceTypeName } from "../../types/service.ts";
 import { v4 as uuidv4 } from "uuid";
 import {
   type Experience,

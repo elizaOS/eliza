@@ -1,5 +1,4 @@
 import type http from "node:http";
-import { logger } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import type { ConnectorConfig } from "../config/types.eliza.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
@@ -24,7 +23,9 @@ export interface ConnectorRouteContext {
     options?: ReadJsonBodyOptions,
   ) => Promise<T | null>;
   saveElizaConfig: (config: ElizaConfig) => void;
-  redactConfigSecrets: (config: Record<string, unknown>) => Record<string, unknown>;
+  redactConfigSecrets: (
+    config: Record<string, unknown>,
+  ) => Record<string, unknown>;
   isBlockedObjectKey: (key: string) => boolean;
   cloneWithoutBlockedObjectKeys: <T>(value: T) => T;
 }

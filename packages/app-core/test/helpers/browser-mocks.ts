@@ -5,12 +5,12 @@
  * Storage, Canvas2D, and console error suppression logic.
  */
 
-const CANVAS_PATCH_MARK = Symbol.for("milady.test.canvasMocksInstalled");
-const CONSOLE_PATCH_MARK = Symbol.for("milady.test.consoleErrorPatched");
-const CONSOLE_WARN_PATCH_MARK = Symbol.for("milady.test.consoleWarnPatched");
-const CONSOLE_LOG_PATCH_MARK = Symbol.for("milady.test.consoleLogPatched");
-const MEDIA_PATCH_MARK = Symbol.for("milady.test.mediaMocksInstalled");
-const AUDIO_PATCH_MARK = Symbol.for("milady.test.audioMocksInstalled");
+const CANVAS_PATCH_MARK = Symbol.for("eliza.test.canvasMocksInstalled");
+const CONSOLE_PATCH_MARK = Symbol.for("eliza.test.consoleErrorPatched");
+const CONSOLE_WARN_PATCH_MARK = Symbol.for("eliza.test.consoleWarnPatched");
+const CONSOLE_LOG_PATCH_MARK = Symbol.for("eliza.test.consoleLogPatched");
+const MEDIA_PATCH_MARK = Symbol.for("eliza.test.mediaMocksInstalled");
+const AUDIO_PATCH_MARK = Symbol.for("eliza.test.audioMocksInstalled");
 
 /**
  * Create an in-memory Storage implementation backed by a Map.

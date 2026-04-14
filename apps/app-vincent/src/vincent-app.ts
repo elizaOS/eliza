@@ -6,8 +6,8 @@
  * registration pattern as the Companion app.
  */
 
-import type { OverlayApp } from "@elizaos/app-core/components/apps/overlay-app-api";
-import { registerOverlayApp } from "@elizaos/app-core/components/apps/overlay-app-registry";
+import type { OverlayApp } from "@elizaos/app-core";
+import { registerOverlayApp } from "@elizaos/app-core";
 import { VincentAppView } from "./VincentAppView";
 
 export const VINCENT_APP_NAME = "@elizaos/app-vincent";

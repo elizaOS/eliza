@@ -44,7 +44,8 @@ dotenv.config({ path: path.resolve(packageRoot, ".env") });
 dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
 const LIVE_TESTS_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" ||
+  process.env.ELIZA_LIVE_TEST === "1";
 const TEST_TIME_ZONE = "America/Los_Angeles";
 const GOOGLE_CLIENT_ID = "assistant-user-journeys-google-client";
 const PROVIDER_ENV_KEYS = [

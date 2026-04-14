@@ -108,11 +108,8 @@ export class PluginManagerService extends Service implements PluginRegistry {
     "todo",
   ]);
 
-  constructor(runtime?: IAgentRuntime, config?: PluginManagerConfig) {
+  constructor(runtime: IAgentRuntime, config?: PluginManagerConfig) {
     super(runtime);
-    if (!runtime) {
-      throw new Error("PluginManagerService requires a runtime");
-    }
     this.pluginManagerConfig = {
       pluginDirectory: "./plugins",
       ...config,
@@ -415,11 +412,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
           );
           pluginState
             .components!.eventHandlers.get(eventName)!
-            .add(
-              eventHandler as unknown as (
-                params: EventPayload,
-              ) => Promise<void>,
-            );
+            .add(eventHandler as unknown as (params: Record<string, unknown>) => Promise<void>);
           this.trackComponentRegistration(pluginState.id, "eventHandler", eventName);
         }
       }
@@ -544,8 +537,8 @@ export class PluginManagerService extends Service implements PluginRegistry {
           logger.info(`[PluginManagerService] Unloaded dynamic plugin: ${pluginState.name}`);
         } catch (error) {
           logger.warn(
-            { src: "plugin-manager", error },
-            `[PluginManagerService] Failed to unload ${pluginState.name} during shutdown`
+            `[PluginManagerService] Failed to unload ${pluginState.name} during shutdown:`,
+            error
           );
         }
       }

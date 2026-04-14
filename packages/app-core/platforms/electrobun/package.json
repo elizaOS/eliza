@@ -1,5 +1,5 @@
 {
-  "name": "@miladyai/electrobun",
+  "name": "@elizaos/electrobun",
   "version": "2.0.0-alpha.87",
   "private": true,
   "type": "module",
@@ -7,7 +7,7 @@
     "dev": "bun run build:preload && PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun dev",
     "build": "bun run build:preload && PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun build",
     "typecheck": "tsc --noEmit",
-    "test": "bunx vitest run --passWithNoTests --config vitest.config.ts",
+    "test": "bunx vitest run --passWithNoTests",
     "lint": "bunx @biomejs/biome check src",
     "build:preload": "node ../../scripts/build-electrobun-preload.mjs",
     "build:whisper": "bash scripts/build-whisper.sh",

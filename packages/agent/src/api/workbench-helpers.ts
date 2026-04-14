@@ -6,7 +6,7 @@
  * shapes consumed by the dashboard UI.
  */
 
-import { type Task } from "@elizaos/core";
+import type { Task } from "@elizaos/core";
 import { readTriggerConfig } from "../triggers/runtime.js";
 
 // ---------------------------------------------------------------------------

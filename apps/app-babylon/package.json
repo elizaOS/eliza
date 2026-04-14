@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Milady app integration for Babylon prediction market game.",
+  "description": "Eliza app integration for Babylon prediction market game.",
   "main": "./src/index.ts",
   "exports": {
     "./package.json": "./package.json",
@@ -12,14 +12,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/milady-ai/milady.git"
+    "url": "https://github.com/elizaos/eliza.git"
   },
   "keywords": [
     "game",
     "prediction-market",
     "babylon",
     "elizaos",
-    "milady"
+    "eliza"
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",

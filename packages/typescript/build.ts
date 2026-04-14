@@ -4,8 +4,15 @@
  * Dual build script for @elizaos/core - generates both Node.js and browser builds
  */
 
-import { existsSync, type FSWatcher, mkdirSync, watch } from "node:fs";
-import { join } from "node:path";
+import {
+	existsSync,
+	type FSWatcher,
+	mkdirSync,
+	realpathSync,
+	watch,
+} from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import type { BuildConfig, BunPlugin } from "bun";
 
 export interface ElizaBuildOptions {
@@ -39,6 +46,8 @@ export interface ElizaBuildOptions {
 	 */
 	selfPackageName?: string;
 }
+
+const require = createRequire(import.meta.url);
 
 /**
  * Get performance timer
@@ -637,6 +646,73 @@ const sharedConfig = {
 	generateDts: true,
 };
 
+function resolvePtyWorkerAssets(): Array<{ from: string; to: string }> {
+	const candidates: string[] = [];
+	const dependencyAssets: Array<{ from: string; to: string }> = [];
+
+	try {
+		const ptyManagerEntry = require.resolve("pty-manager");
+		candidates.push(join(dirname(ptyManagerEntry), "pty-worker.js"));
+
+		const ptyManagerPackageRoot = dirname(dirname(ptyManagerEntry));
+		const ptyManagerNodeModules = dirname(ptyManagerPackageRoot);
+		for (const dependencyName of ["adapter-types", "node-pty"]) {
+			const dependencyPath = join(ptyManagerNodeModules, dependencyName);
+			if (existsSync(dependencyPath)) {
+				dependencyAssets.push({
+					from: realpathSync(dependencyPath),
+					to: `dist/node/node_modules/${dependencyName}`,
+				});
+			}
+		}
+	} catch {
+		// Fall through to the static fallback paths below.
+	}
+
+	candidates.push(
+		join(process.cwd(), "node_modules/pty-manager/dist/pty-worker.js"),
+		join(process.cwd(), "../../node_modules/pty-manager/dist/pty-worker.js"),
+		join(process.cwd(), "../../../node_modules/pty-manager/dist/pty-worker.js"),
+	);
+
+	const workerPath = candidates.find((candidate) => existsSync(candidate));
+	if (!workerPath) {
+		console.warn(
+			"⚠ Unable to locate pty-manager worker; dist/node/pty-worker.js will not be emitted",
+		);
+		return [];
+	}
+
+	return [
+		{ from: workerPath, to: "dist/node/pty-worker.cjs" },
+		...dependencyAssets,
+	];
+}
+
+async function writePtyWorkerWrapper(): Promise<void> {
+	const fs = await import("node:fs/promises");
+	const wrapperPath = "dist/node/pty-worker.js";
+	const payloadPath = "dist/node/pty-worker.cjs";
+
+	if (!existsSync(payloadPath)) {
+		console.warn(
+			"⚠ pty-worker.cjs is missing after build; skipping ESM wrapper generation",
+		);
+		return;
+	}
+
+	await fs.writeFile(
+		wrapperPath,
+		[
+			"import { createRequire } from 'node:module';",
+			"",
+			"const require = createRequire(import.meta.url);",
+			"require('./pty-worker.cjs');",
+			"",
+		].join("\n"),
+	);
+}
+
 /**
  * Build for Node.js environment
  */
@@ -650,9 +726,10 @@ async function buildNode() {
 			entrypoints: [
 				`${TS_SRC}/index.node.ts`,
 				`${TS_SRC}/roles.ts`,
-				`${TS_SRC}/orchestrator/index.ts`,
+				`${TS_SRC}/features/advanced-capabilities/clipboard/index.ts`,
 			],
 			outdir: "dist/node",
+			assets: resolvePtyWorkerAssets(),
 			target: "node",
 			format: "esm",
 			external: nodeExternals,
@@ -664,6 +741,7 @@ async function buildNode() {
 	});
 
 	await runNode();
+	await writePtyWorkerWrapper();
 
 	const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 	console.log(`✅ Node.js build complete in ${duration}s`);
@@ -679,18 +757,16 @@ async function buildBrowser() {
 	const runBrowser = createBuildRunner({
 		...sharedConfig,
 		buildOptions: {
-			entrypoints: [
-				`${TS_SRC}/index.browser.ts`,
-				`${TS_SRC}/roles.ts`,
-			],
+			entrypoints: [`${TS_SRC}/index.browser.ts`, `${TS_SRC}/roles.ts`],
 			outdir: "dist/browser",
-			target: "browser",
+			// Use the Node target so `node:*` imports bundle without broken browser polyfills.
+			// The dashboard/Vite shell still aliases `node:*` where the bundle runs in the browser.
+			target: "node",
 			format: "esm",
 			external: browserExternals,
 			sourcemap: true,
 			minify: true, // Minify for browser to reduce bundle size
 			generateDts: false, // Use the same .d.ts files from Node build
-			// No additional browser resolver plugins; avoid pulling large node-polyfill trees
 			plugins: [],
 			selfPackageName: "@elizaos/core", // Exclude self from externals to avoid self-referential imports
 		},
@@ -714,7 +790,7 @@ async function buildEdge() {
 		buildOptions: {
 			entrypoints: [`${TS_SRC}/index.edge.ts`],
 			outdir: "dist/edge",
-			target: "browser",
+			target: "node",
 			format: "esm",
 			external: browserExternals,
 			sourcemap: true,
@@ -806,6 +882,7 @@ async function generateTypeScriptDeclarations() {
 	await fs.mkdir("dist/node", { recursive: true });
 	await fs.mkdir("dist/browser", { recursive: true });
 	await fs.mkdir("dist/edge", { recursive: true });
+	await fs.mkdir("dist/node/features/orchestrator", { recursive: true });
 
 	// Create re-export files for conditional exports structure
 	// dist/node/index.d.ts - points to the Node.js entry point
@@ -843,6 +920,46 @@ async function generateTypeScriptDeclarations() {
 	await fs.writeFile(
 		"dist/index.browser.js",
 		`// Browser entry point (explicit)\nexport * from './browser/index.browser.js';\n`,
+	);
+
+	// Bun currently omits the public orchestrator subpath bundle in some
+	// multi-entry builds. Provide an explicit wrapper so `@elizaos/core/orchestrator`
+	// always resolves to the real Node bundle.
+	await fs.writeFile(
+		"dist/node/features/orchestrator/index.js",
+		`// Orchestrator subpath entry point (explicit)
+export {
+	buildBlockedEventMessage,
+	buildTurnCompleteEventMessage,
+	cleanForChat,
+	codingAgentPlugin,
+	createAgentOrchestratorPlugin,
+	createCodingAgentRouteHandler,
+	createTaskAction,
+	createTaskAgentRouteHandler,
+	finalizeWorkspaceAction,
+	getCoordinator,
+	handleCodingAgentRoutes,
+	listAgentsAction,
+	listTaskAgentsAction,
+	manageIssuesAction,
+	orchestratorPluginDefault as default,
+	provisionWorkspaceAction,
+	PTYService,
+	sendToAgentAction,
+	sendToTaskAgentAction,
+	spawnAgentAction,
+	spawnTaskAgentAction,
+	startCodingTaskAction,
+	stopAgentAction,
+	stopTaskAgentAction,
+	SwarmCoordinator,
+	taskAgentPlugin,
+	taskControlAction,
+	taskHistoryAction,
+	taskShareAction,
+} from '../../../index.node.js';
+`,
 	);
 
 	// Create main index.d.ts to re-export all types from node build

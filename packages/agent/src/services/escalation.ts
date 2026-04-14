@@ -13,8 +13,8 @@ import type {
   OwnerContactsConfig,
 } from "../config/types.agent-defaults.js";
 import {
-  LifeOpsRepository,
   type LifeOpsEscalationStateRow,
+  LifeOpsRepository,
 } from "../lifeops/repository.js";
 import { resolveOwnerEntityId } from "../runtime/owner-entity.js";
 import {
@@ -75,9 +75,7 @@ function dbRowToState(row: LifeOpsEscalationStateRow): EscalationState {
     startedAt: new Date(row.startedAt).getTime(),
     lastSentAt: new Date(row.lastSentAt).getTime(),
     resolved: row.resolved,
-    resolvedAt: row.resolvedAt
-      ? new Date(row.resolvedAt).getTime()
-      : undefined,
+    resolvedAt: row.resolvedAt ? new Date(row.resolvedAt).getTime() : undefined,
   };
 }
 
@@ -105,9 +103,7 @@ async function loadActiveFromDb(
 ): Promise<EscalationState | null> {
   try {
     const repo = new LifeOpsRepository(runtime);
-    const row = await repo.getActiveEscalationState(
-      runtime.agentId as string,
-    );
+    const row = await repo.getActiveEscalationState(runtime.agentId as string);
     return row ? dbRowToState(row) : null;
   } catch (err) {
     logger.debug(
@@ -376,6 +372,7 @@ function scheduleCheck(
 
 let idCounter = 0;
 
+// biome-ignore lint/complexity/noStaticOnlyClass: module-style service API is intentional here
 export class EscalationService {
   static async startEscalation(
     runtime: IAgentRuntime,

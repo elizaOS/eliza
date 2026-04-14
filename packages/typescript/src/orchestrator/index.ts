@@ -73,14 +73,14 @@ export type {
   PushOptions,
   WorkspaceResult,
 } from "./services/workspace-service.ts";
-export { cleanForChat } from "./services/ansi-utils.ts";
-export { PTYService } from "./services/pty-service.ts";
 
 export {
   codingAgentPlugin,
+  CodingWorkspaceService,
   createAgentOrchestratorPlugin,
   createCodingAgentRouteHandler,
   default,
   getCoordinator,
+  PTYService,
   taskAgentPlugin,
 } from "./patch-agent-orchestrator-plugin.ts";

@@ -1,3 +1,9 @@
+/**
+ * @deprecated This file is maintained for backward compatibility.
+ * The canonical source has moved to `@elizaos/app-steward/api/wallet-capability`.
+ * New development should target the app-steward package.
+ */
+
 import type { AgentRuntime } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import { isStewardEvmBridgeActive } from "../services/steward-evm-bridge.js";
@@ -22,8 +28,35 @@ export interface WalletCapabilityStatus {
   executionBlockedReason: string | null;
 }
 
+function readPrimaryWalletSource(
+  config: ElizaConfig,
+  chain: "evm" | "solana",
+): "local" | "cloud" | null {
+  const wallet =
+    config.wallet && typeof config.wallet === "object"
+      ? (config.wallet as Record<string, unknown>)
+      : null;
+  const primary =
+    wallet?.primary && typeof wallet.primary === "object"
+      ? (wallet.primary as Record<string, unknown>)
+      : null;
+  const configured = primary?.[chain];
+  if (configured === "local" || configured === "cloud") {
+    return configured;
+  }
+
+  const envKey =
+    chain === "evm"
+      ? process.env.WALLET_SOURCE_EVM
+      : process.env.WALLET_SOURCE_SOLANA;
+  return envKey === "local" || envKey === "cloud" ? envKey : null;
+}
+
 function hasRuntimeEvmService(runtime: AgentRuntime | null): boolean {
-  if (!runtime || typeof (runtime as { getService?: unknown }).getService !== "function") {
+  if (
+    !runtime ||
+    typeof (runtime as { getService?: unknown }).getService !== "function"
+  ) {
     return false;
   }
 
@@ -90,16 +123,29 @@ export function resolveWalletCapabilityStatus(state: {
   const rpcReadiness = resolveWalletRpcReadiness(state.config);
   const automationMode = resolveWalletAutomationMode(state.config);
   const localSignerAvailable = Boolean(process.env.EVM_PRIVATE_KEY?.trim());
+  const localSolanaSignerAvailable = Boolean(
+    process.env.SOLANA_PRIVATE_KEY?.trim(),
+  );
   const hasWallet = Boolean(addrs.evmAddress || addrs.solanaAddress);
   const hasEvm = Boolean(addrs.evmAddress);
   const pluginEvmLoaded = resolvePluginEvmLoaded(state.runtime);
   const pluginEvmRequired = hasEvm || localSignerAvailable;
   const rpcReady = Boolean(rpcReadiness.managedBscRpcReady);
-  const walletSource = localSignerAvailable
-    ? "local"
-    : hasWallet
-      ? "managed"
-      : "none";
+  const primaryEvmSource = readPrimaryWalletSource(state.config, "evm");
+  const primarySolanaSource = readPrimaryWalletSource(state.config, "solana");
+  const hasCloudPrimary =
+    primaryEvmSource === "cloud" || primarySolanaSource === "cloud";
+  const hasLocalPrimary =
+    primaryEvmSource === "local" || primarySolanaSource === "local";
+  const walletSource = hasCloudPrimary
+    ? "managed"
+    : localSignerAvailable || localSolanaSignerAvailable || hasLocalPrimary
+      ? hasWallet || localSignerAvailable || localSolanaSignerAvailable
+        ? "local"
+        : "none"
+      : hasWallet
+        ? "managed"
+        : "none";
 
   let executionBlockedReason: string | null = null;
   if (!hasEvm) {
