@@ -133,13 +133,11 @@ impl Provider for SecurityStatusProvider {
     ) -> PluginResult<ProviderResult> {
         let recent_events = self.security.get_recent_events(5).await;
 
-        let entity_threat = message
-            .entity_id
-            .map(|id| {
-                // We can't await here directly, but we store a future
-                // Use a sync approach: check the cached score
-                id
-            });
+        let entity_threat = message.entity_id.map(|id| {
+            // We can't await here directly, but we store a future
+            // Use a sync approach: check the cached score
+            id
+        });
 
         let mut text = String::from("# Security Status\n");
 
@@ -160,7 +158,6 @@ impl Provider for SecurityStatusProvider {
             }
         }
 
-        Ok(ProviderResult::new(text)
-            .with_value("securityEventCount", recent_events.len() as i64))
+        Ok(ProviderResult::new(text).with_value("securityEventCount", recent_events.len() as i64))
     }
 }

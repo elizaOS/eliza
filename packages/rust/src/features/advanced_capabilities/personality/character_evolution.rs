@@ -44,11 +44,7 @@ impl Evaluator for CharacterEvolutionEvaluator {
     ) -> PluginResult<EvaluatorResult> {
         let mut details = std::collections::HashMap::new();
 
-        let text = message
-            .content
-            .text
-            .as_deref()
-            .unwrap_or("");
+        let text = message.content.text.as_deref().unwrap_or("");
 
         // Simple heuristic: detect user preference signals
         let wants_more_formal = text.contains("more formal")
@@ -60,9 +56,8 @@ impl Evaluator for CharacterEvolutionEvaluator {
         let wants_more_detail = text.contains("more detail")
             || text.contains("explain more")
             || text.contains("be thorough");
-        let wants_less_detail = text.contains("be brief")
-            || text.contains("shorter")
-            || text.contains("too long");
+        let wants_less_detail =
+            text.contains("be brief") || text.contains("shorter") || text.contains("too long");
 
         let mut suggested_changes = Vec::new();
 
@@ -118,10 +113,7 @@ impl Evaluator for CharacterEvolutionEvaluator {
         Ok(EvaluatorResult {
             score: 80,
             passed: true,
-            reason: format!(
-                "Detected {} evolution signals",
-                suggested_changes.len()
-            ),
+            reason: format!("Detected {} evolution signals", suggested_changes.len()),
             details,
         })
     }

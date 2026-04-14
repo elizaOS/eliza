@@ -127,7 +127,9 @@ impl PluginManagerService {
         // Update plugin components
         let mut plugins = self.plugins.write().await;
         if let Some(plugin) = plugins.get_mut(plugin_id) {
-            let components = plugin.components.get_or_insert_with(PluginComponents::default);
+            let components = plugin
+                .components
+                .get_or_insert_with(PluginComponents::default);
             match component_type {
                 ComponentType::Action => {
                     components.actions.insert(component_name.to_string());
@@ -151,12 +153,15 @@ impl PluginManagerService {
         }
 
         // Add registration record
-        self.registrations.write().await.push(ComponentRegistration {
-            plugin_id: plugin_id.to_string(),
-            component_type,
-            component_name: component_name.to_string(),
-            timestamp: now,
-        });
+        self.registrations
+            .write()
+            .await
+            .push(ComponentRegistration {
+                plugin_id: plugin_id.to_string(),
+                component_type,
+                component_name: component_name.to_string(),
+                timestamp: now,
+            });
 
         Ok(())
     }

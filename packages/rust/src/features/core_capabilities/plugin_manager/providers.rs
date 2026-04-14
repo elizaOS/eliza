@@ -46,8 +46,9 @@ impl Provider for PluginManagerProvider {
         let all_plugins = self.service.get_all_plugins().await;
 
         if all_plugins.is_empty() {
-            return Ok(ProviderResult::new("No plugins registered.")
-                .with_value("pluginCount", 0i64));
+            return Ok(
+                ProviderResult::new("No plugins registered.").with_value("pluginCount", 0i64)
+            );
         }
 
         let loaded = all_plugins

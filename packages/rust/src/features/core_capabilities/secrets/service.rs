@@ -34,11 +34,12 @@ impl SecretsService {
     /// Create a new SecretsService.
     pub fn new(config: SecretsServiceConfig) -> Self {
         let encryption_key = if config.enable_encryption {
-            let salt = config
-                .encryption_salt
-                .as_deref()
-                .unwrap_or("default-salt");
-            Some(crypto::derive_key("elizaos-secrets", salt.as_bytes(), 10000))
+            let salt = config.encryption_salt.as_deref().unwrap_or("default-salt");
+            Some(crypto::derive_key(
+                "elizaos-secrets",
+                salt.as_bytes(),
+                10000,
+            ))
         } else {
             None
         };
@@ -201,10 +202,7 @@ impl SecretsService {
             return Err(anyhow::anyhow!("Value exceeds maximum length"));
         }
 
-        let requester = context
-            .requester_id
-            .as_deref()
-            .unwrap_or(&context.agent_id);
+        let requester = context.requester_id.as_deref().unwrap_or(&context.agent_id);
         let scope = Self::scope_key(context);
         let now = chrono::Utc::now().timestamp_millis();
 
@@ -266,10 +264,7 @@ impl SecretsService {
     /// Delete a secret.
     pub async fn delete(&self, key: &str, context: &SecretContext) -> anyhow::Result<bool> {
         let scope = Self::scope_key(context);
-        let requester = context
-            .requester_id
-            .as_deref()
-            .unwrap_or(&context.agent_id);
+        let requester = context.requester_id.as_deref().unwrap_or(&context.agent_id);
 
         let removed = self
             .secrets

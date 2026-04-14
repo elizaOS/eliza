@@ -82,17 +82,14 @@ impl Action for FormRestoreAction {
         let stashed = self.service.get_stashed_sessions(entity_id).await;
 
         if stashed.is_empty() {
-            return Ok(ActionResult::success(
-                "No stashed form sessions found".to_string(),
-            )
-            .with_data("actionName", "FORM_RESTORE"));
+            return Ok(
+                ActionResult::success("No stashed form sessions found".to_string())
+                    .with_data("actionName", "FORM_RESTORE"),
+            );
         }
 
         // Pick most recently updated
-        let most_recent = stashed
-            .iter()
-            .max_by_key(|s| s.updated_at)
-            .unwrap();
+        let most_recent = stashed.iter().max_by_key(|s| s.updated_at).unwrap();
 
         match self.service.restore_session(&most_recent.id).await {
             Ok(session) => Ok(ActionResult::success(format!(

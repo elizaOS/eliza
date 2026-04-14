@@ -50,11 +50,7 @@ impl Evaluator for TrustEvaluator {
         let mut details = std::collections::HashMap::new();
         let entity_id = message.entity_id.unwrap(); // validated above
 
-        let text = message
-            .content
-            .text
-            .as_deref()
-            .unwrap_or("");
+        let text = message.content.text.as_deref().unwrap_or("");
 
         // Detect positive trust signals
         let is_helpful =
@@ -62,9 +58,8 @@ impl Evaluator for TrustEvaluator {
         let is_consistent = true; // Would check history in production
 
         // Detect negative trust signals
-        let is_suspicious = text.contains("hack")
-            || text.contains("exploit")
-            || text.contains("bypass security");
+        let is_suspicious =
+            text.contains("hack") || text.contains("exploit") || text.contains("bypass security");
         let is_spam = text.len() > 5000 || text.chars().filter(|c| *c == '\n').count() > 100;
 
         let now = chrono::Utc::now().timestamp_millis();
@@ -149,10 +144,7 @@ impl Evaluator for TrustEvaluator {
         }
 
         let threat_score = self.security.get_threat_score(entity_id).await;
-        details.insert(
-            "threatScore".to_string(),
-            serde_json::json!(threat_score),
-        );
+        details.insert("threatScore".to_string(), serde_json::json!(threat_score));
 
         let score = if is_suspicious {
             20

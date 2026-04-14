@@ -48,16 +48,15 @@ impl Evaluator for ExperienceEvaluator {
         let mut details = std::collections::HashMap::new();
 
         // Check if the conversation contains feedback signals
-        let text = message
-            .content
-            .text
-            .as_deref()
-            .unwrap_or("");
+        let text = message.content.text.as_deref().unwrap_or("");
 
         // Simple heuristic: look for positive/negative feedback indicators
-        let has_positive = text.contains("thank") || text.contains("great") || text.contains("perfect");
-        let has_negative = text.contains("wrong") || text.contains("incorrect") || text.contains("error");
-        let has_correction = text.contains("actually") || text.contains("no, ") || text.contains("that's not");
+        let has_positive =
+            text.contains("thank") || text.contains("great") || text.contains("perfect");
+        let has_negative =
+            text.contains("wrong") || text.contains("incorrect") || text.contains("error");
+        let has_correction =
+            text.contains("actually") || text.contains("no, ") || text.contains("that's not");
 
         let experience_type = if has_correction {
             ExperienceType::Correction
@@ -67,10 +66,7 @@ impl Evaluator for ExperienceEvaluator {
             ExperienceType::Failure
         } else {
             // Not enough signal to record
-            details.insert(
-                "skipped".to_string(),
-                serde_json::Value::Bool(true),
-            );
+            details.insert("skipped".to_string(), serde_json::Value::Bool(true));
             return Ok(EvaluatorResult {
                 score: 50,
                 passed: true,
@@ -122,7 +118,10 @@ impl Evaluator for ExperienceEvaluator {
         Ok(EvaluatorResult {
             score: 70,
             passed: true,
-            reason: format!("Recorded {:?} experience from conversation", experience_type),
+            reason: format!(
+                "Recorded {:?} experience from conversation",
+                experience_type
+            ),
             details,
         })
     }

@@ -113,10 +113,7 @@ impl Provider for FormContextProvider {
                         .unwrap_or(true)
             })
             .map(|c| {
-                let prompt = c
-                    .ask_prompt
-                    .as_deref()
-                    .unwrap_or(&c.label);
+                let prompt = c.ask_prompt.as_deref().unwrap_or(&c.label);
                 format!("  - {} ({})", c.label, prompt)
             })
             .collect();

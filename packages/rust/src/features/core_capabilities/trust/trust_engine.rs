@@ -108,7 +108,8 @@ impl TrustEngineService {
         for evidence in &profile.evidence {
             let age_days = (now - evidence.timestamp) as f64 / (24.0 * 60.0 * 60.0 * 1000.0);
             let decay = (-age_days * self.config.evidence_decay_rate / 100.0).exp();
-            let recency_weight = self.config.recency_bias * decay + (1.0 - self.config.recency_bias);
+            let recency_weight =
+                self.config.recency_bias * decay + (1.0 - self.config.recency_bias);
             let verification_weight = if evidence.verified {
                 self.config.verification_multiplier
             } else {
@@ -263,7 +264,7 @@ impl TrustEngineService {
                 dimensions_checked: TrustDimensions::default(),
                 reason: "No trust profile exists for this entity".to_string(),
                 suggestions: Some(vec![
-                    "Start interacting to build a trust profile".to_string(),
+                    "Start interacting to build a trust profile".to_string()
                 ]),
             },
         }
