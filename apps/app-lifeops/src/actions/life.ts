@@ -1219,6 +1219,18 @@ function formatOccurrenceDisambiguationLabel(
     : occurrence.title;
 }
 
+function narrowOccurrenceCandidates(
+  matches: Awaited<
+    ReturnType<LifeOpsService["getOverview"]>
+  >["owner"]["occurrences"],
+) {
+  const actionableMatches = matches.filter(
+    (occurrence) =>
+      occurrence.state === "visible" || occurrence.state === "snoozed",
+  );
+  return actionableMatches.length > 0 ? actionableMatches : matches;
+}
+
 async function resolveOccurrence(
   service: LifeOpsService,
   target: string | undefined,
@@ -1244,9 +1256,13 @@ async function resolveOccurrence(
     return { match: exactMatches[0], ambiguousCandidates: [] };
   }
   if (exactMatches.length > 1) {
+    const narrowedMatches = narrowOccurrenceCandidates(exactMatches);
+    if (narrowedMatches.length === 1) {
+      return { match: narrowedMatches[0], ambiguousCandidates: [] };
+    }
     return {
       match: null,
-      ambiguousCandidates: exactMatches.map(
+      ambiguousCandidates: narrowedMatches.map(
         formatOccurrenceDisambiguationLabel,
       ),
     };
@@ -1260,8 +1276,13 @@ async function resolveOccurrence(
     return { match: substringMatches[0], ambiguousCandidates: [] };
   }
   if (substringMatches.length > 1) {
+    const narrowedSubstringMatches =
+      narrowOccurrenceCandidates(substringMatches);
+    if (narrowedSubstringMatches.length === 1) {
+      return { match: narrowedSubstringMatches[0], ambiguousCandidates: [] };
+    }
     // Prefer startsWith over generic includes
-    const startsWithMatches = substringMatches.filter((o) =>
+    const startsWithMatches = narrowedSubstringMatches.filter((o) =>
       normalizeTitle(o.title).startsWith(normalized),
     );
     if (startsWithMatches.length === 1) {
@@ -1278,7 +1299,7 @@ async function resolveOccurrence(
     // Still ambiguous — return candidates for the caller to list
     return {
       match: null,
-      ambiguousCandidates: substringMatches.map(
+      ambiguousCandidates: narrowedSubstringMatches.map(
         formatOccurrenceDisambiguationLabel,
       ),
     };
@@ -1296,9 +1317,14 @@ async function resolveOccurrence(
       return { match: tokenSetMatches[0], ambiguousCandidates: [] };
     }
     if (tokenSetMatches.length > 1) {
+      const narrowedTokenSetMatches =
+        narrowOccurrenceCandidates(tokenSetMatches);
+      if (narrowedTokenSetMatches.length === 1) {
+        return { match: narrowedTokenSetMatches[0], ambiguousCandidates: [] };
+      }
       return {
         match: null,
-        ambiguousCandidates: tokenSetMatches.map(
+        ambiguousCandidates: narrowedTokenSetMatches.map(
           formatOccurrenceDisambiguationLabel,
         ),
       };
