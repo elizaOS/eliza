@@ -2,7 +2,7 @@ numpy~=1.24.4
 Pillow~=11.0.0
 fabric
 gymnasium~=0.28.1
-requests
+requests~=2.33.0
 pytz~=2024.1
 transformers~=5.0.0rc3
 torch~=2.8.0
