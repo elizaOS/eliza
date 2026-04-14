@@ -18,8 +18,7 @@ import { req } from "../../../../test/helpers/http";
 import { createLiveRuntimeChildEnv } from "../../../../test/helpers/live-child-env";
 
 const LIVE =
-  process.env.ELIZA_LIVE_TEST === "1" ||
-  process.env.MILADY_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.MILADY_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 
 try {
@@ -90,7 +89,10 @@ async function startRuntime(): Promise<Runtime> {
     try {
       const res = await fetch(`http://127.0.0.1:${port}/api/health`);
       if (res.ok) {
-        const data = (await res.json()) as { ready?: boolean; runtime?: string };
+        const data = (await res.json()) as {
+          ready?: boolean;
+          runtime?: string;
+        };
         if (data.ready && data.runtime === "ok") break;
       }
     } catch {
@@ -145,7 +147,9 @@ describeIf(LIVE)("App-Companion: Emotes API e2e", () => {
     expect(res.data).toBeTruthy();
     // Should return a list of emotes
     const data = res.data as { emotes?: unknown[] } | unknown[];
-    const emotes = Array.isArray(data) ? data : (data as { emotes?: unknown[] }).emotes;
+    const emotes = Array.isArray(data)
+      ? data
+      : (data as { emotes?: unknown[] }).emotes;
     if (emotes) {
       expect(Array.isArray(emotes)).toBe(true);
       expect(emotes.length).toBeGreaterThan(0);
@@ -162,7 +166,9 @@ describeIf(LIVE)("App-Companion: Emotes API e2e", () => {
     const res = await req(runtime.port, "GET", "/api/agents");
     expect(res.status).toBe(200);
     const data = res.data as { agents?: unknown[] } | unknown[];
-    const agents = Array.isArray(data) ? data : (data as { agents?: unknown[] }).agents;
+    const agents = Array.isArray(data)
+      ? data
+      : (data as { agents?: unknown[] }).agents;
     if (agents) {
       expect(Array.isArray(agents)).toBe(true);
       expect(agents.length).toBeGreaterThanOrEqual(1);

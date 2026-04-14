@@ -135,7 +135,7 @@ export const manageTasksAction: Action = {
 
     try {
       // Fetch current tasks for context
-      const allTasks = await runtime.getTasks({});
+      const allTasks = await runtime.getTasks({ agentIds: [runtime.agentId] });
       const workbenchTasks = allTasks.filter((t) => {
         if (readTriggerConfig(t)) return false;
         return toWorkbenchTask(t) !== null;

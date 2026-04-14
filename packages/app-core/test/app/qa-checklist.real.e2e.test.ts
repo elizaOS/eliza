@@ -1601,13 +1601,23 @@ async function waitForAnyText(
 }
 
 async function waitForOnboardingEntry(page: Page, timeout = 45_000) {
+  const overlay = await page
+    .waitForSelector('[data-testid="onboarding-ui-overlay"]', {
+      visible: true,
+      timeout,
+    })
+    .catch(() => null);
+  if (overlay) {
+    return;
+  }
+
   await waitForAnyText(
     page,
     [
       "Choose your setup",
       "Create Local Agent",
-      "Get Started",
       "Connect to Remote Agent",
+      "Choose your AI provider",
     ],
     timeout,
   );

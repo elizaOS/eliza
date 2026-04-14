@@ -13,7 +13,7 @@ export function SidebarSectionLabel({
     <div
       data-sidebar-section-label
       className={cn(
-        "text-xs-tight font-semibold uppercase tracking-[0.16em] text-txt-strong drop-shadow-[0_1px_0_rgba(255,255,255,0.14)] dark:drop-shadow-[0_1px_12px_rgba(0,0,0,0.34)]",
+        "text-xs-tight font-semibold uppercase tracking-[0.16em] text-txt-strong",
         className,
       )}
       {...props}
@@ -58,10 +58,10 @@ export function SidebarEmptyState({
     <div
       data-sidebar-empty-state
       className={cn(
-        "rounded-sm border px-4 py-8 text-center text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_16px_24px_-22px_rgba(15,23,42,0.16)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_18px_26px_-22px_rgba(0,0,0,0.28)]",
+        "rounded-sm px-4 py-8 text-center text-sm",
         variant === "game-modal"
-          ? "border-white/10 bg-black/15 font-medium italic text-[color:var(--onboarding-text-muted)] shadow-none"
-          : "border-border/24 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_64%,transparent),color-mix(in_srgb,var(--bg)_92%,transparent))] text-muted",
+          ? "bg-black/15 font-medium italic text-[color:var(--onboarding-text-muted)]"
+          : "bg-bg-muted/50 text-muted",
         className,
       )}
       {...props}
@@ -157,14 +157,14 @@ export const SidebarItem = React.forwardRef<HTMLElement, SidebarItemProps>(
     ref,
   ) {
     const sharedClassName = cn(
-      "group flex h-auto w-full min-w-0 items-start justify-start gap-3 rounded-sm border px-3.5 py-3 text-left transition-[border-color,background-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+      "group flex h-auto w-full min-w-0 items-start justify-start gap-3 rounded-sm px-3.5 py-3 text-left transition-[background-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
       active
-        ? "border-accent/26 bg-[linear-gradient(180deg,rgba(var(--accent-rgb),0.18),rgba(var(--accent-rgb),0.08))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_18px_24px_-22px_rgba(var(--accent-rgb),0.22)] ring-1 ring-inset ring-accent/10 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_18px_28px_-22px_rgba(0,0,0,0.26),0_0_0_1px_rgba(var(--accent-rgb),0.12)]"
+        ? "bg-accent/12 text-txt shadow-sm"
         : variant === "accent-soft"
-          ? "border-accent/20 bg-accent/5 text-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-accent/30 hover:bg-accent/10 hover:text-txt dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]"
+          ? "bg-accent/5 text-muted hover:bg-accent/10 hover:text-txt"
           : variant === "dashed"
-            ? "border-dashed border-border/40 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_18%,transparent),transparent)] text-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-border hover:bg-bg-hover hover:text-txt dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]"
-            : "border-border/10 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_18%,transparent),transparent)] text-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-border/28 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_28%,transparent),transparent)] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_14px_20px_-22px_rgba(15,23,42,0.12)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] dark:hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_14px_22px_-22px_rgba(0,0,0,0.22)]",
+            ? "border border-dashed border-border/40 text-muted hover:border-border hover:bg-bg-hover hover:text-txt"
+            : "text-muted hover:bg-bg-hover hover:text-txt",
       className,
     );
 
@@ -205,10 +205,10 @@ export function SidebarItemIcon({
     <span
       data-sidebar-item-icon
       className={cn(
-        "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border p-2",
+        "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-sm p-2",
         active
-          ? "border-accent/30 bg-accent/18 text-txt-strong"
-          : "border-border/50 bg-bg-accent/80 text-muted",
+          ? "bg-accent/18 text-txt-strong"
+          : "bg-bg-accent/80 text-muted",
         className,
       )}
       {...props}
@@ -326,10 +326,10 @@ export const SidebarRailItem = React.forwardRef<
       type="button"
       data-sidebar-rail-item
       className={cn(
-        "relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border text-xs font-semibold tracking-[0.02em] transition-[border-color,background-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 active:scale-[0.98]",
+        "relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border border-border/24 text-xs font-semibold tracking-[0.02em] transition-[border-color,background-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 active:scale-[0.98]",
         active
-          ? "border-accent/26 bg-[linear-gradient(180deg,rgba(var(--accent-rgb),0.18),rgba(var(--accent-rgb),0.08))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(var(--accent-rgb),0.2)] ring-1 ring-inset ring-accent/10 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_18px_24px_-20px_rgba(0,0,0,0.24),0_0_0_1px_rgba(var(--accent-rgb),0.12)]"
-          : "border-border/24 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_82%,transparent),color-mix(in_srgb,var(--bg)_92%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_10px_16px_-16px_rgba(15,23,42,0.14)] hover:border-border/38 hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_12px_18px_-16px_rgba(15,23,42,0.18)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_10px_18px_-16px_rgba(0,0,0,0.28)]",
+          ? "border-accent/26 bg-accent/12 text-txt shadow-sm"
+          : "bg-card text-muted-strong shadow-xs hover:border-border/38 hover:text-txt hover:shadow-sm",
         className,
       )}
       {...props}
@@ -342,7 +342,7 @@ export const SidebarRailItem = React.forwardRef<
           className={cn(
             "absolute right-1.5 top-1.5 h-2 w-2 rounded-full",
             indicatorTone === "accent"
-              ? "bg-accent shadow-[0_0_8px_rgba(var(--accent-rgb),0.45)]"
+              ? "bg-accent"
               : "bg-muted/70",
           )}
         />

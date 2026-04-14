@@ -270,7 +270,11 @@ export function ConversationsSidebar({
   };
 
   const handleManageConnections = () => {
-    setTab("connectors");
+    if (tab === "connectors") {
+      setTab("chat");
+    } else {
+      setTab("connectors");
+    }
     onClose?.();
   };
 
@@ -444,9 +448,7 @@ export function ConversationsSidebar({
         collapseButtonAriaLabel={t("conversations.closePanel")}
         expandButtonAriaLabel={t("aria.expandChatsPanel")}
         header={
-          isManageConnectionsActive ? (
-            <SidebarHeader />
-          ) : (
+          isManageConnectionsActive ? undefined : (
             <SidebarHeader
               search={{
                 value: searchQuery,
@@ -509,18 +511,20 @@ export function ConversationsSidebar({
             <div className="mb-3 grid gap-2">
               <div
                 className={
-                  sidebarModel.showWorldFilter
+                  !isManageConnectionsActive && sidebarModel.showWorldFilter
                     ? "grid gap-2 sm:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]"
                     : "grid gap-2"
                 }
               >
                 <div className="grid gap-2">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="px-1 text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
-                      {t("conversations.filterScope", {
-                        defaultValue: "Source",
-                      })}
-                    </span>
+                    {!isManageConnectionsActive && (
+                      <span className="px-1 text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
+                        {t("conversations.filterScope", {
+                          defaultValue: "Source",
+                        })}
+                      </span>
+                    )}
                     <Button
                       type="button"
                       variant={
@@ -542,37 +546,39 @@ export function ConversationsSidebar({
                       </span>
                     </Button>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {sidebarModel.sourceOptions.map((option) => {
-                      const isActive =
-                        sidebarModel.sourceScope === option.value;
-                      return (
-                        <Button
-                          key={option.value}
-                          type="button"
-                          variant={isActive ? "default" : "outline"}
-                          size="icon"
-                          className={`relative h-10 w-10 rounded-sm border transition-all ${
-                            isActive
-                              ? "border-accent/50 bg-accent/14 text-txt shadow-[0_10px_24px_rgba(3,5,10,0.14)]"
-                              : "border-border/45 bg-card/55 text-muted hover:border-accent/40 hover:text-txt"
-                          }`}
-                          aria-label={option.label}
-                          title={option.label}
-                          onClick={() => {
-                            setSourceScope(option.value);
-                            setWorldScope(ALL_WORLDS_SCOPE);
-                          }}
-                        >
-                          {renderSourceScopeIcon(option)}
-                        </Button>
-                      );
-                    })}
-                  </div>
-                  {showNewChatAction ? <div>{newChatAction}</div> : null}
+                  {!isManageConnectionsActive ? (
+                    <div className="flex flex-wrap gap-2">
+                      {sidebarModel.sourceOptions.map((option) => {
+                        const isActive =
+                          sidebarModel.sourceScope === option.value;
+                        return (
+                          <Button
+                            key={option.value}
+                            type="button"
+                            variant={isActive ? "default" : "outline"}
+                            size="icon"
+                            className={`relative h-10 w-10 rounded-sm border transition-all ${
+                              isActive
+                                ? "border-accent/50 bg-accent/14 text-txt shadow-[0_10px_24px_rgba(3,5,10,0.14)]"
+                                : "border-border/45 bg-card/55 text-muted hover:border-accent/40 hover:text-txt"
+                            }`}
+                            aria-label={option.label}
+                            title={option.label}
+                            onClick={() => {
+                              setSourceScope(option.value);
+                              setWorldScope(ALL_WORLDS_SCOPE);
+                            }}
+                          >
+                            {renderSourceScopeIcon(option)}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                  {!isManageConnectionsActive && showNewChatAction ? (<div>{newChatAction}</div>) : null}
                 </div>
 
-                {sidebarModel.showWorldFilter ? (
+                {!isManageConnectionsActive && sidebarModel.showWorldFilter ? (
                   <div className="grid gap-1">
                     <span className="px-1 text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
                       {t("conversations.filterWorld", {

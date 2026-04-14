@@ -90,7 +90,7 @@ export function LanguageDropdown({
             <DropdownMenuItem
               key={lang.id}
               className={`flex min-h-[40px] items-center justify-between px-3 py-2 text-sm transition-colors cursor-pointer ${lang.id === uiLanguage ? "bg-accent/10 text-txt font-medium" : "text-txt"}`}
-              onPointerDown={(event: PointerEvent) => event.stopPropagation()}
+              onPointerDown={(event: React.PointerEvent) => event.stopPropagation()}
               onSelect={() => {
                 setUiLanguage(lang.id);
               }}

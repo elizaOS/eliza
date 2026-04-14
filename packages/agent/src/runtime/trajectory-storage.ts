@@ -1316,7 +1316,7 @@ async function exportRawTrajectoriesToCompressedArchive(
   const rawRowsResult = await executeRawSql(
     runtime,
     `SELECT
-      id, trajectory_id, agent_id, source, status, start_time, end_time,
+      id, id AS trajectory_id, agent_id, source, status, start_time, end_time,
       duration_ms, step_count, llm_call_count, provider_access_count,
       total_prompt_tokens, total_completion_tokens, total_reward, scenario_id,
       batch_id, steps_json,

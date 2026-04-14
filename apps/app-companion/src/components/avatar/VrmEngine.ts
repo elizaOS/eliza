@@ -1,3 +1,9 @@
+declare global {
+  interface Navigator {
+    readonly gpu?: unknown;
+  }
+}
+
 import { resolveAppAssetUrl } from "@elizaos/app-core/utils/asset-url";
 import {
   MToonMaterialLoaderPlugin,

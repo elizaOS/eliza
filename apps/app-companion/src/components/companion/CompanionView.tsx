@@ -13,9 +13,9 @@ import {
   useState,
 } from "react";
 import { CompanionHeader, type CompanionShellView } from "./CompanionHeader";
-import { EmotePicker } from "./EmotePicker";
 import { CompanionSceneHost } from "./CompanionSceneHost";
 import { useCompanionSceneStatus } from "./companion-scene-status-context";
+import { EmotePicker } from "./EmotePicker";
 import { InferenceCloudAlertButton } from "./InferenceCloudAlertButton";
 import { resolveCompanionInferenceNotice } from "./resolve-companion-inference-notice";
 

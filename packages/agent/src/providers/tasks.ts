@@ -69,7 +69,7 @@ export function createOngoingTasksProvider(): Provider {
 
       try {
         // Fetch all tasks
-        const allTasks = await runtime.getTasks({});
+        const allTasks = await runtime.getTasks({ agentIds: [runtime.agentId] });
 
         // Separate workbench tasks from triggers and todos
         const workbenchTasks: Task[] = [];

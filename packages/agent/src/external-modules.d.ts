@@ -403,9 +403,14 @@ declare module "markdown-it" {
     meta: unknown;
   }
   class MarkdownIt {
-    constructor(preset?: string, options?: Record<string, unknown>);
-    parse(src: string, env?: Record<string, unknown>): Token[];
-    render(src: string, env?: Record<string, unknown>): string;
+    constructor(
+      presetOrOptions?: string | Record<string, unknown>,
+      options?: Record<string, unknown>,
+    );
+    parse(src: string, env?: object): Token[];
+    render(src: string, env?: object): string;
+    enable(rule: string | string[], ignoreInvalid?: boolean): this;
+    disable(rule: string | string[], ignoreInvalid?: boolean): this;
   }
   export = MarkdownIt;
 }
