@@ -544,6 +544,15 @@ jobs:
           # Configure npm for authentication
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
 
+          # The release build rewrites files inside plugin git submodules
+          # (workspace refs, generated artifacts, versioned outputs). Those
+          # changes are intentional for the publish tarballs, but lerna's
+          # working tree check treats the parent repo as dirty unless the
+          # submodules are ignored locally for this CI checkout.
+          while read -r _ path _; do
+            git config --local "submodule.${path}.ignore" dirty
+          done < <(git submodule status --recursive)
+
           # Publish with appropriate dist-tag
           # Commit workspace reference changes so lerna doesn't complain about uncommitted files
           git add -A
