@@ -163,7 +163,10 @@ function renderLandingPage(): string {
     html, body { width:100%;height:100%;background:var(--black);color:var(--yellow);font-family:'Martian Mono',monospace;overflow:hidden; }
     .video-bg { position:fixed;inset:0;z-index:0;transition:transform 0.8s ease-out; }
     .video-bg video { position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform-origin:center center;transition:opacity 1.2s ease-in-out;opacity:0;will-change:opacity; }
-    @media(max-width:768px){.video-bg video{transform-origin:center center;object-fit:cover;}}
+    @media(max-width:768px){
+      .video-bg video#vid-b{display:none;}
+      #grain-canvas{display:none;}
+    }
     .grid-overlay { position:fixed;inset:0;z-index:1;pointer-events:none;background-image:radial-gradient(circle,rgba(246,231,15,0.18) 1px,transparent 1px);background-size:6px 6px; }
     #grain-canvas { position:fixed;inset:0;z-index:2;pointer-events:none;opacity:0.55;mix-blend-mode:screen; }
     .dark-overlay { position:fixed;inset:0;z-index:1;pointer-events:none;background:rgba(0,0,0,0.45); }
@@ -238,8 +241,8 @@ function renderLandingPage(): string {
 <body>
   <audio id="bgm" autoplay loop preload="auto" src="/assets/bgm.mp3"></audio>
   <div class="video-bg" id="videoBg">
-    <video id="vid-a" muted playsinline preload="auto"><source src="/assets/videobg.mp4" type="video/mp4" /></video>
-    <video id="vid-b" muted playsinline preload="auto"><source src="/assets/videobg.mp4" type="video/mp4" /></video>
+    <video id="vid-a" muted playsinline preload="auto" poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"><source src="/assets/videobg.mp4" type="video/mp4" /></video>
+    <video id="vid-b" muted playsinline preload="none"><source src="/assets/videobg.mp4" type="video/mp4" /></video>
   </div>
   <div class="dark-overlay"></div>
   <div class="grid-overlay"></div>
@@ -265,8 +268,23 @@ function renderLandingPage(): string {
   </div>
   <div class="side-badge"><a href="/dashboard"><div class="badge-dot"></div><span>elizaOK</span><span>BNB</span></a></div>
   <script>
-    (function(){var c=document.getElementById('grain-canvas'),x=c.getContext('2d'),W,H;function r(){W=c.width=innerWidth;H=c.height=innerHeight;}addEventListener('resize',r);r();function d(){var img=x.createImageData(W,H),dt=img.data;for(var i=0;i<dt.length;i+=4){var v=(Math.random()*255)|0;dt[i]=v;dt[i+1]=(v*0.88)|0;dt[i+2]=0;dt[i+3]=Math.random()<0.35?28:0;}x.putImageData(img,0,0);requestAnimationFrame(d);}d();})();
-    (function(){var a=document.getElementById('vid-a'),b=document.getElementById('vid-b'),CF=1.8,act=a,stb=b;function swap(){stb.currentTime=0;stb.play();stb.style.opacity='1';act.style.opacity='0';setTimeout(function(){act.pause();act.currentTime=0;var t=act;act=stb;stb=t;},1300);}function tick(){if(act.duration&&!isNaN(act.duration)){if(act.duration-act.currentTime<=CF&&stb.paused)swap();}requestAnimationFrame(tick);}a.style.opacity='1';a.play().catch(function(){});b.load();requestAnimationFrame(tick);})();
+    var _isMobileDevice = window.innerWidth <= 768;
+    (function(){
+      if (_isMobileDevice) return;
+      var c=document.getElementById('grain-canvas'),x=c.getContext('2d'),W,H;function r(){W=c.width=innerWidth;H=c.height=innerHeight;}addEventListener('resize',r);r();function d(){var img=x.createImageData(W,H),dt=img.data;for(var i=0;i<dt.length;i+=4){var v=(Math.random()*255)|0;dt[i]=v;dt[i+1]=(v*0.88)|0;dt[i+2]=0;dt[i+3]=Math.random()<0.35?28:0;}x.putImageData(img,0,0);requestAnimationFrame(d);}d();
+    })();
+    (function(){
+      var a=document.getElementById('vid-a'),b=document.getElementById('vid-b');
+      if (_isMobileDevice) {
+        a.style.opacity='1';
+        a.setAttribute('loop','');
+        a.play().catch(function(){
+          document.addEventListener('touchstart',function h(){a.play().catch(function(){});document.removeEventListener('touchstart',h);},{once:true});
+        });
+        return;
+      }
+      var CF=1.8,act=a,stb=b;function swap(){stb.currentTime=0;stb.play();stb.style.opacity='1';act.style.opacity='0';setTimeout(function(){act.pause();act.currentTime=0;var t=act;act=stb;stb=t;},1300);}function tick(){if(act.duration&&!isNaN(act.duration)){if(act.duration-act.currentTime<=CF&&stb.paused)swap();}requestAnimationFrame(tick);}a.style.opacity='1';a.play().catch(function(){});b.load();requestAnimationFrame(tick);
+    })();
     var vbg=document.getElementById('videoBg'),px=0,py=0,vs=1.15;var isMobile=window.innerWidth<=768;function apV(){if(vbg&&!isMobile)vbg.style.transform='scale('+vs+') translate('+px+'px,'+py+'px)';}if(!isMobile){document.addEventListener('mousemove',function(e){var cx=innerWidth/2,cy=innerHeight/2;px=(e.clientX-cx)/cx*-14;py=(e.clientY-cy)/cy*-9;apV();});addEventListener('wheel',function(e){e.preventDefault();vs=Math.min(Math.max(vs+e.deltaY*0.001,1.1),1.5);apV();},{passive:false});}
     (function(){
       var a=document.getElementById('bgm');a.volume=0.35;
