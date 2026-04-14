@@ -79,7 +79,10 @@ impl Action for ModifyCharacterAction {
         // Take a snapshot
         let character_name = runtime.character().name.clone();
         self.service
-            .take_snapshot(&character_name, &format!("Modified trait '{}': {}", trait_name, reason))
+            .take_snapshot(
+                &character_name,
+                &format!("Modified trait '{}': {}", trait_name, reason),
+            )
             .await;
 
         Ok(ActionResult::success(format!(

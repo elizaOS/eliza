@@ -118,11 +118,7 @@ impl FormService {
     }
 
     /// Get active session for entity + room.
-    pub async fn get_active_session(
-        &self,
-        entity_id: Uuid,
-        room_id: Uuid,
-    ) -> Option<FormSession> {
+    pub async fn get_active_session(&self, entity_id: Uuid, room_id: Uuid) -> Option<FormSession> {
         self.sessions
             .read()
             .await
@@ -268,11 +264,7 @@ impl FormService {
 
     /// Compute progress percentage for a session.
     pub fn compute_progress(session: &FormSession, definition: &FormDefinition) -> f64 {
-        let required_count = definition
-            .controls
-            .iter()
-            .filter(|c| c.required)
-            .count();
+        let required_count = definition.controls.iter().filter(|c| c.required).count();
 
         if required_count == 0 {
             return 100.0;

@@ -82,10 +82,7 @@ pub fn encrypt_aes256gcm(
 }
 
 /// Decrypt an AES-256-GCM encrypted secret.
-pub fn decrypt_aes256gcm(
-    encrypted: &EncryptedSecret,
-    key: &[u8; KEY_LEN],
-) -> Result<String> {
+pub fn decrypt_aes256gcm(encrypted: &EncryptedSecret, key: &[u8; KEY_LEN]) -> Result<String> {
     let ciphertext = B64
         .decode(&encrypted.value)
         .map_err(|e| anyhow!("Base64 decode error for value: {}", e))?;
@@ -94,7 +91,11 @@ pub fn decrypt_aes256gcm(
         .map_err(|e| anyhow!("Base64 decode error for IV: {}", e))?;
 
     if nonce.len() != NONCE_LEN {
-        return Err(anyhow!("Invalid nonce length: expected {}, got {}", NONCE_LEN, nonce.len()));
+        return Err(anyhow!(
+            "Invalid nonce length: expected {}, got {}",
+            NONCE_LEN,
+            nonce.len()
+        ));
     }
 
     // Verify auth tag
@@ -112,7 +113,9 @@ pub fn decrypt_aes256gcm(
         }
 
         if computed_tag[..] != expected_tag[..] {
-            return Err(anyhow!("Authentication tag mismatch — data may be corrupted"));
+            return Err(anyhow!(
+                "Authentication tag mismatch — data may be corrupted"
+            ));
         }
     }
 

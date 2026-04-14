@@ -52,10 +52,7 @@ impl Provider for UserPersonalityProvider {
                     .iter()
                     .map(|p| format!("  - {}: {}", p.key, p.value))
                     .collect();
-                sections.push(format!(
-                    "## User Preferences\n{}",
-                    pref_lines.join("\n")
-                ));
+                sections.push(format!("## User Preferences\n{}", pref_lines.join("\n")));
             }
         }
 
@@ -80,15 +77,11 @@ impl Provider for UserPersonalityProvider {
                     )
                 })
                 .collect();
-            sections.push(format!(
-                "## Character Traits\n{}",
-                trait_lines.join("\n")
-            ));
+            sections.push(format!("## Character Traits\n{}", trait_lines.join("\n")));
         }
 
         if sections.is_empty() {
-            return Ok(ProviderResult::new("")
-                .with_value("hasPersonalityData", false));
+            return Ok(ProviderResult::new("").with_value("hasPersonalityData", false));
         }
 
         let text = format!("# Personality\n{}", sections.join("\n\n"));
