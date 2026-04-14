@@ -1,239 +1,242 @@
 <div align="center">
-  <h1>elizaOS</h1>
-  <p><strong>The Open-Source Framework for Multi-Agent AI Development</strong></p>
-  <p>Build, deploy, and manage autonomous AI agents with a modern, extensible, and full-featured platform.</p>
+  <img src="apps/elizaokbsc/assets/avatar.png" alt="elizaOK" width="120" height="120" style="border-radius:50%;" />
+  <h1>elizaOK</h1>
+  <p><strong>Self-Evolving AI Trading Agent on BNB Chain</strong></p>
+  <p>Autonomous memecoin discovery, multi-strategy AI competition, and value distribution &mdash; powered by <a href="https://github.com/elizaos/eliza">elizaOS</a>.</p>
 </div>
 
 <p align="center">
-  <a href="https://trendshift.io/repositories/12591" target="_blank"><img src="https://trendshift.io/api/badge/repositories/12591" alt="elizaOS%2Feliza | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+  <a href="https://elizaok.com"><img src="https://img.shields.io/badge/Live-elizaok.com-F6E70F?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImJsYWNrIiBzdHJva2Utd2lkdGg9IjIiPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjEwIi8+PHBhdGggZD0iTTIgMTJoMjAiLz48cGF0aCBkPSJNMTIgMmExNS4zIDE1LjMgMCAwIDEgNCAxMCAxNS4zIDE1LjMgMCAwIDEtNCAxMCAxNS4zIDE1LjMgMCAwIDEtNC0xMCAxNS4zIDE1LjMgMCAwIDEgNC0xMHoiLz48L3N2Zz4=&logoColor=black" alt="Live Site"></a>
+  <a href="https://x.com/elizaok_bsc"><img src="https://img.shields.io/badge/Follow-@elizaok__bsc-000?style=for-the-badge&logo=x&logoColor=white" alt="Follow on X"></a>
+  <a href="https://elizacloud.ai"><img src="https://img.shields.io/badge/ElizaCloud-Connect-00C7D2?style=for-the-badge" alt="ElizaCloud"></a>
 </p>
-<div align="center">
-  <a href="https://www.npmjs.com/package/@elizaos/core"><img src="https://img.shields.io/npm/dm/@elizaos/core" alt="Downloads" width=140 height=20></a>
-  <a href="https://github.com/elizaOS/eliza/releases"><img src="https://img.shields.io/github/v/release/elizaOS/eliza" alt="Releases" width=94 height=20></a>
-  <a href="https://arxiv.org/abs/2501.06781"><img src="https://img.shields.io/badge/arXiv-2501.06781-b31b1b.svg" alt="Paper" width=116 height=20></a>
-  <a href="https://deepwiki.com/elizaOS/eliza"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" width=109 height=20></a>
-</div>
-<div align="center">
-  <a href="https://github.com/elizaos/eliza/stargazers"><img src="https://img.shields.io/github/stars/elizaos/eliza?style=for-the-badge&logo=github" alt="GitHub Stars"></a>
-  <a href="https://github.com/elizaos/eliza/network/members"><img src="https://img.shields.io/github/forks/elizaos/eliza?style=for-the-badge&logo=github" alt="GitHub Forks"></a>
-  <a href="https://github.com/elizaos/eliza/commits"><img src="https://img.shields.io/github/last-commit/elizaos/eliza?style=for-the-badge" alt="Last Commit on GitHub"></a>
-</div>
 
-<div align="center">
-  <a href="https://github.com/elizaos/eliza/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License"></a>
-  <a href="https://www.npmjs.com/package/@elizaos/cli"><img src="https://img.shields.io/npm/v/@elizaos/cli?style=for-the-badge" alt="NPM Version"></a>
-  <a href="https://github.com/elizaos/eliza/graphs/contributors"><img src="https://img.shields.io/github/contributors/elizaos/eliza?style=for-the-badge" alt="Contributors"></a>
-</div>
-<div align="center">
-  <a href="https://docs.elizaos.ai/"><img src="https://img.shields.io/badge/Documentation-Read%20Docs-blue?style=for-the-badge" alt="Documentation"></a>
-  <!-- a href="https://github.com/elizaos/eliza/actions/workflows/image.yaml"><img src="https://img.shields.io/github/actions/workflow/status/elizaos/eliza/ci.yaml?branch=main&style=for-the-badge" alt="CI Status"></a -->
-  <a href="https://twitter.com/elizaOS"><img src="https://img.shields.io/twitter/follow/elizaOS?style=for-the-badge&logo=x&label=Follow" alt="Follow on X"></a>
-  <a href="https://discord.gg/ai16z"><img src="https://img.shields.io/discord/1253563208833433701?style=for-the-badge&logo=discord" alt="Discord"></a>
-</div>
-
-## ✨ What is Eliza?
-
-elizaOS is an all-in-one, extensible platform for building and deploying AI-powered applications. Whether you're creating sophisticated chatbots, autonomous agents for business process automation, or intelligent game NPCs, Eliza provides the tools you need to get started quickly and scale effectively.
-
-It combines a modular architecture, a powerful CLI, and a rich web interface to give you full control over your agents' development, deployment, and management lifecycle.
-
-For complete guides and API references, visit our official **[documentation](https://docs.elizaos.ai/)**.
-
-## 🚀 Key Features
-
-- 🔌 **Rich Connectivity**: Out-of-the-box connectors for Discord, Telegram, Farcaster, and more.
-- 🧠 **Model Agnostic**: Supports all major models, including OpenAI, Gemini, Anthropic, Llama, and Grok.
-- 🖥️ **Modern Web UI**: A professional dashboard for managing agents, groups, and conversations in real-time.
-- 🤖 **Multi-Agent Architecture**: Designed from the ground up for creating and orchestrating groups of specialized agents.
-- 📄 **Document Ingestion**: Easily ingest documents and allow agents to retrieve information and answer questions from your data (RAG).
-- 🛠️ **Highly Extensible**: Build your own functionality with a powerful plugin system.
-- 📦 **It Just Works**: A seamless setup and development experience from day one.
-
-> **Looking for plugins?** Browse the community plugin registry at **[elizaOS-plugins/registry](https://github.com/elizaOS-plugins/registry)** for a full list of available ElizaOS plugins.
-
-## 🏁 Getting Started (5-Minute Quick Start)
-
-There are two recommended paths for using Eliza:
-
-- **For Beginners & Standalone Projects (CLI):** If you want to create and deploy agents without modifying Eliza's core code, the CLI is the fastest and simplest method. The guide below is for you.
-
-- **For Power Users & Contributors (Monorepo):** If you plan to contribute to Eliza, create complex custom plugins, or manage multiple projects in one place, we recommend cloning the full monorepo. See the [How to Contribute](#-how-to-contribute) section to get started.
+<p align="center">
+  <a href="https://github.com/elizaokbsc/eliza/blob/develop/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License"></a>
+  <a href="https://github.com/elizaokbsc/eliza/commits/develop"><img src="https://img.shields.io/github/last-commit/elizaokbsc/eliza/develop?style=flat-square" alt="Last Commit"></a>
+  <a href="https://github.com/elizaokbsc/eliza/stargazers"><img src="https://img.shields.io/github/stars/elizaokbsc/eliza?style=flat-square" alt="Stars"></a>
+</p>
 
 ---
 
-Get your first AI agent running in just a few commands.
+## What is elizaOK?
 
-**Prerequisites:**
+**elizaOK** is an autonomous AI trading agent built on **BNB Smart Chain (BSC)**. It continuously discovers, evaluates, and manages memecoin opportunities using real-time on-chain data from GeckoTerminal.
 
-- [Node.js](https://nodejs.org/) (v23+)
-- [bun](https://bun.sh/docs/installation)
+Unlike a simple trading bot, elizaOK is a **self-evolving system**. Through its proprietary **Goo Protocol** (AI Acquiring AI), it runs a competitive arena of AI agents with different strategies, automatically acquires the best performers, and absorbs their winning parameters into its core trading logic.
 
-> **Note for Windows Users:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required.
+All profits flow through a **Revenue Flywheel** that reinvests gains, buys back $ElizaOK tokens, and reserves funds for holder airdrops.
 
-### 1. Install the CLI
-
-```bash
-# Install the elizaOS CLI globally
-bun install -g @elizaos/cli
-
-# Verify installation
-elizaos --version
-```
-
-### 2. Create Your Project
-
-```bash
-# Create a new project with an interactive setup
-elizaos create my-first-agent
-
-# Follow the prompts. For beginners, we recommend:
-# - Database: pglite (no setup required)
-# - Model Provider: openai
-# - Project Type: project
-```
-
-### 3. Configure Your API Key
-
-```bash
-cd my-first-agent
-
-# Open the local environment file
-elizaos env edit-local
-```
-
-Add your model provider's API key (e.g., for OpenAI):
-
-```env
-OPENAI_API_KEY=your_api_key_here
-```
-
-### 4. Start Your Agent
-
-```bash
-# Build and start the agent server
-elizaos start
-```
-
-Your agent is now running!
-
-- **Web Interface**: [http://localhost:3000](http://localhost:3000)
-- **API Endpoint**: `http://localhost:3000/api`
+### Live at [elizaok.com](https://elizaok.com)
 
 ---
 
-<details>
-<summary>📚 **Advanced CLI Commands & Usage**</summary>
+## Key Features
 
-Eliza's CLI is powerful. Here are some more commands for development and management.
+### AI-Powered Token Discovery
+- Scans BSC pools every 15 minutes via GeckoTerminal API
+- Scores candidates 0–100 based on liquidity, volume, buy/sell ratio, market cap, pool age, KOL holdings, and holder distribution
+- Threshold-based buy signals with configurable sensitivity
 
-#### Development Workflow
+### Multi-Stage Portfolio Management
+- **5-tier take-profit**: +20% at 30%, +25% at 60%, +30% at 100%, +35% at 200%, +40% at 400%
+- **Hard stop-loss**: -18% automatic exit
+- **Trailing stop**: Activates at +25% gain, triggers on 15% pullback
+- **Smart Exit Signals**: Real-time decisions based on holder attrition, KOL exits, and whale dumps
+- **KOL-Adaptive Take-Profit**: Reverse-engineers optimal exit points from KOL behavior
 
-```bash
-# Make changes to your agent code, then rebuild and restart
-bun run build
-elizaos start
+### Goo Protocol — AI Acquiring AI
+The Goo Arena is elizaOK's evolution engine. **8 AI agents** with distinct strategies compete simultaneously:
 
-# Or, start in development mode with auto-rebuild
-elizaos dev
+| Strategy | Description |
+|----------|-------------|
+| Conservative | Low-risk, strict filtering |
+| Balanced | Equilibrium risk-reward |
+| Aggressive | High-risk, high-reward |
+| KOL Follower | Tracks KOL positions |
+| Holder Watcher | Monitors holder changes |
+| Momentum | Follows momentum signals |
+| Contrarian | Counter-trend approach |
+| Sniper | Quick in-and-out strikes |
 
-# Run tests to verify your changes
-elizaos test
+When an agent reaches acquisition score ≥70, win rate >15%, and ≥5 trades, elizaOK **acquires it** — absorbing its parameters (stop-loss, take-profit, holder thresholds) into the main portfolio. Dead agents auto-respawn to maintain arena diversity.
+
+### Revenue Flywheel
+
+```
+Profit → 70% Reinvest → 15% $ElizaOK Buyback → 15% Airdrop Reserve
 ```
 
-#### Agent & Environment Management
+The flywheel ensures continuous capital growth while creating value for token holders through buybacks and periodic airdrops to eligible wallets.
 
-```bash
-# List all available agents
-elizaos agent list
-
-# Start a specific agent by name
-elizaos agent start --name "MyAgent"
-
-# Show all environment variables
-elizaos env list
-```
-
-#### Debugging
-
-```bash
-# Start with detailed debug logging
-LOG_LEVEL=debug elizaos start
-```
-
-For a full command reference, run `elizaos --help` or `elizaos <command> --help`.
-
-</details>
+### ElizaCloud Integration
+- **One-click login** via [elizacloud.ai](https://elizacloud.ai)
+- **Chat with the Agent** in real-time for trade advice and market analysis
+- **Cloud Agent Management** with AI inference credits
+- **Multi-Agent Orchestration** across the platform
 
 ---
 
-## 🔧 Running elizaOS Core Standalone
+## Dashboard
 
-Use elizaOS agents directly in your applications without the CLI or web interface.
+The elizaOK dashboard provides a full-stack trading interface:
 
-```bash
-git clone https://github.com/elizaos/eliza.git
-cd eliza
+| Panel | Description |
+|-------|-------------|
+| **Token Explorer** | AI-scored token tile grid, ≥60 score filter, direct DEX links |
+| **Top Candidates** | Ranked leaderboard with scores and recommendations |
+| **Portfolio Ledger** | Active positions, cumulative P&L charts, trade timeline |
+| **Revenue Flywheel** | Live profit distribution breakdown |
+| **Strategy Absorption** | AI acquisition history and parameter blending |
+| **Market Intel** | Real-time signals: holder drops, KOL exits, whale dumps |
+| **Goo Intelligence** | Arena agent evaluation and comparison |
+| **Execution Desk** | Risk controls, trade ledger, execution mode toggle |
+| **Airdrop Distribution** | Holder snapshots and distribution planning |
+| **Event Timeline** | Live event stream: buys, sells, acquisitions, respawns |
 
-# Interactive chat
-OPENAI_API_KEY=your_key bun run examples/typescript/chat.ts
+---
 
-# Basic message processing
-OPENAI_API_KEY=your_key bun run examples/typescript/standalone.ts
+## Architecture
+
 ```
-
-## 🏛️ Architecture Overview
-
-Eliza is a monorepo that contains all the packages needed to run the entire platform.
-
-```
-/
+elizaOK
+├── apps/elizaokbsc/          # Main application
+│   ├── src/
+│   │   ├── memecoin/
+│   │   │   ├── server.ts         # Dashboard + API server (all pages)
+│   │   │   ├── portfolio.ts      # Position management & P&L
+│   │   │   ├── goo-paper-engine.ts   # Goo Arena simulation engine
+│   │   │   ├── worker.ts         # Main loop: discovery, Goo cycles, absorption
+│   │   │   ├── distribution.ts   # Airdrop distribution planning
+│   │   │   ├── config.ts         # Discovery & scoring configuration
+│   │   │   └── store.ts          # In-memory state management
+│   │   └── index.ts          # Entry point
+│   └── assets/               # Logo, avatar, video, audio
 ├── packages/
-│   ├── server/         # Core backend server (Express.js)
-│   ├── client/         # Frontend web interface (React)
-│   ├── cli/            # Command-line tool for managing projects
-│   ├── core/           # Shared utilities, basic-capabilities plugin, and functions
-│   ├── app/            # Cross-platform desktop app (Tauri)
-│   ├── plugin-sql/     # Database integration (Postgres, PGLite)
-│   └── ...             # Other plugins and project starters
+│   ├── core/                 # elizaOS core runtime
+│   ├── plugin-sql/           # PGLite database integration
+│   └── server/               # Express.js backend
 └── ...
 ```
 
-- **`@elizaos/server`**: The Express.js backend that runs your agents and exposes the API.
-- **`@elizaos/client`**: The React-based web UI for managing and interacting with your agents.
-- **`@elizaos/cli`**: The central tool for scaffolding, running, and managing your projects.
-- **`@elizaos/core`**: The core package that includes the basic-capabilities plugin which handles message processing and basic agent actions.
+### Tech Stack
 
-## 🤝 How to Contribute
+| Component | Technology |
+|-----------|-----------|
+| Runtime | Bun + TypeScript |
+| Framework | elizaOS 2.0 |
+| Data Source | GeckoTerminal API (real-time BSC on-chain) |
+| Chain | BNB Smart Chain (BSC) |
+| DEX | PancakeSwap V2, Four.Meme |
+| Database | PGLite (in-process PostgreSQL) |
+| AI Inference | OpenAI / ElizaCloud models |
+| Deployment | PM2 + nginx on Ubuntu VPS |
 
-We welcome contributions from the community! Please read our `CONTRIBUTING.md` guide to get started.
+---
 
-- **Report a Bug**: Open an issue using the [Bug Report](.github/ISSUE_TEMPLATE/bug_report.md) template.
-- **Request a Feature**: Use the [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md) template.
-- **Submit a Pull Request**: Please open an issue first to discuss your proposed changes.
+## API Reference
 
-## 📜 License
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/elizaok/candidates` | Current candidate tokens with scores |
+| `GET /api/elizaok/portfolio` | Portfolio positions and P&L |
+| `GET /api/goo/agents` | All Goo agent data and rankings |
+| `GET /api/notifications` | Live event notifications |
+| `GET /api/absorption/status` | Strategy absorption state |
+| `GET /api/market-intel/signals` | Market intelligence signals |
+| `GET /api/elizaok/distribution` | Airdrop distribution status |
+| `POST /api/goo/agents/spawn` | Launch new Goo agent |
+| `POST /api/goo/agents/:id/acquire` | Acquire specific agent |
 
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+---
 
-## 🎓 Citation
+## Pages
 
-If you use Eliza in your research, please cite our paper:
+| URL | Page |
+|-----|------|
+| `/` | Landing page with immersive video background |
+| `/dashboard` | Full trading dashboard with all panels |
+| `/goo` | Goo Arena — agent competition and rankings |
+| `/docs` | Documentation (English & Chinese) |
+| `/airdrop` | Airdrop eligibility checker and distribution |
 
-```bibtex
-@article{walters2025eliza,
-  title={Eliza: A Web3 friendly AI Agent Operating System},
-  author={Walters, Shaw and Gao, Sam and Nerd, Shakker and Da, Feng and Williams, Warren and Meng, Ting-Chien and Han, Hunter and He, Frank and Zhang, Allen and Wu, Ming and others},
-  journal={arXiv preprint arXiv:2501.06781},
-  year={2025}
-}
+---
+
+## Roadmap
+
+- [x] **Phase 1 — MVP**: BSC token discovery, scoring engine, paper trading, Goo Arena, Dashboard
+- [x] **Phase 2 — Strategy Evolution**: Multi-stage TP, trailing stop, Smart Exit, KOL-adaptive TP, strategy absorption
+- [x] **Phase 3 — Flywheel & UI**: Revenue flywheel, live notifications, event timeline, P&L charts, mobile responsive
+- [ ] **Phase 4 — Live Trading**: Real BNB execution, risk controls, wallet integration
+- [ ] **Phase 5 — Multi-Chain**: Expand to other EVM chains, cross-chain arbitrage
+- [ ] **Phase 6 — DAO Governance**: $ElizaOK holders vote on strategy parameters & profit distribution
+
+---
+
+## Team
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://x.com/baogerbao"><strong>Baoger</strong></a><br/>
+      <sub>Founder</sub><br/>
+      <a href="https://x.com/baogerbao"><img src="https://img.shields.io/badge/-@baogerbao-000?style=flat-square&logo=x&logoColor=white" /></a>
+    </td>
+    <td align="center">
+      <a href="https://x.com/spaceodili"><strong>Odili</strong></a><br/>
+      <sub>Head of Engineering</sub><br/>
+      <a href="https://x.com/spaceodili"><img src="https://img.shields.io/badge/-@spaceodili-000?style=flat-square&logo=x&logoColor=white" /></a>
+    </td>
+    <td align="center">
+      <a href="https://x.com/friesmakesfries"><strong>Fries</strong></a><br/>
+      <sub>Operations & Marketing</sub><br/>
+      <a href="https://x.com/friesmakesfries"><img src="https://img.shields.io/badge/-@friesmakesfries-000?style=flat-square&logo=x&logoColor=white" /></a>
+    </td>
+  </tr>
+</table>
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- [Bun](https://bun.sh/) (latest)
+- Node.js v23+
+
+### Local Development
+
+```bash
+git clone https://github.com/elizaokbsc/eliza.git
+cd eliza
+bun install
+
+# Configure environment
+cp apps/elizaokbsc/.env.example apps/elizaokbsc/.env
+# Edit .env with your API keys
+
+# Start the server
+bun run apps/elizaokbsc/src/index.ts
 ```
 
-## Contributors
+Dashboard will be available at `http://localhost:4048`.
 
-<a href="https://github.com/elizaos/eliza/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=elizaos/eliza" alt="Eliza project contributors" />
-</a>
+### Production Deployment
 
-## Star History
+```bash
+pm2 start "bun --env-file=apps/elizaokbsc/.env run apps/elizaokbsc/src/index.ts" \
+  --name elizaok --cwd /path/to/eliza
+```
 
-[![Star History Chart](https://api.star-history.com/svg?repos=elizaos/eliza&type=Date)](https://star-history.com/#elizaos/eliza&Date)
+---
+
+## License
+
+This project is built on [elizaOS](https://github.com/elizaos/eliza) and licensed under the [MIT License](LICENSE).
+
+---
+
+<div align="center">
+  <strong>elizaOK</strong> &mdash; AI that evolves. Value that compounds.<br/>
+  <sub>Built on BNB Chain &middot; Powered by elizaOS &middot; Accelerated by ElizaCloud</sub>
+</div>
