@@ -12,6 +12,7 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const appDir = path.join(repoRoot, "apps", "app");
 const iosDir = path.join(appDir, "ios", "App");
 const androidDir = path.join(appDir, "android");
+const iosWorkspacePath = path.join(iosDir, "App.xcworkspace");
 const prepareIosCocoapodsScript =
   firstExisting([
     path.join(
@@ -116,6 +117,21 @@ async function ensureCapacitorPlatform(platform) {
   await run("bun", ["x", "capacitor", "add", platform], { cwd: appDir });
 }
 
+async function ensureIosWorkspace() {
+  if (fs.existsSync(iosWorkspacePath)) {
+    return;
+  }
+
+  console.log("[mobile-build] Running CocoaPods install for iOS workspace...");
+  await run("pod", ["install"], { cwd: iosDir });
+
+  if (!fs.existsSync(iosWorkspacePath)) {
+    throw new Error(
+      `Expected iOS workspace at ${iosWorkspacePath} after pod install.`,
+    );
+  }
+}
+
 async function buildAndroid() {
   const androidSdkRoot = resolveAndroidSdkRoot();
   const javaHome = resolveJavaHome();
@@ -170,6 +186,7 @@ async function buildIos() {
   await ensureCapacitorPlatform("ios");
   await run("bash", [prepareIosCocoapodsScript], { cwd: repoRoot });
   await run("bun", ["run", "cap:sync:ios"], { cwd: appDir });
+  await ensureIosWorkspace();
   await run(
     "xcodebuild",
     [
