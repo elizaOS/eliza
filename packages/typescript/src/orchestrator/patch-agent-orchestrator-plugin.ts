@@ -22,6 +22,7 @@ import {
 	getCoordinator as getCoordinatorFromPty,
 	PTYService,
 } from "./services/pty-service.ts";
+import type { SwarmCoordinator } from "./services/swarm-coordinator.ts";
 import { CodingWorkspaceService } from "./services/workspace-service.ts";
 import { installTaskProgressStreamer } from "./task-progress-streamer.ts";
 

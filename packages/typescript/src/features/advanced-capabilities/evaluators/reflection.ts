@@ -1,8 +1,8 @@
 import { v4 } from "uuid";
 import z from "zod";
-import { getEntityDetails } from "../../entities.ts";
-import { requireEvaluatorSpec } from "../../generated/spec-helpers.ts";
-import { reflectionEvaluatorTemplate } from "../../prompts.ts";
+import { getEntityDetails } from "../../../entities.ts";
+import { requireEvaluatorSpec } from "../../../generated/spec-helpers.ts";
+import { reflectionEvaluatorTemplate } from "../../../prompts.ts";
 import type {
 	ActionResult,
 	Entity,

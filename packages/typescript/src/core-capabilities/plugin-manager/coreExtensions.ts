@@ -1,3 +1,4 @@
+import type { EventPayload, EventPayloadMap } from "../../types/events.ts";
 import type { IAgentRuntime } from "../../types/runtime.ts";
 import type { ServiceTypeName } from "../../types/service.ts";
 
