@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { statSync } from "node:fs";
 import {
   createServer,
   type IncomingMessage,
@@ -50,8 +51,8 @@ import type {
 const ELIZAOK_ASSET_DIR = (() => {
   const fromCwd = path.resolve(process.cwd(), "assets");
   const fromApp = path.resolve(process.cwd(), "apps/elizaokbsc/assets");
-  try { require("fs").statSync(path.join(fromCwd, "avatar.png")); return fromCwd; } catch {}
-  try { require("fs").statSync(path.join(fromApp, "avatar.png")); return fromApp; } catch {}
+  try { statSync(path.join(fromCwd, "avatar.png")); return fromCwd; } catch {}
+  try { statSync(path.join(fromApp, "avatar.png")); return fromApp; } catch {}
   return fromCwd;
 })();
 
