@@ -1,16 +1,8 @@
-<<<<<<< HEAD
 name = "${APP_NAME}-eliza-cloud-proxy"
-=======
-name = "milady-eliza-cloud-proxy"
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 main = "worker.ts"
 compatibility_date = "2026-03-15"
 
 [vars]
 ELIZA_CLOUD_ORIGIN = "https://www.elizacloud.ai"
-<<<<<<< HEAD
 CF_ALLOWED_ORIGINS = ""
 CF_PROXY_PATH_PREFIXES = ""
-=======
-ALLOWED_ORIGINS = "https://app.milady.ai,https://milady.ai,http://localhost:5173,http://127.0.0.1:5173"
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
