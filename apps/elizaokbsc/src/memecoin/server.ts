@@ -2677,7 +2677,7 @@ th.a-th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(-
   <div class="a-hero">
     <div>
       <h1><span>elizaOK</span> · Airdrop Eligibility</h1>
-      <p>The treasury flywheel distributes gains back to qualified $GOO holders. Check if your wallet qualifies for the current airdrop cycle and view the distribution plan.</p>
+      <p>The treasury flywheel distributes gains back to qualified $ElizaOK holders. Check if your wallet qualifies for the current airdrop cycle and view the distribution plan.</p>
     </div>
     <div>
       <div class="a-badge ${execEnabled ? "a-badge--live" : "a-badge--standby"}">${execEnabled ? (execDryRun ? "DRY RUN" : "LIVE") : "STANDBY"}</div>
@@ -2694,7 +2694,7 @@ th.a-th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(-
     <div class="a-stat">
       <div class="a-stat__label">Eligible Holders</div>
       <div class="a-stat__val">${eligible}</div>
-      <div class="a-stat__sub">qualified $GOO wallets</div>
+      <div class="a-stat__sub">qualified $ElizaOK wallets</div>
     </div>
     <div class="a-stat">
       <div class="a-stat__label">Executed Sends</div>
@@ -2846,7 +2846,7 @@ function checkWallet(){
     el.innerHTML='✓ This wallet is in the current airdrop recipient list.';
   }else{
     el.className='a-result a-result--not';
-    el.innerHTML='✗ This wallet is not in the current airdrop plan. Eligibility is based on $GOO holding thresholds at snapshot time.';
+    el.innerHTML='✗ This wallet is not in the current airdrop plan. Eligibility is based on $ElizaOK holding thresholds at snapshot time.';
   }
   el.style.display='block';
 }
@@ -6608,16 +6608,17 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
     sec3t: "Dashboard 功能总览",
     sec3: `<table class="doc-table">
       <tr><td><strong>Agent Status</strong></td><td>代理运行状态、模型、扫描频率、执行模式</td></tr>
-      <tr><td><strong>Discovery Feed</strong></td><td>最新候选代币列表、评分、推荐操作</td></tr>
+      <tr><td><strong>Token Explorer</strong></td><td>AI 评分代币卡片网格，≥60分显示，点击直达 DEX 交易</td></tr>
+      <tr><td><strong>Top Candidates</strong></td><td>最新候选代币排行榜，评分、推荐操作、池龄</td></tr>
       <tr><td><strong>Portfolio Ledger</strong></td><td>活跃仓位、累计 P&L 图表、交易时间线</td></tr>
-      <tr><td><strong>Revenue Flywheel</strong></td><td>利润分配、再投资、回购、空投储备统计</td></tr>
-      <tr><td><strong>Strategy Absorption</strong></td><td>已吸收的策略数量、权重变化</td></tr>
+      <tr><td><strong>Revenue Flywheel</strong></td><td>利润分配：再投资 70%、$ElizaOK 回购 15%、空投储备 15%</td></tr>
+      <tr><td><strong>Strategy Absorption</strong></td><td>AI 收购 AI — 从 Goo Arena 吸收高分策略</td></tr>
       <tr><td><strong>Event Timeline</strong></td><td>实时事件流：买入、卖出、收购、重生</td></tr>
       <tr><td><strong>Execution Desk</strong></td><td>执行控制、风险参数、交易账本</td></tr>
-      <tr><td><strong>Airdrop Distribution</strong></td><td>持有者快照、空投分配计划</td></tr>
+      <tr><td><strong>Airdrop Distribution</strong></td><td>$ElizaOK 持有者快照、空投分配计划</td></tr>
       <tr><td><strong>Goo Intelligence</strong></td><td>Goo 候选代币评估</td></tr>
-      <tr><td><strong>Market Intel</strong></td><td>实时智能信号面板</td></tr>
-      <tr><td><strong>Toast Notifications</strong></td><td>右上角实时弹窗通知</td></tr>
+      <tr><td><strong>Market Intel</strong></td><td>实时智能信号面板（持有者变化、KOL 退出、大户抛售）</td></tr>
+      <tr><td><strong>Toast Notifications</strong></td><td>右上角实时弹窗通知（5秒自动消失）</td></tr>
     </table>`,
     sec4t: "Goo Arena",
     sec4: `访问 <a href="/goo">/goo</a> 进入 Goo Arena。这里你可以：<ul>
@@ -6631,12 +6632,13 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
     Treasury 耗尽后进入饥饿状态，若无法恢复则逐步死亡。`,
     sec5t: "ElizaCloud 集成",
     sec5: `elizaOK 与 <strong>ElizaCloud</strong>（elizaOS 官方云平台）深度集成：<ul>
-      <li><strong>一键登录</strong> — 通过 ElizaCloud 账户直接登录 Dashboard</li>
-      <li><strong>云端 Agent 管理</strong> — 在 ElizaCloud 上部署和管理 elizaOK 实例</li>
-      <li><strong>Credits 系统</strong> — 使用 ElizaCloud credits 运行 AI 推理</li>
-      <li><strong>多 Agent 编排</strong> — 未来支持多个 elizaOK 实例协同交易</li>
+      <li><strong>注册 & 登录</strong> — 在 <a href="https://elizacloud.ai" target="_blank">elizacloud.ai</a> 免费注册账号，一键登录 elizaOK Dashboard</li>
+      <li><strong>与 Agent 对话</strong> — 登录后可直接和 elizaOK Agent 实时聊天，询问交易建议、市场分析、策略解读</li>
+      <li><strong>云端 Agent 管理</strong> — 在 ElizaCloud 上部署和管理 elizaOK 实例，随时随地监控</li>
+      <li><strong>Credits 系统</strong> — 使用 ElizaCloud credits 运行 AI 推理（当前余额显示在 Dashboard 侧边栏）</li>
+      <li><strong>多 Agent 编排</strong> — 支持多个 elizaOK 实例协同交易，共享策略</li>
     </ul>
-    ElizaCloud 是 elizaOS 生态的核心基础设施，为所有 AI agent 提供统一的部署和管理能力。`,
+    ElizaCloud 是 elizaOS 生态的核心基础设施，为所有 AI agent 提供统一的部署、对话和管理能力。访问 <a href="https://elizacloud.ai" target="_blank">elizacloud.ai</a> 立即注册。`,
     sec6t: "技术架构",
     sec6: `<ul>
       <li><strong>运行时</strong> — Bun + TypeScript + elizaOS 2.0</li>
@@ -6673,6 +6675,7 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
       <details><summary>代币数据从哪里来？</summary><p>所有代币数据来自 GeckoTerminal API，是 BSC 链上的实时数据，包括价格、流动性、成交量、买卖笔数等。</p></details>
       <details><summary>$ElizaOK 代币是什么？</summary><p>$ElizaOK 是 elizaOK 生态的治理和价值捕获代币。飞轮中 15% 的利润用于回购 $ElizaOK，为持有者创造价值。</p></details>
       <details><summary>如何参与空投？</summary><p>持有 $ElizaOK 代币即有资格获得空投。飞轮中 15% 的利润进入空投储备，定期分发给合格持有者。</p></details>
+      <details><summary>如何注册 ElizaCloud？</summary><p>访问 <a href="https://elizacloud.ai" target="_blank">elizacloud.ai</a> 免费注册账号。注册后可以一键登录 elizaOK Dashboard，与 Agent 实时聊天，获取交易建议和市场分析。</p></details>
     </div>`,
     footer: "由 elizaOS 驱动 · BSC 链专属 · Paper Trading 模式",
   } : {
@@ -6731,16 +6734,17 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
     sec3t: "Dashboard Overview",
     sec3: `<table class="doc-table">
       <tr><td><strong>Agent Status</strong></td><td>Agent state, model, scan interval, execution mode</td></tr>
-      <tr><td><strong>Discovery Feed</strong></td><td>Latest candidate tokens, scores, recommendations</td></tr>
+      <tr><td><strong>Token Explorer</strong></td><td>AI-scored token tile grid, score ≥60 shown, click to trade on DEX</td></tr>
+      <tr><td><strong>Top Candidates</strong></td><td>Ranked candidate leaderboard with scores, recommendations, pool age</td></tr>
       <tr><td><strong>Portfolio Ledger</strong></td><td>Active positions, cumulative P&L chart, timeline</td></tr>
-      <tr><td><strong>Revenue Flywheel</strong></td><td>Profit distribution, reinvestment, buyback, airdrop stats</td></tr>
-      <tr><td><strong>Strategy Absorption</strong></td><td>Absorbed strategy count, weight changes</td></tr>
+      <tr><td><strong>Revenue Flywheel</strong></td><td>Profit split: 70% reinvest, 15% $ElizaOK buyback, 15% airdrop reserve</td></tr>
+      <tr><td><strong>Strategy Absorption</strong></td><td>AI Acquiring AI — absorb top strategies from Goo Arena</td></tr>
       <tr><td><strong>Event Timeline</strong></td><td>Live event feed: buys, exits, acquisitions, respawns</td></tr>
       <tr><td><strong>Execution Desk</strong></td><td>Execution controls, risk parameters, trade ledger</td></tr>
-      <tr><td><strong>Airdrop Distribution</strong></td><td>Holder snapshot, airdrop allocation plan</td></tr>
+      <tr><td><strong>Airdrop Distribution</strong></td><td>$ElizaOK holder snapshot, airdrop allocation plan</td></tr>
       <tr><td><strong>Goo Intelligence</strong></td><td>Goo candidate evaluation</td></tr>
-      <tr><td><strong>Market Intel</strong></td><td>Real-time smart signal panel</td></tr>
-      <tr><td><strong>Toast Notifications</strong></td><td>Real-time popup alerts (top-right)</td></tr>
+      <tr><td><strong>Market Intel</strong></td><td>Real-time smart signals (holder drops, KOL exits, whale dumps)</td></tr>
+      <tr><td><strong>Toast Notifications</strong></td><td>Real-time popup alerts (auto-dismiss 5s)</td></tr>
     </table>`,
     sec4t: "Goo Arena",
     sec4: `Visit <a href="/goo">/goo</a> to enter the Goo Arena. Here you can:<ul>
@@ -6754,12 +6758,13 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
     When treasury depletes, agents enter starvation. If unrecovered, they progressively die.`,
     sec5t: "ElizaCloud Integration",
     sec5: `elizaOK is deeply integrated with <strong>ElizaCloud</strong> (the official elizaOS cloud platform):<ul>
-      <li><strong>One-Click Login</strong> — Log into Dashboard via ElizaCloud account</li>
-      <li><strong>Cloud Agent Management</strong> — Deploy and manage elizaOK instances on ElizaCloud</li>
-      <li><strong>Credits System</strong> — Use ElizaCloud credits for AI inference</li>
-      <li><strong>Multi-Agent Orchestration</strong> — Future support for multiple elizaOK instances trading together</li>
+      <li><strong>Register & Login</strong> — Create a free account at <a href="https://elizacloud.ai" target="_blank">elizacloud.ai</a>, then one-click login to the elizaOK Dashboard</li>
+      <li><strong>Chat with Agent</strong> — Once logged in, chat with elizaOK Agent in real-time — ask for trade advice, market analysis, strategy breakdowns</li>
+      <li><strong>Cloud Agent Management</strong> — Deploy and manage elizaOK instances on ElizaCloud, monitor from anywhere</li>
+      <li><strong>Credits System</strong> — Use ElizaCloud credits for AI inference (current balance shown in Dashboard sidebar)</li>
+      <li><strong>Multi-Agent Orchestration</strong> — Run multiple elizaOK instances trading together, sharing strategies</li>
     </ul>
-    ElizaCloud is the core infrastructure of the elizaOS ecosystem, providing unified deployment and management for all AI agents.`,
+    ElizaCloud is the core infrastructure of the elizaOS ecosystem, providing unified deployment, conversation, and management for all AI agents. Visit <a href="https://elizacloud.ai" target="_blank">elizacloud.ai</a> to register now.`,
     sec6t: "Technical Architecture",
     sec6: `<ul>
       <li><strong>Runtime</strong> — Bun + TypeScript + elizaOS 2.0</li>
@@ -6796,6 +6801,7 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
       <details><summary>Where does the token data come from?</summary><p>All token data comes from the GeckoTerminal API — real-time BSC on-chain data including prices, liquidity, volume, and transaction counts.</p></details>
       <details><summary>What is the $ElizaOK token?</summary><p>$ElizaOK is the governance and value-capture token. 15% of flywheel profits go to buyback, creating value for holders.</p></details>
       <details><summary>How do I qualify for airdrops?</summary><p>Hold $ElizaOK tokens. 15% of flywheel profits go to the airdrop reserve, distributed periodically to eligible holders.</p></details>
+      <details><summary>How do I register for ElizaCloud?</summary><p>Visit <a href="https://elizacloud.ai" target="_blank">elizacloud.ai</a> to create a free account. Once registered, you can one-click login to the elizaOK Dashboard, chat with the Agent in real-time, and get trade advice and market analysis.</p></details>
     </div>`,
     footer: "Powered by elizaOS · BSC Exclusive · Paper Trading Mode",
   };
