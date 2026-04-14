@@ -196,23 +196,24 @@ function renderLandingPage(): string {
     .bottom-title { font-size:26px;font-weight:400;color:var(--yellow);letter-spacing:-0.02em;cursor:pointer;transition:color 0.4s,text-shadow 0.4s,transform 0.3s;text-shadow:0 0 12px rgba(246,231,15,0.3);animation:title-breathe 3s ease-in-out infinite;user-select:none; }
     @media(min-width:768px){.bottom-title{font-size:32px;width:30%;}}
     @media(max-width:768px){
-      .social-icons{position:fixed;left:auto;right:auto;top:auto;bottom:16px;left:50%;transform:translateX(-50%);flex-direction:row;gap:20px;z-index:20;}
-      .social-icons a::after{bottom:auto;top:-28px;}
-      .audio-player{position:fixed;top:16px;right:16px;left:auto;transform:none;flex-direction:row;gap:12px;z-index:20;}
-      .bottom-bar{padding:0 16px 72px;gap:8px;}
+      .social-icons{position:fixed;left:14px;right:auto;top:52px;bottom:auto;transform:none;flex-direction:column;gap:16px;z-index:20;}
+      .social-icons a::after{left:auto;right:auto;bottom:auto;top:50%;left:calc(100% + 8px);transform:translateY(-50%);}
+      .audio-player{position:fixed;top:52px;right:14px;left:auto;transform:none;flex-direction:column;gap:14px;z-index:20;}
+      .bottom-bar{padding:0 16px 32px;gap:8px;}
       .bottom-title{font-size:22px;text-align:center;width:100%;}
     }
     @media(max-width:480px){
       .marquee-track span{font-size:10px;}
-      .social-icons{gap:16px;bottom:14px;}
+      .social-icons{left:12px;top:48px;gap:14px;}
       .social-icons a svg{width:20px;height:20px;}
-      .bottom-bar{padding:0 12px 64px;gap:8px;}
+      .social-icons a{padding:6px;background:rgba(0,0,0,.35);border-radius:50%;backdrop-filter:blur(6px);}
+      .bottom-bar{padding:0 12px 28px;gap:8px;}
       .bottom-title{font-size:18px;text-align:center;width:100%;}
       .center-dots{margin-left:6px;gap:3px;}
       .center-dots span{width:3px;height:3px;}
-      .audio-player{top:12px;right:12px;gap:10px;}
+      .audio-player{top:48px;right:12px;gap:12px;}
       .audio-player button svg{width:20px;height:20px;}
-      .audio-player button{padding:6px;background:rgba(0,0,0,.4);border-radius:50%;}
+      .audio-player button{padding:6px;background:rgba(0,0,0,.35);border-radius:50%;backdrop-filter:blur(6px);}
     }
     .bottom-title:hover { color:var(--yellow-soft);text-shadow:0 0 32px var(--yellow-glow),0 0 60px rgba(246,231,15,0.2);transform:scale(1.03); }
     .bottom-title.flash { animation:title-flash 0.5s ease-out; }
