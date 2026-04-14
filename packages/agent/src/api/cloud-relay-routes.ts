@@ -34,7 +34,7 @@ export interface CloudRelayRouteState {
 }
 
 export async function handleCloudRelayRoute(
-  req: http.IncomingMessage,
+  _req: http.IncomingMessage,
   res: http.ServerResponse,
   pathname: string,
   method: string,

@@ -1,21 +1,7 @@
-/**
- * Agent tab bar + per-agent auth flow UI + availability line.
- *
- * Renders the `SegmentedGroup` of agent buttons (Claude / Gemini /
- * Codex / Aider), each of which either flips the active tab or —
- * when the preflight reports `auth.status === "unauthenticated"` —
- * becomes an "Authenticate {{agent}}" launcher. Also renders the
- * post-auth result banner (URL / device code / retry) and the
- * "Availability" summary line below the tabs.
- *
- * Extracted from `CodingAgentSettingsSection.tsx` to keep that file
- * under the project's ~500 LOC guideline. Parent owns all state and
- * passes handlers + selectors down.
- */
-
-import { Button, SettingsControls } from "@elizaos/app-core";
-import type { AgentPreflightResult } from "@elizaos/app-core/api";
-import { useApp } from "@elizaos/app-core/state";
+import type { AgentPreflightResult } from "@elizaos/app-core/api/client-types-cloud";
+import { useApp } from "@elizaos/app-core/state/useApp";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
 import {
   AGENT_LABELS,
   AGENT_TABS,

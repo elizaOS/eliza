@@ -1,8 +1,12 @@
+import path from "node:path";
 import type { AgentRuntime, UUID } from "@elizaos/core";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
+import { resolveUserPath } from "../config/paths.js";
 import {
   getDefaultStylePreset,
   normalizeCharacterLanguage,
 } from "../onboarding-presets.js";
+import { clearPersistedOnboardingConfig } from "./provider-switch-config.js";
 import { detectRuntimeModel } from "./agent-model.js";
 import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
 
@@ -45,6 +49,9 @@ export interface AgentAdminRouteState {
   chatConnectionReady: { userId: UUID; roomId: UUID; worldId: UUID } | null;
   chatConnectionPromise: Promise<void> | null;
   pendingRestartReasons: string[];
+  conversations?: Map<string, unknown>;
+  activeConversationId?: string | null;
+  conversationRestorePromise?: Promise<void> | null;
 }
 
 export interface AgentAdminRouteContext
@@ -60,6 +67,24 @@ export interface AgentAdminRouteContext
   stateDirExists: (resolvedState: string) => boolean;
   removeStateDir: (resolvedState: string) => void;
   logWarn: (message: string) => void;
+}
+
+function resolveResetPgliteDataDir(
+  config: ReturnType<typeof loadElizaConfig>,
+  stateDir: string,
+): string {
+  const explicitDataDir = process.env.PGLITE_DATA_DIR?.trim();
+  if (explicitDataDir) {
+    return resolveUserPath(explicitDataDir);
+  }
+
+  const configuredDataDir = config.database?.pglite?.dataDir?.trim();
+  if (configuredDataDir) {
+    return resolveUserPath(configuredDataDir);
+  }
+
+  const workspaceDir = config.agents?.defaults?.workspace ?? `${stateDir}/workspace`;
+  return path.join(resolveUserPath(workspaceDir), ".eliza", ".elizadb");
 }
 
 export async function handleAgentAdminRoutes(
@@ -147,6 +172,49 @@ export async function handleAgentAdminRoutes(
       }
 
       const stateDir = resolveStateDir();
+      const config = loadElizaConfig();
+      const dataDir = resolveResetPgliteDataDir(config, stateDir);
+      if (path.basename(dataDir) !== ".elizadb") {
+        logWarn(
+          `[eliza-api] Refusing to delete unexpected PGlite dir during reset: "${dataDir}"`,
+        );
+      } else if (stateDirExists(dataDir)) {
+        removeStateDir(dataDir);
+      }
+
+      clearPersistedOnboardingConfig(config);
+      saveElizaConfig(config);
+
+      state.agentState = "stopped";
+      state.agentName = resolveDefaultAgentName(config);
+      state.model = undefined;
+      state.startedAt = undefined;
+      state.config = config;
+      state.chatRoomId = null;
+      state.chatUserId = null;
+      state.chatConnectionReady = null;
+      state.chatConnectionPromise = null;
+      state.pendingRestartReasons = [];
+      state.conversations?.clear();
+      state.activeConversationId = null;
+      state.conversationRestorePromise = null;
+
+      json(res, { ok: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      error(res, `Reset failed: ${message}`, 500);
+    }
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api@elizaos/agent/reset") {
+    try {
+      if (state.runtime) {
+        await state.runtime.stop();
+        state.runtime = null;
+      }
+
+      const stateDir = resolveStateDir();
       const resolvedState = resolvePath(stateDir);
       const home = getHomeDir();
       const isSafe = isSafeResetStateDir(resolvedState, home);
@@ -176,6 +244,9 @@ export async function handleAgentAdminRoutes(
       state.chatConnectionReady = null;
       state.chatConnectionPromise = null;
       state.pendingRestartReasons = [];
+      state.conversations?.clear();
+      state.activeConversationId = null;
+      state.conversationRestorePromise = null;
 
       json(res, { ok: true });
     } catch (err) {

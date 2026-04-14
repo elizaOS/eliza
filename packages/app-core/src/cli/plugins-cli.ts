@@ -124,9 +124,9 @@ function displayPluginConfig(
 }
 
 async function getPluginManager(): Promise<PluginManagerLike> {
-  // plugin-manager is now built into @elizaos/core core-capabilities
+  // plugin-manager is now built into @elizaos/core features
   const { PluginManagerService } = await import(
-    "@elizaos/core/core-capabilities/plugin-manager/index"
+    "@elizaos/core/features/plugin-manager/index"
   );
   const PluginManagerServiceCtor = PluginManagerService as unknown as new (
     runtime: IAgentRuntime,
@@ -689,9 +689,7 @@ export function registerPluginsCli(program: Command): void {
       try {
         const _nodePath = await import("node:path");
         const nodeFs = await import("node:fs");
-        const { resolveUserPath } = await import(
-          "@elizaos/agent/config/paths"
-        );
+        const { resolveUserPath } = await import("@elizaos/agent/config/paths");
         const { loadElizaConfig, saveElizaConfig } = await import(
           "../config/config"
         );

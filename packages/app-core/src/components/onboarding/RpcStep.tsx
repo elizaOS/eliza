@@ -1,5 +1,5 @@
-import { useApp } from "@elizaos/app-core/state";
-import { Button, Input } from "@elizaos/app-core";
+import { useApp } from "../../state/useApp";
+
 import { useState } from "react";
 import {
   onboardingCardSurfaceClassName,
@@ -12,6 +12,7 @@ import {
   onboardingRecommendedSurfaceClassName,
   onboardingRecommendedSurfaceHoverClassName,
 } from "./onboarding-form-primitives";
+import { Button, Input } from "@elizaos/ui";
 import {
   OnboardingSecondaryActionButton,
   OnboardingStepHeader,

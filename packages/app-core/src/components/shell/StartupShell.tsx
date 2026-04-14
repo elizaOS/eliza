@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import { useApp } from "../../state";
-import type { StartupErrorState } from "../../state/types";
+import type { StartupErrorReason, StartupErrorState } from "../../state/types";
 import { resolveAppAssetUrl } from "../../utils";
 import { OnboardingWizard } from "../onboarding/OnboardingWizard";
 import { PairingView } from "./PairingView";
@@ -122,7 +122,16 @@ export function StartupShell() {
   // Error — delegate
   if (phase === "error") {
     const coordState = startupCoordinator.state;
-    const errState = coordState.phase === "error" ? coordState : null;
+    const errState =
+      coordState.phase === "error" &&
+      typeof coordState.reason === "string" &&
+      typeof coordState.message === "string"
+        ? {
+            reason: coordState.reason as StartupErrorReason,
+            message: coordState.message,
+            timedOut: coordState.timedOut === true,
+          }
+        : null;
     const errorState: StartupErrorState = startupError ?? {
       reason: errState?.reason ?? "unknown",
       message:

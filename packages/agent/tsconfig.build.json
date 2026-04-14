@@ -2,7 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "allowSyntheticDefaultImports": true,
-    "allowImportingTsExtensions": false,
+    "allowImportingTsExtensions": true,
     "declaration": true,
     "declarationMap": true,
     "esModuleInterop": true,
@@ -10,7 +10,10 @@
     "outDir": "./dist",
     "resolveJsonModule": true,
     "rootDir": "../..",
-    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+    "rewriteRelativeImportExtensions": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "types": [],
+    "typeRoots": ["../../../node_modules/@types", "node_modules/@types"]
   },
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
   "include": ["src"]

@@ -3,16 +3,9 @@
  */
 
 import { Keyboard } from "@capacitor/keyboard";
-import { subscribeDesktopBridgeEvent } from "@elizaos/app-core/bridge";
-import { isIOS, isNative } from "@elizaos/app-core/platform";
-import {
-  Button,
-  DrawerSheet,
-  DrawerSheetContent,
-  DrawerSheetHeader,
-  DrawerSheetTitle,
-  ErrorBoundary,
-} from "@elizaos/app-core";
+
+import { subscribeDesktopBridgeEvent } from "./bridge/electrobun-rpc";
+import { isIOS, isNative } from "./platform/init";
 import {
   type ReactNode,
   useCallback,
@@ -20,39 +13,40 @@ import {
   useMemo,
   useState,
 } from "react";
-import {
-  AppsPageView,
-  BrowserWorkspaceView,
-  BugReportModal,
-  CharacterEditor,
-  ChatView,
-  ConnectionFailedBanner,
-  ConnectionLostOverlay,
-  ConversationsSidebar,
-  CustomActionEditor,
-  CustomActionsPanel,
-  DatabasePageView,
-  DesktopWorkspaceSection,
-  FineTuningView,
-  GameViewOverlay,
-  Header,
-  HeartbeatsDesktopShell,
-  HeartbeatsView,
-  InventoryView,
-  LogsPageView,
-  MemoryViewerView,
-  PluginsPageView,
-  RelationshipsView,
-  RuntimeView,
-  SaveCommandModal,
-  SettingsView,
-  ShellOverlays,
-  SkillsView,
-  StartupShell,
-  StreamView,
-  SystemWarningBanner,
-  TrajectoriesView,
-} from "./components";
+import { AppsPageView } from "./components/pages/AppsPageView";
+import { BrowserWorkspaceView } from "./components/pages/BrowserWorkspaceView";
+import { BugReportModal } from "./components/shell/BugReportModal";
+import { CharacterEditor } from "./components/character/CharacterEditor";
+import { ChatView } from "./components/pages/ChatView";
+import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
+import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
+import { ConversationsSidebar } from "./components/conversations/ConversationsSidebar";
+import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
+import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
+import { DatabasePageView } from "./components/pages/DatabasePageView";
+import { ConnectorsPageView } from "./components/pages/ConnectorsPageView";
+import { DesktopWorkspaceSection } from "./components/settings/DesktopWorkspaceSection";
+import { FineTuningView } from "./components/settings/FineTuningView";
+import { GameViewOverlay } from "./components/apps/GameViewOverlay";
+import { Header } from "./components/shell/Header";
+import { AutomationsView } from "./components/pages/AutomationsView";
+import { HeartbeatsDesktopShell } from "./components/pages/HeartbeatsView";
+import { HeartbeatsView } from "./components/pages/HeartbeatsView";
+import { InventoryView } from "./components/pages/InventoryView";
+import { LogsPageView } from "./components/pages/LogsPageView";
+import { MemoryViewerView } from "./components/pages/MemoryViewerView";
+import { PluginsPageView } from "./components/pages/PluginsPageView";
+import { RelationshipsView } from "./components/pages/RelationshipsView";
+import { RuntimeView } from "./components/pages/RuntimeView";
+import { SaveCommandModal } from "./components/chat/SaveCommandModal";
+import { SettingsView } from "./components/pages/SettingsView";
+import { ShellOverlays } from "./components/shell/ShellOverlays";
+import { SkillsView } from "./components/pages/SkillsView";
+import { StartupShell } from "./components/shell/StartupShell";
+import { StreamView } from "./components/pages/StreamView";
+import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
+import { TasksPageView } from "./components/pages/TasksPageView";
+import { TrajectoriesView } from "./components/pages/TrajectoriesView";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
 import { TasksEventsPanel } from "./components/chat/TasksEventsPanel";
 import { DeferredSetupChecklist } from "./components/cloud/FlaminaGuide";
@@ -69,6 +63,7 @@ import { useActivityEvents } from "./hooks/useActivityEvents";
 import { APPS_ENABLED, isAppsToolTab } from "./navigation";
 import { useApp } from "./state";
 import type { FlaminaGuideTopic } from "./state/types";
+import { Button, DrawerSheet, DrawerSheetContent, DrawerSheetHeader, DrawerSheetTitle, ErrorBoundary } from "@elizaos/ui";
 
 const CHAT_MOBILE_BREAKPOINT_PX = 820;
 const CHAT_DESKTOP_COMPOSER_UNDERLAY_CLASS =
@@ -150,6 +145,12 @@ function ViewRouter({
         ) : (
           <ChatView />
         );
+      case "tasks":
+        return (
+          <TabContentView>
+            <AutomationsView />
+          </TabContentView>
+        );
       case "character":
       case "character-select":
       case "knowledge":
@@ -169,16 +170,14 @@ function ViewRouter({
       case "connectors":
         return (
           <TabContentView>
-            <SettingsView
-              key="settings-connectors"
-              initialSection="connectors"
-            />
+            <ConnectorsPageView connectorDesktopPlacement="right" />
           </TabContentView>
         );
+      case "automations":
       case "triggers":
         return (
           <TabContentView>
-            <HeartbeatsView />
+            <AutomationsView />
           </TabContentView>
         );
       case "voice":
@@ -328,11 +327,7 @@ export function App() {
         /* ignore */
       });
     };
-  }, [
-    activeOverlayApp,
-    backendConnection?.state,
-    startupCoordinator.phase,
-  ]);
+  }, [activeOverlayApp, backendConnection?.state, startupCoordinator.phase]);
 
   const [customActionsPanelOpen, setCustomActionsPanelOpen] = useState(false);
   const [customActionsEditorOpen, setCustomActionsEditorOpen] = useState(false);
@@ -355,14 +350,15 @@ export function App() {
   const [characterHeaderActions, setCharacterHeaderActions] =
     useState<ReactNode | null>(null);
 
+  const isConnectors = tab === "connectors";
   const isCompanionTab = tab === "companion";
   const isChat = tab === "chat";
+  const isChatWorkspace = isChat || isConnectors;
   const isCharacterPage =
     tab === "character" || tab === "character-select" || tab === "knowledge";
   const isWallets = tab === "inventory";
-  const isHeartbeats = tab === "triggers";
-  const isSettingsPage =
-    tab === "settings" || tab === "voice" || tab === "connectors";
+  const isHeartbeats = tab === "triggers" || tab === "automations";
+  const isSettingsPage = tab === "settings" || tab === "voice";
   const isAppsToolPage = isAppsToolTab(tab);
   const isDesktopWorkspacePage = tab === "desktop";
   const unreadCount = unreadConversations?.size ?? 0;
@@ -460,11 +456,13 @@ export function App() {
   }, [isChatMobileLayout]);
 
   useEffect(() => {
-    if (!isChat) {
+    if (!isChatWorkspace) {
       setMobileConversationsOpen(false);
+    }
+    if (!isChat) {
       setTasksEventsPanelOpen(false);
     }
-  }, [isChat]);
+  }, [isChat, isChatWorkspace]);
 
   useEffect(() => {
     if (isSettingsPage || settingsInitialSection === null) {
@@ -554,24 +552,24 @@ export function App() {
             <StreamView />
           </main>
         </div>
-      ) : isChat ? (
+      ) : isChatWorkspace ? (
         <div
-          key="chat-shell"
+          key={`chat-shell-${tab}`}
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header
             mobileLeft={mobileChatControls}
             tasksEventsPanelOpen={
-              isChatMobileLayout ? tasksEventsPanelOpen : true
+              isChat && (isChatMobileLayout ? tasksEventsPanelOpen : true)
             }
             onToggleTasksPanel={
-              isChatMobileLayout
+              isChat && isChatMobileLayout
                 ? () => setTasksEventsPanelOpen((o) => !o)
                 : undefined
             }
           />
           <div className="flex flex-1 min-h-0 relative">
-            {!isChatMobileLayout ? (
+            {!isChatMobileLayout && isChat ? (
               <div
                 className={CHAT_DESKTOP_COMPOSER_UNDERLAY_CLASS}
                 data-chat-shell-composer-underlay
@@ -579,13 +577,19 @@ export function App() {
             ) : null}
             {isChatMobileLayout ? (
               <>
-                <main className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden pt-2 px-2">
-                  <DeferredSetupChecklist
-                    className="mb-3"
-                    onOpenTask={handleDeferredTaskOpen}
-                  />
-                  <ChatView />
-                </main>
+                <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden pt-2 px-2">
+                  {isChat ? (
+                    <>
+                      <DeferredSetupChecklist
+                        className="mb-3"
+                        onOpenTask={handleDeferredTaskOpen}
+                      />
+                      <ChatView />
+                    </>
+                  ) : (
+                    <ConnectorsPageView />
+                  )}
+                </div>
 
                 {mobileConversationsOpen && (
                   <DrawerSheet
@@ -611,7 +615,7 @@ export function App() {
                   </DrawerSheet>
                 )}
 
-                {tasksEventsPanelOpen && (
+                {isChat && tasksEventsPanelOpen && (
                   <DrawerSheet
                     open={tasksEventsPanelOpen}
                     onOpenChange={setTasksEventsPanelOpen}
@@ -641,18 +645,26 @@ export function App() {
             ) : (
               <>
                 <ConversationsSidebar key="chat-sidebar-desktop" />
-                <main className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                  <DeferredSetupChecklist
-                    className="mx-3 mb-3 mt-3 xl:mx-5"
-                    onOpenTask={handleDeferredTaskOpen}
+                <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                  {isChat ? (
+                    <>
+                      <DeferredSetupChecklist
+                        className="mx-3 mb-3 mt-3 xl:mx-5"
+                        onOpenTask={handleDeferredTaskOpen}
+                      />
+                      <ChatView key="chat-view-desktop" />
+                    </>
+                  ) : (
+                    <ConnectorsPageView />
+                  )}
+                </div>
+                {isChat ? (
+                  <TasksEventsPanel
+                    open
+                    events={activityEvents}
+                    clearEvents={clearActivityEvents}
                   />
-                  <ChatView key="chat-view-desktop" />
-                </main>
-                <TasksEventsPanel
-                  open
-                  events={activityEvents}
-                  clearEvents={clearActivityEvents}
-                />
+                ) : null}
               </>
             )}
             <CustomActionsPanel
@@ -672,7 +684,7 @@ export function App() {
         >
           <Header />
           <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-            <HeartbeatsDesktopShell key="heartbeats-view-desktop" />
+            <AutomationsView key="automations-view-desktop" />
           </div>
         </div>
       ) : isSettingsPage ? (
@@ -764,6 +776,8 @@ export function App() {
       isCompanionTab,
       actionNotice,
       isChat,
+      isChatWorkspace,
+      isConnectors,
       isCharacterPage,
       isHeartbeats,
       isSettingsPage,

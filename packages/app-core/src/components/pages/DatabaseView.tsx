@@ -1,24 +1,5 @@
-/**
- * Database View — Supabase-style table browser + SQL editor.
- *
- * Two modes:
- *  - Table browser: sidebar with schema tree, spreadsheet-like data grid
- *  - SQL editor: code textarea with run button and results grid
- */
 
-import {
-  Button,
-  Input,
-  MetaPill,
-  PageLayout,
-  PagePanel,
-  SegmentedControl,
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/app-core";
+
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -39,6 +20,7 @@ import {
   type SortDir,
 } from "./database-utils";
 import { SqlEditorPanel } from "./SqlEditorPanel";
+import { PagePanel, MetaPill, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, SegmentedControl, PageLayout } from "@elizaos/ui";
 
 export function DatabaseView({
   leftNav,

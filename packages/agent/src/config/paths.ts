@@ -2,6 +2,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+const STATE_DIR_OVERRIDE_KEYS = [
+  "MILADY_STATE_DIR",
+  "ELIZA_STATE_DIR",
+] as const;
+const CONFIG_PATH_OVERRIDE_KEYS = [
+  "MILADY_CONFIG_PATH",
+  "ELIZA_CONFIG_PATH",
+] as const;
+
 function readEnvOverride(
   env: NodeJS.ProcessEnv,
   keys: readonly string[],
@@ -46,7 +55,7 @@ export function resolveStateDir(
   env: NodeJS.ProcessEnv = process.env,
   homedir: () => string = os.homedir,
 ): string {
-  const override = readEnvOverride(env, ["ELIZA_STATE_DIR"]);
+  const override = readEnvOverride(env, STATE_DIR_OVERRIDE_KEYS);
   if (override) {
     return resolveUserPath(override);
   }
@@ -57,7 +66,7 @@ export function resolveConfigPath(
   env: NodeJS.ProcessEnv = process.env,
   stateDirPath: string = resolveStateDir(env, os.homedir),
 ): string {
-  const override = readEnvOverride(env, ["ELIZA_CONFIG_PATH"]);
+  const override = readEnvOverride(env, CONFIG_PATH_OVERRIDE_KEYS);
   if (override) {
     return resolveUserPath(override);
   }
@@ -82,14 +91,14 @@ export function resolveDefaultConfigCandidates(
   env: NodeJS.ProcessEnv = process.env,
   homedir: () => string = os.homedir,
 ): string[] {
-  const explicit = readEnvOverride(env, ["ELIZA_CONFIG_PATH"]);
+  const explicit = readEnvOverride(env, CONFIG_PATH_OVERRIDE_KEYS);
   if (explicit) {
     return [resolveUserPath(explicit)];
   }
 
   const namespace = getElizaNamespace(env);
 
-  const stateDirOverride = readEnvOverride(env, ["ELIZA_STATE_DIR"]);
+  const stateDirOverride = readEnvOverride(env, STATE_DIR_OVERRIDE_KEYS);
   if (stateDirOverride) {
     const resolved = resolveUserPath(stateDirOverride);
     const primary = path.join(resolved, `${namespace}.json`);

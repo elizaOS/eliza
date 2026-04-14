@@ -1,41 +1,26 @@
-name: ${APP_NAME:-eliza}
-
 services:
-  gateway:
-    container_name: ${APP_NAME:-eliza}-gateway
-    image: ${APP_IMAGE:-eliza:local}
+  milady-gateway:
+    image: ${MILADY_IMAGE:-milady:local}
     environment:
       HOME: /home/node
       TERM: xterm-256color
-      APP_NAME: ${APP_NAME:-eliza}
-      APP_PORT: ${APP_PORT:-2138}
-      APP_GATEWAY_PORT: ${APP_GATEWAY_PORT:-18789}
-      APP_BRIDGE_PORT: ${APP_BRIDGE_PORT:-18790}
-      APP_GATEWAY_TOKEN: ${APP_GATEWAY_TOKEN:-}
-      APP_ALLOWED_ORIGINS: ${APP_ALLOWED_ORIGINS:-}
-      APP_API_TOKEN: ${APP_API_TOKEN:-}
-      APP_API_BIND: ${APP_API_BIND:-127.0.0.1}
-      ELIZA_PORT: ${APP_PORT:-2138}
-      ELIZA_API_PORT: ${APP_PORT:-2138}
-      ELIZA_GATEWAY_PORT: ${APP_GATEWAY_PORT:-18789}
-      ELIZA_BRIDGE_PORT: ${APP_BRIDGE_PORT:-18790}
-      ELIZA_API_BIND: ${APP_API_BIND:-127.0.0.1}
-      ELIZA_ALLOWED_ORIGINS: ${APP_ALLOWED_ORIGINS:-}
-      ELIZA_API_TOKEN: ${APP_API_TOKEN:-}
-      ELIZA_STATE_DIR: ${APP_STATE_DIR:-/home/node/.eliza}
-      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY:-}
-      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY:-}
-      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE:-}
+      MILADY_GATEWAY_TOKEN: ${MILADY_GATEWAY_TOKEN}
+      MILADY_ALLOWED_ORIGINS: ${MILADY_ALLOWED_ORIGINS}
+      # Set MILADY_API_TOKEN for non-localhost deployments to require auth on API routes
+      MILADY_API_TOKEN: ${MILADY_API_TOKEN:-}
+      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY}
+      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY}
+      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE}
     volumes:
-      - ${APP_CONFIG_DIR:-.docker-home/config}:${APP_STATE_DIR:-/home/node/.eliza}
-      - ${APP_WORKSPACE_DIR:-.docker-home/workspace}:${APP_STATE_DIR:-/home/node/.eliza}/workspace
+      - ${MILADY_CONFIG_DIR}:/home/node/.milady
+      - ${MILADY_WORKSPACE_DIR}:/home/node/.milady/workspace
     ports:
-      - "${APP_GATEWAY_PORT:-18789}:${APP_GATEWAY_PORT:-18789}"
-      - "${APP_BRIDGE_PORT:-18790}:18790"
+      - "${MILADY_GATEWAY_PORT:-18789}:${MILADY_GATEWAY_PORT:-18789}"
+      - "${MILADY_BRIDGE_PORT:-18790}:18790"
     init: true
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${APP_GATEWAY_PORT:-18789}/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:${MILADY_GATEWAY_PORT:-18789}/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -46,38 +31,26 @@ services:
         "dist/index.js",
         "gateway",
         "--bind",
-        "${APP_GATEWAY_BIND:-lan}",
+        "${MILADY_GATEWAY_BIND:-lan}",
         "--port",
-        "${APP_GATEWAY_PORT:-18789}",
+        "${MILADY_GATEWAY_PORT:-18789}",
       ]
 
-  cli:
-    container_name: ${APP_NAME:-eliza}-cli
-    image: ${APP_IMAGE:-eliza:local}
+  milady-cli:
+    image: ${MILADY_IMAGE:-milady:local}
     environment:
       HOME: /home/node
       TERM: xterm-256color
-      APP_NAME: ${APP_NAME:-eliza}
-      APP_PORT: ${APP_PORT:-2138}
-      APP_GATEWAY_PORT: ${APP_GATEWAY_PORT:-18789}
-      APP_BRIDGE_PORT: ${APP_BRIDGE_PORT:-18790}
-      APP_GATEWAY_TOKEN: ${APP_GATEWAY_TOKEN:-}
-      APP_API_TOKEN: ${APP_API_TOKEN:-}
-      APP_API_BIND: ${APP_API_BIND:-127.0.0.1}
-      ELIZA_PORT: ${APP_PORT:-2138}
-      ELIZA_API_PORT: ${APP_PORT:-2138}
-      ELIZA_GATEWAY_PORT: ${APP_GATEWAY_PORT:-18789}
-      ELIZA_BRIDGE_PORT: ${APP_BRIDGE_PORT:-18790}
-      ELIZA_API_BIND: ${APP_API_BIND:-127.0.0.1}
-      ELIZA_API_TOKEN: ${APP_API_TOKEN:-}
-      ELIZA_STATE_DIR: ${APP_STATE_DIR:-/home/node/.eliza}
+      MILADY_GATEWAY_TOKEN: ${MILADY_GATEWAY_TOKEN}
+      # Set MILADY_API_TOKEN for non-localhost deployments to require auth on API routes
+      MILADY_API_TOKEN: ${MILADY_API_TOKEN:-}
       BROWSER: echo
-      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY:-}
-      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY:-}
-      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE:-}
+      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY}
+      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY}
+      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE}
     volumes:
-      - ${APP_CONFIG_DIR:-.docker-home/config}:${APP_STATE_DIR:-/home/node/.eliza}
-      - ${APP_WORKSPACE_DIR:-.docker-home/workspace}:${APP_STATE_DIR:-/home/node/.eliza}/workspace
+      - ${MILADY_CONFIG_DIR}:/home/node/.milady
+      - ${MILADY_WORKSPACE_DIR}:/home/node/.milady/workspace
     stdin_open: true
     tty: true
     init: true

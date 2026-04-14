@@ -5,7 +5,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { LifeOpsService } from "@elizaos/agent/lifeops/service";
+import { LifeOpsService } from "./lifeops/service.js";
 import { hasAdminAccess } from "@elizaos/agent/security/access";
 
 function formatSettingsLine(
@@ -40,7 +40,7 @@ function formatTabLine(
 export const lifeOpsBrowserProvider: Provider = {
   name: "lifeops_browser",
   description:
-    "Owner/admin-only context for the user's personal Chrome and Safari LifeOps Browser companions. Separate from the Milady browser workspace.",
+    "Owner/admin-only context for the user's personal Chrome and Safari LifeOps Browser companions. Separate from the Eliza browser workspace.",
   dynamic: true,
   position: 13,
   async get(
@@ -69,7 +69,7 @@ export const lifeOpsBrowserProvider: Provider = {
     );
     const lines = [
       "## LifeOps Browser",
-      "This is the user's personal browser companion, not the Milady browser workspace.",
+      "This is the user's personal browser companion, not the Eliza browser workspace.",
       formatSettingsLine(settings),
       `Companions: ${companions.length}. Active sessions: ${activeSessions.length}.`,
     ];

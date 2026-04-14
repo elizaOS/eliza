@@ -8,9 +8,6 @@
 
 // Export all core modules
 export * from "./actions";
-export * from "./advanced-memory";
-// Export capabilities and plugin creation
-export * from "./basic-capabilities/index";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 // Export character utilities
@@ -33,6 +30,12 @@ export {
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
+export * from "./features/advanced-memory";
+// Export capabilities and plugin creation
+export * from "./features/basic-capabilities/index";
+// Node-only task-agent orchestration surface.
+export * from "./features/orchestrator/index";
+export { default as orchestratorPluginDefault } from "./features/orchestrator/index";
 // Export generated action/provider/evaluator specs from centralized prompts
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";

@@ -15,7 +15,7 @@ import {
   type IAgentRuntime,
   type UUID,
 } from "@elizaos/core";
-import type { ConversationMeta, ServerState } from "../api/server.js";
+import type { ConversationMeta, ServerState } from "../api/server-types.js";
 
 /**
  * Resolve the best conversation for a given roomId by scanning the

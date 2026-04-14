@@ -8,7 +8,9 @@ import type {
   StewardPendingApproval,
   StewardPolicyResult,
 } from "@elizaos/shared/contracts/wallet";
-import { Button, PagePanel, Spinner } from "@elizaos/app-core";
+import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Spinner } from "@elizaos/ui/components/ui/spinner";
 import { Check, Clock, Copy, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatWeiValue, getChainName, truncateAddress } from "./chain-utils";

@@ -29,6 +29,8 @@ export const COMPANION_ENABLED =
 export type BuiltinTab =
   | "chat"
   | "lifeops"
+  | "tasks"
+  | "automations"
   | "browser"
   | "companion"
   | "stream"
@@ -91,10 +93,10 @@ export interface TabGroup {
 export const ALL_TAB_GROUPS: TabGroup[] = [
   {
     label: "Chat",
-    tabs: ["chat"],
+    tabs: ["chat", "connectors"],
     icon: MessageSquare,
     description:
-      "Conversations with your agent and inbound messages from every connector",
+      "Conversations with your agent, inbound messages from every connector, and connector management",
   },
   {
     label: "Apps",
@@ -127,14 +129,14 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "Live streaming controls",
   },
   {
-    label: "Heartbeats",
-    tabs: ["triggers"],
+    label: "Automations",
+    tabs: ["automations"],
     icon: Clock3,
-    description: "Scheduled autonomous automations",
+    description: "Tasks, scheduled tasks, and recurring workflows",
   },
   {
     label: "Settings",
-    tabs: ["settings", "connectors"],
+    tabs: ["settings"],
     icon: Settings,
     description: "Configuration and preferences",
   },
@@ -197,16 +199,18 @@ export function getTabGroups(
 const TAB_PATHS: Record<BuiltinTab, string> = {
   chat: "/chat",
   lifeops: "/apps/lifeops",
+  tasks: "/apps/tasks",
   browser: "/browser",
   companion: "/companion",
   stream: "/stream",
   apps: "/apps",
   character: "/character",
   "character-select": "/character/select",
-  triggers: "/triggers",
+  automations: "/automations",
+  triggers: "/automations",
   inventory: "/inventory",
   knowledge: "/character/knowledge",
-  connectors: "/settings/connectors",
+  connectors: "/connectors",
   plugins: "/apps/plugins",
   skills: "/apps/skills",
   advanced: "/apps/fine-tuning",
@@ -231,12 +235,14 @@ const LEGACY_PATHS: Record<string, Tab> = {
   "/features": "plugins",
   "/admin": "fine-tuning",
   "/config": "settings",
-  "/triggers": "triggers",
+  "/triggers": "automations",
+  "/heartbeats": "automations",
   // Old top-level paths that moved under /character/
   "/character-select": "character-select",
   "/knowledge": "knowledge",
   // Old top-level paths that moved under /apps/
   "/lifeops": "lifeops",
+  "/tasks": "automations",
   "/plugins": "plugins",
   "/skills": "skills",
   "/advanced": "fine-tuning",
@@ -247,8 +253,9 @@ const LEGACY_PATHS: Record<string, Tab> = {
   "/runtime": "runtime",
   "/database": "database",
   "/logs": "logs",
-  // Old top-level paths that moved under /settings/
+  // Old/legacy connector paths
   "/connectors": "connectors",
+  "/settings/connectors": "connectors",
   "/voice": "settings",
   // /companion stays as a legacy redirect — companion is now an overlay app at /apps/companion
   "/companion": "chat",
@@ -294,6 +301,7 @@ export function resolveInitialTabForPath(
 /** Known apps-tool sub-paths under /apps/ (not actual app slugs). */
 const APPS_SUB_TABS: Record<string, Tab> = {
   lifeops: "lifeops",
+  tasks: "automations",
   plugins: "plugins",
   skills: "skills",
   "fine-tuning": "fine-tuning",
@@ -406,8 +414,10 @@ export function titleForTab(tab: Tab): string {
       return "Character";
     case "character-select":
       return "Character Select";
+    case "automations":
+      return "Automations";
     case "triggers":
-      return "Heartbeats";
+      return "Automations";
     case "inventory":
       return "Wallet";
     case "knowledge":

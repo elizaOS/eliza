@@ -176,7 +176,7 @@ export async function openDesktopSettingsWindow(
 
 export async function openDesktopSurfaceWindow(
   surface: DesktopWorkspaceSurface,
-  options?: { browse?: string },
+  _options?: { browse?: string },
 ): Promise<void> {
   await requestDesktopBridge<void>(
     "desktopOpenSurfaceWindow",

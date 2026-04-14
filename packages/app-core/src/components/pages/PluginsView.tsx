@@ -1,20 +1,5 @@
-/**
- * Plugins view — tag-filtered plugin management.
- *
- * Renders a unified plugin list with searchable/filterable cards and per-plugin settings.
- */
 
-import {
-  Button,
-  PageLayout,
-  PageLayoutHeader,
-  PagePanel,
-  Sidebar,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-  useLinkedSidebarSelection,
-} from "@elizaos/app-core";
+
 import { Package } from "lucide-react";
 import {
   type ReactNode,
@@ -54,6 +39,7 @@ import {
 import { PluginSettingsDialog } from "./plugin-view-dialogs";
 import { PluginGameModal } from "./plugin-view-modal";
 import { ConnectorSidebar } from "./plugin-view-sidebar";
+import { PagePanel, SidebarContent, SidebarPanel, Sidebar, SidebarScrollRegion, Button, useLinkedSidebarSelection, PageLayout, PageLayoutHeader } from "@elizaos/ui";
 
 /* ── Shared PluginListView ─────────────────────────────────────────── */
 
@@ -66,6 +52,8 @@ interface PluginListViewProps {
   mode?: PluginsViewMode;
   /** Whether the view is rendered in a full-screen gamified modal. */
   inModal?: boolean;
+  /** Desktop-only placement for the connector list sidebar. */
+  connectorDesktopPlacement?: "left" | "right";
 }
 
 function PluginListView({
@@ -73,6 +61,7 @@ function PluginListView({
   contentHeader,
   mode = "all",
   inModal,
+  connectorDesktopPlacement = "left",
 }: PluginListViewProps) {
   const {
     plugins = [],
@@ -359,7 +348,7 @@ function PluginListView({
           key={tag.id}
           variant={isActive ? "default" : "outline"}
           size="sm"
-          className={`h-7 px-3 text-xs-tight font-bold tracking-wide rounded-lg transition-all ${
+          className={`h-7 px-3 text-xs-tight font-bold tracking-wide rounded-[var(--radius-md)] transition-all ${
             isActive
               ? "border-accent/55 bg-accent/16 text-txt-strong shadow-sm"
               : "bg-card/40 backdrop-blur-sm border-border/40 text-muted hover:text-txt shadow-sm hover:border-accent/30"
@@ -895,7 +884,7 @@ function PluginListView({
             src={imageSrc}
             alt=""
             className={
-              options?.className ?? "w-5 h-5 rounded-sm object-contain"
+              options?.className ?? "w-5 h-5 rounded-[var(--radius-sm)] object-contain"
             }
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = "none";
@@ -1238,19 +1227,6 @@ function PluginListView({
       </div>
     );
 
-    if (desktopConnectorLayout && desktopSidebar) {
-      return (
-        <PageLayout
-          sidebar={desktopSidebar}
-          contentHeader={contentHeader}
-          contentRef={connectorContentRef}
-          contentInnerClassName="w-full min-h-0"
-        >
-          <div className="flex min-h-0 flex-1 flex-col">{connectorContent}</div>
-        </PageLayout>
-      );
-    }
-
     return (
       <main
         ref={connectorContentRef}
@@ -1335,19 +1311,21 @@ function PluginListView({
         <PagePanel.ContentArea>
           <div className="px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
             <PagePanel variant="section">
-              <PagePanel.Header
-                eyebrow={t("nav.advanced")}
-                heading={pluginSectionTitle}
-                className="border-border/35"
-                actions={
-                  <PagePanel.Meta className="border-border/45 px-2.5 py-1 font-bold tracking-[0.16em] text-muted">
-                    {t("pluginsview.VisibleCount", {
-                      defaultValue: "{{count}} shown",
-                      count: visiblePlugins.length,
-                    })}
-                  </PagePanel.Meta>
-                }
-              />
+              {!isConnectorShellMode && (
+                <PagePanel.Header
+                  eyebrow={t("nav.advanced")}
+                  heading={pluginSectionTitle}
+                  className="border-border/35"
+                  actions={
+                    <PagePanel.Meta className="border-border/45 px-2.5 py-1 font-bold tracking-[0.16em] text-muted">
+                      {t("pluginsview.VisibleCount", {
+                        defaultValue: "{{count}} shown",
+                        count: visiblePlugins.length,
+                      })}
+                    </PagePanel.Meta>
+                  }
+                />
+              )}
 
               <div className="bg-bg/18 px-4 py-4 sm:px-5">
                 {allowCustomOrder && pluginOrder.length > 0 ? (
@@ -1356,7 +1334,7 @@ function PluginListView({
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em]"
+                        className="h-9 rounded-[var(--radius-sm)] px-4 text-xs-tight font-bold tracking-[0.12em]"
                         onClick={handleResetOrder}
                         title={t("pluginsview.ResetToDefaultSor")}
                       >
@@ -1458,10 +1436,12 @@ export function PluginsView({
   contentHeader,
   mode = "all",
   inModal,
+  connectorDesktopPlacement = "left",
 }: {
   contentHeader?: ReactNode;
   mode?: PluginsViewMode;
   inModal?: boolean;
+  connectorDesktopPlacement?: "left" | "right";
 }) {
   const label =
     mode === "social"
@@ -1476,6 +1456,7 @@ export function PluginsView({
   return (
     <PluginListView
       contentHeader={contentHeader}
+      connectorDesktopPlacement={connectorDesktopPlacement}
       label={label}
       mode={mode}
       inModal={inModal}

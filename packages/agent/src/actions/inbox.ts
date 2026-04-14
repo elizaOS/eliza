@@ -780,6 +780,8 @@ async function tryAutoReply(
 ): Promise<boolean> {
   const autoConfig = config.autoReply;
   if (!autoConfig?.enabled) return false;
+  const suggestedResponse = result.suggestedResponse;
+  if (!suggestedResponse) return false;
 
   const threshold = autoConfig.confidenceThreshold ?? 0.85;
   if (result.confidence < threshold) return false;
@@ -815,7 +817,7 @@ async function tryAutoReply(
   // Reflection safety check
   const reflection = await reflectOnAutoReply(runtime, {
     inboundText: msg.text,
-    replyText: result.suggestedResponse!,
+    replyText: suggestedResponse,
     source: msg.source,
     senderName: msg.senderName,
   });
@@ -834,7 +836,7 @@ async function tryAutoReply(
       const service = new LifeOpsService(runtime);
       await service.sendGmailReply(INTERNAL_URL, {
         messageId: msg.gmailMessageId,
-        bodyText: result.suggestedResponse!,
+        bodyText: suggestedResponse,
       });
     } else if (msg.roomId) {
       await runtime.sendMessageToTarget(
@@ -844,14 +846,14 @@ async function tryAutoReply(
             typeof runtime.sendMessageToTarget
           >[0]["roomId"],
         } as Parameters<typeof runtime.sendMessageToTarget>[0],
-        { text: result.suggestedResponse!, source: msg.source },
+        { text: suggestedResponse, source: msg.source },
       );
     } else {
       return false;
     }
 
     await repo.markResolved(entryId, {
-      draftResponse: result.suggestedResponse!,
+      draftResponse: suggestedResponse,
       autoReplied: true,
     });
     logger.info(`[INBOX] Auto-replied to ${msg.senderName} on ${msg.source}`);
@@ -905,7 +907,7 @@ async function draftResponse(
 
 async function handleConfirmation(
   runtime: IAgentRuntime,
-  message: Memory,
+  _message: Memory,
   draft: DeferredInboxDraft,
   userText: string,
   repo: InboxTriageRepository,

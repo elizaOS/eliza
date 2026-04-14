@@ -46,7 +46,7 @@ type CommandResult = {
 const RESEARCH_PROMPT =
 	"Use web search only. Find the official Playwright browser support page and the official Puppeteer supported browsers page. " +
 	"Return a concise Markdown report with sections Summary, Tradeoffs, and Sources. Include at least two source URLs and no code blocks.";
-const KEEP_ARTIFACTS = process.env.MILADY_KEEP_LIVE_ARTIFACTS === "1";
+const KEEP_ARTIFACTS = process.env.ELIZA_KEEP_LIVE_ARTIFACTS === "1";
 
 let runtime: AgentRuntime | undefined;
 let cleanupRuntime: (() => Promise<void>) | undefined;
@@ -159,7 +159,7 @@ async function main(): Promise<void> {
 		},
 	});
 
-	reportDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-research-thread-"));
+	reportDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-research-thread-"));
 	const transcriptPath = path.join(reportDir, "codex-research-transcript.jsonl");
 	const finalMessagePath = path.join(reportDir, "codex-final-message.md");
 	const reportPath = path.join(reportDir, "deep-research-report.md");

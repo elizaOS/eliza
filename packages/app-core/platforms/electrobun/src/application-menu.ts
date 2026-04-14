@@ -6,9 +6,9 @@ import { getBrandConfig } from "./brand-config";
  * `application-menu-clicked` and handled in `index.ts`. **Why a pure builder:**
  * tests and reviewers can diff menu shape without reading IPC wiring.
  *
- * **`reset-milady`** is handled in `index.ts` (`resetMiladyFromApplicationMenu`):
+ * **`reset-app`** is handled in `index.ts` (`resetthe appFromApplicationMenu`):
  * native confirm + `POST /api/agent/reset` + embedded or HTTP restart, then
- * `desktopTrayMenuClick` with `menu-reset-milady-applied` so the renderer runs
+ * `desktopTrayMenuClick` with `menu-reset-app-applied` so the renderer runs
  * **`handleResetAppliedFromMain`** (same local UI sync as Settings **`handleReset`**).
  */
 
@@ -272,7 +272,7 @@ export function buildApplicationMenu({
         },
         { label: "Restart Agent", action: "restart-agent" },
         { label: `Relaunch ${appName}`, action: "relaunch" },
-        { label: `Reset ${appName}...`, action: "reset-milady" },
+        { label: `Reset ${appName}...`, action: "reset-app" },
         { type: "separator" },
         ...(isMac
           ? [

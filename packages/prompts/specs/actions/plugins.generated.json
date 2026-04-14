@@ -1,4 +1,616 @@
 {
   "version": "1.0.0",
-  "actions": []
+  "actions": [
+    {
+      "name": "ADD_TO_PLAYLIST",
+      "description": "Add music to a playlist. If the track is not already in the library, the configured music fetch service must resolve it first. Creates the playlist if it does not exist.",
+      "parameters": [],
+      "similes": [
+        "ADD_SONG_TO_PLAYLIST",
+        "PUT_IN_PLAYLIST",
+        "SAVE_TO_PLAYLIST",
+        "ADD_TRACK_TO_PLAYLIST"
+      ]
+    },
+    {
+      "name": "BLUEBUBBLES_SEND_REACTION",
+      "description": "Add or remove a reaction on a message via BlueBubbles",
+      "parameters": [],
+      "similes": ["BLUEBUBBLES_REACT", "BB_REACTION", "IMESSAGE_REACT"]
+    },
+    {
+      "name": "CHECK_CLOUD_CREDITS",
+      "description": "Check ElizaCloud credit balance, container costs, and estimated remaining runtime.",
+      "parameters": [],
+      "similes": [
+        "check credits",
+        "check balance",
+        "how much credit",
+        "cloud billing"
+      ]
+    },
+    {
+      "name": "COMMANDS_LIST",
+      "description": "List all available commands with their aliases. Only activates for /commands or /cmds slash commands.",
+      "parameters": [],
+      "similes": ["/commands", "/cmds"]
+    },
+    {
+      "name": "DELETE_MESSAGE",
+      "description": "Delete a message from a Discord channel",
+      "parameters": [],
+      "similes": ["REMOVE_MESSAGE", "UNSEND_MESSAGE", "DELETE_DISCORD_MESSAGE"]
+    },
+    {
+      "name": "DELETE_PLAYLIST",
+      "description": "Delete a saved playlist. Works best in DMs to avoid flooding group chats.",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": [
+        "REMOVE_PLAYLIST",
+        "DELETE_SAVED_PLAYLIST",
+        "REMOVE_SAVED_PLAYLIST"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use DELETE_PLAYLIST with the provided parameters.",
+          "actions": ["DELETE_PLAYLIST"],
+          "params": {
+            "DELETE_PLAYLIST": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "DOWNLOAD_MUSIC",
+      "description": "Download music to the local library without playing it. Requires the configured music fetch service to resolve the track.",
+      "parameters": [],
+      "similes": [
+        "FETCH_MUSIC",
+        "GET_MUSIC",
+        "DOWNLOAD_SONG",
+        "SAVE_MUSIC",
+        "GRAB_MUSIC"
+      ]
+    },
+    {
+      "name": "EDIT_MESSAGE",
+      "description": "Edit an existing message in a Discord channel",
+      "parameters": [],
+      "similes": [
+        "UPDATE_MESSAGE",
+        "MODIFY_MESSAGE",
+        "CHANGE_MESSAGE",
+        "EDIT_DISCORD_MESSAGE"
+      ]
+    },
+    {
+      "name": "FREEZE_CLOUD_AGENT",
+      "description": "Freeze a cloud agent: snapshot state, disconnect bridge, stop container.",
+      "parameters": [],
+      "similes": [
+        "freeze agent",
+        "hibernate agent",
+        "pause agent",
+        "stop cloud agent"
+      ]
+    },
+    {
+      "name": "GET_SKILL_DETAILS",
+      "description": "Get detailed information about a specific skill including version, owner, and stats.",
+      "parameters": [],
+      "similes": ["SKILL_INFO", "SKILL_DETAILS"]
+    },
+    {
+      "name": "GET_SKILL_GUIDANCE",
+      "description": "Search for and get skill instructions. Use when user asks to find a skill or when you need instructions for a capability.",
+      "parameters": [],
+      "similes": [
+        "FIND_SKILL",
+        "SEARCH_SKILLS",
+        "SKILL_HELP",
+        "HOW_TO",
+        "GET_INSTRUCTIONS",
+        "LEARN_SKILL",
+        "LOOKUP_SKILL"
+      ]
+    },
+    {
+      "name": "HELP_COMMAND",
+      "description": "Show available commands and their descriptions. Only activates for /help, /h, or /? slash commands.",
+      "parameters": [],
+      "similes": ["/help", "/h", "/?"]
+    },
+    {
+      "name": "IMESSAGE_SEND_MESSAGE",
+      "description": "Send a text message via iMessage (macOS only)",
+      "parameters": [],
+      "similes": [
+        "SEND_IMESSAGE",
+        "IMESSAGE_TEXT",
+        "TEXT_IMESSAGE",
+        "SEND_IMSG"
+      ]
+    },
+    {
+      "name": "INSTALL_SKILL",
+      "description": "Install a skill from the ClawHub registry. The skill will be security-scanned before activation. ",
+      "parameters": [],
+      "similes": ["DOWNLOAD_SKILL", "ADD_SKILL", "GET_SKILL"]
+    },
+    {
+      "name": "LIST_PLAYLISTS",
+      "description": "List all saved playlists for the user. Works best in DMs to avoid flooding group chats.",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": [
+        "SHOW_PLAYLISTS",
+        "MY_PLAYLISTS",
+        "PLAYLIST_LIST",
+        "VIEW_PLAYLISTS"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use LIST_PLAYLISTS with the provided parameters.",
+          "actions": ["LIST_PLAYLISTS"],
+          "params": {
+            "LIST_PLAYLISTS": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "LOAD_PLAYLIST",
+      "description": "Load a saved playlist and add all tracks to the queue. Works best in DMs to avoid flooding group chats.",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": [
+        "PLAY_PLAYLIST",
+        "LOAD_QUEUE",
+        "RESTORE_PLAYLIST",
+        "PLAY_SAVED_PLAYLIST"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use LOAD_PLAYLIST with the provided parameters.",
+          "actions": ["LOAD_PLAYLIST"],
+          "params": {
+            "LOAD_PLAYLIST": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MANAGE_SHOPIFY_CUSTOMERS",
+      "description": "List and search customers in a connected Shopify store.",
+      "parameters": [],
+      "similes": ["LIST_CUSTOMERS", "FIND_CUSTOMER", "SEARCH_CUSTOMERS"]
+    },
+    {
+      "name": "MANAGE_SHOPIFY_INVENTORY",
+      "description": "Check inventory levels, adjust stock quantities, and list store locations in Shopify.",
+      "parameters": [],
+      "similes": [
+        "CHECK_INVENTORY",
+        "ADJUST_INVENTORY",
+        "CHECK_STOCK",
+        "UPDATE_STOCK"
+      ]
+    },
+    {
+      "name": "MANAGE_SHOPIFY_ORDERS",
+      "description": "List recent orders, check specific order status, and mark orders as fulfilled in Shopify.",
+      "parameters": [],
+      "similes": [
+        "LIST_ORDERS",
+        "CHECK_ORDERS",
+        "FULFILL_ORDER",
+        "ORDER_STATUS"
+      ]
+    },
+    {
+      "name": "MANAGE_SHOPIFY_PRODUCTS",
+      "description": "List, search, create, or update products in a connected Shopify store.",
+      "parameters": [],
+      "similes": [
+        "LIST_PRODUCTS",
+        "CREATE_PRODUCT",
+        "UPDATE_PRODUCT",
+        "SEARCH_PRODUCTS"
+      ]
+    },
+    {
+      "name": "MODELS_COMMAND",
+      "description": "List available AI models and providers. Only activates for /models slash command.",
+      "parameters": [],
+      "similes": ["/models"]
+    },
+    {
+      "name": "PAUSE_MUSIC",
+      "description": "Pause the currently playing track (hold playback). Use whenever the user asks to pause music or audio. ",
+      "parameters": [],
+      "similes": ["PAUSE", "PAUSE_AUDIO", "PAUSE_SONG", "PAUSE_PLAYBACK"]
+    },
+    {
+      "name": "PLAY_AUDIO",
+      "description": "Start playing a new song: provide a track name, artist, search words, or a media URL. ",
+      "parameters": [],
+      "similes": [
+        "PLAY_YOUTUBE",
+        "PLAY_YOUTUBE_AUDIO",
+        "PLAY_VIDEO_AUDIO",
+        "PLAY_MUSIC",
+        "PLAY_SONG",
+        "PLAY_TRACK",
+        "START_MUSIC",
+        "PLAY_THIS",
+        "STREAM_YOUTUBE",
+        "PLAY_FROM_YOUTUBE",
+        "QUEUE_SONG",
+        "ADD_TO_QUEUE"
+      ]
+    },
+    {
+      "name": "PLAY_MUSIC_QUERY",
+      "description": "Handle any complex music query that requires understanding and research. Supports: artist queries (first single, latest song, similar artists, popular songs, nth album), temporal (80s, 90s, specific years), genre/mood/vibe, activities (workout, study, party), charts/trending, albums, movie/game/TV soundtracks, lyrics/topics, versions (covers, remixes, acoustic, live), and more. Uses Wikipedia, music databases, and web search to find the right music.",
+      "parameters": [],
+      "similes": [
+        "SMART_PLAY",
+        "RESEARCH_AND_PLAY",
+        "FIND_AND_PLAY",
+        "INTELLIGENT_MUSIC_SEARCH"
+      ]
+    },
+    {
+      "name": "PROVISION_CLOUD_AGENT",
+      "description": "Deploy an ElizaOS agent to ElizaCloud. Provisions a container, waits for deployment, connects the bridge, and starts auto-backup.",
+      "parameters": [],
+      "similes": [
+        "deploy agent to cloud",
+        "launch cloud agent",
+        "start remote agent",
+        "provision container"
+      ]
+    },
+    {
+      "name": "QUEUE_MUSIC",
+      "description": "Add a song to the queue for later",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["ADD_TO_QUEUE", "QUEUE_SONG", "QUEUE_TRACK", "ADD_SONG"],
+      "exampleCalls": [
+        {
+          "user": "Use QUEUE_MUSIC with the provided parameters.",
+          "actions": ["QUEUE_MUSIC"],
+          "params": {
+            "QUEUE_MUSIC": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "RESUME_CLOUD_AGENT",
+      "description": "Resume a frozen cloud agent from snapshot. Re-provisions, restores state, reconnects bridge.",
+      "parameters": [],
+      "similes": [
+        "resume agent",
+        "unfreeze agent",
+        "restart cloud agent",
+        "restore agent"
+      ]
+    },
+    {
+      "name": "RESUME_MUSIC",
+      "description": "Resume music after a pause. Use when the user says resume, unpause, or continue. ",
+      "parameters": [],
+      "similes": [
+        "RESUME",
+        "RESUME_AUDIO",
+        "RESUME_SONG",
+        "UNPAUSE",
+        "UNPAUSE_MUSIC",
+        "CONTINUE_MUSIC"
+      ]
+    },
+    {
+      "name": "RUN_SKILL_SCRIPT",
+      "description": "Execute a script bundled with an installed skill. Provide skill slug and script name.",
+      "parameters": [],
+      "similes": ["EXECUTE_SKILL_SCRIPT", "SKILL_SCRIPT"]
+    },
+    {
+      "name": "SAVE_PLAYLIST",
+      "description": "Save the current music queue as a playlist for the user. Works best in DMs to avoid flooding group chats.",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": [
+        "SAVE_QUEUE",
+        "CREATE_PLAYLIST",
+        "STORE_PLAYLIST",
+        "SAVE_MUSIC_LIST"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SAVE_PLAYLIST with the provided parameters.",
+          "actions": ["SAVE_PLAYLIST"],
+          "params": {
+            "SAVE_PLAYLIST": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SEARCH_SHOPIFY_STORE",
+      "description": "Search across products, orders, and customers in a connected Shopify store.",
+      "parameters": [],
+      "similes": ["SHOPIFY_SEARCH", "STORE_SEARCH"]
+    },
+    {
+      "name": "SEARCH_SKILLS",
+      "description": "Search the skill registry for available skills by keyword or category.",
+      "parameters": [],
+      "similes": ["BROWSE_SKILLS", "LIST_SKILLS", "FIND_SKILLS"]
+    },
+    {
+      "name": "SEARCH_YOUTUBE",
+      "description": "Search YouTube for a song or video and return the link. Use this when a user asks to find or search for a YouTube video or song without providing a specific URL.",
+      "parameters": [],
+      "similes": [
+        "FIND_YOUTUBE",
+        "SEARCH_YOUTUBE_VIDEO",
+        "FIND_SONG",
+        "SEARCH_MUSIC",
+        "GET_YOUTUBE_LINK",
+        "LOOKUP_YOUTUBE"
+      ]
+    },
+    {
+      "name": "SEND_BLUEBUBBLES_MESSAGE",
+      "description": "Send a message via iMessage through BlueBubbles",
+      "parameters": [],
+      "similes": [
+        "SEND_IMESSAGE",
+        "TEXT_MESSAGE",
+        "IMESSAGE_REPLY",
+        "BLUEBUBBLES_SEND",
+        "APPLE_MESSAGE"
+      ]
+    },
+    {
+      "name": "SETUP_CREDENTIALS",
+      "description": "Guide the user through setting up API credentials for supported third-party services, validate them when possible, and store them securely.",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": [
+        "ADD_CREDENTIALS",
+        "CONFIGURE_SERVICE",
+        "CONNECT_SERVICE",
+        "ADD_API_KEY",
+        "SETUP_SERVICE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SETUP_CREDENTIALS with the provided parameters.",
+          "actions": ["SETUP_CREDENTIALS"],
+          "params": {
+            "SETUP_CREDENTIALS": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SHOW_QUEUE",
+      "description": "Show the current music queue",
+      "parameters": [],
+      "similes": ["QUEUE", "LIST_QUEUE", "SHOW_PLAYLIST", "QUEUE_LIST"]
+    },
+    {
+      "name": "SIGNAL_LIST_CONTACTS",
+      "description": "List Signal contacts",
+      "parameters": [],
+      "similes": [
+        "LIST_SIGNAL_CONTACTS",
+        "SHOW_CONTACTS",
+        "GET_CONTACTS",
+        "SIGNAL_CONTACTS"
+      ]
+    },
+    {
+      "name": "SIGNAL_LIST_GROUPS",
+      "description": "List Signal groups",
+      "parameters": [],
+      "similes": [
+        "LIST_SIGNAL_GROUPS",
+        "SHOW_GROUPS",
+        "GET_GROUPS",
+        "SIGNAL_GROUPS"
+      ]
+    },
+    {
+      "name": "SIGNAL_SEND_MESSAGE",
+      "description": "Send a message to a Signal contact or group",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": [
+        "SEND_SIGNAL_MESSAGE",
+        "TEXT_SIGNAL",
+        "MESSAGE_SIGNAL",
+        "SIGNAL_TEXT"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SIGNAL_SEND_MESSAGE with the provided parameters.",
+          "actions": ["SIGNAL_SEND_MESSAGE"],
+          "params": {
+            "SIGNAL_SEND_MESSAGE": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SIGNAL_SEND_REACTION",
+      "description": "React to a Signal message with an emoji",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": [
+        "REACT_SIGNAL",
+        "SIGNAL_REACT",
+        "ADD_SIGNAL_REACTION",
+        "SIGNAL_EMOJI"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SIGNAL_SEND_REACTION with the provided parameters.",
+          "actions": ["SIGNAL_SEND_REACTION"],
+          "params": {
+            "SIGNAL_SEND_REACTION": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SKIP_TRACK",
+      "description": "Skip the current track and play the next queued song. Use for skip, next track, or next song. ",
+      "parameters": [],
+      "similes": ["SKIP", "NEXT_TRACK", "SKIP_SONG", "NEXT_SONG"]
+    },
+    {
+      "name": "STATUS_COMMAND",
+      "description": "Show session directive settings via /status slash command. Only activates for /status or /s prefix.",
+      "parameters": [],
+      "similes": ["/status", "/s"]
+    },
+    {
+      "name": "STOP_COMMAND",
+      "description": "Stop current operation or abort running tasks. Triggered by /stop, /abort, or /cancel slash commands only.",
+      "parameters": [],
+      "similes": ["/stop", "/abort", "/cancel"]
+    },
+    {
+      "name": "STOP_MUSIC",
+      "description": "Stop playback and clear the queue. Use when the user wants music off or the queue cleared. ",
+      "parameters": [],
+      "similes": [
+        "STOP_AUDIO",
+        "STOP_PLAYING",
+        "STOP_SONG",
+        "TURN_OFF_MUSIC",
+        "MUSIC_OFF",
+        "SILENCE"
+      ]
+    },
+    {
+      "name": "SYNC_SKILL_CATALOG",
+      "description": "Sync the skill catalog from the registry to discover new skills.",
+      "parameters": [],
+      "similes": ["REFRESH_SKILLS", "UPDATE_CATALOG"]
+    },
+    {
+      "name": "TOGGLE_SKILL",
+      "description": "Enable or disable an installed skill. Say 'enable <skill>' or 'disable <skill>'.",
+      "parameters": [],
+      "similes": [
+        "ENABLE_SKILL",
+        "DISABLE_SKILL",
+        "TURN_ON_SKILL",
+        "TURN_OFF_SKILL",
+        "ACTIVATE_SKILL",
+        "DEACTIVATE_SKILL"
+      ]
+    },
+    {
+      "name": "UNINSTALL_SKILL",
+      "description": "Uninstall a non-bundled skill. Bundled skills cannot be removed. ",
+      "parameters": [],
+      "similes": ["REMOVE_SKILL", "DELETE_SKILL"]
+    }
+  ]
 }

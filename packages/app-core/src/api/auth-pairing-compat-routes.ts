@@ -74,9 +74,7 @@ function ensurePairingCode(): string | null {
   if (!pairingCode || now > pairingExpiresAt) {
     pairingCode = generatePairingCode();
     pairingExpiresAt = now + PAIRING_TTL_MS;
-    console.warn(
-      `[api] Pairing code: ${pairingCode} (valid for 10 minutes)`,
-    );
+    console.warn(`[api] Pairing code: ${pairingCode} (valid for 10 minutes)`);
   }
 
   return pairingCode;

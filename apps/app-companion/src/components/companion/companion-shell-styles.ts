@@ -1,7 +1,3 @@
-/**
- * Style helpers and constants for the companion shell overlay.
- */
-
 import type { Tab } from "@elizaos/app-core/navigation";
 import type React from "react";
 

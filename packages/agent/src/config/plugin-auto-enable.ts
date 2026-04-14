@@ -1,3 +1,4 @@
+import type { Plugin } from "@elizaos/core";
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types.js";
 import type { ElizaConfig } from "./types.js";
 
@@ -9,6 +10,13 @@ export interface ApplyPluginAutoEnableResult {
 export interface ApplyPluginAutoEnableParams {
   config: Partial<ElizaConfig>;
   env: NodeJS.ProcessEnv;
+  /**
+   * Already-loaded plugin instances. When provided, the function checks each
+   * plugin's `autoEnable` declaration BEFORE falling back to the hardcoded maps.
+   * This enables a gradual migration: plugins that self-declare their enable
+   * conditions no longer need entries in the central map.
+   */
+  loadedPlugins?: Plugin[];
 }
 
 export const CONNECTOR_PLUGINS: Record<string, string> = {
@@ -610,5 +618,116 @@ export function applyPluginAutoEnable(
     }
   }
 
+  // ── Self-declared autoEnable on loaded plugins ────────────────────────
+  // When loadedPlugins are provided, check each plugin's autoEnable field.
+  // This runs after the hardcoded maps so self-declared plugins can add to
+  // the allow list without needing a central map entry.
+  if (params.loadedPlugins) {
+    applyPluginSelfDeclaredAutoEnable(
+      params.loadedPlugins,
+      updatedConfig,
+      env,
+      changes,
+    );
+  }
+
   return { config: updatedConfig, changes };
+}
+
+/**
+ * Check loaded plugins for self-declared `autoEnable` conditions and add
+ * matching ones to the config allow list.
+ *
+ * This is the data-driven counterpart to the hardcoded maps above. Plugins
+ * that declare `autoEnable` on their Plugin object can be auto-enabled
+ * without any central map entry.
+ *
+ * Can be called standalone (e.g., after a second-pass plugin resolution)
+ * or implicitly via `applyPluginAutoEnable({ loadedPlugins })`.
+ */
+export function applyPluginSelfDeclaredAutoEnable(
+  loadedPlugins: Plugin[],
+  config: ElizaConfig,
+  env: NodeJS.ProcessEnv,
+  changes: string[],
+): void {
+  config.plugins = config.plugins ?? {};
+  const pluginsConfig = config.plugins;
+  pluginsConfig.allow = pluginsConfig.allow ?? [];
+
+  const connectors = (config.connectors ??
+    (config as Record<string, unknown>).channels ??
+    {}) as Record<string, unknown>;
+
+  for (const plugin of loadedPlugins) {
+    if (!plugin.autoEnable) continue;
+    const { envKeys, connectorKeys, shouldEnable } = plugin.autoEnable;
+
+    // Derive a short ID from the plugin name for allow-list and entries lookup.
+    // e.g. "@elizaos/plugin-telegram" → "telegram", "shopify" → "shopify"
+    const pluginName = plugin.name;
+    const shortId = pluginName.includes("/plugin-")
+      ? pluginName.slice(pluginName.lastIndexOf("/plugin-") + "/plugin-".length)
+      : pluginName;
+
+    // Skip if explicitly disabled in config entries
+    if (pluginsConfig.entries?.[shortId]?.enabled === false) continue;
+
+    // Skip if already in the allow list (already enabled by hardcoded map or earlier pass)
+    if (
+      pluginsConfig.allow.includes(shortId) ||
+      pluginsConfig.allow.includes(pluginName)
+    ) {
+      continue;
+    }
+
+    let enableReason: string | null = null;
+
+    // Check env keys (OR — any match enables)
+    if (envKeys?.length) {
+      for (const key of envKeys) {
+        const val = env[key];
+        if (val && typeof val === "string" && val.trim() !== "") {
+          enableReason = `self-declared env: ${key}`;
+          break;
+        }
+      }
+    }
+
+    // Check connector keys (OR — any match enables)
+    if (!enableReason && connectorKeys?.length) {
+      for (const connectorName of connectorKeys) {
+        const connectorConfig = connectors[connectorName];
+        if (
+          connectorConfig &&
+          isConnectorConfigured(connectorName, connectorConfig)
+        ) {
+          enableReason = `self-declared connector: ${connectorName}`;
+          break;
+        }
+      }
+    }
+
+    // Check custom predicate
+    if (!enableReason && shouldEnable) {
+      if (
+        shouldEnable(
+          env as Record<string, string | undefined>,
+          config as Record<string, unknown>,
+        )
+      ) {
+        enableReason = "self-declared shouldEnable predicate";
+      }
+    }
+
+    if (enableReason) {
+      addToAllowlist(
+        pluginsConfig.allow,
+        pluginName,
+        shortId,
+        changes,
+        enableReason,
+      );
+    }
+  }
 }

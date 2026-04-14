@@ -4,7 +4,7 @@ The character provider builds a structured text context from the character's
 bio, adjectives, lore, topics, and style fields.
 
 Note: We import the provider module carefully to avoid the circular import
-between ``elizaos.basic_capabilities`` and ``elizaos.basic_capabilities``.
+between ``elizaos.features.basic_capabilities`` and ``elizaos.features.basic_capabilities``.
 """
 
 from __future__ import annotations
@@ -42,10 +42,10 @@ def _import_character_provider():
     try:
         # Remove any partially-loaded module left by a failed prior import
         # so importlib picks up the stubs instead of the broken cache entry.
-        sys.modules.pop("elizaos.basic_capabilities.providers.character", None)
+        sys.modules.pop("elizaos.features.basic_capabilities.providers.character", None)
 
         # Force a fresh import of just the character provider module
-        mod = importlib.import_module("elizaos.basic_capabilities.providers.character")
+        mod = importlib.import_module("elizaos.features.basic_capabilities.providers.character")
         return mod
     finally:
         # Restore original module state
@@ -58,7 +58,7 @@ def _import_character_provider():
 
 # Try direct import first; fall back to stub-based import
 try:
-    from elizaos.basic_capabilities.providers.character import (
+    from elizaos.features.basic_capabilities.providers.character import (
         get_character_context,
     )
 except ImportError:

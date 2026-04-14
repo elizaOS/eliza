@@ -1,26 +1,14 @@
-/**
- * Sub-components and helpers for FineTuningView.
- * Extracted from FineTuningView.tsx.
- */
-
 import type {
-  StreamEventEnvelope,
   TrainingDatasetRecord,
   TrainingJobRecord,
   TrainingModelRecord,
   TrainingStreamEvent,
   TrainingTrajectoryDetail,
   TrainingTrajectoryList,
-} from "@elizaos/app-core/api";
-import { formatTime } from "@elizaos/app-core/components";
-import {
-  Button,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectValue,
-  SettingsControls,
-} from "@elizaos/app-core";
+} from "../../api/client-types-config";
+import type { StreamEventEnvelope } from "../../api/client-types-core";
+import { formatTime } from "../../utils/format";
+import { Button, Select, SelectContent, SelectItem, SelectValue, SettingsControls } from "@elizaos/ui";
 
 /* ── Constants ─────────────────────────────────────────────────────── */
 
@@ -418,7 +406,7 @@ export function TrainingJobsSection({
       <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-3">
         <Select
           value={selectedDatasetId}
-          onValueChange={(value) => setSelectedDatasetId(value)}
+          onValueChange={(value: string) => setSelectedDatasetId(value)}
         >
           <SettingsControls.SelectTrigger variant="toolbar">
             <SelectValue placeholder={t("finetuningview.AutoBuildDatasetF")} />
@@ -438,7 +426,7 @@ export function TrainingJobsSection({
         </Select>
         <Select
           value={startBackend}
-          onValueChange={(value) =>
+          onValueChange={(value: string) =>
             setStartBackend(value as "mlx" | "cuda" | "cpu")
           }
         >

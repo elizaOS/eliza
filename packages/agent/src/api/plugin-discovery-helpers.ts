@@ -38,7 +38,7 @@ function findPluginsManifestRoot(startDir: string): string {
 
   for (let i = 0; i < 16; i += 1) {
     if (fs.existsSync(path.join(dir, "plugins.json"))) {
-      // Keep walking so wrapper repos like Milady can override the nested
+      // Keep walking so wrapper wrapper repos can override the nested
       // upstream eliza checkout's package root with the outer workspace manifest.
       manifestRoot = dir;
     }
@@ -53,71 +53,9 @@ function findPluginsManifestRoot(startDir: string): string {
   return manifestRoot ?? findOwnPackageRoot(startDir);
 }
 
-export interface PluginParamDef {
-  key: string;
-  type: string;
-  description: string;
-  required: boolean;
-  sensitive: boolean;
-  default?: string;
-  /** Predefined options for dropdown selection (e.g. model names). */
-  options?: string[];
-  /** Current value from process.env (masked if sensitive). */
-  currentValue: string | null;
-  /** Whether a value is currently set in the environment. */
-  isSet: boolean;
-}
+export type { PluginEntry, PluginParamDef } from "./server-types.js";
 
-export interface PluginEntry {
-  id: string;
-  name: string;
-  description: string;
-  tags: string[];
-  enabled: boolean;
-  configured: boolean;
-  envKey: string | null;
-  category:
-    | "ai-provider"
-    | "connector"
-    | "streaming"
-    | "database"
-    | "app"
-    | "feature";
-  /** Where the plugin comes from: "bundled" (ships with Eliza) or "store" (user-installed from registry). */
-  source: "bundled" | "store";
-  configKeys: string[];
-  parameters: PluginParamDef[];
-  validationErrors: Array<{ field: string; message: string }>;
-  validationWarnings: Array<{ field: string; message: string }>;
-  npmName?: string;
-  version?: string;
-  releaseStream?: "latest" | "alpha";
-  requestedVersion?: string;
-  latestVersion?: string | null;
-  alphaVersion?: string | null;
-  pluginDeps?: string[];
-  /** Whether this plugin is currently active in the runtime. */
-  isActive?: boolean;
-  /** Error message when plugin is enabled/installed but failed to load. */
-  loadError?: string;
-  /** Server-provided UI hints for plugin configuration fields. */
-  configUiHints?: Record<string, Record<string, unknown>>;
-  /** Optional icon URL or emoji for the plugin card header. */
-  icon?: string | null;
-  homepage?: string;
-  repository?: string;
-  setupGuideUrl?: string;
-  autoEnabled?: boolean;
-  managementMode?: "standard" | "core-optional";
-  capabilityStatus?:
-    | "loaded"
-    | "auto-enabled"
-    | "blocked"
-    | "missing-prerequisites"
-    | "disabled";
-  capabilityReason?: string | null;
-  prerequisites?: Array<{ label: string; met: boolean }>;
-}
+import type { PluginEntry, PluginParamDef } from "./server-types.js";
 
 export interface SkillEntry {
   id: string;

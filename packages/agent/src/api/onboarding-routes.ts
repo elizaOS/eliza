@@ -3,11 +3,9 @@ import { logger, stringToUuid, type UUID } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import { configFileExists, loadElizaConfig } from "../config/config.js";
 import {
-  inferOnboardingConnectionFromConfig,
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
   normalizeOnboardingCredentialInputs,
-  stripOnboardingConnectionSecrets,
 } from "../contracts/onboarding.js";
 import {
   normalizeDeploymentTargetConfig,
@@ -281,7 +279,7 @@ export async function handleOnboardingRoutes(
 
     const maskKey = (key: string): string => {
       if (!key || key.length <= 4) return key ? "****" : "";
-      return "****" + key.slice(-4);
+      return `****${key.slice(-4)}`;
     };
 
     json(res, {

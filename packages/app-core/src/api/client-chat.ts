@@ -571,8 +571,7 @@ declare module "./client-base" {
 // ---------------------------------------------------------------------------
 
 const LEGACY_CHAT_COMPAT_TITLE = "Quick Chat";
-const LEGACY_CHAT_CONVERSATION_STORAGE_PREFIX =
-  "legacy_chat_conversation";
+const LEGACY_CHAT_CONVERSATION_STORAGE_PREFIX = "legacy_chat_conversation";
 
 function getLegacyChatConversationStorageKey(client: ElizaClient): string {
   const base =
@@ -1154,9 +1153,7 @@ ElizaClient.prototype.ingestShare = async function (
   });
 };
 
-ElizaClient.prototype.consumeShareIngest = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.consumeShareIngest = async function (this: ElizaClient) {
   return this.fetch("/api/share/consume", { method: "POST" });
 };
 
@@ -1166,15 +1163,11 @@ ElizaClient.prototype.getWorkbenchOverview = async function (
   return this.fetch("/api/workbench/overview");
 };
 
-ElizaClient.prototype.getLifeOpsOverview = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.getLifeOpsOverview = async function (this: ElizaClient) {
   return this.fetch("/api/lifeops/overview");
 };
 
-ElizaClient.prototype.getLifeOpsAppState = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.getLifeOpsAppState = async function (this: ElizaClient) {
   return this.fetch("/api/lifeops/app-state");
 };
 
@@ -1639,9 +1632,7 @@ ElizaClient.prototype.disconnectGoogleLifeOpsConnector = async function (
   });
 };
 
-ElizaClient.prototype.listWorkbenchTasks = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.listWorkbenchTasks = async function (this: ElizaClient) {
   return this.fetch("/api/workbench/tasks");
 };
 
@@ -1682,9 +1673,7 @@ ElizaClient.prototype.deleteWorkbenchTask = async function (
   });
 };
 
-ElizaClient.prototype.listWorkbenchTodos = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.listWorkbenchTodos = async function (this: ElizaClient) {
   return this.fetch("/api/workbench/todos");
 };
 
@@ -1768,15 +1757,11 @@ ElizaClient.prototype.getTrajectoryDetail = async function (
   return this.fetch(`/api/trajectories/${encodeURIComponent(trajectoryId)}`);
 };
 
-ElizaClient.prototype.getTrajectoryStats = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.getTrajectoryStats = async function (this: ElizaClient) {
   return this.fetch("/api/trajectories/stats");
 };
 
-ElizaClient.prototype.getTrajectoryConfig = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.getTrajectoryConfig = async function (this: ElizaClient) {
   return this.fetch("/api/trajectories/config");
 };
 

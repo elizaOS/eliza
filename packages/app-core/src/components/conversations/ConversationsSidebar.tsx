@@ -1,32 +1,22 @@
-import {
-  Button,
-  ChatConversationItem,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  NewActionButton,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Sidebar,
-  SidebarCollapsedActionButton,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-  TooltipProvider,
-} from "@elizaos/app-core";
-import { Plus } from "lucide-react";
+
+
+import { Globe, MessagesSquare, Plus, Search, Settings2, X } from "lucide-react";
 import type React from "react";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { client } from "../../api";
 import { useApp } from "../../state";
 import { ConversationRenameDialog } from "./ConversationRenameDialog";
 import {
+  ALWAYS_ON_PLUGIN_IDS,
+  VISIBLE_CONNECTOR_IDS,
+  connectorDisplayName,
+  iconImageSource,
+  resolveIcon,
+} from "../pages/plugin-list-utils";
+import { ChatConversationItem, ChatSourceIcon, SidebarCollapsedActionButton, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, NewActionButton, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TooltipProvider } from "@elizaos/ui";
+import {
+  ALL_CONNECTORS_SOURCE_SCOPE,
   ALL_WORLDS_SCOPE,
   buildConversationsSidebarModel,
   type ConversationsSidebarRow,
@@ -73,14 +63,8 @@ function railMonogram(label: string): string {
 }
 
 function renderRailIdentity(row: ConversationsSidebarRow) {
-  if (row.avatarUrl) {
-    return (
-      <img
-        src={row.avatarUrl}
-        alt={`${row.title} avatar`}
-        className="h-8 w-8 rounded-full object-cover"
-      />
-    );
+  if (row.kind === "inbox" && typeof row.source === "string" && row.source) {
+    return <ChatSourceIcon source={row.source} className="h-4 w-4" />;
   }
 
   return railMonogram(row.title);
@@ -108,6 +92,14 @@ function selectLabel(option: {
   return `${option.label} (${option.count})`;
 }
 
+function renderSourceScopeIcon(option: {
+  icon?: React.ComponentType<{ className?: string }>;
+  value: string;
+}) {
+  const Icon = option.icon ?? MessagesSquare;
+  return <Icon className="h-4 w-4" />;
+}
+
 export function ConversationsSidebar({
   mobile = false,
   onClose,
@@ -121,7 +113,12 @@ export function ConversationsSidebar({
     handleNewConversation,
     handleSelectConversation,
     handleDeleteConversation,
+    plugins = [],
+    ensurePluginsLoaded = async () => {},
+    handlePluginToggle,
+    setTab,
     setState,
+    tab,
     t,
   } = useApp();
 
@@ -262,6 +259,7 @@ export function ConversationsSidebar({
       void handleSelectConversation(row.id);
     }
 
+    setTab("chat");
     onClose?.();
   };
 
@@ -269,15 +267,89 @@ export function ConversationsSidebar({
     setSourceScope(ELIZA_SOURCE_SCOPE);
     setWorldScope(ALL_WORLDS_SCOPE);
     setState("activeInboxChat", null);
+    setTab("chat");
     void handleNewConversation();
     onClose?.();
   };
 
+  const handleManageConnections = () => {
+    if (tab === "connectors") {
+      setTab("chat");
+    } else {
+      setTab("connectors");
+    }
+    onClose?.();
+  };
+
   const isGameModal = variant === "game-modal";
+  const isManageConnectionsActive = tab === "connectors";
+
+  // Load plugins when manage mode activates
+  useEffect(() => {
+    if (isManageConnectionsActive) {
+      void ensurePluginsLoaded();
+    }
+  }, [isManageConnectionsActive, ensurePluginsLoaded]);
+
+  const connectorPlugins = useMemo(
+    () =>
+      plugins.filter(
+        (p) =>
+          p.category === "connector" && !ALWAYS_ON_PLUGIN_IDS.has(p.id) && VISIBLE_CONNECTOR_IDS.has(p.id),
+      ),
+    [plugins],
+  );
+
+  const [togglingPlugins, setTogglingPlugins] = useState<Set<string>>(
+    new Set(),
+  );
+  const handleConnectorToggle = useCallback(
+    async (pluginId: string, enabled: boolean) => {
+      setTogglingPlugins((prev) => new Set(prev).add(pluginId));
+      try {
+        await handlePluginToggle(pluginId, enabled);
+      } finally {
+        setTogglingPlugins((prev) => {
+          const next = new Set(prev);
+          next.delete(pluginId);
+          return next;
+        });
+      }
+    },
+    [handlePluginToggle],
+  );
+
+  const renderConnectorIcon = useCallback(
+    (plugin: (typeof plugins)[0]) => {
+      const icon = resolveIcon(plugin);
+      if (!icon) return <span className="text-sm">🧩</span>;
+      if (typeof icon === "string") {
+        const src = iconImageSource(icon);
+        return src ? (
+          <img
+            src={src}
+            alt=""
+            className="h-4 w-4 shrink-0 rounded-[var(--radius-sm)] object-contain"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = "none";
+            }}
+          />
+        ) : (
+          <span className="text-sm">{icon}</span>
+        );
+      }
+      const IconComponent = icon;
+      return <IconComponent className="h-4 w-4" />;
+    },
+    [],
+  );
+
+  const showNewChatAction =
+    tab === "chat" && sidebarModel.sourceScope === ELIZA_SOURCE_SCOPE;
   const newChatAction = isGameModal ? (
     <Button
       variant="outline"
-      className="h-11 w-full rounded-xl border-[color:var(--onboarding-accent-border)] bg-[color:var(--onboarding-accent-bg)] px-3 py-2 text-sm font-medium text-[color:var(--onboarding-text-strong)] shadow-[0_12px_28px_rgba(0,0,0,0.18)] hover:border-[color:var(--onboarding-accent-border-hover)] hover:bg-[color:var(--onboarding-accent-bg-hover)] active:scale-[0.98]"
+      className="h-11 w-full rounded-sm border-[color:var(--onboarding-accent-border)] bg-[color:var(--onboarding-accent-bg)] px-3 py-2 text-sm font-medium text-[color:var(--onboarding-text-strong)] shadow-md hover:border-[color:var(--onboarding-accent-border-hover)] hover:bg-[color:var(--onboarding-accent-bg-hover)] active:scale-[0.98]"
       onClick={handleNewChat}
     >
       {t("conversations.newChat")}
@@ -314,7 +386,7 @@ export function ConversationsSidebar({
 
       <DropdownMenu
         open={menuConversation !== null}
-        onOpenChange={(open) => {
+        onOpenChange={(open: boolean) => {
           if (!open) setMenuConversation(null);
         }}
       >
@@ -334,9 +406,9 @@ export function ConversationsSidebar({
             sideOffset={6}
             align="start"
             className="w-40"
-            onCloseAutoFocus={(event) => event.preventDefault()}
-            onClick={(event) => event.stopPropagation()}
-            onPointerDown={(event) => event.stopPropagation()}
+            onCloseAutoFocus={(event: Event) => event.preventDefault()}
+            onClick={(event: React.MouseEvent) => event.stopPropagation()}
+            onPointerDown={(event: React.PointerEvent) => event.stopPropagation()}
             onPointerDownOutside={() => setMenuConversation(null)}
             onInteractOutside={() => setMenuConversation(null)}
             avoidCollisions
@@ -378,31 +450,16 @@ export function ConversationsSidebar({
         expandButtonTestId="chat-sidebar-expand-toggle"
         collapseButtonAriaLabel={t("conversations.closePanel")}
         expandButtonAriaLabel={t("aria.expandChatsPanel")}
-        header={
-          <SidebarHeader
-            search={{
-              value: searchQuery,
-              onChange: (event) => setSearchQuery(event.target.value),
-              onClear: () => setSearchQuery(""),
-              placeholder: t("conversations.searchChats", {
-                defaultValue: "Search chats",
-              }),
-              "aria-label": t("conversations.searchChats", {
-                defaultValue: "Search chats",
-              }),
-              clearLabel: t("common.clear", { defaultValue: "Clear" }),
-              autoComplete: "off",
-              spellCheck: false,
-            }}
-          />
-        }
+        header={undefined}
         collapsedRailAction={
-          <SidebarCollapsedActionButton
-            aria-label={t("conversations.newChat")}
-            onClick={handleNewChat}
-          >
-            <Plus className="h-4 w-4" />
-          </SidebarCollapsedActionButton>
+          showNewChatAction ? (
+            <SidebarCollapsedActionButton
+              aria-label={t("conversations.newChat")}
+              onClick={handleNewChat}
+            >
+              <Plus className="h-4 w-4" />
+            </SidebarCollapsedActionButton>
+          ) : undefined
         }
         collapsedRailItems={sidebarModel.rows.map((row) => (
           <SidebarContent.RailItem
@@ -435,64 +492,111 @@ export function ConversationsSidebar({
       >
         <SidebarScrollRegion variant={isGameModal ? "game-modal" : "default"}>
           <SidebarPanel variant={isGameModal ? "game-modal" : "default"}>
-            <div className="mb-3">{newChatAction}</div>
-
             <div className="mb-3 grid gap-2">
-              <div
-                className={
-                  sidebarModel.showWorldFilter
-                    ? "grid gap-2 sm:grid-cols-2"
-                    : "grid gap-2"
-                }
-              >
-                <div className="grid gap-1">
-                  <span className="px-1 text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
-                    {t("conversations.filterScope", {
-                      defaultValue: "Source",
-                    })}
-                  </span>
-                  <Select
-                    value={sidebarModel.sourceScope}
-                    onValueChange={(value) => {
-                      setSourceScope(value);
-                      setWorldScope(ALL_WORLDS_SCOPE);
-                    }}
-                  >
-                    <SelectTrigger
-                      className="h-10 rounded-2xl border-border/45 bg-card/55 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
-                      aria-label={t("conversations.filterScope", {
-                        defaultValue: "Source",
-                      })}
+              <div className="grid gap-2">
+                <div className="grid gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="px-1 text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
+                      {isManageConnectionsActive
+                        ? t("conversations.connectors", { defaultValue: "Connectors" })
+                        : t("conversations.filterScope", { defaultValue: "Source" })}
+                    </span>
+                    <Button
+                      type="button"
+                      variant={
+                        isManageConnectionsActive ? "default" : "outline"
+                      }
+                      size="sm"
+                      className={`ml-auto h-8 gap-1.5 rounded-sm px-2.5 text-2xs font-semibold ${
+                        isManageConnectionsActive
+                          ? "border-accent/45 bg-accent/14 text-txt"
+                          : "border-border/45 bg-card/55 text-txt hover:border-accent/35"
+                      }`}
+                      onClick={handleManageConnections}
                     >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {sidebarModel.sourceOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {selectLabel(option)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                      <Settings2 className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">
+                        {t("conversations.manageConnections", {
+                          defaultValue: "Manage",
+                        })}
+                      </span>
+                    </Button>
+                  </div>
+                  {!isManageConnectionsActive ? (
+                    <div className="flex flex-wrap gap-2">
+                      {sidebarModel.sourceOptions.map((option) => {
+                        if (option.value === ALL_CONNECTORS_SOURCE_SCOPE) return null;
+                        const isActive =
+                          sidebarModel.sourceScope === option.value;
+                        return (
+                          <Button
+                            key={option.value}
+                            type="button"
+                            variant={isActive ? "default" : "outline"}
+                            size="icon"
+                            className={`relative h-10 w-10 rounded-sm border transition-all ${
+                              isActive
+                                ? "border-accent/50 bg-accent/14 text-txt shadow-md"
+                                : "border-border/45 bg-card/55 text-muted hover:border-accent/40 hover:text-txt"
+                            }`}
+                            aria-label={option.label}
+                            title={option.label}
+                            onClick={() => {
+                              setSourceScope(option.value);
+                              setWorldScope(ALL_WORLDS_SCOPE);
+                            }}
+                          >
+                            {renderSourceScopeIcon(option)}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                  {!isManageConnectionsActive ? (
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(event) => setSearchQuery(event.target.value)}
+                        placeholder={t("conversations.searchChats", {
+                          defaultValue: "Search chats...",
+                        })}
+                        aria-label={t("conversations.searchChats", {
+                          defaultValue: "Search chats",
+                        })}
+                        autoComplete="off"
+                        spellCheck={false}
+                        className="h-9 w-full rounded-sm border border-border/45 bg-card/55 pl-8 pr-8 text-sm text-txt placeholder:text-muted focus:border-accent/50 focus:outline-none"
+                      />
+                      {searchQuery ? (
+                        <button
+                          type="button"
+                          onClick={() => setSearchQuery("")}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-txt"
+                          aria-label={t("common.clear", { defaultValue: "Clear" })}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {!isManageConnectionsActive && showNewChatAction ? (<div>{newChatAction}</div>) : null}
                 </div>
 
-                {sidebarModel.showWorldFilter ? (
+                {!isManageConnectionsActive && sidebarModel.showWorldFilter ? (
                   <div className="grid gap-1">
-                    <span className="px-1 text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
-                      {t("conversations.filterWorld", {
-                        defaultValue: "Server / world",
-                      })}
-                    </span>
                     <Select
                       value={sidebarModel.worldScope}
                       onValueChange={setWorldScope}
                     >
                       <SelectTrigger
-                        className="h-10 rounded-2xl border-border/45 bg-card/55 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+                        className="h-10 rounded-sm border-border/45 bg-card/55 shadow-inset [&>span]:flex [&>span]:items-center [&>span]:gap-1.5 [&>span]:truncate"
                         aria-label={t("conversations.filterWorld", {
                           defaultValue: "Server / world",
                         })}
                       >
+                        <Globe className="h-3.5 w-3.5 shrink-0 text-muted" />
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -508,7 +612,73 @@ export function ConversationsSidebar({
               </div>
             </div>
 
-            {sidebarModel.sections.length === 0 ? (
+            {isManageConnectionsActive ? (
+              <div className="space-y-1">
+                {connectorPlugins.length === 0 ? (
+                  <SidebarContent.EmptyState className="px-4 py-6">
+                    {t("pluginsview.NoConnectorsAvailable", {
+                      defaultValue: "No connectors available.",
+                    })}
+                  </SidebarContent.EmptyState>
+                ) : (
+                  connectorPlugins.map((plugin) => {
+                    const isToggleBusy = togglingPlugins.has(plugin.id);
+                    const toggleDisabled =
+                      isToggleBusy || (togglingPlugins.size > 0 && !isToggleBusy);
+                    return (
+                      <SidebarContent.Item
+                        key={plugin.id}
+                        as="div"
+                        className="items-center gap-1.5 px-2.5 py-2"
+                      >
+                        <SidebarContent.ItemButton
+                          className="items-center gap-2"
+                          onClick={() => {
+                            /* selecting handled by main content */
+                          }}
+                        >
+                          <SidebarContent.ItemIcon className="mt-0 h-8 w-8 shrink-0 p-1.5">
+                            {renderConnectorIcon(plugin)}
+                          </SidebarContent.ItemIcon>
+                          <SidebarContent.ItemBody>
+                            <span className="block truncate text-sm font-semibold leading-5 text-txt">
+                              {connectorDisplayName(plugin)}
+                            </span>
+                          </SidebarContent.ItemBody>
+                        </SidebarContent.ItemButton>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className={`h-7 min-h-0 min-w-[3.5rem] shrink-0 rounded-[var(--radius-sm)] border px-2.5 py-0 text-2xs font-bold leading-none tracking-[0.16em] transition-colors ${
+                            plugin.enabled
+                              ? "border-accent bg-accent text-accent-fg"
+                              : "border-border bg-transparent text-muted hover:border-accent/40 hover:text-txt"
+                          } ${
+                            toggleDisabled
+                              ? "cursor-not-allowed opacity-60"
+                              : "cursor-pointer"
+                          }`}
+                          onClick={(event: React.MouseEvent) => {
+                            event.stopPropagation();
+                            void handleConnectorToggle(
+                              plugin.id,
+                              !plugin.enabled,
+                            );
+                          }}
+                          disabled={toggleDisabled}
+                        >
+                          {isToggleBusy
+                            ? "..."
+                            : plugin.enabled
+                              ? t("common.on")
+                              : t("common.off")}
+                        </Button>
+                      </SidebarContent.Item>
+                    );
+                  })
+                )}
+              </div>
+            ) : sidebarModel.sections.length === 0 ? (
               <SidebarContent.EmptyState
                 variant={isGameModal ? "game-modal" : "default"}
                 className={
@@ -521,7 +691,7 @@ export function ConversationsSidebar({
               <div className="space-y-4">
                 {sidebarModel.sections.map((section) => (
                   <section key={section.key} className="space-y-2">
-                    <SidebarContent.SectionHeader meta={String(section.count)}>
+                    <SidebarContent.SectionHeader>
                       <SidebarContent.SectionLabel>
                         {section.label}
                       </SidebarContent.SectionLabel>
@@ -534,7 +704,6 @@ export function ConversationsSidebar({
                           <ChatConversationItem
                             key={conversationId}
                             conversation={{
-                              avatarUrl: row.avatarUrl,
                               id: conversationId,
                               ...(row.source ? { source: row.source } : {}),
                               title: row.title,

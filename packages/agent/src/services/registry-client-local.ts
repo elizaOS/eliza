@@ -392,8 +392,10 @@ async function discoverLocalWorkspaceApps(): Promise<
 
     addDiscoveredRoot(path.join(workspaceRoot, "plugins"), true);
     addDiscoveredRoot(path.join(workspaceRoot, "packages"), false);
+    addDiscoveredRoot(path.join(workspaceRoot, "apps"), false);
     addDiscoveredRoot(path.join(workspaceRoot, "eliza", "packages"), false);
     addDiscoveredRoot(path.join(workspaceRoot, "eliza", "plugins"), true);
+    addDiscoveredRoot(path.join(workspaceRoot, "eliza", "apps"), false);
 
     const workspaceEntries = await readDirectoryEntries(
       workspaceRoot,
@@ -407,8 +409,10 @@ async function discoverLocalWorkspaceApps(): Promise<
       const repoRoot = path.join(workspaceRoot, entry.name);
       addDiscoveredRoot(path.join(repoRoot, "plugins"), true);
       addDiscoveredRoot(path.join(repoRoot, "packages"), false);
+      addDiscoveredRoot(path.join(repoRoot, "apps"), false);
       addDiscoveredRoot(path.join(repoRoot, "eliza", "packages"), false);
       addDiscoveredRoot(path.join(repoRoot, "eliza", "plugins"), true);
+      addDiscoveredRoot(path.join(repoRoot, "eliza", "apps"), false);
     }
 
     for (const [root, includeTypescriptChild] of discoveredRoots) {

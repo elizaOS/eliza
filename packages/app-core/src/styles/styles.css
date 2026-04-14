@@ -86,15 +86,21 @@
   --font-chat: var(--font-chat);
 
   /* Shadows */
+  --shadow-xs: var(--shadow-xs);
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow-md);
   --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
+  --shadow-inset: var(--shadow-inset);
 
   /* Radius */
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
   --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+  --radius-3xl: var(--radius-3xl);
 
   /* Compact text sizes — replaces text-[9px] / text-[10px] / text-[11px] arbitraries */
   --font-size-3xs: var(--text-3xs);

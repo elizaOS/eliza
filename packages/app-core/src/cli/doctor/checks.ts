@@ -492,7 +492,7 @@ export function checkElizaWorkspace(projectRoot?: string): CheckResult {
     projectRoot ??
     path.resolve(process.env.ELIZA_PROJECT_ROOT ?? process.cwd());
   const elizaRoot = path.join(root, "eliza");
-  const pluginsRoot = path.join(root, "plugins");
+  const pluginsRoot = path.join(elizaRoot, "plugins");
   const hasElizaRoot = existsSync(path.join(elizaRoot, "package.json"));
   const hasPluginsRoot = existsSync(pluginsRoot);
 
@@ -502,7 +502,7 @@ export function checkElizaWorkspace(projectRoot?: string): CheckResult {
       category: "system",
       status: "warn",
       detail:
-        "Not found at ./eliza or ./plugins (optional — needed only for repo-local @elizaos development)",
+        "Vendored source workspace not found at ./eliza (needed only for repo-local @elizaos development)",
       fix: "bun run setup:upstreams",
     };
   }
@@ -518,12 +518,6 @@ export function checkElizaWorkspace(projectRoot?: string): CheckResult {
   }
 
   const coreLink = path.join(root, "node_modules", "@elizaos", "core");
-  const pluginManagerLink = path.join(
-    root,
-    "node_modules",
-    "@elizaos",
-    "plugin-agent-orchestrator",
-  );
   try {
     const realTarget = realpathSync(coreLink);
     if (realTarget.startsWith(elizaRoot)) {
@@ -531,21 +525,8 @@ export function checkElizaWorkspace(projectRoot?: string): CheckResult {
         label: "Local upstreams",
         category: "system",
         status: "pass",
-        detail: `Linked to ${elizaRoot}`,
-      };
-    }
-  } catch {
-    // Not a symlink or can't resolve — that's fine
-  }
-
-  try {
-    const realTarget = realpathSync(pluginManagerLink);
-    if (realTarget.startsWith(pluginsRoot)) {
-      return {
-        label: "Local upstreams",
-        category: "system",
-        status: "pass",
-        detail: `Linked to ${pluginsRoot}`,
+        detail:
+          "Vendored @elizaos/core workspace is active (includes the orchestrator runtime)",
       };
     }
   } catch {
@@ -554,7 +535,7 @@ export function checkElizaWorkspace(projectRoot?: string): CheckResult {
 
   const foundLocations = [
     hasElizaRoot ? "./eliza" : null,
-    hasPluginsRoot ? "./plugins" : null,
+    hasPluginsRoot ? "./eliza/plugins" : null,
   ]
     .filter((value): value is string => Boolean(value))
     .join(" and ");
@@ -563,7 +544,7 @@ export function checkElizaWorkspace(projectRoot?: string): CheckResult {
     label: "Local upstreams",
     category: "system",
     status: "pass",
-    detail: `Found at ${foundLocations} (run setup:upstreams to link)`,
+    detail: `Found vendored sources at ${foundLocations} (run setup:upstreams to refresh workspace links)`,
   };
 }
 

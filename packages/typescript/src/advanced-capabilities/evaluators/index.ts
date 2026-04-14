@@ -1,8 +1,7 @@
 /**
  * Advanced Evaluators
  *
- * Evaluators for memory and relationship management.
+ * Re-exports from features/advanced-capabilities/evaluators.
  */
 
-export { reflectionEvaluator } from "./reflection.ts";
-export { relationshipExtractionEvaluator } from "./relationshipExtraction.ts";
+export * from "../../features/advanced-capabilities/evaluators/index.ts";

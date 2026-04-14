@@ -28,8 +28,8 @@ const ROOT = new URL("..", import.meta.url).pathname;
 const DEFAULT_DIRS = [
   "eliza/packages/app-core/src/components",
   "eliza/packages/app-core/src/hooks",
-  "eliza/packages/app-core/src/ui/components",
-  "eliza/packages/app-core/src/ui/hooks",
+  "eliza/packages/ui/src/components",
+  "eliza/packages/ui/src/hooks",
 ];
 
 const DIRS = (customDirs ?? DEFAULT_DIRS).map((d) =>

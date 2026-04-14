@@ -1,13 +1,5 @@
-import {
-  Button,
-  PagePanel,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  StatusBadge,
-} from "@elizaos/app-core";
+
+
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, type RefCallback, useState } from "react";
 import { type CloudCompatAgent, client, type PluginInfo } from "../../api";
@@ -21,6 +13,8 @@ import {
   resolveManagedDiscordAgentChoice,
 } from "./cloud-dashboard-utils";
 import { PluginConfigForm, TelegramPluginConfig } from "./PluginConfigForm";
+import { connectorDisplayName } from "./plugin-list-utils";
+import { PagePanel, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, StatusBadge } from "@elizaos/ui";
 import {
   getPluginResourceLinks,
   pluginResourceLinkLabel,
@@ -389,37 +383,28 @@ function ConnectorPluginCard({
 
   const connectorHeaderMedia = (
     <span
-      className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border p-2.5 ${
+      className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-xl)] border p-2.5 ${
         isSelected
           ? "border-accent/30 bg-accent/18 text-txt-strong"
           : "border-border/50 bg-bg-accent/80 text-muted"
       }`}
     >
       {renderResolvedIcon(plugin, {
-        className: "h-4 w-4 shrink-0 rounded-sm object-contain",
+        className: "h-4 w-4 shrink-0 rounded-[var(--radius-sm)] object-contain",
         emojiClassName: "text-base",
       })}
     </span>
   );
   const connectorHeaderHeading = (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2">
+    <div className="flex min-w-0 items-start justify-between gap-x-3 gap-y-2">
       <div className="min-w-0">
         <span
           data-testid={`connector-header-${plugin.id}`}
           className="flex min-w-0 flex-wrap items-center gap-2"
         >
-          <StatusBadge
-            label={allParamsSet ? readyLabel : needsSetupLabel}
-            tone={allParamsSet ? "success" : "warning"}
-          />
           <span className="whitespace-normal break-words [overflow-wrap:anywhere] text-sm font-semibold leading-snug text-txt">
-            {plugin.name}
+            {connectorDisplayName(plugin)}
           </span>
-          {plugin.version ? (
-            <PagePanel.Meta compact tone="strong" className="font-mono">
-              v{plugin.version}
-            </PagePanel.Meta>
-          ) : null}
           {hasParams ? (
             <span className="text-xs-tight font-medium text-muted">
               {setCount}/{totalCount} {t("pluginsview.configured")}
@@ -444,11 +429,15 @@ function ConnectorPluginCard({
           )}
         </div>
       </div>
-      <div className="inline-flex shrink-0 items-start justify-end gap-2 self-start">
+      <div className="inline-flex shrink-0 items-center justify-end gap-2 self-start">
+        <StatusBadge
+          label={allParamsSet ? readyLabel : needsSetupLabel}
+          tone={allParamsSet ? "success" : "warning"}
+        />
         <Button
           variant="outline"
           size="sm"
-          className={`h-auto min-w-[3.75rem] rounded-full border px-3 py-1.5 text-2xs font-bold tracking-[0.16em] transition-colors ${
+          className={`h-auto min-w-[3.75rem] rounded-[var(--radius-sm)] border px-3 py-1.5 text-2xs font-bold tracking-[0.16em] transition-colors ${
             plugin.enabled
               ? "border-accent bg-accent text-accent-fg"
               : "border-border bg-transparent text-muted hover:border-accent/40 hover:text-txt"
@@ -468,7 +457,7 @@ function ConnectorPluginCard({
         <Button
           variant="ghost"
           size="icon"
-          className={`h-8 w-8 shrink-0 rounded-full border border-border/40 transition-colors ${
+          className={`h-8 w-8 shrink-0 rounded-[var(--radius-sm)] border border-border/40 transition-colors ${
             isExpanded
               ? "bg-bg/25 text-txt"
               : "text-muted hover:border-accent/40 hover:text-txt"
@@ -478,7 +467,7 @@ function ConnectorPluginCard({
             handleConnectorSectionToggle(plugin.id);
           }}
           aria-expanded={isExpanded}
-          aria-label={`${isExpanded ? collapseLabel : expandLabel} ${plugin.name}`}
+          aria-label={`${isExpanded ? collapseLabel : expandLabel} ${connectorDisplayName(plugin)}`}
           title={isExpanded ? collapseLabel : expandLabel}
         >
           <ChevronRight
@@ -501,10 +490,10 @@ function ConnectorPluginCard({
         data-testid={`connector-card-${plugin.id}`}
         expanded={isExpanded}
         expandOnCollapsedSurfaceClick
-        className={`transition-all ${
+        className={`border-transparent transition-all ${
           isSelected
-            ? "border-border/45 shadow-[0_18px_40px_rgba(3,5,10,0.16)]"
-            : "border-border/50"
+            ? "shadow-[0_18px_40px_rgba(3,5,10,0.16)]"
+            : ""
         }`}
         onExpandedChange={(nextExpanded) =>
           handleConnectorExpandedChange(plugin.id, nextExpanded)
@@ -521,7 +510,7 @@ function ConnectorPluginCard({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 rounded-xl px-4 text-xs-tight font-semibold"
+                className="h-8 rounded-[var(--radius-lg)] px-4 text-xs-tight font-semibold"
                 onClick={() => {
                   void handleOpenManagedDiscord();
                 }}
@@ -552,13 +541,13 @@ function ConnectorPluginCard({
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                 <Select
                   value={managedDiscordSelectedAgentId ?? "__none__"}
-                  onValueChange={(next) =>
+                  onValueChange={(next: string) =>
                     setManagedDiscordSelectedAgentId(
                       next === "__none__" ? null : next,
                     )
                   }
                 >
-                  <SelectTrigger className="h-9 min-w-[14rem] rounded-xl border-border/40 bg-bg/80 text-sm">
+                  <SelectTrigger className="h-9 min-w-[14rem] rounded-[var(--radius-lg)] border-border/40 bg-bg/80 text-sm">
                     <SelectValue
                       placeholder={t("pluginsview.ManagedDiscordSelectAgent", {
                         defaultValue: "Select a cloud agent",
@@ -576,7 +565,7 @@ function ConnectorPluginCard({
                 <Button
                   variant="default"
                   size="sm"
-                  className="h-9 rounded-xl px-4 text-xs-tight font-semibold"
+                  className="h-9 rounded-[var(--radius-lg)] px-4 text-xs-tight font-semibold"
                   onClick={() => {
                     void handleConfirmManagedDiscordAgent();
                   }}
@@ -602,7 +591,7 @@ function ConnectorPluginCard({
                 key={`${plugin.id}:${link.key}`}
                 variant="outline"
                 size="sm"
-                className="h-8 rounded-xl border-border/40 bg-card/40 px-3 text-xs-tight font-semibold text-muted transition-all hover:border-accent hover:bg-accent/5 hover:text-txt"
+                className="h-8 rounded-[var(--radius-lg)] border-border/40 bg-card/40 px-3 text-xs-tight font-semibold text-muted transition-all hover:border-accent hover:bg-accent/5 hover:text-txt"
                 onClick={() => {
                   void handleOpenPluginExternalUrl(link.url);
                 }}
@@ -622,7 +611,7 @@ function ConnectorPluginCard({
               <Button
                 variant="default"
                 size="sm"
-                className="h-8 rounded-xl px-4 text-xs-tight font-bold"
+                className="h-8 rounded-[var(--radius-lg)] px-4 text-xs-tight font-bold"
                 disabled={installingPlugins.has(plugin.id)}
                 onClick={() =>
                   void handleInstallPlugin(plugin.id, plugin.npmName ?? "")
@@ -684,6 +673,14 @@ function ConnectorPluginCard({
           </PagePanel.Notice>
         )}
 
+        {plugin.version ? (
+          <div className="mt-4">
+            <PagePanel.Meta compact tone="strong" className="font-mono">
+              v{plugin.version}
+            </PagePanel.Meta>
+          </div>
+        ) : null}
+
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {plugin.isActive && (
             <Button
@@ -695,7 +692,7 @@ function ConnectorPluginCard({
                     : "outline"
               }
               size="sm"
-              className={`h-8 rounded-xl px-4 text-xs-tight font-bold transition-all ${
+              className={`h-8 rounded-[var(--radius-lg)] px-4 text-xs-tight font-bold transition-all ${
                 testResult?.loading
                   ? "cursor-wait opacity-70"
                   : testResult?.success
@@ -715,7 +712,7 @@ function ConnectorPluginCard({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 rounded-xl px-4 text-xs-tight font-semibold text-muted hover:text-txt"
+                className="h-8 rounded-[var(--radius-lg)] px-4 text-xs-tight font-semibold text-muted hover:text-txt"
                 onClick={() => handleConfigReset(plugin.id)}
               >
                 {t("pluginsview.Reset")}
@@ -723,7 +720,7 @@ function ConnectorPluginCard({
               <Button
                 variant={saveSuccess ? "default" : "secondary"}
                 size="sm"
-                className={`h-8 rounded-xl px-4 text-xs-tight font-bold transition-all ${
+                className={`h-8 rounded-[var(--radius-lg)] px-4 text-xs-tight font-bold transition-all ${
                   saveSuccess
                     ? "bg-ok text-ok-fg hover:bg-ok/90"
                     : "bg-accent text-accent-fg hover:bg-accent/90"
@@ -744,10 +741,16 @@ function ConnectorPluginCard({
 export function ConnectorPluginGroups(props: ConnectorPluginGroupsProps) {
   const groups = groupVisiblePlugins(props.visiblePlugins);
 
+  if (groups.length === 1) {
+    return groups[0].plugins.map((plugin) => (
+      <ConnectorPluginCard key={plugin.id} {...props} plugin={plugin} />
+    ));
+  }
+
   return groups.map((group) => (
     <div
       key={group.id}
-      className="relative rounded-xl border border-border/30 px-2 pb-2 pt-5"
+      className="relative rounded-[var(--radius-lg)] border border-border/30 px-2 pb-2 pt-5"
     >
       <span className="absolute -top-2.5 left-3 bg-bg px-2 text-2xs font-semibold uppercase tracking-wider text-muted">
         {group.label}

@@ -371,7 +371,7 @@ export async function handleAgentStatusRoutes(
       return true;
     }
     const body = await readJsonBody<{ tokenURI?: string }>(req, res);
-    if (!body || !body.tokenURI) {
+    if (!body?.tokenURI) {
       error(res, "tokenURI is required");
       return true;
     }

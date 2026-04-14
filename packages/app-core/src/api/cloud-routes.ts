@@ -14,7 +14,7 @@ import {
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
 } from "@elizaos/shared/contracts/onboarding";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
 import { isTimeoutError } from "../utils/errors";
 import {
   disconnectUnifiedCloudConnection,

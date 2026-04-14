@@ -49,9 +49,14 @@
       "default": "./dist/testing/index.js"
     },
     "./orchestrator": {
-      "types": "./src/orchestrator/index.ts",
-      "import": "./dist/node/orchestrator/index.js",
-      "default": "./dist/node/orchestrator/index.js"
+      "types": "./src/features/orchestrator/index.ts",
+      "import": "./dist/index.node.js",
+      "default": "./dist/index.node.js"
+    },
+    "./advanced-capabilities/clipboard/index": {
+      "types": "./src/features/advanced-capabilities/clipboard/index.ts",
+      "import": "./dist/node/features/advanced-capabilities/clipboard/index.js",
+      "default": "./dist/node/features/advanced-capabilities/clipboard/index.js"
     }
   },
   "files": [

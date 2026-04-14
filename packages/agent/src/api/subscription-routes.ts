@@ -109,7 +109,7 @@ export async function handleSubscriptionRoutes(
     const body = await readJsonBody<{ token: string }>(req, res);
     if (!body) return true;
     const trimmedToken = body.token?.trim();
-    if (!trimmedToken || !trimmedToken.startsWith("sk-ant-")) {
+    if (!trimmedToken?.startsWith("sk-ant-")) {
       error(res, "Invalid token format — expected sk-ant-oat01-...", 400);
       return true;
     }

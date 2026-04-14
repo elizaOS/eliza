@@ -1,18 +1,5 @@
-/**
- * PolicyControlsView — wallet policy settings for Steward.
- * All monetary values are in USD for cross-chain compatibility.
- * Simple settings rows that match the rest of the Settings page.
- */
 
-import {
-  Button,
-  ConfirmDialog,
-  Input,
-  Label,
-  Slider,
-  Spinner,
-  Switch,
-} from "@elizaos/app-core";
+
 import { AlertTriangle } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -38,7 +25,8 @@ import {
   isValidAddress,
   TIMEZONES,
 } from "../policy-controls";
-import { StewardLogo } from "@elizaos/app-steward/ui";
+import { StewardLogo } from "@elizaos/app-steward/StewardLogo";
+import { Button, ConfirmDialog, Input, Label, Slider, Spinner, Switch } from "@elizaos/ui";
 
 const asRecord = (v: unknown) => v as unknown as Record<string, unknown>;
 
@@ -193,8 +181,10 @@ export function PolicyControlsView() {
   const normalizedAddresses = useMemo(
     () =>
       (addressConfig.addresses ?? []).map((addr) => {
-        if (typeof addr === "object" && addr !== null && "address" in addr) {
-          return (addr as unknown as { address: string }).address;
+        const addressEntry =
+          typeof addr === "object" && addr !== null ? addr : null;
+        if (addressEntry && "address" in addressEntry) {
+          return (addressEntry as unknown as { address: string }).address;
         }
         return String(addr);
       }),
@@ -540,7 +530,7 @@ function SliderField({
         min={min}
         max={max}
         step={1}
-        onValueChange={([v]) => onChange(v)}
+        onValueChange={([v]: number[]) => onChange(v)}
       />
     </div>
   );

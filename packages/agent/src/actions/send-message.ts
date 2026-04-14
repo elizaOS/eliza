@@ -5,7 +5,6 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
-  State,
   UUID,
 } from "@elizaos/core";
 import {
@@ -14,7 +13,7 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { hasAdminAccess } from "../security/access.js";
-import { hasContextSignalSyncForKey, messageText } from "./context-signal.js";
+import { hasContextSignalSyncForKey } from "./context-signal.js";
 
 type MessageTransportService = {
   sendDirectMessage?: (

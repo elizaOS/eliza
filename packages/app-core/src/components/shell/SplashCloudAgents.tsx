@@ -1,11 +1,5 @@
-/**
- * SplashCloudAgents — inline cloud agent management within the splash screen.
- *
- * Handles Eliza Cloud login, lists user's cloud agents, allows creating new
- * agents, and connects to a selected agent (skipping onboarding).
- */
 
-import { Button, Card, CardContent, Input, Spinner } from "@elizaos/app-core";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
@@ -18,6 +12,7 @@ import {
   useApp,
 } from "../../state";
 import type { StartupEvent } from "../../state/startup-coordinator";
+import { Button, Card, CardContent, Input, Spinner } from "@elizaos/ui";
 
 const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 

@@ -1,19 +1,6 @@
-/**
- * Full-width character editor — replaces the narrow notebook-style CharacterView.
- *
- * Two-panel layout: left panel has roster + identity + bio + system prompt,
- * right panel has style rules + examples. Footer has voice + save + reset.
- */
+
 
 import { getStylePresets } from "@elizaos/shared/onboarding-presets";
-import {
-  Button,
-  PageLayout,
-  Sidebar,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/app-core";
 import { client } from "../../api/client";
 import {
   APP_EMOTE_EVENT,
@@ -75,10 +62,6 @@ const Icon = ({ className, d }: { className?: string; d: string }) => (
   </svg>
 );
 
-const RotateCcw = ({ className }: { className?: string }) => (
-  <Icon className={className} d="M1 4v6h6M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-);
-
 const DownloadIcon = ({ className }: { className?: string }) => (
   <Icon
     className={className}
@@ -86,6 +69,21 @@ const DownloadIcon = ({ className }: { className?: string }) => (
   />
 );
 
+const SparklesIcon = ({ className }: { className?: string }) => (
+  <Icon
+    className={className}
+    d="M12 2l1.7 5.1L19 9l-5.3 1.9L12 16l-1.7-5.1L5 9l5.3-1.9L12 2zm7 11l.9 2.7L22 17l-2.1.3L19 20l-.9-2.7L16 17l2.1-.3L19 13zm-14 0l.9 2.7L8 17l-2.1.3L5 20l-.9-2.7L2 17l2.1-.3L5 13z"
+  />
+);
+
+const UploadIcon = ({ className }: { className?: string }) => (
+  <Icon
+    className={className}
+    d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"
+  />
+);
+
+import { SidebarContent, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, PageLayout } from "@elizaos/ui";
 import {
   type ChangeEvent,
   type ReactNode,
@@ -116,13 +114,6 @@ const idleSaveBtnStyle = {
 
 const pageTabsBoxShadow =
   "0 10px 26px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.05)";
-
-const CHARACTER_EDITOR_TABLIST_CLASSNAME =
-  "flex shrink-0 items-center gap-1 rounded-lg border border-border bg-elevated p-1";
-const CHARACTER_EDITOR_TAB_CLASSNAME =
-  "flex-initial cursor-pointer rounded-md border border-transparent bg-transparent px-[0.6rem] py-1.5 text-center text-2xs font-bold uppercase tracking-[0.1em] text-txt transition-[background,border-color,color,box-shadow] duration-150 hover:border-border hover:bg-bg-hover hover:text-txt-strong";
-const CHARACTER_EDITOR_FOOTER_ACTION_CLASSNAME =
-  "h-9 rounded-xl px-6 text-sm font-bold tracking-[0.05em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50";
 
 /* ── Constants ─────────────────────────────────────────────────────── */
 
@@ -226,6 +217,11 @@ export function CharacterEditor({
   >(tab === "knowledge" ? "knowledge" : "personality");
   const [rightTab, setRightTab] = useState<"style" | "examples">("style");
   const [customizing, setCustomizing] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<
+    | { kind: "page"; page: (typeof CHARACTER_EDITOR_PAGES)[number] }
+    | { kind: "character"; entry: CharacterRosterEntry }
+    | null
+  >(null);
   const leftPanelRef = useRef<HTMLDivElement>(null);
   const rightPanelRef = useRef<HTMLDivElement>(null);
 
@@ -652,13 +648,37 @@ export function CharacterEditor({
     ],
   );
 
+  const requestPageChange = useCallback(
+    (page: (typeof CHARACTER_EDITOR_PAGES)[number]) => {
+      if (page === activePage) return;
+      if (hasPendingChanges) {
+        setPendingNavigation({ kind: "page", page });
+        return;
+      }
+      setActivePage(page);
+      if (page === "style" || page === "examples") setRightTab(page);
+    },
+    [activePage, hasPendingChanges],
+  );
+
+  const requestCharacterSelection = useCallback(
+    (entry: CharacterRosterEntry) => {
+      if (entry.id === selectedCharacterId) return;
+      if (hasPendingChanges) {
+        setPendingNavigation({ kind: "character", entry });
+        return;
+      }
+      commitCharacterSelection(entry, true);
+    },
+    [commitCharacterSelection, hasPendingChanges, selectedCharacterId],
+  );
+
   /* ── Select character from roster ───────────────────────────────── */
   const handleSelectCharacter = useCallback(
     (entry: CharacterRosterEntry) => {
-      if (entry.id === selectedCharacterId) return;
-      commitCharacterSelection(entry, true);
+      requestCharacterSelection(entry);
     },
-    [commitCharacterSelection, selectedCharacterId],
+    [requestCharacterSelection],
   );
 
   /* ── Auto-select on mount ───────────────────────────────────────── */
@@ -864,15 +884,20 @@ export function CharacterEditor({
         err instanceof Error ? err.message : "Failed to save voice settings.",
       );
       setVoiceSaving(false);
-      return;
+      return false;
     }
     setVoiceSaving(false);
-    await handleSaveCharacter();
+    try {
+      await handleSaveCharacter();
+    } catch {
+      return false;
+    }
     // Mark the current selection as saved
     setSavedCharacterId(
       selectedCharacterId ?? activeCharacterRosterEntry?.id ?? null,
     );
     setFieldsEdited(false);
+    return true;
   }, [
     handleSaveCharacter,
     persistVoiceConfig,
@@ -912,78 +937,29 @@ export function CharacterEditor({
     URL.revokeObjectURL(url);
   }, [currentCharacter]);
 
-  const buildStandaloneActionButtons = useCallback(
-    (className: string, buttonClassName = "") => (
-      <div className={className}>
-        <Button
-          size="sm"
-          className={`${CHARACTER_EDITOR_FOOTER_ACTION_CLASSNAME} ${buttonClassName}`}
-          style={hasPendingChanges ? accentGradientStyle : idleSaveBtnStyle}
-          disabled={characterSaving || voiceSaving || !hasPendingChanges}
-          onClick={() => void handleSaveAll()}
-        >
-          {characterSaving || voiceSaving
-            ? t("charactereditor.Saving", { defaultValue: "saving..." })
-            : t("charactereditor.Save", { defaultValue: "Save" })}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className={`${CHARACTER_EDITOR_FOOTER_ACTION_CLASSNAME} ${buttonClassName}`}
-          style={idleSaveBtnStyle}
-          onClick={handleResetToDefaults}
-          disabled={!activeCharacterRosterEntry}
-          title={t("charactereditor.ResetToDefaults", {
-            defaultValue: "Reset to Defaults",
-          })}
-        >
-          <RotateCcw className="h-3.5 w-3.5 mr-1" />
-          {t("charactereditor.Reset", { defaultValue: "Reset" })}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className={`${CHARACTER_EDITOR_FOOTER_ACTION_CLASSNAME} ${buttonClassName}`}
-          style={idleSaveBtnStyle}
-          onClick={() =>
-            document.getElementById("ce-vrm-upload-standalone")?.click()
-          }
-          title={t("charactereditor.UploadVRM", {
-            defaultValue: "Upload VRM",
-          })}
-        >
-          {t("charactereditor.UploadVRM", { defaultValue: "Upload VRM" })}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className={`${CHARACTER_EDITOR_FOOTER_ACTION_CLASSNAME} ${buttonClassName}`}
-          style={idleSaveBtnStyle}
-          onClick={handleExportCharacter}
-          disabled={!currentCharacter}
-          title={t("charactereditor.ExportJSON", {
-            defaultValue: "Export JSON",
-          })}
-        >
-          <DownloadIcon className="h-3.5 w-3.5 mr-1" />
-          {t("charactereditor.ExportJSON", { defaultValue: "Export JSON" })}
-        </Button>
-      </div>
-    ),
-    [
-      activeCharacterRosterEntry,
-      characterSaving,
-      currentCharacter,
-      handleExportCharacter,
-      handleResetToDefaults,
-      handleSaveAll,
-      hasPendingChanges,
-      t,
-      voiceSaving,
-    ],
+  const resolvePendingNavigation = useCallback(
+    async (shouldSave: boolean) => {
+      const target = pendingNavigation;
+      if (!target) return;
+
+      if (shouldSave) {
+        const saved = await handleSaveAll();
+        if (!saved) return;
+      }
+
+      setPendingNavigation(null);
+
+      if (target.kind === "page") {
+        setActivePage(target.page);
+        if (target.page === "style" || target.page === "examples") {
+          setRightTab(target.page);
+        }
+        return;
+      }
+
+      commitCharacterSelection(target.entry, true);
+    },
+    [commitCharacterSelection, handleSaveAll, pendingNavigation],
   );
 
   useEffect(() => {
@@ -992,6 +968,92 @@ export function CharacterEditor({
       onHeaderActionsChange?.(null);
     };
   }, [onHeaderActionsChange]);
+
+  const renderSaveFeedback = () =>
+    hasStandaloneHeaderFeedback ? (
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {characterSaveSuccess && (
+          <span className="rounded-lg border border-status-success/20 bg-status-success-bg px-3 py-1 text-xs font-bold text-status-success">
+            {characterSaveSuccess}
+          </span>
+        )}
+        {combinedSaveError && (
+          <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
+            {combinedSaveError}
+          </span>
+        )}
+        {generateError && (
+          <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
+            {generateError}
+          </span>
+        )}
+      </div>
+    ) : null;
+
+  const renderContentActionButtons = (uploadInputId: string) => (
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className="h-9 w-9 rounded-xl"
+        onClick={() => document.getElementById(uploadInputId)?.click()}
+        title={t("charactereditor.UploadVRM", {
+          defaultValue: "Upload VRM",
+        })}
+        aria-label={t("charactereditor.UploadVRM", {
+          defaultValue: "Upload VRM",
+        })}
+      >
+        <UploadIcon className="h-4 w-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className="h-9 w-9 rounded-xl"
+        onClick={handleExportCharacter}
+        disabled={!currentCharacter}
+        title={t("charactereditor.ExportJSON", {
+          defaultValue: "Export JSON",
+        })}
+        aria-label={t("charactereditor.ExportJSON", {
+          defaultValue: "Export JSON",
+        })}
+      >
+        <DownloadIcon className="h-4 w-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-9 rounded-xl px-4 text-xs-tight font-semibold"
+        onClick={handleResetToDefaults}
+        disabled={!activeCharacterRosterEntry || !currentCharacter}
+        title={t("charactereditor.ResetToDefaults", {
+          defaultValue: "Reset to Defaults",
+        })}
+      >
+        {t("charactereditor.Reset", { defaultValue: "Reset" })}
+      </Button>
+      <Button
+        size="sm"
+        className="h-9 rounded-xl px-6 text-sm font-bold tracking-[0.05em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50"
+        style={hasPendingChanges ? accentGradientStyle : idleSaveBtnStyle}
+        disabled={
+          characterSaving ||
+          voiceSaving ||
+          !hasPendingChanges ||
+          !currentCharacter
+        }
+        onClick={() => void handleSaveAll()}
+      >
+        {characterSaving || voiceSaving
+          ? t("charactereditor.Saving", { defaultValue: "saving..." })
+          : t("charactereditor.Save", { defaultValue: "Save" })}
+      </Button>
+    </div>
+  );
 
   /* ── Generate field ─────────────────────────────────────────────── */
   const getCharContext = useCallback(
@@ -1154,6 +1216,13 @@ export function CharacterEditor({
   const hasStandaloneHeaderFeedback = Boolean(
     characterSaveSuccess || combinedSaveError || generateError,
   );
+  const standaloneContentHeader =
+    activePage === "knowledge" ? null : (
+      <div className="flex flex-col items-end gap-2">
+        {renderContentActionButtons("ce-vrm-upload-standalone")}
+        {renderSaveFeedback()}
+      </div>
+    );
 
   /* ── Loading state ──────────────────────────────────────────────── */
   if (characterLoading && !characterData) {
@@ -1216,9 +1285,9 @@ export function CharacterEditor({
               defaultValue: "Character editor — tabbed sections",
             })}
           >
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="flex flex-wrap items-center gap-3 shrink-0">
               <div
-                className={CHARACTER_EDITOR_TABLIST_CLASSNAME}
+                className="flex shrink-0 items-center gap-1 rounded-lg border border-border bg-elevated p-1"
                 style={{ boxShadow: pageTabsBoxShadow }}
                 role="tablist"
                 aria-label={t("charactereditor.TabbedEditorGroupLabel", {
@@ -1234,15 +1303,11 @@ export function CharacterEditor({
                     aria-selected={activePage === page}
                     aria-controls={`character-editor-panel-${page}`}
                     tabIndex={activePage === page ? 0 : -1}
-                    className={CHARACTER_EDITOR_TAB_CLASSNAME}
+                    className="flex-initial cursor-pointer rounded-md border border-transparent bg-transparent px-[0.6rem] py-1.5 text-center text-2xs font-bold uppercase tracking-[0.1em] text-txt transition-[background,border-color,color,box-shadow] duration-150 hover:border-border hover:bg-bg-hover hover:text-txt-strong"
                     style={
                       activePage === page ? accentGradientStyle : undefined
                     }
-                    onClick={() => {
-                      setActivePage(page);
-                      if (page === "style" || page === "examples")
-                        setRightTab(page);
-                    }}
+                    onClick={() => requestPageChange(page)}
                     onKeyDown={(event) => {
                       if (
                         event.key !== "ArrowRight" &&
@@ -1268,10 +1333,7 @@ export function CharacterEditor({
                                   CHARACTER_EDITOR_PAGES.length) %
                                 CHARACTER_EDITOR_PAGES.length;
                       const nextPage = CHARACTER_EDITOR_PAGES[nextIndex];
-                      setActivePage(nextPage);
-                      if (nextPage === "style" || nextPage === "examples") {
-                        setRightTab(nextPage);
-                      }
+                      requestPageChange(nextPage);
                       requestAnimationFrame(() => {
                         globalThis.document
                           ?.getElementById(`character-editor-tab-${nextPage}`)
@@ -1297,21 +1359,11 @@ export function CharacterEditor({
                   </button>
                 ))}
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-9 rounded-xl px-2.5 text-xs-tight font-semibold disabled:opacity-40"
-                style={accentGradientStyle}
-                onClick={handleResetToDefaults}
-                disabled={!activeCharacterRosterEntry}
-                title={t("charactereditor.ResetToDefaults", {
-                  defaultValue: "Reset to Defaults",
-                })}
-              >
-                <RotateCcw className="h-4 w-4 mr-1" />
-                {t("charactereditor.Reset", { defaultValue: "Reset" })}
-              </Button>
+              {activePage !== "knowledge" && (
+                <div className="ml-auto">
+                  {renderContentActionButtons("ce-vrm-upload")}
+                </div>
+              )}
             </div>
 
             <div
@@ -1396,6 +1448,7 @@ export function CharacterEditor({
           <PageLayout
             className="h-full"
             contentInnerClassName="mx-auto flex w-full max-w-8xl min-h-0 flex-1 flex-col"
+            contentHeader={standaloneContentHeader}
             footer={<WidgetHost slot="character" className="pt-4" />}
             footerClassName="lg:px-8"
             sidebar={
@@ -1435,7 +1488,7 @@ export function CharacterEditor({
                           <SidebarContent.Item
                             key={page}
                             active={activePage === page}
-                            onClick={() => setActivePage(page)}
+                            onClick={() => requestPageChange(page)}
                             aria-current={
                               activePage === page ? "page" : undefined
                             }
@@ -1453,19 +1506,6 @@ export function CharacterEditor({
                         );
                       })}
                     </nav>
-                    <div className="space-y-2">
-                      <SidebarContent.SectionHeader>
-                        <SidebarContent.SectionLabel>
-                          {t("charactereditor.Actions", {
-                            defaultValue: "Actions",
-                          })}
-                        </SidebarContent.SectionLabel>
-                      </SidebarContent.SectionHeader>
-                      {buildStandaloneActionButtons(
-                        "flex flex-col gap-2",
-                        "w-full justify-center",
-                      )}
-                    </div>
                   </SidebarPanel>
                 </SidebarScrollRegion>
               </Sidebar>
@@ -1501,25 +1541,6 @@ export function CharacterEditor({
                 e.target.value = "";
               }}
             />
-            {hasStandaloneHeaderFeedback ? (
-              <div className="mb-4 flex flex-wrap items-center gap-2">
-                {characterSaveSuccess && (
-                  <span className="rounded-lg border border-status-success/20 bg-status-success-bg px-3 py-1 text-xs font-bold text-status-success">
-                    {characterSaveSuccess}
-                  </span>
-                )}
-                {combinedSaveError && (
-                  <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
-                    {combinedSaveError}
-                  </span>
-                )}
-                {generateError && (
-                  <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
-                    {generateError}
-                  </span>
-                )}
-              </div>
-            ) : null}
             <div className="flex min-h-0 flex-1 min-w-0 flex-col">
               {activePage === "personality" && (
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -1608,96 +1629,128 @@ export function CharacterEditor({
             </div>
           )}
 
-          <div className="relative flex items-center justify-center min-h-9 max-md:flex max-md:flex-wrap max-md:justify-center max-md:gap-2">
-            <div className="absolute left-0 flex items-center gap-2">
-              <input
-                type="file"
-                id="ce-vrm-upload"
-                accept=".vrm"
-                className="hidden"
-                style={{ display: "none" }}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    setState("selectedVrmIndex", 0);
-                  }
-                  e.target.value = "";
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className={CHARACTER_EDITOR_FOOTER_ACTION_CLASSNAME}
-                style={idleSaveBtnStyle}
-                onClick={() =>
-                  document.getElementById("ce-vrm-upload")?.click()
+          <div className="flex min-h-9 items-center justify-end">
+            <input
+              type="file"
+              id="ce-vrm-upload"
+              accept=".vrm"
+              className="hidden"
+              style={{ display: "none" }}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  setState("selectedVrmIndex", 0);
                 }
-                title={t("charactereditor.UploadVRM", {
-                  defaultValue: "Upload",
-                })}
-              >
-                {t("charactereditor.UploadVRM", {
-                  defaultValue: "Upload",
-                })}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className={CHARACTER_EDITOR_FOOTER_ACTION_CLASSNAME}
-                style={idleSaveBtnStyle}
-                onClick={handleExportCharacter}
-                disabled={!currentCharacter}
-                title={t("charactereditor.ExportJSON", {
-                  defaultValue: "Export",
-                })}
-              >
-                {t("charactereditor.ExportJSON", {
-                  defaultValue: "Export",
-                })}
-              </Button>
-            </div>
-
+                e.target.value = "";
+              }}
+            />
             <Button
+              type="button"
+              variant="default"
               size="sm"
-              className={CHARACTER_EDITOR_FOOTER_ACTION_CLASSNAME}
-              style={hasPendingChanges ? accentGradientStyle : idleSaveBtnStyle}
-              disabled={characterSaving || voiceSaving || !hasPendingChanges}
-              onClick={() => void handleSaveAll()}
+              className="h-9 rounded-xl px-6 text-sm font-bold tracking-[0.05em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50"
+              style={accentGradientStyle}
+              onClick={() => {
+                if (customizing) {
+                  setCustomizing(false);
+                  setTab("character-select");
+                } else {
+                  setCustomizing(true);
+                  setTab("character");
+                }
+              }}
             >
-              {characterSaving || voiceSaving
-                ? t("charactereditor.Saving", { defaultValue: "saving..." })
-                : t("charactereditor.Save", { defaultValue: "Save" })}
+              {customizing
+                ? t("charactereditor.SelectBtn", { defaultValue: "Select" })
+                : t("charactereditor.CustomizeBtn", {
+                    defaultValue: "Customize",
+                  })}
             </Button>
-
-            <div className="absolute right-0 flex items-center gap-2">
-              <Button
-                type="button"
-                variant="default"
-                size="sm"
-                className={CHARACTER_EDITOR_FOOTER_ACTION_CLASSNAME}
-                style={accentGradientStyle}
-                onClick={() => {
-                  if (customizing) {
-                    setCustomizing(false);
-                    setTab("character-select");
-                  } else {
-                    setCustomizing(true);
-                    setTab("character");
-                  }
-                }}
-              >
-                {customizing
-                  ? t("charactereditor.SelectBtn", { defaultValue: "Select" })
-                  : t("charactereditor.CustomizeBtn", {
-                      defaultValue: "Customize",
-                    })}
-              </Button>
-            </div>
           </div>
         </div>
       )}
+
+      <Dialog
+        open={pendingNavigation !== null}
+        onOpenChange={(open: boolean) => {
+          if (!open) setPendingNavigation(null);
+        }}
+      >
+        <DialogContent className="max-w-md rounded-2xl border-border/60 bg-bg shadow-[var(--shadow-lg)] backdrop-blur-xl">
+          <DialogHeader className="gap-3">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-accent/30 bg-accent/10 text-accent">
+                <SparklesIcon className="h-4 w-4" />
+              </div>
+              <div>
+                <DialogTitle>
+                  {t("charactereditor.UnsavedChangesTitle", {
+                    defaultValue: "Unsaved changes",
+                  })}
+                </DialogTitle>
+                <DialogDescription className="mt-1 whitespace-pre-line text-muted-strong">
+                  {t("charactereditor.UnsavedChangesBody", {
+                    defaultValue:
+                      "You have unsaved changes. Save before switching?",
+                  })}
+                  {pendingNavigation?.kind === "character"
+                    ? `\n${t("charactereditor.SwitchCharacterPrompt", {
+                        defaultValue: "Switch to {{name}}?",
+                        name: pendingNavigation.entry.name,
+                      })}`
+                    : pendingNavigation?.kind === "page"
+                      ? `\n${t("charactereditor.SwitchSectionPrompt", {
+                          defaultValue: "Switch to {{name}}?",
+                          name:
+                            pendingNavigation.page === "personality"
+                              ? t("charactereditor.TabPersonality", {
+                                  defaultValue: "Personality",
+                                })
+                              : pendingNavigation.page === "style"
+                                ? t("charactereditor.TabStyles", {
+                                    defaultValue: "Style",
+                                  })
+                                : pendingNavigation.page === "examples"
+                                  ? t("charactereditor.TabExamples", {
+                                      defaultValue: "Examples",
+                                    })
+                                  : t("charactereditor.TabKnowledge", {
+                                      defaultValue: "Knowledge",
+                                    }),
+                        })}`
+                      : ""}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              type="button"
+              className="border-accent/55 bg-accent/22 text-accent-fg hover:border-accent/75 hover:bg-accent/32"
+              onClick={() => void resolvePendingNavigation(true)}
+              disabled={characterSaving || voiceSaving}
+            >
+              {t("charactereditor.Save", { defaultValue: "Save" })}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void resolvePendingNavigation(false)}
+            >
+              {t("charactereditor.DontSave", {
+                defaultValue: "Don't save",
+              })}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPendingNavigation(null)}
+            >
+              {t("common.cancel")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

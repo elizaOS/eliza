@@ -1,4 +1,5 @@
-import { Button, Input } from "@elizaos/app-core";
+
+
 import { appNameInterpolationVars, useBranding } from "../../../config";
 import type {
   ConnectionEffect,
@@ -11,6 +12,7 @@ import {
   onboardingDetailStackClassName,
   onboardingInputClassName,
 } from "../onboarding-form-primitives";
+import { Button, Input } from "@elizaos/ui";
 import {
   OnboardingSecondaryActionButton,
   OnboardingStepHeader,

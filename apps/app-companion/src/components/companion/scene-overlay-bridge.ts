@@ -1,12 +1,5 @@
-/**
- * Scene overlay bridge: pushes React state into the 3D overlay panels.
- *
- * The SceneOverlayManager is auto-created by VrmEngine when the scene
- * initializes. This bridge component finds it via the debug registry
- * and feeds it data from React state.
- */
-
-import { useApp, usePtySessions } from "@elizaos/app-core/state";
+import { usePtySessions } from "@elizaos/app-core/state/PtySessionsContext";
+import { useApp } from "@elizaos/app-core/state/useApp";
 import { useCallback, useEffect, useRef } from "react";
 import type { SceneOverlayManager } from "../avatar/SceneOverlayManager";
 import type {

@@ -183,7 +183,7 @@ export function checkWebGpuSupport(
       };
     }
 
-    // macOS < 26 — WKWebView doesn't expose WebGPU (Milady still runs; UI uses WebGL).
+    // macOS < 26 — WKWebView doesn't expose WebGPU (the app still runs; UI uses WebGL).
     return {
       available: false,
       reason: `WKWebView does not expose WebGPU on macOS ${macVersion ?? "unknown"} (native navigator.gpu needs macOS 26+ Tahoe). ${getBrandConfig().appName} still runs; companion and avatar use WebGL when WebGPU is missing. Chrome Beta is optional for separate Chromium WebGPU experiments.`,

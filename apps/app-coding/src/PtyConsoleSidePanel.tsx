@@ -1,5 +1,5 @@
-import type { CodingAgentSession } from "@elizaos/app-core/api";
-import { Z_OVERLAY } from "@elizaos/app-core";
+import type { CodingAgentSession } from "@elizaos/app-core/api/client-types-cloud";
+import { Z_OVERLAY } from "@elizaos/ui/lib/floating-layers";
 import { PtyConsoleBase } from "./PtyConsoleBase";
 
 interface PtyConsoleSidePanelProps {
@@ -17,7 +17,10 @@ export function PtyConsoleSidePanel({
     <div
       className={`fixed top-0 right-0 bottom-0 z-[${Z_OVERLAY}] flex flex-col bg-bg border-l border-border shadow-2xl`}
       style={{ width: "min(480px, 40vw)" }}
+      role="dialog"
+      aria-label="Agent consoles"
       onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
       <PtyConsoleBase

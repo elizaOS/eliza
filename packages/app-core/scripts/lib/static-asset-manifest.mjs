@@ -31,9 +31,9 @@ export const APP_DIST_BOOTSTRAP_ASSETS = [
   "vrm-decoders/draco/draco_decoder.js",
   "vrm-decoders/draco/draco_decoder.wasm",
   "vrm-decoders/draco/draco_wasm_wrapper.js",
-  "vrms/backgrounds/milady-1.png",
-  "vrms/milady-1.vrm.gz",
-  "vrms/previews/milady-1.png",
+  "vrms/backgrounds/eliza-1.png",
+  "vrms/eliza-1.vrm.gz",
+  "vrms/previews/eliza-1.png",
 ];
 
 function listFilesRecursive(dir) {

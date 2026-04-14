@@ -151,22 +151,9 @@ export function useCloudState({
       return lastElizaCloudPollConnectedRef.current;
     }
     if (!cloudStatus) {
-      setElizaCloudConnected(false);
-      publishElizaCloudVoiceSnapshot(setElizaCloudHasPersistedKey, {
-        apiConnected: false,
-        enabled: false,
-        cloudVoiceProxyAvailable: false,
-        hasPersistedApiKey: false,
-      });
-      setElizaCloudVoiceProxyAvailable(false);
-      setElizaCloudCredits(null);
-      setElizaCloudCreditsLow(false);
-      setElizaCloudCreditsCritical(false);
-      setElizaCloudAuthRejected(false);
-      setElizaCloudCreditsError(null);
-      setElizaCloudStatusReason(null);
-      lastElizaCloudPollConnectedRef.current = false;
-      return false;
+      // Preserve the last applied cloud snapshot across transient backend
+      // restarts so the UI does not flap into a false "disconnected" state.
+      return lastElizaCloudPollConnectedRef.current;
     }
     const enabled = Boolean(cloudStatus.enabled ?? false);
     const cloudVoiceProxyAvailable = Boolean(
@@ -286,6 +273,18 @@ export function useCloudState({
       getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
     const useDirectAuth = !hasBackend;
 
+    if (hasBackend) {
+      const alreadyConnected = await pollCloudCredits();
+      if (alreadyConnected) {
+        await loadWalletConfig().catch(() => undefined);
+        setElizaCloudLoginError(null);
+        setActionNotice("Already connected to Eliza Cloud.", "info", 4000);
+        elizaCloudLoginBusyRef.current = false;
+        setElizaCloudLoginBusy(false);
+        return;
+      }
+    }
+
     try {
       let resp: {
         ok: boolean;
@@ -402,23 +401,9 @@ export function useCloudState({
               });
             }
 
-            if (isElectrobunRuntime()) {
-              void invokeDesktopBridgeRequestWithTimeout({
-                rpcMethod: "agentRestart",
-                ipcChannel: "agent:restart",
-                params: undefined,
-                timeoutMs: 15_000,
-              }).catch(() => {});
-            } else {
-              void fetch("/api/agent/restart", { method: "POST" }).catch(
-                () => {},
-              );
-            }
-
-            void loadWalletConfig();
-            // Skip the immediate pollCloudCredits() call after login.
-            // The backend persists the linked-account state asynchronously,
-            // so the recurring poll is enough to pick up the stable snapshot.
+            // The backend owns the cloud-wallet bind + runtime reload now.
+            // Startup/ws recovery will rehydrate wallet + cloud state once the
+            // restart completes, so avoid kicking off a second client restart.
           } else if (poll.status === "expired" || poll.status === "error") {
             stopCloudLoginPolling(
               poll.error ?? "Login session expired. Please try again.",

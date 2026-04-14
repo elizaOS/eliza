@@ -1,4 +1,4 @@
-import type { UUID } from "../../../types/primitives.ts";
+import type { UUID } from "@elizaos/core";
 import type { Experience, JsonObject } from "../types";
 import { ExperienceType, OutcomeType } from "../types";
 

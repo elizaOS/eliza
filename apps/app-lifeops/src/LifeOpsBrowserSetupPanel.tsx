@@ -30,16 +30,16 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { client, type ExtensionStatus } from "@elizaos/app-core/api";
+import { client, type ExtensionStatus } from "@elizaos/app-core";
 import {
   invokeDesktopBridgeRequest,
   isElectrobunRuntime,
-} from "@elizaos/app-core/bridge";
+} from "@elizaos/app-core";
 import {
   copyTextToClipboard,
   openExternalUrl,
   resolveLifeOpsBrowserApiBaseUrl,
-} from "@elizaos/app-core/utils";
+} from "@elizaos/app-core";
 
 type SettingsDraft = {
   enabled: boolean;

@@ -1,14 +1,3 @@
-/**
- * Companion App — @elizaos/app-companion
- *
- * Self-contained full-screen overlay app that renders a VRM avatar
- * with a chat dock. Implements the OverlayApp API so any similar
- * full-screen experience can follow the same pattern.
- *
- * Resources (VRM models, Three.js engine) load on mount and dispose
- * on unmount — nothing runs when the app is not active.
- */
-
 import type { OverlayApp } from "@elizaos/app-core/components/apps/overlay-app-api";
 import { registerOverlayApp } from "@elizaos/app-core/components/apps/overlay-app-registry";
 import { CompanionAppView } from "./CompanionAppView";

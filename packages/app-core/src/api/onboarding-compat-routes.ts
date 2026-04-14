@@ -1,9 +1,6 @@
 import http from "node:http";
 import { logger } from "@elizaos/core";
-import {
-  loadElizaConfig,
-  saveElizaConfig,
-} from "@elizaos/agent/config/config";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
 import { ensureCompatApiAuthorized } from "./auth";
 import { type CompatRuntimeState } from "./compat-route-shared";
 import { getCloudSecret } from "./cloud-secrets";

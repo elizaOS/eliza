@@ -3,7 +3,6 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
-  State,
   UUID,
 } from "@elizaos/core";
 import {

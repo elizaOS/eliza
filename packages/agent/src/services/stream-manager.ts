@@ -210,7 +210,7 @@ class StreamManager {
    * Returns true if the frame was accepted.
    */
   writeFrame(jpegData: Buffer): boolean {
-    if (!this._running || !this.ffmpeg || !this.ffmpeg.stdin) return false;
+    if (!this._running || !this.ffmpeg?.stdin) return false;
     if (this.ffmpeg.killed || this.ffmpeg.exitCode !== null) return false;
 
     try {

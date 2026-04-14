@@ -1,6 +1,4 @@
-import type { Memory } from "../../types/memory.ts";
-import type { UUID } from "../../types/primitives.ts";
-import type { ServiceTypeRegistry } from "../../types/service.ts";
+import type { Memory, ServiceTypeRegistry, UUID } from "@elizaos/core";
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =

@@ -2,7 +2,7 @@
 
 /**
  * Disable the repo-local `eliza/` workspace for CI runs that have
- * `MILADY_SKIP_LOCAL_UPSTREAMS=1` set (Docker CI Smoke, Release
+ * `ELIZA_SKIP_LOCAL_UPSTREAMS=1` set (Docker CI Smoke, Release
  * Workflow Contract, packaged build jobs, etc.).
  *
  * Three things have to happen for Bun to produce a clean lockfile when
@@ -39,7 +39,7 @@
  *
  * We patch every affected file in place (no commit, CI-only). All
  * edits are idempotent and gated on `GITHUB_ACTIONS=true` +
- * `MILADY_SKIP_LOCAL_UPSTREAMS=1`, so local runs and non-skip CI are
+ * `ELIZA_SKIP_LOCAL_UPSTREAMS=1`, so local runs and non-skip CI are
  * untouched.
  */
 
@@ -406,10 +406,10 @@ const isMain =
 
 if (isMain) {
   const skipLocalUpstreams =
-    process.env.MILADY_SKIP_LOCAL_UPSTREAMS === "1" ||
+    process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1" ||
     process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1";
   const runningInCi = process.env.GITHUB_ACTIONS === "true";
-  const forced = process.env.MILADY_DISABLE_LOCAL_UPSTREAMS === "force";
+  const forced = process.env.ELIZA_DISABLE_LOCAL_UPSTREAMS === "force";
 
   if (!skipLocalUpstreams || (!runningInCi && !forced)) {
     process.exit(0);

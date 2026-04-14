@@ -1,13 +1,9 @@
-import {
-  AdminDialog,
-  Button,
-  Dialog,
-  DialogDescription,
-  DialogTitle,
-} from "@elizaos/app-core";
+
+
 import type { PluginInfo } from "../../api";
 import { ConnectorSetupPanel } from "../connectors/ConnectorSetupPanel";
 import { PluginConfigForm, TelegramPluginConfig } from "./PluginConfigForm";
+import { AdminDialog, Button, Dialog, DialogDescription, DialogTitle } from "@elizaos/ui";
 import {
   iconImageSource,
   resolveIcon,
@@ -104,7 +100,7 @@ export function PluginSettingsDialog({
   return (
     <Dialog
       open
-      onOpenChange={(open) => {
+      onOpenChange={(open: boolean) => {
         if (!open) onClose(plugin.id);
       }}
     >

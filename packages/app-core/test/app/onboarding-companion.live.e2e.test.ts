@@ -5,7 +5,8 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -15,13 +16,16 @@ import {
   type BrowserContext,
   chromium,
   type Page,
-} from "@playwright/test";
+} from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
+import { buildOnboardingRuntimeConfig } from "../../src/onboarding-config";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
 
-const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
+const LIVE_TESTS_ENABLED =
+  process.env.MILADY_LIVE_TEST === "1" ||
+  process.env.ELIZA_LIVE_TEST === "1";
 const LIVE_PROVIDER =
   (LIVE_TESTS_ENABLED && selectLiveProvider("openai")) ||
   (LIVE_TESTS_ENABLED ? selectLiveProvider() : null);
@@ -41,6 +45,9 @@ const APP_DIST_DIR = path.join(REPO_ROOT, "apps/app", "dist");
 const SCREENSHOT_DIR = path.join(REPO_ROOT, "test-results", "live-onboarding");
 const READY_TIMEOUT_MS = 120_000;
 const UI_SETTLE_MS = 4_000;
+const CHROME_PATH =
+  process.env.ELIZA_CHROME_PATH ??
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 type StartedStack = {
   apiBase: string;
@@ -77,6 +84,25 @@ function contentTypeFor(filePath: string): string {
     default:
       return "application/octet-stream";
   }
+}
+
+function resolveDistAssetPath(requestedPath: string): string | null {
+  const normalizedPath = requestedPath.replace(/^\/+/, "");
+  const segments = normalizedPath.split("/").filter(Boolean);
+  for (let index = 0; index < segments.length; index += 1) {
+    const candidatePath = path.resolve(
+      APP_DIST_DIR,
+      segments.slice(index).join("/"),
+    );
+    if (
+      candidatePath.startsWith(APP_DIST_DIR) &&
+      existsSync(candidatePath) &&
+      path.extname(candidatePath).length > 0
+    ) {
+      return candidatePath;
+    }
+  }
+  return null;
 }
 
 async function readRequestBody(request: IncomingMessage): Promise<Buffer> {
@@ -130,22 +156,22 @@ async function proxyUiRequest(args: {
     requestUrl.pathname === "/"
       ? "index.html"
       : requestUrl.pathname.replace(/^\/+/, "");
-  let filePath = path.resolve(APP_DIST_DIR, requestedPath);
-  const isAssetRequest = path.extname(filePath).length > 0;
-  if (!isAssetRequest || !filePath.startsWith(APP_DIST_DIR)) {
+  let filePath = resolveDistAssetPath(requestedPath);
+  const isAssetRequest = path.extname(requestedPath).length > 0;
+  if (!filePath && !isAssetRequest) {
     filePath = path.join(APP_DIST_DIR, "index.html");
   }
 
   let body: Buffer;
   try {
-    body = await readFile(filePath);
+    body = await readFile(filePath ?? path.join(APP_DIST_DIR, "index.html"));
   } catch {
     body = await readFile(path.join(APP_DIST_DIR, "index.html"));
     filePath = path.join(APP_DIST_DIR, "index.html");
   }
 
   args.response.writeHead(200, {
-    "Content-Type": contentTypeFor(filePath),
+    "Content-Type": contentTypeFor(filePath ?? path.join(APP_DIST_DIR, "index.html")),
   });
   args.response.end(body);
 }
@@ -459,6 +485,7 @@ async function clickVisibleText(
 }
 
 async function startRealStack(): Promise<StartedStack> {
+  await ensureUiDistReady();
   await mkdir(SCREENSHOT_DIR, { recursive: true });
 
   const stateDir = await mkdtemp(
@@ -468,21 +495,26 @@ async function startRealStack(): Promise<StartedStack> {
   const uiPort = await getFreePort();
   const apiBase = `http://127.0.0.1:${apiPort}`;
 
-  const apiChild = spawn("bun", ["run", "eliza", "start"], {
-    cwd: REPO_ROOT,
-    env: {
-      ...process.env,
-      ALLOW_NO_DATABASE: "",
-      ELIZA_STATE_DIR: stateDir,
-      ELIZA_PORT: String(apiPort),
-      FORCE_COLOR: "0",
-      ELIZA_API_PORT: String(apiPort),
-      ELIZA_HOME_PORT: String(uiPort),
-      ELIZA_PORT: String(apiPort),
-      ELIZA_STATE_DIR: stateDir,
+  const apiChild = spawn(
+    "node",
+    [
+      path.join(REPO_ROOT, "eliza/packages/app-core/scripts/run-node-tsx.mjs"),
+      path.join(REPO_ROOT, "eliza/packages/app-core/src/runtime/eliza.ts"),
+    ],
+    {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        ALLOW_NO_DATABASE: "",
+        FORCE_COLOR: "0",
+        ELIZA_API_PORT: String(apiPort),
+        ELIZA_HOME_PORT: String(uiPort),
+        ELIZA_PORT: String(apiPort),
+        ELIZA_STATE_DIR: stateDir,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
     },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  );
 
   apiChild.stdout.on("data", (chunk) => {
     process.stdout.write(`[live-onboarding][api] ${chunk}`);
@@ -505,7 +537,15 @@ async function startRealStack(): Promise<StartedStack> {
     port: uiPort,
   });
   process.env.ELIZA_API_PORT = String(apiPort);
+
+  if (!existsSync(CHROME_PATH)) {
+    throw new Error(
+      `Chrome was not found at ${CHROME_PATH}; set ELIZA_CHROME_PATH to a valid browser executable.`,
+    );
+  }
+
   const browser = await chromium.launch({
+    executablePath: CHROME_PATH,
     args: ["--use-angle=swiftshader"],
     headless: true,
   });
@@ -548,6 +588,36 @@ async function stopRealStack(stack: StartedStack | null): Promise<void> {
   await rm(stack.stateDir, { force: true, recursive: true });
 }
 
+async function ensureUiDistReady(): Promise<void> {
+  const distIndex = path.join(APP_DIST_DIR, "index.html");
+  try {
+    await access(distIndex);
+    return;
+  } catch {
+    // Build the renderer bundle when this checkout only has partial assets.
+  }
+
+  const logs: string[] = [];
+  const child = spawn("bun", ["scripts/build.mjs"], {
+    cwd: path.join(REPO_ROOT, "apps/app"),
+    env: {
+      ...process.env,
+      FORCE_COLOR: "0",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  child.stdout.on("data", (chunk) => logs.push(String(chunk)));
+  child.stderr.on("data", (chunk) => logs.push(String(chunk)));
+
+  const exited = await waitForChildExit(child, 300_000);
+  if (!exited || child.exitCode !== 0) {
+    throw new Error(
+      `apps/app renderer build failed.\n${logs.join("").slice(-8_000)}`,
+    );
+  }
+}
+
 async function newLivePage(
   stack: StartedStack,
 ): Promise<{ context: BrowserContext; page: Page }> {
@@ -562,6 +632,16 @@ async function newLivePage(
     localStorage.setItem("eliza:ui-language", "en");
     localStorage.setItem("eliza:ui-theme", "dark");
     localStorage.setItem("eliza:ui-theme", "dark");
+    localStorage.setItem("eliza:onboarding-complete", "1");
+    localStorage.setItem("eliza:onboarding:step", "activate");
+    localStorage.setItem(
+      "elizaos:active-server",
+      JSON.stringify({
+        id: "local:embedded",
+        kind: "local",
+        label: "This device",
+      }),
+    );
   });
 
   const page = await context.newPage();
@@ -640,6 +720,65 @@ async function verifyWalletRpcRoundtrip(
   await waitForVisibleText(page, ["Birdeye API Key"]);
 }
 
+async function submitOnboarding(apiBase: string): Promise<void> {
+  if (!LIVE_PROVIDER) {
+    throw new Error("A live provider is required to complete onboarding.");
+  }
+
+  const runtimeConfig = buildOnboardingRuntimeConfig({
+    onboardingServerTarget: "local",
+    onboardingCloudApiKey: "",
+    onboardingProvider: LIVE_PROVIDER.name,
+    onboardingApiKey: LIVE_PROVIDER.apiKey,
+    onboardingVoiceProvider: "",
+    onboardingVoiceApiKey: "",
+    onboardingPrimaryModel: LIVE_PROVIDER.largeModel,
+    onboardingOpenRouterModel: LIVE_PROVIDER.largeModel,
+    onboardingRemoteConnected: false,
+    onboardingRemoteApiBase: "",
+    onboardingRemoteToken: "",
+    onboardingSmallModel: LIVE_PROVIDER.smallModel,
+    onboardingLargeModel: LIVE_PROVIDER.largeModel,
+  });
+
+  const response = await fetch(`${apiBase}/api/onboarding`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: "Live Onboarding",
+      bio: ["A test agent for live onboarding coverage."],
+      systemPrompt: "You are a concise assistant for live browser tests.",
+      language: "en",
+      presetId: "default",
+      avatarIndex: 0,
+      deploymentTarget: runtimeConfig.deploymentTarget,
+      ...(runtimeConfig.linkedAccounts
+        ? { linkedAccounts: runtimeConfig.linkedAccounts }
+        : {}),
+      ...(runtimeConfig.serviceRouting
+        ? { serviceRouting: runtimeConfig.serviceRouting }
+        : {}),
+      ...(runtimeConfig.credentialInputs
+        ? { credentialInputs: runtimeConfig.credentialInputs }
+        : {}),
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Onboarding failed with ${response.status}: ${await response.text()}`,
+    );
+  }
+
+  await waitForJsonPredicate<{ complete: boolean }>(
+    `${apiBase}/api/onboarding/status`,
+    (status) => status.complete === true,
+    READY_TIMEOUT_MS,
+  );
+}
+
 describeLive("real onboarding handoff to companion mode", () => {
   let stack: StartedStack | null = null;
 
@@ -650,6 +789,7 @@ describeLive("real onboarding handoff to companion mode", () => {
       );
     }
     stack = await startRealStack();
+    await submitOnboarding(stack.apiBase);
   }, READY_TIMEOUT_MS);
 
   afterAll(async () => {
@@ -666,90 +806,18 @@ describeLive("real onboarding handoff to companion mode", () => {
 
       const { context, page } = await newLivePage(stack);
       try {
-        await page.goto(stack.uiBase, { waitUntil: "domcontentloaded" });
-
-        await waitForVisibleText(page, [
-          /Choose your setup/i,
-          /Connect to Remote Agent/i,
-        ]);
-        await page
-          .getByRole("button", { name: /Connect to Remote Agent/i })
-          .click({ force: true });
-        const remoteApiBaseInput = page.locator("input").first();
-        await remoteApiBaseInput.waitFor({
-          state: "visible",
-          timeout: READY_TIMEOUT_MS,
+        const companionRoot = page.getByTestId("companion-root");
+        const companionHeader = page.getByTestId("companion-header-shell");
+        const companionShellToggle = page.getByTestId("companion-shell-toggle");
+        const companionCenterControls = page.getByTestId(
+          "companion-header-center-controls",
+        );
+        await page.goto(`${stack.uiBase}/apps/companion`, {
+          waitUntil: "domcontentloaded",
         });
-        await remoteApiBaseInput.fill(stack.apiBase);
-        await clickVisibleText(page, [/^Connect$/i]);
-        await page.waitForTimeout(5_000);
-
-        const companionRoot = page.locator('[data-testid="companion-root"]');
-        const landedInCompanion = await companionRoot
-          .isVisible()
-          .catch(() => false);
-
-        if (!landedInCompanion) {
-          const identityContinue = page.getByRole("button", {
-            name: /^CONTINUE$/i,
-          });
-          if (
-            (await page
-              .getByText(/Choose your style/i)
-              .isVisible()
-              .catch(() => false)) &&
-            (await identityContinue.isVisible().catch(() => false))
-          ) {
-            await identityContinue.click({ force: true });
-            await page.waitForTimeout(2_000);
-          }
-
-          if (
-            await page
-              .getByText(/Backend address/i)
-              .isVisible()
-              .catch(() => false)
-          ) {
-            const providerRemoteApiBaseInput = page.locator("input").first();
-            await providerRemoteApiBaseInput.waitFor({
-              state: "visible",
-              timeout: READY_TIMEOUT_MS,
-            });
-            await providerRemoteApiBaseInput.fill(stack.apiBase);
-            await clickVisibleText(page, [
-              /Connect remote backend/i,
-              /^Connect$/i,
-            ]);
-            await page.waitForTimeout(5_000);
-          }
-
-          await waitForVisibleText(page, [
-            /Choose your AI provider/i,
-            new RegExp(LIVE_PROVIDER_LABEL, "i"),
-          ]);
-          await clickVisibleText(page, [
-            new RegExp(`^${LIVE_PROVIDER_LABEL}$`, "i"),
-          ]);
-
-          await waitForVisibleText(page, [
-            new RegExp(LIVE_PROVIDER_LABEL, "i"),
-            /Confirm/i,
-          ]);
-          const providerApiKeyInput = page.locator("#provider-api-key");
-          if (await providerApiKeyInput.isVisible().catch(() => false)) {
-            await providerApiKeyInput.fill(LIVE_PROVIDER.apiKey);
-          }
-          await clickVisibleText(page, [/Confirm/i]);
-
-          await waitForVisibleText(page, [/Enable features/i, /Skip for now/i]);
-          await clickVisibleText(page, [
-            /Skip for now/i,
-            /Continue without features/i,
-          ]);
-        }
 
         await page
-          .waitForURL(/\/companion(?:$|[?#/])/, {
+          .waitForURL(/\/apps\/companion(?:$|[?#/])/, {
             timeout: READY_TIMEOUT_MS,
           })
           .catch(() => {});
@@ -757,12 +825,18 @@ describeLive("real onboarding handoff to companion mode", () => {
           state: "visible",
           timeout: READY_TIMEOUT_MS,
         });
-        await page
-          .getByRole("button", { name: "New Chat" })
-          .waitFor({ state: "visible", timeout: READY_TIMEOUT_MS });
-        await page
-          .getByRole("button", { name: /Agent voice on|Agent voice off/i })
-          .waitFor({ state: "visible", timeout: READY_TIMEOUT_MS });
+        await companionHeader.waitFor({
+          state: "visible",
+          timeout: READY_TIMEOUT_MS,
+        });
+        await companionShellToggle.waitFor({
+          state: "visible",
+          timeout: READY_TIMEOUT_MS,
+        });
+        await companionCenterControls.waitFor({
+          state: "visible",
+          timeout: READY_TIMEOUT_MS,
+        });
         await page.waitForTimeout(UI_SETTLE_MS);
 
         await page.screenshot({
@@ -773,16 +847,11 @@ describeLive("real onboarding handoff to companion mode", () => {
           timeout: READY_TIMEOUT_MS,
         });
 
-        expect(page.url()).toContain("/companion");
+        expect(page.url()).toContain("/apps/companion");
         expect(await companionRoot.isVisible()).toBe(true);
-        expect(
-          await page.getByRole("button", { name: "New Chat" }).isVisible(),
-        ).toBe(true);
-        expect(
-          await page
-            .getByRole("button", { name: /Agent voice on|Agent voice off/i })
-            .isVisible(),
-        ).toBe(true);
+        expect(await companionHeader.isVisible()).toBe(true);
+        expect(await companionShellToggle.isVisible()).toBe(true);
+        expect(await companionCenterControls.isVisible()).toBe(true);
 
         const onboardingStatus = await waitForJsonPredicate<{
           complete: boolean;

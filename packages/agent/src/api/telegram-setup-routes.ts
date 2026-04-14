@@ -98,10 +98,11 @@ export async function handleTelegramSetupRoute(
       const bot = data.result;
 
       // Save token to connector config
-      if (!state.config.connectors) {
-        (state.config as Record<string, unknown>).connectors = {};
+      let connectors = state.config.connectors;
+      if (!connectors) {
+        connectors = {};
+        (state.config as Record<string, unknown>).connectors = connectors;
       }
-      const connectors = state.config.connectors!;
       if (!connectors.telegram || typeof connectors.telegram !== "object") {
         connectors.telegram = {};
       }

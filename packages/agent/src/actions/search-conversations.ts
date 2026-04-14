@@ -1,11 +1,9 @@
 import type {
   Action,
-  ActionResult,
   HandlerOptions,
   IAgentRuntime,
   Memory,
   Room,
-  State,
   UUID,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";

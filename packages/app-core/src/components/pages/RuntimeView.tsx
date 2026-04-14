@@ -1,20 +1,5 @@
-/**
- * RuntimeView — structured runtime inspector with a left rail navigator and
- * a focused summary/detail pane.
- */
 
-import {
-  Button,
-  Input,
-  MetaPill,
-  PageLayout,
-  PagePanel,
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/app-core";
+
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import {
   client,
@@ -24,6 +9,7 @@ import {
 } from "../../api";
 import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";
+import { PagePanel, MetaPill, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, PageLayout } from "@elizaos/ui";
 
 type RuntimeSectionKey =
   | "summary"
@@ -35,16 +21,6 @@ type RuntimeSectionKey =
   | "evaluators";
 
 type RuntimeTreeSectionKey = Exclude<RuntimeSectionKey, "summary">;
-
-/** Inline class strings for toolbar buttons (previously composed from desktop-surface-primitives tokens). */
-const TOOLBAR_BUTTON_BASE =
-  "h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_20px_-18px_rgba(15,23,42,0.14)] backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(15,23,42,0.16)] active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_16px_24px_-20px_rgba(0,0,0,0.24)]";
-
-const TOOLBAR_BUTTON_ACCENT =
-  "h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-accent/26 bg-[linear-gradient(180deg,rgba(var(--accent-rgb),0.16),rgba(var(--accent-rgb),0.07))] text-txt-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_14px_22px_-18px_rgba(var(--accent-rgb),0.24)] ring-1 ring-inset ring-accent/10 hover:border-accent/42 hover:bg-[linear-gradient(180deg,rgba(var(--accent-rgb),0.2),rgba(var(--accent-rgb),0.1))] hover:text-txt-strong";
-
-const INPUT_CLASSNAME =
-  "relative overflow-hidden border border-border/28 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_86%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_18px_28px_-24px_rgba(15,23,42,0.12)] backdrop-blur-md transition-[border-color,background-color,box-shadow] duration-200 before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.24),transparent)] hover:border-border/40 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_96%,transparent))] focus-within:border-accent/24 focus-within:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_20px_30px_-24px_rgba(15,23,42,0.14)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_20px_30px_-26px_rgba(0,0,0,0.24)] h-9 rounded-xl px-3 text-sm text-txt";
 
 const SECTION_TAB_KEYS: Array<{
   key: RuntimeSectionKey;
@@ -510,7 +486,7 @@ export function RuntimeView({
                   Math.max(1, Math.min(24, Number(event.target.value) || 1)),
                 )
               }
-              className={INPUT_CLASSNAME}
+              className="relative overflow-hidden border border-border/28 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_86%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_18px_28px_-24px_rgba(15,23,42,0.12)] backdrop-blur-md transition-[border-color,background-color,box-shadow] duration-200 before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.24),transparent)] hover:border-border/40 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_96%,transparent))] focus-within:border-accent/24 focus-within:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_20px_30px_-24px_rgba(15,23,42,0.14)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_20px_30px_-26px_rgba(0,0,0,0.24)] h-9 rounded-xl px-3 text-sm text-txt"
             />
           </label>
 
@@ -527,7 +503,7 @@ export function RuntimeView({
                   Math.max(1, Math.min(5000, Number(event.target.value) || 1)),
                 )
               }
-              className={INPUT_CLASSNAME}
+              className="relative overflow-hidden border border-border/28 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_86%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_18px_28px_-24px_rgba(15,23,42,0.12)] backdrop-blur-md transition-[border-color,background-color,box-shadow] duration-200 before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.24),transparent)] hover:border-border/40 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_96%,transparent))] focus-within:border-accent/24 focus-within:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_20px_30px_-24px_rgba(15,23,42,0.14)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_20px_30px_-26px_rgba(0,0,0,0.24)] h-9 rounded-xl px-3 text-sm text-txt"
             />
           </label>
 
@@ -544,7 +520,7 @@ export function RuntimeView({
                   Math.max(1, Math.min(5000, Number(event.target.value) || 1)),
                 )
               }
-              className={INPUT_CLASSNAME}
+              className="relative overflow-hidden border border-border/28 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_86%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_18px_28px_-24px_rgba(15,23,42,0.12)] backdrop-blur-md transition-[border-color,background-color,box-shadow] duration-200 before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.24),transparent)] hover:border-border/40 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_96%,transparent))] focus-within:border-accent/24 focus-within:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_20px_30px_-24px_rgba(15,23,42,0.14)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_20px_30px_-26px_rgba(0,0,0,0.24)] h-9 rounded-xl px-3 text-sm text-txt"
             />
           </label>
 
@@ -555,7 +531,11 @@ export function RuntimeView({
               type="button"
               onClick={() => void loadSnapshot()}
               disabled={loading}
-              className={loading ? TOOLBAR_BUTTON_ACCENT : TOOLBAR_BUTTON_BASE}
+              className={
+                loading
+                  ? "h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-accent/26 bg-[linear-gradient(180deg,rgba(var(--accent-rgb),0.16),rgba(var(--accent-rgb),0.07))] text-txt-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_14px_22px_-18px_rgba(var(--accent-rgb),0.24)] ring-1 ring-inset ring-accent/10 hover:border-accent/42 hover:bg-[linear-gradient(180deg,rgba(var(--accent-rgb),0.2),rgba(var(--accent-rgb),0.1))] hover:text-txt-strong"
+                  : "h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_20px_-18px_rgba(15,23,42,0.14)] backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(15,23,42,0.16)] active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_16px_24px_-20px_rgba(0,0,0,0.24)]"
+              }
             >
               {loading ? t("runtimeview.Refreshing") : t("common.refresh")}
             </Button>
@@ -566,7 +546,7 @@ export function RuntimeView({
               onClick={() =>
                 setExpandedPaths(buildInitialExpanded(rootPath, sectionData))
               }
-              className={TOOLBAR_BUTTON_BASE}
+              className="h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_20px_-18px_rgba(15,23,42,0.14)] backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(15,23,42,0.16)] active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_16px_24px_-20px_rgba(0,0,0,0.24)]"
               disabled={activeSection === "summary"}
             >
               {t("runtimeview.ExpandTop")}
@@ -690,7 +670,7 @@ export function RuntimeView({
                     size="sm"
                     type="button"
                     onClick={() => setExpandedPaths(new Set([rootPath]))}
-                    className={TOOLBAR_BUTTON_BASE}
+                    className="h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_20px_-18px_rgba(15,23,42,0.14)] backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(15,23,42,0.16)] active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_16px_24px_-20px_rgba(0,0,0,0.24)]"
                   >
                     {t("runtimeview.Collapse")}
                   </Button>
@@ -703,7 +683,7 @@ export function RuntimeView({
                         buildInitialExpanded(rootPath, sectionData),
                       )
                     }
-                    className={TOOLBAR_BUTTON_BASE}
+                    className="h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_20px_-18px_rgba(15,23,42,0.14)] backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(15,23,42,0.16)] active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_16px_24px_-20px_rgba(0,0,0,0.24)]"
                   >
                     {t("runtimeview.ExpandTop")}
                   </Button>

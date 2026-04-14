@@ -65,7 +65,7 @@ function resolveMaxResults(runtime: unknown): number {
   const raw = rt.getSetting?.("WEB_SEARCH_MAX_RESULTS");
   if (typeof raw === "string") {
     const n = parseInt(raw, 10);
-    if (!isNaN(n) && n > 0 && n <= 20) return n;
+    if (!Number.isNaN(n) && n > 0 && n <= 20) return n;
   }
   return 5;
 }

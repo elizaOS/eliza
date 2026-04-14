@@ -10,7 +10,6 @@ import type {
   Service,
   ServiceClass,
   ServiceTypeName,
-  UUID,
 } from "@elizaos/core";
 import {
   resolveActionContexts,

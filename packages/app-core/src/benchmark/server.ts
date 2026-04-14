@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import path from "node:path";
+import { CORE_PLUGINS, createElizaPlugin } from "@elizaos/agent/runtime";
 import {
   AgentRuntime,
   type Content,
@@ -9,7 +10,6 @@ import {
   type Plugin,
   stringToUuid,
 } from "@elizaos/core";
-import { CORE_PLUGINS, createElizaPlugin } from "@elizaos/agent/runtime";
 import dotenv from "dotenv";
 import {
   clearCapturedAction,

@@ -67,11 +67,11 @@ import { createConnection } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import chalk from "chalk";
-import { colorizeDevSettingsStartupBanner } from "../../shared/src/dev-settings-banner-style.ts";
+import { colorizeDevSettingsStartupBanner } from "@elizaos/shared/dev-settings-banner-style";
 import {
   resolveDesktopApiPort,
   resolveDesktopUiPort,
-} from "../../shared/src/runtime-env.ts";
+} from "@elizaos/shared/runtime-env";
 import { allocateFirstFreeLoopbackPort } from "./lib/allocate-loopback-port.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import { killUiListenPort } from "./lib/kill-ui-listen-port.mjs";
@@ -620,7 +620,7 @@ async function launch() {
       appDir,
       {
         NODE_ENV: "development",
-        MILADY_VITE_LOOPBACK_ORIGIN: "1",
+        ELIZA_VITE_LOOPBACK_ORIGIN: "1",
         ELIZA_PORT: String(uiDevPort),
         ELIZA_API_PORT: apiPort,
         ELIZA_API_PORT: apiPort,

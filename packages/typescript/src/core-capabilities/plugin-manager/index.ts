@@ -1,4 +1,4 @@
-import type { Plugin } from "../../types/plugin.ts";
+import type { Plugin, ServiceClass } from "../../types/plugin.ts";
 import { coreStatusAction } from "./actions/coreStatusAction.ts";
 import { listEjectedPluginsAction } from "./actions/listEjectedPluginsAction.ts";
 import {

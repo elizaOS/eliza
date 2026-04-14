@@ -1,7 +1,9 @@
-import { Input, Label } from "@elizaos/app-core";
+
+
 import { ShieldCheck } from "lucide-react";
 import { parseAmount } from "./helpers";
 import type { AutoApproveConfig } from "./types";
+import { Input, Label } from "@elizaos/ui";
 
 export function AutoApproveSection({
   config,

@@ -8,13 +8,13 @@ import { promisify } from "node:util";
 import type { HandlerOptions, Memory } from "@elizaos/core";
 import type { PermissionState, PermissionStatus } from "./permissions.ts";
 
-const BLOCK_START_MARKER = "# >>> milady-selfcontrol >>>";
-const BLOCK_END_MARKER = "# <<< milady-selfcontrol <<<";
-const BLOCK_METADATA_PREFIX = "# milady-selfcontrol ";
+const BLOCK_START_MARKER = "# >>> eliza-selfcontrol >>>";
+const BLOCK_END_MARKER = "# <<< eliza-selfcontrol <<<";
+const BLOCK_METADATA_PREFIX = "# eliza-selfcontrol ";
 const DEFAULT_STATUS_CACHE_TTL_MS = 5_000;
 const DEFAULT_DURATION_MINUTES = 60;
 const MAX_BLOCK_MINUTES = 7 * 24 * 60;
-const PRIVILEGED_WRITE_TMP_PREFIX = "milady-selfcontrol-write-";
+const PRIVILEGED_WRITE_TMP_PREFIX = "eliza-selfcontrol-write-";
 const WINDOWS_WORKER_SCRIPT_NAME = "write-hosts.ps1";
 
 const execFileAsync = promisify(execFile);
@@ -170,7 +170,7 @@ export async function reconcileSelfControlBlockState(
       elevationPromptMethod,
       reason: formatFileError(
         error,
-        "Milady could not read the system hosts file.",
+        "Eliza could not read the system hosts file.",
       ),
     };
   }
@@ -246,8 +246,8 @@ export async function reconcileSelfControlBlockState(
         supportsElevationPrompt,
         elevationPromptMethod,
         reason: supportsElevationPrompt
-          ? "The website block has expired, but Milady still needs administrator/root approval to remove it."
-          : "The website block has expired, but Milady cannot remove it without administrator/root access.",
+          ? "The website block has expired, but Eliza still needs administrator/root approval to remove it."
+          : "The website block has expired, but Eliza cannot remove it without administrator/root access.",
       };
     }
   }
@@ -356,7 +356,7 @@ export async function requestSelfControlPermission(
       ...(await getSelfControlPermissionState(config)),
       reason: formatFileError(
         error,
-        "Milady could not get administrator/root approval for website blocking.",
+        "Eliza could not get administrator/root approval for website blocking.",
       ),
       promptAttempted: true,
       promptSucceeded: false,
@@ -435,7 +435,7 @@ export async function startSelfControlBlock(
       success: false,
       error:
         status.reason ??
-        "Milady needs administrator/root access to edit the system hosts file.",
+        "Eliza needs administrator/root access to edit the system hosts file.",
       status,
     };
   }
@@ -489,7 +489,7 @@ export async function startSelfControlBlock(
       success: false,
       error: formatFileError(
         error,
-        "Milady failed to update the system hosts file.",
+        "Eliza failed to update the system hosts file.",
       ),
       status,
     };
@@ -538,7 +538,7 @@ export async function stopSelfControlBlock(
       success: false,
       error:
         status.reason ??
-        "Milady needs administrator/root access to edit the system hosts file.",
+        "Eliza needs administrator/root access to edit the system hosts file.",
       status,
     };
   }
@@ -553,7 +553,7 @@ export async function stopSelfControlBlock(
       success: false,
       error: formatFileError(
         error,
-        "Milady failed to remove the website block from the system hosts file.",
+        "Eliza failed to remove the website block from the system hosts file.",
       ),
       status,
     };
@@ -697,7 +697,7 @@ function buildSelfControlPermissionReason(
   if (status.available && !status.requiresElevation) {
     return (
       status.reason ??
-      "Milady can edit the system hosts file directly on this machine."
+      "Eliza can edit the system hosts file directly on this machine."
     );
   }
 
@@ -705,15 +705,15 @@ function buildSelfControlPermissionReason(
     if (options.prompted && options.promptSucceeded) {
       return (
         "The approval prompt completed successfully. " +
-        "Milady can ask the OS for administrator/root approval whenever it needs to edit the system hosts file. " +
+        "Eliza can ask the OS for administrator/root approval whenever it needs to edit the system hosts file. " +
         "That approval is per operation, so you may see the prompt again when starting or stopping a block."
       );
     }
 
-    return "Milady can ask the OS for administrator/root approval whenever it needs to edit the system hosts file.";
+    return "Eliza can ask the OS for administrator/root approval whenever it needs to edit the system hosts file.";
   }
 
-  return "Milady cannot raise an administrator/root prompt for website blocking on this machine. Open the hosts file location and change ownership or run Milady with elevated access.";
+  return "Eliza cannot raise an administrator/root prompt for website blocking on this machine. Open the hosts file location and change ownership or run Eliza with elevated access.";
 }
 
 function normalizeSelfControlBlockRequest(
@@ -819,7 +819,7 @@ function extractManagedSelfControlBlock(content: string): {
 function parseManagedBlockMetadata(
   block: string,
 ): SelfControlBlockMetadata | null {
-  const metadataLine = block.match(/^# milady-selfcontrol (.+)$/m);
+  const metadataLine = block.match(/^# eliza-selfcontrol (.+)$/m);
   if (!metadataLine?.[1]) return null;
 
   try {
@@ -1026,8 +1026,8 @@ function detectLineEnding(content: string): string {
 
 function buildElevationReason(supportsElevationPrompt: boolean): string {
   return supportsElevationPrompt
-    ? "Milady needs administrator/root access to edit the system hosts file, and can ask the OS for approval when you start or stop a block."
-    : "Milady needs administrator/root access to edit the system hosts file.";
+    ? "Eliza needs administrator/root access to edit the system hosts file, and can ask the OS for approval when you start or stop a block."
+    : "Eliza needs administrator/root access to edit the system hosts file.";
 }
 
 function hasCommandOnPath(
@@ -1121,7 +1121,7 @@ async function writeHostsFileContentWithElevation(
   } catch (error) {
     if (
       error instanceof Error &&
-      /^Milady needs administrator\/root access/i.test(error.message)
+      /^Eliza needs administrator\/root access/i.test(error.message)
     ) {
       throw error;
     }
@@ -1288,12 +1288,12 @@ function escapeRegExp(value: string): string {
 
 function formatFileError(error: unknown, fallback: string): string {
   if (isPermissionError(error)) {
-    return "Milady needs administrator/root access to edit the system hosts file.";
+    return "Eliza needs administrator/root access to edit the system hosts file.";
   }
 
   if (
     error instanceof Error &&
-    /^Milady needs administrator\/root access/i.test(error.message)
+    /^Eliza needs administrator\/root access/i.test(error.message)
   ) {
     return error.message;
   }

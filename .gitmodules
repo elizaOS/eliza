@@ -116,3 +116,10 @@
 	path = plugins/plugin-elizacloud
 	url = https://github.com/elizaos-plugins/plugin-elizacloud.git
 	branch = alpha
+[submodule "plugins/plugin-twitter"]
+	path = plugins/plugin-twitter
+	url = https://github.com/elizaos-plugins/plugin-twitter.git
+	branch = alpha
+[submodule "plugins/plugin-wechat"]
+	path = plugins/plugin-wechat
+	url = https://github.com/milady-ai/plugin-wechat.git

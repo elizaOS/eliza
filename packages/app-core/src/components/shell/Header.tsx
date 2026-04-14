@@ -1,27 +1,17 @@
-import { LanguageDropdown, ThemeToggle } from "@elizaos/app-core/components";
-import { getTabGroups, type TabGroup } from "@elizaos/app-core/navigation";
-import { useApp } from "@elizaos/app-core/state";
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@elizaos/app-core";
+import { LanguageDropdown } from "../shared/LanguageDropdown";
+import { ThemeToggle } from "../shared/ThemeToggle";
+import { getTabGroups } from "../../navigation";
+import type { TabGroup } from "../../navigation";
+import { useApp } from "../../state/useApp";
+
 import { ListTodo, Menu, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CloudStatusBadge } from "../cloud/CloudStatusBadge";
-import {
-  InferenceCloudAlertButton,
-  resolveCompanionInferenceNotice,
-} from "@elizaos/app-companion/ui";
-import {
-  HEADER_BUTTON_STYLE,
-  HEADER_ICON_BUTTON_CLASSNAME,
-  ShellHeaderControls,
-} from "./ShellHeaderControls";
+import { InferenceCloudAlertButton } from "@elizaos/app-companion/components/companion/InferenceCloudAlertButton";
+import { resolveCompanionInferenceNotice } from "@elizaos/app-companion/components/companion/resolve-companion-inference-notice";
+import { ShellHeaderControls } from "./ShellHeaderControls";
+import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@elizaos/ui";
 
 const NAV_LABEL_I18N_KEY: Record<string, string> = {
   Chat: "nav.chat",
@@ -46,19 +36,6 @@ interface HeaderProps {
   tasksEventsPanelOpen?: boolean;
   onToggleTasksPanel?: () => void;
 }
-
-const HEADER_NAV_BUTTON_BASE_CLASSNAME =
-  "relative z-10 min-h-touch shrink-0 rounded-xl border border-transparent px-3 py-2.5 text-xs transition-all duration-200 md:px-3.5 xl:px-4";
-const HEADER_NAV_BUTTON_ACTIVE_CLASSNAME =
-  "border-accent/30 bg-accent/12 text-txt font-semibold shadow-[0_2px_10px_rgba(3,5,10,0.08)] ring-1 ring-inset ring-accent/18 dark:shadow-[0_0_0_1px_rgba(var(--accent-rgb),0.14),0_0_14px_rgba(var(--accent-rgb),0.14)]";
-const HEADER_NAV_BUTTON_INACTIVE_CLASSNAME =
-  "text-muted hover:border-border/45 hover:bg-bg-hover/70 hover:text-txt";
-const HEADER_MOBILE_NAV_BUTTON_BASE_CLASSNAME =
-  "flex min-h-[48px] w-full rounded-xl border px-3 py-3 text-sm font-medium transition-all duration-200";
-const HEADER_MOBILE_NAV_BUTTON_ACTIVE_CLASSNAME =
-  "border-accent/30 bg-accent/12 text-txt shadow-[0_2px_10px_rgba(3,5,10,0.08)] ring-1 ring-inset ring-accent/18 dark:shadow-[0_0_0_1px_rgba(var(--accent-rgb),0.14),0_0_14px_rgba(var(--accent-rgb),0.14)]";
-const HEADER_MOBILE_NAV_BUTTON_INACTIVE_CLASSNAME =
-  "border-transparent bg-transparent text-txt hover:border-border/45 hover:bg-bg-hover/70";
 
 export function Header({
   mobileLeft,
@@ -250,13 +227,17 @@ export function Header({
                     <Button
                       size="icon"
                       variant={tasksEventsPanelOpen ? "default" : "outline"}
-                      className={HEADER_ICON_BUTTON_CLASSNAME}
+                      className="inline-flex h-11 w-11 min-h-touch min-w-touch items-center justify-center rounded-xl border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_32px_rgba(3,5,10,0.14)] ring-1 ring-inset ring-white/6 backdrop-blur-xl supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_36px_rgba(3,5,10,0.18)] active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt"
                       onClick={onToggleTasksPanel}
                       aria-label={t("taskseventspanel.Title", {
                         defaultValue: "Tasks & Events",
                       })}
                       aria-pressed={tasksEventsPanelOpen}
-                      style={HEADER_BUTTON_STYLE}
+                      style={{
+                        clipPath: "none",
+                        WebkitClipPath: "none",
+                        touchAction: "manipulation",
+                      }}
                       data-testid="header-tasks-events-toggle"
                     >
                       <ListTodo className="pointer-events-none w-4 h-4" />
@@ -291,11 +272,15 @@ export function Header({
                   <Button
                     size="icon"
                     variant="outline"
-                    className={`sm:hidden ${HEADER_ICON_BUTTON_CLASSNAME}`}
+                    className="sm:hidden inline-flex h-11 w-11 min-h-touch min-w-touch items-center justify-center rounded-xl border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_32px_rgba(3,5,10,0.14)] ring-1 ring-inset ring-white/6 backdrop-blur-xl supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_36px_rgba(3,5,10,0.18)] active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt"
                     onClick={() => setMobileMenuOpen(true)}
                     aria-label={t("aria.openNavMenu")}
                     aria-expanded={mobileMenuOpen}
-                    style={HEADER_BUTTON_STYLE}
+                    style={{
+                      clipPath: "none",
+                      WebkitClipPath: "none",
+                      touchAction: "manipulation",
+                    }}
                   >
                     <Menu className="pointer-events-none w-5 h-5" />
                   </Button>
@@ -312,14 +297,18 @@ export function Header({
                         variant={isActive ? "default" : "ghost"}
                         key={group.label}
                         data-testid={`header-nav-button-${primaryTab}`}
-                        className={`${HEADER_NAV_BUTTON_BASE_CLASSNAME} ${
+                        className={`relative z-10 min-h-touch shrink-0 rounded-xl border border-transparent px-3 py-2.5 text-xs transition-all duration-200 md:px-3.5 xl:px-4 ${
                           isActive
-                            ? HEADER_NAV_BUTTON_ACTIVE_CLASSNAME
-                            : HEADER_NAV_BUTTON_INACTIVE_CLASSNAME
+                            ? "border-accent/30 bg-accent/12 text-txt font-semibold shadow-[0_2px_10px_rgba(3,5,10,0.08)] ring-1 ring-inset ring-accent/18 dark:shadow-[0_0_0_1px_rgba(var(--accent-rgb),0.14),0_0_14px_rgba(var(--accent-rgb),0.14)]"
+                            : "text-muted hover:border-border/45 hover:bg-bg-hover/70 hover:text-txt"
                         }`}
                         onClick={() => setTab(primaryTab)}
                         title={group.description}
-                        style={HEADER_BUTTON_STYLE}
+                        style={{
+                          clipPath: "none",
+                          WebkitClipPath: "none",
+                          touchAction: "manipulation",
+                        }}
                       >
                         <group.icon className="pointer-events-none h-3.5 w-3.5 shrink-0" />
                         <span
@@ -368,10 +357,14 @@ export function Header({
                 <Button
                   variant="outline"
                   size="icon"
-                  className={`shrink-0 ${HEADER_ICON_BUTTON_CLASSNAME}`}
+                  className="shrink-0 inline-flex h-11 w-11 min-h-touch min-w-touch items-center justify-center rounded-xl border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_32px_rgba(3,5,10,0.14)] ring-1 ring-inset ring-white/6 backdrop-blur-xl supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_36px_rgba(3,5,10,0.18)] active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt"
                   onClick={() => setMobileMenuOpen(false)}
                   aria-label={t("aria.closeNavMenu")}
-                  style={HEADER_BUTTON_STYLE}
+                  style={{
+                    clipPath: "none",
+                    WebkitClipPath: "none",
+                    touchAction: "manipulation",
+                  }}
                 >
                   <X className="pointer-events-none h-4 w-4" />
                 </Button>
@@ -387,13 +380,15 @@ export function Header({
                       <Button
                         variant={isActive ? "default" : "ghost"}
                         key={group.label}
-                        className={`${HEADER_MOBILE_NAV_BUTTON_BASE_CLASSNAME} ${
+                        className={`flex min-h-[48px] w-full rounded-xl border px-3 py-3 text-sm font-medium transition-all duration-200 ${
                           isActive
-                            ? HEADER_MOBILE_NAV_BUTTON_ACTIVE_CLASSNAME
-                            : HEADER_MOBILE_NAV_BUTTON_INACTIVE_CLASSNAME
+                            ? "border-accent/30 bg-accent/12 text-txt shadow-[0_2px_10px_rgba(3,5,10,0.08)] ring-1 ring-inset ring-accent/18 dark:shadow-[0_0_0_1px_rgba(var(--accent-rgb),0.14),0_0_14px_rgba(var(--accent-rgb),0.14)]"
+                            : "border-transparent bg-transparent text-txt hover:border-border/45 hover:bg-bg-hover/70"
                         }`}
                         style={{
-                          ...HEADER_BUTTON_STYLE,
+                          clipPath: "none",
+                          WebkitClipPath: "none",
+                          touchAction: "manipulation",
                           animationDelay: `${index * 50}ms`,
                         }}
                         onClick={() => {

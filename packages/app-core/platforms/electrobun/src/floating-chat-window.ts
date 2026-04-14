@@ -12,10 +12,10 @@
  * - The window can be freely dragged and resized by the user.
  * - Closing the window marks it as hidden; it can be restored via tray or hotkey.
  *
- * WHY: When the user opens a workspace in a native editor, Milady minimises its
+ * WHY: When the user opens a workspace in a native editor, the app minimises its
  * main window. Without the floating chat the user loses the ability to talk to
  * the agent. This window bridges that gap without requiring the user to switch
- * back to the main Milady window.
+ * back to the main the app window.
  */
 
 import { BrowserWindow } from "electrobun/bun";

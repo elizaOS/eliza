@@ -1,33 +1,15 @@
-/**
- * Chat view component.
- *
- * Layout: flex column filling parent. Header row (title + clear + toggles).
- * Scrollable messages area. Share/file notices below messages.
- * Input row at bottom with mic + textarea + send button.
- */
-
 import type {
   ConversationMessage,
   ImageAttachment,
-} from "@elizaos/app-core/api";
-import { client } from "@elizaos/app-core/api";
-import { isRoutineCodingAgentMessage } from "@elizaos/app-core/chat";
-import { useChatAvatarVoiceBridge } from "@elizaos/app-core/hooks";
-import {
-  getVrmPreviewUrl,
-  useApp,
-  useChatComposer,
-  usePtySessions,
-} from "@elizaos/app-core/state";
-import {
-  ChatAttachmentStrip,
-  ChatComposer,
-  ChatComposerShell,
-  ChatSourceIcon,
-  ChatThreadLayout,
-  ChatTranscript,
-  TypingIndicator,
-} from "@elizaos/app-core";
+} from "../../api/client-types-chat";
+import { client } from "../../api/client";
+import { isRoutineCodingAgentMessage } from "../../chat";
+import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
+import { useChatComposer } from "../../state/ChatComposerContext";
+import { usePtySessions } from "../../state/PtySessionsContext";
+import { useApp } from "../../state/useApp";
+import { getVrmPreviewUrl } from "../../state/vrm";
+
 import {
   type ChangeEvent,
   type DragEvent,
@@ -43,6 +25,7 @@ import { AgentActivityBox } from "../chat/AgentActivityBox";
 import { MessageContent } from "../chat/MessageContent";
 import { CodingAgentControlChip } from "@elizaos/app-coding";
 import { PtyConsoleDrawer } from "@elizaos/app-coding";
+import { ChatAttachmentStrip, ChatComposer, ChatComposerShell, ChatSourceIcon, ChatThreadLayout, ChatTranscript, TypingIndicator } from "@elizaos/ui";
 import {
   useChatVoiceController,
   useGameModalMessages,

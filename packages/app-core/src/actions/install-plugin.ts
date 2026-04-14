@@ -1,68 +1,18 @@
-/**
- * INSTALL_PLUGIN action — installs a plugin from the registry.
- *
- * When triggered the action:
- *   1. Extracts the plugin ID from the parameters
- *   2. POSTs to the local API server to install it
- *   3. The agent automatically restarts to load the new plugin
- *   4. Returns a status message
- *
- * @module actions/install-plugin
- */
+import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
 
-import type { Action, HandlerOptions } from "@elizaos/core";
-import { resolveDesktopApiPort } from "@elizaos/shared/runtime-env";
-import {
-  ensurePluginManagerAllowed,
-  getPluginManagerBlockReason,
-  PLUGIN_MANAGER_UNAVAILABLE_ERROR,
-} from "../runtime/plugin-manager-guard";
-
-/** API port for posting install requests. */
-const API_PORT = String(resolveDesktopApiPort(process.env));
-
-type InstallPluginResponse = {
-  ok: boolean;
-  message?: string;
-  error?: string;
-};
-
-function parseInstallPluginResponse(value: unknown): InstallPluginResponse {
-  if (!value || typeof value !== "object") {
-    return { ok: false, error: "Invalid install response" };
-  }
-
-  const record = value as Record<string, unknown>;
-  return {
-    ok: record.ok === true,
-    message: typeof record.message === "string" ? record.message : undefined,
-    error: typeof record.error === "string" ? record.error : undefined,
-  };
-}
-
-async function postInstallRequest(npmName: string): Promise<Response> {
-  return fetch(`http://localhost:${API_PORT}/api/plugins/install`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: npmName, autoRestart: true }),
-  });
-}
-
-async function restartAgent(): Promise<void> {
-  const response = await fetch(
-    `http://localhost:${API_PORT}/api/agent/restart`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    },
-  );
-  if (!response.ok) {
-    const body = parseInstallPluginResponse(
-      await response.json().catch(() => null),
-    );
-    throw new Error(body.error ?? `HTTP ${response.status}`);
-  }
+function getPluginManager(runtime: IAgentRuntime) {
+  return runtime.getService("plugin_manager") as {
+    installPlugin(
+      name: string,
+      onProgress?: (progress: { stage: string; message: string }) => void,
+    ): Promise<{
+      success: boolean;
+      pluginName: string;
+      version: string;
+      requiresRestart: boolean;
+      error?: string;
+    }>;
+  } | null;
 }
 
 export const installPluginAction: Action = {
@@ -84,7 +34,7 @@ export const installPluginAction: Action = {
 
   validate: async () => true,
 
-  handler: async (_runtime, _message, _state, options) => {
+  handler: async (runtime, _message, _state, options) => {
     try {
       const params = (options as HandlerOptions | undefined)?.parameters;
       const pluginId =
@@ -96,75 +46,21 @@ export const installPluginAction: Action = {
         return { text: "I need a plugin ID to install.", success: false };
       }
 
-      // The API expects the full npm package name
-      const npmName = pluginId.startsWith("@")
-        ? pluginId
-        : `@elizaos/plugin-${pluginId}`;
-      const pluginManagerGuard = await ensurePluginManagerAllowed();
-      const pluginManagerBlockReason =
-        getPluginManagerBlockReason(pluginManagerGuard);
-      if (pluginManagerBlockReason) {
+      const mgr = getPluginManager(runtime);
+      if (!mgr) {
         return {
-          text: `Failed to install ${pluginId}: ${pluginManagerBlockReason}`,
+          text: "Plugin manager service is not available. Ensure the plugin manager capability is enabled.",
           success: false,
         };
       }
-      let restartedForPluginManager = false;
-      if (pluginManagerGuard === "enabled") {
-        await restartAgent();
-        restartedForPluginManager = true;
-      }
 
-      let response = await postInstallRequest(npmName);
+      const npmName = pluginId.startsWith("@")
+        ? pluginId
+        : `@elizaos/plugin-${pluginId}`;
 
-      if (!response.ok) {
-        let body = parseInstallPluginResponse(
-          await response.json().catch(() => null),
-        );
-        if ((body.error ?? "").includes(PLUGIN_MANAGER_UNAVAILABLE_ERROR)) {
-          const recoveryGuard = await ensurePluginManagerAllowed();
-          const recoveryBlockReason =
-            getPluginManagerBlockReason(recoveryGuard);
-          if (recoveryBlockReason) {
-            return {
-              text: `Failed to install ${pluginId}: ${recoveryBlockReason}`,
-              success: false,
-            };
-          }
-          if (!restartedForPluginManager) {
-            await restartAgent();
-            restartedForPluginManager = true;
-          }
-          response = await postInstallRequest(npmName);
-          body = parseInstallPluginResponse(
-            await response.json().catch(() => null),
-          );
-        }
-        if (!response.ok) {
-          return {
-            text: `Failed to install ${pluginId}: ${body.error ?? `HTTP ${response.status}`}`,
-            success: false,
-          };
-        }
-        const result = body;
-        if (!result.ok) {
-          return {
-            text: `Failed to install ${pluginId}: ${result.error ?? "unknown error"}`,
-            success: false,
-          };
-        }
-        return {
-          text:
-            result.message ??
-            `Plugin ${pluginId} installed successfully. The agent is restarting to load it.`,
-          success: true,
-          data: { pluginId, npmName },
-        };
-      }
+      const result = await mgr.installPlugin(npmName);
 
-      const result = parseInstallPluginResponse(await response.json());
-
-      if (!result.ok) {
+      if (!result.success) {
         return {
           text: `Failed to install ${pluginId}: ${result.error ?? "unknown error"}`,
           success: false,
@@ -172,11 +68,9 @@ export const installPluginAction: Action = {
       }
 
       return {
-        text:
-          result.message ??
-          `Plugin ${pluginId} installed successfully. The agent is restarting to load it.`,
+        text: `Plugin ${result.pluginName}@${result.version} installed successfully.${result.requiresRestart ? " The agent will restart to load it." : ""}`,
         success: true,
-        data: { pluginId, npmName },
+        data: { pluginId, npmName, ...result },
       };
     } catch (err) {
       return {

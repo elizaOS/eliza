@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "LifeOps app plugin: browser companion control, hosts-file blocking (self-control), and related agent surfaces.",
+  "description": "LifeOps app plugin: routines, goals, Google Workspace, Apple Reminders, Twilio, browser companion control, hosts-file blocking (self-control), and related agent surfaces.",
   "main": "./src/index.ts",
   "exports": {
     "./package.json": "./package.json",
@@ -12,7 +12,12 @@
     "./agent-lifeops": "./src/agent-lifeops.ts",
     "./plugin": "./src/plugin.ts",
     "./selfcontrol": "./src/selfcontrol/index.ts",
-    "./selfcontrol/selfcontrol": "./src/selfcontrol/selfcontrol.ts"
+    "./selfcontrol/selfcontrol": "./src/selfcontrol/selfcontrol.ts",
+    "./lifeops": "./src/lifeops/index.ts",
+    "./lifeops/*": "./src/lifeops/*.ts",
+    "./actions/*": "./src/actions/*.ts",
+    "./providers/*": "./src/providers/*.ts",
+    "./routes/*": "./src/routes/*.ts"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

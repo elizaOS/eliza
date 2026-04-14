@@ -39,7 +39,7 @@ function resolveApiBase(runtime: IAgentRuntime | null): string | null {
     process.env.HYPERSCAPE_CLIENT_URL,
   ];
   for (const raw of rawCandidates) {
-    if (!raw) continue;
+    if (!raw || typeof raw !== "string") continue;
     try {
       const parsed = new URL(raw);
       if (parsed.protocol !== "http:" && parsed.protocol !== "https:") continue;

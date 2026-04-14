@@ -1,24 +1,11 @@
-/**
- * LLM provider selector + per-mode detail panels.
- *
- * Renders:
- *   - the `PARALLAX_LLM_PROVIDER` Select (subscription / api_keys / cloud)
- *   - the per-provider API key inputs when in `api_keys` mode
- *   - the cloud-pair status line when in `cloud` mode
- *
- * Extracted from `CodingAgentSettingsSection.tsx` to keep that file
- * under the project's ~500 LOC guideline. Parent owns `prefs` state
- * and passes `setPref` down.
- */
-
+import { useApp } from "@elizaos/app-core/state/useApp";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectValue,
-  SettingsControls,
-} from "@elizaos/app-core";
-import { useApp } from "@elizaos/app-core/state";
+} from "@elizaos/ui/components/ui/select";
+import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
 import type { LlmProvider } from "./coding-agent-settings-shared";
 
 interface LlmProviderSectionProps {
@@ -45,7 +32,7 @@ export function LlmProviderSection({
         </SettingsControls.FieldLabel>
         <Select
           value={llmProvider}
-          onValueChange={(value) => setPref("PARALLAX_LLM_PROVIDER", value)}
+          onValueChange={(value: string) => setPref("PARALLAX_LLM_PROVIDER", value)}
         >
           <SettingsControls.SelectTrigger variant="compact">
             <SelectValue />

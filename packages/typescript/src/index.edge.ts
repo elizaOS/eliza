@@ -9,7 +9,6 @@
  */
 
 export * from "./actions";
-export * from "./basic-capabilities/index";
 export * from "./character";
 export * from "./character-utils";
 export * from "./connection";
@@ -28,6 +27,7 @@ export {
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
+export * from "./features/basic-capabilities/index";
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
 export * from "./logger";

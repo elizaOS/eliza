@@ -839,6 +839,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           },
         };
         const apiToken = getElizaApiToken()?.trim() ?? "";
+        const proxyRequestBody = JSON.stringify({
+          ...requestBody,
+          voiceId,
+          modelId,
+          outputFormat: "mp3_44100_128",
+        });
 
         /**
          * Server-side TTS when the browser has no `xi-api-key`.
@@ -850,9 +856,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
          * path, so chat fell back to browser (Edge) TTS. If cloud rejects
          * (no key), fall back to the upstream ElevenLabs proxy.
          */
-        const fetchViaProxy = async (): Promise<Response> => {
+        const makeProxyRequestInit = (): RequestInit => {
           const dbg = task.debugUtteranceContext;
-          const init: RequestInit = {
+          return {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -872,17 +878,45 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
                   }
                 : {}),
             },
-            body: JSON.stringify({
-              ...requestBody,
-              voiceId,
-              modelId,
-              outputFormat: "mp3_44100_128",
-            }),
+            body: proxyRequestBody,
             signal: controller.signal,
           };
+        };
 
-          const res = await fetch(resolveApiUrl("/api/tts/cloud"), init);
-          return res;
+        const shouldFallbackFromCloudProxy = (status: number): boolean =>
+          status === 400 ||
+          status === 401 ||
+          status === 403 ||
+          status === 404 ||
+          status === 405 ||
+          status === 501;
+
+        const fetchViaBestAvailableProxy = async (): Promise<Response> => {
+          const cloudTarget = resolveApiUrl("/api/tts/cloud");
+          try {
+            const cloudRes = await fetch(cloudTarget, makeProxyRequestInit());
+            if (
+              cloudRes.ok ||
+              !shouldFallbackFromCloudProxy(cloudRes.status)
+            ) {
+              return cloudRes;
+            }
+
+            ttsDebug("useVoiceChat:cloud-proxy-fallback", {
+              status: cloudRes.status,
+              ttsTarget: describeTtsCloudFetchTargetForDebug(),
+            });
+          } catch (error) {
+            ttsDebug("useVoiceChat:cloud-proxy-unavailable", {
+              ttsTarget: describeTtsCloudFetchTargetForDebug(),
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+
+          return await fetch(
+            resolveApiUrl("/api/tts/elevenlabs"),
+            makeProxyRequestInit(),
+          );
         };
 
         const trimmedApiKey =
@@ -907,18 +941,18 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               signal: controller.signal,
             });
           } catch {
-            res = await fetchViaProxy();
+            res = await fetchViaBestAvailableProxy();
           }
 
           // If the locally-available key is stale, fall back to server-side key.
           if (!res.ok && (res.status === 401 || res.status === 403)) {
-            const proxyRes = await fetchViaProxy();
+            const proxyRes = await fetchViaBestAvailableProxy();
             if (proxyRes.ok) {
               res = proxyRes;
             }
           }
         } else {
-          res = await fetchViaProxy();
+          res = await fetchViaBestAvailableProxy();
         }
 
         if (activeFetchAbortRef.current === controller) {

@@ -1096,7 +1096,7 @@ export class DiscordLocalService extends Service {
     const entityId = entityIdFor(message.author?.id ?? channelId);
     const roomType = roomTypeForChannel(channel?.type);
     const roomName =
-      (channel?.name && channel.name.trim()) ||
+      channel?.name?.trim() ||
       message.author?.global_name ||
       message.author?.username ||
       `Discord ${channelId}`;

@@ -422,6 +422,9 @@ class IAgentRuntime(ABC):
     @abstractmethod
     async def update_memory(self, memory: Memory | dict[str, Any]) -> bool: ...
 
+    @abstractmethod
+    async def delete_memory(self, memory_id: UUID) -> None: ...
+
     # Run tracking
     @abstractmethod
     def create_run_id(self) -> UUID: ...
@@ -452,7 +455,43 @@ class IAgentRuntime(ABC):
     async def create_entity(self, entity: Entity) -> bool: ...
 
     @abstractmethod
+    async def get_component(
+        self,
+        entity_id: UUID,
+        component_type: str,
+        world_id: UUID | str | None = None,
+        source_entity_id: UUID | None = None,
+    ) -> Any | None: ...
+
+    @abstractmethod
+    async def get_components(
+        self,
+        entity_id: UUID,
+        world_id: UUID | str | None = None,
+        source_entity_id: UUID | None = None,
+    ) -> list[Any]: ...
+
+    @abstractmethod
     async def create_component(self, component: Any) -> bool: ...
+
+    @abstractmethod
+    async def set_component(
+        self,
+        entity_id: UUID,
+        component_type: str,
+        data: dict[str, Any],
+        room_id: UUID | None = None,
+        world_id: UUID | None = None,
+        source_entity_id: UUID | None = None,
+    ) -> bool: ...
+
+    @abstractmethod
+    async def update_component(self, component: Any) -> None: ...
+
+    @abstractmethod
+    async def delete_component(
+        self, component_id: UUID, component_type: str | None = None
+    ) -> None: ...
 
     @abstractmethod
     async def create_room(self, room: Room) -> UUID: ...

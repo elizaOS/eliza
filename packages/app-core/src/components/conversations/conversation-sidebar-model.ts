@@ -1,8 +1,9 @@
-import { getChatSourceMeta } from "@elizaos/app-core";
+
 import { normalizeConnectorSource } from "@elizaos/shared/connectors";
 import type * as React from "react";
 
 import type { Conversation } from "../../api/client-types-chat";
+import { getChatSourceMeta } from "@elizaos/ui";
 import {
   formatRelativeTime,
   getLocalizedConversationTitle,
@@ -160,7 +161,7 @@ function buildSourceOptions(
     {
       count: appRows.length,
       icon: getChatSourceMeta("eliza").Icon,
-      label: t("conversations.scopeApp", { defaultValue: "App" }),
+      label: t("conversations.scopeApp", { defaultValue: "Terminal" }),
       value: ELIZA_SOURCE_SCOPE,
     },
   ];
@@ -221,7 +222,7 @@ function buildWorldOptions(
     {
       count: matchingRows.length,
       label: t("conversations.scopeAllWorlds", {
-        defaultValue: "All worlds",
+        defaultValue: "All",
       }),
       value: ALL_WORLDS_SCOPE,
     },
@@ -268,7 +269,7 @@ function buildSections(
   const groups = new Map<string, ConversationsSidebarSection>();
   for (const row of rows) {
     let key = sourceScope;
-    let label = t("conversations.scopeApp", { defaultValue: "App" });
+    let label = t("conversations.scopeApp", { defaultValue: "Terminal" });
 
     if (row.kind === "inbox") {
       if (sourceScope === ALL_CONNECTORS_SOURCE_SCOPE) {

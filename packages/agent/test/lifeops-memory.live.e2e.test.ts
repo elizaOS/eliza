@@ -35,7 +35,8 @@ dotenv.config({ path: path.resolve(packageRoot, ".env") });
 dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
 const LIVE_TESTS_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" ||
+  process.env.ELIZA_LIVE_TEST === "1";
 const LIVE_PROVIDER_OVERRIDE =
   process.env.ELIZA_LIVE_PROVIDER?.trim().toLowerCase();
 const LIVE_CLOUD_ENV_PREFIXES = ["ELIZAOS_CLOUD_", "ELIZA_CLOUD_"] as const;

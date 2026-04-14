@@ -18,7 +18,9 @@
  *
  * @module first-time-setup
  */
+import { persistConfigEnv } from "../api/config-env.js";
 import { type ElizaConfig, saveElizaConfig } from "../config/config.js";
+import { isCloudWalletEnabled } from "../config/feature-flags.js";
 import type { AgentConfig } from "../config/types.agents.js";
 import type { StylePreset } from "../contracts/onboarding.js";
 import { migrateLegacyRuntimeConfig } from "../contracts/onboarding.js";
@@ -146,7 +148,15 @@ export async function runFirstTimeSetup(
 ): Promise<ElizaConfig> {
   const agentEntry = config.agents?.list?.[0];
   const hasName = Boolean(agentEntry?.name || config.ui?.assistant?.name);
-  if (hasName) return config;
+
+  // hasName short-circuits the interactive onboarding prompts but must NOT
+  // bypass runtime-rebind steps (e.g. cloud-wallet → WALLET_SOURCE_*). Those
+  // need to re-run every restart so cloud state changes made while the agent
+  // was offline are reflected in env before plugins load.
+  if (hasName) {
+    await bindCloudProvider(config);
+    return config;
+  }
 
   // Only prompt when stdin is a TTY (interactive terminal)
   if (!process.stdin.isTTY) return config;
@@ -665,6 +675,17 @@ export async function runFirstTimeSetup(
     // Non-fatal: the agent can still start, but choices won't persist.
     clack.log.warn(`Could not save config: ${formatError(err)}`);
   }
+
+  // If cloud-mode onboarding already left cloud-wallet descriptors in the
+  // config (rare on first run, but possible when resuming a partial flow),
+  // make sure plugin-evm / plugin-solana see WALLET_SOURCE_*=cloud before
+  // they load.
+  try {
+    await bindCloudProvider(topologyUpdated);
+  } catch (err) {
+    clack.log.warn(`Could not bind cloud wallet provider: ${formatError(err)}`);
+  }
+
   clack.log.message(`${name}: ${styleChoice} Alright, that's me.`);
   clack.outro(
     isCloudMode ? "Your agent is live in the cloud! ☁️" : "Let's get started!",

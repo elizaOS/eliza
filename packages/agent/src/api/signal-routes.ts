@@ -94,8 +94,11 @@ export async function handleSignalRoute(
   state: SignalRouteState,
   deps: SignalRouteDeps,
 ): Promise<boolean> {
-  const signalPairingSnapshots =
-    state.signalPairingSnapshots ?? (state.signalPairingSnapshots = new Map());
+  let signalPairingSnapshots = state.signalPairingSnapshots;
+  if (!signalPairingSnapshots) {
+    signalPairingSnapshots = new Map();
+    state.signalPairingSnapshots = signalPairingSnapshots;
+  }
 
   if (!pathname.startsWith("/api/signal")) return false;
 

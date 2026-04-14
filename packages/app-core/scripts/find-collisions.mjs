@@ -470,7 +470,7 @@ function analyzeWorkspace() {
     if (extracted.pureReexport) {
       const externalSpecifiers = extracted.imports
         .map((entry) => entry.specifier)
-        .filter((specifier) => specifier.startsWith("@miladyai/"));
+        .filter((specifier) => specifier.startsWith("@elizaos/"));
       pureReexports.push({
         file: extracted.file,
         packageName: extracted.packageName,
@@ -486,7 +486,7 @@ function analyzeWorkspace() {
         continue;
       }
 
-      if (entry.specifier.startsWith("@miladyai/")) {
+      if (entry.specifier.startsWith("@elizaos/")) {
         const targetPackage = entry.specifier.split("/").slice(0, 2).join("/");
         const ownerPackage = packageInfos.find(
           (info) => info.name === extracted.packageName,

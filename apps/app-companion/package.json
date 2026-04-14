@@ -8,6 +8,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "biome check src/",
+    "test": "bunx vitest run --passWithNoTests",
     "storybook": "storybook dev -p 6007",
     "build-storybook": "storybook build"
   },
@@ -26,6 +27,7 @@
   "dependencies": {
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-coding": "workspace:*",
+    "@elizaos/ui": "workspace:*",
     "@elizaos/core": "workspace:*",
     "lucide-react": "^0.575.0"
   },
@@ -44,7 +46,7 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@elizaos/app-core": "*",
+    "@elizaos/app-core": "workspace:*",
     "@pixiv/three-vrm": "^3.4.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

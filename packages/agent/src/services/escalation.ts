@@ -372,6 +372,7 @@ function scheduleCheck(
 
 let idCounter = 0;
 
+// biome-ignore lint/complexity/noStaticOnlyClass: module-style service API is intentional here
 export class EscalationService {
   static async startEscalation(
     runtime: IAgentRuntime,

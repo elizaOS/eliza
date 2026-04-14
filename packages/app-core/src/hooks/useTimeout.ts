@@ -1,1 +1,2 @@
-export { useTimeout } from "../ui/hooks/useTimeout";
+export { useTimeout } from "@elizaos/ui";
+

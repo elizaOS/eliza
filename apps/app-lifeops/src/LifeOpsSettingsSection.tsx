@@ -19,13 +19,13 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useMemo } from "react";
-import { useGoogleLifeOpsConnector } from "@elizaos/app-core/hooks";
-import { useApp } from "@elizaos/app-core/state";
+import { useGoogleLifeOpsConnector } from "@elizaos/app-core";
+import { useApp } from "@elizaos/app-core";
 import {
   resolveLifeOpsLocalGoogleRedirectUri,
   resolveLifeOpsRemoteGoogleRedirectUri,
   resolveLifeOpsSettingsApiBaseUrl,
-} from "@elizaos/app-core/utils";
+} from "@elizaos/app-core";
 import { LifeOpsBrowserSetupPanel } from "./LifeOpsBrowserSetupPanel";
 
 function modeLabel(mode: LifeOpsConnectorMode): string {

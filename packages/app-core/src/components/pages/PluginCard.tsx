@@ -1,11 +1,7 @@
-/**
- * PluginCard — renders a single plugin as a card in the grid view.
- * Extracted from PluginsView to keep the main file focused on layout.
- */
 
-import { Button } from "@elizaos/app-core";
 import type { PluginInfo, PluginParamDef } from "../../api";
 import { useApp } from "../../state";
+import { Button } from "@elizaos/ui";
 import {
   getPluginResourceLinks,
   iconImageSource,

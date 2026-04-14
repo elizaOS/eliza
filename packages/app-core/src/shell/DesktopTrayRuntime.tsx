@@ -1,15 +1,13 @@
 import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequest,
-  isElectrobunRuntime,
   subscribeDesktopBridgeEvent,
-} from "@elizaos/app-core/bridge";
-import { TRAY_ACTION_EVENT } from "@elizaos/app-core/events";
-import { useApp } from "@elizaos/app-core/state";
-import {
-  type DesktopClickAuditItem,
-  openDesktopSettingsWindow,
-} from "@elizaos/app-core/utils";
+} from "../bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
+import { TRAY_ACTION_EVENT } from "../events";
+import { useApp } from "../state/useApp";
+import { openDesktopSettingsWindow } from "../utils/desktop-workspace";
+import type { DesktopClickAuditItem } from "../utils/desktop-workspace";
 import { useEffect } from "react";
 
 interface DesktopTrayMenuItem {

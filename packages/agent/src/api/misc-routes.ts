@@ -192,7 +192,7 @@ export async function handleMiscRoutes(
       data?: Record<string, unknown>;
       roomId?: string;
     }>(req, res);
-    if (!body || !body.stream) {
+    if (!body?.stream) {
       error(res, "Missing 'stream' field");
       return true;
     }
@@ -458,7 +458,7 @@ export async function handleMiscRoutes(
 
     const handler = body.handler as CustomActionDef["handler"] | undefined;
     const validHandlerTypes = new Set(["http", "shell", "code"]);
-    if (!handler || !handler.type || !validHandlerTypes.has(handler.type)) {
+    if (!handler?.type || !validHandlerTypes.has(handler.type)) {
       error(
         res,
         "handler with valid type (http, shell, code) is required",

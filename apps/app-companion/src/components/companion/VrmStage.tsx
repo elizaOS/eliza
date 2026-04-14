@@ -1,10 +1,12 @@
-import {
-  APP_EMOTE_EVENT,
-  type AppEmoteEventDetail,
-  STOP_EMOTE_EVENT,
-} from "@elizaos/app-core/events";
-import { useRenderGuard } from "@elizaos/app-core/hooks";
-import { resolveAppAssetUrl } from "@elizaos/app-core/utils";
+import type { AppEmoteEventDetail } from "@elizaos/app-core/events";
+import { APP_EMOTE_EVENT, STOP_EMOTE_EVENT } from "@elizaos/app-core/events";
+import { useRenderGuard } from "@elizaos/app-core/hooks/useRenderGuard";
+import type {
+  CompanionHalfFramerateMode,
+  CompanionVrmPowerMode,
+} from "@elizaos/app-core/state/types";
+import type { TranslateFn } from "@elizaos/app-core/types";
+import { resolveAppAssetUrl } from "@elizaos/app-core/utils/asset-url";
 import {
   memo,
   type ReactElement,
@@ -13,11 +15,6 @@ import {
   useRef,
   useState,
 } from "react";
-import type {
-  CompanionHalfFramerateMode,
-  CompanionVrmPowerMode,
-} from "@elizaos/app-core/state";
-import type { TranslateFn } from "@elizaos/app-core/types";
 import type {
   CameraProfile,
   VrmEngine,
@@ -84,7 +81,7 @@ export const VrmStage = memo(function VrmStage({
   const [loadingProgress, setLoadingProgress] = useState<number | undefined>(
     undefined,
   );
-  const [loaderFading, setLoaderFading] = useState(false);
+  const [, setLoaderFading] = useState(false);
   const [loaderHidden, setLoaderHidden] = useState(false);
   const loaderFadingStartedRef = useRef(false);
   /** After the first successful VRM load, suppress the loader on subsequent swaps. */
