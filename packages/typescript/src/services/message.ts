@@ -3430,6 +3430,48 @@ export class DefaultMessageService implements IMessageService {
 			);
 		}
 
+		// Self-modification requests already have a deterministic action path.
+		// Skip the planner so group-chat style updates reliably hit MODIFY_CHARACTER.
+		if (isExplicitSelfModificationRequest(message.content.text || "")) {
+			const modifyCharacterAction = runtime.actions.find(
+				(action) => action.name === "MODIFY_CHARACTER",
+			);
+			const canHandleSelfModification = await modifyCharacterAction?.validate?.(
+				runtime,
+				message,
+				state,
+			);
+
+			if (canHandleSelfModification) {
+				const responseContent: Content = {
+					thought:
+						"Directly route explicit self-modification request to MODIFY_CHARACTER.",
+					actions: ["MODIFY_CHARACTER"],
+					providers: [],
+					text: "",
+					simple: false,
+					responseId,
+				};
+				const responseMessages: Memory[] = [
+					{
+						id: responseId,
+						entityId: runtime.agentId,
+						agentId: runtime.agentId,
+						content: responseContent,
+						roomId: message.roomId,
+						createdAt: Date.now(),
+					},
+				];
+
+				return {
+					responseContent,
+					responseMessages,
+					state,
+					mode: "actions",
+				};
+			}
+		}
+
 		let responseContent: Content | null = null;
 
 		// Create streaming context for retry state tracking
