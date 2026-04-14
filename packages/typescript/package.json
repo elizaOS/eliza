@@ -94,7 +94,6 @@
 		"@types/fs-extra": "^11.0.4",
 		"@types/markdown-it": "^14.1.2",
 		"@types/node": "^25.0.3",
-		"@types/uuid": "^11.0.0",
 		"@vitest/coverage-v8": "^4.0.0",
 		"esbuild": "^0.25.0",
 		"sharp": "^0.34.5",
