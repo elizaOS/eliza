@@ -37,7 +37,7 @@ export class ResearchTaskExecutor implements TaskExecutor {
         const output =
           typeof researchResult === "string"
             ? researchResult
-            : researchResult.text ?? "";
+            : (researchResult.text ?? "");
         if (output.trim().length > 0) {
           return {
             taskId: spec.id,
@@ -71,15 +71,15 @@ export class ResearchTaskExecutor implements TaskExecutor {
           typeof decomposition === "string"
             ? decomposition
             : String(decomposition);
-        const fenceMatch = raw.match(
-          /```(?:\w+)?\s*\n?([\s\S]*?)\n?\s*```/,
-        );
+        const fenceMatch = raw.match(/```(?:\w+)?\s*\n?([\s\S]*?)\n?\s*```/);
         if (fenceMatch) raw = fenceMatch[1];
 
         // Try line-based parsing first (preferred)
         const lines = raw
           .split(/\r?\n/)
-          .map((line) => line.replace(/^\s*(?:\d+[.)]\s*|-\s*|\*\s*)/, "").trim())
+          .map((line) =>
+            line.replace(/^\s*(?:\d+[.)]\s*|-\s*|\*\s*)/, "").trim(),
+          )
           .filter((line) => line.length > 0);
 
         if (lines.length >= 2) {
@@ -110,16 +110,13 @@ export class ResearchTaskExecutor implements TaskExecutor {
         });
         answers.push({
           question,
-          answer:
-            typeof answer === "string" ? answer : String(answer),
+          answer: typeof answer === "string" ? answer : String(answer),
         });
       }
 
       // Step 3: Synthesize into a final report
       const findingsBlock = answers
-        .map(
-          (a, i) => `${i + 1}. Q: ${a.question}\n   A: ${a.answer}`,
-        )
+        .map((a, i) => `${i + 1}. Q: ${a.question}\n   A: ${a.answer}`)
         .join("\n\n");
 
       const synthesis = await runtime.useModel(ModelType.TEXT_LARGE, {

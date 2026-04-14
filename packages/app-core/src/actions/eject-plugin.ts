@@ -1,6 +1,16 @@
-import type { Action, HandlerOptions } from "@elizaos/core";
+import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
 import { requestRestart } from "@elizaos/shared/restart";
-import { ejectPlugin } from "../services/plugin-eject";
+
+function getPluginManager(runtime: IAgentRuntime) {
+  return runtime.getService("plugin_manager") as {
+    ejectPlugin(id: string): Promise<{
+      success: boolean;
+      pluginName: string;
+      ejectedPath: string;
+      error?: string;
+    }>;
+  } | null;
+}
 
 export const ejectPluginAction: Action = {
   name: "EJECT_PLUGIN",
@@ -13,7 +23,7 @@ export const ejectPluginAction: Action = {
 
   validate: async () => true,
 
-  handler: async (_runtime, _message, _state, options) => {
+  handler: async (runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters;
     const pluginId =
       typeof params?.pluginId === "string" ? params.pluginId.trim() : "";
@@ -22,7 +32,15 @@ export const ejectPluginAction: Action = {
       return { text: "I need a plugin ID to eject.", success: false };
     }
 
-    const result = await ejectPlugin(pluginId);
+    const mgr = getPluginManager(runtime);
+    if (!mgr) {
+      return {
+        text: "Plugin manager service is not available.",
+        success: false,
+      };
+    }
+
+    const result = await mgr.ejectPlugin(pluginId);
     if (!result.success) {
       return {
         text: `Failed to eject ${pluginId}: ${result.error ?? "unknown error"}`,

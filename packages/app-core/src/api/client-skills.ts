@@ -584,9 +584,7 @@ ElizaClient.prototype.getSkillCatalogDetail = async function (
   return this.fetch(`/api/skills/catalog/${encodeURIComponent(slug)}`);
 };
 
-ElizaClient.prototype.refreshSkillCatalog = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.refreshSkillCatalog = async function (this: ElizaClient) {
   return this.fetch("/api/skills/catalog/refresh", { method: "POST" });
 };
 
@@ -611,9 +609,7 @@ ElizaClient.prototype.uninstallCatalogSkill = async function (
   });
 };
 
-ElizaClient.prototype.getRegistryPlugins = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.getRegistryPlugins = async function (this: ElizaClient) {
   return this.fetch("/api/registry/plugins");
 };
 
@@ -624,9 +620,7 @@ ElizaClient.prototype.getRegistryPluginInfo = async function (
   return this.fetch(`/api/registry/plugins/${encodeURIComponent(name)}`);
 };
 
-ElizaClient.prototype.getInstalledPlugins = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.getInstalledPlugins = async function (this: ElizaClient) {
   return this.fetch("/api/plugins/installed");
 };
 
@@ -752,10 +746,7 @@ ElizaClient.prototype.openSkill = async function (this: ElizaClient, id) {
   });
 };
 
-ElizaClient.prototype.getSkillSource = async function (
-  this: ElizaClient,
-  id,
-) {
+ElizaClient.prototype.getSkillSource = async function (this: ElizaClient, id) {
   return this.fetch(`/api/skills/${encodeURIComponent(id)}/source`);
 };
 
@@ -814,19 +805,13 @@ ElizaClient.prototype.getAppRun = async function (this: ElizaClient, runId) {
   return this.fetch(`/api/apps/runs/${encodeURIComponent(runId)}`);
 };
 
-ElizaClient.prototype.attachAppRun = async function (
-  this: ElizaClient,
-  runId,
-) {
+ElizaClient.prototype.attachAppRun = async function (this: ElizaClient, runId) {
   return this.fetch(`/api/apps/runs/${encodeURIComponent(runId)}/attach`, {
     method: "POST",
   });
 };
 
-ElizaClient.prototype.detachAppRun = async function (
-  this: ElizaClient,
-  runId,
-) {
+ElizaClient.prototype.detachAppRun = async function (this: ElizaClient, runId) {
   return this.fetch(`/api/apps/runs/${encodeURIComponent(runId)}/detach`, {
     method: "POST",
   });
@@ -1003,9 +988,7 @@ ElizaClient.prototype.controlAppSession = async function (
   );
 };
 
-ElizaClient.prototype.listRegistryPlugins = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.listRegistryPlugins = async function (this: ElizaClient) {
   return this.fetch("/api/apps/plugins");
 };
 
@@ -1263,7 +1246,9 @@ ElizaClient.prototype.getBabylonAgentActivity = async function (
   if (opts?.limit) params.set("limit", String(opts.limit));
   if (opts?.type) params.set("type", opts.type);
   const qs = params.toString();
-  return this.fetch(`/api/apps/babylon@elizaos/agent/activity${qs ? `?${qs}` : ""}`);
+  return this.fetch(
+    `/api/apps/babylon@elizaos/agent/activity${qs ? `?${qs}` : ""}`,
+  );
 };
 
 ElizaClient.prototype.getBabylonAgentLogs = async function (
@@ -1274,7 +1259,9 @@ ElizaClient.prototype.getBabylonAgentLogs = async function (
   if (opts?.type) params.set("type", opts.type);
   if (opts?.level) params.set("level", opts.level);
   const qs = params.toString();
-  return this.fetch(`/api/apps/babylon@elizaos/agent/logs${qs ? `?${qs}` : ""}`);
+  return this.fetch(
+    `/api/apps/babylon@elizaos/agent/logs${qs ? `?${qs}` : ""}`,
+  );
 };
 
 ElizaClient.prototype.getBabylonAgentWallet = async function (
@@ -1287,9 +1274,7 @@ ElizaClient.prototype.getBabylonTeam = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon/team");
 };
 
-ElizaClient.prototype.getBabylonTeamChat = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.getBabylonTeamChat = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon/team/info");
 };
 
@@ -1318,7 +1303,7 @@ ElizaClient.prototype.toggleBabylonAgentAutonomy = async function (
   this: ElizaClient,
   opts,
 ) {
-  return this.fetch("/api/apps/babylon@elizaos/agent/autonomy", {
+  return this.fetch("/api/apps/babylon", {
     method: "POST",
     body: JSON.stringify(opts),
   });
@@ -1527,9 +1512,7 @@ ElizaClient.prototype.sendBabylonAgentChat = async function (
   });
 };
 
-ElizaClient.prototype.getBabylonAgentChat = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.getBabylonAgentChat = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon@elizaos/agent/chat");
 };
 

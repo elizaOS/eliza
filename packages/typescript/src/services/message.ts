@@ -1,11 +1,11 @@
 import { v4 } from "uuid";
 import { parseActionParams } from "../actions";
+import { createUniqueUuid } from "../entities";
 import {
 	formatTaskCompletionStatus,
 	getTaskCompletionCacheKey,
 	type TaskCompletionAssessment,
-} from "../advanced-capabilities/evaluators/task-completion";
-import { createUniqueUuid } from "../entities";
+} from "../features/advanced-capabilities/evaluators/task-completion";
 import { logger } from "../logger";
 import {
 	imageDescriptionTemplate,

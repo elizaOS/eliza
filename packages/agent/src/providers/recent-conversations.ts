@@ -9,12 +9,12 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared/validation-keywords";
+import { hasAdminAccess } from "../security/access.js";
 import {
   formatRelativeTimestamp,
   formatSpeakerLabel,
   roomSourceTag,
 } from "./conversation-utils.js";
-import { hasAdminAccess } from "../security/access.js";
 
 const MAX_RECENT_MESSAGES = 10;
 const MAX_ROOMS_TO_SCAN = 10;

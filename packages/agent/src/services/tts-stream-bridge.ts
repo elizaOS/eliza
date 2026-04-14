@@ -147,9 +147,7 @@ class TtsStreamBridge implements ITtsStreamBridge {
       );
       return true;
     } catch (err) {
-      logger.error(
-        `${TAG} TTS generation failed: ${String(err)}`,
-      );
+      logger.error(`${TAG} TTS generation failed: ${String(err)}`);
       return false;
     }
   }
@@ -437,10 +435,7 @@ function resolveKey(
     process.env.ELIZAOS_CLOUD_USE_TTS === undefined &&
     process.env.ELIZAOS_CLOUD_ENABLED === "true" &&
     process.env.ELIZA_CLOUD_TTS_DISABLED !== "true";
-  if (
-    explicitCloudTts ||
-    legacyCloudTts
-  ) {
+  if (explicitCloudTts || legacyCloudTts) {
     const cloudKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
     if (cloudKey && !isRedactedSecret(cloudKey)) {
       return cloudKey;

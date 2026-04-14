@@ -4,8 +4,6 @@ import { pathToFileURL } from "node:url";
 const CLOUD_MODES = new Set(["cloud", "cloud-agent", "cloud_agent"]);
 const AGENT_MODES = new Set(["agent", "default", "milady"]);
 const TSX_LOADER_PATH = "./node_modules/tsx/dist/loader.mjs";
-const CLOUD_AGENT_ENTRYPOINT =
-  "eliza/packages/app-core/deploy/cloud-agent-entrypoint.ts";
 
 export function normalizeContainerMode(rawMode, env = process.env) {
   const candidate = String(rawMode ?? "")
@@ -17,7 +15,6 @@ export function normalizeContainerMode(rawMode, env = process.env) {
 
   if (
     env.BRIDGE_PORT ||
-    env.APP_BRIDGE_PORT ||
     env.MILADY_BRIDGE_PORT ||
     env.BRIDGE_SECRET ||
     env.MILADY_CONTAINER_CLOUD === "1"
@@ -30,33 +27,23 @@ export function normalizeContainerMode(rawMode, env = process.env) {
 
 export function resolveContainerLaunch(env = process.env) {
   const mode = normalizeContainerMode(
-    env.APP_CONTAINER_MODE ??
-      env.APP_AGENT_IMAGE_MODE ??
-      env.MILADY_CONTAINER_MODE ??
-      env.MILADY_AGENT_IMAGE_MODE,
+    env.MILADY_CONTAINER_MODE ?? env.MILADY_AGENT_IMAGE_MODE,
     env,
   );
   const launchEnv = { ...env };
-  const appEntrypoint =
-    env.APP_ENTRYPOINT ?? env.MILADY_ENTRYPOINT ?? "app.mjs";
 
   if (mode === "cloud-agent") {
     if (!launchEnv.PORT) {
-      launchEnv.PORT =
-        launchEnv.APP_PORT ?? launchEnv.MILADY_PORT ?? launchEnv.ELIZA_PORT ?? "2138";
+      launchEnv.PORT = launchEnv.MILADY_PORT ?? "2138";
     }
     if (!launchEnv.BRIDGE_PORT) {
-      launchEnv.BRIDGE_PORT =
-        launchEnv.APP_BRIDGE_PORT ??
-        launchEnv.MILADY_BRIDGE_PORT ??
-        launchEnv.ELIZA_BRIDGE_PORT ??
-        "18790";
+      launchEnv.BRIDGE_PORT = launchEnv.MILADY_BRIDGE_PORT ?? "18790";
     }
 
     return {
       mode,
       command: process.execPath,
-      args: ["--import", TSX_LOADER_PATH, CLOUD_AGENT_ENTRYPOINT],
+      args: ["--import", TSX_LOADER_PATH, "deploy/cloud-agent-entrypoint.ts"],
       env: launchEnv,
     };
   }
@@ -64,7 +51,7 @@ export function resolveContainerLaunch(env = process.env) {
   return {
     mode,
     command: process.execPath,
-    args: ["--import", TSX_LOADER_PATH, appEntrypoint, "start"],
+    args: ["--import", TSX_LOADER_PATH, "milady.mjs", "start"],
     env: launchEnv,
   };
 }

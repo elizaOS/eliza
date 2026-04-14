@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType, logger } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 
 // ---------------------------------------------------------------------------
 // Send confirmation reflection
@@ -29,14 +29,16 @@ export async function reflectOnSendConfirmation(
   if (looksLikeInboxConfirmation(opts.userMessage)) {
     return {
       confirmed: true,
-      reasoning: "Explicit confirmation phrase matched deterministic safety pre-check.",
+      reasoning:
+        "Explicit confirmation phrase matched deterministic safety pre-check.",
     };
   }
 
   if (REJECTION_PATTERN.test(opts.userMessage.trim().toLowerCase())) {
     return {
       confirmed: false,
-      reasoning: "Explicit rejection phrase matched deterministic safety pre-check.",
+      reasoning:
+        "Explicit rejection phrase matched deterministic safety pre-check.",
     };
   }
 
@@ -78,13 +80,20 @@ export async function reflectOnSendConfirmation(
     if (lower.startsWith("yes") || lower.includes('"confirmed": true')) {
       return { confirmed: true, reasoning: raw.slice(0, 200) };
     }
-    return { confirmed: false, reasoning: `Could not parse reflection: ${raw.slice(0, 100)}` };
+    return {
+      confirmed: false,
+      reasoning: `Could not parse reflection: ${raw.slice(0, 100)}`,
+    };
   } catch (error) {
-    logger.warn("[inbox-reflection] Reflection LLM call failed:", String(error));
+    logger.warn(
+      "[inbox-reflection] Reflection LLM call failed:",
+      String(error),
+    );
     // On error, default to NOT confirmed (safer)
     return {
       confirmed: false,
-      reasoning: "Reflection check failed; defaulting to not confirmed for safety",
+      reasoning:
+        "Reflection check failed; defaulting to not confirmed for safety",
     };
   }
 }
@@ -127,7 +136,8 @@ export async function reflectOnAutoReply(
   if (safeReply && !sensitiveReplyContext && !heatedContext) {
     return {
       approved: true,
-      reasoning: "Simple acknowledgement matched deterministic safe auto-reply pre-check.",
+      reasoning:
+        "Simple acknowledgement matched deterministic safe auto-reply pre-check.",
     };
   }
 
@@ -171,7 +181,10 @@ export async function reflectOnAutoReply(
       };
     }
 
-    return { approved: false, reasoning: `Could not parse reflection: ${raw.slice(0, 100)}` };
+    return {
+      approved: false,
+      reasoning: `Could not parse reflection: ${raw.slice(0, 100)}`,
+    };
   } catch (error) {
     logger.warn(
       "[inbox-reflection] Auto-reply reflection failed:",

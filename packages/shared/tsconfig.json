@@ -4,6 +4,7 @@
     "useDefineForClassFields": true,
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "allowJs": false,
+    "jsx": "react-jsx",
     "skipLibCheck": true,
     "esModuleInterop": false,
     "allowSyntheticDefaultImports": true,
@@ -15,7 +16,12 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["node", "bun"],
+    "types": ["node", "bun", "react", "react-dom"],
+    "typeRoots": [
+      "../app-core/node_modules/@types",
+      "../../node_modules/@types",
+      "../../../node_modules/@types"
+    ],
     "baseUrl": ".",
     "paths": {
       "@types/*": ["./src/*"]
@@ -23,7 +29,11 @@
   },
   "exclude": [
     "src/**/*.test.ts",
-    "src/**/*.test.tsx"
+    "src/**/*.test.tsx",
+    "../app-core/src/ui/**/*.stories.ts",
+    "../app-core/src/ui/**/*.stories.tsx",
+    "../app-core/src/ui/**/*.test.ts",
+    "../app-core/src/ui/**/*.test.tsx"
   ],
   "include": ["src", "../app-core/src/ui"],
   "references": []

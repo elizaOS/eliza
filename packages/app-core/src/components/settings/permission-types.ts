@@ -159,11 +159,6 @@ export const PERMISSION_BADGE_LABELS: Record<
 };
 
 export const SETTINGS_REFRESH_DELAYS_MS = [1500, 4000] as const;
-export const SETTINGS_PANEL_CLASSNAME =
-  "rounded-2xl border border-border/60 bg-card/92 shadow-sm";
-export const SETTINGS_PANEL_HEADER_CLASSNAME =
-  "flex flex-col gap-3 border-b border-border/50 px-4 py-4 sm:flex-row sm:items-start sm:justify-between";
-export const SETTINGS_PANEL_ACTIONS_CLASSNAME = "flex flex-wrap gap-2";
 
 export function translateWithFallback(
   t: (key: string) => string,

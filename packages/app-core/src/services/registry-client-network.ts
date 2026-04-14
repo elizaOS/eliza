@@ -1,4 +1,4 @@
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
 import type { RegistryPluginInfo } from "./registry-client-types.js";
 
 export async function fetchFromNetwork(params: {

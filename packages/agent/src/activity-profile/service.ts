@@ -7,8 +7,9 @@ import {
   type LifeOpsScreenContextSummary,
 } from "../lifeops/screen-context.js";
 import { LifeOpsService } from "../lifeops/service.js";
-import { resolveOwnerEntityId } from "../runtime/owner-entity.js";
+
 export { resolveOwnerEntityId } from "../runtime/owner-entity.js";
+
 import {
   analyzeMessages,
   type CalendarEventRecord,
@@ -302,18 +303,9 @@ export async function refreshCurrentState(
 
 // ── Metadata persistence helpers ──────────────────────
 
-export function readProfileFromMetadata(
-  metadata: Record<string, unknown> | null,
-): ActivityProfile | null {
-  if (!metadata?.activityProfile) return null;
-  const candidate = metadata.activityProfile;
-  if (!isRecord(candidate)) return null;
-  // Reject profiles missing required shape fields (corrupt or stale version)
-  if (typeof candidate.analyzedAt !== "number") return null;
-  if (typeof candidate.ownerEntityId !== "string") return null;
-  if (typeof candidate.totalMessages !== "number") return null;
-  return candidate as unknown as ActivityProfile;
-}
+// Re-export from dedicated module to preserve public API while breaking the
+// circular dependency between activity-profile/service and lifeops/service.
+export { readProfileFromMetadata } from "./profile-metadata.js";
 
 export function readFiredLogFromMetadata(
   metadata: Record<string, unknown> | null,

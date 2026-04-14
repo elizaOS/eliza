@@ -37,9 +37,9 @@ const ELIZA_CLOUD_OPENAI_BASE_URL = "https://elizacloud.ai/api/v1";
 
 function loadConfiguredCloudApiKey(): string {
   const configuredPath =
-    process.env.MILADY_CONFIG_PATH?.trim() ||
     process.env.ELIZA_CONFIG_PATH?.trim() ||
-    path.join(os.homedir(), ".milady", "milady.json");
+    process.env.ELIZA_CONFIG_PATH?.trim() ||
+    path.join(os.homedir(), ".eliza", "eliza.json");
 
   try {
     const raw = fs.readFileSync(configuredPath, "utf8");
@@ -258,7 +258,7 @@ export function requireLiveProvider(
 }
 
 /**
- * Check if MILADY_LIVE_TEST is enabled.
+ * Check if ELIZA_LIVE_TEST is enabled.
  */
 export function isLiveTestEnabled(): boolean {
   return (

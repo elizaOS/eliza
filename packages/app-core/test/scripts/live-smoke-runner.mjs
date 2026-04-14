@@ -17,7 +17,7 @@ const truthyValues = new Set(["1", "true", "yes", "on"]);
 function buildLiveTestEnv(cwd) {
   return {
     ...buildTestEnv(cwd),
-    MILADY_LIVE_TEST: "1",
+    ELIZA_LIVE_TEST: "1",
     ELIZA_LIVE_TEST: "1",
   };
 }
@@ -137,7 +137,7 @@ const runs = [
     cwd: repoRoot,
     env: {
       ...process.env,
-      MILADY_LIVE_TEST: "1",
+      ELIZA_LIVE_TEST: "1",
       ELIZA_LIVE_TEST: "1",
     },
   },
@@ -162,7 +162,7 @@ const runs = [
     args: ["run", "test:live:plugins"],
     cwd: repoRoot,
     scriptName: "test:live:plugins",
-    skipEnvVar: "MILADY_SKIP_PLUGIN_LIVE_SMOKE",
+    skipEnvVar: "ELIZA_SKIP_PLUGIN_LIVE_SMOKE",
     getSkipReason() {
       if (countAvailableLocalPluginPackages() === 0) {
         return "no first-party plugin packages are available in this checkout";
@@ -177,7 +177,7 @@ const runs = [
     args: ["run", "test:e2e:smoke"],
     cwd: path.join(repoRoot, "eliza", "cloud"),
     scriptName: "test:e2e:smoke",
-    skipEnvVar: "MILADY_SKIP_CLOUD_LIVE_SMOKE",
+    skipEnvVar: "ELIZA_SKIP_CLOUD_LIVE_SMOKE",
     async getSkipReason() {
       if (await isPortBusy(3000)) {
         return "port 3000 is already in use, so cloud smoke is unavailable";
@@ -192,7 +192,7 @@ const runs = [
     args: ["run", "test:e2e:smoke"],
     cwd: path.join(repoRoot, "eliza", "packages", "typescript"),
     scriptName: "test:e2e:smoke",
-    skipEnvVar: "MILADY_SKIP_ELIZA_LIVE_SMOKE",
+    skipEnvVar: "ELIZA_SKIP_ELIZA_LIVE_SMOKE",
   },
   {
     lockName: "steward-fi-e2e-smoke",
@@ -201,7 +201,7 @@ const runs = [
     args: ["run", "test:e2e:smoke"],
     cwd: path.join(repoRoot, "eliza", "steward-fi"),
     scriptName: "test:e2e:smoke",
-    skipEnvVar: "MILADY_SKIP_STEWARD_FI_LIVE_SMOKE",
+    skipEnvVar: "ELIZA_SKIP_STEWARD_FI_LIVE_SMOKE",
     getSkipReason() {
       if (!process.env.STEWARD_URL?.trim()) {
         return "STEWARD_URL is not configured";

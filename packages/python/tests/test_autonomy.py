@@ -7,8 +7,8 @@ import pytest
 # The basic_capabilities.autonomy sub-package is still WIP; skip the entire module
 # when it is not available so the rest of the test suite can proceed.
 _autonomy = pytest.importorskip(
-    "elizaos.basic_capabilities.autonomy",
-    reason="elizaos.basic_capabilities.autonomy not yet available",
+    "elizaos.features.basic_capabilities.autonomy",
+    reason="elizaos.features.basic_capabilities.autonomy not yet available",
 )
 
 AUTONOMY_SERVICE_TYPE = _autonomy.AUTONOMY_SERVICE_TYPE
@@ -18,8 +18,8 @@ autonomy_status_provider = _autonomy.autonomy_status_provider
 send_to_admin_action = _autonomy.send_to_admin_action
 
 _types = pytest.importorskip(
-    "elizaos.basic_capabilities.autonomy.types",
-    reason="elizaos.basic_capabilities.autonomy.types not yet available",
+    "elizaos.features.basic_capabilities.autonomy.types",
+    reason="elizaos.features.basic_capabilities.autonomy.types not yet available",
 )
 AutonomyStatus = _types.AutonomyStatus
 from elizaos.types.memory import Memory

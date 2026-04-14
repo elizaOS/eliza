@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import re
 import uuid
 import xml.etree.ElementTree as ET
@@ -22,12 +23,12 @@ from elizaos.types.components import (
     ProviderResult,
 )
 from elizaos.types.database import AgentRunSummaryResult, IDatabaseAdapter, Log
-from elizaos.types.environment import Entity, Room, World
+from elizaos.types.environment import Component, Entity, Room, World
 from elizaos.types.events import EventType
 from elizaos.types.memory import Memory
 from elizaos.types.model import GenerateTextOptions, GenerateTextResult, LLMMode, ModelType
 from elizaos.types.plugin import Plugin, Route
-from elizaos.types.primitives import UUID, Content, as_uuid, string_to_uuid
+from elizaos.types.primitives import DEFAULT_UUID, UUID, Content, as_uuid, string_to_uuid
 from elizaos.types.runtime import (
     IAgentRuntime,
     RuntimeSettings,
@@ -118,6 +119,58 @@ def _parse_bool_setting(value: object | None) -> bool | None:
         if lowered == "false":
             return False
     return None
+
+
+def _looks_like_uuid(value: str) -> bool:
+    try:
+        as_uuid(value)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def _normalize_provider_result(
+    result: ProviderResult | dict[str, Any] | None,
+) -> ProviderResult:
+    if isinstance(result, ProviderResult):
+        return result
+    if isinstance(result, dict):
+        text = result.get("text", "")
+        values = result.get("values", {})
+        data = result.get("data", {})
+        return ProviderResult(
+            text=str(text) if text is not None else "",
+            values=values if isinstance(values, dict) else {},
+            data=data if isinstance(data, dict) else {},
+        )
+    return ProviderResult(text="", values={}, data={})
+
+
+async def _invoke_evaluator_handler(
+    handler: Callable[..., Awaitable[Any]],
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State | None,
+    options: HandlerOptions,
+    callback: HandlerCallback | None,
+    responses: list[Memory] | None,
+) -> Any:
+    try:
+        parameter_names = list(inspect.signature(handler).parameters.keys())
+    except (TypeError, ValueError):
+        parameter_names = []
+
+    if len(parameter_names) >= 6:
+        if parameter_names[4] == "callback":
+            return await handler(runtime, message, state, options, callback, responses)
+        return await handler(runtime, message, state, options, responses, None)
+    if len(parameter_names) == 5:
+        if parameter_names[4] == "callback":
+            return await handler(runtime, message, state, options, callback)
+        return await handler(runtime, message, state, options, responses)
+    if len(parameter_names) == 4:
+        return await handler(runtime, message, state, options)
+    return await handler(runtime, message, state)
 
 
 class AgentRuntime(IAgentRuntime):
@@ -413,7 +466,7 @@ class AgentRuntime(IAgentRuntime):
             None,
         )
         if basic_capabilities_plugin is None:
-            from elizaos.basic_capabilities_compat import (
+            from elizaos.features.basic_capabilities_compat import (  # type: ignore[import-not-found]
                 basic_capabilities_plugin as default_basic_capabilities_plugin,
             )
 
@@ -434,13 +487,13 @@ class AgentRuntime(IAgentRuntime):
 
         # Advanced planning is built into core, but only loaded when enabled on the character.
         if getattr(self._character, "advanced_planning", None) is True:
-            from elizaos.advanced_planning import advanced_planning_plugin
+            from elizaos.features.advanced_planning import advanced_planning_plugin
 
             await self.register_plugin(advanced_planning_plugin)
 
         # Advanced memory is built into core, but only loaded when enabled on the character.
         if getattr(self._character, "advanced_memory", None) is True:
-            from elizaos.advanced_memory import advanced_memory_plugin
+            from elizaos.features.advanced_memory import advanced_memory_plugin
 
             await self.register_plugin(advanced_memory_plugin)
 
@@ -490,7 +543,7 @@ class AgentRuntime(IAgentRuntime):
             )
 
             if disable_basic or enable_extended or skip_character_provider or enable_autonomy:
-                from elizaos.basic_capabilities_compat import (
+                from elizaos.features.basic_capabilities_compat import (
                     CapabilityConfig,
                     create_basic_capabilities_plugin,
                 )
@@ -1161,7 +1214,8 @@ class AgentRuntime(IAgentRuntime):
                 try:
                     is_valid = await evaluator.validate(self, message, state)
                     if is_valid:
-                        await evaluator.handler(
+                        await _invoke_evaluator_handler(
+                            evaluator.handler,
                             self,
                             message,
                             state,
@@ -1317,7 +1371,7 @@ class AgentRuntime(IAgentRuntime):
                 continue
 
             try:
-                result = await asyncio.wait_for(
+                provider_result = await asyncio.wait_for(
                     provider.get(self, message, state),
                     timeout=_COMPOSE_STATE_PROVIDER_TIMEOUT_SECONDS,
                 )
@@ -1326,10 +1380,12 @@ class AgentRuntime(IAgentRuntime):
                     f"Provider {provider.name} timed out after "
                     f"{_COMPOSE_STATE_PROVIDER_TIMEOUT_SECONDS}s during compose_state"
                 )
-                result = ProviderResult(text="", values={}, data={})
+                provider_result = ProviderResult(text="", values={}, data={})
             except Exception as e:
                 self.logger.warning(f"Provider {provider.name} failed during compose_state: {e}")
-                result = ProviderResult(text="", values={}, data={})
+                provider_result = ProviderResult(text="", values={}, data={})
+
+            result = _normalize_provider_result(provider_result)
 
             if result.text:
                 text_parts.append(result.text)
@@ -1800,7 +1856,7 @@ class AgentRuntime(IAgentRuntime):
         self,
         entity_id: UUID,
         component_type: str,
-        world_id: UUID | None = None,
+        world_id: UUID | str | None = None,
         source_entity_id: UUID | None = None,
     ) -> Any | None:
         if not self._adapter:
@@ -1812,25 +1868,92 @@ class AgentRuntime(IAgentRuntime):
     async def get_components(
         self,
         entity_id: UUID,
-        world_id: UUID | None = None,
+        world_id: UUID | str | None = None,
         source_entity_id: UUID | None = None,
     ) -> list[Any]:
         if not self._adapter:
             return []
-        return await self._adapter.get_components(entity_id, world_id, source_entity_id)
+        component_type: str | None = None
+        resolved_world_id: UUID | None = None
+        if isinstance(world_id, str):
+            if _looks_like_uuid(world_id):
+                resolved_world_id = world_id
+            else:
+                component_type = world_id
+        else:
+            resolved_world_id = world_id
+
+        components = await self._adapter.get_components(
+            entity_id, resolved_world_id, source_entity_id
+        )
+        if component_type is None:
+            return components
+        return [
+            component
+            for component in components
+            if getattr(component, "type", None) == component_type
+        ]
 
     async def create_component(self, component: Any) -> bool:
         if not self._adapter:
             return False
         return await self._adapter.create_component(component)
 
+    async def set_component(
+        self,
+        entity_id: UUID,
+        component_type: str,
+        data: dict[str, Any],
+        room_id: UUID | None = None,
+        world_id: UUID | None = None,
+        source_entity_id: UUID | None = None,
+    ) -> bool:
+        existing_components = await self.get_components(
+            entity_id, component_type, source_entity_id
+        )
+        existing = existing_components[0] if existing_components else None
+        component = Component(
+            id=(
+                str(getattr(existing, "id", ""))
+                or string_to_uuid(f"{entity_id}:{component_type}")
+            ),
+            entity_id=str(entity_id),
+            agent_id=str(self.agent_id),
+            room_id=str(getattr(existing, "room_id", "") or room_id or DEFAULT_UUID),
+            world_id=str(getattr(existing, "world_id", "") or world_id or DEFAULT_UUID),
+            source_entity_id=str(
+                getattr(existing, "source_entity_id", "")
+                or source_entity_id
+                or entity_id
+            ),
+            type=component_type,
+            data=data,
+            created_at=int(
+                getattr(existing, "created_at", 0) or self.get_current_time_ms()
+            ),
+        )
+        if existing is not None:
+            await self.update_component(component)
+            return True
+        return await self.create_component(component)
+
     async def update_component(self, component: Any) -> None:
         if self._adapter:
             await self._adapter.update_component(component)
 
-    async def delete_component(self, component_id: UUID) -> None:
+    async def delete_component(
+        self, component_id: UUID, component_type: str | None = None
+    ) -> None:
         if self._adapter:
-            await self._adapter.delete_component(component_id)
+            if component_type is None:
+                await self._adapter.delete_component(component_id)
+                return
+
+            components = await self.get_components(component_id, component_type)
+            for component in components:
+                component_entry_id = getattr(component, "id", None)
+                if isinstance(component_entry_id, str) and component_entry_id:
+                    await self._adapter.delete_component(component_entry_id)
 
     async def get_memories(
         self,

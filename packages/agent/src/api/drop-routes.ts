@@ -1,5 +1,6 @@
 import type http from "node:http";
 import type { DropService } from "./drop-service.js";
+import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import { buildWhitelistTree, generateProof } from "./merkle-tree.js";
 import {
   generateVerificationMessage,
@@ -7,7 +8,6 @@ import {
   markAddressVerified,
   verifyTweet,
 } from "./twitter-verify.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -183,7 +183,7 @@ export async function handleDropRoutes(
 
   if (method === "POST" && pathname === "/api/whitelist/twitter/verify") {
     const body = await readJsonBody<{ tweetUrl?: string }>(req, res);
-    if (!body || !body.tweetUrl) {
+    if (!body?.tweetUrl) {
       error(res, "tweetUrl is required");
       return true;
     }

@@ -18,7 +18,7 @@ const packageNames = process.argv.slice(2);
 
 if (packageNames.length === 0) {
   console.error(
-    "usage: node scripts/relink-workspace-packages-to-dist.mjs <package-name> [package-name...]",
+    "usage: node eliza/packages/app-core/scripts/relink-workspace-packages-to-dist.mjs <package-name> [package-name...]",
   );
   process.exit(1);
 }

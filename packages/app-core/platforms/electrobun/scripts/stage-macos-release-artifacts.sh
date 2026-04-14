@@ -19,7 +19,11 @@ if [[ ! -d "$ARTIFACTS_DIR" ]]; then
   exit 1
 fi
 
+<<<<<<< HEAD
+TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/eliza-macos-artifacts.XXXXXX")"
+=======
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/milady-macos-artifacts.XXXXXX")"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 EXTRACT_DIR="$TMP_ROOT/extracted"
 DMG_STAGING_DIR="$TMP_ROOT/dmg-staging"
 TEMP_DMG_PATH=""
@@ -169,7 +173,11 @@ ditto "$APP_BUNDLE_PATH" "$STAGED_APP_PATH"
 LAUNCHER_PATH="$STAGED_APP_PATH/Contents/MacOS/launcher"
 WGPU_PATH="$STAGED_APP_PATH/Contents/MacOS/libwebgpu_dawn.dylib"
 VERSION_JSON_PATH="$STAGED_APP_PATH/Contents/Resources/version.json"
+<<<<<<< HEAD
+RUNTIME_DIR="$STAGED_APP_PATH/Contents/Resources/app/eliza-dist"
+=======
 RUNTIME_DIR="$STAGED_APP_PATH/Contents/Resources/app/milady-dist"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 DIRECT_LAUNCHER_SOURCE="$SCRIPT_DIR/macos-direct-launcher.c"
 
 for required_path in "$LAUNCHER_PATH" "$WGPU_PATH" "$VERSION_JSON_PATH" "$RUNTIME_DIR"; do

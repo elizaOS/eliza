@@ -81,10 +81,7 @@ function emitEvent(
   event: IntegrationObservabilityEvent,
 ): void {
   const line = `${EVENT_PREFIX} ${JSON.stringify(event)}`;
-  if (
-    event.outcome === "success" ||
-    isExpectedTransientFailure(event)
-  ) {
+  if (event.outcome === "success" || isExpectedTransientFailure(event)) {
     sink.info(line);
     return;
   }

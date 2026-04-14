@@ -122,7 +122,7 @@ export function validatePluginConfig(
       // Value source: provided config > process.env > undefined
       const value = providedConfig?.[param.key] ?? process.env[param.key];
 
-      if (!value || !value.trim()) {
+      if (!value?.trim()) {
         // Required param with a default is a warning, not an error
         if (param.default) {
           warnings.push({
@@ -158,7 +158,7 @@ export function validatePluginConfig(
   } else if (envKey) {
     // Fallback: no param definitions, but we know the primary env key
     const currentValue = providedConfig?.[envKey] ?? process.env[envKey];
-    if (!currentValue || !currentValue.trim()) {
+    if (!currentValue?.trim()) {
       errors.push({
         field: envKey,
         message: `${envKey} is required but not set`,

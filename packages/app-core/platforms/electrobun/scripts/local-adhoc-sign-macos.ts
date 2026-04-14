@@ -147,7 +147,7 @@ export function signLocalAppBundle(args: {
 
   const entitlementsPath = path.join(
     os.tmpdir(),
-    `milady-local-entitlements-${process.pid}-${Date.now()}.plist`,
+    `elizaos-local-entitlements-${process.pid}-${Date.now()}.plist`,
   );
 
   fs.writeFileSync(
@@ -183,7 +183,7 @@ async function main(): Promise<void> {
   const appBundlePath = process.argv[2];
   if (!appBundlePath) {
     throw new Error(
-      "Usage: bun scripts/local-adhoc-sign-macos.ts /path/to/Milady.app",
+      "Usage: bun scripts/local-adhoc-sign-macos.ts /path/to/the app.app",
     );
   }
 

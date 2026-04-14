@@ -13,14 +13,12 @@ import os from "node:os";
 import path from "node:path";
 import { createGzip } from "node:zlib";
 import {
+  logger as coreLogger,
   type IAgentRuntime,
   ModelType,
-  logger as coreLogger,
 } from "@elizaos/core";
 
-import type {
-  TrajectoryStatus,
-} from "../types/trajectory.js";
+import type { TrajectoryStatus } from "../types/trajectory.js";
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -115,7 +113,10 @@ export type CompleteStepOptions = {
 export const initializedRuntimes = new WeakSet<object>();
 export const patchedLoggers = new WeakSet<object>();
 
-export const stepWriteQueues = new WeakMap<object, Map<string, Promise<void>>>();
+export const stepWriteQueues = new WeakMap<
+  object,
+  Map<string, Promise<void>>
+>();
 export const lastWritePromises = new WeakMap<object, Promise<void>>();
 
 let cachedSqlRaw: ((query: string) => { queryChunks: object[] }) | null = null;
@@ -293,7 +294,10 @@ export function enrichTrajectoryLlmCall<T extends Record<string, unknown>>(
   };
 }
 
-export function hasEvaluatorNamed(runtime: IAgentRuntime, name: string): boolean {
+export function hasEvaluatorNamed(
+  runtime: IAgentRuntime,
+  name: string,
+): boolean {
   const runtimeLike = runtime as unknown as {
     evaluators?: Array<{ name?: unknown }>;
   };
@@ -778,10 +782,7 @@ export async function ensureTrajectoriesTable(
     // by attempting to select all required columns
     let needsRecreate = false;
     try {
-      await executeRawSql(
-        runtime,
-        `SELECT id FROM trajectories LIMIT 1`,
-      );
+      await executeRawSql(runtime, `SELECT id FROM trajectories LIMIT 1`);
       // Table exists — try to add any missing columns via ALTER TABLE
       // instead of dropping and losing all data.
       const optionalColumns = [
@@ -1083,7 +1084,9 @@ export function shouldSuppressNoInputEmbeddingCall(
   return isNumericVectorString(response);
 }
 
-export function isLegacyTrajectoryLogger(logger: TrajectoryLoggerLike): boolean {
+export function isLegacyTrajectoryLogger(
+  logger: TrajectoryLoggerLike,
+): boolean {
   return (
     typeof logger.listTrajectories === "function" &&
     typeof logger.getTrajectoryDetail === "function"

@@ -63,7 +63,9 @@ function getJSDOMClass(): typeof import("jsdom").JSDOM {
   if (!jsdomCtor) {
     const jsdomPkg = findJsdomPackageJsonPath();
     const jsdomDir = path.dirname(jsdomPkg);
-    const meta = JSON.parse(readFileSync(jsdomPkg, "utf8")) as { main?: string };
+    const meta = JSON.parse(readFileSync(jsdomPkg, "utf8")) as {
+      main?: string;
+    };
     const mainRel = (meta.main ?? "./lib/api.js").replace(/^\.\//, "");
     const entry = path.join(jsdomDir, mainRel);
     const req = createRequire(jsdomPkg);

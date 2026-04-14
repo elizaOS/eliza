@@ -33,7 +33,7 @@
       },
       "SCAPE_AGENT_PASSWORD": {
         "type": "string",
-        "description": "Password for the agent's xRSPS account. Leave blank to auto-generate a 24-char random password on first launch (persisted to ~/.milady/scape-agent-identity.json and reused on every subsequent run). Only set this if you want to pin a specific existing account — and note that whatever value you set will be written to the identity file in plaintext, so do not reuse a production password.",
+        "description": "Password for the agent's xRSPS account. Leave blank to auto-generate a 24-char random password on first launch (persisted to ~/.eliza/scape-agent-identity.json and reused on every subsequent run). Only set this if you want to pin a specific existing account — and note that whatever value you set will be written to the identity file in plaintext, so do not reuse a production password.",
         "required": false,
         "sensitive": true
       },

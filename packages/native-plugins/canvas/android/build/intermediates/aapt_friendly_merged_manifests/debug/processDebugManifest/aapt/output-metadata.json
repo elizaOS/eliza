@@ -4,7 +4,11 @@
     "type": "AAPT_FRIENDLY_MERGED_MANIFESTS",
     "kind": "Directory"
   },
+<<<<<<< HEAD
+  "applicationId": "ai.elizaos.plugins.canvas",
+=======
   "applicationId": "ai.milady.plugins.canvas",
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
   "variantName": "debug",
   "elements": [
     {

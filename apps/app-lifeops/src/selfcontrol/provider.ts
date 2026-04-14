@@ -83,7 +83,7 @@ export const websiteBlockerProvider: Provider = {
         "Local website blocking is available through the system hosts file.",
         statusLine,
         status.reason ??
-          "Milady can remove the block early when it has permission to edit the hosts file.",
+          "Eliza can remove the block early when it has permission to edit the hosts file.",
       ].join(" "),
       values: {
         websiteBlockerAuthorized: true,

@@ -1,16 +1,16 @@
-import { ModelType } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { ModelType, type ModelTypeName } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { renderGroundedActionReply } from "./grounded-action-reply.js";
 
 describe("renderGroundedActionReply", () => {
   it("uses TEXT_SMALL and includes recent conversation plus action history", async () => {
     const modelCalls: Array<{
-      modelType: ModelType;
+      modelType: ModelTypeName;
       params: unknown;
     }> = [];
     const runtime = {
-      async useModel(modelType: ModelType, params: unknown) {
+      async useModel(modelType: ModelTypeName, params: unknown) {
         modelCalls.push({ modelType, params });
         return "Here’s the updated reply.";
       },

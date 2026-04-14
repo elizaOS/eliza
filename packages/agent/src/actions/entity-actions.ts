@@ -2,18 +2,16 @@ import type {
   Action,
   HandlerOptions,
   IAgentRuntime,
-  Memory,
-  State,
   UUID,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { hasAdminAccess } from "../security/access.js";
-import { hasContextSignalSyncForKey } from "./context-signal.js";
 import type {
   RelationshipsGraphService,
   RelationshipsPersonDetail,
   RelationshipsPersonSummary,
 } from "../services/relationships-graph.js";
+import { hasContextSignalSyncForKey } from "./context-signal.js";
 
 // ---------------------------------------------------------------------------
 // Shared helpers

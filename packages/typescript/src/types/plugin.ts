@@ -76,6 +76,11 @@ interface BaseRoute {
 		runtime: IAgentRuntime,
 	) => Promise<void>;
 	isMultipart?: boolean; // Indicates if the route expects multipart/form-data (file uploads)
+	/**
+	 * When true, the route path is used as-is without the plugin-name prefix.
+	 * Use for legacy API paths that must remain stable (e.g. `/api/telegram-setup/status`).
+	 */
+	rawPath?: boolean;
 }
 
 interface PublicRoute extends BaseRoute {
@@ -383,6 +388,33 @@ export interface Plugin {
 	 * unless they declare their own contexts.
 	 */
 	contexts?: AgentContext[];
+
+	/**
+	 * Declarative auto-enable conditions. When present, the plugin self-describes
+	 * when it should be activated — replacing (or supplementing) the hardcoded
+	 * maps in `plugin-auto-enable.ts`.
+	 *
+	 * The runtime evaluates these after initial plugin resolution:
+	 * - `envKeys`: enable when ANY of these env vars are set and non-empty.
+	 * - `connectorKeys`: enable when ANY of these connector names appear and
+	 *   are configured in `config.connectors`.
+	 * - `shouldEnable`: custom predicate for complex enable logic.
+	 *
+	 * All three are OR'd — if any condition is met the plugin is auto-enabled.
+	 * The hardcoded map in `plugin-auto-enable.ts` still serves as a fallback
+	 * for plugins that have not yet adopted `autoEnable`.
+	 */
+	autoEnable?: {
+		/** Enable when any of these env vars are set and non-empty. */
+		envKeys?: string[];
+		/** Enable when any of these connector names appear in config.connectors. */
+		connectorKeys?: string[];
+		/** Custom predicate for complex enable logic. */
+		shouldEnable?: (
+			env: Record<string, string | undefined>,
+			config: Record<string, unknown>,
+		) => boolean;
+	};
 }
 
 export interface ProjectAgent {

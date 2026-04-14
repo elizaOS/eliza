@@ -20,6 +20,10 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
 } from "@elizaos/shared/contracts/lifeops";
+import {
+  getValidationKeywordTerms,
+  textIncludesKeywordTerm,
+} from "@elizaos/shared/validation-keywords";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import {
@@ -29,14 +33,10 @@ import {
   getZonedDateParts,
 } from "../lifeops/time.js";
 import {
-  getValidationKeywordTerms,
-  textIncludesKeywordTerm,
-} from "@elizaos/shared/validation-keywords";
-import {
   collectKeywordTermMatchesForKey,
   hasContextSignalSyncForKey,
 } from "./context-signal.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
+import { renderGroundedActionReply } from "./grounded-action-reply.js";
 import {
   calendarReadUnavailableMessage,
   calendarWriteUnavailableMessage,
@@ -53,7 +53,6 @@ import {
   messageText,
   toActionData,
 } from "./lifeops-google-helpers.js";
-import { renderGroundedActionReply } from "./grounded-action-reply.js";
 
 type CalendarSubaction =
   | "feed"
@@ -107,11 +106,26 @@ const PARAMETER_DOC_NOISE_PATTERN =
   /\b(?:actions?|params?|parameters?|query\?:string|subaction\?:string|details\?:object|required parameter|supported keys include|may include:|match against titles|structured calendar arguments|structured data when needed|boolean when)\b|\b\w+\?:\w+\b/i;
 
 const CAL_I18N_OPTS = { includeAllLocales: true } as const;
-const CAL_AFFIRMATIVE_TERMS = getValidationKeywordTerms("contextSignal.affirmative.strong", CAL_I18N_OPTS);
-const CAL_TEMPORAL_FOLLOWUP_TERMS = getValidationKeywordTerms("contextSignal.temporal_followup.strong", CAL_I18N_OPTS);
-const CAL_LIFEOPS_STRONG_TERMS = getValidationKeywordTerms("contextSignal.lifeops.strong", CAL_I18N_OPTS);
-const CAL_CALENDAR_STRONG_TERMS = getValidationKeywordTerms("contextSignal.calendar.strong", CAL_I18N_OPTS);
-const CAL_CALENDAR_WEAK_TERMS = getValidationKeywordTerms("contextSignal.calendar.weak", CAL_I18N_OPTS);
+const CAL_AFFIRMATIVE_TERMS = getValidationKeywordTerms(
+  "contextSignal.affirmative.strong",
+  CAL_I18N_OPTS,
+);
+const CAL_TEMPORAL_FOLLOWUP_TERMS = getValidationKeywordTerms(
+  "contextSignal.temporal_followup.strong",
+  CAL_I18N_OPTS,
+);
+const CAL_LIFEOPS_STRONG_TERMS = getValidationKeywordTerms(
+  "contextSignal.lifeops.strong",
+  CAL_I18N_OPTS,
+);
+const CAL_CALENDAR_STRONG_TERMS = getValidationKeywordTerms(
+  "contextSignal.calendar.strong",
+  CAL_I18N_OPTS,
+);
+const CAL_CALENDAR_WEAK_TERMS = getValidationKeywordTerms(
+  "contextSignal.calendar.weak",
+  CAL_I18N_OPTS,
+);
 
 function textMatchesAnyCal(text: string, terms: readonly string[]): boolean {
   return terms.some((term) => textIncludesKeywordTerm(text, term));
@@ -156,13 +170,17 @@ function buildIntlWeekdayMap(): Record<string, number> {
 const MONTH_MAP: Record<string, number> = buildIntlMonthMap();
 const WEEKDAY_MAP: Record<string, number> = buildIntlWeekdayMap();
 
-const MONTH_NAMES_SORTED = Object.keys(MONTH_MAP).sort((a, b) => b.length - a.length);
+const MONTH_NAMES_SORTED = Object.keys(MONTH_MAP).sort(
+  (a, b) => b.length - a.length,
+);
 const MONTH_NAME_PATTERN = new RegExp(
   `\\b(${MONTH_NAMES_SORTED.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b`,
   "i",
 );
 
-const WEEKDAY_NAMES_SORTED = Object.keys(WEEKDAY_MAP).sort((a, b) => b.length - a.length);
+const WEEKDAY_NAMES_SORTED = Object.keys(WEEKDAY_MAP).sort(
+  (a, b) => b.length - a.length,
+);
 const WEEKDAY_NAME_PATTERN = new RegExp(
   `\\b(?:(this|next)\\s+)?(${WEEKDAY_NAMES_SORTED.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`,
   "i",
@@ -794,7 +812,10 @@ function resolveCalendarIntent(
   if (
     currentMessageText &&
     (textMatchesAnyCal(normalizedCurrentMessage, CAL_AFFIRMATIVE_TERMS) ||
-      textMatchesAnyCal(normalizedCurrentMessage, CAL_TEMPORAL_FOLLOWUP_TERMS) ||
+      textMatchesAnyCal(
+        normalizedCurrentMessage,
+        CAL_TEMPORAL_FOLLOWUP_TERMS,
+      ) ||
       isRefinement ||
       hasCalendarContextSignal(message, state))
   ) {
@@ -3216,7 +3237,9 @@ function normalizeCalendarAttendees(
   return normalized.length > 0 ? normalized : undefined;
 }
 
-export const calendarAction: Action & { suppressPostActionContinuation?: boolean } = {
+export const calendarAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "CALENDAR_ACTION",
   similes: [
     "CALENDAR",

@@ -1,31 +1,13 @@
-import {
-  Button,
-  ChatConversationItem,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  NewActionButton,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Sidebar,
-  SidebarCollapsedActionButton,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-  TooltipProvider,
-} from "@elizaos/app-core";
-import { Plus } from "lucide-react";
+
+
+import { MessagesSquare, Plus, Settings2 } from "lucide-react";
 import type React from "react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { client } from "../../api";
 import { useApp } from "../../state";
 import { ConversationRenameDialog } from "./ConversationRenameDialog";
+import { ChatConversationItem, ChatSourceIcon, SidebarCollapsedActionButton, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, NewActionButton, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TooltipProvider } from "@elizaos/ui";
 import {
   ALL_WORLDS_SCOPE,
   buildConversationsSidebarModel,
@@ -73,14 +55,8 @@ function railMonogram(label: string): string {
 }
 
 function renderRailIdentity(row: ConversationsSidebarRow) {
-  if (row.avatarUrl) {
-    return (
-      <img
-        src={row.avatarUrl}
-        alt={`${row.title} avatar`}
-        className="h-8 w-8 rounded-full object-cover"
-      />
-    );
+  if (row.kind === "inbox" && typeof row.source === "string" && row.source) {
+    return <ChatSourceIcon source={row.source} className="h-4 w-4" />;
   }
 
   return railMonogram(row.title);
@@ -108,6 +84,14 @@ function selectLabel(option: {
   return `${option.label} (${option.count})`;
 }
 
+function renderSourceScopeIcon(option: {
+  icon?: React.ComponentType<{ className?: string }>;
+  value: string;
+}) {
+  const Icon = option.icon ?? MessagesSquare;
+  return <Icon className="h-4 w-4" />;
+}
+
 export function ConversationsSidebar({
   mobile = false,
   onClose,
@@ -121,7 +105,9 @@ export function ConversationsSidebar({
     handleNewConversation,
     handleSelectConversation,
     handleDeleteConversation,
+    setTab,
     setState,
+    tab,
     t,
   } = useApp();
 
@@ -262,6 +248,7 @@ export function ConversationsSidebar({
       void handleSelectConversation(row.id);
     }
 
+    setTab("chat");
     onClose?.();
   };
 
@@ -269,11 +256,20 @@ export function ConversationsSidebar({
     setSourceScope(ELIZA_SOURCE_SCOPE);
     setWorldScope(ALL_WORLDS_SCOPE);
     setState("activeInboxChat", null);
+    setTab("chat");
     void handleNewConversation();
     onClose?.();
   };
 
+  const handleManageConnections = () => {
+    setTab("connectors");
+    onClose?.();
+  };
+
   const isGameModal = variant === "game-modal";
+  const isManageConnectionsActive = tab === "connectors";
+  const showNewChatAction =
+    tab === "chat" && sidebarModel.sourceScope === ELIZA_SOURCE_SCOPE;
   const newChatAction = isGameModal ? (
     <Button
       variant="outline"
@@ -397,12 +393,14 @@ export function ConversationsSidebar({
           />
         }
         collapsedRailAction={
-          <SidebarCollapsedActionButton
-            aria-label={t("conversations.newChat")}
-            onClick={handleNewChat}
-          >
-            <Plus className="h-4 w-4" />
-          </SidebarCollapsedActionButton>
+          showNewChatAction ? (
+            <SidebarCollapsedActionButton
+              aria-label={t("conversations.newChat")}
+              onClick={handleNewChat}
+            >
+              <Plus className="h-4 w-4" />
+            </SidebarCollapsedActionButton>
+          ) : undefined
         }
         collapsedRailItems={sidebarModel.rows.map((row) => (
           <SidebarContent.RailItem
@@ -435,45 +433,70 @@ export function ConversationsSidebar({
       >
         <SidebarScrollRegion variant={isGameModal ? "game-modal" : "default"}>
           <SidebarPanel variant={isGameModal ? "game-modal" : "default"}>
-            <div className="mb-3">{newChatAction}</div>
-
             <div className="mb-3 grid gap-2">
               <div
                 className={
                   sidebarModel.showWorldFilter
-                    ? "grid gap-2 sm:grid-cols-2"
+                    ? "grid gap-2 sm:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]"
                     : "grid gap-2"
                 }
               >
-                <div className="grid gap-1">
-                  <span className="px-1 text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
-                    {t("conversations.filterScope", {
-                      defaultValue: "Source",
-                    })}
-                  </span>
-                  <Select
-                    value={sidebarModel.sourceScope}
-                    onValueChange={(value) => {
-                      setSourceScope(value);
-                      setWorldScope(ALL_WORLDS_SCOPE);
-                    }}
-                  >
-                    <SelectTrigger
-                      className="h-10 rounded-2xl border-border/45 bg-card/55 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
-                      aria-label={t("conversations.filterScope", {
+                <div className="grid gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="px-1 text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
+                      {t("conversations.filterScope", {
                         defaultValue: "Source",
                       })}
+                    </span>
+                    <Button
+                      type="button"
+                      variant={
+                        isManageConnectionsActive ? "default" : "outline"
+                      }
+                      size="sm"
+                      className={`h-8 gap-1.5 rounded-xl px-2.5 text-2xs font-semibold ${
+                        isManageConnectionsActive
+                          ? "border-accent/45 bg-accent/14 text-txt"
+                          : "border-border/45 bg-card/55 text-txt hover:border-accent/35"
+                      }`}
+                      onClick={handleManageConnections}
                     >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {sidebarModel.sourceOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {selectLabel(option)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                      <Settings2 className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">
+                        {t("conversations.manageConnections", {
+                          defaultValue: "Manage Connections",
+                        })}
+                      </span>
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {sidebarModel.sourceOptions.map((option) => {
+                      const isActive =
+                        sidebarModel.sourceScope === option.value;
+                      return (
+                        <Button
+                          key={option.value}
+                          type="button"
+                          variant={isActive ? "default" : "outline"}
+                          size="icon"
+                          className={`relative h-10 w-10 rounded-2xl border transition-all ${
+                            isActive
+                              ? "border-accent/50 bg-accent/14 text-txt shadow-[0_10px_24px_rgba(3,5,10,0.14)]"
+                              : "border-border/45 bg-card/55 text-muted hover:border-accent/40 hover:text-txt"
+                          }`}
+                          aria-label={option.label}
+                          title={option.label}
+                          onClick={() => {
+                            setSourceScope(option.value);
+                            setWorldScope(ALL_WORLDS_SCOPE);
+                          }}
+                        >
+                          {renderSourceScopeIcon(option)}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  {showNewChatAction ? <div>{newChatAction}</div> : null}
                 </div>
 
                 {sidebarModel.showWorldFilter ? (
@@ -521,7 +544,7 @@ export function ConversationsSidebar({
               <div className="space-y-4">
                 {sidebarModel.sections.map((section) => (
                   <section key={section.key} className="space-y-2">
-                    <SidebarContent.SectionHeader meta={String(section.count)}>
+                    <SidebarContent.SectionHeader>
                       <SidebarContent.SectionLabel>
                         {section.label}
                       </SidebarContent.SectionLabel>
@@ -534,7 +557,6 @@ export function ConversationsSidebar({
                           <ChatConversationItem
                             key={conversationId}
                             conversation={{
-                              avatarUrl: row.avatarUrl,
                               id: conversationId,
                               ...(row.source ? { source: row.source } : {}),
                               title: row.title,

@@ -1,12 +1,7 @@
-/**
- * Knowledge upload zone — file picker, drag-and-drop, URL import.
- *
- * Extracted from KnowledgeView.tsx to keep individual files under ~500 LOC.
- */
+import { useApp } from "../../state/useApp";
 
-import { useApp } from "@elizaos/app-core/state";
-import { Button, Checkbox, Input, PagePanel } from "@elizaos/app-core";
 import { useCallback, useRef, useState } from "react";
+import { Button, Checkbox, Input } from "@elizaos/ui";
 
 export const MAX_UPLOAD_REQUEST_BYTES = 32 * 1_048_576; // Must match server knowledge route limit
 export const BULK_UPLOAD_TARGET_BYTES = 24 * 1_048_576;
@@ -36,6 +31,31 @@ export type KnowledgeUploadFile = File & {
 export type KnowledgeUploadOptions = {
   includeImageDescriptions: boolean;
 };
+
+const svgBase = {
+  xmlns: "http://www.w3.org/2000/svg",
+  width: 24,
+  height: 24,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+};
+
+const UploadIcon = ({ className }: { className?: string }) => (
+  <svg {...svgBase} className={className} aria-hidden="true">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+  </svg>
+);
+
+const LinkIcon = ({ className }: { className?: string }) => (
+  <svg {...svgBase} className={className} aria-hidden="true">
+    <path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11 4" />
+    <path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 1 0 7.07 7.07L13 20" />
+  </svg>
+);
 
 export function getKnowledgeUploadFilename(file: KnowledgeUploadFile): string {
   return file.webkitRelativePath?.trim() || file.name;
@@ -145,97 +165,68 @@ export function UploadZone({
         accept=".txt,.md,.mdx,.pdf,.docx,.json,.csv,.xml,.html,.png,.jpg,.jpeg,.webp,.gif"
         onChange={handleFileSelect}
       />
-      <div className="flex items-start justify-between gap-3 px-1">
-        <PagePanel.Meta compact tone="strong">
-          {t("knowledgeview.FormatsCount", {
-            defaultValue: "{{count}} formats",
-            count: SUPPORTED_UPLOAD_EXTENSIONS.size,
-          })}
-        </PagePanel.Meta>
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <Button
-          variant="default"
-          size="sm"
-          className="h-10 px-4 text-xs-tight font-semibold text-txt-strong shadow-sm hover:text-txt-strong"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-        >
-          {t("knowledgeview.ChooseFiles")}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-10 px-4 text-xs-tight font-semibold text-txt shadow-sm hover:text-txt"
-          onClick={() => setShowUrlInput(!showUrlInput)}
-          disabled={uploading}
-        >
-          {t("knowledgeview.AddFromURL")}
-        </Button>
-      </div>
-      <div className="mt-2 inline-flex min-h-11 w-full items-center gap-2 rounded-xl border border-border/35 bg-bg/18 px-3 text-xs-tight leading-relaxed text-muted-strong transition-colors hover:border-border/55 hover:bg-bg/28 hover:text-txt">
-        <Checkbox
-          id="knowledge-upload-image-descriptions"
-          checked={includeImageDescriptions}
-          onCheckedChange={(checked) => setIncludeImageDescriptions(!!checked)}
-          disabled={uploading}
-        />
-        <label
-          htmlFor="knowledge-upload-image-descriptions"
-          className="min-w-0 cursor-pointer"
-        >
-          {t("knowledgeview.IncludeAIImageDes")}
-        </label>
-      </div>
       <div
-        className={`mt-3 rounded-2xl border px-3 py-3 transition-colors ${
+        className={`rounded-2xl border px-3 py-3 transition-colors ${
           dragOver
-            ? "border-accent/50 bg-accent/8 shadow-sm"
-            : "border-dashed border-border/35 bg-card/62"
+            ? "border-accent/45 bg-accent/8 shadow-sm"
+            : "border-border/35 bg-card/62"
         } ${uploading ? "opacity-60" : ""}`}
       >
-        {(dragOver || uploading) && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs-tight text-muted/80">
-            <span className="font-medium text-txt/80">
-              {uploadStatus
-                ? t("knowledgeview.UploadingProgress", {
-                    defaultValue: "Uploading {{current}}/{{total}}{{filename}}",
-                    current: uploadStatus.current,
-                    total: uploadStatus.total,
-                    filename: uploadStatus.filename
-                      ? `: ${uploadStatus.filename}`
-                      : "",
-                  })
-                : t("knowledgeview.DropFilesOrFoldersToUpload", {
+        <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 rounded-xl"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              aria-label={t("knowledgeview.ChooseFiles", {
+                defaultValue: "Choose files",
+              })}
+              title={t("knowledgeview.ChooseFiles", {
+                defaultValue: "Choose files",
+              })}
+            >
+              <UploadIcon className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className={`h-9 w-9 rounded-xl ${showUrlInput ? "border-accent/45 bg-accent/12 text-txt" : ""}`}
+              onClick={() => setShowUrlInput((current) => !current)}
+              disabled={uploading}
+              aria-label={t("knowledgeview.AddFromURL", {
+                defaultValue: "Add from URL",
+              })}
+              title={t("knowledgeview.AddFromURL", {
+                defaultValue: "Add from URL",
+              })}
+            >
+              <LinkIcon className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="min-w-0 flex-1 text-xs-tight text-muted-strong">
+            {uploadStatus
+              ? t("knowledgeview.UploadingProgress", {
+                  defaultValue: "Uploading {{current}}/{{total}}{{filename}}",
+                  current: uploadStatus.current,
+                  total: uploadStatus.total,
+                  filename: uploadStatus.filename
+                    ? `: ${uploadStatus.filename}`
+                    : "",
+                })
+              : dragOver
+                ? t("knowledgeview.DropFilesOrFoldersToUpload", {
                     defaultValue: "Drop files or folders to upload",
+                  })
+                : t("knowledgeview.DropFilesHereToUpload", {
+                    defaultValue: "Drop files here to upload",
                   })}
-            </span>
           </div>
-        )}
-
-        {!dragOver && !uploading && !showUrlInput && (
-          <div className="space-y-1 py-1 text-center">
-            <div className="text-xs-tight font-medium text-muted-strong">
-              {t("knowledgeview.DropFilesHereToUpload", {
-                defaultValue: "Drop files here to upload",
-              })}
-            </div>
-            <div className="text-2xs text-muted">
-              {t("knowledgeview.UploadSupportedTypes", {
-                defaultValue: "Docs, PDFs, JSON, CSV, and supported images.",
-              })}
-            </div>
-          </div>
-        )}
+        </div>
 
         {showUrlInput && (
-          <div
-            className={`${dragOver || uploading ? "mt-2" : ""} animate-in fade-in slide-in-from-top-2 duration-300`}
-          >
-            <div className="mb-2 text-xs-tight font-medium leading-relaxed text-muted">
-              {t("knowledgeview.PasteAURLToImpor")}
-            </div>
+          <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-300">
             <div className="flex flex-col gap-2 sm:flex-row">
               <Input
                 type="url"
@@ -258,6 +249,23 @@ export function UploadZone({
             </div>
           </div>
         )}
+
+        <div className="mt-3 inline-flex min-h-9 w-full items-center gap-2 text-2xs leading-relaxed text-muted">
+          <Checkbox
+            id="knowledge-upload-image-descriptions"
+            checked={includeImageDescriptions}
+            onCheckedChange={(checked) =>
+              setIncludeImageDescriptions(!!checked)
+            }
+            disabled={uploading}
+          />
+          <label
+            htmlFor="knowledge-upload-image-descriptions"
+            className="min-w-0 cursor-pointer"
+          >
+            {t("knowledgeview.IncludeAIImageDes")}
+          </label>
+        </div>
       </div>
     </fieldset>
   );

@@ -9,7 +9,10 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { parsePositiveInteger } from "../utils/number-parsing.js";
-import { getKnowledgeService } from "./knowledge-service-loader.js";
+import {
+  getKnowledgeService,
+  type KnowledgeServiceResult,
+} from "./knowledge-service-loader.js";
 import type { RouteRequestContext } from "./route-helpers.js";
 
 const HASH_MEMORY_SOURCE = "hash_memory";
@@ -51,6 +54,13 @@ type KnowledgeSearchHit = {
   documentId?: string;
   documentTitle?: string;
   position?: number;
+};
+
+type KnowledgeSearchMatch = {
+  id: UUID;
+  content: { text?: string };
+  similarity?: number;
+  metadata?: Record<string, unknown>;
 };
 
 function resolveAgentName(runtime: AgentRuntime, fallbackName: string): string {
@@ -147,7 +157,7 @@ async function searchKnowledge(
   query: string,
   limit: number,
 ): Promise<KnowledgeSearchHit[]> {
-  const knowledge = await getKnowledgeService(runtime);
+  const knowledge: KnowledgeServiceResult = await getKnowledgeService(runtime);
   const knowledgeService = knowledge.service;
   if (!knowledgeService || !runtime.agentId) return [];
 
@@ -161,9 +171,12 @@ async function searchKnowledge(
     createdAt: Date.now(),
   };
 
-  const matches = await knowledgeService.getKnowledge(searchMessage, {
-    roomId: agentId,
-  });
+  const matches: KnowledgeSearchMatch[] = await knowledgeService.getKnowledge(
+    searchMessage,
+    {
+      roomId: agentId,
+    },
+  );
 
   return matches
     .filter(

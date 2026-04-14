@@ -1,13 +1,5 @@
-/**
- * Babylon Agent Terminal — operator dashboard for the Babylon app.
- *
- * The user experience is spectator-plus-steering:
- * - watch the agent and team activity in real time
- * - inspect market state, wallet state, and recent trades
- * - chat directly with the active agent while the loop keeps running
- */
 
-import { Button, Input } from "@elizaos/app-core";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   client,
@@ -23,6 +15,7 @@ import {
 import { useIntervalWhenDocumentVisible } from "../../hooks";
 import { useBabylonSSE } from "../../hooks/useBabylonSSE";
 import { formatTime } from "../../utils/format";
+import { Button, Input } from "@elizaos/ui";
 import {
   type BabylonAgentSummaryEnvelope,
   type BabylonTeamConversation,

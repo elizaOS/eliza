@@ -1,5 +1,7 @@
-import { Input, Label } from "@elizaos/app-core";
+
+
 import type { SpendingLimitConfig } from "./types";
+import { Input, Label } from "@elizaos/ui";
 
 function UsdInput({
   label,

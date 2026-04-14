@@ -136,11 +136,11 @@ export class TalkModeManager {
             "powershell",
             "-NoProfile",
             "-Command",
-            "Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Speak($env:MILADY_TTS_TEXT)",
+            "Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Speak($env:ELIZA_TTS_TEXT)",
           ],
           {
             stderr: "pipe",
-            env: { ...process.env, MILADY_TTS_TEXT: text },
+            env: { ...process.env, ELIZA_TTS_TEXT: text },
           },
         );
       }
@@ -376,7 +376,7 @@ export class TalkModeManager {
       // Write to temp WAV file
       const tmpPath = path.join(
         os.tmpdir(),
-        `milady-talkmode-${Date.now()}.wav`,
+        `elizaos-talkmode-${Date.now()}.wav`,
       );
       writeWavFile(tmpPath, float32, 16000, 1);
 

@@ -65,9 +65,7 @@ export const AI_PROVIDER_PLUGINS: readonly string[] = [
  * (e.g. "elizaOSCloud") that differs from the npm package name.  The
  * diagnostic must recognise both forms to avoid false-positive warnings.
  */
-const AI_PROVIDER_PLUGIN_ALIASES: readonly string[] = [
-  "elizaOSCloud",
-];
+const AI_PROVIDER_PLUGIN_ALIASES: readonly string[] = ["elizaOSCloud"];
 
 // ---------------------------------------------------------------------------
 // Semver comparison (simplified for alpha tags)

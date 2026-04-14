@@ -1,28 +1,5 @@
-/**
- * Vector Browser — explore agent memories and embeddings.
- *
- * Reads from the memories table (or similar vector-storage tables) using
- * the generic database APIs. Shows paginated memory records with content,
- * metadata, and embedding previews. Click any card to see full details.
- * Toggle to a 2D scatter-plot graph view of embeddings.
- */
 
-import {
-  Button,
-  Input,
-  MetaPill,
-  PageLayout,
-  PagePanel,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Sidebar,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/app-core";
+
 import type { ReactNode } from "react";
 import {
   useCallback,
@@ -35,14 +12,11 @@ import {
 import { client, type QueryResult, type TableInfo } from "../../api";
 import { useApp } from "../../state";
 import {
-  SETTINGS_COMPACT_INPUT_CLASSNAME,
-  SETTINGS_COMPACT_SELECT_TRIGGER_CLASSNAME,
-} from "../settings/settings-control-primitives";
-import {
   createVectorBrowserRenderer,
   THREE,
-} from "@elizaos/app-companion/ui";
+} from "@elizaos/app-companion/components/avatar/vector-browser-three";
 import { MemoryDetailPanel } from "./MemoryDetailPanel";
+import { PagePanel, MetaPill, SidebarContent, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, PageLayout } from "@elizaos/ui";
 import {
   buildVectorGraph2DLayout,
   DIM_COLUMNS,
@@ -54,9 +28,6 @@ import {
   rowToMemory,
   toVectorGraph2DScreenX,
   toVectorGraph2DScreenY,
-  VECTOR_VIEW_TOGGLE_ACTIVE_CLASSNAME,
-  VECTOR_VIEW_TOGGLE_BASE_CLASSNAME,
-  VECTOR_VIEW_TOGGLE_INACTIVE_CLASSNAME,
   type ViewMode,
 } from "./vector-browser-utils";
 
@@ -1157,9 +1128,7 @@ export function VectorBrowserView({
                   setSelectedMemory(null);
                 }}
               >
-                <SelectTrigger
-                  className={`w-full ${SETTINGS_COMPACT_SELECT_TRIGGER_CLASSNAME}`}
-                >
+                <SelectTrigger className="w-full h-9 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs shadow-sm transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1176,10 +1145,10 @@ export function VectorBrowserView({
               <Button
                 variant="ghost"
                 size="sm"
-                className={`${VECTOR_VIEW_TOGGLE_BASE_CLASSNAME} ${
+                className={`h-auto min-h-[1.75rem] rounded-lg border px-4 py-1 text-left text-xs font-medium whitespace-normal break-words transition-all duration-300 ${
                   viewMode === "list"
-                    ? VECTOR_VIEW_TOGGLE_ACTIVE_CLASSNAME
-                    : VECTOR_VIEW_TOGGLE_INACTIVE_CLASSNAME
+                    ? "border-accent/45 bg-accent/16 text-txt-strong shadow-sm"
+                    : "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt"
                 }`}
                 onClick={() => setViewMode("list")}
               >
@@ -1188,10 +1157,10 @@ export function VectorBrowserView({
               <Button
                 variant="ghost"
                 size="sm"
-                className={`${VECTOR_VIEW_TOGGLE_BASE_CLASSNAME} ${
+                className={`h-auto min-h-[1.75rem] rounded-lg border px-4 py-1 text-left text-xs font-medium whitespace-normal break-words transition-all duration-300 ${
                   viewMode === "graph"
-                    ? VECTOR_VIEW_TOGGLE_ACTIVE_CLASSNAME
-                    : VECTOR_VIEW_TOGGLE_INACTIVE_CLASSNAME
+                    ? "border-accent/45 bg-accent/16 text-txt-strong shadow-sm"
+                    : "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt"
                 }`}
                 onClick={() => setViewMode("graph")}
               >
@@ -1200,10 +1169,10 @@ export function VectorBrowserView({
               <Button
                 variant="ghost"
                 size="sm"
-                className={`${VECTOR_VIEW_TOGGLE_BASE_CLASSNAME} ${
+                className={`h-auto min-h-[1.75rem] rounded-lg border px-4 py-1 text-left text-xs font-medium whitespace-normal break-words transition-all duration-300 ${
                   viewMode === "3d"
-                    ? VECTOR_VIEW_TOGGLE_ACTIVE_CLASSNAME
-                    : VECTOR_VIEW_TOGGLE_INACTIVE_CLASSNAME
+                    ? "border-accent/45 bg-accent/16 text-txt-strong shadow-sm"
+                    : "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt"
                 }`}
                 onClick={() => setViewMode("3d")}
               >
@@ -1219,7 +1188,7 @@ export function VectorBrowserView({
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className={`flex-1 h-10 rounded-xl border-border/40 bg-card/50 text-sm placeholder:text-muted/65 focus-visible:ring-accent/30 ${SETTINGS_COMPACT_INPUT_CLASSNAME}`}
+                  className="flex-1 h-10 rounded-xl border border-border/60 bg-card/50 px-3 py-2 text-sm shadow-sm placeholder:text-muted/65 transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent"
                 />
                 <Button variant="default" size="sm" onClick={handleSearch}>
                   {t("vectorbrowserview.Search")}

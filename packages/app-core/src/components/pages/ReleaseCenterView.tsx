@@ -1,4 +1,5 @@
-import { Button, Input } from "@elizaos/app-core";
+
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   invokeDesktopBridgeRequest,
@@ -22,15 +23,6 @@ import {
   type WebGpuBrowserStatus,
   type WgpuTagElement,
 } from "../release-center/types";
-
-const RELEASE_PANEL_CLASSNAME =
-  "rounded-2xl border border-border/50 bg-card/92 shadow-sm";
-const RELEASE_STATUS_MESSAGE_CLASSNAME =
-  "rounded-xl border px-3 py-2 text-xs shadow-sm";
-const RELEASE_ACTION_BUTTON_CLASSNAME =
-  "min-h-10 rounded-xl px-3 text-xs font-medium";
-const RELEASE_KV_ROW_CLASSNAME =
-  "flex items-start justify-between gap-3 rounded-xl border border-border/40 bg-bg-hover/70 px-3 py-2";
 
 export function ReleaseCenterView() {
   const { appUrl } = useBranding();
@@ -236,7 +228,9 @@ export function ReleaseCenterView() {
 
   if (!desktopRuntime) {
     return (
-      <section className={`${RELEASE_PANEL_CLASSNAME} space-y-3 p-4`}>
+      <section
+        className={`rounded-2xl border border-border/50 bg-card/92 shadow-sm space-y-3 p-4`}
+      >
         <div className="space-y-1">
           <h2 className="text-sm font-semibold text-txt">
             {t("releasecenterview.ReleaseCenter", {
@@ -335,7 +329,7 @@ export function ReleaseCenterView() {
       {actionError ? (
         <div
           role="alert"
-          className={`${RELEASE_STATUS_MESSAGE_CLASSNAME} border-destructive/40 bg-destructive/10 text-destructive`}
+          className={`rounded-xl border px-3 py-2 text-xs shadow-sm border-destructive/40 bg-destructive/10 text-destructive`}
         >
           {actionError}
         </div>
@@ -343,7 +337,7 @@ export function ReleaseCenterView() {
       {actionMessage ? (
         <div
           role="status"
-          className={`${RELEASE_STATUS_MESSAGE_CLASSNAME} border-ok/30 bg-ok/10 text-ok`}
+          className={`rounded-xl border px-3 py-2 text-xs shadow-sm border-ok/30 bg-ok/10 text-ok`}
         >
           {actionMessage}
         </div>
@@ -351,9 +345,9 @@ export function ReleaseCenterView() {
 
       {/* ── Version info rows ─────────────────────────────────── */}
       <div
-        className={`${RELEASE_PANEL_CLASSNAME} grid gap-2 p-4 text-xs sm:grid-cols-2`}
+        className={`rounded-2xl border border-border/50 bg-card/92 shadow-sm grid gap-2 p-4 text-xs sm:grid-cols-2`}
       >
-        <div className={RELEASE_KV_ROW_CLASSNAME}>
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-border/40 bg-bg-hover/70 px-3 py-2">
           <span className="text-muted">
             {t("releasecenterview.App", { defaultValue: "App" })}
           </span>
@@ -361,7 +355,7 @@ export function ReleaseCenterView() {
             {appVersion}
           </span>
         </div>
-        <div className={RELEASE_KV_ROW_CLASSNAME}>
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-border/40 bg-bg-hover/70 px-3 py-2">
           <span className="text-muted">
             {t("releasecenterview.Desktop", { defaultValue: "Desktop" })}
           </span>
@@ -369,7 +363,7 @@ export function ReleaseCenterView() {
             {desktopVersion}
           </span>
         </div>
-        <div className={RELEASE_KV_ROW_CLASSNAME}>
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-border/40 bg-bg-hover/70 px-3 py-2">
           <span className="text-muted">
             {t("releasecenterview.Channel", { defaultValue: "Channel" })}
           </span>
@@ -377,7 +371,7 @@ export function ReleaseCenterView() {
             {channel}
           </span>
         </div>
-        <div className={RELEASE_KV_ROW_CLASSNAME}>
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-border/40 bg-bg-hover/70 px-3 py-2">
           <span className="text-muted">
             {t("releasecenterview.Latest", { defaultValue: "Latest" })}
           </span>
@@ -385,7 +379,7 @@ export function ReleaseCenterView() {
             {latestVersion}
           </span>
         </div>
-        <div className={RELEASE_KV_ROW_CLASSNAME}>
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-border/40 bg-bg-hover/70 px-3 py-2">
           <span className="text-muted">
             {t("releasecenterview.LastChecked", {
               defaultValue: "Last checked",
@@ -395,7 +389,7 @@ export function ReleaseCenterView() {
             {lastChecked}
           </span>
         </div>
-        <div className={RELEASE_KV_ROW_CLASSNAME}>
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-border/40 bg-bg-hover/70 px-3 py-2">
           <span className="text-muted">
             {t("releasecenterview.Status", { defaultValue: "Status" })}
           </span>
@@ -408,14 +402,16 @@ export function ReleaseCenterView() {
       {autoUpdateDisabled && nativeUpdater?.autoUpdateDisabledReason ? (
         <div
           role="status"
-          className={`${RELEASE_STATUS_MESSAGE_CLASSNAME} border-warning/40 bg-warning/10 text-warning`}
+          className={`rounded-xl border px-3 py-2 text-xs shadow-sm border-warning/40 bg-warning/10 text-warning`}
         >
           {nativeUpdater.autoUpdateDisabledReason}
         </div>
       ) : null}
 
       {/* ── Actions ───────────────────────────────────────────── */}
-      <section className={`${RELEASE_PANEL_CLASSNAME} space-y-3 p-4`}>
+      <section
+        className={`rounded-2xl border border-border/50 bg-card/92 shadow-sm space-y-3 p-4`}
+      >
         <div className="space-y-1">
           <h2 className="text-sm font-semibold text-txt">
             {t("releasecenterview.UpdateActions", {
@@ -426,7 +422,7 @@ export function ReleaseCenterView() {
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
-            className={RELEASE_ACTION_BUTTON_CLASSNAME}
+            className="min-h-10 rounded-xl px-3 text-xs font-medium"
             disabled={
               busyAction === "check-updates" ||
               updateLoading ||
@@ -449,7 +445,7 @@ export function ReleaseCenterView() {
           {nativeUpdater?.updateReady && (
             <Button
               size="sm"
-              className={RELEASE_ACTION_BUTTON_CLASSNAME}
+              className="min-h-10 rounded-xl px-3 text-xs font-medium"
               disabled={busyAction === "apply-update" || autoUpdateDisabled}
               onClick={() =>
                 void runAction(
@@ -469,7 +465,7 @@ export function ReleaseCenterView() {
           <Button
             size="sm"
             variant="outline"
-            className={RELEASE_ACTION_BUTTON_CLASSNAME}
+            className="min-h-10 rounded-xl px-3 text-xs font-medium"
             disabled={busyAction === "refresh" || updateLoading}
             onClick={() =>
               void runAction(
@@ -486,7 +482,7 @@ export function ReleaseCenterView() {
           <Button
             size="sm"
             variant="outline"
-            className={RELEASE_ACTION_BUTTON_CLASSNAME}
+            className="min-h-10 rounded-xl px-3 text-xs font-medium"
             disabled={busyAction === "detach-release"}
             onClick={() =>
               void runAction(
@@ -506,7 +502,9 @@ export function ReleaseCenterView() {
       </section>
 
       {/* ── Release Notes ─────────────────────────────────────── */}
-      <section className={`${RELEASE_PANEL_CLASSNAME} space-y-3 p-4`}>
+      <section
+        className={`rounded-2xl border border-border/50 bg-card/92 shadow-sm space-y-3 p-4`}
+      >
         <div className="space-y-1">
           <span className="text-sm font-semibold text-txt">
             {t("releasecenterview.ReleaseNotes", {
@@ -528,7 +526,7 @@ export function ReleaseCenterView() {
             <Button
               size="sm"
               variant="outline"
-              className={RELEASE_ACTION_BUTTON_CLASSNAME}
+              className="min-h-10 rounded-xl px-3 text-xs font-medium"
               disabled={busyAction === "open-release-notes"}
               onClick={() =>
                 void runAction(
@@ -547,7 +545,7 @@ export function ReleaseCenterView() {
             <Button
               size="sm"
               variant="ghost"
-              className={`${RELEASE_ACTION_BUTTON_CLASSNAME} text-muted-strong`}
+              className="min-h-10 rounded-xl px-3 text-xs font-medium text-muted-strong"
               onClick={() =>
                 void runAction(
                   "reset-release-url",
@@ -575,3 +573,4 @@ export function ReleaseCenterView() {
 }
 
 import { useBranding } from "../../config/branding";
+import { Button, Input } from "@elizaos/ui";

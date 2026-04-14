@@ -1,42 +1,10 @@
-/**
- * Logs view component — logs viewer with filtering.
- */
 
-import {
-  Button,
-  Input,
-  PagePanel,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@elizaos/app-core";
+
 import { useEffect, useMemo, useState } from "react";
 import type { LogEntry } from "../../api";
 import { useApp } from "../../state";
 import { formatTime } from "../../utils/format";
-import { SETTINGS_FILTER_CONTROL_CLASSNAME } from "../settings/settings-control-primitives";
-
-const TAG_TONE_CLASSNAMES: Record<string, string> = {
-  agent: "border-accent/25 bg-accent/10 text-accent-fg",
-  server: "border-ok/25 bg-ok/10 text-ok",
-  system: "border-border/40 bg-bg-hover text-muted-strong",
-  cloud: "border-accent/20 bg-accent/8 text-accent",
-  plugins: "border-accent/25 bg-accent/10 text-accent-fg",
-  autonomy: "border-warning/30 bg-warning/10 text-warning",
-  websocket: "border-ok/20 bg-ok/8 text-ok",
-};
-
-const GLASS_BUTTON_CLASSNAME =
-  "border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_20px_-18px_rgba(15,23,42,0.14)] backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(15,23,42,0.16)] active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_16px_24px_-20px_rgba(0,0,0,0.24)]";
-
-const LOGS_LEVEL_CLASSNAMES: Record<string, string> = {
-  error: "text-danger",
-  warn: "text-warning",
-  info: "text-muted-strong",
-  debug: "text-muted",
-};
+import { PagePanel, Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@elizaos/ui";
 
 export function LogsView() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -111,7 +79,7 @@ export function LogsView() {
         <div className="flex flex-wrap items-center gap-2">
           <Input
             type="text"
-            className={`min-w-[15rem] flex-1 ${SETTINGS_FILTER_CONTROL_CLASSNAME}`}
+            className="min-w-[15rem] flex-1 h-10 rounded-xl border-border/50 bg-bg/80 text-sm text-txt shadow-sm"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t("logsview.SearchLogs")}
@@ -125,9 +93,7 @@ export function LogsView() {
               void loadLogs();
             }}
           >
-            <SelectTrigger
-              className={`w-40 ${SETTINGS_FILTER_CONTROL_CLASSNAME}`}
-            >
+            <SelectTrigger className="w-40 h-10 rounded-xl border-border/50 bg-bg/80 text-sm text-txt shadow-sm">
               <SelectValue placeholder={t("logsview.AllLevels")} />
             </SelectTrigger>
             <SelectContent>
@@ -146,9 +112,7 @@ export function LogsView() {
               void loadLogs();
             }}
           >
-            <SelectTrigger
-              className={`w-40 ${SETTINGS_FILTER_CONTROL_CLASSNAME}`}
-            >
+            <SelectTrigger className="w-40 h-10 rounded-xl border-border/50 bg-bg/80 text-sm text-txt shadow-sm">
               <SelectValue placeholder={t("logsview.AllSources")} />
             </SelectTrigger>
             <SelectContent>
@@ -169,9 +133,7 @@ export function LogsView() {
                 void loadLogs();
               }}
             >
-              <SelectTrigger
-                className={`w-40 ${SETTINGS_FILTER_CONTROL_CLASSNAME}`}
-              >
+              <SelectTrigger className="w-40 h-10 rounded-xl border-border/50 bg-bg/80 text-sm text-txt shadow-sm">
                 <SelectValue placeholder={t("logsview.AllTags")} />
               </SelectTrigger>
               <SelectContent>
@@ -189,7 +151,7 @@ export function LogsView() {
             <Button
               variant="outline"
               size="sm"
-              className={`min-h-10 rounded-2xl px-3 text-xs font-medium ${GLASS_BUTTON_CLASSNAME}`}
+              className="min-h-10 rounded-2xl px-3 text-xs font-medium border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_20px_-18px_rgba(15,23,42,0.14)] backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(15,23,42,0.16)] active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_16px_24px_-20px_rgba(0,0,0,0.24)]"
               onClick={handleClearFilters}
             >
               {t("logsview.ClearFilters")}
@@ -199,7 +161,7 @@ export function LogsView() {
           <Button
             variant="outline"
             size="sm"
-            className={`ml-auto min-h-10 rounded-2xl px-3 text-xs font-medium ${GLASS_BUTTON_CLASSNAME}`}
+            className="ml-auto min-h-10 rounded-2xl px-3 text-xs font-medium border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_20px_-18px_rgba(15,23,42,0.14)] backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(15,23,42,0.16)] active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_16px_24px_-20px_rgba(0,0,0,0.24)]"
             onClick={() => void loadLogs()}
           >
             {t("common.refresh")}
@@ -280,7 +242,15 @@ export function LogsView() {
                 {/* Level */}
                 <span
                   className={`w-14 shrink-0 font-semibold uppercase tracking-[0.08em] text-xs-tight ${
-                    LOGS_LEVEL_CLASSNAMES[entry.level] ?? "text-muted"
+                    entry.level === "error"
+                      ? "text-danger"
+                      : entry.level === "warn"
+                        ? "text-warning"
+                        : entry.level === "info"
+                          ? "text-muted-strong"
+                          : entry.level === "debug"
+                            ? "text-muted"
+                            : "text-muted"
                   }`}
                 >
                   {entry.level}
@@ -297,7 +267,24 @@ export function LogsView() {
                     return (
                       <span
                         key={t}
-                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-2xs font-medium ${TAG_TONE_CLASSNAMES[t] ?? "border-border/35 bg-bg-hover text-muted-strong"}`}
+                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-2xs font-medium ${
+                          (
+                            {
+                              agent:
+                                "border-accent/25 bg-accent/10 text-accent-fg",
+                              server: "border-ok/25 bg-ok/10 text-ok",
+                              system:
+                                "border-border/40 bg-bg-hover text-muted-strong",
+                              cloud: "border-accent/20 bg-accent/8 text-accent",
+                              plugins:
+                                "border-accent/25 bg-accent/10 text-accent-fg",
+                              autonomy:
+                                "border-warning/30 bg-warning/10 text-warning",
+                              websocket: "border-ok/20 bg-ok/8 text-ok",
+                            } as Record<string, string>
+                          )[t] ??
+                          "border-border/35 bg-bg-hover text-muted-strong"
+                        }`}
                         style={{
                           fontFamily: "var(--font-body, sans-serif)",
                         }}

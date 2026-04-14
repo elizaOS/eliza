@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 name: ${APP_NAME:-eliza}
 
 services:
@@ -36,6 +37,31 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${APP_GATEWAY_PORT:-18789}/api/health"]
+=======
+services:
+  milady-gateway:
+    image: ${MILADY_IMAGE:-milady:local}
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      MILADY_GATEWAY_TOKEN: ${MILADY_GATEWAY_TOKEN}
+      MILADY_ALLOWED_ORIGINS: ${MILADY_ALLOWED_ORIGINS}
+      # Set MILADY_API_TOKEN for non-localhost deployments to require auth on API routes
+      MILADY_API_TOKEN: ${MILADY_API_TOKEN:-}
+      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY}
+      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY}
+      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE}
+    volumes:
+      - ${MILADY_CONFIG_DIR}:/home/node/.milady
+      - ${MILADY_WORKSPACE_DIR}:/home/node/.milady/workspace
+    ports:
+      - "${MILADY_GATEWAY_PORT:-18789}:${MILADY_GATEWAY_PORT:-18789}"
+      - "${MILADY_BRIDGE_PORT:-18790}:18790"
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${MILADY_GATEWAY_PORT:-18789}/api/health"]
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
       interval: 30s
       timeout: 10s
       retries: 3
@@ -46,6 +72,7 @@ services:
         "dist/index.js",
         "gateway",
         "--bind",
+<<<<<<< HEAD
         "${APP_GATEWAY_BIND:-lan}",
         "--port",
         "${APP_GATEWAY_PORT:-18789}",
@@ -78,6 +105,28 @@ services:
     volumes:
       - ${APP_CONFIG_DIR:-.docker-home/config}:${APP_STATE_DIR:-/home/node/.eliza}
       - ${APP_WORKSPACE_DIR:-.docker-home/workspace}:${APP_STATE_DIR:-/home/node/.eliza}/workspace
+=======
+        "${MILADY_GATEWAY_BIND:-lan}",
+        "--port",
+        "${MILADY_GATEWAY_PORT:-18789}",
+      ]
+
+  milady-cli:
+    image: ${MILADY_IMAGE:-milady:local}
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      MILADY_GATEWAY_TOKEN: ${MILADY_GATEWAY_TOKEN}
+      # Set MILADY_API_TOKEN for non-localhost deployments to require auth on API routes
+      MILADY_API_TOKEN: ${MILADY_API_TOKEN:-}
+      BROWSER: echo
+      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY}
+      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY}
+      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE}
+    volumes:
+      - ${MILADY_CONFIG_DIR}:/home/node/.milady
+      - ${MILADY_WORKSPACE_DIR}:/home/node/.milady/workspace
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
     stdin_open: true
     tty: true
     init: true

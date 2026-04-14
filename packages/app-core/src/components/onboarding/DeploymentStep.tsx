@@ -1,15 +1,5 @@
-/**
- * DeploymentStep — first onboarding step, absorbs the old splash server chooser.
- *
- * Presents three deployment options:
- * 1. Create Local Agent (desktop and development web)
- * 2. Manage Cloud Agents (Eliza Cloud login + agent list + provisioning)
- * 3. Connect to Remote Agent (manual URL entry)
- *
- * Also shows discovered local network gateways.
- */
 
-import { Button, Card, CardContent, Input, Spinner } from "@elizaos/app-core";
+
 import {
   OnboardingSecondaryActionButton,
   onboardingBodyTextShadowStyle,
@@ -27,6 +17,7 @@ import {
   gatewayEndpointToApiBase,
 } from "../../bridge/gateway-discovery";
 import { isDesktopPlatform } from "../../platform/init";
+import { Button, Card, CardContent, Input, Spinner } from "@elizaos/ui";
 import {
   addAgentProfile,
   clearPersistedActiveServer,
@@ -161,9 +152,7 @@ export function DeploymentStep() {
         }
       } catch (err) {
         if (cancelled) return;
-        setError(
-          err instanceof Error ? err.message : "Failed to load agents",
-        );
+        setError(err instanceof Error ? err.message : "Failed to load agents");
         setCloudStage("agent-list");
       }
     })();
@@ -314,9 +303,7 @@ export function DeploymentStep() {
         }
       }, 2500);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to create agent",
-      );
+      setError(err instanceof Error ? err.message : "Failed to create agent");
       setCloudStage("agent-list");
     }
   }, [newAgentName, connectToAgent]);
@@ -350,7 +337,13 @@ export function DeploymentStep() {
     setState("onboardingServerTarget", "remote");
     startupCoordinator.dispatch({ type: "SPLASH_CONTINUE" });
     handleOnboardingNext();
-  }, [remoteUrl, remoteToken, setState, startupCoordinator, handleOnboardingNext]);
+  }, [
+    remoteUrl,
+    remoteToken,
+    setState,
+    startupCoordinator,
+    handleOnboardingNext,
+  ]);
 
   // ── Render: chooser ────────────────────────────────────────────────
   if (subView === "chooser") {
@@ -457,8 +450,7 @@ export function DeploymentStep() {
             </span>
             <span className="text-xs-tight leading-snug text-white/60">
               {t("startupshell.ManageCloudAgentsDesc", {
-                defaultValue:
-                  "Host agents on Eliza Cloud infrastructure",
+                defaultValue: "Host agents on Eliza Cloud infrastructure",
               })}
             </span>
           </button>
@@ -484,8 +476,7 @@ export function DeploymentStep() {
             </span>
             <span className="text-xs-tight leading-snug text-white/60">
               {t("startupshell.ConnectToRemoteDesc", {
-                defaultValue:
-                  "Connect to a server running on your network",
+                defaultValue: "Connect to a server running on your network",
               })}
             </span>
           </button>
@@ -771,7 +762,9 @@ function StepContainer({ children }: { children: React.ReactNode }) {
 
 function StepHeader({
   t,
-}: { t: (key: string, values?: Record<string, unknown>) => string }) {
+}: {
+  t: (key: string, values?: Record<string, unknown>) => string;
+}) {
   return (
     <div>
       <h2

@@ -36,7 +36,7 @@ import type { ScapeGameService } from "./services/game-service.js";
  *   POST /api/apps/scape/session/:sessionId/control — pause|resume
  *
  * The session-scoped message/control routes are the path elizaOS uses
- * when the operator types in the milady Apps UI. We alias the
+ * when the operator types in the eliza Apps UI. We alias the
  * behaviour to the legacy `/prompt` handler so both paths share the
  * same `ScapeGameService.applyOperatorMessage` plumbing.
  *
@@ -52,15 +52,15 @@ import type { ScapeGameService } from "./services/game-service.js";
  *
  * Viewer → `text/html`
  * Everything else → `text/toon; charset=utf-8` with a TOON-encoded
- * payload. The milady host is fine with any content type as long as
+ * payload. The eliza host is fine with any content type as long as
  * the status line is correct.
  *
  * ## Why a wrapper HTML and not a direct `launchUrl` iframe?
  *
  *   1. The xRSPS client is served by the craco dev server which sets
  *      its own CSP. We want our own CSP `frame-ancestors` controlling
- *      where milady hosts can embed us, without mutating the client.
- *   2. Serving the wrapper from the milady host gives us a single URL
+ *      where eliza hosts can embed us, without mutating the client.
+ *   2. Serving the wrapper from the eliza host gives us a single URL
  *      to point authenticated sessions at (we can inject a
  *      postMessage bridge for auto-login later).
  */
@@ -90,7 +90,7 @@ const SESSION_ROUTE_PREFIX = "/api/apps/scape/session/";
 const DEFAULT_CLIENT_URL = "https://scape-client-2sqyc.kinsta.page";
 
 // Same hosts the defense plugin whitelists; covers every runtime that
-// might embed the milady apps grid (browser, Electrobun native window,
+// might embed the eliza apps grid (browser, Electrobun native window,
 // Capacitor mobile, Tauri, vscode webview, file://).
 const VIEWER_FRAME_ANCESTORS_DIRECTIVE =
   "frame-ancestors 'self' http://localhost:* http://127.0.0.1:* " +
@@ -135,9 +135,9 @@ function asRuntimeLike(runtime: unknown | null): RuntimeLike | null {
 }
 
 /**
- * Read a setting from either the milady runtime (character secrets) or
+ * Read a setting from either the eliza runtime (character secrets) or
  * the process env, in that order. Lets operators configure the plugin
- * per-character in a deployed milady instance or globally via env.
+ * per-character in a deployed eliza instance or globally via env.
  */
 function resolveSettingLike(
   runtime: IAgentRuntime | null,
@@ -352,7 +352,7 @@ function sendHtmlResponse(res: unknown, html: string): void {
  * Send a TOON-encoded response. Mirrors `sendHtmlResponse` above but
  * for the agent-facing endpoints; response body is the TOON-encoded
  * version of `payload`. We set `text/toon` so clients that know the
- * format can decode directly, but the milady host doesn't care.
+ * format can decode directly, but the eliza host doesn't care.
  */
 function sendToonResponse(
   res: unknown,
@@ -375,7 +375,7 @@ function sendToonResponse(
  * Read the request body as a Node Buffer and decode it. We need this
  * because the host's `readJsonBody` helper rejects anything with a
  * non-JSON Content-Type, and our routes accept TOON. Size-capped at
- * 64KB so a pathological client can't OOM the milady host.
+ * 64KB so a pathological client can't OOM the eliza host.
  */
 async function readRawBody(
   req: unknown,
@@ -532,7 +532,7 @@ function getScapeService(
 }
 
 // ---------------------------------------------------------------------------
-// Telemetry extraction — feeds the ScapeOperatorSurface in the milady UI
+// Telemetry extraction — feeds the ScapeOperatorSurface in the eliza UI
 // ---------------------------------------------------------------------------
 
 /** Chebyshev distance on the OSRS tile grid. `null` means unknown. */
@@ -744,7 +744,7 @@ function buildScapeSessionState(
   const activeGoal = journalService?.getActiveGoal?.() ?? null;
   const eventLog = service?.getRecentEventLog?.(16) ?? [];
 
-  // Activity feed — the milady run pane shows this as a timeline next
+  // Activity feed — the eliza run pane shows this as a timeline next
   // to the viewer. Each autonomous step emits an entry via
   // `pushEventLog`; we surface the latest 16 newest-first so the
   // operator can watch the agent's decisions land.
@@ -812,7 +812,7 @@ function buildScapeSessionState(
         : `Embedding xRSPS client at ${clientUrl}.`,
     canSendCommands: true,
     // The shared AppSessionState contract only allows the two
-    // stock verbs here ("pause" | "resume"); the milady Apps UI
+    // stock verbs here ("pause" | "resume"); the eliza Apps UI
     // renders them as buttons and handles the label/disabled
     // state itself based on `status`.
     controls: paused ? ["resume"] : ["pause"],
@@ -828,7 +828,7 @@ function buildScapeSessionState(
 }
 
 // ---------------------------------------------------------------------------
-// Public exports — these match the shape the milady host imports from
+// Public exports — these match the shape the eliza host imports from
 // every curated app plugin.
 // ---------------------------------------------------------------------------
 

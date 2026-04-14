@@ -213,7 +213,7 @@ function normalizeGoogleCalendarEvent(
   };
 }
 
-async function readGoogleCalendarError(response: Response): Promise<string> {
+async function _readGoogleCalendarError(response: Response): Promise<string> {
   const text = await response.text();
   if (!text) {
     return `Google Calendar request failed with ${response.status}`;

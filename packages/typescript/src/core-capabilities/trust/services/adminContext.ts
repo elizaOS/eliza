@@ -1,12 +1,12 @@
 import {
   ChannelType,
+  createUniqueUuid,
   type IAgentRuntime,
   type Memory,
   Role,
   type State,
   type UUID,
 } from "../../../types/index.ts";
-import { createUniqueUuid } from "../../../entities.ts";
 
 export async function resolveAdminContext(
   runtime: IAgentRuntime,

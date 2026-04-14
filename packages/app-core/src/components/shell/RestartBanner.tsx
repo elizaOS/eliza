@@ -1,6 +1,8 @@
-import { Button, Z_SYSTEM_BANNER } from "@elizaos/app-core";
+
+
 import { useCallback, useState } from "react";
 import { useApp } from "../../state";
+import { Button, Z_SYSTEM_BANNER } from "@elizaos/ui";
 
 export function RestartBanner() {
   const {

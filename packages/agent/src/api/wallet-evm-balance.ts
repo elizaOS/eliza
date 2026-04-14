@@ -3,6 +3,10 @@
  *
  * Handles multi-chain EVM balance + NFT retrieval with provider-key resolution
  * and automatic fallback to public RPC endpoints when premium APIs are unavailable.
+ *
+ * @deprecated This file is maintained for backward compatibility.
+ * The canonical source has moved to `@elizaos/app-steward/api/wallet-evm-balance`.
+ * New development should target the app-steward package.
  */
 import { logger } from "@elizaos/core";
 import type {
@@ -580,7 +584,7 @@ async function fetchAnkrChainBalances(
 
 // ── Direct RPC balance fetching ───────────────────────────────────────
 
-async function fetchNativeBalanceViaRpc(
+export async function fetchEvmNativeBalanceViaRpc(
   rpcUrl: string,
   address: string,
 ): Promise<string> {
@@ -700,7 +704,7 @@ async function fetchEvmChainBalancesViaRpc(
   const errors: string[] = [];
   for (const rpcUrl of rpcUrls) {
     try {
-      const nativeBalance = await fetchNativeBalanceViaRpc(rpcUrl, address);
+      const nativeBalance = await fetchEvmNativeBalanceViaRpc(rpcUrl, address);
 
       // Query known ERC-20 tokens (e.g. from trade ledger).
       const tokens: EvmTokenBalance[] = [];

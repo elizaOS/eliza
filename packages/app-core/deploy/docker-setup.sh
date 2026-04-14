@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+<<<<<<< HEAD
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 WORK_DIR="${PWD}"
@@ -9,6 +10,14 @@ EXTRA_COMPOSE_FILE="$WORK_DIR/docker-compose.extra.yml"
 ENV_FILE="$WORK_DIR/.env"
 DOCKERIGNORE_BACKUP=""
 HAD_ROOT_DOCKERIGNORE=0
+=======
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMPOSE_FILE="$ROOT_DIR/docker-compose.yml"
+EXTRA_COMPOSE_FILE="$ROOT_DIR/docker-compose.extra.yml"
+IMAGE_NAME="${MILADY_IMAGE:-milady:local}"
+EXTRA_MOUNTS="${MILADY_EXTRA_MOUNTS:-}"
+HOME_VOLUME_NAME="${MILADY_HOME_VOLUME:-}"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -17,6 +26,7 @@ require_cmd() {
   fi
 }
 
+<<<<<<< HEAD
 load_env_file() {
   local file="$1"
   if [[ -f "$file" ]]; then
@@ -41,6 +51,45 @@ resolve_config_file() {
   done
   return 1
 }
+=======
+require_cmd docker
+if ! docker compose version >/dev/null 2>&1; then
+  echo "Docker Compose not available (try: docker compose version)" >&2
+  exit 1
+fi
+
+MILADY_CONFIG_DIR="${MILADY_CONFIG_DIR:-$HOME/.milady}"
+MILADY_WORKSPACE_DIR="${MILADY_WORKSPACE_DIR:-$HOME/.milady/workspace}"
+
+mkdir -p "$MILADY_CONFIG_DIR"
+mkdir -p "$MILADY_WORKSPACE_DIR"
+
+export MILADY_CONFIG_DIR
+export MILADY_WORKSPACE_DIR
+export MILADY_GATEWAY_PORT="${MILADY_GATEWAY_PORT:-18789}"
+export MILADY_BRIDGE_PORT="${MILADY_BRIDGE_PORT:-18790}"
+export MILADY_GATEWAY_BIND="${MILADY_GATEWAY_BIND:-lan}"
+export MILADY_IMAGE="$IMAGE_NAME"
+export MILADY_DOCKER_APT_PACKAGES="${MILADY_DOCKER_APT_PACKAGES:-}"
+export MILADY_EXTRA_MOUNTS="$EXTRA_MOUNTS"
+export MILADY_HOME_VOLUME="$HOME_VOLUME_NAME"
+
+if [[ -z "${MILADY_GATEWAY_TOKEN:-}" ]]; then
+  if command -v openssl >/dev/null 2>&1; then
+    MILADY_GATEWAY_TOKEN="$(openssl rand -hex 32)"
+  else
+    MILADY_GATEWAY_TOKEN="$(python3 - <<'PY'
+import secrets
+print(secrets.token_hex(32))
+PY
+)"
+  fi
+fi
+export MILADY_GATEWAY_TOKEN
+
+COMPOSE_FILES=("$COMPOSE_FILE")
+COMPOSE_ARGS=()
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 write_extra_compose() {
   local home_volume="$1"
@@ -50,14 +99,23 @@ write_extra_compose() {
 
   cat >"$EXTRA_COMPOSE_FILE" <<'YAML'
 services:
+<<<<<<< HEAD
   gateway:
+=======
+  milady-gateway:
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
     volumes:
 YAML
 
   if [[ -n "$home_volume" ]]; then
     printf '      - %s:/home/node\n' "$home_volume" >>"$EXTRA_COMPOSE_FILE"
+<<<<<<< HEAD
     printf '      - %s:%s\n' "$APP_CONFIG_DIR" "$APP_STATE_DIR" >>"$EXTRA_COMPOSE_FILE"
     printf '      - %s:%s/workspace\n' "$APP_WORKSPACE_DIR" "$APP_STATE_DIR" >>"$EXTRA_COMPOSE_FILE"
+=======
+    printf '      - %s:/home/node/.milady\n' "$MILADY_CONFIG_DIR" >>"$EXTRA_COMPOSE_FILE"
+    printf '      - %s:/home/node/.milady/workspace\n' "$MILADY_WORKSPACE_DIR" >>"$EXTRA_COMPOSE_FILE"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
   fi
 
   for mount in "${mounts[@]}"; do
@@ -65,14 +123,23 @@ YAML
   done
 
   cat >>"$EXTRA_COMPOSE_FILE" <<'YAML'
+<<<<<<< HEAD
   cli:
+=======
+  milady-cli:
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
     volumes:
 YAML
 
   if [[ -n "$home_volume" ]]; then
     printf '      - %s:/home/node\n' "$home_volume" >>"$EXTRA_COMPOSE_FILE"
+<<<<<<< HEAD
     printf '      - %s:%s\n' "$APP_CONFIG_DIR" "$APP_STATE_DIR" >>"$EXTRA_COMPOSE_FILE"
     printf '      - %s:%s/workspace\n' "$APP_WORKSPACE_DIR" "$APP_STATE_DIR" >>"$EXTRA_COMPOSE_FILE"
+=======
+    printf '      - %s:/home/node/.milady\n' "$MILADY_CONFIG_DIR" >>"$EXTRA_COMPOSE_FILE"
+    printf '      - %s:/home/node/.milady/workspace\n' "$MILADY_WORKSPACE_DIR" >>"$EXTRA_COMPOSE_FILE"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
   fi
 
   for mount in "${mounts[@]}"; do
@@ -87,12 +154,41 @@ YAML
   fi
 }
 
+<<<<<<< HEAD
+=======
+VALID_MOUNTS=()
+if [[ -n "$EXTRA_MOUNTS" ]]; then
+  IFS=',' read -r -a mounts <<<"$EXTRA_MOUNTS"
+  for mount in "${mounts[@]}"; do
+    mount="${mount#"${mount%%[![:space:]]*}"}"
+    mount="${mount%"${mount##*[![:space:]]}"}"
+    if [[ -n "$mount" ]]; then
+      VALID_MOUNTS+=("$mount")
+    fi
+  done
+fi
+
+if [[ -n "$HOME_VOLUME_NAME" || ${#VALID_MOUNTS[@]} -gt 0 ]]; then
+  write_extra_compose "$HOME_VOLUME_NAME" "${VALID_MOUNTS[@]}"
+  COMPOSE_FILES+=("$EXTRA_COMPOSE_FILE")
+fi
+for compose_file in "${COMPOSE_FILES[@]}"; do
+  COMPOSE_ARGS+=("-f" "$compose_file")
+done
+COMPOSE_HINT="docker compose"
+for compose_file in "${COMPOSE_FILES[@]}"; do
+  COMPOSE_HINT+=" -f ${compose_file}"
+done
+
+ENV_FILE="$ROOT_DIR/.env"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 upsert_env() {
   local file="$1"
   shift
   local -a keys=("$@")
   local tmp
   tmp="$(mktemp)"
+<<<<<<< HEAD
 
   format_assignment() {
     local key="$1"
@@ -103,6 +199,9 @@ upsert_env() {
     value="${value//\`/\\\`}"
     printf '%s="%s"\n' "$key" "$value"
   }
+=======
+  declare -A seen=()
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
   if [[ -f "$file" ]]; then
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -110,7 +209,12 @@ upsert_env() {
       local replaced=false
       for k in "${keys[@]}"; do
         if [[ "$key" == "$k" ]]; then
+<<<<<<< HEAD
           format_assignment "$k" "${!k-}" >>"$tmp"
+=======
+          printf '%s=%s\n' "$k" "${!k-}" >>"$tmp"
+          seen["$k"]=1
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
           replaced=true
           break
         fi
@@ -122,14 +226,20 @@ upsert_env() {
   fi
 
   for k in "${keys[@]}"; do
+<<<<<<< HEAD
     if ! grep -q "^${k}=" "$tmp" 2>/dev/null; then
       format_assignment "$k" "${!k-}" >>"$tmp"
+=======
+    if [[ -z "${seen[$k]:-}" ]]; then
+      printf '%s=%s\n' "$k" "${!k-}" >>"$tmp"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
     fi
   done
 
   mv "$tmp" "$file"
 }
 
+<<<<<<< HEAD
 prepare_dockerignore() {
   DOCKERIGNORE_BACKUP="$WORK_DIR/.dockerignore.backup.$$"
   HAD_ROOT_DOCKERIGNORE=0
@@ -184,22 +294,22 @@ fi
 APP_NAME="${APP_NAME:-eliza}"
 APP_ENTRYPOINT="${APP_ENTRYPOINT:-app.mjs}"
 APP_CMD_START="${APP_CMD_START:-node --import ./node_modules/tsx/dist/loader.mjs ${APP_ENTRYPOINT} start}"
-APP_IMAGE="${APP_IMAGE:-${MILADY_IMAGE:-eliza:local}}"
+APP_IMAGE="${APP_IMAGE:-eliza:local}"
 APP_REGISTRY="${APP_REGISTRY:-}"
-APP_PORT="${APP_PORT:-${MILADY_PORT:-${ELIZA_PORT:-2138}}}"
-APP_GATEWAY_PORT="${APP_GATEWAY_PORT:-${MILADY_GATEWAY_PORT:-${ELIZA_GATEWAY_PORT:-18789}}}"
-APP_BRIDGE_PORT="${APP_BRIDGE_PORT:-${MILADY_BRIDGE_PORT:-${ELIZA_BRIDGE_PORT:-18790}}}"
-APP_GATEWAY_BIND="${APP_GATEWAY_BIND:-${MILADY_GATEWAY_BIND:-lan}}"
-APP_STATE_DIR="${APP_STATE_DIR:-${MILADY_STATE_DIR:-${ELIZA_STATE_DIR:-/home/node/.eliza}}}"
-APP_CONFIG_DIR="${APP_CONFIG_DIR:-${MILADY_CONFIG_DIR:-${ELIZA_CONFIG_DIR:-${HOME}/.eliza}}}"
-APP_WORKSPACE_DIR="${APP_WORKSPACE_DIR:-${MILADY_WORKSPACE_DIR:-${ELIZA_WORKSPACE_DIR:-${APP_CONFIG_DIR}/workspace}}}"
-APP_API_BIND="${APP_API_BIND:-${MILADY_API_BIND:-${ELIZA_API_BIND:-127.0.0.1}}}"
-APP_ALLOWED_ORIGINS="${APP_ALLOWED_ORIGINS:-${MILADY_ALLOWED_ORIGINS:-${ELIZA_ALLOWED_ORIGINS:-}}}"
-APP_API_TOKEN="${APP_API_TOKEN:-${MILADY_API_TOKEN:-${ELIZA_API_TOKEN:-}}}"
-APP_GATEWAY_TOKEN="${APP_GATEWAY_TOKEN:-${MILADY_GATEWAY_TOKEN:-}}"
-APP_EXTRA_MOUNTS="${APP_EXTRA_MOUNTS:-${MILADY_EXTRA_MOUNTS:-}}"
-APP_HOME_VOLUME="${APP_HOME_VOLUME:-${MILADY_HOME_VOLUME:-}}"
-APP_DOCKER_APT_PACKAGES="${APP_DOCKER_APT_PACKAGES:-${MILADY_DOCKER_APT_PACKAGES:-}}"
+APP_PORT="${APP_PORT:-${ELIZA_PORT:-2138}}"
+APP_GATEWAY_PORT="${APP_GATEWAY_PORT:-${ELIZA_GATEWAY_PORT:-18789}}"
+APP_BRIDGE_PORT="${APP_BRIDGE_PORT:-${ELIZA_BRIDGE_PORT:-18790}}"
+APP_GATEWAY_BIND="${APP_GATEWAY_BIND:-lan}"
+APP_STATE_DIR="${APP_STATE_DIR:-${ELIZA_STATE_DIR:-/home/node/.eliza}}"
+APP_CONFIG_DIR="${APP_CONFIG_DIR:-${ELIZA_CONFIG_DIR:-${HOME}/.eliza}}"
+APP_WORKSPACE_DIR="${APP_WORKSPACE_DIR:-${ELIZA_WORKSPACE_DIR:-${APP_CONFIG_DIR}/workspace}}"
+APP_API_BIND="${APP_API_BIND:-${ELIZA_API_BIND:-127.0.0.1}}"
+APP_ALLOWED_ORIGINS="${APP_ALLOWED_ORIGINS:-${ELIZA_ALLOWED_ORIGINS:-}}"
+APP_API_TOKEN="${APP_API_TOKEN:-${ELIZA_API_TOKEN:-}}"
+APP_GATEWAY_TOKEN="${APP_GATEWAY_TOKEN:-}"
+APP_EXTRA_MOUNTS="${APP_EXTRA_MOUNTS:-}"
+APP_HOME_VOLUME="${APP_HOME_VOLUME:-}"
+APP_DOCKER_APT_PACKAGES="${APP_DOCKER_APT_PACKAGES:-}"
 OCI_SOURCE="${OCI_SOURCE:-}"
 OCI_TITLE="${OCI_TITLE:-elizaOS Agent}"
 OCI_DESCRIPTION="${OCI_DESCRIPTION:-elizaOS agent runtime}"
@@ -345,3 +455,59 @@ echo
 echo "Commands:"
 echo "  ${COMPOSE_HINT} logs -f gateway"
 echo "  ${COMPOSE_HINT} exec gateway node dist/index.js health --token \"$APP_GATEWAY_TOKEN\""
+=======
+upsert_env "$ENV_FILE" \
+  MILADY_CONFIG_DIR \
+  MILADY_WORKSPACE_DIR \
+  MILADY_GATEWAY_PORT \
+  MILADY_BRIDGE_PORT \
+  MILADY_GATEWAY_BIND \
+  MILADY_GATEWAY_TOKEN \
+  MILADY_IMAGE \
+  MILADY_EXTRA_MOUNTS \
+  MILADY_HOME_VOLUME \
+  MILADY_DOCKER_APT_PACKAGES
+
+echo "==> Building Docker image: $IMAGE_NAME"
+docker build \
+  --build-arg "MILADY_DOCKER_APT_PACKAGES=${MILADY_DOCKER_APT_PACKAGES}" \
+  -t "$IMAGE_NAME" \
+  -f "$ROOT_DIR/Dockerfile" \
+  "$ROOT_DIR"
+
+echo ""
+echo "==> Onboarding (interactive)"
+echo "When prompted:"
+echo "  - Gateway bind: lan"
+echo "  - Gateway auth: token"
+echo "  - Gateway token: $MILADY_GATEWAY_TOKEN"
+echo "  - Tailscale exposure: Off"
+echo "  - Install Gateway daemon: No"
+echo ""
+docker compose "${COMPOSE_ARGS[@]}" run --rm milady-cli setup
+
+echo ""
+echo "==> Provider setup (optional)"
+echo "WhatsApp (QR):"
+echo "  ${COMPOSE_HINT} run --rm milady-cli channels login"
+echo "Telegram (bot token):"
+echo "  ${COMPOSE_HINT} run --rm milady-cli channels add --channel telegram --token <token>"
+echo "Discord (bot token):"
+echo "  ${COMPOSE_HINT} run --rm milady-cli channels add --channel discord --token <token>"
+echo "Docs: https://docs.milady.ai/channels"
+
+echo ""
+echo "==> Starting gateway"
+docker compose "${COMPOSE_ARGS[@]}" up -d milady-gateway
+
+echo ""
+echo "Gateway running with host port mapping."
+echo "Access from tailnet devices via the host's tailnet IP."
+echo "Config: $MILADY_CONFIG_DIR"
+echo "Workspace: $MILADY_WORKSPACE_DIR"
+echo "Token: $MILADY_GATEWAY_TOKEN"
+echo ""
+echo "Commands:"
+echo "  ${COMPOSE_HINT} logs -f milady-gateway"
+echo "  ${COMPOSE_HINT} exec milady-gateway node dist/index.js health --token \"$MILADY_GATEWAY_TOKEN\""
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e

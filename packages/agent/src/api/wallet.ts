@@ -6,6 +6,10 @@
  *
  * DEX price oracle logic lives in ./wallet-dex-prices.ts
  * EVM balance + NFT fetching lives in ./wallet-evm-balance.ts
+ *
+ * @deprecated This file is maintained for backward compatibility.
+ * The canonical source has moved to `@elizaos/app-steward/api/wallet`.
+ * New development should target the app-steward package.
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -90,10 +94,129 @@ export {
 const FETCH_TIMEOUT_MS = 15_000;
 export const MANAGED_EVM_ADDRESS_ENV_KEY = "ELIZA_MANAGED_EVM_ADDRESS";
 export const MANAGED_SOLANA_ADDRESS_ENV_KEY = "ELIZA_MANAGED_SOLANA_ADDRESS";
+export const CLOUD_EVM_ADDRESS_ENV_KEY = "MILADY_CLOUD_EVM_ADDRESS";
+export const CLOUD_SOLANA_ADDRESS_ENV_KEY = "MILADY_CLOUD_SOLANA_ADDRESS";
+export const WALLET_SOURCE_EVM_ENV_KEY = "WALLET_SOURCE_EVM";
+export const WALLET_SOURCE_SOLANA_ENV_KEY = "WALLET_SOURCE_SOLANA";
 
 /** Module-level cache for steward wallet addresses (avoids process.env mutation). */
 let stewardAddressCache: { evm: string | null; solana: string | null } | null =
   null;
+
+function normalizeWalletSource(
+  value: string | undefined,
+): "local" | "cloud" | null {
+  if (value === "local" || value === "cloud") {
+    return value;
+  }
+  return null;
+}
+
+function readValidatedEvmAddress(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  if (!/^0x[0-9a-fA-F]{40}$/.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
+function readValidatedSolanaAddress(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  try {
+    const decoded = base58Decode(trimmed);
+    return decoded.length === 32 ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
+function deriveLocalEvmAddress(): string | null {
+  const evmKey = process.env.EVM_PRIVATE_KEY;
+  if (!evmKey || PLACEHOLDER_RE.test(evmKey)) return null;
+  try {
+    return deriveEvmAddress(evmKey);
+  } catch (e) {
+    logger.warn(`Bad EVM key: ${e}`);
+    return null;
+  }
+}
+
+function deriveLocalSolanaAddress(): string | null {
+  const solKey = process.env.SOLANA_PRIVATE_KEY;
+  if (!solKey || PLACEHOLDER_RE.test(solKey)) return null;
+  try {
+    return deriveSolanaAddress(solKey);
+  } catch (e) {
+    logger.warn(`Bad SOL key: ${e}`);
+    return null;
+  }
+}
+
+function readStewardEvmAddress(): string | null {
+  const stewardEvm =
+    stewardAddressCache?.evm?.trim() ??
+    process.env[STEWARD_EVM_ADDRESS_ENV_KEY]?.trim();
+  return readValidatedEvmAddress(stewardEvm);
+}
+
+function readStewardSolanaAddress(): string | null {
+  const stewardSolana =
+    stewardAddressCache?.solana?.trim() ??
+    process.env[STEWARD_SOLANA_ADDRESS_ENV_KEY]?.trim();
+  return readValidatedSolanaAddress(stewardSolana);
+}
+
+function readManagedEvmAddress(): string | null {
+  const managed = readValidatedEvmAddress(
+    process.env[MANAGED_EVM_ADDRESS_ENV_KEY],
+  );
+  if (!managed && process.env[MANAGED_EVM_ADDRESS_ENV_KEY]?.trim()) {
+    logger.warn("Bad managed EVM address in env");
+  }
+  return managed;
+}
+
+function readManagedSolanaAddress(): string | null {
+  const managed = readValidatedSolanaAddress(
+    process.env[MANAGED_SOLANA_ADDRESS_ENV_KEY],
+  );
+  if (!managed && process.env[MANAGED_SOLANA_ADDRESS_ENV_KEY]?.trim()) {
+    logger.warn("Bad managed Solana address in env");
+  }
+  return managed;
+}
+
+function resolveEvmAddressForConfiguredSource(
+  source: "local" | "cloud" | null,
+): string | null {
+  if (source === "local") {
+    return deriveLocalEvmAddress();
+  }
+  if (source === "cloud") {
+    return (
+      readValidatedEvmAddress(process.env[CLOUD_EVM_ADDRESS_ENV_KEY]) ??
+      readManagedEvmAddress()
+    );
+  }
+  return null;
+}
+
+function resolveSolanaAddressForConfiguredSource(
+  source: "local" | "cloud" | null,
+): string | null {
+  if (source === "local") {
+    return deriveLocalSolanaAddress();
+  }
+  if (source === "cloud") {
+    return (
+      readValidatedSolanaAddress(process.env[CLOUD_SOLANA_ADDRESS_ENV_KEY]) ??
+      readManagedSolanaAddress()
+    );
+  }
+  return null;
+}
 
 // ── EVM key derivation (secp256k1 via @noble/curves + keccak-256) ─────
 
@@ -324,23 +447,12 @@ export function generateWalletForChain(
   };
 }
 
-export function syncSolanaPublicKeyEnv(
-  privateKey = process.env.SOLANA_PRIVATE_KEY,
-): string | null {
-  const trimmed = privateKey?.trim();
-  if (!trimmed || PLACEHOLDER_RE.test(trimmed)) {
-    return null;
-  }
+// Extracted to wallet-env-sync.ts to break circular dependency with config/config.ts.
+// Local import for internal use (setSolanaWalletEnv below), plus re-export for
+// backward compatibility so existing consumers of wallet.js keep working.
+import { syncSolanaPublicKeyEnv } from "./wallet-env-sync.js";
 
-  try {
-    const publicKey = deriveSolanaAddress(trimmed);
-    process.env.SOLANA_PUBLIC_KEY = publicKey;
-    process.env.WALLET_PUBLIC_KEY = publicKey;
-    return publicKey;
-  } catch {
-    return null;
-  }
-}
+export { syncSolanaPublicKeyEnv } from "./wallet-env-sync.js";
 
 export function setSolanaWalletEnv(privateKey: string): string | null {
   const trimmed = privateKey.trim();
@@ -397,15 +509,13 @@ function normalizeOptionalString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function readPersistedStewardCredentials():
-  | {
-      apiUrl: string | null;
-      tenantId: string | null;
-      agentId: string | null;
-      apiKey: string | null;
-      agentToken: string | null;
-    }
-  | null {
+function readPersistedStewardCredentials(): {
+  apiUrl: string | null;
+  tenantId: string | null;
+  agentId: string | null;
+  apiKey: string | null;
+  agentToken: string | null;
+} | null {
   try {
     if (!fs.existsSync(STEWARD_CREDENTIALS_PATH)) {
       return null;
@@ -514,14 +624,10 @@ export async function initStewardWalletCache(): Promise<void> {
     }
 
     if (stewardEvm) {
-      logger.info(
-        `[wallet] Steward EVM address cached: ${stewardEvm}`,
-      );
+      logger.info(`[wallet] Steward EVM address cached: ${stewardEvm}`);
     }
     if (stewardSolana) {
-      logger.info(
-        `[wallet] Steward Solana address cached: ${stewardSolana}`,
-      );
+      logger.info(`[wallet] Steward Solana address cached: ${stewardSolana}`);
     }
   } catch (err) {
     logger.debug(`[wallet] Steward wallet cache init unavailable: ${err}`);
@@ -537,82 +643,31 @@ export async function initStewardWalletCache(): Promise<void> {
  *   3. Managed address env vars  (`ELIZA_MANAGED_EVM_ADDRESS` / `ELIZA_MANAGED_SOLANA_ADDRESS`)
  */
 export function getWalletAddresses(): WalletAddresses {
-  let evmAddress: string | null = null;
-  let solanaAddress: string | null = null;
+  const configuredEvmSource = normalizeWalletSource(
+    process.env[WALLET_SOURCE_EVM_ENV_KEY],
+  );
+  const configuredSolanaSource = normalizeWalletSource(
+    process.env[WALLET_SOURCE_SOLANA_ENV_KEY],
+  );
 
-  // ── 1. Steward cached addresses (primary) ──────────────────────────
-  const stewardEvm =
-    stewardAddressCache?.evm?.trim() ??
-    process.env[STEWARD_EVM_ADDRESS_ENV_KEY]?.trim();
-  if (stewardEvm && /^0x[0-9a-fA-F]{40}$/.test(stewardEvm)) {
-    evmAddress = stewardEvm;
+  let evmAddress = resolveEvmAddressForConfiguredSource(configuredEvmSource);
+  let solanaAddress = resolveSolanaAddressForConfiguredSource(
+    configuredSolanaSource,
+  );
+
+  // Legacy fallback order when no explicit source selection exists yet.
+  if (!evmAddress && !configuredEvmSource) {
+    evmAddress =
+      readStewardEvmAddress() ??
+      deriveLocalEvmAddress() ??
+      readManagedEvmAddress();
   }
 
-  const stewardSolana =
-    stewardAddressCache?.solana?.trim() ??
-    process.env[STEWARD_SOLANA_ADDRESS_ENV_KEY]?.trim();
-  if (stewardSolana) {
-    try {
-      const decoded = base58Decode(stewardSolana);
-      if (decoded.length === 32) {
-        solanaAddress = stewardSolana;
-      }
-    } catch {
-      // invalid — skip
-    }
-  }
-
-  // ── 2. Local private key derivation (fallback) ─────────────────────
-  if (!evmAddress) {
-    const evmKey = process.env.EVM_PRIVATE_KEY;
-    if (evmKey && !PLACEHOLDER_RE.test(evmKey)) {
-      try {
-        evmAddress = deriveEvmAddress(evmKey);
-      } catch (e) {
-        logger.warn(`Bad EVM key: ${e}`);
-      }
-    }
-  }
-
-  if (!solanaAddress) {
-    const solKey = process.env.SOLANA_PRIVATE_KEY;
-    if (solKey && !PLACEHOLDER_RE.test(solKey)) {
-      try {
-        solanaAddress = deriveSolanaAddress(solKey);
-      } catch (e) {
-        logger.warn(`Bad SOL key: ${e}`);
-      }
-    }
-  }
-
-  // ── 3. Managed address env vars (last resort) ──────────────────────
-  if (!evmAddress) {
-    const managedEvmAddress = process.env[MANAGED_EVM_ADDRESS_ENV_KEY];
-    if (managedEvmAddress) {
-      const trimmed = managedEvmAddress.trim();
-      if (/^0x[0-9a-fA-F]{40}$/.test(trimmed)) {
-        evmAddress = trimmed;
-      } else {
-        logger.warn("Bad managed EVM address in env");
-      }
-    }
-  }
-
-  if (!solanaAddress) {
-    const managedSolanaAddress = process.env[MANAGED_SOLANA_ADDRESS_ENV_KEY];
-    if (managedSolanaAddress) {
-      const trimmed = managedSolanaAddress.trim();
-      try {
-        const decoded = base58Decode(trimmed);
-        if (decoded.length === 32) {
-          solanaAddress = trimmed;
-        } else {
-          logger.warn("Bad managed Solana address in env");
-        }
-      } catch {
-        logger.warn("Bad managed Solana address in env");
-      }
-    }
+  if (!solanaAddress && !configuredSolanaSource) {
+    solanaAddress =
+      readStewardSolanaAddress() ??
+      deriveLocalSolanaAddress() ??
+      readManagedSolanaAddress();
   }
 
   return { evmAddress, solanaAddress };

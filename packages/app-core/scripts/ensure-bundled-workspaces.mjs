@@ -36,7 +36,7 @@ export const BUNDLED_WORKSPACE_BUILDS = [
   // plugin-openai, plugin-personality, plugin-plugin-manager,
   // plugin-shell, plugin-sql, plugin-trust — so that their `dist/`
   // declarations would be available for TypeScript resolution when
-  // `MILADY_SKIP_LOCAL_UPSTREAMS=1`. In practice at least one of
+  // `ELIZA_SKIP_LOCAL_UPSTREAMS=1`. In practice at least one of
   // those plugins (plugin-anthropic) has a pre-existing
   // `ModelType.TEXT_MEDIUM` compat bug against the current
   // `@elizaos/core`, which makes the postinstall fail as soon as

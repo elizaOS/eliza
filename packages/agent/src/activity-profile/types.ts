@@ -123,7 +123,12 @@ export interface ActivityProfile {
 }
 
 export interface ProactiveAction {
-  kind: "gm" | "gn" | "pre_activity_nudge" | "goal_check_in" | "onboarding_seed";
+  kind:
+    | "gm"
+    | "gn"
+    | "pre_activity_nudge"
+    | "goal_check_in"
+    | "onboarding_seed";
   scheduledFor: number;
   targetPlatform: string;
   contextSummary: string;

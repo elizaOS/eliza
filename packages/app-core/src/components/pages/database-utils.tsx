@@ -1,16 +1,9 @@
-/**
- * Database View — pure functions, constants, type definitions, and shared
- * display components (ResultsGrid, PaginationBar, CellPopover).
- *
- * Extracted from DatabaseView.tsx to keep the main view file focused
- * on composition and layout, and to avoid circular imports between
- * DatabaseView and SqlEditorPanel.
- */
 
-import { Badge, Button, PagePanel } from "@elizaos/app-core";
+
 import { useEffect, useRef } from "react";
 import type { ColumnInfo } from "../../api";
 import { useApp } from "../../state";
+import { PagePanel, Badge, Button } from "@elizaos/ui";
 
 export type DbView = "tables" | "query";
 export type SortDir = "asc" | "desc" | null;

@@ -39,7 +39,6 @@ function extensionFromContentType(contentType: string | null): string {
       return "gif";
     case "image/webp":
       return "webp";
-    case "image/png":
     default:
       return "png";
   }
@@ -110,7 +109,10 @@ export async function cacheDiscordAvatarUrl(
     return url;
   }
 
-  const requestedFileName = buildDiscordAvatarCacheFileName(url, options.userId);
+  const requestedFileName = buildDiscordAvatarCacheFileName(
+    url,
+    options.userId,
+  );
   const requestedFilePath = getDiscordAvatarCachePath(requestedFileName);
   try {
     const stat = await fs.stat(requestedFilePath);

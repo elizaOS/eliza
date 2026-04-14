@@ -1,6 +1,7 @@
 import type { VRM, VRMHumanBoneName } from "@pixiv/three-vrm";
 import * as THREE from "three";
 import { mixamoVRMRigMap } from "./mixamoVRMRigMap";
+
 function normalizeMixamoRigName(name: string): string {
   const pipe = name.lastIndexOf("|");
   const base = pipe >= 0 ? name.slice(pipe + 1) : name;
@@ -91,7 +92,7 @@ export function retargetMixamoFbxToVrm(
     if (!vrmNode) continue;
 
     const mixamoRigNode = findNode(sourceScene, rawRigName, normalizedRigName);
-    if (!mixamoRigNode || !mixamoRigNode.parent) {
+    if (!mixamoRigNode?.parent) {
       if (!unmappedNodes.includes(normalizedRigName)) {
         unmappedNodes.push(`${normalizedRigName}→${vrmBoneName}`);
       }
@@ -120,7 +121,9 @@ export function retargetMixamoFbxToVrm(
         new THREE.QuaternionKeyframeTrack(
           `${vrmNode.name}.quaternion`,
           track.times,
-          values.map((v: number, i: number) => (isVrm0(vrm) && i % 2 === 0 ? -v : v)),
+          values.map((v: number, i: number) =>
+            isVrm0(vrm) && i % 2 === 0 ? -v : v,
+          ),
         ),
       );
       continue;

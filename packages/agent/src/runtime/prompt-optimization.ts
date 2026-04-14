@@ -7,7 +7,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { getTrajectoryContext, type AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, getTrajectoryContext } from "@elizaos/core";
 import { detectRuntimeModel } from "../api/agent-model.js";
 
 import {
@@ -99,9 +99,7 @@ export function shouldPreserveFullPromptForTrajectoryCapture(): boolean {
 function getSharedTrajectoryStepId(): string | null {
   const stepId = (globalThis as GlobalWithTrajectoryContextManager)[
     TRAJECTORY_CONTEXT_MANAGER_KEY
-  ]
-    ?.active?.()
-    ?.trajectoryStepId;
+  ]?.active?.()?.trajectoryStepId;
   return typeof stepId === "string" && stepId.trim().length > 0
     ? stepId.trim()
     : null;
@@ -130,7 +128,10 @@ function extractTrajectoryStepIdFromLoggerArgs(args: unknown[]): string | null {
     : null;
 }
 
-function getTrajectoryLlmLogCount(runtime: AgentRuntime, stepId: string): number {
+function getTrajectoryLlmLogCount(
+  runtime: AgentRuntime,
+  stepId: string,
+): number {
   return trajectoryLlmLogCounts.get(runtime)?.get(stepId) ?? 0;
 }
 
@@ -138,12 +139,15 @@ function incrementTrajectoryLlmLogCount(
   runtime: AgentRuntime,
   stepId: string,
 ): void {
-  const counts = trajectoryLlmLogCounts.get(runtime) ?? new Map<string, number>();
+  const counts =
+    trajectoryLlmLogCounts.get(runtime) ?? new Map<string, number>();
   counts.set(stepId, (counts.get(stepId) ?? 0) + 1);
   trajectoryLlmLogCounts.set(runtime, counts);
 }
 
-function resolveTrajectoryLogger(runtime: AgentRuntime): TrajectoryLoggerLike | null {
+function resolveTrajectoryLogger(
+  runtime: AgentRuntime,
+): TrajectoryLoggerLike | null {
   const runtimeWithService = runtime as RuntimeWithTrajectoryService;
   const candidates: TrajectoryLoggerLike[] = [];
   const seen = new Set<unknown>();
@@ -209,7 +213,10 @@ function ensureTrajectoryLoggerTracking(
       const tableReady = await ensureTrajectoriesTable(runtime);
       if (!tableReady) return;
 
-      const trajectory = await loadTrajectoryByStepId(runtime, normalizedStepId);
+      const trajectory = await loadTrajectoryByStepId(
+        runtime,
+        normalizedStepId,
+      );
       if (!trajectory || !Array.isArray(trajectory.steps)) return;
 
       const step =

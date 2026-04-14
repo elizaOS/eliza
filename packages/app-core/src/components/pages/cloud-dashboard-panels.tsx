@@ -1,14 +1,5 @@
-import {
-  Button,
-  Input,
-  SectionCard,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Switch,
-} from "@elizaos/app-core";
+
+
 import {
   ChevronDown,
   ExternalLink,
@@ -34,6 +25,7 @@ import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibilit
 import { getVrmPreviewUrl, useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { STATUS_BADGE } from "./cloud-dashboard-utils";
+import { Button, Input, SectionCard, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch } from "@elizaos/ui";
 
 export function AgentStatusBadge({ status }: { status: string }) {
   const { t } = useApp();

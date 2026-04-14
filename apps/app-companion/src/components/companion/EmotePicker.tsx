@@ -1,14 +1,16 @@
-import { Button, Input, Z_SYSTEM_CRITICAL } from "@elizaos/app-core";
-import { Menu, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { client } from "@elizaos/app-core/api";
+import { client } from "@elizaos/app-core/api/client";
 import {
   dispatchAppEvent,
   EMOTE_PICKER_EVENT,
   STOP_EMOTE_EVENT,
 } from "@elizaos/app-core/events";
-import { useTimeout } from "@elizaos/app-core/hooks";
-import { useApp } from "@elizaos/app-core/state";
+import { useApp } from "@elizaos/app-core/state/useApp";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
+import { useTimeout } from "@elizaos/ui/hooks/useTimeout";
+import { Z_SYSTEM_CRITICAL } from "@elizaos/ui/lib/floating-layers";
+import { Menu, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 // Types
 interface EmoteItem {
@@ -451,7 +453,9 @@ export function EmotePicker() {
           ref={inputRef}
           type="text"
           value={search}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+            setSearch(e.target.value)
+          }
           placeholder={t("emotepicker.SearchEmotes")}
           className="w-full rounded px-2 py-1 text-sm focus:outline-none focus:ring-1"
           style={{

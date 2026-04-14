@@ -1,13 +1,5 @@
-import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  ContentLayout,
-  Textarea,
-} from "@elizaos/app-core";
+
+
 import { Monitor, RefreshCw } from "lucide-react";
 import {
   type ReactNode,
@@ -20,6 +12,7 @@ import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import { useApp } from "../../state";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { resolveApiUrl } from "../../utils/asset-url";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Textarea, ContentLayout } from "@elizaos/ui";
 import {
   DESKTOP_WORKSPACE_SURFACES,
   type DesktopClickAuditItem,
@@ -207,9 +200,6 @@ export const DESKTOP_WORKSPACE_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
     }),
   ),
 ] as const;
-
-const DESKTOP_ACTION_BUTTON_CLASSNAME =
-  "min-h-9 justify-start whitespace-normal text-left sm:min-h-10";
 
 function buildDesktopDiagnosticsBundle(options: {
   diagnosticsText: string;
@@ -492,7 +482,7 @@ export function DesktopWorkspaceSection({
         <Button
           variant="outline"
           size="sm"
-          className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+          className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
           onClick={() => {
             void refreshSnapshot();
             void refreshDevDiagnostics();
@@ -507,7 +497,7 @@ export function DesktopWorkspaceSection({
         <Button
           variant="default"
           size="sm"
-          className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+          className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
           onClick={() =>
             void runAction(
               "desktop-open-settings-window",
@@ -565,7 +555,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() => void refreshDevDiagnostics()}
               >
                 Refresh Desktop Logs
@@ -573,7 +563,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() => void copyTextToClipboard(devStackText)}
               >
                 Copy Dev Stack
@@ -581,7 +571,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() => void copyDesktopDiagnosticsBundle()}
               >
                 Copy Full Diagnostics Bundle
@@ -609,7 +599,7 @@ export function DesktopWorkspaceSection({
                   key={surface.id}
                   variant="outline"
                   size="sm"
-                  className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                  className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                   onClick={() =>
                     void runAction(
                       `desktop-surface-${surface.id}`,
@@ -643,7 +633,7 @@ export function DesktopWorkspaceSection({
             <Button
               variant="outline"
               size="sm"
-              className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+              className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
               onClick={() => void refreshDevDiagnostics()}
             >
               Refresh Console Tail
@@ -651,7 +641,7 @@ export function DesktopWorkspaceSection({
             <Button
               variant="outline"
               size="sm"
-              className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+              className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
               onClick={() =>
                 void copyTextToClipboard(
                   filteredDevConsoleText || devConsoleText,
@@ -701,7 +691,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
                   void runAction("desktop-show-window", async () => {
                     await invokeDesktopBridgeRequest<void>({
@@ -717,7 +707,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
                   void runAction("desktop-hide-window", async () => {
                     await invokeDesktopBridgeRequest<void>({
@@ -733,7 +723,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
                   void runAction("desktop-focus-window", async () => {
                     await invokeDesktopBridgeRequest<void>({
@@ -749,7 +739,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
                   void runAction("desktop-minimize-window", async () => {
                     const method = snapshot?.window.minimized
@@ -773,7 +763,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={`sm:col-span-2 ${DESKTOP_ACTION_BUTTON_CLASSNAME}`}
+                className="sm:col-span-2 min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
                   void runAction("desktop-maximize-toggle", async () => {
                     const method = snapshot?.window.maximized
@@ -812,7 +802,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
                   void runAction(
                     "desktop-notify",
@@ -838,7 +828,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
                   void runAction(
                     "desktop-restart-agent",
@@ -853,7 +843,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
                   void runAction(
                     "desktop-relaunch-app",
@@ -869,7 +859,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
                   void runAction("desktop-toggle-auto-launch", async () => {
                     await invokeDesktopBridgeRequest<void>({
@@ -892,7 +882,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={`sm:col-span-2 ${DESKTOP_ACTION_BUTTON_CLASSNAME}`}
+                className="sm:col-span-2 min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
                   void runAction("desktop-toggle-hidden-launch", async () => {
                     await invokeDesktopBridgeRequest<void>({
@@ -933,7 +923,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
                   void runAction(
                     "desktop-open-file-dialog",
@@ -964,7 +954,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
                   void runAction(
                     "desktop-open-folder-dialog",
@@ -994,7 +984,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={`sm:col-span-2 ${DESKTOP_ACTION_BUTTON_CLASSNAME}`}
+                className="sm:col-span-2 min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
                   void runAction(
                     "desktop-save-dialog",
@@ -1059,7 +1049,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
                   void runAction("desktop-clipboard-read", async () => {
                     const result = await invokeDesktopBridgeRequest<{
@@ -1078,7 +1068,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
                   void runAction("desktop-clipboard-copy", async () => {
                     await copyTextToClipboard(clipboardDraft);
@@ -1091,7 +1081,7 @@ export function DesktopWorkspaceSection({
               <Button
                 variant="outline"
                 size="sm"
-                className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
                   void runAction("desktop-clipboard-clear", async () => {
                     await invokeDesktopBridgeRequest<void>({
@@ -1110,7 +1100,7 @@ export function DesktopWorkspaceSection({
                   <Button
                     variant="outline"
                     size="sm"
-                    className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                    className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                     onClick={() =>
                       void runAction(
                         "desktop-open-path",
@@ -1132,7 +1122,7 @@ export function DesktopWorkspaceSection({
                   <Button
                     variant="outline"
                     size="sm"
-                    className={DESKTOP_ACTION_BUTTON_CLASSNAME}
+                    className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                     onClick={() =>
                       void runAction(
                         "desktop-reveal-path",

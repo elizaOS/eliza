@@ -7,14 +7,7 @@
 
 import { resolveServiceRoutingInConfig } from "@elizaos/shared/contracts/onboarding";
 import { buildElizaCloudServiceRoute } from "@elizaos/shared/contracts/service-routing";
-import {
-  Button,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@elizaos/app-core";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client, type OnboardingOptions, type PluginParamDef } from "../../api";
 import {
@@ -35,6 +28,7 @@ import type { ConfigUiHint } from "../../types";
 import { openExternalUrl } from "../../utils";
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import { SubscriptionStatus } from "./SubscriptionStatus";
+import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@elizaos/ui";
 
 const SUBSCRIPTION_PROVIDER_LABEL_FALLBACKS: Record<
   SubscriptionProviderSelectionId,

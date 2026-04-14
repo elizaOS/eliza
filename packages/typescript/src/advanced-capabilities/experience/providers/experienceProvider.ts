@@ -1,10 +1,13 @@
+import {
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type State,
+} from "@elizaos/core";
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { ExperienceService } from "../service";
-import { logger } from "../../../logger.ts";
-import type { Provider, ProviderResult } from "../../../types/components.ts";
-import type { Memory } from "../../../types/memory.ts";
-import type { IAgentRuntime } from "../../../types/runtime.ts";
-import type { State } from "../../../types/state.ts";
 
 /**
  * Simple experience provider that injects relevant experiences into context

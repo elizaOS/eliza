@@ -24,7 +24,7 @@ console.log(`${getLogPrefix()} Script starting...`);
 import process from "node:process";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { setRestartHandler } from "@elizaos/agent";
+import { setRestartHandler } from "@elizaos/agent/runtime/restart";
 import { colorizeDevSettingsStartupBanner } from "@elizaos/shared/dev-settings-banner-style";
 import {
   resolveApiToken,

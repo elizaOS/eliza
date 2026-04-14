@@ -7,4 +7,5 @@ export * from "./agent-profiles";
 export * from "./persistence";
 export * from "./types";
 export * from "./useApp";
+export { useVincentState } from "./useVincentState";
 export * from "./vrm";

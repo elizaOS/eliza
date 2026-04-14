@@ -4,7 +4,7 @@
  * target package's version (from its package.json). For npm publish / tarball
  * workflows where workspace: protocols are invalid.
  *
- * eliza uses a single lerna version; Milady uses per-package versions.
+ * eliza uses a single lerna version; Eliza uses per-package versions.
  *
  * Usage: bun scripts/replace-workspace-versions.mjs [--dry-run] [--verbose]
  */

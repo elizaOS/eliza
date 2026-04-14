@@ -172,10 +172,8 @@ export async function handleWhatsAppRoute(
             enabled: true,
           };
           // Auto-populate owner contact so LifeOps can deliver reminders
-          const phoneNumber =
-            (event as unknown as Record<string, unknown>).phoneNumber as
-              | string
-              | undefined;
+          const phoneNumber = (event as unknown as Record<string, unknown>)
+            .phoneNumber as string | undefined;
           setOwnerContact(
             state.config as Parameters<typeof setOwnerContact>[0],
             {
@@ -198,11 +196,7 @@ export async function handleWhatsAppRoute(
       await session.start();
       json(res, { ok: true, accountId, status: session.getStatus() });
     } catch (err) {
-      json(
-        res,
-        { ok: false, error: String(err) },
-        500,
-      );
+      json(res, { ok: false, error: String(err) }, 500);
     }
     return true;
   }

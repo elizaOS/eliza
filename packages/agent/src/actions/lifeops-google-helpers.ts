@@ -639,7 +639,9 @@ function buildRemainingTodayGroups(
 
     const key = `${occurrence.definitionId}:${occurrence.title}`;
     const anchorMs = Date.parse(overviewAnchorIso(occurrence));
-    const windowLabel = normalizeRemainingTodayWindowLabel(occurrence.windowName);
+    const windowLabel = normalizeRemainingTodayWindowLabel(
+      occurrence.windowName,
+    );
     const existing = groups.get(key);
     if (existing) {
       existing.count += 1;
@@ -656,7 +658,9 @@ function buildRemainingTodayGroups(
       definitionId: occurrence.definitionId,
       title: occurrence.title,
       count: 1,
-      earliestAnchorMs: Number.isFinite(anchorMs) ? anchorMs : Number.MAX_SAFE_INTEGER,
+      earliestAnchorMs: Number.isFinite(anchorMs)
+        ? anchorMs
+        : Number.MAX_SAFE_INTEGER,
       windows: windowLabel ? [windowLabel] : [],
     });
   }

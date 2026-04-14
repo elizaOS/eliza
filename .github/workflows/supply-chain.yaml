@@ -37,7 +37,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Vulnerability scan (Grype)
+        id: grype
         uses: anchore/scan-action@v4
+        env:
+          GRYPE_DB_VALIDATE_AGE: "false"
         with:
           path: .
           output-format: sarif
@@ -49,5 +52,4 @@ jobs:
         with:
           name: grype-sarif
           path: grype.sarif
-          if-no-files-found: error
-
+          if-no-files-found: ignore

@@ -11,6 +11,10 @@
  *
  * This module exports a boot hook that should be called early in the runtime
  * initialization, before plugins are loaded.
+ *
+ * @deprecated This file is maintained for backward compatibility.
+ * The canonical source has moved to `@elizaos/app-steward/services/steward-evm-bridge`.
+ * New development should target the app-steward package.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -89,7 +93,7 @@ export async function stewardEvmPostBoot(
 
     if (!evmService?.walletProvider) {
       console.warn(
-        "[StewardEvmBridge] EVMService not found or no walletProvider — cannot inject Steward account"
+        "[StewardEvmBridge] EVMService not found or no walletProvider — cannot inject Steward account",
       );
       return;
     }
@@ -98,12 +102,16 @@ export async function stewardEvmPostBoot(
     // WalletProvider stores the account as `this._account` (see initializeAccount).
     // TypeScript doesn't expose it, but it's a simple property assignment.
     const wp = evmService.walletProvider as Record<string, unknown>;
-    const oldAddress = (evmService.walletProvider as { getAddress?: () => string }).getAddress?.();
+    const oldAddress = (
+      evmService.walletProvider as { getAddress?: () => string }
+    ).getAddress?.();
     wp._account = _stewardAccount;
 
-    const newAddress = (evmService.walletProvider as { getAddress?: () => string }).getAddress?.();
+    const newAddress = (
+      evmService.walletProvider as { getAddress?: () => string }
+    ).getAddress?.();
     console.log(
-      `[StewardEvmBridge] ✓ Replaced EVM account: ${oldAddress} → ${newAddress} (Steward-backed)`
+      `[StewardEvmBridge] ✓ Replaced EVM account: ${oldAddress} → ${newAddress} (Steward-backed)`,
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

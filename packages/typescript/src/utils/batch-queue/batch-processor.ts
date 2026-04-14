@@ -81,7 +81,8 @@ function getPerItemMaxAttempts(item: unknown, fallback: number): number {
 		item &&
 		typeof item === "object" &&
 		"_batchMaxAttempts" in item &&
-		typeof (item as { _batchMaxAttempts?: unknown })._batchMaxAttempts === "number"
+		typeof (item as { _batchMaxAttempts?: unknown })._batchMaxAttempts ===
+			"number"
 	) {
 		const attempts = (item as { _batchMaxAttempts: number })._batchMaxAttempts;
 		if (Number.isFinite(attempts) && attempts >= 1) {

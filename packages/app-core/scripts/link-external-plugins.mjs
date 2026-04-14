@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Link standalone elizaOS plugin source checkouts into Milady's
+ * Link standalone elizaOS plugin source checkouts into Eliza's
  * node_modules tree as local workspace links — without adding them to
  * any package.json as a dependency.
  *
@@ -19,7 +19,7 @@
  * have the sibling checkout.
  *
  * This file intentionally reuses `createPackageLink` from
- * setup-eliza-workspace.mjs so the same symlink semantics (relative
+ * setup-upstreams.mjs so the same symlink semantics (relative
  * symlink on POSIX, junction on Windows, idempotent replace) apply.
  */
 
@@ -42,7 +42,7 @@ const DEFAULT_REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 /**
  * Standalone plugin source directories to link into node_modules. Each
  * entry points at a directory containing a `package.json` whose `name`
- * field starts with `@elizaos/` or `@miladyai/`. Paths may be absolute
+ * field starts with `@elizaos/` or `@elizaos/`. Paths may be absolute
  * or relative to the repo root. Missing paths are skipped.
  */
 export const EXTERNAL_PLUGIN_SOURCES = [
@@ -60,9 +60,9 @@ export const EXTERNAL_PLUGIN_SOURCES = [
 ];
 
 /**
- * The three node_modules locations where Milady expects `@elizaos/*`
+ * The three node_modules locations where Eliza expects `@elizaos/*`
  * packages to resolve from — matches the list used by
- * setup-eliza-workspace.mjs so dynamic imports work from every entry
+ * setup-upstreams.mjs so dynamic imports work from every entry
  * point (root CLI, apps/app Vite shell, apps/home dashboard).
  */
 function linkTargetsFor(repoRoot, scope, basename) {
@@ -134,7 +134,7 @@ export function linkExternalPlugins(
 
     // Bun's ESM resolver traverses the **real** path of a symlinked
     // package, not the symlink location, when walking up to find
-    // dependencies. Workspace-linked plugins live outside Milady's
+    // dependencies. Workspace-linked plugins live outside Eliza's
     // tree, so `import "@elizaos/core"` from their dist/ walks up
     // through ~/src/…/typescript/node_modules and finds nothing.
     // `patch-deps.mjs` earlier removed the nested @elizaos/core from

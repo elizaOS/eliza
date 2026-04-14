@@ -52,12 +52,17 @@ export interface OAuthPrompt {
 
 function createState(): string {
   if (!_randomBytes) {
-    throw new Error("OpenAI Codex OAuth is only available in Node.js environments");
+    throw new Error(
+      "OpenAI Codex OAuth is only available in Node.js environments",
+    );
   }
   return _randomBytes(16).toString("hex");
 }
 
-function parseAuthorizationInput(input: string): { code?: string; state?: string } {
+function parseAuthorizationInput(input: string): {
+  code?: string;
+  state?: string;
+} {
   const value = input.trim();
   if (!value) return {};
   try {
@@ -83,7 +88,9 @@ function parseAuthorizationInput(input: string): { code?: string; state?: string
   return { code: value };
 }
 
-function decodeJwt(token: string): Record<string, Record<string, string> | undefined> | null {
+function decodeJwt(
+  token: string,
+): Record<string, Record<string, string> | undefined> | null {
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
@@ -163,7 +170,11 @@ async function refreshAccessToken(
     });
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      console.error("[openai-codex] Token refresh failed:", response.status, text);
+      console.error(
+        "[openai-codex] Token refresh failed:",
+        response.status,
+        text,
+      );
       return { type: "failed" };
     }
     const json = (await response.json()) as {
@@ -176,7 +187,10 @@ async function refreshAccessToken(
       !json.refresh_token ||
       typeof json.expires_in !== "number"
     ) {
-      console.error("[openai-codex] Token refresh response missing fields:", json);
+      console.error(
+        "[openai-codex] Token refresh response missing fields:",
+        json,
+      );
       return { type: "failed" };
     }
     return {
@@ -220,7 +234,9 @@ type OAuthServerInfo = {
 
 function startLocalOAuthServer(state: string): Promise<OAuthServerInfo> {
   if (!_http) {
-    throw new Error("OpenAI Codex OAuth is only available in Node.js environments");
+    throw new Error(
+      "OpenAI Codex OAuth is only available in Node.js environments",
+    );
   }
 
   let lastCode: string | null = null;
@@ -263,8 +279,7 @@ function startLocalOAuthServer(state: string): Promise<OAuthServerInfo> {
             cancelled = true;
           },
           waitForCode: async () => {
-            const sleep = () =>
-              new Promise<void>((r) => setTimeout(r, 100));
+            const sleep = () => new Promise<void>((r) => setTimeout(r, 100));
             for (let i = 0; i < 600; i += 1) {
               if (lastCode) return { code: lastCode };
               if (cancelled) return null;
@@ -299,7 +314,9 @@ function getAccountId(accessToken: string): string | null {
   const payload = decodeJwt(accessToken);
   const auth = payload?.[JWT_CLAIM_PATH];
   const accountId = auth?.chatgpt_account_id;
-  return typeof accountId === "string" && accountId.length > 0 ? accountId : null;
+  return typeof accountId === "string" && accountId.length > 0
+    ? accountId
+    : null;
 }
 
 export async function loginOpenAICodex(options: {

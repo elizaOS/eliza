@@ -1,4 +1,5 @@
-import { Button, Input } from "@elizaos/app-core";
+
+
 import { useCallback, useMemo, useState } from "react";
 import { type AppSessionJsonValue, client } from "../../../api";
 import { useApp } from "../../../state";
@@ -15,6 +16,7 @@ import {
   toneForViewerAttachment,
 } from "../extensions/surface";
 import type { AppOperatorSurfaceProps } from "./types";
+import { Button, Input } from "@elizaos/ui";
 
 interface RecentActivityEntry {
   id: string;

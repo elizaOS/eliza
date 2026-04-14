@@ -23,7 +23,7 @@ export interface WhisperToken {
 }
 
 // Resolution order (first existing path wins):
-//   1. MILADY_WHISPER_BIN / MILADY_WHISPER_MODEL env vars
+//   1. ELIZA_WHISPER_BIN / ELIZA_WHISPER_MODEL env vars
 //   2. Relative to import.meta.dir
 //   3. Relative to process.cwd()
 function resolveWhisperPath(
@@ -43,12 +43,12 @@ function resolveWhisperPath(
 // Windows whisper.cpp binary has a .exe extension; other platforms do not.
 const WHISPER_BIN_NAME = process.platform === "win32" ? "main.exe" : "main";
 const WHISPER_BIN = resolveWhisperPath(
-  "MILADY_WHISPER_BIN",
+  "ELIZA_WHISPER_BIN",
   `../../../../node_modules/whisper-node/lib/whisper.cpp/${WHISPER_BIN_NAME}`,
   `node_modules/whisper-node/lib/whisper.cpp/${WHISPER_BIN_NAME}`,
 );
 const WHISPER_MODEL = resolveWhisperPath(
-  "MILADY_WHISPER_MODEL",
+  "ELIZA_WHISPER_MODEL",
   "../../../../node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.en.bin",
   "node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.en.bin",
 );

@@ -6,8 +6,8 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import {
   buildReleaseValidationAssetUrl,
-  resolveMiladyAssetRepository,
-  resolveMiladyReleaseTag,
+  resolveElizaAssetRepository,
+  resolveElizaReleaseTag,
 } from "./lib/asset-cdn.mjs";
 import {
   readStaticAssetManifest,
@@ -24,15 +24,15 @@ function delay(ms) {
 
 function getValidationRetryPolicy({ env = process.env } = {}) {
   const explicitAttempts = Number.parseInt(
-    env.MILADY_CDN_VALIDATE_ATTEMPTS ?? "",
+    env.ELIZA_CDN_VALIDATE_ATTEMPTS ?? "",
     10,
   );
   const explicitDelayMs = Number.parseInt(
-    env.MILADY_CDN_VALIDATE_DELAY_MS ?? "",
+    env.ELIZA_CDN_VALIDATE_DELAY_MS ?? "",
     10,
   );
   const explicitConcurrency = Number.parseInt(
-    env.MILADY_CDN_VALIDATE_CONCURRENCY ?? "",
+    env.ELIZA_CDN_VALIDATE_CONCURRENCY ?? "",
     10,
   );
   const inCi = String(env.CI ?? "").toLowerCase() === "true";
@@ -225,16 +225,16 @@ export function resolveValidationGitRef({
   cwd = repoRoot,
   env = process.env,
 } = {}) {
-  return resolveMiladyReleaseTag({ env }) || resolveCurrentGitSha({ cwd, env });
+  return resolveElizaReleaseTag({ env }) || resolveCurrentGitSha({ cwd, env });
 }
 
 export async function main({ cwd = repoRoot, env = process.env } = {}) {
-  const releaseTag = resolveMiladyReleaseTag({ env });
+  const releaseTag = resolveElizaReleaseTag({ env });
   const gitSha = resolveCurrentGitSha({ cwd, env });
-  const repository = resolveMiladyAssetRepository({ env });
+  const repository = resolveElizaAssetRepository({ env });
   if (!releaseTag && !gitSha) {
     throw new Error(
-      "Could not resolve release tag or git SHA for CDN validation. Set MILADY_RELEASE_TAG / RELEASE_TAG or run inside a git checkout.",
+      "Could not resolve release tag or git SHA for CDN validation. Set ELIZA_RELEASE_TAG / RELEASE_TAG or run inside a git checkout.",
     );
   }
 

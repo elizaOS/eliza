@@ -1,26 +1,11 @@
-/**
- * Secrets Vault — user-curated view of API keys and credentials.
- *
- * Only shows secrets the user has explicitly added to their vault (persisted in
- * localStorage) plus any that are already set in the environment. Users browse
- * available secrets from plugins and pick which ones to manage here.
- */
 
-import {
-  Button,
-  ContentLayout,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  Input,
-} from "@elizaos/app-core";
+
 import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SecretInfo } from "../../api";
 import { client } from "../../api";
 import { useApp } from "../../state";
+import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, ContentLayout } from "@elizaos/ui";
 
 /* ── Constants ──────────────────────────────────────────────────────── */
 
@@ -48,10 +33,6 @@ type GroupedSecrets = {
   secrets: SecretInfo[];
 };
 
-const VAULT_PANEL_CLASSNAME =
-  "rounded-2xl border border-border/50 bg-card/92 shadow-sm";
-const SECTION_TOGGLE_CLASSNAME =
-  "mb-3 h-auto w-full items-center gap-2 rounded-xl border border-transparent px-3 py-2 text-left hover:border-border/50 hover:bg-bg-hover";
 const fallbackTranslate = (
   key: string,
   vars?: { defaultValue?: string },
@@ -242,9 +223,7 @@ export function SecretsView({
   if (loading) {
     return (
       <ContentLayout contentHeader={contentHeader} inModal={inModal}>
-        <div
-          className={`${VAULT_PANEL_CLASSNAME} py-8 text-center text-sm italic text-muted`}
-        >
+        <div className="rounded-2xl border border-border/50 bg-card/92 shadow-sm py-8 text-center text-sm italic text-muted">
           {t("secretsview.LoadingSecrets")}
         </div>
       </ContentLayout>
@@ -254,7 +233,7 @@ export function SecretsView({
   if (error) {
     return (
       <ContentLayout contentHeader={contentHeader} inModal={inModal}>
-        <div className={`${VAULT_PANEL_CLASSNAME} px-4 py-8 text-center`}>
+        <div className="rounded-2xl border border-border/50 bg-card/92 shadow-sm px-4 py-8 text-center">
           <div className="mb-2 text-sm text-danger">{error}</div>
           <Button
             variant="outline"
@@ -302,9 +281,7 @@ export function SecretsView({
 
         {/* Empty state */}
         {vaultSecrets.length === 0 && (
-          <div
-            className={`${VAULT_PANEL_CLASSNAME} border-dashed px-4 py-8 text-center text-sm italic text-muted`}
-          >
+          <div className="rounded-2xl border border-border/50 bg-card/92 shadow-sm border-dashed px-4 py-8 text-center text-sm italic text-muted">
             {t("secretsview.YourVaultIsEmpty")}
           </div>
         )}
@@ -314,7 +291,7 @@ export function SecretsView({
           <section key={category} className="space-y-3">
             <Button
               variant="ghost"
-              className={SECTION_TOGGLE_CLASSNAME}
+              className="mb-3 h-auto w-full items-center gap-2 rounded-xl border border-transparent px-3 py-2 text-left hover:border-border/50 hover:bg-bg-hover"
               onClick={() => toggleCollapse(category)}
               aria-expanded={!collapsed.has(category)}
             >
@@ -353,9 +330,7 @@ export function SecretsView({
 
         {/* Save bar */}
         {vaultSecrets.length > 0 && (
-          <div
-            className={`${VAULT_PANEL_CLASSNAME} flex flex-col gap-3 border-border/60 px-4 py-3 sm:flex-row sm:items-center`}
-          >
+          <div className="rounded-2xl border border-border/50 bg-card/92 shadow-sm flex flex-col gap-3 border-border/60 px-4 py-3 sm:flex-row sm:items-center">
             <Button
               variant="default"
               size="sm"
@@ -539,7 +514,7 @@ function SecretCard({
   const showRequired = secret.required && enabledPlugins.length > 0;
 
   return (
-    <div className={`${VAULT_PANEL_CLASSNAME} flex flex-col gap-3 p-4`}>
+    <div className="rounded-2xl border border-border/50 bg-card/92 shadow-sm flex flex-col gap-3 p-4">
       {/* Header row */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">

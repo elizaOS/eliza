@@ -1,9 +1,4 @@
-import type {
-  ActionResult,
-  IAgentRuntime,
-  Memory,
-  State,
-} from "@elizaos/core";
+import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   getTrajectoryContext,
   ModelType,
@@ -83,9 +78,7 @@ function stringifyPromptValue(value: unknown, maxLength = 2_400): string {
   }
 }
 
-function extractActionResultCandidates(
-  state: State | undefined,
-): unknown[][] {
+function extractActionResultCandidates(state: State | undefined): unknown[][] {
   if (!state || typeof state !== "object") {
     return [];
   }

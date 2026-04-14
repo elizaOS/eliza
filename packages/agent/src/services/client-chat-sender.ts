@@ -11,11 +11,10 @@
 import crypto from "node:crypto";
 import {
   createMessageMemory,
-  type Content,
   type IAgentRuntime,
   type UUID,
 } from "@elizaos/core";
-import type { ConversationMeta, ServerState } from "../api/server.js";
+import type { ConversationMeta, ServerState } from "../api/server-types.js";
 
 /**
  * Resolve the best conversation for a given roomId by scanning the
@@ -54,8 +53,7 @@ function resolveConversation(
 
   // 3. Most recently updated conversation
   const sorted = Array.from(state.conversations.values()).sort(
-    (a, b) =>
-      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
   );
   return sorted[0];
 }

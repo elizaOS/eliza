@@ -1,6 +1,6 @@
+import type { CodingAgentSession } from "@elizaos/app-core/api/client-types-cloud";
+import { useApp } from "@elizaos/app-core/state/useApp";
 import { useCallback, useState } from "react";
-import type { CodingAgentSession } from "@elizaos/app-core/api";
-import { useApp } from "@elizaos/app-core/state";
 import "@xterm/xterm/css/xterm.css";
 import { PtyTerminalPane } from "./PtyTerminalPane";
 import { PULSE_STATUSES, STATUS_DOT } from "./pty-status-dots";
@@ -15,6 +15,8 @@ export interface PtyConsoleBaseProps {
 /** Chevron-down icon for drawer close button. */
 const DrawerCloseIcon = (
   <svg
+    aria-hidden="true"
+    focusable="false"
     width="14"
     height="14"
     viewBox="0 0 24 24"
@@ -31,6 +33,8 @@ const DrawerCloseIcon = (
 /** X icon for side-panel close button. */
 const SidePanelCloseIcon = (
   <svg
+    aria-hidden="true"
+    focusable="false"
     width="14"
     height="14"
     viewBox="0 0 24 24"

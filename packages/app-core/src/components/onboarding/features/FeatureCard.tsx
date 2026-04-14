@@ -1,10 +1,4 @@
-/**
- * FeatureCard — toggle card for a feature/connector in the onboarding features step.
- *
- * Shows icon, name, description, and a status badge + toggle/connect button.
- */
-
-import { Button, Spinner } from "@elizaos/app-core";
+import { Button, Spinner } from "@elizaos/ui";
 
 export type FeatureStatus =
   | "disconnected"

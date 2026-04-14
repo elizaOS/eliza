@@ -7,17 +7,22 @@ import {
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
 import JSON5 from "json5";
-import { syncSolanaPublicKeyEnv } from "../api/wallet.js";
+import { readConfigEnvSync } from "../api/config-env.js";
+import { syncSolanaPublicKeyEnv } from "../api/wallet-env-sync.js";
 import { collectConfigEnvVars, collectConnectorEnvVars } from "./env-vars.js";
 import { resolveConfigIncludes } from "./includes.js";
-import { resolveConfigPath, resolveStateDir, resolveUserPath } from "./paths.js";
+import {
+  resolveConfigPath,
+  resolveStateDir,
+  resolveUserPath,
+} from "./paths.js";
 import type { ElizaConfig } from "./types.js";
 
 export * from "./types.js";
 
 function resolveConfigWritePath(env: NodeJS.ProcessEnv = process.env): string {
   const persistPath =
-    env.ELIZA_PERSIST_CONFIG_PATH?.trim() ??
+    env.MILADY_PERSIST_CONFIG_PATH?.trim() ??
     env.ELIZA_PERSIST_CONFIG_PATH?.trim();
   return persistPath ? resolveUserPath(persistPath) : resolveConfigPath();
 }
@@ -36,27 +41,20 @@ function getConfigEnvString(
     | (Record<string, unknown> & { vars?: Record<string, unknown> })
     | undefined;
   const nestedVars =
-    envConfig?.vars && typeof envConfig.vars === "object" && !Array.isArray(envConfig.vars)
+    envConfig?.vars &&
+    typeof envConfig.vars === "object" &&
+    !Array.isArray(envConfig.vars)
       ? (envConfig.vars as Record<string, unknown>)
       : undefined;
   const value = nestedVars?.[key] ?? envConfig?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function isPlainObject(
-  value: unknown,
-): value is Record<string, unknown> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value)
-  );
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function mergeConfigRecords(
-  base: unknown,
-  overlay: unknown,
-): unknown {
+function mergeConfigRecords(base: unknown, overlay: unknown): unknown {
   if (overlay === undefined) {
     return base;
   }
@@ -163,6 +161,13 @@ export function loadElizaConfig(): ElizaConfig {
     resolved.logging.level = "error";
   }
 
+  const persistedConfigEnv = readConfigEnvSync(resolveStateDir());
+  // SECURITY: Do NOT merge persistedConfigEnv into resolved.env — config.env
+  // is the designated escape hatch for secrets that must NOT be serialized to
+  // milady.json (e.g. MILADY_CLOUD_CLIENT_ADDRESS_KEY, WALLET_SOURCE_*).
+  // Merging would create a sensitive-data boundary violation.
+  // Instead, apply directly to process.env (below).
+
   const envVars = collectConfigEnvVars(resolved);
   const connectorEnvVars = collectConnectorEnvVars(resolved);
   // Saved config is the source of truth for settings edited in the app.
@@ -170,6 +175,7 @@ export function loadElizaConfig(): ElizaConfig {
   // arrived from .env or the parent shell.
   applyConfigEnvToProcessEnv(envVars);
   applyConfigEnvToProcessEnv(connectorEnvVars);
+  applyConfigEnvToProcessEnv(persistedConfigEnv);
 
   const discordToken =
     process.env.DISCORD_API_TOKEN?.trim() ||
@@ -190,6 +196,7 @@ export function loadElizaConfig(): ElizaConfig {
       topLevelKeys: Object.keys(resolved as object).sort(),
       cloud: settingsDebugCloudSummary(cloud),
       envVarKeysHydrated: Object.keys({
+        ...persistedConfigEnv,
         ...envVars,
         ...connectorEnvVars,
       }).sort(),

@@ -1,6 +1,10 @@
 /**
  * Pure trade safety utilities — no heavy dependencies.
  * Extracted so they can be unit-tested without pulling in the full server.
+ *
+ * @deprecated This file is maintained for backward compatibility.
+ * The canonical source has moved to `@elizaos/app-steward/api/trade-safety`.
+ * New development should target the app-steward package.
  */
 
 /** Maximum number of autonomous agent trades allowed per calendar day. */
@@ -20,9 +24,7 @@ export function getAgentAutoTradeDate(): string {
  * Record an autonomous agent trade. Returns true if allowed, false if
  * the daily limit has been reached. Resets the counter on a new calendar day.
  */
-export function recordAgentAutoTrade(
-  log?: (msg: string) => void,
-): boolean {
+export function recordAgentAutoTrade(log?: (msg: string) => void): boolean {
   const today = getAgentAutoTradeDate();
   if (agentAutoDailyTrades.resetDate !== today) {
     agentAutoDailyTrades.count = 0;

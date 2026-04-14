@@ -15,19 +15,17 @@
  */
 
 import {
+  hasConfiguredCanonicalOwner,
   type IAgentRuntime,
   logger,
   type Memory,
+  normalizeRole,
   type Provider,
   type ProviderResult,
-  type State,
-} from "@elizaos/core";
-import {
-  hasConfiguredCanonicalOwner,
-  normalizeRole,
   type RoleGrantSource,
   type RoleName,
   resolveCanonicalOwnerId,
+  type State,
 } from "@elizaos/core";
 
 type RolesWorldMetadata = {

@@ -51,16 +51,16 @@ export interface AuthVisibility {
 
 /** Logical combinators for complex visibility. */
 export interface AndVisibility {
-  and: VisibilityCondition[];
+  and: UiSpecVisibilityCondition[];
 }
 export interface OrVisibility {
-  or: VisibilityCondition[];
+  or: UiSpecVisibilityCondition[];
 }
 export interface NotVisibility {
-  not: VisibilityCondition;
+  not: UiSpecVisibilityCondition;
 }
 
-export type VisibilityCondition =
+export type UiSpecVisibilityCondition =
   | PathVisibility
   | AuthVisibility
   | AndVisibility
@@ -80,15 +80,15 @@ export type BuiltinValidator =
   | "max";
 
 /** A single validation check on a field. */
-export interface ValidationCheck {
+export interface UiSpecValidationCheck {
   fn: string;
   args?: Record<string, unknown>;
   message: string;
 }
 
 /** Validation configuration for a form element. */
-export interface ValidationConfig {
-  checks: ValidationCheck[];
+export interface UiSpecValidationConfig {
+  checks: UiSpecValidationCheck[];
   validateOn?: "change" | "blur" | "submit";
 }
 
@@ -191,8 +191,8 @@ export interface UiElement {
   children: string[];
   on?: UiEventBindings;
   repeat?: RepeatConfig;
-  visible?: VisibilityCondition;
-  validation?: ValidationConfig;
+  visible?: UiSpecVisibilityCondition;
+  validation?: UiSpecValidationConfig;
 }
 
 // ── Full spec ───────────────────────────────────────────────────────

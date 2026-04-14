@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
@@ -64,44 +64,15 @@ type AppPluginModule = {
   [key: string]: unknown;
 };
 
-const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
-
-async function importBuiltIn2004ScapeRouteModule(): Promise<AppRouteModule> {
-  const candidatePaths = [
-    path.join(MODULE_DIR, "built-in-app-routes", "2004scape.js"),
-    path.join(MODULE_DIR, "built-in-app-routes", "2004scape.ts"),
-  ];
-  const module =
-    await importFirstExistingModule<AppRouteModule>(candidatePaths);
-  if (!module) {
-    throw new Error("2004scape built-in route module is unavailable");
-  }
-  return module;
-}
-
-async function importBuiltInHyperscapeRouteModule(): Promise<AppRouteModule> {
-  const candidatePaths = [
-    path.join(MODULE_DIR, "built-in-app-routes", "hyperscape.js"),
-    path.join(MODULE_DIR, "built-in-app-routes", "hyperscape.ts"),
-  ];
-  const module =
-    await importFirstExistingModule<AppRouteModule>(candidatePaths);
-  if (!module) {
-    throw new Error("Hyperscape built-in route module is unavailable");
-  }
-  return module;
-}
-
+// Built-in app route modules for 2004scape and hyperscape have been
+// extracted to their own app packages (@elizaos/app-2004scape/routes
+// and @elizaos/app-hyperscape/routes). The workspace-local lookup in
+// importLocalAppRouteModule resolves them automatically via
+// src/routes.ts in the respective app directories.
 const BUILT_IN_APP_ROUTE_MODULE_IMPORTERS = new Map<
   string,
   () => Promise<AppRouteModule>
->([
-  ["@elizaos/app-2004scape", importBuiltIn2004ScapeRouteModule],
-  ["2004scape", importBuiltIn2004ScapeRouteModule],
-  ["@hyperscape/plugin-hyperscape", importBuiltInHyperscapeRouteModule],
-  ["@elizaos/app-hyperscape", importBuiltInHyperscapeRouteModule],
-  ["hyperscape", importBuiltInHyperscapeRouteModule],
-]);
+>();
 
 function uniquePaths(paths: string[]): string[] {
   const seen = new Set<string>();
@@ -150,6 +121,7 @@ async function resolveWorkspacePackageDir(
     candidateDirs.push(
       path.join(workspaceRoot, "plugins", dirName),
       path.join(workspaceRoot, "packages", dirName),
+      path.join(workspaceRoot, "apps", dirName),
     );
 
     let rootEntries: fs.Dirent[] = [];
@@ -168,6 +140,7 @@ async function resolveWorkspacePackageDir(
       candidateDirs.push(
         path.join(workspaceRoot, entry.name, "plugins", dirName),
         path.join(workspaceRoot, entry.name, "packages", dirName),
+        path.join(workspaceRoot, entry.name, "apps", dirName),
       );
     }
   }

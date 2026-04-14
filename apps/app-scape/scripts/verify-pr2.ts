@@ -1,7 +1,7 @@
 /**
  * PR 2 runtime smoke test for `@elizaos/app-scape`.
  *
- * Things the milady host would do when loading the plugin, short of
+ * Things the eliza host would do when loading the plugin, short of
  * actually starting the full runtime:
  *
  *   1. Import the plugin's default export and check the shape matches
@@ -12,17 +12,17 @@
  *      verify the response is an HTML page containing an iframe that
  *      points at the expected xRSPS client URL.
  *   4. Verify `scape` resolves through
- *      `MILADY_CURATED_APP_DEFINITIONS` helper lookups — the same
+ *      `ELIZA_CURATED_APP_DEFINITIONS` helper lookups — the same
  *      lookup the app manager does when surfacing the apps grid.
  *
  * Run: bun eliza/apps/app-scape/scripts/verify-pr2.ts
  */
 
 import {
-    MILADY_CURATED_APP_DEFINITIONS,
-    getMiladyCuratedAppDefinition,
-    isMiladyCuratedAppName,
-    normalizeMiladyCuratedAppName,
+    ELIZA_CURATED_APP_DEFINITIONS,
+    getElizaCuratedAppDefinition,
+    isElizaCuratedAppName,
+    normalizeElizaCuratedAppName,
 } from "@elizaos/shared/contracts/apps";
 import appScapePlugin, {
     createAppScapePlugin,
@@ -227,35 +227,35 @@ async function main(): Promise<void> {
 
     // 7. Curated registry integration
     console.log("\n[7] curated registry integration");
-    const scapeEntry = MILADY_CURATED_APP_DEFINITIONS.find(
+    const scapeEntry = ELIZA_CURATED_APP_DEFINITIONS.find(
         (def) => def.canonicalName === "@elizaos/app-scape",
     );
-    assertTrue("scape in MILADY_CURATED_APP_DEFINITIONS", scapeEntry != null);
+    assertTrue("scape in ELIZA_CURATED_APP_DEFINITIONS", scapeEntry != null);
     assertTrue(
         "scape slug = 'scape'",
         scapeEntry?.slug === "scape",
     );
     assertTrue(
-        "isMiladyCuratedAppName('@elizaos/app-scape')",
-        isMiladyCuratedAppName("@elizaos/app-scape"),
+        "isElizaCuratedAppName('@elizaos/app-scape')",
+        isElizaCuratedAppName("@elizaos/app-scape"),
     );
     assertTrue(
-        "isMiladyCuratedAppName('scape') via slug",
-        isMiladyCuratedAppName("scape"),
+        "isElizaCuratedAppName('scape') via slug",
+        isElizaCuratedAppName("scape"),
     );
     assertTrue(
-        "normalizeMiladyCuratedAppName('scape') → @elizaos/app-scape",
-        normalizeMiladyCuratedAppName("scape") === "@elizaos/app-scape",
+        "normalizeElizaCuratedAppName('scape') → @elizaos/app-scape",
+        normalizeElizaCuratedAppName("scape") === "@elizaos/app-scape",
     );
-    const byDef = getMiladyCuratedAppDefinition("scape");
-    assertTrue("getMiladyCuratedAppDefinition('scape')", byDef != null);
+    const byDef = getElizaCuratedAppDefinition("scape");
+    assertTrue("getElizaCuratedAppDefinition('scape')", byDef != null);
     // The curated list grows over time as new apps land on develop. What
     // this PR actually needs to prove is that `scape` is present — not
     // that the list is exactly a particular length. Hardcoding a count
     // here gave a false negative every time an unrelated app was added.
     assertTrue(
         "curated list contains scape",
-        MILADY_CURATED_APP_DEFINITIONS.some((d) => d.slug === "scape"),
+        ELIZA_CURATED_APP_DEFINITIONS.some((d) => d.slug === "scape"),
     );
 
     if (process.exitCode === 1) {

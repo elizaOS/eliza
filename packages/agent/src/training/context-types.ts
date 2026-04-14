@@ -1,13 +1,2 @@
-export const AGENT_CONTEXTS = [
-  "general",
-  "wallet",
-  "knowledge",
-  "browser",
-  "code",
-  "media",
-  "automation",
-  "social",
-  "system",
-] as const;
-
-export type AgentContext = (typeof AGENT_CONTEXTS)[number];
+// Re-export from @elizaos/app-training — this file is a migration stub.
+export * from "@elizaos/app-training/core/context-types";

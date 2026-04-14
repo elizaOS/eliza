@@ -7,17 +7,17 @@ import {
 	sendMessageAction,
 	updateContactAction,
 	updateEntityAction,
-} from "../advanced-capabilities/actions/index";
+} from "../features/advanced-capabilities/actions/index";
 import {
 	reflectionEvaluator,
 	relationshipExtractionEvaluator,
-} from "../advanced-capabilities/evaluators/index";
+} from "../features/advanced-capabilities/evaluators/index";
 import {
 	contactsProvider,
 	factsProvider,
 	followUpsProvider,
 	relationshipsProvider,
-} from "../advanced-capabilities/providers/index";
+} from "../features/advanced-capabilities/providers/index";
 import {
 	createKnowledgePlugin,
 	KnowledgeService,

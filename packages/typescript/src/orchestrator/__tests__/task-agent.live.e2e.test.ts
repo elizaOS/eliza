@@ -2,49 +2,35 @@
  * Opt-in live smoke tests for real Claude Code and Codex sessions.
  *
  * These are skipped by default. Run with:
- *   ORCHESTRATOR_LIVE=1 bunx vitest run eliza/packages/typescript/src/orchestrator/__tests__/task-agent.live.e2e.test.ts
+ *   ORCHESTRATOR_LIVE=1 bun test src/__tests__/task-agent-live.e2e.test.ts
  */
 
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, it } from "vitest";
 
 const RUN_LIVE = process.env.ORCHESTRATOR_LIVE === "1";
 const liveDescribe = RUN_LIVE ? describe : describe.skip;
-
-/** Milady monorepo root (…/eliza/packages/typescript/src/orchestrator/__tests__ → six levels up). */
-const repoRoot = path.resolve(
-  fileURLToPath(new URL("../../../../../../", import.meta.url)),
-);
-const runNodeTsx = path.join(
-  repoRoot,
-  "eliza/packages/app-core/scripts/run-node-tsx.mjs",
-);
-const liveSmokeScript = path.join(
-  repoRoot,
-  "eliza/packages/typescript/test/live/task-agent-live-smoke.ts",
-);
 
 async function runLiveSmokeScript(
   framework: "claude" | "codex",
   mode: "sequential" | "web",
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
+    const bunBinary = process.execPath;
     const child = spawn(
-      process.execPath,
+      bunBinary,
       [
-        runNodeTsx,
-        liveSmokeScript,
+        "scripts/run-node-tsx.mjs",
+        "test/scripts/task-agent-live-smoke.ts",
         "--framework",
         framework,
         "--mode",
         mode,
       ],
       {
-        cwd: repoRoot,
-        env: { ...process.env, ORCHESTRATOR_LIVE: "1", PWD: repoRoot },
+        cwd: process.cwd(),
+        env: { ...process.env, ORCHESTRATOR_LIVE: "1", PWD: process.cwd() },
         stdio: "inherit",
       },
     );
@@ -52,11 +38,7 @@ async function runLiveSmokeScript(
     child.on("error", reject);
     child.on("exit", (code, signal) => {
       if (signal) {
-        reject(
-          new Error(
-            `${framework} ${mode} live smoke exited via signal ${signal}`,
-          ),
-        );
+        reject(new Error(`${framework} ${mode} live smoke exited via signal ${signal}`));
         return;
       }
       try {

@@ -5,8 +5,10 @@
 
 import type { DatabaseProviderType } from "@elizaos/agent/contracts/config";
 
-export type { StreamEventType } from "@elizaos/agent/api/server";
-export type { TrajectoryExportFormat } from "@elizaos/agent/api/trajectory-routes";
+// Use server-types / types only — do not re-export from api/server or
+// api/trajectory-routes (those modules pull the full API + app-training into Vite).
+export type { StreamEventType } from "@elizaos/agent/api/server-types";
+export type { TrajectoryExportFormat } from "@elizaos/agent/types/trajectory";
 export type {
   TriggerLastStatus,
   TriggerType,
@@ -320,7 +322,7 @@ export interface SandboxWindowInfo {
 }
 
 export interface StreamEventEnvelope {
-  type: import("@elizaos/agent/api/server").StreamEventType;
+  type: import("@elizaos/agent/api/server-types").StreamEventType;
   version: 1;
   eventId: string;
   ts: number;

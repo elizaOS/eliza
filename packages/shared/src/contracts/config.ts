@@ -6,7 +6,7 @@ export type DatabaseProviderType = "pglite" | "postgres";
 
 export type MediaMode = "cloud" | "own-key";
 
-export type ImageProvider = "cloud" | "fal" | "openai" | "google" | "xai";
+export type ImageProvider = "cloud" | "fal" | "openai" | "google" | "xai" | (string & {});
 
 export type ImageFalConfig = {
   apiKey?: string;
@@ -43,7 +43,7 @@ export type ImageConfig = {
   xai?: ImageXaiConfig;
 };
 
-export type VideoProvider = "cloud" | "fal" | "openai" | "google";
+export type VideoProvider = "cloud" | "fal" | "openai" | "google" | (string & {});
 
 export type VideoFalConfig = {
   apiKey?: string;
@@ -71,7 +71,7 @@ export type VideoConfig = {
   google?: VideoGoogleConfig;
 };
 
-export type AudioGenProvider = "cloud" | "suno" | "elevenlabs";
+export type AudioGenProvider = "cloud" | "suno" | "elevenlabs" | (string & {});
 
 export type AudioSunoConfig = {
   apiKey?: string;
@@ -98,7 +98,8 @@ export type VisionProvider =
   | "google"
   | "anthropic"
   | "xai"
-  | "ollama";
+  | "ollama"
+  | (string & {});
 
 export type VisionOpenaiConfig = {
   apiKey?: string;

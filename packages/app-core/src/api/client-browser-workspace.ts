@@ -22,9 +22,7 @@ declare module "./client-base" {
   }
 }
 
-ElizaClient.prototype.getBrowserWorkspace = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.getBrowserWorkspace = async function (this: ElizaClient) {
   return this.fetch("/api/browser-workspace");
 };
 

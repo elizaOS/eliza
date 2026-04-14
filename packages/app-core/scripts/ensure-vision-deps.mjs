@@ -31,11 +31,11 @@ function getCliName() {
         let name = pkg.name;
         if (name.startsWith("@")) name = name.split("/")[1];
         if (
-          name === "miladyai" ||
-          name === "milady-ai" ||
-          name.includes("milady")
+          name === "elizaos" ||
+          name === "elizaos" ||
+          name.includes("eliza")
         )
-          return "milady";
+          return "eliza";
         if (name === "elizaos" || name.includes("eliza")) return "eliza";
         return name;
       }
@@ -47,9 +47,9 @@ function getCliName() {
   // Fallbacks based on directory structure
   if (
     process.cwd().includes("eliza-workspace") ||
-    process.cwd().includes("milady")
+    process.cwd().includes("eliza")
   ) {
-    return "milady";
+    return "eliza";
   }
 
   return "eliza";
@@ -177,7 +177,7 @@ function installWindows() {
 
 function main() {
   const disableFlag =
-    process.env.MILADY_NO_VISION_DEPS === "1" ||
+    process.env.ELIZA_NO_VISION_DEPS === "1" ||
     process.env.ELIZA_NO_VISION_DEPS === "1";
   if (disableFlag) {
     return;

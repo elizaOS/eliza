@@ -12,11 +12,11 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../../../test/helpers/real-runtime";
-import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
 import {
   buildExtractionPrompt,
   extractTaskCreatePlanWithLlm,
@@ -121,8 +121,7 @@ describeWithLLM("extractTaskCreatePlanWithLlm (real LLM)", () => {
   it("produces a create plan for a one-off timed reminder", async () => {
     const result = await extractTaskCreatePlanWithLlm({
       runtime,
-      intent:
-        "set a reminder for april 17 at 8pm mountain time to hug my wife",
+      intent: "set a reminder for april 17 at 8pm mountain time to hug my wife",
       state: undefined,
     });
 

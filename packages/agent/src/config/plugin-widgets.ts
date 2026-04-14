@@ -57,17 +57,6 @@ export const PLUGIN_WIDGET_MAP: Record<
       defaultEnabled: true,
     },
   ],
-  todo: [
-    {
-      id: "todo.items",
-      pluginId: "todo",
-      slot: "chat-sidebar",
-      label: "Tasks",
-      icon: "ListTodo",
-      order: 100,
-      defaultEnabled: true,
-    },
-  ],
   "agent-orchestrator": [
     {
       id: "agent-orchestrator.apps",

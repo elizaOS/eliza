@@ -57,6 +57,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+          submodules: recursive
 
       - name: Setup Git
         run: |

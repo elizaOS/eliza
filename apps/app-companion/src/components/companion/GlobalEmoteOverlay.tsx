@@ -1,9 +1,7 @@
+import type { AppEmoteEventDetail } from "@elizaos/app-core/events";
+import { APP_EMOTE_EVENT } from "@elizaos/app-core/events";
+import { Z_GLOBAL_EMOTE } from "@elizaos/ui/lib/floating-layers";
 import { useEffect, useRef, useState } from "react";
-import { Z_GLOBAL_EMOTE } from "@elizaos/app-core";
-import {
-  APP_EMOTE_EVENT,
-  type AppEmoteEventDetail,
-} from "@elizaos/app-core/events";
 
 const OVERLAY_LIFETIME_MS = 2400;
 

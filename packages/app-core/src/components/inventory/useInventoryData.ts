@@ -1,19 +1,11 @@
-/**
- * Custom hook: derives token rows, sorted rows, NFT items,
- * chain errors, and chain-specific computed values from app state.
- *
- * Chain-aware: uses the chainConfig registry so that filtering,
- * fallback rows, and derived values work for any supported chain.
- */
-
 import type {
   EvmChainBalance,
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
   WalletNftsResponse,
-} from "@elizaos/app-core/api";
-import type { InventoryChainFilters } from "@elizaos/app-core/state";
+} from "@elizaos/shared/contracts/wallet";
+import type { InventoryChainFilters } from "../../state/types";
 import { useMemo } from "react";
 import {
   CHAIN_CONFIGS,
