@@ -27,10 +27,12 @@
   },
   "dependencies": {
     "@elizaos/app-core": "workspace:*",
-    "@elizaos/core": "workspace:*",
     "@elizaos/agent": "workspace:*",
+    "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "drizzle-orm": "0.45.2"
+    "drizzle-orm": "0.45.2",
+    "lucide-react": "^0.575.0",
+    "sharp": "^0.34.5"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

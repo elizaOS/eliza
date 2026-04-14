@@ -20,8 +20,11 @@
     "typeRoots": [
       "../app-core/node_modules/@types",
       "../../node_modules/@types",
+      "../../node_modules/.bun/node_modules/@types",
       "../../../node_modules/@types",
       "../../../node_modules/.bun/node_modules/@types",
+      "../../node_modules",
+      "../../node_modules/.bun/node_modules",
       "../../../node_modules",
       "../../../node_modules/.bun/node_modules"
     ],
