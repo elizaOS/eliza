@@ -6,7 +6,7 @@
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["node", "bun"],
+    "types": ["node", "bun-types"],
     "allowImportingTsExtensions": true,
     "declaration": false,
     "noEmit": true,
