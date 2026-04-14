@@ -38,13 +38,17 @@ function copyDir(src: string, dest: string): void {
 
 function loadTemplateDefinitions() {
   const templates = [];
-  for (const entry of fs.readdirSync(TEMPLATE_SOURCE_DIR, { withFileTypes: true })) {
+  for (const entry of fs.readdirSync(TEMPLATE_SOURCE_DIR, {
+    withFileTypes: true,
+  })) {
     if (!entry.isDirectory()) continue;
-    const metadataPath = path.join(TEMPLATE_SOURCE_DIR, entry.name, "template.json");
-    if (!fs.existsSync(metadataPath)) continue;
-    templates.push(
-      JSON.parse(fs.readFileSync(metadataPath, "utf-8")),
+    const metadataPath = path.join(
+      TEMPLATE_SOURCE_DIR,
+      entry.name,
+      "template.json",
     );
+    if (!fs.existsSync(metadataPath)) continue;
+    templates.push(JSON.parse(fs.readFileSync(metadataPath, "utf-8")));
   }
   templates.sort((a, b) => a.name.localeCompare(b.name));
   return templates;

@@ -404,11 +404,15 @@ export function getSharedSourceRoot(repoRoot: string): string | undefined {
 }
 
 export function getUiSourceRoot(repoRoot: string): string | undefined {
-  const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
-  if (!appCoreSourceRoot) {
+  const packageRoot = getInstalledPackageRoot("@elizaos/ui", repoRoot);
+  if (!packageRoot) {
     return undefined;
   }
 
-  const sourceRoot = path.join(appCoreSourceRoot, "ui");
-  return existsSync(path.join(sourceRoot, "index.ts")) ? sourceRoot : undefined;
+  if (path.basename(packageRoot) === "src") {
+    return packageRoot;
+  }
+
+  const sourceRoot = path.join(packageRoot, "src");
+  return existsSync(path.join(sourceRoot, "index.ts")) ? sourceRoot : packageRoot;
 }
