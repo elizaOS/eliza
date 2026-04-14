@@ -7,11 +7,11 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "./dist",
-    "rootDir": "../..",
+    "rootDir": "./typescript",
     "types": ["node", "bun"],
-    "noEmit": true,
+    "noEmit": false,
     "declaration": true,
-    "allowImportingTsExtensions": true,
+    "allowImportingTsExtensions": false,
     "composite": false,
     "baseUrl": "../..",
     "paths": {
@@ -19,5 +19,10 @@
     }
   },
   "include": ["typescript/**/*.ts"],
-  "exclude": ["typescript/**/*.test.ts", "node_modules", "dist"]
+  "exclude": [
+    "typescript/**/*.test.ts",
+    "typescript/**/__tests__/**",
+    "node_modules",
+    "dist"
+  ]
 }
