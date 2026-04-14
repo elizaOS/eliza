@@ -95,7 +95,10 @@ const TRADE_STATUS_SET = new Set<BscTradeTxStatus>([
   "not_found",
 ]);
 
-const ALLOWED_STATUS_TRANSITIONS: Record<BscTradeTxStatus, Set<BscTradeTxStatus>> = {
+const ALLOWED_STATUS_TRANSITIONS: Record<
+  BscTradeTxStatus,
+  Set<BscTradeTxStatus>
+> = {
   pending: new Set(["pending", "success", "reverted", "not_found"]),
   not_found: new Set(["pending", "success", "reverted", "not_found"]),
   success: new Set(["success"]),

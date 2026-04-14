@@ -3,7 +3,8 @@ import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 // Match any speaker prefix pattern: "word:" or "word word:" at the start of a line.
 // This is language-agnostic — strips any short prefix label followed by a colon,
 // rather than hardcoding specific English role names.
-const STATE_SPEAKER_PREFIX_RE = /^[a-zA-Z\u00C0-\u024F\u0400-\u04FF\u3000-\u9FFF]{1,20}\s*:\s*/;
+const STATE_SPEAKER_PREFIX_RE =
+  /^[a-zA-Z\u00C0-\u024F\u0400-\u04FF\u3000-\u9FFF]{1,20}\s*:\s*/;
 
 function normalizeConversationLine(value: string): string {
   return value.replace(STATE_SPEAKER_PREFIX_RE, "").trim();
@@ -105,9 +106,7 @@ export async function recentConversationTexts(args: {
           )
           .filter((text) => text.length > 0)
       : [];
-    return dedupePreservingOrder(
-      [...memoryTexts, ...stateTexts].slice(-limit),
-    );
+    return dedupePreservingOrder([...memoryTexts, ...stateTexts].slice(-limit));
   } catch {
     return stateTexts;
   }

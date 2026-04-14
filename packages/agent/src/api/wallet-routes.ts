@@ -22,13 +22,13 @@ import {
   type WalletChain,
   type WalletConfigStatus,
 } from "./wallet.js";
+import { resolveWalletCapabilityStatus } from "./wallet-capability.js";
 import {
   applyWalletRpcConfigUpdate,
   getStoredWalletRpcSelections,
   resolveWalletNetworkMode,
   resolveWalletRpcReadiness,
 } from "./wallet-rpc.js";
-import { resolveWalletCapabilityStatus } from "./wallet-capability.js";
 
 interface WalletExportRequestBody {
   confirm?: boolean;

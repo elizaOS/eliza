@@ -18,8 +18,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { resolveCanonicalOwnerIdForMessage } from "@elizaos/core";
+import { logger, resolveCanonicalOwnerIdForMessage } from "@elizaos/core";
 import { hasAdminAccess } from "../security/access.js";
 
 // ---------------------------------------------------------------------------

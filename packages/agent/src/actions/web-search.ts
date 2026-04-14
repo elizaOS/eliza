@@ -14,8 +14,8 @@
 
 import type { Action, HandlerOptions, Memory, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasContextSignalSyncForKey, messageText } from "./context-signal.js";
 import { hasRoleAccess } from "../security/access.js";
+import { hasContextSignalSyncForKey, messageText } from "./context-signal.js";
 
 // ---------------------------------------------------------------------------
 // Brave Search API types
@@ -116,11 +116,7 @@ function formatResults(results: BraveSearchResult[], query: string): string {
     return `${i + 1}. **${r.title}**${age}\n   ${r.url}\n   ${r.description}`;
   });
 
-  return [
-    `Web search results for "${query}":`,
-    "",
-    ...lines,
-  ].join("\n");
+  return [`Web search results for "${query}":`, "", ...lines].join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -171,7 +167,7 @@ export const webSearchAction: Action = {
       const text =
         typeof message?.content === "string"
           ? message.content
-          : (message?.content as { text?: string })?.text ?? "";
+          : ((message?.content as { text?: string })?.text ?? "");
       // Strip common prefixes
       query = text
         .replace(

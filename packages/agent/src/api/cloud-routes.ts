@@ -6,12 +6,12 @@ import {
 } from "@elizaos/shared/contracts/onboarding";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
-import { applyCanonicalOnboardingConfig } from "./provider-switch-config.js";
 import {
   readJsonBody as parseJsonBody,
   sendJson,
   sendJsonError,
 } from "./http-helpers.js";
+import { applyCanonicalOnboardingConfig } from "./provider-switch-config.js";
 
 export interface CloudConfigLike {
   cloud?: {
@@ -314,7 +314,11 @@ export async function handleCloudRoute(
       };
     } catch (parseErr) {
       loginPollSpan.failure({ error: parseErr, statusCode: pollRes.status });
-      sendJson(res, { status: "error", error: "Eliza Cloud returned invalid JSON" }, 502);
+      sendJson(
+        res,
+        { status: "error", error: "Eliza Cloud returned invalid JSON" },
+        502,
+      );
       return true;
     }
     loginPollSpan.success({ statusCode: pollRes.status });
@@ -342,12 +346,18 @@ export async function handleCloudRoute(
         if (state.saveConfig) {
           state.saveConfig(state.config);
         } else {
-          logger.warn("[cloud-login] saveConfig not available — config not persisted");
+          logger.warn(
+            "[cloud-login] saveConfig not available — config not persisted",
+          );
         }
         logger.info("[cloud-login] API key saved to config file");
       } catch (saveErr) {
         logger.error(`[cloud-login] Failed to save config: ${String(saveErr)}`);
-        sendJson(res, { status: "error", error: "Authenticated but failed to save config" }, 500);
+        sendJson(
+          res,
+          { status: "error", error: "Authenticated but failed to save config" },
+          500,
+        );
         return true;
       }
 
@@ -432,7 +442,11 @@ export async function handleCloudRoute(
       });
     } catch (err) {
       logger.error(`[cloud] createAgent failed: ${String(err)}`);
-      sendJson(res, { ok: false, error: `Cloud createAgent failed: ${String(err)}` }, 502);
+      sendJson(
+        res,
+        { ok: false, error: `Cloud createAgent failed: ${String(err)}` },
+        502,
+      );
       return true;
     }
     sendJson(res, { ok: true, agent }, 201);
@@ -454,7 +468,11 @@ export async function handleCloudRoute(
       proxy = await state.cloudManager.connect(agentId);
     } catch (err) {
       logger.error(`[cloud] provision/connect failed: ${String(err)}`);
-      sendJson(res, { ok: false, error: `Cloud provision failed: ${String(err)}` }, 502);
+      sendJson(
+        res,
+        { ok: false, error: `Cloud provision failed: ${String(err)}` },
+        502,
+      );
       return true;
     }
     sendJson(res, {
@@ -488,7 +506,11 @@ export async function handleCloudRoute(
       await client.deleteAgent(agentId);
     } catch (err) {
       logger.error(`[cloud] shutdown/deleteAgent failed: ${String(err)}`);
-      sendJson(res, { ok: false, error: `Cloud shutdown failed: ${String(err)}` }, 502);
+      sendJson(
+        res,
+        { ok: false, error: `Cloud shutdown failed: ${String(err)}` },
+        502,
+      );
       return true;
     }
     sendJson(res, { ok: true, agentId, status: "stopped" });
@@ -513,7 +535,11 @@ export async function handleCloudRoute(
       proxy = await state.cloudManager.connect(agentId);
     } catch (err) {
       logger.error(`[cloud] connect failed: ${String(err)}`);
-      sendJson(res, { ok: false, error: `Cloud connect failed: ${String(err)}` }, 502);
+      sendJson(
+        res,
+        { ok: false, error: `Cloud connect failed: ${String(err)}` },
+        502,
+      );
       return true;
     }
     sendJson(res, {
@@ -550,11 +576,19 @@ export async function handleCloudRoute(
       if (state.saveConfig) {
         state.saveConfig(state.config);
       } else {
-        logger.warn("[cloud-disconnect] saveConfig not available — config not persisted");
+        logger.warn(
+          "[cloud-disconnect] saveConfig not available — config not persisted",
+        );
       }
     } catch (saveErr) {
-      logger.error(`[cloud-disconnect] Failed to save config: ${String(saveErr)}`);
-      sendJson(res, { ok: false, error: "Disconnected but failed to save config" }, 500);
+      logger.error(
+        `[cloud-disconnect] Failed to save config: ${String(saveErr)}`,
+      );
+      sendJson(
+        res,
+        { ok: false, error: "Disconnected but failed to save config" },
+        500,
+      );
       return true;
     }
 

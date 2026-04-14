@@ -8,8 +8,11 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { logger, stringToUuid } from "@elizaos/core";
-import { resolveCanonicalOwnerIdForMessage } from "@elizaos/core";
+import {
+  logger,
+  resolveCanonicalOwnerIdForMessage,
+  stringToUuid,
+} from "@elizaos/core";
 import { hasAdminAccess } from "../security/access.js";
 import { hasContextSignalSyncForKey, messageText } from "./context-signal.js";
 
@@ -152,8 +155,7 @@ export const sendMessageAction: Action = {
   handler: async (runtime, message, _state, options) => {
     if (!(await hasAdminAccess(runtime, message))) {
       return {
-        text:
-          "Permission denied: only the owner or admins may send routed messages.",
+        text: "Permission denied: only the owner or admins may send routed messages.",
         success: false,
         values: { success: false, error: "PERMISSION_DENIED" },
         data: { actionName: "SEND_MESSAGE" },

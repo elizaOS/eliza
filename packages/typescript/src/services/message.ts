@@ -16,7 +16,10 @@ import {
 	shouldRespondTemplate,
 } from "../prompts";
 import { isExplicitSelfModificationRequest } from "../should-respond";
-import { runWithStreamingContext } from "../streaming-context";
+import {
+	getModelStreamChunkDeliveryDepth,
+	runWithStreamingContext,
+} from "../streaming-context";
 import {
 	runWithTrajectoryContext,
 	setTrajectoryPurpose,
@@ -45,6 +48,13 @@ import type {
 	TextToSpeechParams,
 } from "../types/model";
 import { ModelType } from "../types/model";
+import {
+	incomingPipelineHookContext,
+	modelStreamChunkPipelineHookContext,
+	outgoingPipelineHookContext,
+	parallelWithShouldRespondPipelineHookContext,
+	preShouldRespondPipelineHookContext,
+} from "../types/pipeline-hooks";
 import type { Content, Media, MentionContext, UUID } from "../types/primitives";
 import { asUUID, ChannelType, ContentType } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
@@ -1191,7 +1201,12 @@ export class DefaultMessageService implements IMessageService {
 
 		return await runWithTrajectoryContext<MessageProcessingResult>(
 			typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== ""
-				? { trajectoryStepId: trajectoryStepId.trim() }
+				? {
+						trajectoryStepId: trajectoryStepId.trim(),
+						runId: runtime.getCurrentRunId?.(),
+						roomId: message.roomId,
+						messageId: message.id,
+					}
 				: undefined,
 			async (): Promise<MessageProcessingResult> => {
 				// Determine shouldRespondModel from options or runtime settings
@@ -1201,6 +1216,9 @@ export class DefaultMessageService implements IMessageService {
 				const resolvedShouldRespondModel = normalizeShouldRespondModelType(
 					options?.shouldRespondModel ?? shouldRespondModelSetting,
 				);
+
+				// Single ID used for tracking, streaming, and the final message (before opts / chunk wrapper).
+				const responseId = asUUID(v4());
 
 				// WHY voice detection wraps onStreamChunk here instead of using a
 				// separate ResponseStreamExtractor + AsyncLocalStorage context:
@@ -1236,6 +1254,23 @@ export class DefaultMessageService implements IMessageService {
 								} else {
 									streamTextFallback += chunk;
 									streamText = streamTextFallback;
+								}
+
+								// Skip when this callback is invoked from `useModel`'s stream loop:
+								// `source: "use_model"` already ran for the same raw chunk (Node ALS).
+								if (getModelStreamChunkDeliveryDepth() === 0) {
+									await runtime.applyPipelineHooks(
+										"model_stream_chunk",
+										modelStreamChunkPipelineHookContext({
+											source: "message_service",
+											chunk,
+											messageId,
+											roomId: message.roomId,
+											runId: runtime.getCurrentRunId(),
+											responseId,
+											accumulated,
+										}),
+									);
 								}
 
 								// Only run first-sentence TTS detection when `accumulated` is present.
@@ -1432,8 +1467,6 @@ export class DefaultMessageService implements IMessageService {
 
 				// Set up timeout monitoring
 				let timeoutId: NodeJS.Timeout | undefined;
-				// Single ID used for tracking, streaming, and the final message
-				const responseId = asUUID(v4());
 
 				try {
 					runtime.logger.info(
@@ -1863,19 +1896,11 @@ export class DefaultMessageService implements IMessageService {
 			};
 		}
 
-		// Compose initial state
-		let state = await runtime.composeState(
-			message,
-			["ENTITIES", "CHARACTER", "RECENT_MESSAGES", "ACTIONS"],
-			true,
-			false,
-		);
-		state = attachAvailableContexts(state, runtime);
-
-		// Get room and mention context
+		// Room context for shouldRespond (fetch before compose so providers see
+		// post-attachment and post-incoming-hook message state).
 		const room = await runtime.getRoom(message.roomId);
 
-		// Process attachments before deciding to respond
+		// Process attachments before state composition / incoming hooks
 		if (message.content.attachments && message.content.attachments.length > 0) {
 			message.content.attachments = await this.processAttachments(
 				runtime,
@@ -1894,15 +1919,45 @@ export class DefaultMessageService implements IMessageService {
 			}
 		}
 
+		const preIncomingHookText =
+			typeof message.content?.text === "string" ? message.content.text : "";
+
+		await runtime.applyPipelineHooks(
+			"incoming_before_compose",
+			incomingPipelineHookContext(message, {
+				roomId: message.roomId,
+				responseId,
+				runId,
+			}),
+		);
+
+		const postIncomingHookText =
+			typeof message.content?.text === "string" ? message.content.text : "";
+
+		if (message.id && postIncomingHookText !== preIncomingHookText) {
+			await runtime.updateMemory({
+				id: message.id,
+				content: message.content,
+			});
+			await runtime.queueEmbeddingGeneration(
+				{ ...message, id: message.id },
+				"normal",
+			);
+		}
+
 		const promptAttachments = resolvePromptAttachments(
 			message.content.attachments,
 		);
 
-		let shouldRespondToMessage = true;
-		let terminalDecision: "IGNORE" | "STOP" | null = null;
-		let routedDecision: ContextRoutingDecision | null = null;
-		let dualPressureLog: DualPressureScores | null = null;
-		let shouldRespondClassifierAction: string | null = null;
+		// Compose initial state (after incoming hooks so providers/actions text matches this turn)
+		let state = await runtime.composeState(
+			message,
+			["ENTITIES", "CHARACTER", "RECENT_MESSAGES", "ACTIONS"],
+			true,
+			false,
+		);
+		state = attachAvailableContexts(state, runtime);
+
 		const metadata =
 			typeof message.content.metadata === "object" &&
 			message.content.metadata !== null
@@ -1912,203 +1967,104 @@ export class DefaultMessageService implements IMessageService {
 		const autonomyMode =
 			typeof metadata?.autonomyMode === "string" ? metadata.autonomyMode : null;
 
+		await runtime.applyPipelineHooks(
+			"pre_should_respond",
+			preShouldRespondPipelineHookContext(message, {
+				roomId: message.roomId,
+				responseId,
+				runId,
+				state,
+				isAutonomous,
+			}),
+		);
+
+		let shouldRespondToMessage = true;
+		let terminalDecision: "IGNORE" | "STOP" | null = null;
+		let routedDecision: ContextRoutingDecision | null = null;
+		let dualPressureLog: DualPressureScores | null = null;
+		let shouldRespondClassifierAction: string | null = null;
+
+		const parallelJoin: { translatedUserText?: string } = {};
+		const setTranslatedUserText = (text: string) => {
+			parallelJoin.translatedUserText = text;
+		};
+		const parallelHookCtx = parallelWithShouldRespondPipelineHookContext({
+			roomId: message.roomId,
+			responseId,
+			runId,
+			message,
+			state,
+			room: room ?? undefined,
+			mentionContext,
+			isAutonomous,
+			setTranslatedUserText,
+		});
+
 		if (isAutonomous) {
 			runtime.logger.debug(
 				{ src: "service:message", autonomyMode },
 				"Autonomy message bypassing shouldRespond checks",
 			);
 			shouldRespondToMessage = true;
+			await runtime.applyPipelineHooks(
+				"parallel_with_should_respond",
+				parallelHookCtx,
+			);
 		} else {
-			// Check if shouldRespond evaluation is enabled
-			const checkShouldRespondEnabled = runtime.isCheckShouldRespondEnabled();
+			const [classifyOutcome] = await Promise.all([
+				this.runNonAutonomousShouldRespondClassify(
+					runtime,
+					message,
+					state,
+					room ?? undefined,
+					mentionContext,
+					opts,
+					promptAttachments,
+				),
+				runtime.applyPipelineHooks(
+					"parallel_with_should_respond",
+					parallelHookCtx,
+				),
+			]);
+			shouldRespondToMessage = classifyOutcome.shouldRespondToMessage;
+			terminalDecision = classifyOutcome.terminalDecision;
+			routedDecision = classifyOutcome.routedDecision;
+			dualPressureLog = classifyOutcome.dualPressureLog;
+			shouldRespondClassifierAction =
+				classifyOutcome.shouldRespondClassifierAction;
+			state = classifyOutcome.state;
+		}
 
-			// Determine if we should respond
-			const responseDecision = this.shouldRespond(
-				runtime,
-				message,
-				room ?? undefined,
-				mentionContext,
-			);
-
-			runtime.logger.debug(
-				{ src: "service:message", responseDecision, checkShouldRespondEnabled },
-				"Response decision",
-			);
-
-			// If checkShouldRespond is disabled, always respond (ChatGPT mode)
-			if (!checkShouldRespondEnabled) {
-				runtime.logger.debug(
-					{ src: "service:message" },
-					"checkShouldRespond disabled, always responding (ChatGPT mode)",
-				);
-				shouldRespondToMessage = true;
-			} else if (responseDecision.skipEvaluation) {
-				// If we can skip the evaluation, use the decision directly
-				runtime.logger.debug(
-					{
-						src: "service:message",
-						agentName: runtime.character.name ?? "Agent",
-						reason: responseDecision.reason,
-					},
-					"Skipping LLM evaluation",
-				);
-				routedDecision = parseContextRoutingMetadata(
-					responseDecision as unknown as Record<string, unknown>,
-				);
-				setContextRoutingMetadata(message, routedDecision);
-				shouldRespondToMessage = responseDecision.shouldRespond;
-			} else {
-				state = {
-					...state,
-					values: {
-						...state.values,
-						dualPressureThreshold: resolveDualPressureThreshold(runtime),
-					},
-				};
-				const shouldRespondState = prepareShouldRespondState(state);
-
-				// Need LLM evaluation for ambiguous case
-				const _shouldRespondPrompt = composePromptFromState({
-					state: shouldRespondState,
-					template:
-						runtime.character.templates?.shouldRespondTemplate ||
-						shouldRespondTemplate,
+		const joinedTranslation =
+			typeof parallelJoin.translatedUserText === "string"
+				? parallelJoin.translatedUserText
+				: undefined;
+		if (
+			joinedTranslation !== undefined &&
+			joinedTranslation !== message.content.text
+		) {
+			message.content.text = joinedTranslation;
+			if (message.id) {
+				await runtime.updateMemory({
+					id: message.id,
+					content: message.content,
 				});
-
-				runtime.logger.debug(
-					{
-						src: "service:message",
-						agentName: runtime.character.name ?? "Agent",
-						reason: responseDecision.reason,
-						model: opts.shouldRespondModel,
-					},
-					"Using LLM evaluation",
+				await runtime.queueEmbeddingGeneration(
+					{ ...message, id: message.id },
+					"normal",
 				);
-
-				// Use dynamicPromptExecFromState for structured output with validation
-				setTrajectoryPurpose("should_respond");
-				const responseObject = await runtime.dynamicPromptExecFromState({
-					state: shouldRespondState,
-					params: {
-						prompt:
-							runtime.character.templates?.shouldRespondTemplate ||
-							shouldRespondTemplate,
-						...(promptAttachments ? { attachments: promptAttachments } : {}),
-					},
-					schema: [
-						// Decision schema - no streaming, no per-field validation needed
-						// WHY: This is internal decision-making, not user-facing output
-						{
-							field: "name",
-							description: "The name of the agent responding",
-							validateField: false,
-							streamField: false,
-						},
-						{
-							field: "reasoning",
-							description: "Your reasoning for this decision",
-							validateField: false,
-							streamField: false,
-						},
-						{
-							field: "speak_up",
-							description: "Integer 0-100 pressure TO engage",
-							validateField: false,
-							streamField: false,
-						},
-						{
-							field: "hold_back",
-							description: "Integer 0-100 pressure to STAY QUIET",
-							validateField: false,
-							streamField: false,
-						},
-						{
-							field: "action",
-							description:
-								"REPLY | RESPOND | IGNORE | STOP (REPLY and RESPOND both mean engage)",
-							validateField: false,
-							streamField: false,
-						},
-						{
-							field: "primaryContext",
-							description:
-								"Primary domain context from available_contexts (e.g., wallet, knowledge)",
-							validateField: false,
-							streamField: false,
-						},
-						{
-							field: "secondaryContexts",
-							description:
-								"Optional comma-separated additional domain contexts",
-							validateField: false,
-							streamField: false,
-						},
-						{
-							field: "evidenceTurnIds",
-							description:
-								"Optional comma-separated message IDs that influenced this decision",
-							validateField: false,
-							streamField: false,
-						},
-					],
-					options: {
-						contextCheckLevel: 0, // Set to 0 for now
-						// Classifier failures are usually transient provider hiccups;
-						// give this internal decision one short retry window.
-						maxRetries: Math.max(1, Math.min(opts.maxRetries, 2)),
-						retryBackoff: {
-							initialMs: 500,
-							multiplier: 2,
-							maxMs: 2000,
-						},
-						modelType: resolveShouldRespondModelType(opts.shouldRespondModel),
-						preferredEncapsulation: "toon",
-					},
-				});
-
-				runtime.logger.debug(
-					{ src: "service:message", responseObject },
-					"Parsed evaluation result",
-				);
-
-				const rawAction =
-					typeof responseObject?.action === "string"
-						? responseObject.action
-						: "";
-				const actionUpper = rawAction.trim().toUpperCase();
-				const hasValidClassifierAction =
-					actionUpper.length > 0 && ALLOWED_CLASSIFIER_ACTIONS.has(actionUpper);
-				routedDecision = parseContextRoutingMetadata(responseObject);
-				setContextRoutingMetadata(message, routedDecision);
-				if (!hasValidClassifierAction) {
-					runtime.logger.warn(
-						{
-							src: "service:message",
-							action: responseObject?.action,
-						},
-						"Classifier response missing valid action; treating as IGNORE",
-					);
-					terminalDecision = "IGNORE";
-					shouldRespondToMessage = false;
-				} else {
-					const dual = applyDualPressureToClassifierAction(
-						runtime,
-						responseObject as Record<string, unknown> | null,
-						rawAction,
-					);
-					dualPressureLog = dual.pressure;
-					shouldRespondClassifierAction = dual.finalActionUpper;
-					if (
-						dual.finalActionUpper === "IGNORE" ||
-						dual.finalActionUpper === "STOP"
-					) {
-						terminalDecision = dual.finalActionUpper as "IGNORE" | "STOP";
-					}
-					shouldRespondToMessage =
-						dual.finalActionUpper === "REPLY" ||
-						dual.finalActionUpper === "RESPOND";
-				}
 			}
+			if (message.id) {
+				runtime.stateCache.delete(message.id);
+				runtime.stateCache.delete(`${message.id}_action_results`);
+			}
+			state = await runtime.composeState(
+				message,
+				["ENTITIES", "CHARACTER", "RECENT_MESSAGES", "ACTIONS"],
+				true,
+				false,
+			);
+			state = attachAvailableContexts(state, runtime);
 		}
 
 		let responseContent: Content | null = null;
@@ -2205,8 +2161,8 @@ export class DefaultMessageService implements IMessageService {
 				);
 			}
 
-			// Save response memory to database
-			if (responseMessages.length > 0) {
+			// Save response memory to database (simple mode persists after hooks; see below)
+			if (responseMessages.length > 0 && mode !== "simple") {
 				for (const responseMemory of responseMessages) {
 					// Update the content in case inReplyTo was added
 					if (responseContent) {
@@ -2223,12 +2179,6 @@ export class DefaultMessageService implements IMessageService {
 						responseMemory,
 						message.content.source ?? "messageHandler",
 					);
-
-					// Track IDs for simple-mode so we can delete orphaned
-					// memories if reflection overrides the deferred emit.
-					if (mode === "simple" && responseMemory.id) {
-						pendingSimpleMemoryIds.push(responseMemory.id);
-					}
 				}
 			}
 
@@ -2247,11 +2197,37 @@ export class DefaultMessageService implements IMessageService {
 							"Simple response used providers",
 						);
 					}
-					// Defer the callback until after reflection has had a
-					// chance to override. Redact secrets now so the content
-					// is ready to flush at the bottom of handleMessage.
-					if (responseContent.text) {
-						responseContent.text = runtime.redactSecrets(responseContent.text);
+					// WHY order: hooks → createMemory → deferred callback matches wire + DB.
+					await runtime.applyPipelineHooks(
+						"outgoing_before_deliver",
+						outgoingPipelineHookContext(responseContent, {
+							source: "simple",
+							roomId: message.roomId,
+							message,
+							responseId: responseContent.responseId ?? responseMessages[0]?.id,
+						}),
+					);
+					if (responseMessages.length > 0) {
+						for (const responseMemory of responseMessages) {
+							if (responseContent) {
+								responseMemory.content = responseContent;
+							}
+							runtime.logger.debug(
+								{ src: "service:message", memoryId: responseMemory.id },
+								"Saving response to memory",
+							);
+							await runtime.createMemory(responseMemory, "messages");
+
+							await this.emitMessageSent(
+								runtime,
+								responseMemory,
+								message.content.source ?? "messageHandler",
+							);
+
+							if (responseMemory.id) {
+								pendingSimpleMemoryIds.push(responseMemory.id);
+							}
+						}
 					}
 					pendingSimpleEmit = responseContent;
 				} else if (mode === "actions") {
@@ -2366,12 +2342,15 @@ export class DefaultMessageService implements IMessageService {
 				inReplyTo: createUniqueUuid(runtime, message.id),
 			};
 
-			// Call the callback with the terminal content
-			if (callback) {
-				await callback(terminalContent);
-			}
+			await runtime.applyPipelineHooks(
+				"outgoing_before_deliver",
+				outgoingPipelineHookContext(terminalContent, {
+					source: "excluded",
+					roomId: message.roomId,
+					message,
+				}),
+			);
 
-			// Save this terminal action/thought to memory
 			const terminalMemory: Memory = {
 				id: asUUID(v4()),
 				entityId: runtime.agentId,
@@ -2390,6 +2369,10 @@ export class DefaultMessageService implements IMessageService {
 				{ src: "service:message", memoryId: terminalMemory.id },
 				"Saved terminal response to memory",
 			);
+
+			if (callback) {
+				await callback(terminalContent);
+			}
 		}
 
 		// Clean up the response ID
@@ -2411,9 +2394,15 @@ export class DefaultMessageService implements IMessageService {
 						responseContent.evalCallbacks = content;
 					}
 					if (callback) {
-						if (content.text) {
-							content.text = runtime.redactSecrets(content.text);
-						}
+						await runtime.applyPipelineHooks(
+							"outgoing_before_deliver",
+							outgoingPipelineHookContext(content, {
+								source: "evaluate",
+								roomId: message.roomId,
+								message,
+								responseId: content.responseId,
+							}),
+						);
 						return callback(content);
 					}
 					return [];
@@ -2610,6 +2599,217 @@ export class DefaultMessageService implements IMessageService {
 						shouldRespondClassifierAction,
 					}
 				: {}),
+		};
+	}
+
+	private async runNonAutonomousShouldRespondClassify(
+		runtime: IAgentRuntime,
+		message: Memory,
+		state: State,
+		room: Room | undefined,
+		mentionContext: MentionContext | undefined,
+		opts: ResolvedMessageOptions,
+		promptAttachments: GenerateTextAttachment[] | undefined,
+	): Promise<{
+		shouldRespondToMessage: boolean;
+		terminalDecision: "IGNORE" | "STOP" | null;
+		routedDecision: ContextRoutingDecision | null;
+		dualPressureLog: DualPressureScores | null;
+		shouldRespondClassifierAction: string | null;
+		state: State;
+	}> {
+		let shouldRespondToMessage = true;
+		let terminalDecision: "IGNORE" | "STOP" | null = null;
+		let routedDecision: ContextRoutingDecision | null = null;
+		let dualPressureLog: DualPressureScores | null = null;
+		let shouldRespondClassifierAction: string | null = null;
+		let workingState = state;
+
+		const checkShouldRespondEnabled = runtime.isCheckShouldRespondEnabled();
+
+		const responseDecision = this.shouldRespond(
+			runtime,
+			message,
+			room,
+			mentionContext,
+		);
+
+		runtime.logger.debug(
+			{ src: "service:message", responseDecision, checkShouldRespondEnabled },
+			"Response decision",
+		);
+
+		if (!checkShouldRespondEnabled) {
+			runtime.logger.debug(
+				{ src: "service:message" },
+				"checkShouldRespond disabled, always responding (ChatGPT mode)",
+			);
+			shouldRespondToMessage = true;
+		} else if (responseDecision.skipEvaluation) {
+			runtime.logger.debug(
+				{
+					src: "service:message",
+					agentName: runtime.character.name ?? "Agent",
+					reason: responseDecision.reason,
+				},
+				"Skipping LLM evaluation",
+			);
+			routedDecision = parseContextRoutingMetadata(
+				responseDecision as unknown as Record<string, unknown>,
+			);
+			setContextRoutingMetadata(message, routedDecision);
+			shouldRespondToMessage = responseDecision.shouldRespond;
+		} else {
+			workingState = {
+				...workingState,
+				values: {
+					...workingState.values,
+					dualPressureThreshold: resolveDualPressureThreshold(runtime),
+				},
+			};
+			const shouldRespondState = prepareShouldRespondState(workingState);
+
+			const _shouldRespondPrompt = composePromptFromState({
+				state: shouldRespondState,
+				template:
+					runtime.character.templates?.shouldRespondTemplate ||
+					shouldRespondTemplate,
+			});
+
+			runtime.logger.debug(
+				{
+					src: "service:message",
+					agentName: runtime.character.name ?? "Agent",
+					reason: responseDecision.reason,
+					model: opts.shouldRespondModel,
+				},
+				"Using LLM evaluation",
+			);
+
+			setTrajectoryPurpose("should_respond");
+			const responseObject = await runtime.dynamicPromptExecFromState({
+				state: shouldRespondState,
+				params: {
+					prompt:
+						runtime.character.templates?.shouldRespondTemplate ||
+						shouldRespondTemplate,
+					...(promptAttachments ? { attachments: promptAttachments } : {}),
+				},
+				schema: [
+					{
+						field: "name",
+						description: "The name of the agent responding",
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "reasoning",
+						description: "Your reasoning for this decision",
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "speak_up",
+						description: "Integer 0-100 pressure TO engage",
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "hold_back",
+						description: "Integer 0-100 pressure to STAY QUIET",
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "action",
+						description:
+							"REPLY | RESPOND | IGNORE | STOP (REPLY and RESPOND both mean engage)",
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "primaryContext",
+						description:
+							"Primary domain context from available_contexts (e.g., wallet, knowledge)",
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "secondaryContexts",
+						description: "Optional comma-separated additional domain contexts",
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "evidenceTurnIds",
+						description:
+							"Optional comma-separated message IDs that influenced this decision",
+						validateField: false,
+						streamField: false,
+					},
+				],
+				options: {
+					contextCheckLevel: 0,
+					maxRetries: Math.max(1, Math.min(opts.maxRetries, 2)),
+					retryBackoff: {
+						initialMs: 500,
+						multiplier: 2,
+						maxMs: 2000,
+					},
+					modelType: resolveShouldRespondModelType(opts.shouldRespondModel),
+					preferredEncapsulation: "toon",
+				},
+			});
+
+			runtime.logger.debug(
+				{ src: "service:message", responseObject },
+				"Parsed evaluation result",
+			);
+
+			const rawAction =
+				typeof responseObject?.action === "string" ? responseObject.action : "";
+			const actionUpper = rawAction.trim().toUpperCase();
+			const hasValidClassifierAction =
+				actionUpper.length > 0 && ALLOWED_CLASSIFIER_ACTIONS.has(actionUpper);
+			routedDecision = parseContextRoutingMetadata(responseObject);
+			setContextRoutingMetadata(message, routedDecision);
+			if (!hasValidClassifierAction) {
+				runtime.logger.warn(
+					{
+						src: "service:message",
+						action: responseObject?.action,
+					},
+					"Classifier response missing valid action; treating as IGNORE",
+				);
+				terminalDecision = "IGNORE";
+				shouldRespondToMessage = false;
+			} else {
+				const dual = applyDualPressureToClassifierAction(
+					runtime,
+					responseObject as Record<string, unknown> | null,
+					rawAction,
+				);
+				dualPressureLog = dual.pressure;
+				shouldRespondClassifierAction = dual.finalActionUpper;
+				if (
+					dual.finalActionUpper === "IGNORE" ||
+					dual.finalActionUpper === "STOP"
+				) {
+					terminalDecision = dual.finalActionUpper as "IGNORE" | "STOP";
+				}
+				shouldRespondToMessage =
+					dual.finalActionUpper === "REPLY" ||
+					dual.finalActionUpper === "RESPOND";
+			}
+		}
+
+		return {
+			shouldRespondToMessage,
+			terminalDecision,
+			routedDecision,
+			dualPressureLog,
+			shouldRespondClassifierAction,
+			state: workingState,
 		};
 	}
 
@@ -3151,7 +3351,10 @@ export class DefaultMessageService implements IMessageService {
 			}
 			accumulatedState = withTaskCompletion(accumulatedState, taskCompletion);
 
-			if (continuation.responseMessages.length > 0) {
+			if (
+				continuation.responseMessages.length > 0 &&
+				continuation.mode !== "simple"
+			) {
 				for (const responseMemory of continuation.responseMessages) {
 					responseMemory.content = responseContent;
 					await runtime.createMemory(responseMemory, "messages");
@@ -3165,10 +3368,30 @@ export class DefaultMessageService implements IMessageService {
 			}
 
 			if (continuation.mode === "simple") {
-				if (callback) {
-					if (responseContent.text) {
-						responseContent.text = runtime.redactSecrets(responseContent.text);
+				await runtime.applyPipelineHooks(
+					"outgoing_before_deliver",
+					outgoingPipelineHookContext(responseContent, {
+						source: "continuation_simple",
+						roomId: message.roomId,
+						message,
+						responseId:
+							responseContent.responseId ??
+							continuation.responseMessages[0]?.id,
+					}),
+				);
+				if (continuation.responseMessages.length > 0) {
+					for (const responseMemory of continuation.responseMessages) {
+						responseMemory.content = responseContent;
+						await runtime.createMemory(responseMemory, "messages");
+						await this.emitMessageSent(
+							runtime,
+							responseMemory,
+							message.content.source ?? "messageHandler",
+						);
 					}
+					responseMessages.push(...continuation.responseMessages);
+				}
+				if (callback) {
 					await callback(responseContent);
 				}
 				break;
@@ -3310,7 +3533,10 @@ export class DefaultMessageService implements IMessageService {
 			);
 		}
 
-		if (continuation.responseMessages.length > 0) {
+		if (
+			continuation.responseMessages.length > 0 &&
+			continuation.mode !== "simple"
+		) {
 			for (const responseMemory of continuation.responseMessages) {
 				responseMemory.content = responseContent;
 				await runtime.createMemory(responseMemory, "messages");
@@ -3324,10 +3550,29 @@ export class DefaultMessageService implements IMessageService {
 		}
 
 		if (continuation.mode === "simple") {
-			if (callback) {
-				if (responseContent.text) {
-					responseContent.text = runtime.redactSecrets(responseContent.text);
+			await runtime.applyPipelineHooks(
+				"outgoing_before_deliver",
+				outgoingPipelineHookContext(responseContent, {
+					source: "continuation_simple",
+					roomId: message.roomId,
+					message,
+					responseId:
+						responseContent.responseId ?? continuation.responseMessages[0]?.id,
+				}),
+			);
+			if (continuation.responseMessages.length > 0) {
+				for (const responseMemory of continuation.responseMessages) {
+					responseMemory.content = responseContent;
+					await runtime.createMemory(responseMemory, "messages");
+					await this.emitMessageSent(
+						runtime,
+						responseMemory,
+						message.content.source ?? "messageHandler",
+					);
 				}
+				responseMessages.push(...continuation.responseMessages);
+			}
+			if (callback) {
 				await callback(responseContent);
 			}
 
@@ -3886,9 +4131,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 				.join(" ");
 		}
 
-		replyText = runtime.redactSecrets(
-			truncateToCompleteSentence(replyText.trim(), 2000),
-		);
+		replyText = truncateToCompleteSentence(replyText.trim(), 2000);
 
 		const responseContent: Content = {
 			thought: `Explain the structured-output failure during ${stage}.`,
@@ -4207,11 +4450,20 @@ Output ONLY the continuation, starting immediately after the last character abov
 				);
 
 				if (callback) {
-					await callback({
+					const timeoutContent: Content = {
 						text: "Providers took too long to respond. Please optimize your providers or use caching.",
 						actions: [],
 						thought: "Provider timeout - pipeline aborted",
-					});
+					};
+					await runtime.applyPipelineHooks(
+						"outgoing_before_deliver",
+						outgoingPipelineHookContext(timeoutContent, {
+							source: "simple",
+							roomId: message.roomId,
+							message,
+						}),
+					);
+					await callback(timeoutContent);
 				}
 
 				return {

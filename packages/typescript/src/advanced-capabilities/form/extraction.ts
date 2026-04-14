@@ -12,44 +12,48 @@ import { ModelType, parseKeyValueXml } from "../../types/index.ts";
 import type { TemplateValues } from "./template.ts";
 import { resolveControlTemplates } from "./template.ts";
 import type {
-  ExtractionResult,
-  FormControl,
-  FormDefinition,
-  FormIntent,
-  IntentResult,
+	ExtractionResult,
+	FormControl,
+	FormDefinition,
+	FormIntent,
+	IntentResult,
 } from "./types.ts";
 import { getTypeHandler, parseValue, validateField } from "./validation.ts";
 
 type ExtractionXmlField = {
-  key?: string;
-  value?: JsonValue;
-  confidence?: string | number;
-  reasoning?: string;
-  is_correction?: boolean | string;
+	key?: string;
+	value?: JsonValue;
+	confidence?: string | number;
+	reasoning?: string;
+	is_correction?: boolean | string;
 };
 
 type ExtractionXmlResponse = {
-  intent?: string;
-  extractions?: { field?: ExtractionXmlField | ExtractionXmlField[] } | ExtractionXmlField[];
+	intent?: string;
+	extractions?:
+		| { field?: ExtractionXmlField | ExtractionXmlField[] }
+		| ExtractionXmlField[];
 };
 
 type SingleFieldXmlResponse = {
-  found?: string | boolean;
-  value?: JsonValue;
-  confidence?: string | number;
-  reasoning?: string;
+	found?: string | boolean;
+	value?: JsonValue;
+	confidence?: string | number;
+	reasoning?: string;
 };
 
 type CorrectionXmlField = {
-  field?: string;
-  old_value?: JsonValue;
-  new_value?: JsonValue;
-  confidence?: string | number;
+	field?: string;
+	old_value?: JsonValue;
+	new_value?: JsonValue;
+	confidence?: string | number;
 };
 
 type CorrectionXmlResponse = {
-  has_correction?: string | boolean;
-  corrections?: { correction?: CorrectionXmlField | CorrectionXmlField[] } | CorrectionXmlField[];
+	has_correction?: string | boolean;
+	corrections?:
+		| { correction?: CorrectionXmlField | CorrectionXmlField[] }
+		| CorrectionXmlField[];
 };
 
 // ============================================================================
@@ -60,29 +64,31 @@ type CorrectionXmlResponse = {
  * Extract field values and detect intent from user message using LLM.
  */
 export async function llmIntentAndExtract(
-  runtime: IAgentRuntime,
-  text: string,
-  form: FormDefinition,
-  controls: FormControl[],
-  templateValues?: TemplateValues
+	runtime: IAgentRuntime,
+	text: string,
+	form: FormDefinition,
+	controls: FormControl[],
+	templateValues?: TemplateValues,
 ): Promise<IntentResult> {
-  const resolvedControls = templateValues
-    ? controls.map((control) => resolveControlTemplates(control, templateValues))
-    : controls;
+	const resolvedControls = templateValues
+		? controls.map((control) =>
+				resolveControlTemplates(control, templateValues),
+			)
+		: controls;
 
-  const fieldsDescription = resolvedControls
-    .filter((c) => !c.hidden)
-    .map((c) => {
-      const handler = getTypeHandler(c.type);
-      const typeHint = handler?.extractionPrompt || c.type;
-      const hints = c.extractHints?.join(", ") || "";
-      const options = c.options?.map((o) => o.value).join(", ") || "";
+	const fieldsDescription = resolvedControls
+		.filter((c) => !c.hidden)
+		.map((c) => {
+			const handler = getTypeHandler(c.type);
+			const typeHint = handler?.extractionPrompt || c.type;
+			const hints = c.extractHints?.join(", ") || "";
+			const options = c.options?.map((o) => o.value).join(", ") || "";
 
-      return `- ${c.key} (${c.label}): ${c.description || typeHint}${hints ? ` [hints: ${hints}]` : ""}${options ? ` [options: ${options}]` : ""}`;
-    })
-    .join("\n");
+			return `- ${c.key} (${c.label}): ${c.description || typeHint}${hints ? ` [hints: ${hints}]` : ""}${options ? ` [options: ${options}]` : ""}`;
+		})
+		.join("\n");
 
-  const prompt = `You are extracting structured data from a user's natural language message.
+	const prompt = `You are extracting structured data from a user's natural language message.
 
 FORM: ${form.name}
 ${form.description ? `DESCRIPTION: ${form.description}` : ""}
@@ -125,119 +131,126 @@ extractions[2]{key,value,confidence,reasoning,is_correction}:
 
 IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.`;
 
-  try {
-    const runModel = runtime.useModel.bind(runtime);
-    const response = await runModel(ModelType.TEXT_SMALL, {
-      prompt,
-      temperature: 0.1,
-    });
+	try {
+		const runModel = runtime.useModel.bind(runtime);
+		const response = await runModel(ModelType.TEXT_SMALL, {
+			prompt,
+			temperature: 0.1,
+		});
 
-    const parsed = parseExtractionResponse(response);
+		const parsed = parseExtractionResponse(response);
 
-    for (const extraction of parsed.extractions) {
-      const control = resolvedControls.find((c) => c.key === extraction.field);
-      if (control) {
-        if (typeof extraction.value === "string") {
-          extraction.value = parseValue(extraction.value, control);
-        }
+		for (const extraction of parsed.extractions) {
+			const control = resolvedControls.find((c) => c.key === extraction.field);
+			if (control) {
+				if (typeof extraction.value === "string") {
+					extraction.value = parseValue(extraction.value, control);
+				}
 
-        const validation = validateField(extraction.value, control);
-        if (!validation.valid) {
-          extraction.confidence = Math.min(extraction.confidence, 0.3);
-          extraction.reasoning = `${extraction.reasoning || ""} (Validation failed: ${validation.error})`;
-        }
-      }
-    }
+				const validation = validateField(extraction.value, control);
+				if (!validation.valid) {
+					extraction.confidence = Math.min(extraction.confidence, 0.3);
+					extraction.reasoning = `${extraction.reasoning || ""} (Validation failed: ${validation.error})`;
+				}
+			}
+		}
 
-    if (form.debug) {
-      runtime.logger.debug("[FormExtraction] LLM extraction result:", JSON.stringify(parsed));
-    }
+		if (form.debug) {
+			runtime.logger.debug(
+				"[FormExtraction] LLM extraction result:",
+				JSON.stringify(parsed),
+			);
+		}
 
-    return parsed;
-  } catch (error) {
-    runtime.logger.error("[FormExtraction] LLM extraction failed:", String(error));
-    return { intent: "other", extractions: [] };
-  }
+		return parsed;
+	} catch (error) {
+		runtime.logger.error(
+			"[FormExtraction] LLM extraction failed:",
+			String(error),
+		);
+		return { intent: "other", extractions: [] };
+	}
 }
 
 /**
  * Parse the structured extraction response (TOON-first, XML fallback).
  */
 function parseExtractionResponse(response: string): IntentResult {
-  const result: IntentResult = {
-    intent: "other",
-    extractions: [],
-  };
+	const result: IntentResult = {
+		intent: "other",
+		extractions: [],
+	};
 
-  try {
-    const parsed = parseKeyValueXml<ExtractionXmlResponse>(response);
+	try {
+		const parsed = parseKeyValueXml<ExtractionXmlResponse>(response);
 
-    if (parsed) {
-      const intentStr = parsed.intent?.toLowerCase() ?? "other";
-      result.intent = isValidIntent(intentStr) ? intentStr : "other";
+		if (parsed) {
+			const intentStr = parsed.intent?.toLowerCase() ?? "other";
+			result.intent = isValidIntent(intentStr) ? intentStr : "other";
 
-      if (parsed.extractions) {
-        const fields = Array.isArray(parsed.extractions)
-          ? parsed.extractions
-          : parsed.extractions.field
-            ? Array.isArray(parsed.extractions.field)
-              ? parsed.extractions.field
-              : [parsed.extractions.field]
-            : [];
+			if (parsed.extractions) {
+				const fields = Array.isArray(parsed.extractions)
+					? parsed.extractions
+					: parsed.extractions.field
+						? Array.isArray(parsed.extractions.field)
+							? parsed.extractions.field
+							: [parsed.extractions.field]
+						: [];
 
-        for (const field of fields) {
-          if (field?.key) {
-            const extraction: ExtractionResult = {
-              field: String(field.key),
-              value: field.value ?? null,
-              confidence: parseFloat(String(field.confidence ?? "")) || 0.5,
-              reasoning: field.reasoning ? String(field.reasoning) : undefined,
-              isCorrection: field.is_correction === "true" || field.is_correction === true,
-            };
-            result.extractions.push(extraction);
-          }
-        }
-      }
-    }
-  } catch (_error) {
-    // Fallback: try regex extraction
-    const intentMatch = response.match(/<intent>([^<]+)<\/intent>/);
-    if (intentMatch) {
-      const intentStr = intentMatch[1].toLowerCase().trim();
-      result.intent = isValidIntent(intentStr) ? intentStr : "other";
-    }
+				for (const field of fields) {
+					if (field?.key) {
+						const extraction: ExtractionResult = {
+							field: String(field.key),
+							value: field.value ?? null,
+							confidence: parseFloat(String(field.confidence ?? "")) || 0.5,
+							reasoning: field.reasoning ? String(field.reasoning) : undefined,
+							isCorrection:
+								field.is_correction === "true" || field.is_correction === true,
+						};
+						result.extractions.push(extraction);
+					}
+				}
+			}
+		}
+	} catch (_error) {
+		// Fallback: try regex extraction
+		const intentMatch = response.match(/<intent>([^<]+)<\/intent>/);
+		if (intentMatch) {
+			const intentStr = intentMatch[1].toLowerCase().trim();
+			result.intent = isValidIntent(intentStr) ? intentStr : "other";
+		}
 
-    const fieldMatches = response.matchAll(
-      /<field>\s*<key>([^<]+)<\/key>\s*<value>([^<]*)<\/value>\s*<confidence>([^<]+)<\/confidence>/g
-    );
-    for (const match of fieldMatches) {
-      result.extractions.push({
-        field: match[1].trim(),
-        value: match[2].trim(),
-        confidence: parseFloat(match[3]) || 0.5,
-      });
-    }
-  }
+		const fieldMatches = response.matchAll(
+			/<field>\s*<key>([^<]+)<\/key>\s*<value>([^<]*)<\/value>\s*<confidence>([^<]+)<\/confidence>/g,
+		);
+		for (const match of fieldMatches) {
+			result.extractions.push({
+				field: match[1].trim(),
+				value: match[2].trim(),
+				confidence: parseFloat(match[3]) || 0.5,
+			});
+		}
+	}
 
-  return result;
+	return result;
 }
 
 function isValidIntent(str: string): str is FormIntent {
-  const validIntents: FormIntent[] = [
-    "fill_form",
-    "submit",
-    "stash",
-    "restore",
-    "cancel",
-    "undo",
-    "skip",
-    "explain",
-    "example",
-    "progress",
-    "autofill",
-    "other",
-  ];
-  return validIntents.includes(str as FormIntent);
+	const validIntents: FormIntent[] = [
+		"fill_form",
+		"submit",
+		"stash",
+		"restore",
+		"cancel",
+		"undo",
+		"skip",
+		"explain",
+		"example",
+		"progress",
+		"autofill",
+		"other",
+	];
+	return validIntents.includes(str as FormIntent);
 }
 
 // ============================================================================
@@ -248,19 +261,19 @@ function isValidIntent(str: string): str is FormIntent {
  * Extract a specific field value from user message.
  */
 export async function extractSingleField(
-  runtime: IAgentRuntime,
-  text: string,
-  control: FormControl,
-  debug?: boolean,
-  templateValues?: TemplateValues
+	runtime: IAgentRuntime,
+	text: string,
+	control: FormControl,
+	debug?: boolean,
+	templateValues?: TemplateValues,
 ): Promise<ExtractionResult | null> {
-  const resolvedControl = templateValues
-    ? resolveControlTemplates(control, templateValues)
-    : control;
-  const handler = getTypeHandler(resolvedControl.type);
-  const typeHint = handler?.extractionPrompt || resolvedControl.type;
+	const resolvedControl = templateValues
+		? resolveControlTemplates(control, templateValues)
+		: control;
+	const handler = getTypeHandler(resolvedControl.type);
+	const typeHint = handler?.extractionPrompt || resolvedControl.type;
 
-  const prompt = `Extract the ${resolvedControl.label} (${typeHint}) from this message:
+	const prompt = `Extract the ${resolvedControl.label} (${typeHint}) from this message:
 
 "${text}"
 
@@ -277,46 +290,52 @@ reasoning: brief explanation
 
   IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.`;
 
-  try {
-    const runModel = runtime.useModel.bind(runtime);
-    const response = await runModel(ModelType.TEXT_SMALL, {
-      prompt,
-      temperature: 0.1,
-    });
+	try {
+		const runModel = runtime.useModel.bind(runtime);
+		const response = await runModel(ModelType.TEXT_SMALL, {
+			prompt,
+			temperature: 0.1,
+		});
 
-    const parsed = parseKeyValueXml<SingleFieldXmlResponse>(response);
+		const parsed = parseKeyValueXml<SingleFieldXmlResponse>(response);
 
-    const found = parsed?.found === true || parsed?.found === "true";
-    if (found) {
-      let value = parsed.value;
+		const found = parsed?.found === true || parsed?.found === "true";
+		if (found) {
+			let value = parsed.value;
 
-      if (typeof value === "string") {
-        value = parseValue(value, resolvedControl);
-      }
+			if (typeof value === "string") {
+				value = parseValue(value, resolvedControl);
+			}
 
-      const confidence =
-        typeof parsed?.confidence === "number"
-          ? parsed.confidence
-          : parseFloat(String(parsed?.confidence ?? ""));
-      const result: ExtractionResult = {
-        field: resolvedControl.key,
-        value: value ?? null,
-        confidence: Number.isFinite(confidence) ? confidence : 0.5,
-        reasoning: parsed.reasoning ? String(parsed.reasoning) : undefined,
-      };
+			const confidence =
+				typeof parsed?.confidence === "number"
+					? parsed.confidence
+					: parseFloat(String(parsed?.confidence ?? ""));
+			const result: ExtractionResult = {
+				field: resolvedControl.key,
+				value: value ?? null,
+				confidence: Number.isFinite(confidence) ? confidence : 0.5,
+				reasoning: parsed.reasoning ? String(parsed.reasoning) : undefined,
+			};
 
-      if (debug) {
-        runtime.logger.debug("[FormExtraction] Single field extraction:", JSON.stringify(result));
-      }
+			if (debug) {
+				runtime.logger.debug(
+					"[FormExtraction] Single field extraction:",
+					JSON.stringify(result),
+				);
+			}
 
-      return result;
-    }
+			return result;
+		}
 
-    return null;
-  } catch (error) {
-    runtime.logger.error("[FormExtraction] Single field extraction failed:", String(error));
-    return null;
-  }
+		return null;
+	} catch (error) {
+		runtime.logger.error(
+			"[FormExtraction] Single field extraction failed:",
+			String(error),
+		);
+		return null;
+	}
 }
 
 // ============================================================================
@@ -327,26 +346,28 @@ reasoning: brief explanation
  * Detect if user is correcting a previous value.
  */
 export async function detectCorrection(
-  runtime: IAgentRuntime,
-  text: string,
-  currentValues: Record<string, JsonValue>,
-  controls: FormControl[],
-  templateValues?: TemplateValues
+	runtime: IAgentRuntime,
+	text: string,
+	currentValues: Record<string, JsonValue>,
+	controls: FormControl[],
+	templateValues?: TemplateValues,
 ): Promise<ExtractionResult[]> {
-  const resolvedControls = templateValues
-    ? controls.map((control) => resolveControlTemplates(control, templateValues))
-    : controls;
+	const resolvedControls = templateValues
+		? controls.map((control) =>
+				resolveControlTemplates(control, templateValues),
+			)
+		: controls;
 
-  const currentValuesStr = resolvedControls
-    .filter((c) => currentValues[c.key] !== undefined)
-    .map((c) => `- ${c.label}: ${currentValues[c.key]}`)
-    .join("\n");
+	const currentValuesStr = resolvedControls
+		.filter((c) => currentValues[c.key] !== undefined)
+		.map((c) => `- ${c.label}: ${currentValues[c.key]}`)
+		.join("\n");
 
-  if (!currentValuesStr) {
-    return [];
-  }
+	if (!currentValuesStr) {
+		return [];
+	}
 
-  const prompt = `Is the user correcting any of these previously provided values?
+	const prompt = `Is the user correcting any of these previously provided values?
 
 Current values:
 ${currentValuesStr}
@@ -366,61 +387,65 @@ has_correction: false
 
 IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.`;
 
-  try {
-    const runModel = runtime.useModel.bind(runtime);
-    const response = await runModel(ModelType.TEXT_SMALL, {
-      prompt,
-      temperature: 0.1,
-    });
+	try {
+		const runModel = runtime.useModel.bind(runtime);
+		const response = await runModel(ModelType.TEXT_SMALL, {
+			prompt,
+			temperature: 0.1,
+		});
 
-    const parsed = parseKeyValueXml<CorrectionXmlResponse>(response);
-    const hasCorrection = parsed?.has_correction === true || parsed?.has_correction === "true";
+		const parsed = parseKeyValueXml<CorrectionXmlResponse>(response);
+		const hasCorrection =
+			parsed?.has_correction === true || parsed?.has_correction === "true";
 
-    if (parsed && hasCorrection && parsed.corrections) {
-      const corrections: ExtractionResult[] = [];
+		if (parsed && hasCorrection && parsed.corrections) {
+			const corrections: ExtractionResult[] = [];
 
-      const correctionList = Array.isArray(parsed.corrections)
-        ? parsed.corrections
-        : parsed.corrections.correction
-          ? Array.isArray(parsed.corrections.correction)
-            ? parsed.corrections.correction
-            : [parsed.corrections.correction]
-          : [];
+			const correctionList = Array.isArray(parsed.corrections)
+				? parsed.corrections
+				: parsed.corrections.correction
+					? Array.isArray(parsed.corrections.correction)
+						? parsed.corrections.correction
+						: [parsed.corrections.correction]
+					: [];
 
-      for (const correction of correctionList) {
-        const fieldName = correction.field ? String(correction.field) : "";
-        const control = resolvedControls.find(
-          (c) =>
-            c.label.toLowerCase() === fieldName.toLowerCase() ||
-            c.key.toLowerCase() === fieldName.toLowerCase()
-        );
+			for (const correction of correctionList) {
+				const fieldName = correction.field ? String(correction.field) : "";
+				const control = resolvedControls.find(
+					(c) =>
+						c.label.toLowerCase() === fieldName.toLowerCase() ||
+						c.key.toLowerCase() === fieldName.toLowerCase(),
+				);
 
-        if (control) {
-          let value = correction.new_value;
-          if (typeof value === "string") {
-            value = parseValue(value, control);
-          }
+				if (control) {
+					let value = correction.new_value;
+					if (typeof value === "string") {
+						value = parseValue(value, control);
+					}
 
-          const confidence =
-            typeof correction.confidence === "number"
-              ? correction.confidence
-              : parseFloat(String(correction.confidence ?? ""));
-          const extraction: ExtractionResult = {
-            field: control.key,
-            value: value ?? null,
-            confidence: Number.isFinite(confidence) ? confidence : 0.8,
-            isCorrection: true,
-          };
-          corrections.push(extraction);
-        }
-      }
+					const confidence =
+						typeof correction.confidence === "number"
+							? correction.confidence
+							: parseFloat(String(correction.confidence ?? ""));
+					const extraction: ExtractionResult = {
+						field: control.key,
+						value: value ?? null,
+						confidence: Number.isFinite(confidence) ? confidence : 0.8,
+						isCorrection: true,
+					};
+					corrections.push(extraction);
+				}
+			}
 
-      return corrections;
-    }
+			return corrections;
+		}
 
-    return [];
-  } catch (error) {
-    runtime.logger.error("[FormExtraction] Correction detection failed:", String(error));
-    return [];
-  }
+		return [];
+	} catch (error) {
+		runtime.logger.error(
+			"[FormExtraction] Correction detection failed:",
+			String(error),
+		);
+		return [];
+	}
 }

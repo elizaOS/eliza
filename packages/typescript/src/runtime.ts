@@ -19,6 +19,8 @@ import {
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { createLogger } from "./logger";
+import { simpleHash } from "./optimization/ab-analysis";
+import { getOptimizationRootDir } from "./optimization-root-dir";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
 import {
 	getNativeRuntimeFeaturePlugin,
@@ -34,6 +36,7 @@ import type { ToolPolicyService } from "./services/tool-policy";
 import { decryptSecret, getSalt } from "./settings";
 import {
 	getStreamingContext,
+	runInsideModelStreamChunkDelivery,
 	runWithStreamingContext,
 	type StreamingContext,
 } from "./streaming-context";
@@ -82,6 +85,9 @@ import {
 	type PairingRequest,
 	type Participant,
 	type PatchOp,
+	type PipelineHookContext,
+	type PipelineHookPhase,
+	type PipelineHookSpec,
 	type Plugin,
 	type PluginOwnership,
 	type PromptSegment,
@@ -89,6 +95,7 @@ import {
 	type ProviderResult,
 	type ProviderValue,
 	type Relationship,
+	type ResolvedPipelineHook,
 	type Room,
 	type Route,
 	type RuntimeEventStorage,
@@ -109,6 +116,26 @@ import {
 	type World,
 } from "./types";
 import type { IMessageService } from "./types/message-service";
+import {
+	afterMemoryPersistedPipelineHookContext,
+	modelStreamChunkPipelineHookContext,
+	modelStreamEndPipelineHookContext,
+	outgoingPipelineHookContext,
+	PIPELINE_HOOK_DEBUG_LOG_MS,
+	PIPELINE_HOOK_ERROR_LOG_MS,
+	PIPELINE_HOOK_WARN_MS,
+	pipelineHookMetricRoomId,
+	postModelPipelineHookContext,
+	preModelPipelineHookContext,
+	resolvePipelineHookSpec,
+	sortPipelineHooksByPosition,
+} from "./types/pipeline-hooks";
+import type { PromptOptimizationRuntimeHooks } from "./types/prompt-optimization-hooks";
+import { ScoreCard } from "./types/prompt-optimization-score-card";
+import type {
+	ExecutionTrace,
+	ScoreSignal,
+} from "./types/prompt-optimization-trace";
 import type {
 	RetryBackoffConfig,
 	SchemaRow,
@@ -179,6 +206,13 @@ type StructuredResponseCandidate = {
 	formats: StructuredResponseFormat[];
 	source: string;
 };
+
+function coerceOutgoingMessageText(text: unknown): string {
+	if (text === null || text === undefined) {
+		return "";
+	}
+	return String(text);
+}
 
 function resolveDynamicPromptModelType(
 	modelType?: TextGenerationModelType,
@@ -251,6 +285,19 @@ export class AgentRuntime implements IAgentRuntime {
 	private sendHandlers = new Map<string, SendHandlerFunction>();
 	private eventHandlers: Map<string, Array<(data: EventPayload) => void>> =
 		new Map();
+
+	/**
+	 * In-flight execution traces keyed by trace.id (unique uuid).
+	 * A single run can produce multiple DPE calls; each gets its own trace.
+	 * `runToTraces` maps runId -> set of trace ids for enrichment lookup.
+	 */
+	private activeTraces = new Map<string, ExecutionTrace>();
+	private runToTraces = new Map<string, Set<string>>();
+	/** Optional DPE-side prompt optimization I/O (merge, registry, baseline/failure traces). */
+	private promptOptimizationHooks: PromptOptimizationRuntimeHooks | null = null;
+
+	private pipelineHookEntries: ResolvedPipelineHook[] = [];
+	private pipelineHookIdToIndex = new Map<string, number>();
 
 	// A map of all plugins available to the runtime, keyed by name, for dependency resolution.
 	private allAvailablePlugins = new Map<string, Plugin>();
@@ -630,6 +677,354 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.hasNativeRuntimeFeature("trajectories");
 	}
 
+	private hooksForPhase(phase: PipelineHookPhase): ResolvedPipelineHook[] {
+		return this.pipelineHookEntries.filter((e) => e.phase === phase);
+	}
+
+	private upsertPipelineHook(entry: ResolvedPipelineHook): void {
+		const existing = this.pipelineHookIdToIndex.get(entry.id);
+		if (existing !== undefined) {
+			this.pipelineHookEntries[existing] = entry;
+			return;
+		}
+		this.pipelineHookIdToIndex.set(entry.id, this.pipelineHookEntries.length);
+		this.pipelineHookEntries.push(entry);
+	}
+
+	private async invokePipelineHooks(
+		phase: PipelineHookPhase,
+		ctx: PipelineHookContext,
+		logLabel: string,
+		pipelineHookTelemetry = true,
+	): Promise<void> {
+		const hooks = sortPipelineHooksByPosition(this.hooksForPhase(phase));
+		if (!hooks.length) {
+			return;
+		}
+		const runtime = this as unknown as IAgentRuntime;
+		const roomId = pipelineHookMetricRoomId(ctx);
+
+		const runOne = async (entry: ResolvedPipelineHook) => {
+			const t0 = performance.now();
+			let errorMessage: string | undefined;
+			try {
+				await entry.handler(runtime, ctx);
+			} catch (error) {
+				errorMessage = error instanceof Error ? error.message : String(error);
+				this.logger.error(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						hookId: entry.id,
+						phase: entry.phase,
+						error: errorMessage,
+					},
+					`${logLabel} threw; continuing`,
+				);
+			}
+			{
+				const durationMs = Math.round(performance.now() - t0);
+				if (!pipelineHookTelemetry) {
+					const baseLite = {
+						src: "pipeline_hook" as const,
+						agentId: this.agentId,
+						hookId: entry.id,
+						phase,
+						roomId,
+						durationMs,
+					};
+					if (durationMs >= PIPELINE_HOOK_WARN_MS) {
+						this.logger.warn(
+							baseLite,
+							`PIPELINE HOOK SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
+						);
+					}
+					if (durationMs >= PIPELINE_HOOK_ERROR_LOG_MS) {
+						this.logger.error(
+							baseLite,
+							`PIPELINE HOOK VERY SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
+						);
+					}
+				} else {
+					const slow = durationMs >= PIPELINE_HOOK_WARN_MS;
+					const baseFields = {
+						src: "pipeline_hook" as const,
+						agentId: this.agentId,
+						hookId: entry.id,
+						phase,
+						roomId,
+						durationMs,
+					};
+					if (durationMs >= PIPELINE_HOOK_DEBUG_LOG_MS) {
+						this.logger.debug(baseFields, "Pipeline hook timing");
+					}
+					if (slow) {
+						this.logger.warn(
+							baseFields,
+							`PIPELINE HOOK SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
+						);
+					}
+					if (durationMs >= PIPELINE_HOOK_ERROR_LOG_MS) {
+						this.logger.error(
+							baseFields,
+							`PIPELINE HOOK VERY SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
+						);
+					}
+					try {
+						await this.emitEvent(EventType.PIPELINE_HOOK_METRIC, {
+							phase,
+							hookId: entry.id,
+							durationMs,
+							roomId,
+							slow,
+							...(errorMessage !== undefined ? { error: errorMessage } : {}),
+						});
+					} catch (metricError) {
+						this.logger.debug(
+							{
+								src: "pipeline_hook",
+								agentId: this.agentId,
+								hookId: entry.id,
+								phase,
+								error:
+									metricError instanceof Error
+										? metricError.message
+										: String(metricError),
+							},
+							"PIPELINE_HOOK_METRIC listener failed",
+						);
+					}
+				}
+			}
+		};
+
+		if (
+			phase === "parallel_with_should_respond" ||
+			phase === "model_stream_chunk"
+		) {
+			await Promise.all(hooks.map((h) => runOne(h)));
+			return;
+		}
+
+		const mutators = hooks.filter((h) => h.mutatesPrimary);
+		const serialReaders = hooks.filter(
+			(h) => !h.mutatesPrimary && h.schedule === "serial",
+		);
+		const concurrentReaders = hooks.filter(
+			(h) => !h.mutatesPrimary && h.schedule === "concurrent",
+		);
+
+		for (const h of mutators) {
+			await runOne(h);
+		}
+		for (const h of serialReaders) {
+			await runOne(h);
+		}
+		await Promise.all(concurrentReaders.map((h) => runOne(h)));
+	}
+
+	registerPipelineHook(spec: PipelineHookSpec): void {
+		this.upsertPipelineHook(resolvePipelineHookSpec(spec));
+	}
+
+	unregisterPipelineHook(id: string): void {
+		const idx = this.pipelineHookIdToIndex.get(id);
+		if (idx === undefined) {
+			return;
+		}
+		this.pipelineHookEntries.splice(idx, 1);
+		this.pipelineHookIdToIndex.clear();
+		for (let i = 0; i < this.pipelineHookEntries.length; i++) {
+			const e = this.pipelineHookEntries[i];
+			this.pipelineHookIdToIndex.set(e.id, i);
+		}
+	}
+
+	/**
+	 * Run pipeline hooks for a phase (skip metadata, ordering, and outgoing redact).
+	 * @param pipelineHookTelemetry When false, skips debug logs / `PIPELINE_HOOK_METRIC` per hook
+	 * (still logs warn/error for slow hooks). Defaults to false for `model_stream_chunk` only.
+	 */
+	async applyPipelineHooks(
+		phase: PipelineHookPhase,
+		ctx: PipelineHookContext,
+		pipelineHookTelemetry?: boolean,
+	): Promise<void> {
+		if (ctx.phase !== phase) {
+			throw new Error(
+				`applyPipelineHooks: phase mismatch (expected ${phase}, ctx.phase=${ctx.phase})`,
+			);
+		}
+
+		const hookTelemetry =
+			pipelineHookTelemetry !== undefined
+				? pipelineHookTelemetry
+				: phase !== "model_stream_chunk";
+
+		const hasHooks = this.hooksForPhase(phase).length > 0;
+
+		switch (phase) {
+			case "incoming_before_compose": {
+				if (!hasHooks) {
+					return;
+				}
+				const c = ctx as Extract<
+					PipelineHookContext,
+					{ phase: "incoming_before_compose" }
+				>;
+				const md = c.message.content?.metadata;
+				const meta =
+					typeof md === "object" && md !== null
+						? (md as Record<string, unknown>)
+						: null;
+				if (meta?.skipIncomingMessageHooks === true) {
+					return;
+				}
+				const messageId = c.message.id;
+				await this.invokePipelineHooks(
+					phase,
+					c,
+					"Incoming pipeline hook",
+					hookTelemetry,
+				);
+				if (messageId) {
+					this.stateCache.delete(messageId);
+					this.stateCache.delete(`${messageId}_action_results`);
+				}
+				return;
+			}
+			case "pre_should_respond": {
+				if (!hasHooks) {
+					return;
+				}
+				const c = ctx as Extract<
+					PipelineHookContext,
+					{ phase: "pre_should_respond" }
+				>;
+				const md = c.message.content?.metadata;
+				const meta =
+					typeof md === "object" && md !== null
+						? (md as Record<string, unknown>)
+						: null;
+				if (meta?.skipPreShouldRespondHooks === true) {
+					return;
+				}
+				await this.invokePipelineHooks(
+					phase,
+					c,
+					"Pre-should-respond pipeline hook",
+					hookTelemetry,
+				);
+				return;
+			}
+			case "parallel_with_should_respond": {
+				if (!hasHooks) {
+					return;
+				}
+				const c = ctx as Extract<
+					PipelineHookContext,
+					{ phase: "parallel_with_should_respond" }
+				>;
+				const md = c.message.content?.metadata;
+				const meta =
+					typeof md === "object" && md !== null
+						? (md as Record<string, unknown>)
+						: null;
+				if (meta?.skipParallelWithShouldRespondHooks === true) {
+					return;
+				}
+				await this.invokePipelineHooks(
+					phase,
+					c,
+					"Parallel should-respond pipeline hook",
+					hookTelemetry,
+				);
+				return;
+			}
+			case "outgoing_before_deliver": {
+				const c = ctx as Extract<
+					PipelineHookContext,
+					{ phase: "outgoing_before_deliver" }
+				>;
+				if (hasHooks) {
+					await this.invokePipelineHooks(
+						phase,
+						c,
+						"Outgoing pipeline hook",
+						hookTelemetry,
+					);
+				}
+				c.content.text = this.redactSecrets(
+					coerceOutgoingMessageText(c.content.text),
+				);
+				return;
+			}
+			case "pre_model":
+			case "post_model": {
+				if (!hasHooks) {
+					return;
+				}
+				await this.invokePipelineHooks(
+					phase,
+					ctx as Extract<
+						PipelineHookContext,
+						{ phase: "pre_model" | "post_model" }
+					>,
+					phase === "pre_model"
+						? "Pre-model pipeline hook"
+						: "Post-model pipeline hook",
+					hookTelemetry,
+				);
+				return;
+			}
+			case "after_memory_persisted": {
+				if (!hasHooks) {
+					return;
+				}
+				const c = ctx as Extract<
+					PipelineHookContext,
+					{ phase: "after_memory_persisted" }
+				>;
+				const md = c.memory.content?.metadata;
+				const meta =
+					typeof md === "object" && md !== null
+						? (md as Record<string, unknown>)
+						: null;
+				if (meta?.skipAfterMemoryPersistedHooks === true) {
+					return;
+				}
+				await this.invokePipelineHooks(
+					phase,
+					c,
+					"After-memory-persisted pipeline hook",
+					hookTelemetry,
+				);
+				return;
+			}
+			case "model_stream_chunk":
+			case "model_stream_end": {
+				if (!hasHooks) {
+					return;
+				}
+				await this.invokePipelineHooks(
+					phase,
+					ctx as Extract<
+						PipelineHookContext,
+						{ phase: "model_stream_chunk" | "model_stream_end" }
+					>,
+					phase === "model_stream_chunk"
+						? "Model stream chunk pipeline hook"
+						: "Model stream end pipeline hook",
+					hookTelemetry,
+				);
+				return;
+			}
+			default: {
+				throw new Error(`Unknown pipeline hook phase: ${String(phase)}`);
+			}
+		}
+	}
+
 	async registerPlugin(plugin: Plugin): Promise<void> {
 		if (!plugin.name) {
 			// Ensure plugin.name is defined
@@ -676,8 +1071,7 @@ export class AgentRuntime implements IAgentRuntime {
 					settings?.ENABLE_AUTONOMY === "true");
 			const enableTrust =
 				this.capabilityOptions.enableTrust ??
-				(settings?.ENABLE_TRUST === true ||
-					settings?.ENABLE_TRUST === "true");
+				(settings?.ENABLE_TRUST === true || settings?.ENABLE_TRUST === "true");
 			const enableSecretsManager =
 				this.capabilityOptions.enableSecretsManager ??
 				(settings?.ENABLE_SECRETS_MANAGER === true ||
@@ -1510,6 +1904,137 @@ export class AgentRuntime implements IAgentRuntime {
 		return true;
 	}
 
+	getOptimizationDir(): string {
+		const setting = this.getSetting("OPTIMIZATION_DIR");
+		return getOptimizationRootDir(typeof setting === "string" ? setting : null);
+	}
+
+	registerPromptOptimizationHooks(
+		hooks: PromptOptimizationRuntimeHooks | null,
+	): void {
+		this.promptOptimizationHooks = hooks;
+	}
+
+	getPromptOptimizationHooks(): PromptOptimizationRuntimeHooks | null {
+		return this.promptOptimizationHooks;
+	}
+
+	resolveProviderModelString(
+		resolvedModelType: string,
+		optionsModel?: string,
+		effectiveModelId?: string,
+	): string {
+		if (effectiveModelId) return effectiveModelId;
+		if (optionsModel) return optionsModel;
+
+		const slotToSetting: Record<string, string> = {
+			TEXT_NANO: "NANO_MODEL",
+			TEXT_MINI: "MINI_MODEL",
+			TEXT_SMALL: "SMALL_MODEL",
+			TEXT_LARGE: "LARGE_MODEL",
+			TEXT_MEGA: "MEGA_MODEL",
+			RESPONSE_HANDLER: "RESPONSE_HANDLER_MODEL",
+			ACTION_PLANNER: "ACTION_PLANNER_MODEL",
+			REASONING_SMALL: "REASONING_SMALL_MODEL",
+			REASONING_LARGE: "REASONING_LARGE_MODEL",
+			TEXT_COMPLETION: "COMPLETION_MODEL",
+		};
+
+		const providerPrefixes = ["OLLAMA_", "OPENAI_", "ANTHROPIC_", ""];
+		for (const candidate of getModelFallbackChain(
+			resolvedModelType as ModelTypeName,
+		)) {
+			const settingKey = slotToSetting[candidate];
+			if (!settingKey) continue;
+			for (const prefix of providerPrefixes) {
+				const val = this.getSetting(`${prefix}${settingKey}`);
+				if (typeof val === "string" && val) return val;
+			}
+		}
+
+		return resolvedModelType;
+	}
+
+	enrichTrace(runId: string, signal: ScoreSignal): void {
+		const traceIds = this.runToTraces.get(runId);
+		if (!traceIds) return;
+
+		const targetTraceId = (signal as { traceId?: string }).traceId;
+
+		for (const tid of traceIds) {
+			if (targetTraceId && tid !== targetTraceId) continue;
+
+			const trace = this.activeTraces.get(tid);
+			if (!trace) continue;
+			trace.scoreCard.signals.push(signal);
+			const card = ScoreCard.fromJSON(trace.scoreCard);
+			trace.scoreCard.compositeScore = card.composite();
+			trace.enrichedAt = Date.now();
+		}
+	}
+
+	getActiveTrace(runId: string): ExecutionTrace | undefined {
+		const traceIds = this.runToTraces.get(runId);
+		if (!traceIds) return undefined;
+		let latest: ExecutionTrace | undefined;
+		for (const tid of traceIds) {
+			const t = this.activeTraces.get(tid);
+			if (t) latest = t;
+		}
+		return latest;
+	}
+
+	getActiveTracesForRun(runId: string): ExecutionTrace[] {
+		const traceIds = this.runToTraces.get(runId);
+		if (!traceIds) return [];
+		const traces: ExecutionTrace[] = [];
+		for (const tid of traceIds) {
+			const t = this.activeTraces.get(tid);
+			if (t) traces.push(t);
+		}
+		return traces;
+	}
+
+	deleteActiveTrace(runId: string): void {
+		const traceIds = this.runToTraces.get(runId);
+		if (traceIds) {
+			for (const tid of traceIds) {
+				this.activeTraces.delete(tid);
+			}
+			this.runToTraces.delete(runId);
+		}
+	}
+
+	deleteActiveTraceById(traceId: string): void {
+		this.activeTraces.delete(traceId);
+		for (const [rid, tids] of this.runToTraces) {
+			if (tids.delete(traceId) && tids.size === 0) {
+				this.runToTraces.delete(rid);
+			}
+		}
+	}
+
+	private static readonly ACTIVE_TRACE_TTL_MS = 5 * 60 * 1000;
+	private activeTraceTtlPurgeCounter = 0;
+
+	private purgeStaleActiveTraces(): void {
+		const now = Date.now();
+		const ttl = AgentRuntime.ACTIVE_TRACE_TTL_MS;
+		for (const [id, t] of this.activeTraces) {
+			if (now - t.createdAt <= ttl) continue;
+			this.activeTraces.delete(id);
+			for (const [rid, tids] of this.runToTraces) {
+				tids.delete(id);
+				if (tids.size === 0) this.runToTraces.delete(rid);
+			}
+		}
+	}
+
+	private maybeRunActiveTraceTTLPurge(): void {
+		if (++this.activeTraceTtlPurgeCounter % 100 !== 0) return;
+		this.purgeStaleActiveTraces();
+	}
+
 	/**
 	 * Get the messaging adapter if available
 	 *
@@ -2084,10 +2609,43 @@ export class AgentRuntime implements IAgentRuntime {
 							const textToStream = currentFilter.push(chunk);
 							if (textToStream && onStreamChunk) {
 								filteredAccumulated += textToStream;
+								await this.applyPipelineHooks(
+									"model_stream_chunk",
+									modelStreamChunkPipelineHookContext({
+										source: "process_actions",
+										chunk: textToStream,
+										messageId: msgId,
+										roomId: message.roomId,
+										runId,
+										responseId: responseMessageId,
+										accumulated: filteredAccumulated,
+									}),
+								);
 								await onStreamChunk(textToStream, msgId, filteredAccumulated);
 							}
 						},
 						onStreamEnd: () => {
+							const textSnapshot = filteredAccumulated;
+							void this.applyPipelineHooks(
+								"model_stream_end",
+								modelStreamEndPipelineHookContext({
+									source: "process_actions",
+									roomId: message.roomId,
+									runId,
+									responseId: responseMessageId,
+									messageId: responseMessageId,
+									text: textSnapshot,
+								}),
+							).catch((err) => {
+								this.logger.debug(
+									{
+										src: "agent",
+										agentId: this.agentId,
+										error: err instanceof Error ? err.message : String(err),
+									},
+									"model_stream_end pipeline hook failed",
+								);
+							});
 							// Reset filter and local accumulator for next useModel call
 							currentFilter = null;
 							filteredAccumulated = "";
@@ -2265,10 +2823,16 @@ export class AgentRuntime implements IAgentRuntime {
 
 				if (callback) {
 					for (const content of storedCallbackData) {
-						// Redact any secrets from callback content before sending
-						if (content.text) {
-							content.text = this.redactSecrets(content.text);
-						}
+						await this.applyPipelineHooks(
+							"outgoing_before_deliver",
+							outgoingPipelineHookContext(content, {
+								source: "action",
+								roomId: message.roomId,
+								message,
+								actionName: action.name,
+								responseId: content.responseId,
+							}),
+						);
 						await callback(content);
 					}
 				}
@@ -2843,6 +3407,10 @@ export class AgentRuntime implements IAgentRuntime {
 				data: Record<string, string | number | boolean | null>;
 				purpose: string;
 				query?: Record<string, string | number | boolean | null>;
+				runId?: string;
+				roomId?: string;
+				messageId?: string;
+				executionTraceId?: string;
 			}) => void;
 		};
 		const trajLogger = (await this._ensureServiceStarted(
@@ -2921,6 +3489,8 @@ export class AgentRuntime implements IAgentRuntime {
 		if (trajectoryStepId && trajLogger) {
 			const userText =
 				typeof message.content?.text === "string" ? message.content.text : "";
+			const trajCtx = getTrajectoryContext();
+			const providerTraceId = this.getActiveTrace(this.getCurrentRunId())?.id;
 			for (const r of providerData) {
 				try {
 					const textLen = typeof r.text === "string" ? r.text.length : 0;
@@ -2930,6 +3500,10 @@ export class AgentRuntime implements IAgentRuntime {
 						data: { textLength: textLen },
 						purpose: "compose_state",
 						query: { message: userText.slice(0, 2000) },
+						runId: trajCtx?.runId,
+						roomId: trajCtx?.roomId,
+						messageId: trajCtx?.messageId,
+						executionTraceId: providerTraceId,
 					});
 				} catch {
 					// Trajectory logging must never break core message flow.
@@ -3810,16 +4384,32 @@ export class AgentRuntime implements IAgentRuntime {
 			delete paramsAsStreaming.onStreamChunk;
 		}
 
-		const response = await handler(
+		await this.invokePipelineHooks(
+			"pre_model",
+			preModelPipelineHookContext({
+				requestedModelType: String(modelType),
+				resolvedModelKey,
+				provider: resolvedModel?.provider ?? provider,
+				roomId: getTrajectoryContext()?.roomId,
+				params: modelParams,
+			}),
+			"Pre-model pipeline hook",
+		);
+
+		const rawResponse = await handler(
 			this as unknown as IAgentRuntime,
 			modelParams as Record<string, JsonValue | object>,
 		);
+
+		const resultRef: { current: unknown } = { current: rawResponse };
+		const modelOutToTrajectoryString = (v: unknown) =>
+			typeof v === "string" ? v : JSON.stringify(v);
 
 		// Stream: broadcast to callbacks if streaming
 		if (
 			shouldStream &&
 			(paramsChunk || ctxChunk) &&
-			isTextStreamResult(response)
+			isTextStreamResult(rawResponse)
 		) {
 			// WHY undefined for accumulated: raw LLM tokens have no field-level
 			// extraction — accumulated text is only meaningful after an XML
@@ -3828,24 +4418,80 @@ export class AgentRuntime implements IAgentRuntime {
 			// accumulated data get it from the extractor's onChunk bridge in
 			// dynamicPromptExecFromState, not from the raw token loop.
 			let fullText = "";
-			for await (const chunk of response.textStream) {
+			for await (const chunk of rawResponse.textStream) {
 				if (abortSignal?.aborted) break;
 				fullText += chunk;
-				if (paramsChunk) await paramsChunk(chunk, msgId, undefined);
-				if (ctxChunk) await ctxChunk(chunk, msgId, undefined);
+				const trajStream = getTrajectoryContext();
+				await this.invokePipelineHooks(
+					"model_stream_chunk",
+					modelStreamChunkPipelineHookContext({
+						source: "use_model",
+						chunk,
+						messageId: msgId,
+						roomId:
+							(trajStream?.roomId as UUID | undefined) ??
+							this.currentRoomId ??
+							this.agentId,
+						runId: this.getCurrentRunId(),
+						...(trajStream?.messageId
+							? { responseId: trajStream.messageId as UUID }
+							: {}),
+						accumulated: fullText,
+					}),
+					"Model stream chunk (useModel)",
+					false,
+				);
+				await runInsideModelStreamChunkDelivery(async () => {
+					if (paramsChunk) await paramsChunk(chunk, msgId, undefined);
+					if (ctxChunk) await ctxChunk(chunk, msgId, undefined);
+				});
 			}
+
+			const trajStreamEnd = getTrajectoryContext();
+			await this.invokePipelineHooks(
+				"model_stream_end",
+				modelStreamEndPipelineHookContext({
+					source: "use_model",
+					roomId:
+						(trajStreamEnd?.roomId as UUID | undefined) ??
+						this.currentRoomId ??
+						this.agentId,
+					runId: this.getCurrentRunId(),
+					messageId: msgId ?? trajStreamEnd?.messageId,
+					text: fullText,
+				}),
+				"Model stream end (useModel)",
+				true,
+			);
 
 			// Signal stream end to allow context to reset state between useModel calls
 			const streamingCtxEnd = getStreamingContext();
 			const ctxEnd = streamingCtxEnd?.onStreamEnd;
 			if (ctxEnd) ctxEnd();
 
-			// Log the completed stream
+			resultRef.current = fullText;
+
 			const elapsedTime =
 				(typeof performance !== "undefined" &&
 				typeof performance.now === "function"
 					? performance.now()
 					: Date.now()) - startTime;
+
+			await this.invokePipelineHooks(
+				"post_model",
+				postModelPipelineHookContext({
+					requestedModelType: String(modelType),
+					resolvedModelKey,
+					provider: resolvedModel?.provider ?? provider,
+					roomId: getTrajectoryContext()?.roomId,
+					durationMs: Math.round(elapsedTime),
+					params: modelParams,
+					result: resultRef,
+					streaming: true,
+				}),
+				"Post-model pipeline hook",
+			);
+
 			this.logger.trace(
 				{
 					src: "agent",
@@ -3864,7 +4510,7 @@ export class AgentRuntime implements IAgentRuntime {
 				promptContent,
 				elapsedTime,
 				resolvedModel?.provider ?? provider,
-				fullText,
+				resultRef.current,
 			);
 
 			// Optional trajectory logging: associate model calls with current trajectory step
@@ -3883,6 +4529,11 @@ export class AgentRuntime implements IAgentRuntime {
 							purpose: string;
 							actionType: string;
 							latencyMs: number;
+							modelSlot?: string;
+							runId?: string;
+							roomId?: string;
+							messageId?: string;
+							executionTraceId?: string;
 						}) => void;
 					};
 					const trajCtx = getTrajectoryContext();
@@ -3897,6 +4548,7 @@ export class AgentRuntime implements IAgentRuntime {
 						const maxTokensRaw = isPlainObject(modelParams)
 							? (modelParams as { maxTokens?: number }).maxTokens
 							: undefined;
+						const activeTrace = this.getActiveTrace(this.getCurrentRunId());
 						trajLogger.logLlmCall({
 							stepId,
 							model: String(resolvedModelKey),
@@ -3905,12 +4557,17 @@ export class AgentRuntime implements IAgentRuntime {
 									? this.character.system
 									: "",
 							userPrompt: promptContent ?? "",
-							response: fullText,
+							response: modelOutToTrajectoryString(resultRef.current),
 							temperature: typeof tempRaw === "number" ? tempRaw : 0,
 							maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
 							purpose: trajCtx?.purpose ?? "action",
 							actionType: "runtime.useModel",
 							latencyMs: Math.max(0, Math.round(elapsedTime)),
+							modelSlot: String(modelType),
+							runId: trajCtx?.runId,
+							roomId: trajCtx?.roomId,
+							messageId: trajCtx?.messageId,
+							executionTraceId: activeTrace?.id,
 						});
 					}
 				} catch {
@@ -3918,7 +4575,7 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 			}
 
-			return fullText as R;
+			return resultRef.current as R;
 		}
 
 		const elapsedTime =
@@ -3927,7 +4584,21 @@ export class AgentRuntime implements IAgentRuntime {
 				? performance.now()
 				: Date.now()) - startTime;
 
-		// Log timing / response (keep debug log if useful)
+		await this.invokePipelineHooks(
+			"post_model",
+			postModelPipelineHookContext({
+				requestedModelType: String(modelType),
+				resolvedModelKey,
+				provider: resolvedModel?.provider ?? provider,
+				roomId: getTrajectoryContext()?.roomId,
+				durationMs: Math.round(elapsedTime),
+				params: modelParams,
+				result: resultRef,
+				streaming: false,
+			}),
+			"Post-model pipeline hook",
+		);
+
 		this.logger.trace(
 			{
 				src: "agent",
@@ -3945,7 +4616,7 @@ export class AgentRuntime implements IAgentRuntime {
 			promptContent,
 			elapsedTime,
 			resolvedModel?.provider ?? provider,
-			response,
+			resultRef.current,
 		);
 
 		// Optional trajectory logging: associate model calls with current trajectory step
@@ -3964,6 +4635,11 @@ export class AgentRuntime implements IAgentRuntime {
 						purpose: string;
 						actionType: string;
 						latencyMs: number;
+						modelSlot?: string;
+						runId?: string;
+						roomId?: string;
+						messageId?: string;
+						executionTraceId?: string;
 					}) => void;
 				};
 				const trajCtx2 = getTrajectoryContext();
@@ -3978,6 +4654,7 @@ export class AgentRuntime implements IAgentRuntime {
 					const maxTokensRaw = isPlainObject(modelParams)
 						? (modelParams as { maxTokens?: number }).maxTokens
 						: undefined;
+					const activeTrace = this.getActiveTrace(this.getCurrentRunId());
 					trajLogger.logLlmCall({
 						stepId,
 						model: String(resolvedModelKey),
@@ -3986,22 +4663,24 @@ export class AgentRuntime implements IAgentRuntime {
 								? this.character.system
 								: "",
 						userPrompt: promptContent ?? "",
-						response:
-							typeof response === "string"
-								? response
-								: JSON.stringify(response),
+						response: modelOutToTrajectoryString(resultRef.current),
 						temperature: typeof tempRaw === "number" ? tempRaw : 0,
 						maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
 						purpose: trajCtx2?.purpose ?? "action",
 						actionType: "runtime.useModel",
 						latencyMs: Math.max(0, Math.round(elapsedTime)),
+						modelSlot: String(modelType),
+						runId: trajCtx2?.runId,
+						roomId: trajCtx2?.roomId,
+						messageId: trajCtx2?.messageId,
+						executionTraceId: activeTrace?.id,
 					});
 				}
 			} catch {
 				// Trajectory logging must never break core model flow.
 			}
 		}
-		return response as R;
+		return resultRef.current as R;
 	}
 
 	/**
@@ -4213,18 +4892,19 @@ export class AgentRuntime implements IAgentRuntime {
 	 * 3. Performance tracking: Tracks success/failure rates per model+schema
 	 */
 	async dynamicPromptExecFromState({
-		state,
+		state: stateArg,
 		params,
 		schema,
 		options = {},
 	}: {
-		state: State;
+		state?: State;
 		params: Omit<GenerateTextParams, "prompt"> & {
 			prompt: string | ((ctx: { state: State }) => string);
 		};
 		schema: SchemaRow[];
 		options?: {
 			key?: string;
+			promptName?: string;
 			modelSize?: "nano" | "small" | "medium" | "large" | "mega";
 			modelType?: import("./types").TextGenerationModelType;
 			model?: string;
@@ -4245,6 +4925,9 @@ export class AgentRuntime implements IAgentRuntime {
 			abortSignal?: AbortSignal;
 		};
 	}): Promise<Record<string, unknown> | null> {
+		const state: State =
+			stateArg ?? ({ values: {}, data: {}, text: "" } as State);
+
 		// Validate schema input
 		if (!schema || schema.length === 0) {
 			this.logger.error(
@@ -4331,10 +5014,55 @@ export class AgentRuntime implements IAgentRuntime {
 		let contextLevel: 0 | 1 | 2 | 3 = defaultContextCheckLevel;
 		const perFieldCodes = new Map<string, string>();
 
+		let traceModelId: string | undefined;
+		let tracePromptKey: string | undefined;
+		let traceVariant = "baseline";
+		let traceArtifactVersion: number | undefined;
+		const traceStartTime = Date.now();
+		const optimizationHooks = this.getPromptOptimizationHooks();
+
+		if (optimizationHooks) {
+			traceModelId = this.resolveProviderModelString(
+				resolvedModelType,
+				options.model,
+			);
+			const schemaHash = this.buildSchemaMetricKey(schema)
+				.split("")
+				.reduce((h, c) => ((h * 31) ^ c.charCodeAt(0)) >>> 0, 5381)
+				.toString(16)
+				.slice(0, 8);
+			tracePromptKey = options.promptName ?? schemaHash;
+		}
+
 		while (currentRetry <= maxRetries) {
 			const template = params.prompt;
 			const templateStr =
 				typeof template === "function" ? template({ state }) : template;
+
+			let finalTemplateStr = templateStr;
+			if (
+				optimizationHooks &&
+				traceModelId &&
+				tracePromptKey &&
+				currentRetry === 0
+			) {
+				try {
+					const merged = await optimizationHooks.mergePromptTemplate(this, {
+						baselineTemplate: templateStr,
+						modelId: traceModelId,
+						modelSlot: resolvedModelType,
+						promptKey: tracePromptKey,
+					});
+					finalTemplateStr = merged.template;
+					traceVariant = merged.variant;
+					traceArtifactVersion = merged.artifactVersion;
+				} catch (optErr) {
+					this.logger.warn(
+						{ error: optErr },
+						"Optimization artifact lookup failed",
+					);
+				}
+			}
 
 			// Get keys from state (excluding text, values, data)
 			const stateKeys = Object.keys(state);
@@ -4351,7 +5079,7 @@ export class AgentRuntime implements IAgentRuntime {
 			const templateContext = { ...filteredState, ...state.values };
 
 			const outputSegments = this.renderPromptTemplateSegments(
-				templateStr,
+				finalTemplateStr,
 				templateContext,
 				state,
 			);
@@ -4740,6 +5468,11 @@ ${section_end}`;
 
 			// Validate response
 			let allGood = true;
+			let schemaValidation: { missingPaths: string[]; invalidPaths: string[] } =
+				{
+					missingPaths: [],
+					invalidPaths: [],
+				};
 			if (!responseContent) {
 				validationIssues.push(
 					"No structured output could be parsed from the model response.",
@@ -4814,7 +5547,7 @@ ${section_end}`;
 					}
 				}
 
-				const schemaValidation = this.validateResponseAgainstSchema(
+				schemaValidation = this.validateResponseAgainstSchema(
 					responseContent,
 					schema,
 				);
@@ -4894,6 +5627,109 @@ ${section_end}`;
 
 				// Clean up smart retry context from state
 				delete (state as Record<string, unknown>)._smartRetryContext;
+
+				if (optimizationHooks && traceModelId && tracePromptKey) {
+					try {
+						const scoreCard = new ScoreCard();
+						scoreCard.add({
+							source: "dpe",
+							kind: "parseSuccess",
+							value: 1.0,
+							reason: "Structured output parsed successfully",
+						});
+						const schemaOk =
+							schemaValidation.missingPaths.length === 0 &&
+							schemaValidation.invalidPaths.length === 0;
+						scoreCard.add({
+							source: "dpe",
+							kind: "schemaValid",
+							value: schemaOk ? 1.0 : 0.0,
+							reason: schemaOk
+								? "Response matched schema paths"
+								: `Schema issues: missing [${schemaValidation.missingPaths.join(", ")}]; invalid [${schemaValidation.invalidPaths.join(", ")}]`,
+						});
+						scoreCard.add({
+							source: "dpe",
+							kind: "retriesUsed",
+							value: Math.max(0, 1.0 - currentRetry / Math.max(maxRetries, 1)),
+							reason: `Succeeded on attempt ${currentRetry + 1} of ${maxRetries + 1}`,
+						});
+						scoreCard.add({
+							source: "dpe",
+							kind: "tokenEfficiency",
+							value: Math.min(1.0, 500 / Math.max(outputTokenEst, 1)),
+							reason: `Estimated output tokens ${outputTokenEst} vs reference 500`,
+						});
+
+						const templateHashInput =
+							typeof params.prompt === "string"
+								? params.prompt
+								: tracePromptKey;
+						const computedTemplateHash = simpleHash(templateHashInput);
+
+						const trace: ExecutionTrace = {
+							id: uuidv4(),
+							traceVersion: 1,
+							type: "trace",
+							promptKey: tracePromptKey,
+							modelSlot: resolvedModelType,
+							modelId: traceModelId,
+							runId: this.getCurrentRunId?.() ?? undefined,
+							templateHash: computedTemplateHash,
+							schemaFingerprint: schemaKey,
+							artifactVersion: traceArtifactVersion,
+							variant: traceVariant,
+							parseSuccess: true,
+							schemaValid:
+								schemaValidation.missingPaths.length === 0 &&
+								schemaValidation.invalidPaths.length === 0,
+							validationCodesMatched: true,
+							retriesUsed: currentRetry,
+							tokenEstimate: outputTokenEst,
+							latencyMs: Date.now() - traceStartTime,
+							response: responseContent,
+							scoreCard: scoreCard.toJSON(),
+							createdAt: Date.now(),
+						};
+
+						this.maybeRunActiveTraceTTLPurge();
+						const runId = trace.runId;
+						if (runId) {
+							this.activeTraces.set(trace.id, trace);
+							if (!this.runToTraces.has(runId)) {
+								this.runToTraces.set(runId, new Set());
+							}
+							this.runToTraces.get(runId)?.add(trace.id);
+						}
+
+						void optimizationHooks
+							.persistRegistryEntry(this, {
+								promptKey: tracePromptKey,
+								schemaFingerprint: schemaKey,
+								templateHash: computedTemplateHash,
+								promptTemplate:
+									typeof params.prompt === "string" ? params.prompt : "",
+								schema: JSON.parse(JSON.stringify(schema)) as SchemaRow[],
+							})
+							.catch((err) => {
+								this.logger.warn(
+									{ error: err, src: "dpe" },
+									"Failed to write prompt optimization registry",
+								);
+							});
+						void optimizationHooks
+							.appendBaselineTrace(this, { trace })
+							.catch((err) => {
+								this.logger.warn("Failed to write optimization trace", err);
+							});
+					} catch (traceErr) {
+						this.logger.warn(
+							{ error: traceErr },
+							"Failed to build optimization trace",
+						);
+					}
+				}
+
 				this.clearStructuredOutputFailureState(state);
 				return responseContent;
 			}
@@ -5035,6 +5871,81 @@ ${section_end}`;
 			this.logger.warn(finalFailureMessage, finalFailureSummary);
 		} else {
 			this.logger.error(finalFailureMessage, finalFailureSummary);
+		}
+
+		if (optimizationHooks && traceModelId && tracePromptKey) {
+			try {
+				this.purgeStaleActiveTraces();
+
+				const scoreCard = new ScoreCard();
+				scoreCard.add({
+					source: "dpe",
+					kind: "parseSuccess",
+					value: 0.0,
+					reason: `No valid parse after ${maxRetries} retries`,
+				});
+				scoreCard.add({
+					source: "dpe",
+					kind: "schemaValid",
+					value: 0.0,
+					reason: "Parse or validation never succeeded",
+				});
+				scoreCard.add({
+					source: "dpe",
+					kind: "retriesUsed",
+					value: 0.0,
+					reason: "All retry attempts exhausted",
+				});
+
+				const failTemplateHash = simpleHash(
+					typeof params.prompt === "string" ? params.prompt : tracePromptKey,
+				);
+
+				const trace: ExecutionTrace = {
+					id: uuidv4(),
+					traceVersion: 1,
+					type: "trace",
+					promptKey: tracePromptKey,
+					modelSlot: resolvedModelType,
+					modelId: traceModelId,
+					runId: this.getCurrentRunId?.() ?? undefined,
+					templateHash: failTemplateHash,
+					schemaFingerprint: schemaKey,
+					artifactVersion: traceArtifactVersion,
+					variant: traceVariant,
+					parseSuccess: false,
+					schemaValid: false,
+					validationCodesMatched: false,
+					retriesUsed: maxRetries,
+					tokenEstimate: 0,
+					latencyMs: Date.now() - traceStartTime,
+					scoreCard: scoreCard.toJSON(),
+					createdAt: Date.now(),
+				};
+
+				void optimizationHooks
+					.persistRegistryEntry(this, {
+						promptKey: tracePromptKey,
+						schemaFingerprint: schemaKey,
+						templateHash: failTemplateHash,
+						promptTemplate:
+							typeof params.prompt === "string" ? params.prompt : "",
+						schema: JSON.parse(JSON.stringify(schema)) as SchemaRow[],
+					})
+					.catch((err) => {
+						this.logger.warn(
+							{ error: err, src: "dpe" },
+							"Failed to write prompt optimization registry",
+						);
+					});
+				void optimizationHooks
+					.appendFailureTrace(this, { trace })
+					.catch((err) => {
+						this.logger.warn("Failed to write failure trace", err);
+					});
+			} catch (traceErr) {
+				this.logger.warn({ error: traceErr }, "Failed to build failure trace");
+			}
 		}
 
 		// Clean up smart retry context from state
@@ -7208,7 +8119,12 @@ ${section_end}`;
 		const ids = await this.adapter.createMemories([
 			{ memory, tableName, unique },
 		]);
-		return ids[0];
+		const memoryId = ids[0];
+		await this.applyPipelineHooks(
+			"after_memory_persisted",
+			afterMemoryPersistedPipelineHookContext(memory, tableName, memoryId),
+		);
+		return memoryId;
 	}
 
 	async updateMemory(

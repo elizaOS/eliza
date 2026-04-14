@@ -284,15 +284,25 @@ export function collectConnectorEnvVars(
       }
 
       const accounts = configObj.accounts;
-      if (accounts && typeof accounts === "object" && !Array.isArray(accounts)) {
+      if (
+        accounts &&
+        typeof accounts === "object" &&
+        !Array.isArray(accounts)
+      ) {
         const firstEnabledAccount = Object.values(
           accounts as Record<string, unknown>,
         ).find((account) => {
-          if (!account || typeof account !== "object" || Array.isArray(account)) {
+          if (
+            !account ||
+            typeof account !== "object" ||
+            Array.isArray(account)
+          ) {
             return false;
           }
           const candidate = account as Record<string, unknown>;
-          return candidate.enabled !== false && typeof candidate.authDir === "string";
+          return (
+            candidate.enabled !== false && typeof candidate.authDir === "string"
+          );
         }) as Record<string, unknown> | undefined;
 
         if (

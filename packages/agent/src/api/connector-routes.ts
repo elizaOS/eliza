@@ -24,7 +24,9 @@ export interface ConnectorRouteContext {
     options?: ReadJsonBodyOptions,
   ) => Promise<T | null>;
   saveElizaConfig: (config: ElizaConfig) => void;
-  redactConfigSecrets: (config: Record<string, unknown>) => Record<string, unknown>;
+  redactConfigSecrets: (
+    config: Record<string, unknown>,
+  ) => Record<string, unknown>;
   isBlockedObjectKey: (key: string) => boolean;
   cloneWithoutBlockedObjectKeys: <T>(value: T) => T;
 }

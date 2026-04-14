@@ -57,7 +57,9 @@ class StewardSigningClient {
   private agentToken: string;
   private agentId: string;
 
-  constructor(config: Pick<StewardEvmAccountConfig, "apiUrl" | "agentToken" | "agentId">) {
+  constructor(
+    config: Pick<StewardEvmAccountConfig, "apiUrl" | "agentToken" | "agentId">,
+  ) {
     this.baseUrl = config.apiUrl.replace(/\/+$/, "");
     this.agentToken = config.agentToken;
     this.agentId = config.agentId;
@@ -81,19 +83,25 @@ class StewardSigningClient {
       parsed = JSON.parse(text);
     } catch {
       throw new Error(
-        `[StewardAccount] Invalid JSON from Steward API (${response.status}): ${text.slice(0, 200)}`
+        `[StewardAccount] Invalid JSON from Steward API (${response.status}): ${text.slice(0, 200)}`,
       );
     }
 
     if (!parsed.ok) {
       // 202 with pending_approval is a special case
-      if (response.status === 202 && parsed.data && typeof parsed.data === "object" && "status" in (parsed.data as Record<string, unknown>) && (parsed.data as Record<string, unknown>).status === "pending_approval") {
+      if (
+        response.status === 202 &&
+        parsed.data &&
+        typeof parsed.data === "object" &&
+        "status" in (parsed.data as Record<string, unknown>) &&
+        (parsed.data as Record<string, unknown>).status === "pending_approval"
+      ) {
         throw new Error(
-          `[StewardAccount] Transaction requires manual approval (txId: ${(parsed.data as Record<string, unknown>).txId})`
+          `[StewardAccount] Transaction requires manual approval (txId: ${(parsed.data as Record<string, unknown>).txId})`,
         );
       }
       throw new Error(
-        `[StewardAccount] API error (${response.status}): ${parsed.error || "Unknown error"}`
+        `[StewardAccount] API error (${response.status}): ${parsed.error || "Unknown error"}`,
       );
     }
 
@@ -115,10 +123,10 @@ class StewardSigningClient {
     maxPriorityFeePerGas?: string;
     broadcast?: boolean;
   }): Promise<{ signedTx?: string; txHash?: string }> {
-    return this.request(
-      `/vault/${encodeURIComponent(this.agentId)}/sign`,
-      { ...tx, broadcast: tx.broadcast ?? false }
-    );
+    return this.request(`/vault/${encodeURIComponent(this.agentId)}/sign`, {
+      ...tx,
+      broadcast: tx.broadcast ?? false,
+    });
   }
 
   /**
@@ -127,7 +135,7 @@ class StewardSigningClient {
   async signMessage(message: string): Promise<{ signature: string }> {
     return this.request(
       `/vault/${encodeURIComponent(this.agentId)}/sign-message`,
-      { message }
+      { message },
     );
   }
 
@@ -142,7 +150,7 @@ class StewardSigningClient {
   }): Promise<{ signature: string }> {
     return this.request(
       `/vault/${encodeURIComponent(this.agentId)}/sign-typed-data`,
-      input
+      input,
     );
   }
 }
@@ -176,7 +184,10 @@ export async function fetchStewardWalletAddress(
       },
     );
     if (addrResp.ok) {
-      const addrData = (await addrResp.json()) as StewardApiResponse<{ evm?: string; solana?: string }>;
+      const addrData = (await addrResp.json()) as StewardApiResponse<{
+        evm?: string;
+        solana?: string;
+      }>;
       if (addrData.ok && addrData.data?.evm) {
         return addrData.data.evm as Address;
       }
@@ -195,7 +206,9 @@ export async function fetchStewardWalletAddress(
       },
     );
     if (agentResp.ok) {
-      const agentData = (await agentResp.json()) as StewardApiResponse<{ walletAddress?: string }>;
+      const agentData = (await agentResp.json()) as StewardApiResponse<{
+        walletAddress?: string;
+      }>;
       if (agentData.ok && agentData.data?.walletAddress) {
         return agentData.data.walletAddress as Address;
       }
@@ -205,7 +218,7 @@ export async function fetchStewardWalletAddress(
   }
 
   throw new Error(
-    `[StewardAccount] Could not fetch wallet address for agent "${agentId}" from ${baseUrl}`
+    `[StewardAccount] Could not fetch wallet address for agent "${agentId}" from ${baseUrl}`,
   );
 }
 
@@ -218,7 +231,9 @@ export async function fetchStewardWalletAddress(
  *   const account = createStewardEvmAccount({ apiUrl, agentToken, agentId, address });
  *   const walletProvider = new WalletProvider(account, runtime, chains);
  */
-export function createStewardEvmAccount(config: StewardEvmAccountConfig): Account {
+export function createStewardEvmAccount(
+  config: StewardEvmAccountConfig,
+): Account {
   const client = new StewardSigningClient({
     apiUrl: config.apiUrl,
     agentToken: config.agentToken,
@@ -236,9 +251,10 @@ export function createStewardEvmAccount(config: StewardEvmAccountConfig): Accoun
         ? (td.domain as Record<string, unknown>)
         : {};
     const types = {
-      ...((td.types && typeof td.types === "object"
-        ? td.types
-        : {}) as Record<string, unknown>),
+      ...((td.types && typeof td.types === "object" ? td.types : {}) as Record<
+        string,
+        unknown
+      >),
     };
     const primaryType =
       typeof td.primaryType === "string" ? td.primaryType : "";
@@ -290,7 +306,9 @@ export function createStewardEvmAccount(config: StewardEvmAccountConfig): Accoun
       const value = transaction.value?.toString() ?? "0";
 
       // Serialize calldata if present
-      const data = (transaction as Record<string, unknown>).data as string | undefined;
+      const data = (transaction as Record<string, unknown>).data as
+        | string
+        | undefined;
 
       const result = await client.signTransaction({
         to,
@@ -299,8 +317,12 @@ export function createStewardEvmAccount(config: StewardEvmAccountConfig): Accoun
         chainId: transaction.chainId,
         nonce: transaction.nonce,
         gas: transaction.gas?.toString(),
-        maxFeePerGas: (transaction as Record<string, unknown>).maxFeePerGas?.toString(),
-        maxPriorityFeePerGas: (transaction as Record<string, unknown>).maxPriorityFeePerGas?.toString(),
+        maxFeePerGas: (
+          transaction as Record<string, unknown>
+        ).maxFeePerGas?.toString(),
+        maxPriorityFeePerGas: (
+          transaction as Record<string, unknown>
+        ).maxPriorityFeePerGas?.toString(),
         broadcast: false, // We want the signed tx back, not a broadcast
       });
 
@@ -312,13 +334,15 @@ export function createStewardEvmAccount(config: StewardEvmAccountConfig): Accoun
       if (result.txHash) {
         console.warn(
           "[StewardAccount] Steward auto-broadcast tx despite broadcast=false. Hash:",
-          result.txHash
+          result.txHash,
         );
         // Return the hash — callers will need to handle this edge case
         return result.txHash as Hex;
       }
 
-      throw new Error("[StewardAccount] signTransaction returned neither signedTx nor txHash");
+      throw new Error(
+        "[StewardAccount] signTransaction returned neither signedTx nor txHash",
+      );
     },
 
     signTypedData: signTypedData as CustomSource["signTypedData"],
@@ -395,11 +419,13 @@ export async function initStewardEvmAccount(): Promise<Account | null> {
   if (!config) return null;
 
   try {
-    console.log("[StewardAccount] Cloud-provisioned mode detected, fetching wallet address...");
+    console.log(
+      "[StewardAccount] Cloud-provisioned mode detected, fetching wallet address...",
+    );
     const address = await fetchStewardWalletAddress(
       config.apiUrl,
       config.agentToken,
-      config.agentId
+      config.agentId,
     );
     config.address = address;
     console.log(`[StewardAccount] Wallet address: ${address}`);

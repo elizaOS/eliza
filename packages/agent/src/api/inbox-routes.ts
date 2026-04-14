@@ -1784,21 +1784,19 @@ async function loadInboxChats(
     const room = roomById.get(roomIdKey as UUID);
     const worldId = readRoomWorldId(room);
     const world = worldId ? worldsById.get(worldId as UUID) : undefined;
-    const liveDiscordProfile =
-      isDiscordConnectorSource(entry.source)
-        ? await resolveDiscordRoomProfile(
-            runtime,
-            room,
-            entry.latestDiscordChannelId,
-          )
-        : null;
-    const latestSenderEntityProfile =
-      isDiscordConnectorSource(entry.source)
-        ? await resolveStoredDiscordEntityProfile(
-            runtime,
-            entry.latestSenderEntityId,
-          )
-        : null;
+    const liveDiscordProfile = isDiscordConnectorSource(entry.source)
+      ? await resolveDiscordRoomProfile(
+          runtime,
+          room,
+          entry.latestDiscordChannelId,
+        )
+      : null;
+    const latestSenderEntityProfile = isDiscordConnectorSource(entry.source)
+      ? await resolveStoredDiscordEntityProfile(
+          runtime,
+          entry.latestSenderEntityId,
+        )
+      : null;
     const latestMessageAuthorProfile =
       isDiscordConnectorSource(entry.source) &&
       entry.latestDiscordChannelId &&
@@ -1874,10 +1872,9 @@ async function loadInboxChats(
       typeof entry.latestSenderName === "string" &&
       entry.latestSenderName.trim().length > 0 &&
       entry.latestSenderName.trim().toLowerCase() === title.toLowerCase();
-    const shouldUsePersonAvatar =
-      isDiscordConnectorSource(entry.source)
-        ? true
-        : roomType === "DM" || titleMatchesLatestSender;
+    const shouldUsePersonAvatar = isDiscordConnectorSource(entry.source)
+      ? true
+      : roomType === "DM" || titleMatchesLatestSender;
     const resolvedAvatarUrl = shouldUsePersonAvatar
       ? (liveDiscordProfile?.avatarUrl ??
         latestSenderEntityProfile?.avatarUrl ??
@@ -1893,16 +1890,15 @@ async function loadInboxChats(
       ...(worldId ? { worldId } : {}),
       worldLabel: resolveInboxWorldLabel(room, world),
       title,
-      avatarUrl:
-        isDiscordConnectorSource(entry.source)
-          ? await cacheInboxDiscordAvatar(
-              runtime,
-              resolvedAvatarUrl,
-              entry.latestSenderRawId ??
-                latestSenderEntityProfile?.rawUserId ??
-                latestMessageAuthorProfile?.rawUserId,
-            )
-          : resolvedAvatarUrl,
+      avatarUrl: isDiscordConnectorSource(entry.source)
+        ? await cacheInboxDiscordAvatar(
+            runtime,
+            resolvedAvatarUrl,
+            entry.latestSenderRawId ??
+              latestSenderEntityProfile?.rawUserId ??
+              latestMessageAuthorProfile?.rawUserId,
+          )
+        : resolvedAvatarUrl,
       lastMessageText: entry.lastMessageText,
       lastMessageAt: entry.lastMessageAt,
       messageCount: entry.messageCount,
@@ -2046,12 +2042,12 @@ export async function handleInboxRoute(
 
     try {
       await runtime.sendMessageToTarget(
-        ({
+        {
           source,
           roomId: room.id,
           channelId: room.channelId ?? room.id,
           serverId: room.serverId,
-        } as Parameters<typeof runtime.sendMessageToTarget>[0]),
+        } as Parameters<typeof runtime.sendMessageToTarget>[0],
         {
           ...(replyToMessageId ? { inReplyTo: replyToMessageId } : {}),
           source,
@@ -2067,10 +2063,7 @@ export async function handleInboxRoute(
         source,
       );
 
-      helpers.json(
-        res,
-        message ? { ok: true, message } : { ok: true },
-      );
+      helpers.json(res, message ? { ok: true, message } : { ok: true });
     } catch (err) {
       helpers.error(
         res,

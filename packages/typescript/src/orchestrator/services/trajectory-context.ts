@@ -18,41 +18,41 @@
  * avoids index-signature incompatibilities with ElizaOS types.
  */
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-interface RuntimeLike {}
+type RuntimeLike = {};
 
 /**
  * Orchestrator decision types that map to specific LLM call sites.
  */
 export type OrchestratorDecisionType =
-  | "coordination"
-  | "turn-complete"
-  | "idle-check"
-  | "stall-classification"
-  | "stall-classify-decide"
-  | "swarm-context-generation"
-  | "event-triage"
-  | "task-validation"
-  | "acceptance-verifier";
+	| "coordination"
+	| "turn-complete"
+	| "idle-check"
+	| "stall-classification"
+	| "stall-classify-decide"
+	| "swarm-context-generation"
+	| "event-triage"
+	| "task-validation"
+	| "acceptance-verifier";
 
 export interface OrchestratorTrajectoryContext {
-  /** Source identifier — always "orchestrator" */
-  source: "orchestrator";
-  /** Which decision type triggered this LLM call */
-  decisionType: OrchestratorDecisionType;
-  /** PTY session ID of the agent being evaluated */
-  sessionId?: string;
-  /** Durable task thread identifier */
-  threadId?: string;
-  /** Acceptance verifier job identifier */
-  verifierJobId?: string;
-  /** Human-readable task label */
-  taskLabel?: string;
-  /** Repository URL or identifier (for trajectory feedback filtering) */
-  repo?: string;
-  /** Workspace directory path */
-  workdir?: string;
-  /** Original task description assigned to the agent */
-  originalTask?: string;
+	/** Source identifier — always "orchestrator" */
+	source: "orchestrator";
+	/** Which decision type triggered this LLM call */
+	decisionType: OrchestratorDecisionType;
+	/** PTY session ID of the agent being evaluated */
+	sessionId?: string;
+	/** Durable task thread identifier */
+	threadId?: string;
+	/** Acceptance verifier job identifier */
+	verifierJobId?: string;
+	/** Human-readable task label */
+	taskLabel?: string;
+	/** Repository URL or identifier (for trajectory feedback filtering) */
+	repo?: string;
+	/** Workspace directory path */
+	workdir?: string;
+	/** Original task description assigned to the agent */
+	originalTask?: string;
 }
 
 const CTX_KEY = "__orchestratorTrajectoryCtx";
@@ -62,17 +62,17 @@ const CTX_KEY = "__orchestratorTrajectoryCtx";
  * Call this before `runtime.useModel()` and clear it after.
  */
 export function setTrajectoryContext(
-  runtime: RuntimeLike,
-  ctx: OrchestratorTrajectoryContext,
+	runtime: RuntimeLike,
+	ctx: OrchestratorTrajectoryContext,
 ): void {
-  (runtime as Record<string, unknown>)[CTX_KEY] = ctx;
+	(runtime as Record<string, unknown>)[CTX_KEY] = ctx;
 }
 
 /**
  * Clear orchestrator trajectory context from the runtime.
  */
 export function clearTrajectoryContext(runtime: RuntimeLike): void {
-  (runtime as Record<string, unknown>)[CTX_KEY] = undefined;
+	(runtime as Record<string, unknown>)[CTX_KEY] = undefined;
 }
 
 /**
@@ -80,15 +80,15 @@ export function clearTrajectoryContext(runtime: RuntimeLike): void {
  * Used by the trajectory logger on the milaidy side.
  */
 export function readTrajectoryContext(
-  runtime: unknown,
+	runtime: unknown,
 ): OrchestratorTrajectoryContext | undefined {
-  if (!runtime || typeof runtime !== "object") return undefined;
-  const ctx = (runtime as Record<string, unknown>)[CTX_KEY];
-  if (!ctx || typeof ctx !== "object") return undefined;
-  const candidate = ctx as Partial<OrchestratorTrajectoryContext>;
-  if (candidate.source !== "orchestrator" || !candidate.decisionType)
-    return undefined;
-  return candidate as OrchestratorTrajectoryContext;
+	if (!runtime || typeof runtime !== "object") return undefined;
+	const ctx = (runtime as Record<string, unknown>)[CTX_KEY];
+	if (!ctx || typeof ctx !== "object") return undefined;
+	const candidate = ctx as Partial<OrchestratorTrajectoryContext>;
+	if (candidate.source !== "orchestrator" || !candidate.decisionType)
+		return undefined;
+	return candidate as OrchestratorTrajectoryContext;
 }
 
 /**
@@ -105,14 +105,14 @@ export function readTrajectoryContext(
  * ```
  */
 export async function withTrajectoryContext<T>(
-  runtime: RuntimeLike,
-  ctx: OrchestratorTrajectoryContext,
-  fn: () => Promise<T>,
+	runtime: RuntimeLike,
+	ctx: OrchestratorTrajectoryContext,
+	fn: () => Promise<T>,
 ): Promise<T> {
-  setTrajectoryContext(runtime, ctx);
-  try {
-    return await fn();
-  } finally {
-    clearTrajectoryContext(runtime);
-  }
+	setTrajectoryContext(runtime, ctx);
+	try {
+		return await fn();
+	} finally {
+		clearTrajectoryContext(runtime);
+	}
 }

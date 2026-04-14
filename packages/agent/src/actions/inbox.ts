@@ -8,19 +8,20 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { ModelType, logger } from "@elizaos/core";
-import { hasAdminAccess } from "../security/access.js";
-import { InboxTriageRepository } from "../inbox/repository.js";
+import { logger, ModelType } from "@elizaos/core";
+import { textIncludesKeywordTerm } from "@elizaos/shared/validation-keywords";
+import { loadInboxTriageConfig } from "../inbox/config.js";
 import { fetchAllMessages } from "../inbox/message-fetcher.js";
-import {
-  applyTriageRules,
-  classifyMessages,
-} from "../inbox/triage-classifier.js";
 import {
   looksLikeInboxConfirmation,
   reflectOnAutoReply,
   reflectOnSendConfirmation,
 } from "../inbox/reflection.js";
+import { InboxTriageRepository } from "../inbox/repository.js";
+import {
+  applyTriageRules,
+  classifyMessages,
+} from "../inbox/triage-classifier.js";
 import type {
   DeferredInboxDraft,
   InboundMessage,
@@ -28,10 +29,9 @@ import type {
   TriageEntry,
   TriageResult,
 } from "../inbox/types.js";
-import { loadInboxTriageConfig } from "../inbox/config.js";
-import { textIncludesKeywordTerm } from "@elizaos/shared/validation-keywords";
-import { resolveAdminEntityId } from "./send-message.js";
+import { hasAdminAccess } from "../security/access.js";
 import { INTERNAL_URL } from "./lifeops-google-helpers.js";
+import { resolveAdminEntityId } from "./send-message.js";
 
 // ---------------------------------------------------------------------------
 // Subaction types & params
@@ -57,33 +57,88 @@ type InboxActionParams = {
 // ---------------------------------------------------------------------------
 
 const TRIAGE_TERMS = [
-  "triage", "check", "scan", "new messages", "check inbox",
-  "检查", "新消息", "查看收件箱",
-  "확인", "새 메시지", "받은편지함",
-  "revisar", "nuevos mensajes", "bandeja de entrada",
-  "verificar", "novas mensagens", "caixa de entrada",
-  "kiểm tra", "tin nhắn mới", "hộp thư đến",
-  "tingnan", "bagong mensahe",
+  "triage",
+  "check",
+  "scan",
+  "new messages",
+  "check inbox",
+  "检查",
+  "新消息",
+  "查看收件箱",
+  "확인",
+  "새 메시지",
+  "받은편지함",
+  "revisar",
+  "nuevos mensajes",
+  "bandeja de entrada",
+  "verificar",
+  "novas mensagens",
+  "caixa de entrada",
+  "kiểm tra",
+  "tin nhắn mới",
+  "hộp thư đến",
+  "tingnan",
+  "bagong mensahe",
 ] as const;
 
 const DIGEST_TERMS = [
-  "digest", "summary", "briefing", "daily", "overview", "recap", "report",
-  "摘要", "简报", "概览", "总结",
-  "요약", "브리핑", "개요",
-  "resumen", "informe", "resúmen",
-  "resumo", "relatório", "relatorio",
-  "tóm tắt", "báo cáo", "tổng quan",
-  "buod", "ulat",
+  "digest",
+  "summary",
+  "briefing",
+  "daily",
+  "overview",
+  "recap",
+  "report",
+  "摘要",
+  "简报",
+  "概览",
+  "总结",
+  "요약",
+  "브리핑",
+  "개요",
+  "resumen",
+  "informe",
+  "resúmen",
+  "resumo",
+  "relatório",
+  "relatorio",
+  "tóm tắt",
+  "báo cáo",
+  "tổng quan",
+  "buod",
+  "ulat",
 ] as const;
 
 const RESPOND_TERMS = [
-  "respond", "reply", "send", "confirm", "approve",
-  "回复", "发送", "确认", "批准",
-  "답장", "보내기", "확인", "승인",
-  "responder", "enviar", "confirmar", "aprobar",
-  "responder", "enviar", "confirmar", "aprovar",
-  "trả lời", "gửi", "xác nhận", "phê duyệt",
-  "sumagot", "ipadala", "kumpirmahin", "aprubahan",
+  "respond",
+  "reply",
+  "send",
+  "confirm",
+  "approve",
+  "回复",
+  "发送",
+  "确认",
+  "批准",
+  "답장",
+  "보내기",
+  "확인",
+  "승인",
+  "responder",
+  "enviar",
+  "confirmar",
+  "aprobar",
+  "responder",
+  "enviar",
+  "confirmar",
+  "aprovar",
+  "trả lời",
+  "gửi",
+  "xác nhận",
+  "phê duyệt",
+  "sumagot",
+  "ipadala",
+  "kumpirmahin",
+  "aprubahan",
 ] as const;
 
 function resolveSubaction(
@@ -96,9 +151,12 @@ function resolveSubaction(
 
   // 2. Infer from intent or message text
   const text = params.intent ?? messageText;
-  if (TRIAGE_TERMS.some((t) => textIncludesKeywordTerm(text, t))) return "triage";
-  if (DIGEST_TERMS.some((t) => textIncludesKeywordTerm(text, t))) return "digest";
-  if (RESPOND_TERMS.some((t) => textIncludesKeywordTerm(text, t))) return "respond";
+  if (TRIAGE_TERMS.some((t) => textIncludesKeywordTerm(text, t)))
+    return "triage";
+  if (DIGEST_TERMS.some((t) => textIncludesKeywordTerm(text, t)))
+    return "digest";
+  if (RESPOND_TERMS.some((t) => textIncludesKeywordTerm(text, t)))
+    return "respond";
 
   // 3. If there's a pending draft in state, assume respond
   if (latestPendingDraft(state)) return "respond";
@@ -396,9 +454,7 @@ async function handleTriage(
     // 7. Escalate urgent items
     if (result.classification === "urgent") {
       try {
-        const { EscalationService } = await import(
-          "../services/escalation.js"
-        );
+        const { EscalationService } = await import("../services/escalation.js");
         const linkText = msg.deepLink ? `\n${msg.deepLink}` : "";
         await EscalationService.startEscalation(
           runtime,
@@ -551,9 +607,7 @@ async function handleDigest(
 
   if (resolved.length > 0) {
     lines.push(`\n## Resolved (${resolved.length})`);
-    lines.push(
-      `  ${resolved.length} items were addressed during the day.`,
-    );
+    lines.push(`  ${resolved.length} items were addressed during the day.`);
   }
 
   if (info.length > 0) {
@@ -636,8 +690,7 @@ async function handleRespond(
     const unresolved = await repo.getUnresolved({ limit: 5 });
     const needsReply = unresolved.filter(
       (e) =>
-        e.classification === "needs_reply" ||
-        e.classification === "urgent",
+        e.classification === "needs_reply" || e.classification === "urgent",
     );
     if (needsReply.length === 0) {
       return {
@@ -682,9 +735,7 @@ async function handleRespond(
   const draft: DeferredInboxDraft = {
     triageEntryId: entry.id,
     source: entry.source,
-    targetRoomId: entry.sourceRoomId
-      ? (entry.sourceRoomId as UUID)
-      : undefined,
+    targetRoomId: entry.sourceRoomId ? (entry.sourceRoomId as UUID) : undefined,
     targetEntityId: entry.sourceEntityId
       ? (entry.sourceEntityId as UUID)
       : undefined,
@@ -803,9 +854,7 @@ async function tryAutoReply(
       draftResponse: result.suggestedResponse!,
       autoReplied: true,
     });
-    logger.info(
-      `[INBOX] Auto-replied to ${msg.senderName} on ${msg.source}`,
-    );
+    logger.info(`[INBOX] Auto-replied to ${msg.senderName} on ${msg.source}`);
     return true;
   } catch (err) {
     logger.warn("[INBOX] Auto-reply send failed:", String(err));
@@ -997,8 +1046,9 @@ function latestPendingDraft(
 
       const draft =
         (content.inboxDraft as DeferredInboxDraft | undefined) ??
-        ((content.data as Record<string, unknown> | undefined)
-          ?.inboxDraft as DeferredInboxDraft | undefined);
+        ((content.data as Record<string, unknown> | undefined)?.inboxDraft as
+          | DeferredInboxDraft
+          | undefined);
       if (draft?.triageEntryId && draft?.draftText) {
         return draft;
       }
@@ -1014,9 +1064,7 @@ function findBestMatch(
 ): TriageEntry | null {
   const lower = target.toLowerCase();
   // Exact channel name match
-  const exact = entries.find(
-    (e) => e.channelName.toLowerCase() === lower,
-  );
+  const exact = entries.find((e) => e.channelName.toLowerCase() === lower);
   if (exact) return exact;
 
   // Sender name match
@@ -1032,9 +1080,7 @@ function findBestMatch(
   if (partial) return partial;
 
   // Source match
-  const sourceMatch = entries.find(
-    (e) => e.source.toLowerCase() === lower,
-  );
+  const sourceMatch = entries.find((e) => e.source.toLowerCase() === lower);
   if (sourceMatch) return sourceMatch;
 
   return null;

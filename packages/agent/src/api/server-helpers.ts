@@ -8,12 +8,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-
-import {
-  type AgentRuntime,
-  type UUID,
-} from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import {
@@ -21,6 +16,12 @@ import {
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
 } from "../contracts/onboarding.js";
+import {
+  normalizeCharacterLanguage,
+  resolveStylePresetByAvatarIndex,
+  resolveStylePresetById,
+  resolveStylePresetByName,
+} from "../onboarding-presets.js";
 import {
   type AgentEventServiceLike,
   getAgentEventService,
@@ -31,23 +32,15 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
-import {
-  normalizeCharacterLanguage,
-  resolveStylePresetByAvatarIndex,
-  resolveStylePresetById,
-  resolveStylePresetByName,
-} from "../onboarding-presets.js";
 
 // ---------------------------------------------------------------------------
 // Pi AI plugin lazy loader
 // ---------------------------------------------------------------------------
 
-// @ts-ignore — plugin-pi-ai may not be installed
 type PiAiPluginModule = typeof import("@elizaos/plugin-pi-ai");
 let _piAiPluginModule: PiAiPluginModule | null = null;
 export async function loadPiAiPluginModule(): Promise<PiAiPluginModule> {
   if (!_piAiPluginModule) {
-    // @ts-ignore — plugin-pi-ai may not be installed
     _piAiPluginModule = await import("@elizaos/plugin-pi-ai");
   }
   return _piAiPluginModule;
@@ -63,7 +56,9 @@ export function getAgentEventSvc(
   return getAgentEventService(runtime);
 }
 
-export function requirePluginManager(runtime: AgentRuntime | null): PluginManagerLike {
+export function requirePluginManager(
+  runtime: AgentRuntime | null,
+): PluginManagerLike {
   const service = runtime?.getService("plugin_manager");
   if (!isPluginManagerLike(service)) {
     throw new Error("Plugin manager service not found");
@@ -71,7 +66,9 @@ export function requirePluginManager(runtime: AgentRuntime | null): PluginManage
   return service;
 }
 
-export function requireCoreManager(runtime: AgentRuntime | null): CoreManagerLike {
+export function requireCoreManager(
+  runtime: AgentRuntime | null,
+): CoreManagerLike {
   const service = runtime?.getService("core_manager");
   if (!isCoreManagerLike(service)) {
     throw new Error("Core manager service not found");

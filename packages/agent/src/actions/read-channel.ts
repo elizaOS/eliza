@@ -76,9 +76,7 @@ async function resolveChannelRoom(
         if (source && roomSource !== source.toLowerCase()) continue;
         return room;
       }
-    } catch {
-      continue;
-    }
+    } catch {}
   }
 
   return null;
@@ -236,8 +234,7 @@ export const readChannelAction: Action = {
     },
     {
       name: "channel",
-      description:
-        "Channel name, channel ID, or room ID to read from.",
+      description: "Channel name, channel ID, or room ID to read from.",
       required: true,
       schema: { type: "string" as const },
     },

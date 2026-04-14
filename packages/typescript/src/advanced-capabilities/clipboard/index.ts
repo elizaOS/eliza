@@ -36,41 +36,41 @@ import { clipboardProvider } from "./providers/clipboard.ts";
  * - clipboard: Provides summary of entries to agent context
  */
 export const clipboardPlugin: Plugin = {
-  name: "clipboard",
-  description:
-    "File-based memory storage for persistent notes and memories that can be written, read, searched, and managed across sessions.",
+	name: "clipboard",
+	description:
+		"File-based memory storage for persistent notes and memories that can be written, read, searched, and managed across sessions.",
 
-  providers: [clipboardProvider],
+	providers: [clipboardProvider],
 
-  actions: [
-    readFileAction,
-    readAttachmentAction,
-    removeFromClipboardAction,
-    clipboardWriteAction,
-    clipboardReadAction,
-    clipboardSearchAction,
-    clipboardListAction,
-    clipboardDeleteAction,
-    clipboardAppendAction,
-  ],
+	actions: [
+		readFileAction,
+		readAttachmentAction,
+		removeFromClipboardAction,
+		clipboardWriteAction,
+		clipboardReadAction,
+		clipboardSearchAction,
+		clipboardListAction,
+		clipboardDeleteAction,
+		clipboardAppendAction,
+	],
 
-  async init(
-    _config: Record<string, string>,
-    _runtime: IAgentRuntime,
-  ): Promise<void> {
-    try {
-      logger.info("[ClipboardPlugin] Initializing...");
+	async init(
+		_config: Record<string, string>,
+		_runtime: IAgentRuntime,
+	): Promise<void> {
+		try {
+			logger.info("[ClipboardPlugin] Initializing...");
 
-      // The service will create the directory on first use
-      logger.info("[ClipboardPlugin] Initialized successfully");
-    } catch (error) {
-      logger.error(
-        "[ClipboardPlugin] Error initializing:",
-        error instanceof Error ? error.message : String(error),
-      );
-      throw error;
-    }
-  },
+			// The service will create the directory on first use
+			logger.info("[ClipboardPlugin] Initialized successfully");
+		} catch (error) {
+			logger.error(
+				"[ClipboardPlugin] Error initializing:",
+				error instanceof Error ? error.message : String(error),
+			);
+			throw error;
+		}
+	},
 };
 
 export default clipboardPlugin;
@@ -89,29 +89,29 @@ export { clipboardWriteAction } from "./actions/write.ts";
 export { clipboardProvider } from "./providers/clipboard.ts";
 // Export service
 export {
-  createClipboardService,
-  ClipboardService,
+	ClipboardService,
+	createClipboardService,
 } from "./services/clipboardService.ts";
 export {
-  maybeStoreTaskClipboardItem,
-  resolveClipboardTitle,
-  shouldAddToClipboard,
-  type TaskClipboardPersistenceResult,
+	maybeStoreTaskClipboardItem,
+	resolveClipboardTitle,
+	shouldAddToClipboard,
+	type TaskClipboardPersistenceResult,
 } from "./services/taskClipboardPersistence.ts";
 export {
-  createTaskClipboardService,
-  TaskClipboardService,
+	createTaskClipboardService,
+	TaskClipboardService,
 } from "./services/taskClipboardService.ts";
 // Export types
 export type {
-  AddTaskClipboardItemInput,
-  ClipboardConfig,
-  ClipboardEntry,
-  ClipboardReadOptions,
-  ClipboardSearchOptions,
-  ClipboardSearchResult,
-  ClipboardWriteOptions,
-  TaskClipboardItem,
-  TaskClipboardSnapshot,
-  TaskClipboardSourceType,
+	AddTaskClipboardItemInput,
+	ClipboardConfig,
+	ClipboardEntry,
+	ClipboardReadOptions,
+	ClipboardSearchOptions,
+	ClipboardSearchResult,
+	ClipboardWriteOptions,
+	TaskClipboardItem,
+	TaskClipboardSnapshot,
+	TaskClipboardSourceType,
 } from "./types.ts";

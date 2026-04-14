@@ -163,3 +163,54 @@ export function runWithStreamingContext<T>(
 export function getStreamingContext(): StreamingContext | undefined {
 	return getOrCreateContextManager().active();
 }
+
+// ---------------------------------------------------------------------------
+// useModel → chunk callback delivery (dedupe `model_stream_chunk` hooks)
+// ---------------------------------------------------------------------------
+
+let modelStreamChunkDeliveryDepthStorage:
+	| import("node:async_hooks").AsyncLocalStorage<number>
+	| null = null;
+let modelStreamChunkDeliveryStorageInitialized = false;
+
+function getModelStreamChunkDeliveryStorage():
+	| import("node:async_hooks").AsyncLocalStorage<number>
+	| null {
+	if (!modelStreamChunkDeliveryStorageInitialized) {
+		modelStreamChunkDeliveryStorageInitialized = true;
+		if (isNodeEnvironment()) {
+			try {
+				// eslint-disable-next-line @typescript-eslint/no-require-imports
+				const { AsyncLocalStorage } =
+					require("node:async_hooks") as typeof import("node:async_hooks");
+				modelStreamChunkDeliveryDepthStorage = new AsyncLocalStorage();
+			} catch {
+				modelStreamChunkDeliveryDepthStorage = null;
+			}
+		}
+	}
+	return modelStreamChunkDeliveryDepthStorage;
+}
+
+/**
+ * While `> 0`, the runtime is inside `useModel`'s delivery of one `textStream` chunk to
+ * `paramsChunk` / `ctxChunk` (after `model_stream_chunk` with `source: "use_model"`).
+ * `DefaultMessageService` skips its own `model_stream_chunk` (`source: "message_service"`) in
+ * this window so the same raw token is not processed twice. Non-Node environments return `0`.
+ */
+export function getModelStreamChunkDeliveryDepth(): number {
+	const s = getModelStreamChunkDeliveryStorage();
+	return s?.getStore() ?? 0;
+}
+
+/** Wrap `paramsChunk` / `ctxChunk` invocations from `useModel`'s stream loop. */
+export function runInsideModelStreamChunkDelivery<T>(
+	fn: () => T | Promise<T>,
+): T | Promise<T> {
+	const s = getModelStreamChunkDeliveryStorage();
+	if (!s) {
+		return fn();
+	}
+	const parent = s.getStore() ?? 0;
+	return s.run(parent + 1, fn);
+}

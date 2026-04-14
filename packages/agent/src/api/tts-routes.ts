@@ -33,9 +33,7 @@ export interface TtsRouteContext {
     maxBytes: number,
     timeoutMs: number,
   ) => Promise<void>;
-  responseContentLength: (
-    headers: Pick<Headers, "get">,
-  ) => number | null;
+  responseContentLength: (headers: Pick<Headers, "get">) => number | null;
   isAbortError: (error: unknown) => boolean;
   ELEVENLABS_FETCH_TIMEOUT_MS: number;
   ELEVENLABS_AUDIO_MAX_BYTES: number;
@@ -45,9 +43,7 @@ export interface TtsRouteContext {
 // Route handler
 // ---------------------------------------------------------------------------
 
-export async function handleTtsRoutes(
-  ctx: TtsRouteContext,
-): Promise<boolean> {
+export async function handleTtsRoutes(ctx: TtsRouteContext): Promise<boolean> {
   const { req, res, method, pathname, state, json, error, readJsonBody } = ctx;
 
   // ── GET /api/tts/config ───────────────────────────────────────────────
@@ -98,19 +94,25 @@ export async function handleTtsRoutes(
                 ? elevenlabs.modelId
                 : undefined,
             stability:
-              typeof (elevenlabs.voiceSettings as Record<string, unknown> | undefined)
-                ?.stability === "number"
-                ? ((elevenlabs.voiceSettings as Record<string, unknown>).stability as number)
+              typeof (
+                elevenlabs.voiceSettings as Record<string, unknown> | undefined
+              )?.stability === "number"
+                ? ((elevenlabs.voiceSettings as Record<string, unknown>)
+                    .stability as number)
                 : undefined,
             similarityBoost:
-              typeof (elevenlabs.voiceSettings as Record<string, unknown> | undefined)
-                ?.similarityBoost === "number"
-                ? ((elevenlabs.voiceSettings as Record<string, unknown>).similarityBoost as number)
+              typeof (
+                elevenlabs.voiceSettings as Record<string, unknown> | undefined
+              )?.similarityBoost === "number"
+                ? ((elevenlabs.voiceSettings as Record<string, unknown>)
+                    .similarityBoost as number)
                 : undefined,
             speed:
-              typeof (elevenlabs.voiceSettings as Record<string, unknown> | undefined)
-                ?.speed === "number"
-                ? ((elevenlabs.voiceSettings as Record<string, unknown>).speed as number)
+              typeof (
+                elevenlabs.voiceSettings as Record<string, unknown> | undefined
+              )?.speed === "number"
+                ? ((elevenlabs.voiceSettings as Record<string, unknown>)
+                    .speed as number)
                 : undefined,
           }
         : undefined,

@@ -143,9 +143,7 @@ const EVM_PLUGIN_SHORT_ID = "evm";
 const STEWARD_ELIZA_PLUGIN_PACKAGE = "@stwd/eliza-plugin";
 const STEWARD_ELIZA_PLUGIN_SHORT_ID = "stwd-eliza-plugin";
 
-function resolveEvmAutoEnableReason(
-  env: NodeJS.ProcessEnv,
-): string | null {
+function resolveEvmAutoEnableReason(env: NodeJS.ProcessEnv): string | null {
   if (env.EVM_PRIVATE_KEY?.trim()) {
     return "env: EVM_PRIVATE_KEY";
   }
@@ -316,11 +314,9 @@ export function applyPluginAutoEnable(
   pluginsConfig.allow = pluginsConfig.allow ?? [];
   pluginsConfig.entries = pluginsConfig.entries ?? {};
 
-  const connectors = (
-    updatedConfig.connectors ??
+  const connectors = (updatedConfig.connectors ??
     (updatedConfig as Record<string, unknown>).channels ??
-    {}
-  ) as Record<string, unknown>;
+    {}) as Record<string, unknown>;
   if (connectors) {
     for (const [connectorName, connectorConfig] of Object.entries(connectors)) {
       const pluginName = CONNECTOR_PLUGINS[connectorName];
@@ -470,7 +466,10 @@ export function applyPluginAutoEnable(
   }
 
   const cloudProvisioned = env.ELIZA_CLOUD_PROVISIONED === "1";
-  if (cloudProvisioned && pluginsConfig.entries["edge-tts"]?.enabled !== false) {
+  if (
+    cloudProvisioned &&
+    pluginsConfig.entries["edge-tts"]?.enabled !== false
+  ) {
     addToAllowlist(
       pluginsConfig.allow,
       "@elizaos/plugin-edge-tts",

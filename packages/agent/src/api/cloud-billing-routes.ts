@@ -1,9 +1,8 @@
 import type http from "node:http";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
-import { sendJson, sendJsonError } from "./http-helpers.js";
-
 import type { CloudProxyConfigLike } from "../types/config-like.js";
+import { sendJson, sendJsonError } from "./http-helpers.js";
 
 export interface CloudBillingRouteState {
   config: CloudProxyConfigLike;
@@ -367,183 +366,134 @@ export async function handleCloudBillingRoute(
 
   const headers = buildAuthHeaders(state.config);
 
-    const fullUrl = new URL(req.url ?? pathname, "http://localhost");
+  const fullUrl = new URL(req.url ?? pathname, "http://localhost");
 
-    if (pathname === "/api/cloud/billing/summary" && method === "GET") {
-      const { status, payload } = await forwardSummary(baseUrl, headers);
-      sendJson(res, payload, status);
+  if (pathname === "/api/cloud/billing/summary" && method === "GET") {
+    const { status, payload } = await forwardSummary(baseUrl, headers);
+    sendJson(res, payload, status);
+    return true;
+  }
+
+  if (pathname === "/api/cloud/billing/payment-methods" && method === "GET") {
+    const summaryResponse = await fetchUpstream(
+      `${baseUrl}/api/v1/credits/summary`,
+      "GET",
+      headers,
+      undefined,
+    );
+    const summaryPayload = await readJsonResponse(summaryResponse);
+    sendJson(
+      res,
+      summaryResponse.ok ? mapPaymentMethods(summaryPayload) : summaryPayload,
+      summaryResponse.status,
+    );
+    return true;
+  }
+
+  if (pathname === "/api/cloud/billing/history" && method === "GET") {
+    const upstreamUrl = `${baseUrl}/api/credits/transactions${fullUrl.search}`;
+    const historyResponse = await fetchUpstream(
+      upstreamUrl,
+      "GET",
+      headers,
+      undefined,
+    );
+    const historyPayload = await readJsonResponse(historyResponse);
+    sendJson(
+      res,
+      historyResponse.ok ? mapBillingHistory(historyPayload) : historyPayload,
+      historyResponse.status,
+    );
+    return true;
+  }
+
+  if (pathname === "/api/cloud/billing/checkout" && method === "POST") {
+    const body = await readBody(req);
+    const requestBody = parseJsonBody(body);
+    const amountUsd = readNumber(requestBody.amountUsd);
+
+    if (!amountUsd || amountUsd <= 0) {
+      sendJsonError(res, "Invalid top-up amount", 400);
       return true;
     }
 
-    if (pathname === "/api/cloud/billing/payment-methods" && method === "GET") {
-      const summaryResponse = await fetchUpstream(
-        `${baseUrl}/api/v1/credits/summary`,
-        "GET",
-        headers,
-        undefined,
-      );
-      const summaryPayload = await readJsonResponse(summaryResponse);
-      sendJson(
-        res,
-        summaryResponse.ok ? mapPaymentMethods(summaryPayload) : summaryPayload,
-        summaryResponse.status,
-      );
+    const upstreamBody = JSON.stringify({
+      credits: amountUsd,
+      success_url: buildRedirectUrl(baseUrl, "/dashboard/billing/success", {
+        from: "eliza",
+      }),
+      cancel_url: buildRedirectUrl(baseUrl, "/dashboard/settings", {
+        from: "eliza",
+        tab: "billing",
+        canceled: "1",
+      }),
+    });
+
+    const checkoutResponse = await fetchUpstream(
+      `${baseUrl}/api/v1/credits/checkout`,
+      "POST",
+      headers,
+      upstreamBody,
+    );
+    const checkoutPayload = await readJsonResponse(checkoutResponse);
+    sendJson(
+      res,
+      checkoutResponse.ok
+        ? mapCheckoutResponse(checkoutPayload)
+        : checkoutPayload,
+      checkoutResponse.status,
+    );
+    return true;
+  }
+
+  if (pathname === "/api/cloud/billing/crypto/quote" && method === "POST") {
+    const body = await readBody(req);
+    const requestBody = parseJsonBody(body);
+    const amountUsd = readNumber(requestBody.amountUsd);
+
+    if (!amountUsd || amountUsd <= 0) {
+      sendJsonError(res, "Invalid top-up amount", 400);
       return true;
     }
 
-    if (pathname === "/api/cloud/billing/history" && method === "GET") {
-      const upstreamUrl = `${baseUrl}/api/credits/transactions${fullUrl.search}`;
-      const historyResponse = await fetchUpstream(
-        upstreamUrl,
-        "GET",
-        headers,
-        undefined,
-      );
-      const historyPayload = await readJsonResponse(historyResponse);
-      sendJson(
-        res,
-        historyResponse.ok ? mapBillingHistory(historyPayload) : historyPayload,
-        historyResponse.status,
-      );
-      return true;
-    }
+    const payCurrency =
+      readString(requestBody.currency)?.trim().toUpperCase() ?? "USDC";
+    const network = normalizeCryptoNetwork(readString(requestBody.network));
+    const upstreamBody = JSON.stringify({
+      amount: amountUsd,
+      payCurrency,
+      network,
+    });
 
-    if (pathname === "/api/cloud/billing/checkout" && method === "POST") {
-      const body = await readBody(req);
-      const requestBody = parseJsonBody(body);
-      const amountUsd = readNumber(requestBody.amountUsd);
+    const cryptoResponse = await fetchUpstream(
+      `${baseUrl}/api/crypto/payments`,
+      "POST",
+      headers,
+      upstreamBody,
+    );
+    const cryptoPayload = await readJsonResponse(cryptoResponse);
+    sendJson(
+      res,
+      cryptoResponse.ok
+        ? mapCryptoQuoteResponse(cryptoPayload, amountUsd, payCurrency, network)
+        : cryptoPayload,
+      cryptoResponse.status,
+    );
+    return true;
+  }
 
-      if (!amountUsd || amountUsd <= 0) {
-        sendJsonError(res, "Invalid top-up amount", 400);
-        return true;
-      }
-
-      const upstreamBody = JSON.stringify({
-        credits: amountUsd,
-        success_url: buildRedirectUrl(baseUrl, "/dashboard/billing/success", {
-          from: "eliza",
-        }),
-        cancel_url: buildRedirectUrl(baseUrl, "/dashboard/settings", {
-          from: "eliza",
-          tab: "billing",
-          canceled: "1",
-        }),
-      });
-
-      const checkoutResponse = await fetchUpstream(
-        `${baseUrl}/api/v1/credits/checkout`,
-        "POST",
-        headers,
-        upstreamBody,
-      );
-      const checkoutPayload = await readJsonResponse(checkoutResponse);
-      sendJson(
-        res,
-        checkoutResponse.ok
-          ? mapCheckoutResponse(checkoutPayload)
-          : checkoutPayload,
-        checkoutResponse.status,
-      );
-      return true;
-    }
-
-    if (pathname === "/api/cloud/billing/crypto/quote" && method === "POST") {
-      const body = await readBody(req);
-      const requestBody = parseJsonBody(body);
-      const amountUsd = readNumber(requestBody.amountUsd);
-
-      if (!amountUsd || amountUsd <= 0) {
-        sendJsonError(res, "Invalid top-up amount", 400);
-        return true;
-      }
-
-      const payCurrency =
-        readString(requestBody.currency)?.trim().toUpperCase() ?? "USDC";
-      const network = normalizeCryptoNetwork(readString(requestBody.network));
-      const upstreamBody = JSON.stringify({
-        amount: amountUsd,
-        payCurrency,
-        network,
-      });
-
-      const cryptoResponse = await fetchUpstream(
-        `${baseUrl}/api/crypto/payments`,
-        "POST",
-        headers,
-        upstreamBody,
-      );
-      const cryptoPayload = await readJsonResponse(cryptoResponse);
-      sendJson(
-        res,
-        cryptoResponse.ok
-          ? mapCryptoQuoteResponse(
-              cryptoPayload,
-              amountUsd,
-              payCurrency,
-              network,
-            )
-          : cryptoPayload,
-        cryptoResponse.status,
-      );
-      return true;
-    }
-
-    if (pathname.startsWith("/api/cloud/billing/credits/")) {
-      let body: string | undefined;
-      if (method !== "GET" && method !== "HEAD") {
-        body = await readBody(req);
-      }
-
-      const upstreamPath = pathname.replace(
-        "/api/cloud/billing/credits",
-        "/api/v1/credits",
-      );
-      const upstreamResponse = await fetchUpstream(
-        `${baseUrl}${upstreamPath}${fullUrl.search}`,
-        method,
-        headers,
-        body,
-      );
-      const responseData = await readJsonResponse(upstreamResponse);
-      sendJson(res, responseData, upstreamResponse.status);
-      return true;
-    }
-
-    if (
-      pathname.startsWith("/api/cloud/billing/crypto/") &&
-      pathname !== "/api/cloud/billing/crypto/quote"
-    ) {
-      let body: string | undefined;
-      if (method !== "GET" && method !== "HEAD") {
-        body = await readBody(req);
-      }
-
-      const upstreamPath = pathname.replace(
-        "/api/cloud/billing/crypto",
-        "/api/crypto",
-      );
-      const upstreamResponse = await fetchUpstream(
-        `${baseUrl}${upstreamPath}${fullUrl.search}`,
-        method,
-        headers,
-        body,
-      );
-      const responseData = await readJsonResponse(upstreamResponse);
-      sendJson(res, responseData, upstreamResponse.status);
-      return true;
-    }
-
+  if (pathname.startsWith("/api/cloud/billing/credits/")) {
     let body: string | undefined;
     if (method !== "GET" && method !== "HEAD") {
       body = await readBody(req);
     }
 
-    const billingPath = pathname.replace(
-      "/api/cloud/billing",
-      "/api/v1/billing",
+    const upstreamPath = pathname.replace(
+      "/api/cloud/billing/credits",
+      "/api/v1/credits",
     );
     const upstreamResponse = await fetchUpstream(
-      `${baseUrl}${billingPath}${fullUrl.search}`,
+      `${baseUrl}${upstreamPath}${fullUrl.search}`,
       method,
       headers,
       body,
@@ -551,4 +501,45 @@ export async function handleCloudBillingRoute(
     const responseData = await readJsonResponse(upstreamResponse);
     sendJson(res, responseData, upstreamResponse.status);
     return true;
+  }
+
+  if (
+    pathname.startsWith("/api/cloud/billing/crypto/") &&
+    pathname !== "/api/cloud/billing/crypto/quote"
+  ) {
+    let body: string | undefined;
+    if (method !== "GET" && method !== "HEAD") {
+      body = await readBody(req);
+    }
+
+    const upstreamPath = pathname.replace(
+      "/api/cloud/billing/crypto",
+      "/api/crypto",
+    );
+    const upstreamResponse = await fetchUpstream(
+      `${baseUrl}${upstreamPath}${fullUrl.search}`,
+      method,
+      headers,
+      body,
+    );
+    const responseData = await readJsonResponse(upstreamResponse);
+    sendJson(res, responseData, upstreamResponse.status);
+    return true;
+  }
+
+  let body: string | undefined;
+  if (method !== "GET" && method !== "HEAD") {
+    body = await readBody(req);
+  }
+
+  const billingPath = pathname.replace("/api/cloud/billing", "/api/v1/billing");
+  const upstreamResponse = await fetchUpstream(
+    `${baseUrl}${billingPath}${fullUrl.search}`,
+    method,
+    headers,
+    body,
+  );
+  const responseData = await readJsonResponse(upstreamResponse);
+  sendJson(res, responseData, upstreamResponse.status);
+  return true;
 }

@@ -502,4 +502,3 @@ type StreamableServerResponse = Pick<
   writableEnded?: boolean;
   destroyed?: boolean;
 };
-

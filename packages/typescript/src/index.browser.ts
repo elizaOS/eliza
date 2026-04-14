@@ -18,7 +18,6 @@ export * from "./memory";
 export * from "./prompts";
 export * from "./roles";
 export * from "./runtime";
-export { Semaphore } from "./utils/batch-queue/semaphore.js";
 // Export schemas (including buildBaseTables for plugin-sql browser/PGLite builds)
 export * from "./schemas/character";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
@@ -34,6 +33,7 @@ export * from "./types";
 export * from "./types/message-service";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
+export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 // Export browser-compatible utilities
 export * from "./utils/environment";

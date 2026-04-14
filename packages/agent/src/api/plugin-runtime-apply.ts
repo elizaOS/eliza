@@ -1,4 +1,4 @@
-import { logger, type AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, logger } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import type { ResolvedPlugin } from "../runtime/eliza.js";
 import { supportsRuntimePluginLifecycle } from "../runtime/plugin-lifecycle.js";

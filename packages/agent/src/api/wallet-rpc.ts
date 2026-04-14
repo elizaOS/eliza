@@ -228,7 +228,9 @@ function inferSelectedRpcProviders(): WalletRpcSelections {
 function walletSelectionsUseElizaCloud(
   selections: WalletRpcSelections,
 ): boolean {
-  return Object.values(selections).some((provider) => provider === "eliza-cloud");
+  return Object.values(selections).some(
+    (provider) => provider === "eliza-cloud",
+  );
 }
 
 function hasLegacyCustomChainUrl(chain: WalletRpcChain): boolean {
@@ -458,10 +460,7 @@ export function getInventoryProviderOptions(): InventoryProviderOption[] {
 export function resolveBscRpcUrls(
   options: WalletRpcResolutionOptions = {},
 ): string[] {
-  const network = resolveWalletNetworkMode(
-    undefined,
-    options.walletNetwork,
-  );
+  const network = resolveWalletNetworkMode(undefined, options.walletNetwork);
   const cloudRpcUrl =
     network === "mainnet" ? buildCloudEvmRpcUrl("bsc", options) : null;
   const publicDefaults =
@@ -510,10 +509,7 @@ export function resolveAvalancheRpcUrls(
 export function resolveSolanaRpcUrls(
   options: WalletRpcResolutionOptions = {},
 ): string[] {
-  const network = resolveWalletNetworkMode(
-    undefined,
-    options.walletNetwork,
-  );
+  const network = resolveWalletNetworkMode(undefined, options.walletNetwork);
   const cloudRpcUrl =
     network === "mainnet" ? buildCloudSolanaRpcUrl(options) : null;
   const publicDefaults =
@@ -521,7 +517,11 @@ export function resolveSolanaRpcUrls(
       ? DEFAULT_PUBLIC_SOLANA_TESTNET_RPC_URLS
       : DEFAULT_PUBLIC_SOLANA_RPC_URLS;
   return uniqueRpcUrls(
-    [process.env.SOLANA_TESTNET_RPC_URL, process.env.SOLANA_RPC_URL, cloudRpcUrl],
+    [
+      process.env.SOLANA_TESTNET_RPC_URL,
+      process.env.SOLANA_RPC_URL,
+      cloudRpcUrl,
+    ],
     options.cloudManagedAccess ? publicDefaults : [],
   );
 }
@@ -554,7 +554,10 @@ export function applyWalletRpcConfigUpdate(
           : config.wallet?.network,
   };
 
-  if (update.walletNetwork === "testnet" || update.walletNetwork === "mainnet") {
+  if (
+    update.walletNetwork === "testnet" ||
+    update.walletNetwork === "mainnet"
+  ) {
     env.ELIZA_WALLET_NETWORK = update.walletNetwork;
     process.env.ELIZA_WALLET_NETWORK = update.walletNetwork;
   }
@@ -605,9 +608,7 @@ export function resolveWalletRpcReadiness(
       (config ?? {}) as Record<string, unknown>,
       "rpc",
     );
-  const cloudManagedAccess = Boolean(
-    cloudApiKey && cloudRpcSelected,
-  );
+  const cloudManagedAccess = Boolean(cloudApiKey && cloudRpcSelected);
   const cloudOptions = {
     cloudManagedAccess,
     cloudApiKey,

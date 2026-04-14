@@ -10,7 +10,11 @@ import JSON5 from "json5";
 import { syncSolanaPublicKeyEnv } from "../api/wallet.js";
 import { collectConfigEnvVars, collectConnectorEnvVars } from "./env-vars.js";
 import { resolveConfigIncludes } from "./includes.js";
-import { resolveConfigPath, resolveStateDir, resolveUserPath } from "./paths.js";
+import {
+  resolveConfigPath,
+  resolveStateDir,
+  resolveUserPath,
+} from "./paths.js";
 import type { ElizaConfig } from "./types.js";
 
 export * from "./types.js";
@@ -36,27 +40,20 @@ function getConfigEnvString(
     | (Record<string, unknown> & { vars?: Record<string, unknown> })
     | undefined;
   const nestedVars =
-    envConfig?.vars && typeof envConfig.vars === "object" && !Array.isArray(envConfig.vars)
+    envConfig?.vars &&
+    typeof envConfig.vars === "object" &&
+    !Array.isArray(envConfig.vars)
       ? (envConfig.vars as Record<string, unknown>)
       : undefined;
   const value = nestedVars?.[key] ?? envConfig?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function isPlainObject(
-  value: unknown,
-): value is Record<string, unknown> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value)
-  );
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function mergeConfigRecords(
-  base: unknown,
-  overlay: unknown,
-): unknown {
+function mergeConfigRecords(base: unknown, overlay: unknown): unknown {
   if (overlay === undefined) {
     return base;
   }

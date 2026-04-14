@@ -397,15 +397,13 @@ function normalizeOptionalString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function readPersistedStewardCredentials():
-  | {
-      apiUrl: string | null;
-      tenantId: string | null;
-      agentId: string | null;
-      apiKey: string | null;
-      agentToken: string | null;
-    }
-  | null {
+function readPersistedStewardCredentials(): {
+  apiUrl: string | null;
+  tenantId: string | null;
+  agentId: string | null;
+  apiKey: string | null;
+  agentToken: string | null;
+} | null {
   try {
     if (!fs.existsSync(STEWARD_CREDENTIALS_PATH)) {
       return null;
@@ -514,14 +512,10 @@ export async function initStewardWalletCache(): Promise<void> {
     }
 
     if (stewardEvm) {
-      logger.info(
-        `[wallet] Steward EVM address cached: ${stewardEvm}`,
-      );
+      logger.info(`[wallet] Steward EVM address cached: ${stewardEvm}`);
     }
     if (stewardSolana) {
-      logger.info(
-        `[wallet] Steward Solana address cached: ${stewardSolana}`,
-      );
+      logger.info(`[wallet] Steward Solana address cached: ${stewardSolana}`);
     }
   } catch (err) {
     logger.debug(`[wallet] Steward wallet cache init unavailable: ${err}`);

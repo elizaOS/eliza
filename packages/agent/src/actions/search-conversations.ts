@@ -33,9 +33,12 @@ function formatResultsWithLineNumbers(
   for (let i = 0; i < memories.length; i++) {
     const mem = memories[i];
     const room = roomCache.get(mem.roomId as string) ?? null;
-    const roomRecord = room as (Room & { name?: string; source?: string }) | null;
+    const roomRecord = room as
+      | (Room & { name?: string; source?: string })
+      | null;
     const platform = roomRecord?.source ?? roomRecord?.type ?? "chat";
-    const roomName = roomRecord?.name ?? (mem.roomId as string)?.slice(0, 8) ?? "?";
+    const roomName =
+      roomRecord?.name ?? (mem.roomId as string)?.slice(0, 8) ?? "?";
     const speaker = formatSpeakerLabel(runtime, mem);
     const ts = mem.createdAt
       ? new Date(mem.createdAt).toISOString().slice(0, 19)
@@ -64,11 +67,7 @@ export const searchConversationsAction: Action = {
 
   validate: async (runtime, message, state) => {
     if (!(await hasAdminAccess(runtime, message))) return false;
-    return hasContextSignalSyncForKey(
-      message,
-      state,
-      "search_conversations",
-    );
+    return hasContextSignalSyncForKey(message, state, "search_conversations");
   },
 
   handler: async (runtime, message, _state, options) => {
@@ -100,10 +99,9 @@ export const searchConversationsAction: Action = {
 
     try {
       // Embed the query for semantic search
-      const embeddingResult = await runtime.useModel(
-        ModelType.TEXT_EMBEDDING,
-        { text: query.trim() },
-      );
+      const embeddingResult = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+        text: query.trim(),
+      });
 
       const embedding = Array.isArray(embeddingResult)
         ? embeddingResult
@@ -152,7 +150,9 @@ export const searchConversationsAction: Action = {
           const room = roomCache.get(mem.roomId as string);
           const roomRecord = room as (Room & { source?: string }) | null;
           const roomSource = (
-            roomRecord?.source ?? roomRecord?.type ?? ""
+            roomRecord?.source ??
+            roomRecord?.type ??
+            ""
           ).toLowerCase();
           return roomSource === source.toLowerCase();
         });
@@ -231,8 +231,7 @@ export const searchConversationsAction: Action = {
     },
     {
       name: "limit",
-      description:
-        "Maximum number of results to return (default 20, max 50).",
+      description: "Maximum number of results to return (default 20, max 50).",
       required: false,
       schema: { type: "number" as const },
     },

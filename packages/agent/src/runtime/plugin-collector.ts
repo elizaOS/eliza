@@ -267,7 +267,10 @@ export function collectPluginNames(
   for (const core of CORE_PLUGINS) track(core, "CORE_PLUGINS");
   if (orchestratorCompatPluginRequested(config)) {
     pluginsToLoad.add("agent-orchestrator");
-    track("agent-orchestrator", "agent-orchestrator (@elizaos/core/orchestrator)");
+    track(
+      "agent-orchestrator",
+      "agent-orchestrator (@elizaos/core/orchestrator)",
+    );
   }
   if (localEmbeddingsExplicitlyDisabled) {
     pluginsToLoad.delete("@elizaos/plugin-local-embedding");

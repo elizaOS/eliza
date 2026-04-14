@@ -320,7 +320,9 @@ export async function handleTriggerRoutes(
     return true;
   }
 
-  const execMatch = /^\/api\/triggers\/([^/]+)\/execute$/.exec(normalizedPathname);
+  const execMatch = /^\/api\/triggers\/([^/]+)\/execute$/.exec(
+    normalizedPathname,
+  );
   if (method === "POST" && execMatch) {
     const task = await findTask(
       runtime,
@@ -339,7 +341,7 @@ export async function handleTriggerRoutes(
     const refreshed = task.id ? await runtime.getTask(task.id) : null;
     const summary = refreshed
       ? taskToTriggerSummary(refreshed)
-      : result.trigger ?? null;
+      : (result.trigger ?? null);
     json(
       res,
       usingHeartbeatsAlias

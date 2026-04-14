@@ -350,7 +350,7 @@ function readGatewayPort(service: unknown): number | null {
     | null
     | undefined;
   return typeof candidate?.getGatewayPort === "function"
-    ? candidate.getGatewayPort() ?? null
+    ? (candidate.getGatewayPort() ?? null)
     : null;
 }
 
@@ -1274,9 +1274,7 @@ async function buildViewerHtml(runtime: IAgentRuntime | null): Promise<string> {
   }
 
   // Resolve the gateway port from the game service if available
-  const gatewayPort = readGatewayPort(
-    runtime?.getService?.("rs_2004scape"),
-  );
+  const gatewayPort = readGatewayPort(runtime?.getService?.("rs_2004scape"));
 
   const injected = buildViewerShellInjection(remoteServerUrl, gatewayPort);
   const rewritten = rewriteViewerHtml(html);

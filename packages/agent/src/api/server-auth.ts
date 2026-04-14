@@ -3,19 +3,18 @@
  */
 
 import crypto from "node:crypto";
-import http from "node:http";
+import type http from "node:http";
 import path from "node:path";
-
-import { logger } from "@elizaos/core";
 import type { AgentRuntime, UUID } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   resolveApiSecurityConfig,
   resolveApiToken,
   setApiToken,
 } from "../config/runtime-env.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
-import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.js";
 import { sendJsonError } from "./http-helpers.js";
+import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.js";
 import type { ConversationMeta } from "./server-helpers.js";
 
 // ---------------------------------------------------------------------------

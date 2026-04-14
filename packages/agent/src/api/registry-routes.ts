@@ -98,11 +98,7 @@ export async function handleRegistryRoutes(
       });
       json(res, { count: plugins.length, plugins });
     } catch (err) {
-      error(
-        res,
-        `Failed to fetch registry: ${String(err)}`,
-        502,
-      );
+      error(res, `Failed to fetch registry: ${String(err)}`, 502);
     }
     return true;
   }
@@ -124,11 +120,7 @@ export async function handleRegistryRoutes(
       }
       json(res, { plugin: info });
     } catch (err) {
-      error(
-        res,
-        `Failed to look up plugin: ${String(err)}`,
-        502,
-      );
+      error(res, `Failed to look up plugin: ${String(err)}`, 502);
     }
     return true;
   }
@@ -150,11 +142,7 @@ export async function handleRegistryRoutes(
       const results = await pluginManager.searchRegistry(query, limit);
       json(res, { query, count: results.length, results });
     } catch (err) {
-      error(
-        res,
-        `Search failed: ${String(err)}`,
-        502,
-      );
+      error(res, `Search failed: ${String(err)}`, 502);
     }
     return true;
   }
@@ -165,11 +153,7 @@ export async function handleRegistryRoutes(
       const registry = await pluginManager.refreshRegistry();
       json(res, { ok: true, count: registry.size });
     } catch (err) {
-      error(
-        res,
-        `Refresh failed: ${String(err)}`,
-        502,
-      );
+      error(res, `Refresh failed: ${String(err)}`, 502);
     }
     return true;
   }

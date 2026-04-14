@@ -5,7 +5,7 @@
  * real inference capabilities. Throws errors if no provider is found.
  */
 
-import { z } from "zod";
+import z from "zod";
 import { logger } from "../logger";
 
 /** Default Ollama endpoint */

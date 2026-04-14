@@ -118,9 +118,10 @@ export const actionStateProvider: Provider = {
 					let resultText = `**${index + 1}. ${actionName}** - ${status}`;
 
 					if (result.text) {
-						const truncated = result.text.length > MAX_RESULT_TEXT_CHARS
-							? `${result.text.slice(0, MAX_RESULT_TEXT_CHARS)}…`
-							: result.text;
+						const truncated =
+							result.text.length > MAX_RESULT_TEXT_CHARS
+								? `${result.text.slice(0, MAX_RESULT_TEXT_CHARS)}…`
+								: result.text;
 						resultText += `\n   Output: ${truncated}`;
 					}
 
@@ -226,7 +227,10 @@ export const actionStateProvider: Provider = {
 							String(content?.actionName || "").length +
 							String(content?.actionStatus || "").length +
 							String(content?.planStep || "").length +
-							Math.min(String(content?.text || "").length, MAX_RESULT_TEXT_CHARS)
+							Math.min(
+								String(content?.text || "").length,
+								MAX_RESULT_TEXT_CHARS,
+							)
 						);
 					}, 0);
 					return textChars + runId.length + 80;
@@ -248,9 +252,10 @@ export const actionStateProvider: Provider = {
 							const status = memContent?.actionStatus || "unknown";
 							const planStep = memContent?.planStep || "";
 							const rawText = memContent?.text || "";
-							const text = rawText.length > MAX_RESULT_TEXT_CHARS
-								? `${rawText.slice(0, MAX_RESULT_TEXT_CHARS)}…`
-								: rawText;
+							const text =
+								rawText.length > MAX_RESULT_TEXT_CHARS
+									? `${rawText.slice(0, MAX_RESULT_TEXT_CHARS)}…`
+									: rawText;
 
 							let memText = `  - ${actionName} (${status})`;
 							if (planStep) {
@@ -266,9 +271,10 @@ export const actionStateProvider: Provider = {
 
 					const firstMemory = sortedMemories[0];
 					const rawThought = String(firstMemory?.content?.planThought || "");
-					const thought = rawThought.length > MAX_THOUGHT_CHARS
-						? `${rawThought.slice(0, MAX_THOUGHT_CHARS)}…`
-						: rawThought;
+					const thought =
+						rawThought.length > MAX_THOUGHT_CHARS
+							? `${rawThought.slice(0, MAX_THOUGHT_CHARS)}…`
+							: rawThought;
 					return `**Run ${runId.slice(0, 8)}**${thought ? ` - ${thought}` : ""}\n${runText}`;
 				})
 				.join("\n\n");

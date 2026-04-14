@@ -20,10 +20,14 @@ export * from "./model";
 export * from "./onboarding";
 export * from "./pairing";
 export * from "./payment";
+export * from "./pipeline-hooks";
 export * from "./plugin";
 export * from "./plugin-store";
 export * from "./primitives";
 export * from "./prompt-batcher";
+export * from "./prompt-optimization-hooks";
+export * from "./prompt-optimization-score-card";
+export * from "./prompt-optimization-trace";
 export * from "./prompts";
 // Proto-generated types (single source of truth)
 // These types are generated from /schemas/eliza/v1/*.proto

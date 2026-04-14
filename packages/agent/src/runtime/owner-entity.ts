@@ -1,5 +1,8 @@
-import { stringToUuid, type IAgentRuntime } from "@elizaos/core";
-import { resolveCanonicalOwnerId } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  resolveCanonicalOwnerId,
+  stringToUuid,
+} from "@elizaos/core";
 
 type WorldMetadataShape = {
   ownership?: { ownerId?: string };

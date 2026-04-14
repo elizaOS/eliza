@@ -10,6 +10,10 @@ export type TrajectoryProviderAccess = {
 	data: TrajectoryData;
 	query?: TrajectoryData;
 	timestamp: number;
+	runId?: string;
+	roomId?: string;
+	messageId?: string;
+	executionTraceId?: string;
 };
 
 export type TrajectoryLlmCall = {
@@ -24,4 +28,9 @@ export type TrajectoryLlmCall = {
 	actionType: string;
 	latencyMs: number;
 	timestamp: number;
+	modelSlot?: string;
+	runId?: string;
+	roomId?: string;
+	messageId?: string;
+	executionTraceId?: string;
 };

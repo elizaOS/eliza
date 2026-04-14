@@ -21,11 +21,11 @@
 import { type ElizaConfig, saveElizaConfig } from "../config/config.js";
 import type { AgentConfig } from "../config/types.agents.js";
 import type { StylePreset } from "../contracts/onboarding.js";
+import { migrateLegacyRuntimeConfig } from "../contracts/onboarding.js";
 import {
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
 } from "../contracts/service-routing.js";
-import { migrateLegacyRuntimeConfig } from "../contracts/onboarding.js";
 import { getStylePresets } from "../onboarding-presets.js";
 import { pickRandomNames } from "./onboarding-names.js";
 
@@ -141,7 +141,9 @@ function cancelOnboarding(): never {
 // Main function
 // ---------------------------------------------------------------------------
 
-export async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfig> {
+export async function runFirstTimeSetup(
+  config: ElizaConfig,
+): Promise<ElizaConfig> {
   const agentEntry = config.agents?.list?.[0];
   const hasName = Boolean(agentEntry?.name || config.ui?.assistant?.name);
   if (hasName) return config;
@@ -274,99 +276,99 @@ export async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfi
   const hasSolKey = Boolean(process.env.SOLANA_PRIVATE_KEY?.trim());
 
   const PROVIDER_OPTIONS = [
-      ...(cloudOnboardingResult?.apiKey
-        ? ([
-            {
-              id: "elizacloud",
-              label: "Eliza Cloud",
-              envKey: null,
-              detectKeys: [] as string[],
-              hint: "use linked Eliza Cloud inference",
-            },
-          ] as const)
-        : []),
-      {
-        id: "anthropic",
-        label: "Anthropic (Claude)",
-        envKey: "ANTHROPIC_API_KEY",
-        detectKeys: ["ANTHROPIC_API_KEY"],
-        hint: "sk-ant-...",
-      },
-      {
-        id: "openai",
-        label: "OpenAI (GPT)",
-        envKey: "OPENAI_API_KEY",
-        detectKeys: ["OPENAI_API_KEY"],
-        hint: "sk-...",
-      },
-      {
-        id: "openrouter",
-        label: "OpenRouter",
-        envKey: "OPENROUTER_API_KEY",
-        detectKeys: ["OPENROUTER_API_KEY"],
-        hint: "sk-or-...",
-      },
-      {
-        id: "vercel-ai-gateway",
-        label: "Vercel AI Gateway",
-        envKey: "AI_GATEWAY_API_KEY",
-        detectKeys: ["AI_GATEWAY_API_KEY", "AIGATEWAY_API_KEY"],
-        hint: "aigw_...",
-      },
-      {
-        id: "gemini",
-        label: "Google Gemini",
-        envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
-        detectKeys: [
-          "GOOGLE_GENERATIVE_AI_API_KEY",
-          "GOOGLE_API_KEY",
-          "GEMINI_API_KEY",
-        ],
-        hint: "AI...",
-      },
-      {
-        id: "grok",
-        label: "xAI (Grok)",
-        envKey: "XAI_API_KEY",
-        detectKeys: ["XAI_API_KEY"],
-        hint: "xai-...",
-      },
-      {
-        id: "groq",
-        label: "Groq",
-        envKey: "GROQ_API_KEY",
-        detectKeys: ["GROQ_API_KEY"],
-        hint: "gsk_...",
-      },
-      {
-        id: "deepseek",
-        label: "DeepSeek",
-        envKey: "DEEPSEEK_API_KEY",
-        detectKeys: ["DEEPSEEK_API_KEY"],
-        hint: "sk-...",
-      },
-      {
-        id: "mistral",
-        label: "Mistral",
-        envKey: "MISTRAL_API_KEY",
-        detectKeys: ["MISTRAL_API_KEY"],
-        hint: "",
-      },
-      {
-        id: "together",
-        label: "Together AI",
-        envKey: "TOGETHER_API_KEY",
-        detectKeys: ["TOGETHER_API_KEY"],
-        hint: "",
-      },
-      {
-        id: "ollama",
-        label: "Ollama (local, free)",
-        envKey: "OLLAMA_BASE_URL",
-        detectKeys: ["OLLAMA_BASE_URL"],
-        hint: "http://localhost:11434",
-      },
-    ] as const;
+    ...(cloudOnboardingResult?.apiKey
+      ? ([
+          {
+            id: "elizacloud",
+            label: "Eliza Cloud",
+            envKey: null,
+            detectKeys: [] as string[],
+            hint: "use linked Eliza Cloud inference",
+          },
+        ] as const)
+      : []),
+    {
+      id: "anthropic",
+      label: "Anthropic (Claude)",
+      envKey: "ANTHROPIC_API_KEY",
+      detectKeys: ["ANTHROPIC_API_KEY"],
+      hint: "sk-ant-...",
+    },
+    {
+      id: "openai",
+      label: "OpenAI (GPT)",
+      envKey: "OPENAI_API_KEY",
+      detectKeys: ["OPENAI_API_KEY"],
+      hint: "sk-...",
+    },
+    {
+      id: "openrouter",
+      label: "OpenRouter",
+      envKey: "OPENROUTER_API_KEY",
+      detectKeys: ["OPENROUTER_API_KEY"],
+      hint: "sk-or-...",
+    },
+    {
+      id: "vercel-ai-gateway",
+      label: "Vercel AI Gateway",
+      envKey: "AI_GATEWAY_API_KEY",
+      detectKeys: ["AI_GATEWAY_API_KEY", "AIGATEWAY_API_KEY"],
+      hint: "aigw_...",
+    },
+    {
+      id: "gemini",
+      label: "Google Gemini",
+      envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
+      detectKeys: [
+        "GOOGLE_GENERATIVE_AI_API_KEY",
+        "GOOGLE_API_KEY",
+        "GEMINI_API_KEY",
+      ],
+      hint: "AI...",
+    },
+    {
+      id: "grok",
+      label: "xAI (Grok)",
+      envKey: "XAI_API_KEY",
+      detectKeys: ["XAI_API_KEY"],
+      hint: "xai-...",
+    },
+    {
+      id: "groq",
+      label: "Groq",
+      envKey: "GROQ_API_KEY",
+      detectKeys: ["GROQ_API_KEY"],
+      hint: "gsk_...",
+    },
+    {
+      id: "deepseek",
+      label: "DeepSeek",
+      envKey: "DEEPSEEK_API_KEY",
+      detectKeys: ["DEEPSEEK_API_KEY"],
+      hint: "sk-...",
+    },
+    {
+      id: "mistral",
+      label: "Mistral",
+      envKey: "MISTRAL_API_KEY",
+      detectKeys: ["MISTRAL_API_KEY"],
+      hint: "",
+    },
+    {
+      id: "together",
+      label: "Together AI",
+      envKey: "TOGETHER_API_KEY",
+      detectKeys: ["TOGETHER_API_KEY"],
+      hint: "",
+    },
+    {
+      id: "ollama",
+      label: "Ollama (local, free)",
+      envKey: "OLLAMA_BASE_URL",
+      detectKeys: ["OLLAMA_BASE_URL"],
+      hint: "http://localhost:11434",
+    },
+  ] as const;
 
   // Detect if any provider key is already configured
   const detectedProvider = PROVIDER_OPTIONS.find((p) =>
@@ -443,7 +445,6 @@ export async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfi
   // longer implies a specific inference provider, but these device-bound
   // setup steps still only make sense for local runs.
   if (!isCloudMode) {
-
     // ── Step 4b: Embedding model preset ────────────────────────────────────
     // (Simplified: always use the standard/reliable model preset. No user choice.)
 
@@ -451,9 +452,8 @@ export async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfi
     // Offer to generate or import wallets for EVM and Solana. Keys are
     // stored in config.env and process.env, making them available to
     // plugins at runtime.
-    const { generateWalletKeys, importWallet, setSolanaWalletEnv } = await import(
-      "../api/wallet.js"
-    );
+    const { generateWalletKeys, importWallet, setSolanaWalletEnv } =
+      await import("../api/wallet.js");
 
     // hasEvmKey and hasSolKey are hoisted above the if (!isCloudMode) block
     // so they're also available in the persistence section.

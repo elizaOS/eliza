@@ -43,143 +43,143 @@ import type { IAgentRuntime, JsonValue, UUID } from "../../types/index.ts";
  * Select/choice option for select-type fields.
  */
 export interface FormControlOption {
-  value: string;
-  label: string;
-  description?: string;
+	value: string;
+	label: string;
+	description?: string;
 }
 
 /**
  * File upload configuration.
  */
 export interface FormControlFileOptions {
-  /** MIME type patterns, e.g., ['image/*', 'application/pdf'] */
-  accept?: string[];
-  /** Maximum file size in bytes */
-  maxSize?: number;
-  /** Maximum number of files (for multiple uploads) */
-  maxFiles?: number;
+	/** MIME type patterns, e.g., ['image/*', 'application/pdf'] */
+	accept?: string[];
+	/** Maximum file size in bytes */
+	maxSize?: number;
+	/** Maximum number of files (for multiple uploads) */
+	maxFiles?: number;
 }
 
 /**
  * Conditional field dependency.
  */
 export interface FormControlDependency {
-  /** Key of the field this one depends on */
-  field: string;
-  /** When should this field be shown/asked */
-  condition: "exists" | "equals" | "not_equals";
-  /** Value to compare against for equals/not_equals */
-  value?: JsonValue;
+	/** Key of the field this one depends on */
+	field: string;
+	/** When should this field be shown/asked */
+	condition: "exists" | "equals" | "not_equals";
+	/** Value to compare against for equals/not_equals */
+	value?: JsonValue;
 }
 
 /**
  * UI hints for future frontends.
  */
 export interface FormControlUI {
-  /** Section name for grouping fields */
-  section?: string;
-  /** Display order within section */
-  order?: number;
-  /** Placeholder text for input fields */
-  placeholder?: string;
-  /** Help text shown below input */
-  helpText?: string;
-  /** Custom widget type identifier */
-  widget?: string;
+	/** Section name for grouping fields */
+	section?: string;
+	/** Display order within section */
+	order?: number;
+	/** Placeholder text for input fields */
+	placeholder?: string;
+	/** Help text shown below input */
+	helpText?: string;
+	/** Custom widget type identifier */
+	widget?: string;
 }
 
 /**
  * Localization for a field.
  */
 export interface FormControlI18n {
-  label?: string;
-  description?: string;
-  askPrompt?: string;
-  helpText?: string;
+	label?: string;
+	description?: string;
+	askPrompt?: string;
+	helpText?: string;
 }
 
 /**
  * FormControl - The central field abstraction
  */
 export interface FormControl {
-  // ═══ IDENTITY ═══
-  /** Unique key within the form. Used in values object. */
-  key: string;
-  /** Human-readable label. Shown to user if not using askPrompt. */
-  label: string;
-  /**
-   * Field type. Built-in types: 'text', 'number', 'email', 'boolean', 'select', 'date', 'file'.
-   * Custom types can be registered via FormService.registerType().
-   */
-  type: string;
+	// ═══ IDENTITY ═══
+	/** Unique key within the form. Used in values object. */
+	key: string;
+	/** Human-readable label. Shown to user if not using askPrompt. */
+	label: string;
+	/**
+	 * Field type. Built-in types: 'text', 'number', 'email', 'boolean', 'select', 'date', 'file'.
+	 * Custom types can be registered via FormService.registerType().
+	 */
+	type: string;
 
-  // ═══ BEHAVIOR ═══
-  /** If true, form cannot be submitted without this field. Default: false */
-  required?: boolean;
-  /** If true, accepts array of values. Default: false */
-  multiple?: boolean;
-  /** If true, value cannot be changed after initial set. Default: false */
-  readonly?: boolean;
-  /** If true, extract silently but never ask directly. Default: false */
-  hidden?: boolean;
-  /** If true, agent should not echo value back (passwords, tokens). Default: false */
-  sensitive?: boolean;
+	// ═══ BEHAVIOR ═══
+	/** If true, form cannot be submitted without this field. Default: false */
+	required?: boolean;
+	/** If true, accepts array of values. Default: false */
+	multiple?: boolean;
+	/** If true, value cannot be changed after initial set. Default: false */
+	readonly?: boolean;
+	/** If true, extract silently but never ask directly. Default: false */
+	hidden?: boolean;
+	/** If true, agent should not echo value back (passwords, tokens). Default: false */
+	sensitive?: boolean;
 
-  // ═══ DATABASE BINDING ═══
-  dbbind?: string;
+	// ═══ DATABASE BINDING ═══
+	dbbind?: string;
 
-  // ═══ VALIDATION ═══
-  /** Regex pattern for validation. Applied to string representation. */
-  pattern?: string;
-  /** Minimum value (for numbers) or minimum length (for strings) */
-  min?: number;
-  /** Maximum value (for numbers) or maximum length (for strings) */
-  max?: number;
-  /** Minimum string length (explicit, for when min is used for value) */
-  minLength?: number;
-  /** Maximum string length (explicit, for when max is used for value) */
-  maxLength?: number;
-  /** Allowed values (for string enums without select options) */
-  enum?: string[];
+	// ═══ VALIDATION ═══
+	/** Regex pattern for validation. Applied to string representation. */
+	pattern?: string;
+	/** Minimum value (for numbers) or minimum length (for strings) */
+	min?: number;
+	/** Maximum value (for numbers) or maximum length (for strings) */
+	max?: number;
+	/** Minimum string length (explicit, for when min is used for value) */
+	minLength?: number;
+	/** Maximum string length (explicit, for when max is used for value) */
+	maxLength?: number;
+	/** Allowed values (for string enums without select options) */
+	enum?: string[];
 
-  // ═══ SELECT OPTIONS ═══
-  /** Options for 'select' type fields */
-  options?: FormControlOption[];
+	// ═══ SELECT OPTIONS ═══
+	/** Options for 'select' type fields */
+	options?: FormControlOption[];
 
-  // ═══ FILE OPTIONS ═══
-  /** Configuration for 'file' type fields */
-  file?: FormControlFileOptions;
+	// ═══ FILE OPTIONS ═══
+	/** Configuration for 'file' type fields */
+	file?: FormControlFileOptions;
 
-  // ═══ DEFAULTS & CONDITIONS ═══
-  /** Default value if user doesn't provide one */
-  defaultValue?: JsonValue;
-  /** Conditional display/requirement based on another field */
-  dependsOn?: FormControlDependency;
+	// ═══ DEFAULTS & CONDITIONS ═══
+	/** Default value if user doesn't provide one */
+	defaultValue?: JsonValue;
+	/** Conditional display/requirement based on another field */
+	dependsOn?: FormControlDependency;
 
-  // ═══ ACCESS CONTROL ═══
-  roles?: string[];
+	// ═══ ACCESS CONTROL ═══
+	roles?: string[];
 
-  // ═══ AGENT HINTS ═══
-  description?: string;
-  askPrompt?: string;
-  extractHints?: string[];
-  confirmThreshold?: number;
-  /** Example value for "give me an example" request */
-  example?: string;
+	// ═══ AGENT HINTS ═══
+	description?: string;
+	askPrompt?: string;
+	extractHints?: string[];
+	confirmThreshold?: number;
+	/** Example value for "give me an example" request */
+	example?: string;
 
-  // ═══ UI HINTS ═══
-  /** Hints for future GUI rendering */
-  ui?: FormControlUI;
+	// ═══ UI HINTS ═══
+	/** Hints for future GUI rendering */
+	ui?: FormControlUI;
 
-  // ═══ I18N ═══
-  /** Localized versions of label, description, askPrompt */
-  i18n?: Record<string, FormControlI18n>;
+	// ═══ I18N ═══
+	/** Localized versions of label, description, askPrompt */
+	i18n?: Record<string, FormControlI18n>;
 
-  // ═══ NESTED FIELDS ═══
-  fields?: FormControl[];
+	// ═══ NESTED FIELDS ═══
+	fields?: FormControl[];
 
-  // ═══ EXTENSION ═══
-  meta?: Record<string, JsonValue>;
+	// ═══ EXTENSION ═══
+	meta?: Record<string, JsonValue>;
 }
 
 // ============================================================================
@@ -187,104 +187,104 @@ export interface FormControl {
 // ============================================================================
 
 export interface FormDefinitionUX {
-  /** Allow "undo" to revert last change. Default: true */
-  allowUndo?: boolean;
-  /** Allow "skip" for optional fields. Default: true */
-  allowSkip?: boolean;
-  /** Maximum undo history size. Default: 5 */
-  maxUndoSteps?: number;
-  /** Show examples when user asks. Default: true */
-  showExamples?: boolean;
-  /** Show explanations when user asks. Default: true */
-  showExplanations?: boolean;
-  /** Allow autofill from previous submissions. Default: true */
-  allowAutofill?: boolean;
+	/** Allow "undo" to revert last change. Default: true */
+	allowUndo?: boolean;
+	/** Allow "skip" for optional fields. Default: true */
+	allowSkip?: boolean;
+	/** Maximum undo history size. Default: 5 */
+	maxUndoSteps?: number;
+	/** Show examples when user asks. Default: true */
+	showExamples?: boolean;
+	/** Show explanations when user asks. Default: true */
+	showExplanations?: boolean;
+	/** Allow autofill from previous submissions. Default: true */
+	allowAutofill?: boolean;
 }
 
 export interface FormDefinitionTTL {
-  /** Minimum retention in days, even with no effort. Default: 14 */
-  minDays?: number;
-  /** Maximum retention in days, regardless of effort. Default: 90 */
-  maxDays?: number;
-  /** Days added per minute of user effort. Default: 0.5. */
-  effortMultiplier?: number;
+	/** Minimum retention in days, even with no effort. Default: 14 */
+	minDays?: number;
+	/** Maximum retention in days, regardless of effort. Default: 90 */
+	maxDays?: number;
+	/** Days added per minute of user effort. Default: 0.5. */
+	effortMultiplier?: number;
 }
 
 export interface FormDefinitionNudge {
-  /** Enable nudge messages. Default: true */
-  enabled?: boolean;
-  /** Hours of inactivity before first nudge. Default: 48 */
-  afterInactiveHours?: number;
-  /** Maximum nudge messages to send. Default: 3 */
-  maxNudges?: number;
-  /** Custom nudge message template */
-  message?: string;
+	/** Enable nudge messages. Default: true */
+	enabled?: boolean;
+	/** Hours of inactivity before first nudge. Default: 48 */
+	afterInactiveHours?: number;
+	/** Maximum nudge messages to send. Default: 3 */
+	maxNudges?: number;
+	/** Custom nudge message template */
+	message?: string;
 }
 
 export interface FormDefinitionHooks {
-  /** Called when session starts */
-  onStart?: string;
-  /** Called when any field changes */
-  onFieldChange?: string;
-  /** Called when all required fields are filled */
-  onReady?: string;
-  /** Called on successful submission */
-  onSubmit?: string;
-  /** Called when user cancels */
-  onCancel?: string;
-  /** Called when session expires */
-  onExpire?: string;
+	/** Called when session starts */
+	onStart?: string;
+	/** Called when any field changes */
+	onFieldChange?: string;
+	/** Called when all required fields are filled */
+	onReady?: string;
+	/** Called on successful submission */
+	onSubmit?: string;
+	/** Called when user cancels */
+	onCancel?: string;
+	/** Called when session expires */
+	onExpire?: string;
 }
 
 export interface FormDefinitionI18n {
-  name?: string;
-  description?: string;
+	name?: string;
+	description?: string;
 }
 
 export interface FormDefinition {
-  // ═══ IDENTITY ═══
-  /** Unique identifier for this form definition */
-  id: string;
-  /** Human-readable name shown in UI and agent responses */
-  name: string;
-  /** Description of what this form collects */
-  description?: string;
-  /** Schema version for migrations. Default: 1. */
-  version?: number;
+	// ═══ IDENTITY ═══
+	/** Unique identifier for this form definition */
+	id: string;
+	/** Human-readable name shown in UI and agent responses */
+	name: string;
+	/** Description of what this form collects */
+	description?: string;
+	/** Schema version for migrations. Default: 1. */
+	version?: number;
 
-  // ═══ CONTROLS ═══
-  /** Array of field definitions */
-  controls: FormControl[];
+	// ═══ CONTROLS ═══
+	/** Array of field definitions */
+	controls: FormControl[];
 
-  // ═══ LIFECYCLE ═══
-  status?: "draft" | "active" | "deprecated";
+	// ═══ LIFECYCLE ═══
+	status?: "draft" | "active" | "deprecated";
 
-  // ═══ PERMISSIONS ═══
-  roles?: string[];
+	// ═══ PERMISSIONS ═══
+	roles?: string[];
 
-  // ═══ BEHAVIOR ═══
-  allowMultiple?: boolean;
+	// ═══ BEHAVIOR ═══
+	allowMultiple?: boolean;
 
-  // ═══ UX OPTIONS ═══
-  ux?: FormDefinitionUX;
+	// ═══ UX OPTIONS ═══
+	ux?: FormDefinitionUX;
 
-  // ═══ TTL (Smart Retention) ═══
-  ttl?: FormDefinitionTTL;
+	// ═══ TTL (Smart Retention) ═══
+	ttl?: FormDefinitionTTL;
 
-  // ═══ NUDGE ═══
-  nudge?: FormDefinitionNudge;
+	// ═══ NUDGE ═══
+	nudge?: FormDefinitionNudge;
 
-  // ═══ HOOKS ═══
-  hooks?: FormDefinitionHooks;
+	// ═══ HOOKS ═══
+	hooks?: FormDefinitionHooks;
 
-  // ═══ DEBUG ═══
-  debug?: boolean;
+	// ═══ DEBUG ═══
+	debug?: boolean;
 
-  // ═══ I18N ═══
-  i18n?: Record<string, FormDefinitionI18n>;
+	// ═══ I18N ═══
+	i18n?: Record<string, FormDefinitionI18n>;
 
-  // ═══ EXTENSION ═══
-  meta?: Record<string, JsonValue>;
+	// ═══ EXTENSION ═══
+	meta?: Record<string, JsonValue>;
 }
 
 // ============================================================================
@@ -292,71 +292,77 @@ export interface FormDefinition {
 // ============================================================================
 
 export interface FieldFile {
-  /** Unique identifier for the file */
-  id: string;
-  /** Original filename */
-  name: string;
-  /** MIME type */
-  mimeType: string;
-  /** Size in bytes */
-  size: number;
-  /** URL to access the file */
-  url: string;
+	/** Unique identifier for the file */
+	id: string;
+	/** Original filename */
+	name: string;
+	/** MIME type */
+	mimeType: string;
+	/** Size in bytes */
+	size: number;
+	/** URL to access the file */
+	url: string;
 }
 
 export interface FieldState {
-  // ═══ STATUS ═══
-  status: "empty" | "filled" | "uncertain" | "invalid" | "skipped" | "pending";
+	// ═══ STATUS ═══
+	status: "empty" | "filled" | "uncertain" | "invalid" | "skipped" | "pending";
 
-  // ═══ VALUE ═══
-  /** The current value (undefined if empty/skipped) */
-  value?: JsonValue;
+	// ═══ VALUE ═══
+	/** The current value (undefined if empty/skipped) */
+	value?: JsonValue;
 
-  // ═══ CONFIDENCE ═══
-  confidence?: number;
-  /** Other possible interpretations of user message */
-  alternatives?: JsonValue[];
+	// ═══ CONFIDENCE ═══
+	confidence?: number;
+	/** Other possible interpretations of user message */
+	alternatives?: JsonValue[];
 
-  // ═══ VALIDATION ═══
-  /** Validation error message if status is 'invalid' */
-  error?: string;
+	// ═══ VALIDATION ═══
+	/** Validation error message if status is 'invalid' */
+	error?: string;
 
-  // ═══ FILES ═══
-  /** File metadata for file-type fields */
-  files?: FieldFile[];
+	// ═══ FILES ═══
+	/** File metadata for file-type fields */
+	files?: FieldFile[];
 
-  // ═══ AUDIT TRAIL ═══
-  source?: "extraction" | "autofill" | "default" | "manual" | "correction" | "external";
-  /** ID of message that provided this value */
-  messageId?: string;
-  /** When the value was last updated */
-  updatedAt?: number;
-  /** When user confirmed an uncertain value */
-  confirmedAt?: number;
+	// ═══ AUDIT TRAIL ═══
+	source?:
+		| "extraction"
+		| "autofill"
+		| "default"
+		| "manual"
+		| "correction"
+		| "external";
+	/** ID of message that provided this value */
+	messageId?: string;
+	/** When the value was last updated */
+	updatedAt?: number;
+	/** When user confirmed an uncertain value */
+	confirmedAt?: number;
 
-  // ═══ COMPOSITE TYPES ═══
-  subFields?: Record<string, FieldState>;
+	// ═══ COMPOSITE TYPES ═══
+	subFields?: Record<string, FieldState>;
 
-  // ═══ EXTERNAL TYPES ═══
-  externalState?: {
-    /** Current status of the external interaction */
-    status: "pending" | "confirmed" | "failed" | "expired";
-    /** Reference used to match external events */
-    reference?: string;
-    /** Instructions shown to user (cached from activation) */
-    instructions?: string;
-    /** Address shown to user (cached from activation) */
-    address?: string;
-    /** When the external process was activated */
-    activatedAt?: number;
-    /** When the external process was confirmed */
-    confirmedAt?: number;
-    /** Data from the external confirmation (txId, signature, etc.) */
-    externalData?: Record<string, JsonValue>;
-  };
+	// ═══ EXTERNAL TYPES ═══
+	externalState?: {
+		/** Current status of the external interaction */
+		status: "pending" | "confirmed" | "failed" | "expired";
+		/** Reference used to match external events */
+		reference?: string;
+		/** Instructions shown to user (cached from activation) */
+		instructions?: string;
+		/** Address shown to user (cached from activation) */
+		address?: string;
+		/** When the external process was activated */
+		activatedAt?: number;
+		/** When the external process was confirmed */
+		confirmedAt?: number;
+		/** Data from the external confirmation (txId, signature, etc.) */
+		externalData?: Record<string, JsonValue>;
+	};
 
-  // ═══ EXTENSION ═══
-  meta?: Record<string, JsonValue>;
+	// ═══ EXTENSION ═══
+	meta?: Record<string, JsonValue>;
 }
 
 // ============================================================================
@@ -364,92 +370,98 @@ export interface FieldState {
 // ============================================================================
 
 export interface FieldHistoryEntry {
-  /** Which field was changed */
-  field: string;
-  /** Previous value (to restore) */
-  oldValue: JsonValue;
-  /** New value (for audit) */
-  newValue: JsonValue;
-  /** When the change happened */
-  timestamp: number;
+	/** Which field was changed */
+	field: string;
+	/** Previous value (to restore) */
+	oldValue: JsonValue;
+	/** New value (for audit) */
+	newValue: JsonValue;
+	/** When the change happened */
+	timestamp: number;
 }
 
 export interface SessionEffort {
-  /** Number of messages processed for this form */
-  interactionCount: number;
-  /** Total time from first to last interaction */
-  timeSpentMs: number;
-  /** When user first interacted with this form */
-  firstInteractionAt: number;
-  /** When user last interacted with this form */
-  lastInteractionAt: number;
+	/** Number of messages processed for this form */
+	interactionCount: number;
+	/** Total time from first to last interaction */
+	timeSpentMs: number;
+	/** When user first interacted with this form */
+	firstInteractionAt: number;
+	/** When user last interacted with this form */
+	lastInteractionAt: number;
 }
 
 export interface FormSession {
-  // ═══ IDENTITY ═══
-  /** Unique session ID */
-  id: string;
-  /** Reference to FormDefinition.id */
-  formId: string;
-  /** Form version at session start (for migration handling) */
-  formVersion?: number;
+	// ═══ IDENTITY ═══
+	/** Unique session ID */
+	id: string;
+	/** Reference to FormDefinition.id */
+	formId: string;
+	/** Form version at session start (for migration handling) */
+	formVersion?: number;
 
-  // ═══ SCOPING (user + room) ═══
-  /** The user filling the form */
-  entityId: UUID;
-  /** The room where conversation is happening */
-  roomId: UUID;
+	// ═══ SCOPING (user + room) ═══
+	/** The user filling the form */
+	entityId: UUID;
+	/** The room where conversation is happening */
+	roomId: UUID;
 
-  // ═══ STATUS ═══
-  status: "active" | "ready" | "submitted" | "stashed" | "cancelled" | "expired";
+	// ═══ STATUS ═══
+	status:
+		| "active"
+		| "ready"
+		| "submitted"
+		| "stashed"
+		| "cancelled"
+		| "expired";
 
-  // ═══ FIELD DATA ═══
-  /** Current state of each field, keyed by control.key */
-  fields: Record<string, FieldState>;
+	// ═══ FIELD DATA ═══
+	/** Current state of each field, keyed by control.key */
+	fields: Record<string, FieldState>;
 
-  // ═══ HISTORY (for undo) ═══
-  /** Recent changes for undo functionality */
-  history: FieldHistoryEntry[];
+	// ═══ HISTORY (for undo) ═══
+	/** Recent changes for undo functionality */
+	history: FieldHistoryEntry[];
 
-  // ═══ HIERARCHY ═══
-  parentSessionId?: string;
+	// ═══ HIERARCHY ═══
+	parentSessionId?: string;
 
-  // ═══ CONTEXT ═══
-  context?: Record<string, JsonValue>;
-  /** User's locale for i18n */
-  locale?: string;
+	// ═══ CONTEXT ═══
+	context?: Record<string, JsonValue>;
+	/** User's locale for i18n */
+	locale?: string;
 
-  // ═══ TRACKING ═══
-  /** Last field agent asked about (for skip functionality) */
-  lastAskedField?: string;
-  /** Last message processed (for deduplication) */
-  lastMessageId?: string;
-  /** True if we asked "are you sure you want to cancel?" */
-  cancelConfirmationAsked?: boolean;
+	// ═══ TRACKING ═══
+	/** Last field agent asked about (for skip functionality) */
+	lastAskedField?: string;
+	/** Last message processed (for deduplication) */
+	lastMessageId?: string;
+	/** True if we asked "are you sure you want to cancel?" */
+	cancelConfirmationAsked?: boolean;
 
-  // ═══ EFFORT (for smart TTL) ═══
-  effort: SessionEffort;
+	// ═══ EFFORT (for smart TTL) ═══
+	effort: SessionEffort;
 
-  // ═══ TTL ═══
-  /** When this session expires (timestamp) */
-  expiresAt: number;
-  /** True if we already warned about expiration */
-  expirationWarned?: boolean;
-  /** Number of nudge messages sent */
-  nudgeCount?: number;
-  /** When we last sent a nudge */
-  lastNudgeAt?: number;
+	// ═══ TTL ═══
+	/** When this session expires (timestamp) */
+	expiresAt: number;
+	/** True if we already warned about expiration */
+	expirationWarned?: boolean;
+	/** Number of nudge messages sent */
+	nudgeCount?: number;
+	/** When we last sent a nudge */
+	lastNudgeAt?: number;
 
-  // ═══ TIMESTAMPS ═══
-  /** When session was created */
-  createdAt: number;
-  /** When session was last modified */
-  updatedAt: number;
-  /** When session was submitted (if status is 'submitted') */
-  submittedAt?: number;
+	// ═══ TIMESTAMPS ═══
+	/** When session was created */
+	createdAt: number;
+	/** When session was last modified */
+	updatedAt: number;
+	/** When session was submitted (if status is 'submitted') */
+	submittedAt?: number;
 
-  // ═══ EXTENSION ═══
-  meta?: Record<string, JsonValue>;
+	// ═══ EXTENSION ═══
+	meta?: Record<string, JsonValue>;
 }
 
 // ============================================================================
@@ -457,28 +469,28 @@ export interface FormSession {
 // ============================================================================
 
 export interface FormSubmission {
-  /** Unique submission ID */
-  id: string;
-  /** Which form definition this is for */
-  formId: string;
-  /** Form version at submission time */
-  formVersion?: number;
-  /** The session that produced this submission */
-  sessionId: string;
-  /** Who submitted */
-  entityId: UUID;
+	/** Unique submission ID */
+	id: string;
+	/** Which form definition this is for */
+	formId: string;
+	/** Form version at submission time */
+	formVersion?: number;
+	/** The session that produced this submission */
+	sessionId: string;
+	/** Who submitted */
+	entityId: UUID;
 
-  /** Field values keyed by control.key */
-  values: Record<string, JsonValue>;
-  /** Same values but keyed by dbbind. */
-  mappedValues?: Record<string, JsonValue>;
-  /** File attachments keyed by control.key */
-  files?: Record<string, FieldFile[]>;
+	/** Field values keyed by control.key */
+	values: Record<string, JsonValue>;
+	/** Same values but keyed by dbbind. */
+	mappedValues?: Record<string, JsonValue>;
+	/** File attachments keyed by control.key */
+	files?: Record<string, FieldFile[]>;
 
-  /** When the form was submitted */
-  submittedAt: number;
+	/** When the form was submitted */
+	submittedAt: number;
 
-  meta?: Record<string, JsonValue>;
+	meta?: Record<string, JsonValue>;
 }
 
 // ============================================================================
@@ -491,14 +503,17 @@ export interface FormSubmission {
  * @deprecated Use ControlType instead for new code.
  */
 export interface TypeHandler {
-  /** Validate a value. Return { valid: true } or { valid: false, error: '...' } */
-  validate?: (value: JsonValue, control: FormControl) => { valid: boolean; error?: string };
-  /** Parse string input to appropriate type */
-  parse?: (value: string) => JsonValue;
-  /** Format value for display */
-  format?: (value: JsonValue) => string;
-  /** Description for LLM extraction. */
-  extractionPrompt?: string;
+	/** Validate a value. Return { valid: true } or { valid: false, error: '...' } */
+	validate?: (
+		value: JsonValue,
+		control: FormControl,
+	) => { valid: boolean; error?: string };
+	/** Parse string input to appropriate type */
+	parse?: (value: string) => JsonValue;
+	/** Format value for display */
+	format?: (value: JsonValue) => string;
+	/** Description for LLM extraction. */
+	extractionPrompt?: string;
 }
 
 // ============================================================================
@@ -506,70 +521,73 @@ export interface TypeHandler {
 // ============================================================================
 
 export interface ValidationResult {
-  valid: boolean;
-  error?: string;
+	valid: boolean;
+	error?: string;
 }
 
 export interface ActivationContext {
-  /** Runtime for accessing services */
-  runtime: IAgentRuntime;
-  /** The current form session */
-  session: FormSession;
-  /** The control being activated */
-  control: FormControl;
-  /** Filled subcontrol values, keyed by subcontrol key */
-  subValues: Record<string, JsonValue>;
+	/** Runtime for accessing services */
+	runtime: IAgentRuntime;
+	/** The current form session */
+	session: FormSession;
+	/** The control being activated */
+	control: FormControl;
+	/** Filled subcontrol values, keyed by subcontrol key */
+	subValues: Record<string, JsonValue>;
 }
 
 export interface ExternalActivation {
-  /** Human-readable instructions for the user */
-  instructions: string;
-  /** Unique reference to match external events (e.g., memo, tx reference) */
-  reference: string;
-  /** Optional address (payment address, signing endpoint, etc.) */
-  address?: string;
-  /** When this activation expires (timestamp) */
-  expiresAt?: number;
-  /** Arbitrary metadata from the widget */
-  meta?: Record<string, JsonValue>;
+	/** Human-readable instructions for the user */
+	instructions: string;
+	/** Unique reference to match external events (e.g., memo, tx reference) */
+	reference: string;
+	/** Optional address (payment address, signing endpoint, etc.) */
+	address?: string;
+	/** When this activation expires (timestamp) */
+	expiresAt?: number;
+	/** Arbitrary metadata from the widget */
+	meta?: Record<string, JsonValue>;
 }
 
 export interface ExternalFieldState {
-  /** Current status of the external interaction */
-  status: "pending" | "confirmed" | "failed" | "expired";
-  /** Reference used to match external events */
-  reference?: string;
-  /** Instructions shown to user (cached from activation) */
-  instructions?: string;
-  /** Address shown to user (cached from activation) */
-  address?: string;
-  /** When the external process was activated */
-  activatedAt?: number;
-  /** When the external process was confirmed */
-  confirmedAt?: number;
-  /** Data from the external confirmation (txId, signature, etc.) */
-  externalData?: Record<string, JsonValue>;
+	/** Current status of the external interaction */
+	status: "pending" | "confirmed" | "failed" | "expired";
+	/** Reference used to match external events */
+	reference?: string;
+	/** Instructions shown to user (cached from activation) */
+	instructions?: string;
+	/** Address shown to user (cached from activation) */
+	address?: string;
+	/** When the external process was activated */
+	activatedAt?: number;
+	/** When the external process was confirmed */
+	confirmedAt?: number;
+	/** Data from the external confirmation (txId, signature, etc.) */
+	externalData?: Record<string, JsonValue>;
 }
 
 export interface ControlType {
-  /** Unique identifier for this control type */
-  id: string;
+	/** Unique identifier for this control type */
+	id: string;
 
-  /** If true, this is a built-in type that should warn on override. */
-  builtin?: boolean;
+	/** If true, this is a built-in type that should warn on override. */
+	builtin?: boolean;
 
-  // ═══ SIMPLE TYPE METHODS ═══
-  validate?: (value: JsonValue, control: FormControl) => ValidationResult;
-  parse?: (value: string) => JsonValue;
-  format?: (value: JsonValue) => string;
-  extractionPrompt?: string;
+	// ═══ SIMPLE TYPE METHODS ═══
+	validate?: (value: JsonValue, control: FormControl) => ValidationResult;
+	parse?: (value: string) => JsonValue;
+	format?: (value: JsonValue) => string;
+	extractionPrompt?: string;
 
-  // ═══ COMPOSITE TYPE METHODS ═══
-  getSubControls?: (control: FormControl, runtime: IAgentRuntime) => FormControl[];
+	// ═══ COMPOSITE TYPE METHODS ═══
+	getSubControls?: (
+		control: FormControl,
+		runtime: IAgentRuntime,
+	) => FormControl[];
 
-  // ═══ EXTERNAL TYPE METHODS ═══
-  activate?: (context: ActivationContext) => Promise<ExternalActivation>;
-  deactivate?: (context: ActivationContext) => Promise<void>;
+	// ═══ EXTERNAL TYPE METHODS ═══
+	activate?: (context: ActivationContext) => Promise<ExternalActivation>;
+	deactivate?: (context: ActivationContext) => Promise<void>;
 }
 
 // ============================================================================
@@ -577,135 +595,135 @@ export interface ControlType {
 // ============================================================================
 
 export type FormWidgetEventType =
-  | "FORM_FIELD_EXTRACTED"
-  | "FORM_SUBFIELD_UPDATED"
-  | "FORM_SUBCONTROLS_FILLED"
-  | "FORM_EXTERNAL_ACTIVATED"
-  | "FORM_FIELD_CONFIRMED"
-  | "FORM_FIELD_CANCELLED";
+	| "FORM_FIELD_EXTRACTED"
+	| "FORM_SUBFIELD_UPDATED"
+	| "FORM_SUBCONTROLS_FILLED"
+	| "FORM_EXTERNAL_ACTIVATED"
+	| "FORM_FIELD_CONFIRMED"
+	| "FORM_FIELD_CANCELLED";
 
 export interface FormFieldExtractedEvent {
-  type: "FORM_FIELD_EXTRACTED";
-  sessionId: string;
-  field: string;
-  value: JsonValue;
-  confidence: number;
+	type: "FORM_FIELD_EXTRACTED";
+	sessionId: string;
+	field: string;
+	value: JsonValue;
+	confidence: number;
 }
 
 export interface FormSubfieldUpdatedEvent {
-  type: "FORM_SUBFIELD_UPDATED";
-  sessionId: string;
-  parentField: string;
-  subField: string;
-  value: JsonValue;
-  confidence: number;
+	type: "FORM_SUBFIELD_UPDATED";
+	sessionId: string;
+	parentField: string;
+	subField: string;
+	value: JsonValue;
+	confidence: number;
 }
 
 export interface FormSubcontrolsFilledEvent {
-  type: "FORM_SUBCONTROLS_FILLED";
-  sessionId: string;
-  field: string;
-  subValues: Record<string, JsonValue>;
+	type: "FORM_SUBCONTROLS_FILLED";
+	sessionId: string;
+	field: string;
+	subValues: Record<string, JsonValue>;
 }
 
 export interface FormExternalActivatedEvent {
-  type: "FORM_EXTERNAL_ACTIVATED";
-  sessionId: string;
-  field: string;
-  activation: ExternalActivation;
+	type: "FORM_EXTERNAL_ACTIVATED";
+	sessionId: string;
+	field: string;
+	activation: ExternalActivation;
 }
 
 export interface FormFieldConfirmedEvent {
-  type: "FORM_FIELD_CONFIRMED";
-  sessionId: string;
-  field: string;
-  value: JsonValue;
-  externalData?: Record<string, JsonValue>;
+	type: "FORM_FIELD_CONFIRMED";
+	sessionId: string;
+	field: string;
+	value: JsonValue;
+	externalData?: Record<string, JsonValue>;
 }
 
 export interface FormFieldCancelledEvent {
-  type: "FORM_FIELD_CANCELLED";
-  sessionId: string;
-  field: string;
-  reason: string;
+	type: "FORM_FIELD_CANCELLED";
+	sessionId: string;
+	field: string;
+	reason: string;
 }
 
 export type FormWidgetEvent =
-  | FormFieldExtractedEvent
-  | FormSubfieldUpdatedEvent
-  | FormSubcontrolsFilledEvent
-  | FormExternalActivatedEvent
-  | FormFieldConfirmedEvent
-  | FormFieldCancelledEvent;
+	| FormFieldExtractedEvent
+	| FormSubfieldUpdatedEvent
+	| FormSubcontrolsFilledEvent
+	| FormExternalActivatedEvent
+	| FormFieldConfirmedEvent
+	| FormFieldCancelledEvent;
 
 // ============================================================================
 // FORM CONTEXT STATE - Provider output
 // ============================================================================
 
 export interface FilledFieldSummary {
-  key: string;
-  label: string;
-  /** Formatted value safe to show user (respects sensitive flag) */
-  displayValue: string;
+	key: string;
+	label: string;
+	/** Formatted value safe to show user (respects sensitive flag) */
+	displayValue: string;
 }
 
 export interface MissingFieldSummary {
-  key: string;
-  label: string;
-  description?: string;
-  /** How agent should ask for this field */
-  askPrompt?: string;
+	key: string;
+	label: string;
+	description?: string;
+	/** How agent should ask for this field */
+	askPrompt?: string;
 }
 
 export interface UncertainFieldSummary {
-  key: string;
-  label: string;
-  /** The uncertain value */
-  value: JsonValue;
-  /** How confident the LLM was */
-  confidence: number;
+	key: string;
+	label: string;
+	/** The uncertain value */
+	value: JsonValue;
+	/** How confident the LLM was */
+	confidence: number;
 }
 
 export interface PendingExternalFieldSummary {
-  /** Field key */
-  key: string;
-  /** Field label for display */
-  label: string;
-  /** Instructions for the user */
-  instructions: string;
-  /** Reference for matching */
-  reference: string;
-  /** When the external process was activated */
-  activatedAt: number;
-  /** Optional address (payment address, etc.) */
-  address?: string;
+	/** Field key */
+	key: string;
+	/** Field label for display */
+	label: string;
+	/** Instructions for the user */
+	instructions: string;
+	/** Reference for matching */
+	reference: string;
+	/** When the external process was activated */
+	activatedAt: number;
+	/** Optional address (payment address, etc.) */
+	address?: string;
 }
 
 export interface FormContextState {
-  /** True if there's an active form in this room */
-  hasActiveForm: boolean;
-  /** Current form ID */
-  formId?: string;
-  /** Current form name */
-  formName?: string;
-  /** Completion percentage (0-100) */
-  progress: number;
-  /** Fields that have been filled */
-  filledFields: FilledFieldSummary[];
-  /** Required fields still needed */
-  missingRequired: MissingFieldSummary[];
-  /** Fields needing user confirmation */
-  uncertainFields: UncertainFieldSummary[];
-  /** Next field to ask about */
-  nextField: FormControl | null;
-  /** Current session status */
-  status?: FormSession["status"];
-  /** Number of stashed forms */
-  stashedCount?: number;
-  /** True if we asked "are you sure you want to cancel?" */
-  pendingCancelConfirmation?: boolean;
-  /** External fields waiting for confirmation. */
-  pendingExternalFields: PendingExternalFieldSummary[];
+	/** True if there's an active form in this room */
+	hasActiveForm: boolean;
+	/** Current form ID */
+	formId?: string;
+	/** Current form name */
+	formName?: string;
+	/** Completion percentage (0-100) */
+	progress: number;
+	/** Fields that have been filled */
+	filledFields: FilledFieldSummary[];
+	/** Required fields still needed */
+	missingRequired: MissingFieldSummary[];
+	/** Fields needing user confirmation */
+	uncertainFields: UncertainFieldSummary[];
+	/** Next field to ask about */
+	nextField: FormControl | null;
+	/** Current session status */
+	status?: FormSession["status"];
+	/** Number of stashed forms */
+	stashedCount?: number;
+	/** True if we asked "are you sure you want to cancel?" */
+	pendingCancelConfirmation?: boolean;
+	/** External fields waiting for confirmation. */
+	pendingExternalFields: PendingExternalFieldSummary[];
 }
 
 // ============================================================================
@@ -713,44 +731,44 @@ export interface FormContextState {
 // ============================================================================
 
 export type FormIntent =
-  // Lifecycle - affects session state
-  | "fill_form"
-  | "submit"
-  | "stash"
-  | "restore"
-  | "cancel"
-  // UX Magic - helper actions
-  | "undo"
-  | "skip"
-  | "explain"
-  | "example"
-  | "progress"
-  | "autofill"
-  // Fallback
-  | "other";
+	// Lifecycle - affects session state
+	| "fill_form"
+	| "submit"
+	| "stash"
+	| "restore"
+	| "cancel"
+	// UX Magic - helper actions
+	| "undo"
+	| "skip"
+	| "explain"
+	| "example"
+	| "progress"
+	| "autofill"
+	// Fallback
+	| "other";
 
 export interface ExtractionResult {
-  /** Which field this is for */
-  field: string;
-  /** Extracted value */
-  value: JsonValue;
-  /** LLM confidence (0-1) */
-  confidence: number;
-  /** LLM reasoning (for debug mode) */
-  reasoning?: string;
-  /** Other possible values if uncertain */
-  alternatives?: JsonValue[];
-  /** True if user is correcting previous value */
-  isCorrection?: boolean;
+	/** Which field this is for */
+	field: string;
+	/** Extracted value */
+	value: JsonValue;
+	/** LLM confidence (0-1) */
+	confidence: number;
+	/** LLM reasoning (for debug mode) */
+	reasoning?: string;
+	/** Other possible values if uncertain */
+	alternatives?: JsonValue[];
+	/** True if user is correcting previous value */
+	isCorrection?: boolean;
 }
 
 export interface IntentResult {
-  /** What the user wants to do */
-  intent: FormIntent;
-  /** Extracted field values (for fill_form intent) */
-  extractions: ExtractionResult[];
-  /** Target form ID for restore if multiple stashed */
-  targetFormId?: string;
+	/** What the user wants to do */
+	intent: FormIntent;
+	/** Extracted field values (for fill_form intent) */
+	extractions: ExtractionResult[];
+	/** Target form ID for restore if multiple stashed */
+	targetFormId?: string;
 }
 
 // ============================================================================
@@ -758,33 +776,33 @@ export interface IntentResult {
 // ============================================================================
 
 export const FORM_CONTROL_DEFAULTS = {
-  type: "text",
-  required: false,
-  confirmThreshold: 0.8,
+	type: "text",
+	required: false,
+	confirmThreshold: 0.8,
 } as const;
 
 export const FORM_DEFINITION_DEFAULTS = {
-  version: 1,
-  status: "active" as const,
-  ux: {
-    allowUndo: true,
-    allowSkip: true,
-    maxUndoSteps: 5,
-    showExamples: true,
-    showExplanations: true,
-    allowAutofill: true,
-  },
-  ttl: {
-    minDays: 14,
-    maxDays: 90,
-    effortMultiplier: 0.5,
-  },
-  nudge: {
-    enabled: true,
-    afterInactiveHours: 48,
-    maxNudges: 3,
-  },
-  debug: false,
+	version: 1,
+	status: "active" as const,
+	ux: {
+		allowUndo: true,
+		allowSkip: true,
+		maxUndoSteps: 5,
+		showExamples: true,
+		showExplanations: true,
+		allowAutofill: true,
+	},
+	ttl: {
+		minDays: 14,
+		maxDays: 90,
+		effortMultiplier: 0.5,
+	},
+	nudge: {
+		enabled: true,
+		afterInactiveHours: 48,
+		maxNudges: 3,
+	},
+	debug: false,
 } as const;
 
 // ============================================================================
@@ -796,7 +814,7 @@ export const FORM_SUBMISSION_COMPONENT = "form_submission";
 export const FORM_AUTOFILL_COMPONENT = "form_autofill";
 
 export interface FormAutofillData {
-  formId: string;
-  values: Record<string, JsonValue>;
-  updatedAt: number;
+	formId: string;
+	values: Record<string, JsonValue>;
+	updatedAt: number;
 }

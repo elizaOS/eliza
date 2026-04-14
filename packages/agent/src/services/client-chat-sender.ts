@@ -10,8 +10,8 @@
 
 import crypto from "node:crypto";
 import {
-  createMessageMemory,
   type Content,
+  createMessageMemory,
   type IAgentRuntime,
   type UUID,
 } from "@elizaos/core";
@@ -54,8 +54,7 @@ function resolveConversation(
 
   // 3. Most recently updated conversation
   const sorted = Array.from(state.conversations.values()).sort(
-    (a, b) =>
-      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
   );
   return sorted[0];
 }

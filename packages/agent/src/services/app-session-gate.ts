@@ -7,12 +7,7 @@ import type { Action, Plugin, Provider } from "@elizaos/core";
 import { readAppRunStore } from "./app-run-store.js";
 import { isOverlayAppPresenceActive } from "./overlay-app-presence.js";
 
-const STOPPED_STATUSES = new Set([
-  "stopped",
-  "offline",
-  "error",
-  "failed",
-]);
+const STOPPED_STATUSES = new Set(["stopped", "offline", "error", "failed"]);
 
 function isRunStatusActive(status: string): boolean {
   return !STOPPED_STATUSES.has(status.trim().toLowerCase());
@@ -24,8 +19,7 @@ export function hasActiveAppRunForCanonicalName(
 ): boolean {
   const runs = readAppRunStore();
   return runs.some(
-    (run) =>
-      run.appName === appCanonicalName && isRunStatusActive(run.status),
+    (run) => run.appName === appCanonicalName && isRunStatusActive(run.status),
   );
 }
 

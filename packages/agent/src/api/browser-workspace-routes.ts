@@ -1,8 +1,8 @@
 import {
-  closeBrowserWorkspaceTab,
-  executeBrowserWorkspaceCommand,
   type BrowserWorkspaceCommand,
+  closeBrowserWorkspaceTab,
   evaluateBrowserWorkspaceTab,
+  executeBrowserWorkspaceCommand,
   getBrowserWorkspaceSnapshot,
   getBrowserWorkspaceUnavailableMessage,
   hideBrowserWorkspaceTab,

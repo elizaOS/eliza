@@ -963,7 +963,11 @@ export async function handleKnowledgeRoutes(
       return true;
     }
 
-    let result: { documentId: string; fragmentCount: number; warnings?: string[] };
+    let result: {
+      documentId: string;
+      fragmentCount: number;
+      warnings?: string[];
+    };
     try {
       result = await addKnowledgeDocument(knowledgeService, body);
     } catch (err) {
@@ -1088,7 +1092,11 @@ export async function handleKnowledgeRoutes(
     const urlToFetch = body.url.trim();
 
     // Fetch and process the URL content
-    let fetchedContent: { content: string; contentType: string; filename: string };
+    let fetchedContent: {
+      content: string;
+      contentType: string;
+      filename: string;
+    };
     try {
       fetchedContent = await fetchUrlContent(urlToFetch);
     } catch (fetchErr) {

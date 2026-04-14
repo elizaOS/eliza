@@ -68,6 +68,7 @@ describe("TaskDrain", () => {
 		const existing = {
 			id: "existing-uuid",
 			agentId: "agent-1",
+			tags: ["queue", "repeat"],
 			metadata: {
 				affinityKey: "room:a",
 				updateInterval: 5000,

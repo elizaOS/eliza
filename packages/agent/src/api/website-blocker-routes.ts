@@ -1,5 +1,3 @@
-import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import {
   getSelfControlStatus,
   parseSelfControlBlockRequest,
@@ -7,6 +5,8 @@ import {
   stopSelfControlBlock,
   syncWebsiteBlockerExpiryTask,
 } from "@elizaos/app-lifeops/selfcontrol";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type {
   LifeOpsOccurrence,
   LifeOpsTaskDefinition,
@@ -157,9 +157,7 @@ export async function handleWebsiteBlockerRoutes(
     const status = await getSelfControlStatus();
     const hostBlocked =
       status.active &&
-      status.websites.some(
-        (website) => website.toLowerCase() === queriedHost,
-      );
+      status.websites.some((website) => website.toLowerCase() === queriedHost);
 
     const result: WebsiteBlockerHostResponse = {
       blocked: hostBlocked,
@@ -171,10 +169,7 @@ export async function handleWebsiteBlockerRoutes(
 
     if (hostBlocked && runtime) {
       try {
-        const tasks = await resolveRequiredTasksForHost(
-          runtime,
-          queriedHost,
-        );
+        const tasks = await resolveRequiredTasksForHost(runtime, queriedHost);
         result.requiredTasks = tasks.requiredTasks;
         result.groupKey = tasks.groupKey;
       } catch (err) {
