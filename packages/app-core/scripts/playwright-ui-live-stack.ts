@@ -30,6 +30,9 @@ const UI_PORT = Number(
   process.env.MILADY_UI_SMOKE_PORT ?? process.env.ELIZA_UI_SMOKE_PORT ?? "2138",
 );
 const LIVE_PROVIDER = selectLiveProvider();
+const FORCE_STUB_STACK =
+  process.env.ELIZA_UI_SMOKE_FORCE_STUB === "1" ||
+  process.env.CI === "true";
 
 type StartedStack = {
   apiBase: string;
@@ -505,7 +508,7 @@ async function startStubStack(): Promise<StartedStack> {
 async function startRealStack(): Promise<StartedStack> {
   await ensureUiDistReady();
 
-  if (!LIVE_PROVIDER) {
+  if (FORCE_STUB_STACK || !LIVE_PROVIDER) {
     return startStubStack();
   }
 
