@@ -4,8 +4,8 @@ fabric
 gymnasium~=0.28.1
 requests
 pytz~=2024.1
-transformers~=4.35.2
-torch~=2.5.0
+transformers~=5.0.0rc3
+torch~=2.8.0
 accelerate
 opencv-python-headless~=4.8.1.78
 matplotlib~=3.7.4
@@ -14,7 +14,7 @@ pyautogui~=0.9.54
 psutil~=5.9.6
 tqdm~=4.65.0
 pandas~=2.2.3
-flask~=3.0.0
+flask~=3.1.3
 requests-toolbelt~=1.0.0
 ag2~=0.9.7
 lxml
