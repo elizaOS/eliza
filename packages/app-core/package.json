@@ -31,6 +31,7 @@
     "./api": "./src/api/index.ts",
     "./api/auth": "./src/api/auth.ts",
     "./api/client": "./src/api/client.ts",
+    "./api/client-types-cloud": "./src/api/client-types-cloud.ts",
     "./api/response": "./src/api/response.ts",
     "./api/compat-route-shared": "./src/api/compat-route-shared.ts",
     "./api/server-cloud-tts": "./src/api/server-cloud-tts.ts",
