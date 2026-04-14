@@ -189,7 +189,7 @@ popd >/dev/null
 if [[ "${MILADY_SKIP_LOCAL_UPSTREAMS:-0}" == "1" ]]; then
   log "Skipping @elizaos/core source build in published-only mode"
 else
-  log "Building @elizaos/core (includes agent-orchestrator)"
+  log "Building @elizaos/core and @elizaos/plugin-agent-orchestrator"
   pushd eliza/packages/typescript >/dev/null
   bun run build:node
   popd >/dev/null
@@ -207,6 +207,18 @@ popd >/dev/null
 
 log "Preparing CI dockerignore"
 cp eliza/packages/app-core/deploy/.dockerignore.ci .dockerignore
+
+log "Re-adding eliza/packages/agent to workspaces for Docker relink"
+node -e "
+const fs = require('fs');
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+if (!pkg.workspaces) pkg.workspaces = [];
+if (!pkg.workspaces.includes('eliza/packages/agent')) {
+  pkg.workspaces.push('eliza/packages/agent');
+}
+fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+console.log('Re-added eliza/packages/agent to workspaces');
+"
 
 log "Building Docker image"
 "$DOCKER_BIN" build \
