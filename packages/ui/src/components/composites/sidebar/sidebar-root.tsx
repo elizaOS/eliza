@@ -1,3 +1,4 @@
+import { cva } from "class-variance-authority";
 import { PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import * as React from "react";
 import { cn } from "../../../lib/utils";
@@ -10,20 +11,101 @@ import {
 import { SidebarBody } from "./sidebar-body";
 import { SidebarCollapsedRail } from "./sidebar-collapsed-rail";
 import { SidebarRailItem } from "./sidebar-content";
-import {
-  sidebarCollapsedContentClassName,
-  sidebarCollapsedFallbackBodyClassName,
-  sidebarCollapsedFallbackRootClassName,
-  sidebarContentLayerClassName,
-  sidebarContentOverlayLayerClassName,
-  sidebarControlButtonClassName,
-  sidebarFooterVariants,
-  sidebarHeaderVariants,
-  sidebarMetaClassName,
-  sidebarMobileHeaderBarClassName,
-  sidebarRootVariants,
-} from "./sidebar-styles";
 import type { SidebarProps, SidebarVariant } from "./sidebar-types";
+
+const sidebarRootVariants = cva(
+  "mt-4 flex flex-col overflow-hidden text-sm transition-[width,min-width,border-radius,box-shadow,transform] duration-[360ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+  {
+    variants: {
+      variant: {
+        default:
+          "relative isolate min-h-0 h-[calc(100%-1rem)] w-full shrink-0 rounded-l-none rounded-tr-2xl rounded-br-2xl border-0 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_76%,transparent),color-mix(in_srgb,var(--bg-muted)_97%,transparent))] backdrop-blur-md",
+        mobile:
+          "h-full w-full min-w-0 border-0 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_96%,transparent),color-mix(in_srgb,var(--bg)_92%,transparent))] shadow-none ring-0",
+        "game-modal":
+          "h-full rounded-sm border border-white/10 bg-[linear-gradient(180deg,rgba(11,12,17,0.9),rgba(8,10,14,0.82))] shadow-2xl backdrop-blur-xl",
+      },
+      collapsed: {
+        true: "!w-[4.75rem] !min-w-[4.75rem] xl:!w-[4.75rem] xl:!min-w-[4.75rem]",
+        false: "",
+      },
+    },
+    compoundVariants: [
+      {
+        variant: "default",
+        collapsed: false,
+        className:
+          "!w-[18.5rem] !min-w-[18.5rem] xl:!w-[20rem] xl:!min-w-[20rem]",
+      },
+      {
+        variant: "default",
+        collapsed: false,
+        className: "shadow-lg",
+      },
+      {
+        variant: "default",
+        collapsed: true,
+        className: "shadow-md",
+      },
+    ],
+    defaultVariants: {
+      variant: "default",
+      collapsed: false,
+    },
+  },
+);
+
+const sidebarHeaderVariants = cva("", {
+  variants: {
+    variant: {
+      default: "shrink-0  px-3.5 pb-4 pt-3.5",
+      mobile: "shrink-0  px-3.5 pb-4 pt-3.5",
+      "game-modal": "shrink-0  px-3.5 pb-3 pt-3.5",
+    },
+    collapsed: {
+      true: "flex min-h-0 flex-1 flex-col pb-0",
+      false: "",
+    },
+  },
+  compoundVariants: [
+    {
+      variant: "default",
+      collapsed: true,
+      className: " px-3.5 pt-3.5",
+    },
+  ],
+  defaultVariants: {
+    variant: "default",
+    collapsed: false,
+  },
+});
+
+const sidebarFooterVariants = cva(
+  "relative z-10 mt-auto flex shrink-0 justify-end  px-3.5 pb-3.5 pt-2",
+);
+
+const sidebarControlButtonClassName =
+  "h-11 w-11 rounded-sm border border-border/32 bg-card text-muted-strong shadow-sm transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:text-txt hover:shadow-md active:scale-95";
+
+const sidebarMobileHeaderBarClassName =
+  "sticky top-0 z-10 flex items-center justify-between bg-card/88 px-3.5 py-2.5 backdrop-blur-md";
+
+const sidebarCollapsedContentClassName =
+  "flex min-h-0 w-full flex-1 flex-col items-center transform-gpu transition-[opacity,transform] duration-[260ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[opacity,transform] motion-reduce:transform-none motion-reduce:transition-none";
+
+const sidebarContentLayerClassName =
+  "flex min-h-0 flex-1 flex-col origin-left transform-gpu transition-[opacity,transform,filter] duration-[260ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[opacity,transform,filter] motion-reduce:transform-none motion-reduce:transition-none";
+
+const sidebarContentOverlayLayerClassName =
+  "pointer-events-none absolute inset-0 z-10 select-none";
+
+const sidebarCollapsedFallbackRootClassName =
+  "!w-[7rem] !min-w-[7rem] xl:!w-[7rem] xl:!min-w-[7rem]";
+
+const sidebarCollapsedFallbackBodyClassName =
+  "custom-scrollbar flex min-h-0 w-full flex-1 flex-col gap-2 overflow-y-auto px-2 pb-3 pt-2 [&_[data-sidebar-panel]]:min-h-0 [&_[data-sidebar-panel]]:gap-2 [&_[data-sidebar-panel]]:rounded-sm [&_[data-sidebar-panel]]:p-1.5 [&_[data-sidebar-filter-bar]]:hidden [&_[data-sidebar-section-label]]:hidden [&_[data-sidebar-section-header]]:hidden [&_[data-sidebar-toolbar-actions]]:hidden [&_[data-segmented-control]]:grid [&_[data-segmented-control]]:w-full [&_[data-segmented-control]]:max-w-none [&_[data-segmented-control]]:grid-cols-1 [&_[data-segmented-control]]:border-transparent [&_[data-segmented-control]]:bg-transparent [&_[data-segmented-control]]:p-0 [&_[data-segmented-control-button]]:w-full [&_[data-segmented-control-button]]:justify-center [&_[data-segmented-control-button]]:px-2.5 [&_[data-segmented-control-button]]:py-2.5 [&_[data-segmented-control-button]]:text-xs-tight [&_[data-sidebar-item]]:rounded-sm [&_[data-sidebar-item]]:px-2.5 [&_[data-sidebar-item]]:py-2.5 [&_[data-sidebar-item]]:gap-2 [&_[data-sidebar-item]]:items-center [&_[data-sidebar-item]]:justify-center [&_[data-sidebar-item]>div.absolute]:hidden [&_[data-sidebar-item-button]]:w-full [&_[data-sidebar-item-button]]:flex-col [&_[data-sidebar-item-button]]:items-center [&_[data-sidebar-item-button]]:justify-center [&_[data-sidebar-item-button]]:gap-2 [&_[data-sidebar-item-body]]:flex [&_[data-sidebar-item-body]]:w-full [&_[data-sidebar-item-body]]:flex-col [&_[data-sidebar-item-body]]:items-center [&_[data-sidebar-item-body]]:text-center [&_[data-sidebar-item-body]>*+*]:hidden [&_[data-sidebar-item-title]]:line-clamp-2 [&_[data-sidebar-item-title]]:text-center [&_[data-sidebar-item-title]]:text-xs-tight [&_[data-sidebar-item-title]]:leading-tight [&_[data-sidebar-item-description]]:hidden [&_[data-sidebar-item-icon]]:mx-auto [&_[data-sidebar-item-icon]]:mt-0 [&_[data-sidebar-item-action]]:hidden [&_.grid]:grid-cols-1 [&_.grid]:gap-2 [&_button]:min-h-11";
+
+const sidebarMetaClassName = "mt-1.5 text-xs text-muted";
 
 const DEFAULT_APP_SIDEBAR_SYNC_ID = "primary-app-sidebar";
 const SIDEBAR_SYNC_STORAGE_PREFIX = "elizaos:ui:sidebar:";

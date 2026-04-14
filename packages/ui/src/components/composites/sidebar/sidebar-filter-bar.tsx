@@ -15,13 +15,17 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../../ui/tooltip";
-import {
-  sidebarFilterActionsClassName,
-  sidebarFilterBarClassName,
-  sidebarFilterButtonClassName,
-  sidebarFilterPrimaryClassName,
-} from "./sidebar-styles";
 import type { SidebarFilterBarProps } from "./sidebar-types";
+
+const sidebarFilterBarClassName =
+  "flex w-full min-w-0 items-center gap-2";
+
+const sidebarFilterPrimaryClassName = "min-w-0 flex-1";
+
+const sidebarFilterActionsClassName = "flex shrink-0 items-center gap-2";
+
+const sidebarFilterButtonClassName =
+  "h-10 w-10 shrink-0 rounded-sm border-border/60 bg-card/88 shadow-sm";
 
 export function SidebarFilterBar({
   className,

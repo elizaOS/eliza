@@ -2,12 +2,17 @@ import type * as React from "react";
 
 import { cn } from "../../../lib/utils";
 import { Button } from "../../ui/button";
-import {
-  sidebarCollapsedActionButtonClassName,
-  sidebarCollapsedRailActionWrapClassName,
-  sidebarCollapsedRailListClassName,
-  sidebarCollapsedRailRootClassName,
-} from "./sidebar-styles";
+
+const sidebarCollapsedRailRootClassName =
+  "flex min-h-0 w-full flex-1 flex-col items-center";
+
+const sidebarCollapsedRailActionWrapClassName =
+  "flex flex-col items-center gap-3 py-1";
+
+const sidebarCollapsedRailListClassName =
+  "custom-scrollbar flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto px-1 pb-2";
+
+const sidebarCollapsedActionButtonClassName = "h-11 w-11 rounded-sm";
 
 export interface SidebarCollapsedRailProps
   extends React.HTMLAttributes<HTMLDivElement> {

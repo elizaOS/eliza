@@ -510,7 +510,7 @@ function WakeWordSection({
   }, [enabled, buildConfig]);
 
   return (
-    <div className="flex flex-col gap-4 border-t border-border/50 pt-4">
+    <div className="flex flex-col gap-4 pt-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-xs font-semibold text-muted">
           {t("voiceconfigview.WakeWord")}

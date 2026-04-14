@@ -1886,8 +1886,6 @@
   "providerswitcher.noAiProvidersAvailable": "No hay proveedores de IA disponibles. Activa uno desde la",
   "providerswitcher.opensABrowserWindow": "Abre una ventana del navegador para completar el inicio de sesión.",
   "providerswitcher.page": "página.",
-  "providerswitcher.piAi": "Pi (pi-ai)",
-  "providerswitcher.piSettings": "Configuración de Pi (pi-ai)",
   "providerswitcher.primaryModelOverride": "Anulación del modelo principal",
   "providerswitcher.providerModelPlaceholder": "provider/model (p. ej. ollama/qwen2.5)",
   "providerswitcher.reportIssueWithTemplate": "Informar este problema con una plantilla precargada",

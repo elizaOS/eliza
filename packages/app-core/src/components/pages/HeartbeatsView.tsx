@@ -576,7 +576,7 @@ function HeartbeatsLayout() {
             })
           )}
 
-          <div className="mt-3 border-t border-border/30 px-1 pb-1 pt-4">
+          <div className="mt-3 px-1 pb-1 pt-4">
             <SidebarContent.SectionHeader>
               <SidebarContent.SectionLabel>
                 {t("heartbeatsview.Templates", { defaultValue: "Templates" })}

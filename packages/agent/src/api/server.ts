@@ -243,6 +243,7 @@ import {
 } from "./wallet-capability.js";
 import { handleWalletRoutes } from "./wallet-routes.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
+import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
 // handleWhatsAppRoute moved to @elizaos/plugin-whatsapp setup-routes.
 // applyWhatsAppQrOverride is still used by plugin-status routes.
 import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
@@ -5092,8 +5093,20 @@ async function handleRequest(
     return;
   }
 
-  // Website-blocker routes: now served via lifeopsPlugin.routes (rawPath)
-  // on the runtime plugin route system. See app-lifeops/src/routes/plugin.ts.
+  if (
+    await handleWebsiteBlockerRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      runtime: state.runtime ?? undefined,
+      readJsonBody,
+      json,
+      error,
+    })
+  ) {
+    return;
+  }
 
   if (
     await handleBrowserWorkspaceRoutes({

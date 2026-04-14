@@ -1299,11 +1299,11 @@ export function GameView() {
     <div
       className={`flex min-h-0 flex-col bg-card ${
         layout === "sidebar"
-          ? "w-80 border-l border-border"
-          : "h-full border-t border-border"
+          ? "w-80"
+          : "h-full"
       }`}
     >
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
+      <div className="flex items-center gap-2 px-3 py-2">
         <span className="font-bold text-xs">{t("game.agentActivity")}</span>
         <span className="flex-1" />
         <Button
@@ -1324,13 +1324,13 @@ export function GameView() {
         </Button>
       </div>
       {activeSessionState?.goalLabel ? (
-        <div className="border-b border-border px-2 py-1.5 text-2xs text-muted">
+        <div className="px-2 py-1.5 text-2xs text-muted">
           {activeSessionState.goalLabel}
         </div>
       ) : null}
       {/* Defense of the Agents telemetry dashboard */}
       {activeSessionState?.telemetry?.heroClass != null ? (
-        <div className="border-b border-border px-2 py-2 text-2xs space-y-1.5">
+        <div className="px-2 py-2 text-2xs space-y-1.5">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-txt">
               {String(activeSessionState.telemetry.heroClass)
@@ -1476,7 +1476,7 @@ export function GameView() {
         </div>
       ) : null}
       {activeSessionState?.suggestedPrompts?.length ? (
-        <div className="flex flex-wrap gap-1 border-b border-border px-2 py-2">
+        <div className="flex flex-wrap gap-1 px-2 py-2">
           {activeSessionState.suggestedPrompts.slice(0, 4).map((prompt) => (
             <Button
               key={prompt}
@@ -1492,7 +1492,7 @@ export function GameView() {
         </div>
       ) : null}
       {activeSessionState?.recommendations?.length ? (
-        <div className="border-b border-border px-2 py-2 text-2xs space-y-1.5">
+        <div className="px-2 py-2 text-2xs space-y-1.5">
           <div className="font-semibold text-txt">
             {t("gameview.Recommendations", {
               defaultValue: "Recommendations",
@@ -1522,7 +1522,7 @@ export function GameView() {
         </div>
       ) : null}
       {/* Chat input for sending commands to agent */}
-      <div className="flex items-center gap-2 px-2 py-2 border-b border-border">
+      <div className="flex items-center gap-2 px-2 py-2">
         <Input
           type="text"
           data-testid="game-command-input"
@@ -1578,7 +1578,7 @@ export function GameView() {
                 <div
                   // biome-ignore lint/suspicious/noArrayIndexKey: composite key with index as tiebreaker
                   key={`${entry.ts}-${idx}`}
-                  className="py-1 border-b border-border/50 flex flex-col gap-0.5"
+                  className="py-1 flex flex-col gap-0.5"
                 >
                   <div className="flex items-center gap-1">
                     <span className="text-muted text-2xs">
@@ -1611,7 +1611,7 @@ export function GameView() {
             .map((entry) => (
               <div
                 key={entry.id}
-                className="py-1 border-b border-border/50 flex flex-col gap-0.5"
+                className="py-1 flex flex-col gap-0.5"
               >
                 <div className="flex items-center gap-1">
                   <span className="text-muted text-2xs">
@@ -1641,7 +1641,7 @@ export function GameView() {
             <div
               // biome-ignore lint/suspicious/noArrayIndexKey: composite key with index as tiebreaker
               key={`${entry.timestamp}-${idx}`}
-              className="py-1 border-b border-border/50 flex flex-col gap-0.5"
+              className="py-1 flex flex-col gap-0.5"
             >
               <div className="flex items-center gap-1">
                 <span className="text-muted text-2xs">
@@ -1782,7 +1782,7 @@ export function GameView() {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex flex-wrap items-center gap-3 px-4 py-2 border-b border-border bg-card">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-2 bg-card">
         <span className="font-bold text-sm">
           {activeGameDisplayName || activeGameApp}
         </span>
@@ -1922,12 +1922,12 @@ export function GameView() {
         </Button>
       </div>
       {activeRunSummary ? (
-        <div className="border-b border-border bg-card/70 px-4 py-2 text-xs-tight leading-5 text-muted-strong">
+        <div className="bg-card/70 px-4 py-2 text-xs-tight leading-5 text-muted-strong">
           {activeRunSummary}
         </div>
       ) : null}
       {dashboardPanelEnabled && isCompactLayout ? (
-        <div className="flex items-center gap-2 border-b border-border bg-card px-4 py-2">
+        <div className="flex items-center gap-2 bg-card px-4 py-2">
           <Button
             variant={mobileSurface === "game" ? "default" : "outline"}
             size="sm"
@@ -1992,7 +1992,7 @@ export function GameView() {
               )
             ) : null
           ) : hasOperatorSurface && OperatorSurface ? (
-            <div className="w-[30rem] min-h-0 overflow-y-auto border-l border-border bg-card">
+            <div className="w-[30rem] min-h-0 overflow-y-auto bg-card">
               <OperatorSurface
                 appName={activeGameApp}
                 variant="live"

@@ -246,7 +246,8 @@ function getSharedDracoLoader(): DRACOLoader {
 
 function configureVrmGltfLoader(loader: GLTFLoader): void {
   loader.setMeshoptDecoder(MeshoptDecoder);
-  loader.setDRACOLoader(getSharedDracoLoader());
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  loader.setDRACOLoader(getSharedDracoLoader() as any);
 }
 
 function getTeleportSparkleTexture(): THREE.CanvasTexture {

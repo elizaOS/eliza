@@ -173,7 +173,7 @@ function StewardWalletInfoPopup({
       </Button>
 
       {/* RPC configuration */}
-      <div className="border-t border-border/50 pt-4">
+      <div className="pt-4">
         <div className="text-xs font-semibold text-txt mb-2">
           {t("settings.rpcConfiguration", {
             defaultValue: "RPC Configuration",
@@ -183,7 +183,7 @@ function StewardWalletInfoPopup({
       </div>
 
       {/* Advanced: show local key import */}
-      <div className="border-t border-border/50 pt-3">
+      <div className="pt-3">
         <Button
           variant="ghost"
           size="sm"

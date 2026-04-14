@@ -247,7 +247,7 @@ function TaskThreadCard({
       </button>
 
       {selected ? (
-        <div className="border-t border-border/40 px-3 pb-3 pt-2.5">
+        <div className="px-3 pb-3 pt-2.5">
           {!detail && detailLoading ? (
             <div className="text-xs-tight text-muted">Loading...</div>
           ) : detail ? (

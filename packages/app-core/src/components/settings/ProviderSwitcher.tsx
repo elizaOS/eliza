@@ -560,7 +560,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
       {/* Cloud settings */}
       {isCloudSelected && (
-        <div className="mt-4 pt-4 border-t border-border">
+        <div className="mt-4 pt-4">
           {elizaCloudConnected ? (
             <div>
               <div className="flex justify-between items-center mb-3">

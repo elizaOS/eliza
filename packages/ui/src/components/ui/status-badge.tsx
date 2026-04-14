@@ -4,28 +4,6 @@ import { cn } from "../../lib/utils";
 export type StatusVariant = "success" | "warning" | "danger" | "muted";
 export type StatusTone = StatusVariant;
 
-const STATUS_VARIANT_STYLES: Record<
-  StatusVariant,
-  { badge: string; dot: string }
-> = {
-  success: {
-    badge: "border-ok/35 bg-ok/12 text-ok",
-    dot: "bg-ok",
-  },
-  warning: {
-    badge: "border-warn/40 bg-warn/14 text-warn",
-    dot: "bg-warn",
-  },
-  danger: {
-    badge: "border-destructive/35 bg-destructive/12 text-destructive",
-    dot: "bg-destructive",
-  },
-  muted: {
-    badge: "border-border bg-bg-accent text-muted-strong",
-    dot: "bg-muted",
-  },
-};
-
 export function statusToneForBoolean(
   condition: boolean,
   onTone: StatusVariant = "success",
@@ -79,19 +57,35 @@ export interface StatusBadgeProps
 export const StatusBadge = React.forwardRef<HTMLSpanElement, StatusBadgeProps>(
   ({ label, variant, tone, withDot = false, className, ...props }, ref) => {
     const resolvedVariant = variant ?? tone ?? "muted";
-    const styles = STATUS_VARIANT_STYLES[resolvedVariant];
     return (
       <span
         ref={ref}
         className={cn(
           "inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-2xs font-bold uppercase",
-          styles.badge,
+          resolvedVariant === "success"
+            ? "border-ok/35 bg-ok/12 text-ok"
+            : resolvedVariant === "warning"
+              ? "border-warn/40 bg-warn/14 text-warn"
+              : resolvedVariant === "danger"
+                ? "border-destructive/35 bg-destructive/12 text-destructive"
+                : "border-border bg-bg-accent text-muted-strong",
           className,
         )}
         {...props}
       >
         {withDot && (
-          <span className={cn("h-1.5 w-1.5 rounded-full", styles.dot)} />
+          <span
+            className={cn(
+              "h-1.5 w-1.5 rounded-full",
+              resolvedVariant === "success"
+                ? "bg-ok"
+                : resolvedVariant === "warning"
+                  ? "bg-warn"
+                  : resolvedVariant === "danger"
+                    ? "bg-destructive"
+                    : "bg-muted",
+            )}
+          />
         )}
         {label}
       </span>
@@ -117,13 +111,18 @@ export const StatusDot = React.forwardRef<HTMLSpanElement, StatusDotProps>(
           ? "danger"
           : "muted");
 
-    const styles = STATUS_VARIANT_STYLES[variant];
     return (
       <span
         ref={ref}
         className={cn(
           "inline-block h-2 w-2 rounded-full",
-          styles.dot,
+          variant === "success"
+            ? "bg-ok"
+            : variant === "warning"
+              ? "bg-warn"
+              : variant === "danger"
+                ? "bg-destructive"
+                : "bg-muted",
           className,
         )}
         {...props}

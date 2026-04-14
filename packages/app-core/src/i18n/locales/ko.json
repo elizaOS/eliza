@@ -1886,8 +1886,6 @@
   "providerswitcher.noAiProvidersAvailable": "사용 가능한 AI 제공자가 없습니다. 다음에서 하나를 활성화하세요:",
   "providerswitcher.opensABrowserWindow": "로그인을 완료하기 위해 브라우저 창을 엽니다.",
   "providerswitcher.page": "페이지.",
-  "providerswitcher.piAi": "파이(pi-ai)",
-  "providerswitcher.piSettings": "Pi (pi-ai) 설정",
   "providerswitcher.primaryModelOverride": "기본 모델 재정의",
   "providerswitcher.providerModelPlaceholder": "provider/model (예: ollama/qwen2.5)",
   "providerswitcher.reportIssueWithTemplate": "미리 채워진 템플릿을 사용하여 이 문제를 신고하세요.",

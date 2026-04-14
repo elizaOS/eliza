@@ -100,7 +100,7 @@ describe("Hello World Action", () => {
   });
 
   it("should always validate messages (current implementation)", async () => {
-    if (!helloWorldAction?.validate) {
+    if (!helloWorldAction || !helloWorldAction.validate) {
       throw new Error("Hello world action validate not found");
     }
 
@@ -122,7 +122,7 @@ describe("Hello World Action", () => {
   });
 
   it("should validate even without text content", async () => {
-    if (!helloWorldAction?.validate) {
+    if (!helloWorldAction || !helloWorldAction.validate) {
       throw new Error("Hello world action validate not found");
     }
 
@@ -135,7 +135,7 @@ describe("Hello World Action", () => {
   });
 
   it("should properly validate hello messages", async () => {
-    if (!helloWorldAction?.validate) {
+    if (!helloWorldAction || !helloWorldAction.validate) {
       throw new Error("Hello world action validate not found");
     }
 
@@ -159,7 +159,7 @@ describe("Hello World Action", () => {
   });
 
   it("should handle hello world action with callback", async () => {
-    if (!helloWorldAction?.handler) {
+    if (!helloWorldAction || !helloWorldAction.handler) {
       throw new Error("Hello world action handler not found");
     }
 
@@ -188,7 +188,7 @@ describe("Hello World Action", () => {
   });
 
   it("should handle errors gracefully", async () => {
-    if (!helloWorldAction?.handler) {
+    if (!helloWorldAction || !helloWorldAction.handler) {
       throw new Error("Hello world action handler not found");
     }
 
@@ -206,7 +206,7 @@ describe("Hello World Action", () => {
   });
 
   it("should handle missing callback gracefully", async () => {
-    if (!helloWorldAction?.handler) {
+    if (!helloWorldAction || !helloWorldAction.handler) {
       throw new Error("Hello world action handler not found");
     }
 
@@ -227,7 +227,7 @@ describe("Hello World Action", () => {
   });
 
   it("should handle state parameter correctly", async () => {
-    if (!helloWorldAction?.handler) {
+    if (!helloWorldAction || !helloWorldAction.handler) {
       throw new Error("Hello world action handler not found");
     }
 
@@ -263,7 +263,7 @@ describe("Hello World Provider", () => {
   });
 
   it("should provide hello world data", async () => {
-    if (!provider?.get) {
+    if (!provider || !provider.get) {
       throw new Error("Hello world provider not found");
     }
 
@@ -280,7 +280,7 @@ describe("Hello World Provider", () => {
   });
 
   it("should provide consistent structure across calls", async () => {
-    if (!provider?.get) {
+    if (!provider || !provider.get) {
       throw new Error("Hello world provider not found");
     }
 
@@ -299,7 +299,7 @@ describe("Hello World Provider", () => {
   });
 
   it("should handle different input states", async () => {
-    if (!provider?.get) {
+    if (!provider || !provider.get) {
       throw new Error("Hello world provider not found");
     }
 
@@ -402,7 +402,7 @@ describe("API Routes", () => {
 
   it("should handle hello world route", async () => {
     const helloRoute = starterPlugin.routes?.find((r) => r.name === "hello-world-route");
-    if (!helloRoute?.handler) {
+    if (!helloRoute || !helloRoute.handler) {
       throw new Error("Hello world route handler not found");
     }
 
@@ -434,7 +434,7 @@ describe("API Routes", () => {
 
   it("should handle request with query parameters", async () => {
     const helloRoute = starterPlugin.routes?.find((r) => r.name === "hello-world-route");
-    if (!helloRoute?.handler) {
+    if (!helloRoute || !helloRoute.handler) {
       throw new Error("Hello world route handler not found");
     }
 

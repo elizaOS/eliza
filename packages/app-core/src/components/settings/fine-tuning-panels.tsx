@@ -34,7 +34,7 @@ export const FINE_TUNING_SECTION_KICKER_CLASS =
 export const FINE_TUNING_PANEL_CLASS =
   "rounded-2xl border border-border/45 bg-bg/20 shadow-sm";
 export const FINE_TUNING_PANEL_HEADER_CLASS =
-  "border-b border-border/35 px-3 py-2 text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70";
+  "px-3 py-2 text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70";
 export const FINE_TUNING_ACTION_CLASS =
   "h-10 rounded-xl px-3 text-xs shadow-sm hover:border-accent disabled:opacity-50";
 export const FINE_TUNING_STATUS_CARD_CLASS =
@@ -164,7 +164,7 @@ export function TrajectoriesSection({
                     <Button
                       variant="ghost"
                       key={trajectory.trajectoryId}
-                      className="w-full justify-start rounded-none border-b border-border/35 px-3 py-3 text-left text-xs hover:bg-bg-hover"
+                      className="w-full justify-start rounded-none px-3 py-3 text-left text-xs hover:bg-bg-hover"
                       onClick={() =>
                         onSelectTrajectory(trajectory.trajectoryId)
                       }
@@ -501,7 +501,7 @@ export function TrainingJobsSection({
             jobs.map((job) => (
               <div
                 key={job.id}
-                className={`border-b border-border/35 px-3 py-3 text-sm ${
+                className={`px-3 py-3 text-sm ${
                   selectedJobId === job.id ? "bg-bg-hover" : ""
                 }`}
               >
@@ -614,7 +614,7 @@ export function TrainedModelsSection({
               <Button
                 variant="ghost"
                 key={model.id}
-                className={`w-full justify-start rounded-none border-b border-border/35 px-3 py-3 text-left text-sm ${
+                className={`w-full justify-start rounded-none px-3 py-3 text-left text-sm ${
                   selectedModelId === model.id
                     ? "bg-bg-hover"
                     : "hover:bg-bg-hover"
@@ -697,7 +697,7 @@ export function LiveEventsPanel({
           events.map((event) => (
             <div
               key={`${event.ts}-${event.kind}-${String(event.message ?? "")}`}
-              className="border-b border-border/35 px-3 py-2 text-sm"
+              className="px-3 py-2 text-sm"
             >
               <span className="mr-2 font-mono text-xs text-muted">
                 {formatTime(event.ts, { fallback: "\u2014" })}

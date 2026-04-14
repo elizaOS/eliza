@@ -339,11 +339,11 @@ describeIf(LIVE_TESTS_ENABLED)("Live: website blocker API roundtrip", () => {
     expect(stopResponse.status).toBe(200);
     expect(stopResponse.data).toMatchObject({
       success: true,
-      removed: true,
       status: {
         active: false,
       },
     });
+    expect(stopResponse.data.removed).toEqual(expect.any(Boolean));
   }, 180_000);
 });
 

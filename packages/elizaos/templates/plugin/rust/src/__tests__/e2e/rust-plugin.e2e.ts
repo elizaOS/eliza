@@ -27,6 +27,7 @@ interface Memory {
   };
 }
 
+
 export const RustPluginTestSuite: TestSuite = {
   name: "rust_plugin_starter_test_suite",
   tests: [
@@ -129,7 +130,7 @@ export const RustPluginTestSuite: TestSuite = {
 
           // Verify the response includes the expected action
           const responseActions = response.actions;
-          if (!responseActions?.includes("HELLO_RUST")) {
+          if (!responseActions || !responseActions.includes("HELLO_RUST")) {
             throw new Error("Response did not include HELLO_RUST action");
           }
 

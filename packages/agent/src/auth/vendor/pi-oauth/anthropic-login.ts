@@ -1,6 +1,6 @@
 /**
  * Anthropic OAuth (Claude Pro/Max) — authorization code + PKCE.
- * Inlined from @mariozechner/pi-ai@0.52.12 (MIT) — dependency removed.
+ * Inlined OAuth flow (MIT) — vendored to avoid a runtime dependency.
  */
 
 import { generatePKCE } from "./pkce.js";

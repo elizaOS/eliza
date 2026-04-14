@@ -92,7 +92,7 @@ export function TokensTable({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[42rem] border-collapse">
           <thead>
-            <tr className="border-b border-border/50 bg-bg/24">
+            <tr className="bg-bg/24">
               <th className="pl-3 pr-2 py-2 text-left w-12" />
               <th className="px-3 py-2 text-left text-2xs text-muted font-bold uppercase tracking-wide">
                 {t("wallet.table.token")}
@@ -112,7 +112,7 @@ export function TokensTable({
               return (
                 <tr
                   key={`${row.chain}-${row.symbol}-${row.contractAddress ?? ""}`}
-                  className="border-b border-border/35 last:border-b-0 hover:bg-bg-hover/65 transition-colors"
+                  className="hover:bg-bg-hover/65 transition-colors"
                 >
                   {/* Logo */}
                   <td className="pl-3 pr-2 py-3 align-middle">

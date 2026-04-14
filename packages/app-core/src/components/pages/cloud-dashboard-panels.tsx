@@ -346,7 +346,7 @@ function DiscordSettingsPanel({
       </button>
 
       {expanded && (
-        <div className="space-y-3 border-t border-border/25 px-3 pb-3 pt-3">
+        <div className="space-y-3 px-3 pb-3 pt-3">
           {loadError ? (
             <p className="text-xs-tight text-muted">
               {t("elizaclouddashboard.DiscordSettingsLoadError", {

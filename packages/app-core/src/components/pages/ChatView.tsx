@@ -849,7 +849,7 @@ function InboxChatPanel({
       className="flex flex-1 min-h-0 min-w-0 flex-col"
       aria-label={t("inboxview.Title", { defaultValue: "Inbox" })}
     >
-      <div className="flex items-center justify-between border-b border-border/40 px-5 py-3">
+      <div className="flex items-center justify-between px-5 py-3">
         <div className="min-w-0">
           <div className="text-sm font-bold text-txt truncate">
             {activeInboxChat.title}
@@ -898,7 +898,7 @@ function InboxChatPanel({
           />
         )}
       </div>
-      <div className="border-t border-border/40 bg-bg-hover/40 px-5 py-3">
+      <div className="bg-bg-hover/40 px-5 py-3">
         {activeInboxChat.canSend === false ? (
           <div className="text-xs-tight leading-5 text-muted">
             {t("inboxview.ReadOnlyReplyHint", {

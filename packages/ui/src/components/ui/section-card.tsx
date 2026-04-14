@@ -38,7 +38,7 @@ export const SectionCard = React.forwardRef<HTMLDivElement, SectionCardProps>(
         {...props}
       >
         {(title || actions) && (
-          <div className="flex items-center justify-between border-b border-border px-4 py-4">
+          <div className="flex items-center justify-between px-4 py-4">
             <div className="flex flex-col gap-1.5">
               {title && (
                 <Button

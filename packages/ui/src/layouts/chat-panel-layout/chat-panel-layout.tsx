@@ -12,8 +12,6 @@ export interface ChatPanelLayoutProps
   thread: React.ReactNode;
 }
 
-const CHAT_PANEL_MEDIA_QUERY = "(max-width: 768px)";
-
 function useMatchMedia(query: string): boolean {
   const [matches, setMatches] = React.useState(() =>
     typeof window !== "undefined" && typeof window.matchMedia === "function"
@@ -55,7 +53,7 @@ export function ChatPanelLayout({
   ...props
 }: ChatPanelLayoutProps) {
   const isCompanionDock = variant === "companion-dock";
-  const isNarrow = useMatchMedia(CHAT_PANEL_MEDIA_QUERY);
+  const isNarrow = useMatchMedia("(max-width: 768px)");
   const showMobileSidebar = isCompanionDock && showSidebar && isNarrow;
   const showDesktopSidebar = !isCompanionDock || (showSidebar && !isNarrow);
 

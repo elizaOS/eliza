@@ -56,7 +56,6 @@ const KNOWN_AGENT_PREFIXES = [
 	"google",
 	"aider",
 	"pi",
-	"pi-ai",
 	"piai",
 	"pi-coding-agent",
 	"picodingagent",

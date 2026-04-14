@@ -88,7 +88,6 @@ export function ChatComposer({
   const defaultMicButtonVariant = voice.isListening
     ? "surfaceAccent"
     : "surface";
-  const micIconClassName = isGameModal ? "h-5 w-5" : "h-4 w-4";
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pushToTalkActiveRef = useRef(false);
   const suppressClickRef = useRef(false);
@@ -102,13 +101,6 @@ export function ChatComposer({
         : t("chat.send")
       : t("chat.stopSpeaking");
   const actionButtonLabel = isGameModal ? undefined : actionButtonTitle;
-  const actionButtonClassName = isGameModal
-    ? `ml-1 flex items-center justify-center rounded-full transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0 ${
-        hasDraft
-          ? "select-none rounded-full border border-border/28 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_82%,transparent),color-mix(in_srgb,var(--bg)_66%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_16px_26px_-24px_rgba(15,23,42,0.16)] ring-1 ring-inset ring-white/8 backdrop-blur-md transition-all duration-300 active:scale-95 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_18px_28px_-24px_rgba(0,0,0,0.3)]"
-          : "select-none rounded-full border border-transparent bg-transparent text-muted-strong shadow-none ring-0 backdrop-blur-none transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_74%,transparent),color-mix(in_srgb,var(--bg)_58%,transparent))] hover:text-txt active:scale-95 opacity-80"
-      }`
-    : "ml-1 flex items-center justify-center rounded-full transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0 border-accent/26 disabled:ring-0";
   const inputPlaceholder = isNarrow
     ? t("chat.inputPlaceholderNarrow")
     : t("chat.inputPlaceholder");
@@ -262,7 +254,7 @@ export function ChatComposer({
           }
           disabled={isComposerLocked}
         >
-          <Mic className={micIconClassName} />
+          <Mic className={isGameModal ? "h-5 w-5" : "h-4 w-4"} />
         </Button>
       ) : null}
 
@@ -318,9 +310,9 @@ export function ChatComposer({
           disabled={isComposerLocked}
         >
           {agentVoiceEnabled ? (
-            <Volume2 className={micIconClassName} />
+            <Volume2 className={isGameModal ? "h-5 w-5" : "h-4 w-4"} />
           ) : (
-            <VolumeX className={micIconClassName} />
+            <VolumeX className={isGameModal ? "h-5 w-5" : "h-4 w-4"} />
           )}
         </Button>
       ) : null}
@@ -354,7 +346,15 @@ export function ChatComposer({
           variant={isGameModal ? "default" : "surfaceAccent"}
           data-testid="chat-composer-action"
           size="icon"
-          className={actionButtonClassName}
+          className={
+            isGameModal
+              ? `ml-1 flex items-center justify-center rounded-full transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0 ${
+                  hasDraft
+                    ? "select-none rounded-full border border-border/28 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_82%,transparent),color-mix(in_srgb,var(--bg)_66%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_16px_26px_-24px_rgba(15,23,42,0.16)] ring-1 ring-inset ring-white/8 backdrop-blur-md transition-all duration-300 active:scale-95 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_18px_28px_-24px_rgba(0,0,0,0.3)]"
+                    : "select-none rounded-full border border-transparent bg-transparent text-muted-strong shadow-none ring-0 backdrop-blur-none transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_74%,transparent),color-mix(in_srgb,var(--bg)_58%,transparent))] hover:text-txt active:scale-95 opacity-80"
+                }`
+              : "ml-1 flex items-center justify-center rounded-full transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0 border-accent/26 disabled:ring-0"
+          }
           onClick={onSend}
           disabled={isComposerLocked || (!hasDraft && !chatSending)}
           title={actionButtonLabel}

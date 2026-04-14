@@ -264,7 +264,7 @@ export function SubscriptionStatus({
   }, [handleSelectSubscription, loadSubscriptionStatus, setOpenaiConnected, t]);
 
   return (
-    <div className="mt-4 pt-4 border-t border-border">
+    <div className="mt-4 pt-4">
       {resolvedSelectedId === "anthropic-subscription" && (
         <div>
           <div className="flex justify-between items-center mb-3">
@@ -311,7 +311,7 @@ export function SubscriptionStatus({
             </div>
           )}
 
-          <div className="flex items-center gap-4 border-b border-border mb-3">
+          <div className="flex items-center gap-4 mb-3">
             <Button
               variant="ghost"
               size="sm"

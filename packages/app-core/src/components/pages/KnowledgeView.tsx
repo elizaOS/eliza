@@ -54,10 +54,10 @@ function SearchResultListItem({
       onClick={() => onSelect(result.documentId || result.id)}
       type="button"
       aria-current={active ? "page" : undefined}
-      className={`group flex w-full items-start border-b px-0 py-3 text-left transition-colors ${
+      className={`group flex w-full items-start px-0 py-3 text-left transition-colors ${
         active
-          ? "border-accent/30 bg-transparent"
-          : "border-border/10 bg-transparent hover:border-border/30 hover:bg-white/[0.03]"
+          ? "bg-transparent"
+          : "bg-transparent hover:bg-white/[0.03]"
       }`}
     >
       <span
@@ -102,10 +102,10 @@ function DocumentListItem({
   const { t } = useApp();
   return (
     <div
-      className={`group relative flex w-full border-b transition-colors ${
+      className={`group relative flex w-full transition-colors ${
         active
-          ? "border-accent/30 bg-transparent"
-          : "border-border/10 bg-transparent hover:border-border/30 hover:bg-white/[0.03]"
+          ? "bg-transparent"
+          : "bg-transparent hover:bg-white/[0.03]"
       }`}
     >
       <button

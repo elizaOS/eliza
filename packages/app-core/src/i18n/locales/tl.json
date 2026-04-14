@@ -1886,8 +1886,6 @@
   "providerswitcher.noAiProvidersAvailable": "Walang available na AI providers. Mag-enable ng isa mula sa",
   "providerswitcher.opensABrowserWindow": "Magbubukas ng browser window para makumpleto ang login.",
   "providerswitcher.page": "pahina.",
-  "providerswitcher.piAi": "Pi (pi-ai)",
-  "providerswitcher.piSettings": "Mga Setting ng Pi (pi-ai).",
   "providerswitcher.primaryModelOverride": "Override ng pangunahing modelo",
   "providerswitcher.providerModelPlaceholder": "provider/model (hal. ollama/qwen2.5)",
   "providerswitcher.reportIssueWithTemplate": "Iulat ang isyung ito gamit ang isang prefilled na template",

@@ -1259,23 +1259,69 @@ export async function generateChatResponse(
               !coreHandledActions &&
               executableFallbackActions.length > 0
             ) {
-              runtime.logger?.error(
-                {
-                  src: "eliza-api",
-                  parsedActions: executableFallbackActions.map((a) => a.name),
+              const selfControlFallbackActions = executableFallbackActions.filter(
+                (action) => {
+                  const canonicalName =
+                    actionNameLookup.get(normalizeActionName(action.name)) ??
+                    normalizeActionName(action.name);
+                  return (
+                    canonicalName === "BLOCK_WEBSITES" ||
+                    canonicalName === "REQUEST_WEBSITE_BLOCKING_PERMISSION"
+                  );
                 },
-                "[eliza-api] Unexecuted action payload detected; failing closed",
               );
-              const failureText = buildUnexecutedActionPayloadReply(
-                executableFallbackActions.map((action) => action.name),
-              );
-              if (opts?.onSnapshot) {
-                emitSnapshot(failureText);
-              } else {
-                responseText = failureText;
+              const callbacksBeforeFallback = actionCallbacksSeen;
+
+              if (selfControlFallbackActions.length > 0) {
+                await executeFallbackParsedActions(
+                  runtime,
+                  message,
+                  selfControlFallbackActions,
+                  appendIncomingText,
+                  recordActionCallback,
+                  {
+                    getCurrentText: () => responseText || modelText,
+                  },
+                );
+              }
+
+              const selfControlFallbackExecuted =
+                actionCallbacksSeen > callbacksBeforeFallback;
+              const remainingExecutableFallbackActions =
+                executableFallbackActions.filter((action) => {
+                  const canonicalName =
+                    actionNameLookup.get(normalizeActionName(action.name)) ??
+                    normalizeActionName(action.name);
+                  if (
+                    canonicalName === "BLOCK_WEBSITES" ||
+                    canonicalName === "REQUEST_WEBSITE_BLOCKING_PERMISSION"
+                  ) {
+                    return !selfControlFallbackExecuted;
+                  }
+                  return true;
+                });
+
+              if (remainingExecutableFallbackActions.length > 0) {
+                runtime.logger?.error(
+                  {
+                    src: "eliza-api",
+                    parsedActions: remainingExecutableFallbackActions.map(
+                      (a) => a.name,
+                    ),
+                  },
+                  "[eliza-api] Unexecuted action payload detected; failing closed",
+                );
+                const failureText = buildUnexecutedActionPayloadReply(
+                  remainingExecutableFallbackActions.map((action) => action.name),
+                );
+                if (opts?.onSnapshot) {
+                  emitSnapshot(failureText);
+                } else {
+                  responseText = failureText;
+                }
               }
               if (
-                executableFallbackActions.some(
+                remainingExecutableFallbackActions.some(
                   (action) =>
                     normalizeActionName(action.name) === "CHECK_BALANCE",
                 )

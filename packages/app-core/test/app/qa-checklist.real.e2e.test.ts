@@ -82,6 +82,7 @@ const QA_ARTIFACT_DIR = path.join(os.tmpdir(), "eliza-live-qa");
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..", "..");
 const APP_DIST_DIR = path.join(REPO_ROOT, "apps/app", "dist");
 const STACK_READY_TIMEOUT_MS = 120_000;
+const RESET_TRANSITION_GRACE_MS = 10_000;
 
 type QaFetchRecord = {
   url: string;
@@ -234,7 +235,8 @@ function isIgnorableQaRequestFailure(failure: QaRequestFailure): boolean {
 
   return (
     failure.duringResetTransition &&
-    failure.errorText === "net::ERR_FAILED" &&
+    (failure.errorText === "net::ERR_FAILED" ||
+      failure.errorText === "net::ERR_ABORTED") &&
     pathname.startsWith("/api/")
   );
 }
@@ -301,11 +303,12 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
 
       const pageErrors: string[] = [];
       const sameOriginFailures: QaRequestFailure[] = [];
-      let suppressSameOriginFailures = false;
+      let resetTransitionStartedAt: number | null = null;
       page.on("pageerror", (error) => {
         pageErrors.push(error.message);
       });
       page.on("requestfailed", (request) => {
+        const requestFailedAt = Date.now();
         const url = request.url();
         if (
           url.startsWith(UI_URL) ||
@@ -316,7 +319,10 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
             method: request.method(),
             url,
             errorText: request.failure()?.errorText ?? "requestfailed",
-            duringResetTransition: suppressSameOriginFailures,
+            duringResetTransition:
+              resetTransitionStartedAt !== null &&
+              requestFailedAt >=
+                resetTransitionStartedAt - RESET_TRANSITION_GRACE_MS,
           });
         }
       });
@@ -571,7 +577,7 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
         // Ignore same-origin requestfailed noise from the old stack while the
         // shell reconnects; the explicit post-reset assertions below verify the
         // actual final state instead.
-        suppressSameOriginFailures = true;
+        resetTransitionStartedAt = Date.now();
         await clickByText(page, "Reset Everything");
         await waitForOnboardingEntry(page, 180_000);
 
