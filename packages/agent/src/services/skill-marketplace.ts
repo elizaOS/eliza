@@ -282,9 +282,7 @@ function parseGithubUrl(rawUrl: string): {
   try {
     url = new URL(rawUrl);
   } catch (err) {
-    throw new Error(
-      `Invalid GitHub URL: ${String(err)}`,
-    );
+    throw new Error(`Invalid GitHub URL: ${String(err)}`);
   }
 
   if (url.hostname !== "github.com") {

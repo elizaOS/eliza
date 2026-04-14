@@ -12,10 +12,8 @@ import {
   normalizeLinkedAccountsConfig,
   normalizeServiceRoutingConfig,
 } from "../contracts/service-routing.js";
-import {
-  applyCanonicalOnboardingConfig,
-} from "./provider-switch-config.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
+import { applyCanonicalOnboardingConfig } from "./provider-switch-config.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,7 +35,9 @@ export interface ConfigRouteContext {
     options?: ReadJsonBodyOptions,
   ) => Promise<T | null>;
   // Server.ts internal helpers passed through
-  redactConfigSecrets: (config: Record<string, unknown>) => Record<string, unknown>;
+  redactConfigSecrets: (
+    config: Record<string, unknown>,
+  ) => Record<string, unknown>;
   isBlockedObjectKey: (key: string) => boolean;
   stripRedactedPlaceholderValuesDeep: (value: unknown) => void;
   patchTouchesProviderSelection: (filtered: Record<string, unknown>) => boolean;
@@ -100,7 +100,10 @@ export async function handleConfigRoutes(
         `[eliza][settings][api] GET /api/config → respond (redacted) topKeys=${Object.keys(cfg).sort().join(",")} cloud=${JSON.stringify(settingsDebugCloudSummary(cloud))}`,
       );
     }
-    json(res, redactConfigSecrets(config as unknown as Record<string, unknown>));
+    json(
+      res,
+      redactConfigSecrets(config as unknown as Record<string, unknown>),
+    );
     return true;
   }
 
@@ -388,7 +391,10 @@ export async function handleConfigRoutes(
         `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
       );
     }
-    json(res, redactConfigSecrets(config as unknown as Record<string, unknown>));
+    json(
+      res,
+      redactConfigSecrets(config as unknown as Record<string, unknown>),
+    );
     return true;
   }
 

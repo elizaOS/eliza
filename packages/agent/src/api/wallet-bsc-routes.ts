@@ -6,8 +6,8 @@
  */
 
 import type http from "node:http";
-import { ethers } from "ethers";
 import { logger } from "@elizaos/core";
+import { ethers } from "ethers";
 import type { ElizaConfig } from "../config/config.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 
@@ -16,7 +16,10 @@ import type { ReadJsonBodyOptions } from "./http-helpers.js";
 // ---------------------------------------------------------------------------
 
 export interface WalletBscRouteDeps {
-  getWalletAddresses: () => { evmAddress: string | null; solanaAddress: string | null };
+  getWalletAddresses: () => {
+    evmAddress: string | null;
+    solanaAddress: string | null;
+  };
   resolveWalletRpcReadiness: (config: ElizaConfig) => {
     bscRpcUrls: string[];
     cloudManagedAccess: boolean;
@@ -81,7 +84,18 @@ export interface WalletBscRouteContext {
 export async function handleWalletBscRoutes(
   ctx: WalletBscRouteContext,
 ): Promise<boolean> {
-  const { req, res, method, pathname, url, state, json, error, readJsonBody, deps } = ctx;
+  const {
+    req,
+    res,
+    method,
+    pathname,
+    url,
+    state,
+    json,
+    error,
+    readJsonBody,
+    deps,
+  } = ctx;
 
   // ── POST /api/wallet/trade/preflight ───────────────────────────────────
   if (method === "POST" && pathname === "/api/wallet/trade/preflight") {

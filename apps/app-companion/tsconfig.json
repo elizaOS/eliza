@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": false,
+    "typeRoots": ["./node_modules/@types"],
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
@@ -10,11 +11,23 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
+      "@elizaos/app-lifeops": ["./apps/app-lifeops/src/index.ts"],
+      "@elizaos/app-lifeops/*": ["./apps/app-lifeops/src/*"],
+      "@elizaos/app-coding": ["./apps/app-coding/src/index.ts"],
+      "@elizaos/app-coding/*": ["./apps/app-coding/src/*"],
+      "@elizaos/app-steward": ["./apps/app-steward/src/index.ts"],
+      "@elizaos/app-steward/*": ["./apps/app-steward/src/*"],
       "@elizaos/app-core": ["./packages/app-core/src/index.ts"],
       "@elizaos/app-core/*": ["./packages/app-core/src/*"],
+      "@elizaos/app-companion": ["./apps/app-companion/src/index.ts"],
+      "@elizaos/app-companion/*": ["./apps/app-companion/src/*"],
       "@elizaos/core": ["./packages/typescript/src/index.ts"],
       "@elizaos/core/*": ["./packages/typescript/src/*"],
-      "@elizaos/agent/*": ["./packages/agent/src/*"]
+      "@elizaos/agent": ["./packages/agent/src/index.ts"],
+      "@elizaos/agent/*": ["./packages/agent/src/*"],
+      "@elizaos/shared": ["./packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["./packages/shared/src/*"],
+      "lucide-react": ["./apps/app-companion/node_modules/lucide-react"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],

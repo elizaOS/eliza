@@ -20,8 +20,16 @@
       "@elizaos/app-companion": ["../../apps/app-companion/src/index.ts"],
       "@elizaos/app-companion/*": ["../../apps/app-companion/src/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
-      "@elizaos/shared/*": ["../shared/src/*"]
+      "@elizaos/shared/*": ["../shared/src/*"],
+      "@elizaos/skills": ["../skills/src/index.ts"],
+      "@elizaos/skills/*": ["../skills/src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.spec.ts",
+    "src/**/__tests__/**"
+  ]
 }

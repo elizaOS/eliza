@@ -89,7 +89,7 @@ export async function stewardEvmPostBoot(
 
     if (!evmService?.walletProvider) {
       console.warn(
-        "[StewardEvmBridge] EVMService not found or no walletProvider — cannot inject Steward account"
+        "[StewardEvmBridge] EVMService not found or no walletProvider — cannot inject Steward account",
       );
       return;
     }
@@ -98,12 +98,16 @@ export async function stewardEvmPostBoot(
     // WalletProvider stores the account as `this._account` (see initializeAccount).
     // TypeScript doesn't expose it, but it's a simple property assignment.
     const wp = evmService.walletProvider as Record<string, unknown>;
-    const oldAddress = (evmService.walletProvider as { getAddress?: () => string }).getAddress?.();
+    const oldAddress = (
+      evmService.walletProvider as { getAddress?: () => string }
+    ).getAddress?.();
     wp._account = _stewardAccount;
 
-    const newAddress = (evmService.walletProvider as { getAddress?: () => string }).getAddress?.();
+    const newAddress = (
+      evmService.walletProvider as { getAddress?: () => string }
+    ).getAddress?.();
     console.log(
-      `[StewardEvmBridge] ✓ Replaced EVM account: ${oldAddress} → ${newAddress} (Steward-backed)`
+      `[StewardEvmBridge] ✓ Replaced EVM account: ${oldAddress} → ${newAddress} (Steward-backed)`,
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -75,10 +75,9 @@ import {
 } from "../advanced-capabilities/index.ts";
 // Import core capabilities (trust, secrets, plugin-manager)
 import {
-	coreCapabilities,
-	trustCapability,
-	secretsCapability,
 	pluginManagerCapability,
+	secretsCapability,
+	trustCapability,
 } from "../core-capabilities/index.ts";
 // Import for local use
 import * as actions from "./actions/index.ts";
@@ -96,17 +95,15 @@ export {
 	advancedServices,
 } from "../advanced-capabilities/index.ts";
 export * from "../advanced-capabilities/providers/index.ts";
-
+// Re-export autonomy
+export * from "../autonomy/index.ts";
 // Re-export core capabilities (trust, secrets, plugin-manager)
 export {
 	coreCapabilities,
-	trustCapability,
-	secretsCapability,
 	pluginManagerCapability,
+	secretsCapability,
+	trustCapability,
 } from "../core-capabilities/index.ts";
-
-// Re-export autonomy
-export * from "../autonomy/index.ts";
 
 // ============================================================================
 // XML Response Interfaces

@@ -158,7 +158,9 @@ export class PriorityQueue<T> {
 	}
 
 	get size(): number {
-		return this.highItems.length + this.normalItems.length + this.lowItems.length;
+		return (
+			this.highItems.length + this.normalItems.length + this.lowItems.length
+		);
 	}
 
 	clear(): void {

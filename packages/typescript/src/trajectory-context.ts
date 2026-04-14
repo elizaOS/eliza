@@ -7,6 +7,10 @@
  */
 export interface TrajectoryContext {
 	trajectoryStepId?: string;
+	/** Correlation ids for joins with optimization / JSONL rows when a step is active. */
+	runId?: string;
+	roomId?: string;
+	messageId?: string;
 	/** Pipeline stage purpose for trajectory logging (e.g. "should_respond", "response", "action", "evaluation"). */
 	purpose?: string;
 }

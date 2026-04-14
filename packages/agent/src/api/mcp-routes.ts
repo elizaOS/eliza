@@ -1,11 +1,11 @@
 import type http from "node:http";
 import { logger } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
-import { parseClampedInteger } from "../utils/number-parsing.js";
 import {
   getMcpServerDetails,
   searchMcpMarketplace,
 } from "../services/mcp-marketplace.js";
+import { parseClampedInteger } from "../utils/number-parsing.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 
 // ---------------------------------------------------------------------------
@@ -52,20 +52,9 @@ export interface McpRouteContext {
 // Route handler
 // ---------------------------------------------------------------------------
 
-export async function handleMcpRoutes(
-  ctx: McpRouteContext,
-): Promise<boolean> {
-  const {
-    req,
-    res,
-    method,
-    pathname,
-    url,
-    state,
-    json,
-    error,
-    readJsonBody,
-  } = ctx;
+export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
+  const { req, res, method, pathname, url, state, json, error, readJsonBody } =
+    ctx;
 
   // ═══════════════════════════════════════════════════════════════════════
   // MCP marketplace routes

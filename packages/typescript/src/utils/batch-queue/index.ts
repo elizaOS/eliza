@@ -11,10 +11,7 @@
 
 import type { IAgentRuntime } from "../../types/runtime.js";
 import type { RetryConfig } from "../retry.js";
-import {
-	type BatchItemOutcome,
-	BatchProcessor,
-} from "./batch-processor.js";
+import { type BatchItemOutcome, BatchProcessor } from "./batch-processor.js";
 import {
 	PriorityQueue,
 	type PriorityQueueStats,
@@ -162,7 +159,9 @@ export class BatchQueue<T> {
 	/** Wire `TaskDrain` (worker + repeat task unless `skipRegisterWorker`). */
 	async start(runtime: IAgentRuntime): Promise<void> {
 		if (this.disposed) {
-			throw new Error(`BatchQueue "${this.options.name}" has already been disposed`);
+			throw new Error(
+				`BatchQueue "${this.options.name}" has already been disposed`,
+			);
 		}
 		if (this.taskDrain) {
 			return;
@@ -201,7 +200,8 @@ export class BatchQueue<T> {
 			const high = this.priorityQueue.drain(
 				(item) => this.options.getPriority(item) === "high",
 			);
-			const viaProcessor = this.options.disposeHighPriorityViaProcessor !== false;
+			const viaProcessor =
+				this.options.disposeHighPriorityViaProcessor !== false;
 			if (high.length > 0) {
 				if (viaProcessor) {
 					const flushProcessor = new BatchProcessor<T>({

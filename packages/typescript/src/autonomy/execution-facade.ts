@@ -17,6 +17,7 @@ import type {
 	Memory,
 	State,
 } from "../types";
+import { outgoingPipelineHookContext } from "../types/pipeline-hooks";
 import { stringToUuid } from "../utils";
 
 /**
@@ -109,14 +110,6 @@ export async function runAutonomyPostResponse(
 		"EVALUATORS",
 	]);
 
-	for (const responseMemory of responseMessages) {
-		runtime.logger.debug(
-			{ src: "autonomy:facade", memoryId: responseMemory.id },
-			"Saving autonomy response to memory",
-		);
-		await runtime.createMemory(responseMemory, "messages");
-	}
-
 	// WHY: Mirror message pipeline logic so we take the same branch (simple = callback only, actions = processActions).
 	const isSimple =
 		responseContent.actions?.length === 1 &&
@@ -130,10 +123,36 @@ export async function runAutonomyPostResponse(
 			? "simple"
 			: "actions";
 
+	if (mode === "simple") {
+		await runtime.applyPipelineHooks(
+			"outgoing_before_deliver",
+			outgoingPipelineHookContext(responseContent, {
+				source: "autonomy_simple",
+				roomId: autonomousMessage.roomId,
+				message: autonomousMessage,
+				responseId: responseContent.responseId ?? responseMessages[0]?.id,
+			}),
+		);
+	} else if (isStop) {
+		await runtime.applyPipelineHooks(
+			"outgoing_before_deliver",
+			outgoingPipelineHookContext(responseContent, {
+				source: "excluded",
+				roomId: autonomousMessage.roomId,
+				message: autonomousMessage,
+			}),
+		);
+	}
+
+	for (const responseMemory of responseMessages) {
+		runtime.logger.debug(
+			{ src: "autonomy:facade", memoryId: responseMemory.id },
+			"Saving autonomy response to memory",
+		);
+		await runtime.createMemory(responseMemory, "messages");
+	}
+
 	if (mode === "simple" && callback) {
-		if (responseContent.text) {
-			responseContent.text = runtime.redactSecrets(responseContent.text);
-		}
 		await callback(responseContent);
 	} else if (mode === "actions") {
 		await runtime.processActions(
@@ -172,8 +191,16 @@ export async function runAutonomyPostResponse(
 				{ src: "autonomy:facade", content },
 				"Autonomy evaluate callback",
 			);
-			if (callback && content.text) {
-				content.text = runtime.redactSecrets(content.text);
+			if (callback) {
+				await runtime.applyPipelineHooks(
+					"outgoing_before_deliver",
+					outgoingPipelineHookContext(content, {
+						source: "autonomy_evaluate",
+						roomId: autonomousMessage.roomId,
+						message: autonomousMessage,
+						responseId: content.responseId,
+					}),
+				);
 				return callback(content);
 			}
 			return [];

@@ -708,8 +708,7 @@ function readUiLanguageHeader(
   if (!req) {
     return undefined;
   }
-  const header =
-    req.headers["x-eliza-ui-language"];
+  const header = req.headers["x-eliza-ui-language"];
   if (Array.isArray(header)) {
     return header.find((value) => value.trim())?.trim();
   }

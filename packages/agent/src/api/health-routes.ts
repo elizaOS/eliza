@@ -1,8 +1,8 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
-import type { ConnectorHealthMonitor } from "./connector-health.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
+import type { ConnectorHealthMonitor } from "./connector-health.js";
 import { resolveCloudApiKey } from "./wallet-rpc.js";
 
 // ---------------------------------------------------------------------------

@@ -1,11 +1,12 @@
 export * from "./api/index.js";
 export * from "./auth/index.js";
+export type { RolesConfig } from "./config/index.js";
 export * from "./config/index.js";
 export * from "./diagnostics/integration-observability.js";
 export * from "./hooks/index.js";
 export * from "./providers/workspace.js";
-export * from "./runtime/index.js";
 export * from "./runtime/core-plugins.js";
+export * from "./runtime/index.js";
 export * from "./security/audit-log.js";
 export * from "./security/network-policy.js";
 export * from "./server/index.js";
@@ -16,4 +17,3 @@ export * from "./triggers/scheduling.js";
 export * from "./triggers/types.js";
 export * from "./utils/number-parsing.js";
 export * from "./utils/spoken-text.js";
-export type { RolesConfig } from "./config/index.js";

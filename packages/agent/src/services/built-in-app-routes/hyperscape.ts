@@ -1,5 +1,5 @@
-import { logger } from "@elizaos/core";
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type {
   AppSessionJsonValue,
   AppSessionState,
@@ -14,6 +14,17 @@ const FETCH_TIMEOUT_MS = 8_000;
 const THOUGHTS_LIMIT = 5;
 const HYPERSCAPE_SESSION_MODE = "spectate-and-steer" as const;
 
+function readStringSetting(
+  runtime: IAgentRuntime | null,
+  key: string,
+): string | null {
+  if (typeof runtime?.getSetting !== "function") {
+    return null;
+  }
+  const value = runtime.getSetting(key);
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 function resolveApiBase(runtime: IAgentRuntime | null): string | null {
   // Prefer the explicit API URL when the host has configured one;
   // otherwise fall back to the viewer client URL. Unit tests and
@@ -22,13 +33,9 @@ function resolveApiBase(runtime: IAgentRuntime | null): string | null {
   // client URL as an API fallback keeps the route module active in
   // those contexts without requiring duplicated env configuration.
   const rawCandidates: Array<string | null | undefined> = [
-    typeof runtime?.getSetting === "function"
-      ? runtime.getSetting("HYPERSCAPE_API_URL")
-      : null,
+    readStringSetting(runtime, "HYPERSCAPE_API_URL"),
     process.env.HYPERSCAPE_API_URL,
-    typeof runtime?.getSetting === "function"
-      ? runtime.getSetting("HYPERSCAPE_CLIENT_URL")
-      : null,
+    readStringSetting(runtime, "HYPERSCAPE_CLIENT_URL"),
     process.env.HYPERSCAPE_CLIENT_URL,
   ];
   for (const raw of rawCandidates) {
@@ -48,7 +55,9 @@ function resolveAgentId(
   runtime: IAgentRuntime | null,
   viewer: AppLaunchResult["viewer"] | null,
 ): string | null {
-  const authMsg = viewer?.authMessage as Record<string, unknown> | undefined;
+  const authMsg = viewer?.authMessage as unknown as
+    | Record<string, unknown>
+    | undefined;
   const fromViewer =
     authMsg && typeof authMsg.agentId === "string" ? authMsg.agentId : null;
   const fromRuntime =
@@ -62,17 +71,15 @@ function resolveCharacterId(
   runtime: IAgentRuntime | null,
   viewer: AppLaunchResult["viewer"] | null,
 ): string | null {
-  const authMsg = viewer?.authMessage as Record<string, unknown> | undefined;
+  const authMsg = viewer?.authMessage as unknown as
+    | Record<string, unknown>
+    | undefined;
   const fromViewer =
     authMsg && typeof authMsg.characterId === "string"
       ? authMsg.characterId
       : null;
   if (fromViewer) return fromViewer;
-  return (
-    (typeof runtime?.getSetting === "function"
-      ? runtime.getSetting("HYPERSCAPE_CHARACTER_ID")
-      : null) ?? null
-  );
+  return readStringSetting(runtime, "HYPERSCAPE_CHARACTER_ID");
 }
 
 async function fetchJson<T = unknown>(url: string): Promise<T | null> {
@@ -131,7 +138,9 @@ async function fetchLiveData(
 }> {
   const id = encodeURIComponent(agentId);
   const [agentsRes, goalRes, quickActionsRes, thoughtsRes] = await Promise.all([
-    fetchJson<{ agents?: EmbeddedAgentRecord[] }>(`${base}/api/embedded-agents`),
+    fetchJson<{ agents?: EmbeddedAgentRecord[] }>(
+      `${base}/api/embedded-agents`,
+    ),
     fetchJson<{
       goal?: GoalRecord | null;
       goalsPaused?: boolean;
@@ -220,8 +229,7 @@ function buildSession(
       recommendedGoals as unknown as AppSessionJsonValue;
   }
   if (recentThoughts.length > 0) {
-    telemetry.recentThoughts =
-      recentThoughts as unknown as AppSessionJsonValue;
+    telemetry.recentThoughts = recentThoughts as unknown as AppSessionJsonValue;
   }
 
   return {

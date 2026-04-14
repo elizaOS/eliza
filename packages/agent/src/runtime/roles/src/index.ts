@@ -39,8 +39,8 @@ export { updateRoleAction } from "./action";
 export { rolesProvider } from "./provider";
 export type {
   ConnectorAdminWhitelist,
-  RoleGrantSource,
   RoleCheckResult,
+  RoleGrantSource,
   RoleName,
   RolesConfig,
   RolesWorldMetadata,
@@ -174,7 +174,9 @@ async function ensureOwnerRole(
         }
 
         if (opts?.pruneConnectorAdmins) {
-          for (const [entityId, source] of Object.entries(metadata.roleSources)) {
+          for (const [entityId, source] of Object.entries(
+            metadata.roleSources,
+          )) {
             if (source !== "connector_admin") continue;
             delete metadata.roleSources[entityId];
             delete metadata.roles[entityId];

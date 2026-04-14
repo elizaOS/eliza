@@ -49,8 +49,7 @@ const TIME_ZONE_ALIASES: Record<string, string> = {
   gmt: "UTC",
 };
 
-const IANA_TIME_ZONE_PATTERN =
-  /\b([A-Za-z]+(?:\/[A-Za-z0-9_+-]+)+)\b/g;
+const IANA_TIME_ZONE_PATTERN = /\b([A-Za-z]+(?:\/[A-Za-z0-9_+-]+)+)\b/g;
 
 function canonicalizeTimeZoneAliasKey(value: string): string {
   return value

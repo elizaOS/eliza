@@ -3,6 +3,6 @@
  */
 
 export {
-  secretsInfoProvider,
-  secretsStatusProvider,
+	secretsInfoProvider,
+	secretsStatusProvider,
 } from "./secrets-status.ts";

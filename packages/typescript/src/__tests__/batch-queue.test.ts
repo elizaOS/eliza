@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { logger } from "../logger.js";
 import type { IAgentRuntime } from "../types/runtime";
-import { BatchQueue } from "../utils/batch-queue/index";
 import { BatchProcessor } from "../utils/batch-queue/batch-processor";
+import { BatchQueue } from "../utils/batch-queue/index";
 import type { QueuePriority } from "../utils/batch-queue/priority-queue";
 import { PriorityQueue } from "../utils/batch-queue/priority-queue";
 import { Semaphore } from "../utils/batch-queue/semaphore";
@@ -104,8 +104,8 @@ describe("BatchProcessor", () => {
 		expect(onExhausted).toHaveBeenCalled();
 	});
 
-	it("uses per-item maxRetries", async () => {
-		type Item = { maxRetries: number };
+	it("uses per-item _batchMaxAttempts (total tries)", async () => {
+		type Item = { _batchMaxAttempts: number };
 		let attempts = 0;
 		const processor = new BatchProcessor<Item>({
 			maxParallel: 1,
@@ -115,12 +115,12 @@ describe("BatchProcessor", () => {
 				throw new Error("x");
 			},
 		});
-		await processor.processBatch([{ maxRetries: 2 }]);
+		await processor.processBatch([{ _batchMaxAttempts: 3 }]);
 		expect(attempts).toBe(3);
 	});
 
-	it("maxAttemptsCap overrides per-item maxRetries", async () => {
-		type Item = { maxRetries: number };
+	it("maxAttemptsCap overrides per-item _batchMaxAttempts", async () => {
+		type Item = { _batchMaxAttempts: number };
 		let attempts = 0;
 		const processor = new BatchProcessor<Item>({
 			maxParallel: 1,
@@ -131,7 +131,7 @@ describe("BatchProcessor", () => {
 				throw new Error("x");
 			},
 		});
-		await processor.processBatch([{ maxRetries: 99 }]);
+		await processor.processBatch([{ _batchMaxAttempts: 99 }]);
 		expect(attempts).toBe(1);
 	});
 

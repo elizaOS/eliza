@@ -8,27 +8,27 @@ import {
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
-import { applyPluginRuntimeMutation } from "./plugin-runtime-apply.js";
-import {
-  CORE_PLUGINS,
-  OPTIONAL_CORE_PLUGINS,
-} from "../runtime/core-plugins.js";
 import {
   getPluginWidgets,
   type PluginWidgetDeclarationServer,
 } from "../config/plugin-widgets.js";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
+import {
+  CORE_PLUGINS,
+  OPTIONAL_CORE_PLUGINS,
+} from "../runtime/core-plugins.js";
+import type { ResolvedPlugin } from "../runtime/eliza.js";
 import type {
   CoreManagerLike,
   InstallProgressLike,
   PluginManagerLike,
 } from "../services/plugin-manager-types.js";
+import type { ReadJsonBodyOptions } from "./http-helpers.js";
+import { applyPluginRuntimeMutation } from "./plugin-runtime-apply.js";
 import {
   type PluginParamInfo,
   validatePluginConfig,
 } from "./plugin-validation.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
-import type { ResolvedPlugin } from "../runtime/eliza.js";
 
 /** Workspace packages use `@elizaos/plugin-*` or `@elizaos/app-*` — normalize list/toggle ids. */
 function optionalPluginListId(npmName: string): string {
@@ -277,7 +277,9 @@ export async function handlePluginRoutes(
     const configEntries = (
       freshConfig.plugins as Record<string, unknown> | undefined
     )?.entries as Record<string, { enabled?: boolean }> | undefined;
-    const loadedNames = state.runtime ? state.runtime.plugins.map((p) => p.name) : [];
+    const loadedNames = state.runtime
+      ? state.runtime.plugins.map((p) => p.name)
+      : [];
     for (const plugin of allPlugins) {
       const installedMetadata =
         (plugin.npmName ? installedMetadataByName.get(plugin.npmName) : null) ??
@@ -322,7 +324,8 @@ export async function handlePluginRoutes(
           | Record<string, unknown>
           | undefined;
         const packageName = `@elizaos/plugin-${plugin.id}`;
-        const hasInstallRecord = installs?.[packageName] || installs?.[plugin.id];
+        const hasInstallRecord =
+          installs?.[packageName] || installs?.[plugin.id];
         if (hasInstallRecord) {
           plugin.loadError =
             "Plugin installed but failed to load — the package may be missing compiled files.";
@@ -383,7 +386,9 @@ export async function handlePluginRoutes(
         if (!param.key.toUpperCase().includes("MODEL")) continue;
 
         const expectedCat = paramKeyToCategory(param.key);
-        const filtered = providerModels.filter((m) => m.category === expectedCat);
+        const filtered = providerModels.filter(
+          (m) => m.category === expectedCat,
+        );
 
         if (!plugin.configUiHints) plugin.configUiHints = {};
         plugin.configUiHints[param.key] = {

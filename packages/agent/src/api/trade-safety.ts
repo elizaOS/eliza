@@ -20,9 +20,7 @@ export function getAgentAutoTradeDate(): string {
  * Record an autonomous agent trade. Returns true if allowed, false if
  * the daily limit has been reached. Resets the counter on a new calendar day.
  */
-export function recordAgentAutoTrade(
-  log?: (msg: string) => void,
-): boolean {
+export function recordAgentAutoTrade(log?: (msg: string) => void): boolean {
   const today = getAgentAutoTradeDate();
   if (agentAutoDailyTrades.resetDate !== today) {
     agentAutoDailyTrades.count = 0;

@@ -347,11 +347,7 @@ function resolveTerminalInput(
 
   return {
     command: getCommand(options, message),
-    addToClipboard: resolveClipboardRequested(
-      params,
-      argumentParams,
-      message,
-    ),
+    addToClipboard: resolveClipboardRequested(params, argumentParams, message),
     clipboardTitle: resolveClipboardTitle(params, argumentParams, message),
   };
 }
@@ -392,7 +388,9 @@ async function getClipboardStoreFn(): Promise<ClipboardStoreFn | null> {
 
   try {
     // clipboard is now built into @elizaos/core advanced-capabilities
-    const mod = (await import("@elizaos/core/advanced-capabilities/clipboard/index")) as {
+    const mod = (await import(
+      "@elizaos/core/advanced-capabilities/clipboard/index"
+    )) as {
       maybeStoreTaskClipboardItem?: ClipboardStoreFn;
     };
     cachedClipboardStoreFn =
@@ -459,9 +457,7 @@ async function maybeStoreCommandOutput(
     content: {
       ...message.content,
       addToClipboard: true,
-      ...(input.clipboardTitle
-        ? { clipboardTitle: input.clipboardTitle }
-        : {}),
+      ...(input.clipboardTitle ? { clipboardTitle: input.clipboardTitle } : {}),
     },
   } as Memory;
 
@@ -652,8 +648,7 @@ export const terminalAction: Action = {
     },
     {
       name: "clipboardTitle",
-      description:
-        "Optional clipboard title to use when addToClipboard=true.",
+      description: "Optional clipboard title to use when addToClipboard=true.",
       required: false,
       schema: { type: "string" as const },
     },

@@ -110,7 +110,10 @@ export async function cacheDiscordAvatarUrl(
     return url;
   }
 
-  const requestedFileName = buildDiscordAvatarCacheFileName(url, options.userId);
+  const requestedFileName = buildDiscordAvatarCacheFileName(
+    url,
+    options.userId,
+  );
   const requestedFilePath = getDiscordAvatarCachePath(requestedFileName);
   try {
     const stat = await fs.stat(requestedFilePath);

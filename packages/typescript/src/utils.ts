@@ -1,6 +1,6 @@
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import Handlebars from "handlebars";
-import { z } from "zod";
+import z from "zod";
 
 import logger from "./logger";
 import type {

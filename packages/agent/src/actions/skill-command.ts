@@ -41,9 +41,7 @@ export function clearRegisteredSkillSlugs(): void {
  * Extract skill slug from a slash-command message.
  * Returns null if the message doesn't match a registered skill.
  */
-function extractSkillSlug(
-  text: string,
-): { slug: string; args: string } | null {
+function extractSkillSlug(text: string): { slug: string; args: string } | null {
   const trimmed = text.trim();
   if (!trimmed.startsWith("/")) return null;
 
@@ -131,9 +129,7 @@ export const skillCommandAction: Action = {
 
     // Find the skill name for display
     const skills = service.getLoadedSkills();
-    const skill = skills.find(
-      (s) => s.slug.toLowerCase() === match.slug,
-    );
+    const skill = skills.find((s) => s.slug.toLowerCase() === match.slug);
     const skillName = skill?.name ?? match.slug;
 
     logger.info(

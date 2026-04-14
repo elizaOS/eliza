@@ -5,11 +5,11 @@
  * The callback API is adapted to a start/exchange pattern for HTTP route handlers.
  */
 
+import type { OAuthCredentials } from "./types.js";
 import {
   loginAnthropic as loginAnthropicFlow,
   refreshAnthropicToken as refreshAnthropicTokenFlow,
 } from "./vendor/pi-oauth/anthropic-login.js";
-import type { OAuthCredentials } from "./types.js";
 
 export interface AnthropicFlow {
   authUrl: string;

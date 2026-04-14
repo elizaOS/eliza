@@ -1,5 +1,6 @@
 import type http from "node:http";
 import type { DropService } from "./drop-service.js";
+import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import { buildWhitelistTree, generateProof } from "./merkle-tree.js";
 import {
   generateVerificationMessage,
@@ -7,7 +8,6 @@ import {
   markAddressVerified,
   verifyTweet,
 } from "./twitter-verify.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
 
 // ---------------------------------------------------------------------------
 // Types

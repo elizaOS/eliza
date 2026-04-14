@@ -7,34 +7,31 @@
 
 import path from "node:path";
 import {
+  logger as coreLogger,
   type IAgentRuntime,
   Service,
-  logger as coreLogger,
 } from "@elizaos/core";
 
 import type {
   Trajectory,
   TrajectoryExportOptions,
   TrajectoryExportResult,
+  TrajectoryListItem,
   TrajectoryListOptions,
   TrajectoryListResult,
-  TrajectoryListItem,
   TrajectoryStatus,
 } from "../types/trajectory.js";
 
 import {
+  asRecord,
   type BufferedExchange,
   type CompleteStepOptions,
-  type PersistedLlmCall,
-  type PersistedProviderAccess,
-  type StartStepOptions,
-  type TrajectoryLoggerLike,
-  asRecord,
+  computeBySource,
   createBaseTrajectory,
+  enqueueStepWrite,
   enrichTrajectoryLlmCall,
   ensureStep,
   ensureTrajectoriesTable,
-  enqueueStepWrite,
   executeRawSql,
   extractInsightsFromResponse,
   extractRows,
@@ -42,35 +39,41 @@ import {
   lastWritePromises,
   loadTrajectoryById,
   mergeMetadata,
-  normalizeStatus,
-  normalizeTrajectoryMetadata,
-  normalizeStepId,
   normalizeLlmCallPayload,
   normalizeProviderAccessPayload,
-  patchedLoggers,
+  normalizeStatus,
+  normalizeStepId,
+  normalizeTrajectoryMetadata,
+  type PersistedLlmCall,
+  type PersistedProviderAccess,
   parseMetadata,
+  patchedLoggers,
   pushChatExchange,
   readOrchestratorTrajectoryContext,
+  resolveTrajectoryArchiveDirectory,
   resolveTrajectoryLogger,
+  type StartStepOptions,
   saveTrajectory,
   shouldEnableTrajectoryLoggingByDefault,
   shouldRunObservationExtraction,
   shouldSuppressNoInputEmbeddingCall,
   sqlQuote,
   stepWriteQueues,
+  type TrajectoryLoggerLike,
+  toArchiveSafeTimestamp,
   toNumber,
   toOptionalNumber,
   toText,
   truncateRecord,
   warnRuntime,
-  computeBySource,
-  resolveTrajectoryArchiveDirectory,
-  toArchiveSafeTimestamp,
   writeCompressedJsonlRows,
 } from "./trajectory-internals.js";
 
 // Re-export types needed by consumers
-export type { StartStepOptions, CompleteStepOptions } from "./trajectory-internals.js";
+export type {
+  CompleteStepOptions,
+  StartStepOptions,
+} from "./trajectory-internals.js";
 
 // ---------------------------------------------------------------------------
 // appendLlmCall / appendProviderAccess
@@ -262,9 +265,7 @@ async function writeCompletedTrajectoryStep({
   await saveTrajectory(runtime, trajectory);
 }
 
-function buildTrajectoryWhereClauses(
-  options: TrajectoryListOptions,
-): string[] {
+function buildTrajectoryWhereClauses(options: TrajectoryListOptions): string[] {
   const whereClauses: string[] = [];
   if (options.source) {
     whereClauses.push(`source = ${sqlQuote(options.source)}`);
@@ -317,10 +318,13 @@ function rowToTrajectoryListItem(
 ): TrajectoryListItem | null {
   const r = asRecord(row);
   if (!r) return null;
-  const normalizedMetadata = normalizeTrajectoryMetadata(parseMetadata(r.metadata), {
-    scenarioId: r.scenario_id,
-    batchId: r.batch_id,
-  });
+  const normalizedMetadata = normalizeTrajectoryMetadata(
+    parseMetadata(r.metadata),
+    {
+      scenarioId: r.scenario_id,
+      batchId: r.batch_id,
+    },
+  );
 
   return {
     id: toText(r.id ?? r.trajectory_id, ""),

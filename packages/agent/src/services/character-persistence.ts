@@ -1,5 +1,9 @@
-import { logger, Service, type IAgentRuntime } from "@elizaos/core";
-import { loadElizaConfig, saveElizaConfig, type ElizaConfig } from "../config/config.js";
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import {
+  type ElizaConfig,
+  loadElizaConfig,
+  saveElizaConfig,
+} from "../config/config.js";
 
 export const CHARACTER_PERSISTENCE_SERVICE = "eliza_character_persistence";
 
@@ -108,9 +112,9 @@ export function syncCharacterIntoConfig(
 
   config.agents.list = [nextAgent, ...existingList.slice(1)];
 
-  const uiConfig = ((config.ui ??= {}) as {
+  const uiConfig = (config.ui ??= {}) as {
     assistant?: { name?: string };
-  });
+  };
   if (typeof nextAgent.name === "string" && nextAgent.name.trim()) {
     uiConfig.assistant = {
       ...(uiConfig.assistant ?? {}),
@@ -121,7 +125,9 @@ export function syncCharacterIntoConfig(
   return nextAgent;
 }
 
-function buildPersistedCharacterData(character: RuntimeCharacterLike): Record<string, unknown> {
+function buildPersistedCharacterData(
+  character: RuntimeCharacterLike,
+): Record<string, unknown> {
   const persisted: Record<string, unknown> = {};
 
   if (typeof character.name === "string" && character.name.trim()) {

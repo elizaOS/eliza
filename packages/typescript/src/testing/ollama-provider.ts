@@ -5,7 +5,7 @@
  * This is used when no cloud API keys are configured.
  */
 
-import { z } from "zod";
+import z from "zod";
 import { logger } from "../logger";
 import type {
 	GenerateTextParams,

@@ -179,8 +179,7 @@ export async function handleAgentStatusRoutes(
 
     if (state.runtime && Array.isArray(state.runtime.plugins)) {
       for (const plugin of state.runtime.plugins) {
-        const name =
-          typeof plugin?.name === "string" ? plugin.name.trim() : "";
+        const name = typeof plugin?.name === "string" ? plugin.name.trim() : "";
         if (!name) continue;
         pluginNames.push(name);
         const lower = name.toLowerCase();

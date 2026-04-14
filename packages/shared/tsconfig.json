@@ -12,19 +12,22 @@
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
     "types": ["node", "bun"],
     "baseUrl": ".",
     "paths": {
-      "@types/*": ["./src/*"]
+      "@types/*": ["./src/*"],
+      "@elizaos/core": ["../typescript/src/index.node.ts"],
+      "@elizaos/core/*": ["../typescript/src/*"]
     }
   },
   "exclude": [
     "src/**/*.test.ts",
     "src/**/*.test.tsx"
   ],
-  "include": ["src", "../app-core/src/ui"],
+  "include": ["src"],
   "references": []
 }

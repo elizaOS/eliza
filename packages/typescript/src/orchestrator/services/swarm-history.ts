@@ -93,7 +93,9 @@ export class SwarmHistory {
 			// Line-count check after enough appends to potentially exceed MAX_ENTRIES
 			if (this.appendCount >= MAX_ENTRIES - TRUNCATE_TO) {
 				const content = await fs.readFile(this.filePath, "utf-8");
-				const lineCount = content.split("\n").filter((l) => l.trim() !== "").length;
+				const lineCount = content
+					.split("\n")
+					.filter((l) => l.trim() !== "").length;
 				if (lineCount > MAX_ENTRIES) {
 					await this.truncateInner(TRUNCATE_TO);
 				}
@@ -116,7 +118,9 @@ export class SwarmHistory {
 				try {
 					entries.push(JSON.parse(lines[i]) as HistoryEntry);
 				} catch {
-					console.warn(`[swarm-history] skipping corrupted line at index ${i} (length=${lines[i].length})`);
+					console.warn(
+						`[swarm-history] skipping corrupted line at index ${i} (length=${lines[i].length})`,
+					);
 				}
 			}
 			return entries;
@@ -151,7 +155,9 @@ export class SwarmHistory {
 		if (entries.length === 0) {
 			try {
 				await fs.stat(this.filePath);
-				console.error("[swarm-history] truncate aborted: file exists but readAll returned empty");
+				console.error(
+					"[swarm-history] truncate aborted: file exists but readAll returned empty",
+				);
 				return;
 			} catch {
 				return;

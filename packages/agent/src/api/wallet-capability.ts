@@ -23,7 +23,10 @@ export interface WalletCapabilityStatus {
 }
 
 function hasRuntimeEvmService(runtime: AgentRuntime | null): boolean {
-  if (!runtime || typeof (runtime as { getService?: unknown }).getService !== "function") {
+  if (
+    !runtime ||
+    typeof (runtime as { getService?: unknown }).getService !== "function"
+  ) {
     return false;
   }
 

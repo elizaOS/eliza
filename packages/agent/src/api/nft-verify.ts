@@ -1,10 +1,11 @@
-import { ethers } from "ethers";
 import { logger } from "@elizaos/core";
+import { ethers } from "ethers";
 import { isAddressWhitelisted, markAddressVerified } from "./twitter-verify.js";
 
-const ELIZA_NFT_CONTRACT_ADDRESS =
-  "0x5Af0D9827E0c53E4799BB226655A1de152A425a5";
-const ELIZA_NFT_ABI = ["function balanceOf(address owner) view returns (uint256)"];
+const ELIZA_NFT_CONTRACT_ADDRESS = "0x5Af0D9827E0c53E4799BB226655A1de152A425a5";
+const ELIZA_NFT_ABI = [
+  "function balanceOf(address owner) view returns (uint256)",
+];
 const DEFAULT_RPC_URL = "https://mainnet.base.org";
 
 export interface NftVerificationResult {

@@ -67,11 +67,7 @@ export function getPgliteErrorCode(err: unknown): PgliteErrorCode | null {
       continue;
     }
 
-    if (
-      typeof current === "object" &&
-      current !== null &&
-      "cause" in current
-    ) {
+    if (typeof current === "object" && current !== null && "cause" in current) {
       current = (current as { cause?: unknown }).cause;
       continue;
     }

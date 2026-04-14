@@ -1,20 +1,20 @@
 import type { ServiceTypeRegistry } from "../../types/service.ts";
 
 declare module "../../types/service.ts" {
-  interface ServiceTypeRegistry {
-    CHARACTER_MANAGEMENT: "CHARACTER_MANAGEMENT";
-  }
+	interface ServiceTypeRegistry {
+		CHARACTER_MANAGEMENT: "CHARACTER_MANAGEMENT";
+	}
 }
 
 declare module "@elizaos/core" {
-  interface ServiceTypeRegistry {
-    CHARACTER_MANAGEMENT: "CHARACTER_MANAGEMENT";
-  }
+	interface ServiceTypeRegistry {
+		CHARACTER_MANAGEMENT: "CHARACTER_MANAGEMENT";
+	}
 }
 
 // Export service type constant
 export const PersonalityServiceType = {
-  CHARACTER_MANAGEMENT: "CHARACTER_MANAGEMENT" as const,
+	CHARACTER_MANAGEMENT: "CHARACTER_MANAGEMENT" as const,
 } satisfies Partial<ServiceTypeRegistry>;
 
 /** Memory table for per-user interaction preferences. */

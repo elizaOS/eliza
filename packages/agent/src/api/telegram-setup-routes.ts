@@ -88,7 +88,10 @@ export async function handleTelegramSetupRoute(
         result?: TelegramBotInfo;
       };
       if (!data.ok || !data.result) {
-        helpers.json(res, { ok: false, error: "Telegram API returned unexpected response" });
+        helpers.json(res, {
+          ok: false,
+          error: "Telegram API returned unexpected response",
+        });
         return true;
       }
 
@@ -105,13 +108,10 @@ export async function handleTelegramSetupRoute(
       (connectors.telegram as Record<string, unknown>).botToken = token;
 
       // Auto-populate owner contact so LifeOps can deliver reminders
-      setOwnerContact(
-        state.config as Parameters<typeof setOwnerContact>[0],
-        {
-          source: "telegram",
-          channelId: String(bot.id),
-        },
-      );
+      setOwnerContact(state.config as Parameters<typeof setOwnerContact>[0], {
+        source: "telegram",
+        channelId: String(bot.id),
+      });
       // Add Telegram to the escalation channel list so it is reachable
       // without the user explicitly configuring escalation.
       registerEscalationChannel("telegram");
@@ -127,8 +127,7 @@ export async function handleTelegramSetupRoute(
         },
       });
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : String(err);
+      const message = err instanceof Error ? err.message : String(err);
       helpers.json(res, {
         ok: false,
         error: `Failed to reach Telegram API: ${message}`,
@@ -142,8 +141,7 @@ export async function handleTelegramSetupRoute(
     const connectors = state.config.connectors ?? {};
     const tgConfig = connectors.telegram as Record<string, unknown> | undefined;
     const hasToken = Boolean(
-      tgConfig?.botToken ||
-        state.runtime?.getSetting("TELEGRAM_BOT_TOKEN"),
+      tgConfig?.botToken || state.runtime?.getSetting("TELEGRAM_BOT_TOKEN"),
     );
 
     // Check if the Telegram service is running

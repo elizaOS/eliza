@@ -15,33 +15,32 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import {
-  readJsonBody as parseJsonBody,
-  sendJson,
-  sendJsonError,
-} from "./http-helpers.js";
-import { createZipArchive } from "./zip-utils.js";
-import {
   enrichTrajectoryLlmCall,
   executeRawSql,
   extractRows,
-  saveTrajectory,
   type PersistedStep,
   type PersistedTrajectory,
+  saveTrajectory,
 } from "../runtime/trajectory-internals.js";
-
 import type {
   Trajectory,
   TrajectoryExportFormat,
   TrajectoryExportOptions,
   TrajectoryExportResult,
-  TrajectoryLlmCall,
   TrajectoryListItem,
   TrajectoryListOptions,
   TrajectoryListResult,
+  TrajectoryLlmCall,
   TrajectoryProviderAccess,
   TrajectoryStatus,
   TrajectoryStep,
 } from "../types/trajectory.js";
+import {
+  readJsonBody as parseJsonBody,
+  sendJson,
+  sendJsonError,
+} from "./http-helpers.js";
+import { createZipArchive } from "./zip-utils.js";
 
 export type { TrajectoryExportFormat };
 
@@ -274,7 +273,10 @@ function estimateTokenCount(text: string): number {
 function buildDisplayMetadata(traj: Trajectory): Record<string, unknown> {
   const metadata = { ...(asRecord(traj.metadata) ?? {}) };
   const calls = (traj.steps ?? []).flatMap((step) => step.llmCalls ?? []);
-  if (calls.length > 0 && !calls.every((call) => isSyntheticTrajectoryCall(call))) {
+  if (
+    calls.length > 0 &&
+    !calls.every((call) => isSyntheticTrajectoryCall(call))
+  ) {
     delete metadata.syntheticLlmCall;
     delete metadata.syntheticLlmCallSource;
   }
@@ -282,7 +284,9 @@ function buildDisplayMetadata(traj: Trajectory): Record<string, unknown> {
 }
 
 function normalizePersistedStatus(value: unknown): TrajectoryStatus {
-  const normalized = String(value ?? "").trim().toLowerCase();
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
   if (
     normalized === "active" ||
     normalized === "completed" ||
@@ -297,90 +301,100 @@ function normalizePersistedStatus(value: unknown): TrajectoryStatus {
 function toPersistedTrajectory(traj: Trajectory): PersistedTrajectory {
   const metadata = buildDisplayMetadata(traj);
   const status = normalizePersistedStatus(
-    traj.metrics?.finalStatus ?? (typeof traj.endTime === "number" ? "completed" : "active"),
+    traj.metrics?.finalStatus ??
+      (typeof traj.endTime === "number" ? "completed" : "active"),
   );
-  const persistedSteps: PersistedStep[] = (traj.steps ?? []).map((step, index) => ({
-    stepId:
-      typeof step.stepId === "string" && step.stepId.trim().length > 0
-        ? step.stepId.trim()
-        : `${traj.trajectoryId}-step-${index + 1}`,
-    stepNumber: index,
-    timestamp:
-      typeof step.timestamp === "number" && Number.isFinite(step.timestamp)
-        ? step.timestamp
-        : traj.startTime,
-    llmCalls: (step.llmCalls ?? []).map((call, callIndex) => {
-      const normalizedCall = enrichTrajectoryLlmCall(
-        call as Record<string, unknown>,
-      ) as TrajectoryLlmCall;
-      return {
-        callId:
-          typeof normalizedCall.callId === "string" &&
-          normalizedCall.callId.trim().length > 0
-            ? normalizedCall.callId.trim()
-            : `${traj.trajectoryId}-call-${index + 1}-${callIndex + 1}`,
-        timestamp:
-          typeof normalizedCall.timestamp === "number" &&
-          Number.isFinite(normalizedCall.timestamp)
-            ? normalizedCall.timestamp
-            : step.timestamp,
-        model:
-          typeof normalizedCall.model === "string"
-            ? normalizedCall.model
-            : "unknown",
-        systemPrompt:
-          typeof normalizedCall.systemPrompt === "string"
-            ? normalizedCall.systemPrompt
-            : "",
-        userPrompt:
-          typeof normalizedCall.userPrompt === "string"
-            ? normalizedCall.userPrompt
-            : "",
-        response:
-          typeof normalizedCall.response === "string"
-            ? normalizedCall.response
-            : "",
-        temperature: toFiniteNumber(normalizedCall.temperature) ?? 0,
-        maxTokens: toFiniteNumber(normalizedCall.maxTokens) ?? 0,
-        purpose:
-          typeof normalizedCall.purpose === "string"
-            ? normalizedCall.purpose
-            : "",
-        actionType:
-          typeof normalizedCall.actionType === "string"
-            ? normalizedCall.actionType
-            : "",
-        stepType:
-          typeof normalizedCall.stepType === "string"
-            ? normalizedCall.stepType
-            : undefined,
-        tags: Array.isArray(normalizedCall.tags)
-          ? normalizedCall.tags.filter(
-              (tag): tag is string => typeof tag === "string",
-            )
-          : undefined,
-        latencyMs: toFiniteNumber(normalizedCall.latencyMs) ?? 0,
-        promptTokens: toFiniteNumber(normalizedCall.promptTokens) ?? undefined,
-        completionTokens:
-          toFiniteNumber(normalizedCall.completionTokens) ?? undefined,
-      };
-    }),
-    providerAccesses: (step.providerAccesses ?? []).map((access, accessIndex) => ({
-      providerId:
-        typeof access.providerId === "string" && access.providerId.trim().length > 0
-          ? access.providerId.trim()
-          : `${traj.trajectoryId}-provider-${index + 1}-${accessIndex + 1}`,
-      providerName:
-        typeof access.providerName === "string" ? access.providerName : "unknown",
+  const persistedSteps: PersistedStep[] = (traj.steps ?? []).map(
+    (step, index) => ({
+      stepId:
+        typeof step.stepId === "string" && step.stepId.trim().length > 0
+          ? step.stepId.trim()
+          : `${traj.trajectoryId}-step-${index + 1}`,
+      stepNumber: index,
       timestamp:
-        typeof access.timestamp === "number" && Number.isFinite(access.timestamp)
-          ? access.timestamp
-          : step.timestamp,
-      data: asRecord(access.data) ?? {},
-      query: asRecord(access.query) ?? undefined,
-      purpose: typeof access.purpose === "string" ? access.purpose : "",
-    })),
-  }));
+        typeof step.timestamp === "number" && Number.isFinite(step.timestamp)
+          ? step.timestamp
+          : traj.startTime,
+      llmCalls: (step.llmCalls ?? []).map((call, callIndex) => {
+        const normalizedCall = enrichTrajectoryLlmCall(
+          call as Record<string, unknown>,
+        ) as TrajectoryLlmCall;
+        return {
+          callId:
+            typeof normalizedCall.callId === "string" &&
+            normalizedCall.callId.trim().length > 0
+              ? normalizedCall.callId.trim()
+              : `${traj.trajectoryId}-call-${index + 1}-${callIndex + 1}`,
+          timestamp:
+            typeof normalizedCall.timestamp === "number" &&
+            Number.isFinite(normalizedCall.timestamp)
+              ? normalizedCall.timestamp
+              : step.timestamp,
+          model:
+            typeof normalizedCall.model === "string"
+              ? normalizedCall.model
+              : "unknown",
+          systemPrompt:
+            typeof normalizedCall.systemPrompt === "string"
+              ? normalizedCall.systemPrompt
+              : "",
+          userPrompt:
+            typeof normalizedCall.userPrompt === "string"
+              ? normalizedCall.userPrompt
+              : "",
+          response:
+            typeof normalizedCall.response === "string"
+              ? normalizedCall.response
+              : "",
+          temperature: toFiniteNumber(normalizedCall.temperature) ?? 0,
+          maxTokens: toFiniteNumber(normalizedCall.maxTokens) ?? 0,
+          purpose:
+            typeof normalizedCall.purpose === "string"
+              ? normalizedCall.purpose
+              : "",
+          actionType:
+            typeof normalizedCall.actionType === "string"
+              ? normalizedCall.actionType
+              : "",
+          stepType:
+            typeof normalizedCall.stepType === "string"
+              ? normalizedCall.stepType
+              : undefined,
+          tags: Array.isArray(normalizedCall.tags)
+            ? normalizedCall.tags.filter(
+                (tag): tag is string => typeof tag === "string",
+              )
+            : undefined,
+          latencyMs: toFiniteNumber(normalizedCall.latencyMs) ?? 0,
+          promptTokens:
+            toFiniteNumber(normalizedCall.promptTokens) ?? undefined,
+          completionTokens:
+            toFiniteNumber(normalizedCall.completionTokens) ?? undefined,
+        };
+      }),
+      providerAccesses: (step.providerAccesses ?? []).map(
+        (access, accessIndex) => ({
+          providerId:
+            typeof access.providerId === "string" &&
+            access.providerId.trim().length > 0
+              ? access.providerId.trim()
+              : `${traj.trajectoryId}-provider-${index + 1}-${accessIndex + 1}`,
+          providerName:
+            typeof access.providerName === "string"
+              ? access.providerName
+              : "unknown",
+          timestamp:
+            typeof access.timestamp === "number" &&
+            Number.isFinite(access.timestamp)
+              ? access.timestamp
+              : step.timestamp,
+          data: asRecord(access.data) ?? {},
+          query: asRecord(access.query) ?? undefined,
+          purpose: typeof access.purpose === "string" ? access.purpose : "",
+        }),
+      ),
+    }),
+  );
 
   return {
     id: traj.trajectoryId,
@@ -388,7 +402,8 @@ function toPersistedTrajectory(traj: Trajectory): PersistedTrajectory {
     status,
     startTime: traj.startTime,
     endTime: typeof traj.endTime === "number" ? traj.endTime : null,
-    scenarioId: typeof traj.scenarioId === "string" ? traj.scenarioId : undefined,
+    scenarioId:
+      typeof traj.scenarioId === "string" ? traj.scenarioId : undefined,
     batchId: typeof traj.batchId === "string" ? traj.batchId : undefined,
     steps: persistedSteps,
     metadata,
@@ -662,14 +677,18 @@ async function maybeBackfillTrajectoryFromUseModelLogs(
     runEventCandidates.sort((left, right) => {
       const leftStart = toFiniteNumber(left.body.startTime) ?? 0;
       const rightStart = toFiniteNumber(right.body.startTime) ?? 0;
-      return Math.abs(leftStart - traj.startTime) - Math.abs(rightStart - traj.startTime);
+      return (
+        Math.abs(leftStart - traj.startTime) -
+        Math.abs(rightStart - traj.startTime)
+      );
     });
 
     const runId = String(runEventCandidates[0].body.runId);
     const useModelRows = normalizedRows
       .filter(
         (row) =>
-          row.body.runId === runId && isTextGenerationLogRow(row.type, row.body),
+          row.body.runId === runId &&
+          isTextGenerationLogRow(row.type, row.body),
       )
       .sort((left, right) => {
         const leftTs =
@@ -725,9 +744,7 @@ async function maybeBackfillTrajectoryFromUseModelLogs(
             ? body.provider.trim()
             : "";
         const model =
-          provider &&
-          modelKey &&
-          modelKey.toUpperCase().startsWith("TEXT_")
+          provider && modelKey && modelKey.toUpperCase().startsWith("TEXT_")
             ? `${provider}/${modelKey}`
             : modelKey || provider || "unknown";
         return {
@@ -745,10 +762,8 @@ async function maybeBackfillTrajectoryFromUseModelLogs(
           purpose: "chat",
           actionType: "runtime.useModel",
           latencyMs:
-            Math.max(
-              0,
-              Math.round(toFiniteNumber(body.executionTime) ?? 0),
-            ) ?? 0,
+            Math.max(0, Math.round(toFiniteNumber(body.executionTime) ?? 0)) ??
+            0,
           promptTokens: estimateTokenCount(systemPrompt + userPrompt),
           completionTokens: estimateTokenCount(response),
         };
@@ -808,21 +823,21 @@ async function maybeBackfillTrajectoryFromConversationMemory(
       (a, b) => Number(a.createdAt ?? 0) - Number(b.createdAt ?? 0),
     );
     const endTime =
-      typeof traj.endTime === "number" ? traj.endTime : traj.startTime + 120_000;
+      typeof traj.endTime === "number"
+        ? traj.endTime
+        : traj.startTime + 120_000;
 
-    const userMemory = [...sortedMemories]
-      .reverse()
-      .find((memory) => {
-        const createdAt = Number(memory.createdAt ?? 0);
-        if (!Number.isFinite(createdAt)) return false;
-        if (createdAt < traj.startTime - 60_000 || createdAt > endTime + 5_000) {
-          return false;
-        }
-        return (
-          memory.entityId !== runtime.agentId &&
-          extractMessageText(memory).length > 0
-        );
-      });
+    const userMemory = [...sortedMemories].reverse().find((memory) => {
+      const createdAt = Number(memory.createdAt ?? 0);
+      if (!Number.isFinite(createdAt)) return false;
+      if (createdAt < traj.startTime - 60_000 || createdAt > endTime + 5_000) {
+        return false;
+      }
+      return (
+        memory.entityId !== runtime.agentId &&
+        extractMessageText(memory).length > 0
+      );
+    });
     if (!userMemory) {
       return traj;
     }

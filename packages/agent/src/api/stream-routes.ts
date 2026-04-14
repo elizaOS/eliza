@@ -305,8 +305,7 @@ async function startStreamPipeline(
 
     case "x11grab": {
       // Linux Xvfb mode: capture the virtual display for GPU-backed streams.
-      const display =
-        process.env.STREAM_DISPLAY ?? ":99";
+      const display = process.env.STREAM_DISPLAY ?? ":99";
       logger.info(`[stream] Capture mode: x11grab (display ${display})`);
 
       // Ensure Xvfb is running
@@ -346,8 +345,7 @@ async function startStreamPipeline(
 
     case "avfoundation": {
       // macOS native screen capture.
-      const videoDevice =
-        process.env.STREAM_VIDEO_DEVICE ?? "3";
+      const videoDevice = process.env.STREAM_VIDEO_DEVICE ?? "3";
       logger.info(
         `[stream] Capture mode: avfoundation (device ${videoDevice})`,
       );

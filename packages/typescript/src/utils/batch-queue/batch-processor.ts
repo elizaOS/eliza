@@ -31,9 +31,8 @@ export interface BatchProcessorOptions<T> {
 	 * After a failed attempt, re-try up to this many times (embedding-style).
 	 * Total attempts = maxRetriesAfterFailure + 1. Default 3 → 4 total tries.
 	 *
-	 * **Interaction with per-item `maxRetries`:** If the item is an object with numeric `maxRetries`,
-	 * total attempts use `maxRetries + 1` instead of this default (unless `maxAttemptsCap` applies).
-	 * Prefer one source of truth per call site to avoid surprises.
+	 * **Interaction with per-item `_batchMaxAttempts`:** If the item is an object with numeric
+	 * `_batchMaxAttempts`, that value is used as total attempts (unless `maxAttemptsCap` applies).
 	 */
 	maxRetriesAfterFailure?: number;
 	retryPolicy?: RetryConfig;
@@ -67,9 +66,6 @@ function toBackoffPolicy(
 }
 
 /**
- * If the item carries `maxRetries` (e.g. embedding payload), total attempts = `maxRetries + 1`.
- * **Why:** Aligns with “retryCount < maxRetries” style loops elsewhere in the codebase.
-/**
  * Per-item attempt override via explicit `_batchMaxAttempts` property.
  *
  * Uses `_batchMaxAttempts` (not `maxRetries`) to avoid accidentally duck-typing payload fields
@@ -81,7 +77,8 @@ function getPerItemMaxAttempts(item: unknown, fallback: number): number {
 		item &&
 		typeof item === "object" &&
 		"_batchMaxAttempts" in item &&
-		typeof (item as { _batchMaxAttempts?: unknown })._batchMaxAttempts === "number"
+		typeof (item as { _batchMaxAttempts?: unknown })._batchMaxAttempts ===
+			"number"
 	) {
 		const attempts = (item as { _batchMaxAttempts: number })._batchMaxAttempts;
 		if (Number.isFinite(attempts) && attempts >= 1) {

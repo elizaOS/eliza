@@ -6,12 +6,12 @@
  */
 
 import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  pbkdf2Sync,
-  randomBytes,
-  scryptSync,
+	createCipheriv,
+	createDecipheriv,
+	createHash,
+	pbkdf2Sync,
+	randomBytes,
+	scryptSync,
 } from "node:crypto";
 import type { EncryptedSecret, KeyDerivationParams } from "../types.ts";
 import { EncryptionError } from "../types.ts";
@@ -36,14 +36,14 @@ const DEFAULT_PBKDF2_ITERATIONS = 100000;
  * Generate a cryptographically secure random salt
  */
 export function generateSalt(length: number = DEFAULT_SALT_LENGTH): string {
-  return randomBytes(length).toString("base64");
+	return randomBytes(length).toString("base64");
 }
 
 /**
  * Generate a random encryption key
  */
 export function generateKey(): Buffer {
-  return randomBytes(KEY_LENGTH);
+	return randomBytes(KEY_LENGTH);
 }
 
 /**
@@ -55,13 +55,13 @@ export function generateKey(): Buffer {
  * @returns The derived key as a Buffer
  */
 export function deriveKeyPbkdf2(
-  password: string,
-  salt: string | Buffer,
-  iterations: number = DEFAULT_PBKDF2_ITERATIONS,
+	password: string,
+	salt: string | Buffer,
+	iterations: number = DEFAULT_PBKDF2_ITERATIONS,
 ): Buffer {
-  const saltBuffer =
-    typeof salt === "string" ? Buffer.from(salt, "base64") : salt;
-  return pbkdf2Sync(password, saltBuffer, iterations, KEY_LENGTH, "sha256");
+	const saltBuffer =
+		typeof salt === "string" ? Buffer.from(salt, "base64") : salt;
+	return pbkdf2Sync(password, saltBuffer, iterations, KEY_LENGTH, "sha256");
 }
 
 /**
@@ -72,16 +72,16 @@ export function deriveKeyPbkdf2(
  * @returns The derived key as a Buffer
  */
 export function deriveKeyScrypt(
-  password: string,
-  salt: string | Buffer,
+	password: string,
+	salt: string | Buffer,
 ): Buffer {
-  const saltBuffer =
-    typeof salt === "string" ? Buffer.from(salt, "base64") : salt;
-  return scryptSync(password, saltBuffer, KEY_LENGTH, {
-    N: 16384,
-    r: 8,
-    p: 1,
-  });
+	const saltBuffer =
+		typeof salt === "string" ? Buffer.from(salt, "base64") : salt;
+	return scryptSync(password, saltBuffer, KEY_LENGTH, {
+		N: 16384,
+		r: 8,
+		p: 1,
+	});
 }
 
 /**
@@ -95,27 +95,27 @@ export function deriveKeyScrypt(
  * @returns The derived key as a Buffer
  */
 export function deriveKeyFromAgentId(
-  agentId: string,
-  salt: string = "default-salt",
+	agentId: string,
+	salt: string = "default-salt",
 ): Buffer {
-  return createHash("sha256")
-    .update(agentId + salt)
-    .digest();
+	return createHash("sha256")
+		.update(agentId + salt)
+		.digest();
 }
 
 /**
  * Create key derivation parameters for storage
  */
 export function createKeyDerivationParams(
-  salt?: string,
-  iterations: number = DEFAULT_PBKDF2_ITERATIONS,
+	salt?: string,
+	iterations: number = DEFAULT_PBKDF2_ITERATIONS,
 ): KeyDerivationParams {
-  return {
-    salt: salt ?? generateSalt(),
-    iterations,
-    algorithm: "pbkdf2-sha256",
-    keyLength: KEY_LENGTH,
-  };
+	return {
+		salt: salt ?? generateSalt(),
+		iterations,
+		algorithm: "pbkdf2-sha256",
+		keyLength: KEY_LENGTH,
+	};
 }
 
 // ============================================================================
@@ -134,31 +134,31 @@ export function createKeyDerivationParams(
  * @returns Encrypted secret container
  */
 export function encryptGcm(
-  plaintext: string,
-  key: Buffer,
-  keyId: string = "default",
+	plaintext: string,
+	key: Buffer,
+	keyId: string = "default",
 ): EncryptedSecret {
-  if (key.length !== KEY_LENGTH) {
-    throw new EncryptionError(
-      `Invalid key length: expected ${KEY_LENGTH}, got ${key.length}`,
-    );
-  }
+	if (key.length !== KEY_LENGTH) {
+		throw new EncryptionError(
+			`Invalid key length: expected ${KEY_LENGTH}, got ${key.length}`,
+		);
+	}
 
-  const iv = randomBytes(IV_LENGTH);
-  const cipher = createCipheriv(ALGORITHM_GCM, key, iv);
+	const iv = randomBytes(IV_LENGTH);
+	const cipher = createCipheriv(ALGORITHM_GCM, key, iv);
 
-  let encrypted = cipher.update(plaintext, "utf8", "base64");
-  encrypted += cipher.final("base64");
+	let encrypted = cipher.update(plaintext, "utf8", "base64");
+	encrypted += cipher.final("base64");
 
-  const authTag = cipher.getAuthTag();
+	const authTag = cipher.getAuthTag();
 
-  return {
-    value: encrypted,
-    iv: iv.toString("base64"),
-    authTag: authTag.toString("base64"),
-    algorithm: "aes-256-gcm",
-    keyId,
-  };
+	return {
+		value: encrypted,
+		iv: iv.toString("base64"),
+		authTag: authTag.toString("base64"),
+		algorithm: "aes-256-gcm",
+		keyId,
+	};
 }
 
 /**
@@ -173,27 +173,27 @@ export function encryptGcm(
  * @returns Encrypted secret container
  */
 export function encryptCbc(
-  plaintext: string,
-  key: Buffer,
-  keyId: string = "default",
+	plaintext: string,
+	key: Buffer,
+	keyId: string = "default",
 ): EncryptedSecret {
-  void plaintext;
-  void key;
-  void keyId;
-  throw new EncryptionError(
-    "AES-256-CBC encryption is disabled. Use AES-256-GCM and migrate any legacy callers.",
-  );
+	void plaintext;
+	void key;
+	void keyId;
+	throw new EncryptionError(
+		"AES-256-CBC encryption is disabled. Use AES-256-GCM and migrate any legacy callers.",
+	);
 }
 
 /**
  * Encrypt a value using the default algorithm (GCM)
  */
 export function encrypt(
-  plaintext: string,
-  key: Buffer,
-  keyId: string = "default",
+	plaintext: string,
+	key: Buffer,
+	keyId: string = "default",
 ): EncryptedSecret {
-  return encryptGcm(plaintext, key, keyId);
+	return encryptGcm(plaintext, key, keyId);
 }
 
 // ============================================================================
@@ -208,31 +208,31 @@ export function encrypt(
  * @returns The decrypted plaintext
  */
 export function decryptGcm(encrypted: EncryptedSecret, key: Buffer): string {
-  if (key.length !== KEY_LENGTH) {
-    throw new EncryptionError(
-      `Invalid key length: expected ${KEY_LENGTH}, got ${key.length}`,
-    );
-  }
+	if (key.length !== KEY_LENGTH) {
+		throw new EncryptionError(
+			`Invalid key length: expected ${KEY_LENGTH}, got ${key.length}`,
+		);
+	}
 
-  if (encrypted.algorithm !== "aes-256-gcm") {
-    throw new EncryptionError(
-      `Algorithm mismatch: expected aes-256-gcm, got ${encrypted.algorithm}`,
-    );
-  }
+	if (encrypted.algorithm !== "aes-256-gcm") {
+		throw new EncryptionError(
+			`Algorithm mismatch: expected aes-256-gcm, got ${encrypted.algorithm}`,
+		);
+	}
 
-  if (!encrypted.authTag) {
-    throw new EncryptionError("Missing authentication tag for GCM decryption");
-  }
+	if (!encrypted.authTag) {
+		throw new EncryptionError("Missing authentication tag for GCM decryption");
+	}
 
-  const iv = Buffer.from(encrypted.iv, "base64");
-  const authTag = Buffer.from(encrypted.authTag, "base64");
-  const decipher = createDecipheriv(ALGORITHM_GCM, key, iv);
-  decipher.setAuthTag(authTag);
+	const iv = Buffer.from(encrypted.iv, "base64");
+	const authTag = Buffer.from(encrypted.authTag, "base64");
+	const decipher = createDecipheriv(ALGORITHM_GCM, key, iv);
+	decipher.setAuthTag(authTag);
 
-  let decrypted = decipher.update(encrypted.value, "base64", "utf8");
-  decrypted += decipher.final("utf8");
+	let decrypted = decipher.update(encrypted.value, "base64", "utf8");
+	decrypted += decipher.final("utf8");
 
-  return decrypted;
+	return decrypted;
 }
 
 /**
@@ -243,25 +243,25 @@ export function decryptGcm(encrypted: EncryptedSecret, key: Buffer): string {
  * @returns The decrypted plaintext
  */
 export function decryptCbc(encrypted: EncryptedSecret, key: Buffer): string {
-  if (key.length !== KEY_LENGTH) {
-    throw new EncryptionError(
-      `Invalid key length: expected ${KEY_LENGTH}, got ${key.length}`,
-    );
-  }
+	if (key.length !== KEY_LENGTH) {
+		throw new EncryptionError(
+			`Invalid key length: expected ${KEY_LENGTH}, got ${key.length}`,
+		);
+	}
 
-  if (encrypted.algorithm !== "aes-256-cbc") {
-    throw new EncryptionError(
-      `Algorithm mismatch: expected aes-256-cbc, got ${encrypted.algorithm}`,
-    );
-  }
+	if (encrypted.algorithm !== "aes-256-cbc") {
+		throw new EncryptionError(
+			`Algorithm mismatch: expected aes-256-cbc, got ${encrypted.algorithm}`,
+		);
+	}
 
-  const iv = Buffer.from(encrypted.iv, "base64");
-  const decipher = createDecipheriv(ALGORITHM_CBC, key, iv);
+	const iv = Buffer.from(encrypted.iv, "base64");
+	const decipher = createDecipheriv(ALGORITHM_CBC, key, iv);
 
-  let decrypted = decipher.update(encrypted.value, "base64", "utf8");
-  decrypted += decipher.final("utf8");
+	let decrypted = decipher.update(encrypted.value, "base64", "utf8");
+	decrypted += decipher.final("utf8");
 
-  return decrypted;
+	return decrypted;
 }
 
 /**
@@ -272,24 +272,24 @@ export function decryptCbc(encrypted: EncryptedSecret, key: Buffer): string {
  * @returns The decrypted plaintext
  */
 export function decrypt(
-  encrypted: EncryptedSecret | string,
-  key: Buffer,
+	encrypted: EncryptedSecret | string,
+	key: Buffer,
 ): string {
-  // Handle backward compatibility with unencrypted strings
-  if (typeof encrypted === "string") {
-    return encrypted;
-  }
+	// Handle backward compatibility with unencrypted strings
+	if (typeof encrypted === "string") {
+		return encrypted;
+	}
 
-  switch (encrypted.algorithm) {
-    case "aes-256-gcm":
-      return decryptGcm(encrypted, key);
-    case "aes-256-cbc":
-      return decryptCbc(encrypted, key);
-    default:
-      throw new EncryptionError(
-        `Unsupported algorithm: ${encrypted.algorithm}`,
-      );
-  }
+	switch (encrypted.algorithm) {
+		case "aes-256-gcm":
+			return decryptGcm(encrypted, key);
+		case "aes-256-cbc":
+			return decryptCbc(encrypted, key);
+		default:
+			throw new EncryptionError(
+				`Unsupported algorithm: ${encrypted.algorithm}`,
+			);
+	}
 }
 
 // ============================================================================
@@ -300,53 +300,53 @@ export function decrypt(
  * Check if a value appears to be an encrypted secret
  */
 export function isEncryptedSecret(value: unknown): value is EncryptedSecret {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
+	if (!value || typeof value !== "object") {
+		return false;
+	}
 
-  const obj = value as Record<string, unknown>;
-  return (
-    typeof obj.value === "string" &&
-    typeof obj.iv === "string" &&
-    typeof obj.algorithm === "string" &&
-    (obj.algorithm === "aes-256-gcm" || obj.algorithm === "aes-256-cbc")
-  );
+	const obj = value as Record<string, unknown>;
+	return (
+		typeof obj.value === "string" &&
+		typeof obj.iv === "string" &&
+		typeof obj.algorithm === "string" &&
+		(obj.algorithm === "aes-256-gcm" || obj.algorithm === "aes-256-cbc")
+	);
 }
 
 /**
  * Generate a secure random string for tokens, IDs, etc.
  */
 export function generateSecureToken(length: number = 32): string {
-  return randomBytes(length).toString("hex");
+	return randomBytes(length).toString("hex");
 }
 
 /**
  * Hash a value for comparison or fingerprinting (not for passwords)
  */
 export function hashValue(
-  value: string,
-  algorithm: "sha256" | "sha512" = "sha256",
+	value: string,
+	algorithm: "sha256" | "sha512" = "sha256",
 ): string {
-  return createHash(algorithm).update(value).digest("hex");
+	return createHash(algorithm).update(value).digest("hex");
 }
 
 /**
  * Securely compare two strings in constant time to prevent timing attacks
  */
 export function secureCompare(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
+	if (a.length !== b.length) {
+		return false;
+	}
 
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
+	const bufA = Buffer.from(a);
+	const bufB = Buffer.from(b);
 
-  let result = 0;
-  for (let i = 0; i < bufA.length; i++) {
-    result |= bufA[i] ^ bufB[i];
-  }
+	let result = 0;
+	for (let i = 0; i < bufA.length; i++) {
+		result |= bufA[i] ^ bufB[i];
+	}
 
-  return result === 0;
+	return result === 0;
 }
 
 // ============================================================================
@@ -357,140 +357,140 @@ export function secureCompare(a: string, b: string): boolean {
  * Manages encryption keys with support for rotation and multiple key IDs
  */
 export class KeyManager {
-  private keys: Map<string, Buffer> = new Map();
-  private currentKeyId: string = "default";
-  private derivationParams: KeyDerivationParams | null = null;
+	private keys: Map<string, Buffer> = new Map();
+	private currentKeyId: string = "default";
+	private derivationParams: KeyDerivationParams | null = null;
 
-  constructor(options?: {
-    primaryKey?: Buffer;
-    primaryKeyId?: string;
-    derivationParams?: KeyDerivationParams;
-  }) {
-    if (options?.primaryKey) {
-      const keyId = options.primaryKeyId ?? "default";
-      this.keys.set(keyId, options.primaryKey);
-      this.currentKeyId = keyId;
-    }
-    if (options?.derivationParams) {
-      this.derivationParams = options.derivationParams;
-    }
-  }
+	constructor(options?: {
+		primaryKey?: Buffer;
+		primaryKeyId?: string;
+		derivationParams?: KeyDerivationParams;
+	}) {
+		if (options?.primaryKey) {
+			const keyId = options.primaryKeyId ?? "default";
+			this.keys.set(keyId, options.primaryKey);
+			this.currentKeyId = keyId;
+		}
+		if (options?.derivationParams) {
+			this.derivationParams = options.derivationParams;
+		}
+	}
 
-  /**
-   * Initialize with a password-derived key
-   */
-  initializeFromPassword(password: string, salt?: string): void {
-    this.derivationParams = createKeyDerivationParams(salt);
-    const key = deriveKeyPbkdf2(
-      password,
-      this.derivationParams.salt,
-      this.derivationParams.iterations,
-    );
-    this.keys.set("default", key);
-    this.currentKeyId = "default";
-  }
+	/**
+	 * Initialize with a password-derived key
+	 */
+	initializeFromPassword(password: string, salt?: string): void {
+		this.derivationParams = createKeyDerivationParams(salt);
+		const key = deriveKeyPbkdf2(
+			password,
+			this.derivationParams.salt,
+			this.derivationParams.iterations,
+		);
+		this.keys.set("default", key);
+		this.currentKeyId = "default";
+	}
 
-  /**
-   * Initialize with an agent ID (Otto compatible)
-   */
-  initializeFromAgentId(agentId: string, salt?: string): void {
-    const key = deriveKeyFromAgentId(agentId, salt);
-    this.keys.set("default", key);
-    this.currentKeyId = "default";
-  }
+	/**
+	 * Initialize with an agent ID (Otto compatible)
+	 */
+	initializeFromAgentId(agentId: string, salt?: string): void {
+		const key = deriveKeyFromAgentId(agentId, salt);
+		this.keys.set("default", key);
+		this.currentKeyId = "default";
+	}
 
-  /**
-   * Add a key for decryption (supports key rotation)
-   */
-  addKey(keyId: string, key: Buffer): void {
-    this.keys.set(keyId, key);
-  }
+	/**
+	 * Add a key for decryption (supports key rotation)
+	 */
+	addKey(keyId: string, key: Buffer): void {
+		this.keys.set(keyId, key);
+	}
 
-  /**
-   * Set the current key for encryption
-   */
-  setCurrentKey(keyId: string): void {
-    if (!this.keys.has(keyId)) {
-      throw new EncryptionError(`Key not found: ${keyId}`);
-    }
-    this.currentKeyId = keyId;
-  }
+	/**
+	 * Set the current key for encryption
+	 */
+	setCurrentKey(keyId: string): void {
+		if (!this.keys.has(keyId)) {
+			throw new EncryptionError(`Key not found: ${keyId}`);
+		}
+		this.currentKeyId = keyId;
+	}
 
-  /**
-   * Get the current key ID
-   */
-  getCurrentKeyId(): string {
-    return this.currentKeyId;
-  }
+	/**
+	 * Get the current key ID
+	 */
+	getCurrentKeyId(): string {
+		return this.currentKeyId;
+	}
 
-  /**
-   * Get a key by ID
-   */
-  getKey(keyId: string): Buffer | undefined {
-    return this.keys.get(keyId);
-  }
+	/**
+	 * Get a key by ID
+	 */
+	getKey(keyId: string): Buffer | undefined {
+		return this.keys.get(keyId);
+	}
 
-  /**
-   * Get the current encryption key
-   */
-  getCurrentKey(): Buffer {
-    const key = this.keys.get(this.currentKeyId);
-    if (!key) {
-      throw new EncryptionError("No encryption key configured");
-    }
-    return key;
-  }
+	/**
+	 * Get the current encryption key
+	 */
+	getCurrentKey(): Buffer {
+		const key = this.keys.get(this.currentKeyId);
+		if (!key) {
+			throw new EncryptionError("No encryption key configured");
+		}
+		return key;
+	}
 
-  /**
-   * Get derivation parameters (for storage)
-   */
-  getDerivationParams(): KeyDerivationParams | null {
-    return this.derivationParams;
-  }
+	/**
+	 * Get derivation parameters (for storage)
+	 */
+	getDerivationParams(): KeyDerivationParams | null {
+		return this.derivationParams;
+	}
 
-  /**
-   * Encrypt a value with the current key
-   */
-  encrypt(plaintext: string): EncryptedSecret {
-    return encryptGcm(plaintext, this.getCurrentKey(), this.currentKeyId);
-  }
+	/**
+	 * Encrypt a value with the current key
+	 */
+	encrypt(plaintext: string): EncryptedSecret {
+		return encryptGcm(plaintext, this.getCurrentKey(), this.currentKeyId);
+	}
 
-  /**
-   * Decrypt a value (automatically selects the correct key)
-   */
-  decrypt(encrypted: EncryptedSecret | string): string {
-    if (typeof encrypted === "string") {
-      return encrypted;
-    }
+	/**
+	 * Decrypt a value (automatically selects the correct key)
+	 */
+	decrypt(encrypted: EncryptedSecret | string): string {
+		if (typeof encrypted === "string") {
+			return encrypted;
+		}
 
-    const key = this.keys.get(encrypted.keyId);
-    if (!key) {
-      throw new EncryptionError(
-        `Key not found for decryption: ${encrypted.keyId}`,
-      );
-    }
+		const key = this.keys.get(encrypted.keyId);
+		if (!key) {
+			throw new EncryptionError(
+				`Key not found for decryption: ${encrypted.keyId}`,
+			);
+		}
 
-    return decrypt(encrypted, key);
-  }
+		return decrypt(encrypted, key);
+	}
 
-  /**
-   * Re-encrypt a value with the current key (for key rotation)
-   */
-  reencrypt(encrypted: EncryptedSecret): EncryptedSecret {
-    const plaintext = this.decrypt(encrypted);
-    return this.encrypt(plaintext);
-  }
+	/**
+	 * Re-encrypt a value with the current key (for key rotation)
+	 */
+	reencrypt(encrypted: EncryptedSecret): EncryptedSecret {
+		const plaintext = this.decrypt(encrypted);
+		return this.encrypt(plaintext);
+	}
 
-  /**
-   * Clear all keys from memory
-   */
-  clear(): void {
-    // Overwrite key buffers before clearing
-    for (const key of this.keys.values()) {
-      key.fill(0);
-    }
-    this.keys.clear();
-  }
+	/**
+	 * Clear all keys from memory
+	 */
+	clear(): void {
+		// Overwrite key buffers before clearing
+		for (const key of this.keys.values()) {
+			key.fill(0);
+		}
+		this.keys.clear();
+	}
 }
 
 // ============================================================================
@@ -498,10 +498,10 @@ export class KeyManager {
 // ============================================================================
 
 export {
-  ALGORITHM_CBC,
-  ALGORITHM_GCM,
-  DEFAULT_PBKDF2_ITERATIONS,
-  DEFAULT_SALT_LENGTH,
-  IV_LENGTH,
-  KEY_LENGTH,
+	ALGORITHM_CBC,
+	ALGORITHM_GCM,
+	DEFAULT_PBKDF2_ITERATIONS,
+	DEFAULT_SALT_LENGTH,
+	IV_LENGTH,
+	KEY_LENGTH,
 };

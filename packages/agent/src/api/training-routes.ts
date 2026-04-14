@@ -307,8 +307,15 @@ export async function handleTrainingRoutes(
   }
 
   if (method === "GET" && pathname === "/api/training/context-audit") {
-    if (!runtime || !Array.isArray((runtime as { plugins?: unknown }).plugins)) {
-      error(res, "Runtime with loaded plugins is required for context audit", 503);
+    if (
+      !runtime ||
+      !Array.isArray((runtime as { plugins?: unknown }).plugins)
+    ) {
+      error(
+        res,
+        "Runtime with loaded plugins is required for context audit",
+        503,
+      );
       return true;
     }
 
@@ -316,7 +323,9 @@ export async function handleTrainingRoutes(
       "../training/context-audit.js"
     );
     const audit = auditRuntimeContextCoverage(
-      runtime as AgentRuntime & { plugins: NonNullable<AgentRuntime["plugins"]> },
+      runtime as AgentRuntime & {
+        plugins: NonNullable<AgentRuntime["plugins"]>;
+      },
     );
 
     json(res, {
@@ -345,7 +354,11 @@ export async function handleTrainingRoutes(
       process.env.OPENAI_API_KEY;
 
     if (!anthropicKey && !openaiKey) {
-      error(res, "No teacher model API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY.", 400);
+      error(
+        res,
+        "No teacher model API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY.",
+        400,
+      );
       return true;
     }
 
@@ -355,10 +368,9 @@ export async function handleTrainingRoutes(
       createAnthropicTeacher,
       createOpenAITeacher,
     } = await import("../training/dataset-generator.js");
-    const {
-      buildRoleplayEpisodes,
-      exportRoleplayEpisodes,
-    } = await import("../training/roleplay-trajectories.js");
+    const { buildRoleplayEpisodes, exportRoleplayEpisodes } = await import(
+      "../training/roleplay-trajectories.js"
+    );
 
     const teacher = anthropicKey
       ? createAnthropicTeacher(anthropicKey, runtime ?? undefined)
@@ -377,7 +389,9 @@ export async function handleTrainingRoutes(
         filterDecisions: body.filterDecisions as any,
       });
 
-      const { validateDataset } = await import("../training/replay-validator.js");
+      const { validateDataset } = await import(
+        "../training/replay-validator.js"
+      );
       const report = validateDataset(samples);
 
       const paths = await exportToGeminiJSONL(samples, outputDir);
@@ -390,13 +404,17 @@ export async function handleTrainingRoutes(
               outputDir,
             );
 
-      json(res, {
-        samplesGenerated: samples.length,
-        report,
-        paths,
-        roleplayPaths,
-        outputDir,
-      }, 201);
+      json(
+        res,
+        {
+          samplesGenerated: samples.length,
+          report,
+          paths,
+          roleplayPaths,
+          outputDir,
+        },
+        201,
+      );
     } catch (err) {
       error(res, `Dataset generation failed: ${String(err)}`, 500);
     }
@@ -429,15 +447,11 @@ export async function handleTrainingRoutes(
       return true;
     }
 
-    const {
-      generateDataset,
-      createAnthropicTeacher,
-      createOpenAITeacher,
-    } = await import("../training/dataset-generator.js");
-    const {
-      buildRoleplayEpisodes,
-      exportRoleplayEpisodes,
-    } = await import("../training/roleplay-trajectories.js");
+    const { generateDataset, createAnthropicTeacher, createOpenAITeacher } =
+      await import("../training/dataset-generator.js");
+    const { buildRoleplayEpisodes, exportRoleplayEpisodes } = await import(
+      "../training/roleplay-trajectories.js"
+    );
 
     const teacher = anthropicKey
       ? createAnthropicTeacher(anthropicKey, runtime ?? undefined)
@@ -508,7 +522,8 @@ export async function handleTrainingRoutes(
         timeoutMs: body.timeoutMs,
         executeAllParticipantTurns: body.executeAllParticipantTurns ?? false,
       });
-      const outputDir = body.outputDir ?? `.tmp/training-roleplay-execution-${Date.now()}`;
+      const outputDir =
+        body.outputDir ?? `.tmp/training-roleplay-execution-${Date.now()}`;
       const paths = await exportRoleplayExecutionResults(executions, outputDir);
       const report = buildRoleplayExecutionReport(
         executions,
@@ -563,9 +578,7 @@ export async function handleTrainingRoutes(
         explicitIds.length > 0
           ? explicitIds
           : (listedTrajectories?.trajectories ?? [])
-              .map((item) =>
-                String(item.trajectoryId ?? item.id ?? ""),
-              )
+              .map((item) => String(item.trajectoryId ?? item.id ?? ""))
               .filter((id: string) => id.length > 0);
 
       const details = (
@@ -582,9 +595,9 @@ export async function handleTrainingRoutes(
         | undefined;
 
       if (body.splitByTask || body.outputDir || body.tasks?.length) {
-        const {
-          exportTrajectoryTaskDatasets,
-        } = await import("../training/trajectory-task-datasets.js");
+        const { exportTrajectoryTaskDatasets } = await import(
+          "../training/trajectory-task-datasets.js"
+        );
         const dataset = await exportTrajectoryTaskDatasets(
           details as any,
           body.outputDir ?? `.tmp/training-trajectory-export-${Date.now()}`,
@@ -655,7 +668,11 @@ export async function handleTrainingRoutes(
     if (!body) return true;
 
     if (!body.projectId || !body.gcsBucket || !body.trainingDataPath) {
-      error(res, "projectId, gcsBucket, and trainingDataPath are required", 400);
+      error(
+        res,
+        "projectId, gcsBucket, and trainingDataPath are required",
+        400,
+      );
       return true;
     }
 
@@ -666,7 +683,9 @@ export async function handleTrainingRoutes(
         projectId: body.projectId,
         region: body.region ?? "us-central1",
         gcsBucket: body.gcsBucket,
-        baseModel: (body.baseModel === "flash" ? "gemini-2.5-flash" : "gemini-2.5-flash-lite") as any,
+        baseModel: (body.baseModel === "flash"
+          ? "gemini-2.5-flash"
+          : "gemini-2.5-flash-lite") as any,
         trainingDataPath: body.trainingDataPath,
         validationDataPath: body.validationDataPath,
         epochs: body.epochs ?? 3,
@@ -743,10 +762,9 @@ export async function handleTrainingRoutes(
       exportToGeminiJSONL,
       generateDataset,
     } = await import("../training/dataset-generator.js");
-    const {
-      normalizeVertexBaseModel,
-      orchestrateVertexTuning,
-    } = await import("../training/vertex-tuning.js");
+    const { normalizeVertexBaseModel, orchestrateVertexTuning } = await import(
+      "../training/vertex-tuning.js"
+    );
 
     const slot = (body.slot ?? "should_respond") as
       | "should_respond"
@@ -790,11 +808,13 @@ export async function handleTrainingRoutes(
             exportRoleplayExecutionResults,
             loadRoleplayEpisodesFromPath,
           } = await import("../training/roleplay-executor.js");
-          const episodes = await loadRoleplayEpisodesFromPath(roleplayInputPath);
+          const episodes =
+            await loadRoleplayEpisodesFromPath(roleplayInputPath);
           const roleplayOutputDir = `${datasetOutputDir}/roleplay-execution`;
           const executions = await executeRoleplayEpisodes(episodes, {
             runtime,
-            executeAllParticipantTurns: body.executeAllParticipantTurns ?? false,
+            executeAllParticipantTurns:
+              body.executeAllParticipantTurns ?? false,
           });
           const exportedReplay = await exportRoleplayExecutionResults(
             executions,
@@ -825,7 +845,8 @@ export async function handleTrainingRoutes(
                 : slot === "response"
                   ? exportedReplay.trajectoryDataset?.paths.responsePath
                   : slot === "media_description"
-                    ? exportedReplay.trajectoryDataset?.paths.mediaDescriptionPath
+                    ? exportedReplay.trajectoryDataset?.paths
+                        .mediaDescriptionPath
                     : undefined;
 
           if (roleplayTaskPath) {
@@ -874,8 +895,7 @@ export async function handleTrainingRoutes(
         validationDataPath: body.validationDataPath,
         epochs: body.epochs ?? 3,
         displayName:
-          body.displayName ??
-          `eliza-${slot.replace(/_/g, "-")}-${Date.now()}`,
+          body.displayName ?? `eliza-${slot.replace(/_/g, "-")}-${Date.now()}`,
         slot,
         scope: body.scope ?? "global",
         ownerId: body.ownerId,

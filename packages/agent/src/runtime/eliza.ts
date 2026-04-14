@@ -39,6 +39,8 @@ export {
 
 // resolvePlugins is re-exported via index.ts from ./plugin-resolver
 
+import * as pluginAppCompanion from "@elizaos/app-companion/plugin";
+import * as pluginAppLifeops from "@elizaos/app-lifeops/plugin";
 import {
   AgentRuntime,
   AutonomyService,
@@ -64,13 +66,6 @@ import * as pluginAnthropic from "@elizaos/plugin-anthropic";
 import * as pluginLocalEmbedding from "@elizaos/plugin-local-embedding";
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginSql from "@elizaos/plugin-sql";
-import {
-  PGLITE_ERROR_CODES,
-  getPgliteErrorCode,
-  createPgliteInitError,
-} from "./pglite-error-compat";
-import * as pluginAppCompanion from "@elizaos/app-companion/plugin";
-import * as pluginAppLifeops from "@elizaos/app-lifeops/plugin";
 import {
   isElizaSettingsDebugEnabled,
   settingsDebugCloudSummary,
@@ -132,6 +127,11 @@ import {
   runtimeKnowledgeEnabled,
   runtimeTrajectoriesEnabled,
 } from "./native-runtime-features.js";
+import {
+  createPgliteInitError,
+  getPgliteErrorCode,
+  PGLITE_ERROR_CODES,
+} from "./pglite-error-compat";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.js";
 import rolesPlugin from "./roles.js";
 import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.js";

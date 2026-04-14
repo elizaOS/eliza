@@ -1,5 +1,8 @@
-import type { SessionConfig, SessionSendPolicyConfig } from "@elizaos/core";
-import type { RolesConfig } from "@elizaos/core";
+import type {
+  RolesConfig,
+  SessionConfig,
+  SessionSendPolicyConfig,
+} from "@elizaos/core";
 import type {
   CustomActionDef,
   DatabaseProviderType,

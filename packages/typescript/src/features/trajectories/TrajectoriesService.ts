@@ -889,6 +889,11 @@ export class TrajectoriesService extends Service {
 		latencyMs: number;
 		promptTokens?: number;
 		completionTokens?: number;
+		modelSlot?: string;
+		runId?: string;
+		roomId?: string;
+		messageId?: string;
+		executionTraceId?: string;
 	}): void {
 		if (!this.enabled) return;
 
@@ -940,6 +945,11 @@ export class TrajectoriesService extends Service {
 			latencyMs: number;
 			promptTokens?: number;
 			completionTokens?: number;
+			modelSlot?: string;
+			runId?: string;
+			roomId?: string;
+			messageId?: string;
+			executionTraceId?: string;
 		},
 	): Promise<void> {
 		await this.withTrajectoryWriteLock(trajectoryId, async () => {
@@ -963,6 +973,11 @@ export class TrajectoriesService extends Service {
 				promptTokens: params.promptTokens,
 				completionTokens: params.completionTokens,
 				latencyMs: params.latencyMs,
+				modelSlot: params.modelSlot,
+				runId: params.runId,
+				roomId: params.roomId,
+				messageId: params.messageId,
+				executionTraceId: params.executionTraceId,
 			};
 			step.llmCalls.push(llmCall);
 
@@ -1032,6 +1047,10 @@ export class TrajectoriesService extends Service {
 		data: Record<string, unknown>;
 		purpose: string;
 		query?: Record<string, unknown>;
+		runId?: string;
+		roomId?: string;
+		messageId?: string;
+		executionTraceId?: string;
 	}): void;
 	logProviderAccess(
 		stepId: string,
@@ -1040,6 +1059,10 @@ export class TrajectoriesService extends Service {
 			data: Record<string, unknown>;
 			purpose: string;
 			query?: Record<string, unknown>;
+			runId?: string;
+			roomId?: string;
+			messageId?: string;
+			executionTraceId?: string;
 		},
 	): void;
 	logProviderAccess(
@@ -1051,6 +1074,10 @@ export class TrajectoriesService extends Service {
 					data: Record<string, unknown>;
 					purpose: string;
 					query?: Record<string, unknown>;
+					runId?: string;
+					roomId?: string;
+					messageId?: string;
+					executionTraceId?: string;
 			  },
 		arg2?: {
 			providerName: string;
@@ -1093,6 +1120,10 @@ export class TrajectoriesService extends Service {
 					data: params.data as Record<string, JsonValue>,
 					query: params.query as Record<string, JsonValue> | undefined,
 					purpose: params.purpose,
+					runId: params.runId,
+					roomId: params.roomId,
+					messageId: params.messageId,
+					executionTraceId: params.executionTraceId,
 				};
 				step.providerAccesses.push(access);
 

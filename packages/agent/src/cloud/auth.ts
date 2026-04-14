@@ -81,9 +81,7 @@ export async function cloudLogin(
         `Cloud login request timed out while creating session (>${requestTimeoutMs}ms).`,
       );
     }
-    throw new Error(
-      `Failed to create auth session: ${String(err)}`,
-    );
+    throw new Error(`Failed to create auth session: ${String(err)}`);
   }
 
   if (!createResponse.ok) {
@@ -130,9 +128,7 @@ export async function cloudLogin(
           `Cloud login polling request timed out (>${Math.min(requestTimeoutMs, remaining)}ms).`,
         );
       }
-      throw new Error(
-        `Cloud login polling failed: ${String(err)}`,
-      );
+      throw new Error(`Cloud login polling failed: ${String(err)}`);
     }
 
     if (!pollResponse.ok) {
