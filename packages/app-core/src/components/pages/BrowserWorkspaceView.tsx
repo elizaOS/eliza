@@ -1,14 +1,5 @@
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { MetaPill } from "@elizaos/ui/components/composites/page-panel/page-panel-header";
-import { SidebarCollapsedActionButton } from "@elizaos/ui/components/composites/sidebar/sidebar-collapsed-rail";
-import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
-import { SidebarHeader } from "@elizaos/ui/components/composites/sidebar/sidebar-header";
-import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
-import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
-import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { PageLayout } from "@elizaos/ui/layouts/page-layout/page-layout";
+
+
 import { ExternalLink, Plus, RefreshCw, X } from "lucide-react";
 import {
   type JSX,
@@ -34,6 +25,7 @@ import {
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { WidgetHost } from "../../widgets";
+import { PagePanel, MetaPill, SidebarCollapsedActionButton, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, PageLayout } from "@elizaos/ui";
 
 const POLL_INTERVAL_MS = 2_500;
 const DEFAULT_BROWSER_WALLET_CHAIN_ID = 1;

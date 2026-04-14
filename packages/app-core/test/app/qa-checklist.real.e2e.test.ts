@@ -500,13 +500,12 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
         await page.waitForSelector('[data-testid="trajectories-view"]');
         await typeInto(
           page,
-          '[data-testid="trajectories-view"] input[type="text"]',
+          '[data-testid="trajectories-sidebar"] input[type="text"]',
           "qa codeword from the uploaded file",
         );
         await page.waitForSelector(
-          '[data-testid="trajectories-view"] tbody tr',
+          '[data-testid="trajectories-sidebar"] [data-sidebar-item]',
         );
-        await clickSelector(page, '[data-testid="trajectories-view"] tbody tr');
         await waitForText(page, "qa codeword from the uploaded file", 30_000);
         await waitForText(page, KNOWLEDGE_CODEWORD, 30_000);
 
@@ -1138,12 +1137,12 @@ async function smokeTabs(page: Page, profile: Profile) {
     {
       path: "/stream",
       name: "stream",
-      waitForReady: () => waitForText(page, "Go Live", 30_000),
+      waitForReady: () => page.waitForSelector("[data-stream-view]"),
     },
     {
       path: "/wallets",
       name: "wallets",
-      waitForReady: () => waitForText(page, "Tokens", 30_000),
+      waitForReady: () => page.waitForSelector('[data-testid="wallet-rpc-popup"]'),
     },
     {
       path: "/connectors",
@@ -1154,23 +1153,22 @@ async function smokeTabs(page: Page, profile: Profile) {
     {
       path: "/settings",
       name: "settings",
-      waitForReady: () => waitForText(page, "Reset Agent", 30_000),
+      waitForReady: () => page.waitForSelector('[data-testid="settings-shell"]'),
     },
     {
       path: "/triggers",
       name: "triggers",
-      waitForReady: () => waitForText(page, "Display Name", 30_000),
+      waitForReady: () => page.waitForSelector('[data-testid="heartbeats-shell"]'),
     },
     {
       path: "/plugins",
       name: "plugins",
-      waitForReady: () =>
-        page.waitForSelector('[data-testid="plugins-subgroup-sidebar"]'),
+      waitForReady: () => page.waitForSelector('[data-testid="plugins-shell"]'),
     },
     {
       path: "/skills",
       name: "skills",
-      waitForReady: () => waitForText(page, "Create Skill", 30_000),
+      waitForReady: () => page.waitForSelector('[data-testid="skills-shell"]'),
     },
     {
       path: "/runtime",
@@ -1180,7 +1178,7 @@ async function smokeTabs(page: Page, profile: Profile) {
     {
       path: "/database",
       name: "database",
-      waitForReady: () => waitForText(page, "Vectors", 30_000),
+      waitForReady: () => page.waitForSelector('[data-testid="database-sidebar"]'),
     },
     {
       path: "/desktop",
@@ -1190,7 +1188,7 @@ async function smokeTabs(page: Page, profile: Profile) {
     {
       path: "/logs",
       name: "logs",
-      waitForReady: () => waitForText(page, "Search logs", 30_000),
+      waitForReady: () => page.waitForSelector('[data-testid="logs-view"]'),
     },
   ];
 

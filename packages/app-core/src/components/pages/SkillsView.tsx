@@ -1,16 +1,5 @@
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
-import { SidebarHeader } from "@elizaos/ui/components/composites/sidebar/sidebar-header";
-import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
-import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
-import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
-import { SkillSidebarItem } from "@elizaos/ui/components/composites/skills/skill-sidebar-item";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { ConfirmDelete } from "@elizaos/ui/components/ui/confirm-delete";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { StatusBadge } from "@elizaos/ui/components/ui/status-badge";
-import { Switch } from "@elizaos/ui/components/ui/switch";
-import { PageLayout } from "@elizaos/ui/layouts/page-layout/page-layout";
+
+
 import { RefreshCw } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
@@ -18,6 +7,7 @@ import type { SkillInfo } from "../../api";
 import { useApp } from "../../state";
 import { EditSkillModal, SkillsModalView } from "./skill-detail-panel";
 import { InstallModal } from "./skill-marketplace";
+import { PagePanel, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, SkillSidebarItem, Button, ConfirmDelete, Input, StatusBadge, Switch, PageLayout } from "@elizaos/ui";
 
 /* ── Main Skills View ───────────────────────────────────────────────── */
 

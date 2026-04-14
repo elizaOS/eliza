@@ -1,7 +1,7 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Spinner } from "@elizaos/ui/components/ui/spinner";
-import { Z_SYSTEM_CRITICAL } from "@elizaos/ui/lib/floating-layers";
+
+
 import { useApp } from "../../state";
+import { Button, Spinner, Z_SYSTEM_CRITICAL } from "@elizaos/ui";
 
 /**
  * Banner shown during WebSocket reconnection attempts.

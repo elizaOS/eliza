@@ -1,14 +1,5 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@elizaos/ui/components/ui/card";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { SaveFooter } from "@elizaos/ui/components/ui/save-footer";
-import { Switch } from "@elizaos/ui/components/ui/switch";
+
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   client,
@@ -32,6 +23,7 @@ import {
   VOICE_PROVIDERS,
 } from "../../voice";
 import {
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, SaveFooter, Switch } from "@elizaos/ui";
   CloudConnectionStatus,
   CloudSourceModeToggle,
 } from "../cloud/CloudSourceControls";

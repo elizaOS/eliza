@@ -4,28 +4,11 @@ import type {
   CustomActionHandler,
 } from "@elizaos/agent/contracts/config";
 import { useApp } from "../../state/useApp";
-import { Banner } from "@elizaos/ui/components/ui/banner";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Checkbox } from "@elizaos/ui/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@elizaos/ui/components/ui/dialog";
-import { Input } from "@elizaos/ui/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@elizaos/ui/components/ui/select";
-import { Textarea } from "@elizaos/ui/components/ui/textarea";
+
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
+import { Banner, Button, Checkbox, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from "@elizaos/ui";
   editorDialogContentClassName,
   editorFieldLabelClassName,
   editorInputClassName,

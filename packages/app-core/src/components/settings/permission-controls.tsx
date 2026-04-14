@@ -1,6 +1,5 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import { StatusBadge } from "@elizaos/ui/components/ui/status-badge";
-import { Switch } from "@elizaos/ui/components/ui/switch";
+
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AllPermissionsState,
@@ -18,6 +17,7 @@ import { useApp } from "../../state";
 import { PermissionIcon } from "../permissions/PermissionIcon";
 import type { CapabilityDef, PermissionDef } from "./permission-types";
 import {
+import { Button, StatusBadge, Switch } from "@elizaos/ui";
   getPermissionAction,
   getPermissionBadge,
   SETTINGS_REFRESH_DELAYS_MS,

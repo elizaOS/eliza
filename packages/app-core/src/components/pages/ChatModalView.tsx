@@ -1,15 +1,10 @@
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import {
-  DrawerSheet,
-  DrawerSheetContent,
-  DrawerSheetHeader,
-  DrawerSheetTitle,
-} from "@elizaos/ui/components/ui/drawer-sheet";
-import { ChatPanelLayout } from "@elizaos/ui/layouts/chat-panel-layout/chat-panel-layout";
+
 import { memo } from "react";
 import { useTranslation } from "../../state";
 import { ChatView } from "./ChatView.js";
 import { ConversationsSidebar } from "../conversations/ConversationsSidebar.js";
+import { DrawerSheet, DrawerSheetContent, DrawerSheetHeader, DrawerSheetTitle, ChatPanelLayout } from "@elizaos/ui";
 
 type ChatModalLayoutVariant = "full-overlay" | "companion-dock";
 

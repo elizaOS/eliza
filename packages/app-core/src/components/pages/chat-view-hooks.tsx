@@ -10,8 +10,7 @@ import {
 } from "../../events";
 import type { ElizaCloudStatusUpdatedDetail } from "../../events";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
-import { useDocumentVisibility } from "@elizaos/ui/hooks/useDocumentVisibility";
-import { useTimeout } from "@elizaos/ui/hooks/useTimeout";
+
 import type {
   VoiceCaptureMode,
   VoicePlaybackStartEvent,
@@ -28,6 +27,7 @@ import {
   useState,
 } from "react";
 import { useCompanionSceneStatus } from "@elizaos/app-companion/components/companion/companion-scene-status-context";
+import { useDocumentVisibility, useTimeout } from "@elizaos/ui";
 
 /* ── Shared constants ──────────────────────────────────────────────── */
 

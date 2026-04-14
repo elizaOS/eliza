@@ -1,5 +1,5 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
+
+
 import { useCallback, useMemo, useState } from "react";
 import { type AppSessionJsonValue, client } from "../../../api";
 import { useApp } from "../../../state";
@@ -17,6 +17,7 @@ import {
   toneForViewerAttachment,
 } from "../extensions/surface";
 import type { AppOperatorSurfaceProps } from "./types";
+import { Button, Input } from "@elizaos/ui";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Telemetry shape — a partial view of what buildScapeSessionState emits.

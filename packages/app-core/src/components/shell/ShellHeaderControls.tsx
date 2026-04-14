@@ -4,7 +4,7 @@ import { useMediaQuery } from "../../hooks/useMediaQuery";
 import type { UiLanguage } from "../../i18n/messages";
 import type { ShellView } from "../../state/types";
 import type { UiTheme } from "../../state/ui-preferences";
-import { Button } from "@elizaos/ui/components/ui/button";
+
 import {
   type LucideIcon,
   Check,
@@ -19,6 +19,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { Button } from "@elizaos/ui";
 type ShellHeaderTranslator = (key: string) => string;
 
 const SHELL_MODE_MOBILE_BREAKPOINT = 639;

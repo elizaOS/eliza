@@ -4,15 +4,9 @@ import type {
 } from "@elizaos/shared/contracts/wallet";
 import type { createTranslator } from "../../i18n";
 import type { AppState } from "../../state/types";
-import { Button } from "@elizaos/ui/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@elizaos/ui/components/ui/select";
+
 import { CHAIN_CONFIGS, PRIMARY_CHAIN_KEYS } from "./chainConfig";
+import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@elizaos/ui";
 
 type InventoryToolbarStateKey = "inventoryView" | "inventorySort";
 type InventorySort = AppState["inventorySort"];

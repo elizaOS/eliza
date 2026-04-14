@@ -1,7 +1,8 @@
-import { ChatConversationRenameDialog } from "@elizaos/ui/components/composites/chat/chat-conversation-rename-dialog";
+
 import { useEffect, useState } from "react";
 
 import { useApp } from "../../state";
+import { ChatConversationRenameDialog } from "@elizaos/ui";
 
 export interface ConversationRenameDialogProps {
   open: boolean;

@@ -1,12 +1,5 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Checkbox } from "@elizaos/ui/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@elizaos/ui/components/ui/select";
+
+
 import React, {
   createContext,
   useCallback,
@@ -23,6 +16,7 @@ import {
   getConfigTextareaClassName,
 } from "./config-control-primitives";
 import type {
+import { Button, Checkbox, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@elizaos/ui";
   AuthState,
   CondExpr,
   UiAction,

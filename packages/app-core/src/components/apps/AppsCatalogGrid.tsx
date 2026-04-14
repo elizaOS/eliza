@@ -1,5 +1,5 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
+
+
 import type { KeyboardEvent, MouseEvent } from "react";
 import type { RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
@@ -9,6 +9,7 @@ import {
   groupAppsForCatalog,
 } from "./helpers";
 import { AppIdentityTile } from "./app-identity";
+import { Button, Input } from "@elizaos/ui";
 
 interface AppsCatalogGridProps {
   activeAppNames: Set<string>;

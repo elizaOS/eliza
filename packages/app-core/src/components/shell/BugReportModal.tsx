@@ -1,28 +1,5 @@
-import { Banner } from "@elizaos/ui/components/ui/banner";
-import { Button } from "@elizaos/ui/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@elizaos/ui/components/ui/dialog";
-import {
-  Field,
-  FieldDescription,
-  FieldLabel,
-  FieldMessage,
-} from "@elizaos/ui/components/ui/field";
-import { Input } from "@elizaos/ui/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@elizaos/ui/components/ui/select";
-import { Textarea } from "@elizaos/ui/components/ui/textarea";
+
+
 import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
@@ -32,6 +9,7 @@ import { useBugReport } from "../../hooks";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import {
+import { Banner, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldDescription, FieldLabel, FieldMessage, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from "@elizaos/ui";
   createDesktopBugReportBundle,
   type DesktopBugReportDiagnostics,
   formatDesktopBugReportDiagnostics,

@@ -1,6 +1,5 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { Label } from "@elizaos/ui/components/ui/label";
+
+
 import { useCallback, useRef, useState } from "react";
 import { client } from "../../api";
 import { useTimeout } from "../../hooks";
@@ -14,6 +13,7 @@ import {
   normalizeOpenAICallbackInput,
 } from "../../utils/subscription-auth";
 import { openExternalUrl } from "../../utils";
+import { Button, Input, Label } from "@elizaos/ui";
 
 export interface SubscriptionStatusProps {
   resolvedSelectedId: string | null;

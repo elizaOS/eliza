@@ -1,14 +1,9 @@
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { FieldLabel } from "@elizaos/ui/components/ui/field";
-import { FieldSwitch } from "@elizaos/ui/components/ui/field-switch";
-import { FormSelect, FormSelectItem } from "@elizaos/ui/components/ui/form-select";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { StatusBadge, StatusDot } from "@elizaos/ui/components/ui/status-badge";
-import { Textarea } from "@elizaos/ui/components/ui/textarea";
+
+
 import type { TriggerSummary } from "../../api/client";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import {
+import { PagePanel, Button, FieldLabel, FieldSwitch, FormSelect, FormSelectItem, Input, StatusBadge, StatusDot, Textarea } from "@elizaos/ui";
   DURATION_UNITS,
   durationUnitLabel,
   formFromTrigger,

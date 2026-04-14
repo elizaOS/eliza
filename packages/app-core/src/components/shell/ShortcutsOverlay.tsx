@@ -1,12 +1,8 @@
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@elizaos/ui/components/ui/dialog";
+
 import { useEffect, useState } from "react";
 import { COMMON_SHORTCUTS } from "../../hooks";
 import { useApp } from "../../state";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@elizaos/ui";
 
 function formatKey(shortcut: (typeof COMMON_SHORTCUTS)[number]): string {
   const isMac =

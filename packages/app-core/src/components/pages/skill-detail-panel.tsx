@@ -7,21 +7,10 @@
 import type { SkillInfo } from "../../api";
 import { client } from "../../api";
 import { useApp } from "../../state";
-import {
-  AdminCodeEditor,
-  AdminDialogContent,
-  AdminDialogHeader,
-  AdminMonoMeta,
-} from "@elizaos/ui/components/ui/admin-dialog";
-import { Button } from "@elizaos/ui/components/ui/button";
-import {
-  Dialog,
-  DialogDescription,
-  DialogTitle,
-} from "@elizaos/ui/components/ui/dialog";
-import { Input } from "@elizaos/ui/components/ui/input";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { InstallModal } from "./skill-marketplace";
+import { AdminCodeEditor, AdminDialogContent, AdminDialogHeader, AdminMonoMeta, Button, Dialog, DialogDescription, DialogTitle, Input } from "@elizaos/ui";
 
 const BINANCE_SKILL_IDS = new Set([
   "binance-crypto-market-rank",

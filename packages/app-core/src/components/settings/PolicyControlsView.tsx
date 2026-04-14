@@ -1,10 +1,5 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import { ConfirmDialog } from "@elizaos/ui/components/ui/confirm-dialog";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { Label } from "@elizaos/ui/components/ui/label";
-import { Slider } from "@elizaos/ui/components/ui/slider";
-import { Spinner } from "@elizaos/ui/components/ui/spinner";
-import { Switch } from "@elizaos/ui/components/ui/switch";
+
+
 import { AlertTriangle } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -31,6 +26,7 @@ import {
   TIMEZONES,
 } from "../policy-controls";
 import { StewardLogo } from "@elizaos/app-steward/StewardLogo";
+import { Button, ConfirmDialog, Input, Label, Slider, Spinner, Switch } from "@elizaos/ui";
 
 const asRecord = (v: unknown) => v as unknown as Record<string, unknown>;
 

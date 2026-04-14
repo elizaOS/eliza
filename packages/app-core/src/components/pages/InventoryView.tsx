@@ -1,23 +1,7 @@
 import type { StewardStatusResponse } from "@elizaos/shared/contracts/wallet";
 import { useApp } from "../../state/useApp";
 import { WidgetHost } from "../../widgets";
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
-import { SidebarFilterBar } from "@elizaos/ui/components/composites/sidebar/sidebar-filter-bar";
-import { SidebarHeader } from "@elizaos/ui/components/composites/sidebar/sidebar-header";
-import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
-import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
-import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
-import { Button } from "@elizaos/ui/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@elizaos/ui/components/ui/dialog";
-import { SegmentedControl } from "@elizaos/ui/components/ui/segmented-control";
-import { TooltipHint } from "@elizaos/ui/components/ui/tooltip";
-import { PageLayout } from "@elizaos/ui/layouts/page-layout/page-layout";
+
 import {
   AlertTriangle,
   ChevronDown,
@@ -58,6 +42,7 @@ import { PolicyControlsView } from "../settings/PolicyControlsView";
 import { ApprovalQueue } from "@elizaos/app-steward/ApprovalQueue";
 import { TransactionHistory } from "@elizaos/app-steward/TransactionHistory";
 import { ConfigPageView } from "./ConfigPageView";
+import { PagePanel, SidebarContent, SidebarFilterBar, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Dialog, DialogContent, DialogHeader, DialogTitle, SegmentedControl, TooltipHint, PageLayout } from "@elizaos/ui";
 
 /* ── Component ─────────────────────────────────────────────────────── */
 

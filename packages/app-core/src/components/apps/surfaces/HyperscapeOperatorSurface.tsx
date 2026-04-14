@@ -1,5 +1,5 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
+
+
 import { useCallback, useMemo, useState } from "react";
 import type { AppRunSummary, AppSessionJsonValue } from "../../../api";
 import { client } from "../../../api";
@@ -17,6 +17,7 @@ import {
   toneForViewerAttachment,
 } from "../extensions/surface";
 import type { AppOperatorSurfaceProps } from "./types";
+import { Button, Input } from "@elizaos/ui";
 
 interface HyperscapeActivityEntry {
   id: string;

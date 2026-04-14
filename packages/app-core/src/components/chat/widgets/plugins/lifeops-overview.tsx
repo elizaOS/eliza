@@ -1,5 +1,5 @@
-import { Badge } from "@elizaos/ui/components/ui/badge";
-import { Button } from "@elizaos/ui/components/ui/button";
+
+
 import type {
   LifeOpsActiveReminderView,
   LifeOpsCadence,
@@ -27,6 +27,7 @@ import { useLifeOpsAppState } from "../../../../hooks";
 import { useApp } from "../../../../state";
 import { EmptyWidgetState, WidgetSection } from "../shared";
 import type {
+import { Badge, Button } from "@elizaos/ui";
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "../types";

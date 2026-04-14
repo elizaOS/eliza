@@ -4,8 +4,7 @@ import type {
 } from "../../api/client-types-chat";
 import { client } from "../../api/client";
 import { useApp } from "../../state/useApp";
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { Button } from "@elizaos/ui/components/ui/button";
+
 import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import { formatByteSize } from "../../utils/format";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
@@ -17,6 +16,7 @@ import {
 } from "../../utils/knowledge-upload-image";
 import { DocumentViewer } from "./knowledge-detail";
 import {
+import { PagePanel, Button } from "@elizaos/ui";
   BULK_UPLOAD_TARGET_BYTES,
   getKnowledgeUploadFilename,
   isSupportedKnowledgeFile,

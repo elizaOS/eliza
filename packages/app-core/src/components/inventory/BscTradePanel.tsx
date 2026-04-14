@@ -8,12 +8,12 @@ import type {
   StewardPolicyResult,
 } from "@elizaos/shared/contracts/wallet";
 import { useApp } from "../../state/useApp";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
+
 import { useCallback, useState } from "react";
 import { HEX_ADDRESS_RE } from "./constants";
 import { formatBalance, type TrackedToken } from "./constants";
 import { StewardLogo } from "@elizaos/app-steward/StewardLogo";
+import { Button, Input } from "@elizaos/ui";
 
 /* ── Constants ─────────────────────────────────────────────────────── */
 

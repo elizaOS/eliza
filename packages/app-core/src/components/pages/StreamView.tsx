@@ -2,12 +2,13 @@ import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
-import { useDocumentVisibility } from "@elizaos/ui/hooks/useDocumentVisibility";
+
 import { useApp } from "../../state/useApp";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatUptime } from "../../utils/format";
 import { IS_POPOUT } from "../stream/helpers";
 import { StatusBar } from "../stream/StatusBar";
+import { useDocumentVisibility } from "@elizaos/ui";
 
 export function StreamView({ inModal }: { inModal?: boolean } = {}) {
   const { agentStatus, t } = useApp();

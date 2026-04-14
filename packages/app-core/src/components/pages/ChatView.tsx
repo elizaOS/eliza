@@ -9,13 +9,7 @@ import { useChatComposer } from "../../state/ChatComposerContext";
 import { usePtySessions } from "../../state/PtySessionsContext";
 import { useApp } from "../../state/useApp";
 import { getVrmPreviewUrl } from "../../state/vrm";
-import { ChatAttachmentStrip } from "@elizaos/ui/components/composites/chat/chat-attachment-strip";
-import { ChatComposer } from "@elizaos/ui/components/composites/chat/chat-composer";
-import { ChatComposerShell } from "@elizaos/ui/components/composites/chat/chat-composer-shell";
-import { ChatSourceIcon } from "@elizaos/ui/components/composites/chat/chat-source";
-import { ChatThreadLayout } from "@elizaos/ui/components/composites/chat/chat-thread-layout";
-import { ChatTranscript } from "@elizaos/ui/components/composites/chat/chat-transcript";
-import { TypingIndicator } from "@elizaos/ui/components/composites/chat/chat-typing-indicator";
+
 import {
   type ChangeEvent,
   type DragEvent,
@@ -32,6 +26,7 @@ import { MessageContent } from "../chat/MessageContent";
 import { CodingAgentControlChip } from "@elizaos/app-coding";
 import { PtyConsoleDrawer } from "@elizaos/app-coding";
 import {
+import { ChatAttachmentStrip, ChatComposer, ChatComposerShell, ChatSourceIcon, ChatThreadLayout, ChatTranscript, TypingIndicator } from "@elizaos/ui";
   useChatVoiceController,
   useGameModalMessages,
 } from "./chat-view-hooks";

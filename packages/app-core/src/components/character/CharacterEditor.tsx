@@ -1,17 +1,5 @@
-import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
-import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
-import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
-import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
-import { Button } from "@elizaos/ui/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@elizaos/ui/components/ui/dialog";
-import { PageLayout } from "@elizaos/ui/layouts/page-layout/page-layout";
+
+
 import { getStylePresets } from "@elizaos/shared/onboarding-presets";
 import { client } from "../../api/client";
 import {
@@ -96,6 +84,7 @@ const UploadIcon = ({ className }: { className?: string }) => (
 );
 
 import {
+import { SidebarContent, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, PageLayout } from "@elizaos/ui";
   type ChangeEvent,
   type ReactNode,
   useCallback,

@@ -1,24 +1,5 @@
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
-import { SidebarHeader } from "@elizaos/ui/components/composites/sidebar/sidebar-header";
-import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
-import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
-import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Checkbox } from "@elizaos/ui/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@elizaos/ui/components/ui/dialog";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { Label } from "@elizaos/ui/components/ui/label";
-import { Spinner } from "@elizaos/ui/components/ui/spinner";
-import { Switch } from "@elizaos/ui/components/ui/switch";
-import { useLinkedSidebarSelection } from "@elizaos/ui/hooks/useLinkedSidebarSelection";
-import { PageLayout } from "@elizaos/ui/layouts/page-layout/page-layout";
-import { cn } from "@elizaos/ui/lib/utils";
+
+
 import { AlertTriangle, Download, Upload } from "lucide-react";
 import {
   type ComponentPropsWithoutRef,
@@ -38,6 +19,7 @@ import { ProviderSwitcher } from "../settings/ProviderSwitcher";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
 import { CloudDashboard } from "./ElizaCloudDashboard";
 import { ReleaseCenterView } from "./ReleaseCenterView";
+import { PagePanel, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Checkbox, Dialog, DialogContent, DialogHeader, DialogTitle, Input, Label, Spinner, Switch, useLinkedSidebarSelection, PageLayout, cn } from "@elizaos/ui";
 
 interface SettingsSectionDef {
   id: string;

@@ -1,4 +1,4 @@
-import { Button } from "@elizaos/ui/components/ui/button";
+
 import {
   OnboardingSecondaryActionButton,
   onboardingFooterClass,
@@ -9,6 +9,7 @@ import {
 import { useCallback, useMemo } from "react";
 import { useApp } from "../../state";
 import { FeatureCard, type FeatureStatus } from "./features/FeatureCard";
+import { Button } from "@elizaos/ui";
 
 const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 

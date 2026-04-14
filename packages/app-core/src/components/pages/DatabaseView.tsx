@@ -1,14 +1,5 @@
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { MetaPill } from "@elizaos/ui/components/composites/page-panel/page-panel-header";
-import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
-import { SidebarHeader } from "@elizaos/ui/components/composites/sidebar/sidebar-header";
-import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
-import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
-import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { SegmentedControl } from "@elizaos/ui/components/ui/segmented-control";
-import { PageLayout } from "@elizaos/ui/layouts/page-layout/page-layout";
+
+
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -29,6 +20,7 @@ import {
   type SortDir,
 } from "./database-utils";
 import { SqlEditorPanel } from "./SqlEditorPanel";
+import { PagePanel, MetaPill, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, SegmentedControl, PageLayout } from "@elizaos/ui";
 
 export function DatabaseView({
   leftNav,

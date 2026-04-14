@@ -1,18 +1,11 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@elizaos/ui/components/ui/dialog";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { ContentLayout } from "@elizaos/ui/layouts/content-layout/content-layout";
+
+
 import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SecretInfo } from "../../api";
 import { client } from "../../api";
 import { useApp } from "../../state";
+import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, ContentLayout } from "@elizaos/ui";
 
 /* ── Constants ──────────────────────────────────────────────────────── */
 

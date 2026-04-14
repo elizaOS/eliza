@@ -165,6 +165,7 @@ import { useDataLoaders } from "./useDataLoaders";
 import { useNavigationState } from "./useNavigationState";
 import { useOnboardingCallbacks } from "./useOnboardingCallbacks";
 import { useChatCallbacks } from "./useChatCallbacks";
+import { ConfirmDialog, PromptDialog, useConfirm, usePrompt } from "@elizaos/ui";
 
 export {
   type ActionNotice,
@@ -246,12 +247,6 @@ export {
   VRM_COUNT,
 } from "./internal";
 export { AGENT_READY_TIMEOUT_MS } from "./types";
-import {
-  ConfirmDialog,
-  PromptDialog,
-  useConfirm,
-  usePrompt,
-} from "@elizaos/ui/components/ui/confirm-dialog";
 
 const DEFAULT_LANDING_TAB: Tab = COMPANION_ENABLED ? "companion" : "chat";
 

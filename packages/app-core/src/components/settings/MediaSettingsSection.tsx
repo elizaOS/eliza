@@ -1,7 +1,5 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import { SaveFooter } from "@elizaos/ui/components/ui/save-footer";
-import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
-import { Switch } from "@elizaos/ui/components/ui/switch";
+
+
 import { useCallback, useEffect, useState } from "react";
 import {
   type AudioGenProvider,
@@ -33,6 +31,7 @@ import {
   setNestedValue,
 } from "./media-settings-types";
 import { VoiceConfigView } from "./VoiceConfigView";
+import { Button, SaveFooter, SettingsControls, Switch } from "@elizaos/ui";
 
 // ── Re-exports (public API) ──────────────────────────────────────────
 

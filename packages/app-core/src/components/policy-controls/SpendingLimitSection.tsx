@@ -1,6 +1,7 @@
-import { Input } from "@elizaos/ui/components/ui/input";
-import { Label } from "@elizaos/ui/components/ui/label";
+
+
 import type { SpendingLimitConfig } from "./types";
+import { Input, Label } from "@elizaos/ui";
 
 function UsdInput({
   label,

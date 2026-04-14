@@ -1,13 +1,5 @@
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { MetaPill } from "@elizaos/ui/components/composites/page-panel/page-panel-header";
-import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
-import { SidebarHeader } from "@elizaos/ui/components/composites/sidebar/sidebar-header";
-import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
-import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
-import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { PageLayout } from "@elizaos/ui/layouts/page-layout/page-layout";
+
+
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import {
   client,
@@ -17,6 +9,7 @@ import {
 } from "../../api";
 import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";
+import { PagePanel, MetaPill, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, PageLayout } from "@elizaos/ui";
 
 type RuntimeSectionKey =
   | "summary"

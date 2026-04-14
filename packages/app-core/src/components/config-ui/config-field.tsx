@@ -1,17 +1,5 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Checkbox } from "@elizaos/ui/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@elizaos/ui/components/ui/select";
-import { Switch } from "@elizaos/ui/components/ui/switch";
-import {
-  SELECT_FLOATING_LAYER_NAME,
-  SELECT_FLOATING_LAYER_Z_INDEX,
-} from "@elizaos/ui/lib/floating-layers";
+
+
 import { ChevronDown, X } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -23,6 +11,7 @@ import type {
 } from "../../config/config-catalog";
 import { resolveDynamic } from "../../config/config-catalog";
 import {
+import { Button, Checkbox, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch, SELECT_FLOATING_LAYER_NAME, SELECT_FLOATING_LAYER_Z_INDEX } from "@elizaos/ui";
   getConfigInputClassName,
   getConfigTextareaClassName,
 } from "./config-control-primitives";

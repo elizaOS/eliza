@@ -1,8 +1,9 @@
 import type { EvmChainBalance } from "@elizaos/shared/contracts/wallet";
 import type { createTranslator } from "../../i18n";
-import { Button } from "@elizaos/ui/components/ui/button";
+
 import { chainIcon, formatBalance, type TokenRow } from "./constants";
 import { TokenLogo } from "./TokenLogo";
+import { Button } from "@elizaos/ui";
 
 export interface TokensTableProps {
   t: ReturnType<typeof createTranslator>;

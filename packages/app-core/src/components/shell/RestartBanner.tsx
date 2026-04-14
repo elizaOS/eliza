@@ -1,7 +1,8 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Z_SYSTEM_BANNER } from "@elizaos/ui/lib/floating-layers";
+
+
 import { useCallback, useState } from "react";
 import { useApp } from "../../state";
+import { Button, Z_SYSTEM_BANNER } from "@elizaos/ui";
 
 export function RestartBanner() {
   const {

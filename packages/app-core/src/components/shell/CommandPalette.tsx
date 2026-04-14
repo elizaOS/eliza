@@ -1,12 +1,5 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@elizaos/ui/components/ui/dialog";
-import { Input } from "@elizaos/ui/components/ui/input";
+
+
 import {
   useCallback,
   useEffect,
@@ -23,6 +16,7 @@ import { COMMAND_PALETTE_EVENT } from "../../events";
 import { useBugReport } from "../../hooks";
 import { useApp } from "../../state";
 import {
+import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input } from "@elizaos/ui";
   openDesktopSettingsWindow,
   openDesktopSurfaceWindow,
   requestDesktopBridge,
