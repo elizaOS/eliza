@@ -165,10 +165,10 @@ export function getPluginReplacementEntries(
   const pythonPluginName = `python-${values.pluginBaseName}`;
   const pythonSnake = `python_${values.pluginSnake}`;
   return [
-    ["${PLUGINNAME}", values.pluginBaseName],
-    ["${PLUGINDESCRIPTION}", values.pluginDescription],
-    ["${GITHUB_USERNAME}", values.githubUsername],
-    ["${REPO_URL}", values.repoUrl],
+    [`\${PLUGINNAME}`, values.pluginBaseName],
+    [`\${PLUGINDESCRIPTION}`, values.pluginDescription],
+    [`\${GITHUB_USERNAME}`, values.githubUsername],
+    [`\${REPO_URL}`, values.repoUrl],
     ["@elizaos/rust-plugin-starter", `@elizaos/${rustPluginName}`],
     ["@elizaos/plugin-starter", `@elizaos/${values.pluginBaseName}`],
     ["elizaos_plugin_starter", `elizaos_${values.pluginSnake}`],

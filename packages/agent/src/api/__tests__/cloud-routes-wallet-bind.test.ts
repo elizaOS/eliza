@@ -46,9 +46,12 @@ function makeFetchMock(
   impl: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
 ) {
   const fetchMock = vi.fn(impl);
-  return Object.assign(fetchMock, {
-    preconnect: ORIGINAL_FETCH.preconnect.bind(ORIGINAL_FETCH),
-  });
+  return Object.assign(
+    fetchMock,
+    typeof ORIGINAL_FETCH.preconnect === "function"
+      ? { preconnect: ORIGINAL_FETCH.preconnect.bind(ORIGINAL_FETCH) }
+      : {},
+  );
 }
 
 function makeResponseCollector() {

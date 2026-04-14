@@ -55,27 +55,41 @@ const root = resolveRepoRootFromImportMeta(import.meta.url);
 warnStaleBunCache(root);
 
 // ---------------------------------------------------------------------------
-// Bun auto-installs @types/react into node_modules/.bun/ and then resolves
-// react/jsx-dev-runtime to @types/react/jsx-dev-runtime.d.ts at runtime.
-// The .d.ts file uses `export as namespace React;` which is TypeScript-only
-// syntax and causes "Unexpected as" parse errors in Bun. Remove the cached
-// @types/react entries from all .bun directories so Bun resolves the real
-// react package instead.
+// Bun auto-installs @types/* packages into node_modules/.bun/ and can resolve
+// them at runtime instead of the real packages. The .d.ts files use
+// TypeScript-only syntax like `export as namespace X;` which causes
+// "Unexpected as" parse errors in Bun. Remove ALL @types entries from the
+// .bun cache and node_modules/@types so Bun resolves real packages instead.
 // ---------------------------------------------------------------------------
-for (const nmDir of [
-  resolve(root, "node_modules/.bun"),
-  resolve(root, "eliza/node_modules/.bun"),
-]) {
-  if (existsSync(nmDir)) {
-    try {
-      for (const entry of readdirSync(nmDir)) {
-        if (entry.startsWith("@types+react@") && !entry.includes("test-renderer")) {
-          const entryPath = resolve(nmDir, entry);
-          rmSync(entryPath, { recursive: true, force: true });
-          console.log(`[patch-deps] Removed stale Bun @types/react cache: ${entry}`);
+{
+  let removedCount = 0;
+  for (const nmDir of [
+    resolve(root, "node_modules/.bun"),
+    resolve(root, "eliza/node_modules/.bun"),
+  ]) {
+    if (existsSync(nmDir)) {
+      try {
+        for (const entry of readdirSync(nmDir)) {
+          if (entry.startsWith("@types+")) {
+            rmSync(resolve(nmDir, entry), { recursive: true, force: true });
+            removedCount++;
+          }
         }
-      }
-    } catch {}
+      } catch {}
+    }
+  }
+  // Also remove @types directories from node_modules root
+  for (const nmDir of [
+    resolve(root, "node_modules/@types"),
+    resolve(root, "eliza/node_modules/@types"),
+  ]) {
+    if (existsSync(nmDir)) {
+      rmSync(nmDir, { recursive: true, force: true });
+      removedCount++;
+    }
+  }
+  if (removedCount > 0) {
+    console.log(`[patch-deps] Removed ${removedCount} @types entries from Bun cache (prevents runtime .d.ts parse errors)`);
   }
 }
 

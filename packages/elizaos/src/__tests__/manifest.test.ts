@@ -22,9 +22,9 @@ describe("templates-manifest.json", () => {
     );
 
     expect(Array.isArray(manifest.templates)).toBe(true);
-    expect(manifest.templates.map((template: { id: string }) => template.id)).toEqual(
-      expect.arrayContaining(["plugin", "fullstack-app"]),
-    );
+    expect(
+      manifest.templates.map((template: { id: string }) => template.id),
+    ).toEqual(expect.arrayContaining(["plugin", "fullstack-app"]));
   });
 
   test("packaged templates directory contains the expected source templates", () => {

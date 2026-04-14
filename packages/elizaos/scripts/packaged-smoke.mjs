@@ -13,6 +13,8 @@ const tmpRoot = fs.mkdtempSync(
   path.join(tmpBaseDir, "elizaos-packaged-smoke-"),
 );
 const shouldKeepTemp = process.env.ELIZAOS_SMOKE_KEEP_TEMP === "1";
+const shouldInstallGeneratedFullstack =
+  process.env.ELIZAOS_SMOKE_FULLSTACK_INSTALL === "1";
 const shouldUseRemoteUpstream =
   process.env.ELIZAOS_SMOKE_REMOTE_UPSTREAM === "1";
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
@@ -132,7 +134,9 @@ function main() {
     assertPathExists(path.join(fullstackDir, ".elizaos", "template.json"));
     assertPathExists(path.join(fullstackDir, "apps", "app", "package.json"));
     assertPathExists(path.join(fullstackDir, "eliza"));
-    run("bun", ["install"], { cwd: fullstackDir, env: fullstackInstallEnv });
+    if (shouldInstallGeneratedFullstack) {
+      run("bun", ["install"], { cwd: fullstackDir, env: fullstackInstallEnv });
+    }
     runCli(smokeDir, fullstackDir, ["upgrade", "--check"]);
 
     runCli(smokeDir, workspaceDir, [
@@ -154,10 +158,7 @@ function main() {
   } finally {
     if (!shouldKeepTemp && passed) {
       fs.rmSync(tmpRoot, { force: true, recursive: true });
-      return;
-    }
-
-    if (!passed || shouldKeepTemp) {
+    } else if (!passed || shouldKeepTemp) {
       console.log(`elizaos packaged smoke temp dir: ${tmpRoot}`);
     }
   }
