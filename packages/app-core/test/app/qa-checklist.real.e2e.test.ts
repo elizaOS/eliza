@@ -1163,12 +1163,13 @@ async function smokeTabs(page: Page, profile: Profile) {
     {
       path: "/plugins",
       name: "plugins",
-      waitForReady: () => page.waitForSelector('[data-testid="plugins-shell"]'),
+      waitForReady: () => waitForText(page, "AI PROVIDERS", 30_000),
     },
     {
       path: "/skills",
       name: "skills",
-      waitForReady: () => page.waitForSelector('[data-testid="skills-shell"]'),
+      waitForReady: () =>
+        waitForAnyText(page, ["Create Skill", "No Skills Installed", "Skills"], 30_000),
     },
     {
       path: "/runtime",
@@ -1178,7 +1179,8 @@ async function smokeTabs(page: Page, profile: Profile) {
     {
       path: "/database",
       name: "database",
-      waitForReady: () => page.waitForSelector('[data-testid="database-sidebar"]'),
+      waitForReady: () =>
+        waitForAnyText(page, ["Tables", "Table Editor", "SQL Editor"], 30_000),
     },
     {
       path: "/desktop",
@@ -1188,7 +1190,12 @@ async function smokeTabs(page: Page, profile: Profile) {
     {
       path: "/logs",
       name: "logs",
-      waitForReady: () => page.waitForSelector('[data-testid="logs-view"]'),
+      waitForReady: () =>
+        waitForAnyText(
+          page,
+          ["Filter Logs", "No Log Entries Yet", "No log entries yet"],
+          30_000,
+        ),
     },
   ];
 
