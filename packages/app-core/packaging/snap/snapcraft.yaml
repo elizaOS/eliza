@@ -243,11 +243,18 @@ parts:
       node -e '
         const fs = require("fs");
         const pkgPath = "package.json";
+<<<<<<< HEAD
           const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
           if (Array.isArray(pkg.workspaces)) {
             const next = pkg.workspaces.filter(
             (entry) =>
               entry !== "eliza/packages/app-core/deploy/cloud-agent-template"
+=======
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+        if (Array.isArray(pkg.workspaces)) {
+          const next = pkg.workspaces.filter(
+            (entry) => entry !== "deploy/cloud-agent-template"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
           );
           if (next.length !== pkg.workspaces.length) {
             pkg.workspaces = next;

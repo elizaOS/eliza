@@ -24,12 +24,12 @@ const __dirname = dirname(__filename);
 
 /**
  * Resolve the app repo root. Accepts an explicit --root flag,
- * falls back to ELIZA_APP_ROOT / ELIZA_APP_ROOT env vars, then
+ * falls back to ELIZA_APP_ROOT env var, then
  * walks up from this file looking for a package.json with a
  * "benchmark" script.
  */
 function resolveRepoRoot(): string {
-  const fromEnv = process.env.ELIZA_APP_ROOT || process.env.ELIZA_APP_ROOT;
+  const fromEnv = process.env.ELIZA_APP_ROOT;
   if (fromEnv) return resolve(fromEnv);
   // Default: assume we're inside eliza/packages/benchmarks/app-eval/
   return resolve(__dirname, "../../../..");

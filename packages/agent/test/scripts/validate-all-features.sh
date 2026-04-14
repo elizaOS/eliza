@@ -46,18 +46,26 @@ ELIZA_ROOT="$ELIZA_ROOT/eliza"
 PLUGINS_ROOT="$(cd "$ELIZA_ROOT/../plugins" 2>/dev/null && pwd || echo "")"
 
 # Results tracking
+<<<<<<< HEAD
 RESULTS_FILE="$(mktemp "${TMPDIR:-/tmp}/eliza-feature-results.XXXXXX")"
+=======
+declare -A TEST_RESULTS
+declare -A TEST_COUNTS
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 TOTAL_PASSED=0
 TOTAL_FAILED=0
 TOTAL_SKIPPED=0
 START_TIME=$(date +%s)
 
+<<<<<<< HEAD
 cleanup_results_file() {
     rm -f "$RESULTS_FILE"
 }
 
 trap cleanup_results_file EXIT
 
+=======
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 # Options
 RUN_VISION=true
 RUN_COMPUTERUSE=true
@@ -158,6 +166,7 @@ log_info() {
     echo -e "  ${BLUE}ℹ${NC} $1"
 }
 
+<<<<<<< HEAD
 record_result() {
     local name="$1"
     local status="$2"
@@ -170,6 +179,8 @@ record_result() {
         "$name" "$status" "$passed" "$failed" "$skipped" "$duration" >> "$RESULTS_FILE"
 }
 
+=======
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 # Run tests and capture results
 run_test_suite() {
     local name="$1"
@@ -219,7 +230,15 @@ run_test_suite() {
     fi
 
     # Store results
+<<<<<<< HEAD
     record_result "$name" "$status" "$passed" "$failed" "$skipped" "$duration"
+=======
+    TEST_RESULTS["$name"]=$status
+    TEST_COUNTS["${name}_passed"]=$passed
+    TEST_COUNTS["${name}_failed"]=$failed
+    TEST_COUNTS["${name}_skipped"]=$skipped
+    TEST_COUNTS["${name}_duration"]=$duration
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
     TOTAL_PASSED=$((TOTAL_PASSED + passed))
     TOTAL_FAILED=$((TOTAL_FAILED + failed))
@@ -346,11 +365,21 @@ run_extension_tests() {
             log_info "  Permissions declared: $permissions"
         fi
 
+<<<<<<< HEAD
         record_result "Browser Extension - Files" "0" "1" "0" "0" "0"
         TOTAL_PASSED=$((TOTAL_PASSED + 1))
     else
         log_failure "Browser Extension files missing"
         record_result "Browser Extension - Files" "1" "0" "1" "0" "0"
+=======
+        TEST_RESULTS["Browser Extension - Files"]="0"
+        TEST_COUNTS["Browser Extension - Files_passed"]=1
+        TOTAL_PASSED=$((TOTAL_PASSED + 1))
+    else
+        log_failure "Browser Extension files missing"
+        TEST_RESULTS["Browser Extension - Files"]="1"
+        TEST_COUNTS["Browser Extension - Files_failed"]=1
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
         TOTAL_FAILED=$((TOTAL_FAILED + 1))
     fi
 }
@@ -455,8 +484,17 @@ generate_report() {
             <tbody>
 EOF
 
+<<<<<<< HEAD
     while IFS=$'\t' read -r name status passed failed skipped duration; do
         [[ -n "$name" ]] || continue
+=======
+    for name in "${!TEST_RESULTS[@]}"; do
+        local status="${TEST_RESULTS[$name]}"
+        local passed="${TEST_COUNTS[${name}_passed]:-0}"
+        local failed="${TEST_COUNTS[${name}_failed]:-0}"
+        local skipped="${TEST_COUNTS[${name}_skipped]:-0}"
+        local duration="${TEST_COUNTS[${name}_duration]:-0}"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
         local status_class="status-pass"
         local status_text="PASS"
@@ -475,7 +513,11 @@ EOF
                     <td>${duration}s</td>
                 </tr>
 EOF
+<<<<<<< HEAD
     done < "$RESULTS_FILE"
+=======
+    done
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
     cat >> "$report_file" << EOF
             </tbody>

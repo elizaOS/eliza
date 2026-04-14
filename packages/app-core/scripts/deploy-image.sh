@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
+<<<<<<< HEAD
 # deploy-image.sh — Deploy a eliza/agent image to running containers
 #
 # Usage:
@@ -12,6 +13,20 @@
 #   --all                 Deploy to ALL eliza containers on eliza-core-1
 #   --server HOST         SSH target (default: ${DEPLOY_SERVER:-"root@your-server"})
 #   --list                List running eliza containers and exit
+=======
+# deploy-image.sh — Deploy a milady/agent image to running containers
+#
+# Usage:
+#   ./scripts/deploy-image.sh [OPTIONS]
+#
+# Options:
+#   --image TAG           Image to deploy (default: milady/agent:latest or
+#                         current image of targeted containers)
+#   --container-id ID     Deploy to a specific container (by name or ID)
+#   --all                 Deploy to ALL milady containers on milady-core-1
+#   --server HOST         SSH target (default: ${DEPLOY_SERVER:-"root@your-server"})
+#   --list                List running milady containers and exit
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 #   --dry-run             Show what would be done without doing it
 #   -h, --help            Show this help
 #
@@ -23,10 +38,17 @@
 #   5. Report success or failure
 #
 # Examples:
+<<<<<<< HEAD
 #   bash eliza/packages/app-core/scripts/deploy-image.sh --list
 #   bash eliza/packages/app-core/scripts/deploy-image.sh --all --image eliza/agent:v2.0.0-alpha.54
 #   bash eliza/packages/app-core/scripts/deploy-image.sh --container-id eliza-373b9e29-c68b-47a0-85f4-ede46f4a0dec
 #   bash eliza/packages/app-core/scripts/deploy-image.sh --all --dry-run
+=======
+#   ./scripts/deploy-image.sh --list
+#   ./scripts/deploy-image.sh --all --image milady/agent:v2.0.0-alpha.54
+#   ./scripts/deploy-image.sh --container-id milady-373b9e29-c68b-47a0-85f4-ede46f4a0dec
+#   ./scripts/deploy-image.sh --all --dry-run
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -87,9 +109,15 @@ log "Server: ${YELLOW}${TARGET_SERVER}${NC}"
 
 # ── List mode ─────────────────────────────────────────────────────────────────
 if $DO_LIST; then
+<<<<<<< HEAD
   hdr "Eliza containers on ${TARGET_SERVER}"
   ssh_run "docker ps -a \
     --filter 'name=eliza' \
+=======
+  hdr "Milady containers on ${TARGET_SERVER}"
+  ssh_run "docker ps -a \
+    --filter 'name=milady' \
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
     --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'"
   exit 0
 fi
@@ -98,23 +126,41 @@ fi
 hdr "Discovering containers"
 
 if $DEPLOY_ALL; then
+<<<<<<< HEAD
   log "Fetching all eliza containers from ${TARGET_SERVER}..."
   if $DRY_RUN; then
     # In dry-run we can't SSH, so show what we'd do conceptually
     warn "[dry-run] Would query: docker ps --filter 'name=eliza' --format '{{.Names}}'"
+=======
+  log "Fetching all milady containers from ${TARGET_SERVER}..."
+  if $DRY_RUN; then
+    # In dry-run we can't SSH, so show what we'd do conceptually
+    warn "[dry-run] Would query: docker ps --filter 'name=milady' --format '{{.Names}}'"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
     warn "[dry-run] Then redeploy each container found"
     echo ""
     ok "[dry-run] Showing a simulated deploy for illustration"
     # Use a placeholder container list for dry-run
+<<<<<<< HEAD
     CONTAINER_LIST=("eliza-<container-1>" "eliza-<container-2>")
+=======
+    CONTAINER_LIST=("milady-<container-1>" "milady-<container-2>")
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
   else
     # Get container names (not IDs — names are used with docker inspect)
     mapfile -t CONTAINER_LIST < <(
       ssh $SSH_OPTS -i "$SSH_KEY" "$TARGET_SERVER" \
+<<<<<<< HEAD
         "docker ps --filter 'name=eliza' --format '{{.Names}}'" 2>/dev/null
     )
     if [[ ${#CONTAINER_LIST[@]} -eq 0 ]]; then
       warn "No running eliza containers found on ${TARGET_SERVER}"
+=======
+        "docker ps --filter 'name=milady' --format '{{.Names}}'" 2>/dev/null
+    )
+    if [[ ${#CONTAINER_LIST[@]} -eq 0 ]]; then
+      warn "No running milady containers found on ${TARGET_SERVER}"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
       exit 0
     fi
     log "Found ${#CONTAINER_LIST[@]} container(s):"
@@ -153,7 +199,11 @@ deploy_container() {
   if ! $DRY_RUN; then
     if ! ssh_run "docker image inspect '${new_image}' > /dev/null 2>&1"; then
       err "Image '${new_image}' not found on ${TARGET_SERVER}"
+<<<<<<< HEAD
       err "Run: bash eliza/packages/app-core/scripts/build-image.sh --push  OR  bash eliza/packages/app-core/scripts/build-image.sh --remote"
+=======
+      err "Run: ./scripts/build-image.sh --push  OR  ./scripts/build-image.sh --remote"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
       FAILED+=("${container}: image not found")
       return 1
     fi
@@ -164,7 +214,11 @@ deploy_container() {
   restart_policy=$(ssh_run "docker inspect --format '{{.HostConfig.RestartPolicy.Name}}' '${container}'" 2>/dev/null || echo "unless-stopped")
   [[ -z "$restart_policy" || "$restart_policy" == "no" ]] && restart_policy="unless-stopped"
 
+<<<<<<< HEAD
   # Capture all env vars (preserves both ELIZA_* and ELIZA_* and any others)
+=======
+  # Capture all env vars (preserves both ELIZA_* and MILADY_* and any others)
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
   # Format them as --env KEY=VALUE args for docker run
   local env_args
   env_args=$(ssh_run "docker inspect --format \

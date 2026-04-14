@@ -110,6 +110,7 @@ def _get_providers(config: CapabilityConfig) -> list:
         result.extend(EXTENDED_PROVIDERS)
     # Core capabilities
     if config.enable_trust:
+<<<<<<< HEAD
         from elizaos.features.core_capabilities.trust import trust_providers
         result.extend(trust_providers)
     if config.enable_secrets_manager:
@@ -117,6 +118,15 @@ def _get_providers(config: CapabilityConfig) -> list:
         result.extend(secrets_providers)
     if config.enable_plugin_manager:
         from elizaos.features.core_capabilities.plugin_manager import plugin_manager_providers
+=======
+        from elizaos.core_capabilities.trust import trust_providers
+        result.extend(trust_providers)
+    if config.enable_secrets_manager:
+        from elizaos.core_capabilities.secrets import secrets_providers
+        result.extend(secrets_providers)
+    if config.enable_plugin_manager:
+        from elizaos.core_capabilities.plugin_manager import plugin_manager_providers
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
         result.extend(plugin_manager_providers)
     return result
 
@@ -129,6 +139,7 @@ def _get_actions(config: CapabilityConfig) -> list:
         result.extend(EXTENDED_ACTIONS)
     # Core capabilities
     if config.enable_trust:
+<<<<<<< HEAD
         from elizaos.features.core_capabilities.trust import trust_actions
         result.extend(trust_actions)
     if config.enable_secrets_manager:
@@ -136,6 +147,15 @@ def _get_actions(config: CapabilityConfig) -> list:
         result.extend(secrets_actions)
     if config.enable_plugin_manager:
         from elizaos.features.core_capabilities.plugin_manager import plugin_manager_actions
+=======
+        from elizaos.core_capabilities.trust import trust_actions
+        result.extend(trust_actions)
+    if config.enable_secrets_manager:
+        from elizaos.core_capabilities.secrets import secrets_actions
+        result.extend(secrets_actions)
+    if config.enable_plugin_manager:
+        from elizaos.core_capabilities.plugin_manager import plugin_manager_actions
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
         result.extend(plugin_manager_actions)
     return result
 
@@ -148,7 +168,11 @@ def _get_evaluators(config: CapabilityConfig) -> list:
         result.extend(EXTENDED_EVALUATORS)
     # Core capabilities
     if config.enable_trust:
+<<<<<<< HEAD
         from elizaos.features.core_capabilities.trust import trust_evaluators
+=======
+        from elizaos.core_capabilities.trust import trust_evaluators
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
         result.extend(trust_evaluators)
     return result
 
@@ -161,6 +185,7 @@ def _get_services(config: CapabilityConfig) -> list[type]:
         result.extend(EXTENDED_SERVICES)
     # Core capabilities
     if config.enable_trust:
+<<<<<<< HEAD
         from elizaos.features.core_capabilities.trust import TrustEngineService, SecurityModuleService
         result.extend([TrustEngineService, SecurityModuleService])
     if config.enable_secrets_manager:
@@ -168,6 +193,15 @@ def _get_services(config: CapabilityConfig) -> list[type]:
         result.append(SecretsService)
     if config.enable_plugin_manager:
         from elizaos.features.core_capabilities.plugin_manager import PluginManagerService
+=======
+        from elizaos.core_capabilities.trust import TrustEngineService, SecurityModuleService
+        result.extend([TrustEngineService, SecurityModuleService])
+    if config.enable_secrets_manager:
+        from elizaos.core_capabilities.secrets import SecretsService
+        result.append(SecretsService)
+    if config.enable_plugin_manager:
+        from elizaos.core_capabilities.plugin_manager import PluginManagerService
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
         result.append(PluginManagerService)
     return result
 

@@ -10,7 +10,11 @@ set -euo pipefail
 #   4. Optionally boots the container and probes /api/health or /api/status
 #
 # Usage:
+<<<<<<< HEAD
 #   bash eliza/packages/app-core/scripts/docker-ci-smoke.sh [--tag TAG] [--version VERSION] [--skip-smoke]
+=======
+#   scripts/docker-ci-smoke.sh [--tag TAG] [--version VERSION] [--skip-smoke]
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 #
 # Environment:
 #   BUN_VERSION          Bun version to install/use in CI (default: 1.3.9)
@@ -48,6 +52,7 @@ find_docker_bin() {
   return 1
 }
 
+<<<<<<< HEAD
 load_env_file() {
   local file="$1"
   if [[ -f "$file" ]]; then
@@ -58,6 +63,8 @@ load_env_file() {
   fi
 }
 
+=======
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tag)
@@ -86,6 +93,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_ROOT"
 
 [[ -f package.json ]] || fail "Run from the repo root"
+<<<<<<< HEAD
 [[ -f eliza/packages/app-core/deploy/Dockerfile.ci ]] || fail "eliza/packages/app-core/deploy/Dockerfile.ci not found"
 [[ -f eliza/packages/app-core/deploy/.dockerignore.ci ]] || fail "eliza/packages/app-core/deploy/.dockerignore.ci not found"
 [[ -f deploy/deploy.env ]] || fail "deploy/deploy.env not found"
@@ -102,14 +110,23 @@ OCI_SOURCE="${OCI_SOURCE:-}"
 OCI_TITLE="${OCI_TITLE:-elizaOS Agent}"
 OCI_DESCRIPTION="${OCI_DESCRIPTION:-elizaOS agent runtime}"
 OCI_LICENSES="${OCI_LICENSES:-MIT}"
+=======
+[[ -f deploy/Dockerfile.ci ]] || fail "deploy/Dockerfile.ci not found"
+[[ -f deploy/.dockerignore.ci ]] || fail "deploy/.dockerignore.ci not found"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 if [[ -z "$VERSION" ]]; then
   VERSION="v$(node -p "require('./package.json').version")-docker-smoke"
 fi
 VERSION_CLEAN="${VERSION#v}"
 SOURCE_SHA="$(git rev-parse HEAD)"
+<<<<<<< HEAD
 DOCKER_IMAGE="${DOCKER_IMAGE:-${APP_IMAGE}:${TAG}}"
 CONTAINER_NAME="eliza-docker-smoke-${TAG//[^a-zA-Z0-9_.-]/-}"
+=======
+DOCKER_IMAGE="${DOCKER_IMAGE:-miladyai/agent:${TAG}}"
+CONTAINER_NAME="milady-docker-smoke-${TAG//[^a-zA-Z0-9_.-]/-}"
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 mkdir -p "$REPO_ROOT/.tmp/qa"
 SMOKE_ARTIFACT_DIR="$(mktemp -d "$REPO_ROOT/.tmp/qa/docker-ci-smoke-XXXXXX")"
 
@@ -156,6 +173,7 @@ trap cleanup EXIT
 log "Installing dependencies"
 node scripts/init-submodules.mjs
 node scripts/disable-local-eliza-workspace.mjs
+<<<<<<< HEAD
 bun install --ignore-scripts --no-frozen-lockfile
 if [[ -d "$REPO_ROOT/.eliza.ci-disabled" && ! -d "$REPO_ROOT/eliza" ]]; then
   log "Restoring eliza/ from .eliza.ci-disabled for downstream build steps"
@@ -174,12 +192,19 @@ bun add --no-save --dev \
 
 log "Running repository postinstall"
 SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 node eliza/packages/app-core/scripts/run-repo-setup.mjs
+=======
+bun install --ignore-scripts
+
+log "Running repository postinstall"
+SKIP_AVATAR_CLONE=1 MILADY_NO_VISION_DEPS=1 bun run postinstall
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 log "Building Capacitor plugins"
 pushd apps/app >/dev/null
 bun scripts/plugin-build.mjs
 popd >/dev/null
 
+<<<<<<< HEAD
 log "Building agent workspace"
 pushd eliza/packages/agent >/dev/null
 bun run build:docker-dist
@@ -194,6 +219,32 @@ else
   popd >/dev/null
 fi
 
+=======
+log "Building shared workspace"
+pushd packages/shared >/dev/null
+bun run build
+popd >/dev/null
+
+log "Building agent workspace"
+pushd packages/agent >/dev/null
+bun run build:docker-dist
+popd >/dev/null
+
+if [[ "${MILADY_SKIP_LOCAL_UPSTREAMS:-0}" != "1" && -d eliza/packages/typescript ]]; then
+  log "Building core workspace"
+  pushd eliza/packages/typescript >/dev/null
+  bun run build
+  popd >/dev/null
+else
+  log "Skipping core workspace build (published upstream mode)"
+fi
+
+log "Building @elizaos/core (includes agent-orchestrator)"
+pushd eliza/packages/typescript >/dev/null
+bun run build
+popd >/dev/null
+
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 log "Building runtime dist"
 npx tsdown
 echo '{"type":"module"}' > dist/package.json
@@ -205,6 +256,7 @@ NODE_ENV=production npx vite build
 popd >/dev/null
 
 log "Preparing CI dockerignore"
+<<<<<<< HEAD
 cp eliza/packages/app-core/deploy/.dockerignore.ci .dockerignore
 
 log "Building Docker image"
@@ -220,6 +272,15 @@ log "Building Docker image"
   --build-arg "OCI_TITLE=$OCI_TITLE" \
   --build-arg "OCI_DESCRIPTION=$OCI_DESCRIPTION" \
   --build-arg "OCI_LICENSES=$OCI_LICENSES" \
+=======
+cp deploy/.dockerignore.ci .dockerignore
+
+log "Building Docker image"
+"$DOCKER_BIN" build \
+  --file deploy/Dockerfile.ci \
+  --tag "$DOCKER_IMAGE" \
+  --build-arg "BUN_VERSION=$BUN_VERSION" \
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
   --build-arg "VERSION=$VERSION" \
   --build-arg "VERSION_CLEAN=$VERSION_CLEAN" \
   --build-arg "REVISION=$SOURCE_SHA" \
@@ -235,9 +296,14 @@ log "Starting container smoke boot"
 "$DOCKER_BIN" run -d \
   --name "$CONTAINER_NAME" \
   -e PORT="$CONTAINER_PORT" \
+<<<<<<< HEAD
   -e APP_API_BIND=0.0.0.0 \
   -e ELIZA_DISABLE_LOCAL_EMBEDDINGS=1 \
   -e ELIZA_API_BIND=0.0.0.0 \
+=======
+  -e MILADY_DISABLE_LOCAL_EMBEDDINGS=1 \
+  -e MILADY_API_BIND=0.0.0.0 \
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
   -p "${SMOKE_PORT}:${CONTAINER_PORT}" \
   "$DOCKER_IMAGE" >/dev/null
 
@@ -270,6 +336,7 @@ while (( SECONDS < deadline )); do
     fail "Container exited before smoke probe succeeded"
   fi
 
+<<<<<<< HEAD
   if probe_ok "$health_url" /tmp/eliza-docker-health.txt; then
     log "Health probe succeeded: $health_url"
     cat /tmp/eliza-docker-health.txt
@@ -279,6 +346,17 @@ while (( SECONDS < deadline )); do
   if probe_ok "$status_url" /tmp/eliza-docker-status.txt; then
     log "Status probe succeeded: $status_url"
     cat /tmp/eliza-docker-status.txt
+=======
+  if probe_ok "$health_url" /tmp/milady-docker-health.txt; then
+    log "Health probe succeeded: $health_url"
+    cat /tmp/milady-docker-health.txt
+    exit 0
+  fi
+
+  if probe_ok "$status_url" /tmp/milady-docker-status.txt; then
+    log "Status probe succeeded: $status_url"
+    cat /tmp/milady-docker-status.txt
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
     exit 0
   fi
 

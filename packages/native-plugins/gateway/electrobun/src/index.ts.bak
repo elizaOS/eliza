@@ -12,7 +12,11 @@ import type { PluginListenerHandle } from "@capacitor/core";
 import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
+<<<<<<< HEAD
 } from "@elizaos/app-core";
+=======
+} from "@elizaos/app-core/bridge/electrobun-rpc.js";
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 import type {
   GatewayConnectOptions,
   GatewayConnectResult,
@@ -28,7 +32,11 @@ import type {
   GatewayStateEvent,
   JsonObject,
   JsonValue,
+<<<<<<< HEAD
 } from "../../src/definitions";
+=======
+} from "@elizaos/app-core/src/definitions";
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 type EventCallback<T> = (event: T) => void;
 type GatewayEventData =
@@ -181,7 +189,11 @@ export class GatewayElectrobun implements GatewayPlugin {
       minProtocol: 3,
       maxProtocol: 3,
       client: {
+<<<<<<< HEAD
         id: this.options.clientName || "elizaos-capacitor",
+=======
+        id: this.options.clientName || "milady-capacitor",
+>>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
         version: this.options.clientVersion || "1.0.0",
         platform: this.getPlatform(),
         mode: "ui",
