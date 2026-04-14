@@ -273,7 +273,7 @@ export function ConversationsSidebar({
   const newChatAction = isGameModal ? (
     <Button
       variant="outline"
-      className="h-11 w-full rounded-xl border-[color:var(--onboarding-accent-border)] bg-[color:var(--onboarding-accent-bg)] px-3 py-2 text-sm font-medium text-[color:var(--onboarding-text-strong)] shadow-[0_12px_28px_rgba(0,0,0,0.18)] hover:border-[color:var(--onboarding-accent-border-hover)] hover:bg-[color:var(--onboarding-accent-bg-hover)] active:scale-[0.98]"
+      className="h-11 w-full rounded-sm border-[color:var(--onboarding-accent-border)] bg-[color:var(--onboarding-accent-bg)] px-3 py-2 text-sm font-medium text-[color:var(--onboarding-text-strong)] shadow-[0_12px_28px_rgba(0,0,0,0.18)] hover:border-[color:var(--onboarding-accent-border-hover)] hover:bg-[color:var(--onboarding-accent-bg-hover)] active:scale-[0.98]"
       onClick={handleNewChat}
     >
       {t("conversations.newChat")}
@@ -454,7 +454,7 @@ export function ConversationsSidebar({
                         isManageConnectionsActive ? "default" : "outline"
                       }
                       size="sm"
-                      className={`h-8 gap-1.5 rounded-xl px-2.5 text-2xs font-semibold ${
+                      className={`h-8 gap-1.5 rounded-sm px-2.5 text-2xs font-semibold ${
                         isManageConnectionsActive
                           ? "border-accent/45 bg-accent/14 text-txt"
                           : "border-border/45 bg-card/55 text-txt hover:border-accent/35"
@@ -479,7 +479,7 @@ export function ConversationsSidebar({
                           type="button"
                           variant={isActive ? "default" : "outline"}
                           size="icon"
-                          className={`relative h-10 w-10 rounded-2xl border transition-all ${
+                          className={`relative h-10 w-10 rounded-sm border transition-all ${
                             isActive
                               ? "border-accent/50 bg-accent/14 text-txt shadow-[0_10px_24px_rgba(3,5,10,0.14)]"
                               : "border-border/45 bg-card/55 text-muted hover:border-accent/40 hover:text-txt"
@@ -511,7 +511,7 @@ export function ConversationsSidebar({
                       onValueChange={setWorldScope}
                     >
                       <SelectTrigger
-                        className="h-10 rounded-2xl border-border/45 bg-card/55 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+                        className="h-10 rounded-sm border-border/45 bg-card/55 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
                         aria-label={t("conversations.filterWorld", {
                           defaultValue: "Server / world",
                         })}

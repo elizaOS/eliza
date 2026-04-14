@@ -50,16 +50,16 @@ import { logger } from "@elizaos/core";
 const POLL_INTERVAL_MS = 1_000;
 
 interface PTYServiceWithEvents {
-  onSessionEvent: (
-    cb: (sessionId: string, event: string, data: unknown) => void,
-  ) => () => void;
-  sessionMetadata?: Map<string, Record<string, unknown>>;
-  getSession?: (sessionId: string) => { workdir?: string } | undefined;
-  handleHookEvent?: (
-    sessionId: string,
-    event: string,
-    data: Record<string, unknown>,
-  ) => void;
+	onSessionEvent: (
+		cb: (sessionId: string, event: string, data: unknown) => void,
+	) => () => void;
+	sessionMetadata?: Map<string, Record<string, unknown>>;
+	getSession?: (sessionId: string) => { workdir?: string } | undefined;
+	handleHookEvent?: (
+		sessionId: string,
+		event: string,
+		data: Record<string, unknown>,
+	) => void;
 }
 
 const installedRuntimes = new WeakSet<IAgentRuntime>();
@@ -74,70 +74,70 @@ const installedRuntimes = new WeakSet<IAgentRuntime>();
  * completion event.
  */
 export function installClaudeJsonlCompletionWatcher(
-  runtime: IAgentRuntime,
-  ptyService: unknown,
+	runtime: IAgentRuntime,
+	ptyService: unknown,
 ): void {
-  if (installedRuntimes.has(runtime)) return;
-  const svc = ptyService as PTYServiceWithEvents | undefined;
-  if (!svc || typeof svc.onSessionEvent !== "function") return;
-  installedRuntimes.add(runtime);
+	if (installedRuntimes.has(runtime)) return;
+	const svc = ptyService as PTYServiceWithEvents | undefined;
+	if (!svc || typeof svc.onSessionEvent !== "function") return;
+	installedRuntimes.add(runtime);
 
-  const pollers = new Map<string, Poller>();
-  // Sessions that have already emitted a task_complete (real hook OR
-  // our synthetic jsonl emission). Tracked at installer scope so the
-  // gate survives across Poller instance teardowns.
-  //
-  // Without this, every new onSessionEvent for a session that already
-  // fired would call startIfMissing() which would create a fresh Poller
-  // (no entry in the `pollers` map after a previous stop). The new
-  // Poller's own `fired` flag is false, so on its next tick it re-reads
-  // the jsonl (still containing the assistant end_turn line) and emits
-  // task_complete a second time. We observed this producing 3+ fires
-  // per session in testing.
-  const firedSessions = new Set<string>();
+	const pollers = new Map<string, Poller>();
+	// Sessions that have already emitted a task_complete (real hook OR
+	// our synthetic jsonl emission). Tracked at installer scope so the
+	// gate survives across Poller instance teardowns.
+	//
+	// Without this, every new onSessionEvent for a session that already
+	// fired would call startIfMissing() which would create a fresh Poller
+	// (no entry in the `pollers` map after a previous stop). The new
+	// Poller's own `fired` flag is false, so on its next tick it re-reads
+	// the jsonl (still containing the assistant end_turn line) and emits
+	// task_complete a second time. We observed this producing 3+ fires
+	// per session in testing.
+	const firedSessions = new Set<string>();
 
-  const stop = (sessionId: string): void => {
-    const poller = pollers.get(sessionId);
-    if (!poller) return;
-    poller.stop();
-    pollers.delete(sessionId);
-  };
+	const stop = (sessionId: string): void => {
+		const poller = pollers.get(sessionId);
+		if (!poller) return;
+		poller.stop();
+		pollers.delete(sessionId);
+	};
 
-  const markFiredAndStop = (sessionId: string): void => {
-    firedSessions.add(sessionId);
-    stop(sessionId);
-  };
+	const markFiredAndStop = (sessionId: string): void => {
+		firedSessions.add(sessionId);
+		stop(sessionId);
+	};
 
-  const startIfMissing = (sessionId: string): void => {
-    if (firedSessions.has(sessionId)) return;
-    if (pollers.has(sessionId)) return;
-    const workdir = svc.getSession?.(sessionId)?.workdir;
-    if (!workdir) return;
-    const poller = new Poller(svc, sessionId, workdir, markFiredAndStop);
-    pollers.set(sessionId, poller);
-    poller.start();
-  };
+	const startIfMissing = (sessionId: string): void => {
+		if (firedSessions.has(sessionId)) return;
+		if (pollers.has(sessionId)) return;
+		const workdir = svc.getSession?.(sessionId)?.workdir;
+		if (!workdir) return;
+		const poller = new Poller(svc, sessionId, workdir, markFiredAndStop);
+		pollers.set(sessionId, poller);
+		poller.start();
+	};
 
-  svc.onSessionEvent((sessionId, event) => {
-    // Any first event for a sessionId is our cue to start polling. We
-    // deliberately do NOT gate on a particular event type — the jsonl
-    // may be written before the first PTY event arrives, and we want
-    // the poller alive as early as possible. startIfMissing is itself
-    // gated on firedSessions, so late events for already-fired sessions
-    // are no-ops rather than spawning zombie pollers.
-    startIfMissing(sessionId);
+	svc.onSessionEvent((sessionId, event) => {
+		// Any first event for a sessionId is our cue to start polling. We
+		// deliberately do NOT gate on a particular event type — the jsonl
+		// may be written before the first PTY event arrives, and we want
+		// the poller alive as early as possible. startIfMissing is itself
+		// gated on firedSessions, so late events for already-fired sessions
+		// are no-ops rather than spawning zombie pollers.
+		startIfMissing(sessionId);
 
-    if (event === "stopped" || event === "error") {
-      stop(sessionId);
-    }
-    if (event === "task_complete") {
-      // A real hook-based task_complete arrived — or we emitted our own
-      // synthetic one. Either way, mark the session as fired so any
-      // subsequent events can't spawn a new poller and re-fire, and
-      // shut down any live poller for this session.
-      markFiredAndStop(sessionId);
-    }
-  });
+		if (event === "stopped" || event === "error") {
+			stop(sessionId);
+		}
+		if (event === "task_complete") {
+			// A real hook-based task_complete arrived — or we emitted our own
+			// synthetic one. Either way, mark the session as fired so any
+			// subsequent events can't spawn a new poller and re-fire, and
+			// shut down any live poller for this session.
+			markFiredAndStop(sessionId);
+		}
+	});
 }
 
 /**
@@ -149,70 +149,70 @@ export function installClaudeJsonlCompletionWatcher(
  * sessionId.
  */
 class Poller {
-  private timer: ReturnType<typeof setInterval> | null = null;
-  private fired = false;
-  private lastSize = 0;
+	private timer: ReturnType<typeof setInterval> | null = null;
+	private fired = false;
+	private lastSize = 0;
 
-  constructor(
-    private readonly svc: PTYServiceWithEvents,
-    private readonly sessionId: string,
-    private readonly workdir: string,
-    private readonly onFired: (sessionId: string) => void,
-  ) {}
+	constructor(
+		private readonly svc: PTYServiceWithEvents,
+		private readonly sessionId: string,
+		private readonly workdir: string,
+		private readonly onFired: (sessionId: string) => void,
+	) {}
 
-  start(): void {
-    if (this.timer) return;
-    this.timer = setInterval(() => {
-      void this.tick();
-    }, POLL_INTERVAL_MS);
-  }
+	start(): void {
+		if (this.timer) return;
+		this.timer = setInterval(() => {
+			void this.tick();
+		}, POLL_INTERVAL_MS);
+	}
 
-  stop(): void {
-    if (!this.timer) return;
-    clearInterval(this.timer);
-    this.timer = null;
-  }
+	stop(): void {
+		if (!this.timer) return;
+		clearInterval(this.timer);
+		this.timer = null;
+	}
 
-  private async tick(): Promise<void> {
-    if (this.fired) return;
-    const jsonlPath = await findLatestJsonl(this.workdir);
-    if (!jsonlPath) return;
-    let stat: { size: number };
-    try {
-      stat = await fs.stat(jsonlPath);
-    } catch {
-      return;
-    }
-    if (stat.size === this.lastSize) return;
-    this.lastSize = stat.size;
+	private async tick(): Promise<void> {
+		if (this.fired) return;
+		const jsonlPath = await findLatestJsonl(this.workdir);
+		if (!jsonlPath) return;
+		let stat: { size: number };
+		try {
+			stat = await fs.stat(jsonlPath);
+		} catch {
+			return;
+		}
+		if (stat.size === this.lastSize) return;
+		this.lastSize = stat.size;
 
-    let content: string;
-    try {
-      content = await fs.readFile(jsonlPath, "utf-8");
-    } catch {
-      return;
-    }
+		let content: string;
+		try {
+			content = await fs.readFile(jsonlPath, "utf-8");
+		} catch {
+			return;
+		}
 
-    const entry = readLatestAssistantEntry(content);
-    if (!entry || !entry.isEndTurn) return;
+		const entry = readLatestAssistantEntry(content);
+		if (!entry?.isEndTurn) return;
 
-    this.fired = true;
-    // onFired adds to firedSessions and stops this poller. Call it
-    // BEFORE emitting task_complete so the subsequent onSessionEvent
-    // callback (triggered by our own emission) sees firedSessions
-    // already populated and doesn't start a new poller.
-    this.onFired(this.sessionId);
-    logger.info(
-      `[claude-jsonl-watcher] detected end_turn for ${this.sessionId} — emitting synthetic task_complete (${entry.text.length} chars)`,
-    );
-    // Route through the same handleHookEvent pathway the real hook uses,
-    // so downstream consumers receive an identical event shape and the
-    // existing dedup guards apply transparently.
-    this.svc.handleHookEvent?.(this.sessionId, "task_complete", {
-      response: entry.text,
-      source: "jsonl-watcher",
-    });
-  }
+		this.fired = true;
+		// onFired adds to firedSessions and stops this poller. Call it
+		// BEFORE emitting task_complete so the subsequent onSessionEvent
+		// callback (triggered by our own emission) sees firedSessions
+		// already populated and doesn't start a new poller.
+		this.onFired(this.sessionId);
+		logger.info(
+			`[claude-jsonl-watcher] detected end_turn for ${this.sessionId} — emitting synthetic task_complete (${entry.text.length} chars)`,
+		);
+		// Route through the same handleHookEvent pathway the real hook uses,
+		// so downstream consumers receive an identical event shape and the
+		// existing dedup guards apply transparently.
+		this.svc.handleHookEvent?.(this.sessionId, "task_complete", {
+			response: entry.text,
+			source: "jsonl-watcher",
+		});
+	}
 }
 
 /**
@@ -231,38 +231,38 @@ class Poller {
  * Exported for tests.
  */
 export async function findLatestJsonl(workdir: string): Promise<string | null> {
-  const home = process.env.HOME ?? os.homedir();
-  // Claude Code encodes project paths by replacing both `/` and `.` with
-  // `-`. For example:
-  //   /home/eliza/.eliza/workspaces/abc → -home-eliza--eliza-workspaces-abc
-  // (the `/.` in `/.eliza` maps to `--`).
-  const projectKey = workdir.replace(/[/.]/g, "-");
-  const projectDir = path.join(home, ".claude", "projects", projectKey);
-  let entries: string[];
-  try {
-    entries = await fs.readdir(projectDir);
-  } catch {
-    return null;
-  }
-  const jsonls = entries.filter((f) => f.endsWith(".jsonl"));
-  if (jsonls.length === 0) return null;
-  const stats = await Promise.all(
-    jsonls.map(async (name) => {
-      const full = path.join(projectDir, name);
-      try {
-        const st = await fs.stat(full);
-        return { full, mtimeMs: st.mtimeMs };
-      } catch {
-        return null;
-      }
-    }),
-  );
-  let newest: { full: string; mtimeMs: number } | null = null;
-  for (const entry of stats) {
-    if (!entry) continue;
-    if (!newest || entry.mtimeMs > newest.mtimeMs) newest = entry;
-  }
-  return newest?.full ?? null;
+	const home = process.env.HOME ?? os.homedir();
+	// Claude Code encodes project paths by replacing both `/` and `.` with
+	// `-`. For example:
+	//   /home/eliza/.eliza/workspaces/abc → -home-eliza--eliza-workspaces-abc
+	// (the `/.` in `/.eliza` maps to `--`).
+	const projectKey = workdir.replace(/[/.]/g, "-");
+	const projectDir = path.join(home, ".claude", "projects", projectKey);
+	let entries: string[];
+	try {
+		entries = await fs.readdir(projectDir);
+	} catch {
+		return null;
+	}
+	const jsonls = entries.filter((f) => f.endsWith(".jsonl"));
+	if (jsonls.length === 0) return null;
+	const stats = await Promise.all(
+		jsonls.map(async (name) => {
+			const full = path.join(projectDir, name);
+			try {
+				const st = await fs.stat(full);
+				return { full, mtimeMs: st.mtimeMs };
+			} catch {
+				return null;
+			}
+		}),
+	);
+	let newest: { full: string; mtimeMs: number } | null = null;
+	for (const entry of stats) {
+		if (!entry) continue;
+		if (!newest || entry.mtimeMs > newest.mtimeMs) newest = entry;
+	}
+	return newest?.full ?? null;
 }
 
 /**
@@ -281,34 +281,34 @@ export async function findLatestJsonl(workdir: string): Promise<string | null> {
  * share one jsonl parser.
  */
 export function readLatestAssistantEntry(
-  content: string,
+	content: string,
 ): { text: string; isEndTurn: boolean } | null {
-  const lines = content.split("\n");
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    let msg:
-      | {
-          role?: string;
-          stop_reason?: string;
-          content?: Array<{ type?: string; text?: string }>;
-        }
-      | undefined;
-    try {
-      msg = (JSON.parse(line) as { message?: typeof msg }).message;
-    } catch {
-      continue;
-    }
-    if (!msg || msg.role !== "assistant") continue;
-    let text = "";
-    for (const c of msg.content ?? []) {
-      if (c.type === "text" && typeof c.text === "string" && c.text.trim()) {
-        text += (text ? "\n" : "") + c.text.trim();
-      }
-    }
-    return { text, isEndTurn: msg.stop_reason === "end_turn" };
-  }
-  return null;
+	const lines = content.split("\n");
+	for (let i = lines.length - 1; i >= 0; i--) {
+		const line = lines[i].trim();
+		if (!line) continue;
+		let msg:
+			| {
+					role?: string;
+					stop_reason?: string;
+					content?: Array<{ type?: string; text?: string }>;
+			  }
+			| undefined;
+		try {
+			msg = (JSON.parse(line) as { message?: typeof msg }).message;
+		} catch {
+			continue;
+		}
+		if (!msg || msg.role !== "assistant") continue;
+		let text = "";
+		for (const c of msg.content ?? []) {
+			if (c.type === "text" && typeof c.text === "string" && c.text.trim()) {
+				text += (text ? "\n" : "") + c.text.trim();
+			}
+		}
+		return { text, isEndTurn: msg.stop_reason === "end_turn" };
+	}
+	return null;
 }
 
 /**
@@ -320,15 +320,15 @@ export function readLatestAssistantEntry(
  * share one implementation of "read the latest claude assistant turn".
  */
 export async function readLatestAssistantFromWorkdir(
-  workdir: string,
+	workdir: string,
 ): Promise<{ text: string; isEndTurn: boolean } | null> {
-  const jsonlPath = await findLatestJsonl(workdir);
-  if (!jsonlPath) return null;
-  let content: string;
-  try {
-    content = await fs.readFile(jsonlPath, "utf-8");
-  } catch {
-    return null;
-  }
-  return readLatestAssistantEntry(content);
+	const jsonlPath = await findLatestJsonl(workdir);
+	if (!jsonlPath) return null;
+	let content: string;
+	try {
+		content = await fs.readFile(jsonlPath, "utf-8");
+	} catch {
+		return null;
+	}
+	return readLatestAssistantEntry(content);
 }

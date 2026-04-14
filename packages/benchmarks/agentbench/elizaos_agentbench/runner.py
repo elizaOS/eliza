@@ -143,11 +143,7 @@ class AgentBenchRunner:
         self._harness: "ElizaAgentHarness | None" = None
 
         # Allow external harness injection (used by the Eliza TS bridge).
-<<<<<<< HEAD
         external_harness = getattr(runtime, "_app_harness", None) if runtime is not None else None
-=======
-        external_harness = getattr(runtime, "_milady_harness", None) if runtime is not None else None
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
         if external_harness is not None:
             self._harness = external_harness  # type: ignore[assignment]
             logger.info("[AgentBenchRunner] Using externally supplied benchmark harness")

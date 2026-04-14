@@ -1,5 +1,5 @@
-import { logger } from "@elizaos/core";
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type {
   AppSessionJsonValue,
   AppSessionState,
@@ -131,7 +131,9 @@ async function fetchLiveData(
 }> {
   const id = encodeURIComponent(agentId);
   const [agentsRes, goalRes, quickActionsRes, thoughtsRes] = await Promise.all([
-    fetchJson<{ agents?: EmbeddedAgentRecord[] }>(`${base}/api/embedded-agents`),
+    fetchJson<{ agents?: EmbeddedAgentRecord[] }>(
+      `${base}/api/embedded-agents`,
+    ),
     fetchJson<{
       goal?: GoalRecord | null;
       goalsPaused?: boolean;
@@ -220,8 +222,7 @@ function buildSession(
       recommendedGoals as unknown as AppSessionJsonValue;
   }
   if (recentThoughts.length > 0) {
-    telemetry.recentThoughts =
-      recentThoughts as unknown as AppSessionJsonValue;
+    telemetry.recentThoughts = recentThoughts as unknown as AppSessionJsonValue;
   }
 
   return {

@@ -21,13 +21,13 @@ import {
 } from "lucide-react";
 import type { PropsWithChildren, ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Badge, Button } from "@elizaos/ui";
 import { client } from "../../../../api";
 import { isApiError } from "../../../../api/client-types-core";
 import { useLifeOpsAppState } from "../../../../hooks";
 import { useApp } from "../../../../state";
 import { EmptyWidgetState, WidgetSection } from "../shared";
 import type {
-import { Badge, Button } from "@elizaos/ui";
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "../types";

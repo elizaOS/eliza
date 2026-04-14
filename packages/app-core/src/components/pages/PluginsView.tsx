@@ -348,7 +348,7 @@ function PluginListView({
           key={tag.id}
           variant={isActive ? "default" : "outline"}
           size="sm"
-          className={`h-7 px-3 text-xs-tight font-bold tracking-wide rounded-lg transition-all ${
+          className={`h-7 px-3 text-xs-tight font-bold tracking-wide rounded-[var(--radius-md)] transition-all ${
             isActive
               ? "border-accent/55 bg-accent/16 text-txt-strong shadow-sm"
               : "bg-card/40 backdrop-blur-sm border-border/40 text-muted hover:text-txt shadow-sm hover:border-accent/30"
@@ -884,7 +884,7 @@ function PluginListView({
             src={imageSrc}
             alt=""
             className={
-              options?.className ?? "w-5 h-5 rounded-sm object-contain"
+              options?.className ?? "w-5 h-5 rounded-[var(--radius-sm)] object-contain"
             }
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = "none";
@@ -1227,40 +1227,6 @@ function PluginListView({
       </div>
     );
 
-    if (desktopConnectorLayout && desktopSidebar) {
-      if (connectorDesktopPlacement === "right") {
-        return (
-          <div className="flex min-h-0 flex-1 overflow-hidden">
-            <main
-              ref={connectorContentRef}
-              className="chat-native-scrollbar relative flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto bg-transparent px-4 pb-4 pt-2 sm:px-6 sm:pb-6 sm:pt-3 lg:px-7 lg:pb-7 lg:pt-4"
-            >
-              {contentHeader ? (
-                <PageLayoutHeader>{contentHeader}</PageLayoutHeader>
-              ) : null}
-              <div className="flex min-h-0 flex-1 flex-col">
-                {connectorContent}
-              </div>
-            </main>
-            <div className="hidden min-h-0 shrink-0 items-stretch px-0 pb-0 pt-2 lg:flex lg:pt-4">
-              {desktopSidebar}
-            </div>
-          </div>
-        );
-      }
-
-      return (
-        <PageLayout
-          sidebar={desktopSidebar}
-          contentHeader={contentHeader}
-          contentRef={connectorContentRef}
-          contentInnerClassName="w-full min-h-0"
-        >
-          <div className="flex min-h-0 flex-1 flex-col">{connectorContent}</div>
-        </PageLayout>
-      );
-    }
-
     return (
       <main
         ref={connectorContentRef}
@@ -1366,7 +1332,7 @@ function PluginListView({
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em]"
+                        className="h-9 rounded-[var(--radius-sm)] px-4 text-xs-tight font-bold tracking-[0.12em]"
                         onClick={handleResetOrder}
                         title={t("pluginsview.ResetToDefaultSor")}
                       >

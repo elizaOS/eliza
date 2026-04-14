@@ -1,9 +1,5 @@
 # Default dockerignore for `docker build` (copy to repo root as `.dockerignore`).
-<<<<<<< HEAD
-# For CI / production local builds, use `eliza/packages/app-core/deploy/.dockerignore.ci` instead.
-=======
 # For CI / production local builds, use `deploy/.dockerignore.ci` instead.
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 .git
 .github
@@ -29,16 +25,6 @@ install.sh
 install.ps1
 packaging/
 artifacts/
-<<<<<<< HEAD
-deploy/
-
-# Other deploy Docker recipes — CI agent build only needs Dockerfile.ci
-eliza/packages/app-core/deploy/Dockerfile.cloud
-eliza/packages/app-core/deploy/Dockerfile.cloud-agent
-eliza/packages/app-core/deploy/Dockerfile.sandbox
-eliza/packages/app-core/deploy/Dockerfile.cloud.dockerignore
-!eliza/packages/app-core/deploy/Dockerfile.ci
-=======
 
 # Other deploy Docker recipes — CI agent build only needs Dockerfile.ci
 deploy/Dockerfile.cloud
@@ -46,4 +32,3 @@ deploy/Dockerfile.cloud-agent
 deploy/Dockerfile.sandbox
 deploy/Dockerfile.cloud.dockerignore
 !deploy/Dockerfile.ci
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e

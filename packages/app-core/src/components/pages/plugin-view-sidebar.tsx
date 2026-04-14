@@ -3,8 +3,8 @@
 import { ChevronRight } from "lucide-react";
 import type { ReactNode, RefCallback } from "react";
 import type { PluginInfo } from "../../api";
-import type {
 import { SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Select, SelectContent, SelectItem, SelectValue, SettingsControls } from "@elizaos/ui";
+import type {
   PluginsViewMode,
   SubgroupTag,
   TranslateFn,
@@ -179,7 +179,7 @@ export function ConnectorSidebar({
                       className="mt-0 h-8 w-8 shrink-0 p-1.5"
                     >
                       {renderResolvedIcon(plugin, {
-                        className: "h-4 w-4 shrink-0 rounded-sm object-contain",
+                        className: "h-4 w-4 shrink-0 rounded-[var(--radius-sm)] object-contain",
                         emojiClassName: "text-sm",
                       })}
                     </SidebarContent.ItemIcon>
@@ -217,7 +217,7 @@ export function ConnectorSidebar({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 shrink-0 rounded-full text-muted hover:text-txt"
+                      className="h-8 w-8 shrink-0 rounded-[var(--radius-sm)] text-muted hover:text-txt"
                       aria-label={`${isExpanded ? collapseLabel : expandLabel} ${plugin.name} in sidebar`}
                       onClick={(event) => {
                         event.stopPropagation();

@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 # Cloud-specific dockerignore for eliza/packages/app-core/deploy/Dockerfile.cloud
-=======
-# Cloud-specific dockerignore for deploy/Dockerfile.cloud
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 # The cloud build does a fresh `bun install --production` in the deps stage,
 # so we exclude the host node_modules entirely (they'd bloat the build context ~4.5GB).
 # Only the manifests, lockfile, patches, pre-built dist artifacts, workspace source
@@ -22,7 +18,6 @@
 node_modules/
 packages/**/node_modules
 apps/**/node_modules
-<<<<<<< HEAD
 eliza/**/node_modules
 eliza/packages/app-core/deploy/**/node_modules
 eliza/.turbo
@@ -37,25 +32,17 @@ eliza/plugins/*/python
 eliza/plugins/*/.git
 eliza/plugins/*/.eliza
 eliza/plugins/*/.elizadb-test
-=======
-deploy/**/node_modules
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 # Exclude heavy app dirs not needed at runtime
 # (but keep package.json manifests that the deps stage needs for bun install)
 apps/app/android
 apps/app/electrobun
 !apps/app/electrobun/package.json
-<<<<<<< HEAD
 apps/app/.vite
 apps/app/src
 apps/app/public
 apps/app/test
 apps/app/.eliza
-=======
-apps/app/src
-apps/app/public
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 apps/web/
 !apps/web/package.json
 apps/homepage
@@ -75,7 +62,6 @@ artifacts/
 dev.log
 install.sh
 install.ps1
-<<<<<<< HEAD
 deploy/
 
 # Other deploy Docker recipes — cloud image build only needs Dockerfile.cloud
@@ -83,11 +69,3 @@ eliza/packages/app-core/deploy/Dockerfile.ci
 eliza/packages/app-core/deploy/Dockerfile.cloud-agent
 eliza/packages/app-core/deploy/Dockerfile.sandbox
 !eliza/packages/app-core/deploy/Dockerfile.cloud
-=======
-
-# Other deploy Docker recipes — cloud image build only needs Dockerfile.cloud
-deploy/Dockerfile.ci
-deploy/Dockerfile.cloud-agent
-deploy/Dockerfile.sandbox
-!deploy/Dockerfile.cloud
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
