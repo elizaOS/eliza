@@ -63,6 +63,7 @@ export class SessionEventQueue {
 					break;
 				}
 
+				// biome-ignore lint/style/noNonNullAssertion: queue.length > 0 guaranteed above
 				const event = queue.shift()!;
 
 				try {
