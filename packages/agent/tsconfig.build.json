@@ -11,7 +11,9 @@
     "resolveJsonModule": true,
     "rootDir": "../..",
     "rewriteRelativeImportExtensions": true,
-    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "types": [],
+    "typeRoots": ["../../../node_modules/@types", "node_modules/@types"]
   },
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
   "include": ["src"]
