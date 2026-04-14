@@ -1163,7 +1163,12 @@ async function smokeTabs(page: Page, profile: Profile) {
     {
       path: "/triggers",
       name: "triggers",
-      waitForReady: () => page.waitForSelector('[data-testid="heartbeats-shell"]'),
+      waitForReady: () =>
+        waitForAnyText(
+          page,
+          ["New Automation", "Automations", "Scheduled Automation", "Templates"],
+          30_000,
+        ),
     },
     {
       path: "/plugins",
@@ -1267,7 +1272,8 @@ async function qaWalletRpcRoundtrip(page: Page, profile: Profile) {
   expect(savedConfig.walletNetwork).toBe("testnet");
   expect(savedConfig.selectedRpcProviders).toMatchObject(expectedSelections);
 
-  await page.reload({ waitUntil: "domcontentloaded" });
+  await navigate(page, `${UI_URL}/chat`);
+  await page.waitForSelector('[data-testid="chat-messages-scroll"]');
   await navigate(page, `${UI_URL}/wallets`);
   await waitForText(page, "Tokens", 30_000);
   await clickSelector(page, '[data-testid="wallet-rpc-popup"]');

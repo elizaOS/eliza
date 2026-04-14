@@ -4063,6 +4063,97 @@
         "palitan ang pangalan ko"
       ]
     },
+    "action.manageTasks.request": {
+      "base": [
+        "create task",
+        "add task",
+        "new task",
+        "make task",
+        "complete task",
+        "finish task",
+        "done with task",
+        "mark task done",
+        "delete task",
+        "remove task",
+        "update task",
+        "edit task",
+        "change task",
+        "list tasks",
+        "show tasks",
+        "my tasks",
+        "what are my tasks",
+        "add a todo",
+        "add a to-do",
+        "create a to do",
+        "task list",
+        "check off"
+      ],
+      "zh-CN": [
+        "创建任务",
+        "添加任务",
+        "新任务",
+        "完成任务",
+        "删除任务",
+        "更新任务",
+        "列出任务",
+        "任务列表"
+      ],
+      "ko": [
+        "작업 만들기",
+        "작업 추가",
+        "새 작업",
+        "작업 완료",
+        "작업 삭제",
+        "작업 수정",
+        "작업 목록"
+      ],
+      "es": [
+        "crear tarea",
+        "agregar tarea",
+        "nueva tarea",
+        "completar tarea",
+        "eliminar tarea",
+        "actualizar tarea",
+        "listar tareas",
+        "mis tareas",
+        "lista de tareas"
+      ],
+      "pt": [
+        "criar tarefa",
+        "adicionar tarefa",
+        "nova tarefa",
+        "concluir tarefa",
+        "remover tarefa",
+        "atualizar tarefa",
+        "listar tarefas",
+        "minhas tarefas",
+        "lista de tarefas"
+      ],
+      "vi": [
+        "tạo nhiệm vụ",
+        "tao nhiem vu",
+        "thêm nhiệm vụ",
+        "them nhiem vu",
+        "hoàn thành nhiệm vụ",
+        "hoan thanh nhiem vu",
+        "xóa nhiệm vụ",
+        "xoa nhiem vu",
+        "cập nhật nhiệm vụ",
+        "cap nhat nhiem vu",
+        "danh sách nhiệm vụ",
+        "danh sach nhiem vu"
+      ],
+      "tl": [
+        "gumawa ng task",
+        "magdagdag ng task",
+        "bagong task",
+        "tapusin ang task",
+        "burahin ang task",
+        "i-update ang task",
+        "listahan ng task",
+        "mga task ko"
+      ]
+    },
     "action.appControl.launchVerb": {
       "base": [
         "launch",

@@ -100,7 +100,7 @@ export function PluginSettingsDialog({
   return (
     <Dialog
       open
-      onOpenChange={(open) => {
+      onOpenChange={(open: boolean) => {
         if (!open) onClose(plugin.id);
       }}
     >

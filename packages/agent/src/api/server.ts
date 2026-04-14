@@ -6444,7 +6444,7 @@ export async function startApiServer(opts?: {
         rejectWebSocketUpgrade(socket, rejection.status, rejection.reason);
         return;
       }
-      wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
         wss.emit("connection", ws, request);
       });
     } catch (err) {
@@ -6507,7 +6507,7 @@ export async function startApiServer(opts?: {
       activateAuthenticatedConnection();
     }
 
-    ws.on("message", (data) => {
+    ws.on("message", (data: unknown) => {
       try {
         const msg = JSON.parse(data.toString());
         if (!isAuthenticated) {
@@ -6658,7 +6658,7 @@ export async function startApiServer(opts?: {
       ]);
     });
 
-    ws.on("error", (err) => {
+    ws.on("error", (err: unknown) => {
       logger.error(
         `[eliza-api] WebSocket error: ${err instanceof Error ? err.message : err}`,
       );

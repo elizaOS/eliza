@@ -636,17 +636,19 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
           layerClassName,
         )}
       >
-        <div
-          className={cn(
-            sidebarHeaderVariants({
-              variant,
-              collapsed: false,
-            }),
-            headerClassName,
-          )}
-        >
-          {header}
-        </div>
+        {header ? (
+          <div
+            className={cn(
+              sidebarHeaderVariants({
+                variant,
+                collapsed: false,
+              }),
+              headerClassName,
+            )}
+          >
+            {header}
+          </div>
+        ) : null}
         <SidebarBody
           ref={provideAutoRailSourceRef ? autoRailSourceRef : undefined}
           className={bodyClassName}

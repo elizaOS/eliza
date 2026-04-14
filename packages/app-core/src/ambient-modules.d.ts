@@ -28,6 +28,16 @@ declare module "@elizaos/plugin-groq" {
 declare module "@elizaos/plugin-edge-tts";
 declare module "@elizaos/plugin-edge-tts/node";
 
+/** WebGPU Navigator extension (not yet in all lib.dom versions) */
+declare global {
+  interface Navigator {
+    gpu?: unknown;
+  }
+  /** WebXR frame type used by Three.js animation loop */
+  // biome-ignore lint/suspicious/noEmptyInterface: stub for three.js XR callback signature
+  interface XRFrame {}
+}
+
 interface ImportMetaEnv {
   readonly DEV?: boolean;
   readonly PROD?: boolean;

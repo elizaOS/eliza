@@ -65,7 +65,7 @@ export function GlobalPrefsSection({
         </SettingsControls.FieldLabel>
         <Select
           value={selectionStrategy}
-          onValueChange={(value) =>
+          onValueChange={(value: string) =>
             setPref("PARALLAX_AGENT_SELECTION_STRATEGY", value)
           }
         >
@@ -94,7 +94,7 @@ export function GlobalPrefsSection({
         </SettingsControls.FieldLabel>
         <Select
           value={approvalPreset}
-          onValueChange={(value) =>
+          onValueChange={(value: string) =>
             setPref("PARALLAX_DEFAULT_APPROVAL_PRESET", value)
           }
         >
@@ -130,7 +130,7 @@ export function GlobalPrefsSection({
         </SettingsControls.FieldLabel>
         <Select
           value={prefs.PARALLAX_SCRATCH_RETENTION || "pending_decision"}
-          onValueChange={(value) => {
+          onValueChange={(value: string) => {
             if (
               !prefs.PARALLAX_SCRATCH_RETENTION &&
               value === "pending_decision"

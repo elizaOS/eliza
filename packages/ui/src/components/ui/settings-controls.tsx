@@ -41,6 +41,8 @@ function settingsInputClassName(variant: SettingsInputVariant): string {
 export interface SettingsSelectTriggerProps
   extends React.ComponentPropsWithoutRef<typeof SelectTrigger> {
   variant?: SettingsSelectTriggerVariant;
+  className?: string;
+  children?: React.ReactNode;
 }
 
 export function SettingsSelectTrigger({

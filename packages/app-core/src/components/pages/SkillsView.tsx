@@ -509,7 +509,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                       <Switch
                         checked={selectedSkill.enabled}
                         disabled={skillToggleAction === selectedSkill.id}
-                        onCheckedChange={(next) =>
+                        onCheckedChange={(next: boolean | "indeterminate") =>
                           handleSkillToggle(selectedSkill.id, next)
                         }
                       />

@@ -105,6 +105,8 @@ export interface ThemeColorSet {
   radiusMd: string;
   radiusLg: string;
   radiusXl: string;
+  radius2xl: string;
+  radius3xl: string;
 
   // Timing
   durationNormal: string;
@@ -217,6 +219,8 @@ export const THEME_CSS_VAR_MAP: Record<keyof ThemeColorSet, string> = {
   radiusMd: "--radius-md",
   radiusLg: "--radius-lg",
   radiusXl: "--radius-xl",
+  radius2xl: "--radius-2xl",
+  radius3xl: "--radius-3xl",
   durationNormal: "--duration-normal",
 };
 

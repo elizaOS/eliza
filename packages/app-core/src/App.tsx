@@ -29,6 +29,7 @@ import { DesktopWorkspaceSection } from "./components/settings/DesktopWorkspaceS
 import { FineTuningView } from "./components/settings/FineTuningView";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { Header } from "./components/shell/Header";
+import { AutomationsView } from "./components/pages/AutomationsView";
 import { HeartbeatsDesktopShell } from "./components/pages/HeartbeatsView";
 import { HeartbeatsView } from "./components/pages/HeartbeatsView";
 import { InventoryView } from "./components/pages/InventoryView";
@@ -146,9 +147,9 @@ function ViewRouter({
         );
       case "tasks":
         return (
-          <TabScrollView>
-            <TasksPageView />
-          </TabScrollView>
+          <TabContentView>
+            <AutomationsView />
+          </TabContentView>
         );
       case "character":
       case "character-select":
@@ -172,10 +173,11 @@ function ViewRouter({
             <ConnectorsPageView connectorDesktopPlacement="right" />
           </TabContentView>
         );
+      case "automations":
       case "triggers":
         return (
           <TabContentView>
-            <HeartbeatsView />
+            <AutomationsView />
           </TabContentView>
         );
       case "voice":
@@ -355,7 +357,7 @@ export function App() {
   const isCharacterPage =
     tab === "character" || tab === "character-select" || tab === "knowledge";
   const isWallets = tab === "inventory";
-  const isHeartbeats = tab === "triggers";
+  const isHeartbeats = tab === "triggers" || tab === "automations";
   const isSettingsPage = tab === "settings" || tab === "voice";
   const isAppsToolPage = isAppsToolTab(tab);
   const isDesktopWorkspacePage = tab === "desktop";
@@ -585,7 +587,7 @@ export function App() {
                       <ChatView />
                     </>
                   ) : (
-                    <ConnectorsPageView connectorDesktopPlacement="right" />
+                    <ConnectorsPageView />
                   )}
                 </div>
 
@@ -653,7 +655,7 @@ export function App() {
                       <ChatView key="chat-view-desktop" />
                     </>
                   ) : (
-                    <ConnectorsPageView connectorDesktopPlacement="right" />
+                    <ConnectorsPageView />
                   )}
                 </div>
                 {isChat ? (
@@ -682,7 +684,7 @@ export function App() {
         >
           <Header />
           <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-            <HeartbeatsDesktopShell key="heartbeats-view-desktop" />
+            <AutomationsView key="automations-view-desktop" />
           </div>
         </div>
       ) : isSettingsPage ? (

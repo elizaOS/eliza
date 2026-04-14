@@ -234,7 +234,7 @@ export function CommandPalette() {
   return (
     <Dialog
       open={commandPaletteOpen}
-      onOpenChange={(v) => {
+      onOpenChange={(v: boolean) => {
         if (!v) closeCommandPalette();
       }}
     >

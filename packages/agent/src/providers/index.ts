@@ -9,5 +9,6 @@ export * from "./simple-mode.js";
 export * from "./skill-provider.js";
 export * from "./ui-catalog.js";
 export * from "./user-name.js";
+export * from "./tasks.js";
 export * from "./workspace.js";
 export * from "./workspace-provider.js";

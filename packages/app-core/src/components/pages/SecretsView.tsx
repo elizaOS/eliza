@@ -385,7 +385,7 @@ function SecretPicker({
   return (
     <Dialog
       open
-      onOpenChange={(open) => {
+      onOpenChange={(open: boolean) => {
         if (!open) onClose();
       }}
     >

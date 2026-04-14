@@ -268,7 +268,7 @@ function CapabilitiesSection() {
         </div>
         <Switch
           checked={walletEnabled}
-          onCheckedChange={(checked) => setState("walletEnabled", !!checked)}
+          onCheckedChange={(checked: boolean | "indeterminate") => setState("walletEnabled", !!checked)}
           aria-label={t("settings.sections.capabilities.walletLabel", {
             defaultValue: "Enable Wallet",
           })}
@@ -290,7 +290,7 @@ function CapabilitiesSection() {
         </div>
         <Switch
           checked={browserEnabled}
-          onCheckedChange={(checked) => setState("browserEnabled", !!checked)}
+          onCheckedChange={(checked: boolean | "indeterminate") => setState("browserEnabled", !!checked)}
           aria-label={t("settings.sections.capabilities.browserLabel", {
             defaultValue: "Enable Browser",
           })}
@@ -445,7 +445,7 @@ function AdvancedSection() {
 
       <Dialog
         open={exportModalOpen}
-        onOpenChange={(open) => {
+        onOpenChange={(open: boolean) => {
           if (!open) closeExportModal();
         }}
       >
@@ -472,7 +472,7 @@ function AdvancedSection() {
               <Label className="flex items-center gap-2 font-normal text-muted">
                 <Checkbox
                   checked={exportIncludeLogs}
-                  onCheckedChange={(checked) =>
+                  onCheckedChange={(checked: boolean | "indeterminate") =>
                     setState("exportIncludeLogs", !!checked)
                   }
                 />
@@ -526,7 +526,7 @@ function AdvancedSection() {
 
       <Dialog
         open={importModalOpen}
-        onOpenChange={(open) => {
+        onOpenChange={(open: boolean) => {
           if (!open) closeImportModal();
         }}
       >

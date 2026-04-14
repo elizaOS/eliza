@@ -439,7 +439,7 @@ export function CustomActionEditor({
   return (
     <Dialog
       open={open}
-      onOpenChange={(nextOpen) => {
+      onOpenChange={(nextOpen: boolean) => {
         if (!nextOpen) onClose();
       }}
     >
@@ -594,7 +594,7 @@ export function CustomActionEditor({
               <div className="flex gap-2">
                 <Select
                   value={httpMethod}
-                  onValueChange={(value) => setHttpMethod(value as HttpMethod)}
+                  onValueChange={(value: string) => setHttpMethod(value as HttpMethod)}
                 >
                   <SelectTrigger
                     className={`w-auto min-w-[6.5rem] ${editorInputClassName}`}
@@ -766,7 +766,7 @@ export function CustomActionEditor({
                 <span className="flex items-center gap-1 text-xs text-muted cursor-pointer">
                   <Checkbox
                     checked={param.required}
-                    onCheckedChange={(checked) =>
+                    onCheckedChange={(checked: boolean | "indeterminate") =>
                       updateParameter(paramIdx, "required", !!checked)
                     }
                   />

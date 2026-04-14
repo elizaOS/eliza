@@ -54,7 +54,7 @@ export function ChatConversationRenameDialog({
   value,
 }: ChatConversationRenameDialogProps) {
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+    <Dialog open={open} onOpenChange={(nextOpen: boolean) => !nextOpen && onClose()}>
       <DialogContent
         data-testid="conv-rename-dialog"
         className="max-w-md"

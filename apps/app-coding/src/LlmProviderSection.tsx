@@ -32,7 +32,7 @@ export function LlmProviderSection({
         </SettingsControls.FieldLabel>
         <Select
           value={llmProvider}
-          onValueChange={(value) => setPref("PARALLAX_LLM_PROVIDER", value)}
+          onValueChange={(value: string) => setPref("PARALLAX_LLM_PROVIDER", value)}
         >
           <SettingsControls.SelectTrigger variant="compact">
             <SelectValue />

@@ -79,6 +79,8 @@ export const BSC_GOLD_THEME: ThemeDefinition = {
     radiusMd: "0.5rem",
     radiusLg: "0.75rem",
     radiusXl: "1rem",
+    radius2xl: "1.25rem",
+    radius3xl: "1.5rem",
     durationNormal: "150ms",
   },
   dark: {
@@ -147,6 +149,8 @@ export const BSC_GOLD_THEME: ThemeDefinition = {
     radiusMd: "0.5rem",
     radiusLg: "0.75rem",
     radiusXl: "1rem",
+    radius2xl: "1.25rem",
+    radius3xl: "1.5rem",
     durationNormal: "200ms",
   },
 };
@@ -222,6 +226,8 @@ export const NEON_CYBER_THEME: ThemeDefinition = {
     radiusMd: "0.25rem",
     radiusLg: "0.375rem",
     radiusXl: "0.5rem",
+    radius2xl: "0.625rem",
+    radius3xl: "0.75rem",
     durationNormal: "120ms",
   },
   dark: {
@@ -288,6 +294,8 @@ export const NEON_CYBER_THEME: ThemeDefinition = {
     radiusMd: "0.25rem",
     radiusLg: "0.375rem",
     radiusXl: "0.5rem",
+    radius2xl: "0.625rem",
+    radius3xl: "0.75rem",
     durationNormal: "120ms",
   },
 };
@@ -368,6 +376,8 @@ export const RETRO_90S_THEME: ThemeDefinition = {
     radiusMd: "0.75rem",
     radiusLg: "1rem",
     radiusXl: "1.25rem",
+    radius2xl: "1.5rem",
+    radius3xl: "1.75rem",
     durationNormal: "180ms",
   },
   dark: {
@@ -434,6 +444,8 @@ export const RETRO_90S_THEME: ThemeDefinition = {
     radiusMd: "0.75rem",
     radiusLg: "1rem",
     radiusXl: "1.25rem",
+    radius2xl: "1.5rem",
+    radius3xl: "1.75rem",
     durationNormal: "180ms",
   },
 };
@@ -516,6 +528,8 @@ export const COMIC_POP_THEME: ThemeDefinition = {
     radiusMd: "0.75rem",
     radiusLg: "1rem",
     radiusXl: "1.5rem",
+    radius2xl: "1.75rem",
+    radius3xl: "2rem",
     durationNormal: "200ms",
   },
   dark: {
@@ -582,6 +596,8 @@ export const COMIC_POP_THEME: ThemeDefinition = {
     radiusMd: "0.75rem",
     radiusLg: "1rem",
     radiusXl: "1.5rem",
+    radius2xl: "1.75rem",
+    radius3xl: "2rem",
     durationNormal: "200ms",
   },
 };
@@ -666,6 +682,8 @@ export const HACKER_TERMINAL_THEME: ThemeDefinition = {
     radiusMd: "0",
     radiusLg: "0",
     radiusXl: "0",
+    radius2xl: "0",
+    radius3xl: "0",
     durationNormal: "80ms",
   },
   dark: {
@@ -732,6 +750,8 @@ export const HACKER_TERMINAL_THEME: ThemeDefinition = {
     radiusMd: "0",
     radiusLg: "0",
     radiusXl: "0",
+    radius2xl: "0",
+    radius3xl: "0",
     durationNormal: "80ms",
   },
 };

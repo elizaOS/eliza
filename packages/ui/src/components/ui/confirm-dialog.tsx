@@ -50,7 +50,7 @@ export function ConfirmDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(nextOpen) => {
+      onOpenChange={(nextOpen: boolean) => {
         if (!nextOpen) onCancel();
       }}
     >
@@ -111,7 +111,7 @@ export function PromptDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(nextOpen) => {
+      onOpenChange={(nextOpen: boolean) => {
         if (!nextOpen) onCancel();
       }}
     >

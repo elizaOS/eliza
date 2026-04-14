@@ -5,7 +5,11 @@ import { DialogContent, DialogFooter, DialogHeader } from "./dialog";
 import { Input, type InputProps } from "./input";
 
 export interface AdminDialogContentProps
-  extends React.ComponentPropsWithoutRef<typeof DialogContent> {}
+  extends React.ComponentPropsWithoutRef<typeof DialogContent> {
+  className?: string;
+  children?: React.ReactNode;
+  container?: HTMLElement | null;
+}
 
 export function AdminDialogContent({
   className,

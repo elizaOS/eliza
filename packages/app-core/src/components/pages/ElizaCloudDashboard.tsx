@@ -1223,7 +1223,7 @@ export function CloudDashboard() {
               </div>
               <Switch
                 checked={autoTopUpEnabled}
-                onCheckedChange={(v) =>
+                onCheckedChange={(v: boolean) =>
                   dispatchAutoTopUpForm({ type: "setEnabled", value: v })
                 }
                 aria-label={t("elizaclouddashboard.ToggleAutoTopUp")}
@@ -1472,7 +1472,7 @@ export function CloudDashboard() {
 
       <Dialog
         open={checkoutDialogOpen}
-        onOpenChange={(open) => {
+        onOpenChange={(open: boolean) => {
           setCheckoutDialogOpen(open);
           if (!open) {
             void fetchBillingData();
