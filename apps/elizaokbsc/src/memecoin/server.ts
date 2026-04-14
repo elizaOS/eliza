@@ -47,13 +47,21 @@ import type {
   PortfolioPositionDetail,
 } from "./types";
 
+const ELIZAOK_ASSET_DIR = (() => {
+  const fromCwd = path.resolve(process.cwd(), "assets");
+  const fromApp = path.resolve(process.cwd(), "apps/elizaokbsc/assets");
+  try { require("fs").statSync(path.join(fromCwd, "avatar.png")); return fromCwd; } catch {}
+  try { require("fs").statSync(path.join(fromApp, "avatar.png")); return fromApp; } catch {}
+  return fromCwd;
+})();
+
 const ELIZAOK_LOGO_ASSET_PATHS = [
-  path.resolve(process.cwd(), "apps/elizaokbsc/assets/elizaok-logo.png"),
-  path.resolve(process.cwd(), "apps/elizaokbsc/assets/avatar.png"),
+  path.join(ELIZAOK_ASSET_DIR, "elizaok-logo.png"),
+  path.join(ELIZAOK_ASSET_DIR, "avatar.png"),
 ];
 
 const ELIZAOK_BANNER_ASSET_PATHS = [
-  path.resolve(process.cwd(), "apps/elizaokbsc/assets/elizaok-logo.png"),
+  path.join(ELIZAOK_ASSET_DIR, "elizaok-logo.png"),
 ];
 
 async function loadSnapshotFromDisk(
@@ -1308,15 +1316,15 @@ function buildPortfolioPositionDetail(
 }
 
 function renderBrandLogoImage(className = "brand-image"): string {
-  return `<img class="${className}" src="/assets/elizaok-logo.png" alt="ElizaOK logo" />`;
+  return `<img class="${className}" src="/assets/avatar.png" alt="ElizaOK" />`;
 }
 
 function renderHeadBrandAssets(title: string): string {
   const safeTitle = escapeHtml(title);
   return `
   <title>${safeTitle}</title>
-  <link rel="icon" type="image/png" href="/assets/elizaok-logo.png" />
-  <link rel="apple-touch-icon" href="/assets/elizaok-logo.png" />
+  <link rel="icon" type="image/png" href="/assets/avatar.png" />
+  <link rel="apple-touch-icon" href="/assets/avatar.png" />
   <meta property="og:title" content="${safeTitle}" />
   <meta property="og:image" content="/assets/elizaok-logo.png" />
   <meta name="twitter:card" content="summary" />
@@ -2551,6 +2559,9 @@ function renderAirdropPage(
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>elizaOK · Airdrop</title>
+<link rel="icon" type="image/png" href="/assets/avatar.png" />
+<link rel="apple-touch-icon" href="/assets/avatar.png" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet" />
 <style>
@@ -2569,7 +2580,10 @@ function renderAirdropPage(
   --white:rgba(20,20,18,0.88);--muted:rgba(20,20,18,0.42);
   --dot-color:20,20,18;
 }
-html,body{min-height:100%;background:var(--bg);color:var(--white);transition:background .3s,color .3s;}
+html,body{min-height:100%;background:var(--bg);color:var(--white);transition:background .3s,color .3s;-webkit-overflow-scrolling:touch;}
+html{scrollbar-width:none;}
+html::-webkit-scrollbar{display:none;}
+body{overscroll-behavior-y:contain;}
 canvas#airdrop-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.09;}
 [data-theme="light"] canvas#airdrop-canvas{opacity:.05;}
 [data-theme="light"] .a-hero{background:#fff;border-color:var(--border);}
@@ -2627,17 +2641,37 @@ canvas#airdrop-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opaci
 .a-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;}
 @media(max-width:700px){.a-grid{grid-template-columns:1fr;}}
 @media(max-width:640px){
-.a-hero h1{font-size:18px;}
-.a-hero p{font-size:12px;}
-.a-hero{flex-direction:column;gap:12px;}
-.a-checker{padding:16px;}
+.a-wrap{padding:16px 12px 40px;}
+.a-topbar{margin-bottom:16px;gap:8px;}
+.a-logo{font-size:15px;gap:8px;}
+.a-logo-avatar{width:26px;height:26px;}
+.a-nav{gap:5px;}
+.a-nav a,.a-nav button.a-nav-btn{font-size:9px;padding:4px 8px;}
+.a-hero{padding:18px 16px;margin-bottom:16px;gap:12px;flex-direction:column;border-radius:12px;}
+.a-hero h1{font-size:16px;gap:10px;}
+.a-hero-avatar{width:36px;height:36px;}
+.a-hero p{font-size:11px;line-height:1.5;}
+.a-stats{grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px;}
+.a-stat{padding:14px 12px;border-radius:8px;}
+.a-stat__label{font-size:9px;}
+.a-stat__val{font-size:18px;}
+.a-stat__sub{font-size:9px;}
+.a-checker{padding:14px;margin-bottom:16px;border-radius:10px;}
+.a-checker h2{font-size:10px;margin-bottom:12px;}
 .a-input{min-width:0;font-size:12px;padding:8px 10px;}
 .a-btn{font-size:12px;padding:8px 14px;}
-.a-card{padding:14px;}
+.a-grid{grid-template-columns:1fr;gap:10px;margin-bottom:16px;}
+.a-card{padding:14px;border-radius:10px;}
 .a-card h2{font-size:10px;margin-bottom:10px;}
-.a-kv{font-size:11px;flex-direction:column;gap:2px;padding:6px 0;}
-.a-kv strong{text-align:left;}
-.a-stat__val{font-size:18px;}
+.a-kv{font-size:11px;gap:4px;padding:6px 0;}
+.a-kv span{font-size:10px;}
+.a-kv strong{text-align:right;font-size:10px;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.a-table-wrap{border-radius:10px;}
+.a-td{padding:6px 10px;font-size:10px;}
+th.a-th{padding:6px 10px;font-size:9px;}
+.a-note{padding:10px 12px;font-size:11px;border-radius:8px;}
+.a-badge{font-size:10px;padding:4px 10px;}
+.a-footer{margin-top:24px;font-size:9px;}
 }
 .a-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:20px;overflow:hidden;opacity:0;transform:translateY(16px);animation:aCardIn .5s ease forwards;}
 .a-stat{opacity:0;transform:translateY(12px);animation:aCardIn .4s ease forwards;}
@@ -2697,8 +2731,8 @@ th.a-th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(-
 
   <div class="a-hero">
     <div>
-      <h1><img class="a-hero-avatar" src="/assets/avatar.png" alt="elizaOK" /><span>elizaOK</span> · Airdrop Eligibility</h1>
-      <p>The treasury flywheel distributes gains back to qualified $ElizaOK holders. Check if your wallet qualifies for the current airdrop cycle and view the distribution plan.</p>
+      <h1><img class="a-hero-avatar" src="/assets/avatar.png" alt="elizaOK" /><span>elizaOK</span> · <span data-i18n="空投资格">Airdrop Eligibility</span></h1>
+      <p data-i18n="国库飞轮将收益分配给合格的 $ElizaOK 持有者。检查您的钱包是否有资格参与当前空投周期并查看分配计划。">The treasury flywheel distributes gains back to qualified $ElizaOK holders. Check if your wallet qualifies for the current airdrop cycle and view the distribution plan.</p>
     </div>
     <div>
       <div class="a-badge ${execEnabled ? "a-badge--live" : "a-badge--standby"}">${execEnabled ? (execDryRun ? "DRY RUN" : "LIVE") : "STANDBY"}</div>
@@ -2742,7 +2776,7 @@ th.a-th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(-
   ${distNote ? `<div class="a-note">${escapeHtml(distNote)}</div>` : ""}
 
   <div class="a-checker">
-    <h2>Check Wallet Eligibility</h2>
+    <h2 data-i18n="检查钱包资格">Check Wallet Eligibility</h2>
     <div class="a-input-row">
       <input id="wallet-input" class="a-input" type="text" placeholder="Enter wallet address (0x…)" autocomplete="off" spellcheck="false" />
       <button class="a-btn" onclick="checkWallet()">Check</button>
@@ -2752,7 +2786,7 @@ th.a-th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(-
 
   <div class="a-grid">
     <div class="a-card">
-      <h2>Airdrop Asset</h2>
+      <h2 data-i18n="空投资产">Airdrop Asset</h2>
       <div class="a-kv"><span>Mode</span><strong class="yellow">${escapeHtml(selectedAsset.mode ?? "—")}</strong></div>
       <div class="a-kv"><span>Token</span><strong>${escapeHtml(selectedAsset.tokenSymbol ?? "—")}</strong></div>
       <div class="a-kv"><span>Total Amount</span><strong>${escapeHtml(String(selectedAsset.totalAmount ?? "—"))}</strong></div>
@@ -2761,7 +2795,7 @@ th.a-th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(-
       ${selectedAsset.reason ? `<div class="a-kv"><span>Reason</span><strong style="font-size:10px;color:var(--muted);max-width:160px;white-space:normal;">${escapeHtml(selectedAsset.reason)}</strong></div>` : ""}
     </div>
     <div class="a-card">
-      <h2>Execution State</h2>
+      <h2 data-i18n="执行状态">Execution State</h2>
       <div class="a-kv"><span>Enabled</span><strong class="${execEnabled ? "green" : ""}">${execEnabled ? "YES" : "NO"}</strong></div>
       <div class="a-kv"><span>Mode</span><strong class="yellow">${execDryRun ? "Dry Run" : "LIVE"}</strong></div>
       <div class="a-kv"><span>Max/Run</span><strong>${escapeHtml(String((distributionExecution as any)?.maxRecipientsPerRun ?? "—"))}</strong></div>
@@ -2776,7 +2810,7 @@ th.a-th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(-
   </div>` : ""}
 
   <div class="a-table-wrap">
-    <h2>Recipient List (top ${Math.min(20, recipients.length)} of ${recipients.length})</h2>
+    <h2 data-i18n="接收者列表 (前 ${Math.min(20, recipients.length)} / 共 ${recipients.length})">Recipient List (top ${Math.min(20, recipients.length)} of ${recipients.length})</h2>
     ${recipients.length === 0
       ? `<div class="a-empty">No recipients in current distribution plan.</div>`
       : `<table class="a-table">
@@ -2791,7 +2825,7 @@ th.a-th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(-
   </div>
 
   <div class="a-table-wrap">
-    <h2>Distribution Ledger (last ${Math.min(15, ledgerRecords.length)} records)</h2>
+    <h2 data-i18n="分配账本 (最近 ${Math.min(15, ledgerRecords.length)} 条记录)">Distribution Ledger (last ${Math.min(15, ledgerRecords.length)} records)</h2>
     ${ledgerRecords.length === 0
       ? `<div class="a-empty">No ledger records yet.</div>`
       : `<table class="a-table">
@@ -2805,7 +2839,7 @@ th.a-th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(-
         </table>`}
   </div>
 
-  <div class="a-footer">elizaOK · Powered by elizaOS · Airdrop flywheel on BNB Chain</div>
+  <div class="a-footer" data-i18n="elizaOK · 由 elizaOS 驱动 · BNB Chain 空投飞轮">elizaOK · Powered by elizaOS · Airdrop flywheel on BNB Chain</div>
 </div>
 
 <script>
@@ -2830,8 +2864,6 @@ window.airToggleTheme = function() {
 
 var _airI18n = {
   'Airdrop Eligibility': '空投资格',
-  'The treasury flywheel distributes gains back to qualified $ElizaOK holders. Check if your wallet qualifies for the current airdrop cycle and view the distribution plan.':
-    '国库飞轮将收益分配给合格的 $ElizaOK 持有者。检查你的钱包是否有资格参与当前空投周期。',
   'Distribution Pool': '分配池',
   'treasury allocation': '国库分配',
   'Eligible Holders': '合格持有者',
@@ -2840,12 +2872,11 @@ var _airI18n = {
   'this cycle': '本周期',
   'Dry Run Count': '模拟次数',
   'simulated sends': '模拟发送',
-  'Portfolio Value': '组合价值',
+  'Portfolio Value': '投资组合价值',
   'gross treasury': '国库总值',
-  'Recipients in Plan': '计划接收者',
+  'Recipients in Plan': '计划中接收者',
   'snapshot recipients': '快照接收者',
   'Check Wallet Eligibility': '检查钱包资格',
-  'Enter wallet address (0x…)': '输入钱包地址 (0x…)',
   'Check': '检查',
   'Airdrop Asset': '空投资产',
   'Execution State': '执行状态',
@@ -2857,27 +2888,85 @@ var _airI18n = {
   'Dashboard': '仪表盘',
   'Docs': '文档',
   'Airdrop': '空投',
+  'Goo': '竞技场',
   'Connect Cloud': '连接云端',
-  'Mode': '模式', 'Token': '代币', 'Total Amount': '总数量',
-  'Wallet Balance': '钱包余额', 'Quote USD': '报价 USD', 'Reason': '原因',
-  'Enabled': '已启用', 'Max/Run': '每次最大', 'Wallet': '钱包', 'Next Action': '下一步操作',
+  'Mode': '模式',
+  'Token': '代币',
+  'Total Amount': '总数量',
+  'Wallet Balance': '钱包余额',
+  'Quote USD': '报价 USD',
+  'Reason': '原因',
+  'Enabled': '已启用',
+  'Max/Run': '每次最大',
+  'Wallet': '钱包',
+  'Next Action': '下一步操作',
+  'NO': '否',
+  'YES': '是',
+  'Dry Run': '模拟运行',
+  'Address': '地址',
+  'Balance': '余额',
+  'Share': '份额',
+  'Type': '类型',
+  'Amount': '数量',
+  'Status': '状态',
+  'Time': '时间',
+  'STANDBY': '待机中',
+  'none': '无',
+  'Last scan:': '上次扫描：',
 };
 var _airLangActive = false;
+var _airI18nLong = {
+  'Distribution planning is disabled': '分配计划已禁用。请启用并提供持有者代币或快照来构建空投清单。',
+  'No treasury position passed': '没有国库仓位通过当前分配资产策略。',
+  'No recipients in current': '当前分配计划中没有接收者。',
+  'No ledger records yet': '暂无账本记录。',
+  'No distribution plan loaded': '尚未加载分配计划。代理尚未运行分配扫描。',
+  'Enable ELIZAOK_DISTRIBUTION': '启用 ELIZAOK_DISTRIBUTION_EXECUTION_ENABLED 环境变量。',
+  'This wallet is not in': '✗ 此钱包不在当前空投计划中。资格基于快照时的 $ElizaOK 持有门槛。',
+  'paper-only position': '仅模拟仓位',
+  'wallet verification is unverified': '钱包验证未通过',
+  'wallet balance is empty': '钱包余额为空',
+  'wallet quote is unavailable': '钱包报价不可用',
+  'unrealized PnL': '未实现盈亏',
+  'is not positive': '非正值',
+  'below 10 USD': '低于 10 美元',
+  'Recipient List': '接收者列表',
+  'Distribution Ledger': '分配账本',
+  'Airdrop Eligibility': '空投资格',
+  'The treasury flywheel': '国库飞轮将收益分配给合格的 $ElizaOK 持有者。检查您的钱包是否有资格参与当前空投周期并查看分配计划。',
+  'Last scan': '上次扫描',
+};
 window.airToggleLang = function() {
   _airLangActive = !_airLangActive;
   var btn = document.getElementById('airdrop-lang-toggle');
   if (btn) btn.textContent = _airLangActive ? 'EN' : '中';
-  var allText = document.querySelectorAll('.a-wrap *:not(script):not(style)');
+  document.querySelectorAll('.a-wrap [data-i18n]').forEach(function(el){
+    if (_airLangActive) { el.setAttribute('data-orig', el.textContent); el.textContent = el.getAttribute('data-i18n'); }
+    else if (el.getAttribute('data-orig')) { el.textContent = el.getAttribute('data-orig'); el.removeAttribute('data-orig'); }
+  });
+  var allText = document.querySelectorAll('.a-wrap *:not(script):not(style):not([data-i18n])');
   for (var i = 0; i < allText.length; i++) {
     var el = allText[i];
-    if (el.children.length > 0) continue;
+    if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName === 'IMG') continue;
+    var hasKids = false;
+    for (var c = 0; c < el.children.length; c++) { if (el.children[c].tagName !== 'IMG' && el.children[c].tagName !== 'SPAN' && el.children[c].tagName !== 'STRONG' && el.children[c].tagName !== 'BR') { hasKids = true; break; } }
+    if (hasKids) continue;
+    var textNodes = [];
+    el.childNodes.forEach(function(n){ if (n.nodeType === 3 && n.textContent.trim()) textNodes.push(n); });
+    if (textNodes.length === 0) continue;
     var txt = el.textContent.trim();
-    if (_airLangActive && _airI18n[txt]) {
-      el.setAttribute('data-orig', txt);
-      el.textContent = _airI18n[txt];
-    } else if (!_airLangActive && el.getAttribute('data-orig')) {
-      el.textContent = el.getAttribute('data-orig');
-      el.removeAttribute('data-orig');
+    if (_airLangActive) {
+      if (_airI18n[txt]) { el.setAttribute('data-orig-html', el.innerHTML); el.textContent = _airI18n[txt]; continue; }
+      for (var key in _airI18nLong) {
+        if (txt.indexOf(key) !== -1 && !el.getAttribute('data-orig-html')) {
+          el.setAttribute('data-orig-html', el.innerHTML);
+          el.textContent = _airI18nLong[key];
+          break;
+        }
+      }
+    } else if (!_airLangActive && el.getAttribute('data-orig-html')) {
+      el.innerHTML = el.getAttribute('data-orig-html');
+      el.removeAttribute('data-orig-html');
     }
   }
 };
@@ -3056,6 +3145,8 @@ function renderGooPaperPage(
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Goo Agent Arena | elizaOK</title>
+<link rel="icon" type="image/png" href="/assets/avatar.png" />
+<link rel="apple-touch-icon" href="/assets/avatar.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <style>
@@ -3071,7 +3162,8 @@ function renderGooPaperPage(
   --goo-r:16px;--goo-r-sm:8px;
   font-family:'Inter',system-ui,sans-serif;
 }
-html,body{min-height:100%;background:var(--goo-bg);color:var(--goo-text);}
+html,body{min-height:100%;background:var(--goo-bg);color:var(--goo-text);-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;}
+html{scrollbar-width:none;}html::-webkit-scrollbar{display:none;}
 [data-theme="dark"]{
   --goo-brand:#00C7D2;--goo-brand-bg:rgba(0,199,210,.12);
   --goo-warn:#eab308;--goo-warn-bg:rgba(234,179,8,.1);
@@ -3190,14 +3282,36 @@ html,body{min-height:100%;background:var(--goo-bg);color:var(--goo-text);}
 .goo-empty__text{font-size:13px;margin-bottom:16px;}
 
 @media(max-width:768px){
-  .goo-stats{grid-template-columns:repeat(3,1fr);}
-  .goo-agent-row{flex-wrap:wrap;gap:8px;}
+  .goo-stats{grid-template-columns:repeat(3,1fr);gap:8px;}
+  .goo-agent-row{flex-wrap:wrap;gap:8px;padding:14px;}
   .goo-agent-row__metrics,.goo-agent-row__actions{width:100%;text-align:left;}
-  .goo-topbar{flex-direction:column;align-items:flex-start;}
+  .goo-topbar{flex-direction:column;align-items:flex-start;gap:10px;padding:12px 16px;}
+  .goo-nav{flex-wrap:wrap;gap:4px;}
+  .goo-nav a{font-size:10px;padding:4px 10px;}
+  .goo-flywheel{flex-direction:column;}
+  .goo-flywheel-node{font-size:10px;padding:8px;}
 }
 @media(max-width:480px){
-  .goo-stats{grid-template-columns:repeat(2,1fr);}
-  .goo-wrap{padding:16px 12px 40px;}
+  .goo-stats{grid-template-columns:repeat(2,1fr);gap:6px;}
+  .goo-stat{padding:12px 10px;}
+  .goo-stat__val{font-size:18px;}
+  .goo-stat__label{font-size:8px;}
+  .goo-wrap{padding:12px 10px 40px;}
+  .goo-topbar__logo{font-size:14px;}
+  .goo-topbar__logo img{width:24px;height:24px;}
+  .goo-topbar__sub{font-size:9px;}
+  .goo-agent-row__rank{font-size:12px;min-width:24px;}
+  .goo-agent-row__ticker{font-size:10px;}
+  .goo-agent-row__name{font-size:11px;}
+  .goo-agent-row__badge{font-size:8px;padding:2px 6px;}
+  .goo-agent-row__strat{font-size:9px;}
+  .goo-agent-row__detail{font-size:9px;}
+  .goo-agent-row__pnl{font-size:12px;}
+  .goo-agent-row__score{font-size:11px;}
+  .goo-filters{gap:4px;flex-wrap:wrap;}
+  .goo-filter{font-size:9px;padding:3px 8px;}
+  .goo-section-title{font-size:12px;}
+  .goo-btn{font-size:10px;height:26px;padding:0 10px;}
 }
 </style>
 </head>
@@ -3549,6 +3663,8 @@ function renderGooAgentDetail(agent: GooPaperAgent): string {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>${escapeHtml(agent.agentName)} | Goo Arena</title>
+<link rel="icon" type="image/png" href="/assets/avatar.png" />
+<link rel="apple-touch-icon" href="/assets/avatar.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <style>
@@ -5192,6 +5308,9 @@ function renderHtml(
       -webkit-font-smoothing: antialiased;
       transition: background .3s, color .3s;
     }
+    html { scrollbar-width: none; }
+    html::-webkit-scrollbar { display: none; }
+    body { overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
     ::-webkit-scrollbar { width: 3px; height: 3px; }
     ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
     a { color: inherit; text-decoration: none; }
@@ -5633,6 +5752,20 @@ function renderHtml(
       .panel-row--3 { grid-template-columns: 1fr; }
       .panel-row--2 { grid-template-columns: 1fr; }
       .panel-row--2-3 { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .header { padding: 8px 12px; }
+      .header__logo span { font-size: 12px; }
+      .header__nav { gap: 4px; }
+      .header__nav a, .header__nav button { font-size: 9px; padding: 4px 8px; }
+      .main { padding: 10px 8px; }
+      .panel { border-radius: 10px; }
+      .panel__title { font-size: 0.6rem; }
+      .feature-card { padding: 10px; }
+      .feature-card__pct { font-size: 1.1rem; }
+      .feature-card__val { font-size: 0.72rem; }
+      .feature-card__label { font-size: 0.52rem; }
+      .split-grid { grid-template-columns: 1fr; }
     }
 
     /* ─── FEATURE DOCK ──────────────────────── */
@@ -6908,7 +7041,8 @@ ${renderHeadBrandAssets(t.title)}
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 :root{--bg:#0a0a09;--surface:rgba(18,18,16,.92);--surface2:rgba(26,26,22,.75);--border:rgba(246,231,15,.1);--border2:rgba(246,231,15,.18);--text:#f5f5f0;--dim:rgba(245,245,240,.45);--yellow:#F6E70F;--yr:246,231,15;--green:#22c55e;--red:#ef4444;--cyan:#00C7D2;--purple:#8b5cf6;--orange:#f59e0b;}
-body{background:var(--bg);color:var(--text);font-family:'Martian Mono',monospace;line-height:1.7;overflow-x:hidden;}
+html{scrollbar-width:none;}html::-webkit-scrollbar{display:none;}
+body{background:var(--bg);color:var(--text);font-family:'Martian Mono',monospace;line-height:1.7;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;}
 body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;background:
   radial-gradient(ellipse 600px 400px at 10% 10%, rgba(246,231,15,.04), transparent),
   radial-gradient(ellipse 500px 500px at 90% 20%, rgba(0,199,210,.03), transparent),
@@ -7008,6 +7142,20 @@ details[open] summary::before{transform:rotate(90deg);}
   .doc-topbar__right{flex-wrap:wrap;gap:4px;}
   .doc-btn{padding:5px 10px;font-size:8px;}
   .doc-avatar{width:28px;height:28px;}
+  .doc-main{padding:20px 14px;}
+  h2{font-size:14px;margin-bottom:14px;padding-bottom:8px;}
+  h3{font-size:11px;margin:16px 0 8px;}
+  section .doc-content{padding:16px 14px;border-radius:12px;}
+  .doc-content{font-size:11.5px;line-height:1.7;}
+  .doc-flywheel{flex-direction:column;}
+  .doc-fw-node{min-width:0;padding:10px 12px;font-size:10px;}
+  .doc-strat-grid{grid-template-columns:1fr;}
+  .doc-strat{font-size:9px;padding:7px 10px;}
+  .doc-table td{padding:6px 8px;font-size:9.5px;}
+  .doc-table td:first-child{white-space:normal;}
+  .doc-rm-item{font-size:9.5px;padding-left:16px;}
+  .doc-faq summary{font-size:10px;padding:10px 12px;}
+  .doc-faq p{font-size:10px;padding:6px 12px 12px;}
 }
 </style></head><body>
 <div class="doc-topbar">
@@ -7394,7 +7542,7 @@ async function handleRequest(
   }
 
   if (pathname === "/assets/avatar.png") {
-    const avatarPath = path.resolve(process.cwd(), "apps/elizaokbsc/assets/avatar.png");
+    const avatarPath = path.join(ELIZAOK_ASSET_DIR, "avatar.png");
     try {
       const content = await readFile(avatarPath);
       res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=86400" });
@@ -7407,7 +7555,7 @@ async function handleRequest(
   }
 
   if (pathname === "/assets/bgm.mp3") {
-    const mp3Path = path.resolve(process.cwd(), "apps/elizaokbsc/assets/bgm.mp3");
+    const mp3Path = path.join(ELIZAOK_ASSET_DIR, "bgm.mp3");
     try {
       const stat = await import("fs/promises").then(m => m.stat(mp3Path));
       const total = stat.size;
@@ -7444,7 +7592,7 @@ async function handleRequest(
   }
 
   if (pathname === "/assets/videobg.mp4") {
-    const videoPath = path.resolve(process.cwd(), "apps/elizaokbsc/assets/videobg.mp4");
+    const videoPath = path.join(ELIZAOK_ASSET_DIR, "videobg.mp4");
     try {
       const stat = await import("fs/promises").then(m => m.stat(videoPath));
       const total = stat.size;
