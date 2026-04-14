@@ -199,8 +199,11 @@ function readCompatEnabledFromConfig(
     return value as Record<string, unknown>;
   };
 
+  const legacyStreaming = asRecord(
+    (config as Record<string, unknown>).streaming,
+  );
   const container =
-    asRecord(config.connectors)?.[pluginId] ?? asRecord(config.streaming)?.[pluginId];
+    asRecord(config.connectors)?.[pluginId] ?? legacyStreaming?.[pluginId];
   const value = asRecord(container)?.enabled;
   return typeof value === "boolean" ? value : null;
 }
