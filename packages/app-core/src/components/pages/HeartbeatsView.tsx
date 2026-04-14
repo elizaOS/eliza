@@ -1,15 +1,5 @@
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { SidebarCollapsedActionButton } from "@elizaos/ui/components/composites/sidebar/sidebar-collapsed-rail";
-import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
-import { SidebarHeader } from "@elizaos/ui/components/composites/sidebar/sidebar-header";
-import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
-import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
-import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { FieldLabel } from "@elizaos/ui/components/ui/field";
-import { NewActionButton } from "@elizaos/ui/components/ui/new-action-button";
-import { StatusBadge, StatusDot } from "@elizaos/ui/components/ui/status-badge";
-import { PageLayout } from "@elizaos/ui/layouts/page-layout/page-layout";
+
+
 import { Plus } from "lucide-react";
 import {
   createContext,
@@ -28,6 +18,7 @@ import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import { HeartbeatForm } from "./HeartbeatForm";
 import {
+import { PagePanel, SidebarCollapsedActionButton, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, FieldLabel, NewActionButton, StatusBadge, StatusDot, PageLayout } from "@elizaos/ui";
   BUILT_IN_TEMPLATES,
   buildCreateRequest,
   buildUpdateRequest,

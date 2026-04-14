@@ -1,9 +1,9 @@
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { Badge } from "@elizaos/ui/components/ui/badge";
-import { Button } from "@elizaos/ui/components/ui/button";
+
+
 import { useEffect, useRef } from "react";
 import type { ColumnInfo } from "../../api";
 import { useApp } from "../../state";
+import { PagePanel, Badge, Button } from "@elizaos/ui";
 
 export type DbView = "tables" | "query";
 export type SortDir = "asc" | "desc" | null;

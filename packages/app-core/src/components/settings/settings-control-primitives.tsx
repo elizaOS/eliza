@@ -1,10 +1,7 @@
-import {
-  Field,
-  FieldDescription,
-  FieldLabel,
-} from "@elizaos/ui/components/ui/field";
-import { cn } from "@elizaos/ui/lib/utils";
+
+
 import * as React from "react";
+import { Field, FieldDescription, FieldLabel, cn } from "@elizaos/ui";
 
 export function SettingsField({
   className,

@@ -8,9 +8,7 @@
 
 import type { ResolvedContentPack } from "@elizaos/shared/contracts/content-pack";
 import { BUILTIN_THEMES } from "@elizaos/shared/themes/presets";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Card, CardContent } from "@elizaos/ui/components/ui/card";
-import { Input } from "@elizaos/ui/components/ui/input";
+
 import { Check, Moon, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -21,6 +19,7 @@ import {
   releaseLoadedContentPack,
 } from "../../content-packs";
 import {
+import { Button, Card, CardContent, Input } from "@elizaos/ui";
   loadPersistedActivePackUrl,
   savePersistedActivePackUrl,
   useApp,

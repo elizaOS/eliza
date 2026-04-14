@@ -1,7 +1,8 @@
 import { useApp } from "../../state/useApp";
-import { Button } from "@elizaos/ui/components/ui/button";
+
 import { useBranding } from "../../config/branding";
 import { getOnboardingNavMetas } from "../../onboarding/flow";
+import { Button } from "@elizaos/ui";
 
 export function OnboardingStepNav() {
   const { onboardingStep, handleOnboardingJumpToStep, t } = useApp();

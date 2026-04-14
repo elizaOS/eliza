@@ -1,12 +1,5 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@elizaos/ui/components/ui/dialog";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { Switch } from "@elizaos/ui/components/ui/switch";
+
+
 import {
   AlertCircle,
   CircleDollarSign,
@@ -33,6 +26,7 @@ import { openExternalUrl } from "../../utils";
 import { StripeEmbeddedCheckout } from "../cloud/StripeEmbeddedCheckout";
 import { AgentDetailSidebar, CloudAgentCard } from "./cloud-dashboard-panels";
 import {
+import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, Input, Switch } from "@elizaos/ui";
   autoTopUpFormReducer,
   BILLING_PRESET_AMOUNTS,
   buildAutoTopUpFormState,

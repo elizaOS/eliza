@@ -1,4 +1,4 @@
-import { Badge } from "@elizaos/ui/components/ui/badge";
+
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
@@ -18,6 +18,7 @@ import {
 } from "../../../../hooks";
 import { WidgetSection } from "../shared";
 import type {
+import { Badge } from "@elizaos/ui";
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "../types";

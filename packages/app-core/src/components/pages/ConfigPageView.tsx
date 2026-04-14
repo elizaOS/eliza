@@ -7,13 +7,7 @@
  */
 
 import type { WalletRpcSelections } from "@elizaos/shared/contracts/wallet";
-import { Button } from "@elizaos/ui/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@elizaos/ui/components/ui/dialog";
+
 import { useCallback, useEffect, useState } from "react";
 import { useApp } from "../../state";
 import {
@@ -30,6 +24,7 @@ import {
   SOLANA_RPC_OPTIONS,
 } from "./config-page-sections";
 import { SecretsView } from "./SecretsView";
+import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from "@elizaos/ui";
 
 /* ── ConfigPageView ──────────────────────────────────────────────────── */
 

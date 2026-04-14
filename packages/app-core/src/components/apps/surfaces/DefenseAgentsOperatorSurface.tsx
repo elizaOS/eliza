@@ -1,9 +1,10 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
+
+
 import { useCallback, useMemo, useState } from "react";
 import { client } from "../../../api";
 import { useApp } from "../../../state";
 import type { AppOperatorSurfaceProps } from "./types";
+import { Button, Input } from "@elizaos/ui";
 
 function DetailCard({ label, value }: { label: string; value: string }) {
   return (

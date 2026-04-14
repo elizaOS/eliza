@@ -1,9 +1,10 @@
-import { SegmentedControl } from "@elizaos/ui/components/ui/segmented-control";
+
 import type { ReactNode } from "react";
 import { useApp } from "../../state";
 import { DatabaseView } from "./DatabaseView";
 import { MediaGalleryView } from "./MediaGalleryView";
 import { VectorBrowserView } from "./VectorBrowserView";
+import { SegmentedControl } from "@elizaos/ui";
 
 export function DatabasePageView({
   contentHeader,

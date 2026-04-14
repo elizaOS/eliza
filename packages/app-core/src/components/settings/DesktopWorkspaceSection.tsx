@@ -1,13 +1,5 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@elizaos/ui/components/ui/card";
-import { Textarea } from "@elizaos/ui/components/ui/textarea";
-import { ContentLayout } from "@elizaos/ui/layouts/content-layout/content-layout";
+
+
 import { Monitor, RefreshCw } from "lucide-react";
 import {
   type ReactNode,
@@ -21,6 +13,7 @@ import { useApp } from "../../state";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { resolveApiUrl } from "../../utils/asset-url";
 import {
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Textarea, ContentLayout } from "@elizaos/ui";
   DESKTOP_WORKSPACE_SURFACES,
   type DesktopClickAuditItem,
   type DesktopWorkspaceSnapshot,

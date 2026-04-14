@@ -1,4 +1,4 @@
-import { Button } from "@elizaos/ui/components/ui/button";
+
 import type { ProviderOption } from "../../../api";
 import { appNameInterpolationVars, useBranding } from "../../../config";
 import type {
@@ -16,6 +16,7 @@ import {
   onboardingChoiceCardTitleClassName,
 } from "../onboarding-form-primitives";
 import {
+import { Button } from "@elizaos/ui";
   OnboardingStepHeader,
   onboardingBodyTextShadowStyle,
   onboardingFooterClass,

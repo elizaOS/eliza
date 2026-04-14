@@ -4,9 +4,10 @@ import type {
 } from "../../api/client-types-chat";
 import { client } from "../../api/client";
 import { useApp } from "../../state/useApp";
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+
 import { formatByteSize } from "../../utils/format";
 import { useEffect, useState } from "react";
+import { PagePanel } from "@elizaos/ui";
 
 export function getKnowledgeTypeLabel(contentType?: string): string {
   return contentType?.split("/").pop()?.toUpperCase() || "DOC";

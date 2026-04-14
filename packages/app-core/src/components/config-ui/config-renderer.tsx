@@ -1,4 +1,4 @@
-import { Button } from "@elizaos/ui/components/ui/button";
+
 import React, {
   forwardRef,
   useCallback,
@@ -691,6 +691,7 @@ function AdvancedSectionToggle({
 
 // Import actual field renderers
 import { defaultRenderers } from "./config-field";
+import { Button } from "@elizaos/ui";
 
 /** The default registry wiring defaultCatalog → defaultRenderers. */
 export const defaultRegistry = defineRegistry(defaultCatalog, defaultRenderers);

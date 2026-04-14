@@ -1,5 +1,5 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
+
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type BabylonActivityItem,
@@ -35,6 +35,7 @@ import {
   toneForViewerAttachment,
 } from "../extensions/surface";
 import type { AppOperatorSurfaceProps } from "./types";
+import { Button, Input } from "@elizaos/ui";
 
 function extractWallet(value: unknown): BabylonWallet | null {
   if (!value || typeof value !== "object") return null;

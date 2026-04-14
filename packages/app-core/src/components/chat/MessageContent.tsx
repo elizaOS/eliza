@@ -9,8 +9,9 @@ import type { PatchOp, UiSpec } from "../../config/ui-spec";
 import { useApp } from "../../state/useApp";
 import type { ConfigUiHint } from "../../types";
 import { stripAssistantStageDirections } from "../../utils/assistant-text";
-import { Button } from "@elizaos/ui/components/ui/button";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@elizaos/ui";
 
 /** Reject prototype-pollution keys that should never be traversed or rendered. */
 const BLOCKED_IDS = new Set(["__proto__", "constructor", "prototype"]);

@@ -6,19 +6,9 @@
 
 import type { SkillInfo, SkillMarketplaceResult } from "../../api";
 import { useApp } from "../../state";
-import {
-  AdminDialog,
-  AdminDialogContent,
-  AdminDialogHeader,
-  AdminInput,
-} from "@elizaos/ui/components/ui/admin-dialog";
-import { Button } from "@elizaos/ui/components/ui/button";
-import {
-  Dialog,
-  DialogDescription,
-  DialogTitle,
-} from "@elizaos/ui/components/ui/dialog";
+
 import { useState } from "react";
+import { AdminDialog, AdminDialogContent, AdminDialogHeader, AdminInput, Button, Dialog, DialogDescription, DialogTitle } from "@elizaos/ui";
 
 /* ── Marketplace Result Card ────────────────────────────────────────── */
 

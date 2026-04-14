@@ -1,11 +1,10 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { Textarea } from "@elizaos/ui/components/ui/textarea";
-import { ThemedSelect } from "@elizaos/ui/components/ui/themed-select";
+
+
 import type { MessageExampleGroup } from "@elizaos/core";
 import type { ChangeEvent, KeyboardEvent } from "react";
 import type { CharacterData } from "../../api/client-types-config";
 import { EDGE_BACKUP_VOICES, PREMADE_VOICES } from "../../voice/types";
+import { Button, Input, Textarea, ThemedSelect } from "@elizaos/ui";
 
 /* ── Inline SVG icon helpers ─────────────────────────────────────── */
 const svgBase = {

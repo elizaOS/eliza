@@ -8,14 +8,7 @@ import type {
 } from "../../api/client-types-config";
 import type { StreamEventEnvelope } from "../../api/client-types-core";
 import { formatTime } from "../../utils/format";
-import { Button } from "@elizaos/ui/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectValue,
-} from "@elizaos/ui/components/ui/select";
-import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
+import { Button, Select, SelectContent, SelectItem, SelectValue, SettingsControls } from "@elizaos/ui";
 
 /* ── Constants ─────────────────────────────────────────────────────── */
 

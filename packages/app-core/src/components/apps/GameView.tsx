@@ -9,8 +9,7 @@
  */
 
 import { packageNameToAppRouteSlug } from "@elizaos/shared/contracts/apps";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type AppRunSummary,
@@ -33,6 +32,7 @@ import type { DesktopClickAuditItem } from "../../utils/desktop-workspace";
 import { formatTime } from "../../utils/format";
 import { getAppOperatorSurface } from "./surfaces/registry";
 import {
+import { Button, Input } from "@elizaos/ui";
   buildViewerSessionKey,
   resolveEmbeddedViewerUrl,
   resolvePostMessageTargetOrigin,

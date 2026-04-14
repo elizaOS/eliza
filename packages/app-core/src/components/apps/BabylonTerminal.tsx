@@ -1,5 +1,5 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
+
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   client,
@@ -16,6 +16,7 @@ import { useIntervalWhenDocumentVisible } from "../../hooks";
 import { useBabylonSSE } from "../../hooks/useBabylonSSE";
 import { formatTime } from "../../utils/format";
 import {
+import { Button, Input } from "@elizaos/ui";
   type BabylonAgentSummaryEnvelope,
   type BabylonTeamConversation,
   type BabylonTeamSummary,

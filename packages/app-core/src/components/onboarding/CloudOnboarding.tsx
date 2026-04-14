@@ -1,7 +1,8 @@
-import { Button } from "@elizaos/ui/components/ui/button";
+
 import { useEffect } from "react";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
+import { Button } from "@elizaos/ui";
 
 /**
  * Minimal onboarding screen for Eliza Home.

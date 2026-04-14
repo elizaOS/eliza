@@ -1,9 +1,9 @@
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Textarea } from "@elizaos/ui/components/ui/textarea";
+
+
 import type { QueryResult } from "../../api";
 import { useApp } from "../../state";
 import { ResultsGrid } from "./database-utils";
+import { PagePanel, Button, Textarea } from "@elizaos/ui";
 
 export function SqlEditorPanel({
   queryText,

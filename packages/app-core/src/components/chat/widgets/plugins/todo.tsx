@@ -1,11 +1,12 @@
 import type { WorkbenchTodo } from "../../../../api/client-types-config";
-import { Badge } from "@elizaos/ui/components/ui/badge";
+
 import { ListTodo } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../../../api";
 import { useApp } from "../../../../state";
 import { EmptyWidgetState, WidgetSection } from "../shared";
 import type {
+import { Badge } from "@elizaos/ui";
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "../types";

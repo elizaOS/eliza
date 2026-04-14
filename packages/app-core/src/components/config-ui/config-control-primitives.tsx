@@ -1,4 +1,4 @@
-import { cn } from "@elizaos/ui/lib/utils";
+import { cn } from "@elizaos/ui";
 
 export function getConfigInputClassName({
   className,

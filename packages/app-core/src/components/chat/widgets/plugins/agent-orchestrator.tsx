@@ -9,8 +9,7 @@ import type {
   CodingAgentTaskThread,
   CodingAgentTaskThreadDetail,
 } from "../../../../api/client-types-cloud";
-import { Badge } from "@elizaos/ui/components/ui/badge";
-import { Button } from "@elizaos/ui/components/ui/button";
+
 import { Activity } from "lucide-react";
 import {
   type ReactNode,
@@ -26,6 +25,7 @@ import { useApp, usePtySessions } from "../../../../state";
 import { getRunAttentionReasons } from "../../../apps/RunningAppsPanel";
 import { EmptyWidgetState, WidgetSection } from "../shared";
 import type {
+import { Badge, Button } from "@elizaos/ui";
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "../types";

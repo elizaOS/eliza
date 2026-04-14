@@ -4,9 +4,7 @@ import type {
   TrajectoryLlmCall,
 } from "../../api/client-types-cloud";
 import { useApp } from "../../state/useApp";
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { TrajectoryLlmCallCard } from "@elizaos/ui/components/composites/trajectories/trajectory-llm-call-card";
-import { TrajectoryPipelineGraph } from "@elizaos/ui/components/composites/trajectories/trajectory-pipeline-graph";
+
 import type {
   PipelineNode,
   PipelineStageId,
@@ -25,6 +23,7 @@ import {
   formatTrajectoryTokenCount,
 } from "../../utils/trajectory-format";
 import { estimateTokenCost } from "../conversations/conversation-utils";
+import { PagePanel, TrajectoryLlmCallCard, TrajectoryPipelineGraph } from "@elizaos/ui";
 
 // ---------------------------------------------------------------------------
 // Pipeline stage mapping

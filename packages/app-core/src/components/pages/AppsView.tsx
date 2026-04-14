@@ -1,4 +1,4 @@
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
 import { getAppSlugFromPath } from "../../navigation";
@@ -22,6 +22,7 @@ import {
   overlayAppToRegistryInfo,
 } from "../apps/overlay-app-registry";
 import {
+import { PagePanel } from "@elizaos/ui";
   getRunAttentionReasons,
   RunningAppsPanel,
 } from "../apps/RunningAppsPanel";

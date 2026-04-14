@@ -1,9 +1,10 @@
-import { Button } from "@elizaos/ui/components/ui/button";
+
 import { useMemo } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
 import { AppIdentityTile } from "./app-identity";
 import { getAppOperatorSurface } from "./surfaces/registry";
+import { Button } from "@elizaos/ui";
 
 const HEARTBEAT_STALE_MS = 2 * 60 * 1000;
 const DOWN_STATUS_PATTERNS = [

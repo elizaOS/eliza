@@ -1,19 +1,5 @@
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { MetaPill } from "@elizaos/ui/components/composites/page-panel/page-panel-header";
-import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
-import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
-import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
-import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@elizaos/ui/components/ui/select";
-import { PageLayout } from "@elizaos/ui/layouts/page-layout/page-layout";
+
+
 import type { ReactNode } from "react";
 import {
   useCallback,
@@ -31,6 +17,7 @@ import {
 } from "@elizaos/app-companion/components/avatar/vector-browser-three";
 import { MemoryDetailPanel } from "./MemoryDetailPanel";
 import {
+import { PagePanel, MetaPill, SidebarContent, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, PageLayout } from "@elizaos/ui";
   buildVectorGraph2DLayout,
   DIM_COLUMNS,
   hasEmbedding,

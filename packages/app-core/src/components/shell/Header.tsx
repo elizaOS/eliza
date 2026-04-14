@@ -3,14 +3,7 @@ import { ThemeToggle } from "../shared/ThemeToggle";
 import { getTabGroups } from "../../navigation";
 import type { TabGroup } from "../../navigation";
 import { useApp } from "../../state/useApp";
-import { Button } from "@elizaos/ui/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@elizaos/ui/components/ui/dialog";
+
 import { ListTodo, Menu, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -18,6 +11,7 @@ import { CloudStatusBadge } from "../cloud/CloudStatusBadge";
 import { InferenceCloudAlertButton } from "@elizaos/app-companion/components/companion/InferenceCloudAlertButton";
 import { resolveCompanionInferenceNotice } from "@elizaos/app-companion/components/companion/resolve-companion-inference-notice";
 import { ShellHeaderControls } from "./ShellHeaderControls";
+import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@elizaos/ui";
 
 const NAV_LABEL_I18N_KEY: Record<string, string> = {
   Chat: "nav.chat",

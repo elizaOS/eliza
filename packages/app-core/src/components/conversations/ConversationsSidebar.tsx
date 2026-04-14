@@ -1,27 +1,5 @@
-import { ChatConversationItem } from "@elizaos/ui/components/composites/chat/chat-conversation-item";
-import { ChatSourceIcon } from "@elizaos/ui/components/composites/chat/chat-source";
-import { SidebarCollapsedActionButton } from "@elizaos/ui/components/composites/sidebar/sidebar-collapsed-rail";
-import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
-import { SidebarHeader } from "@elizaos/ui/components/composites/sidebar/sidebar-header";
-import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
-import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
-import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
-import { Button } from "@elizaos/ui/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@elizaos/ui/components/ui/dropdown-menu";
-import { NewActionButton } from "@elizaos/ui/components/ui/new-action-button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@elizaos/ui/components/ui/select";
-import { TooltipProvider } from "@elizaos/ui/components/ui/tooltip";
+
+
 import { MessagesSquare, Plus, Settings2 } from "lucide-react";
 import type React from "react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
@@ -30,6 +8,7 @@ import { client } from "../../api";
 import { useApp } from "../../state";
 import { ConversationRenameDialog } from "./ConversationRenameDialog";
 import {
+import { ChatConversationItem, ChatSourceIcon, SidebarCollapsedActionButton, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, NewActionButton, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TooltipProvider } from "@elizaos/ui";
   ALL_WORLDS_SCOPE,
   buildConversationsSidebarModel,
   type ConversationsSidebarRow,

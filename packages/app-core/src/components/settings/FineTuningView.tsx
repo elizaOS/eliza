@@ -10,11 +10,10 @@ import type {
   TrainingTrajectoryList,
 } from "../../api/client-types-config";
 import type { StreamEventEnvelope } from "../../api/client-types-core";
-import { useIntervalWhenDocumentVisible } from "@elizaos/ui/hooks/useDocumentVisibility";
+
 import { useApp } from "../../state/useApp";
 import { confirmDesktopAction } from "../../utils/desktop-dialogs";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { ContentLayout } from "@elizaos/ui/layouts/content-layout/content-layout";
+
 import {
   type ReactNode,
   useCallback,
@@ -27,6 +26,7 @@ import {
   parsePositiveInteger,
 } from "../../utils/number-parsing";
 import {
+import { useIntervalWhenDocumentVisible, Button, ContentLayout } from "@elizaos/ui";
   asTrainingEvent,
   DatasetSection,
   FINE_TUNING_ACTION_CLASS,

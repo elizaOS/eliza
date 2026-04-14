@@ -1,9 +1,10 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import { StatusBadge } from "@elizaos/ui/components/ui/status-badge";
+
+
 import { Check, Cloud } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useApp } from "../../state";
 import { PermissionIcon } from "./PermissionIcon";
+import { Button, StatusBadge } from "@elizaos/ui";
 
 type MediaPermissionState = "granted" | "denied" | "prompt" | "unknown";
 type StreamingPermissionMode = "mobile" | "web";

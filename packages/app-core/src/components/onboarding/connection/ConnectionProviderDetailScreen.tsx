@@ -1,13 +1,5 @@
 import { ONBOARDING_PROVIDER_CATALOG } from "@elizaos/shared/contracts/onboarding";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@elizaos/ui/components/ui/select";
+
 import type { ChangeEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { OpenRouterModelOption, ProviderOption } from "../../../api";
@@ -53,6 +45,7 @@ import {
   spawnOnboardingRipple,
 } from "../onboarding-step-chrome";
 import { useAdvanceOnboardingWhenElizaCloudOAuthConnected } from "./useAdvanceOnboardingWhenElizaCloudOAuthConnected";
+import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@elizaos/ui";
 
 const providerOverrides: Record<
   string,

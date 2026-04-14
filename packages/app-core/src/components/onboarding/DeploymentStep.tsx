@@ -1,7 +1,5 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Card, CardContent } from "@elizaos/ui/components/ui/card";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { Spinner } from "@elizaos/ui/components/ui/spinner";
+
+
 import {
   OnboardingSecondaryActionButton,
   onboardingBodyTextShadowStyle,
@@ -20,6 +18,7 @@ import {
 } from "../../bridge/gateway-discovery";
 import { isDesktopPlatform } from "../../platform/init";
 import {
+import { Button, Card, CardContent, Input, Spinner } from "@elizaos/ui";
   addAgentProfile,
   clearPersistedActiveServer,
   savePersistedActiveServer,

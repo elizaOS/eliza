@@ -3,14 +3,7 @@
  */
 
 import { Keyboard } from "@capacitor/keyboard";
-import { Button } from "@elizaos/ui/components/ui/button";
-import {
-  DrawerSheet,
-  DrawerSheetContent,
-  DrawerSheetHeader,
-  DrawerSheetTitle,
-} from "@elizaos/ui/components/ui/drawer-sheet";
-import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
+
 import { subscribeDesktopBridgeEvent } from "./bridge/electrobun-rpc";
 import { isIOS, isNative } from "./platform/init";
 import {
@@ -69,6 +62,7 @@ import { useActivityEvents } from "./hooks/useActivityEvents";
 import { APPS_ENABLED, isAppsToolTab } from "./navigation";
 import { useApp } from "./state";
 import type { FlaminaGuideTopic } from "./state/types";
+import { Button, DrawerSheet, DrawerSheetContent, DrawerSheetHeader, DrawerSheetTitle, ErrorBoundary } from "@elizaos/ui";
 
 const CHAT_MOBILE_BREAKPOINT_PX = 820;
 const CHAT_DESKTOP_COMPOSER_UNDERLAY_CLASS =

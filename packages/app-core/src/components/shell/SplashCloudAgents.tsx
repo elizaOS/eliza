@@ -1,7 +1,5 @@
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Card, CardContent } from "@elizaos/ui/components/ui/card";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { Spinner } from "@elizaos/ui/components/ui/spinner";
+
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
@@ -14,6 +12,7 @@ import {
   useApp,
 } from "../../state";
 import type { StartupEvent } from "../../state/startup-coordinator";
+import { Button, Card, CardContent, Input, Spinner } from "@elizaos/ui";
 
 const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 

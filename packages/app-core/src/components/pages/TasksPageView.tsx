@@ -1,6 +1,7 @@
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+
 import { useApp } from "../../state";
 import { CodingAgentTasksPanel } from "../chat/widgets/plugins/agent-orchestrator";
+import { PagePanel } from "@elizaos/ui";
 
 export function TasksPageView() {
   const { t } = useApp();

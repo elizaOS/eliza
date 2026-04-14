@@ -4,21 +4,7 @@ import type {
   TrajectoryRecord,
 } from "../../api/client-types-cloud";
 import { useApp } from "../../state/useApp";
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
-import { SidebarHeader } from "@elizaos/ui/components/composites/sidebar/sidebar-header";
-import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
-import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
-import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
-import { TrajectorySidebarItem } from "@elizaos/ui/components/composites/trajectories/trajectory-sidebar-item";
-import { Button } from "@elizaos/ui/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@elizaos/ui/components/ui/dropdown-menu";
-import { PageLayout } from "@elizaos/ui/layouts/page-layout/page-layout";
+
 import {
   type ReactNode,
   useCallback,
@@ -31,6 +17,7 @@ import { Download, RefreshCw, Trash2, XCircle } from "lucide-react";
 import { TrajectoryDetailView } from "./TrajectoryDetailView";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
 import {
+import { PagePanel, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, TrajectorySidebarItem, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, PageLayout } from "@elizaos/ui";
   formatTrajectoryDuration,
   formatTrajectoryTimestamp,
   formatTrajectoryTokenCount,

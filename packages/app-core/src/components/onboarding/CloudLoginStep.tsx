@@ -1,10 +1,10 @@
 import { useApp } from "../../state/useApp";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Spinner } from "@elizaos/ui/components/ui/spinner";
+
 import { useEffect, useRef } from "react";
 import { useBranding } from "../../config";
 import { openExternalUrl } from "../../utils";
 import {
+import { Button, Spinner } from "@elizaos/ui";
   OnboardingStepHeader,
   onboardingBodyTextShadowStyle,
   onboardingFooterClass,

@@ -6,15 +6,7 @@ import type {
   RelationshipsPersonDetail,
   RelationshipsPersonSummary,
 } from "../../api/client-types-relationships";
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { MetaPill } from "@elizaos/ui/components/composites/page-panel/page-panel-header";
-import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
-import { SidebarHeader } from "@elizaos/ui/components/composites/sidebar/sidebar-header";
-import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
-import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
-import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { PageLayout } from "@elizaos/ui/layouts/page-layout/page-layout";
+
 import {
   type ReactNode,
   useCallback,
@@ -27,6 +19,7 @@ import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";
 import { RelationshipsGraphPanel } from "./RelationshipsGraphPanel";
 import { RelationshipsIdentityCluster } from "./RelationshipsIdentityCluster";
+import { PagePanel, MetaPill, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, PageLayout } from "@elizaos/ui";
 
 const TOOLBAR_BUTTON_BASE =
   "h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_20px_-18px_rgba(15,23,42,0.14)] backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(15,23,42,0.16)] active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong";
