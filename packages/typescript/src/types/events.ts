@@ -3,6 +3,7 @@ import type { Entity, Room, World } from "./environment";
 import type { Memory } from "./memory";
 import type { ControlMessage } from "./messaging";
 import type { ModelTypeName } from "./model";
+import type { PipelineHookPhase } from "./pipeline-hooks";
 import type { Content, JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 
@@ -98,6 +99,9 @@ export enum EventType {
 
 	// Hook system events - message lifecycle (supplements MESSAGE_*)
 	HOOK_MESSAGE_SENDING = "HOOK_MESSAGE_SENDING",
+
+	/** Per-invocation timing for `registerPipelineHook` handlers (telemetry / dashboards). */
+	PIPELINE_HOOK_METRIC = "PIPELINE_HOOK_METRIC",
 }
 
 /**
@@ -401,6 +405,20 @@ export interface HookMessageSendingPayload extends HookEventPayload {
 }
 
 /**
+ * Payload for pipeline hook timing events ({@link EventType.PIPELINE_HOOK_METRIC}).
+ */
+export interface PipelineHookMetricPayload extends EventPayload {
+	phase: PipelineHookPhase;
+	hookId: string;
+	durationMs: number;
+	roomId: UUID;
+	/** True when duration meets `PIPELINE_HOOK_WARN_MS` (see `pipeline-hooks.ts`). */
+	slow: boolean;
+	/** Set when the hook handler threw (runtime still continued). */
+	error?: string;
+}
+
+/**
  * Maps event types to their corresponding payload types
  */
 export interface EventPayloadMap {
@@ -450,6 +468,7 @@ export interface EventPayloadMap {
 	[EventType.HOOK_TOOL_AFTER]: HookToolPayload;
 	[EventType.HOOK_TOOL_PERSIST]: HookToolPayload;
 	[EventType.HOOK_MESSAGE_SENDING]: HookMessageSendingPayload;
+	[EventType.PIPELINE_HOOK_METRIC]: PipelineHookMetricPayload;
 }
 
 /**
