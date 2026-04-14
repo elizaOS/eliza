@@ -39,7 +39,6 @@ function extensionFromContentType(contentType: string | null): string {
       return "gif";
     case "image/webp":
       return "webp";
-    case "image/png":
     default:
       return "png";
   }

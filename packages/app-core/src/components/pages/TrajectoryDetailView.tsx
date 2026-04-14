@@ -1,21 +1,10 @@
-/**
- * TrajectoryDetailView — detailed view of one trajectory rendered as an
- * embedded right-hand viewer.
- */
+import { client } from "../../api/client";
+import type {
+  TrajectoryDetailResult,
+  TrajectoryLlmCall,
+} from "../../api/client-types-cloud";
+import { useApp } from "../../state/useApp";
 
-import {
-  client,
-  type TrajectoryDetailResult,
-  type TrajectoryLlmCall,
-} from "@elizaos/app-core/api";
-import { useApp } from "@elizaos/app-core/state";
-import {
-  PagePanel,
-  TrajectoryLlmCallCard,
-  TrajectoryPipelineGraph,
-  type PipelineNode,
-  type PipelineStageId,
-} from "@elizaos/app-core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Brain,
@@ -30,6 +19,7 @@ import {
   formatTrajectoryTokenCount,
 } from "../../utils/trajectory-format";
 import { estimateTokenCost } from "../conversations/conversation-utils";
+import { PagePanel, TrajectoryLlmCallCard, TrajectoryPipelineGraph, type PipelineNode, type PipelineStageId } from "@elizaos/ui";
 
 // ---------------------------------------------------------------------------
 // Pipeline stage mapping

@@ -1,5 +1,5 @@
-import type { client as appClient } from "@elizaos/app-core/api";
-import { invokeDesktopBridgeRequest } from "@elizaos/app-core/bridge";
+import type { client as appClient } from "../api/client";
+import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import type {
   PermissionsClientLike as ClientLike,
   PermissionsPatchState as PatchState,

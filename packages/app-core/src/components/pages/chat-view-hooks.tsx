@@ -1,28 +1,23 @@
-/**
- * Voice controller and game-modal message hooks extracted from ChatView.
- */
-
 import type {
   ConversationChannelType,
   ConversationMessage,
-  VoiceConfig,
-} from "@elizaos/app-core/api";
-import { client } from "@elizaos/app-core/api";
+} from "../../api/client-types-chat";
+import type { VoiceConfig } from "../../api/client-types-config";
+import { client } from "../../api/client";
 import {
   ELIZA_CLOUD_STATUS_UPDATED_EVENT,
-  type ElizaCloudStatusUpdatedDetail,
   VOICE_CONFIG_UPDATED_EVENT,
-} from "@elizaos/app-core/events";
-import {
-  useDocumentVisibility,
-  useTimeout,
-  useVoiceChat,
-  type VoiceCaptureMode,
-  type VoicePlaybackStartEvent,
-} from "@elizaos/app-core/hooks";
-import type { useApp } from "@elizaos/app-core/state";
-import { ttsDebug } from "@elizaos/app-core/utils";
-import { resolveCharacterVoiceConfigFromAppConfig } from "@elizaos/app-core/voice";
+} from "../../events";
+import type { ElizaCloudStatusUpdatedDetail } from "../../events";
+import { useVoiceChat } from "../../hooks/useVoiceChat";
+
+import type {
+  VoiceCaptureMode,
+  VoicePlaybackStartEvent,
+} from "../../hooks/voice-chat-types";
+import type { useApp } from "../../state/useApp";
+import { ttsDebug } from "../../utils/tts-debug";
+import { resolveCharacterVoiceConfigFromAppConfig } from "../../voice/character-voice-config";
 import {
   useCallback,
   useEffect,
@@ -31,7 +26,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { useCompanionSceneStatus } from "@elizaos/app-companion/ui";
+import { useCompanionSceneStatus } from "@elizaos/app-companion/components/companion/companion-scene-status-context";
+import { useDocumentVisibility, useTimeout } from "@elizaos/ui";
 
 /* ── Shared constants ──────────────────────────────────────────────── */
 

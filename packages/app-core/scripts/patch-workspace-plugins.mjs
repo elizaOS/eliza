@@ -13,7 +13,7 @@
  * - The upstream repo has fixed the issue (patch doesn't apply to current code)
  *
  * Remove a patch file once the corresponding elizaos-plugins PR is merged and
- * the milady submodule pointer is bumped past it.
+ * the eliza submodule pointer is bumped past it.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";

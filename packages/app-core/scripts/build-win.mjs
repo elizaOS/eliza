@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Windows-compatible build script for Milady.
+ * Windows-compatible build script for Eliza.
  * Replaces the Unix-only "build" npm script.
  *
  * Steps:

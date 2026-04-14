@@ -7,7 +7,8 @@ import {
 import { createRealTestRuntime } from "../../../../test/helpers/real-runtime";
 
 const LIVE_TESTS_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" ||
+  process.env.ELIZA_LIVE_TEST === "1";
 const liveProvider = LIVE_TESTS_ENABLED ? selectLiveProvider() : null;
 const CAN_RUN = LIVE_TESTS_ENABLED && liveProvider !== null;
 

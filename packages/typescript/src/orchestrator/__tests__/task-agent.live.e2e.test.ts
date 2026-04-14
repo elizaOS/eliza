@@ -2,13 +2,11 @@
  * Opt-in live smoke tests for real Claude Code and Codex sessions.
  *
  * These are skipped by default. Run with:
- *   ORCHESTRATOR_LIVE=1 bunx vitest run eliza/packages/typescript/src/orchestrator/__tests__/task-agent.live.e2e.test.ts
+ *   ORCHESTRATOR_LIVE=1 bun test src/__tests__/task-agent-live.e2e.test.ts
  */
 
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, it } from "vitest";
 
 const RUN_LIVE = process.env.ORCHESTRATOR_LIVE === "1";

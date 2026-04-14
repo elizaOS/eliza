@@ -2,7 +2,7 @@
  * Test gating utilities for real integration tests.
  *
  * Usage:
- *   import { skipWithout, skipWithoutLive, skipWithoutAnyLLM } from "../../../../../test/helpers/skip-without";
+ *   import { skipWithout, skipWithoutLive, skipWithoutAnyLLM } from "./skip-without";
  *
  *   describe("Discord connector", () => {
  *     skipWithout("DISCORD_BOT_TOKEN");
@@ -51,7 +51,7 @@ export function itWithout(envVarOrVars: string | string[]) {
  */
 export function skipWithoutLive(): void {
   if (!isLiveTestEnabled()) {
-    test.skip("MILADY_LIVE_TEST=1 not set");
+    test.skip("MILADY_LIVE_TEST=1 or ELIZA_LIVE_TEST=1 not set");
   }
 }
 

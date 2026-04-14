@@ -1,5 +1,5 @@
-import type { Preview } from "@storybook/react";
 import { withThemeByClassName } from "@storybook/addon-themes";
+import type { Preview } from "@storybook/react";
 import "@elizaos/app-core/styles/styles.css";
 
 const preview: Preview = {

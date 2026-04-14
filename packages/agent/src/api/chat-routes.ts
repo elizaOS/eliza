@@ -46,6 +46,11 @@ import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.js"
 import { syncCharacterIntoConfig } from "../services/character-persistence.js";
 import { detectRuntimeModel } from "./agent-model.js";
 import {
+  executeFallbackParsedActions,
+  maybeHandleDirectBinanceSkillRequest,
+  parseFallbackActionBlocks,
+} from "./binance-skill-helpers.js";
+import {
   isClientVisibleNoResponse,
   isNoResponsePlaceholder,
 } from "./chat-text-helpers.js";
@@ -72,14 +77,11 @@ import {
   maybeAugmentChatMessageWithKnowledge,
   maybeAugmentChatMessageWithLanguage,
   maybeAugmentChatMessageWithWalletContext,
-  // Deep dependencies of generateChatResponse that stay in server.ts
-  maybeHandleDirectBinanceSkillRequest,
   normalizeIncomingChatPrompt,
-  parseFallbackActionBlocks,
   resolveAppUserName,
   trimWalletProgressPrefix,
   validateChatImages,
-} from "./server.js";
+} from "./server-helpers.js";
 import { resolveStreamingUpdate } from "./streaming-text.js";
 
 const CHAT_MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB (image-capable)
@@ -93,6 +95,7 @@ export interface ChatGenerationResult {
   agentName: string;
   noResponseReason?: "ignored";
   usedActionCallbacks?: boolean;
+  actionCallbackHistory?: string[];
   responseContent?: Content | null;
   responseMessages?: Array<{
     id?: string;
@@ -123,11 +126,26 @@ export interface LogEntry {
   tags: string[];
 }
 
+type CallbackMergeMode = "append" | "replace";
+
+function resolveCallbackMergeMode(
+  content: Content,
+  fallback: CallbackMergeMode = "replace",
+): CallbackMergeMode {
+  return content.merge === "append" || content.merge === "replace"
+    ? content.merge
+    : fallback;
+}
+
 export interface ChatImageAttachment {
   /** Base64-encoded image data (no data URL prefix). */
   data: string;
   mimeType: string;
   name: string;
+}
+
+function normalizeActionCallbackText(text: string): string {
+  return text.trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -882,6 +900,7 @@ export async function generateChatResponse(
     let responseText = "";
     let forcedWalletExecutionText = false;
     let activeStreamSource: StreamSource = "unset";
+    const actionCallbackHistory: string[] = [];
     // Snapshot of `responseText` at the moment the first action callback runs.
     // WHY: LLM streaming genuinely appends token deltas. Action handlers that
     // call HandlerCallback multiple times (Discord "progressive message" pattern)
@@ -923,14 +942,37 @@ export async function generateChatResponse(
       }
       emitSnapshot(update.nextText);
     };
-    /** Latest action callback wins: replaces prior callback text, keeps LLM prefix. */
-    const replaceCallbackText = (incoming: string): void => {
+    const captureCallbackBaseline = (): void => {
       if (preCallbackText === null) {
         preCallbackText = responseText;
       }
-      const separator = preCallbackText.length > 0 ? "\n\n" : "";
-      const nextText = `${preCallbackText}${separator}${incoming}`;
+    };
+    const recordActionCallbackText = (incoming: string): void => {
+      const normalized = normalizeActionCallbackText(incoming);
+      if (!normalized) return;
+      if (actionCallbackHistory.at(-1) === normalized) return;
+      actionCallbackHistory.push(normalized);
+    };
+    /** Latest action callback wins: replaces prior callback text, keeps LLM prefix. */
+    const replaceCallbackText = (incoming: string): void => {
+      recordActionCallbackText(incoming);
+      captureCallbackBaseline();
+      const baseline = preCallbackText ?? "";
+      const separator = baseline.length > 0 ? "\n\n" : "";
+      const nextText = `${baseline}${separator}${incoming}`;
       emitSnapshot(nextText);
+    };
+    const applyCallbackTextUpdate = (
+      content: Content,
+      incoming: string,
+    ): void => {
+      captureCallbackBaseline();
+      if (resolveCallbackMergeMode(content) === "append") {
+        recordActionCallbackText(incoming);
+        appendIncomingText(incoming);
+        return;
+      }
+      replaceCallbackText(incoming);
     };
 
     // Emit inbound events so trajectory/session hooks run for API chat.
@@ -1042,7 +1084,7 @@ export async function generateChatResponse(
 
                     const chunk = extractCompatTextContent(content);
                     if (chunk) {
-                      replaceCallbackText(chunk);
+                      applyCallbackTextUpdate(content, chunk);
                       actionResponseText = responseText;
                     }
                     return [];
@@ -1094,7 +1136,7 @@ export async function generateChatResponse(
               const chunk = extractCompatTextContent(content);
               if (!chunk) return [];
               if (!claimStreamSource("callback")) return [];
-              replaceCallbackText(chunk);
+              applyCallbackTextUpdate(content, chunk);
               return [];
             },
             {
@@ -1305,13 +1347,30 @@ export async function generateChatResponse(
         responseText || resultText || "",
       );
       if (websiteBlockAttempt || websitePermissionAttempt) {
-        const failureText = buildWebsiteBlockingActionNotExecutedReply(
-          originalUserText.trim(),
+        const callbacksBeforeFallback = actionCallbacksSeen;
+        await executeFallbackParsedActions(
+          runtime,
+          message,
+          [
+            ...(websiteBlockAttempt ? [websiteBlockAttempt] : []),
+            ...(websitePermissionAttempt ? [websitePermissionAttempt] : []),
+          ],
+          appendIncomingText,
+          recordActionCallback,
+          {
+            getCurrentText: () => responseText || resultText || "",
+          },
         );
-        if (opts?.onSnapshot) {
-          emitSnapshot(failureText);
-        } else {
-          responseText = failureText;
+
+        if (actionCallbacksSeen === callbacksBeforeFallback) {
+          const failureText = buildWebsiteBlockingActionNotExecutedReply(
+            originalUserText.trim(),
+          );
+          if (opts?.onSnapshot) {
+            emitSnapshot(failureText);
+          } else {
+            responseText = failureText;
+          }
         }
       }
     }
@@ -1358,6 +1417,9 @@ export async function generateChatResponse(
         ? { noResponseReason: "ignored" as const }
         : {}),
       ...(actionCallbacksSeen > 0 ? { usedActionCallbacks: true } : {}),
+      ...(actionCallbackHistory.length > 0
+        ? { actionCallbackHistory: [...actionCallbackHistory] }
+        : {}),
       ...(responseContent ? { responseContent } : {}),
       ...(responseMessages.length > 0 ? { responseMessages } : {}),
       usage: {

@@ -1,12 +1,5 @@
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  Input,
-} from "@elizaos/app-core";
+
+
 import {
   useCallback,
   useEffect,
@@ -22,6 +15,7 @@ import {
 import { COMMAND_PALETTE_EVENT } from "../../events";
 import { useBugReport } from "../../hooks";
 import { useApp } from "../../state";
+import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input } from "@elizaos/ui";
 import {
   openDesktopSettingsWindow,
   openDesktopSurfaceWindow,
@@ -240,7 +234,7 @@ export function CommandPalette() {
   return (
     <Dialog
       open={commandPaletteOpen}
-      onOpenChange={(v) => {
+      onOpenChange={(v: boolean) => {
         if (!v) closeCommandPalette();
       }}
     >

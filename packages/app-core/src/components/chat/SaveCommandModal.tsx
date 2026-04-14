@@ -1,19 +1,8 @@
-/**
- * Modal for naming and saving a custom /command from selected text.
- */
 
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  Input,
-} from "@elizaos/app-core";
+
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useApp } from "../../state";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input } from "@elizaos/ui";
 
 interface SaveCommandModalProps {
   open: boolean;
@@ -78,7 +67,7 @@ export function SaveCommandModal({
   return (
     <Dialog
       open={open}
-      onOpenChange={(isOpen) => {
+      onOpenChange={(isOpen: boolean) => {
         if (!isOpen) onClose();
       }}
     >

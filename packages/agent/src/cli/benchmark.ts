@@ -146,7 +146,7 @@ async function runTask(
     // We capture all three and deduplicate.
     const result = (await Promise.race([
       (async () => {
-        const handleResult = await runtime.messageService!.handleMessage(
+        const handleResult = await runtime.messageService?.handleMessage(
           runtime,
           message,
           async (content) => {

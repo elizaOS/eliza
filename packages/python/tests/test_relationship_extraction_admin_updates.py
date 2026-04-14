@@ -5,7 +5,7 @@ from typing import cast
 
 import pytest
 
-from elizaos.advanced_capabilities.evaluators.relationship_extraction import (
+from elizaos.features.advanced_capabilities.evaluators.relationship_extraction import (
     _handle_admin_updates,
 )
 from elizaos.types import Content, IAgentRuntime, Memory, as_uuid

@@ -2,7 +2,7 @@
  * Shared onboarding contracts.
  */
 
-import { isTruthyEnvValue } from "../env-utils.js";
+import { isTruthyEnvValue } from "../env-utils.impl.js";
 import type {
   DeploymentTargetConfig,
   LinkedAccountsConfig,
@@ -67,7 +67,8 @@ export type OnboardingProviderFamily =
   | "openai"
   | "openrouter"
   | "together"
-  | "zai";
+  | "zai"
+  | (string & {});
 
 export type OnboardingProviderId =
   | "anthropic"
@@ -83,16 +84,18 @@ export type OnboardingProviderId =
   | "openai-subscription"
   | "openrouter"
   | "together"
-  | "zai";
+  | "zai"
+  | (string & {});
 
 export type OnboardingProviderAuthMode =
   | "api-key"
   | "cloud"
   | "credentials"
   | "local"
-  | "subscription";
+  | "subscription"
+  | (string & {});
 
-export type OnboardingProviderGroup = "cloud" | "local" | "subscription";
+export type OnboardingProviderGroup = "cloud" | "local" | "subscription" | (string & {});
 
 export interface ProviderOption {
   id: OnboardingProviderId;
@@ -196,6 +199,10 @@ export const SUBSCRIPTION_PROVIDER_SELECTIONS = [
   labelKey: string;
 }>;
 
+// TODO: These hardcoded provider entries should eventually be populated by
+// plugins at runtime via a registry pattern. Each LLM plugin would call
+// registerProviderOption() during initialization to add itself to the catalog.
+// The hardcoded entries below serve as defaults until all plugins are migrated.
 export const ONBOARDING_PROVIDER_CATALOG = [
   {
     id: "elizacloud",
@@ -809,7 +816,7 @@ export function readOnboardingEnvSecret(
 }
 
 /** Alias to keep call-sites unchanged. */
-const isTruthyEnvFlag = isTruthyEnvValue;
+const _isTruthyEnvFlag = isTruthyEnvValue;
 
 export function getOnboardingProviderSignalEnvKeys(
   providerId: OnboardingLocalProviderId,
@@ -1546,4 +1553,42 @@ export function isCloudInferenceSelectedInConfig(
     llmText?.transport === "cloud-proxy" &&
       normalizeOnboardingProviderId(llmText.backend) === "elizacloud",
   );
+}
+
+// ---------------------------------------------------------------------------
+// Provider option registry — allows plugins to register additional providers
+// at runtime without modifying the hardcoded ONBOARDING_PROVIDER_CATALOG.
+// ---------------------------------------------------------------------------
+
+const _registeredProviderOptions: ProviderOption[] = [];
+
+/**
+ * Register an additional provider option at runtime.
+ * Plugins should call this during initialization to add themselves to the
+ * onboarding provider catalog.
+ */
+export function registerProviderOption(option: ProviderOption): void {
+  const existing = _registeredProviderOptions.findIndex(
+    (o) => o.id === option.id,
+  );
+  if (existing >= 0) {
+    _registeredProviderOptions[existing] = option;
+  } else {
+    _registeredProviderOptions.push(option);
+  }
+}
+
+/**
+ * Get all provider options: hardcoded catalog merged with runtime-registered
+ * providers. Runtime registrations override hardcoded entries with the same id.
+ */
+export function getProviderOptions(): ProviderOption[] {
+  const merged = new Map<string, ProviderOption>();
+  for (const option of ONBOARDING_PROVIDER_CATALOG) {
+    merged.set(option.id, option as ProviderOption);
+  }
+  for (const option of _registeredProviderOptions) {
+    merged.set(option.id, option);
+  }
+  return Array.from(merged.values());
 }

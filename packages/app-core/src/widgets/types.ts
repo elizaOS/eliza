@@ -12,7 +12,8 @@ export type WidgetSlot =
   | "heartbeats"
   | "character"
   | "settings"
-  | "nav-page";
+  | "nav-page"
+  | "automations";
 
 /**
  * Serializable widget metadata declared by a plugin.

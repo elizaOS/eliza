@@ -6,11 +6,11 @@ import { renderGroundedActionReply } from "./grounded-action-reply.js";
 describe("renderGroundedActionReply", () => {
   it("uses TEXT_SMALL and includes recent conversation plus action history", async () => {
     const modelCalls: Array<{
-      modelType: ModelType;
+      modelType: ModelTypeName;
       params: unknown;
     }> = [];
     const runtime = {
-      async useModel(modelType: ModelType, params: unknown) {
+      async useModel(modelType: ModelTypeName, params: unknown) {
         modelCalls.push({ modelType, params });
         return "Here’s the updated reply.";
       },

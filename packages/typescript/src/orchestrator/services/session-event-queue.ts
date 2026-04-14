@@ -30,7 +30,7 @@ export class SessionEventQueue {
 		if (!this.queues.has(sessionId)) {
 			this.queues.set(sessionId, []);
 		}
-		this.queues.get(sessionId)!.push(event);
+		this.queues.get(sessionId)?.push(event);
 
 		if (!this.processing.has(sessionId)) {
 			this.processLoop(sessionId);
@@ -63,6 +63,7 @@ export class SessionEventQueue {
 					break;
 				}
 
+				// biome-ignore lint/style/noNonNullAssertion: queue.length > 0 guaranteed above
 				const event = queue.shift()!;
 
 				try {

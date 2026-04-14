@@ -11,6 +11,9 @@ import { conversationStateProvider } from "./providers/conversationState";
 // Service
 import { SignalService } from "./service";
 
+// Setup routes (QR pairing / disconnect)
+import { signalSetupRoutes } from "./setup-routes";
+
 // Types
 import { normalizeE164 } from "./types";
 
@@ -20,6 +23,7 @@ const signalPlugin: Plugin = {
   services: [SignalService],
   actions: [sendMessage, sendReaction, listContacts, listGroups],
   providers: [conversationStateProvider],
+  routes: signalSetupRoutes,
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     const accountNumber = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string;
     const httpUrl = runtime.getSetting("SIGNAL_HTTP_URL") as string;
@@ -132,6 +136,19 @@ export {
   signalSendTyping,
   streamSignalEvents,
 } from "./rpc";
+// Pairing service (device linking via QR code / signal-cli)
+export {
+  SignalPairingSession,
+  sanitizeAccountId as sanitizeSignalAccountId,
+  signalAuthExists,
+  signalLogout,
+  type SignalPairingEvent,
+  type SignalPairingOptions,
+  type SignalPairingSnapshot,
+  type SignalPairingStatus,
+} from "./pairing-service";
+// Setup routes (QR pairing / disconnect)
+export { applySignalQrOverride, signalSetupRoutes } from "./setup-routes";
 // Export service for direct access
 export { SignalService } from "./service";
 // Export types

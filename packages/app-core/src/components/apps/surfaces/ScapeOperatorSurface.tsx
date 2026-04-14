@@ -1,21 +1,5 @@
-/**
- * ScapeOperatorSurface — spectate-and-steer console for @elizaos/app-scape.
- *
- * Philosophy: the desktop app is the *operator* console for an AI
- * agent that plays 'scape in a shared xRSPS world. Human players play the
- * game in their own browser via the Sevalla-hosted client — they do NOT
- * need the app installed. The app's job here is to give an operator a
- * window into what *their* agent is doing and let them steer it with
- * natural-language directives, without leaving the Apps tab.
- *
- * Data source: `run.session.telemetry`, populated by
- * `apps/app-scape/src/routes.ts::buildScapeSessionState` from the
- * ScapeGameService's perception, journal, and recent event log. The
- * telemetry contract is intentionally shallow — see the `TelemetryShape`
- * type below for what we read.
- */
 
-import { Button, Input } from "@elizaos/app-core";
+
 import { useCallback, useMemo, useState } from "react";
 import { type AppSessionJsonValue, client } from "../../../api";
 import { useApp } from "../../../state";
@@ -33,6 +17,7 @@ import {
   toneForViewerAttachment,
 } from "../extensions/surface";
 import type { AppOperatorSurfaceProps } from "./types";
+import { Button, Input } from "@elizaos/ui";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Telemetry shape — a partial view of what buildScapeSessionState emits.

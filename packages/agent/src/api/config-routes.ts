@@ -76,7 +76,7 @@ export async function handleConfigRoutes(
     redactConfigSecrets,
     isBlockedObjectKey,
     stripRedactedPlaceholderValuesDeep,
-    patchTouchesProviderSelection,
+    patchTouchesProviderSelection: _patchTouchesProviderSelection,
     BLOCKED_ENV_KEYS,
     CONFIG_WRITE_ALLOWED_TOP_KEYS,
     resolveMcpServersRejection,

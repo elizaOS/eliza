@@ -29,32 +29,18 @@
 #![warn(missing_docs)]
 #![warn(rustdoc::missing_crate_level_docs)]
 
-#[cfg(all(
-    feature = "basic_capabilities-internal",
-    feature = "native",
-    not(feature = "wasm")
-))]
-pub mod advanced_capabilities;
-#[cfg(all(feature = "native", not(feature = "wasm")))]
-pub mod advanced_memory;
-#[cfg(all(feature = "native", not(feature = "wasm")))]
-pub mod advanced_planning;
-#[cfg(all(feature = "native", not(feature = "wasm")))]
-pub mod autonomy;
-#[cfg(all(
-    feature = "basic_capabilities-internal",
-    feature = "native",
-    not(feature = "wasm")
-))]
-pub mod basic_capabilities;
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub mod basic_capabilities_core;
+#[cfg(all(feature = "native", not(feature = "wasm")))]
+pub mod features;
 #[cfg(all(
     feature = "basic_capabilities-internal",
     feature = "native",
     not(feature = "wasm")
 ))]
-pub mod core_capabilities;
+pub use features::{advanced_capabilities, basic_capabilities, core_capabilities};
+#[cfg(all(feature = "native", not(feature = "wasm")))]
+pub use features::{advanced_memory, advanced_planning, autonomy};
 pub mod agent_orchestrator_env;
 pub mod character;
 #[cfg(all(

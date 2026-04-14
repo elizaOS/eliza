@@ -11,13 +11,7 @@ export const ELIZA_CLOUD_INSTANCES_URL =
 /** Marketing / docs site — "Learn more" when not connected (in-app browser on desktop). */
 export const ELIZA_CLOUD_WEB_URL = "https://elizacloud.ai";
 export const BILLING_PRESET_AMOUNTS = [10, 25, 100];
-export const CLOUD_PANEL_CLASSNAME =
-  "rounded-2xl border border-border/60 bg-card/88 p-4 shadow-sm";
 export const MANAGED_DISCORD_GATEWAY_AGENT_NAME = "Discord Gateway";
-export const CLOUD_INSET_PANEL_CLASSNAME =
-  "rounded-xl border border-border/50 bg-bg/30 p-4";
-export const CLOUD_ACCENT_CONTROL_TEXT_CLASSNAME =
-  "text-txt-strong hover:text-txt-strong";
 export const CLOUD_STATUS_API_KEY_ONLY_REASONS: ReadonlySet<string> = new Set([
   "api_key_present_not_authenticated",
   "api_key_present_runtime_not_started",
@@ -251,9 +245,7 @@ export function resolveManagedDiscordAgentChoice(agents: CloudCompatAgent[]):
 export function isManagedDiscordGatewayAgent(agent: CloudCompatAgent): boolean {
   const config = isRecord(agent.agent_config) ? agent.agent_config : null;
   const gatewayConfig = config
-    ? (config.__managedDiscordGateway as
-        | Record<string, unknown>
-        | undefined)
+    ? (config.__managedDiscordGateway as Record<string, unknown> | undefined)
     : undefined;
   if (isRecord(gatewayConfig) && gatewayConfig.mode === "shared-gateway") {
     return true;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# build-image.sh — Reproducible build pipeline for milady/agent Docker image
+# build-image.sh — Reproducible build pipeline for eliza/agent Docker image
 #
 # Usage:
 #   bash eliza/packages/app-core/scripts/build-image.sh [OPTIONS]
@@ -8,8 +8,8 @@
 # Options:
 #   --version VER    Override version string (default: read from package.json)
 #   --tag TAG        Docker image tag (default: v{version})
-#   --remote         Build on milady-core-1 (${BUILD_SERVER:-"root@your-server"}) instead of locally
-#   --push           After local build, push/load image to milady-core-1
+#   --remote         Build on eliza-core-1 (${BUILD_SERVER:-"root@your-server"}) instead of locally
+#   --push           After local build, push/load image to eliza-core-1
 #   --no-install     Skip bun install (if deps are already up to date)
 #   --no-tsdown      Skip tsdown build (if dist/ is already built)
 #   --dry-run        Show what would be done without executing
@@ -18,13 +18,13 @@
 # Examples:
 #   bash eliza/packages/app-core/scripts/build-image.sh                             # Build alpha.89 locally
 #   bash eliza/packages/app-core/scripts/build-image.sh --tag latest --push         # Build + push to server
-#   bash eliza/packages/app-core/scripts/build-image.sh --remote                    # Build on milady-core-1
+#   bash eliza/packages/app-core/scripts/build-image.sh --remote                    # Build on eliza-core-1
 #   bash eliza/packages/app-core/scripts/build-image.sh --version 2.0.0-alpha.54    # Build specific version
 #
 # Context:
 #   - Repo:         $(git rev-parse --show-toplevel)
-#   - Build server: ${BUILD_SERVER:-"root@your-server"} (milady-core-1)
-#   - Image name:   milady/agent:{tag}
+#   - Build server: ${BUILD_SERVER:-"root@your-server"} (eliza-core-1)
+#   - Image name:   eliza/agent:{tag}
 #
 # What this does:
 #   1. Patches apps/app/vite.config.ts to resolve @elizaos/* from node_modules
@@ -34,7 +34,7 @@
 #   4. Builds the Vite UI → apps/app/dist/
 #   5. Reverts the vite.config.ts patch (temp backup restore)
 #   6. Runs docker build with the canonical container Dockerfile
-#   7. Tags the image as milady/agent:{tag}
+#   7. Tags the image as eliza/agent:{tag}
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -98,10 +98,10 @@ sedi() {
   fi
 }
 
-# ── Verify we're in the milady repo root ─────────────────────────────────
-# Look for canonical markers: package.json with "miladyai" name and apps/app/vite.config.ts
-if [[ ! -f "package.json" ]] || ! grep -q '"miladyai"' package.json 2>/dev/null; then
-  die "Not in milady repo root. Run from $(git rev-parse --show-toplevel)"
+# ── Verify we're in the eliza repo root ─────────────────────────────────
+# Look for canonical markers: package.json with "elizaos" name and apps/app/vite.config.ts
+if [[ ! -f "package.json" ]] || ! grep -q '"elizaos"' package.json 2>/dev/null; then
+  die "Not in eliza repo root. Run from $(git rev-parse --show-toplevel)"
 fi
 if [[ ! -f "apps/app/vite.config.ts" ]]; then
   die "apps/app/vite.config.ts not found. Are you in the right directory?"
@@ -113,7 +113,7 @@ log "Repo root: ${YELLOW}${REPO_ROOT}${NC}"
 load_env_file "eliza/packages/app-core/deploy/deploy.defaults.env"
 load_env_file "deploy/deploy.env"
 
-APP_IMAGE="${APP_IMAGE:-milady/agent}"
+APP_IMAGE="${APP_IMAGE:-eliza/agent}"
 APP_ENTRYPOINT="${APP_ENTRYPOINT:-app.mjs}"
 APP_CMD_START="${APP_CMD_START:-node --import ./node_modules/tsx/dist/loader.mjs ${APP_ENTRYPOINT} start}"
 APP_PORT="${APP_PORT:-2138}"
@@ -162,17 +162,17 @@ run() {
 # Step 1: Patch apps/app/vite.config.ts
 #
 # The committed config has:
-#   elizaRoot = path.resolve(miladyRoot, "../eliza")  ← Shaw's local submodule
+#   elizaRoot = path.resolve(appRoot, "../eliza")  ← Shaw's local submodule
 #   "packages/agent/src/index.ts"               ← monorepo path
 #   "packages/app-core/src/index.ts"                 ← monorepo path
 #   "packages/ui/src/index.ts"                       ← monorepo path
 #
 # We patch to:
-#   elizaRoot = path.resolve(miladyRoot, "node_modules/@elizaos")
+#   elizaRoot = path.resolve(appRoot, "node_modules/@elizaos")
 #   "agent/src/index.ts"   (packages/ prefix removed)
 #   "app-core/src/index.ts"     (packages/ prefix removed)
 #   "ui/dist/index.js"          (elizaos/ui ships compiled — use dist, not src)
-#   "ui/src/index.ts"           (miladyai/ui is local source — keep src)
+#   "ui/src/index.ts"           (elizaos/ui is local source — keep src)
 # ─────────────────────────────────────────────────────────────────────────────
 hdr "Step 1: Patch vite.config.ts"
 
@@ -188,7 +188,7 @@ patch_vite() {
 
   # 1. elizaRoot: "../eliza" → "node_modules/@elizaos"
   #    This is the root cause — Shaw's local eliza checkout path → npm installed path
-  sedi 's|path\.resolve(miladyRoot, "\.\./eliza")|path.resolve(miladyRoot, "node_modules/@elizaos")|g' "$file"
+  sedi 's|path\.resolve(appRoot, "\.\./eliza")|path.resolve(appRoot, "node_modules/@elizaos")|g' "$file"
 
   # 2. Remove "packages/" prefix from elizaos/agent paths
   #    Both the index and wildcard variants (multi-line and single-line)
@@ -202,15 +202,15 @@ patch_vite() {
   sedi 's|packages/app-core/src/\$1|app-core/src/$1|g' "$file"
 
   # 4. @elizaos/app-core → use dist/ (npm package ships compiled output, no src/)
-  #    Target only lines that reference elizaRoot (not miladyRoot)
+  #    Target only lines that reference elizaRoot (not appRoot)
   sedi 's|path\.resolve(elizaRoot, "packages/ui/src/index\.ts")|path.resolve(elizaRoot, "ui/dist/index.js")|g' "$file"
   sedi 's|path\.resolve(elizaRoot, "packages/ui/src/\$1")|path.resolve(elizaRoot, "ui/dist/$1")|g' "$file"
   sedi 's|path\.resolve(elizaRoot, "packages/ui/src/\\\$1")|path.resolve(elizaRoot, "ui/dist/$1")|g' "$file"
 
   # 5. @elizaos/app-core → keep src/ (local repo source), just remove packages/ prefix
-  sedi 's|path\.resolve(miladyRoot, "packages/ui/src/index\.ts")|path.resolve(miladyRoot, "ui/src/index.ts")|g' "$file"
-  sedi 's|path\.resolve(miladyRoot, "packages/ui/src/\$1")|path.resolve(miladyRoot, "ui/src/$1")|g' "$file"
-  sedi 's|path\.resolve(miladyRoot, "packages/ui/src/\\\$1")|path.resolve(miladyRoot, "ui/src/$1")|g' "$file"
+  sedi 's|path\.resolve(appRoot, "packages/ui/src/index\.ts")|path.resolve(appRoot, "ui/src/index.ts")|g' "$file"
+  sedi 's|path\.resolve(appRoot, "packages/ui/src/\$1")|path.resolve(appRoot, "ui/src/$1")|g' "$file"
+  sedi 's|path\.resolve(appRoot, "packages/ui/src/\\\$1")|path.resolve(appRoot, "ui/src/$1")|g' "$file"
 }
 
 if $DRY_RUN; then
@@ -267,7 +267,7 @@ else
 fi
 
 hdr "Step 2b: Run postinstall patches"
-run "SKIP_AVATAR_CLONE=1 MILADY_NO_VISION_DEPS=1 bun run postinstall 2>&1 | tail -10"
+run "SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 bun run postinstall 2>&1 | tail -10"
 ok "Postinstall patches complete"
 
 hdr "Step 2c: Build Capacitor plugins"
@@ -361,11 +361,11 @@ if [[ "$DOCKERFILE" == "eliza/packages/app-core/deploy/Dockerfile.ci" ]]; then
 fi
 
 if $REMOTE; then
-  # ── Remote build on milady-core-1 ───────────────────────────────────────
+  # ── Remote build on eliza-core-1 ───────────────────────────────────────
   log "Remote build on ${BUILD_SERVER}..."
 
-  REMOTE_BUILD_DIR="/tmp/milady-build-$(date +%s)"
-  TARBALL="/tmp/milady-image-build-$$.tar.gz"
+  REMOTE_BUILD_DIR="/tmp/eliza-build-$(date +%s)"
+  TARBALL="/tmp/eliza-image-build-$$.tar.gz"
 
   log "Creating build context tarball (excluding node_modules, .git)..."
   run "tar \
@@ -428,7 +428,7 @@ else
     ok "Image built: ${IMAGE_NAME} (${FINAL_SIZE})"
   fi
 
-  # ── Optionally push to milady-core-1 ─────────────────────────────────────
+  # ── Optionally push to eliza-core-1 ─────────────────────────────────────
   if $DO_PUSH && ! $DRY_RUN; then
     hdr "Pushing image to ${BUILD_SERVER}"
     log "docker save | ssh docker load (this may take a minute)..."

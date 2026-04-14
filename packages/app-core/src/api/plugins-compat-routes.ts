@@ -4,10 +4,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { type AgentRuntime, logger } from "@elizaos/core";
-import {
-  loadElizaConfig,
-  saveElizaConfig,
-} from "@elizaos/agent/config/config";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
 import {
   applyPluginRuntimeMutation,
   type PluginRuntimeApplyResult,
@@ -449,9 +446,7 @@ function reconcilePluginEnabledStates(): void {
 
   if (dirty) {
     saveElizaConfig(config);
-    logger.info(
-      "[plugins] Reconciled drifted plugin enabled states in config",
-    );
+    logger.info("[plugins] Reconciled drifted plugin enabled states in config");
   }
 }
 

@@ -2,11 +2,23 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-const ROOT = path.resolve(import.meta.dirname, "..");
+const APP_CORE_ROOT = path.resolve(import.meta.dirname, "..");
+const REPO_ROOT = path.resolve(APP_CORE_ROOT, "..", "..", "..");
 
-function run(command, args) {
+const releaseContractTests = [
+  "eliza/packages/app-core/scripts/asset-cdn.test.ts",
+  "eliza/packages/app-core/scripts/docker-contract.test.ts",
+  "eliza/packages/app-core/scripts/chrome-extension-release-surface.test.ts",
+  "eliza/packages/app-core/scripts/electrobun-release-workflow-drift.test.ts",
+  "eliza/packages/app-core/scripts/electrobun-test-workflow-drift.test.ts",
+  "eliza/packages/app-core/scripts/whisper-build-script-drift.test.ts",
+  "eliza/packages/app-core/scripts/release-check.test.ts",
+  "eliza/packages/app-core/scripts/static-asset-manifest.test.ts",
+];
+
+function run(command, args, cwd = APP_CORE_ROOT) {
   const result = spawnSync(command, args, {
-    cwd: ROOT,
+    cwd,
     stdio: "inherit",
     env: {
       ...process.env,
@@ -20,28 +32,23 @@ function run(command, args) {
   }
 }
 
+run("bunx", ["vitest", "run", "--passWithNoTests", ...releaseContractTests], REPO_ROOT);
 run("bunx", [
   "vitest",
   "run",
-  "scripts/asset-cdn.test.ts",
-  "scripts/docker-contract.test.ts",
-  "scripts/chrome-extension-release-surface.test.ts",
-  "scripts/electrobun-release-workflow-drift.test.ts",
-  "scripts/electrobun-test-workflow-drift.test.ts",
-  "scripts/whisper-build-script-drift.test.ts",
-  "scripts/release-check.test.ts",
-  "scripts/static-asset-manifest.test.ts",
-]);
-run("bun", ["run", "test:startup:contract"]);
+  "--passWithNoTests",
+  "eliza/packages/app-core/scripts/startup-integration-script-drift.test.ts",
+], REPO_ROOT);
 
-run("bunx", ["tsdown"]);
-fs.mkdirSync(path.join(ROOT, "dist"), { recursive: true });
+// tsdown and the release check both resolve repo-root-relative entries/config.
+run("bunx", ["tsdown", "--fail-on-warn", "false"], REPO_ROOT);
+fs.mkdirSync(path.join(APP_CORE_ROOT, "dist"), { recursive: true });
 fs.writeFileSync(
-  path.join(ROOT, "dist", "package.json"),
+  path.join(APP_CORE_ROOT, "dist", "package.json"),
   '{"type":"module"}\n',
 );
 run("node", ["--import", "tsx", "scripts/write-build-info.ts"]);
 // Regenerate static asset manifest from the CI build output so hashes
 // match what release:check will validate.
 run("node", ["scripts/generate-static-asset-manifest.mjs"]);
-run("bun", ["run", "release:check"]);
+run("bun", ["run", "release:check"], REPO_ROOT);

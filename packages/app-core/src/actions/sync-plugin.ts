@@ -1,5 +1,16 @@
-import type { Action, HandlerOptions } from "@elizaos/core";
-import { syncPlugin } from "../services/plugin-eject";
+import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
+
+function getPluginManager(runtime: IAgentRuntime) {
+  return runtime.getService("plugin_manager") as {
+    syncPlugin(id: string): Promise<{
+      success: boolean;
+      pluginName: string;
+      upstreamCommits: number;
+      conflicts: string[];
+      error?: string;
+    }>;
+  } | null;
+}
 
 export const syncPluginAction: Action = {
   name: "SYNC_PLUGIN",
@@ -11,7 +22,7 @@ export const syncPluginAction: Action = {
 
   validate: async () => true,
 
-  handler: async (_runtime, _message, _state, options) => {
+  handler: async (runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters;
     const pluginId =
       typeof params?.pluginId === "string" ? params.pluginId.trim() : "";
@@ -20,7 +31,15 @@ export const syncPluginAction: Action = {
       return { text: "I need a plugin ID to sync.", success: false };
     }
 
-    const result = await syncPlugin(pluginId);
+    const mgr = getPluginManager(runtime);
+    if (!mgr) {
+      return {
+        text: "Plugin manager service is not available.",
+        success: false,
+      };
+    }
+
+    const result = await mgr.syncPlugin(pluginId);
     if (!result.success) {
       const conflictText =
         result.conflicts.length > 0

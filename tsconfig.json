@@ -18,6 +18,8 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
+      "@elizaos/ui": ["packages/ui/src/index.ts"],
+      "@elizaos/ui/*": ["packages/ui/src/*"],
       "@elizaos/core": ["packages/typescript/src/index.node.ts"],
       "@elizaos/core/*": ["packages/typescript/src/*"]
     }

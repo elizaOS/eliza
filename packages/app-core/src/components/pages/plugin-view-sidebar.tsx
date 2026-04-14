@@ -1,19 +1,10 @@
-import {
-  Button,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectValue,
-  SettingsControls,
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/app-core";
+
+
 import { ChevronRight } from "lucide-react";
 import type { ReactNode, RefCallback } from "react";
 import type { PluginInfo } from "../../api";
+import { SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Select, SelectContent, SelectItem, SelectValue, SettingsControls } from "@elizaos/ui";
+import { connectorDisplayName } from "./plugin-list-utils";
 import type {
   PluginsViewMode,
   SubgroupTag,
@@ -115,8 +106,8 @@ export function ConnectorSidebar({
           <SidebarContent.RailItem
             key={plugin.id}
             ref={registerConnectorRailItem(plugin.id)}
-            aria-label={plugin.name}
-            title={plugin.name}
+            aria-label={connectorDisplayName(plugin)}
+            title={connectorDisplayName(plugin)}
             active={isSelected}
             indicatorTone={plugin.enabled ? "accent" : undefined}
             onClick={() => onConnectorSelect(plugin.id)}
@@ -189,13 +180,13 @@ export function ConnectorSidebar({
                       className="mt-0 h-8 w-8 shrink-0 p-1.5"
                     >
                       {renderResolvedIcon(plugin, {
-                        className: "h-4 w-4 shrink-0 rounded-sm object-contain",
+                        className: "h-4 w-4 shrink-0 rounded-[var(--radius-sm)] object-contain",
                         emojiClassName: "text-sm",
                       })}
                     </SidebarContent.ItemIcon>
                     <SidebarContent.ItemBody>
                       <span className="block truncate text-sm font-semibold leading-5 text-txt">
-                        {plugin.name}
+                        {connectorDisplayName(plugin)}
                       </span>
                     </SidebarContent.ItemBody>
                   </SidebarContent.ItemButton>
@@ -203,7 +194,7 @@ export function ConnectorSidebar({
                     <Button
                       variant="outline"
                       size="sm"
-                      className={`h-7 min-h-0 min-w-[3.5rem] shrink-0 rounded-full border px-2.5 py-0 text-2xs font-bold leading-none tracking-[0.16em] transition-colors ${
+                      className={`h-7 min-h-0 min-w-[3.5rem] shrink-0 rounded-[var(--radius-sm)] border px-2.5 py-0 text-2xs font-bold leading-none tracking-[0.16em] transition-colors ${
                         plugin.enabled
                           ? "border-accent bg-accent text-accent-fg"
                           : "border-border bg-transparent text-muted hover:border-accent/40 hover:text-txt"
@@ -227,8 +218,8 @@ export function ConnectorSidebar({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 shrink-0 rounded-full text-muted hover:text-txt"
-                      aria-label={`${isExpanded ? collapseLabel : expandLabel} ${plugin.name} in sidebar`}
+                      className="h-8 w-8 shrink-0 rounded-[var(--radius-sm)] text-muted hover:text-txt"
+                      aria-label={`${isExpanded ? collapseLabel : expandLabel} ${connectorDisplayName(plugin)} in sidebar`}
                       onClick={(event) => {
                         event.stopPropagation();
                         onConnectorSectionToggle(plugin.id);

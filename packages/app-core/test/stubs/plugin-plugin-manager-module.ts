@@ -7,7 +7,7 @@
  * | "uninstallPlugin" | ...)`. It also calls
  * `pluginRegistry.resetRegistryCache()` in beforeEach. The published
  * `@elizaos/plugin-plugin-manager` package ships a `dist/` that is not
- * built under `MILADY_SKIP_LOCAL_UPSTREAMS=1`, and aliasing directly at
+ * built under `ELIZA_SKIP_LOCAL_UPSTREAMS=1`, and aliasing directly at
  * the submodule source path pulls in `fs-extra` and other dependencies
  * that are not installed at the repo root during unit tests. Stub
  * with a minimal class and namespace that exposes the methods the

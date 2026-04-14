@@ -1,20 +1,11 @@
-/**
- * Per-agent model configuration: Aider provider selector (when the
- * active tab is Aider) plus Powerful / Fast model selects and the
- * fallback-vs-dynamic-models hint line.
- *
- * Extracted from `CodingAgentSettingsSection.tsx` to keep that file
- * under the project's ~500 LOC guideline.
- */
-
+import { useApp } from "@elizaos/app-core/state/useApp";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectValue,
-  SettingsControls,
-} from "@elizaos/app-core";
-import { useApp } from "@elizaos/app-core/state";
+} from "@elizaos/ui/components/ui/select";
+import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
 import type {
   AgentTab,
   AiderProvider,
@@ -57,7 +48,7 @@ export function ModelConfigSection({
           </SettingsControls.FieldLabel>
           <Select
             value={aiderProvider}
-            onValueChange={(value) => setPref("PARALLAX_AIDER_PROVIDER", value)}
+            onValueChange={(value: string) => setPref("PARALLAX_AIDER_PROVIDER", value)}
           >
             <SettingsControls.SelectTrigger variant="compact">
               <SelectValue />
@@ -86,7 +77,7 @@ export function ModelConfigSection({
           </SettingsControls.FieldLabel>
           <Select
             value={powerfulValue}
-            onValueChange={(value) =>
+            onValueChange={(value: string) =>
               setPref(`${prefix}_MODEL_POWERFUL`, value)
             }
           >
@@ -113,7 +104,7 @@ export function ModelConfigSection({
           </SettingsControls.FieldLabel>
           <Select
             value={fastValue}
-            onValueChange={(value) => setPref(`${prefix}_MODEL_FAST`, value)}
+            onValueChange={(value: string) => setPref(`${prefix}_MODEL_FAST`, value)}
           >
             <SettingsControls.SelectTrigger variant="compact">
               <SelectValue

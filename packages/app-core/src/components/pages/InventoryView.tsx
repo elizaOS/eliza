@@ -1,30 +1,7 @@
-/**
- * Inventory view — unified wallet balances, NFTs, and scoped BSC trading.
- *
- * Thin coordinator that delegates rendering to sub-components
- * in the ./inventory/ directory.
- */
-
-import type { StewardStatusResponse } from "@elizaos/app-core/api";
-import { useApp } from "@elizaos/app-core/state";
+import type { StewardStatusResponse } from "@elizaos/shared/contracts/wallet";
+import { useApp } from "../../state/useApp";
 import { WidgetHost } from "../../widgets";
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  PageLayout,
-  PagePanel,
-  SegmentedControl,
-  Sidebar,
-  SidebarContent,
-  SidebarFilterBar,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-  TooltipHint,
-} from "@elizaos/app-core";
+
 import {
   AlertTriangle,
   ChevronDown,
@@ -62,9 +39,10 @@ import { NftGrid } from "../inventory/NftGrid";
 import { TokensTable } from "../inventory/TokensTable";
 import { useInventoryData } from "../inventory/useInventoryData";
 import { PolicyControlsView } from "../settings/PolicyControlsView";
-import { ApprovalQueue } from "@elizaos/app-steward/ui";
-import { TransactionHistory } from "@elizaos/app-steward/ui";
+import { ApprovalQueue } from "@elizaos/app-steward/ApprovalQueue";
+import { TransactionHistory } from "@elizaos/app-steward/TransactionHistory";
 import { ConfigPageView } from "./ConfigPageView";
+import { PagePanel, SidebarContent, SidebarFilterBar, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Dialog, DialogContent, DialogHeader, DialogTitle, SegmentedControl, TooltipHint, PageLayout } from "@elizaos/ui";
 
 /* ── Component ─────────────────────────────────────────────────────── */
 
@@ -885,7 +863,7 @@ export function InventoryView() {
     <div className="mb-4 flex justify-end">
       <SegmentedControl
         value={walletSubTab}
-        onValueChange={setWalletSubTab}
+        onValueChange={(value: WalletSubTab) => setWalletSubTab(value)}
         items={walletSubTabItems}
       />
     </div>

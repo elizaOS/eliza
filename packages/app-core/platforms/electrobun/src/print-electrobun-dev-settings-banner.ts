@@ -32,14 +32,14 @@ export function printElectrobunDevSettingsBanner(
   const partition = resolveMainWindowPartition(env);
 
   const rendererWin = firstWinningEnvString(env, [
-    "MILADY_RENDERER_URL",
+    "ELIZA_RENDERER_URL",
     "VITE_DEV_SERVER_URL",
   ]);
 
-  const browserPort = env.MILADY_BROWSER_WORKSPACE_PORT?.trim();
-  const browserTok = env.MILADY_BROWSER_WORKSPACE_TOKEN?.trim();
+  const browserPort = env.ELIZA_BROWSER_WORKSPACE_PORT?.trim();
+  const browserTok = env.ELIZA_BROWSER_WORKSPACE_TOKEN?.trim();
 
-  const shotOpt = env.MILADY_DESKTOP_SCREENSHOT_SERVER?.trim().toLowerCase();
+  const shotOpt = env.ELIZA_DESKTOP_SCREENSHOT_SERVER?.trim().toLowerCase();
   const screenshotOff =
     shotOpt === "0" ||
     shotOpt === "false" ||
@@ -54,19 +54,19 @@ export function printElectrobunDevSettingsBanner(
         runtime.mode === "external" && runtime.externalApi.source
           ? `env set — ${runtime.externalApi.source}`
           : runtime.mode === "disabled"
-            ? "env set — MILADY_DESKTOP_SKIP_EMBEDDED_AGENT"
+            ? "env set — ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT"
             : "default (local embedded agent)",
       change:
-        "set MILADY_DESKTOP_TEST_API_BASE / MILADY_DESKTOP_API_BASE / MILADY_API_BASE_URL / MILADY_API_BASE for external; MILADY_DESKTOP_SKIP_EMBEDDED_AGENT=1 for disabled",
+        "set ELIZA_DESKTOP_TEST_API_BASE / ELIZA_DESKTOP_API_BASE / ELIZA_API_BASE_URL / ELIZA_API_BASE for external; ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT=1 for disabled",
     },
     {
-      setting: "MILADY_RENDERER_URL / VITE_DEV_SERVER_URL",
+      setting: "ELIZA_RENDERER_URL / VITE_DEV_SERVER_URL",
       effective: rendererWin?.value ?? "—",
       source: rendererWin
         ? `env set — ${rendererWin.key}`
         : "default (unset — static dist)",
       change:
-        "export MILADY_RENDERER_URL=http://127.0.0.1:<vite>/ (or VITE_DEV_SERVER_URL)",
+        "export ELIZA_RENDERER_URL=http://127.0.0.1:<vite>/ (or VITE_DEV_SERVER_URL)",
     },
     {
       setting: "API port (preference)",
@@ -75,53 +75,53 @@ export function printElectrobunDevSettingsBanner(
       change: apiPref.changeLabel,
     },
     {
-      setting: "MILADY_DESKTOP_TEST_PARTITION",
-      effective: env.MILADY_DESKTOP_TEST_PARTITION?.trim() || "—",
-      source: env.MILADY_DESKTOP_TEST_PARTITION?.trim()
-        ? "env set — MILADY_DESKTOP_TEST_PARTITION"
+      setting: "ELIZA_DESKTOP_TEST_PARTITION",
+      effective: env.ELIZA_DESKTOP_TEST_PARTITION?.trim() || "—",
+      source: env.ELIZA_DESKTOP_TEST_PARTITION?.trim()
+        ? "env set — ELIZA_DESKTOP_TEST_PARTITION"
         : "default (unset)",
-      change: "export MILADY_DESKTOP_TEST_PARTITION=<id> for test profile",
+      change: "export ELIZA_DESKTOP_TEST_PARTITION=<id> for test profile",
     },
     {
-      setting: "MILADY_DESKTOP_TEST_API_BASE",
-      effective: env.MILADY_DESKTOP_TEST_API_BASE?.trim() || "—",
-      source: env.MILADY_DESKTOP_TEST_API_BASE?.trim()
-        ? "env set — MILADY_DESKTOP_TEST_API_BASE"
+      setting: "ELIZA_DESKTOP_TEST_API_BASE",
+      effective: env.ELIZA_DESKTOP_TEST_API_BASE?.trim() || "—",
+      source: env.ELIZA_DESKTOP_TEST_API_BASE?.trim()
+        ? "env set — ELIZA_DESKTOP_TEST_API_BASE"
         : "default (unset)",
       change:
-        "export MILADY_DESKTOP_TEST_API_BASE=https://… for partition tests",
+        "export ELIZA_DESKTOP_TEST_API_BASE=https://… for partition tests",
     },
     {
       setting: "resolveMainWindowPartition",
       effective: partition ?? "—",
       source: "derived — main-window-session.ts",
       change:
-        "export MILADY_DESKTOP_TEST_PARTITION or MILADY_DESKTOP_TEST_API_BASE (see source)",
+        "export ELIZA_DESKTOP_TEST_PARTITION or ELIZA_DESKTOP_TEST_API_BASE (see source)",
     },
     {
-      setting: "MILADY_BROWSER_WORKSPACE_PORT",
+      setting: "ELIZA_BROWSER_WORKSPACE_PORT",
       effective: browserPort || "—",
       source: browserPort
-        ? "env set — MILADY_BROWSER_WORKSPACE_PORT"
+        ? "env set — ELIZA_BROWSER_WORKSPACE_PORT"
         : "default (unset)",
-      change: "export MILADY_BROWSER_WORKSPACE_PORT=<port>",
+      change: "export ELIZA_BROWSER_WORKSPACE_PORT=<port>",
     },
     {
-      setting: "MILADY_BROWSER_WORKSPACE_TOKEN",
+      setting: "ELIZA_BROWSER_WORKSPACE_TOKEN",
       effective: browserTok ? "set (redacted)" : "—",
       source: browserTok
-        ? "env set — MILADY_BROWSER_WORKSPACE_TOKEN"
+        ? "env set — ELIZA_BROWSER_WORKSPACE_TOKEN"
         : "default (unset)",
-      change: "export MILADY_BROWSER_WORKSPACE_TOKEN=<secret> or unset",
+      change: "export ELIZA_BROWSER_WORKSPACE_TOKEN=<secret> or unset",
     },
     {
-      setting: "MILADY_DESKTOP_SCREENSHOT_SERVER",
+      setting: "ELIZA_DESKTOP_SCREENSHOT_SERVER",
       effective: screenshotOff ? "off" : "on",
       source: screenshotOff
         ? "env set — opt-out (0/false/no/off)"
         : "default (on)",
       change:
-        "export MILADY_DESKTOP_SCREENSHOT_SERVER=0 to disable; MILADY_SCREENSHOT_SERVER_PORT for port",
+        "export ELIZA_DESKTOP_SCREENSHOT_SERVER=0 to disable; ELIZA_SCREENSHOT_SERVER_PORT for port",
     },
     {
       setting: "NODE_ENV",

@@ -380,7 +380,9 @@ export async function handleHealthRoutes(
   if (method === "GET" && pathname === "/api/status") {
     const uptime = state.startedAt ? Date.now() - state.startedAt : undefined;
     const cloudProvisioned = isCloudProvisionedContainer();
-    const hasCloudApiKey = Boolean(resolveCloudApiKey(state.config));
+    const hasCloudApiKey = Boolean(
+      resolveCloudApiKey(state.config, state.runtime),
+    );
     const cloudStatus = {
       connectionStatus:
         cloudProvisioned || hasCloudApiKey ? "connected" : "disconnected",

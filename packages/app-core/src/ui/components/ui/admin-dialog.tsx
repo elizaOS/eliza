@@ -27,7 +27,11 @@ const ADMIN_SEGMENTED_TAB_INACTIVE_CLASSNAME =
   "border-transparent text-muted-strong hover:text-txt";
 
 export interface AdminDialogContentProps
-  extends React.ComponentPropsWithoutRef<typeof DialogContent> {}
+  extends React.ComponentPropsWithoutRef<typeof DialogContent> {
+  className?: string;
+  children?: React.ReactNode;
+  container?: HTMLElement | null;
+}
 
 export function AdminDialogContent({
   className,

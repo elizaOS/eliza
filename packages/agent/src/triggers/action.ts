@@ -144,12 +144,14 @@ export const createTriggerTaskAction: Action = {
     "SCHEDULE_TASK",
     "CREATE_HEARTBEAT",
     "SCHEDULE_HEARTBEAT",
+    "CREATE_AUTOMATION",
+    "SCHEDULE_AUTOMATION",
     "SET_REMINDER",
     "CREATE_CRON",
     "CREATE_RECURRING",
   ],
   description:
-    "Create an autonomous trigger task that executes on a schedule (interval, once, or cron). Use when the user wants to schedule, automate, or create a recurring/timed task, trigger, or heartbeat.",
+    "Create a scheduled task that executes on a schedule (interval, once, or cron). Use when the user wants to schedule, automate, or create a recurring/timed task, trigger, or heartbeat.",
   validate: async (runtime, message) => {
     if (!triggersFeatureEnabled(runtime)) return false;
     if (!(await hasOwnerAccess(runtime, message))) return false;

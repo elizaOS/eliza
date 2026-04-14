@@ -3,7 +3,7 @@
 # deploy-image.sh — Deploy a milady/agent image to running containers
 #
 # Usage:
-#   bash eliza/packages/app-core/scripts/deploy-image.sh [OPTIONS]
+#   ./scripts/deploy-image.sh [OPTIONS]
 #
 # Options:
 #   --image TAG           Image to deploy (default: milady/agent:latest or
@@ -23,10 +23,10 @@
 #   5. Report success or failure
 #
 # Examples:
-#   bash eliza/packages/app-core/scripts/deploy-image.sh --list
-#   bash eliza/packages/app-core/scripts/deploy-image.sh --all --image milady/agent:v2.0.0-alpha.54
-#   bash eliza/packages/app-core/scripts/deploy-image.sh --container-id milady-373b9e29-c68b-47a0-85f4-ede46f4a0dec
-#   bash eliza/packages/app-core/scripts/deploy-image.sh --all --dry-run
+#   ./scripts/deploy-image.sh --list
+#   ./scripts/deploy-image.sh --all --image milady/agent:v2.0.0-alpha.54
+#   ./scripts/deploy-image.sh --container-id milady-373b9e29-c68b-47a0-85f4-ede46f4a0dec
+#   ./scripts/deploy-image.sh --all --dry-run
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -153,7 +153,7 @@ deploy_container() {
   if ! $DRY_RUN; then
     if ! ssh_run "docker image inspect '${new_image}' > /dev/null 2>&1"; then
       err "Image '${new_image}' not found on ${TARGET_SERVER}"
-      err "Run: bash eliza/packages/app-core/scripts/build-image.sh --push  OR  bash eliza/packages/app-core/scripts/build-image.sh --remote"
+      err "Run: ./scripts/build-image.sh --push  OR  ./scripts/build-image.sh --remote"
       FAILED+=("${container}: image not found")
       return 1
     fi

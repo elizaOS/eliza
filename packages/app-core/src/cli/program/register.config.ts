@@ -46,9 +46,7 @@ export function registerConfigCli(program: Command) {
     .command("path")
     .description("Print the resolved config file path")
     .action(async () => {
-      const { resolveConfigPath } = await import(
-        "@elizaos/agent/config/paths"
-      );
+      const { resolveConfigPath } = await import("@elizaos/agent/config/paths");
       console.log(resolveConfigPath());
     });
 

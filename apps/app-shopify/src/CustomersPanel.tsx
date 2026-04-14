@@ -5,7 +5,7 @@
 
 import { Input, Skeleton } from "@elizaos/app-core";
 import { Search, Users } from "lucide-react";
-import { formatShortDate } from "@elizaos/app-core/utils/format";
+import { formatShortDate } from "@elizaos/app-core";
 import type { ShopifyCustomer } from "./useShopifyDashboard";
 
 // ── Customer row ──────────────────────────────────────────────────────────

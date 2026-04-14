@@ -16,13 +16,16 @@
  *   POST /vault/:agentId/sign-typed-data — sign EIP-712 typed data
  *
  * Auth: Bearer token (STEWARD_AGENT_TOKEN JWT) in Authorization header.
+ *
+ * @deprecated This file is maintained for backward compatibility.
+ * The canonical source has moved to `@elizaos/app-steward/services/steward-evm-account`.
+ * New development should target the app-steward package.
  */
 
 import type {
   Account,
   Address,
   CustomSource,
-  Hash,
   Hex,
   SignableMessage,
   TransactionSerializable,
@@ -290,7 +293,7 @@ export function createStewardEvmAccount(
           msgStr = raw; // already hex
         } else {
           // Uint8Array → hex
-          msgStr = "0x" + Buffer.from(raw).toString("hex");
+          msgStr = `0x${Buffer.from(raw).toString("hex")}`;
         }
       } else {
         msgStr = String(message);
@@ -369,8 +372,14 @@ export function isStewardCloudProvisioned(): boolean {
 export function resolveStewardEvmConfig(): StewardEvmAccountConfig | null {
   if (!isStewardCloudProvisioned()) return null;
 
-  const apiUrl = process.env.STEWARD_API_URL!;
-  const agentToken = process.env.STEWARD_AGENT_TOKEN!;
+  const apiUrl = process.env.STEWARD_API_URL;
+  const agentToken = process.env.STEWARD_AGENT_TOKEN;
+  if (!apiUrl || !agentToken) {
+    console.warn(
+      "[StewardAccount] Steward cloud mode is enabled but required env vars are missing",
+    );
+    return null;
+  }
 
   // Agent ID can come from the JWT payload or env var
   const agentId =

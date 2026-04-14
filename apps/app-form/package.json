@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Milady app-form: conversational forms as guardrails for guided user journeys (lazy-loaded native app plugin).",
+  "description": "Eliza app-form: conversational forms as guardrails for guided user journeys (lazy-loaded native app plugin).",
   "main": "./src/index.ts",
   "exports": {
     "./package.json": "./package.json",

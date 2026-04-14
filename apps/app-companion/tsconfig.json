@@ -5,11 +5,20 @@
     "typeRoots": ["./node_modules/@types"],
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node", "bun"],
+    "typeRoots": [
+      "./node_modules/@types",
+      "../../node_modules/@types",
+      "../../../node_modules/@types"
+    ],
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
+    "baseUrl": "../../",
     "paths": {
       "@elizaos/app-lifeops": ["./apps/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["./apps/app-lifeops/src/*"],
@@ -30,6 +39,17 @@
       "lucide-react": ["./apps/app-companion/node_modules/lucide-react"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
-  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts",
+    "../../packages/agent/src/external-modules.d.ts",
+    "../../packages/app-core/src/ambient-modules.d.ts"
+  ],
+  "exclude": [
+    "src/**/*.stories.ts",
+    "src/**/*.stories.tsx",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ]
 }

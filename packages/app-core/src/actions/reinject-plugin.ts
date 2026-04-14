@@ -1,6 +1,16 @@
-import type { Action, HandlerOptions } from "@elizaos/core";
+import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
 import { requestRestart } from "@elizaos/shared/restart";
-import { reinjectPlugin } from "../services/plugin-eject";
+
+function getPluginManager(runtime: IAgentRuntime) {
+  return runtime.getService("plugin_manager") as {
+    reinjectPlugin(id: string): Promise<{
+      success: boolean;
+      pluginName: string;
+      removedPath: string;
+      error?: string;
+    }>;
+  } | null;
+}
 
 export const reinjectPluginAction: Action = {
   name: "REINJECT_PLUGIN",
@@ -12,7 +22,7 @@ export const reinjectPluginAction: Action = {
 
   validate: async () => true,
 
-  handler: async (_runtime, _message, _state, options) => {
+  handler: async (runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters;
     const pluginId =
       typeof params?.pluginId === "string" ? params.pluginId.trim() : "";
@@ -21,7 +31,15 @@ export const reinjectPluginAction: Action = {
       return { text: "I need a plugin ID to reinject.", success: false };
     }
 
-    const result = await reinjectPlugin(pluginId);
+    const mgr = getPluginManager(runtime);
+    if (!mgr) {
+      return {
+        text: "Plugin manager service is not available.",
+        success: false,
+      };
+    }
+
+    const result = await mgr.reinjectPlugin(pluginId);
     if (!result.success) {
       return {
         text: `Failed to reinject ${pluginId}: ${result.error ?? "unknown error"}`,

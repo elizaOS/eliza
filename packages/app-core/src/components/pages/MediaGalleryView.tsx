@@ -1,27 +1,11 @@
-/**
- * Media Gallery — browse photos, videos, and audio stored in agent databases.
- *
- * Queries known tables for records containing media URLs (image/video/audio
- * file extensions or data URIs). All data flows through the generic database
- * APIs (getDatabaseTables, executeDatabaseQuery).
- */
 
-import {
-  Button,
-  Input,
-  MetaPill,
-  PageLayout,
-  PagePanel,
-  Sidebar,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/app-core";
+
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client, type QueryResult } from "../../api";
 import { useApp } from "../../state";
 import { resolveAppAssetUrl } from "../../utils";
+import { PagePanel, MetaPill, SidebarContent, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, PageLayout } from "@elizaos/ui";
 
 type MediaType = "all" | "image" | "video" | "audio";
 

@@ -4,10 +4,10 @@
  *
  * Shipped skill assets come from `@elizaos/skills` (`skills/` inside that package).
  * Seeds into:
- *   $MILADY_STATE_DIR/skills
  *   $ELIZA_STATE_DIR/skills
- * or, by default for Milady:
- *   ~/.milady/skills
+ *   $ELIZA_STATE_DIR/skills
+ * or, by default for Eliza:
+ *   ~/.eliza/skills
  *
  * Run automatically during startup, or manually:
  *   node scripts/ensure-skills.mjs
@@ -91,7 +91,7 @@ function resolveUserPath(input, home = homedir) {
 }
 
 export function resolveStateDir(env = process.env, home = homedir) {
-  const override = env.MILADY_STATE_DIR?.trim() || env.ELIZA_STATE_DIR?.trim();
+  const override = env.ELIZA_STATE_DIR?.trim() || env.ELIZA_STATE_DIR?.trim();
   if (override) {
     return resolveUserPath(override, home);
   }

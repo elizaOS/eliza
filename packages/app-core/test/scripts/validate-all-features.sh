@@ -46,17 +46,12 @@ ELIZA_ROOT="$MILADY_ROOT/eliza"
 PLUGINS_ROOT="$(cd "$MILADY_ROOT/plugins" 2>/dev/null && pwd || echo "")"
 
 # Results tracking
-RESULTS_FILE="$(mktemp "${TMPDIR:-/tmp}/milady-feature-results.XXXXXX")"
+declare -A TEST_RESULTS
+declare -A TEST_COUNTS
 TOTAL_PASSED=0
 TOTAL_FAILED=0
 TOTAL_SKIPPED=0
 START_TIME=$(date +%s)
-
-cleanup_results_file() {
-    rm -f "$RESULTS_FILE"
-}
-
-trap cleanup_results_file EXIT
 
 # Options
 RUN_VISION=true
@@ -158,18 +153,6 @@ log_info() {
     echo -e "  ${BLUE}ℹ${NC} $1"
 }
 
-record_result() {
-    local name="$1"
-    local status="$2"
-    local passed="$3"
-    local failed="$4"
-    local skipped="$5"
-    local duration="$6"
-
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$name" "$status" "$passed" "$failed" "$skipped" "$duration" >> "$RESULTS_FILE"
-}
-
 # Run tests and capture results
 run_test_suite() {
     local name="$1"
@@ -219,7 +202,11 @@ run_test_suite() {
     fi
 
     # Store results
-    record_result "$name" "$status" "$passed" "$failed" "$skipped" "$duration"
+    TEST_RESULTS["$name"]=$status
+    TEST_COUNTS["${name}_passed"]=$passed
+    TEST_COUNTS["${name}_failed"]=$failed
+    TEST_COUNTS["${name}_skipped"]=$skipped
+    TEST_COUNTS["${name}_duration"]=$duration
 
     TOTAL_PASSED=$((TOTAL_PASSED + passed))
     TOTAL_FAILED=$((TOTAL_FAILED + failed))
@@ -346,16 +333,22 @@ run_extension_tests() {
             log_info "  Permissions declared: $permissions"
         fi
 
-        record_result "Browser Extension - Files" "0" "1" "0" "0" "0"
+        TEST_RESULTS["Browser Extension - Files"]="0"
+        TEST_COUNTS["Browser Extension - Files_passed"]=1
         TOTAL_PASSED=$((TOTAL_PASSED + 1))
     else
         log_failure "Browser Extension files missing"
-        record_result "Browser Extension - Files" "1" "0" "1" "0" "0"
+        TEST_RESULTS["Browser Extension - Files"]="1"
+        TEST_COUNTS["Browser Extension - Files_failed"]=1
         TOTAL_FAILED=$((TOTAL_FAILED + 1))
     fi
 }
 
 # ============================================================================
+run_app_tests() {
+    log_header "APP CORE TESTS"
+    log_info "Testing Eliza core functionality"
+=======
 # MILADY CORE TESTS
 # ============================================================================
 run_milady_tests() {
@@ -455,8 +448,12 @@ generate_report() {
             <tbody>
 EOF
 
-    while IFS=$'\t' read -r name status passed failed skipped duration; do
-        [[ -n "$name" ]] || continue
+    for name in "${!TEST_RESULTS[@]}"; do
+        local status="${TEST_RESULTS[$name]}"
+        local passed="${TEST_COUNTS[${name}_passed]:-0}"
+        local failed="${TEST_COUNTS[${name}_failed]:-0}"
+        local skipped="${TEST_COUNTS[${name}_skipped]:-0}"
+        local duration="${TEST_COUNTS[${name}_duration]:-0}"
 
         local status_class="status-pass"
         local status_text="PASS"
@@ -475,7 +472,7 @@ EOF
                     <td>${duration}s</td>
                 </tr>
 EOF
-    done < "$RESULTS_FILE"
+    done
 
     cat >> "$report_file" << EOF
             </tbody>

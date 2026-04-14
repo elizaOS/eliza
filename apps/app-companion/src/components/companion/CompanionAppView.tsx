@@ -1,22 +1,9 @@
-/**
- * CompanionAppView — self-contained full-screen companion app.
- *
- * Owns its entire lifecycle: mounts the 3D scene + VRM engine on render,
- * disposes everything on unmount. No resources load until this component
- * mounts, and everything cleans up when it unmounts.
- *
- * Implements the OverlayApp Component contract so other full-screen
- * apps can follow the same pattern.
- */
-
+import { PtyConsoleSidePanel } from "@elizaos/app-coding";
 import type { OverlayAppContext } from "@elizaos/app-core/components/apps/overlay-app-api";
-import { CompanionSceneHost } from "./CompanionSceneHost";
-import { CompanionSceneStatusContext } from "./companion-scene-status-context";
-import { CompanionHeader, type CompanionShellView } from "./CompanionHeader";
-import { InferenceCloudAlertButton } from "./InferenceCloudAlertButton";
-import { resolveCompanionInferenceNotice } from "./resolve-companion-inference-notice";
-import { useRenderGuard } from "@elizaos/app-core/hooks";
-import { useApp, usePtySessions } from "@elizaos/app-core/state";
+import { ChatModalView } from "@elizaos/app-core/components/pages/ChatModalView";
+import { useRenderGuard } from "@elizaos/app-core/hooks/useRenderGuard";
+import { usePtySessions } from "@elizaos/app-core/state/PtySessionsContext";
+import { useApp } from "@elizaos/app-core/state/useApp";
 import {
   lazy,
   memo,
@@ -26,12 +13,15 @@ import {
   useMemo,
   useState,
 } from "react";
-import { ChatModalView } from "@elizaos/app-core/components/pages/ChatModalView";
-import { PtyConsoleSidePanel } from "@elizaos/app-coding";
+import { CompanionHeader, type CompanionShellView } from "./CompanionHeader";
+import { CompanionSceneHost } from "./CompanionSceneHost";
 import { useCompanionSceneStatus } from "./companion-scene-status-context";
+import { EmotePicker } from "./EmotePicker";
+import { InferenceCloudAlertButton } from "./InferenceCloudAlertButton";
+import { resolveCompanionInferenceNotice } from "./resolve-companion-inference-notice";
 
 const CharacterEditor = lazy(() =>
-  import("@elizaos/app-core/components/character/CharacterEditor").then((m) => ({
+  import("@elizaos/app-core").then((m) => ({
     default: m.CharacterEditor,
   })),
 );
@@ -93,15 +83,16 @@ const CompanionOverlay = memo(function CompanionOverlay() {
   const handleSidebarClose = useCallback(() => setHistoryOpen(false), []);
   const handlePtySessionClick = useCallback(
     (id: string) =>
-      setPtySidePanelSessionId((prev: string | null) => (prev === id ? null : id)),
+      setPtySidePanelSessionId((prev: string | null) =>
+        prev === id ? null : id,
+      ),
     [],
   );
   const handlePtyPanelClose = useCallback(
     () => setPtySidePanelSessionId(null),
     [],
   );
-  const { avatarReady: sceneAvatarReady, teleportKey } =
-    useCompanionSceneStatus();
+  const { avatarReady: sceneAvatarReady } = useCompanionSceneStatus();
 
   const [avatarReadyFallback, setAvatarReadyFallback] = useState(false);
   useEffect(() => {
@@ -116,7 +107,7 @@ const CompanionOverlay = memo(function CompanionOverlay() {
     return () => {
       window.clearTimeout(fallbackTimer);
     };
-  }, [sceneAvatarReady, teleportKey]);
+  }, [sceneAvatarReady]);
   const avatarReady = sceneAvatarReady || avatarReadyFallback;
 
   useEffect(() => {
@@ -256,6 +247,8 @@ const CompanionOverlay = memo(function CompanionOverlay() {
           />
         </div>
       )}
+
+      <EmotePicker />
 
       <div className="flex-1 grid grid-cols-[1fr_auto] gap-6 min-h-0 relative">
         <div className="w-full h-full" />

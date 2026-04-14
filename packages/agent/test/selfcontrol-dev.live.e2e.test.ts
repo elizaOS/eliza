@@ -9,7 +9,7 @@ import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
 import { req } from "../../../../test/helpers/http";
 
 const LIVE_TESTS_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 
 type StartedDevStack = {
@@ -186,11 +186,7 @@ async function startDevStack(): Promise<StartedDevStack> {
       ELIZA_CONFIG_PATH: configPath,
       ELIZA_DEV_ONCHAIN: "0",
       ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1",
-      ELIZA_PORT: String(apiPort),
-      ELIZA_STATE_DIR: stateDir,
       ELIZA_API_PORT: String(apiPort),
-      ELIZA_CONFIG_PATH: configPath,
-      ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1",
       ELIZA_PORT: String(uiPort),
       ELIZA_STATE_DIR: stateDir,
       ALLOW_NO_DATABASE: "",

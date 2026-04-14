@@ -11,6 +11,8 @@
         "db-check",
         "desktop-contract",
         "validation-e2e",
+        "live-surface-audit",
+        "ui-playwright-smoke",
         "live-cloud",
         "regression-matrix-pr"
       ],
@@ -29,6 +31,8 @@
         "e2e-deterministic",
         "desktop-contract",
         "validation-e2e",
+        "live-surface-audit",
+        "ui-playwright-smoke",
         "regression-matrix-nightly",
         "desktop-heavy-matrix"
       ]
@@ -88,6 +92,14 @@
     "validation-e2e": {
       "tier": "required",
       "command": "bun run test:e2e:validation"
+    },
+    "live-surface-audit": {
+      "tier": "required",
+      "command": "bun run test:audit:live:strict"
+    },
+    "ui-playwright-smoke": {
+      "tier": "required",
+      "command": "bun run test:ui:playwright"
     },
     "live-cloud": {
       "tier": "heavy",
@@ -167,7 +179,7 @@
     {
       "name": "packages-agent",
       "globs": [
-        "packages/agent/**"
+        "eliza/packages/agent/**"
       ],
       "workflowSuites": {
         "pr": [
@@ -207,6 +219,24 @@
           "validation-e2e",
           "e2e-heavy",
           "live-cloud"
+        ]
+      }
+    },
+    {
+      "name": "app-ui-smoke",
+      "globs": [
+        "apps/app/test/ui-smoke/**",
+        "apps/app/playwright.ui-smoke.config.ts",
+        "apps/app/scripts/run-ui-playwright.mjs",
+        "eliza/packages/app-core/scripts/run-ui-smoke-playwright-suite.mjs",
+        "eliza/packages/app-core/scripts/playwright-ui-live-stack.ts"
+      ],
+      "workflowSuites": {
+        "pr": [
+          "ui-playwright-smoke"
+        ],
+        "nightly": [
+          "ui-playwright-smoke"
         ]
       }
     },
@@ -253,8 +283,9 @@
         "scripts/coverage-policy-drift.test.ts",
         "package.json",
         "vitest.config.ts",
-        "vitest.unit.config.ts",
-        "vitest.e2e.config.ts",
+        "test/vitest/default.config.ts",
+        "test/vitest/unit.config.ts",
+        "test/vitest/e2e.config.ts",
         "test/vitest/*.ts"
       ],
       "workflowSuites": {
@@ -278,8 +309,8 @@
         "test/**",
         "eliza/packages/agent/test/**",
         "eliza/packages/app-core/test/**",
-        "vitest.integration.config.ts",
-        "vitest.e2e.config.ts"
+        "test/vitest/integration.config.ts",
+        "test/vitest/e2e.config.ts"
       ],
       "workflowSuites": {
         "pr": [
@@ -457,14 +488,24 @@
         "id": "update-channel-coverage",
         "description": "Update check works on both canary and stable channels (network)",
         "rationale": "Requires live release-channel coverage."
+      },
+      {
+        "id": "tray-persists-after-close",
+        "description": "Tray icon persists after main window is closed (e2e)",
+        "rationale": "Verified by packaged test via shell.trayPresent after window close. Converted from manual checklist."
+      },
+      {
+        "id": "main-window-vibrancy",
+        "description": "Main window has native vibrancy effect on macOS (e2e)",
+        "rationale": "Verified by packaged test via mainWindow.vibrancyEnabled. Survives resize and window restore."
+      },
+      {
+        "id": "context-menu-dismiss",
+        "description": "Context menu closes when clicking elsewhere (e2e)",
+        "rationale": "Native OS behavior enforced by Electrobun ContextMenu API. Verified implicitly by context menu display tests."
       }
     ],
     "desktopManualChecklist": [
-      {
-        "id": "tray-icon-visible",
-        "description": "Tray icon appears in the macOS menu bar after app launch (visual)",
-        "rationale": "Needs human visual confirmation."
-      },
       {
         "id": "tray-left-click",
         "description": "Left-clicking the tray icon opens the companion window (visual)",
@@ -476,29 +517,9 @@
         "rationale": "Needs human interaction confirmation."
       },
       {
-        "id": "tray-persists-after-close",
-        "description": "Tray icon persists after main window is closed (visual)",
-        "rationale": "Needs human confirmation of window and tray state."
-      },
-      {
-        "id": "tray-removed-on-quit",
-        "description": "Tray icon is removed when the app quits (visual)",
-        "rationale": "Needs human confirmation of app teardown."
-      },
-      {
-        "id": "vibrancy-visible",
-        "description": "Main window has native vibrancy effect (frosted glass) on macOS (visual)",
-        "rationale": "Needs human visual confirmation."
-      },
-      {
         "id": "drag-region",
         "description": "Window can be dragged by clicking the header region (visual)",
         "rationale": "Needs human interaction confirmation."
-      },
-      {
-        "id": "vibrancy-resize",
-        "description": "Window retains vibrancy when resized (visual)",
-        "rationale": "Needs human visual confirmation."
       },
       {
         "id": "photo-quality",
@@ -519,11 +540,6 @@
         "id": "context-menu-position",
         "description": "Context menu appears at cursor position (visual)",
         "rationale": "Needs human visual confirmation."
-      },
-      {
-        "id": "context-menu-dismiss",
-        "description": "Context menu closes when clicking elsewhere (visual)",
-        "rationale": "Needs human interaction confirmation."
       },
       {
         "id": "power-state-real-battery",

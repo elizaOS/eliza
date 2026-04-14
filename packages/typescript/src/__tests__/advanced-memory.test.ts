@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { MemoryService } from "../advanced-memory";
-import { LongTermMemoryCategory } from "../advanced-memory/types";
+import { MemoryService } from "../features/advanced-memory";
+import { LongTermMemoryCategory } from "../features/advanced-memory/types";
 import { AgentRuntime } from "../runtime";
 import { type Character, ModelType, type UUID } from "../types";
 

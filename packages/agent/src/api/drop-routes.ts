@@ -183,7 +183,7 @@ export async function handleDropRoutes(
 
   if (method === "POST" && pathname === "/api/whitelist/twitter/verify") {
     const body = await readJsonBody<{ tweetUrl?: string }>(req, res);
-    if (!body || !body.tweetUrl) {
+    if (!body?.tweetUrl) {
       error(res, "tweetUrl is required");
       return true;
     }

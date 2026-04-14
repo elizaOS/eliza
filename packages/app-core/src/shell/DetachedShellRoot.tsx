@@ -1,23 +1,21 @@
 import { CodingAgentSettingsSection } from "@elizaos/app-coding";
-import {
-  BrowserWorkspaceView,
-  ChatView,
-  CloudDashboard,
-  ConfigPageView,
-  ConnectorsPageView,
-  ConversationsSidebar,
-  HeartbeatsView,
-  MediaSettingsSection,
-  PairingView,
-  PermissionsSection,
-  PluginsPageView,
-  ProviderSwitcher,
-  ReleaseCenterView,
-  SettingsView,
-  StartupFailureView,
-  VoiceConfigView,
-} from "@elizaos/app-core/components";
-import { useApp } from "@elizaos/app-core/state";
+import { ConversationsSidebar } from "../components/conversations/ConversationsSidebar";
+import { BrowserWorkspaceView } from "../components/pages/BrowserWorkspaceView";
+import { ChatView } from "../components/pages/ChatView";
+import { ConfigPageView } from "../components/pages/ConfigPageView";
+import { ConnectorsPageView } from "../components/pages/ConnectorsPageView";
+import { CloudDashboard } from "../components/pages/ElizaCloudDashboard";
+import { HeartbeatsView } from "../components/pages/HeartbeatsView";
+import { PluginsPageView } from "../components/pages/PluginsPageView";
+import { ReleaseCenterView } from "../components/pages/ReleaseCenterView";
+import { SettingsView } from "../components/pages/SettingsView";
+import { MediaSettingsSection } from "../components/settings/MediaSettingsSection";
+import { PermissionsSection } from "../components/settings/PermissionsSection";
+import { ProviderSwitcher } from "../components/settings/ProviderSwitcher";
+import { VoiceConfigView } from "../components/settings/VoiceConfigView";
+import { PairingView } from "../components/shell/PairingView";
+import { StartupFailureView } from "../components/shell/StartupFailureView";
+import { useApp } from "../state/useApp";
 import type { JSX } from "react";
 import {
   resolveDetachedShellTarget,

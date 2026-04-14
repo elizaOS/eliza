@@ -1,6 +1,6 @@
-import { subscribeDesktopBridgeEvent } from "@elizaos/app-core/bridge";
-import type { Tab } from "@elizaos/app-core/navigation";
-import { useApp } from "@elizaos/app-core/state";
+import { subscribeDesktopBridgeEvent } from "../bridge/electrobun-rpc";
+import type { Tab } from "../navigation";
+import { useApp } from "../state/useApp";
 import { useEffect } from "react";
 
 const MAIN_SURFACE_TABS = new Set<Tab>([

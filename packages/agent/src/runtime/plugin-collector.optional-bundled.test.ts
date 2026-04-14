@@ -5,7 +5,7 @@
  * in this list.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ElizaConfig } from "../../config/types.js";
+import type { ElizaConfig } from "../config/types.js";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
 import { collectPluginNames } from "./plugin-collector.js";
 

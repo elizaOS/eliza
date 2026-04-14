@@ -434,5 +434,5 @@ else
   echo "    2. Install: bun install"
   # Extract alpha number for tag
   ALPHA_NUM="${VERSION##*alpha.}"
-  echo "    3. Build:   bash eliza/packages/app-core/scripts/build-image.sh --tag v${ALPHA_NUM}"
+  echo "    3. Build:   ./scripts/build-image.sh --tag v${ALPHA_NUM}"
 fi

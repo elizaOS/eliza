@@ -714,10 +714,16 @@ async function refreshGoogleAccessTokenImpl(
   stored: StoredGoogleConnectorToken,
   env: NodeJS.ProcessEnv,
 ): Promise<StoredGoogleConnectorToken> {
+  if (!stored.refreshToken) {
+    throw new GoogleOAuthError(
+      400,
+      "Google OAuth token is missing a refresh token.",
+    );
+  }
   const params = new URLSearchParams({
     client_id: stored.clientId,
     grant_type: "refresh_token",
-    refresh_token: stored.refreshToken!,
+    refresh_token: stored.refreshToken,
   });
   if (stored.mode === "remote") {
     const clientSecret = readEnvOverride(env, WEB_CLIENT_SECRET_KEYS);

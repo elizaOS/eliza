@@ -1,24 +1,5 @@
-import {
-  Banner,
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  Field,
-  FieldDescription,
-  FieldLabel,
-  FieldMessage,
-  Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Textarea,
-} from "@elizaos/app-core";
+
+
 import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
@@ -27,6 +8,7 @@ import { useBranding } from "../../config/branding";
 import { useBugReport } from "../../hooks";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
+import { Banner, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldDescription, FieldLabel, FieldMessage, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from "@elizaos/ui";
 import {
   createDesktopBugReportBundle,
   type DesktopBugReportDiagnostics,
@@ -387,14 +369,14 @@ export function BugReportModal() {
     return (
       <Dialog
         open={isOpen}
-        onOpenChange={(open) => {
+        onOpenChange={(open: boolean) => {
           if (!open) close();
         }}
       >
         <DialogContent className="w-[min(100%-2rem,28rem)] rounded-2xl border border-border/70 bg-card/96 p-0 shadow-2xl backdrop-blur-xl">
           <DialogHeader className="border-b border-border/70 px-5 py-4 text-left">
             <DialogTitle
-              ref={successHeadingRef}
+              ref={successHeadingRef as unknown as React.Ref<never>}
               tabIndex={-1}
               className="text-sm font-bold text-txt focus:outline-none"
             >
@@ -440,13 +422,13 @@ export function BugReportModal() {
   return (
     <Dialog
       open={isOpen}
-      onOpenChange={(open) => {
+      onOpenChange={(open: boolean) => {
         if (!open) close();
       }}
     >
       <DialogContent
         className={modalContentClassName}
-        onOpenAutoFocus={(event) => {
+        onOpenAutoFocus={(event: Event) => {
           event.preventDefault();
           descRef.current?.focus();
         }}
@@ -564,7 +546,7 @@ export function BugReportModal() {
                 </FieldLabel>
                 <Select
                   value={form.environment}
-                  onValueChange={(value) => updateField("environment", value)}
+                  onValueChange={(value: string) => updateField("environment", value)}
                 >
                   <SelectTrigger
                     id="bug-report-environment"

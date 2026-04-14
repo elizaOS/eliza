@@ -1,19 +1,14 @@
-/**
- * StreamView — Basic streaming control surface.
- *
- * Provides go-live/offline toggle and stream health status polling.
- * The actual FFmpeg pipeline runs on the backend via stream-routes.
- */
+import { client } from "../../api/client";
+import { isApiError } from "../../api/client-types-core";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { getBootConfig } from "../../config/boot-config";
 
-import { client, isApiError } from "@elizaos/app-core/api";
-import { isElectrobunRuntime } from "@elizaos/app-core/bridge";
-import { getBootConfig } from "@elizaos/app-core/config";
-import { useDocumentVisibility } from "@elizaos/app-core/hooks";
-import { useApp } from "@elizaos/app-core/state";
+import { useApp } from "../../state/useApp";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatUptime } from "../../utils/format";
 import { IS_POPOUT } from "../stream/helpers";
 import { StatusBar } from "../stream/StatusBar";
+import { useDocumentVisibility } from "@elizaos/ui";
 
 export function StreamView({ inModal }: { inModal?: boolean } = {}) {
   const { agentStatus, t } = useApp();

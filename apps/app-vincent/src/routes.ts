@@ -22,7 +22,7 @@ import { saveElizaConfig } from "@elizaos/agent/config/config";
 import {
   sendJson,
   sendJsonError,
-} from "../../../packages/app-core/src/api/response";
+} from "@elizaos/app-core/api/response";
 
 const VINCENT_API_BASE = "https://heyvincent.ai";
 

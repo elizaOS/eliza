@@ -1,24 +1,15 @@
-/**
- * Global Parallax preferences that aren't per-agent: selection
- * strategy, default approval preset, scratch retention, and the
- * coding directory path input.
- *
- * Extracted from `CodingAgentSettingsSection.tsx` to keep that file
- * under the project's ~500 LOC guideline.
- */
-
+import { useApp } from "@elizaos/app-core/state/useApp";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectValue,
-  SettingsControls,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/components/ui/select";
+import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
 import { useState } from "react";
-import { useApp } from "@elizaos/app-core/state";
 import {
-  APPROVAL_PRESETS,
   type AgentSelectionStrategy,
+  APPROVAL_PRESETS,
   type ApprovalPreset,
 } from "./coding-agent-settings-shared";
 
@@ -74,7 +65,7 @@ export function GlobalPrefsSection({
         </SettingsControls.FieldLabel>
         <Select
           value={selectionStrategy}
-          onValueChange={(value) =>
+          onValueChange={(value: string) =>
             setPref("PARALLAX_AGENT_SELECTION_STRATEGY", value)
           }
         >
@@ -103,7 +94,7 @@ export function GlobalPrefsSection({
         </SettingsControls.FieldLabel>
         <Select
           value={approvalPreset}
-          onValueChange={(value) =>
+          onValueChange={(value: string) =>
             setPref("PARALLAX_DEFAULT_APPROVAL_PRESET", value)
           }
         >
@@ -139,7 +130,7 @@ export function GlobalPrefsSection({
         </SettingsControls.FieldLabel>
         <Select
           value={prefs.PARALLAX_SCRATCH_RETENTION || "pending_decision"}
-          onValueChange={(value) => {
+          onValueChange={(value: string) => {
             if (
               !prefs.PARALLAX_SCRATCH_RETENTION &&
               value === "pending_decision"

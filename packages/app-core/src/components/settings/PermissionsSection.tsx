@@ -1,18 +1,4 @@
-/**
- * PermissionsSection — System permissions and capability toggles for Settings.
- *
- * Displays:
- *   - System permission statuses (accessibility, screen-recording, microphone, camera)
- *   - Shell access toggle (soft disable/enable)
- *   - Capability toggles (browser, computeruse, vision) that depend on permissions
- *
- * Works cross-platform with platform-specific permission requirements:
- *   - Electrobun desktop: OS-level permission prompts and system settings links
- *   - Capacitor (mobile): Camera/mic/screen streaming permissions via native plugins
- *   - Web: Informational message only (no OS-level access)
- */
 
-import { Button } from "@elizaos/app-core";
 import { Check } from "lucide-react";
 import { useCallback, useState } from "react";
 import type { SystemPermissionId } from "../../api";
@@ -34,12 +20,10 @@ import {
   PermissionRow,
   useDesktopPermissionsState,
 } from "./permission-controls";
+import { Button } from "@elizaos/ui";
 import {
   CAPABILITIES,
   getPermissionAction,
-  SETTINGS_PANEL_ACTIONS_CLASSNAME,
-  SETTINGS_PANEL_CLASSNAME,
-  SETTINGS_PANEL_HEADER_CLASSNAME,
   SYSTEM_PERMISSIONS,
   translateWithFallback,
 } from "./permission-types";
@@ -166,8 +150,8 @@ function DesktopPermissionsView() {
     <div className="space-y-6">
       {/* System Permissions */}
       <div>
-        <div className={SETTINGS_PANEL_CLASSNAME}>
-          <div className={SETTINGS_PANEL_HEADER_CLASSNAME}>
+        <div className="rounded-2xl border border-border/60 bg-card/92 shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-border/50 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-1">
               <div className="font-bold text-sm text-txt">
                 {translateWithFallback(
@@ -196,7 +180,7 @@ function DesktopPermissionsView() {
                       )}
               </div>
             </div>
-            <div className={SETTINGS_PANEL_ACTIONS_CLASSNAME}>
+            <div className="flex flex-wrap gap-2">
               <Button
                 variant="default"
                 size="sm"
@@ -296,7 +280,7 @@ function DesktopPermissionsView() {
 
       {/* Capability Toggles */}
       <div>
-        <div className={SETTINGS_PANEL_CLASSNAME}>
+        <div className="rounded-2xl border border-border/60 bg-card/92 shadow-sm">
           <div className="border-b border-border/50 px-4 py-4">
             <div className="font-bold text-sm text-txt">
               {t("appsview.Capabilities")}

@@ -7,6 +7,21 @@
   "exports": {
     ".": "./src/index.ts",
     "./ui": "./src/ui.ts",
+    "./plugin": "./src/plugin.ts",
+    "./types": "./src/types/index.ts",
+    "./types/*": "./src/types/*.ts",
+    "./api/*": "./src/api/*.ts",
+    "./services/*": "./src/services/*.ts",
+    "./security/*": "./src/security/*.ts",
+    "./routes/*": "./src/routes/*.ts",
+    "./actions/*": "./src/actions/*.ts",
+    "./browser-workspace-wallet": "./src/browser-workspace-wallet.ts",
     "./*": "./src/*"
+  },
+  "dependencies": {
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "viem": "^2.21.0"
   }
 }

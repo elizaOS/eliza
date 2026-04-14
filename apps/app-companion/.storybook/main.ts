@@ -1,9 +1,8 @@
-import type { StorybookConfig } from "@storybook/react-vite";
 import path from "node:path";
+import type { StorybookConfig } from "@storybook/react-vite";
 
 const companionRoot = path.resolve(import.meta.dirname, "..");
 const elizaRoot = path.resolve(companionRoot, "../..");
-const miladyRoot = path.resolve(elizaRoot, "../..");
 
 const config: StorybookConfig = {
   stories: ["../src/**/*.stories.@(ts|tsx)"],

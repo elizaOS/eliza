@@ -1,4 +1,5 @@
 import type http from "node:http";
+import type { AgentRuntime, Service } from "@elizaos/core";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import type { CloudProxyConfigLike } from "../types/config-like.js";
@@ -6,21 +7,50 @@ import { sendJson, sendJsonError } from "./http-helpers.js";
 
 export interface CloudBillingRouteState {
   config: CloudProxyConfigLike;
+  runtime: AgentRuntime | null;
 }
 
 const PROXY_TIMEOUT_MS = 15_000;
 const MAX_BODY_BYTES = 1_048_576;
 const MAX_REDIRECTS = 4;
 
+interface CloudAuthApiKeyService {
+  isAuthenticated: () => boolean;
+  getApiKey?: () => string | undefined;
+}
+
 function resolveCloudBaseUrl(config: CloudProxyConfigLike): string {
   return normalizeCloudSiteUrl(config.cloud?.baseUrl);
 }
 
+function normalizeCloudApiKey(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.toUpperCase() === "[REDACTED]") {
+    return null;
+  }
+  return trimmed;
+}
+
+function resolveProxyApiKey(state: CloudBillingRouteState): string | null {
+  const cloudAuth = state.runtime
+    ? state.runtime.getService<Service & CloudAuthApiKeyService>("CLOUD_AUTH")
+    : null;
+  const runtimeApiKey =
+    cloudAuth?.isAuthenticated() === true
+      ? normalizeCloudApiKey(cloudAuth.getApiKey?.())
+      : null;
+
+  return runtimeApiKey ?? resolveCloudApiKey(state.config, state.runtime);
+}
+
 function buildAuthHeaders(
   config: CloudProxyConfigLike,
+  apiKeyOverride?: string | null,
 ): Record<string, string> {
   const serviceKey = config.cloud?.serviceKey?.trim();
-  const apiKey = config.cloud?.apiKey?.trim();
+  const apiKey =
+    normalizeCloudApiKey(apiKeyOverride) ?? resolveCloudApiKey(config);
 
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -347,7 +377,7 @@ export async function handleCloudBillingRoute(
 ): Promise<boolean> {
   if (!pathname.startsWith("/api/cloud/billing")) return false;
 
-  const apiKey = state.config.cloud?.apiKey?.trim();
+  const apiKey = resolveProxyApiKey(state);
   if (!apiKey) {
     sendJsonError(
       res,
@@ -364,7 +394,7 @@ export async function handleCloudBillingRoute(
     return true;
   }
 
-  const headers = buildAuthHeaders(state.config);
+  const headers = buildAuthHeaders(state.config, apiKey);
 
   const fullUrl = new URL(req.url ?? pathname, "http://localhost");
 

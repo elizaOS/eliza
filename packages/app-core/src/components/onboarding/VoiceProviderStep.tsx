@@ -1,5 +1,5 @@
-import { useApp } from "@elizaos/app-core/state";
-import { Button, Input } from "@elizaos/app-core";
+import { useApp } from "../../state/useApp";
+
 import {
   OnboardingField,
   OnboardingStatusBanner,
@@ -8,6 +8,7 @@ import {
   onboardingInfoPanelClassName,
   onboardingInputClassName,
 } from "./onboarding-form-primitives";
+import { Button, Input } from "@elizaos/ui";
 import {
   OnboardingStepHeader,
   onboardingFooterClass,

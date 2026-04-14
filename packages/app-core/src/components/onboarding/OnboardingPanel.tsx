@@ -1,4 +1,4 @@
-import type { OnboardingStep } from "@elizaos/app-core/state";
+import type { OnboardingStep } from "../../state/types";
 import { type ReactNode, useEffect, useRef } from "react";
 
 interface OnboardingPanelProps {

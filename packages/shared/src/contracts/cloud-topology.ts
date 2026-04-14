@@ -28,7 +28,7 @@ function asConfigRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function readConfigString(
+function _readConfigString(
   source: Record<string, unknown> | null | undefined,
   key: string,
 ): string | undefined {

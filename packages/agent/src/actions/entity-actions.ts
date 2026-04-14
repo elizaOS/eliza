@@ -2,8 +2,6 @@ import type {
   Action,
   HandlerOptions,
   IAgentRuntime,
-  Memory,
-  State,
   UUID,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";

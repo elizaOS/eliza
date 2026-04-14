@@ -764,6 +764,24 @@ export type ElizaConfig = {
   database?: DatabaseConfig;
   /** Eliza Cloud integration for remote agent provisioning and inference. */
   cloud?: CloudConfig;
+  /** Wallet source selection and cached cloud wallet descriptors. */
+  wallet?: {
+    primary?: Partial<Record<"evm" | "solana", "local" | "cloud">>;
+    cloud?: Partial<
+      Record<
+        "evm" | "solana",
+        {
+          agentWalletId?: string | null;
+          walletAddress?: string | null;
+          address?: string | null;
+          walletProvider?: string | null;
+          balance?: string | number | null;
+        }
+      >
+    >;
+    rpcProviders?: Record<string, string>;
+    [key: string]: unknown;
+  };
   /** Deployment target for the current agent runtime. */
   deploymentTarget?: DeploymentTargetConfig;
   /** Linked external accounts that can be used by routing decisions. */

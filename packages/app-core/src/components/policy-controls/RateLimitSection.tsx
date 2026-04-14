@@ -1,5 +1,7 @@
-import { Label, Slider } from "@elizaos/app-core";
+
+
 import type { RateLimitConfig } from "./types";
+import { Label, Slider } from "@elizaos/ui";
 
 function LabeledSlider({
   label,
@@ -31,7 +33,7 @@ function LabeledSlider({
         min={min}
         max={max}
         step={step}
-        onValueChange={([v]) => onChange(v)}
+        onValueChange={([v]: number[]) => onChange(v)}
       />
     </div>
   );

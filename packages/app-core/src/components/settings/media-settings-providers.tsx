@@ -1,17 +1,5 @@
-/**
- * Provider-specific config panels and desktop media controls for media settings.
- */
 
-import {
-  Button,
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectValue,
-  SettingsControls,
-} from "@elizaos/app-core";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getPlugins,
@@ -22,6 +10,7 @@ import { useApp } from "../../state";
 import type { MediaCategory } from "./media-settings-types";
 import { getNestedValue } from "./media-settings-types";
 import type { MediaConfig } from "../../api";
+import { Button, Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectValue, SettingsControls } from "@elizaos/ui";
 
 type CameraPluginLike = {
   getDevices?: () => Promise<{
@@ -272,7 +261,7 @@ export function DesktopMediaControlPanel() {
           </div>
           <Select
             value={selectedCameraId}
-            onValueChange={(value) => setSelectedCameraId(value)}
+            onValueChange={(value: string) => setSelectedCameraId(value)}
           >
             <SettingsControls.SelectTrigger variant="soft">
               <SelectValue
@@ -495,7 +484,7 @@ export function DesktopMediaControlPanel() {
           </div>
           <Select
             value={selectedSourceId}
-            onValueChange={(value) => setSelectedSourceId(value)}
+            onValueChange={(value: string) => setSelectedSourceId(value)}
           >
             <SettingsControls.SelectTrigger variant="soft">
               <SelectValue
@@ -793,7 +782,7 @@ export function ProviderModelSelectors({
                 "image.fal.model",
               ) as string) ?? "fal-ai/flux-pro"
             }
-            onValueChange={(value) =>
+            onValueChange={(value: string) =>
               updateNestedValue("image.fal.model", value)
             }
           >
@@ -866,7 +855,7 @@ export function ProviderModelSelectors({
                   "image.openai.model",
                 ) as string) ?? "dall-e-3"
               }
-              onValueChange={(value) =>
+              onValueChange={(value: string) =>
                 updateNestedValue("image.openai.model", value)
               }
             >
@@ -894,7 +883,7 @@ export function ProviderModelSelectors({
                   "image.openai.quality",
                 ) as string) ?? "standard"
               }
-              onValueChange={(value) =>
+              onValueChange={(value: string) =>
                 updateNestedValue("image.openai.quality", value)
               }
             >
@@ -929,7 +918,7 @@ export function ProviderModelSelectors({
                 "video.fal.model",
               ) as string) ?? "fal-ai/kling-video/v3/pro/text-to-video"
             }
-            onValueChange={(value) =>
+            onValueChange={(value: string) =>
               updateNestedValue("video.fal.model", value)
             }
           >
@@ -1037,7 +1026,7 @@ export function ProviderModelSelectors({
                 "audio.suno.model",
               ) as string) ?? "chirp-v3.5"
             }
-            onValueChange={(value) =>
+            onValueChange={(value: string) =>
               updateNestedValue("audio.suno.model", value)
             }
           >
@@ -1098,7 +1087,7 @@ export function ProviderModelSelectors({
                 "vision.openai.model",
               ) as string) ?? "gpt-4o"
             }
-            onValueChange={(value) =>
+            onValueChange={(value: string) =>
               updateNestedValue("vision.openai.model", value)
             }
           >
@@ -1132,7 +1121,7 @@ export function ProviderModelSelectors({
                 "vision.google.model",
               ) as string) ?? "gemini-2.0-flash"
             }
-            onValueChange={(value) =>
+            onValueChange={(value: string) =>
               updateNestedValue("vision.google.model", value)
             }
           >
@@ -1166,7 +1155,7 @@ export function ProviderModelSelectors({
                 "vision.anthropic.model",
               ) as string) ?? "claude-sonnet-4-20250514"
             }
-            onValueChange={(value) =>
+            onValueChange={(value: string) =>
               updateNestedValue("vision.anthropic.model", value)
             }
           >

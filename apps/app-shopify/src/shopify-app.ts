@@ -6,8 +6,8 @@
  * can launch it like any other overlay.
  */
 
-import type { OverlayApp } from "@elizaos/app-core/components/apps/overlay-app-api";
-import { registerOverlayApp } from "@elizaos/app-core/components/apps/overlay-app-registry";
+import type { OverlayApp } from "@elizaos/app-core";
+import { registerOverlayApp } from "@elizaos/app-core";
 import { ShopifyAppView } from "./ShopifyAppView";
 
 export const SHOPIFY_APP_NAME = "@elizaos/app-shopify";

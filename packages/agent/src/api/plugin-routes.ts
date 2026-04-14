@@ -1511,7 +1511,7 @@ export async function handlePluginRoutes(
       req,
       res,
     );
-    if (!body || !body.npmName) return true;
+    if (!body?.npmName) return true;
 
     // Only allow toggling optional plugins, not core
     const isCorePlugin = (CORE_PLUGINS as readonly string[]).includes(

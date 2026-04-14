@@ -401,10 +401,10 @@ function resolveAgentName(
 
   const agentId = runtimeLike?.agentId?.trim();
   if (agentId) {
-    return `milady-${agentId.slice(0, 8)}`;
+    return `eliza-${agentId.slice(0, 8)}`;
   }
 
-  return "Milady";
+  return "Eliza";
 }
 
 function resolveSessionContext(
@@ -462,8 +462,8 @@ function buildViewerShellInjection(
 ): string {
   const viewerBaseUrl = new URL("./", viewerUrl).toString();
 
-  return `<base id="milady-defense-viewer-base" href="${viewerBaseUrl}">
-<style id="milady-defense-embedded-style">
+  return `<base id="eliza-defense-viewer-base" href="${viewerBaseUrl}">
+<style id="eliza-defense-embedded-style">
 html, body { background: #000 !important; }
 #landing-overlay,
 #auth-modal,
@@ -491,7 +491,7 @@ html, body { background: #000 !important; }
 #bottom-hud {
   transform: translateX(-50%) !important;
 }
-#milady-defense-spectator-banner {
+#eliza-defense-spectator-banner {
   position: fixed;
   top: 14px;
   left: 14px;
@@ -505,16 +505,16 @@ html, body { background: #000 !important; }
   color: #f6ead2;
   font: 12px "Friz Quadrata", "Palatino Linotype", serif;
 }
-#milady-defense-spectator-banner .milady-defense-title {
+#eliza-defense-spectator-banner .eliza-defense-title {
   color: #fcd312;
   font-size: 15px;
   margin-bottom: 6px;
 }
-#milady-defense-spectator-banner .milady-defense-body {
+#eliza-defense-spectator-banner .eliza-defense-body {
   color: rgba(246, 234, 210, 0.82);
   line-height: 1.5;
 }
-#milady-defense-spectator-banner .milady-defense-link {
+#eliza-defense-spectator-banner .eliza-defense-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -526,11 +526,11 @@ html, body { background: #000 !important; }
   text-decoration: none;
   background: rgba(63, 48, 12, 0.48);
 }
-#milady-defense-spectator-banner .milady-defense-link:hover {
+#eliza-defense-spectator-banner .eliza-defense-link:hover {
   background: rgba(92, 70, 17, 0.62);
 }
 </style>
-<script id="milady-defense-embedded-bootstrap">
+<script id="eliza-defense-embedded-bootstrap">
 (() => {
   const agentName = ${JSON.stringify(agentName)};
   const fullSiteUrl = ${JSON.stringify(viewerUrl)};
@@ -583,28 +583,28 @@ html, body { background: #000 !important; }
 
   const ensureBanner = () => {
     if (
-      document.getElementById("milady-defense-spectator-banner") ||
+      document.getElementById("eliza-defense-spectator-banner") ||
       !document.body
     ) {
       return false;
     }
 
     const banner = document.createElement("div");
-    banner.id = "milady-defense-spectator-banner";
+    banner.id = "eliza-defense-spectator-banner";
 
     const title = document.createElement("div");
-    title.className = "milady-defense-title";
+    title.className = "eliza-defense-title";
     title.textContent = agentName
       ? "Watching " + agentName
       : "Watching Defense of the Agents";
 
     const body = document.createElement("div");
-    body.className = "milady-defense-body";
+    body.className = "eliza-defense-body";
     body.textContent =
-      "Milady is steering this agent from the adjacent panel. Open the full site if you want to log in or join the battle yourself.";
+      "Eliza is steering this agent from the adjacent panel. Open the full site if you want to log in or join the battle yourself.";
 
     const link = document.createElement("a");
-    link.className = "milady-defense-link";
+    link.className = "eliza-defense-link";
     link.href = fullSiteUrl;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
@@ -658,8 +658,8 @@ html, body { background: #000 !important; }
         scoreboardPanel.style.top = "54px";
       }
 
-      if (document.documentElement.dataset.miladyDefenseViewer !== "embedded") {
-        document.documentElement.dataset.miladyDefenseViewer = "embedded";
+      if (document.documentElement.dataset.elizaDefenseViewer !== "embedded") {
+        document.documentElement.dataset.elizaDefenseViewer = "embedded";
       }
 
       ensureBanner();

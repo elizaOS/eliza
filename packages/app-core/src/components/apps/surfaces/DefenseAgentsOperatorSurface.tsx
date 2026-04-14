@@ -1,8 +1,10 @@
-import { Button, Input } from "@elizaos/app-core";
+
+
 import { useCallback, useMemo, useState } from "react";
 import { client } from "../../../api";
 import { useApp } from "../../../state";
 import type { AppOperatorSurfaceProps } from "./types";
+import { Button, Input } from "@elizaos/ui";
 
 function DetailCard({ label, value }: { label: string; value: string }) {
   return (
@@ -149,9 +151,9 @@ export function DefenseAgentsOperatorSurface({
         </div>
         <div className="rounded-[1.4rem] border border-border/35 bg-card/74 p-4 shadow-sm">
           <p className="text-xs leading-6 text-muted-strong">
-            Defense of the Agents uses a hosted spectator shell. Launch
-            it to monitor the agent, keep the autoplay script running, and steer
-            the hero with live chat guidance.
+            Defense of the Agents uses a hosted spectator shell. Launch it to
+            monitor the agent, keep the autoplay script running, and steer the
+            hero with live chat guidance.
           </p>
           <div className="mt-3 grid gap-2 md:grid-cols-2">
             <DetailCard

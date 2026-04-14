@@ -186,7 +186,7 @@ function resolveGateLevel(
   overrideGate: RoleGate | undefined,
 ): RoleGate | null {
   if (!pluginGate && !overrideGate) return null;
-  if (!pluginGate) return overrideGate!;
+  if (!pluginGate) return overrideGate ?? null;
   if (!overrideGate) return pluginGate;
   return ROLE_GATE_RANK[overrideGate] > ROLE_GATE_RANK[pluginGate]
     ? overrideGate

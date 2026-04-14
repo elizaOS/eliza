@@ -1,5 +1,10 @@
-import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const APP_CORE_ROOT = path.resolve(SCRIPT_DIR, "..");
 
 const BIOME_CRASHER_PATHS = new Set([
   "eliza/packages/native-plugins/screencapture/src/web.ts",
@@ -11,34 +16,134 @@ const BIOME_CRASHER_PATHS = new Set([
   "scripts/type-audit-report.md",
 ]);
 
-const BIOME_ROOTS = ["src", "scripts", "apps"];
+const BIOME_ROOTS = [
+  "package.json",
+  "bunfig.toml",
+  "tsconfig.json",
+  "scripts",
+  "test",
+  "apps",
+  "eliza",
+];
+const IGNORED_DIRS = new Set([
+  ".git",
+  ".hg",
+  ".next",
+  ".turbo",
+  ".vite",
+  ".yarn",
+  "artifacts",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+  "out",
+  "playwright-report",
+  "test-results",
+]);
 // Windows shell invocations hit command length limits quickly. Keep chunks
 // smaller there so `bunx biome check` can run reliably in pre-review hooks.
 const BIOME_CHUNK_SIZE = process.platform === "win32" ? 40 : 200;
 const BIOME_FILE_PATTERN =
   /\.(?:[cm]?js|[cm]?ts|jsx|tsx|json|jsonc|css|md|mdx)$/i;
 
-function getBiomeFiles() {
-  const output = execFileSync(
-    "git",
-    [
-      "ls-files",
-      "-z",
-      "--cached",
-      "--others",
-      "--exclude-standard",
-      "--",
-      ...BIOME_ROOTS,
-    ],
-    { encoding: "utf8" },
-  );
+function findRepoRoot(startDir) {
+  let currentDir = startDir;
+  let matchedRoot = null;
 
-  return output
-    .split("\0")
-    .filter(Boolean)
-    .filter((file) => !BIOME_CRASHER_PATHS.has(file))
-    .filter((file) => BIOME_FILE_PATTERN.test(file))
-    .filter((file) => existsSync(file));
+  while (true) {
+    if (
+      existsSync(path.join(currentDir, "package.json")) &&
+      existsSync(path.join(currentDir, ".github", "workflows"))
+    ) {
+      matchedRoot = currentDir;
+    }
+
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      if (matchedRoot) {
+        return matchedRoot;
+      }
+      throw new Error(`Unable to resolve repository root from ${startDir}.`);
+    }
+
+    currentDir = parentDir;
+  }
+}
+
+const REPO_ROOT = findRepoRoot(APP_CORE_ROOT);
+
+function normalisePath(filePath) {
+  return filePath.split(path.sep).join("/");
+}
+
+function isNestedBiomeRoot(dirPath) {
+  return dirPath !== REPO_ROOT && existsSync(path.join(dirPath, "biome.json"));
+}
+
+function collectBiomeFiles(rootPath, files) {
+  if (!existsSync(rootPath)) {
+    return;
+  }
+
+  const stats = statSync(rootPath);
+  if (stats.isFile()) {
+    const relPath = normalisePath(path.relative(REPO_ROOT, rootPath));
+    if (
+      !BIOME_CRASHER_PATHS.has(relPath) &&
+      BIOME_FILE_PATTERN.test(relPath) &&
+      existsSync(rootPath)
+    ) {
+      files.push(relPath);
+    }
+    return;
+  }
+
+  if (isNestedBiomeRoot(rootPath)) {
+    return;
+  }
+
+  const queue = [rootPath];
+  while (queue.length > 0) {
+    const currentDir = queue.pop();
+    if (!currentDir) {
+      continue;
+    }
+
+    for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
+      const entryPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        if (IGNORED_DIRS.has(entry.name) || isNestedBiomeRoot(entryPath)) {
+          continue;
+        }
+        queue.push(entryPath);
+        continue;
+      }
+
+      if (!entry.isFile()) {
+        continue;
+      }
+
+      const relPath = normalisePath(path.relative(REPO_ROOT, entryPath));
+      if (
+        BIOME_CRASHER_PATHS.has(relPath) ||
+        !BIOME_FILE_PATTERN.test(relPath) ||
+        !existsSync(entryPath)
+      ) {
+        continue;
+      }
+
+      files.push(relPath);
+    }
+  }
+}
+
+function getBiomeFiles() {
+  const files = [];
+  for (const root of BIOME_ROOTS) {
+    collectBiomeFiles(path.join(REPO_ROOT, root), files);
+  }
+  return [...new Set(files)].sort((a, b) => a.localeCompare(b));
 }
 
 function chunk(items, size) {
@@ -61,6 +166,7 @@ for (const group of chunk(files, BIOME_CHUNK_SIZE)) {
     "bunx",
     ["@biomejs/biome", "check", ...extraArgs, ...group],
     {
+      cwd: REPO_ROOT,
       encoding: "utf8",
       shell: process.platform === "win32",
     },

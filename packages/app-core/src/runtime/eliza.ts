@@ -25,7 +25,6 @@ import {
   type StartElizaOptions,
   applyCloudConfigToEnv as upstreamApplyCloudConfigToEnv,
   bootElizaRuntime as upstreamBootElizaRuntime,
-  buildCharacterFromConfig as upstreamBuildCharacterFromConfig,
   CHANNEL_PLUGIN_MAP as upstreamChannelPluginMap,
   collectPluginNames as upstreamCollectPluginNames,
   configureLocalEmbeddingPlugin as upstreamConfigureLocalEmbeddingPlugin,
@@ -34,17 +33,9 @@ import {
 } from "@elizaos/agent/runtime/eliza";
 import { getLastFailedPluginNames } from "@elizaos/agent/runtime/plugin-resolver";
 import {
-  getDefaultStylePreset,
-  normalizeCharacterLanguage,
-  resolveStylePresetByAvatarIndex,
-  resolveStylePresetById,
-  resolveStylePresetByName,
-} from "@elizaos/shared/onboarding-presets";
-import {
   resolveServerOnlyPort,
   syncResolvedApiPort,
 } from "@elizaos/shared/runtime-env";
-import { normalizeCharacterMessageExamples } from "../utils/character-message-examples.js";
 import { syncElizaEnvAliases, syncAppEnvToEliza } from "../utils/env.js";
 import { ensureRuntimeSqlCompatibility } from "../utils/sql-compat.js";
 import type { EmbeddingProgressCallback } from "./embedding-manager-support.js";
@@ -57,6 +48,11 @@ import {
 } from "./embedding-manager-support.js";
 import { detectEmbeddingPreset } from "./embedding-presets.js";
 import { shouldWarmupLocalEmbeddingModel } from "./embedding-warmup-policy.js";
+import { buildCharacterFromConfig } from "./build-character-from-config.js";
+import {
+  ensureTextToSpeechHandler,
+  isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,
+} from "./ensure-text-to-speech-handler.js";
 import { updateStartupEmbeddingProgress } from "./startup-overlay.js";
 
 const AUTONOMY_WORLD_ID = stringToUuid("00000000-0000-0000-0000-000000000001");
@@ -77,8 +73,7 @@ const DIRECT_VERSION_FLAGS = new Set(["-v", "-V", "--version", "version"]);
 const PLUGIN_SQL_GLOBAL_SINGLETONS = Symbol.for(
   "@elizaos/plugin-sql/global-singletons",
 );
-const ELIZA_AUTO_RESET_PGLITE_ERROR_CODE =
-  "ELIZA_PGLITE_MANUAL_RESET_REQUIRED";
+const ELIZA_AUTO_RESET_PGLITE_ERROR_CODE = "ELIZA_PGLITE_MANUAL_RESET_REQUIRED";
 
 interface PluginSqlGlobalSingletons {
   pgLiteClientManager?: {
@@ -91,21 +86,6 @@ type ErrorWithCause = Error & {
   code?: unknown;
   dataDir?: unknown;
 };
-
-export function isEdgeTtsDisabled(
-  config: Parameters<typeof upstreamCollectPluginNames>[0],
-): boolean {
-  if (config.plugins?.entries?.["edge-tts"]?.enabled === false) {
-    return true;
-  }
-  const raw = process?.env
-    ? (process.env.ELIZA_DISABLE_EDGE_TTS ??
-      process.env.ELIZA_DISABLE_EDGE_TTS)
-    : undefined;
-  if (!raw || typeof raw !== "string") return false;
-  const n = raw.trim().toLowerCase();
-  return n === "1" || n === "true" || n === "yes";
-}
 
 export const CHANNEL_PLUGIN_MAP = {
   ...upstreamChannelPluginMap,
@@ -176,28 +156,6 @@ function syncBrandEnvAliases(): void {
   syncAppEnvToEliza();
 }
 
-function resolveAppPreset(
-  config: Parameters<typeof upstreamBuildCharacterFromConfig>[0],
-  name: string | undefined,
-) {
-  const uiConfig = (config.ui ?? {}) as {
-    presetId?: string;
-    avatarIndex?: number;
-    language?: unknown;
-  };
-  const language = normalizeCharacterLanguage(uiConfig.language);
-  const matchedPreset =
-    (typeof uiConfig.presetId === "string" && uiConfig.presetId
-      ? resolveStylePresetById(uiConfig.presetId, language)
-      : undefined) ??
-    resolveStylePresetByAvatarIndex(uiConfig.avatarIndex, language) ??
-    resolveStylePresetByName(name, language);
-  if (matchedPreset) {
-    return matchedPreset;
-  }
-  return name ? undefined : getDefaultStylePreset(language);
-}
-
 export function collectPluginNames(
   ...args: Parameters<typeof upstreamCollectPluginNames>
 ): ReturnType<typeof upstreamCollectPluginNames> {
@@ -206,91 +164,13 @@ export function collectPluginNames(
   const result = upstreamCollectPluginNames(...args);
   if (
     result.has(AGENT_ORCHESTRATOR_PLUGIN) &&
-    !isEdgeTtsDisabled(config) &&
+    !isTextToSpeechEdgeTtsDisabled(config) &&
     !result.has(EDGE_TTS_PLUGIN)
   ) {
     result.add(EDGE_TTS_PLUGIN);
   }
   syncBrandEnvAliases();
   return result;
-}
-
-type TtsModelHandler = (
-  runtime: AgentRuntime,
-  input: unknown,
-) => Promise<unknown>;
-
-type RuntimeWithModelRegistration = AgentRuntime & {
-  getModel: (modelType: string | number) => TtsModelHandler | undefined;
-  registerModel: (
-    modelType: string | number,
-    handler: TtsModelHandler,
-    provider: string,
-    priority?: number,
-  ) => void;
-};
-
-/**
- * `@elizaos/agent` boot calls its own `collectPluginNames` — The app wrapper
- * (which adds Edge TTS) is not used. Register the Edge TTS model handler on
- * the live runtime so core streaming voice (`useModel(TEXT_TO_SPEECH)`) works
- * for swarm / agent chat sessions and matches UI TTS expectations.
- */
-export async function ensureTextToSpeechHandler(
-  runtime: AgentRuntime,
-): Promise<void> {
-  const { loadElizaConfig } = await import("@elizaos/agent/config/config");
-  const config = loadElizaConfig();
-
-  if (isEdgeTtsDisabled(config)) {
-    return;
-  }
-
-  const r = runtime as RuntimeWithModelRegistration;
-  if (
-    typeof r.getModel !== "function" ||
-    typeof r.registerModel !== "function"
-  ) {
-    return;
-  }
-
-  const existing = r.getModel(ModelType.TEXT_TO_SPEECH);
-  if (existing) {
-    return;
-  }
-
-  type EdgeTtsPluginModule = {
-    default?: { models?: Record<string, TtsModelHandler> };
-    edgeTTSPlugin?: { models?: Record<string, TtsModelHandler> };
-  };
-
-  const readHandler = (
-    plugin: EdgeTtsPluginModule["default"],
-  ): TtsModelHandler | undefined => {
-    const h = plugin?.models?.[ModelType.TEXT_TO_SPEECH];
-    return typeof h === "function" ? h : undefined;
-  };
-
-  try {
-    const nodeMod = (await import(
-      "@elizaos/plugin-edge-tts/node"
-    )) as EdgeTtsPluginModule;
-    const handler = readHandler(nodeMod.default);
-
-    if (!handler) {
-      throw new Error(
-        "@elizaos/plugin-edge-tts/node did not expose a TEXT_TO_SPEECH handler",
-      );
-    }
-    r.registerModel(ModelType.TEXT_TO_SPEECH, handler, "edge-tts", 0);
-    logger.info(
-      "[eliza] Registered Edge TTS for runtime TEXT_TO_SPEECH (streaming / swarm voice)",
-    );
-  } catch (err) {
-    throw new Error(
-      `[eliza] Could not register Edge TTS for TEXT_TO_SPEECH: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
 }
 
 export function applyCloudConfigToEnv(
@@ -300,71 +180,6 @@ export function applyCloudConfigToEnv(
   const result = upstreamApplyCloudConfigToEnv(...args);
   syncBrandEnvAliases();
   return result;
-}
-
-export function buildCharacterFromConfig(
-  ...args: Parameters<typeof upstreamBuildCharacterFromConfig>
-): ReturnType<typeof upstreamBuildCharacterFromConfig> {
-  syncBrandEnvAliases();
-  const [config] = args;
-  const character = upstreamBuildCharacterFromConfig(...args);
-  syncBrandEnvAliases();
-
-  const agentEntry = config.agents?.list?.[0];
-  const bundledPreset = resolveAppPreset(config, character.name);
-  if ((character.messageExamples?.length ?? 0) > 0) {
-    character.messageExamples = normalizeCharacterMessageExamples(
-      character.messageExamples,
-      character.name,
-    );
-  }
-  if (bundledPreset) {
-    // The upstream buildCharacterFromConfig may use its own preset data
-    // which can differ from the app presets. Backfill all app preset
-    // fields so character data is complete even when the Bun body replay
-    // drops fields during onboarding.
-    if (!agentEntry?.style && !character.style && bundledPreset.style) {
-      // Plain style arrays match runtime usage; upstream `StyleGuides` is a protobuf
-      // shape with `$typeName` that we do not construct here.
-      character.style = {
-        all: [...bundledPreset.style.all],
-        chat: [...bundledPreset.style.chat],
-        post: [...bundledPreset.style.post],
-      } as unknown as NonNullable<(typeof character)["style"]>;
-    }
-    if (
-      !agentEntry?.adjectives &&
-      (!character.adjectives || character.adjectives.length === 0) &&
-      bundledPreset.adjectives.length > 0
-    ) {
-      character.adjectives = [...bundledPreset.adjectives];
-    }
-    if (
-      !agentEntry?.topics &&
-      (!Array.isArray(character.topics) || character.topics.length === 0) &&
-      Array.isArray(bundledPreset.topics) &&
-      bundledPreset.topics.length > 0
-    ) {
-      character.topics = [...bundledPreset.topics];
-    }
-    if (
-      !agentEntry?.postExamples &&
-      (character.postExamples?.length ?? 0) === 0
-    ) {
-      character.postExamples = [...bundledPreset.postExamples];
-    }
-    if (
-      !agentEntry?.messageExamples &&
-      (character.messageExamples?.length ?? 0) === 0
-    ) {
-      character.messageExamples = normalizeCharacterMessageExamples(
-        bundledPreset.messageExamples,
-        character.name,
-      );
-    }
-  }
-
-  return character;
 }
 
 async function ensureAutonomyBootstrapContext(
@@ -456,12 +271,42 @@ async function ensureAutonomyBootstrapContext(
   }
 }
 
+// ---------------------------------------------------------------------------
+// App route plugins — Vincent, Shopify, Steward
+// Phase 2 extraction: routes previously hardcoded in server.ts are now
+// registered as proper plugins with rawPath routes.
+// ---------------------------------------------------------------------------
+
+async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
+  const { vincentPlugin } = await import("@elizaos/app-vincent/plugin");
+  const { shopifyPlugin } = await import("@elizaos/app-shopify/plugin");
+  const { stewardPlugin } = await import("@elizaos/app-steward/plugin");
+  const { lifeopsPlugin } = await import("@elizaos/app-lifeops/routes/plugin");
+
+  for (const plugin of [vincentPlugin, shopifyPlugin, stewardPlugin, lifeopsPlugin]) {
+    try {
+      await runtime.registerPlugin(plugin);
+      logger.info(`[eliza] Registered app route plugin: ${plugin.name}`);
+    } catch (err) {
+      logger.warn(
+        `[eliza] Failed to register app route plugin ${plugin.name}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+}
+
 async function repairRuntimeAfterBoot(
   runtime: AgentRuntime,
 ): Promise<AgentRuntime> {
   await ensureRuntimeSqlCompatibility(runtime);
   await ensureTextToSpeechHandler(runtime);
   await ensureAutonomyBootstrapContext(runtime);
+
+  // ── Register app-specific route plugins (Phase 2 extraction) ────────
+  // These were previously hardcoded dispatch blocks in server.ts. Now they
+  // are proper plugins with rawPath routes served via the runtime plugin
+  // route system.
+  await registerAppRoutePlugins(runtime);
 
   if (!runtime.getService("AUTONOMY")) {
     try {
@@ -930,9 +775,7 @@ function resolveManagedPgliteDataDir(): string | null {
   return path.join(resolveUserPath(workspaceDir), ".eliza", ".elizadb");
 }
 
-function isAutoResettablePgliteDir(
-  dataDir: string | null,
-): dataDir is string {
+function isAutoResettablePgliteDir(dataDir: string | null): dataDir is string {
   return typeof dataDir === "string" && path.basename(dataDir) === ".elizadb";
 }
 
@@ -1120,10 +963,7 @@ export async function startEliza(
             return null;
           }
 
-          await upstreamShutdownRuntime(
-            currentRuntime,
-            "server-only restart",
-          );
+          await upstreamShutdownRuntime(currentRuntime, "server-only restart");
 
           const restarted =
             (await upstreamStartElizaWithPgliteCompat({

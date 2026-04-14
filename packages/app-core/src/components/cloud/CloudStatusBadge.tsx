@@ -1,13 +1,7 @@
-import { Button } from "@elizaos/app-core";
+
 import { AlertTriangle } from "lucide-react";
 import type { CSSProperties } from "react";
-import { SHELL_EXPANDED_BUTTON_CLASSNAME } from "@elizaos/app-companion/ui";
-
-const CLOUD_STATUS_BUTTON_STYLE = {
-  clipPath: "none",
-  WebkitClipPath: "none",
-  touchAction: "manipulation",
-} as const;
+import { Button } from "@elizaos/ui";
 
 type CloudHeaderStatusKind =
   | "error"
@@ -173,7 +167,7 @@ export function CloudStatusBadge(props: CloudStatusBadgeProps) {
       variant="outline"
       data-testid={dataTestId}
       data-status={status.kind}
-      className={`${SHELL_EXPANDED_BUTTON_CLASSNAME} shrink-0 gap-1.5 px-3.5 leading-none no-underline ${
+      className={`inline-flex h-11 min-h-touch min-w-touch items-center justify-center rounded-xl px-3.5 py-0 border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_32px_rgba(3,5,10,0.14)] ring-1 ring-inset ring-white/6 backdrop-blur-xl supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_36px_rgba(3,5,10,0.18)] active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt shrink-0 gap-1.5 px-3.5 leading-none no-underline ${
         appearance === "shell"
           ? "text-sm font-medium"
           : "text-xs-tight font-mono sm:text-xs"
@@ -181,7 +175,12 @@ export function CloudStatusBadge(props: CloudStatusBadgeProps) {
       aria-label={status.title}
       title={status.title}
       onClick={onClick}
-      style={{ ...CLOUD_STATUS_BUTTON_STYLE, ...toneStyle }}
+      style={{
+        clipPath: "none",
+        WebkitClipPath: "none",
+        touchAction: "manipulation",
+        ...toneStyle,
+      }}
     >
       <AlertTriangle className="pointer-events-none h-3.5 w-3.5 shrink-0" />
       <span

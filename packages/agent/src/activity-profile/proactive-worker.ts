@@ -1,5 +1,10 @@
 import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
-import { logger, ModelType, parseJSONObjectFromText, stringToUuid } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  parseJSONObjectFromText,
+  stringToUuid,
+} from "@elizaos/core";
 import {
   loadOwnerContactsConfig,
   resolveOwnerContactWithFallback,
@@ -83,14 +88,13 @@ function normalizeCalendarEventProactiveDecisions(
   parsed: Record<string, unknown> | null,
   allowedIds: Set<string>,
 ): Map<string, CalendarEventProactiveDecision> {
-  const records =
-    Array.isArray(parsed?.events)
-      ? parsed.events
-      : Array.isArray(parsed?.decisions)
-        ? parsed.decisions
-        : Array.isArray(parsed)
-          ? parsed
-          : [];
+  const records = Array.isArray(parsed?.events)
+    ? parsed.events
+    : Array.isArray(parsed?.decisions)
+      ? parsed.decisions
+      : Array.isArray(parsed)
+        ? parsed
+        : [];
   const decisions = new Map<string, CalendarEventProactiveDecision>();
   for (const item of records) {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
@@ -132,7 +136,11 @@ export async function classifyCalendarEventsForProactivePlanning(
   const candidateEvents = events
     .filter((event) => {
       const startMs = Date.parse(event.startAt);
-      return Number.isFinite(startMs) && startMs >= now.getTime() && startMs <= horizonMs;
+      return (
+        Number.isFinite(startMs) &&
+        startMs >= now.getTime() &&
+        startMs <= horizonMs
+      );
     })
     .sort((left, right) => Date.parse(left.startAt) - Date.parse(right.startAt))
     .slice(0, 40);
@@ -147,7 +155,7 @@ export async function classifyCalendarEventsForProactivePlanning(
     "Meetings, calls, interviews, appointments, therapy, coffee or dinner with people, and other short scheduled social/professional events usually deserve a check-in.",
     "Hotel stays, flights, travel blocks, reservations, check-in/check-out, passive itinerary items, and long all-day or near-all-day logistics usually do not deserve a check-in.",
     "If an event would be extremely hard to forget or has no clear actionability, mark shouldCheckIn=false.",
-    "Return only valid JSON with this shape: {\"events\":[{\"id\":\"...\",\"shouldCheckIn\":true|false,\"reason\":\"short reason\"}]}",
+    'Return only valid JSON with this shape: {"events":[{"id":"...","shouldCheckIn":true|false,"reason":"short reason"}]}',
     "",
     `Current timezone: ${timezone}`,
     `Current ISO datetime: ${now.toISOString()}`,

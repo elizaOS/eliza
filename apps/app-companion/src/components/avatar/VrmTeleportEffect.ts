@@ -276,9 +276,11 @@ export class VrmTeleportEffect {
         this.fallbackShaders.push(shaderRef);
 
         mat.alphaTest = Math.max(mat.alphaTest ?? 0, 0.01);
-        mat.onBeforeCompile = (
-          shader: { uniforms: Record<string, { value: unknown }>; vertexShader: string; fragmentShader: string },
-        ) => {
+        mat.onBeforeCompile = (shader: {
+          uniforms: Record<string, { value: unknown }>;
+          vertexShader: string;
+          fragmentShader: string;
+        }) => {
           shader.uniforms.uTeleportProgress =
             shaderRef.uniforms.uTeleportProgress;
           shader.vertexShader = `

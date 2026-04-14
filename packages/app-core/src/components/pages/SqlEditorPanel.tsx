@@ -1,14 +1,9 @@
-/**
- * SQL Editor Panel — textarea, run button, results grid, and query history.
- *
- * Extracted from DatabaseView.tsx. Used in both the PageLayout (external sidebar)
- * and standalone layouts.
- */
 
-import { Button, PagePanel, Textarea } from "@elizaos/app-core";
+
 import type { QueryResult } from "../../api";
 import { useApp } from "../../state";
 import { ResultsGrid } from "./database-utils";
+import { PagePanel, Button, Textarea } from "@elizaos/ui";
 
 export function SqlEditorPanel({
   queryText,

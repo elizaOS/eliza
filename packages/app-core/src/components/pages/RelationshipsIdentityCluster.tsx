@@ -1,4 +1,4 @@
-import type { RelationshipsPersonDetail } from "@elizaos/app-core/api";
+import type { RelationshipsPersonDetail } from "../../api/client-types-relationships";
 
 const CLUSTER_SIZE = 320;
 const CLUSTER_CENTER = CLUSTER_SIZE / 2;

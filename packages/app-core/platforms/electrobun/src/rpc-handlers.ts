@@ -1,7 +1,7 @@
 /**
  * RPC Handler Registration for Electrobun
  *
- * Maps each RPC request method from MiladyRPCSchema.bun.requests
+ * Maps each RPC request method from ElizaDesktopRPCSchema.bun.requests
  * to the corresponding native module method. This is the Bun-side
  * equivalent of main-process request handler registration.
  *
@@ -90,11 +90,16 @@ type ElectrobunRpcWithHandlers = {
   setRequestHandler?: (handlers: Record<string, (params: any) => any>) => void;
 };
 
+export {
+  formatRendererDiagnosticLine,
+  redactDiagnosticUrl,
+} from "./diagnostic-format";
+
 /**
  * Register all RPC request handlers on the given rpc instance.
  *
  * Each handler receives typed params and must return the typed response
- * matching MiladyRPCSchema.bun.requests[method].
+ * matching ElizaDesktopRPCSchema.bun.requests[method].
  */
 export function registerRpcHandlers(
   rpc: ElectrobunRpcWithHandlers | null | undefined,
@@ -228,13 +233,7 @@ export function registerRpcHandlers(
       } | null,
     ) => {
       const level = params?.level ?? "log";
-      const source = params?.source ?? "renderer";
-      const message = params?.message?.trim() || "(no message)";
-      const details =
-        typeof params?.details === "undefined"
-          ? ""
-          : ` ${JSON.stringify(params.details)}`;
-      const line = `[Renderer:${source}] ${message}${details}`;
+      const line = formatRendererDiagnosticLine(params);
       switch (level) {
         case "error":
           console.error(line);

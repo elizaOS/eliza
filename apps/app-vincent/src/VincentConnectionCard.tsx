@@ -8,7 +8,7 @@
 
 import { Button, StatusDot } from "@elizaos/app-core";
 import { LogIn, LogOut, RefreshCw } from "lucide-react";
-import { useVincentState } from "./useVincentState";
+import { useVincentState } from "@elizaos/app-core";
 
 interface VincentConnectionCardProps {
   onConnectedChange?: (connected: boolean) => void;

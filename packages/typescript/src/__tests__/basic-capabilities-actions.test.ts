@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { basicActions } from "../basic-capabilities/index.ts";
+import { basicActions } from "../features/basic-capabilities/index.ts";
 
 describe("basicActions", () => {
 	it("does not expose COMPACT_SESSION as a selectable action", () => {

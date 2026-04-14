@@ -93,7 +93,7 @@ export class ScreenCaptureManager {
   async takeScreenshot(): Promise<{ available: boolean; data?: string }> {
     const tmpPath = path.join(
       os.tmpdir(),
-      `milady-screenshot-${Date.now()}.png`,
+      `elizaos-screenshot-${Date.now()}.png`,
     );
     try {
       let proc: ReturnType<typeof Bun.spawn>;
@@ -167,7 +167,7 @@ $bmp.Dispose()`;
     // macOS: use screencapture -l <windowId> if a windowId is provided.
     // Other platforms: fall back to full-screen capture.
     if (process.platform === "darwin" && options?.windowId) {
-      const tmpPath = path.join(os.tmpdir(), `milady-window-${Date.now()}.png`);
+      const tmpPath = path.join(os.tmpdir(), `elizaos-window-${Date.now()}.png`);
       try {
         const proc = Bun.spawn(
           ["screencapture", "-x", "-t", "png", "-l", options.windowId, tmpPath],
@@ -202,7 +202,7 @@ $bmp.Dispose()`;
 
     const outputPath = path.join(
       os.tmpdir(),
-      `milady-recording-${Date.now()}.mp4`,
+      `elizaos-recording-${Date.now()}.mp4`,
     );
     this.recordingPath = outputPath;
     this.recordingStart = Date.now();
@@ -375,7 +375,7 @@ $bmp.Dispose()`;
       skipping = true;
 
       // All platforms: CLI screenshot → temp file → POST → delete
-      const tmpPath = path.join(os.tmpdir(), `milady-frame-${Date.now()}.jpg`);
+      const tmpPath = path.join(os.tmpdir(), `elizaos-frame-${Date.now()}.jpg`);
       try {
         let proc: ReturnType<typeof Bun.spawn>;
 

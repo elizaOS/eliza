@@ -32,7 +32,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-function defaultStoreFile(): AppRunStoreFile {
+function _defaultStoreFile(): AppRunStoreFile {
   return {
     version: APP_RUN_STORE_VERSION,
     updatedAt: nowIso(),

@@ -260,9 +260,7 @@ async function listFilesRecursively(
           files.push(nextPath);
         }
       }
-    } catch {
-      continue;
-    }
+    } catch {}
   }
   return files;
 }

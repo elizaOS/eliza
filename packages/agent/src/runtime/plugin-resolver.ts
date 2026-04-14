@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 
 import { logger, type Plugin } from "@elizaos/core";
 
@@ -27,6 +27,13 @@ import {
 import type { PluginInstallRecord } from "../config/types.eliza.js";
 import { diagnoseNoAIProvider } from "../services/version-compat.js";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
+import {
+  CHANNEL_PLUGIN_MAP,
+  collectPluginNames,
+  OPTIONAL_PLUGIN_MAP,
+  type PluginLoadReasons,
+  resolvePluginPackageAlias,
+} from "./plugin-collector.js";
 import {
   CUSTOM_PLUGINS_DIRNAME,
   EJECTED_PLUGINS_DIRNAME,
@@ -41,14 +48,7 @@ import {
   STATIC_ELIZA_PLUGINS,
   scanDropInPlugins,
   shouldIgnoreMissingPluginExport,
-} from "./eliza.js";
-import {
-  CHANNEL_PLUGIN_MAP,
-  collectPluginNames,
-  OPTIONAL_PLUGIN_MAP,
-  type PluginLoadReasons,
-  resolvePluginPackageAlias,
-} from "./plugin-collector.js";
+} from "./plugin-types.js";
 
 const LAST_FAILED_PLUGIN_NAMES = Symbol.for(
   "@elizaos/plugin-resolver/last-failed-plugin-names",
@@ -108,15 +108,11 @@ function resolveWorkspaceRoots(): string[] {
     return uniquePaths([envRoot]);
   }
 
-  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  const cwd = process.cwd();
-  return uniquePaths([
-    cwd,
-    path.resolve(cwd, ".."),
-    path.resolve(cwd, "..", ".."),
-    path.resolve(moduleDir, "..", "..", "..", ".."),
-    path.resolve(moduleDir, "..", "..", ".."),
-  ]);
+  // Phase 3: only search cwd — parent-directory and module-relative fallbacks
+  // removed. Repo-local ./eliza submodule + setup:upstreams symlinks handle
+  // plugin resolution for development. Set ELIZA_WORKSPACE_ROOT explicitly
+  // for external override scenarios.
+  return uniquePaths([process.cwd()]);
 }
 
 function getWorkspacePluginOverridePath(pluginName: string): string | null {

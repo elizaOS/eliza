@@ -13,9 +13,6 @@ import { getSceneTokens } from "./scene-theme-tokens";
 // Functions that paint call `refreshTokens()` at the top of each frame.
 let _t = getSceneTokens();
 let ACCENT = _t.accent;
-let ACCENT_BORDER = _t.accentBorder;
-let BG_PANEL = _t.bgPanel;
-let BG_CARD = _t.bgCard;
 let TEXT_PRIMARY = _t.textPrimary;
 let TEXT_SECONDARY = _t.textSecondary;
 let TEXT_MUTED = _t.textMuted;
@@ -25,15 +22,11 @@ let STATUS_YELLOW = _t.statusYellow;
 let STATUS_BLUE = _t.statusBlue;
 let FONT_SANS = _t.fontSans;
 let FONT_MONO = _t.fontMono;
-const CORNER_RADIUS = 16;
 
 /** Re-read CSS custom properties so canvas colors track the active theme. */
 export function refreshTokens() {
   _t = getSceneTokens();
   ACCENT = _t.accent;
-  ACCENT_BORDER = _t.accentBorder;
-  BG_PANEL = _t.bgPanel;
-  BG_CARD = _t.bgCard;
   TEXT_PRIMARY = _t.textPrimary;
   TEXT_SECONDARY = _t.textSecondary;
   TEXT_MUTED = _t.textMuted;
@@ -95,51 +88,6 @@ function roundRect(
   ctx.lineTo(x, y + r);
   ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
-}
-
-function drawPanelBackground(
-  ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
-  borderColor = ACCENT_BORDER,
-): void {
-  // Outer soft shadow
-  ctx.save();
-  ctx.shadowColor = "rgba(0, 0, 0, 0.06)";
-  ctx.shadowBlur = 24;
-  roundRect(ctx, 4, 4, w - 8, h - 8, CORNER_RADIUS);
-  ctx.fillStyle = BG_PANEL;
-  ctx.fill();
-  ctx.restore();
-
-  // Border
-  roundRect(ctx, 4, 4, w - 8, h - 8, CORNER_RADIUS);
-  ctx.strokeStyle = borderColor;
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  // Inner highlight line at top
-  ctx.save();
-  ctx.globalAlpha = 0.15;
-  ctx.beginPath();
-  ctx.moveTo(4 + CORNER_RADIUS + 8, 6);
-  ctx.lineTo(w - 4 - CORNER_RADIUS - 8, 6);
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawTitle(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  fontSize = 24,
-): void {
-  ctx.font = `600 ${fontSize}px ${FONT_SANS}`;
-  ctx.fillStyle = ACCENT;
-  ctx.fillText(text, x, y);
 }
 
 function wrapText(
@@ -266,7 +214,9 @@ export function renderChatPanel(
   let y = h - pad;
 
   for (let i = bubbleInfos.length - 1; i >= 0; i--) {
-    const { msg, lines, height } = bubbleInfos[i]!;
+    const bubbleInfo = bubbleInfos[i];
+    if (!bubbleInfo) continue;
+    const { msg, lines, height } = bubbleInfo;
     const isUser = msg.role === "user";
     const bubbleWidth = Math.min(
       bubbleMaxWidth,

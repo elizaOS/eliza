@@ -6,8 +6,13 @@
  * (`gatePluginSessionForHostedApp`).
  */
 
-import type { Action, HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
 import { hasRoleAccess } from "@elizaos/agent/security/access";
+import type {
+  Action,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+} from "@elizaos/core";
 import { AGENT_EMOTE_BY_ID, AGENT_EMOTE_CATALOG } from "../emotes/catalog.js";
 
 /** API port for posting emote requests (matches dashboard static server default). */

@@ -1,8 +1,3 @@
-/**
- * Quick-trade panel — token address input, amount presets, buy/sell,
- * quote display, execution confirmation, and tx status tracking.
- */
-
 import type {
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
@@ -11,13 +6,14 @@ import type {
   BscTradeQuoteResponse,
   BscTradeTxStatusResponse,
   StewardPolicyResult,
-} from "@elizaos/app-core/api";
-import { useApp } from "@elizaos/app-core/state";
-import { Button, Input } from "@elizaos/app-core";
+} from "@elizaos/shared/contracts/wallet";
+import { useApp } from "../../state/useApp";
+
 import { useCallback, useState } from "react";
-import { HEX_ADDRESS_RE } from "@elizaos/app-companion/ui";
+import { HEX_ADDRESS_RE } from "./constants";
 import { formatBalance, type TrackedToken } from "./constants";
-import { StewardLogo } from "@elizaos/app-steward/ui";
+import { StewardLogo } from "@elizaos/app-steward/StewardLogo";
+import { Button, Input } from "@elizaos/ui";
 
 /* ── Constants ─────────────────────────────────────────────────────── */
 
@@ -244,6 +240,7 @@ export function TradePanel({
         side: latestQuote.side,
         tokenAddress: pendingTrade.token,
         amount: pendingTrade.amount,
+        routeProvider: latestQuote.routeProvider,
       });
       setLatestExecution(result);
       if (result?.executed && result?.execution) {
@@ -625,6 +622,21 @@ export function TradePanel({
               {latestQuote.quoteOut?.amount ?? ""}{" "}
               {latestQuote.quoteOut?.symbol ?? ""}
             </div>
+            {latestQuote.routeProvider && (
+              <div className="text-2xs text-muted mt-0.5">
+                Route: {latestQuote.routeProvider}
+                {latestQuote.routeProviderFallbackUsed && (
+                  <span className="text-[color:var(--warn,var(--accent))] ml-1">
+                    (fallback from {latestQuote.routeProviderRequested})
+                  </span>
+                )}
+              </div>
+            )}
+            {latestQuote.routeProviderNotes?.length ? (
+              <div className="text-2xs text-muted mt-0.5">
+                {latestQuote.routeProviderNotes.join("; ")}
+              </div>
+            ) : null}
             {pendingTrade ? (
               <div className="mt-1 flex items-center gap-2">
                 <span className="font-bold text-[color:var(--warn,var(--accent))]">

@@ -15,7 +15,6 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
-import type http from "node:http";
 import path from "node:path";
 import {
   type AgentRuntime,
@@ -23,18 +22,12 @@ import {
   type Content,
   createMessageMemory,
   logger,
-  ModelType,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
-import type {
-  ChatGenerateOptions,
-  ChatGenerationResult,
-  ChatImageAttachment,
-  LogEntry,
-} from "./chat-routes.js";
+import type { ChatGenerationResult, LogEntry } from "./chat-routes.js";
 import {
   generateChatResponse,
   generateConversationTitle,
@@ -84,7 +77,7 @@ interface DeletedConversationsStateFile {
   ids: string[];
 }
 
-function readDeletedConversationIdsFromState(): Set<string> {
+function _readDeletedConversationIdsFromState(): Set<string> {
   const filePath = path.join(resolveStateDir(), DELETED_CONVERSATIONS_FILENAME);
   if (!fs.existsSync(filePath)) return new Set();
   try {
@@ -159,9 +152,13 @@ function ensureAdminEntityId(state: ConversationRouteState): UUID {
   if (state.adminEntityId) {
     return state.adminEntityId;
   }
-  const configured = (
-    state.config as any
-  ).agents?.defaults?.adminEntityId?.trim();
+  const configuredValue = (
+    state.config as {
+      agents?: { defaults?: { adminEntityId?: string } };
+    }
+  ).agents?.defaults?.adminEntityId;
+  const configured =
+    typeof configuredValue === "string" ? configuredValue.trim() : undefined;
   const nextAdminEntityId =
     configured && isUuidLike(configured)
       ? configured
@@ -392,10 +389,67 @@ async function waitForConversationRestore(
   }
 }
 
-function buildPersistedAssistantContent(
+export function normalizeActionCallbackHistory(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const history: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") {
+      continue;
+    }
+    const normalized = entry.trim();
+    if (!normalized) {
+      continue;
+    }
+    if (history.at(-1) === normalized) {
+      continue;
+    }
+    history.push(normalized);
+  }
+
+  return history;
+}
+
+function mergeActionCallbackHistory(
+  existing: readonly string[],
+  incoming: readonly string[],
+): string[] {
+  return normalizeActionCallbackHistory([...existing, ...incoming]);
+}
+
+export function formatConversationMessageText(
+  text: string,
+  actionCallbackHistory: readonly string[] = [],
+): string {
+  const history = normalizeActionCallbackHistory(actionCallbackHistory);
+  if (history.length === 0) {
+    return text;
+  }
+
+  const trimmedText = text.trim();
+  const visibleHistory =
+    trimmedText.length > 0 && history.at(-1) === trimmedText
+      ? history.slice(0, -1)
+      : history;
+
+  if (visibleHistory.length === 0) {
+    return text;
+  }
+
+  return trimmedText.length > 0
+    ? `${visibleHistory.join("\n")}\n\n${text}`
+    : visibleHistory.join("\n");
+}
+
+export function buildPersistedAssistantContent(
   text: string,
   result:
-    | Pick<ChatGenerationResult, "responseContent" | "responseMessages">
+    | Pick<
+        ChatGenerationResult,
+        "actionCallbackHistory" | "responseContent" | "responseMessages"
+      >
     | null
     | undefined,
 ): Content {
@@ -413,14 +467,96 @@ function buildPersistedAssistantContent(
         .filter((content): content is Content => content !== null)
         .at(-1) ?? null)
     : null;
+  const actionCallbackHistory = normalizeActionCallbackHistory(
+    result?.actionCallbackHistory,
+  );
 
   return responseContent || responseMessageContent
     ? {
         ...(responseMessageContent ?? {}),
         ...(responseContent ?? {}),
         text,
+        ...(actionCallbackHistory.length > 0 ? { actionCallbackHistory } : {}),
       }
-    : { text };
+    : {
+        text,
+        ...(actionCallbackHistory.length > 0 ? { actionCallbackHistory } : {}),
+      };
+}
+
+export async function persistRecentAssistantActionCallbackHistory(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  actionCallbackHistory: readonly string[],
+  sinceMs: number,
+): Promise<boolean> {
+  const normalizedHistory = normalizeActionCallbackHistory(
+    actionCallbackHistory,
+  );
+  if (normalizedHistory.length === 0) {
+    return false;
+  }
+
+  try {
+    const recent = await runtime.getMemories({
+      roomId,
+      tableName: "messages",
+      limit: 12,
+    });
+
+    const target = recent
+      .filter((memory) => memory.entityId === runtime.agentId)
+      .filter((memory) => {
+        const content = memory.content as { text?: unknown } | undefined;
+        const createdAt = memory.createdAt ?? 0;
+        return (
+          typeof memory.id === "string" &&
+          typeof content?.text === "string" &&
+          content.text.trim().length > 0 &&
+          createdAt >= sinceMs - 2000
+        );
+      })
+      .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
+      .at(-1);
+
+    if (!target || typeof target.id !== "string") {
+      return false;
+    }
+
+    const content =
+      target.content && typeof target.content === "object"
+        ? (target.content as Content)
+        : ({ text: "" } satisfies Content);
+    const existingHistory = normalizeActionCallbackHistory(
+      (content as Record<string, unknown>).actionCallbackHistory,
+    );
+    const mergedHistory = mergeActionCallbackHistory(
+      existingHistory,
+      normalizedHistory,
+    );
+
+    if (
+      mergedHistory.length === existingHistory.length &&
+      mergedHistory.every((entry, index) => entry === existingHistory[index])
+    ) {
+      return true;
+    }
+
+    await runtime.updateMemory({
+      id: target.id as UUID,
+      content: {
+        ...content,
+        actionCallbackHistory: mergedHistory,
+      } as Content,
+    });
+
+    return true;
+  } catch (err) {
+    logger.debug(
+      `[conversations] Failed to persist action callback history: ${getErrorMessage(err)}`,
+    );
+    return false;
+  }
 }
 
 async function getConversationWithRestore(
@@ -746,10 +882,16 @@ export async function handleConversationRoutes(
             contentSource !== "client_chat"
               ? contentSource
               : undefined;
+          const actionCallbackHistory = normalizeActionCallbackHistory(
+            content.actionCallbackHistory,
+          );
           return {
             id: m.id ?? "",
             role: m.entityId === agentId ? "assistant" : "user",
-            text: (m.content as { text?: string })?.text ?? "",
+            text: formatConversationMessageText(
+              (m.content as { text?: string })?.text ?? "",
+              actionCallbackHistory,
+            ),
             timestamp: m.createdAt ?? 0,
             source: normalizedSource,
             from:
@@ -1103,6 +1245,14 @@ export async function handleConversationRoutes(
             state.logBuffer,
             runtime,
           );
+          if (result.actionCallbackHistory?.length) {
+            await persistRecentAssistantActionCallbackHistory(
+              runtime,
+              conv.roomId,
+              result.actionCallbackHistory,
+              turnStartedAt,
+            );
+          }
           if (
             await shouldPersistFinalAssistantTurn(
               runtime,
@@ -1306,6 +1456,14 @@ export async function handleConversationRoutes(
           state.logBuffer,
           runtime,
         );
+        if (result.actionCallbackHistory?.length) {
+          await persistRecentAssistantActionCallbackHistory(
+            runtime,
+            conv.roomId,
+            result.actionCallbackHistory,
+            turnStartedAt,
+          );
+        }
         if (
           await shouldPersistFinalAssistantTurn(
             runtime,

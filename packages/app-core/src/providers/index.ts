@@ -62,6 +62,36 @@ const PROVIDER_LOGO_MAP_LIGHT: Record<string, string> = {
   "z.ai": "logos/zai-icon.png",
 };
 
+// ---------------------------------------------------------------------------
+// Provider logo registry — allows plugins to register logos for custom
+// providers at runtime without modifying the hardcoded maps above.
+// ---------------------------------------------------------------------------
+
+const _registeredLogos: {
+  dark: Record<string, string>;
+  light: Record<string, string>;
+} = { dark: {}, light: {} };
+
+/**
+ * Register a provider logo at runtime. Plugins should call this during
+ * initialization to add logos for their custom providers.
+ *
+ * @param providerId - The provider ID (e.g., "my-custom-provider")
+ * @param logos - Logo paths for dark and/or light themes
+ */
+export function registerProviderLogo(
+  providerId: string,
+  logos: { logoDark?: string; logoLight?: string },
+): void {
+  const key = providerId.toLowerCase();
+  if (logos.logoDark) {
+    _registeredLogos.dark[key] = logos.logoDark;
+  }
+  if (logos.logoLight) {
+    _registeredLogos.light[key] = logos.logoLight;
+  }
+}
+
 /**
  * Get the logo path for a provider based on theme.
  *
@@ -81,8 +111,20 @@ export function getProviderLogo(
     return resolveAppAssetUrl(custom);
   }
 
+  const key = providerId.toLowerCase();
+
+  // Check runtime-registered logos
+  const registeredMap = isDarkMode
+    ? _registeredLogos.dark
+    : _registeredLogos.light;
+  const registeredLogo = registeredMap[key];
+  if (registeredLogo) {
+    return resolveAppAssetUrl(registeredLogo);
+  }
+
+  // Check hardcoded logo maps
   const logoMap = isDarkMode ? PROVIDER_LOGO_MAP_DARK : PROVIDER_LOGO_MAP_LIGHT;
-  const logo = logoMap[providerId.toLowerCase()];
+  const logo = logoMap[key];
   if (logo) {
     return resolveAppAssetUrl(logo);
   }

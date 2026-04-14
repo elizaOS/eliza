@@ -92,8 +92,12 @@ export function resolveDefaultAgentWorkspaceDir(
   }
 
   if (!hasExplicitStateDirOverride(env)) {
-    const runtimeCwd = cwd()?.trim();
-    if (runtimeCwd && shouldUseRuntimeCwdWorkspace(runtimeCwd)) {
+    const runtimeCwd = typeof cwd === "function" ? cwd() : undefined;
+    if (
+      typeof runtimeCwd === "string" &&
+      runtimeCwd.trim() &&
+      shouldUseRuntimeCwdWorkspace(runtimeCwd.trim())
+    ) {
       return resolveUserPath(runtimeCwd);
     }
   }
@@ -241,6 +245,7 @@ function hasExplicitStateDirOverride(env: NodeJS.ProcessEnv): boolean {
 }
 
 function isLikelyPackagedRuntimeDir(dir: string): boolean {
+  if (typeof dir !== "string") return false;
   const normalized = dir.replace(/\\/g, "/").toLowerCase();
   return (
     normalized.includes("/eliza-dist") ||
@@ -252,7 +257,11 @@ function isLikelyPackagedRuntimeDir(dir: string): boolean {
 
 function shouldUseRuntimeCwdWorkspace(candidateDir: string): boolean {
   const resolvedDir = resolveUserPath(candidateDir);
-  if (!resolvedDir || isLikelyPackagedRuntimeDir(resolvedDir)) {
+  if (
+    !resolvedDir ||
+    typeof resolvedDir !== "string" ||
+    isLikelyPackagedRuntimeDir(resolvedDir)
+  ) {
     return false;
   }
 

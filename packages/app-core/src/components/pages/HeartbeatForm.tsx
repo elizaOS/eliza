@@ -1,24 +1,8 @@
-/**
- * HeartbeatForm.tsx — Editor panel for creating/editing a heartbeat trigger.
- *
- * Extracted from HeartbeatsView.tsx. Consumes the HeartbeatsViewContext
- * to access form state and CRUD handlers.
- */
 
-import {
-  Button,
-  FieldLabel,
-  FieldSwitch,
-  FormSelect,
-  FormSelectItem,
-  Input,
-  PagePanel,
-  StatusBadge,
-  StatusDot,
-  Textarea,
-} from "@elizaos/app-core";
+
 import type { TriggerSummary } from "../../api/client";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
+import { PagePanel, Button, FieldLabel, FieldSwitch, FormSelect, FormSelectItem, Input, StatusBadge, StatusDot, Textarea } from "@elizaos/ui";
 import {
   DURATION_UNITS,
   durationUnitLabel,
@@ -206,7 +190,7 @@ export function HeartbeatForm({
               </FieldLabel>
               <FormSelect
                 value={form.triggerType}
-                onValueChange={(value) =>
+                onValueChange={(value: string) =>
                   setField(
                     "triggerType",
                     value as TriggerFormState["triggerType"],
@@ -232,7 +216,7 @@ export function HeartbeatForm({
               </FieldLabel>
               <FormSelect
                 value={form.wakeMode}
-                onValueChange={(value) =>
+                onValueChange={(value: string) =>
                   setField("wakeMode", value as TriggerFormState["wakeMode"])
                 }
                 placeholder={t("triggersview.InjectAmpWakeIm")}
@@ -265,7 +249,7 @@ export function HeartbeatForm({
                 />
                 <FormSelect
                   value={form.durationUnit}
-                  onValueChange={(value) =>
+                  onValueChange={(value: string) =>
                     setField(
                       "durationUnit",
                       value as TriggerFormState["durationUnit"],

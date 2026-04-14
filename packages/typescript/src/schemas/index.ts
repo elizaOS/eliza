@@ -15,7 +15,7 @@ import {
 	longTermMemories,
 	memoryAccessLogs,
 	sessionSummaries,
-} from "../advanced-memory/schemas/index.ts";
+} from "../features/advanced-memory/schemas/index.ts";
 import type { BuildTableFn, DialectAdapter } from "../types/schema-builder.ts";
 import { agentSchema } from "./agent.ts";
 import { cacheSchema } from "./cache.ts";
