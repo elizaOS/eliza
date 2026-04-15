@@ -6,6 +6,7 @@
  */
 
 import {
+  type Agent,
   AgentRuntime,
   ChannelType,
   type Character,
@@ -16,6 +17,7 @@ import {
   type Memory,
   type MemoryMetadata,
   MemoryType,
+  type Participant,
   type Plugin,
   type Room,
   type State,
@@ -76,8 +78,39 @@ export function createTestCharacter(overrides: Partial<Character> = {}): Charact
  */
 export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
   const resolvedAgentId = agentId || createUUID();
+  const trajectoryColumns = [
+    "id",
+    "trajectory_id",
+    "agent_id",
+    "source",
+    "status",
+    "start_time",
+    "end_time",
+    "duration_ms",
+    "step_count",
+    "llm_call_count",
+    "provider_access_count",
+    "total_prompt_tokens",
+    "total_completion_tokens",
+    "total_reward",
+    "scenario_id",
+    "episode_id",
+    "batch_id",
+    "group_index",
+    "steps_json",
+    "reward_components_json",
+    "metrics_json",
+    "metadata_json",
+    "is_training_data",
+    "is_evaluation",
+    "used_in_training",
+    "judged_at",
+    "created_at",
+    "updated_at",
+  ];
 
   // In-memory storage
+  const agents = new Map<UUID, Agent>();
   const memories = new Map<UUID, Memory>();
   const rooms = new Map<UUID, Room>();
   const worlds = new Map<UUID, World>();
@@ -87,22 +120,93 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
   const participants = new Map<UUID, Set<UUID>>();
   const participantStates = new Map<string, string | null>();
 
+  agents.set(resolvedAgentId, {
+    id: resolvedAgentId,
+    name: "TestAgent",
+  } as Agent);
+
   return {
-    db: {},
+    db: {
+      execute: vi.fn(async (query: { queryChunks?: unknown[] }) => {
+        const sqlText = JSON.stringify(query?.queryChunks ?? query);
+        if (sqlText.includes("information_schema.columns")) {
+          return {
+            rows: trajectoryColumns.map((column_name) => ({ column_name })),
+            fields: [{ name: "column_name" }],
+          };
+        }
+        if (sqlText.includes("PRAGMA table_info(trajectories)")) {
+          return {
+            rows: trajectoryColumns.map((name) => ({ name })),
+            fields: [{ name: "name" }],
+          };
+        }
+        return {
+          rows: [],
+          fields: [],
+        };
+      }),
+    },
     init: vi.fn().mockResolvedValue(undefined),
     initialize: vi.fn().mockResolvedValue(undefined),
     close: vi.fn().mockResolvedValue(undefined),
     getConnection: vi.fn().mockResolvedValue({}),
     isReady: vi.fn().mockResolvedValue(true),
 
-    getAgent: vi.fn().mockResolvedValue({
-      id: resolvedAgentId,
-      name: "TestAgent",
+    getAgent: vi.fn(async (id: UUID) => agents.get(id) || null),
+    getAgents: vi.fn(async () => Array.from(agents.values())),
+    createAgent: vi.fn(async (agent: Partial<Agent>) => {
+      const id = agent.id || resolvedAgentId;
+      agents.set(id, { id, ...agent } as Agent);
+      return true;
     }),
-    getAgents: vi.fn().mockResolvedValue([]),
-    createAgent: vi.fn().mockResolvedValue(true),
-    updateAgent: vi.fn().mockResolvedValue(true),
-    deleteAgent: vi.fn().mockResolvedValue(true),
+    updateAgent: vi.fn(async (id: UUID, agent: Partial<Agent>) => {
+      const existing = agents.get(id);
+      agents.set(id, { ...(existing || { id }), ...agent, id } as Agent);
+      return true;
+    }),
+    deleteAgent: vi.fn(async (id: UUID) => {
+      agents.delete(id);
+      return true;
+    }),
+    getAgentsByIds: vi.fn(
+      async (ids: UUID[]) => ids.map((id) => agents.get(id)).filter(Boolean) as Agent[],
+    ),
+    createAgents: vi.fn(async (newAgents: Partial<Agent>[]) => {
+      const ids: UUID[] = [];
+      for (const agent of newAgents) {
+        const id = agent.id || createUUID();
+        agents.set(id, { id, ...agent } as Agent);
+        ids.push(id);
+      }
+      return ids;
+    }),
+    upsertAgents: vi.fn(async (newAgents: Partial<Agent>[]) => {
+      for (const agent of newAgents) {
+        const id = agent.id || createUUID();
+        const existing = agents.get(id);
+        agents.set(id, { ...(existing || { id }), ...agent, id } as Agent);
+      }
+    }),
+    updateAgents: vi.fn(
+      async (updates: Array<{ agentId: UUID; agent: Partial<Agent> }>) => {
+        for (const { agentId: id, agent } of updates) {
+          const existing = agents.get(id);
+          agents.set(id, { ...(existing || { id }), ...agent, id } as Agent);
+        }
+        return true;
+      },
+    ),
+    deleteAgents: vi.fn(async (ids: UUID[]) => {
+      for (const id of ids) {
+        agents.delete(id);
+      }
+      return true;
+    }),
+    countAgents: vi.fn(async () => agents.size),
+    cleanupAgents: vi.fn(async () => {
+      agents.clear();
+    }),
     ensureEmbeddingDimension: vi.fn().mockResolvedValue(undefined),
 
     getMemories: vi.fn(async (params: { roomId?: UUID; count?: number }) => {
@@ -201,6 +305,35 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
       }
       return result;
     }),
+    getRoomsByWorlds: vi.fn(async (worldIds: UUID[]) => {
+      const result: Room[] = [];
+      for (const room of rooms.values()) {
+        if (worldIds.includes(room.worldId)) {
+          result.push(room);
+        }
+      }
+      return result;
+    }),
+    updateRooms: vi.fn(async (updatedRooms: Room[]) => {
+      for (const room of updatedRooms) {
+        if (room.id) {
+          rooms.set(room.id, room);
+        }
+      }
+    }),
+    deleteRooms: vi.fn(async (roomIds: UUID[]) => {
+      for (const id of roomIds) {
+        rooms.delete(id);
+        participants.delete(id);
+      }
+    }),
+    upsertRooms: vi.fn(async (upsertedRooms: Room[]) => {
+      for (const room of upsertedRooms) {
+        const id = room.id || createUUID();
+        rooms.set(id, { ...room, id });
+        participants.set(id, participants.get(id) || new Set());
+      }
+    }),
 
     addParticipantsRoom: vi.fn(async (entityIds: UUID[], roomId: UUID) => {
       let roomParticipants = participants.get(roomId);
@@ -213,12 +346,57 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
       }
       return true;
     }),
+    createRoomParticipants: vi.fn(async (entityIds: UUID[], roomId: UUID) => {
+      let roomParticipants = participants.get(roomId);
+      if (!roomParticipants) {
+        roomParticipants = new Set();
+        participants.set(roomId, roomParticipants);
+      }
+      const ids: UUID[] = [];
+      for (const id of entityIds) {
+        roomParticipants.add(id);
+        ids.push(createUUID());
+      }
+      return ids;
+    }),
+    deleteParticipants: vi.fn(
+      async (entries: Array<{ entityId: UUID; roomId: UUID }>) => {
+        for (const { entityId, roomId } of entries) {
+          participants.get(roomId)?.delete(entityId);
+          participantStates.delete(`${roomId}-${entityId}`);
+        }
+        return true;
+      },
+    ),
     removeParticipant: vi.fn().mockResolvedValue(true),
     getParticipantsForEntity: vi.fn().mockResolvedValue([]),
+    getParticipantsForEntities: vi.fn(async (entityIds: UUID[]) => {
+      const result: Participant[] = [];
+      for (const [roomId, roomParticipants] of participants.entries()) {
+        for (const entityId of entityIds) {
+          if (roomParticipants.has(entityId)) {
+            result.push({ entityId, roomId } as Participant);
+          }
+        }
+      }
+      return result;
+    }),
     getParticipantsForRoom: vi.fn(async (roomId: UUID) => {
       const roomParticipants = participants.get(roomId);
       return roomParticipants ? Array.from(roomParticipants) : [];
     }),
+    getParticipantsForRooms: vi.fn(async (roomIds: UUID[]) => {
+      return roomIds.map((roomId) => ({
+        roomId,
+        entityIds: Array.from(participants.get(roomId) || []),
+      }));
+    }),
+    areRoomParticipants: vi.fn(
+      async (pairs: Array<{ roomId: UUID; entityId: UUID }>) =>
+        pairs.map(({ roomId, entityId }) =>
+          (participants.get(roomId) || new Set()).has(entityId),
+        ),
+    ),
     isRoomParticipant: vi.fn().mockResolvedValue(false),
     getParticipantUserState: vi.fn(async (roomId: UUID, entityId: UUID) => {
       return participantStates.get(`${roomId}-${entityId}`) || null;
@@ -226,6 +404,17 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     setParticipantUserState: vi.fn(async (roomId: UUID, entityId: UUID, state: string | null) => {
       participantStates.set(`${roomId}-${entityId}`, state);
     }),
+    getParticipantUserStates: vi.fn(
+      async (pairs: Array<{ roomId: UUID; entityId: UUID }>) =>
+        pairs.map(({ roomId, entityId }) => participantStates.get(`${roomId}-${entityId}`) || null),
+    ),
+    updateParticipantUserStates: vi.fn(
+      async (updates: Array<{ roomId: UUID; entityId: UUID; state: string | null }>) => {
+        for (const { roomId, entityId, state } of updates) {
+          participantStates.set(`${roomId}-${entityId}`, state);
+        }
+      },
+    ),
 
     createWorld: vi.fn(async (world: World) => {
       const id = world.id || createUUID();
