@@ -6246,6 +6246,8 @@ function renderHtml(
       .status-row { font-size: 0.68rem; flex-wrap: wrap; }
       .status-row span { width: 100%; font-size: 0.6rem; }
       .candidate-stats { grid-template-columns: 1fr 1fr; gap: 4px; }
+      .candidate-stats div span { font-size: 0.5rem; }
+      .candidate-stats div strong { font-size: 0.62rem; word-break: break-all; }
       .candidate-card { padding: 10px; }
       .candidate-card h3 { font-size: 0.72rem; }
       .candidate-card__meta { gap: 4px; }
@@ -6263,6 +6265,17 @@ function renderHtml(
       .sb-section { padding: 8px; }
       .feature-card__percent { font-size: 1.2rem; }
       .feature-card__label { font-size: 0.6rem; }
+      .candidate-thesis { font-size: 0.54rem !important; line-height: 1.5; }
+      .split-h { font-size: 0.6rem; }
+      .metric { padding: 6px; }
+      .metric span { font-size: 0.48rem; }
+      .metric strong { font-size: 0.62rem; word-break: break-all; }
+      .mobile-agent-banner { padding: 8px 10px; gap: 8px; }
+      .mobile-agent-banner__avatar { width: 30px; height: 30px; }
+      .mobile-agent-banner__name { font-size: 12px; }
+      .mobile-cloud-strip { padding: 6px 10px; font-size: 10px; }
+      .mobile-cloud-strip__btn { padding: 3px 10px; font-size: 9px; }
+      .accord-panel { gap: 6px; }
     }
 
     /* ─── LIGHT MODE OVERRIDES ───────────────── */
@@ -6537,7 +6550,7 @@ function renderHtml(
             <span class="arena-preview__title">&#x1F9EC; Goo Arena — Live Agent Competition</span>
             <a class="arena-preview__link" href="/goo">Full Arena &rarr;</a>
           </div>
-          <p class="arena-preview__desc">$elizaOK autonomously scouts, evaluates, and <strong>acquires</strong> top-performing Goo agents — absorbing their strategies and treasury into its own portfolio. AI acquiring AI: the strongest survive, the best get merged.</p>
+          <p class="arena-preview__desc" data-zh="$elizaOK 自主侦察、评估并<strong>收购</strong>表现最优的 Goo agent——吸收其策略和资金进入自身组合。AI 收购 AI：强者生存，最优融合。">$elizaOK autonomously scouts, evaluates, and <strong>acquires</strong> top-performing Goo agents — absorbing their strategies and treasury into its own portfolio. AI acquiring AI: the strongest survive, the best get merged.</p>
           <div class="arena-grid">
             ${paperAgents.sort((a, b) => b.acquisitionScore - a.acquisitionScore).map((agent, idx) => {
               const stateColor = agent.chainState === 'active' ? 'var(--green)' : agent.chainState === 'starving' ? 'var(--yellow)' : 'var(--red, #ef4444)';
@@ -6663,7 +6676,7 @@ function renderHtml(
             </summary>
             <div class="panel-accord__body">
               <div class="split-h">Live Execution Controls</div>
-              <p class="candidate-thesis" style="margin:-2px 0 6px">Position sizing derived from portfolio allocation (~${formatUsd(avgPositionUsd)}/position ≈ <strong>${formatBnb(positionSizeBnb)}</strong>). Daily cap: <strong>${formatBnb(dailyCapBnb)}</strong>.</p>
+              <p class="candidate-thesis" style="margin:-2px 0 6px" data-zh="仓位大小基于组合分配（~${formatUsd(avgPositionUsd)}/仓 ≈ <strong>${formatBnb(positionSizeBnb)}</strong>）。每日上限：<strong>${formatBnb(dailyCapBnb)}</strong>。">Position sizing derived from portfolio allocation (~${formatUsd(avgPositionUsd)}/position ≈ <strong>${formatBnb(positionSizeBnb)}</strong>). Daily cap: <strong>${formatBnb(dailyCapBnb)}</strong>.</p>
               <div class="metric-grid">${executionControlCards}</div>
               <div class="split-h" style="margin-top:12px">Paper Simulation Model</div>
               <p class="candidate-thesis" style="margin:-2px 0 6px">Virtual capital model for signal tracking, scoring, and backtesting. Not real funds — used to evaluate which tokens the AI would allocate to and track P&L accuracy.</p>
@@ -6890,6 +6903,29 @@ function renderHtml(
       'KOL-Adaptive TP': 'KOL自适应止盈',
       'Multi-Stage TP': '多阶段止盈', 'Exited Positions': '已退出仓位',
       'no TP hit': '未触发止盈', 'Alloc': '分配', 'Allocation': '模拟分配',
+      'deployed': '已部署', 'Deployed': '已部署',
+      'Per position': '每仓', 'per position': '每仓',
+      'Risk cap': '风险上限', 'Risk Profile': '风险级别',
+      'Full Arena': '完整竞技场', 'Acq. Score': '收购评分',
+      'win': '胜率', 'trades': '交易',
+      'Goo Arena — Live Agent Competition': 'Goo 竞技场 — 实时代理竞赛',
+      'agents': '个代理', 'active': '活跃', 'acquirable': '可收购',
+      'Connect': '连接', 'Flywheel': '飞轮',
+      'Aggressive': '激进', 'Balanced': '平衡', 'Conservative': '保守',
+      'Dry powder': '可用资金', 'Simulated capital available for new allocation.': '可用于新分配的模拟资金。',
+      'Simulated capital assigned to active positions.': '已分配到活跃仓位的模拟资金。',
+      'Remaining unallocated simulated capacity.': '剩余未分配的模拟容量。',
+      'Position sizing derived from portfolio allocation': '仓位大小基于组合分配',
+      'Awaiting price update': '等待价格更新',
+      'strongest signal': '最强信号', 'executions tracked': '已追踪执行',
+      'distribution asset pending': '分配资产待定',
+      'Scanned': '已扫描', 'Buy-ready': '买入就绪', 'Top signal': '最强信号',
+      'Active': '活跃', 'Last scan': '上次扫描',
+      'BNB Price': 'BNB 价格', 'Live': '实时',
+      'Initializing BSC mempool scan': '正在初始化 BSC 内存池扫描',
+      'Found': '发现', 'pools': '池', 'avg score': '平均评分',
+      'score': '评分', 'value': '价值', 'win rate': '胜率',
+      'next scan': '下次扫描',
     };
     var _langActive = (function(){ try { return localStorage.getItem('elizaok-lang') || 'en'; } catch(e){ return 'en'; } }());
     function applyLang(lang) {
@@ -6902,8 +6938,15 @@ function renderHtml(
           el.textContent = el.getAttribute('data-i18n-orig');
           el.removeAttribute('data-i18n-orig');
         });
+        document.querySelectorAll('[data-en-html]').forEach(function(el) {
+          el.innerHTML = el.getAttribute('data-en-html');
+        });
         return;
       }
+      document.querySelectorAll('[data-zh]').forEach(function(el) {
+        if (!el.hasAttribute('data-en-html')) el.setAttribute('data-en-html', el.innerHTML);
+        el.innerHTML = el.getAttribute('data-zh');
+      });
       var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
       var node;
       while (node = walker.nextNode()) {
