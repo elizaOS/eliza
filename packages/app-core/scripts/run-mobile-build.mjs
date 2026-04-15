@@ -47,6 +47,19 @@ export const PLATFORM_TEMPLATE_FILES = {
   ios: [
     path.join("App", "Podfile"),
     path.join("App", "App.xcodeproj", "project.pbxproj"),
+    path.join(
+      "App",
+      "App",
+      "WebsiteBlockerContentExtension",
+      "ActionRequestHandler.swift",
+    ),
+    path.join("App", "App", "WebsiteBlockerContentExtension", "Info.plist"),
+    path.join(
+      "App",
+      "App",
+      "WebsiteBlockerContentExtension",
+      "WebsiteBlockerContentExtension.entitlements",
+    ),
   ],
 };
 

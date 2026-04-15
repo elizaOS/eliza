@@ -65,6 +65,51 @@ describe("run-mobile-build", () => {
         "packages",
         "app-core",
         "platforms",
+        "ios",
+        "App",
+        "App",
+        "WebsiteBlockerContentExtension",
+        "ActionRequestHandler.swift",
+      ),
+      "request-handler\n",
+    );
+    writeFile(
+      path.join(
+        repoRoot,
+        "eliza",
+        "packages",
+        "app-core",
+        "platforms",
+        "ios",
+        "App",
+        "App",
+        "WebsiteBlockerContentExtension",
+        "Info.plist",
+      ),
+      "extension-plist\n",
+    );
+    writeFile(
+      path.join(
+        repoRoot,
+        "eliza",
+        "packages",
+        "app-core",
+        "platforms",
+        "ios",
+        "App",
+        "App",
+        "WebsiteBlockerContentExtension",
+        "WebsiteBlockerContentExtension.entitlements",
+      ),
+      "extension-entitlements\n",
+    );
+    writeFile(
+      path.join(
+        repoRoot,
+        "eliza",
+        "packages",
+        "app-core",
+        "platforms",
         "android",
         "build.gradle",
       ),
@@ -98,6 +143,19 @@ describe("run-mobile-build", () => {
     expect(iosCopied).toEqual([
       path.join("App", "Podfile"),
       path.join("App", "App.xcodeproj", "project.pbxproj"),
+      path.join(
+        "App",
+        "App",
+        "WebsiteBlockerContentExtension",
+        "ActionRequestHandler.swift",
+      ),
+      path.join("App", "App", "WebsiteBlockerContentExtension", "Info.plist"),
+      path.join(
+        "App",
+        "App",
+        "WebsiteBlockerContentExtension",
+        "WebsiteBlockerContentExtension.entitlements",
+      ),
     ]);
     expect(androidCopied).toContain("build.gradle");
     expect(androidCopied).toContain(path.join("app", "capacitor.build.gradle"));
@@ -110,6 +168,45 @@ describe("run-mobile-build", () => {
         "utf8",
       ),
     ).toBe("ios-project\n");
+    expect(
+      fs.readFileSync(
+        path.join(
+          appDir,
+          "ios",
+          "App",
+          "App",
+          "WebsiteBlockerContentExtension",
+          "ActionRequestHandler.swift",
+        ),
+        "utf8",
+      ),
+    ).toBe("request-handler\n");
+    expect(
+      fs.readFileSync(
+        path.join(
+          appDir,
+          "ios",
+          "App",
+          "App",
+          "WebsiteBlockerContentExtension",
+          "Info.plist",
+        ),
+        "utf8",
+      ),
+    ).toBe("extension-plist\n");
+    expect(
+      fs.readFileSync(
+        path.join(
+          appDir,
+          "ios",
+          "App",
+          "App",
+          "WebsiteBlockerContentExtension",
+          "WebsiteBlockerContentExtension.entitlements",
+        ),
+        "utf8",
+      ),
+    ).toBe("extension-entitlements\n");
     expect(
       fs.readFileSync(path.join(appDir, "android", "build.gradle"), "utf8"),
     ).toBe("android-root\n");
