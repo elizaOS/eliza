@@ -64,6 +64,8 @@
     "./state/useVincentState": "./src/state/useVincentState.ts",
     "./components": "./src/components/index.ts",
     "./components/*": "./src/components/*",
+    "./components/*/*": "./src/components/*/*",
+    "./components/*/*/*": "./src/components/*/*/*",
     "./components/apps/overlay-app-api": "./src/components/apps/overlay-app-api.ts",
     "./components/apps/overlay-app-registry": "./src/components/apps/overlay-app-registry.ts",
     "./components/character/CharacterEditor": "./src/components/character/CharacterEditor.tsx",

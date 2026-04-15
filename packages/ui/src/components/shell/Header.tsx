@@ -1,18 +1,18 @@
-import {
-  CloudStatusBadge,
-  LanguageDropdown,
-  ThemeToggle,
-} from "@elizaos/app-core/components";
+import { CloudStatusBadge } from "@elizaos/app-core/components/cloud/CloudStatusBadge";
+import { LanguageDropdown } from "@elizaos/app-core/components/shared/LanguageDropdown";
+import { ThemeToggle } from "@elizaos/app-core/components/shared/ThemeToggle";
 import { getTabGroups, type TabGroup } from "@elizaos/app-core/navigation";
 import { useApp } from "@elizaos/app-core/state";
 import {
   Button,
+} from "../ui/button";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@elizaos/app-core";
+} from "../ui/dialog";
 import { ListTodo, Menu, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
