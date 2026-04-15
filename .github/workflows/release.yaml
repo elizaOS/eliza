@@ -96,16 +96,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          restore_package_json() {
-            if [[ -n "${PACKAGE_JSON_BACKUP:-}" && -f "${PACKAGE_JSON_BACKUP}" ]]; then
-              mv "${PACKAGE_JSON_BACKUP}" package.json
-            fi
-          }
-
-          PACKAGE_JSON_BACKUP="$(mktemp)"
-          cp package.json "${PACKAGE_JSON_BACKUP}"
-          trap restore_package_json EXIT
-
           node - <<'NODE'
           const fs = require("node:fs");
           const packageJsonPath = "package.json";
@@ -135,8 +125,6 @@ jobs:
           NODE
 
           bun install --ignore-scripts
-          restore_package_json
-          trap - EXIT
           # --ignore-scripts prevents postinstall scripts from running, but build
           # tools like esbuild and bun need their postinstall to install platform binaries.
           # Run them explicitly so turbo and lerna prepublishOnly can spawn build processes.
@@ -182,36 +170,6 @@ jobs:
             echo "$1" | sed 's/-.*$//'
           }
 
-          get_prerelease_type() {
-            if [[ "$1" =~ -([a-z]+)\. ]]; then
-              echo "${BASH_REMATCH[1]}"
-            else
-              echo ""
-            fi
-          }
-
-          bump_version() {
-            local version="$1"
-            local type="$2"  # major, minor, patch
-            IFS='.' read -r major minor patch <<< "$version"
-            patch=${patch%%-*}  # Remove any prerelease suffix
-            
-            case "$type" in
-              major)
-                echo "$((major + 1)).0.0"
-                ;;
-              minor)
-                echo "${major}.$((minor + 1)).0"
-                ;;
-              patch)
-                echo "${major}.${minor}.$((patch + 1))"
-                ;;
-              *)
-                echo "$version"
-                ;;
-            esac
-          }
-
           # Determine version strategy based on release type and current version
           if [[ "${{ github.event_name }}" == "release" ]]; then
             # Production release from GitHub release tag
@@ -240,9 +198,6 @@ jobs:
               HIGHEST_VERSION=${HIGHEST_TAG#v}
               echo "Highest existing alpha tag: ${HIGHEST_VERSION}"
 
-              # Only sync if lerna.json is BEHIND the tags (not ahead).
-              # If lerna.json is ahead, a previous run already bumped it
-              # but failed to create the tag — just increment from current.
               HIGHEST_NUM=$(echo "$HIGHEST_VERSION" | grep -o '[0-9]*$')
               CURRENT_NUM=$(echo "$CURRENT_VERSION" | grep -o '[0-9]*$')
 
@@ -253,20 +208,25 @@ jobs:
                   --yes \
                   --no-private \
                   --no-git-tag-version \
-                  --no-push
-              elif [[ "$CURRENT_NUM" -gt "$HIGHEST_NUM" ]]; then
-                echo "lerna.json (${CURRENT_VERSION}) is ahead of highest tag (${HIGHEST_VERSION}) — skipping sync"
+                  --no-push \
+                  --allow-branch ${{ github.ref_name }}
               fi
 
-              # Now increment to the next alpha
-              echo "Incrementing from $(node -p "require('./lerna.json').version")..."
-              bunx lerna version prerelease \
-                --preid alpha \
-                --force-publish \
-                --yes \
-                --no-private \
-                --no-git-tag-version \
-                --no-push
+              # Increment if the current version is already on npm
+              CURRENT_CHECK=$(node -p "require('./lerna.json').version")
+              if npm view "@elizaos/core@${CURRENT_CHECK}" version >/dev/null 2>&1; then
+                echo "Incrementing from ${CURRENT_CHECK} (already on npm)..."
+                bunx lerna version prerelease \
+                  --preid alpha \
+                  --force-publish \
+                  --yes \
+                  --no-private \
+                  --no-git-tag-version \
+                  --no-push \
+                  --allow-branch ${{ github.ref_name }}
+              else
+                echo "Version ${CURRENT_CHECK} not on npm, reusing existing version number"
+              fi
             else
               # No existing alpha tags, safe to start at .0
               echo "No existing alpha tags found, starting at ${BASE_VERSION}-alpha.0"
@@ -275,7 +235,8 @@ jobs:
                 --yes \
                 --no-private \
                 --no-git-tag-version \
-                --no-push
+                --no-push \
+                --allow-branch ${{ github.ref_name }}
             fi
 
           elif [[ "${RELEASE_TYPE}" == "beta" ]]; then
@@ -292,7 +253,6 @@ jobs:
               HIGHEST_VERSION=${HIGHEST_TAG#v}
               echo "Highest existing beta tag: ${HIGHEST_VERSION}"
 
-              # Only sync if lerna.json is BEHIND the tags (not ahead).
               HIGHEST_NUM=$(echo "$HIGHEST_VERSION" | grep -o '[0-9]*$')
               CURRENT_NUM=$(echo "$CURRENT_VERSION" | grep -o '[0-9]*$')
 
@@ -303,20 +263,25 @@ jobs:
                   --yes \
                   --no-private \
                   --no-git-tag-version \
-                  --no-push
-              elif [[ "$CURRENT_NUM" -gt "$HIGHEST_NUM" ]]; then
-                echo "lerna.json (${CURRENT_VERSION}) is ahead of highest tag (${HIGHEST_VERSION}) — skipping sync"
+                  --no-push \
+                  --allow-branch ${{ github.ref_name }}
               fi
 
-              # Now increment to the next beta
-              echo "Incrementing from $(node -p "require('./lerna.json').version")..."
-              bunx lerna version prerelease \
-                --preid beta \
-                --force-publish \
-                --yes \
-                --no-private \
-                --no-git-tag-version \
-                --no-push
+              # Increment if the current version is already on npm
+              CURRENT_CHECK=$(node -p "require('./lerna.json').version")
+              if npm view "@elizaos/core@${CURRENT_CHECK}" version >/dev/null 2>&1; then
+                echo "Incrementing from ${CURRENT_CHECK} (already on npm)..."
+                bunx lerna version prerelease \
+                  --preid beta \
+                  --force-publish \
+                  --yes \
+                  --no-private \
+                  --no-git-tag-version \
+                  --no-push \
+                  --allow-branch ${{ github.ref_name }}
+              else
+                echo "Version ${CURRENT_CHECK} not on npm, reusing existing version number"
+              fi
             else
               # No existing beta tags, safe to start at .0
               echo "No existing beta tags found, starting at ${BASE_VERSION}-beta.0"
@@ -325,27 +290,21 @@ jobs:
                 --yes \
                 --no-private \
                 --no-git-tag-version \
-                --no-push
+                --no-push \
+                --allow-branch ${{ github.ref_name }}
             fi
             
           elif [[ "${RELEASE_TYPE}" == "latest" ]]; then
             # Manual workflow dispatch for 'latest' should NOT be used for version bumps!
-            # Version bumps should ONLY come from GitHub releases with tags
             echo "❌ ERROR: Manual 'latest' releases are not allowed!"
-            echo "Production version changes must be done through GitHub releases."
-            echo "Please create a GitHub release with the desired version tag instead."
             exit 1
           fi
 
-          # Get the new version and verify it doesn't already exist on npm.
-          # lerna publish from-package silently skips already-published versions,
-          # so we must detect collisions here and bump again if needed.
           VERSION=$(node -p "require('./lerna.json').version")
 
           if [[ "${RELEASE_TYPE}" == "alpha" || "${RELEASE_TYPE}" == "beta" ]]; then
             MAX_RETRIES=3
             for i in $(seq 1 $MAX_RETRIES); do
-              # Check if this version already exists on npm
               if npm view "@elizaos/core@${VERSION}" version >/dev/null 2>&1; then
                 echo "⚠️ Version ${VERSION} already exists on npm — bumping again (attempt ${i}/${MAX_RETRIES})"
                 bunx lerna version prerelease \
@@ -354,20 +313,15 @@ jobs:
                   --yes \
                   --no-private \
                   --no-git-tag-version \
-                  --no-push
+                  --no-push \
+                  --allow-branch ${{ github.ref_name }}
                 VERSION=$(node -p "require('./lerna.json').version")
-                sleep 1  # Brief delay for npm registry consistency
+                sleep 1
               else
                 echo "✅ Version ${VERSION} is available on npm"
                 break
               fi
             done
-
-            # Final check — if still colliding after retries, fail loudly
-            if npm view "@elizaos/core@${VERSION}" version >/dev/null 2>&1; then
-              echo "❌ Version ${VERSION} still exists on npm after ${MAX_RETRIES} bumps — aborting"
-              exit 1
-            fi
           fi
 
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
@@ -378,29 +332,24 @@ jobs:
           bun install --no-frozen-lockfile --ignore-scripts || true
 
       # Commit and push version changes BEFORE building and publishing
-      # This ensures git is the source of truth
       - name: Commit version changes
         id: commit
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           RELEASE_TYPE="${{ steps.release_type.outputs.type }}"
 
-          # Stage all changes
           git add -A
-
-          # Check if there are changes to commit
           if git diff --staged --quiet; then
             echo "No changes to commit - this might indicate a problem"
             echo "has_changes=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # Commit with [skip ci] to prevent infinite loop
           git commit -m "chore: release v${VERSION} (${RELEASE_TYPE}) [skip ci]"
           echo "has_changes=true" >> $GITHUB_OUTPUT
           echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
-      # Create and push git tag (only if not from a GitHub release)
+      # Create and push git tag
       - name: Create git tag
         if: steps.release_type.outputs.is_release_event != 'true' && steps.commit.outputs.has_changes == 'true'
         id: tag
@@ -408,52 +357,38 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           TAG_NAME="v${VERSION}"
 
-          # Check if tag already exists
           if git rev-parse "${TAG_NAME}" >/dev/null 2>&1; then
             echo "❌ Error: Tag ${TAG_NAME} already exists"
-            echo "This indicates a version conflict that needs manual resolution"
             exit 1
           fi
 
-          # Create the tag
           git tag "${TAG_NAME}"
           echo "tag_created=true" >> $GITHUB_OUTPUT
           echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
 
-      # Push changes to git (fails the workflow if it can't push)
+      # Push changes to git
       - name: Push to git
         if: steps.commit.outputs.has_changes == 'true'
         run: |
           TAG_NAME="${{ steps.tag.outputs.tag_name }}"
-
-          # Determine target branch for push
           if [[ "${{ github.event_name }}" == "release" ]]; then
-            # For GitHub releases, push to main branch
             TARGET_BRANCH="main"
-            echo "Pushing changes to main branch..."
           else
-            # For other triggers, push to current branch
             TARGET_BRANCH="${{ github.ref_name }}"
           fi
 
           retry_rebase_release_commit() {
             git fetch origin "${TARGET_BRANCH}"
-
             if ! git rebase "origin/${TARGET_BRANCH}"; then
-              echo "❌ Error: Failed to rebase release commit onto origin/${TARGET_BRANCH}"
               return 1
             fi
-
             if [[ -n "${TAG_NAME}" ]]; then
               if git ls-remote --exit-code --tags origin "refs/tags/${TAG_NAME}" >/dev/null 2>&1; then
-                echo "❌ Error: Tag ${TAG_NAME} already exists on origin after retry fetch"
                 return 1
               fi
-
               if git rev-parse "${TAG_NAME}" >/dev/null 2>&1; then
                 git tag -d "${TAG_NAME}"
               fi
-
               git tag "${TAG_NAME}"
             fi
           }
@@ -469,34 +404,19 @@ jobs:
               PUSHED=true
               break
             fi
-
             if [[ "${ATTEMPT}" -eq "${MAX_PUSH_ATTEMPTS}" ]]; then
               break
             fi
-
-            echo "⚠️ Push attempt ${ATTEMPT}/${MAX_PUSH_ATTEMPTS} failed — rebasing onto origin/${TARGET_BRANCH} and retrying..."
-            if ! retry_rebase_release_commit; then
-              break
-            fi
+            echo "⚠️ Push attempt ${ATTEMPT}/${MAX_PUSH_ATTEMPTS} failed — rebasing..."
+            retry_rebase_release_commit || break
           done
 
           if [[ "${PUSHED}" != "true" ]]; then
             echo "❌ Error: Failed to push to git repository"
-            echo "This could be due to:"
-            echo "  - Protected branch restrictions"
-            echo "  - Network issues"
-            echo "  - Permission problems"
-            echo "  - The target branch changing too quickly to rebase cleanly"
-            echo ""
-            echo "The version has been updated locally but not published."
-            echo "Manual intervention required to resolve the git push issue."
             exit 1
           fi
 
-          echo "✅ Successfully pushed version changes and tags to git"
-
-      # Build packages with correct version numbers
-      # Only happens AFTER git operations succeed
+      # Build packages
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -519,40 +439,29 @@ jobs:
 
       - name: Build WASM packages
         run: |
-          echo "Building WASM packages..."
-
-          # Build core WASM
-          echo "Building @elizaos/core WASM..."
-          cd packages/rust
-          wasm-pack build --target web --out-dir pkg/web --features wasm --no-default-features || echo "WASM web build skipped"
-          wasm-pack build --target nodejs --out-dir pkg/node --features wasm --no-default-features || echo "WASM node build skipped"
-          cd ../..
-
-          # Build plugin-sql WASM (if exists)
+          cd packages/rust 2>/dev/null && {
+            wasm-pack build --target web --out-dir pkg/web --features wasm --no-default-features || true
+            wasm-pack build --target nodejs --out-dir pkg/node --features wasm --no-default-features || true
+            cd ../..
+          }
           if [ -d "plugins/plugin-sql/rust" ]; then
-            echo "Building @elizaos/plugin-sql WASM..."
             cd plugins/plugin-sql/rust
-            wasm-pack build --target web --out-dir pkg/web --features wasm --no-default-features || echo "WASM web build skipped"
-            wasm-pack build --target nodejs --out-dir pkg/node --features wasm --no-default-features || echo "WASM node build skipped"
+            wasm-pack build --target web --out-dir pkg/web --features wasm --no-default-features || true
+            wasm-pack build --target nodejs --out-dir pkg/node --features wasm --no-default-features || true
             cd ../../..
           fi
-
-          echo "WASM builds complete"
 
       - name: Build packages
         env:
           SKIP_PYTHON_BUILD: "1"
         run: |
           echo "Building packages with version v${{ steps.version.outputs.version }}..."
-          # Use --continue so platform-specific build failures (Rust/Python) don't block the release.
-          # But verify critical packages built successfully afterward.
           bunx turbo run build --continue || echo "Some packages had build errors — checking critical packages..."
 
-          # Fail fast if any publish-critical package is missing its release artifacts.
           for artifact in \
             packages/agent/dist/package.json \
+            packages/core/dist/index.js \
             packages/app-core/dist/package.json \
-            packages/elizaos/dist/index.js \
             packages/interop/dist/index.d.ts \
             packages/prompts/dist/typescript/index.ts \
             packages/shared/dist/package.json \
@@ -566,38 +475,24 @@ jobs:
           done
           echo "✅ All publish-critical packages built successfully"
 
-      # Replace workspace:* references with actual versions before publishing
-      # This is required because Bun workspaces use workspace:* protocol
-      # which npm doesn't understand when the packages are published
       - name: Replace workspace references
         id: replace_workspace
         run: |
           echo "🔄 Replacing workspace:* references with actual versions..."
           node scripts/replace-workspace-versions.js
-          echo "✅ Workspace references replaced"
 
-      # Publish to NPM (only after git operations succeed)
       - name: Publish to NPM
         id: publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           DIST_TAG="${{ steps.release_type.outputs.dist_tag }}"
-
-          # Configure npm for authentication
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
 
-          # The release build rewrites files inside plugin git submodules
-          # (workspace refs, generated artifacts, versioned outputs). Those
-          # changes are intentional for the publish tarballs, but lerna's
-          # working tree check treats the parent repo as dirty unless the
-          # submodules are ignored locally for this CI checkout.
           while read -r _ path _; do
             git config --local "submodule.${path}.ignore" dirty
           done < <(git submodule status --recursive)
 
-          # Publish with appropriate dist-tag
-          # Commit workspace reference changes so lerna doesn't complain about uncommitted files
           git add -A
           git diff --staged --quiet || git commit -m "chore: replace workspace references for publishing [skip ci]"
 
@@ -607,24 +502,10 @@ jobs:
             --yes \
             --no-verify-access \
             --no-git-reset; then
-            
             echo "❌ Error: Failed to publish to NPM"
-            echo ""
-            echo "Git has been updated with version v${{ steps.version.outputs.version }}"
-            echo "but the packages were not published to NPM."
-            echo ""
-            echo "To recover:"
-            echo "  1. Fix the NPM publishing issue"
-            echo "  2. Run 'npm run release:${DIST_TAG}' locally with proper credentials"
-            echo "  3. Or re-run this workflow"
             exit 1
           fi
 
-          echo "✅ Successfully published to NPM with dist-tag: ${DIST_TAG}"
-
-      # Verify the dist-tag actually points to the new version.
-      # lerna publish silently skips already-published versions, so the
-      # dist-tag may not have moved even though lerna reported success.
       - name: Verify dist-tag
         if: steps.publish.outcome == 'success'
         env:
@@ -636,8 +517,6 @@ jobs:
           FIX_ATTEMPTS=12
           SLEEP_SECONDS=10
 
-          echo "Verifying dist-tag '${DIST_TAG}' points to ${VERSION}..."
-
           get_actual_tag() {
             npm view "@elizaos/core@${DIST_TAG}" version 2>/dev/null || echo "unknown"
           }
@@ -645,80 +524,40 @@ jobs:
           wait_for_dist_tag() {
             local expected="$1"
             local attempts="$2"
-            local phase="$3"
-            local actual=""
-
             for attempt in $(seq 1 "${attempts}"); do
               actual=$(get_actual_tag)
-
               if [[ "$actual" == "$expected" ]]; then
-                echo "✅ dist-tag '${DIST_TAG}' points to ${expected} during ${phase} check (attempt ${attempt}/${attempts})"
                 return 0
               fi
-
-              if [[ "$attempt" -lt "$attempts" ]]; then
-                echo "⏳ dist-tag '${DIST_TAG}' currently points to ${actual}; waiting ${SLEEP_SECONDS}s for ${phase} propagation (${attempt}/${attempts})..."
-                sleep "${SLEEP_SECONDS}"
-              fi
+              sleep "${SLEEP_SECONDS}"
             done
-
-            echo "⚠️ dist-tag '${DIST_TAG}' still points to ${actual} after ${phase} check"
             return 1
           }
 
-          if wait_for_dist_tag "${VERSION}" "${INITIAL_ATTEMPTS}" "initial"; then
+          if wait_for_dist_tag "${VERSION}" "${INITIAL_ATTEMPTS}"; then
             exit 0
           fi
 
-          ACTUAL=$(get_actual_tag)
-          echo "⚠️ dist-tag '${DIST_TAG}' points to ${ACTUAL}, expected ${VERSION}"
-          echo "Forcing dist-tag update for all published packages..."
-
-          # Get list of public packages from lerna, plus @elizaos/core
-          # which is published from packages/typescript but may not appear
-          # in lerna ls if the workspace config changed.
           PACKAGES=$(bunx lerna ls --json --no-private 2>/dev/null | node -e "
-            const pkgs = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+            const pkgs = JSON.parse(require('fs').readFileSync(0,'utf8'));
             const names = new Set(pkgs.map(p => p.name));
             names.add('@elizaos/core');
             names.forEach(n => console.log(n));
           ")
 
-          FIXED=0
-          FAILED=0
-          PENDING=0
           for PKG in $PACKAGES; do
             if npm view "${PKG}@${VERSION}" version >/dev/null 2>&1; then
-              if npm dist-tag add "${PKG}@${VERSION}" "${DIST_TAG}" 2>/dev/null; then
-                echo "  ✅ Updated dist-tag for ${PKG}"
-                FIXED=$((FIXED + 1))
-              else
-                echo "  ⚠️ Failed to update dist-tag for ${PKG}"
-                FAILED=$((FAILED + 1))
-              fi
-            else
-              echo "  ⏳ ${PKG}@${VERSION} is not visible on npm yet"
-              PENDING=$((PENDING + 1))
+              npm dist-tag add "${PKG}@${VERSION}" "${DIST_TAG}" 2>/dev/null || true
             fi
           done
 
-          echo "✅ Dist-tag update attempts: ${FIXED} updated, ${FAILED} failed, ${PENDING} pending visibility"
+          wait_for_dist_tag "${VERSION}" "${FIX_ATTEMPTS}" || exit 1
 
-          if ! wait_for_dist_tag "${VERSION}" "${FIX_ATTEMPTS}" "post-fix"; then
-            echo "❌ dist-tag still not pointing to ${VERSION} after fix attempt"
-            exit 1
-          fi
-
-      # Always restore workspace:* references after publish (success or failure)
-      # This keeps the repository clean for development
       - name: Restore workspace references
-        if: always() && steps.replace_workspace.outcome == 'success'
+        if: always()
         run: |
-          echo "🔄 Restoring workspace:* references..."
-          node scripts/restore-workspace-refs.js
-          echo "✅ Workspace references restored"
+          node scripts/restore-workspace-refs.js 2>/dev/null || true
 
-      # Create GitHub Release for alpha/beta (not for production, as it already exists)
       - name: Create GitHub release
         if: github.event_name != 'release' && steps.release_type.outputs.type != 'latest' && steps.tag.outputs.tag_created == 'true'
         uses: softprops/action-gh-release@v1
@@ -729,25 +568,8 @@ jobs:
           name: ${{ steps.tag.outputs.tag_name }}
           body: |
             ${{ steps.release_type.outputs.type == 'alpha' && '🚀 Alpha Release' || '🔵 Beta Release' }}
-
             **Version:** `${{ steps.tag.outputs.tag_name }}`
             **Channel:** `${{ steps.release_type.outputs.dist_tag }}`
-
-            ### Quick Start
-
-            Install the CLI globally to get started:
-            ```bash
-            bun i -g @elizaos/cli@${{ steps.release_type.outputs.dist_tag }}
-            ```
-
-            Or add packages to your project:
-            ```bash
-            bun add @elizaos/core@${{ steps.release_type.outputs.dist_tag }}
-            ```
-
-            ---
-
-            > **Note:** This is a ${{ steps.release_type.outputs.type }} release. Production releases use the `latest` tag and are triggered by GitHub releases on tags matching `v*.*.*`.
           draft: false
           prerelease: true
 
@@ -755,281 +577,33 @@ jobs:
         if: always()
         run: |
           echo "# 📦 Release Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Version**: v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Type**: ${{ steps.release_type.outputs.type }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Dist Tag**: ${{ steps.release_type.outputs.dist_tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          if [[ "${{ steps.commit.outputs.has_changes }}" == "true" ]]; then
-            echo "- **Commit SHA**: ${{ steps.commit.outputs.commit_sha }}" >> $GITHUB_STEP_SUMMARY
-          fi
-          if [[ "${{ steps.tag.outputs.tag_created }}" == "true" ]]; then
-            echo "- **Tag**: ${{ steps.tag.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Quick Start" >> $GITHUB_STEP_SUMMARY
-          echo "Install the CLI globally:" >> $GITHUB_STEP_SUMMARY
-          echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "bun i -g @elizaos/cli@${{ steps.release_type.outputs.dist_tag }}" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Or add to your project:" >> $GITHUB_STEP_SUMMARY
-          echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "bun add @elizaos/core@${{ steps.release_type.outputs.dist_tag }}" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
 
-      # Sync version back to develop after production release
       - name: Sync version to develop branch
         if: github.event_name == 'release' && success()
-        continue-on-error: true # Don't fail the release if sync fails
+        continue-on-error: true
         run: |
-          echo "📤 Syncing production release back to develop branch..."
-
-          # Get the released version
           RELEASED_VERSION="${{ steps.version.outputs.version }}"
           BASE_VERSION=$(echo "$RELEASED_VERSION" | sed 's/-.*$//')
-
-          echo "Released version: ${RELEASED_VERSION}"
-          echo "Base version: ${BASE_VERSION}"
-
-          # Fetch latest develop
-          git fetch origin develop:refs/remotes/origin/develop || {
-            echo "⚠️ Could not fetch develop branch, skipping sync"
-            exit 0
-          }
-
-          # Get current develop version
-          git checkout origin/develop -- lerna.json 2>/dev/null || true
-          DEVELOP_VERSION=$(node -p "require('./lerna.json').version" 2>/dev/null || echo "unknown")
-
-          # Restore our lerna.json
-          git checkout HEAD -- lerna.json
-
-          echo "Current develop version: ${DEVELOP_VERSION}"
-
-          # Extract base versions for comparison
+          git fetch origin develop
+          DEVELOP_VERSION=$(git show origin/develop:lerna.json | node -e "console.log(JSON.parse(require('fs').readFileSync(0, 'utf8')).version)" 2>/dev/null || echo "unknown")
           DEVELOP_BASE=$(echo "$DEVELOP_VERSION" | sed 's/-.*$//')
-
-          # Compare versions and auto-advance if needed
-          if [[ "$DEVELOP_BASE" < "$BASE_VERSION" ]]; then
-            # Develop is behind - update it to match production with alpha suffix
+          
+          V_COMP=$(printf '%s\n%s' "$DEVELOP_BASE" "$BASE_VERSION" | sort -V | head -n1)
+          if [[ "$DEVELOP_BASE" != "$BASE_VERSION" && "$V_COMP" == "$DEVELOP_BASE" ]]; then
             NEXT_ALPHA="${BASE_VERSION}-alpha.0"
-            
-            echo "Develop is behind: ${DEVELOP_VERSION} → ${NEXT_ALPHA}"
-            
-            # Create a branch for the sync (using release/ prefix for lerna)
             git checkout -b release/sync-develop-${BASE_VERSION} origin/develop
-            
-            # Update version to match production base with alpha suffix
-            bunx lerna version ${NEXT_ALPHA} \
-              --force-publish \
-              --yes \
-              --no-private \
-              --no-git-tag-version \
-              --no-push \
-              --allow-branch release/*
-            
-            # Update lockfile (|| true: tolerate broken postinstall scripts)
+            bunx lerna version ${NEXT_ALPHA} --force-publish --yes --no-private --no-git-tag-version --no-push --allow-branch release/*
             bun install --no-frozen-lockfile || true
-            
-            # Commit
             git add -A
-            git commit -m "chore: sync to v${NEXT_ALPHA} after v${BASE_VERSION} release [skip ci]" \
-              -m "Automated version sync from production release"
-            
-            # Push to develop
-            if git push origin HEAD:develop; then
-              echo "✅ Successfully synced develop to ${NEXT_ALPHA}"
-            else
-              echo "⚠️ Could not push to develop (may be protected or already updated)"
-            fi
-          elif [[ "$DEVELOP_BASE" == "$BASE_VERSION" ]]; then
-            # Develop is on same base as release - auto-advance to next patch
-            echo "Develop matches release base, auto-advancing to next patch version..."
-            
-            # Calculate next patch version
-            IFS='.' read -r major minor patch <<< "$BASE_VERSION"
-            NEXT_PATCH="${major}.${minor}.$((patch + 1))"
-            NEXT_ALPHA="${NEXT_PATCH}-alpha.0"
-            
-            echo "Auto-advancing: ${DEVELOP_VERSION} → ${NEXT_ALPHA}"
-            
-            # Create a branch for the sync (using release/ prefix for lerna)
-            git checkout -b release/sync-develop-${BASE_VERSION} origin/develop
-            
-            # Update version to next patch with alpha suffix
-            bunx lerna version ${NEXT_ALPHA} \
-              --force-publish \
-              --yes \
-              --no-private \
-              --no-git-tag-version \
-              --no-push \
-              --allow-branch release/*
-            
-            # Update lockfile (|| true: tolerate broken postinstall scripts)
-            bun install --no-frozen-lockfile || true
-            
-            # Commit
-            git add -A
-            git commit -m "chore: bump to v${NEXT_ALPHA} after v${BASE_VERSION} release [skip ci]" \
-              -m "Automated patch version bump from production release"
-            
-            # Push to develop
-            if git push origin HEAD:develop; then
-              echo "✅ Successfully auto-advanced develop to ${NEXT_ALPHA}"
-            else
-              echo "⚠️ Could not push to develop (may be protected or already updated)"
-            fi
-          else
-            echo "✅ Develop (${DEVELOP_VERSION}) is already ahead of release (${RELEASED_VERSION})"
-            # Develop is ahead - this is fine, means a new version is being worked on
-            # Don't touch it - developer has manually set the next version
+            git commit -m "chore: sync to v${NEXT_ALPHA} after v${BASE_VERSION} release [skip ci]"
+            git push origin HEAD:develop
           fi
-
-          # Also sync main branch to match production release
-          echo "🔄 Syncing main branch to production release..."
-
-          # Fetch latest main
-          git fetch origin main:refs/remotes/origin/main || {
-            echo "⚠️ Could not fetch main branch, skipping main sync"
-            exit 0
-          }
-
-          # Get current main version
-          git checkout origin/main -- lerna.json 2>/dev/null || true
-          MAIN_VERSION=$(node -p "require('./lerna.json').version" 2>/dev/null || echo "unknown")
-
-          # Restore our lerna.json
-          git checkout HEAD -- lerna.json
-
-          echo "Current main version: ${MAIN_VERSION}"
-
-          MAIN_BASE=$(echo "$MAIN_VERSION" | sed 's/-.*$//')
-
-          # Main should follow develop's base version
-          # First, get the new develop version that was just set
-          git fetch origin develop:refs/remotes/origin/develop || {
-            echo "⚠️ Could not fetch updated develop branch"
-            NEW_DEVELOP_BASE="$BASE_VERSION"
-          }
-
-          if [[ -z "${NEW_DEVELOP_BASE}" ]]; then
-            git checkout origin/develop -- lerna.json 2>/dev/null || true
-            NEW_DEVELOP_VERSION=$(node -p "require('./lerna.json').version" 2>/dev/null || echo "${BASE_VERSION}-alpha.0")
-            NEW_DEVELOP_BASE=$(echo "$NEW_DEVELOP_VERSION" | sed 's/-.*$//')
-            git checkout HEAD -- lerna.json
-          fi
-
-          echo "New develop base: ${NEW_DEVELOP_BASE}"
-          echo "Current main base: ${MAIN_BASE}"
-
-          # Main should match develop's base version
-          if [[ "$MAIN_BASE" != "$NEW_DEVELOP_BASE" ]]; then
-            NEXT_BETA="${NEW_DEVELOP_BASE}-beta.0"
-            
-            echo "Updating main to match develop base: ${MAIN_VERSION} → ${NEXT_BETA}"
-            
-            # Create a branch for the sync (using release/ prefix for lerna)
-            git checkout -b release/sync-main-${BASE_VERSION} origin/main
-            
-            # Update version
-            bunx lerna version ${NEXT_BETA} \
-              --force-publish \
-              --yes \
-              --no-private \
-              --no-git-tag-version \
-              --no-push \
-              --allow-branch release/*
-            
-            # Update lockfile (|| true: tolerate broken postinstall scripts)
-            bun install --no-frozen-lockfile || true
-            
-            # Commit
-            git add -A
-            git commit -m "chore: sync to v${NEXT_BETA} after v${BASE_VERSION} release [skip ci]" \
-              -m "Automated version sync from production release (following develop)"
-            
-            # Push to main
-            if git push origin HEAD:main; then
-              echo "✅ Successfully synced main to ${NEXT_BETA}"
-            else
-              echo "⚠️ Could not push to main (may be protected or already updated)"
-            fi
-          else
-            echo "✅ Main base version (${MAIN_BASE}) already matches develop base (${NEW_DEVELOP_BASE})"
-          fi
-
-      # Handle failure - create issue if the workflow failed
-      - name: Create issue content file
-        if: failure() && steps.version.outputs.version
-        run: |
-          cat > /tmp/issue-content.md << 'EOF'
-          The release workflow failed for version v${{ steps.version.outputs.version }}.
-
-          **Details:**
-          - Release Type: ${{ steps.release_type.outputs.type }}
-          - Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          - Triggered By: ${{ github.event_name }}
-          - Git Changes Committed: ${{ steps.commit.outputs.has_changes || 'false' }}
-          - Git Tag Created: ${{ steps.tag.outputs.tag_created || 'false' }}
-
-          **Recovery Steps:**
-
-          If git operations succeeded but NPM publish failed:
-          - The version is already in git
-          - Fix the NPM issue and run `npm run release:${{ steps.release_type.outputs.dist_tag }}` locally
-          - Or re-run this workflow (it will skip git operations if no changes)
-
-          If git operations failed:
-          - No packages were published to NPM (safe state)
-          - Fix the git issue (permissions, network, etc.)
-          - Re-run the workflow
-
-          **Action Required:**
-          - Check the workflow logs for the specific failure point
-          - Follow the appropriate recovery steps above
-          EOF
-
-      - name: Check for existing failure issue
-        if: failure() && steps.version.outputs.version
-        id: existing_failure_issue
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          EXISTING_ISSUE="$(
-            gh issue list \
-              --repo "${{ github.repository }}" \
-              --search "is:issue is:open in:title \"Release Failed: v${VERSION}\"" \
-              --json number \
-              --jq '.[0].number // ""'
-          )"
-
-          if [[ -n "${EXISTING_ISSUE}" ]]; then
-            echo "Found existing failure issue #${EXISTING_ISSUE} for v${VERSION}"
-            echo "should_create=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "No open failure issue exists for v${VERSION}"
-            echo "should_create=true" >> "$GITHUB_OUTPUT"
-          fi
-
-          echo "issue_number=${EXISTING_ISSUE}" >> "$GITHUB_OUTPUT"
 
       - name: Create failure issue
-        if: failure() && steps.version.outputs.version && steps.existing_failure_issue.outputs.should_create == 'true'
+        if: failure() && steps.version.outputs.version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue create \
-            --repo "${{ github.repository }}" \
-            --title "Release Failed: v${{ steps.version.outputs.version }}" \
-            --body-file /tmp/issue-content.md \
-            --label bug \
-            --label release \
-            --label "automated issue"
-
-      - name: Reuse existing failure issue
-        if: failure() && steps.version.outputs.version && steps.existing_failure_issue.outputs.should_create != 'true'
-        run: |
-          echo "Reusing existing failure issue #${{ steps.existing_failure_issue.outputs.issue_number }}"
+          gh issue create --repo "${{ github.repository }}" --title "Release Failed: v${{ steps.version.outputs.version }}" --body "Release workflow failed for v${{ steps.version.outputs.version }}. Check logs for details." --label bug --label release --label "automated issue" || true
