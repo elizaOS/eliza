@@ -26,6 +26,16 @@ type PluginManifest = {
   plugins: PluginManifestEntry[];
 };
 
+type PackageJson = {
+  main?: string;
+  module?: string;
+  exports?: Record<string, string | Record<string, string>> | string;
+  os?: string[];
+  agentConfig?: {
+    pluginParameters?: Record<string, { required?: boolean }>;
+  };
+};
+
 export type LocalWorkspacePlugin = {
   id: string;
   dirName: string;
@@ -36,6 +46,8 @@ export type LocalWorkspacePlugin = {
   packageJsonPath: string;
   entryPath: string;
   entryUrl: string;
+  supportedOs: string[];
+  requiredEnvKeys: string[];
 };
 
 const REPO_ROOT = path.resolve(
@@ -52,7 +64,9 @@ const PLUGIN_MANIFEST_PATH = path.join(REPO_ROOT, "plugins.json");
 let cachedPluginsPromise: Promise<LocalWorkspacePlugin[]> | null = null;
 
 function readPluginManifest(): PluginManifest {
-  return JSON.parse(fs.readFileSync(PLUGIN_MANIFEST_PATH, "utf8")) as PluginManifest;
+  return JSON.parse(
+    fs.readFileSync(PLUGIN_MANIFEST_PATH, "utf8"),
+  ) as PluginManifest;
 }
 
 function findPackageRoot(dirName: string): string | null {
@@ -86,6 +100,55 @@ function chooseExistingPath(candidates: string[]): string {
   return path.resolve(candidates[0] ?? "");
 }
 
+function readPackageJson(filePath: string): PackageJson | null {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8")) as PackageJson;
+  } catch {
+    return null;
+  }
+}
+
+function collectPackageMetadata(packageRoot: string): {
+  supportedOs: string[];
+  requiredEnvKeys: string[];
+} {
+  const packageJsonCandidates = [
+    path.join(packageRoot, "package.json"),
+    path.join(packageRoot, "..", "package.json"),
+  ];
+  const supportedOs = new Set<string>();
+  const requiredEnvKeys = new Set<string>();
+
+  for (const packageJsonPath of packageJsonCandidates) {
+    const pkg = readPackageJson(packageJsonPath);
+    if (!pkg) {
+      continue;
+    }
+
+    if (Array.isArray(pkg.os)) {
+      for (const target of pkg.os) {
+        if (typeof target === "string" && target.length > 0) {
+          supportedOs.add(target);
+        }
+      }
+    }
+
+    const params = pkg.agentConfig?.pluginParameters;
+    if (params && typeof params === "object") {
+      for (const [key, param] of Object.entries(params)) {
+        if (param?.required === true) {
+          requiredEnvKeys.add(key);
+        }
+      }
+    }
+  }
+
+  return {
+    supportedOs: [...supportedOs],
+    requiredEnvKeys: [...requiredEnvKeys],
+  };
+}
+
 function resolvePackageEntrySync(packageRoot: string): string {
   const fallbackCandidates = [
     path.join(packageRoot, "dist", "node", "index.node.js"),
@@ -100,37 +163,52 @@ function resolvePackageEntrySync(packageRoot: string): string {
 
   try {
     const raw = fs.readFileSync(path.join(packageRoot, "package.json"), "utf8");
-    const pkg = JSON.parse(raw) as {
-      main?: string;
-      module?: string;
-      exports?: Record<string, string | Record<string, string>> | string;
-    };
+    const pkg = JSON.parse(raw) as PackageJson;
 
     if (typeof pkg.exports === "object" && pkg.exports["."] !== undefined) {
       const rootExport = pkg.exports["."];
       if (typeof rootExport === "string") {
-        return chooseExistingPath([path.resolve(packageRoot, rootExport), ...fallbackCandidates]);
+        return chooseExistingPath([
+          path.resolve(packageRoot, rootExport),
+          ...fallbackCandidates,
+        ]);
       }
-      const preferred = rootExport.node ?? rootExport.import ?? rootExport.default;
+      const preferred =
+        rootExport.node ?? rootExport.import ?? rootExport.default;
       if (typeof preferred === "string") {
-        return chooseExistingPath([path.resolve(packageRoot, preferred), ...fallbackCandidates]);
+        return chooseExistingPath([
+          path.resolve(packageRoot, preferred),
+          ...fallbackCandidates,
+        ]);
       }
       if (preferred && typeof preferred === "object") {
         const nested = preferred.import ?? preferred.default;
         if (typeof nested === "string") {
-          return chooseExistingPath([path.resolve(packageRoot, nested), ...fallbackCandidates]);
+          return chooseExistingPath([
+            path.resolve(packageRoot, nested),
+            ...fallbackCandidates,
+          ]);
         }
       }
     }
 
     if (typeof pkg.exports === "string") {
-      return chooseExistingPath([path.resolve(packageRoot, pkg.exports), ...fallbackCandidates]);
+      return chooseExistingPath([
+        path.resolve(packageRoot, pkg.exports),
+        ...fallbackCandidates,
+      ]);
     }
     if (typeof pkg.module === "string") {
-      return chooseExistingPath([path.resolve(packageRoot, pkg.module), ...fallbackCandidates]);
+      return chooseExistingPath([
+        path.resolve(packageRoot, pkg.module),
+        ...fallbackCandidates,
+      ]);
     }
     if (typeof pkg.main === "string") {
-      return chooseExistingPath([path.resolve(packageRoot, pkg.main), ...fallbackCandidates]);
+      return chooseExistingPath([
+        path.resolve(packageRoot, pkg.main),
+        ...fallbackCandidates,
+      ]);
     }
   } catch {
     return chooseExistingPath(fallbackCandidates);
@@ -139,7 +217,9 @@ function resolvePackageEntrySync(packageRoot: string): string {
   return chooseExistingPath(fallbackCandidates);
 }
 
-export async function listLocalWorkspacePlugins(): Promise<LocalWorkspacePlugin[]> {
+export async function listLocalWorkspacePlugins(): Promise<
+  LocalWorkspacePlugin[]
+> {
   cachedPluginsPromise ??= Promise.resolve().then(() => {
     const manifest = readPluginManifest();
     const seen = new Set<string>();
@@ -160,6 +240,7 @@ export async function listLocalWorkspacePlugins(): Promise<LocalWorkspacePlugin[
 
       seen.add(entry.npmName);
       const entryPath = resolvePackageEntrySync(packageRoot);
+      const metadata = collectPackageMetadata(packageRoot);
       localPlugins.push({
         id: entry.id,
         dirName: entry.dirName,
@@ -170,6 +251,8 @@ export async function listLocalWorkspacePlugins(): Promise<LocalWorkspacePlugin[
         packageJsonPath: path.join(packageRoot, "package.json"),
         entryPath,
         entryUrl: pathToFileURL(entryPath).href,
+        supportedOs: metadata.supportedOs,
+        requiredEnvKeys: metadata.requiredEnvKeys,
       });
     }
 
