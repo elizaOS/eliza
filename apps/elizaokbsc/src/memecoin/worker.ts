@@ -73,6 +73,9 @@ export async function runElizaOkDiscoveryCycle(
     "ElizaOK: Starting treasury discovery cycle",
   );
 
+  let discoveredCandidates: any[] | null = null;
+  let discoveredBnbPrice = 0;
+
   try {
     // Apply any absorbed Goo agent strategy overrides
     const absState = await loadAbsorptionState(config.reportsDir);
@@ -288,7 +291,50 @@ export async function runElizaOkDiscoveryCycle(
       config.historyLimit,
     );
 
-    // ── Goo Paper Agent cycle ──
+    // Store candidates/bnbPrice for the Goo cycle (runs after this try/catch)
+    discoveredCandidates = candidates;
+    discoveredBnbPrice = bnbPriceEstimate;
+
+    runtime.logger.info(
+      {
+        trigger,
+        runId,
+        candidateCount: candidates.length,
+        topRecommendationCount: memo.summary.topRecommendationCount,
+        gooAgentCount: gooCandidates.length,
+        gooPriorityCount: memo.summary.gooPriorityCount,
+        treasuryAllocatedUsd: treasurySimulation.allocatedUsd,
+        executionMode: executionState.mode,
+        executionRouter: executionState.router,
+        executionReady: `${executionState.readinessScore}/${executionState.readinessTotal}`,
+        executionLiveTradingArmed: executionState.liveTradingArmed,
+        executionDryRun: executionState.dryRun,
+        executionAttemptedCount: executionState.cycleSummary.attemptedCount,
+        executionExecutedCount: executionState.cycleSummary.executedCount,
+        executionDryRunCount: executionState.cycleSummary.dryRunCount,
+        executionFailedCount: executionState.cycleSummary.failedCount,
+        fourMemeCommands: fourMemePreview.commands.length,
+        tradeLedgerRecords: tradeLedger.records.length,
+        portfolioActiveCount: portfolioLifecycle.activePositions.length,
+        portfolioUnrealizedPnlUsd: portfolioLifecycle.totalUnrealizedPnlUsd,
+        distributionPoolUsd: distributionPlan.distributionPoolUsd,
+        distributionExecutionAttemptedCount:
+          distributionExecution.cycleSummary.attemptedCount,
+        distributionExecutionExecutedCount:
+          distributionExecution.cycleSummary.executedCount,
+        reportPath: persisted.reportPath,
+      },
+      "ElizaOK: Treasury discovery cycle completed",
+    );
+  } catch (error) {
+    runtime.logger.error(
+      { error: cycleErrorMessage(error), trigger, runId },
+      "ElizaOK: Treasury discovery cycle failed",
+    );
+  }
+
+  // ── Goo Paper Agent cycle (runs independently of main discovery) ──
+  try {
     let gooAgents = await loadPaperAgents(config.reportsDir);
     if (gooAgents.length === 0) {
       gooAgents = spawnDefaultAgentFleet(1.0);
@@ -297,6 +343,8 @@ export async function runElizaOkDiscoveryCycle(
         "ElizaOK: Spawned default Goo paper agent fleet",
       );
     }
+
+    const gooRunBnbPrice = discoveredBnbPrice || await getBnbPriceUsd();
 
     // Collect active positions across all agents for smart exit scan
     const allActivePositions = gooAgents.flatMap(a =>
@@ -340,9 +388,13 @@ export async function runElizaOkDiscoveryCycle(
       }
     }
 
-    gooAgents = gooAgents.map(agent =>
-      runPaperAgentCycle(agent, candidates, bnbPriceEstimate, exitSignals?.exitSignals),
-    );
+    // Only run paper trading cycle if we have candidates from main discovery
+    if (discoveredCandidates && discoveredCandidates.length > 0) {
+      gooAgents = gooAgents.map(agent =>
+        runPaperAgentCycle(agent, discoveredCandidates!, gooRunBnbPrice, exitSignals?.exitSignals),
+      );
+    }
+
     // Auto-acquire high-performing Goo agents
     const AUTO_ACQUIRE_SCORE = 70;
     const AUTO_ACQUIRE_MIN_TRADES = 5;
@@ -401,44 +453,13 @@ export async function runElizaOkDiscoveryCycle(
     await savePaperAgents(config.reportsDir, gooAgents);
 
     runtime.logger.info(
-      {
-        trigger,
-        runId,
-        candidateCount: candidates.length,
-        topRecommendationCount: memo.summary.topRecommendationCount,
-        gooAgentCount: gooCandidates.length,
-        gooPriorityCount: memo.summary.gooPriorityCount,
-        treasuryAllocatedUsd: treasurySimulation.allocatedUsd,
-        executionMode: executionState.mode,
-        executionRouter: executionState.router,
-        executionReady: `${executionState.readinessScore}/${executionState.readinessTotal}`,
-        executionLiveTradingArmed: executionState.liveTradingArmed,
-        executionDryRun: executionState.dryRun,
-        executionAttemptedCount: executionState.cycleSummary.attemptedCount,
-        executionExecutedCount: executionState.cycleSummary.executedCount,
-        executionDryRunCount: executionState.cycleSummary.dryRunCount,
-        executionFailedCount: executionState.cycleSummary.failedCount,
-        fourMemeCommands: fourMemePreview.commands.length,
-        tradeLedgerRecords: tradeLedger.records.length,
-        portfolioActiveCount: portfolioLifecycle.activePositions.length,
-        portfolioUnrealizedPnlUsd: portfolioLifecycle.totalUnrealizedPnlUsd,
-        distributionPoolUsd: distributionPlan.distributionPoolUsd,
-        distributionExecutionAttemptedCount:
-          distributionExecution.cycleSummary.attemptedCount,
-        distributionExecutionExecutedCount:
-          distributionExecution.cycleSummary.executedCount,
-        reportPath: persisted.reportPath,
-        gooPaperAgentCount: gooAgents.length,
-        gooPaperActiveCount: gooSummary.activeAgents,
-        gooPaperTotalPnlUsd: gooSummary.totalPnlUsd,
-        gooPaperAvgWinRate: gooSummary.averageWinRate,
-      },
-      "ElizaOK: Treasury discovery cycle completed",
+      { agentCount: gooAgents.length, activeCount: gooSummary.activeAgents, totalPnl: gooSummary.totalPnlUsd, avgWinRate: gooSummary.averageWinRate },
+      "ElizaOK: Goo paper agent cycle completed",
     );
-  } catch (error) {
+  } catch (gooError) {
     runtime.logger.error(
-      { error: cycleErrorMessage(error), trigger, runId },
-      "ElizaOK: Treasury discovery cycle failed",
+      { error: cycleErrorMessage(gooError), trigger, runId },
+      "ElizaOK: Goo paper agent cycle failed",
     );
   }
 }

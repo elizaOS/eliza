@@ -6723,7 +6723,7 @@ function renderHtml(
               ${paperSummary ? `
               <div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:10px">
                 <div class="metric"><span>Total Agents</span><strong>${paperAgents.length}</strong></div>
-                <div class="metric"><span>Active</span><strong class="g">${paperSummary.activeCount}</strong></div>
+                <div class="metric"><span>Active</span><strong class="g">${paperSummary.activeAgents}</strong></div>
                 <div class="metric"><span>Avg Win Rate</span><strong class="${paperSummary.averageWinRate > 0 ? 'g' : 'w'}">${paperSummary.averageWinRate.toFixed(1)}%</strong></div>
                 <div class="metric"><span>Total P&L</span><strong class="${paperSummary.totalPnlUsd >= 0 ? 'g' : 'r'}">${paperSummary.totalPnlUsd >= 0 ? '+' : ''}$${paperSummary.totalPnlUsd.toFixed(2)}</strong></div>
               </div>` : ""}
@@ -6760,7 +6760,7 @@ function renderHtml(
         <div class="aside-block">
           <div class="aside-title">&#x1F4CA; Live Overview</div>
           <div class="aside-big" style="color:${executionState.dryRun ? 'rgba(255,255,255,0.5)' : 'var(--green)'}; font-size:0.85rem; margin-bottom:4px">${executionState.dryRun ? "PAPER MODE" : "&#x26A1; LIVE"}</div>
-          <div class="aside-sub" style="margin-bottom:6px">Last scan: ${new Date(snapshot.summary.lastScanAt || Date.now()).toLocaleTimeString("en-US", { hour12: false })}</div>
+          <div class="aside-sub" style="margin-bottom:6px">Last scan: ${new Date(snapshot.summary.completedAt || Date.now()).toLocaleTimeString("en-US", { hour12: false })}</div>
           <div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px;border-top:1px solid var(--border);padding-top:8px">Discovery</div>
           <div class="aside-stat"><span>Scanned</span><strong class="w">${snapshot.summary.candidateCount}</strong></div>
           <div class="aside-stat"><span>Buy-ready</span><strong class="g">${snapshot.summary.topRecommendationCount}</strong></div>
