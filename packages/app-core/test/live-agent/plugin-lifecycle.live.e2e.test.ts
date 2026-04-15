@@ -52,6 +52,43 @@ const LOCAL_WORKSPACE_PLUGINS = FILTER_SET
   : ALL_LOCAL_WORKSPACE_PLUGINS;
 const LOCAL_WORKSPACE_PLUGIN_IDS = LOCAL_WORKSPACE_PLUGINS.map((plugin) => plugin.id);
 
+function hasBootConfigForAiProvider(pluginId: string): boolean {
+  switch (pluginId) {
+    case "anthropic":
+      return Boolean(process.env.ANTHROPIC_API_KEY);
+    case "google-genai":
+      return Boolean(
+        process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+          process.env.GEMINI_API_KEY ||
+          process.env.GOOGLE_API_KEY,
+      );
+    case "groq":
+      return Boolean(process.env.GROQ_API_KEY);
+    case "ollama":
+      return Boolean(process.env.OLLAMA_HOST || process.env.OLLAMA_BASE_URL);
+    case "openai":
+      return Boolean(process.env.OPENAI_API_KEY);
+    case "openrouter":
+      return Boolean(process.env.OPENROUTER_API_KEY);
+    case "local-ai":
+      return Boolean(
+        process.env.LOCAL_AI_BASE_URL ||
+          process.env.OLLAMA_HOST ||
+          process.env.OLLAMA_BASE_URL,
+      );
+    default:
+      return true;
+  }
+}
+
+const BOOT_LOCAL_WORKSPACE_PLUGINS = LOCAL_WORKSPACE_PLUGINS.filter(
+  (plugin) =>
+    plugin.category !== "ai-provider" || hasBootConfigForAiProvider(plugin.id),
+);
+const BOOT_LOCAL_WORKSPACE_PLUGIN_IDS = BOOT_LOCAL_WORKSPACE_PLUGINS.map(
+  (plugin) => plugin.id,
+);
+
 if (FILTER_SET && LOCAL_WORKSPACE_PLUGINS.length === 0) {
   throw new Error(
     `ELIZA_PLUGIN_LIFECYCLE_FILTER=${FILTER_TOKENS.join(",")} matched no local workspace plugins.`,
@@ -269,7 +306,7 @@ describeIf(LIVE)("Live: plugin lifecycle — local workspace matrix", () => {
         );
       }
     }
-    rt = await startRuntimeWithPlugins(LOCAL_WORKSPACE_PLUGIN_IDS);
+    rt = await startRuntimeWithPlugins(BOOT_LOCAL_WORKSPACE_PLUGIN_IDS);
   }, 240_000);
 
   afterAll(async () => {
@@ -290,7 +327,9 @@ describeIf(LIVE)("Live: plugin lifecycle — local workspace matrix", () => {
         .map((plugin) => plugin.id)
         .filter((value): value is string => typeof value === "string"),
     );
-    const missing = LOCAL_WORKSPACE_PLUGIN_IDS.filter((id) => !visibleIds.has(id));
+    const missing = BOOT_LOCAL_WORKSPACE_PLUGIN_IDS.filter(
+      (id) => !visibleIds.has(id),
+    );
 
     expect(missing).toEqual([]);
   });
@@ -311,7 +350,7 @@ describeIf(LIVE)("Live: plugin lifecycle — local workspace matrix", () => {
     );
     const unresolved: Array<Record<string, unknown>> = [];
 
-    for (const plugin of LOCAL_WORKSPACE_PLUGINS) {
+    for (const plugin of BOOT_LOCAL_WORKSPACE_PLUGINS) {
       const row = rowById.get(plugin.id);
       if (!row) {
         unresolved.push({ id: plugin.id, reason: "missing from /api/plugins" });
@@ -362,7 +401,7 @@ describeIf(LIVE)("Live: plugin lifecycle — local workspace matrix", () => {
         .filter((entry): entry is [string, Record<string, unknown>] => entry !== null),
     );
 
-    for (const plugin of LOCAL_WORKSPACE_PLUGINS) {
+    for (const plugin of BOOT_LOCAL_WORKSPACE_PLUGINS) {
       const row = rowById.get(plugin.id);
       if (!row || isConfigGatedPluginRow(row)) {
         continue;
