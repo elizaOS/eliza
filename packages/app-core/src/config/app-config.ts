@@ -61,6 +61,17 @@ export interface AppPackagingConfig {
   };
 }
 
+export interface AppWebConfig {
+  /** Short app name used in the web manifest. */
+  shortName?: string;
+  /** Browser UI theme color used for the PWA manifest/meta tags. */
+  themeColor?: string;
+  /** Browser background color used for the PWA manifest/meta tags. */
+  backgroundColor?: string;
+  /** Social share image path relative to the deployed app root. */
+  shareImagePath?: string;
+}
+
 export interface AppConfig {
   /** Display name shown in UI, desktop title bars, etc. */
   appName: string;
@@ -105,6 +116,9 @@ export interface AppConfig {
 
   /** Desktop-specific configuration */
   desktop?: AppDesktopConfig;
+
+  /** Web app manifest and share metadata overrides. */
+  web?: AppWebConfig;
 
   /** Package manager configurations */
   packaging?: AppPackagingConfig;
