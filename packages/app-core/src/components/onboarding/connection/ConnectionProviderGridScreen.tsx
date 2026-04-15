@@ -1,6 +1,7 @@
 
 import type { ProviderOption } from "../../../api";
 import { appNameInterpolationVars, useBranding } from "../../../config";
+import { canRunLocal } from "../../../platform/init";
 import type {
   ConnectionEffect,
   ConnectionEvent,
@@ -50,7 +51,7 @@ export function ConnectionProviderGridScreen({
   getDetectedLabel: (providerId: string) => string | null;
 }) {
   const branding = useBranding();
-  const { t, onboardingRemoteConnected, handleOnboardingNext } = useApp();
+  const { t, onboardingRemoteConnected, handleOnboardingBack, handleOnboardingNext } = useApp();
 
   return (
     <>
@@ -69,6 +70,28 @@ export function ConnectionProviderGridScreen({
           )}
         </p>
       )}
+
+      {/* Override: compact Cloud / Remote options when local is the default */}
+      {canRunLocal() && (
+        <div className="mb-3 flex items-center justify-center gap-3">
+          <button
+            type="button"
+            className="text-3xs uppercase tracking-[0.1em] text-[var(--onboarding-text-subtle)] hover:text-[var(--onboarding-text-strong)] transition-colors hover:underline"
+            onClick={() => dispatch({ type: "selectElizaCloudHosting" })}
+          >
+            {t("onboarding.useElizaCloud", { defaultValue: "Deploy to Cloud" })}
+          </button>
+          <span className="text-3xs text-[var(--onboarding-text-faint)]" aria-hidden>|</span>
+          <button
+            type="button"
+            className="text-3xs uppercase tracking-[0.1em] text-[var(--onboarding-text-subtle)] hover:text-[var(--onboarding-text-strong)] transition-colors hover:underline"
+            onClick={() => dispatch({ type: "selectRemoteHosting" })}
+          >
+            {t("onboarding.connectRemote", { defaultValue: "Deploy Remote" })}
+          </button>
+        </div>
+      )}
+
       <div className="mb-5 grid grid-cols-1 gap-2 min-[440px]:grid-cols-2">
         {sortedProviders.map((p: ProviderOption) => {
           const display = getProviderDisplay(p);
@@ -131,6 +154,11 @@ export function ConnectionProviderGridScreen({
           onClick={() => {
             if (onboardingRemoteConnected) {
               onTransitionEffect("useLocalBackend");
+              return;
+            }
+            // Local-default skips the hosting screen, so back goes to previous wizard step.
+            if (canRunLocal()) {
+              handleOnboardingBack();
               return;
             }
             dispatch({ type: "backRemoteOrGrid" });

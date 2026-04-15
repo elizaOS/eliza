@@ -82,6 +82,9 @@ export function createElectrobunConfig(): ElectrobunConfig {
     ).trim() || "";
   const runtimeDistDir =
     (process.env.ELIZA_RUNTIME_DIST_DIR ?? "").trim() || "eliza-dist";
+  // Note: All paths relative to electrobun.config.ts location
+  // (eliza/packages/app-core/platforms/electrobun/)
+  // ../../../../../ goes to milady repo root where dist/, plugins.json, package.json exist
 
   return {
     app: {

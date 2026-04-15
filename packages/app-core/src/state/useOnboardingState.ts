@@ -13,6 +13,8 @@ import {
   activeServerKindToOnboardingServerTarget,
   type OnboardingServerTarget,
 } from "../onboarding/server-target";
+import { isElectrobunRuntime } from "../bridge";
+import { canRunLocal } from "../platform/init";
 import {
   loadPersistedActiveServer,
   loadPersistedOnboardingStep,
@@ -192,8 +194,22 @@ function createInitialState(cloudOnly?: boolean): OnboardingState {
   const initialServerTarget = cloudOnly
     ? "elizacloud"
     : initialServer.serverTarget;
+
+  const persistedStep = loadPersistedOnboardingStep();
+  const isDesktop = isElectrobunRuntime();
+  const skipDeployment = canRunLocal();
+
+  // Desktop / dev mode defaults to local agent, bypassing the deployment chooser step.
+  let step = persistedStep ?? (skipDeployment ? "providers" : "deployment");
+  if (skipDeployment && step === "deployment") {
+    step = "providers";
+  }
+
+  const serverTarget =
+    initialServerTarget || (skipDeployment && step === "providers" ? "local" : "");
+
   return {
-    step: loadPersistedOnboardingStep() ?? "deployment",
+    step,
     mode: "basic",
     activeGuide: null,
     deferredTasks: [],
@@ -203,7 +219,7 @@ function createInitialState(cloudOnly?: boolean): OnboardingState {
     ownerName: "anon",
     style: defaultStyle.id,
     avatar: defaultStyle.avatarIndex,
-    serverTarget: initialServerTarget,
+    serverTarget,
     cloudApiKey: "",
     provider: "",
     apiKey: "",
