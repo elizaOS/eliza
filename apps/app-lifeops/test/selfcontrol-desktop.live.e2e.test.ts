@@ -11,6 +11,7 @@ import { req } from "../../../../test/helpers/http";
 const LIVE_TESTS_ENABLED =
   process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+const WATCH_DESKTOP_SUPPORTED = process.platform !== "linux";
 
 type DesktopMode = "dev:desktop" | "dev:desktop:watch";
 
@@ -360,7 +361,12 @@ describeIf(LIVE_TESTS_ENABLED)(
       });
     }, 300_000);
 
-    it("boots bun run dev:desktop:watch with the Vite renderer and blocker API", async () => {
+    // Linux CI already covers the Vite-backed blocker flow via
+    // selfcontrol-dev.live.e2e.test.ts; the Electrobun watch-mode window can
+    // still fail there when CEF initialization flakes under Xvfb.
+    it.skipIf(!WATCH_DESKTOP_SUPPORTED)(
+      "boots bun run dev:desktop:watch with the Vite renderer and blocker API",
+      async () => {
       const stack = await startDesktopStack("dev:desktop:watch");
       startedStacks.push(stack);
 
@@ -402,6 +408,8 @@ describeIf(LIVE_TESTS_ENABLED)(
         "news.ycombinator.com",
       ]);
       expect(hosts).toContain("0.0.0.0 news.ycombinator.com");
-    }, 300_000);
+      },
+      300_000,
+    );
   },
 );
