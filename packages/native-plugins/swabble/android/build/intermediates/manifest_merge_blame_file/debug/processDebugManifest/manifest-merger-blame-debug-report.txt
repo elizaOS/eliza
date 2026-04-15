@@ -1,11 +1,11 @@
 1<?xml version="1.0" encoding="utf-8"?>
 2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-3    package="ai.milady.plugins.swabble" >
+3    package="ai.eliza.plugins.swabble" >
 4
 5    <uses-sdk android:minSdkVersion="26" />
 6
 7    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-7-->/Users/shawwalters/eliza-workspace/milady/apps/app/plugins/swabble/android/src/main/AndroidManifest.xml:3:5-71
-7-->/Users/shawwalters/eliza-workspace/milady/apps/app/plugins/swabble/android/src/main/AndroidManifest.xml:3:22-68
+7-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/swabble/android/src/main/AndroidManifest.xml:3:5-71
+7-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/swabble/android/src/main/AndroidManifest.xml:3:22-68
 8
 9</manifest>

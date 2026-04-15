@@ -1,1 +1,1 @@
-ai.milady.plugins.canvas
+ai.eliza.plugins.canvas

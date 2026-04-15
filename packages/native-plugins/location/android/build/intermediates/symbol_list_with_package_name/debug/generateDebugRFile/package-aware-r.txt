@@ -1,1 +1,1 @@
-ai.milady.plugins.location
+ai.eliza.plugins.location

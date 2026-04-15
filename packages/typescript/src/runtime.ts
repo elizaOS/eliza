@@ -12,12 +12,12 @@ import {
 	withCanonicalEvaluatorDocs,
 } from "./action-docs";
 import { parseActionParams, validateActionParams } from "./actions";
+import { ensureConnection as ensureConnectionStandalone } from "./connection";
+import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import {
 	type CapabilityConfig,
 	createBasicCapabilitiesPlugin,
 } from "./features/basic-capabilities/index";
-import { ensureConnection as ensureConnectionStandalone } from "./connection";
-import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { createLogger } from "./logger";
 import { simpleHash } from "./optimization/ab-analysis";
 import { getOptimizationRootDir } from "./optimization-root-dir";

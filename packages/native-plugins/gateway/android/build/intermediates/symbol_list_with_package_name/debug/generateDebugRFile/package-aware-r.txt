@@ -1,1 +1,1 @@
-ai.milady.plugins.gateway
+ai.eliza.plugins.gateway

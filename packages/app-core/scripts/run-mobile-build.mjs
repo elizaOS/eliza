@@ -12,6 +12,28 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const appDir = path.join(repoRoot, "apps", "app");
 const iosDir = path.join(appDir, "ios", "App");
 const androidDir = path.join(appDir, "android");
+const androidBuildGradleTemplate =
+  firstExisting([
+    path.join(
+      repoRoot,
+      "eliza",
+      "packages",
+      "app-core",
+      "platforms",
+      "android",
+      "build.gradle",
+    ),
+    path.join(repoRoot, "packages", "app-core", "platforms", "android", "build.gradle"),
+  ]) ??
+  path.join(
+    repoRoot,
+    "eliza",
+    "packages",
+    "app-core",
+    "platforms",
+    "android",
+    "build.gradle",
+  );
 const prepareIosCocoapodsScript =
   firstExisting([
     path.join(
@@ -116,6 +138,41 @@ async function ensureCapacitorPlatform(platform) {
   await run("bun", ["x", "capacitor", "add", platform], { cwd: appDir });
 }
 
+function ensureAndroidBuildGradlePatched() {
+  const targetPath = path.join(androidDir, "build.gradle");
+  if (!fs.existsSync(targetPath) || !fs.existsSync(androidBuildGradleTemplate)) {
+    return;
+  }
+
+  const current = fs.readFileSync(targetPath, "utf8");
+  const template = fs.readFileSync(androidBuildGradleTemplate, "utf8");
+  if (current === template) {
+    return;
+  }
+
+  fs.writeFileSync(targetPath, template, "utf8");
+  console.log("[mobile-build] Patched android/build.gradle for native plugins.");
+}
+
+function ensureAndroidVariablesPatched() {
+  const targetPath = path.join(androidDir, "variables.gradle");
+  if (!fs.existsSync(targetPath)) {
+    return;
+  }
+
+  const current = fs.readFileSync(targetPath, "utf8");
+  const next = current.replace(
+    /minSdkVersion\s*=\s*\d+/,
+    "minSdkVersion = 26",
+  );
+  if (next === current) {
+    return;
+  }
+
+  fs.writeFileSync(targetPath, next, "utf8");
+  console.log("[mobile-build] Raised android minSdkVersion to 26.");
+}
+
 async function buildAndroid() {
   const androidSdkRoot = resolveAndroidSdkRoot();
   const javaHome = resolveJavaHome();
@@ -135,6 +192,8 @@ async function buildAndroid() {
   await buildSharedApp();
   await ensureCapacitorPlatform("android");
   await run("bun", ["run", "cap:sync:android"], { cwd: appDir });
+  ensureAndroidBuildGradlePatched();
+  ensureAndroidVariablesPatched();
 
   const env = {
     ...process.env,
@@ -170,11 +229,16 @@ async function buildIos() {
   await ensureCapacitorPlatform("ios");
   await run("bash", [prepareIosCocoapodsScript], { cwd: repoRoot });
   await run("bun", ["run", "cap:sync:ios"], { cwd: appDir });
+
+  const iosWorkspacePath = path.join(iosDir, "App.xcworkspace");
+  const iosProjectArgs = fs.existsSync(iosWorkspacePath)
+    ? ["-workspace", "App.xcworkspace"]
+    : ["-project", "App.xcodeproj"];
+
   await run(
     "xcodebuild",
     [
-      "-workspace",
-      "App.xcworkspace",
+      ...iosProjectArgs,
       "-scheme",
       "App",
       "-configuration",

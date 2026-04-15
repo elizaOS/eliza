@@ -1,1 +1,1 @@
-ai.milady.plugins.screencapture
+ai.eliza.plugins.screencapture

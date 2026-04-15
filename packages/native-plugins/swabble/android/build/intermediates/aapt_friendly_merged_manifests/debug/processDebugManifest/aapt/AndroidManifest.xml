@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="ai.milady.plugins.swabble" >
+    package="ai.eliza.plugins.swabble" >
 
     <uses-sdk android:minSdkVersion="26" />
 

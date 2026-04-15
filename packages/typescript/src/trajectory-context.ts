@@ -7,6 +7,12 @@
  */
 export interface TrajectoryContext {
 	trajectoryStepId?: string;
+	/** Current runtime run identifier associated with the active trajectory step. */
+	runId?: string;
+	/** Room context for pipeline/model hooks emitted during trajectory logging. */
+	roomId?: string;
+	/** Source message identifier associated with the active trajectory context. */
+	messageId?: string;
 	/** Pipeline stage purpose for trajectory logging (e.g. "should_respond", "response", "action", "evaluation"). */
 	purpose?: string;
 }
