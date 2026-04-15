@@ -36,6 +36,7 @@ export const useComputerAction: Action = {
     "MOVE_MOUSE",
     "DRAG",
     "MOUSE_CLICK",
+    "CLICK_WITH_MODIFIERS",
   ],
 
   description:
@@ -44,6 +45,7 @@ export const useComputerAction: Action = {
     "Available actions:\n" +
     "- screenshot: Capture the current screen state. No parameters needed.\n" +
     "- click: Left-click at pixel coordinates. Requires coordinate: [x, y].\n" +
+    "- click_with_modifiers: Hold modifiers such as ctrl, shift, alt, or cmd while clicking. Requires coordinate and modifiers.\n" +
     "- double_click: Double-click at coordinates. Requires coordinate: [x, y].\n" +
     "- right_click: Right-click at coordinates. Requires coordinate: [x, y].\n" +
     "- mouse_move: Move cursor without clicking. Requires coordinate: [x, y].\n" +
@@ -51,7 +53,9 @@ export const useComputerAction: Action = {
     "- key: Press a single key (e.g. Return, Tab, Escape, F5). Requires key.\n" +
     "- key_combo: Press a key combination (e.g. ctrl+c, cmd+shift+s, alt+F4). Requires key.\n" +
     "- scroll: Scroll at a position. Requires coordinate, scrollDirection (up/down/left/right), optional scrollAmount.\n" +
-    "- drag: Drag from one point to another. Requires startCoordinate and coordinate.\n\n" +
+    "- drag: Drag from one point to another. Requires startCoordinate and coordinate.\n" +
+    "- detect_elements: Stub for upstream parity on local machines.\n" +
+    "- ocr: Stub for upstream parity on local machines.\n\n" +
     "Always take a screenshot first to see the current screen state before performing actions. " +
     "After each action, a screenshot is automatically returned showing the result.",
 
@@ -63,8 +67,8 @@ export const useComputerAction: Action = {
       schema: {
         type: "string",
         enum: [
-          "screenshot", "click", "double_click", "right_click",
-          "mouse_move", "type", "key", "key_combo", "scroll", "drag",
+          "screenshot", "click", "click_with_modifiers", "double_click", "right_click",
+          "mouse_move", "type", "key", "key_combo", "scroll", "drag", "detect_elements", "ocr",
         ],
       },
     },
@@ -87,6 +91,12 @@ export const useComputerAction: Action = {
       schema: { type: "string" },
     },
     {
+      name: "modifiers",
+      description: "Modifier keys to hold during click_with_modifiers, e.g. ['cmd', 'shift'] or ['ctrl'].",
+      required: false,
+      schema: { type: "array", items: { type: "string" } },
+    },
+    {
       name: "key",
       description: "Key name (e.g. Return, Tab, Escape) for 'key' action, or combo string (e.g. ctrl+c, cmd+shift+s) for 'key_combo' action.",
       required: false,
@@ -102,7 +112,7 @@ export const useComputerAction: Action = {
       name: "scrollAmount",
       description: "Number of scroll ticks (1-100). Default: 3.",
       required: false,
-      schema: { type: "number", minimum: 1, maximum: 100, default: 3 },
+      schema: { type: "number", minimum: 1, maximum: 20, default: 3 },
     },
   ],
 
@@ -199,7 +209,11 @@ export const useComputerAction: Action = {
         ? params.action === "screenshot"
           ? "Here is the current screen."
           : `Action "${params.action}" completed successfully.`
-        : `Action failed: ${result.error}`;
+        : result.permissionDenied
+          ? `Action failed because ${result.permissionType} permission is missing.`
+          : result.approvalRequired
+            ? `Action "${params.action}" is waiting for approval (${result.approvalId}).`
+            : `Action failed: ${result.error}`;
 
       await callback({
         text,

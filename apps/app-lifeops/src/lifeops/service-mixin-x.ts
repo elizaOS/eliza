@@ -5,10 +5,10 @@ import type {
   LifeOpsXConnectorStatus,
   LifeOpsXPostResponse,
   UpsertLifeOpsXConnectorRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_X_CAPABILITIES,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import { createLifeOpsConnectorGrant } from "./repository.js";
 import {
   fail,
@@ -23,7 +23,21 @@ import {
   normalizeOptionalRecord,
 } from "./service-helpers-misc.js";
 import { postToX, readXPosterCredentialsFromEnv } from "./x-poster.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
+
+export interface LifeOpsXService {
+  getXConnectorStatus(
+    requestedMode?: LifeOpsConnectorMode,
+  ): Promise<LifeOpsXConnectorStatus>;
+  upsertXConnector(
+    request: UpsertLifeOpsXConnectorRequest,
+  ): Promise<LifeOpsXConnectorStatus>;
+  createXPost(request: CreateLifeOpsXPostRequest): Promise<LifeOpsXPostResponse>;
+}
 
 function normalizeXCapabilityRequest(
   value: unknown,
@@ -38,7 +52,9 @@ function normalizeXCapabilityRequest(
   return [...new Set(capabilities)];
 }
 
-export function withX<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
+export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
+  Base: TBase,
+): MixinClass<TBase, LifeOpsXService> {
   return class extends Base {
     async getXConnectorStatus(
       requestedMode?: LifeOpsConnectorMode,
@@ -188,5 +204,5 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase
         category: result.category,
       };
     }
-  };
+  } as MixinClass<TBase, LifeOpsXService>;
 }

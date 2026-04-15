@@ -37,6 +37,7 @@ export const browserAction: Action = {
     "execute JavaScript, and manage tabs. Uses Chrome DevTools Protocol via Puppeteer Core.\n\n" +
     "Available actions:\n" +
     "- open: Launch browser, optionally navigate to url.\n" +
+    "- connect: Alias for open.\n" +
     "- close: Close the browser.\n" +
     "- navigate: Go to a URL. Requires url.\n" +
     "- click: Click an element by CSS selector, coordinates, or text content.\n" +
@@ -44,9 +45,14 @@ export const browserAction: Action = {
     "- scroll: Scroll the page up or down. Optional direction and amount (pixels).\n" +
     "- screenshot: Capture the browser viewport as a PNG.\n" +
     "- dom: Get the first 5000 characters of page HTML.\n" +
+    "- get_dom: Alias for dom.\n" +
     "- clickables: List up to 50 interactive elements (links, buttons, inputs) with selectors.\n" +
+    "- get_clickables: Alias for clickables.\n" +
     "- execute: Run JavaScript code in the page context.\n" +
     "- state: Get the current page URL and title.\n" +
+    "- info: Report whether the browser is open and its current page metadata.\n" +
+    "- context/get_context: Alias for the current page URL and title.\n" +
+    "- wait: Wait for a selector or text to appear.\n" +
     "- list_tabs: List all open tabs.\n" +
     "- open_tab: Open a new tab, optionally navigate to url.\n" +
     "- close_tab: Close a tab by tabId.\n" +
@@ -61,8 +67,9 @@ export const browserAction: Action = {
       schema: {
         type: "string",
         enum: [
-          "open", "close", "navigate", "click", "type", "scroll",
-          "screenshot", "dom", "clickables", "execute", "state",
+          "open", "connect", "close", "navigate", "click", "type", "scroll",
+          "screenshot", "dom", "get_dom", "clickables", "get_clickables", "execute", "state", "info",
+          "context", "get_context", "wait",
           "list_tabs", "open_tab", "close_tab", "switch_tab",
         ],
       },
@@ -114,6 +121,12 @@ export const browserAction: Action = {
       description: "Tab index for switch_tab or close_tab.",
       required: false,
       schema: { type: "string" },
+    },
+    {
+      name: "timeout",
+      description: "Timeout in milliseconds for wait actions.",
+      required: false,
+      schema: { type: "number", default: 5000 },
     },
   ],
 
@@ -204,7 +217,11 @@ export const browserAction: Action = {
         await callback({
           text: result.success
             ? result.content ?? "Browser action completed."
-            : `Browser action failed: ${result.error}`,
+            : result.permissionDenied
+              ? `Browser action failed because ${result.permissionType} permission is missing.`
+              : result.approvalRequired
+                ? `Browser action is waiting for approval (${result.approvalId}).`
+                : `Browser action failed: ${result.error}`,
         });
       }
     }

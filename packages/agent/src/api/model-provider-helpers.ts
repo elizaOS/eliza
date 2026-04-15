@@ -301,7 +301,7 @@ export function writeProviderCache(cache: ProviderCache): void {
       providerCachePath(cache.providerId),
       JSON.stringify(cache, null, 2),
     );
-  } catch (e) {
+  } catch (e: unknown) {
     logger.warn(
       `[model-catalog] Failed to write cache for ${cache.providerId}: ${e instanceof Error ? e.message : e}`,
     );
@@ -332,7 +332,7 @@ export async function fetchModelsREST(
         category: m.type ? restTypeToCategory(m.type) : classifyModel(m.id),
       }))
       .sort((a, b) => a.id.localeCompare(b.id));
-  } catch (e) {
+  } catch (e: unknown) {
     logger.warn(
       `[model-catalog] Failed to fetch models for ${providerId}: ${e instanceof Error ? e.message : e}`,
     );
@@ -373,7 +373,7 @@ export async function fetchAnthropicModels(
         category: classifyModel(m.id),
       }))
       .sort((a, b) => a.id.localeCompare(b.id));
-  } catch (e) {
+  } catch (e: unknown) {
     logger.warn(
       `[model-catalog] Failed to fetch Anthropic models: ${e instanceof Error ? e.message : e}`,
     );
@@ -401,7 +401,7 @@ export async function fetchGoogleModels(
         category: classifyModel(id),
       };
     });
-  } catch (e) {
+  } catch (e: unknown) {
     logger.warn(
       `[model-catalog] Failed to fetch Google models: ${e instanceof Error ? e.message : e}`,
     );
@@ -425,7 +425,7 @@ export async function fetchOllamaModels(
       name: m.name,
       category: classifyModel(m.name),
     }));
-  } catch (e) {
+  } catch (e: unknown) {
     logger.warn(
       `[model-catalog] Failed to fetch Ollama models: ${e instanceof Error ? e.message : e}`,
     );
@@ -506,7 +506,7 @@ export async function fetchVercelGatewayModels(
         category: m.type ? restTypeToCategory(m.type) : classifyModel(m.id),
       }))
       .sort((a, b) => a.id.localeCompare(b.id));
-  } catch (e) {
+  } catch (e: unknown) {
     logger.warn(
       `[model-catalog] Failed to fetch Vercel AI Gateway models: ${e instanceof Error ? e.message : e}`,
     );

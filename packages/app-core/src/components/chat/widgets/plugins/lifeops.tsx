@@ -1,4 +1,3 @@
-
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
@@ -7,11 +6,11 @@ import type {
   LifeOpsGmailTriageFeed,
   LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
+import { Badge } from "@elizaos/ui";
 import { CalendarDays, Mail, Plug2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { Badge } from "@elizaos/ui";
 import { client } from "../../../../api";
 import {
   useGoogleLifeOpsConnector,

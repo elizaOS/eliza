@@ -24,7 +24,7 @@ import type {
   LifeOpsTaskDefinition,
   LifeOpsWorkflowDefinition,
   LifeOpsWorkflowRun,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   executeRawSql,
   getRuntimeDbCacheKey,

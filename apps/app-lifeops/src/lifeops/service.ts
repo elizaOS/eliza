@@ -20,14 +20,11 @@ import { withGoals } from "./service-mixin-goals.js";
 import { withX } from "./service-mixin-x.js";
 
 /**
- * Main LifeOps service — assembled from domain mixins layered on top of
- * {@link LifeOpsServiceBase}.
- *
  * Mixin order follows dependency direction: Google auth → data layers
  * (Calendar, Gmail) → business logic (Reminders, Browser, Workflows,
  * Definitions, Goals) → connectors (X).
  */
-export class LifeOpsService extends withX(
+class LifeOpsServiceComposed extends withX(
   withGoals(
     withDefinitions(
       withWorkflows(
@@ -44,3 +41,9 @@ export class LifeOpsService extends withX(
     ),
   ),
 ) {}
+
+/**
+ * Main LifeOps service — assembled from domain mixins layered on top of
+ * {@link LifeOpsServiceBase}.
+ */
+export class LifeOpsService extends LifeOpsServiceComposed {}

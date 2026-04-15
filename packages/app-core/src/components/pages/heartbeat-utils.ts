@@ -12,14 +12,12 @@ import type {
   TriggerWakeMode,
   UpdateTriggerRequest,
 } from "../../api/client";
+import type { TranslateFn as AppTranslateFn } from "../../types";
 import { formatDurationMs } from "../../utils/format";
 
 // ── Translation helper type ────────────────────────────────────────
 
-export type TranslateFn = (
-  key: string,
-  vars?: Record<string, string | number | boolean | null | undefined>,
-) => string;
+export type TranslateFn = AppTranslateFn;
 
 // ── Duration units ─────────────────────────────────────────────────
 

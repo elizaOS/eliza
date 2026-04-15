@@ -67,7 +67,6 @@
     "./state/vrm": "./src/state/vrm.ts",
     "./state/action-notice": "./src/state/action-notice.ts",
     "./state/ui-preferences": "./src/state/ui-preferences.ts",
-    "./state/useVincentState": "./src/state/useVincentState.ts",
     "./components": "./src/components/index.ts",
     "./components/*": "./src/components/*",
     "./components/apps/overlay-app-api": "./src/components/apps/overlay-app-api.ts",
@@ -110,7 +109,8 @@
     "./shell": "./src/shell/index.ts",
     "./styles/brand-gold.css": "./src/styles/brand-gold.css",
     "./character-catalog": "./src/character-catalog.ts",
-    "./test-support/test-helpers": "./src/test-support/test-helpers.ts"
+    "./test-support/test-helpers": "./src/test-support/test-helpers.ts",
+    "./test/live-agent/helpers/*": "./test/live-agent/helpers/*.ts"
   },
   "peerDependencies": {
     "react": "^19.0.0",
@@ -127,10 +127,11 @@
     "@elizaos/app-shopify": "workspace:*",
     "@elizaos/app-steward": "workspace:*",
     "@elizaos/app-task-coordinator": "workspace:*",
+    "@elizaos/app-lifeops": "workspace:*",
     "@elizaos/app-training": "workspace:*",
     "@elizaos/app-vincent": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-wechat": "workspace:*",
+    "@miladyai/plugin-wechat": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@radix-ui/react-checkbox": "^1.3.3",

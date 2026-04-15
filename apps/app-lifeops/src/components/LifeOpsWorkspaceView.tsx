@@ -10,7 +10,7 @@ import type {
   LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
   LifeOpsNextCalendarEventContext,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   Badge,
   Button,

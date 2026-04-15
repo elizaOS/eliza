@@ -1,4 +1,8 @@
-import type { PolicyRule, PolicyType } from "./types";
+import type {
+  ApprovedAddressEntry,
+  PolicyRule,
+  PolicyType,
+} from "./types";
 
 export function findPolicy(
   policies: PolicyRule[],
@@ -41,4 +45,10 @@ export function chainTypeLabel(addr: string): string {
   if (type === "evm") return "EVM";
   if (type === "solana") return "Solana";
   return "";
+}
+
+export function approvedAddressValue(
+  entry: string | ApprovedAddressEntry,
+): string {
+  return typeof entry === "string" ? entry : entry.address;
 }

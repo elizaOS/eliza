@@ -8,8 +8,12 @@
  * React context lives in `boot-config-react.tsx` so Bun/Node can import this
  * module without loading `react` runtime (avoids Bun parsing @types/react).
  */
+
+import type {
+  AppBlockerSettingsCardProps,
+  WebsiteBlockerSettingsCardProps,
+} from "@elizaos/app-lifeops/types";
 import type { ComponentType } from "react";
-import type { WebsiteBlockerSettingsCardProps } from "@elizaos/app-lifeops/types";
 import type { Tab } from "../navigation";
 import type { ActionNotice } from "../state/action-notice";
 import type { BrandingConfig } from "./branding";
@@ -96,6 +100,8 @@ export interface AppBootConfig {
   lifeOpsPageView?: ComponentType<Record<string, never>>;
   /** LifeOps browser setup panel provided by the host app. */
   lifeOpsBrowserSetupPanel?: ComponentType<Record<string, never>>;
+  /** App blocker settings card provided by the host app. */
+  appBlockerSettingsCard?: ComponentType<AppBlockerSettingsCardProps>;
   /** Website blocker settings card provided by the host app. */
   websiteBlockerSettingsCard?: ComponentType<WebsiteBlockerSettingsCardProps>;
   /** Character catalog data — replaces cross-package import of catalog.json. */
@@ -242,7 +248,6 @@ export function resolveCharacterCatalog(catalog: CharacterCatalogData): {
 const mirroredBrandKeys = new Set<string>();
 const mirroredElizaKeys = new Set<string>();
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getProcessEnv = (): Record<string, string | undefined> | null => {
   try {
     // In Node/Bun, process.env is available. In browsers it isn't.

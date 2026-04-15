@@ -15,6 +15,14 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { ScreenRegion } from "../types.js";
 import { commandExists, currentPlatform, runCommandBuffer } from "./helpers.js";
+import {
+  classifyPermissionDeniedError,
+  createPermissionDeniedError,
+  isPermissionDeniedError,
+} from "./permissions.js";
+
+const SCREEN_RECORDING_OPERATION_MESSAGE =
+  "macOS Screen Recording permission is required for screenshots. Grant access in System Settings > Privacy & Security > Screen Recording, then retry.";
 
 /**
  * Capture a screenshot of the entire screen (or a region) and return as a Buffer (PNG).
@@ -33,6 +41,15 @@ export function captureScreenshot(region?: ScreenRegion): Buffer {
     }
 
     const data = readFileSync(tmpFile);
+    if (os === "darwin" && data.length === 0) {
+      throw createPermissionDeniedError({
+        permissionType: "screen_recording",
+        operation: "screenshot_capture",
+        message: SCREEN_RECORDING_OPERATION_MESSAGE,
+        details: "screencapture returned an empty file.",
+      });
+    }
+
     try {
       unlinkSync(tmpFile);
     } catch {
@@ -45,6 +62,19 @@ export function captureScreenshot(region?: ScreenRegion): Buffer {
     } catch {
       /* ignore */
     }
+
+    if (isPermissionDeniedError(err)) {
+      throw err;
+    }
+
+    const permissionError = classifyPermissionDeniedError(err, {
+      permissionType: "screen_recording",
+      operation: region ? "screenshot_region" : "screenshot_capture",
+    });
+    if (permissionError) {
+      throw permissionError;
+    }
+
     throw err;
   }
 }
@@ -52,19 +82,30 @@ export function captureScreenshot(region?: ScreenRegion): Buffer {
 // ── macOS ───────────────────────────────────────────────────────────────────
 
 function captureDarwin(tmpFile: string, region?: ScreenRegion): void {
-  if (region) {
-    runCommandBuffer(
-      "screencapture",
-      [
-        `-R${region.x},${region.y},${region.width},${region.height}`,
-        "-x",
-        tmpFile,
-      ],
-      10000,
-    );
-  } else {
-    // -x suppresses the shutter sound
-    runCommandBuffer("screencapture", ["-x", tmpFile], 10000);
+  try {
+    if (region) {
+      runCommandBuffer(
+        "screencapture",
+        [
+          `-R${region.x},${region.y},${region.width},${region.height}`,
+          "-x",
+          tmpFile,
+        ],
+        10000,
+      );
+    } else {
+      // -x suppresses the shutter sound
+      runCommandBuffer("screencapture", ["-x", tmpFile], 10000);
+    }
+  } catch (error) {
+    const permissionError = classifyPermissionDeniedError(error, {
+      permissionType: "screen_recording",
+      operation: region ? "screenshot_region" : "screenshot_capture",
+    });
+    if (permissionError) {
+      throw permissionError;
+    }
+    throw error;
   }
 }
 

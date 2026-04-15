@@ -6,7 +6,7 @@ import type {
   LifeOpsGoogleConnectorStatus,
   StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsGoogleConnectorResponse,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   GoogleApiError,
   googleErrorLooksLikeAdminPolicyBlock,
@@ -34,7 +34,40 @@ import {
   startGoogleConnectorOAuth,
 } from "./google-oauth.js";
 import { createLifeOpsConnectorGrant } from "./repository.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
+
+export interface LifeOpsGoogleService {
+  getGoogleConnectorStatus(
+    requestUrl: URL,
+    requestedMode?: LifeOpsConnectorMode,
+    requestedSide?: LifeOpsConnectorSide,
+    grantId?: string,
+  ): Promise<LifeOpsGoogleConnectorStatus>;
+  getGoogleConnectorAccounts(
+    requestUrl: URL,
+    requestedSide?: LifeOpsConnectorSide,
+  ): Promise<LifeOpsGoogleConnectorStatus[]>;
+  selectGoogleConnectorMode(
+    requestUrl: URL,
+    preferredModeInput: LifeOpsConnectorMode | undefined,
+    requestedSide?: LifeOpsConnectorSide,
+  ): Promise<LifeOpsGoogleConnectorStatus>;
+  startGoogleConnector(
+    request: StartLifeOpsGoogleConnectorRequest,
+    requestUrl: URL,
+  ): Promise<StartLifeOpsGoogleConnectorResponse>;
+  completeGoogleConnectorCallback(
+    callbackUrl: URL,
+  ): Promise<LifeOpsGoogleConnectorStatus>;
+  disconnectGoogleConnector(
+    request: DisconnectLifeOpsGoogleConnectorRequest,
+    requestUrl: URL,
+  ): Promise<LifeOpsGoogleConnectorStatus>;
+}
 import { fail } from "./service-normalize.js";
 import {
   normalizeGoogleCapabilityRequest,
@@ -77,7 +110,7 @@ function sameNormalizedStringSet(
 
 export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
-) {
+): MixinClass<TBase, LifeOpsGoogleService> {
   return class extends Base {
     // -----------------------------------------------------------------
     // Internal Google grant operations
@@ -1184,5 +1217,5 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       );
       return this.getGoogleConnectorStatus(requestUrl, mode, side);
     }
-  };
+  } as unknown as MixinClass<TBase, LifeOpsGoogleService>;
 }

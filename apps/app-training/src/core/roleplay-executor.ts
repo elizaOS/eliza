@@ -1,6 +1,7 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { Trajectory } from "@elizaos/agent/types";
 import type {
   AgentRuntime,
   ChannelType,
@@ -8,7 +9,6 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import type { Trajectory } from "@elizaos/agent/types/trajectory";
 import type {
   RoleplayEpisode,
   RoleplayManifestLine,

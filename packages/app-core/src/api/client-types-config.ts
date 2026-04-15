@@ -10,11 +10,11 @@ import type {
   TriggerRunRecord as _TriggerRunRecord,
   TriggerSummary as _TriggerSummary,
   UpdateTriggerRequest as _UpdateTriggerRequest,
-} from "@elizaos/agent/triggers/types";
+} from "@elizaos/agent/triggers";
 import type {
   LifeOpsOccurrenceView,
   LifeOpsOverview,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import type { MessageExampleContent } from "@elizaos/shared/contracts/onboarding";
 import type { ConfigUiHint } from "../types";
 
@@ -60,7 +60,7 @@ export type {
   UpdateLifeOpsBrowserSettingsRequest,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 
 export interface SecretInfo {
   key: string;

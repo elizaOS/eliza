@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterAll } from "bun:test";
+import { afterAll, describe, expect, test } from "vitest";
 import { Transaction, SystemProgram, PublicKey } from '@solana/web3.js';
 import { execSync } from "child_process";
 import * as path from "path";

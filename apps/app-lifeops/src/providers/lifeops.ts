@@ -8,7 +8,7 @@ import type {
 import type {
   LifeOpsGmailTriageSummary,
   LifeOpsNextCalendarEventContext,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import { hasLifeOpsAccess } from "../actions/lifeops-google-helpers.js";
 import {
   type LifeOpsOwnerProfile,

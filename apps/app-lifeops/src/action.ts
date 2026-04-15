@@ -18,7 +18,7 @@ import type {
   LifeOpsBrowserActionKind,
   LifeOpsBrowserKind,
   UpdateLifeOpsBrowserSettingsRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 
 type BrowserCommand =
   | "get_settings"

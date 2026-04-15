@@ -16,12 +16,12 @@ import type {
   LifeOpsReminderUrgency,
   LifeOpsTaskDefinition,
   UpdateLifeOpsGoalRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_GOAL_STATUSES,
   LIFEOPS_GOAL_SUGGESTION_KINDS,
   LIFEOPS_REVIEW_STATES,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   createLifeOpsAuditEvent,
   createLifeOpsGoalDefinition,
@@ -67,9 +67,32 @@ import {
   MAX_OVERVIEW_REMINDERS,
   OVERVIEW_HORIZON_MINUTES,
 } from "./service-constants.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 
-export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
+export interface LifeOpsGoalService {
+  deleteGoal(goalId: string): Promise<void>;
+  listGoals(): Promise<LifeOpsGoalRecord[]>;
+  getGoal(goalId: string): Promise<LifeOpsGoalRecord>;
+  createGoal(request: CreateLifeOpsGoalRequest): Promise<LifeOpsGoalRecord>;
+  updateGoal(
+    goalId: string,
+    request: UpdateLifeOpsGoalRequest,
+  ): Promise<LifeOpsGoalRecord>;
+  reviewGoal(goalId: string, now?: Date): Promise<LifeOpsGoalReview>;
+  explainOccurrence(
+    occurrenceId: string,
+  ): Promise<LifeOpsOccurrenceExplanation>;
+  getOverview(now?: Date): Promise<LifeOpsOverview>;
+  listChannelPolicies(): Promise<LifeOpsChannelPolicy[]>;
+}
+
+export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
+  Base: TBase,
+): MixinClass<TBase, LifeOpsGoalService> {
   return class extends Base {
     async deleteGoal(goalId: string): Promise<void> {
       const goal = await this.repository.getGoal(this.agentId(), goalId);
@@ -1066,5 +1089,5 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
     async listChannelPolicies(): Promise<LifeOpsChannelPolicy[]> {
       return this.repository.listChannelPolicies(this.agentId());
     }
-  };
+  } as MixinClass<TBase, LifeOpsGoalService>;
 }

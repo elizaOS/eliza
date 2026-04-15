@@ -10,6 +10,88 @@ import { execSync } from "node:child_process";
 import type { ScreenSize, WindowInfo } from "../types.js";
 import { commandExists, currentPlatform, runCommand } from "./helpers.js";
 
+function escapeAppleScriptString(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function normalizeWindowQuery(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function matchesWindowQuery(win: WindowInfo, query: string): boolean {
+  const normalized = normalizeWindowQuery(query);
+  if (!normalized) return false;
+
+  return [win.id, win.title, win.app].some((field) =>
+    normalizeWindowQuery(field).includes(normalized),
+  );
+}
+
+export function findWindowsByQuery(query: string, windows: WindowInfo[] = listWindows()): WindowInfo[] {
+  const normalized = normalizeWindowQuery(query);
+  if (!normalized) return [];
+
+  const exact = windows.filter((win) => normalizeWindowQuery(win.id) === normalized);
+  if (exact.length > 0) return exact;
+
+  return windows.filter((win) => matchesWindowQuery(win, normalized));
+}
+
+function resolveWindowTarget(queryOrId: string): WindowInfo | null {
+  const matches = findWindowsByQuery(queryOrId);
+  return matches[0] ?? null;
+}
+
+export function resolveWindowMatch(queryOrId: string, windows: WindowInfo[] = listWindows()): WindowInfo | null {
+  return findWindowsByQuery(queryOrId, windows)[0] ?? null;
+}
+
+function appleScriptWindowMatchTerms(target: WindowInfo): string[] {
+  return [target.id, target.title, target.app]
+    .map((value) => normalizeWindowQuery(value))
+    .filter((value) => value.length > 0 && value !== "unknown");
+}
+
+function runDarwinWindowScript(target: WindowInfo, body: string): void {
+  const terms = appleScriptWindowMatchTerms(target);
+  const termList = terms.length > 0
+    ? `{${terms.map((term) => `"${escapeAppleScriptString(term)}"`).join(", ")}}`
+    : "{}";
+  const script = `
+      tell application "System Events"
+        repeat with proc in (every process whose visible is true)
+          try
+            set procName to name of proc
+            set matched to false
+            repeat with term in ${termList}
+              if procName contains term then
+                set matched to true
+                exit repeat
+              end if
+            end repeat
+            if not matched then
+              repeat with w in (every window of proc)
+                set winName to name of w
+                repeat with term in ${termList}
+                  if winName contains term then
+                    set matched to true
+                    exit repeat
+                  end if
+                end repeat
+                if matched then exit repeat
+              end repeat
+            end if
+            if matched then
+              ${body}
+              exit repeat
+            end if
+          end try
+        end repeat
+      end tell`;
+
+  runCommand("osascript", ["-e", script], 5000);
+}
+
 // ── List Windows ────────────────────────────────────────────────────────────
 
 export function listWindows(): WindowInfo[] {
@@ -119,57 +201,78 @@ function listWindowsWindows(): WindowInfo[] {
 
 export function focusWindow(windowId: string): void {
   const os = currentPlatform();
+  const target = resolveWindowTarget(windowId);
 
   if (os === "darwin") {
-    // Use AppleScript to bring window to front by process name
-    const script = `
-      tell application "System Events"
-        set frontmost of (first process whose id is ${windowId}) to true
-      end tell`;
     try {
-      runCommand("osascript", ["-e", script], 5000);
+      if (target) {
+        runDarwinWindowScript(target, "set frontmost of proc to true");
+      }
     } catch {
-      // Fallback: try by name
-      runCommand(
-        "osascript",
-        ["-e", `tell application "${windowId}" to activate`],
-        5000,
-      );
+      if (target?.app) {
+        runCommand("osascript", ["-e", `tell application "${escapeAppleScriptString(target.app)}" to activate`], 5000);
+      }
     }
   } else if (os === "linux") {
     if (commandExists("wmctrl")) {
-      runCommand("wmctrl", ["-i", "-a", windowId], 5000);
+      runCommand("wmctrl", ["-i", "-a", target?.id ?? windowId], 5000);
     } else if (commandExists("xdotool")) {
-      runCommand("xdotool", ["windowactivate", windowId], 5000);
+      runCommand("xdotool", ["windowactivate", target?.id ?? windowId], 5000);
     }
   } else if (os === "win32") {
     const ps = `
       Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);' -Name Win32 -Namespace Win32
-      $proc = Get-Process -Id ${windowId} -ErrorAction SilentlyContinue
+      $proc = Get-Process -Id ${target?.id ?? windowId} -ErrorAction SilentlyContinue
       if ($proc) { [Win32.Win32]::SetForegroundWindow($proc.MainWindowHandle) }
     `;
     runCommand("powershell", ["-Command", ps], 5000);
   }
 }
 
+export function switchWindow(windowQuery: string): void {
+  focusWindow(windowQuery);
+}
+
+export function arrangeWindows(arrangement = "tile"): {
+  success: true;
+  message: string;
+} {
+  return {
+    success: true,
+    message: `Window arrangement: ${arrangement} (not yet implemented)`,
+  };
+}
+
+export function moveWindow(x?: number, y?: number): {
+  success: true;
+  message: string;
+} {
+  return {
+    success: true,
+    message: `Window move to (${x ?? "?"}, ${y ?? "?"}) (not yet implemented)`,
+  };
+}
+
 // ── Minimize Window ─────────────────────────────────────────────────────────
 
 export function minimizeWindow(windowId: string): void {
   const os = currentPlatform();
+  const target = resolveWindowTarget(windowId);
 
   if (os === "darwin") {
-    const script = `tell application "System Events" to set miniaturized of window 1 of (first process whose id is ${windowId}) to true`;
     try {
-      runCommand("osascript", ["-e", script], 5000);
+      if (target) {
+        runDarwinWindowScript(target, "set miniaturized of window 1 of proc to true");
+      }
     } catch { /* ignore */ }
   } else if (os === "linux") {
     if (commandExists("xdotool")) {
-      runCommand("xdotool", ["windowminimize", windowId], 5000);
+      runCommand("xdotool", ["windowminimize", target?.id ?? windowId], 5000);
     }
   } else if (os === "win32") {
     const ps = `
       Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);' -Name Win32 -Namespace Win32
-      $proc = Get-Process -Id ${windowId} -ErrorAction SilentlyContinue
+      $proc = Get-Process -Id ${target?.id ?? windowId} -ErrorAction SilentlyContinue
       if ($proc) { [Win32.Win32]::ShowWindow($proc.MainWindowHandle, 6) }
     `;
     runCommand("powershell", ["-Command", ps], 5000);
@@ -180,26 +283,54 @@ export function minimizeWindow(windowId: string): void {
 
 export function maximizeWindow(windowId: string): void {
   const os = currentPlatform();
+  const target = resolveWindowTarget(windowId);
 
   if (os === "darwin") {
-    const script = `
-      tell application "System Events"
-        tell (first process whose id is ${windowId})
-          set value of attribute "AXFullScreen" of window 1 to true
-        end tell
-      end tell`;
     try {
-      runCommand("osascript", ["-e", script], 5000);
+      if (target) {
+        runDarwinWindowScript(target, "set value of attribute \"AXFullScreen\" of window 1 of proc to true");
+      }
     } catch { /* ignore */ }
   } else if (os === "linux") {
     if (commandExists("wmctrl")) {
-      runCommand("wmctrl", ["-i", "-r", windowId, "-b", "add,maximized_vert,maximized_horz"], 5000);
+      runCommand("wmctrl", ["-i", "-r", target?.id ?? windowId, "-b", "add,maximized_vert,maximized_horz"], 5000);
     }
   } else if (os === "win32") {
     const ps = `
       Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);' -Name Win32 -Namespace Win32
-      $proc = Get-Process -Id ${windowId} -ErrorAction SilentlyContinue
+      $proc = Get-Process -Id ${target?.id ?? windowId} -ErrorAction SilentlyContinue
       if ($proc) { [Win32.Win32]::ShowWindow($proc.MainWindowHandle, 3) }
+    `;
+    runCommand("powershell", ["-Command", ps], 5000);
+  }
+}
+
+export function restoreWindow(windowId: string): void {
+  const os = currentPlatform();
+  const target = resolveWindowTarget(windowId);
+
+  if (os === "darwin") {
+    try {
+      if (target) {
+        runDarwinWindowScript(target, `
+              try
+                set miniaturized of window 1 of proc to false
+              end try
+              set frontmost of proc to true`);
+      }
+    } catch { /* ignore */ }
+  } else if (os === "linux") {
+    if (commandExists("wmctrl")) {
+      runCommand("wmctrl", ["-i", "-r", target?.id ?? windowId, "-b", "remove,maximized_vert,maximized_horz"], 5000);
+      runCommand("wmctrl", ["-i", "-a", target?.id ?? windowId], 5000);
+    } else if (commandExists("xdotool")) {
+      runCommand("xdotool", ["windowactivate", target?.id ?? windowId], 5000);
+    }
+  } else if (os === "win32") {
+    const ps = `
+      Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);' -Name Win32 -Namespace Win32
+      $proc = Get-Process -Id ${target?.id ?? windowId} -ErrorAction SilentlyContinue
+      if ($proc) { [Win32.Win32]::ShowWindow($proc.MainWindowHandle, 9) }
     `;
     runCommand("powershell", ["-Command", ps], 5000);
   }
@@ -209,28 +340,35 @@ export function maximizeWindow(windowId: string): void {
 
 export function closeWindow(windowId: string): void {
   const os = currentPlatform();
+  const target = resolveWindowTarget(windowId);
 
   if (os === "darwin") {
-    const script = `
-      tell application "System Events"
-        tell (first process whose id is ${windowId})
-          click button 1 of window 1
-        end tell
-      end tell`;
     try {
-      runCommand("osascript", ["-e", script], 5000);
+      if (target) {
+        runDarwinWindowScript(target, "click button 1 of window 1 of proc");
+      }
     } catch { /* ignore */ }
   } else if (os === "linux") {
     if (commandExists("wmctrl")) {
-      runCommand("wmctrl", ["-i", "-c", windowId], 5000);
+      runCommand("wmctrl", ["-i", "-c", target?.id ?? windowId], 5000);
     } else if (commandExists("xdotool")) {
-      runCommand("xdotool", ["windowclose", windowId], 5000);
+      runCommand("xdotool", ["windowclose", target?.id ?? windowId], 5000);
     }
   } else if (os === "win32") {
-    const ps = `Stop-Process -Id ${windowId} -ErrorAction SilentlyContinue`;
+    const ps = `Stop-Process -Id ${target?.id ?? windowId} -ErrorAction SilentlyContinue`;
     runCommand("powershell", ["-Command", ps], 5000);
   }
 }
+
+export const list_windows = listWindows;
+export const focus_window = focusWindow;
+export const switch_to_window = switchWindow;
+export const arrange_windows = arrangeWindows;
+export const move_window = moveWindow;
+export const minimize_window = minimizeWindow;
+export const maximize_window = maximizeWindow;
+export const restore_window = restoreWindow;
+export const close_window = closeWindow;
 
 // ── Screen Size ─────────────────────────────────────────────────────────────
 

@@ -14,6 +14,7 @@ import type {
   TimeWindowConfig,
 } from "../policy-controls";
 import {
+  approvedAddressValue,
   chainTypeLabel,
   DAY_NAMES,
   DEFAULT_APPROVED_ADDRESSES,
@@ -171,15 +172,7 @@ export function PolicyControlsView() {
   const timeWindowConfig = getPolicyConfig<"time-window">(timeWindowPolicy, DEFAULT_TIME_WINDOW);
 
   const normalizedAddresses = useMemo(
-    () =>
-      (addressConfig.addresses ?? []).map((addr) => {
-        const addressEntry =
-          typeof addr === "object" && addr !== null ? addr : null;
-        if (addressEntry && "address" in addressEntry) {
-          return String((addressEntry as Record<string, unknown>).address);
-        }
-        return String(addr);
-      }),
+    () => (addressConfig.addresses ?? []).map((addr) => approvedAddressValue(addr)),
     [addressConfig.addresses],
   );
 
@@ -547,7 +540,7 @@ function AddressSection({
       setAddrError("Invalid address (EVM 0x... or Solana base58)");
       return;
     }
-    if (config.addresses.includes(trimmed)) {
+    if (config.addresses.some((entry) => approvedAddressValue(entry) === trimmed)) {
       setAddrError("Already in list");
       return;
     }
@@ -561,7 +554,9 @@ function AddressSection({
     delete labels[addr];
     onUpdate({
       ...config,
-      addresses: config.addresses.filter((a) => String(a) !== addr),
+      addresses: config.addresses.filter(
+        (entry) => approvedAddressValue(entry) !== addr,
+      ),
       labels,
     });
   };

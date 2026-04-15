@@ -5,7 +5,7 @@ import type {
   LifeOpsOverviewSection,
   LifeOpsOverviewSummary,
   LifeOpsTaskDefinition,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import { DEFINITION_PERFORMANCE_LAST7_DAYS, DEFINITION_PERFORMANCE_LAST30_DAYS } from "./service-constants.js";
 import { getZonedDateParts } from "./time.js";
 

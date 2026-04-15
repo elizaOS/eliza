@@ -42,8 +42,8 @@ import type {
   UpdateLifeOpsWorkflowRequest,
   UpsertLifeOpsChannelPolicyRequest,
   UpsertLifeOpsXConnectorRequest,
-} from "@elizaos/shared/contracts/lifeops";
-import { LIFEOPS_ACTIVITY_SIGNAL_STATES } from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
+import { LIFEOPS_ACTIVITY_SIGNAL_STATES } from "@elizaos/app-lifeops/contracts";
 import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
 import {
   loadLifeOpsAppState,

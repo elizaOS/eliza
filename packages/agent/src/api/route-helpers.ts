@@ -9,7 +9,7 @@ export interface RouteRequestMeta {
 }
 
 export interface RouteHelpers {
-  json: (res: http.ServerResponse, data: object, status?: number) => void;
+  json: (res: http.ServerResponse, data: unknown, status?: number) => void;
   error: (res: http.ServerResponse, message: string, status?: number) => void;
   readJsonBody: <T extends object>(
     req: http.IncomingMessage,

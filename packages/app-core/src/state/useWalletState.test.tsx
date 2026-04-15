@@ -22,8 +22,10 @@ const { clientMock, confirmDesktopActionMock, persistenceMock } = vi.hoisted(
     confirmDesktopActionMock: vi.fn(),
     persistenceMock: {
       loadBrowserEnabled: vi.fn(() => false),
+      loadComputerUseEnabled: vi.fn(() => false),
       loadWalletEnabled: vi.fn(() => true),
       saveBrowserEnabled: vi.fn(),
+      saveComputerUseEnabled: vi.fn(),
       saveWalletEnabled: vi.fn(),
     },
   }),
@@ -53,6 +55,9 @@ function createParams() {
 describe("useWalletState cloud wallet import", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    persistenceMock.loadBrowserEnabled.mockReturnValue(false);
+    persistenceMock.loadComputerUseEnabled.mockReturnValue(false);
+    persistenceMock.loadWalletEnabled.mockReturnValue(true);
     clientMock.updateWalletConfig.mockResolvedValue({ ok: true });
     clientMock.refreshCloudWallets.mockResolvedValue({ ok: true });
     clientMock.generateWallet.mockResolvedValue({ ok: true, wallets: [] });

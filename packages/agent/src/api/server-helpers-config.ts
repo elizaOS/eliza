@@ -3,8 +3,9 @@
  */
 
 import type http from "node:http";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
+import { logger } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import {
   ONBOARDING_CLOUD_PROVIDER_OPTIONS,
@@ -15,9 +16,8 @@ import {
   getStylePresets,
   normalizeCharacterLanguage,
 } from "../onboarding-presets.js";
-import { generateWalletKeys, setSolanaWalletEnv } from "./wallet.js";
 import { sendJsonError } from "./http-helpers.js";
-import { logger } from "@elizaos/core";
+import { generateWalletKeys, setSolanaWalletEnv } from "./wallet.js";
 
 // ---------------------------------------------------------------------------
 // Config redaction

@@ -1,6 +1,6 @@
+import type { LifeOpsActivitySignal } from "@elizaos/app-lifeops/contracts";
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { LifeOpsActivitySignal } from "@elizaos/shared/contracts/lifeops";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import {
   LifeOpsScreenContextSampler,

@@ -1,4 +1,4 @@
-import type { LifeOpsGmailMessageSummary } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsGmailMessageSummary } from "@elizaos/app-lifeops/contracts";
 import { GoogleApiError } from "./google-api-error.js";
 import { googleApiFetch } from "./google-fetch.js";
 

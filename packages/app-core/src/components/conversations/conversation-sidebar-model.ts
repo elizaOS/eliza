@@ -3,6 +3,7 @@ import { normalizeConnectorSource } from "@elizaos/shared/connectors";
 import type * as React from "react";
 
 import type { Conversation } from "../../api/client-types-chat";
+import type { TranslateFn } from "../../types";
 import { getChatSourceMeta } from "@elizaos/ui";
 import {
   formatRelativeTime,
@@ -14,11 +15,6 @@ export const ALL_CONNECTORS_SOURCE_SCOPE = "__all_connectors__";
 export const ALL_WORLDS_SCOPE = "__all_worlds__";
 
 const UNKNOWN_WORLD_KEY = "__unknown_world__";
-
-type TranslateFn = (
-  key: string,
-  options?: { defaultValue?: string } & Record<string, unknown>,
-) => string;
 
 export interface InboxChatSidebarRow {
   avatarUrl?: string;

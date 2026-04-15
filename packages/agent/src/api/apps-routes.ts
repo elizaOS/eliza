@@ -93,8 +93,8 @@ function actionResultStatus(result: unknown): number {
   if (
     result &&
     typeof result === "object" &&
-    "success" in (result as Record<string, unknown>) &&
-    (result as Record<string, unknown>).success === false
+    "success" in result &&
+    result.success === false
   ) {
     return 404;
   }
@@ -164,7 +164,7 @@ function parseCapturedBody(body: string): Record<string, unknown> | null {
   try {
     const parsed = JSON.parse(trimmed);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
+      ? parsed
       : null;
   } catch {
     return null;
@@ -324,7 +324,7 @@ async function proxyRunSteeringRequest(
     url: syntheticUrl,
     res: captured,
     readJsonBody: async <T extends object>() => body as T | null,
-    json: (response: CapturedResponse, data: object, status = 200): void => {
+    json: (response: CapturedResponse, data: unknown, status = 200): void => {
       response.writeHead(status, { "Content-Type": "application/json" });
       response.end(JSON.stringify(data));
     },
@@ -425,7 +425,7 @@ export async function handleAppsRoutes(
   if (method === "GET" && pathname === "/api/apps") {
     const pluginManager = getPluginManager();
     const apps = await appManager.listAvailable(pluginManager);
-    json(res, apps as object);
+    json(res, apps);
     return true;
   }
 
@@ -438,20 +438,20 @@ export async function handleAppsRoutes(
     const limit = parseBoundedLimit(url.searchParams.get("limit"));
     const pluginManager = getPluginManager();
     const results = await appManager.search(pluginManager, query, limit);
-    json(res, results as object);
+    json(res, results);
     return true;
   }
 
   if (method === "GET" && pathname === "/api/apps/installed") {
     const pluginManager = getPluginManager();
     const installed = await appManager.listInstalled(pluginManager);
-    json(res, installed as object);
+    json(res, installed);
     return true;
   }
 
   if (method === "GET" && pathname === "/api/apps/runs") {
     const runs = await appManager.listRuns(runtime as IAgentRuntime | null);
-    json(res, runs as object);
+    json(res, runs);
     return true;
   }
 
@@ -485,7 +485,7 @@ export async function handleAppsRoutes(
         error(res, `App run "${runId}" not found`, 404);
         return true;
       }
-      json(res, run as object);
+      json(res, run);
       return true;
     }
 
@@ -498,11 +498,8 @@ export async function handleAppsRoutes(
         error(res, `App run "${runId}" not found`, 404);
         return true;
       }
-      const health =
-        "health" in (run as Record<string, unknown>)
-          ? (run as Record<string, unknown>).health
-          : null;
-      json(res, health as object);
+      const health = "health" in run ? run.health : null;
+      json(res, health);
       return true;
     }
   }
@@ -521,7 +518,7 @@ export async function handleAppsRoutes(
         runId,
         runtime as IAgentRuntime | null,
       );
-      json(res, result as object, actionResultStatus(result));
+      json(res, result as Record<string, unknown>, actionResultStatus(result));
       return true;
     }
 
@@ -544,10 +541,10 @@ export async function handleAppsRoutes(
       const normalizedBody =
         subroute === "message"
           ? {
-              content: readSteeringContent(body as Record<string, unknown>),
+              content: readSteeringContent(body),
             }
           : {
-              action: readSteeringAction(body as Record<string, unknown>),
+              action: readSteeringAction(body),
             };
       if (
         (subroute === "message" && !normalizedBody.content) ||
@@ -573,20 +570,20 @@ export async function handleAppsRoutes(
         error(res, "Run steering failed", 500);
         return true;
       }
-      json(res, result as object, result.status);
+      json(res, result, result.status);
       return true;
     }
 
     if (subroute === "detach") {
       const result = await appManager.detachRun(runId);
-      json(res, result as object, actionResultStatus(result));
+      json(res, result as Record<string, unknown>, actionResultStatus(result));
       return true;
     }
 
     if (subroute === "stop") {
       const pluginManager = getPluginManager();
       const result = await appManager.stop(pluginManager, "", runId);
-      json(res, result as object);
+      json(res, result);
       return true;
     }
   }
@@ -606,8 +603,8 @@ export async function handleAppsRoutes(
         (_progress: InstallProgressLike) => {},
         runtime,
       );
-      json(res, result as object);
-    } catch (e) {
+      json(res, result);
+    } catch (e: unknown) {
       error(res, e instanceof Error ? e.message : "Failed to launch app", 500);
     }
     return true;
@@ -627,7 +624,7 @@ export async function handleAppsRoutes(
     const runId = body.runId?.trim();
     const pluginManager = getPluginManager();
     const result = await appManager.stop(pluginManager, appName, runId);
-    json(res, result as object);
+    json(res, result);
     return true;
   }
 
@@ -645,7 +642,7 @@ export async function handleAppsRoutes(
       error(res, `App "${appName}" not found in registry`, 404);
       return true;
     }
-    json(res, info as object);
+    json(res, info);
     return true;
   }
 

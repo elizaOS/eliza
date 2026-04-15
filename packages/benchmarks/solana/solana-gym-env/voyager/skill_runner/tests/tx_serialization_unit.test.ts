@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { Transaction, SystemProgram, PublicKey } from '@solana/web3.js';
 
 describe("Transaction Serialization Unit Tests", () => {

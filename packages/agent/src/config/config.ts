@@ -193,7 +193,7 @@ export function loadElizaConfig(): ElizaConfig {
     console.debug("[eliza][settings][loadElizaConfig]", {
       path: configPath,
       persistPath: persistPath !== configPath ? persistPath : undefined,
-      topLevelKeys: Object.keys(resolved as object).sort(),
+      topLevelKeys: Object.keys(resolved as Record<string, unknown>).sort(),
       cloud: settingsDebugCloudSummary(cloud),
       envVarKeysHydrated: Object.keys({
         ...persistedConfigEnv,

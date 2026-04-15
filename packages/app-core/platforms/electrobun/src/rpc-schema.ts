@@ -13,6 +13,7 @@
  */
 
 import type { RPCSchema } from "electrobun/bun";
+import type { ExistingElizaInstallInfo } from "../../../src/types/index.js";
 
 // ============================================================================
 // Shared Types
@@ -426,16 +427,6 @@ export interface EmbeddedAgentStatus {
   error: string | null;
 }
 
-export interface ExistingElizaInstallInfo {
-  detected: boolean;
-  stateDir: string;
-  configPath: string;
-  configExists: boolean;
-  stateDirExists: boolean;
-  hasStateEntries: boolean;
-  source: "config-path-env" | "state-dir-env" | "default-state-dir";
-}
-
 export interface DesktopStartupDiagnostics {
   state: "not_started" | "starting" | "running" | "stopped" | "error";
   phase: string;
@@ -467,9 +458,6 @@ export interface DesktopBugReportBundleInfo {
 // ============================================================================
 // RPC Schema
 // ============================================================================
-
-/** @deprecated Use ElizaDesktopRPCSchema instead. */
-export type ElizaDesktopRPCSchema = ElizaDesktopRPCSchema;
 
 export type ElizaDesktopRPCSchema = {
   bun: RPCSchema<{
