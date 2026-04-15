@@ -1,12 +1,10 @@
-import {
-  LanguageDropdown,
-  ThemeToggle,
-} from "@elizaos/app-core/components";
+import { LanguageDropdown } from "@elizaos/app-core/components/shared/LanguageDropdown";
 import { LANGUAGE_DROPDOWN_TRIGGER_CLASSNAME } from "@elizaos/app-core/components/shared/LanguageDropdown";
+import { ThemeToggle } from "@elizaos/app-core/components/shared/ThemeToggle";
 import { useMediaQuery } from "@elizaos/app-core/hooks";
 import type { UiLanguage } from "@elizaos/app-core/i18n";
 import type { ShellView, UiTheme } from "@elizaos/app-core/state";
-import { Button } from "@elizaos/app-core";
+import { Button } from "../ui/button";
 import {
   type LucideIcon,
   Check,

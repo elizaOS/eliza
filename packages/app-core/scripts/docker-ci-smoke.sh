@@ -166,6 +166,7 @@ export ELIZA_SKIP_LOCAL_UPSTREAMS=1
 
 log "Installing published-workspace fallback dependencies"
 bun add --no-save --dev \
+  @elizaos/ui@file:./eliza/packages/ui \
   react react-dom vite \
   @types/react @types/react-dom @types/three \
   tailwindcss three clsx class-variance-authority tailwind-merge sonner \
