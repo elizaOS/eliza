@@ -37,6 +37,11 @@ export function hasRequiredOnboardingPermissions(
 export { applyLaunchConnectionFromUrl } from "./browser-launch";
 export * from "./cloud-preference-patch";
 export * from "./desktop-permissions-client";
+export type {
+  CloudPreferenceClientLike,
+  OnboardingClientLike,
+  PermissionsClientLike,
+} from "./types";
 export {
   type DeepLinkHandlers,
   dispatchShareTarget,

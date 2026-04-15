@@ -33,15 +33,10 @@ import {
   resolveWalletRpcReadiness,
 } from "./wallet-rpc";
 
-interface WalletExportRequestBody {
-  confirm?: boolean;
-  exportToken?: string;
-}
-
-interface WalletExportRejectionLike {
-  status: 401 | 403;
-  reason: string;
-}
+import type {
+  WalletExportRequestBody,
+  WalletExportRejection as WalletExportRejectionLike,
+} from "@elizaos/shared/contracts";
 
 // Rate limiter for wallet export.
 // In test/CI mode the limit is relaxed to avoid blocking E2E suites.

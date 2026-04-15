@@ -4,7 +4,7 @@ export * from "./embedding-presets.js";
 export * from "./onboarding-names.js";
 export * from "./plugin-collector.js";
 export * from "./plugin-lifecycle.js";
-export { resolvePlugins } from "./plugin-resolver.js";
+export { getLastFailedPluginNames, resolvePlugins } from "./plugin-resolver.js";
 export * from "./release-plugin-policy.js";
 export * from "./restart.js";
 export * from "./roles.js";

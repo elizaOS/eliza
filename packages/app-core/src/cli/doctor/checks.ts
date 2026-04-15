@@ -77,9 +77,7 @@ export const MODEL_KEY_VARS = [
 // ---------------------------------------------------------------------------
 
 export function checkRuntime(): CheckResult {
-  const isBun =
-    typeof (globalThis as unknown as Record<string, unknown>).Bun !==
-    "undefined";
+  const isBun = "Bun" in globalThis;
 
   if (isBun) {
     const bun = (globalThis as unknown as Record<string, unknown>).Bun as {

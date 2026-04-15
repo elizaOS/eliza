@@ -163,6 +163,30 @@ export type CliBackendConfig = {
   serialize?: boolean;
 };
 
+/**
+ * Per-platform contact info for reaching the owner.
+ * Each key is a source name (e.g. "client_chat", "telegram", "discord").
+ */
+export type OwnerContactEntry = {
+  /** Entity ID in the runtime (UUID). */
+  entityId?: string;
+  /** Platform-specific channel/chat ID (e.g. Telegram numeric chat ID). */
+  channelId?: string;
+  /** Platform-specific room ID. */
+  roomId?: string;
+};
+
+export type OwnerContactsConfig = Record<string, OwnerContactEntry>;
+
+export type EscalationConfig = {
+  /** Ordered list of channels to try when escalating to the owner. */
+  channels?: string[];
+  /** Minutes to wait before trying next channel. */
+  waitMinutes?: number;
+  /** Maximum escalation attempts across all channels. */
+  maxRetries?: number;
+};
+
 export type AgentDefaultsConfig = {
   /** Active subscription provider, set automatically by provider switch. */
   subscriptionProvider?: string;
@@ -176,6 +200,12 @@ export type AgentDefaultsConfig = {
   workspace?: string;
   /** Stable owner/admin entity id used for control-chat ownership and trust policies. */
   adminEntityId?: string;
+  /** Per-platform owner contact info for admin messaging and escalation. */
+  ownerContacts?: OwnerContactsConfig;
+  /** Escalation behavior config. */
+  escalation?: EscalationConfig;
+  /** Inbox triage config (multi-channel message scanning, daily digest, auto-reply). */
+  inboxTriage?: import("@elizaos/app-lifeops/inbox/types").InboxTriageConfig;
   /** Optional repository root for system prompt runtime line (overrides auto-detect). */
   repoRoot?: string;
   /** Skip init (INIT.md creation, etc.) for pre-configured deployments. */
@@ -212,6 +242,8 @@ export type AgentDefaultsConfig = {
   memorySearch?: MemorySearchConfig;
   /** Enable built-in advanced memory providers/evaluators by default. */
   advancedMemory?: boolean;
+  /** Enable built-in agent orchestrator (PTY / coding task agents) by default. */
+  agentOrchestrator?: boolean;
   /** Default thinking level when no /think directive is present. */
   thinkingDefault?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   /** Default verbose level when no /verbose directive is present. */

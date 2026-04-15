@@ -48,9 +48,7 @@ function resolveAgentId(
   runtime: IAgentRuntime | null,
   viewer: AppLaunchResult["viewer"] | null,
 ): string | null {
-  const authMsg = viewer?.authMessage as unknown as
-    | Record<string, unknown>
-    | undefined;
+  const authMsg = viewer?.authMessage;
   const fromViewer =
     authMsg && typeof authMsg.agentId === "string" ? authMsg.agentId : null;
   const fromRuntime =
@@ -64,9 +62,7 @@ function resolveCharacterId(
   runtime: IAgentRuntime | null,
   viewer: AppLaunchResult["viewer"] | null,
 ): string | null {
-  const authMsg = viewer?.authMessage as unknown as
-    | Record<string, unknown>
-    | undefined;
+  const authMsg = viewer?.authMessage;
   const fromViewer =
     authMsg && typeof authMsg.characterId === "string"
       ? authMsg.characterId

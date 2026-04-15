@@ -1,44 +1,20 @@
-import type { UUID } from "@elizaos/core";
+import type {
+  TriggerConfig,
+  TriggerLastStatus,
+  TriggerRunRecord,
+  TriggerType,
+  TriggerWakeMode,
+  UUID,
+} from "@elizaos/core";
 
-export const TRIGGER_SCHEMA_VERSION = 1 as const;
-
-export type TriggerType = "interval" | "once" | "cron";
-export type TriggerWakeMode = "inject_now" | "next_autonomy_cycle";
-export type TriggerLastStatus = "success" | "error" | "skipped";
-
-export interface TriggerConfig {
-  version: typeof TRIGGER_SCHEMA_VERSION;
-  triggerId: UUID;
-  displayName: string;
-  instructions: string;
-  triggerType: TriggerType;
-  enabled: boolean;
-  wakeMode: TriggerWakeMode;
-  createdBy: string;
-  timezone?: string;
-  intervalMs?: number;
-  scheduledAtIso?: string;
-  cronExpression?: string;
-  maxRuns?: number;
-  runCount: number;
-  dedupeKey?: string;
-  nextRunAtMs?: number;
-  lastRunAtIso?: string;
-  lastStatus?: TriggerLastStatus;
-  lastError?: string;
-}
-
-export interface TriggerRunRecord {
-  triggerRunId: UUID;
-  triggerId: UUID;
-  taskId: UUID;
-  startedAt: number;
-  finishedAt: number;
-  status: TriggerLastStatus;
-  error?: string;
-  latencyMs: number;
-  source: "scheduler" | "manual";
-}
+export {
+  TRIGGER_SCHEMA_VERSION,
+  type TriggerConfig,
+  type TriggerLastStatus,
+  type TriggerRunRecord,
+  type TriggerType,
+  type TriggerWakeMode,
+} from "@elizaos/core";
 
 export interface TriggerTaskMetadata {
   updatedAt?: number;

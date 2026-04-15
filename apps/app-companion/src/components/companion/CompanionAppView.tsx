@@ -1,9 +1,11 @@
 import { PtyConsoleSidePanel } from "@elizaos/app-task-coordinator";
-import type { OverlayAppContext } from "@elizaos/app-core/components/apps/overlay-app-api";
-import { ChatModalView } from "@elizaos/app-core/components/pages/ChatModalView";
-import { useRenderGuard } from "@elizaos/app-core/hooks/useRenderGuard";
-import { usePtySessions } from "@elizaos/app-core/state/PtySessionsContext";
-import { useApp } from "@elizaos/app-core/state/useApp";
+import {
+  ChatModalView,
+  useApp,
+  usePtySessions,
+  useRenderGuard,
+  type OverlayAppContext,
+} from "@elizaos/app-core";
 import {
   lazy,
   memo,

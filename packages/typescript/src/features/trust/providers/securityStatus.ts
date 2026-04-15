@@ -5,8 +5,8 @@ import type {
 	Provider,
 	State,
 } from "../../../types/index.ts";
-import type { SecurityModuleServiceWrapper } from "../index.ts";
 import { resolveAdminContext } from "../services/adminContext.ts";
+import type { SecurityModuleServiceWrapper } from "../services/wrappers.ts";
 
 async function isAdminRequester(
 	runtime: IAgentRuntime,

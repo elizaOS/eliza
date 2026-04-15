@@ -2535,15 +2535,12 @@ export function resolvePluginConfigMutationRejections(
   return rejections;
 }
 
-interface WalletExportRequestBody {
-  confirm?: boolean;
-  exportToken?: string;
-}
+import type {
+  WalletExportRejection,
+  WalletExportRequestBody,
+} from "@elizaos/shared/contracts";
 
-export interface WalletExportRejection {
-  status: 401 | 403;
-  reason: string;
-}
+export type { WalletExportRejection };
 
 export function resolveWalletExportRejection(
   req: http.IncomingMessage,
@@ -3983,9 +3980,7 @@ async function handleCodingAgentsFallback(
  */
 function getPtyConsoleBridge(st: ServerState) {
   if (!st.runtime) return null;
-  const ptyService = st.runtime.getService(
-    "PTY_SERVICE",
-  ) as unknown as PTYService | null;
+  const ptyService = st.runtime.getService("PTY_SERVICE") as PTYService | null;
   return ptyService?.consoleBridge ?? null;
 }
 
@@ -6770,9 +6765,7 @@ export async function startApiServer(opts?: {
 
         state.conversations.set(convId, {
           id: convId,
-          title:
-            ((room as unknown as Record<string, unknown>).name as string) ||
-            "Chat",
+          title: room.name || "Chat",
           roomId: room.id as UUID,
           createdAt: updatedAt,
           updatedAt,

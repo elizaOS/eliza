@@ -5,13 +5,14 @@
  * the `mouthOpen` prop. Sized to fill its parent container.
  */
 
-import type { ChatAvatarVoiceEventDetail } from "@elizaos/app-core/events";
-import { CHAT_AVATAR_VOICE_EVENT } from "@elizaos/app-core/events";
-import type {
-  CompanionHalfFramerateMode,
-  CompanionVrmPowerMode,
-} from "@elizaos/app-core/state/types";
-import { getVrmCount, getVrmUrl } from "@elizaos/app-core/state/vrm";
+import {
+  CHAT_AVATAR_VOICE_EVENT,
+  getVrmCount,
+  getVrmUrl,
+  type ChatAvatarVoiceEventDetail,
+  type CompanionHalfFramerateMode,
+  type CompanionVrmPowerMode,
+} from "@elizaos/app-core";
 import { useEffect, useEffectEvent, useRef } from "react";
 import {
   type CameraProfile,

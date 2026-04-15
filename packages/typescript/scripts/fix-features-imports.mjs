@@ -6,9 +6,9 @@
  * - ../features/x → ../x (strip redundant features/ segment)
  */
 import { readFileSync, writeFileSync } from "node:fs";
-import { globSync } from "glob";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { globSync } from "glob";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const srcRoot = join(__dirname, "..", "src");
@@ -41,7 +41,7 @@ function fixRelativePath(rel) {
 
 	const m = /^((?:\.\.\/)+)(.*)$/.exec(rel);
 	if (!m) return rel;
-	let chain = m[1];
+	const chain = m[1];
 	let rest = m[2];
 
 	// ../features/foo → ../foo

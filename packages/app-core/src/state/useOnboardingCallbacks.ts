@@ -424,7 +424,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
             smallModel: onboardingSmallModel,
             largeModel: onboardingLargeModel,
             ...onboardingFeaturePayload,
-          } as unknown as Parameters<typeof client.submitOnboarding>[0]);
+          });
           try {
             await persistOnboardingStyleVoice({
               style,
@@ -498,8 +498,10 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
         if (isSandboxMode) {
           const cloudApiBase =
             getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
-          const authToken = ((window as unknown as Record<string, unknown>)
-            .__ELIZA_CLOUD_AUTH_TOKEN__ ?? "") as string;
+          const authToken = String(
+            (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ ??
+              "",
+          );
 
           if (!authToken) {
             throw new Error(

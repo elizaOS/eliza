@@ -39,6 +39,8 @@ export type AgentConfig = {
   groupChat?: GroupChatConfig;
   /** Enable built-in advanced memory providers/evaluators for this agent. */
   advancedMemory?: boolean;
+  /** Enable built-in agent orchestrator (PTY / coding task agents) for this agent. */
+  agentOrchestrator?: boolean;
 
   // ── Personality fields (set during onboarding from style presets) ──────
   /** Agent bio lines. Set during onboarding from the chosen style preset. */

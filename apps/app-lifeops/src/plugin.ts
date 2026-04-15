@@ -8,14 +8,14 @@ import {
   getWebsiteBlockStatusAction,
   requestWebsiteBlockingPermissionAction,
   unblockWebsitesAction,
-} from "./selfcontrol/action.ts";
-import { websiteBlockerProvider } from "./selfcontrol/provider.ts";
+} from "./actions/website-blocker.js";
+import { websiteBlockerProvider } from "./providers/website-blocker.js";
 import {
   type SelfControlPluginConfig,
   getSelfControlStatus,
   setSelfControlPluginConfig,
-} from "./selfcontrol/selfcontrol.ts";
-import { WebsiteBlockerService } from "./selfcontrol/service.ts";
+} from "./website-blocker/engine.js";
+import { WebsiteBlockerService } from "./website-blocker/service.js";
 
 // LifeOps core actions (calendar, gmail, life/tasks, goals, inbox, owner profile)
 import { calendarAction } from "./actions/calendar.js";
@@ -140,6 +140,6 @@ export {
   LIFEOPS_TASK_JITTER_MS,
 } from "./lifeops/runtime.js";
 
-export * from "./selfcontrol/index.ts";
+export * from "./website-blocker/public.ts";
 
 export default appLifeOpsPlugin;

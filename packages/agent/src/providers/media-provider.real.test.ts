@@ -16,7 +16,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import {
   describeIf,
   itIf,
-} from "../../../../test/helpers/conditional-tests.ts";
+} from "../../../app-core/test/helpers/conditional-tests.ts";
 import type { ImageConfig, VisionConfig } from "../config/types.eliza";
 import {
   createImageProvider,

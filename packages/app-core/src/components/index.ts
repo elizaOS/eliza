@@ -18,6 +18,7 @@ export * from "./character/CharacterEditor";
 export * from "./character/character-greeting";
 export * from "./character/CharacterRoster";
 export * from "./chat/AgentActivityBox";
+export * from "./chat/widgets/shared";
 export * from "./chat/MessageContent";
 export * from "./chat/SaveCommandModal";
 export * from "./chat/TasksEventsPanel";

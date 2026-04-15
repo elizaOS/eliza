@@ -3,10 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
-import { elizaOSCloudPlugin } from "@elizaos/plugin-elizacloud";
-import { createTestRuntime } from "../helpers/pglite-runtime.ts";
 import type { SwarmCoordinator } from "@elizaos/plugin-agent-orchestrator";
 import { PTYService } from "@elizaos/plugin-agent-orchestrator";
+import { elizaOSCloudPlugin } from "@elizaos/plugin-elizacloud";
+import { createTestRuntime } from "../helpers/pglite-runtime.ts";
 
 async function waitFor(
 	predicate: () => Promise<boolean>,
@@ -198,22 +198,19 @@ async function main(): Promise<void> {
 	}
 
 	let replacementSessionId = "";
-	await waitFor(
-		async () => {
-			const detail = await coordinator.getTaskThread(thread.id);
-			const replacementSession = detail?.sessions.find(
-				(session) =>
-					session.sessionId !== primarySession.id &&
-					session.framework === FALLBACK_FRAMEWORK,
-			);
-			if (!replacementSession) {
-				return false;
-			}
-			replacementSessionId = replacementSession.sessionId;
-			return true;
-		},
-		`Expected coordinator to spawn ${FALLBACK_FRAMEWORK} after ${PRIMARY_FRAMEWORK} quota exhaustion`,
-	);
+	await waitFor(async () => {
+		const detail = await coordinator.getTaskThread(thread.id);
+		const replacementSession = detail?.sessions.find(
+			(session) =>
+				session.sessionId !== primarySession.id &&
+				session.framework === FALLBACK_FRAMEWORK,
+		);
+		if (!replacementSession) {
+			return false;
+		}
+		replacementSessionId = replacementSession.sessionId;
+		return true;
+	}, `Expected coordinator to spawn ${FALLBACK_FRAMEWORK} after ${PRIMARY_FRAMEWORK} quota exhaustion`);
 
 	sessionsToStop.add(replacementSessionId);
 
@@ -226,43 +223,40 @@ async function main(): Promise<void> {
 		await service.stopSession(primarySession.id, true);
 	}
 
-	await waitFor(
-		async () => {
-			const replacementSession = service?.getSession(replacementSessionId);
-			if (
-				replacementSession &&
-				(replacementSession.status === "error" ||
-					replacementSession.status === "stopped")
-			) {
-				const output = await service!.getSessionOutput(replacementSessionId, 400);
-				throw new Error(
-					`${FALLBACK_FRAMEWORK} replacement session ended early with status ${replacementSession.status}. Recent output: ${output.slice(-400)}`,
-				);
-			}
-			if (!fs.existsSync(outputFile)) {
-				return false;
-			}
-			if (fs.readFileSync(outputFile, "utf8") !== sentinel) {
-				return false;
-			}
-			const detail = await coordinator.getTaskThread(thread.id);
-			return Boolean(
-				detail &&
-					detail.events.some(
-						(event) => event.eventType === "framework_unavailable",
-					) &&
-					detail.events.some(
-						(event) => event.eventType === "framework_failover_started",
-					) &&
-					detail.transcripts.some(
-						(entry) =>
-							entry.sessionId === replacementSessionId &&
-							entry.content.includes(sentinel),
-					),
+	await waitFor(async () => {
+		const replacementSession = service?.getSession(replacementSessionId);
+		if (
+			replacementSession &&
+			(replacementSession.status === "error" ||
+				replacementSession.status === "stopped")
+		) {
+			const output = await service!.getSessionOutput(replacementSessionId, 400);
+			throw new Error(
+				`${FALLBACK_FRAMEWORK} replacement session ended early with status ${replacementSession.status}. Recent output: ${output.slice(-400)}`,
 			);
-		},
-		`Expected ${FALLBACK_FRAMEWORK} replacement session to complete the failover task`,
-	);
+		}
+		if (!fs.existsSync(outputFile)) {
+			return false;
+		}
+		if (fs.readFileSync(outputFile, "utf8") !== sentinel) {
+			return false;
+		}
+		const detail = await coordinator.getTaskThread(thread.id);
+		return Boolean(
+			detail &&
+				detail.events.some(
+					(event) => event.eventType === "framework_unavailable",
+				) &&
+				detail.events.some(
+					(event) => event.eventType === "framework_failover_started",
+				) &&
+				detail.transcripts.some(
+					(entry) =>
+						entry.sessionId === replacementSessionId &&
+						entry.content.includes(sentinel),
+				),
+		);
+	}, `Expected ${FALLBACK_FRAMEWORK} replacement session to complete the failover task`);
 
 	const detail = await coordinator.getTaskThread(thread.id);
 	assert.ok(detail, "Expected task thread detail to exist after failover");

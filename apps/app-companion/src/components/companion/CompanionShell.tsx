@@ -1,6 +1,8 @@
-import { useRenderGuard } from "@elizaos/app-core/hooks/useRenderGuard";
-import type { Tab } from "@elizaos/app-core/navigation";
-import type { ActionNotice } from "@elizaos/app-core/state/action-notice";
+import {
+  useRenderGuard,
+  type ActionNotice,
+  type Tab,
+} from "@elizaos/app-core";
 import { memo } from "react";
 import { CompanionView } from "./CompanionView";
 

@@ -12,22 +12,21 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
+import { afterAll, beforeAll, expect, it } from "vitest";
+import { describeIf } from "../helpers/conditional-tests.ts";
 import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../../../test/helpers/http.ts";
-import { createLiveRuntimeChildEnv } from "../../../../../test/helpers/live-child-env.ts";
+} from "../helpers/http.ts";
+import { createLiveRuntimeChildEnv } from "../helpers/live-child-env.ts";
 import {
   importLocalWorkspacePlugin,
   listLocalWorkspacePlugins,
 } from "./helpers/local-plugin-inventory.ts";
 
 const LIVE =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(
   import.meta.dirname,
   "..",
@@ -50,7 +49,98 @@ const LOCAL_WORKSPACE_PLUGINS = FILTER_SET
         FILTER_SET.has(plugin.dirName),
     )
   : ALL_LOCAL_WORKSPACE_PLUGINS;
-const LOCAL_WORKSPACE_PLUGIN_IDS = LOCAL_WORKSPACE_PLUGINS.map((plugin) => plugin.id);
+const LOCAL_WORKSPACE_PLUGIN_IDS = LOCAL_WORKSPACE_PLUGINS.map(
+  (plugin) => plugin.id,
+);
+const CURRENT_PLATFORM =
+  process.platform === "win32" ? "win32" : process.platform;
+
+function hasBootConfigForAiProvider(pluginId: string): boolean {
+  switch (pluginId) {
+    case "anthropic":
+      return Boolean(process.env.ANTHROPIC_API_KEY);
+    case "google-genai":
+      return Boolean(
+        process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+          process.env.GEMINI_API_KEY ||
+          process.env.GOOGLE_API_KEY,
+      );
+    case "groq":
+      return Boolean(process.env.GROQ_API_KEY);
+    case "ollama":
+      return Boolean(process.env.OLLAMA_HOST || process.env.OLLAMA_BASE_URL);
+    case "openai":
+      return Boolean(process.env.OPENAI_API_KEY);
+    case "openrouter":
+      return Boolean(process.env.OPENROUTER_API_KEY);
+    case "local-ai":
+      return Boolean(
+        process.env.LOCAL_AI_BASE_URL ||
+          process.env.OLLAMA_HOST ||
+          process.env.OLLAMA_BASE_URL,
+      );
+    default:
+      return true;
+  }
+}
+
+function supportsCurrentPlatform(
+  plugin: (typeof LOCAL_WORKSPACE_PLUGINS)[number],
+): boolean {
+  return (
+    plugin.supportedOs.length === 0 ||
+    plugin.supportedOs.includes(CURRENT_PLATFORM)
+  );
+}
+
+function hasRequiredEnv(
+  plugin: (typeof LOCAL_WORKSPACE_PLUGINS)[number],
+): boolean {
+  return plugin.requiredEnvKeys.every((key) => Boolean(process.env[key]));
+}
+
+function canBootConnector(
+  plugin: (typeof LOCAL_WORKSPACE_PLUGINS)[number],
+): boolean {
+  switch (plugin.id) {
+    case "imessage":
+      return CURRENT_PLATFORM === "darwin";
+    case "whatsapp":
+      return Boolean(
+        (process.env.WHATSAPP_AUTH_METHOD === "cloudapi" &&
+          process.env.WHATSAPP_ACCESS_TOKEN &&
+          process.env.WHATSAPP_PHONE_NUMBER_ID) ||
+          (process.env.WHATSAPP_AUTH_METHOD === "baileys" &&
+            process.env.WHATSAPP_AUTH_DIR),
+      );
+    default:
+      return plugin.requiredEnvKeys.length > 0 && hasRequiredEnv(plugin);
+  }
+}
+
+function canBootPlugin(
+  plugin: (typeof LOCAL_WORKSPACE_PLUGINS)[number],
+): boolean {
+  if (!supportsCurrentPlatform(plugin)) {
+    return false;
+  }
+
+  if (plugin.category === "ai-provider") {
+    return hasBootConfigForAiProvider(plugin.id);
+  }
+
+  if (plugin.category === "connector") {
+    return canBootConnector(plugin);
+  }
+
+  return plugin.requiredEnvKeys.length === 0 || hasRequiredEnv(plugin);
+}
+
+const BOOT_LOCAL_WORKSPACE_PLUGINS =
+  LOCAL_WORKSPACE_PLUGINS.filter(canBootPlugin);
+const BOOT_LOCAL_WORKSPACE_PLUGIN_IDS = BOOT_LOCAL_WORKSPACE_PLUGINS.map(
+  (plugin) => plugin.id,
+);
 
 if (FILTER_SET && LOCAL_WORKSPACE_PLUGINS.length === 0) {
   throw new Error(
@@ -61,7 +151,9 @@ if (FILTER_SET && LOCAL_WORKSPACE_PLUGINS.length === 0) {
 try {
   const { config } = await import("dotenv");
   config({ path: path.join(REPO_ROOT, ".env") });
-} catch { /* dotenv optional */ }
+} catch {
+  /* dotenv optional */
+}
 
 const HAS_LIVE_MODEL_PROVIDER = Boolean(
   process.env.OPENAI_API_KEY ||
@@ -92,15 +184,21 @@ async function getFreePort(): Promise<number> {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       const addr = server.address();
-      if (!addr || typeof addr === "string") { server.close(); reject(new Error("no port")); return; }
+      if (!addr || typeof addr === "string") {
+        server.close();
+        reject(new Error("no port"));
+        return;
+      }
       server.close((e) => (e ? reject(e) : resolve(addr.port)));
     });
   });
 }
 
-type Runtime = { port: number; close: () => Promise<void>; logs: () => string };
+import type { RuntimeHarness as Runtime } from "./helpers/runtime-harness";
 
-async function startRuntimeWithPlugins(allowPlugins: string[]): Promise<Runtime> {
+async function startRuntimeWithPlugins(
+  allowPlugins: string[],
+): Promise<Runtime> {
   const tmp = await mkdtemp(path.join(os.tmpdir(), "eliza-plugin-lifecycle-"));
   const stateDir = path.join(tmp, "state");
   const configPath = path.join(tmp, "eliza.json");
@@ -109,10 +207,14 @@ async function startRuntimeWithPlugins(allowPlugins: string[]): Promise<Runtime>
 
   await mkdir(stateDir, { recursive: true });
   await mkdir(path.join(stateDir, "cache"), { recursive: true });
-  await writeFile(configPath, JSON.stringify({
-    logging: { level: "info" },
-    plugins: { allow: allowPlugins },
-  }), "utf8");
+  await writeFile(
+    configPath,
+    JSON.stringify({
+      logging: { level: "info" },
+      plugins: { allow: allowPlugins },
+    }),
+    "utf8",
+  );
 
   const child = spawn("bun", ["run", "start:eliza"], {
     cwd: REPO_ROOT,
@@ -148,7 +250,9 @@ async function startRuntimeWithPlugins(allowPlugins: string[]): Promise<Runtime>
           break;
         }
       }
-    } catch { /* not ready */ }
+    } catch {
+      /* not ready */
+    }
     await sleep(1_000);
   }
 
@@ -172,7 +276,10 @@ async function startRuntimeWithPlugins(allowPlugins: string[]): Promise<Runtime>
     close: async () => {
       if (child.exitCode == null) {
         child.kill("SIGTERM");
-        await new Promise<void>((r) => { child.once("exit", () => r()); setTimeout(() => r(), 10_000); });
+        await new Promise<void>((r) => {
+          child.once("exit", () => r());
+          setTimeout(() => r(), 10_000);
+        });
         if (child.exitCode == null) child.kill("SIGKILL");
       }
       await rm(tmp, { recursive: true, force: true });
@@ -245,254 +352,273 @@ async function postChatPromptWithRetries(
   );
 }
 
-describeIf(LIVE)("Live: plugin lifecycle — local workspace matrix", () => {
-  let rt: Runtime;
-  let localPluginImportFailures: string[] = [];
-  let localPluginRouteKeys = new Map<string, string>();
-
-  beforeAll(async () => {
-    localPluginImportFailures = [];
-    localPluginRouteKeys = new Map<string, string>();
-    for (const plugin of LOCAL_WORKSPACE_PLUGINS) {
-      try {
-        const loaded = await importLocalWorkspacePlugin(plugin);
-        if (!loaded.extractedPlugin) {
-          localPluginImportFailures.push(
-            `${plugin.id}: no plugin export from ${plugin.entryPath}`,
-          );
-          continue;
-        }
-        localPluginRouteKeys.set(plugin.id, loaded.extractedPlugin.name);
-      } catch (error) {
-        localPluginImportFailures.push(
-          `${plugin.id}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-    }
-    rt = await startRuntimeWithPlugins(LOCAL_WORKSPACE_PLUGIN_IDS);
-  }, 240_000);
-
-  afterAll(async () => {
-    if (rt) await rt.close();
-  });
-
-  it("imports every local workspace plugin through its real package entry", async () => {
-    expect(localPluginImportFailures).toEqual([]);
-  }, 120_000);
-
-  it("surfaces every local workspace plugin in /api/plugins", async () => {
-    const pluginsRes = await req(rt.port, "GET", "/api/plugins");
-    expect(pluginsRes.status).toBe(200);
-
-    const plugins = pluginsRes.data.plugins as Array<Record<string, unknown>>;
-    const visibleIds = new Set(
-      getLocalPluginRows(plugins)
-        .map((plugin) => plugin.id)
-        .filter((value): value is string => typeof value === "string"),
-    );
-    const missing = LOCAL_WORKSPACE_PLUGIN_IDS.filter((id) => !visibleIds.has(id));
-
-    expect(missing).toEqual([]);
-  });
-
-  it("activates every requested local workspace plugin in the real runtime", async () => {
-    const pluginsRes = await req(rt.port, "GET", "/api/plugins");
-    expect(pluginsRes.status).toBe(200);
-
-    const rows = getLocalPluginRows(
-      pluginsRes.data.plugins as Array<Record<string, unknown>>,
-    );
-    const rowById = new Map(
-      rows
-        .map((plugin) =>
-          typeof plugin.id === "string" ? [plugin.id, plugin] : null,
-        )
-        .filter((entry): entry is [string, Record<string, unknown>] => entry !== null),
-    );
-    const unresolved: Array<Record<string, unknown>> = [];
-
-    for (const plugin of LOCAL_WORKSPACE_PLUGINS) {
-      const row = rowById.get(plugin.id);
-      if (!row) {
-        unresolved.push({ id: plugin.id, reason: "missing from /api/plugins" });
-        continue;
-      }
-      if (row.isActive === true || isConfigGatedPluginRow(row)) {
-        continue;
-      }
-
-      const routeKey = localPluginRouteKeys.get(plugin.id) ?? plugin.id;
-      const testRes = await req(
-        rt.port,
-        "POST",
-        `/api/plugins/${encodeURIComponent(routeKey)}/test`,
-      );
-      if (testRes.status === 200 && testRes.data.success === true) {
-        continue;
-      }
-
-      unresolved.push({
-        id: plugin.id,
-        routeKey,
-        enabled: row.enabled,
-        configured: row.configured,
-        loadError: row.loadError,
-        validationErrors: row.validationErrors,
-        testStatus: testRes.status,
-        testBody: testRes.data,
-      });
-    }
-
-    expect(unresolved).toEqual([]);
-  });
-
-  it("plugin test endpoint succeeds for every loadable local workspace plugin", async () => {
-    const failures: string[] = [];
-
-    const pluginsRes = await req(rt.port, "GET", "/api/plugins");
-    expect(pluginsRes.status).toBe(200);
-    const rows = getLocalPluginRows(
-      pluginsRes.data.plugins as Array<Record<string, unknown>>,
-    );
-    const rowById = new Map(
-      rows
-        .map((plugin) =>
-          typeof plugin.id === "string" ? [plugin.id, plugin] : null,
-        )
-        .filter((entry): entry is [string, Record<string, unknown>] => entry !== null),
-    );
-
-    for (const plugin of LOCAL_WORKSPACE_PLUGINS) {
-      const row = rowById.get(plugin.id);
-      if (!row || isConfigGatedPluginRow(row)) {
-        continue;
-      }
-
-      const routeKey = localPluginRouteKeys.get(plugin.id) ?? plugin.id;
-      const result = await req(
-        rt.port,
-        "POST",
-        `/api/plugins/${encodeURIComponent(routeKey)}/test`,
-      );
-      const ok = result.status === 200 && result.data.success === true;
-      if (!ok) {
-        failures.push(
-          `${plugin.id} via ${routeKey}: status=${result.status}, body=${JSON.stringify(result.data)}`,
-        );
-      }
-    }
-
-    expect(failures).toEqual([]);
-  }, 120_000);
-
-  it("database is accessible under aggregate plugin load", async () => {
-    const conversation = await createConversation(rt.port, {
-      title: "plugin lifecycle aggregate db check",
-    });
-    expect(conversation.status).toBe(200);
-    expect(conversation.conversationId.length).toBeGreaterThan(0);
-  });
-
-}, 360_000);
-
-describeIf(
-  LIVE &&
-    HAS_LIVE_MODEL_PROVIDER &&
-    Boolean(LIVE_PROVIDER_PLUGIN_ID) &&
-    (!FILTER_SET || FILTER_SET.has(LIVE_PROVIDER_PLUGIN_ID as string)),
-)(
-  "Live: plugin lifecycle — focused provider roundtrip",
+describeIf(LIVE)(
+  "Live: plugin lifecycle — local workspace matrix",
   () => {
     let rt: Runtime;
+    let localPluginImportFailures: string[] = [];
+    let localPluginRouteKeys = new Map<string, string>();
 
     beforeAll(async () => {
-      rt = await startRuntimeWithPlugins([LIVE_PROVIDER_PLUGIN_ID as string]);
+      localPluginImportFailures = [];
+      localPluginRouteKeys = new Map<string, string>();
+      for (const plugin of LOCAL_WORKSPACE_PLUGINS) {
+        try {
+          const loaded = await importLocalWorkspacePlugin(plugin);
+          if (!loaded.extractedPlugin) {
+            localPluginImportFailures.push(
+              `${plugin.id}: no plugin export from ${plugin.entryPath}`,
+            );
+            continue;
+          }
+          localPluginRouteKeys.set(plugin.id, loaded.extractedPlugin.name);
+        } catch (error) {
+          localPluginImportFailures.push(
+            `${plugin.id}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+      rt = await startRuntimeWithPlugins(BOOT_LOCAL_WORKSPACE_PLUGIN_IDS);
     }, 240_000);
 
     afterAll(async () => {
       if (rt) await rt.close();
     });
 
-    it("agent chat uses a live model provider through the HTTP API", async () => {
-      const response = await postChatPromptWithRetries(
-        rt.port,
-        "Reply with a short sentence about plugin lifecycle verification.",
+    it("imports every local workspace plugin through its real package entry", async () => {
+      expect(localPluginImportFailures).toEqual([]);
+    }, 120_000);
+
+    it("surfaces every local workspace plugin in /api/plugins", async () => {
+      const pluginsRes = await req(rt.port, "GET", "/api/plugins");
+      expect(pluginsRes.status).toBe(200);
+
+      const plugins = pluginsRes.data.plugins as Array<Record<string, unknown>>;
+      const visibleIds = new Set(
+        getLocalPluginRows(plugins)
+          .map((plugin) => plugin.id)
+          .filter((value): value is string => typeof value === "string"),
       );
-      expect(response.status).toBe(200);
-      expect(typeof response.data.text).toBe("string");
-      expect((response.data.text as string).trim().length).toBeGreaterThan(0);
-      expect((response.data.text as string)).not.toMatch(/provider issue/i);
-    }, 150_000);
+      const missing = BOOT_LOCAL_WORKSPACE_PLUGIN_IDS.filter(
+        (id) => !visibleIds.has(id),
+      );
+
+      expect(missing).toEqual([]);
+    });
+
+    it("activates every requested local workspace plugin in the real runtime", async () => {
+      const pluginsRes = await req(rt.port, "GET", "/api/plugins");
+      expect(pluginsRes.status).toBe(200);
+
+      const rows = getLocalPluginRows(
+        pluginsRes.data.plugins as Array<Record<string, unknown>>,
+      );
+      const rowById = new Map(
+        rows
+          .map((plugin) =>
+            typeof plugin.id === "string" ? [plugin.id, plugin] : null,
+          )
+          .filter(
+            (entry): entry is [string, Record<string, unknown>] =>
+              entry !== null,
+          ),
+      );
+      const unresolved: Array<Record<string, unknown>> = [];
+
+      for (const plugin of BOOT_LOCAL_WORKSPACE_PLUGINS) {
+        const row = rowById.get(plugin.id);
+        if (!row) {
+          unresolved.push({
+            id: plugin.id,
+            reason: "missing from /api/plugins",
+          });
+          continue;
+        }
+        if (row.isActive === true || isConfigGatedPluginRow(row)) {
+          continue;
+        }
+
+        const routeKey = localPluginRouteKeys.get(plugin.id) ?? plugin.id;
+        const testRes = await req(
+          rt.port,
+          "POST",
+          `/api/plugins/${encodeURIComponent(routeKey)}/test`,
+        );
+        if (testRes.status === 200 && testRes.data.success === true) {
+          continue;
+        }
+
+        unresolved.push({
+          id: plugin.id,
+          routeKey,
+          enabled: row.enabled,
+          configured: row.configured,
+          loadError: row.loadError,
+          validationErrors: row.validationErrors,
+          testStatus: testRes.status,
+          testBody: testRes.data,
+        });
+      }
+
+      expect(unresolved).toEqual([]);
+    });
+
+    it("plugin test endpoint succeeds for every loadable local workspace plugin", async () => {
+      const failures: string[] = [];
+
+      const pluginsRes = await req(rt.port, "GET", "/api/plugins");
+      expect(pluginsRes.status).toBe(200);
+      const rows = getLocalPluginRows(
+        pluginsRes.data.plugins as Array<Record<string, unknown>>,
+      );
+      const rowById = new Map(
+        rows
+          .map((plugin) =>
+            typeof plugin.id === "string" ? [plugin.id, plugin] : null,
+          )
+          .filter(
+            (entry): entry is [string, Record<string, unknown>] =>
+              entry !== null,
+          ),
+      );
+
+      for (const plugin of BOOT_LOCAL_WORKSPACE_PLUGINS) {
+        const row = rowById.get(plugin.id);
+        if (!row || isConfigGatedPluginRow(row)) {
+          continue;
+        }
+
+        const routeKey = localPluginRouteKeys.get(plugin.id) ?? plugin.id;
+        const result = await req(
+          rt.port,
+          "POST",
+          `/api/plugins/${encodeURIComponent(routeKey)}/test`,
+        );
+        const ok = result.status === 200 && result.data.success === true;
+        if (!ok) {
+          failures.push(
+            `${plugin.id} via ${routeKey}: status=${result.status}, body=${JSON.stringify(result.data)}`,
+          );
+        }
+      }
+
+      expect(failures).toEqual([]);
+    }, 120_000);
+
+    it("database is accessible under aggregate plugin load", async () => {
+      const conversation = await createConversation(rt.port, {
+        title: "plugin lifecycle aggregate db check",
+      });
+      expect(conversation.status).toBe(200);
+      expect(conversation.conversationId.length).toBeGreaterThan(0);
+    });
   },
+  360_000,
 );
+
+describeIf(
+  LIVE &&
+    HAS_LIVE_MODEL_PROVIDER &&
+    Boolean(LIVE_PROVIDER_PLUGIN_ID) &&
+    (!FILTER_SET || FILTER_SET.has(LIVE_PROVIDER_PLUGIN_ID as string)),
+)("Live: plugin lifecycle — focused provider roundtrip", () => {
+  let rt: Runtime;
+
+  beforeAll(async () => {
+    rt = await startRuntimeWithPlugins([LIVE_PROVIDER_PLUGIN_ID as string]);
+  }, 240_000);
+
+  afterAll(async () => {
+    if (rt) await rt.close();
+  });
+
+  it("agent chat uses a live model provider through the HTTP API", async () => {
+    const response = await postChatPromptWithRetries(
+      rt.port,
+      "Reply with a short sentence about plugin lifecycle verification.",
+    );
+    expect(response.status).toBe(200);
+    expect(typeof response.data.text).toBe("string");
+    expect((response.data.text as string).trim().length).toBeGreaterThan(0);
+    expect(response.data.text as string).not.toMatch(/provider issue/i);
+  }, 150_000);
+});
 
 describeIf(LIVE && (!FILTER_SET || FILTER_SET.has("selfcontrol")))(
   "Live: plugin lifecycle — selfcontrol",
   () => {
-  let rt: Runtime;
+    let rt: Runtime;
 
-  beforeAll(async () => {
-    rt = await startRuntimeWithPlugins(["selfcontrol"]);
-  }, 180_000);
+    beforeAll(async () => {
+      rt = await startRuntimeWithPlugins(["selfcontrol"]);
+    }, 180_000);
 
-  afterAll(async () => { if (rt) await rt.close(); });
+    afterAll(async () => {
+      if (rt) await rt.close();
+    });
 
-  it("selfcontrol plugin is loaded and registers its API routes", async () => {
-    const pluginsRes = await req(rt.port, "GET", "/api/plugins");
-    expect(pluginsRes.status).toBe(200);
+    it("selfcontrol plugin is loaded and registers its API routes", async () => {
+      const pluginsRes = await req(rt.port, "GET", "/api/plugins");
+      expect(pluginsRes.status).toBe(200);
 
-    // The website blocker endpoint should exist
-    const blockerRes = await req(rt.port, "GET", "/api/website-blocker");
-    expect(blockerRes.status).toBe(200);
-    expect(blockerRes.data).toHaveProperty("active");
-  });
+      // The website blocker endpoint should exist
+      const blockerRes = await req(rt.port, "GET", "/api/website-blocker");
+      expect(blockerRes.status).toBe(200);
+      expect(blockerRes.data).toHaveProperty("active");
+    });
 
-  it("website blocker status reflects a coherent live state", async () => {
-    const res = await req(rt.port, "GET", "/api/website-blocker");
-    expect(res.status).toBe(200);
-    expect(res.data).toEqual(
-      expect.objectContaining({
-        active: expect.any(Boolean),
-        websites: expect.any(Array),
-      }),
-    );
+    it("website blocker status reflects a coherent live state", async () => {
+      const res = await req(rt.port, "GET", "/api/website-blocker");
+      expect(res.status).toBe(200);
+      expect(res.data).toEqual(
+        expect.objectContaining({
+          active: expect.any(Boolean),
+          websites: expect.any(Array),
+        }),
+      );
 
-    if (res.data.active === true) {
-      expect(res.data.websites.length).toBeGreaterThan(0);
-    } else {
-      expect(res.data.websites).toEqual([]);
-    }
-  });
+      if (res.data.active === true) {
+        expect(res.data.websites.length).toBeGreaterThan(0);
+      } else {
+        expect(res.data.websites).toEqual([]);
+      }
+    });
 
-  it("permissions endpoint responds", async () => {
-    const res = await req(rt.port, "GET", "/api/permissions");
-    expect([200, 404]).toContain(res.status);
-  });
+    it("permissions endpoint responds", async () => {
+      const res = await req(rt.port, "GET", "/api/permissions");
+      expect([200, 404]).toContain(res.status);
+    });
   },
   300_000,
 );
 
-describeIf(LIVE && !FILTER_SET)("Live: plugin lifecycle — minimal boot", () => {
-  let rt: Runtime;
+describeIf(LIVE && !FILTER_SET)(
+  "Live: plugin lifecycle — minimal boot",
+  () => {
+    let rt: Runtime;
 
-  beforeAll(async () => {
-    rt = await startRuntimeWithPlugins([]);
-  }, 180_000);
+    beforeAll(async () => {
+      rt = await startRuntimeWithPlugins([]);
+    }, 180_000);
 
-  afterAll(async () => { if (rt) await rt.close(); });
-
-  it("runtime boots successfully with no optional plugins", async () => {
-    const res = await req(rt.port, "GET", "/api/health");
-    expect(res.status).toBe(200);
-    expect(res.data).toMatchObject({ ready: true, runtime: "ok" });
-  });
-
-  it("database is accessible through the API", async () => {
-    // Creating a conversation exercises the real database layer
-    const res = await req(rt.port, "POST", "/api/conversations", {
-      title: "plugin lifecycle test",
+    afterAll(async () => {
+      if (rt) await rt.close();
     });
-    expect(res.status).toBe(200);
-    expect(res.data).toHaveProperty("conversation");
-  });
-}, 300_000);
+
+    it("runtime boots successfully with no optional plugins", async () => {
+      const res = await req(rt.port, "GET", "/api/health");
+      expect(res.status).toBe(200);
+      expect(res.data).toMatchObject({ ready: true, runtime: "ok" });
+    });
+
+    it("database is accessible through the API", async () => {
+      // Creating a conversation exercises the real database layer
+      const res = await req(rt.port, "POST", "/api/conversations", {
+        title: "plugin lifecycle test",
+      });
+      expect(res.status).toBe(200);
+      expect(res.data).toHaveProperty("conversation");
+    });
+  },
+  300_000,
+);

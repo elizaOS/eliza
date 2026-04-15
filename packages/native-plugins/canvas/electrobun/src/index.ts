@@ -7,7 +7,7 @@
  */
 
 import type { PluginListenerHandle } from "@capacitor/core";
-import type { EventCallback } from "../../../shared-types.js";
+import type { EventCallback, ListenerEntry as BaseListenerEntry } from "../../../shared-types.js";
 import type {
   CanvasColor,
   CanvasDrawBatchCommand,
@@ -30,10 +30,7 @@ import type {
 
 type CanvasEvent = CanvasTouchEvent | CanvasRenderEvent;
 
-interface ListenerEntry {
-  eventName: string;
-  callback: EventCallback<CanvasEvent>;
-}
+type ListenerEntry = BaseListenerEntry<string, CanvasEvent>;
 
 interface CanvasInstance {
   element: HTMLCanvasElement;

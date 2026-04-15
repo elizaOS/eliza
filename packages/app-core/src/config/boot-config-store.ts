@@ -9,9 +9,9 @@
  * module without loading `react` runtime (avoids Bun parsing @types/react).
  */
 import type { ComponentType } from "react";
+import type { WebsiteBlockerSettingsCardProps } from "@elizaos/app-lifeops/types";
 import type { Tab } from "../navigation";
 import type { ActionNotice } from "../state/action-notice";
-import type { WebsiteBlockerSettingsCardProps } from "../types";
 import type { BrandingConfig } from "./branding";
 
 // ---------------------------------------------------------------------------
@@ -131,14 +131,17 @@ interface BootConfigStore {
   current: AppBootConfig;
 }
 
+type GlobalConfigSlot = Record<PropertyKey, unknown> & {
+  [K in typeof BOOT_CONFIG_WINDOW_KEY]?: AppBootConfig;
+};
+
+/** Resolve the global object (browser or Node) with symbol-key access. */
+function getGlobalSlot(): GlobalConfigSlot {
+  return globalThis as GlobalConfigSlot;
+}
+
 function getBootConfigStore(): BootConfigStore {
-  const globalObject = (
-    typeof window !== "undefined"
-      ? (window as unknown as Record<PropertyKey, unknown>)
-      : (globalThis as Record<PropertyKey, unknown>)
-  ) as Record<PropertyKey, unknown> & {
-    [BOOT_CONFIG_WINDOW_KEY]?: AppBootConfig;
-  };
+  const globalObject = getGlobalSlot();
   const mirroredWindowConfig = globalObject[BOOT_CONFIG_WINDOW_KEY];
   if (mirroredWindowConfig) {
     const mirroredStore: BootConfigStore = { current: mirroredWindowConfig };
@@ -164,14 +167,7 @@ function getBootConfigStore(): BootConfigStore {
 export function setBootConfig(config: AppBootConfig): void {
   const store = getBootConfigStore();
   store.current = config;
-  const globalObject = (
-    typeof window !== "undefined"
-      ? (window as unknown as Record<PropertyKey, unknown>)
-      : (globalThis as Record<PropertyKey, unknown>)
-  ) as Record<PropertyKey, unknown> & {
-    [BOOT_CONFIG_WINDOW_KEY]?: AppBootConfig;
-  };
-  globalObject[BOOT_CONFIG_WINDOW_KEY] = config;
+  getGlobalSlot()[BOOT_CONFIG_WINDOW_KEY] = config;
 }
 
 /** Read the boot config from non-React code. */

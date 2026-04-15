@@ -1,12 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import type { Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   type AppLaunchDiagnostic,
   type AppLaunchPreparation,
-  type AppLaunchResult,
+  type AppLaunchSessionContext,
+  type AppRunSessionContext,
   type AppSessionState,
   type AppViewerAuthMessage,
   hasAppInterface,
@@ -14,12 +15,10 @@ import {
 } from "../contracts/apps.js";
 import { getPluginInfo } from "./registry-client.js";
 
-export interface AppLaunchSessionContext {
-  appName: string;
-  launchUrl: string | null;
-  runtime: IAgentRuntime | null;
-  viewer: AppLaunchResult["viewer"] | null;
-}
+export type {
+  AppLaunchSessionContext,
+  AppRunSessionContext,
+} from "../contracts/apps.js";
 
 export type AppLaunchPreparationResolver = (
   ctx: AppLaunchSessionContext,
@@ -32,11 +31,6 @@ export type AppViewerAuthMessageResolver = (
 export type AppLaunchSessionResolver = (
   ctx: AppLaunchSessionContext,
 ) => Promise<AppSessionState | null>;
-
-export interface AppRunSessionContext extends AppLaunchSessionContext {
-  runId?: string;
-  session: AppSessionState | null;
-}
 
 export type AppRunSessionRefresher = (
   ctx: AppRunSessionContext,

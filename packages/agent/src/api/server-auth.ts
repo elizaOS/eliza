@@ -178,15 +178,12 @@ export function resolvePluginConfigMutationRejections(
 // Wallet export rejection
 // ---------------------------------------------------------------------------
 
-interface WalletExportRequestBody {
-  confirm?: boolean;
-  exportToken?: string;
-}
+import type {
+  WalletExportRejection,
+  WalletExportRequestBody,
+} from "@elizaos/shared/contracts";
 
-export interface WalletExportRejection {
-  status: 401 | 403;
-  reason: string;
-}
+export type { WalletExportRejection };
 
 export function resolveWalletExportRejection(
   req: http.IncomingMessage,

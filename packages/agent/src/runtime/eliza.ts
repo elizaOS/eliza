@@ -837,6 +837,27 @@ type TrajectoryLoggerRegistrationStatus =
   | "failed"
   | "unknown";
 
+/** Subset of AutonomyService used to enable the autonomy loop. */
+interface AutonomyServiceLike {
+  enableAutonomy(): Promise<void>;
+}
+
+/**
+ * Retrieve the AutonomyService from the runtime, returning null if unavailable.
+ * Uses a runtime property check to safely narrow the opaque Service return.
+ */
+function getAutonomyService(runtime: AgentRuntime): AutonomyServiceLike | null {
+  const svc = runtime.getService("AUTONOMY") ?? runtime.getService("autonomy");
+  if (
+    svc &&
+    "enableAutonomy" in svc &&
+    typeof svc.enableAutonomy === "function"
+  ) {
+    return svc as AutonomyServiceLike;
+  }
+  return null;
+}
+
 type TrajectoryLoggerRuntimeLike = {
   getServicesByType?: (serviceType: string) => unknown;
   getService?: (serviceType: string) => unknown;
@@ -855,7 +876,7 @@ async function waitForTrajectoriesService(
     return;
   }
 
-  const runtimeLike = runtime as unknown as TrajectoryLoggerRuntimeLike;
+  const runtimeLike = runtime as TrajectoryLoggerRuntimeLike;
 
   // Check if already available
   if (typeof runtimeLike.getService === "function") {
@@ -1827,7 +1848,10 @@ async function callAdapterInit(
   adapter: AgentRuntime["adapter"],
 ): Promise<void> {
   const fn =
-    (adapter as unknown as Record<string, unknown>).init ?? adapter.initialize;
+    "init" in adapter &&
+    typeof (adapter as Record<string, unknown>).init === "function"
+      ? ((adapter as Record<string, unknown>).init as () => Promise<void>)
+      : adapter.initialize;
   if (typeof fn === "function") await fn.call(adapter);
 }
 
@@ -2750,15 +2774,12 @@ export const logToChatListener = (entry: LogEntry) => {
 
       // Prevent infinite loops by suppressing logs from this action
       runtime
-        .sendMessageToTarget(
-          { roomId: entry.roomId } as unknown as TargetInfo,
-          {
-            text: `\`\`\`\n${content}\n\`\`\``,
-            source: "system",
+        .sendMessageToTarget({ roomId: entry.roomId as UUID } as TargetInfo, {
+          text: `\`\`\`\n${content}\n\`\`\``,
+          source: "system",
 
-            isLog: "true",
-          },
-        )
+          isLog: "true",
+        })
         .catch((err) => {
           logger.debug(
             `[runtime] failed to send log message to target: ${err}`,
@@ -3642,12 +3663,8 @@ export async function startEliza(
     // actually processed. Without this, memories created by
     // dispatchInstruction() sit in the DB and are never acted on.
     if (autonomyEnabled) {
-      const autonomySvc = (runtime.getService("AUTONOMY") ??
-        runtime.getService("autonomy")) as unknown as
-        | { enableAutonomy(): Promise<void> }
-        | null
-        | undefined;
-      if (autonomySvc && typeof autonomySvc.enableAutonomy === "function") {
+      const autonomySvc = getAutonomyService(runtime);
+      if (autonomySvc) {
         try {
           await autonomySvc.enableAutonomy();
           logger.info(
@@ -3964,12 +3981,8 @@ export async function startEliza(
 
           // Enable the autonomy loop after hot-reload (same as initial boot)
           if (hotReloadAutonomyEnabled) {
-            const svc = (newRuntime.getService("AUTONOMY") ??
-              newRuntime.getService("autonomy")) as unknown as
-              | { enableAutonomy(): Promise<void> }
-              | null
-              | undefined;
-            if (svc && typeof svc.enableAutonomy === "function") {
+            const svc = getAutonomyService(newRuntime);
+            if (svc) {
               try {
                 await svc.enableAutonomy();
               } catch (err) {

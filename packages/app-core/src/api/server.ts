@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import { handleCloudBillingRoute } from "@elizaos/agent/api/cloud-billing-routes";
 import { handleCloudCompatRoute } from "@elizaos/agent/api/cloud-compat-routes";
+import { clearPersistedOnboardingConfig } from "@elizaos/agent/api/provider-switch-config";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
 import {
@@ -29,6 +30,14 @@ import {
   startApiServer as upstreamStartApiServer,
   validateMcpServerConfig,
 } from "@elizaos/agent/api/server";
+import { initStewardWalletCache } from "@elizaos/agent/api/wallet";
+import {
+  type ElizaConfig,
+  loadElizaConfig,
+  saveElizaConfig,
+} from "@elizaos/agent/config/config";
+import { resolveUserPath } from "@elizaos/agent/config/paths";
+import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/onboarding";
 import type { PolicyResult } from "@stwd/sdk";
 import {
@@ -108,15 +117,7 @@ export {
   type CompatRuntimeState,
 } from "./compat-route-shared";
 
-import { initStewardWalletCache } from "@elizaos/agent/api/wallet";
-import {
-  type ElizaConfig,
-  loadElizaConfig,
-  saveElizaConfig,
-} from "@elizaos/agent/config/config";
-import { resolveUserPath } from "@elizaos/agent/config/paths";
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
-import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
 import {
   isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,
@@ -168,7 +169,6 @@ import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
 import { hydrateWalletKeysFromNodePlatformSecureStore } from "@elizaos/app-steward/security/hydrate-wallet-keys-from-platform-store";
 import { deleteWalletSecretsFromOsStore } from "@elizaos/app-steward/security/wallet-os-store-actions";
 import { clearCloudSecrets, getCloudSecret } from "./cloud-secrets";
-import { clearPersistedOnboardingConfig } from "@elizaos/agent/api/provider-switch-config";
 
 // ---------------------------------------------------------------------------
 // Import from extracted modules for use within this file
@@ -939,7 +939,7 @@ async function handleCompatRoute(
     );
     const { buildPluginListResponse } = await import("./plugins-compat-routes");
     const pluginList = buildPluginListResponse(state.current);
-    const plugin = (pluginList.plugins as Array<Record<string, unknown>>).find(
+    const plugin = pluginList.plugins.find(
       (p) => p.id === pluginId,
     );
     if (!plugin) {
@@ -947,7 +947,7 @@ async function handleCompatRoute(
       return true;
     }
     const spec = buildPluginConfigUiSpec(
-      plugin as unknown as Parameters<typeof buildPluginConfigUiSpec>[0],
+      plugin as Parameters<typeof buildPluginConfigUiSpec>[0],
     );
     sendJsonResponse(res, 200, { spec });
     return true;
