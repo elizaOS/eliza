@@ -227,6 +227,10 @@ async function ensureIosWorkspace() {
   }
 }
 
+export function shouldRunIosPodInstall(syncedFiles = []) {
+  return syncedFiles.includes(path.join("App", "Podfile"));
+}
+
 async function buildAndroid() {
   const androidSdkRoot = resolveAndroidSdkRoot();
   const javaHome = resolveJavaHome();
@@ -282,7 +286,13 @@ async function buildIos() {
   await ensureCapacitorPlatform("ios");
   await run("bash", [prepareIosCocoapodsScript], { cwd: repoRoot });
   await run("bun", ["run", "cap:sync:ios"], { cwd: appDir });
-  syncPlatformTemplateFiles("ios");
+  const syncedFiles = syncPlatformTemplateFiles("ios");
+  if (shouldRunIosPodInstall(syncedFiles)) {
+    console.log(
+      "[mobile-build] Re-running CocoaPods install after syncing the iOS Podfile...",
+    );
+    await run("pod", ["install"], { cwd: iosDir });
+  }
   await ensureIosWorkspace();
   await run(
     "xcodebuild",
