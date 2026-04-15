@@ -151,9 +151,11 @@ import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence
 
 const require = createRequire(import.meta.url);
 // Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package.
+// Use top-level dynamic import because the package is ESM-only and fails under
+// createRequire() in bun runtime; the await is resolved before module consumers read the binding.
 let pluginAgentOrchestrator: unknown = null;
 try {
-  pluginAgentOrchestrator = require("@elizaos/plugin-agent-orchestrator");
+  pluginAgentOrchestrator = await import("@elizaos/plugin-agent-orchestrator");
 } catch {
   pluginAgentOrchestrator = null;
 }
