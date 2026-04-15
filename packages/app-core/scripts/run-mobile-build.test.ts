@@ -2,7 +2,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { syncPlatformTemplateFiles } from "./run-mobile-build.mjs";
+import {
+  shouldRunIosPodInstall,
+  syncPlatformTemplateFiles,
+} from "./run-mobile-build.mjs";
 
 const tempDirs: string[] = [];
 
@@ -144,5 +147,10 @@ describe("run-mobile-build", () => {
     expect(androidSettings).not.toContain("capacitor-status-bar");
 
     expect(androidBuild).not.toContain("capacitor-status-bar");
+  });
+
+  it("forces CocoaPods refreshes when the synced files include the iOS Podfile", () => {
+    expect(shouldRunIosPodInstall([path.join("App", "Podfile")])).toBe(true);
+    expect(shouldRunIosPodInstall(["build.gradle"])).toBe(false);
   });
 });
