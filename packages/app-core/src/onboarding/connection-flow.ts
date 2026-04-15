@@ -35,6 +35,7 @@ import type {
   ConnectionUiSpec,
 } from "./types";
 import { type OnboardingServerTarget } from "./server-target";
+import { canRunLocal } from "../platform/init";
 
 export type {
   ConnectionEffect,
@@ -121,6 +122,10 @@ export function getEffectiveServerTarget(
   if (snapshot.forceCloud && snapshot.onboardingServerTarget === "") {
     return "local";
   }
+  // Desktop or dev server → assume local, skip hosting choice screen entirely.
+  if (canRunLocal() && snapshot.onboardingServerTarget === "") {
+    return "local";
+  }
   return snapshot.onboardingServerTarget;
 }
 
@@ -178,12 +183,16 @@ const resetCloudSelectionPatch = (): ConnectionStatePatch => ({
   ...toOnboardingTargetPatch(""),
   onboardingCloudApiKey: "",
   onboardingApiKey: "",
+  onboardingPrimaryModel: "",  // Also clear model when resetting cloud selection
+  onboardingProvider: "",      // Clear provider when backing out of provider selection
   onboardingRemoteError: null,
   onboardingRemoteConnecting: false,
 });
 
 const resetHostingSelectionPatch = (): ConnectionStatePatch => ({
   ...resetCloudSelectionPatch(),
+  onboardingSubscriptionTab: "token",
+  onboardingElizaCloudTab: "login",
 });
 
 /**
