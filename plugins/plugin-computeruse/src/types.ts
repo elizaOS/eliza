@@ -152,6 +152,36 @@ export interface ActionHistoryEntry {
   success: boolean;
 }
 
+export type ApprovalMode =
+  | "full_control"
+  | "smart_approve"
+  | "approve_all"
+  | "off";
+
+export interface PendingApproval {
+  id: string;
+  command: string;
+  parameters: Record<string, unknown>;
+  requestedAt: string;
+}
+
+export interface ApprovalSnapshot {
+  mode: ApprovalMode;
+  pendingCount: number;
+  pendingApprovals: PendingApproval[];
+}
+
+export interface ApprovalResolution {
+  id: string;
+  command: string;
+  approved: boolean;
+  cancelled: boolean;
+  mode: ApprovalMode;
+  requestedAt: string;
+  resolvedAt: string;
+  reason?: string;
+}
+
 export interface ComputerUseConfig {
   /** Auto-capture screenshot after each desktop mutation (default: true) */
   screenshotAfterAction: boolean;
@@ -159,6 +189,8 @@ export interface ComputerUseConfig {
   actionTimeoutMs: number;
   /** Max recent actions to keep for provider context (default: 10) */
   maxRecentActions: number;
+  /** Human approval mode for local computer actions */
+  approvalMode: ApprovalMode;
 }
 
 // ── Browser State Types ─────────────────────────────────────────────────────

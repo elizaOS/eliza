@@ -9,6 +9,9 @@
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import type {
   ActionHistoryEntry,
+  ApprovalMode,
+  ApprovalResolution,
+  ApprovalSnapshot,
   BrowserActionParams,
   BrowserActionResult,
   ComputerActionResult,
@@ -19,6 +22,10 @@ import type {
   WindowActionParams,
   WindowActionResult,
 } from "../types.js";
+import {
+  ComputerUseApprovalManager,
+  isApprovalMode,
+} from "../approval-manager.js";
 import {
   desktopClick,
   desktopDoubleClick,
@@ -68,10 +75,12 @@ export class ComputerUseService extends Service {
   private capabilities!: PlatformCapabilities;
   private recentActions: ActionHistoryEntry[] = [];
   private screenSize: ScreenSize = { width: 1920, height: 1080 };
+  private approvalManager = new ComputerUseApprovalManager();
   private cuConfig: ComputerUseConfig = {
     screenshotAfterAction: true,
     actionTimeoutMs: 10000,
     maxRecentActions: MAX_RECENT_ACTIONS,
+    approvalMode: "full_control",
   };
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
@@ -86,7 +95,7 @@ export class ComputerUseService extends Service {
     }
 
     logger.info(
-      `[computeruse] Service started — platform=${currentPlatform()} screen=${instance.screenSize.width}x${instance.screenSize.height}`,
+      `[computeruse] Service started — platform=${currentPlatform()} screen=${instance.screenSize.width}x${instance.screenSize.height} approval=${instance.getApprovalMode()}`,
     );
 
     // Log warnings for missing tools
@@ -101,6 +110,7 @@ export class ComputerUseService extends Service {
   }
 
   async stop(): Promise<void> {
+    this.approvalManager.cancelAll("computer-use service stopped");
     try {
       await closeBrowser();
     } catch { /* ignore */ }
@@ -113,11 +123,20 @@ export class ComputerUseService extends Service {
     const entry: ActionHistoryEntry = {
       action: params.action,
       timestamp: Date.now(),
-      params: params as unknown as Record<string, unknown>,
+      params: this.toParamsRecord(params),
       success: false,
     };
 
     try {
+      const approvalError = await this.awaitApproval(
+        this.getDesktopCommandName(params),
+        this.toParamsRecord(params),
+      );
+      if (approvalError) {
+        this.pushAction(entry);
+        return { success: false, error: approvalError };
+      }
+
       switch (params.action) {
         case "screenshot":
           // Handled below — just capture screenshot
@@ -196,11 +215,20 @@ export class ComputerUseService extends Service {
     const entry: ActionHistoryEntry = {
       action: `browser_${params.action}`,
       timestamp: Date.now(),
-      params: params as unknown as Record<string, unknown>,
+      params: this.toParamsRecord(params),
       success: false,
     };
 
     try {
+      const approvalError = await this.awaitApproval(
+        this.getBrowserCommandName(params),
+        this.toParamsRecord(params),
+      );
+      if (approvalError) {
+        this.pushAction(entry);
+        return { success: false, error: approvalError };
+      }
+
       let result: BrowserActionResult;
 
       switch (params.action) {
@@ -298,11 +326,20 @@ export class ComputerUseService extends Service {
     const entry: ActionHistoryEntry = {
       action: `window_${params.action}`,
       timestamp: Date.now(),
-      params: params as unknown as Record<string, unknown>,
+      params: this.toParamsRecord(params),
       success: false,
     };
 
     try {
+      const approvalError = await this.awaitApproval(
+        this.getWindowCommandName(params),
+        this.toParamsRecord(params),
+      );
+      if (approvalError) {
+        this.pushAction(entry);
+        return { success: false, error: approvalError };
+      }
+
       switch (params.action) {
         case "list": {
           const windows = listWindows();
@@ -356,12 +393,98 @@ export class ComputerUseService extends Service {
     return this.screenSize;
   }
 
+  getApprovalMode(): ApprovalMode {
+    return this.approvalManager.getMode();
+  }
+
+  setApprovalMode(mode: ApprovalMode): ApprovalMode {
+    const nextMode = this.approvalManager.setMode(mode);
+    this.cuConfig.approvalMode = nextMode;
+    logger.info(`[computeruse] Approval mode set to ${nextMode}`);
+    return nextMode;
+  }
+
+  getApprovalSnapshot(): ApprovalSnapshot {
+    return this.approvalManager.getSnapshot();
+  }
+
+  resolveApproval(
+    id: string,
+    approved: boolean,
+    reason?: string,
+  ): ApprovalResolution | null {
+    return this.approvalManager.resolveApproval(id, approved, reason);
+  }
+
   // ── Private ─────────────────────────────────────────────────────────────
 
   private requireCoordinate(params: DesktopActionParams): void {
     if (!params.coordinate || params.coordinate.length < 2) {
       throw new Error(`coordinate [x, y] is required for ${params.action} action`);
     }
+  }
+
+  private getDesktopCommandName(params: DesktopActionParams): string {
+    if (params.action === "key") {
+      return "key_press";
+    }
+    return params.action;
+  }
+
+  private getBrowserCommandName(params: BrowserActionParams): string {
+    return `browser_${params.action}`;
+  }
+
+  private getWindowCommandName(params: WindowActionParams): string {
+    switch (params.action) {
+      case "list":
+        return "list_windows";
+      case "focus":
+        return "switch_to_window";
+      case "minimize":
+        return "minimize_window";
+      case "maximize":
+        return "maximize_window";
+      case "close":
+        return "close_window";
+    }
+  }
+
+  private async awaitApproval(
+    command: string,
+    parameters: Record<string, unknown>,
+  ): Promise<string | null> {
+    if (this.approvalManager.shouldAutoApprove(command)) {
+      return null;
+    }
+
+    if (this.approvalManager.isDenyAll()) {
+      return `Computer use is paused. "${command}" was blocked by approval mode "${this.approvalManager.getMode()}".`;
+    }
+
+    const decision = await this.approvalManager.requestApproval(
+      command,
+      parameters,
+    );
+    if (decision.approved) {
+      return null;
+    }
+
+    if (decision.cancelled) {
+      return decision.reason
+        ? `Computer-use approval cancelled: ${decision.reason}`
+        : `Computer-use approval cancelled for "${command}".`;
+    }
+
+    return decision.reason
+      ? `Computer-use approval rejected: ${decision.reason}`
+      : `Computer-use approval rejected for "${command}".`;
+  }
+
+  private toParamsRecord(value: object): Record<string, unknown> {
+    return Object.fromEntries(
+      Object.entries(value).filter(([, entryValue]) => entryValue !== undefined),
+    );
   }
 
   private pushAction(entry: ActionHistoryEntry): void {
@@ -391,6 +514,12 @@ export class ComputerUseService extends Service {
       if (Number.isFinite(n) && n > 0) {
         this.cuConfig.actionTimeoutMs = n;
       }
+    }
+
+    const approvalMode = getSetting("COMPUTER_USE_APPROVAL_MODE");
+    if (approvalMode && isApprovalMode(approvalMode)) {
+      this.cuConfig.approvalMode = approvalMode;
+      this.approvalManager.setMode(approvalMode);
     }
   }
 
