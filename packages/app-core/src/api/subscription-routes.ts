@@ -3,7 +3,7 @@ import {
   type SubscriptionRouteState as AutonomousSubscriptionRouteState,
   handleSubscriptionRoutes as handleAutonomousSubscriptionRoutes,
 } from "@elizaos/agent/api/subscription-routes";
-import type { ElizaConfig } from "../config/config";
+import type { ElizaConfig } from "@elizaos/agent/config/types";
 
 export type SubscriptionRouteState = Omit<
   AutonomousSubscriptionRouteState,

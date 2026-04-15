@@ -9,7 +9,7 @@ import {
 import { isCloudInferenceSelectedInConfig } from "@elizaos/shared/contracts/onboarding";
 import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "@elizaos/agent/cloud/base-url";
 import { validateCloudBaseUrl } from "@elizaos/agent/cloud/validate-url";
-import type { ElizaConfig } from "../config/config";
+import type { ElizaConfig } from "@elizaos/agent/config/types";
 import { normalizeEnvValue } from "../utils/env";
 import {
   clearCloudSecrets,

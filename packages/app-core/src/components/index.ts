@@ -78,7 +78,6 @@ export * from "./pages/VectorBrowserView";
 export * from "./settings/ApiKeyConfig";
 export * from "./settings/permission-types";
 export * from "./settings/DesktopWorkspaceSection";
-export * from "./settings/FineTuningView";
 export * from "./settings/MediaSettingsSection";
 export * from "./settings/PermissionsSection";
 export * from "./settings/PolicyControlsView";

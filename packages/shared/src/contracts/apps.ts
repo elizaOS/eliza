@@ -78,6 +78,42 @@ export interface AppSessionConfig {
   features?: AppSessionFeature[];
 }
 
+export interface AppUiExtensionConfig {
+  detailPanelId: string;
+}
+
+export interface RegistryAppSupports {
+  v0: boolean;
+  v1: boolean;
+  v2: boolean;
+}
+
+export interface RegistryAppNpmInfo {
+  package: string;
+  v0Version: string | null;
+  v1Version: string | null;
+  v2Version: string | null;
+}
+
+export interface RegistryAppInfo {
+  name: string;
+  displayName: string;
+  description: string;
+  category: string;
+  launchType: string;
+  launchUrl: string | null;
+  icon: string | null;
+  capabilities: string[];
+  stars: number;
+  repository: string;
+  latestVersion: string | null;
+  supports: RegistryAppSupports;
+  npm: RegistryAppNpmInfo;
+  uiExtension?: AppUiExtensionConfig;
+  viewer?: Omit<AppViewerConfig, "authMessage">;
+  session?: AppSessionConfig;
+}
+
 export interface AppSessionState {
   sessionId: string;
   appName: string;
@@ -404,9 +440,7 @@ const _registeredCuratedApps: ElizaCuratedAppDefinition[] = [];
  * curated catalog.
  */
 export function registerCuratedApp(def: ElizaCuratedAppDefinition): void {
-  const existing = _registeredCuratedApps.findIndex(
-    (d) => d.slug === def.slug,
-  );
+  const existing = _registeredCuratedApps.findIndex((d) => d.slug === def.slug);
   if (existing >= 0) {
     _registeredCuratedApps[existing] = def;
   } else {

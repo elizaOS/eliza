@@ -13,7 +13,7 @@ import {
   type SwabbleConfig,
 } from "../../bridge/native-plugins";
 import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../../events";
-import { useTimeout } from "../../hooks";
+import { useTimeout } from "@elizaos/ui";
 import { useApp } from "../../state";
 import type { DesktopClickAuditItem } from "../../utils";
 import {

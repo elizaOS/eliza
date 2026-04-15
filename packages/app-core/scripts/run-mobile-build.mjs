@@ -402,6 +402,113 @@ function overlayIosNativeFiles() {
     fs.writeFileSync(targetEntitlements, entitlements, "utf8");
     console.log("[mobile-build] Copied iOS entitlements (with Milady app group).");
   }
+
+  // -- Patch xcconfigs to include CocoaPods settings --
+  // Capacitor generates debug/release xcconfigs that the Xcode project uses
+  // as base configurations. CocoaPods needs its own xcconfig included too.
+  for (const config of ["debug", "release"]) {
+    const xcPath = path.join(appDir, "ios", `${config}.xcconfig`);
+    if (fs.existsSync(xcPath)) {
+      let xc = fs.readFileSync(xcPath, "utf8");
+      const include = `#include "App/Pods/Target Support Files/Pods-App/Pods-App.${config}.xcconfig"`;
+      if (!xc.includes(include)) {
+        xc = `${include}\n${xc}`;
+        fs.writeFileSync(xcPath, xc, "utf8");
+      }
+    }
+  }
+
+  // -- Generate Podfile for CocoaPods integration --
+  // SPM binary xcframeworks have known API mismatches with plugin source.
+  // CocoaPods compiles Capacitor from source alongside plugins, avoiding this.
+  generateIosPodfile();
+}
+
+/**
+ * Resolve the real path to a node_modules package, following symlinks
+ * through bun's store. Returns a path relative to the Podfile directory
+ * (apps/app/ios/App/).
+ */
+function resolveCapacitorPodPath(pkgName) {
+  const linked = path.join(appDir, "node_modules", ...pkgName.split("/"));
+  if (!fs.existsSync(linked)) return null;
+  const real = fs.realpathSync(linked);
+  return path.relative(path.join(appDir, "ios", "App"), real);
+}
+
+function generateIosPodfile() {
+  const podfileDir = path.join(appDir, "ios", "App");
+  const iosPath = resolveCapacitorPodPath("@capacitor/ios");
+  if (!iosPath) {
+    console.warn("[mobile-build] Could not resolve @capacitor/ios — skipping Podfile generation.");
+    return;
+  }
+
+  // Official Capacitor 8.0.x plugins (App, StatusBar, Preferences) have
+  // Swift source that fails to compile with Xcode 16.1 (existential type
+  // rules, missing CAPPluginCall.reject, getString arity changes).
+  // These are excluded from the Podfile; Capacitor auto-registers their
+  // web/JS implementations as fallbacks. Keyboard is the only official
+  // plugin whose Swift source compiles cleanly.
+  const pluginPods = [
+    ["CapacitorKeyboard", "@capacitor/keyboard"],
+  ];
+
+  const nativePluginPods = [
+    ["ElizaosCapacitorAgent", "agent"],
+    ["ElizaosCapacitorCamera", "camera"],
+    ["ElizaosCapacitorCanvas", "canvas"],
+    ["ElizaosCapacitorGateway", "gateway"],
+    ["ElizaosCapacitorLocation", "location"],
+    ["ElizaosCapacitorMobileSignals", "mobile-signals"],
+    ["ElizaosCapacitorScreencapture", "screencapture"],
+    ["ElizaosCapacitorSwabble", "swabble"],
+    ["ElizaosCapacitorTalkmode", "talkmode"],
+    ["ElizaosCapacitorWebsiteblocker", "websiteblocker"],
+  ];
+
+  let podLines = [];
+  podLines.push(`  pod 'Capacitor', :path => '${iosPath}'`);
+  podLines.push(`  pod 'CapacitorCordova', :path => '${iosPath}'`);
+
+  for (const [podName, npmPkg] of pluginPods) {
+    const p = resolveCapacitorPodPath(npmPkg);
+    if (p) podLines.push(`  pod '${podName}', :path => '${p}'`);
+  }
+
+  const nativePluginsBase = path.relative(
+    podfileDir,
+    path.join(repoRoot, "eliza", "packages", "native-plugins"),
+  );
+  for (const [podName, dirName] of nativePluginPods) {
+    const pluginDir = path.join(repoRoot, "eliza", "packages", "native-plugins", dirName);
+    if (fs.existsSync(pluginDir)) {
+      podLines.push(`  pod '${podName}', :path => '${nativePluginsBase}/${dirName}'`);
+    }
+  }
+
+  const podfile = `require_relative '${iosPath}/scripts/pods_helpers'
+
+platform :ios, '15.0'
+use_frameworks!
+
+install! 'cocoapods', :disable_input_output_paths => true
+
+def capacitor_pods
+${podLines.join("\n")}
+end
+
+target 'App' do
+  capacitor_pods
+end
+
+post_install do |installer|
+  assertDeploymentTarget(installer)
+end
+`;
+
+  fs.writeFileSync(path.join(podfileDir, "Podfile"), podfile, "utf8");
+  console.log("[mobile-build] Generated Podfile for CocoaPods integration.");
 }
 
 /**
@@ -420,9 +527,8 @@ function patchIosPluginSwiftCompat() {
   const spmMatch = content.match(/capacitor-swift-pm\.git",\s*exact:\s*"([^"]+)"/);
   if (!spmMatch) return;
 
-  const [spmMajor, spmMinor] = spmMatch[1].split(".").map(Number);
-  // Only strip when the SPM core is 8.1+ (where the API breaks began)
-  if (spmMajor < 8 || (spmMajor === 8 && spmMinor < 1)) return;
+  // Always strip incompatible plugins regardless of version — all Capacitor
+  // 8.0.x official plugins have Swift source incompatible with Xcode 16.
 
   // Plugins whose Swift source is incompatible with the resolved SPM core.
   // These all have working web fallbacks so functionality is preserved.
@@ -552,7 +658,17 @@ async function buildIos() {
   await run("bash", [prepareIosCocoapodsScript], { cwd: repoRoot });
   await run("bun", ["run", "cap:sync:ios"], { cwd: appDir });
   overlayIosNativeFiles();
+
+  // Always strip incompatible official plugins from SPM Package.swift.
+  // Xcode compiles SPM targets regardless of whether CocoaPods is used.
   patchIosPluginSwiftCompat();
+
+  // Run pod install to set up CocoaPods workspace. CocoaPods compiles
+  // Capacitor from source alongside the custom plugins.
+  const podfilePath = path.join(iosDir, "Podfile");
+  if (fs.existsSync(podfilePath)) {
+    await run("pod", ["install"], { cwd: iosDir });
+  }
 
   const iosWorkspacePath = path.join(iosDir, "App.xcworkspace");
   const iosProjectArgs = fs.existsSync(iosWorkspacePath)

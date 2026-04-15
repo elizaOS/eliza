@@ -35,11 +35,7 @@ const installedRuntimes = new WeakSet<AgentRuntime>();
 // ---------------------------------------------------------------------------
 
 function isAnthropicRuntime(runtime: AgentRuntime): boolean {
-  const modelsMap = (
-    runtime as unknown as {
-      models: Map<string, Array<{ provider?: string }>>;
-    }
-  ).models;
+  const modelsMap = runtime.models;
   if (modelsMap) {
     for (const key of [ModelType.TEXT_LARGE, "TEXT_LARGE"]) {
       const handlers = modelsMap.get(key);

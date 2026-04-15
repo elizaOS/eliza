@@ -158,8 +158,7 @@ export async function handleSignalRoute(
             (state.config.connectors.signal as
               | Record<string, unknown>
               | undefined) ?? {};
-          const phoneNumber = (event as unknown as Record<string, unknown>)
-            .phoneNumber as string | undefined;
+          const phoneNumber = event.phoneNumber;
           state.config.connectors.signal = {
             ...previousConfig,
             authDir,

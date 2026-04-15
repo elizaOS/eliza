@@ -80,7 +80,7 @@ export function checkRuntime(): CheckResult {
   const isBun = "Bun" in globalThis;
 
   if (isBun) {
-    const bun = (globalThis as unknown as Record<string, unknown>).Bun as {
+    const bun = (globalThis as Record<string, unknown>).Bun as {
       version: string;
     };
     const [major] = bun.version.split(".").map(Number);

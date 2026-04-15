@@ -40,7 +40,7 @@ export { SkillsView } from "./components/pages/SkillsView";
 export { StreamView } from "./components/pages/StreamView";
 export { TrajectoriesView } from "./components/pages/TrajectoriesView";
 export { DesktopWorkspaceSection } from "./components/settings/DesktopWorkspaceSection";
-export { FineTuningView } from "./components/settings/FineTuningView";
+export { FineTuningView } from "@elizaos/app-training/ui/FineTuningView";
 export { BugReportModal } from "./components/shell/BugReportModal";
 
 export { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";

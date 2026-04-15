@@ -12,7 +12,7 @@ export function registerConfigCli(program: Command) {
     .command("get <key>")
     .description("Get a config value")
     .action(async (key: string) => {
-      const { loadElizaConfig } = await import("../../config/config");
+      const { loadElizaConfig } = await import("@elizaos/agent/config/config");
       let elizaConfig: ReturnType<typeof loadElizaConfig> | undefined;
       try {
         elizaConfig = loadElizaConfig();
@@ -56,7 +56,7 @@ export function registerConfigCli(program: Command) {
     .option("-a, --all", "Include advanced/hidden fields")
     .option("--json", "Output as raw JSON")
     .action(async (opts: { all?: boolean; json?: boolean }) => {
-      const { loadElizaConfig } = await import("../../config/config");
+      const { loadElizaConfig } = await import("@elizaos/agent/config/config");
       const { buildConfigSchema } = await import(
         "@elizaos/agent/config/schema"
       );
@@ -79,7 +79,7 @@ export function registerConfigCli(program: Command) {
       }
 
       const { uiHints } = buildConfigSchema();
-      displayConfig(config, uiHints, { showAdvanced: !!opts.all });
+      displayConfig(config ?? {}, uiHints, { showAdvanced: !!opts.all });
     });
 }
 

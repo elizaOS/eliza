@@ -68,7 +68,7 @@ export class ComputerUseService extends Service {
   private capabilities!: PlatformCapabilities;
   private recentActions: ActionHistoryEntry[] = [];
   private screenSize: ScreenSize = { width: 1920, height: 1080 };
-  private config: ComputerUseConfig = {
+  private cuConfig: ComputerUseConfig = {
     screenshotAfterAction: true,
     actionTimeoutMs: 10000,
     maxRecentActions: MAX_RECENT_ACTIONS,
@@ -82,21 +82,19 @@ export class ComputerUseService extends Service {
     try {
       instance.screenSize = getScreenSize();
     } catch (err) {
-      logger.warn("[computeruse] Could not detect screen size, using defaults", { error: String(err) });
+      logger.warn(`[computeruse] Could not detect screen size, using defaults: ${String(err)}`);
     }
 
-    logger.info("[computeruse] Service started", {
-      platform: currentPlatform(),
-      screenSize: instance.screenSize,
-      capabilities: instance.capabilities,
-    });
+    logger.info(
+      `[computeruse] Service started — platform=${currentPlatform()} screen=${instance.screenSize.width}x${instance.screenSize.height}`,
+    );
 
     // Log warnings for missing tools
     if (!instance.capabilities.screenshot.available) {
-      logger.warn("[computeruse] Screenshot not available:", instance.capabilities.screenshot.tool);
+      logger.warn(`[computeruse] Screenshot not available: ${instance.capabilities.screenshot.tool}`);
     }
     if (!instance.capabilities.computerUse.available) {
-      logger.warn("[computeruse] Mouse/keyboard not available:", instance.capabilities.computerUse.tool);
+      logger.warn(`[computeruse] Mouse/keyboard not available: ${instance.capabilities.computerUse.tool}`);
     }
 
     return instance;
@@ -175,12 +173,12 @@ export class ComputerUseService extends Service {
 
       // Capture screenshot after action (or as the action itself)
       let screenshot: string | undefined;
-      if (params.action === "screenshot" || this.config.screenshotAfterAction) {
+      if (params.action === "screenshot" || this.cuConfig.screenshotAfterAction) {
         try {
           const buf = captureScreenshot();
           screenshot = buf.toString("base64");
         } catch (err) {
-          logger.warn("[computeruse] Screenshot capture failed after action", { error: String(err) });
+          logger.warn(`[computeruse] Screenshot capture failed after action: ${String(err)}`);
         }
       }
 
@@ -368,7 +366,7 @@ export class ComputerUseService extends Service {
 
   private pushAction(entry: ActionHistoryEntry): void {
     this.recentActions.push(entry);
-    if (this.recentActions.length > this.config.maxRecentActions) {
+    if (this.recentActions.length > this.cuConfig.maxRecentActions) {
       this.recentActions.shift();
     }
   }
@@ -384,14 +382,14 @@ export class ComputerUseService extends Service {
 
     const screenshotAfter = getSetting("COMPUTER_USE_SCREENSHOT_AFTER_ACTION");
     if (screenshotAfter !== undefined) {
-      this.config.screenshotAfterAction = screenshotAfter !== "false" && screenshotAfter !== "0";
+      this.cuConfig.screenshotAfterAction = screenshotAfter !== "false" && screenshotAfter !== "0";
     }
 
     const timeout = getSetting("COMPUTER_USE_ACTION_TIMEOUT_MS");
     if (timeout) {
       const n = Number.parseInt(timeout, 10);
       if (Number.isFinite(n) && n > 0) {
-        this.config.actionTimeoutMs = n;
+        this.cuConfig.actionTimeoutMs = n;
       }
     }
   }

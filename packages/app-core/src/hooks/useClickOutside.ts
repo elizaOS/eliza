@@ -1,2 +1,1 @@
-export { useClickOutside } from "@elizaos/ui";
-
+export { useClickOutside } from "@elizaos/ui/hooks/useClickOutside";

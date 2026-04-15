@@ -1,3 +1,5 @@
+import type { ExistingElizaInstallInfo as ExistingElizaInstallInfoType } from "../types/index.js";
+
 export type ElectrobunRequestHandler = (params?: unknown) => Promise<unknown>;
 
 export type ElectrobunMessageListener = (payload: unknown) => void;
@@ -106,16 +108,6 @@ export interface DetectedProvider {
   status?: string;
 }
 
-export interface ExistingElizaInstallInfo {
-  detected: boolean;
-  stateDir: string;
-  configPath: string;
-  configExists: boolean;
-  stateDirExists: boolean;
-  hasStateEntries: boolean;
-  source: "config-path-env" | "state-dir-env" | "default-state-dir";
-}
-
 export interface DesktopRuntimeModeInfo {
   mode: "local" | "external" | "disabled";
   externalApiBase?: string | null;
@@ -133,8 +125,8 @@ export async function scanProviderCredentials(): Promise<DetectedProvider[]> {
   return result?.providers ?? [];
 }
 
-export async function inspectExistingElizaInstall(): Promise<ExistingElizaInstallInfo | null> {
-  return invokeDesktopBridgeRequest<ExistingElizaInstallInfo>({
+export async function inspectExistingElizaInstall(): Promise<ExistingElizaInstallInfoType | null> {
+  return invokeDesktopBridgeRequest<ExistingElizaInstallInfoType>({
     rpcMethod: "agentInspectExistingInstall",
     ipcChannel: "agent:inspectExistingInstall",
   });

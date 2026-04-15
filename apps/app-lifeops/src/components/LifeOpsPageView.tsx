@@ -6,7 +6,6 @@ import {
   ExternalLink,
   Github,
   ListTodo,
-  RefreshCw,
   Shield,
   Target,
 } from "lucide-react";
@@ -237,10 +236,6 @@ export function LifeOpsPageView() {
   useEffect(() => {
     void loadGithub();
   }, [loadGithub]);
-
-  const refreshAll = useCallback(async () => {
-    await Promise.all([loadOverview(), loadGithub()]);
-  }, [loadGithub, loadOverview]);
 
   const handleGithubCallback = useCallback(
     (detail: LifeOpsGithubCallbackDetail) => {
@@ -567,45 +562,19 @@ export function LifeOpsPageView() {
   );
 
   return (
-    <div className="space-y-3" data-testid="lifeops-shell">
-      <PagePanel variant="section" className="p-3 lg:p-4">
+    <div
+      className="space-y-6 px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6"
+      data-testid="lifeops-shell"
+    >
+      <div className="space-y-4">
         <PagePanel.Header
           eyebrow="LifeOps"
           heading="Personal Operations"
-          actions={
-            <div className="flex flex-wrap gap-2">
-              {appEnabled ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="rounded-full px-4 text-xs-tight font-semibold"
-                  onClick={() => void refreshAll()}
-                  disabled={
-                    lifeOpsApp.loading ||
-                    lifeOpsApp.saving ||
-                    overviewLoading ||
-                    githubLoading
-                  }
-                >
-                  <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                  Refresh
-                </Button>
-              ) : null}
-              <Button
-                variant={appEnabled ? "outline" : "default"}
-                size="sm"
-                className="rounded-full px-4 text-xs-tight font-semibold"
-                onClick={() => void handleSetLifeOpsEnabled(!appEnabled)}
-                disabled={lifeOpsApp.loading || lifeOpsApp.saving}
-              >
-                {appEnabled ? "Disable LifeOps" : "Enable LifeOps"}
-              </Button>
-            </div>
-          }
+          className="px-0 py-0 sm:px-0"
         />
 
         {lifeOpsApp.error ? (
-          <PagePanel.Notice tone="danger" className="mt-4">
+          <PagePanel.Notice tone="danger">
             {lifeOpsApp.error}
           </PagePanel.Notice>
         ) : null}
@@ -613,13 +582,12 @@ export function LifeOpsPageView() {
         {lifeOpsApp.loading ? (
           <PagePanel.Loading
             variant="surface"
-            className="mt-4"
             heading="Loading LifeOps app state"
           />
         ) : null}
 
         {!lifeOpsApp.loading && !appEnabled ? (
-          <div className="mt-3 py-4 text-center text-sm text-muted/60">
+          <div className="py-4 text-center text-sm text-muted/60">
             LifeOps is disabled.
           </div>
         ) : null}
@@ -627,19 +595,18 @@ export function LifeOpsPageView() {
         {appEnabled && !runtimeReady && !overview ? (
           <PagePanel.Loading
             variant="surface"
-            className="mt-4"
             heading="Waiting for LifeOps runtime"
           />
         ) : null}
 
         {appEnabled && overviewError ? (
-          <PagePanel.Notice tone="danger" className="mt-4">
+          <PagePanel.Notice tone="danger">
             {overviewError}
           </PagePanel.Notice>
         ) : null}
 
         {appEnabled && overview ? (
-          <div className="mt-2 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <SectionSurface
               title="Current queue"
               icon={<ListTodo className="h-4 w-4" />}
@@ -666,7 +633,7 @@ export function LifeOpsPageView() {
             </SectionSurface>
           </div>
         ) : null}
-      </PagePanel>
+      </div>
 
       {appEnabled ? <LifeOpsSettingsSection /> : null}
 
@@ -764,6 +731,18 @@ export function LifeOpsPageView() {
       ) : null}
 
       {appEnabled ? <LifeOpsWorkspaceView /> : null}
+
+      <div className="flex justify-end border-t border-border/16 pt-2">
+        <Button
+          variant={appEnabled ? "surfaceDestructive" : "default"}
+          size="sm"
+          className="rounded-full px-4 text-xs-tight font-semibold"
+          onClick={() => void handleSetLifeOpsEnabled(!appEnabled)}
+          disabled={lifeOpsApp.loading || lifeOpsApp.saving}
+        >
+          {appEnabled ? "Disable LifeOps" : "Enable LifeOps"}
+        </Button>
+      </div>
     </div>
   );
 }

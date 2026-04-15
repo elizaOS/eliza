@@ -126,7 +126,7 @@ export function findRuntimePluginExport(mod: PluginModuleShape): Plugin | null {
   }
 
   // 6. Legacy CJS compatibility for modules that export only { name, description }.
-  if (looksLikePluginBasic(mod)) return mod as unknown as Plugin;
+  if (looksLikePluginBasic(mod)) return mod as Plugin;
   const modDefault = (mod as Record<string, unknown>).default;
   const modPlugin = (mod as Record<string, unknown>).plugin;
   if (looksLikePluginBasic(modDefault)) return modDefault as Plugin;

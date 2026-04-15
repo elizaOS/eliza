@@ -327,15 +327,11 @@ export function CharacterEditor({
         return {
           ...serverPreset,
           id: localMeta?.id ?? serverPreset.id,
-          name:
-            localMeta?.name ??
-            ("name" in serverPreset
-              ? (serverPreset as unknown as { name: string }).name
-              : undefined),
+          name: localMeta?.name ?? serverPreset.name,
           avatarIndex: localMeta?.avatarIndex,
           voicePresetId: localMeta?.voicePresetId,
           greetingAnimation: localMeta?.greetingAnimation,
-        } as unknown as OnboardingPreset;
+        } as OnboardingPreset;
       });
       setRosterStyles(merged);
     } else {

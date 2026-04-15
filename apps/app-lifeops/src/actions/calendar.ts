@@ -1448,6 +1448,7 @@ async function loadCreateEventCalendarContext(
       | "cloud_managed"
       | undefined,
     side: detailString(details, "side") as "owner" | "agent" | undefined,
+    grantId: detailString(details, "grantId"),
     calendarId: detailString(details, "calendarId"),
     timeZone: requestTimeZone,
     forceSync: detailBoolean(details, "forceSync"),
@@ -2494,6 +2495,7 @@ function buildCreateEventRequest(
         | "owner"
         | "agent"
         | undefined,
+      grantId: detailString(args.details, "grantId"),
       calendarId:
         detailString(args.details, "calendarId") ??
         args.fallbackRequest?.calendarId,
@@ -2533,6 +2535,7 @@ function createEventRequestFingerprint(
     calendarId: request.calendarId ?? null,
     side: request.side ?? null,
     mode: request.mode ?? null,
+    grantId: (request as unknown as Record<string, unknown>).grantId ?? null,
   });
 }
 
@@ -3737,6 +3740,7 @@ export const calendarAction: Action & {
               | "owner"
               | "agent"
               | undefined,
+            grantId: detailString(details, "grantId"),
             calendarId: detailString(details, "calendarId"),
             timeZone: resolveCalendarTimeZone(details),
             forceSync: true,
@@ -3874,6 +3878,7 @@ export const calendarAction: Action & {
             | "cloud_managed"
             | undefined,
           side: detailString(details, "side") as "owner" | "agent" | undefined,
+          grantId: detailString(details, "grantId"),
           calendarId: resolvedCalendarId,
           eventId: resolvedEventId ?? "",
           title: newTitle,
@@ -3947,6 +3952,7 @@ export const calendarAction: Action & {
               | "owner"
               | "agent"
               | undefined,
+            grantId: detailString(details, "grantId"),
             forceSync: true,
             ...feedRequest,
           });
@@ -4010,6 +4016,7 @@ export const calendarAction: Action & {
                   | "owner"
                   | "agent"
                   | undefined,
+                grantId: detailString(details, "grantId"),
                 calendarId: target.calendarId,
                 eventId: target.externalId,
               });
@@ -4065,6 +4072,7 @@ export const calendarAction: Action & {
             | "cloud_managed"
             | undefined,
           side: detailString(details, "side") as "owner" | "agent" | undefined,
+          grantId: detailString(details, "grantId"),
           calendarId: resolvedCalendarId,
           eventId: resolvedEventId,
         });
@@ -4094,6 +4102,7 @@ export const calendarAction: Action & {
             | "cloud_managed"
             | undefined,
           side: detailString(details, "side") as "owner" | "agent" | undefined,
+          grantId: detailString(details, "grantId"),
           ...resolveTripWindowRequest(details, llmPlan),
         });
         const itineraryEvents = resolveTripWindowEvents(
@@ -4174,6 +4183,7 @@ export const calendarAction: Action & {
           | "cloud_managed"
           | undefined,
         side: detailString(details, "side") as "owner" | "agent" | undefined,
+        grantId: detailString(details, "grantId"),
         forceSync: wantsWideWindow,
         ...request,
       });

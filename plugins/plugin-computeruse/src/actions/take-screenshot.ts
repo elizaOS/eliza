@@ -58,7 +58,7 @@ export const takeScreenshotAction: Action = {
   ],
 
   validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
-    const service = runtime.getService<ComputerUseService>("computeruse");
+    const service = runtime.getService("computeruse") as unknown as ComputerUseService | undefined;
     if (!service) return false;
     return service.getCapabilities().screenshot.available;
   },
@@ -70,7 +70,7 @@ export const takeScreenshotAction: Action = {
     _options?: unknown,
     callback?: HandlerCallback,
   ) => {
-    const service = runtime.getService<ComputerUseService>("computeruse");
+    const service = runtime.getService("computeruse") as unknown as ComputerUseService | undefined;
     if (!service) {
       return { success: false, error: "ComputerUseService not available" };
     }
@@ -89,7 +89,7 @@ export const takeScreenshotAction: Action = {
               title: "Screenshot",
               source: "computeruse",
               description: "Full screen capture",
-              contentType: "image/png",
+              contentType: "image" as const,
             },
           ],
         });

@@ -1,8 +1,6 @@
 import { logger } from "@elizaos/core";
 import { theme } from "../terminal/theme";
 
-export { isTruthyEnvValue } from "@elizaos/shared/env-utils";
-
 const LOG_LEVEL_PRIORITY: Record<string, number> = {
   trace: 10,
   debug: 20,

@@ -1,4 +1,4 @@
-import { loadElizaConfig, saveElizaConfig } from "../config/config";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
 import { deriveAgentVaultId } from "./agent-vault-id";
 import type { SecureStoreSecretKind } from "./platform-secure-store";
 import { createNodePlatformSecureStore } from "./platform-secure-store-node";

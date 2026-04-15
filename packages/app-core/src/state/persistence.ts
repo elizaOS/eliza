@@ -566,6 +566,22 @@ export function saveBrowserEnabled(value: boolean): void {
   }, undefined);
 }
 
+/* ── Computer Use enabled persistence ───────────────────────────────── */
+const COMPUTER_USE_ENABLED_KEY = "eliza:computeruse:enabled";
+
+export function loadComputerUseEnabled(): boolean {
+  return tryLocalStorage(() => {
+    const stored = localStorage.getItem(COMPUTER_USE_ENABLED_KEY);
+    return stored === null ? false : stored === "true";
+  }, false);
+}
+
+export function saveComputerUseEnabled(value: boolean): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(COMPUTER_USE_ENABLED_KEY, String(value));
+  }, undefined);
+}
+
 /* ── Chat UI persistence ──────────────────────────────────────────────── */
 const CHAT_AVATAR_VISIBLE_KEY = "eliza:chat:avatarVisible";
 const CHAT_VOICE_MUTED_KEY = "eliza:chat:voiceMuted";

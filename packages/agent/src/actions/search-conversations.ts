@@ -103,7 +103,7 @@ export const searchConversationsAction: Action = {
 
       const embedding = Array.isArray(embeddingResult)
         ? embeddingResult
-        : (embeddingResult as unknown as { embedding?: number[] })?.embedding;
+        : (embeddingResult as { embedding?: number[] })?.embedding;
 
       if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
         return {

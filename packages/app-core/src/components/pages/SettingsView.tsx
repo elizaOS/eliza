@@ -249,7 +249,7 @@ const SettingsSection = forwardRef<HTMLElement, SettingsSectionProps>(
 /* ── Capabilities Section ────────────────────────────────────────────── */
 
 function CapabilitiesSection() {
-  const { walletEnabled, browserEnabled, setState, t } = useApp();
+  const { walletEnabled, browserEnabled, computerUseEnabled, setState, t } = useApp();
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
@@ -296,6 +296,38 @@ function CapabilitiesSection() {
           })}
         />
       </div>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <div className="font-medium text-sm">
+            {t("settings.sections.capabilities.computerUseLabel", {
+              defaultValue: "Enable Computer Use",
+            })}
+          </div>
+          <div className="text-xs text-muted">
+            {t("settings.sections.capabilities.computerUseHint", {
+              defaultValue:
+                "Allow the agent to control your mouse, keyboard, take screenshots, and automate browsers",
+            })}
+          </div>
+        </div>
+        <Switch
+          checked={computerUseEnabled}
+          onCheckedChange={(checked: boolean | "indeterminate") => setState("computerUseEnabled", !!checked)}
+          aria-label={t("settings.sections.capabilities.computerUseLabel", {
+            defaultValue: "Enable Computer Use",
+          })}
+        />
+      </div>
+      {computerUseEnabled && (
+        <div className="ml-4 space-y-2 border-l-2 border-border/40 pl-4">
+          <div className="text-xs text-muted">
+            {t("settings.sections.capabilities.computerUseConfigHint", {
+              defaultValue:
+                "Computer Use requires Accessibility and Screen Recording permissions on macOS. On Linux, install xdotool. Configure fine-grained permissions in the Permissions section below.",
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
