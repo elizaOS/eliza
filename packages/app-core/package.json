@@ -70,6 +70,7 @@
     "./components/apps/overlay-app-registry": "./src/components/apps/overlay-app-registry.ts",
     "./components/character/CharacterEditor": "./src/components/character/CharacterEditor.tsx",
     "./components/character/character-greeting": "./src/components/character/character-greeting.ts",
+    "./components/cloud/CloudStatusBadge": "./src/components/cloud/CloudStatusBadge.tsx",
     "./components/inventory/chainConfig": "./src/components/inventory/chainConfig.ts",
     "./components/inventory/constants": "./src/components/inventory/constants.ts",
     "./components/pages/ChatModalView": "./src/components/pages/ChatModalView.tsx",

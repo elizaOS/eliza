@@ -19,6 +19,8 @@
     "./plugin": "./src/plugin.ts",
     "./register": "./src/register.ts",
     "./assets.json": "./assets.json",
+    "./components/avatar/VrmEngine": "./src/components/avatar/VrmEngine.ts",
+    "./components/companion/shell-control-styles": "./src/components/companion/shell-control-styles.ts",
     "./components/*": "./src/components/*",
     "./types/*": "./src/types/*",
     "./emotes": "./src/emotes/index.ts",
