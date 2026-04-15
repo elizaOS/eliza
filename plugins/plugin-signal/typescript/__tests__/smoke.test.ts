@@ -1,14 +1,42 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+
+type SignalPluginShape = {
+  actions?: unknown[];
+  description: string;
+  name: string;
+  providers?: unknown[];
+  services?: unknown[];
+};
+
+type SignalPluginModule = typeof import("../src/index.ts");
+
+function isSignalPlugin(value: unknown): value is SignalPluginShape {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const candidate = value as { description?: unknown; name?: unknown };
+  return candidate.name === "signal" && typeof candidate.description === "string";
+}
+
+let mod: SignalPluginModule;
+let plugin: SignalPluginShape | undefined;
 
 describe("@elizaos/plugin-signal", () => {
-  it("exports the plugin", async () => {
-    const mod = await import("../src/index.ts");
+  beforeAll(async () => {
+    mod = await import("../src/index.ts");
+    const defaultPlugin = isSignalPlugin(mod.default) ? mod.default : undefined;
+    const namedPlugin =
+      "plugin" in mod && isSignalPlugin(mod.plugin) ? mod.plugin : undefined;
+
+    plugin = defaultPlugin ?? namedPlugin ?? Object.values(mod).find(isSignalPlugin);
+  });
+
+  it("exports the plugin", () => {
     expect(mod).toBeDefined();
   });
 
-  it("has required plugin properties", async () => {
-    const mod = await import("../src/index.ts");
-    const plugin = mod.default ?? mod.plugin ?? Object.values(mod).find((v: any) => v?.name);
+  it("has required plugin properties", () => {
     expect(plugin).toBeDefined();
     if (plugin) {
       expect(typeof plugin.name).toBe("string");
@@ -17,9 +45,7 @@ describe("@elizaos/plugin-signal", () => {
     }
   });
 
-  it("declares actions", async () => {
-    const mod = await import("../src/index.ts");
-    const plugin = mod.default ?? mod.plugin ?? Object.values(mod).find((v: any) => v?.name);
+  it("declares actions", () => {
     expect(plugin).toBeDefined();
     if (plugin) {
       expect(Array.isArray(plugin.actions)).toBe(true);
@@ -27,9 +53,7 @@ describe("@elizaos/plugin-signal", () => {
     }
   });
 
-  it("declares services", async () => {
-    const mod = await import("../src/index.ts");
-    const plugin = mod.default ?? mod.plugin ?? Object.values(mod).find((v: any) => v?.name);
+  it("declares services", () => {
     expect(plugin).toBeDefined();
     if (plugin) {
       expect(Array.isArray(plugin.services)).toBe(true);
@@ -37,9 +61,7 @@ describe("@elizaos/plugin-signal", () => {
     }
   });
 
-  it("declares providers", async () => {
-    const mod = await import("../src/index.ts");
-    const plugin = mod.default ?? mod.plugin ?? Object.values(mod).find((v: any) => v?.name);
+  it("declares providers", () => {
     expect(plugin).toBeDefined();
     if (plugin) {
       expect(Array.isArray(plugin.providers)).toBe(true);

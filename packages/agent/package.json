@@ -34,7 +34,7 @@
     "format:fix": "bunx @biomejs/biome format --write src",
     "training:cli": "bun run src/training/cli.ts",
     "pack:dry-run": "cd dist && npm pack --dry-run",
-    "test": "cd ../../.. && vitest run eliza/packages/agent/src/runtime/plugin-collector.optional-bundled.test.ts eliza/packages/agent/src/actions/grounded-action-reply.test.ts eliza/apps/app-lifeops/src/lifeops-plugin.test.ts eliza/apps/app-lifeops/test/lifeops-google-helpers.test.ts eliza/apps/app-lifeops/test/life-goal-extractor.test.ts eliza/apps/app-lifeops/test/lifeops-app-state.test.ts"
+    "test": "vitest run --config vitest.config.ts"
   },
   "exports": {
     ".": "./src/index.ts",

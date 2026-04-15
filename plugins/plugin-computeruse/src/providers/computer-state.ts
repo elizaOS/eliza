@@ -31,11 +31,14 @@ export const computerStateProvider: Provider = {
     const caps = service.getCapabilities();
     const screen = service.getScreenDimensions();
     const recent = service.getRecentActions();
+    const approvals = service.getApprovalSnapshot();
 
     const lines: string[] = [
       "# Computer Use",
       `Platform: ${currentPlatform()}`,
       `Screen: ${screen.width}x${screen.height}`,
+      `Approval Mode: ${approvals.mode}`,
+      `Pending Approvals: ${approvals.pendingCount}`,
       `Screenshot: ${caps.screenshot.available ? caps.screenshot.tool : "unavailable"}`,
       `Mouse/Keyboard: ${caps.computerUse.available ? caps.computerUse.tool : "unavailable"}`,
       `Browser: ${caps.browser.available ? caps.browser.tool : "unavailable"}`,
@@ -59,6 +62,7 @@ export const computerStateProvider: Provider = {
         screenHeight: screen.height,
       },
       data: {
+        approvals,
         capabilities: caps,
         screenSize: screen,
         recentActions: recent,
