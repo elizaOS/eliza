@@ -206,7 +206,7 @@ export class MemoryService extends Service {
 
 	// ── Helpers ──────────────────────────────────────────────────────────
 
-	private async getStorage(): Promise<MemoryStorageProvider> {
+	private async getStorage(): Promise<MemoryStorageProvider | null> {
 		if (!this.storage && this.runtime.hasService("memoryStorage")) {
 			try {
 				this.storage = (await this.runtime.getServiceLoadPromise(
@@ -220,10 +220,17 @@ export class MemoryService extends Service {
 				);
 			}
 		}
-		if (!this.storage) {
-			return null as unknown as MemoryStorageProvider;
-		}
 		return this.storage;
+	}
+
+	private async requireStorage(op: string): Promise<MemoryStorageProvider> {
+		const storage = await this.getStorage();
+		if (!storage) {
+			throw new Error(
+				`MemoryStorageProvider is not registered — cannot ${op} (register a storage service or disable advancedMemory).`,
+			);
+		}
+		return storage;
 	}
 
 	private async countRoomMemories(roomId: UUID): Promise<number> {
@@ -375,7 +382,9 @@ export class MemoryService extends Service {
 			"id" | "createdAt" | "updatedAt" | "accessCount"
 		>,
 	): Promise<LongTermMemory> {
-		const stored = await (await this.getStorage()).storeLongTermMemory(memory);
+		const stored = await (
+			await this.requireStorage("store long-term memory")
+		).storeLongTermMemory(memory);
 		logger.info(
 			{ src: "service:memory" },
 			`Stored long-term memory: ${stored.category} for entity ${stored.entityId}`,
@@ -389,11 +398,12 @@ export class MemoryService extends Service {
 		limit = 10,
 	): Promise<LongTermMemory[]> {
 		if (limit <= 0) return [];
-		return (await this.getStorage()).getLongTermMemories(
-			this.runtime.agentId,
-			entityId,
-			{ category, limit },
-		);
+		const storage = await this.getStorage();
+		if (!storage) return [];
+		return storage.getLongTermMemories(this.runtime.agentId, entityId, {
+			category,
+			limit,
+		});
 	}
 
 	async updateLongTermMemory(
@@ -403,7 +413,8 @@ export class MemoryService extends Service {
 			Omit<LongTermMemory, "id" | "agentId" | "entityId" | "createdAt">
 		>,
 	): Promise<void> {
-		await (await this.getStorage()).updateLongTermMemory(
+		const storage = await this.requireStorage("update long-term memory");
+		await storage.updateLongTermMemory(
 			id,
 			this.runtime.agentId,
 			entityId,
@@ -416,11 +427,8 @@ export class MemoryService extends Service {
 	}
 
 	async deleteLongTermMemory(id: UUID, entityId: UUID): Promise<void> {
-		await (await this.getStorage()).deleteLongTermMemory(
-			id,
-			this.runtime.agentId,
-			entityId,
-		);
+		const storage = await this.requireStorage("delete long-term memory");
+		await storage.deleteLongTermMemory(id, this.runtime.agentId, entityId);
 		logger.info(
 			{ src: "service:memory" },
 			`Deleted long-term memory: ${id} for entity ${entityId}`,
@@ -428,16 +436,16 @@ export class MemoryService extends Service {
 	}
 
 	async getCurrentSessionSummary(roomId: UUID): Promise<SessionSummary | null> {
-		return (await this.getStorage()).getCurrentSessionSummary(
-			this.runtime.agentId,
-			roomId,
-		);
+		const storage = await this.getStorage();
+		if (!storage) return null;
+		return storage.getCurrentSessionSummary(this.runtime.agentId, roomId);
 	}
 
 	async storeSessionSummary(
 		summary: Omit<SessionSummary, "id" | "createdAt" | "updatedAt">,
 	): Promise<SessionSummary> {
-		const stored = await (await this.getStorage()).storeSessionSummary(summary);
+		const storage = await this.requireStorage("store session summary");
+		const stored = await storage.storeSessionSummary(summary);
 		logger.info(
 			{ src: "service:memory" },
 			`Stored session summary for room ${stored.roomId}`,
@@ -455,7 +463,8 @@ export class MemoryService extends Service {
 			>
 		>,
 	): Promise<void> {
-		await (await this.getStorage()).updateSessionSummary(
+		const storage = await this.requireStorage("update session summary");
+		await storage.updateSessionSummary(
 			id,
 			this.runtime.agentId,
 			roomId,
@@ -471,11 +480,9 @@ export class MemoryService extends Service {
 		roomId: UUID,
 		limit = 5,
 	): Promise<SessionSummary[]> {
-		return (await this.getStorage()).getSessionSummaries(
-			this.runtime.agentId,
-			roomId,
-			limit,
-		);
+		const storage = await this.getStorage();
+		if (!storage) return [];
+		return storage.getSessionSummaries(this.runtime.agentId, roomId, limit);
 	}
 
 	// ── Vector search (JS fallback; provider can override with native) ──
