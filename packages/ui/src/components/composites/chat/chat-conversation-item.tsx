@@ -174,10 +174,7 @@ export function ChatConversationItem({
       ? conversation.source
       : null;
   const showInlineActions = isGameModal;
-  const showSourceBadge =
-    !isGameModal &&
-    conversationSource !== null &&
-    conversationSource.trim().toLowerCase() !== "app";
+  const showSourceBadge = !isGameModal && conversationSource !== null;
   return (
     <div
       data-testid="conv-item"

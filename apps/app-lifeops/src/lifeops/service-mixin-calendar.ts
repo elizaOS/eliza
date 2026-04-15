@@ -10,7 +10,7 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsGmailMessageSummary,
   LifeOpsNextCalendarEventContext,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   createGoogleCalendarEvent,
   deleteGoogleCalendarEvent,
@@ -64,11 +64,62 @@ import {
   normalizeOptionalBoolean,
 } from "./service-normalize.js";
 import { LifeOpsServiceError } from "./service-types.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
+
+export interface LifeOpsCalendarService {
+  getCalendarFeed(
+    requestUrl: URL,
+    request?: GetLifeOpsCalendarFeedRequest,
+    now?: Date,
+  ): Promise<LifeOpsCalendarFeed>;
+  createCalendarEvent(
+    requestUrl: URL,
+    request: CreateLifeOpsCalendarEventRequest,
+    now?: Date,
+  ): Promise<LifeOpsCalendarEvent>;
+  updateCalendarEvent(
+    requestUrl: URL,
+    request: {
+      mode?: LifeOpsConnectorMode | null;
+      side?: LifeOpsConnectorSide | null;
+      grantId?: string;
+      calendarId?: string | null;
+      eventId: string;
+      title?: string;
+      description?: string;
+      location?: string;
+      startAt?: string;
+      endAt?: string;
+      timeZone?: string;
+      attendees?: CreateLifeOpsCalendarEventAttendee[] | null;
+    },
+  ): Promise<LifeOpsCalendarEvent>;
+  deleteCalendarEvent(
+    requestUrl: URL,
+    request: {
+      mode?: LifeOpsConnectorMode | null;
+      side?: LifeOpsConnectorSide | null;
+      grantId?: string;
+      calendarId?: string | null;
+      eventId: string;
+    },
+  ): Promise<void>;
+  getNextCalendarEventContext(
+    requestUrl: URL,
+    request?: GetLifeOpsCalendarFeedRequest,
+    now?: Date,
+  ): Promise<LifeOpsNextCalendarEventContext>;
+}
 
 const DEFAULT_GMAIL_TRIAGE_MAX_RESULTS = 12;
 
-export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
+export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
+  Base: TBase,
+): MixinClass<TBase, LifeOpsCalendarService> {
   return class extends Base {
 
     protected async recordCalendarEventAudit(
@@ -865,5 +916,5 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
         linkedMailError,
       );
     }
-  };
+  } as MixinClass<TBase, LifeOpsCalendarService>;
 }

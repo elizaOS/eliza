@@ -1,4 +1,4 @@
-
+import { Button } from "@elizaos/ui";
 import { Check } from "lucide-react";
 import { useCallback, useState } from "react";
 import type { SystemPermissionId } from "../../api";
@@ -20,7 +20,6 @@ import {
   PermissionRow,
   useDesktopPermissionsState,
 } from "./permission-controls";
-import { Button } from "@elizaos/ui";
 import {
   CAPABILITIES,
   getPermissionAction,
@@ -31,8 +30,10 @@ import {
 /** Mobile (Capacitor) permission UI for streaming to cloud sandbox. */
 function MobilePermissionsView() {
   const { t } = useApp();
-  const { websiteBlockerSettingsCard: WebsiteBlockerSettingsCard } =
-    useBootConfig();
+  const {
+    appBlockerSettingsCard: AppBlockerSettingsCard,
+    websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
+  } = useBootConfig();
   return (
     <div className="space-y-6">
       <StreamingPermissionsSettingsView
@@ -49,6 +50,7 @@ function MobilePermissionsView() {
           "Your device streams camera, microphone, and screen to your Eliza Cloud agent for processing.",
         )}
       />
+      {AppBlockerSettingsCard ? <AppBlockerSettingsCard mode="mobile" /> : null}
       {WebsiteBlockerSettingsCard ? (
         <WebsiteBlockerSettingsCard mode="mobile" />
       ) : null}

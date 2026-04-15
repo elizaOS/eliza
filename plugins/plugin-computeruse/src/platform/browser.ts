@@ -15,6 +15,12 @@ import { tmpdir } from "node:os";
 import { currentPlatform } from "./helpers.js";
 import type { BrowserState, BrowserTab, ClickableElement } from "../types.js";
 
+type BrowserInfo = BrowserState & {
+  success: boolean;
+  is_open: boolean;
+  error?: string;
+};
+
 // Lazy-load puppeteer-core so the plugin still loads if it's not installed
 let puppeteer: typeof import("puppeteer-core") | null = null;
 type Browser = import("puppeteer-core").Browser;
@@ -38,6 +44,12 @@ async function getPuppeteer() {
 let browser: Browser | null = null;
 let activePage: Page | null = null;
 let tempUserDataDir: string | null = null;
+
+function envFlagEnabled(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
 
 // ── Browser Detection ───────────────────────────────────────────────────────
 
@@ -124,18 +136,41 @@ export async function openBrowser(url?: string): Promise<BrowserState> {
   // Create temp user data directory to prevent conflicts
   tempUserDataDir = await mkdtemp(join(tmpdir(), "computeruse-browser-"));
 
-  browser = await pup.default.launch({
-    executablePath,
-    headless: false,
-    userDataDir: tempUserDataDir,
-    args: [
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-infobars",
-      `--window-size=1280,900`,
-    ],
-    defaultViewport: { width: 1280, height: 900 },
-  });
+  const launchArgs = [
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-infobars",
+    "--disable-dev-shm-usage",
+    `--window-size=1280,900`,
+  ];
+  const preferredHeadless = envFlagEnabled(
+    process.env.COMPUTER_USE_BROWSER_HEADLESS,
+  );
+
+  const launchBrowser = async (headless: boolean) =>
+    pup.default.launch({
+      executablePath,
+      headless,
+      userDataDir: tempUserDataDir!,
+      args: launchArgs,
+      defaultViewport: { width: 1280, height: 900 },
+    });
+
+  try {
+    browser = await launchBrowser(preferredHeadless);
+  } catch (error) {
+    const shouldRetryHeadless =
+      !preferredHeadless &&
+      (process.env.CI === "true" ||
+        process.env.CI === "1" ||
+        (!process.env.DISPLAY && currentPlatform() === "linux"));
+
+    if (!shouldRetryHeadless) {
+      throw error;
+    }
+
+    browser = await launchBrowser(true);
+  }
 
   const pages = await browser.pages();
   activePage = pages[0] ?? (await browser.newPage());
@@ -238,6 +273,29 @@ export async function getBrowserState(): Promise<BrowserState> {
   return { url: page.url(), title: await page.title() };
 }
 
+export async function getBrowserContext(): Promise<BrowserState> {
+  return getBrowserState();
+}
+
+export async function getBrowserInfo(): Promise<BrowserInfo> {
+  try {
+    const state = await getBrowserState();
+    return {
+      success: true,
+      is_open: true,
+      ...state,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      is_open: false,
+      url: "",
+      title: "",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 // ── DOM ─────────────────────────────────────────────────────────────────────
 
 export async function getBrowserDom(): Promise<string> {
@@ -325,6 +383,28 @@ export async function waitBrowser(
   }
 }
 
+export async function browserWait(
+  selector?: string,
+  text?: string,
+  timeout = 5000,
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    await waitBrowser(selector, text, timeout);
+    if (selector) {
+      return { success: true, message: `Element "${selector}" found` };
+    }
+    if (text) {
+      return { success: true, message: `Text "${text}" found on page` };
+    }
+    return { success: true, message: `Waited ${Math.min(timeout, 5000)}ms` };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 // ── Tab Management ──────────────────────────────────────────────────────────
 
 export async function listBrowserTabs(): Promise<BrowserTab[]> {
@@ -382,3 +462,24 @@ export async function switchBrowserTab(tabId: string): Promise<BrowserState> {
   await page.bringToFront();
   return { url: page.url(), title: await page.title() };
 }
+
+export const browser_open = openBrowser;
+export const browser_connect = openBrowser;
+export const browser_navigate = navigateBrowser;
+export const browser_click = clickBrowser;
+export const browser_type = typeBrowser;
+export const browser_scroll = scrollBrowser;
+export const browser_close = closeBrowser;
+export const browser_execute = executeBrowser;
+export const browser_screenshot = screenshotBrowser;
+export const browser_dom = getBrowserDom;
+export const browser_get_dom = getBrowserDom;
+export const browser_get_clickables = getBrowserClickables;
+export const browser_state = getBrowserState;
+export const browser_get_context = getBrowserContext;
+export const browser_info = getBrowserInfo;
+export const browser_wait = browserWait;
+export const browser_list_tabs = listBrowserTabs;
+export const browser_open_tab = openBrowserTab;
+export const browser_close_tab = closeBrowserTab;
+export const browser_switch_tab = switchBrowserTab;

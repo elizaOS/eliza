@@ -178,7 +178,7 @@ export async function runHydrating(
   // Wallet addresses
   try {
     deps.setWalletAddresses(await client.getWalletAddresses());
-  } catch (e) {
+  } catch (e: unknown) {
     warn("wallet addresses", e);
   }
 
@@ -198,7 +198,7 @@ export async function runHydrating(
         deps.setSelectedVrmIndex(resolvedIdx);
       }
     }
-  } catch (e) {
+  } catch (e: unknown) {
     warn("config avatar index", e);
   }
   try {
@@ -210,7 +210,7 @@ export async function runHydrating(
         deps.setSelectedVrmIndex(resolvedIdx);
       }
     }
-  } catch (e) {
+  } catch (e: unknown) {
     warn("stream settings avatar", e);
   }
   if (resolvedIdx === 0) {

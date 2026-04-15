@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core"
-import type { LifeOpsWorkflowRun } from "@elizaos/shared/contracts/lifeops"
+import type { LifeOpsWorkflowRun } from "@elizaos/app-lifeops/contracts"
 
 export type LifeOpsWorkflowSchedulerState = {
   managedBy: "task_worker"

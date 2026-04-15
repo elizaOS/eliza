@@ -12,6 +12,9 @@ const repoRoot = path.resolve(here, "..", "..", "..", "..", "..");
 const bunCmd = process.env.npm_execpath || process.env.BUN || "bun";
 const nodeCmd = resolveNodeCmd();
 const appRoot = path.join(repoRoot, "apps", "app");
+const elizaRoot = path.join(repoRoot, "eliza");
+const cloudRoot = path.join(elizaRoot, "cloud");
+const stewardFiRoot = path.join(elizaRoot, "steward-fi");
 const unitShardCount = 1;
 
 await runManagedTestCommand({
@@ -55,12 +58,18 @@ for (let shard = 1; shard <= unitShardCount; shard += 1) {
 
 await runManagedTestCommand({
   repoRoot,
-  lockName: "integration",
-  label: "integration",
+  lockName: "computeruse-real",
+  label: "computeruse-real",
   command: bunCmd,
-  args: ["run", "test:integration"],
-  cwd: repoRoot,
-  env: buildTestEnv(repoRoot),
+  args: ["run", "test"],
+  cwd: path.join(repoRoot, "eliza", "plugins", "plugin-computeruse"),
+  env: {
+    ...buildTestEnv(repoRoot),
+    MILADY_LIVE_TEST: "1",
+    ELIZA_LIVE_TEST: "1",
+    COMPUTER_USE_BROWSER_HEADLESS:
+      process.env.COMPUTER_USE_BROWSER_HEADLESS || "1",
+  },
 });
 
 await runManagedTestCommand({
@@ -82,7 +91,7 @@ await runManagedTestCommand({
   cwd: repoRoot,
   env: {
     ...buildTestEnv(repoRoot),
-    ELIZA_LIVE_TEST: "1",
+    MILADY_LIVE_TEST: "1",
     ELIZA_LIVE_TEST: "1",
   },
 });
@@ -95,4 +104,34 @@ await runManagedTestCommand({
   args: ["run", "test:orchestrator:integration"],
   cwd: repoRoot,
   env: buildTestEnv(repoRoot),
+});
+
+await runManagedTestCommand({
+  repoRoot,
+  lockName: "eliza-all",
+  label: "eliza-all",
+  command: bunCmd,
+  args: ["run", "test"],
+  cwd: elizaRoot,
+  env: buildTestEnv(elizaRoot),
+});
+
+await runManagedTestCommand({
+  repoRoot,
+  lockName: "cloud-all",
+  label: "cloud-all",
+  command: bunCmd,
+  args: ["run", "test"],
+  cwd: cloudRoot,
+  env: buildTestEnv(cloudRoot),
+});
+
+await runManagedTestCommand({
+  repoRoot,
+  lockName: "steward-fi-all",
+  label: "steward-fi-all",
+  command: bunCmd,
+  args: ["run", "test"],
+  cwd: stewardFiRoot,
+  env: buildTestEnv(stewardFiRoot),
 });

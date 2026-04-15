@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Swap benchmark environment for Solana DEX interactions",
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run --config ./vitest.config.ts"
   },
   "dependencies": {
     "@codama/nodes-from-anchor": "^1.2.3",

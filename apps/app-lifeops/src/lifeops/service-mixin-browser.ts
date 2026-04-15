@@ -15,17 +15,69 @@ import type {
   SyncLifeOpsBrowserStateRequest,
   UpdateLifeOpsBrowserSessionProgressRequest,
   UpdateLifeOpsBrowserSettingsRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_BROWSER_KINDS,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   fail,
   normalizeEnumValue,
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
+
+export interface LifeOpsBrowserService {
+  getBrowserSettings(): Promise<LifeOpsBrowserSettings>;
+  updateBrowserSettings(
+    request: UpdateLifeOpsBrowserSettingsRequest,
+  ): Promise<LifeOpsBrowserSettings>;
+  listBrowserCompanions(): Promise<LifeOpsBrowserCompanionStatus[]>;
+  listBrowserTabs(): Promise<LifeOpsBrowserTabSummary[]>;
+  getCurrentBrowserPage(): Promise<LifeOpsBrowserPageContext | null>;
+  syncBrowserState(request: SyncLifeOpsBrowserStateRequest): Promise<{
+    companion: LifeOpsBrowserCompanionStatus;
+    tabs: LifeOpsBrowserTabSummary[];
+    currentPage: LifeOpsBrowserPageContext | null;
+  }>;
+  createBrowserCompanionPairing(
+    request: CreateLifeOpsBrowserCompanionPairingRequest,
+  ): Promise<LifeOpsBrowserCompanionPairingResponse>;
+  syncBrowserCompanion(
+    companionId: string,
+    pairingToken: string,
+    request: SyncLifeOpsBrowserStateRequest,
+  ): Promise<LifeOpsBrowserCompanionSyncResponse>;
+  listBrowserSessions(): Promise<LifeOpsBrowserSession[]>;
+  getBrowserSession(sessionId: string): Promise<LifeOpsBrowserSession>;
+  createBrowserSession(
+    request: CreateLifeOpsBrowserSessionRequest,
+  ): Promise<LifeOpsBrowserSession>;
+  confirmBrowserSession(
+    sessionId: string,
+    request: ConfirmLifeOpsBrowserSessionRequest,
+  ): Promise<LifeOpsBrowserSession>;
+  completeBrowserSession(
+    sessionId: string,
+    request: CompleteLifeOpsBrowserSessionRequest,
+  ): Promise<LifeOpsBrowserSession>;
+  updateBrowserSessionProgressFromCompanion(
+    companionId: string,
+    pairingToken: string,
+    sessionId: string,
+    request: UpdateLifeOpsBrowserSessionProgressRequest,
+  ): Promise<LifeOpsBrowserSession>;
+  completeBrowserSessionFromCompanion(
+    companionId: string,
+    pairingToken: string,
+    sessionId: string,
+    request: CompleteLifeOpsBrowserSessionRequest,
+  ): Promise<LifeOpsBrowserSession>;
+}
 
 // ---------------------------------------------------------------------------
 // Local helpers (copied from service.ts)
@@ -296,7 +348,7 @@ import {
 
 export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
-) {
+): MixinClass<TBase, LifeOpsBrowserService> {
   return class extends Base {
     protected async createBrowserSessionInternal(
       request: CreateLifeOpsBrowserSessionRequest,
@@ -1206,5 +1258,5 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       await this.requireBrowserSessionForCompanion(companion, sessionId);
       return this.completeBrowserSession(sessionId, request);
     }
-  };
+  } as MixinClass<TBase, LifeOpsBrowserService>;
 }

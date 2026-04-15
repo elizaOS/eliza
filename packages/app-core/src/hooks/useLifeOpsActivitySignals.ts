@@ -1,20 +1,20 @@
-import { useEffect, useRef } from "react";
 import type {
   CaptureLifeOpsActivitySignalRequest,
   LifeOpsActivitySignal,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
+import { useEffect, useRef } from "react";
 import { client } from "../api";
 import { isApiError } from "../api/client-types-core";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
+import {
+  getMobileSignalsPlugin,
+  type MobileSignalsHealthSnapshot,
+  type MobileSignalsSignal,
+  type MobileSignalsSnapshot,
+} from "../bridge/native-plugins";
 import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
 import { isNative } from "../platform";
 import { loadDesktopWorkspaceSnapshot } from "../utils/desktop-workspace";
-import {
-  getMobileSignalsPlugin,
-  type MobileSignalsSnapshot,
-  type MobileSignalsHealthSnapshot,
-  type MobileSignalsSignal,
-} from "../bridge/native-plugins";
 
 const APP_SIGNAL_DEDUP_WINDOW_MS = 5_000;
 const RUNTIME_READY_POLL_MS = 5_000;

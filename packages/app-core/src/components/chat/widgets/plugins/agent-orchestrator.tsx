@@ -5,6 +5,7 @@ import { startTransition, useEffect, useMemo, useState } from "react";
 import { client } from "../../../../api";
 import type { ActivityEvent } from "../../../../hooks/useActivityEvents";
 import { useApp } from "../../../../state";
+import type { TranslateFn } from "../../../../types";
 import { getRunAttentionReasons } from "../../../apps/RunningAppsPanel";
 import { EmptyWidgetState, WidgetSection } from "../shared";
 import { Badge, Button } from "@elizaos/ui";
@@ -39,10 +40,8 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   nudge: "bg-accent/20 text-accent",
 };
 
-const fallbackTranslate = (
-  key: string,
-  vars?: { defaultValue?: string },
-): string => vars?.defaultValue ?? key;
+const fallbackTranslate: TranslateFn = (key, vars) =>
+  typeof vars?.defaultValue === "string" ? vars.defaultValue : key;
 
 function formatIsoTime(value?: string | null): string {
   if (!value) return "unknown";

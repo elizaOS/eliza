@@ -199,6 +199,11 @@ export {
   normalizeWalletRpcSelections,
   WALLET_RPC_PROVIDER_OPTIONS,
 };
+export type {
+  ComputerUseApprovalResolution,
+  ComputerUseApprovalSnapshot,
+  ComputerUsePendingApproval,
+} from "./client-computeruse";
 
 // ---------------------------------------------------------------------------
 // Domain method augmentations (declaration merging + prototype assignment)
@@ -208,6 +213,7 @@ export {
 import "./client-agent";
 import "./client-browser-workspace";
 import "./client-chat";
+import "./client-computeruse";
 import "./client-wallet";
 import "./client-cloud";
 import "./client-skills";

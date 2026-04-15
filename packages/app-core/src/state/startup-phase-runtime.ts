@@ -129,7 +129,7 @@ export async function runStartingRuntime(
           status = await client.startAgent();
           deps.setAgentStatus(status);
           lastDiag = status.startup;
-        } catch (e) {
+        } catch (e: unknown) {
           lastErr = e;
         }
       }

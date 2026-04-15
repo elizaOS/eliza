@@ -1,4 +1,4 @@
-import type { LifeOpsOverview } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsOverview } from "@elizaos/app-lifeops/contracts";
 import { Button, PagePanel } from "@elizaos/app-core";
 import {
   BellRing,

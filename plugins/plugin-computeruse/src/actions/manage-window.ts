@@ -1,5 +1,5 @@
 /**
- * MANAGE_WINDOW action — list, focus, minimize, maximize, close windows.
+ * MANAGE_WINDOW action — list, focus, switch, arrange, move, minimize, maximize, restore, and close windows.
  *
  * Provides window management capabilities across macOS, Linux, and Windows.
  */
@@ -22,6 +22,8 @@ export const manageWindowAction: Action = {
     "LIST_WINDOWS",
     "FOCUS_WINDOW",
     "SWITCH_WINDOW",
+    "ARRANGE_WINDOWS",
+    "MOVE_WINDOW",
     "MINIMIZE_WINDOW",
     "MAXIMIZE_WINDOW",
     "CLOSE_WINDOW",
@@ -30,12 +32,16 @@ export const manageWindowAction: Action = {
 
   description:
     "Manage desktop windows — list all visible windows, bring a window to the front, " +
-    "minimize, maximize, or close a window.\n\n" +
+    "arrange or move windows, minimize, maximize, restore, or close a window.\n\n" +
     "Available actions:\n" +
     "- list: List all visible windows with their IDs, titles, and app names.\n" +
     "- focus: Bring a window to the front. Requires windowId.\n" +
+    "- switch: Switch to a window by ID, title, or app name.\n" +
+    "- arrange: Expose the upstream arrange_windows stub for layout workflows.\n" +
+    "- move: Expose the upstream move_window stub for positional workflows.\n" +
     "- minimize: Minimize a window. Requires windowId.\n" +
     "- maximize: Maximize a window. Requires windowId.\n" +
+    "- restore: Restore a minimized or maximized window.\n" +
     "- close: Close a window. Requires windowId.\n\n" +
     "Use 'list' first to discover window IDs, then use other actions to manage them.",
 
@@ -46,7 +52,7 @@ export const manageWindowAction: Action = {
       required: true,
       schema: {
         type: "string",
-        enum: ["list", "focus", "minimize", "maximize", "close"],
+        enum: ["list", "focus", "switch", "arrange", "move", "minimize", "maximize", "restore", "close"],
       },
     },
     {
@@ -54,6 +60,30 @@ export const manageWindowAction: Action = {
       description: "Window identifier (from list action). Required for focus, minimize, maximize, close.",
       required: false,
       schema: { type: "string" },
+    },
+    {
+      name: "windowTitle",
+      description: "Window title or app-name query for switch/restore/focus operations.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "arrangement",
+      description: "Layout hint for the arrange action. Upstream exposes this as a stub.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "x",
+      description: "Target X coordinate for move. Upstream exposes this as a stub.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "y",
+      description: "Target Y coordinate for move. Upstream exposes this as a stub.",
+      required: false,
+      schema: { type: "number" },
     },
   ],
 
@@ -121,8 +151,10 @@ export const manageWindowAction: Action = {
       } else {
         await callback({
           text: result.success
-            ? `Window ${params.action} completed.`
-            : `Window action failed: ${result.error}`,
+            ? result.message ?? `Window ${params.action} completed.`
+            : result.approvalRequired
+              ? `Window action is waiting for approval (${result.approvalId}).`
+              : `Window action failed: ${result.error}`,
         });
       }
     }

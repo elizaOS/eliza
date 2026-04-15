@@ -7,11 +7,10 @@
   "scripts": {
     "start": "bun --no-env-file run server.ts",
     "dev": "bun --no-env-file --watch run server.ts",
-    "test": "vitest run"
+    "test": "vitest run --config ./vitest.config.ts"
   },
   "dependencies": {
     "@elizaos/core": "alpha",
-    "@elizaos/plugin-eliza-classic": "alpha",
     "@elizaos/plugin-openai": "alpha",
     "@elizaos/plugin-roblox": "alpha",
     "@elizaos/plugin-sql": "alpha",

@@ -83,7 +83,7 @@ export interface StreamEventEnvelope {
   sessionKey?: string;
   agentId?: string;
   roomId?: UUID;
-  payload: object;
+  payload: unknown;
 }
 
 export function getReleaseBundledPluginIds(): Set<string> {

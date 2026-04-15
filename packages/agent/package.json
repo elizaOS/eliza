@@ -120,7 +120,10 @@
     "./actions/restart": "./src/actions/restart.ts",
     "./actions/send-message": "./src/actions/send-message.ts",
     "./runtime/release-plugin-policy": "./src/runtime/release-plugin-policy.ts",
-    "./activity-profile/*": "./src/activity-profile/*.ts"
+    "./activity-profile/*": "./src/activity-profile/*.ts",
+    "./types": "./src/types/index.ts",
+    "./types/*": "./src/types/*.ts",
+    "./test-utils/*": "./src/test-utils/*.ts"
   },
   "publishConfig": {
     "access": "public",
@@ -140,7 +143,7 @@
     "@elizaos/plugin-pdf": "workspace:*",
     "@elizaos/plugin-solana": "1.2.6",
     "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/plugin-wechat": "workspace:*",
+    "@miladyai/plugin-wechat": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/skills": "workspace:*",
     "@hapi/boom": "^10.0.1",

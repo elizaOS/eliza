@@ -75,32 +75,37 @@ export const takeScreenshotAction: Action = {
       return { success: false, error: "ComputerUseService not available" };
     }
 
-    try {
-      const buf = await service.captureScreen();
-      const b64 = buf.toString("base64");
+    const result = await service.executeDesktopAction({ action: "screenshot" });
+    if (!result.success || !result.screenshot) {
+      const message = result.permissionDenied
+        ? `Screenshot failed because ${result.permissionType} permission is missing.`
+        : result.approvalRequired
+          ? `Screenshot is waiting for approval (${result.approvalId}).`
+          : `Screenshot failed: ${result.error}`;
 
       if (callback) {
-        await callback({
-          text: "Here is the current screen.",
-          attachments: [
-            {
-              id: `screenshot-${Date.now()}`,
-              url: `data:image/png;base64,${b64}`,
-              title: "Screenshot",
-              source: "computeruse",
-              description: "Full screen capture",
-              contentType: "image" as const,
-            },
-          ],
-        });
+        await callback({ text: message });
       }
 
-      return { success: true };
-    } catch (err) {
-      if (callback) {
-        await callback({ text: `Screenshot failed: ${String(err)}` });
-      }
-      return { success: false, error: String(err) };
+      return { success: false, error: result.error };
     }
+
+    if (callback) {
+      await callback({
+        text: "Here is the current screen.",
+        attachments: [
+          {
+            id: `screenshot-${Date.now()}`,
+            url: `data:image/png;base64,${result.screenshot}`,
+            title: "Screenshot",
+            source: "computeruse",
+            description: "Full screen capture",
+            contentType: "image" as const,
+          },
+        ],
+      });
+    }
+
+    return { success: true };
   },
 };

@@ -1,4 +1,4 @@
-import { describe, test, expect, afterAll } from "bun:test";
+import { afterAll, describe, expect, test } from "vitest";
 import { execSync } from "child_process";
 import * as path from "path";
 import * as fs from "fs";

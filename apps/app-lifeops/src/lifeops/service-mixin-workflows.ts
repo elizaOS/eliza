@@ -6,8 +6,8 @@ import type {
   LifeOpsWorkflowRecord,
   LifeOpsWorkflowRun,
   UpdateLifeOpsWorkflowRequest,
-} from "@elizaos/shared/contracts/lifeops";
-import { LIFEOPS_WORKFLOW_STATUSES } from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
+import { LIFEOPS_WORKFLOW_STATUSES } from "@elizaos/app-lifeops/contracts";
 import { computeNextCronRunAtMs } from "@elizaos/agent/triggers/scheduling";
 import {
   createLifeOpsWorkflowDefinition,
@@ -40,9 +40,31 @@ import {
 import { addMinutes } from "./time.js";
 import type { LifeOpsWorkflowSchedulerState, ExecuteWorkflowResult } from "./service-types.js";
 import { LifeOpsServiceError } from "./service-types.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 
-export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
+export interface LifeOpsWorkflowService {
+  listWorkflows(): Promise<LifeOpsWorkflowRecord[]>;
+  getWorkflow(workflowId: string): Promise<LifeOpsWorkflowRecord>;
+  createWorkflow(
+    request: CreateLifeOpsWorkflowRequest,
+  ): Promise<LifeOpsWorkflowRecord>;
+  updateWorkflow(
+    workflowId: string,
+    request: UpdateLifeOpsWorkflowRequest,
+  ): Promise<LifeOpsWorkflowRecord>;
+  runWorkflow(
+    workflowId: string,
+    request?: { now?: string; confirmBrowserActions?: boolean },
+  ): Promise<LifeOpsWorkflowRun>;
+}
+
+export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
+  Base: TBase,
+): MixinClass<TBase, LifeOpsWorkflowService> {
   return class extends Base {
     protected readWorkflowSchedulerState(
       workflow: LifeOpsWorkflowDefinition,
@@ -578,5 +600,5 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(Bas
       }
       return result.run;
     }
-  };
+  } as MixinClass<TBase, LifeOpsWorkflowService>;
 }

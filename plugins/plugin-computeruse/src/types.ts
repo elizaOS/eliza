@@ -10,6 +10,7 @@
 export type DesktopActionType =
   | "screenshot"
   | "click"
+  | "click_with_modifiers"
   | "double_click"
   | "right_click"
   | "mouse_move"
@@ -17,7 +18,9 @@ export type DesktopActionType =
   | "key"
   | "key_combo"
   | "scroll"
-  | "drag";
+  | "drag"
+  | "detect_elements"
+  | "ocr";
 
 export interface DesktopActionParams {
   action: DesktopActionType;
@@ -25,6 +28,8 @@ export interface DesktopActionParams {
   coordinate?: [number, number];
   /** [x, y] start coordinates for drag */
   startCoordinate?: [number, number];
+  /** Modifier keys to hold during click_with_modifiers */
+  modifiers?: string[];
   /** Text to type (for "type" action) */
   text?: string;
   /** Key name or combo string, e.g. "Return", "ctrl+c" */
@@ -39,6 +44,7 @@ export interface DesktopActionParams {
 
 export type BrowserActionType =
   | "open"
+  | "connect"
   | "close"
   | "navigate"
   | "click"
@@ -46,9 +52,15 @@ export type BrowserActionType =
   | "scroll"
   | "screenshot"
   | "dom"
+  | "get_dom"
   | "clickables"
+  | "get_clickables"
   | "execute"
   | "state"
+  | "info"
+  | "context"
+  | "get_context"
+  | "wait"
   | "list_tabs"
   | "open_tab"
   | "close_tab"
@@ -66,12 +78,18 @@ export interface BrowserActionParams {
   text?: string;
   /** JavaScript code for execute action */
   code?: string;
+  /** Text to wait for or click by text content */
+  waitForText?: string;
+  /** Text to wait to disappear */
+  waitForTextGone?: string;
   /** Scroll direction */
   direction?: "up" | "down";
   /** Scroll amount in pixels */
   amount?: number;
   /** Tab ID for switch_tab, close_tab */
   tabId?: string;
+  /** Numeric tab index alias from upstream callers */
+  index?: number;
   /** Wait timeout in ms */
   timeout?: number;
 }
@@ -81,41 +99,137 @@ export interface BrowserActionParams {
 export type WindowActionType =
   | "list"
   | "focus"
+  | "switch"
+  | "arrange"
+  | "move"
   | "minimize"
   | "maximize"
+  | "restore"
   | "close";
 
 export interface WindowActionParams {
   action: WindowActionType;
   /** Window identifier (required for focus, minimize, maximize, close) */
   windowId?: string;
+  /** Window title match for switch action */
+  windowTitle?: string;
+  /** App name match for switch action */
+  appName?: string;
+  /** Upstream title alias */
+  title?: string;
+  /** Upstream window alias */
+  window?: string;
+  /** Upstream arrangement hint for arrange action */
+  arrangement?: string;
+  /** Upstream coordinates for move action */
+  x?: number;
+  y?: number;
 }
 
 // ── Results ─────────────────────────────────────────────────────────────────
 
-export interface ComputerActionResult {
+export type PermissionType = "accessibility" | "screen-recording";
+
+export type ApprovalMode =
+  | "full_control"
+  | "smart_approve"
+  | "approve_all"
+  | "off";
+
+export interface ComputerUseResult {
   success: boolean;
-  /** Base64-encoded PNG screenshot taken after the action */
-  screenshot?: string;
+  message?: string;
   error?: string;
+  permissionDenied?: true;
+  permissionType?: PermissionType;
+  approvalRequired?: true;
+  approvalId?: string;
 }
 
-export interface BrowserActionResult {
-  success: boolean;
+export interface ComputerActionResult extends ComputerUseResult {
+  /** Base64-encoded PNG screenshot taken after the action */
+  screenshot?: string;
+}
+
+export interface BrowserActionResult extends ComputerUseResult {
   /** Base64-encoded PNG for screenshot action */
   screenshot?: string;
   /** Text content for dom, state, clickables, execute results */
   content?: string;
   /** Structured data (e.g. tab list, clickable elements) */
   data?: unknown;
-  error?: string;
 }
 
-export interface WindowActionResult {
-  success: boolean;
+export interface WindowActionResult extends ComputerUseResult {
   /** Window list for "list" action */
   windows?: WindowInfo[];
-  error?: string;
+}
+
+export type FileActionType =
+  | "read"
+  | "write"
+  | "edit"
+  | "append"
+  | "delete"
+  | "exists"
+  | "list_directory"
+  | "delete_directory"
+  | "upload"
+  | "download"
+  | "list_downloads";
+
+export interface FileActionParams {
+  action: FileActionType;
+  path?: string;
+  content?: string;
+  oldText?: string;
+  newText?: string;
+  old_text?: string;
+  new_text?: string;
+  encoding?: BufferEncoding;
+}
+
+export interface FileEntry {
+  name: string;
+  type: "file" | "directory";
+  path: string;
+}
+
+export interface FileActionResult extends ComputerUseResult {
+  path?: string;
+  content?: string;
+  exists?: boolean;
+  isFile?: boolean;
+  isDirectory?: boolean;
+  size?: number;
+  count?: number;
+  items?: FileEntry[];
+}
+
+export type TerminalActionType =
+  | "connect"
+  | "execute"
+  | "read"
+  | "type"
+  | "clear"
+  | "close"
+  | "execute_command";
+
+export interface TerminalActionParams {
+  action: TerminalActionType;
+  command?: string;
+  cwd?: string;
+  timeout?: number;
+  sessionId?: string;
+  session_id?: string;
+  text?: string;
+}
+
+export interface TerminalActionResult extends ComputerUseResult {
+  sessionId?: string;
+  cwd?: string;
+  output?: string;
+  exitCode?: number;
 }
 
 // ── Shared Types ────────────────────────────────────────────────────────────
@@ -143,6 +257,8 @@ export interface PlatformCapabilities {
   computerUse: { available: boolean; tool: string };
   windowList: { available: boolean; tool: string };
   browser: { available: boolean; tool: string };
+  terminal: { available: boolean; tool: string };
+  fileSystem: { available: boolean; tool: string };
 }
 
 export interface ActionHistoryEntry {
@@ -159,6 +275,8 @@ export interface ComputerUseConfig {
   actionTimeoutMs: number;
   /** Max recent actions to keep for provider context (default: 10) */
   maxRecentActions: number;
+  /** Approval mode for side-effecting commands */
+  approvalMode: ApprovalMode;
 }
 
 // ── Browser State Types ─────────────────────────────────────────────────────
@@ -166,6 +284,12 @@ export interface ComputerUseConfig {
 export interface BrowserState {
   url: string;
   title: string;
+}
+
+export interface BrowserInfo extends BrowserState {
+  userAgent?: string;
+  viewport?: { width: number; height: number } | null;
+  tabs?: number;
 }
 
 export interface ClickableElement {

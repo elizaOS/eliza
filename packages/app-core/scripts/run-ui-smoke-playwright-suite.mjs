@@ -27,15 +27,14 @@ const nodeCmd =
       ? "node.exe"
       : "node";
 
-const specGroups = [
-  [
-    "test/ui-smoke/apps-session.spec.ts",
-    "test/ui-smoke/browser-workspace.spec.ts",
-  ],
-  [
-    "test/ui-smoke/ui-smoke.spec.ts",
-    "test/ui-smoke/settings-chat-companion.spec.ts",
-  ],
+const specFiles = [
+  "test/ui-smoke/apps-session.spec.ts",
+  "test/ui-smoke/apps-session-direct-a.spec.ts",
+  "test/ui-smoke/apps-session-direct-b.spec.ts",
+  "test/ui-smoke/browser-workspace.spec.ts",
+  "test/ui-smoke/cloud-wallet-import.spec.ts",
+  "test/ui-smoke/ui-smoke.spec.ts",
+  "test/ui-smoke/settings-chat-companion.spec.ts",
 ];
 
 function getFreePort() {
@@ -72,14 +71,14 @@ if (!env.ELIZA_UI_SMOKE_PORT) {
   env.ELIZA_PORT = env.ELIZA_PORT || String(uiPort);
 }
 
-for (const specs of specGroups) {
+for (const spec of specFiles) {
   const result = spawnSync(
     nodeCmd,
     [
       uiPlaywrightRunner,
       "--config",
       "playwright.ui-smoke.config.ts",
-      ...specs,
+      spec,
     ],
     {
       cwd: repoRoot,

@@ -166,7 +166,7 @@ async function persistOnboardingStyleVoice(args: {
   });
 }
 
-function buildOnboardingFeatureSubmitPayload(args: {
+export function buildOnboardingFeatureSubmitPayload(args: {
   onboardingFeatureTelegram: boolean;
   onboardingFeatureDiscord: boolean;
   onboardingFeatureBrowser: boolean;

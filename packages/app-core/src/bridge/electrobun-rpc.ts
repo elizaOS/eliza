@@ -1,4 +1,4 @@
-import type { ExistingElizaInstallInfo as ExistingElizaInstallInfoType } from "../types/index.js";
+import type { ExistingElizaInstallInfo } from "../types/index.js";
 
 export type ElectrobunRequestHandler = (params?: unknown) => Promise<unknown>;
 
@@ -125,8 +125,8 @@ export async function scanProviderCredentials(): Promise<DetectedProvider[]> {
   return result?.providers ?? [];
 }
 
-export async function inspectExistingElizaInstall(): Promise<ExistingElizaInstallInfoType | null> {
-  return invokeDesktopBridgeRequest<ExistingElizaInstallInfoType>({
+export async function inspectExistingElizaInstall(): Promise<ExistingElizaInstallInfo | null> {
+  return invokeDesktopBridgeRequest<ExistingElizaInstallInfo>({
     rpcMethod: "agentInspectExistingInstall",
     ipcChannel: "agent:inspectExistingInstall",
   });

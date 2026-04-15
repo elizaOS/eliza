@@ -11,6 +11,7 @@ import {
   createUniqueUuid,
   type HandlerCallback,
   type IAgentRuntime,
+  type IMessageService,
   type Media,
   type Memory,
   type Room,
@@ -20,13 +21,7 @@ import {
 } from "@elizaos/core";
 import { signalCheck } from "./rpc";
 
-type MessageService = {
-  handleMessage: (
-    runtime: IAgentRuntime,
-    message: Memory,
-    callback: HandlerCallback
-  ) => Promise<void>;
-};
+type MessageService = Pick<IMessageService, "handleMessage">;
 
 const getMessageService = (runtime: IAgentRuntime): MessageService | null => {
   if ("messageService" in runtime) {
@@ -800,7 +795,11 @@ export class SignalService extends Service implements ISignalService {
 
     const messageService = getMessageService(this.runtime);
     if (messageService) {
-      await messageService.handleMessage(this.runtime, memory, callback);
+      await messageService.handleMessage(this.runtime, memory, callback, {
+        onBeforeActionExecution: async () => {
+          await this.sendTypingBeforeActions(sender, groupId);
+        },
+      });
     }
   }
 
@@ -1010,6 +1009,16 @@ export class SignalService extends Service implements ISignalService {
   async sendTypingIndicator(recipient: string): Promise<void> {
     if (!this.client) return;
     await this.client.sendTyping(recipient);
+  }
+
+  /**
+   * Typing after planning when the pipeline will run actions (not a simple reply).
+   * Uses the same addressing scheme as send (E.164 / UUID for DM, `group.{id}` for groups).
+   */
+  async sendTypingBeforeActions(sender: string, groupId?: string): Promise<void> {
+    if (!this.client) return;
+    const target = groupId ? `group.${groupId}` : sender;
+    await this.client.sendTyping(target);
   }
 
   async stopTypingIndicator(recipient: string): Promise<void> {

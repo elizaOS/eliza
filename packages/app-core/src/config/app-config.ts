@@ -16,7 +16,7 @@
  *   } satisfies AppConfig;
  */
 
-import type { BrandingConfig } from "./branding";
+import { DEFAULT_BRANDING, type BrandingConfig } from "./branding";
 
 export interface AppDesktopConfig {
   /** Reverse-domain bundle identifier (e.g. "com.miladyai.milady") */
@@ -59,6 +59,17 @@ export interface AppPackagingConfig {
     packageName: string;
     description: string;
   };
+}
+
+export interface AppWebConfig {
+  /** Short display name for install surfaces like the PWA manifest */
+  shortName?: string;
+  /** Browser/PWA theme color */
+  themeColor?: string;
+  /** Browser/PWA background color */
+  backgroundColor?: string;
+  /** Social share image path, relative to the app origin */
+  shareImagePath?: string;
 }
 
 export interface AppConfig {
@@ -109,6 +120,9 @@ export interface AppConfig {
   /** Package manager configurations */
   packaging?: AppPackagingConfig;
 
+  /** Web shell metadata (index.html + manifest) */
+  web?: AppWebConfig;
+
   /**
    * Default ELIZA_NAMESPACE value.
    * Determines the state directory name (~/.{namespace}/) and config filename.
@@ -122,7 +136,6 @@ export interface AppConfig {
  * Merges app-specific overrides with the framework defaults.
  */
 export function resolveAppBranding(appConfig: AppConfig): BrandingConfig {
-  const { DEFAULT_BRANDING } = require("./branding");
   return {
     ...DEFAULT_BRANDING,
     appName: appConfig.appName,

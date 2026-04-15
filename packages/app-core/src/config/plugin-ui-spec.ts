@@ -29,8 +29,16 @@ export interface PluginForUiSpec {
   parameters: PluginParam[];
 }
 
-export function buildPluginConfigUiSpec(plugin: PluginForUiSpec): object {
-  const elements: Record<string, object> = {};
+/** Declarative UI specification for rendering plugin forms in chat. */
+export interface PluginUiSpec {
+  version: number;
+  root: string;
+  elements: Record<string, Record<string, unknown>>;
+  state: Record<string, unknown>;
+}
+
+export function buildPluginConfigUiSpec(plugin: PluginForUiSpec): PluginUiSpec {
+  const elements: Record<string, Record<string, unknown>> = {};
   const rootChildren: string[] = [];
   const state: Record<string, unknown> = {
     pluginId: plugin.id,
@@ -221,8 +229,8 @@ export function buildPluginConfigUiSpec(plugin: PluginForUiSpec): object {
 export function buildPluginListUiSpec(
   plugins: PluginForUiSpec[],
   title: string,
-): object {
-  const elements: Record<string, object> = {};
+): PluginUiSpec {
+  const elements: Record<string, Record<string, unknown>> = {};
   const cardIds: string[] = [];
 
   elements.heading = {

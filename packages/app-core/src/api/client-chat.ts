@@ -13,7 +13,7 @@ import type {
   LifeOpsBrowserKind,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import { ElizaClient } from "./client-base";
 import type {
   ApiError,

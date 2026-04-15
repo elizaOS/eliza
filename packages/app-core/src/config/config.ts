@@ -1,5 +1,5 @@
-export type { ElizaConfig } from "@elizaos/agent/config";
 export {
+  type ElizaConfig,
   loadElizaConfig,
   saveElizaConfig,
 } from "@elizaos/agent/config/config";

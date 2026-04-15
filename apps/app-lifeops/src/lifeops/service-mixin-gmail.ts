@@ -22,7 +22,7 @@ import type {
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   resolveGoogleExecutionTarget,
   resolveGoogleGrants,
@@ -80,14 +80,79 @@ import {
   summarizeGmailTriage,
 } from "./service-normalize-gmail.js";
 import { buildReminderVoiceContext } from "./service-helpers-misc.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
+
+export interface LifeOpsGmailService {
+  getGmailTriage(
+    requestUrl: URL,
+    request?: GetLifeOpsGmailTriageRequest,
+    now?: Date,
+  ): Promise<LifeOpsGmailTriageFeed>;
+  getGmailSearch(
+    requestUrl: URL,
+    request: GetLifeOpsGmailSearchRequest,
+    now?: Date,
+  ): Promise<LifeOpsGmailSearchFeed>;
+  readGmailMessage(
+    requestUrl: URL,
+    request: {
+      side?: LifeOpsConnectorSide;
+      mode?: LifeOpsConnectorMode;
+      grantId?: string;
+      forceSync?: boolean;
+      maxResults?: number;
+      messageId?: string;
+      query?: string;
+      replyNeededOnly?: boolean;
+    },
+    now?: Date,
+  ): Promise<{
+    query: string | null;
+    message: LifeOpsGmailMessageSummary;
+    bodyText: string;
+    source: "synced";
+    syncedAt: string;
+  }>;
+  getGmailNeedsResponse(
+    requestUrl: URL,
+    request?: GetLifeOpsGmailTriageRequest,
+    now?: Date,
+  ): Promise<LifeOpsGmailNeedsResponseFeed>;
+  createGmailBatchReplyDrafts(
+    requestUrl: URL,
+    request: CreateLifeOpsGmailBatchReplyDraftsRequest,
+    now?: Date,
+  ): Promise<LifeOpsGmailBatchReplyDraftsFeed>;
+  createGmailReplyDraft(
+    requestUrl: URL,
+    request: CreateLifeOpsGmailReplyDraftRequest,
+  ): Promise<LifeOpsGmailReplyDraft>;
+  sendGmailReply(
+    requestUrl: URL,
+    request: SendLifeOpsGmailReplyRequest,
+  ): Promise<{ ok: true }>;
+  sendGmailMessage(
+    requestUrl: URL,
+    request: SendLifeOpsGmailMessageRequest,
+  ): Promise<{ ok: true }>;
+  sendGmailReplies(
+    requestUrl: URL,
+    request: SendLifeOpsGmailBatchReplyRequest,
+  ): Promise<LifeOpsGmailBatchReplySendResult>;
+}
 
 const GOOGLE_GMAIL_MAILBOX = "me";
 const DEFAULT_GMAIL_TRIAGE_MAX_RESULTS = 12;
 const DEFAULT_GMAIL_SEARCH_SCAN_LIMIT = 50;
 const DEFAULT_GMAIL_SEARCH_CACHE_SCAN_LIMIT = 200;
 
-export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
+export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
+  Base: TBase,
+): MixinClass<TBase, LifeOpsGmailService> {
   return class extends Base {
 
     protected async recordGmailAudit(
@@ -1540,5 +1605,5 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       }
       return { ok: true, sentCount };
     }
-  };
+  } as MixinClass<TBase, LifeOpsGmailService>;
 }

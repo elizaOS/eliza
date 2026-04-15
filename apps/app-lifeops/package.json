@@ -21,7 +21,9 @@
     "./inbox/*": "./src/inbox/*.ts",
     "./actions/*": "./src/actions/*.ts",
     "./providers/*": "./src/providers/*.ts",
-    "./routes/*": "./src/routes/*.ts"
+    "./routes/*": "./src/routes/*.ts",
+    "./contracts": "./src/contracts/index.ts",
+    "./contracts/lifeops": "./src/contracts/lifeops.ts"
   },
   "scripts": {
     "test": "cd ../../.. && vitest run --config test/vitest/default.config.ts eliza/apps/app-lifeops/src/lifeops-plugin.test.ts eliza/apps/app-lifeops/test/lifeops-google-helpers.test.ts eliza/apps/app-lifeops/test/life-goal-extractor.test.ts eliza/apps/app-lifeops/test/lifeops-app-state.test.ts",

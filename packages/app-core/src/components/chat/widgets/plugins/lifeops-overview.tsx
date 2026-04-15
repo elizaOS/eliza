@@ -1,5 +1,3 @@
-
-
 import type {
   LifeOpsActiveReminderView,
   LifeOpsCadence,
@@ -9,7 +7,8 @@ import type {
   LifeOpsOccurrenceView,
   LifeOpsOverview,
   LifeOpsOverviewSection,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
+import { Badge, Button } from "@elizaos/ui";
 import {
   BellRing,
   Bot,
@@ -21,7 +20,6 @@ import {
 } from "lucide-react";
 import type { PropsWithChildren, ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Badge, Button } from "@elizaos/ui";
 import { client } from "../../../../api";
 import { isApiError } from "../../../../api/client-types-core";
 import { useLifeOpsAppState } from "../../../../hooks";

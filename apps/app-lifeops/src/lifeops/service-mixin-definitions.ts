@@ -8,11 +8,11 @@ import type {
   LifeOpsTaskDefinition,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_DEFINITION_KINDS,
   LIFEOPS_DEFINITION_STATUSES,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import { createLifeOpsTaskDefinition } from "./repository.js";
 import {
   fail,
@@ -45,9 +45,48 @@ import {
   ROUTINE_SEED_TEMPLATES,
   type RoutineSeedTemplate,
 } from "./seed-routines.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 
-export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
+export interface LifeOpsDefinitionService {
+  listDefinitions(): Promise<LifeOpsDefinitionRecord[]>;
+  getDefinition(definitionId: string): Promise<LifeOpsDefinitionRecord>;
+  createDefinition(
+    request: CreateLifeOpsDefinitionRequest,
+  ): Promise<LifeOpsDefinitionRecord>;
+  checkAndOfferSeeding(): Promise<{
+    needsSeeding: boolean;
+    availableTemplates: RoutineSeedTemplate[];
+  }>;
+  markSeedingOffered(): Promise<void>;
+  applySeedRoutines(keys: string[], timezone?: string): Promise<string[]>;
+  updateDefinition(
+    definitionId: string,
+    request: UpdateLifeOpsDefinitionRequest,
+  ): Promise<LifeOpsDefinitionRecord>;
+  deleteDefinition(definitionId: string): Promise<void>;
+  completeOccurrence(
+    occurrenceId: string,
+    request: CompleteLifeOpsOccurrenceRequest,
+    now?: Date,
+  ): Promise<LifeOpsOccurrenceView>;
+  skipOccurrence(
+    occurrenceId: string,
+    now?: Date,
+  ): Promise<LifeOpsOccurrenceView>;
+  snoozeOccurrence(
+    occurrenceId: string,
+    request: SnoozeLifeOpsOccurrenceRequest,
+    now?: Date,
+  ): Promise<LifeOpsOccurrenceView>;
+}
+
+export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(
+  Base: TBase,
+): MixinClass<TBase, LifeOpsDefinitionService> {
   return class extends Base {
     async listDefinitions(): Promise<LifeOpsDefinitionRecord[]> {
       const definitions = await this.repository.listDefinitions(this.agentId());
@@ -609,6 +648,5 @@ export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(B
       }
       return view;
     }
-  };
+  } as MixinClass<TBase, LifeOpsDefinitionService>;
 }
-

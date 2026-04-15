@@ -25,10 +25,10 @@ import type {
   LifeOpsWorkflowRun,
   SetLifeOpsReminderPreferenceRequest,
   UpsertLifeOpsChannelPolicyRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_CHANNEL_TYPES,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   getSelfControlStatus,
   startSelfControlBlock,
@@ -68,7 +68,11 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 import { addMinutes } from "./time.js";
 import {
   readTwilioCredentialsFromEnv,
@@ -120,6 +124,54 @@ type LifeOpsReminderPreferenceSetting = {
   updatedAt: string | null;
   note: string | null;
 };
+
+export interface LifeOpsReminderService {
+  getReminderPreference(
+    definitionId?: string | null,
+  ): Promise<LifeOpsReminderPreference>;
+  setReminderPreference(
+    request: SetLifeOpsReminderPreferenceRequest,
+  ): Promise<LifeOpsReminderPreference>;
+  captureActivitySignal(
+    request: CaptureLifeOpsActivitySignalRequest,
+  ): Promise<LifeOpsActivitySignal>;
+  listActivitySignals(args?: {
+    sinceAt?: string | null;
+    limit?: number | null;
+    states?: LifeOpsActivitySignal["state"][] | null;
+  }): Promise<LifeOpsActivitySignal[]>;
+  upsertChannelPolicy(
+    request: UpsertLifeOpsChannelPolicyRequest,
+  ): Promise<LifeOpsChannelPolicy>;
+  capturePhoneConsent(request: CaptureLifeOpsPhoneConsentRequest): Promise<{
+    phoneNumber: string;
+    policies: LifeOpsChannelPolicy[];
+  }>;
+  processReminders(
+    request?: { now?: string; limit?: number },
+  ): Promise<LifeOpsReminderProcessingResult>;
+  processScheduledWork(request?: {
+    now?: string;
+    reminderLimit?: number;
+    workflowLimit?: number;
+  }): Promise<{
+    now: string;
+    reminderAttempts: LifeOpsReminderAttempt[];
+    workflowRuns: LifeOpsWorkflowRun[];
+  }>;
+  relockWebsiteAccessGroup(groupKey: string, now?: Date): Promise<{ ok: true }>;
+  resolveWebsiteAccessCallback(
+    callbackKey: string,
+    now?: Date,
+  ): Promise<{ ok: true }>;
+  inspectReminder(
+    ownerType: "occurrence" | "calendar_event",
+    ownerId: string,
+  ): Promise<LifeOpsReminderInspection>;
+  acknowledgeReminder(
+    request: AcknowledgeLifeOpsReminderRequest,
+  ): Promise<{ ok: true }>;
+}
 
 // ---------------------------------------------------------------------------
 // Local constants
@@ -798,7 +850,7 @@ function computeDefinitionPerformance(
 
 export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
-) {
+): MixinClass<TBase, LifeOpsReminderService> {
   return class extends Base {
     protected emitInAppReminderNudge(args: {
       text: string;
@@ -3499,5 +3551,5 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       });
       return { ok: true };
     }
-  };
+  } as MixinClass<TBase, LifeOpsReminderService>;
 }

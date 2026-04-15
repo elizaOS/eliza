@@ -7,7 +7,7 @@ import {
   type LifeOpsBrowserSettings,
   type LifeOpsBrowserSiteAccessMode,
   type LifeOpsBrowserTrackingMode,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   Badge,
   Button,

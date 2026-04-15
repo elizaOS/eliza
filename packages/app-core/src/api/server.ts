@@ -132,6 +132,7 @@ import {
 } from "../utils/sql-compat";
 import { handleCloudRoute } from "./cloud-routes";
 import { handleCloudStatusRoutes } from "./cloud-status-routes";
+import { handleComputerUseCompatRoutes } from "./computer-use-compat-routes";
 import {
   buildCorsAllowedPorts,
   getCorsAllowedPorts,
@@ -751,6 +752,8 @@ async function handleCompatRoute(
 
   // Auth / pairing / onboarding status — extracted to auth-pairing-compat-routes.ts
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;
+
+  if (await handleComputerUseCompatRoutes(req, res, state)) return true;
 
   if (method === "POST" && url.pathname === "/api/tts/cloud") {
     if (!ensureCompatApiAuthorized(req, res)) return true;
