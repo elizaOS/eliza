@@ -10,30 +10,10 @@ import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const appDir = path.join(repoRoot, "apps", "app");
+const iosPlatformDir = path.join(appDir, "ios");
 const iosDir = path.join(appDir, "ios", "App");
 const androidDir = path.join(appDir, "android");
-const androidBuildGradleTemplate =
-  firstExisting([
-    path.join(
-      repoRoot,
-      "eliza",
-      "packages",
-      "app-core",
-      "platforms",
-      "android",
-      "build.gradle",
-    ),
-    path.join(repoRoot, "packages", "app-core", "platforms", "android", "build.gradle"),
-  ]) ??
-  path.join(
-    repoRoot,
-    "eliza",
-    "packages",
-    "app-core",
-    "platforms",
-    "android",
-    "build.gradle",
-  );
+const iosWorkspacePath = path.join(iosDir, "App.xcworkspace");
 const prepareIosCocoapodsScript =
   firstExisting([
     path.join(
@@ -128,49 +108,60 @@ async function buildSharedApp() {
   await run("bun", ["scripts/build.mjs"], { cwd: appDir });
 }
 
+function getCapacitorPlatformRoot(platform) {
+  return platform === "android" ? androidDir : iosPlatformDir;
+}
+
+function isCapacitorPlatformReady(platform) {
+  if (platform === "android") {
+    return (
+      fs.existsSync(path.join(androidDir, "gradlew")) &&
+      fs.existsSync(path.join(androidDir, "app", "build.gradle"))
+    );
+  }
+
+  return (
+    fs.existsSync(path.join(iosDir, "Podfile")) &&
+    fs.existsSync(path.join(iosDir, "App.xcodeproj", "project.pbxproj"))
+  );
+}
+
 async function ensureCapacitorPlatform(platform) {
-  const platformDir = platform === "android" ? androidDir : iosDir;
-  if (fs.existsSync(platformDir)) {
+  if (isCapacitorPlatformReady(platform)) {
     return;
+  }
+
+  const platformRootDir = getCapacitorPlatformRoot(platform);
+  if (fs.existsSync(platformRootDir)) {
+    if (process.env.CI !== "true") {
+      throw new Error(
+        `Capacitor ${platform} platform at ${platformRootDir} is incomplete. Remove it or run 'bun x capacitor add ${platform}' before retrying.`,
+      );
+    }
+
+    console.log(
+      `[mobile-build] Recreating incomplete Capacitor ${platform} platform at ${platformRootDir}...`,
+    );
+    fs.rmSync(platformRootDir, { force: true, recursive: true });
   }
 
   console.log(`[mobile-build] Adding missing Capacitor ${platform} platform...`);
   await run("bun", ["x", "capacitor", "add", platform], { cwd: appDir });
 }
 
-function ensureAndroidBuildGradlePatched() {
-  const targetPath = path.join(androidDir, "build.gradle");
-  if (!fs.existsSync(targetPath) || !fs.existsSync(androidBuildGradleTemplate)) {
+async function ensureIosWorkspace() {
+  if (fs.existsSync(iosWorkspacePath)) {
     return;
   }
 
-  const current = fs.readFileSync(targetPath, "utf8");
-  const template = fs.readFileSync(androidBuildGradleTemplate, "utf8");
-  if (current === template) {
-    return;
+  console.log("[mobile-build] Running CocoaPods install for iOS workspace...");
+  await run("pod", ["install"], { cwd: iosDir });
+
+  if (!fs.existsSync(iosWorkspacePath)) {
+    throw new Error(
+      `Expected iOS workspace at ${iosWorkspacePath} after pod install.`,
+    );
   }
-
-  fs.writeFileSync(targetPath, template, "utf8");
-  console.log("[mobile-build] Patched android/build.gradle for native plugins.");
-}
-
-function ensureAndroidVariablesPatched() {
-  const targetPath = path.join(androidDir, "variables.gradle");
-  if (!fs.existsSync(targetPath)) {
-    return;
-  }
-
-  const current = fs.readFileSync(targetPath, "utf8");
-  const next = current.replace(
-    /minSdkVersion\s*=\s*\d+/,
-    "minSdkVersion = 26",
-  );
-  if (next === current) {
-    return;
-  }
-
-  fs.writeFileSync(targetPath, next, "utf8");
-  console.log("[mobile-build] Raised android minSdkVersion to 26.");
 }
 
 async function buildAndroid() {
@@ -192,8 +183,6 @@ async function buildAndroid() {
   await buildSharedApp();
   await ensureCapacitorPlatform("android");
   await run("bun", ["run", "cap:sync:android"], { cwd: appDir });
-  ensureAndroidBuildGradlePatched();
-  ensureAndroidVariablesPatched();
 
   const env = {
     ...process.env,
@@ -229,16 +218,12 @@ async function buildIos() {
   await ensureCapacitorPlatform("ios");
   await run("bash", [prepareIosCocoapodsScript], { cwd: repoRoot });
   await run("bun", ["run", "cap:sync:ios"], { cwd: appDir });
-
-  const iosWorkspacePath = path.join(iosDir, "App.xcworkspace");
-  const iosProjectArgs = fs.existsSync(iosWorkspacePath)
-    ? ["-workspace", "App.xcworkspace"]
-    : ["-project", "App.xcodeproj"];
-
+  await ensureIosWorkspace();
   await run(
     "xcodebuild",
     [
-      ...iosProjectArgs,
+      "-workspace",
+      "App.xcworkspace",
       "-scheme",
       "App",
       "-configuration",
