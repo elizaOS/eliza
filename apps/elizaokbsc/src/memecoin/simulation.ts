@@ -25,9 +25,10 @@ export function buildTreasurySimulation(
     (sum, candidate) => sum + candidate.score,
     0,
   );
+  const maxPerPositionUsd = 600;
   const positions = selected.map((candidate) => {
     const weight = weightBase > 0 ? candidate.score / weightBase : 0;
-    const allocationUsd = Math.round(deployableCapitalUsd * weight);
+    const allocationUsd = Math.min(maxPerPositionUsd, Math.round(deployableCapitalUsd * weight));
     const allocationPct =
       paperCapitalUsd > 0
         ? Math.round((allocationUsd / paperCapitalUsd) * 1000) / 10

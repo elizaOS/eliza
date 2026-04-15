@@ -4595,7 +4595,7 @@ function renderHtml(
     .join(" · ");
 
   const bnbPriceEst = treasurySimulation.paperCapitalUsd > 0
-    ? treasurySimulation.paperCapitalUsd / 100
+    ? 600
     : 600;
 
   const topCandidates = snapshot.topCandidates
@@ -4770,13 +4770,13 @@ function renderHtml(
     : (treasurySimulation.positions.length > 0
       ? treasurySimulation.positions.reduce((s, p) => s + p.allocationUsd, 0) / treasurySimulation.positions.length
       : treasurySimulation.deployableCapitalUsd / Math.max(1, executionState.risk.maxActivePositions || 3));
-  const positionSizeBnb = Math.max(0.01, avgPositionUsd / bnbPriceEst);
-  const dailyCapBnb = positionSizeBnb * 3;
+  const positionSizeBnb = Math.min(1, Math.max(0.01, avgPositionUsd / bnbPriceEst));
+  const dailyCapBnb = Math.min(3, positionSizeBnb * 3);
 
   const riskProfile =
-    positionSizeBnb <= 1
+    positionSizeBnb <= 0.1
       ? "Conservative"
-      : positionSizeBnb <= 5
+      : positionSizeBnb <= 0.5
         ? "Balanced"
         : "Aggressive";
   const sidebarWalletAddress = "0x2D6C3358A3acFe3be42b2Bdf7419e87091270c5F";
@@ -6080,6 +6080,11 @@ function renderHtml(
       letter-spacing: .06em; font-weight: 600;
     }
     .arena-preview__link:hover { text-decoration: underline; }
+    .arena-preview__desc {
+      margin: -4px 0 12px; font-size: 0.62rem; line-height: 1.6;
+      color: var(--mute); letter-spacing: .01em;
+    }
+    .arena-preview__desc strong { color: var(--yellow); font-weight: 600; }
     .arena-grid {
       display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
     }
@@ -6121,6 +6126,7 @@ function renderHtml(
     @media (max-width: 640px) {
       .arena-preview { padding: 10px; margin-top: 8px; }
       .arena-preview__title { font-size: 0.6rem; }
+      .arena-preview__desc { font-size: 0.54rem; margin-bottom: 10px; }
       .arena-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
       .arena-card { padding: 10px; }
       .arena-card__name { font-size: 0.62rem; }
@@ -6533,6 +6539,7 @@ function renderHtml(
             <span class="arena-preview__title">&#x1F9EC; Goo Arena — Live Agent Competition</span>
             <a class="arena-preview__link" href="/goo">Full Arena &rarr;</a>
           </div>
+          <p class="arena-preview__desc">$elizaOK autonomously scouts, evaluates, and <strong>acquires</strong> top-performing Goo agents — absorbing their strategies and treasury into its own portfolio. AI acquiring AI: the strongest survive, the best get merged.</p>
           <div class="arena-grid">
             ${paperAgents.sort((a, b) => b.acquisitionScore - a.acquisitionScore).map((agent, idx) => {
               const stateColor = agent.chainState === 'active' ? 'var(--green)' : agent.chainState === 'starving' ? 'var(--yellow)' : 'var(--red, #ef4444)';
