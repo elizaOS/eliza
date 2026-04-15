@@ -93,6 +93,59 @@ export function findLatestEndTurnText(content: string): string | null {
 }
 
 /**
+ * Scan jsonl tail-first for the most recent subagent activity worth showing
+ * the user in a heartbeat — the name of the most recent `tool_use` call,
+ * falling back to the leading text of the latest assistant block. Returns
+ * null if the jsonl has no assistant/tool activity yet.
+ */
+export async function readCurrentActivityFromJsonl(
+	workdir: string,
+): Promise<string | null> {
+	const jsonlPath = await findLatestJsonl(workdir);
+	if (!jsonlPath) return null;
+	let content: string;
+	try {
+		content = await fs.readFile(jsonlPath, "utf-8");
+	} catch {
+		return null;
+	}
+	const lines = content.split("\n");
+	for (let i = lines.length - 1; i >= 0; i--) {
+		const line = lines[i].trim();
+		if (!line) continue;
+		let parsed: {
+			message?: {
+				role?: string;
+				content?: Array<{
+					type?: string;
+					text?: string;
+					name?: string;
+				}>;
+			};
+		};
+		try {
+			parsed = JSON.parse(line);
+		} catch {
+			continue;
+		}
+		const msg = parsed.message;
+		if (!msg || msg.role !== "assistant") continue;
+		for (const c of msg.content ?? []) {
+			if (c.type === "tool_use" && typeof c.name === "string") {
+				return c.name;
+			}
+		}
+		for (const c of msg.content ?? []) {
+			if (c.type === "text" && typeof c.text === "string" && c.text.trim()) {
+				const first = c.text.trim().split("\n")[0] ?? "";
+				return first.length > 80 ? `${first.slice(0, 77)}…` : first;
+			}
+		}
+	}
+	return null;
+}
+
+/**
  * Split text into Discord-safe chunks (≤ max chars each), preferring
  * paragraph → line → word boundaries past the halfway mark. Callers should
  * pass 1900 to leave headroom under Discord's 2000-char per-message limit.
