@@ -2,6 +2,111 @@ import http from "node:http";
 import { WebSocketServer } from "ws";
 
 const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
+let browserWorkspaceCounter = 0;
+let browserWorkspaceTabs = [];
+
+const stubPlugins = [
+  {
+    id: "openai",
+    name: "OpenAI",
+    description:
+      "Integrates OpenAI's GPT models for automated text generation with customizable prompts.",
+    tags: ["ai-provider"],
+    enabled: false,
+    configured: false,
+    envKey: "OPENAI_API_KEY",
+    category: "ai-provider",
+    source: "bundled",
+    parameters: [],
+    validationErrors: [],
+    validationWarnings: [],
+    isActive: false,
+  },
+  {
+    id: "anthropic",
+    name: "Anthropic",
+    description: "Anthropic model provider for Claude chat and reasoning models.",
+    tags: ["ai-provider"],
+    enabled: false,
+    configured: false,
+    envKey: "ANTHROPIC_API_KEY",
+    category: "ai-provider",
+    source: "bundled",
+    parameters: [],
+    validationErrors: [],
+    validationWarnings: [],
+    isActive: false,
+  },
+  {
+    id: "plugin-browser",
+    name: "Browser Workspace",
+    description: "Agent-controlled browser workspace.",
+    tags: ["feature"],
+    enabled: true,
+    configured: true,
+    envKey: null,
+    category: "feature",
+    source: "bundled",
+    parameters: [],
+    validationErrors: [],
+    validationWarnings: [],
+    isActive: true,
+  },
+];
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function normalizeStubBrowserUrl(rawUrl) {
+  const trimmed = String(rawUrl || "").trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (trimmed === "about:blank") {
+    return trimmed;
+  }
+  if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)) {
+    return new URL(trimmed).toString();
+  }
+  return new URL(`https://${trimmed}`).toString();
+}
+
+function inferStubBrowserTitle(url) {
+  if (url === "about:blank") {
+    return "New Tab";
+  }
+  try {
+    return new URL(url).hostname.replace(/^www\./, "") || "Browser";
+  } catch {
+    return "Browser";
+  }
+}
+
+function browserWorkspaceSnapshot() {
+  return {
+    mode: "web",
+    tabs: browserWorkspaceTabs,
+  };
+}
+
+function showBrowserWorkspaceTab(tabId) {
+  let selected = null;
+  browserWorkspaceTabs = browserWorkspaceTabs.map((tab) => {
+    const visible = tab.id === tabId;
+    const nextTab = {
+      ...tab,
+      visible,
+      updatedAt: nowIso(),
+      lastFocusedAt: visible ? nowIso() : tab.lastFocusedAt,
+    };
+    if (visible) {
+      selected = nextTab;
+    }
+    return nextTab;
+  });
+  return selected;
+}
 
 function applyCors(req, res) {
   const origin = req.headers.origin;
@@ -157,8 +262,98 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/api/plugins") {
-    sendJson(req, res, 200, { plugins: [] });
+    sendJson(req, res, 200, { plugins: stubPlugins });
     return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/browser-workspace") {
+    sendJson(req, res, 200, browserWorkspaceSnapshot());
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/browser-workspace/tabs") {
+    const body = (await readJsonBody(req)) || {};
+    const urlValue = normalizeStubBrowserUrl(body.url || "about:blank");
+    const title =
+      typeof body.title === "string" && body.title.trim().length > 0
+        ? body.title.trim()
+        : inferStubBrowserTitle(urlValue);
+    const timestamp = nowIso();
+    const tab = {
+      id: `stub-tab-${++browserWorkspaceCounter}`,
+      title,
+      url: urlValue,
+      partition: "persist:ui-smoke",
+      visible: body.show !== false,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      lastFocusedAt: body.show !== false ? timestamp : null,
+    };
+    if (tab.visible) {
+      browserWorkspaceTabs = browserWorkspaceTabs.map((entry) => ({
+        ...entry,
+        visible: false,
+      }));
+    }
+    browserWorkspaceTabs = [...browserWorkspaceTabs, tab];
+    sendJson(req, res, 200, { tab });
+    return;
+  }
+
+  const browserTabMatch =
+    /^\/api\/browser-workspace\/tabs\/([^/]+)(?:\/(navigate|show|hide))?$/.exec(
+      url.pathname,
+    );
+  if (browserTabMatch) {
+    const tabId = decodeURIComponent(browserTabMatch[1]);
+    const action = browserTabMatch[2] || null;
+    const existing = browserWorkspaceTabs.find((tab) => tab.id === tabId);
+    if (!existing) {
+      sendJson(req, res, 404, { error: `Tab not found: ${tabId}` });
+      return;
+    }
+
+    if (req.method === "DELETE" && !action) {
+      browserWorkspaceTabs = browserWorkspaceTabs.filter((tab) => tab.id !== tabId);
+      sendJson(req, res, 200, { closed: true });
+      return;
+    }
+
+    if (req.method === "POST" && action === "show") {
+      sendJson(req, res, 200, { tab: showBrowserWorkspaceTab(tabId) });
+      return;
+    }
+
+    if (req.method === "POST" && action === "hide") {
+      browserWorkspaceTabs = browserWorkspaceTabs.map((tab) =>
+        tab.id === tabId ? { ...tab, visible: false, updatedAt: nowIso() } : tab,
+      );
+      sendJson(req, res, 200, {
+        tab: browserWorkspaceTabs.find((tab) => tab.id === tabId),
+      });
+      return;
+    }
+
+    if (req.method === "POST" && action === "navigate") {
+      const body = (await readJsonBody(req)) || {};
+      const nextUrl = normalizeStubBrowserUrl(body.url);
+      const nextUpdatedAt = nowIso();
+      browserWorkspaceTabs = browserWorkspaceTabs.map((tab) =>
+        tab.id === tabId
+          ? {
+              ...tab,
+              url: nextUrl,
+              title: inferStubBrowserTitle(nextUrl),
+              updatedAt: nextUpdatedAt,
+              lastFocusedAt: nextUpdatedAt,
+            }
+          : tab,
+      );
+      sendJson(req, res, 200, {
+        tab: browserWorkspaceTabs.find((tab) => tab.id === tabId),
+      });
+      return;
+    }
   }
 
   if (req.method === "GET" && url.pathname === "/api/character") {

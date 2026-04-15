@@ -624,8 +624,8 @@ export function LifeOpsPageView() {
           <PagePanel.Empty
             variant="surface"
             className="mt-4 min-h-[12rem] rounded-3xl"
-            title="LifeOps starts disabled"
-            description="Enable LifeOps for this agent to turn on the chat widgets and unlock the operational workspace."
+            title="LifeOps is disabled"
+            description="Enable LifeOps to turn on the chat widgets and unlock the operational workspace."
           />
         ) : null}
 

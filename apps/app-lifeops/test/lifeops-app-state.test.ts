@@ -5,10 +5,25 @@ import {
 } from "../src/lifeops/app-state.js";
 
 describe("lifeops app state", () => {
-  test("defaults to disabled when nothing is cached", async () => {
+  test("defaults to enabled when nothing is cached", async () => {
     const runtime = {
       async getCache() {
         return null;
+      },
+      async setCache() {
+        throw new Error("should not be called");
+      },
+    };
+
+    await expect(loadLifeOpsAppState(runtime)).resolves.toEqual({
+      enabled: true,
+    });
+  });
+
+  test("respects explicit disabled state in cache", async () => {
+    const runtime = {
+      async getCache() {
+        return { enabled: false };
       },
       async setCache() {
         throw new Error("should not be called");

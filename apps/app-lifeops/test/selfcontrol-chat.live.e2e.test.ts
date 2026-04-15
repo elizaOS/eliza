@@ -290,7 +290,9 @@ describeIf(LIVE_TESTS_ENABLED)("Live: website blocker API roundtrip", () => {
   let runtime: StartedRuntime | undefined;
 
   beforeAll(async () => {
-    runtime = await startLiveRuntime();
+    runtime = await startLiveRuntime({
+      includeProviderPlugin: Boolean(selectedLiveProviderPlugin),
+    });
   }, 120_000);
 
   afterAll(async () => {

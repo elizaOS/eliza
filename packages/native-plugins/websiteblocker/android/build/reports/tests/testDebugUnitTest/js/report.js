@@ -1,8 +1,6 @@
 (function (window, document) {
     "use strict";
 
-    var tabs = {};
-
     function changeElementClass(element, classValue) {
         if (element.getAttribute("className")) {
             element.setAttribute("className", classValue);
@@ -27,19 +25,6 @@
         changeElementClass(element, getClassAttribute(element).replace(classValue, ""));
     }
 
-    function initTabs() {
-        var container = document.getElementById("tabs");
-
-        tabs.tabs = findTabs(container);
-        tabs.titles = findTitles(tabs.tabs);
-        tabs.headers = findHeaders(container);
-        tabs.select = select;
-        tabs.deselectAll = deselectAll;
-        tabs.select(0);
-
-        return true;
-    }
-
     function getCheckBox() {
         return document.getElementById("line-wrapping-toggle");
     }
@@ -49,26 +34,29 @@
     }
 
     function findCodeBlocks() {
-        var spans = document.getElementById("tabs").getElementsByTagName("span");
-        var codeBlocks = [];
-        for (var i = 0; i < spans.length; ++i) {
-            if (spans[i].className.indexOf("code") >= 0) {
-                codeBlocks.push(spans[i]);
+        const codeBlocks = [];
+        const tabContainers = getTabContainers();
+        for (let i = 0; i < tabContainers.length; i++) {
+            const spans = tabContainers[i].getElementsByTagName("span");
+            for (let i = 0; i < spans.length; ++i) {
+                if (spans[i].className.indexOf("code") >= 0) {
+                    codeBlocks.push(spans[i]);
+                }
             }
         }
         return codeBlocks;
     }
 
     function forAllCodeBlocks(operation) {
-        var codeBlocks = findCodeBlocks();
+        const codeBlocks = findCodeBlocks();
 
-        for (var i = 0; i < codeBlocks.length; ++i) {
+        for (let i = 0; i < codeBlocks.length; ++i) {
             operation(codeBlocks[i], "wrapped");
         }
     }
 
     function toggleLineWrapping() {
-        var checkBox = getCheckBox();
+        const checkBox = getCheckBox();
 
         if (checkBox.checked) {
             forAllCodeBlocks(addClass);
@@ -79,8 +67,8 @@
 
     function initControls() {
         if (findCodeBlocks().length > 0) {
-            var checkBox = getCheckBox();
-            var label = getLabelForCheckBox();
+            const checkBox = getCheckBox();
+            const label = getLabelForCheckBox();
 
             checkBox.onclick = toggleLineWrapping;
             checkBox.checked = false;
@@ -89,53 +77,89 @@
          }
     }
 
-    function switchTab() {
-        var id = this.id.substr(1);
+    class TabManager {
+        baseId;
+        tabs;
+        titles;
+        headers;
 
-        for (var i = 0; i < tabs.tabs.length; i++) {
-            if (tabs.tabs[i].id === id) {
-                tabs.select(i);
-                break;
-            }
+        constructor(baseId, tabs, titles, headers) {
+            this.baseId = baseId;
+            this.tabs = tabs;
+            this.titles = titles;
+            this.headers = headers;
         }
 
-        return false;
-    }
+        select(i) {
+            this.deselectAll();
 
-    function select(i) {
-        this.deselectAll();
-
-        changeElementClass(this.tabs[i], "tab selected");
-        changeElementClass(this.headers[i], "selected");
-
-        while (this.headers[i].firstChild) {
-            this.headers[i].removeChild(this.headers[i].firstChild);
-        }
-
-        var h2 = document.createElement("H2");
-
-        h2.appendChild(document.createTextNode(this.titles[i]));
-        this.headers[i].appendChild(h2);
-    }
-
-    function deselectAll() {
-        for (var i = 0; i < this.tabs.length; i++) {
-            changeElementClass(this.tabs[i], "tab deselected");
-            changeElementClass(this.headers[i], "deselected");
+            changeElementClass(this.tabs[i], "tab selected");
+            changeElementClass(this.headers[i], "selected");
 
             while (this.headers[i].firstChild) {
                 this.headers[i].removeChild(this.headers[i].firstChild);
             }
 
-            var a = document.createElement("A");
+            const a = document.createElement("a");
 
-            a.setAttribute("id", "ltab" + i);
-            a.setAttribute("href", "#tab" + i);
-            a.onclick = switchTab;
             a.appendChild(document.createTextNode(this.titles[i]));
-
             this.headers[i].appendChild(a);
         }
+
+        deselectAll() {
+            for (let i = 0; i < this.tabs.length; i++) {
+                changeElementClass(this.tabs[i], "tab deselected");
+                changeElementClass(this.headers[i], "deselected");
+
+                while (this.headers[i].firstChild) {
+                    this.headers[i].removeChild(this.headers[i].firstChild);
+                }
+
+                const a = document.createElement("a");
+
+                const id = this.baseId + "-tab" + i;
+                a.setAttribute("id", id);
+                a.setAttribute("href", "#tab" + i);
+                a.onclick = () => {
+                    this.select(i);
+                    return false;
+                };
+                a.appendChild(document.createTextNode(this.titles[i]));
+
+                this.headers[i].appendChild(a);
+            }
+        }
+    }
+
+    function getTabContainers() {
+        const tabContainers = Array.from(document.getElementsByClassName("tab-container"));
+
+        // Used by existing TabbedPageRenderer users, which have not adjusted to use TabsRenderer yet.
+        const legacyContainer = document.getElementById("tabs");
+        if (legacyContainer) {
+            tabContainers.push(legacyContainer);
+        }
+
+        return tabContainers;
+    }
+
+    function initTabs() {
+        let tabGroups = 0;
+
+        function createTab(num, container) {
+            const tabElems = findTabs(container);
+            const tabManager = new TabManager("tabs" + num, tabElems, findTitles(tabElems), findHeaders(container));
+            tabManager.select(0);
+        }
+
+        const tabContainers = getTabContainers();
+
+        for (let i = 0; i < tabContainers.length; i++) {
+            createTab(tabGroups, tabContainers[i]);
+            tabGroups++;
+        }
+
+        return true;
     }
 
     function findTabs(container) {
@@ -143,16 +167,16 @@
     }
 
     function findHeaders(container) {
-        var owner = findChildElements(container, "UL", "tabLinks");
+        const owner = findChildElements(container, "UL", "tabLinks");
         return findChildElements(owner[0], "LI", null);
     }
 
     function findTitles(tabs) {
-        var titles = [];
+        const titles = [];
 
-        for (var i = 0; i < tabs.length; i++) {
-            var tab = tabs[i];
-            var header = findChildElements(tab, "H2", null)[0];
+        for (let i = 0; i < tabs.length; i++) {
+            const tab = tabs[i];
+            const header = findChildElements(tab, "H2", null)[0];
 
             header.parentNode.removeChild(header);
 
@@ -167,11 +191,11 @@
     }
 
     function findChildElements(container, name, targetClass) {
-        var elements = [];
-        var children = container.childNodes;
+        const elements = [];
+        const children = container.childNodes;
 
-        for (var i = 0; i < children.length; i++) {
-            var child = children.item(i);
+        for (let i = 0; i < children.length; i++) {
+            const child = children.item(i);
 
             if (child.nodeType === 1 && child.nodeName === name) {
                 if (targetClass && child.className.indexOf(targetClass) < 0) {

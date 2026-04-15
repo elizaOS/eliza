@@ -4,11 +4,7 @@
     "type": "AAPT_FRIENDLY_MERGED_MANIFESTS",
     "kind": "Directory"
   },
-<<<<<<< HEAD
-  "applicationId": "ai.elizaos.plugins.location",
-=======
-  "applicationId": "ai.milady.plugins.location",
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
+  "applicationId": "ai.eliza.plugins.location",
   "variantName": "debug",
   "elements": [
     {

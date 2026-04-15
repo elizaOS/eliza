@@ -12,7 +12,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.7.3'
+        classpath 'com.android.tools.build:gradle:8.13.0'
         classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.25'
 
         // NOTE: Do not place your application dependencies here; they belong
@@ -21,7 +21,7 @@ buildscript {
 }
 
 ext {
-    androidGradlePluginVersion = '8.7.3'
+    androidGradlePluginVersion = '8.13.0'
     kotlinVersion = '1.9.25'
     mavenCentralMirrorUrl = elizaosMavenCentralMirrorUrl
 }

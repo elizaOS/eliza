@@ -16,6 +16,10 @@ import { selectLiveProvider } from "../test/helpers/live-provider";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 const APP_DIST_DIR = path.join(REPO_ROOT, "apps", "app", "dist");
+const UI_SMOKE_STUB_SCRIPT = path.join(
+  import.meta.dirname,
+  "playwright-ui-smoke-api-stub.mjs",
+);
 const READY_TIMEOUT_MS = 180_000;
 const API_PORT = Number(
   process.env.MILADY_UI_SMOKE_API_PORT ??
@@ -26,6 +30,9 @@ const UI_PORT = Number(
   process.env.MILADY_UI_SMOKE_PORT ?? process.env.ELIZA_UI_SMOKE_PORT ?? "2138",
 );
 const LIVE_PROVIDER = selectLiveProvider();
+const FORCE_STUB_STACK =
+  process.env.ELIZA_UI_SMOKE_FORCE_STUB === "1" ||
+  process.env.CI === "true";
 
 type StartedStack = {
   apiBase: string;
@@ -454,8 +461,56 @@ async function submitOnboarding(apiBase: string): Promise<void> {
   );
 }
 
+async function startStubStack(): Promise<StartedStack> {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "eliza-ui-smoke-stub-"));
+  const apiBase = `http://127.0.0.1:${API_PORT}`;
+  const apiChild = spawn("node", [UI_SMOKE_STUB_SCRIPT], {
+    cwd: REPO_ROOT,
+    env: {
+      ...process.env,
+      FORCE_COLOR: "0",
+      ELIZA_UI_SMOKE_API_PORT: String(API_PORT),
+      MILADY_UI_SMOKE_API_PORT: String(API_PORT),
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  apiChild.stdout.on("data", (chunk) => {
+    process.stdout.write(`[ui-smoke][stub] ${chunk}`);
+  });
+  apiChild.stderr.on("data", (chunk) => {
+    process.stdout.write(`[ui-smoke][stub-err] ${chunk}`);
+  });
+
+  await waitForJson<{ complete: boolean }>(`${apiBase}/api/onboarding/status`);
+  await waitForJsonPredicate<{ state?: string }>(
+    `${apiBase}/api/status`,
+    (status) => status.state === "running",
+    READY_TIMEOUT_MS,
+  );
+
+  const uiServer = await startUiProxyServer({
+    apiBase,
+    port: UI_PORT,
+  });
+  process.env.ELIZA_API_PORT = String(API_PORT);
+  process.env.MILADY_API_PORT = String(API_PORT);
+
+  return {
+    apiBase,
+    apiChild,
+    stateDir,
+    uiBase: `http://127.0.0.1:${UI_PORT}`,
+    uiServer,
+  };
+}
+
 async function startRealStack(): Promise<StartedStack> {
   await ensureUiDistReady();
+
+  if (FORCE_STUB_STACK || !LIVE_PROVIDER) {
+    return startStubStack();
+  }
 
   const stateDir = await mkdtemp(path.join(os.tmpdir(), "eliza-ui-smoke-live-"));
   const apiBase = `http://127.0.0.1:${API_PORT}`;

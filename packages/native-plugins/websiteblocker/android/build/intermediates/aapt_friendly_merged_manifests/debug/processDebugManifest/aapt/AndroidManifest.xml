@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="ai.milaidy.plugins.websiteblocker" >
+    package="ai.eliza.plugins.websiteblocker" >
 
     <uses-sdk android:minSdkVersion="26" />
 
@@ -11,7 +11,7 @@
 
     <application>
         <service
-            android:name="ai.milaidy.plugins.websiteblocker.WebsiteBlockerVpnService"
+            android:name="ai.eliza.plugins.websiteblocker.WebsiteBlockerVpnService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="specialUse"
@@ -26,7 +26,7 @@
         </service>
 
         <receiver
-            android:name="ai.milaidy.plugins.websiteblocker.WebsiteBlockerBootReceiver"
+            android:name="ai.eliza.plugins.websiteblocker.WebsiteBlockerBootReceiver"
             android:enabled="true"
             android:exported="false" >
             <intent-filter>

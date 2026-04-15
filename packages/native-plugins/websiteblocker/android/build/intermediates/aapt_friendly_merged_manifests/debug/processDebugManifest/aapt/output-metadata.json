@@ -4,7 +4,7 @@
     "type": "AAPT_FRIENDLY_MERGED_MANIFESTS",
     "kind": "Directory"
   },
-  "applicationId": "ai.milaidy.plugins.websiteblocker",
+  "applicationId": "ai.eliza.plugins.websiteblocker",
   "variantName": "debug",
   "elements": [
     {

@@ -4,11 +4,7 @@
     "type": "AAPT_FRIENDLY_MERGED_MANIFESTS",
     "kind": "Directory"
   },
-<<<<<<< HEAD
-  "applicationId": "ai.elizaos.plugins.camera",
-=======
-  "applicationId": "ai.milady.plugins.camera",
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
+  "applicationId": "ai.eliza.plugins.camera",
   "variantName": "debug",
   "elements": [
     {

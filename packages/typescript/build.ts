@@ -270,7 +270,7 @@ export async function generateDts(
 	console.log("Generating TypeScript declarations...");
 	try {
 		// Use incremental compilation for faster subsequent builds
-		await $`tsc --emitDeclarationOnly --project ${tsconfigPath} --composite false --incremental false --types node,bun`;
+		await $`tsc --emitDeclarationOnly --project ${tsconfigPath} --composite false --incremental false --types node,bun-types`;
 		console.log(
 			`✓ TypeScript declarations generated successfully (${timer.elapsed()}ms)`,
 		);
