@@ -5698,6 +5698,23 @@ function renderHtml(
     .aside-token__score { color: var(--white); font-size: 0.7rem; }
     .aside-token__rec { color: var(--dim); font-size: 0.62rem; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+    /* Cloud CTA card */
+    .cloud-card { padding: 0 !important; overflow: hidden; background: linear-gradient(145deg, rgba(0,199,210,.06), rgba(139,92,246,.04), var(--panel)) !important; border-color: rgba(0,199,210,.2) !important; transition: border-color .3s, box-shadow .3s, transform .3s; }
+    .cloud-card:hover { border-color: rgba(0,199,210,.45) !important; box-shadow: 0 4px 24px rgba(0,199,210,.12), 0 0 40px rgba(139,92,246,.06); transform: translateY(-2px); }
+    .cloud-card__banner { position: relative; overflow: hidden; height: 90px; }
+    .cloud-card__img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .4s; }
+    .cloud-card:hover .cloud-card__img { transform: scale(1.05); }
+    .cloud-card__body { padding: 14px; }
+    .cloud-card__title { font-size: 0.9rem; font-weight: 800; color: #00C7D2; letter-spacing: .02em; margin-bottom: 2px; }
+    .cloud-card__sub { font-size: 0.6rem; color: var(--dim); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 12px; }
+    .cloud-card__features { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+    .cloud-card__feat { font-size: 0.62rem; color: rgba(245,245,240,.7); display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+    .cloud-card__btn { display: block; text-align: center; font-family: inherit; font-size: 0.62rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; text-decoration: none; padding: 8px 14px; border-radius: 8px; background: linear-gradient(135deg, rgba(0,199,210,.15), rgba(139,92,246,.1)); border: 1px solid rgba(0,199,210,.3); color: #00C7D2; transition: all .25s; }
+    .cloud-card__btn:hover { background: linear-gradient(135deg, rgba(0,199,210,.25), rgba(139,92,246,.15)); border-color: #00C7D2; box-shadow: 0 0 20px rgba(0,199,210,.2); color: #fff; text-decoration: none; }
+    [data-theme="light"] .cloud-card { background: linear-gradient(145deg, rgba(0,199,210,.04), rgba(139,92,246,.03), #fff) !important; }
+    [data-theme="light"] .cloud-card__feat { color: rgba(0,0,0,.55); }
+    [data-theme="light"] .cloud-card__btn { background: rgba(0,199,210,.08); color: #0097a0; }
+
     /* Progress rows (for detail accordions) */
     .progress-row { display: flex; align-items: center; gap: 9px; padding: 4px 0; }
     .progress-row span { width: 90px; flex-shrink: 0; color: var(--dim); font-size: 0.72rem; }
@@ -6468,17 +6485,22 @@ function renderHtml(
           </div>
         </div>
 
-        <!-- Top Picks -->
-        <div class="aside-block">
-          <div class="aside-title">&#x1F4A5; Top Picks</div>
-          ${snapshot.topCandidates.filter(c => c.score >= 60).slice(0,5).map(c => `
-          <div class="aside-token">
-            <div class="aside-token__row">
-              <span class="aside-token__sym"><a class="cand-link" href="${candidateHref(c.tokenAddress, c.dexId)}" target="_blank" rel="noreferrer">${escapeHtml(c.tokenSymbol)}</a></span>
-              <span class="aside-token__score">${c.score}/100</span>
+        <!-- ElizaCloud -->
+        <div class="aside-block cloud-card" id="cloud-cta-card">
+          <div class="cloud-card__banner">
+            <img src="/assets/cloud-banner.png" alt="ElizaCloud" class="cloud-card__img" />
+          </div>
+          <div class="cloud-card__body">
+            <div class="cloud-card__title">ElizaCloud</div>
+            <div class="cloud-card__sub">Make Agents. In Seconds.</div>
+            <div class="cloud-card__features">
+              <div class="cloud-card__feat">&#x2601;&#xFE0F; Cloud Agent Hosting</div>
+              <div class="cloud-card__feat">&#x1F4AC; Chat with elizaOK</div>
+              <div class="cloud-card__feat">&#x26A1; AI Inference Credits</div>
+              <div class="cloud-card__feat">&#x1F916; Multi-Agent Orchestration</div>
             </div>
-            <div class="aside-token__rec">${c.recommendation === 'simulate_buy' ? '🟢 Buy signal' : '🟡 Watching'}</div>
-          </div>`).join('') || '<div style="color:var(--dim);font-size:0.62rem;padding:4px 0">Scanning&hellip;</div>'}
+            <a class="cloud-card__btn" href="https://elizacloud.ai" target="_blank" rel="noreferrer">Connect to Cloud &rarr;</a>
+          </div>
         </div>
 
       </div><!-- /aside -->
@@ -6520,7 +6542,7 @@ function renderHtml(
       'Gross': '总值', 'Executed': '已执行', 'Max buy': '最大买入', 'Daily cap': '每日上限',
       'Trades': '交易数', 'Holders': '持有者', 'Recipients': '接收者', 'Pool': '池',
       'Status': '状态', 'Reviewed': '已审核', 'Priority': '优先', 'Scan': '扫描',
-      'Top Picks': '精选推荐', 'System Health': '系统健康', 'Reserve': '储备',
+      'System Health': '系统健康', 'Reserve': '储备', 'ElizaCloud': 'ElizaCloud',
       'Full Discovery Report': '完整发现报告', 'scanned': '已扫描', 'buy-ready': '买入就绪',
       'avg': '平均', 'Portfolio Ledger': '投资账本', 'active': '活跃', 'watch': '观察',
       'Revenue Flywheel & Strategy DNA': '收益飞轮 & 策略 DNA', 'profit': '利润',
@@ -7628,10 +7650,11 @@ async function handleRequest(
     return;
   }
 
-  if (pathname === "/assets/avatar.png") {
-    const avatarPath = path.join(ELIZAOK_ASSET_DIR, "avatar.png");
+  if (pathname === "/assets/avatar.png" || pathname === "/assets/cloud-banner.png") {
+    const fileName = pathname === "/assets/avatar.png" ? "avatar.png" : "cloud-banner.png";
+    const filePath = path.join(ELIZAOK_ASSET_DIR, fileName);
     try {
-      const content = await readFile(avatarPath);
+      const content = await readFile(filePath);
       res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=86400" });
       res.end(content);
     } catch {
