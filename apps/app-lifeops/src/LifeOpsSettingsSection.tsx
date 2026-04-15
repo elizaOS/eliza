@@ -403,11 +403,7 @@ export function LifeOpsSettingsSection() {
               {t("settings.sections.lifeops.label")}
             </CardTitle>
           </div>
-          <p className="max-w-3xl text-sm text-muted">
-            Keep separate Google setups for the owner and the agent. Each side
-            can use Cloud or Local OAuth, and the connected mode you pick can be
-            used as the default Google account for this agent.
-          </p>
+          {/* removed verbose description */}
         </CardHeader>
         <CardContent className="space-y-4">
           <GoogleConnectorSideCard
