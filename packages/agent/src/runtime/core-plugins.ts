@@ -22,6 +22,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-shell", // shell command execution
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
+  "@elizaos/app-lifeops", // LifeOps: personal ops — tasks, goals, calendar, inbox, browser companions, website blocking
   // Built-in runtime capabilities (no longer external plugins):
   // - experience, form, clipboard, personality: advanced capabilities (advancedCapabilities: true)
   // - trust: core capability (enableTrust: true)
@@ -37,7 +38,7 @@ export const CORE_PLUGINS: readonly string[] = [
 export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   // plugin-manager, secrets-manager, trust: now built-in core capabilities
   // Enable via character settings: ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
-  "@elizaos/app-lifeops", // LifeOps: browser companions + hosts-file website blocker
+  // "@elizaos/app-lifeops" — moved to CORE_PLUGINS above
   "@elizaos/plugin-pdf", // PDF processing (published bundle broken in alpha.15)
   "@elizaos/plugin-cua", // CUA computer-use agent (cloud sandbox automation)
   "@elizaos/plugin-obsidian", // Obsidian vault CLI integration

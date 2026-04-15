@@ -463,7 +463,15 @@ export function analyzePluginStateDrift(
     ) {
       driftFlags.push("entries_vs_compat");
     }
-    if (enabledAllowList !== null && entryEnabled !== undefined) {
+    // Connector and streaming plugins load from config.connectors / config.streaming,
+    // not from plugins.allow.  Only flag allowlist drift for plugins whose load path
+    // actually depends on the allow list (i.e. optional core plugins).
+    if (
+      enabledAllowList !== null &&
+      entryEnabled !== undefined &&
+      category !== "connector" &&
+      category !== "streaming"
+    ) {
       if (enabledAllowList !== entryEnabled) {
         driftFlags.push("entries_vs_allowlist");
       }

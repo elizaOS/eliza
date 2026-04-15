@@ -294,13 +294,13 @@ export function Header({
                     const isActive = group.tabs.includes(tab);
                     return (
                       <Button
-                        variant={isActive ? "default" : "ghost"}
+                        variant="ghost"
                         key={group.label}
                         data-testid={`header-nav-button-${primaryTab}`}
-                        className={`relative z-10 min-h-touch shrink-0 rounded-xl border border-transparent px-3 py-2.5 text-xs transition-all duration-200 md:px-3.5 xl:px-4 ${
+                        className={`relative z-10 min-h-touch shrink-0 rounded-none border-b-2 border-transparent bg-transparent px-3 py-2.5 text-xs transition-all duration-200 md:px-3.5 xl:px-4 ${
                           isActive
-                            ? "border-accent/30 bg-accent/12 text-txt font-semibold shadow-[0_2px_10px_rgba(3,5,10,0.08)] ring-1 ring-inset ring-accent/18 dark:shadow-[0_0_0_1px_rgba(var(--accent-rgb),0.14),0_0_14px_rgba(var(--accent-rgb),0.14)]"
-                            : "text-muted hover:border-border/45 hover:bg-bg-hover/70 hover:text-txt"
+                            ? "border-b-accent text-accent font-semibold"
+                            : "text-muted hover:text-txt"
                         }`}
                         onClick={() => setTab(primaryTab)}
                         title={group.description}
@@ -378,12 +378,12 @@ export function Header({
                     const isActive = group.tabs.includes(tab);
                     return (
                       <Button
-                        variant={isActive ? "default" : "ghost"}
+                        variant="ghost"
                         key={group.label}
-                        className={`flex min-h-[48px] w-full rounded-xl border px-3 py-3 text-sm font-medium transition-all duration-200 ${
+                        className={`flex min-h-[48px] w-full rounded-none border-b-2 border-transparent bg-transparent px-3 py-3 text-sm font-medium transition-all duration-200 ${
                           isActive
-                            ? "border-accent/30 bg-accent/12 text-txt shadow-[0_2px_10px_rgba(3,5,10,0.08)] ring-1 ring-inset ring-accent/18 dark:shadow-[0_0_0_1px_rgba(var(--accent-rgb),0.14),0_0_14px_rgba(var(--accent-rgb),0.14)]"
-                            : "border-transparent bg-transparent text-txt hover:border-border/45 hover:bg-bg-hover/70"
+                            ? "border-b-accent text-accent font-semibold"
+                            : "text-txt hover:text-accent/70"
                         }`}
                         style={{
                           clipPath: "none",
