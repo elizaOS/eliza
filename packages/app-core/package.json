@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-core",
-  "version": "2.0.0-alpha.160",
+  "version": "2.0.0-alpha.173",
   "description": "Shared application core for elizaOS white-label agent apps.",
   "type": "module",
   "license": "MIT",
@@ -101,6 +101,7 @@
     "./onboarding-config": "./src/onboarding-config.ts",
     "./runtime/eliza": "./src/runtime/eliza.ts",
     "./providers": "./src/providers/index.ts",
+    "./actions": "./src/actions/index.ts",
     "./services/steward-credentials": "./src/services/steward-credentials.ts",
     "./services/steward-sidecar": "./src/services/steward-sidecar.ts",
     "./styles/base.css": "./src/styles/base.css",
