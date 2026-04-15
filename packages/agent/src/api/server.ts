@@ -1478,6 +1478,15 @@ function wireCodingAgentSwarmSynthesis(st: ServerState): boolean {
   coordinator.setSwarmCompleteCallback(async (payload) => {
     await handleSwarmSynthesis(st, payload);
   });
+  // Same wiring path — install the task heartbeat so sessions running past
+  // 45s emit periodic "still working" pings that report the subagent's
+  // current tool activity. Synthesis delivers the final answer; heartbeat
+  // just tells the user the task is alive and moving.
+  const ptyService = st.runtime.getService("PTY_SERVICE");
+  if (ptyService) {
+    installTaskHeartbeat(st.runtime, ptyService);
+    logger.info("[task-heartbeat] installed");
+  }
   return true;
 }
 
@@ -1555,12 +1564,39 @@ async function buildSynthesisResultText(
   },
   runtime: AgentRuntime,
 ): Promise<string> {
-  const parts = await Promise.all(
+  const rawParts = await Promise.all(
     payload.tasks.map((task) => buildTaskResultLine(task, runtime)),
   );
-  return parts.length === 1
-    ? parts[0]
-    : `done — ${payload.total} tasks:\n${parts.map((p) => `• ${p}`).join("\n")}`;
+  const parts = dedupeAndDenoise(rawParts);
+  if (parts.length === 1) return parts[0];
+  return `done — ${parts.length} task${parts.length === 1 ? "" : "s"}:\n${parts.map((p) => `• ${p}`).join("\n")}`;
+}
+
+/**
+ * Strip task outputs that are pure deferral commentary ("DECISION: I deferred
+ * to the sibling agent ..."), and collapse duplicates where multiple tasks
+ * reported the same public URL. A swarm that splits a prompt across siblings
+ * produces one authoritative output and N near-duplicates — synthesis should
+ * show the authoritative one, not a bulleted list of echoes.
+ */
+function dedupeAndDenoise(rawParts: string[]): string[] {
+  const isDeferral = (text: string): boolean =>
+    /\b(DECISION:\s*I deferred|deferred the build to the sibling|clobbering would have been)/i.test(
+      text,
+    );
+  const deferralFree = rawParts.filter((p) => !isDeferral(p));
+  const parts = deferralFree.length > 0 ? deferralFree : rawParts;
+  const byUrl = new Map<string, string>();
+  const out: string[] = [];
+  for (const part of parts) {
+    const url = part.match(/https?:\/\/\S+/)?.[0] ?? null;
+    if (url) {
+      if (byUrl.has(url)) continue;
+      byUrl.set(url, part);
+    }
+    out.push(part);
+  }
+  return out;
 }
 
 async function buildTaskResultLine(
@@ -1671,6 +1707,7 @@ import {
   chunkForDiscord,
   readLastAssistantTextFromJsonl,
 } from "../runtime/subagent-output.js";
+import { installTaskHeartbeat } from "../runtime/task-heartbeat.js";
 
 // ── Coordinator Event Routing ───────────────────────────────────────────
 
