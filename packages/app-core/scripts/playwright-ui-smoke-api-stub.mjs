@@ -54,6 +54,32 @@ const stubPlugins = [
   },
 ];
 
+const stubMemoryStats = {
+  total: 0,
+  byType: {},
+};
+
+const stubRelationshipsPeopleResponse = {
+  data: [],
+  stats: {
+    totalPeople: 0,
+    totalEntities: 0,
+    totalEdges: 0,
+  },
+};
+
+const stubMemoryFeedResponse = {
+  memories: [],
+  hasMore: false,
+};
+
+const stubMemoryBrowseResponse = {
+  memories: [],
+  total: 0,
+  limit: 50,
+  offset: 0,
+};
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -263,6 +289,46 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/plugins") {
     sendJson(req, res, 200, { plugins: stubPlugins });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/memories/stats") {
+    sendJson(req, res, 200, stubMemoryStats);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/memories/feed") {
+    sendJson(req, res, 200, stubMemoryFeedResponse);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/memories/browse") {
+    const limit = Number(url.searchParams.get("limit") || "50");
+    const offset = Number(url.searchParams.get("offset") || "0");
+    sendJson(req, res, 200, {
+      ...stubMemoryBrowseResponse,
+      limit: Number.isFinite(limit) ? limit : 50,
+      offset: Number.isFinite(offset) ? offset : 0,
+    });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname.startsWith("/api/memories/by-entity/")
+  ) {
+    const limit = Number(url.searchParams.get("limit") || "50");
+    const offset = Number(url.searchParams.get("offset") || "0");
+    sendJson(req, res, 200, {
+      ...stubMemoryBrowseResponse,
+      limit: Number.isFinite(limit) ? limit : 50,
+      offset: Number.isFinite(offset) ? offset : 0,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/relationships/people") {
+    sendJson(req, res, 200, stubRelationshipsPeopleResponse);
     return;
   }
 
