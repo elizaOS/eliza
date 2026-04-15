@@ -35,11 +35,33 @@ const prepareIosCocoapodsScript =
     "prepare-ios-cocoapods.sh",
   );
 
-const target = process.argv[2];
+export const PLATFORM_TEMPLATE_FILES = {
+  android: [
+    "build.gradle",
+    "settings.gradle",
+    "variables.gradle",
+    "capacitor.settings.gradle",
+    path.join("app", "build.gradle"),
+    path.join("app", "capacitor.build.gradle"),
+  ],
+  ios: [path.join("App", "Podfile")],
+};
 
-if (target !== "android" && target !== "ios") {
-  console.error("Usage: node scripts/run-mobile-build.mjs <android|ios>");
-  process.exit(1);
+export function resolvePlatformTemplateRoot(
+  platform,
+  { repoRootValue = repoRoot } = {},
+) {
+  return firstExisting([
+    path.join(
+      repoRootValue,
+      "eliza",
+      "packages",
+      "app-core",
+      "platforms",
+      platform,
+    ),
+    path.join(repoRootValue, "packages", "app-core", "platforms", platform),
+  ]);
 }
 
 function run(command, args, { cwd, env = process.env } = {}) {
@@ -108,6 +130,45 @@ async function buildSharedApp() {
   await run("bun", ["scripts/build.mjs"], { cwd: appDir });
 }
 
+export function syncPlatformTemplateFiles(
+  platform,
+  { repoRootValue = repoRoot, appDirValue = appDir, log = console.log } = {},
+) {
+  const templateRoot = resolvePlatformTemplateRoot(platform, { repoRootValue });
+  const templateFiles = PLATFORM_TEMPLATE_FILES[platform];
+
+  if (
+    !templateRoot ||
+    !Array.isArray(templateFiles) ||
+    templateFiles.length === 0
+  ) {
+    return [];
+  }
+
+  const targetRoot = path.join(appDirValue, platform);
+  const copiedFiles = [];
+
+  for (const relativeFile of templateFiles) {
+    const sourcePath = path.join(templateRoot, relativeFile);
+    if (!fs.existsSync(sourcePath)) {
+      continue;
+    }
+
+    const destinationPath = path.join(targetRoot, relativeFile);
+    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+    fs.copyFileSync(sourcePath, destinationPath);
+    copiedFiles.push(relativeFile);
+  }
+
+  if (copiedFiles.length > 0) {
+    log(
+      `[mobile-build] Synced ${platform} platform template files: ${copiedFiles.join(", ")}`,
+    );
+  }
+
+  return copiedFiles;
+}
+
 function getCapacitorPlatformRoot(platform) {
   return platform === "android" ? androidDir : iosPlatformDir;
 }
@@ -145,7 +206,9 @@ async function ensureCapacitorPlatform(platform) {
     fs.rmSync(platformRootDir, { force: true, recursive: true });
   }
 
-  console.log(`[mobile-build] Adding missing Capacitor ${platform} platform...`);
+  console.log(
+    `[mobile-build] Adding missing Capacitor ${platform} platform...`,
+  );
   await run("bun", ["x", "capacitor", "add", platform], { cwd: appDir });
 }
 
@@ -183,6 +246,7 @@ async function buildAndroid() {
   await buildSharedApp();
   await ensureCapacitorPlatform("android");
   await run("bun", ["run", "cap:sync:android"], { cwd: appDir });
+  syncPlatformTemplateFiles("android");
 
   const env = {
     ...process.env,
@@ -218,6 +282,7 @@ async function buildIos() {
   await ensureCapacitorPlatform("ios");
   await run("bash", [prepareIosCocoapodsScript], { cwd: repoRoot });
   await run("bun", ["run", "cap:sync:ios"], { cwd: appDir });
+  syncPlatformTemplateFiles("ios");
   await ensureIosWorkspace();
   await run(
     "xcodebuild",
@@ -239,8 +304,24 @@ async function buildIos() {
   );
 }
 
-if (target === "android") {
-  await buildAndroid();
-} else {
+export async function main(target = process.argv[2]) {
+  if (target !== "android" && target !== "ios") {
+    console.error("Usage: node scripts/run-mobile-build.mjs <android|ios>");
+    process.exit(1);
+  }
+
+  if (target === "android") {
+    await buildAndroid();
+    return;
+  }
+
   await buildIos();
+}
+
+const isMain =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMain) {
+  await main();
 }
