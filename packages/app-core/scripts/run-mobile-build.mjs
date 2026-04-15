@@ -47,6 +47,8 @@ export const PLATFORM_TEMPLATE_FILES = {
   ios: [
     path.join("App", "Podfile"),
     path.join("App", "App.xcodeproj", "project.pbxproj"),
+    path.join("App", "App", "App.entitlements"),
+    path.join("App", "App", "Info.plist"),
     path.join(
       "App",
       "App",
@@ -62,6 +64,10 @@ export const PLATFORM_TEMPLATE_FILES = {
     ),
   ],
 };
+
+const DEFAULT_IOS_APP_ID = "ai.elizaos.app";
+const DEFAULT_IOS_APP_GROUP = `group.${DEFAULT_IOS_APP_ID}`;
+const DEFAULT_IOS_APP_NAME = "elizaOS App";
 
 export function resolvePlatformTemplateRoot(
   platform,
@@ -111,6 +117,108 @@ function firstExisting(paths) {
     }
   }
   return null;
+}
+
+function readQuotedConfigProperty(source, propertyName) {
+  const matcher = new RegExp(`${propertyName}\\s*:\\s*["']([^"']+)["']`, "g");
+  const match = matcher.exec(source);
+  return match?.[1] ?? null;
+}
+
+export function readAppIdentityFromConfig(
+  appConfigPath = path.join(appDir, "app.config.ts"),
+) {
+  const configSource = fs.readFileSync(appConfigPath, "utf8");
+  const appId = readQuotedConfigProperty(configSource, "appId");
+  const appName = readQuotedConfigProperty(configSource, "appName");
+
+  if (!appId || !appName) {
+    throw new Error(
+      `Could not read appId/appName from ${appConfigPath}. Keep apps/app/app.config.ts as the mobile identity source of truth.`,
+    );
+  }
+
+  return {
+    appId,
+    appName,
+    appGroupId: `group.${appId}`,
+  };
+}
+
+function replaceIfPresent(filePath, replacements) {
+  if (!fs.existsSync(filePath)) {
+    return false;
+  }
+
+  let next = fs.readFileSync(filePath, "utf8");
+  const previous = next;
+
+  for (const [from, to] of replacements) {
+    next = next.split(from).join(to);
+  }
+
+  if (next === previous) {
+    return false;
+  }
+
+  fs.writeFileSync(filePath, next, "utf8");
+  return true;
+}
+
+export function syncIosAppIdentity(
+  identity,
+  { appDirValue = appDir, log = console.log } = {},
+) {
+  const iosFiles = [
+    {
+      relativePath: path.join("ios", "App", "App.xcodeproj", "project.pbxproj"),
+      replacements: [[DEFAULT_IOS_APP_ID, identity.appId]],
+    },
+    {
+      relativePath: path.join("ios", "App", "App", "Info.plist"),
+      replacements: [[DEFAULT_IOS_APP_NAME, identity.appName]],
+    },
+    {
+      relativePath: path.join("ios", "App", "App", "App.entitlements"),
+      replacements: [[DEFAULT_IOS_APP_GROUP, identity.appGroupId]],
+    },
+    {
+      relativePath: path.join(
+        "ios",
+        "App",
+        "App",
+        "WebsiteBlockerContentExtension",
+        "WebsiteBlockerContentExtension.entitlements",
+      ),
+      replacements: [[DEFAULT_IOS_APP_GROUP, identity.appGroupId]],
+    },
+    {
+      relativePath: path.join(
+        "ios",
+        "App",
+        "App",
+        "WebsiteBlockerContentExtension",
+        "ActionRequestHandler.swift",
+      ),
+      replacements: [[DEFAULT_IOS_APP_GROUP, identity.appGroupId]],
+    },
+  ];
+  const updatedFiles = [];
+
+  for (const { relativePath, replacements } of iosFiles) {
+    const filePath = path.join(appDirValue, relativePath);
+    if (replaceIfPresent(filePath, replacements)) {
+      updatedFiles.push(relativePath);
+    }
+  }
+
+  if (updatedFiles.length > 0) {
+    log(
+      `[mobile-build] Applied iOS app identity (${identity.appId}) to: ${updatedFiles.join(", ")}`,
+    );
+  }
+
+  return updatedFiles;
 }
 
 function resolveAndroidSdkRoot() {
@@ -298,11 +406,13 @@ async function buildIos() {
     throw new Error("iOS builds require macOS and Xcode.");
   }
 
+  const appIdentity = readAppIdentityFromConfig();
   await buildSharedApp();
   await ensureCapacitorPlatform("ios");
   await run("bash", [prepareIosCocoapodsScript], { cwd: repoRoot });
   await run("bun", ["run", "cap:sync:ios"], { cwd: appDir });
   const syncedFiles = syncPlatformTemplateFiles("ios");
+  syncIosAppIdentity(appIdentity);
   if (shouldRunIosPodInstall(syncedFiles)) {
     console.log(
       "[mobile-build] Re-running CocoaPods install after syncing the iOS Podfile...",
