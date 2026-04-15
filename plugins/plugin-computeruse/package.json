@@ -61,6 +61,14 @@
         "required": false,
         "default": 10000,
         "sensitive": false
+      },
+      "COMPUTER_USE_APPROVAL_MODE": {
+        "type": "string",
+        "description": "Approval mode for local computer actions: full_control, smart_approve, approve_all, or off",
+        "required": false,
+        "default": "full_control",
+        "enum": ["full_control", "smart_approve", "approve_all", "off"],
+        "sensitive": false
       }
     }
   }

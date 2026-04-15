@@ -69,10 +69,14 @@ export type {
   ScreenSize,
   PlatformCapabilities,
   ActionHistoryEntry,
+  ApprovalMode,
+  ApprovalResolution,
+  ApprovalSnapshot,
   ComputerUseConfig,
   BrowserState,
   ClickableElement,
   BrowserTab,
+  PendingApproval,
 } from "./types.js";
 
 export { ComputerUseService } from "./services/computer-use-service.js";
