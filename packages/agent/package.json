@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/agent",
-  "version": "2.0.0-alpha.173",
+  "version": "2.0.0-alpha.0",
   "description": "Standalone elizaOS-based agent and backend server package.",
   "type": "module",
   "license": "MIT",
@@ -90,6 +90,7 @@
     "./test-support": "./src/test-support/index.ts",
     "./test-support/*": "./src/test-support/*.ts",
     "./testing": "./src/testing/index.ts",
+    "./types/trajectory": "./src/types/trajectory.ts",
     "./triggers": "./src/triggers/index.ts",
     "./triggers/*": "./src/triggers/*.ts",
     "./utils": "./src/utils/index.ts",

@@ -155,15 +155,18 @@ trap cleanup EXIT
 
 log "Installing dependencies"
 node scripts/init-submodules.mjs
-node scripts/disable-local-eliza-workspace.mjs
-bun install --ignore-scripts --no-frozen-lockfile
+MILADY_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 node scripts/disable-local-eliza-workspace.mjs
+MILADY_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 bun install --ignore-scripts --no-frozen-lockfile
 if [[ -d "$REPO_ROOT/.eliza.ci-disabled" && ! -d "$REPO_ROOT/eliza" ]]; then
   log "Restoring eliza/ from .eliza.ci-disabled for downstream build steps"
   mv "$REPO_ROOT/.eliza.ci-disabled" "$REPO_ROOT/eliza"
 fi
+export MILADY_SKIP_LOCAL_UPSTREAMS=1
+export ELIZA_SKIP_LOCAL_UPSTREAMS=1
 
 log "Installing published-workspace fallback dependencies"
 bun add --no-save --dev \
+  @elizaos/ui@file:./eliza/packages/ui \
   react react-dom vite \
   @types/react @types/react-dom @types/three \
   tailwindcss three clsx class-variance-authority tailwind-merge sonner \
