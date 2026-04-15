@@ -19,6 +19,25 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+/** Subset of the Claude Code jsonl line shape we care about. Shared by the
+ *  end-turn reader and the activity scanner so both agree on what a parsed
+ *  assistant line looks like. */
+interface JsonlAssistantLine {
+	message?: {
+		role?: string;
+		stop_reason?: string;
+		content?: Array<{ type?: string; text?: string; name?: string }>;
+	};
+}
+
+function parseJsonlLine(line: string): JsonlAssistantLine | null {
+	try {
+		return JSON.parse(line) as JsonlAssistantLine;
+	} catch {
+		return null;
+	}
+}
+
 /**
  * Read the latest `stop_reason: end_turn` assistant text from the Claude Code
  * session jsonl under a subagent's workdir. Returns null when no such line
@@ -27,15 +46,8 @@ import { join } from "node:path";
 export async function readLastAssistantTextFromJsonl(
 	workdir: string,
 ): Promise<string | null> {
-	const jsonlPath = await findLatestJsonl(workdir);
-	if (!jsonlPath) return null;
-	let content: string;
-	try {
-		content = await fs.readFile(jsonlPath, "utf-8");
-	} catch {
-		return null;
-	}
-	return findLatestEndTurnText(content);
+	const content = await readJsonl(workdir);
+	return content === null ? null : findLatestEndTurnText(content);
 }
 
 /**
@@ -56,6 +68,16 @@ export async function findLatestJsonl(workdir: string): Promise<string | null> {
 	return join(projectDir, jsonls[jsonls.length - 1]);
 }
 
+async function readJsonl(workdir: string): Promise<string | null> {
+	const jsonlPath = await findLatestJsonl(workdir);
+	if (!jsonlPath) return null;
+	try {
+		return await fs.readFile(jsonlPath, "utf-8");
+	} catch {
+		return null;
+	}
+}
+
 /**
  * Scan jsonl text tail-first for the latest assistant message with
  * `stop_reason: end_turn` and return its text. Returns null if the latest
@@ -66,18 +88,8 @@ export function findLatestEndTurnText(content: string): string | null {
 	for (let i = lines.length - 1; i >= 0; i--) {
 		const line = lines[i].trim();
 		if (!line) continue;
-		let parsed: {
-			message?: {
-				role?: string;
-				stop_reason?: string;
-				content?: Array<{ type?: string; text?: string }>;
-			};
-		};
-		try {
-			parsed = JSON.parse(line);
-		} catch {
-			continue;
-		}
+		const parsed = parseJsonlLine(line);
+		if (!parsed) continue;
 		const msg = parsed.message;
 		if (!msg || msg.role !== "assistant") continue;
 		if (msg.stop_reason !== "end_turn") return null;
@@ -101,39 +113,18 @@ export function findLatestEndTurnText(content: string): string | null {
 export async function readCurrentActivityFromJsonl(
 	workdir: string,
 ): Promise<string | null> {
-	const jsonlPath = await findLatestJsonl(workdir);
-	if (!jsonlPath) return null;
-	let content: string;
-	try {
-		content = await fs.readFile(jsonlPath, "utf-8");
-	} catch {
-		return null;
-	}
+	const content = await readJsonl(workdir);
+	if (content === null) return null;
 	const lines = content.split("\n");
 	for (let i = lines.length - 1; i >= 0; i--) {
 		const line = lines[i].trim();
 		if (!line) continue;
-		let parsed: {
-			message?: {
-				role?: string;
-				content?: Array<{
-					type?: string;
-					text?: string;
-					name?: string;
-				}>;
-			};
-		};
-		try {
-			parsed = JSON.parse(line);
-		} catch {
-			continue;
-		}
+		const parsed = parseJsonlLine(line);
+		if (!parsed) continue;
 		const msg = parsed.message;
 		if (!msg || msg.role !== "assistant") continue;
 		for (const c of msg.content ?? []) {
-			if (c.type === "tool_use" && typeof c.name === "string") {
-				return c.name;
-			}
+			if (c.type === "tool_use" && typeof c.name === "string") return c.name;
 		}
 		for (const c of msg.content ?? []) {
 			if (c.type === "text" && typeof c.text === "string" && c.text.trim()) {

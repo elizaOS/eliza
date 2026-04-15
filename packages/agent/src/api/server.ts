@@ -1551,79 +1551,41 @@ export async function handleSwarmSynthesis(
  * For port-bound tasks, verifies the server is actually listening.
  * No LLM call required — task data already has what we need.
  */
+type SynthesisTask = {
+  sessionId: string;
+  originalTask: string;
+  completionSummary: string;
+  status: string;
+  workdir?: string;
+};
+
 async function buildSynthesisResultText(
-  payload: {
-    tasks: Array<{
-      sessionId: string;
-      originalTask: string;
-      completionSummary: string;
-      status: string;
-      workdir?: string;
-    }>;
-    total: number;
-  },
+  payload: { tasks: SynthesisTask[]; total: number },
   runtime: AgentRuntime,
 ): Promise<string> {
-  const rawParts = await Promise.all(
-    payload.tasks.map((task) => buildTaskResultLine(task, runtime)),
+  const parts = await Promise.all(
+    payload.tasks.map((task) => buildTaskLine(task, runtime)),
   );
-  const parts = dedupeAndDenoise(rawParts);
   if (parts.length === 1) return parts[0];
-  return `done — ${parts.length} task${parts.length === 1 ? "" : "s"}:\n${parts.map((p) => `• ${p}`).join("\n")}`;
+  return `done — ${parts.length} tasks:\n${parts.map((p) => `• ${p}`).join("\n")}`;
 }
 
 /**
- * Strip task outputs that are pure deferral commentary ("DECISION: I deferred
- * to the sibling agent ..."), and collapse duplicates where multiple tasks
- * reported the same public URL. A swarm that splits a prompt across siblings
- * produces one authoritative output and N near-duplicates — synthesis should
- * show the authoritative one, not a bulleted list of echoes.
+ * Deliver the subagent's actual final answer — the last end_turn assistant
+ * text from its session jsonl. Trust the agent to already have produced
+ * a coherent response; synthesis does not rewrite or trim it. Falls back
+ * to completionSummary, then a port-status check, then the original
+ * prompt text when no jsonl is available.
  */
-function dedupeAndDenoise(rawParts: string[]): string[] {
-  const isDeferral = (text: string): boolean =>
-    /\b(DECISION:\s*I deferred|deferred the build to the sibling|clobbering would have been)/i.test(
-      text,
-    );
-  const deferralFree = rawParts.filter((p) => !isDeferral(p));
-  const parts = deferralFree.length > 0 ? deferralFree : rawParts;
-  const byUrl = new Map<string, string>();
-  const out: string[] = [];
-  for (const part of parts) {
-    const url = part.match(/https?:\/\/\S+/)?.[0] ?? null;
-    if (url) {
-      if (byUrl.has(url)) continue;
-      byUrl.set(url, part);
-    }
-    out.push(part);
-  }
-  return out;
-}
-
-async function buildTaskResultLine(
-  task: {
-    sessionId: string;
-    originalTask: string;
-    completionSummary: string;
-    workdir?: string;
-  },
+async function buildTaskLine(
+  task: SynthesisTask,
   runtime: AgentRuntime,
 ): Promise<string> {
-  // Prefer the subagent's actual final answer (the last end_turn assistant
-  // message from its session jsonl) over the short completionSummary. This
-  // is what the user actually asked for — the price, the code, the answer.
-  // Workdir comes in the payload (captured at spawn time) because the PTY
-  // session is usually destroyed before synthesis runs.
-  const workdir = task.workdir ?? resolveSessionWorkdir(runtime, task.sessionId);
+  const workdir =
+    task.workdir ?? resolveSessionWorkdir(runtime, task.sessionId);
   if (workdir) {
     const assistantText = await readLastAssistantTextFromJsonl(workdir);
-    if (assistantText) {
-      // Agent-home pattern: if the subagent reported a deployed URL, collapse
-      // the whole response to "done — URL: ..." as the final chat message.
-      const urlLine = assistantText
-        .split("\n")
-        .find((line) => /^\s*URL:\s*https?:\/\//i.test(line));
-      return urlLine ? `done — ${urlLine.trim()}` : assistantText;
-    }
+    if (assistantText) return assistantText;
   }
   if (task.completionSummary) return task.completionSummary;
   const portMatch = task.originalTask.match(/port\s+(\d+)/i);
