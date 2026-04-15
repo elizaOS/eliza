@@ -6062,6 +6062,77 @@ function renderHtml(
       .split-grid { grid-template-columns: 1fr; }
     }
 
+    /* ─── ARENA PREVIEW ──────────────────── */
+    .arena-preview {
+      margin-top: 10px; padding: 14px;
+      background: var(--panel); border: 1px solid var(--border); border-radius: var(--r);
+    }
+    .arena-preview__head {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .arena-preview__title {
+      font-size: 0.72rem; font-weight: 700; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--dim);
+    }
+    .arena-preview__link {
+      font-size: 0.6rem; color: var(--yellow); text-decoration: none;
+      letter-spacing: .06em; font-weight: 600;
+    }
+    .arena-preview__link:hover { text-decoration: underline; }
+    .arena-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    }
+    .arena-card {
+      background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.06);
+      border-radius: 10px; padding: 12px; cursor: pointer;
+      transition: all .2s; position: relative;
+    }
+    .arena-card:hover { border-color: rgba(255,255,255,.15); background: rgba(255,255,255,.04); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+    .arena-card--leader { border-color: rgba(var(--yr),.25); background: rgba(var(--yr),.03); }
+    .arena-card--leader:hover { border-color: rgba(var(--yr),.5); box-shadow: 0 4px 20px rgba(var(--yr),.15); }
+    .arena-card__rank {
+      position: absolute; top: 8px; right: 10px;
+      font-size: 0.6rem; font-weight: 800; color: var(--mute);
+      letter-spacing: .04em;
+    }
+    .arena-card--leader .arena-card__rank { color: var(--yellow); }
+    .arena-card__head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+    .arena-card__dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .arena-card__name { font-size: 0.72rem; font-weight: 700; color: var(--white); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .arena-card__badge {
+      font-size: 0.45rem; padding: 2px 6px; border-radius: 10px;
+      background: rgba(255,255,255,.06); color: var(--dim);
+      letter-spacing: .06em; text-transform: uppercase; font-weight: 600;
+      white-space: nowrap;
+    }
+    .arena-card__pnl { font-size: 1rem; font-weight: 800; margin-bottom: 4px; }
+    .arena-card__pnl.g { color: var(--green); }
+    .arena-card__pnl.r { color: #ef4444; }
+    .arena-card__stats {
+      display: flex; gap: 8px; font-size: 0.55rem; color: var(--dim);
+      margin-bottom: 8px;
+    }
+    .arena-card__bar { height: 3px; background: rgba(255,255,255,.06); border-radius: 2px; margin-bottom: 4px; }
+    .arena-card__bar-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, rgba(var(--yr),.3), var(--yellow)); transition: width .8s; }
+    .arena-card__score { font-size: 0.52rem; color: var(--mute); letter-spacing: .04em; }
+    .arena-card__score strong { color: var(--dim); }
+    @media (max-width: 960px) { .arena-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 640px) {
+      .arena-preview { padding: 10px; margin-top: 8px; }
+      .arena-preview__title { font-size: 0.6rem; }
+      .arena-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
+      .arena-card { padding: 10px; }
+      .arena-card__name { font-size: 0.62rem; }
+      .arena-card__pnl { font-size: 0.82rem; }
+      .arena-card__stats { font-size: 0.48rem; gap: 5px; }
+      .arena-card__badge { font-size: 0.4rem; }
+    }
+    @media (max-width: 400px) { .arena-grid { grid-template-columns: 1fr; } }
+    [data-theme="light"] .arena-card { background: rgba(0,0,0,.01); border-color: rgba(0,0,0,.06); }
+    [data-theme="light"] .arena-card:hover { background: rgba(0,0,0,.03); border-color: rgba(0,0,0,.12); }
+    [data-theme="light"] .arena-card--leader { background: rgba(var(--yr),.03); border-color: rgba(var(--yr),.15); }
+
     /* ─── STATUS STRIP ─────────────────────── */
     .status-strip {
       display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;
@@ -6617,6 +6688,40 @@ function renderHtml(
           </details>
         </div>
 
+        <!-- GOO ARENA PREVIEW -->
+        <div class="arena-preview">
+          <div class="arena-preview__head">
+            <span class="arena-preview__title">&#x1F9EC; Goo Arena — Live Agent Competition</span>
+            <a class="arena-preview__link" href="/goo">Full Arena &rarr;</a>
+          </div>
+          <div class="arena-grid">
+            ${paperAgents.sort((a, b) => b.acquisitionScore - a.acquisitionScore).map((agent, idx) => {
+              const stateColor = agent.chainState === 'active' ? 'var(--green)' : agent.chainState === 'starving' ? 'var(--yellow)' : 'var(--red, #ef4444)';
+              const pnlClass = agent.totalPnlUsd >= 0 ? 'g' : 'r';
+              const pnlSign = agent.totalPnlUsd >= 0 ? '+' : '';
+              const activePos = agent.positions.filter((p: any) => p.state === 'active').length;
+              const barWidth = Math.min(100, agent.acquisitionScore);
+              const isTop = idx === 0 && agent.acquisitionScore >= 40;
+              return `
+            <div class="arena-card${isTop ? ' arena-card--leader' : ''}" onclick="window.location='/goo/agent/${escapeHtml(agent.id)}'">
+              <div class="arena-card__rank">#${idx + 1}</div>
+              <div class="arena-card__head">
+                <div class="arena-card__dot" style="background:${stateColor}"></div>
+                <div class="arena-card__name">${escapeHtml(agent.agentName)}</div>
+                <span class="arena-card__badge">${escapeHtml(agent.strategy.label)}</span>
+              </div>
+              <div class="arena-card__pnl ${pnlClass}">${pnlSign}$${Math.abs(agent.totalPnlUsd).toFixed(2)}</div>
+              <div class="arena-card__stats">
+                <span>${agent.treasuryBnb.toFixed(2)} BNB</span>
+                <span>${agent.winRate.toFixed(0)}% win</span>
+                <span>${agent.totalTradesCount} trades</span>
+              </div>
+              <div class="arena-card__bar"><div class="arena-card__bar-fill" style="width:${barWidth}%"></div></div>
+              <div class="arena-card__score">Acq. Score <strong>${agent.acquisitionScore}/100</strong></div>
+            </div>`;
+            }).join('')}
+          </div>
+        </div>
 
       </div><!-- /main -->
 
