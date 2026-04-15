@@ -11,4 +11,3 @@ export * from "./components/onboarding/FeatureCard";
 export * from "./components/onboarding/OnboardingStepNav";
 export * from "./components/onboarding/onboarding-form-primitives";
 export * from "./components/onboarding/onboarding-step-chrome";
-export * from "./components/shell/Header";
