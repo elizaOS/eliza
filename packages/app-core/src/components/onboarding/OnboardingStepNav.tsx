@@ -1,7 +1,7 @@
 import type {
   OnboardingStep,
   OnboardingStepMeta,
-} from "../../types/onboarding";
+} from "../../state/types";
 import { useApp } from "@elizaos/app-core/state";
 import { useBranding } from "../../config/branding";
 import { getOnboardingNavMetas } from "../../onboarding/flow";

@@ -180,7 +180,7 @@ function normalizeSecret(value: string | null | undefined): string | null {
 }
 
 function resolveRuntimeCloudApiKey(
-  _runtime?: unknown,
+  runtime?: CloudApiKeyRuntimeLike,
 ): string | null {
   const fromSetting = runtime?.getSetting?.("ELIZAOS_CLOUD_API_KEY");
   if (typeof fromSetting === "string") {
@@ -313,10 +313,12 @@ export function resolveCloudApiBaseUrl(
 
 export function resolveCloudApiKey(
   config?: Pick<ElizaConfig, "cloud"> | null,
-  _runtime?: unknown,
+  runtime?: CloudApiKeyRuntimeLike,
 ): string | null {
   return normalizeSecret(
-    config?.cloud?.apiKey ?? process.env.ELIZAOS_CLOUD_API_KEY,
+    config?.cloud?.apiKey ??
+      resolveRuntimeCloudApiKey(runtime) ??
+      process.env.ELIZAOS_CLOUD_API_KEY,
   );
 }
 
