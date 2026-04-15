@@ -1,4 +1,12 @@
 
+import { Button, cn } from "@elizaos/app-core";
+import { useCallback, useMemo } from "react";
+import { useApp } from "../../state";
+import {
+  onboardingHelperTextClassName,
+  onboardingReadableTextMutedClassName,
+} from "./onboarding-form-primitives";
+import { FeatureCard, type FeatureStatus } from "./features/FeatureCard";
 import {
   OnboardingSecondaryActionButton,
   OnboardingStepHeader,
@@ -6,14 +14,7 @@ import {
   onboardingPrimaryActionClass,
   onboardingPrimaryActionTextShadowStyle,
   spawnOnboardingRipple,
-  onboardingHelperTextClassName,
-  onboardingReadableTextMutedClassName,
-  FeatureCard,
-  type FeatureStatus,
-} from "@elizaos/ui";
-import { Button, cn } from "@elizaos/app-core";
-import { useCallback, useMemo } from "react";
-import { useApp } from "../../state";
+} from "./onboarding-step-chrome";
 
 const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 
