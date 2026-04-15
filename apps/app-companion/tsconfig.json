@@ -6,7 +6,7 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["node", "bun-types"],
+    "types": ["node", "bun"],
     "typeRoots": [
       "./node_modules/@types",
       "../../node_modules/@types",

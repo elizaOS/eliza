@@ -114,6 +114,13 @@ import {
 // signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout extracted to @elizaos/plugin-signal
 import { signalAuthExists } from "../services/signal-pairing.js";
 import { streamManager } from "../services/stream-manager.js";
+import {
+  clearTelegramAccountAuthState,
+  clearTelegramAccountSession,
+  TelegramAccountAuthSession,
+  telegramAccountAuthStateExists,
+  telegramAccountSessionExists,
+} from "../services/telegram-account-auth.js";
 // Telegram account auth: moved to @elizaos/plugin-telegram (account-setup-routes + account-auth-service).
 // WhatsApp pairing: route handlers moved to @elizaos/plugin-whatsapp.
 import {
@@ -221,6 +228,7 @@ import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
 import { routeTaskAgentTextToConnector } from "./task-agent-message-routing.js";
+import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
 import { handleTriggerRoutes } from "./trigger-routes.js";
 import { handleTtsRoutes } from "./tts-routes.js";
 import { TxService } from "./tx-service.js";
@@ -247,14 +255,6 @@ import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
 // handleWhatsAppRoute moved to @elizaos/plugin-whatsapp setup-routes.
 // applyWhatsAppQrOverride is still used by plugin-status routes.
 import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
-import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
-import {
-  clearTelegramAccountAuthState,
-  clearTelegramAccountSession,
-  TelegramAccountAuthSession,
-  telegramAccountAuthStateExists,
-  telegramAccountSessionExists,
-} from "../services/telegram-account-auth.js";
 import { handleWorkbenchRoutes } from "./workbench-routes.js";
 
 export {
@@ -548,12 +548,8 @@ export type {
 import type {
   AgentStartupDiagnostics,
   ConversationMeta,
-  LogEntry,
   ServerState,
-  ShareIngestItem,
-  SkillEntry,
   StreamEventEnvelope,
-  StreamEventType,
 } from "./server-types.js";
 
 // ---------------------------------------------------------------------------

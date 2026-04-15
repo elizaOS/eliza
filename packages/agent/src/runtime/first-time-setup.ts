@@ -263,10 +263,7 @@ export async function bindCloudProvider(config: ElizaConfig): Promise<void> {
     await persistConfigEnv(CLOUD_SOLANA_ADDRESS_ENV_KEY, solanaAddress);
   }
 
-  if (
-    shouldBindEvm &&
-    process.env[WALLET_SOURCE_EVM_ENV_KEY] !== "cloud"
-  ) {
+  if (shouldBindEvm && process.env[WALLET_SOURCE_EVM_ENV_KEY] !== "cloud") {
     await persistConfigEnv(WALLET_SOURCE_EVM_ENV_KEY, "cloud");
   }
   if (

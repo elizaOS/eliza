@@ -15,7 +15,7 @@
 import type { Action, HandlerOptions, Memory, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { hasRoleAccess } from "../security/access.js";
-import { hasContextSignalSyncForKey, messageText } from "./context-signal.js";
+import { hasContextSignalSyncForKey } from "./context-signal.js";
 
 // ---------------------------------------------------------------------------
 // Brave Search API types
