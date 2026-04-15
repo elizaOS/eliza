@@ -158,21 +158,17 @@ export function SectionSurface({
 }: {
   title: string;
   icon: ReactNode;
-  subtitle: string;
+  subtitle?: string;
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-3xl border border-border/45 bg-card/78 p-4 backdrop-blur-sm">
-      <div className="flex items-start gap-3">
-        <div className="rounded-2xl border border-border/45 bg-bg/70 p-2 text-muted">
-          {icon}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-txt">{title}</div>
-          <div className="mt-1 text-xs leading-5 text-muted">{subtitle}</div>
-        </div>
+    <div>
+      <div className="flex items-center gap-2 text-muted">
+        {icon}
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted">{title}</div>
       </div>
-      <div className="mt-4 space-y-3">{children}</div>
+      {subtitle ? <div className="mt-1 text-xs leading-5 text-muted">{subtitle}</div> : null}
+      <div className="mt-2 space-y-2">{children}</div>
     </div>
   );
 }
@@ -184,7 +180,7 @@ export function SummaryMetric({
 }: {
   label: string;
   value: string;
-  detail: string;
+  detail?: string;
 }) {
   return (
     <div className="rounded-2xl border border-border/40 bg-bg/72 p-4">
@@ -192,7 +188,7 @@ export function SummaryMetric({
         {label}
       </div>
       <div className="mt-2 text-lg font-semibold text-txt">{value}</div>
-      <div className="mt-1 text-xs-tight text-muted">{detail}</div>
+      {detail ? <div className="mt-1 text-xs-tight text-muted">{detail}</div> : null}
     </div>
   );
 }

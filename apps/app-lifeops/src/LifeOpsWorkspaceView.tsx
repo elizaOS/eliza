@@ -733,8 +733,7 @@ export function LifeOpsWorkspaceView() {
         <PagePanel variant="section" className="p-4 lg:p-5">
           <PagePanel.Header
             eyebrow="LifeOps"
-            heading="Calendar and Inbox Workspace"
-            description="Connect Google for the owner or agent in LifeOps settings to bring calendar and Gmail into the operational surface."
+            heading="Calendar and Inbox"
             actions={
               <Button
                 variant="outline"
@@ -750,7 +749,6 @@ export function LifeOpsWorkspaceView() {
             variant="surface"
             className="min-h-[14rem] rounded-3xl"
             title="No Google connection yet"
-            description="The workspace shows agenda, week, and reply-needed email views after a Google account is connected."
           />
         </PagePanel>
       </div>
@@ -762,8 +760,7 @@ export function LifeOpsWorkspaceView() {
       <PagePanel variant="section" className="p-4 lg:p-5">
         <PagePanel.Header
           eyebrow="LifeOps"
-          heading="Calendar and Inbox Workspace"
-          description="Agenda, week, and reply-needed mail live in one operational surface."
+          heading="Calendar and Inbox"
           actions={
             <div className="flex flex-wrap gap-2">
               <Button
@@ -862,7 +859,6 @@ export function LifeOpsWorkspaceView() {
             <PagePanel.Header
               eyebrow="Gmail"
               heading="Reply-needed mail"
-              description="Filter to the threads that most likely need a response."
               actions={
                 <Button
                   variant="outline"
@@ -896,7 +892,6 @@ export function LifeOpsWorkspaceView() {
                     variant="surface"
                     className="min-h-[12rem] rounded-3xl"
                     title="No mail matches"
-                    description="Clear the filter or turn off reply-needed only to inspect the loaded Gmail triage feed."
                   />
                 ) : (
                   filteredGmailMessages.map((message) => (
@@ -1063,7 +1058,6 @@ export function LifeOpsWorkspaceView() {
                 variant="surface"
                 className="min-h-[20rem] rounded-3xl"
                 title="Select a message"
-                description="Pick a reply-needed thread to draft or send a follow-up."
               />
             )}
           </PagePanel>
@@ -1074,7 +1068,6 @@ export function LifeOpsWorkspaceView() {
             <PagePanel.Header
               eyebrow="Calendar"
               heading={pane === "week" ? "Week agenda" : "Today’s agenda"}
-              description="The live Google calendar feed, grouped by day."
               actions={
                 <Button
                   variant="outline"
@@ -1092,7 +1085,6 @@ export function LifeOpsWorkspaceView() {
                   variant="surface"
                   className="min-h-[12rem] rounded-3xl"
                   title="No upcoming events"
-                  description="The calendar feed is empty in this window."
                 />
               ) : (
                 groupedCalendarEvents.map((group) => (
@@ -1294,7 +1286,6 @@ export function LifeOpsWorkspaceView() {
                 variant="surface"
                 className="min-h-[20rem] rounded-3xl"
                 title="Select a day"
-                description="Pick an event to inspect detail and linked context."
               />
             )}
           </PagePanel>

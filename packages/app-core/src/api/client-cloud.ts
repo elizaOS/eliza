@@ -552,7 +552,7 @@ ElizaClient.prototype.createCloudCompatAgentManagedGithubOauth =
       }
 
       const fallback = await this.initiateCloudOauth("github", {
-        redirectUrl: `/api/v1/app/lifeops/github-complete?${params.toString()}`,
+        redirectUrl: `/api/v1/milady/lifeops/github-complete?${params.toString()}`,
         connectionRole: "agent",
         scopes: request.scopes,
       });

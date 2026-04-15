@@ -285,8 +285,17 @@ async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
 
   for (const plugin of [vincentPlugin, shopifyPlugin, stewardPlugin, lifeopsPlugin]) {
     try {
-      await runtime.registerPlugin(plugin);
-      logger.info(`[eliza] Registered app route plugin: ${plugin.name}`);
+      // Push rawPath routes directly onto runtime.routes to avoid the core's
+      // registerPlugin() path mangling (which prepends /<pluginName>/ to every
+      // route path). The rawPath flag means these routes already have their
+      // final absolute paths (e.g. /api/lifeops/app-state).
+      if (plugin.routes?.length) {
+        for (const route of plugin.routes) {
+          const routePath = route.path.startsWith("/") ? route.path : `/${route.path}`;
+          runtime.routes.push({ ...route, path: routePath });
+        }
+      }
+      logger.info(`[eliza] Registered app route plugin: ${plugin.name} (${plugin.routes?.length ?? 0} routes)`);
     } catch (err) {
       logger.warn(
         `[eliza] Failed to register app route plugin ${plugin.name}: ${err instanceof Error ? err.message : String(err)}`,
