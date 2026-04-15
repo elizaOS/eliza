@@ -24,6 +24,8 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type {
   AppLaunchDiagnostic,
   AppLaunchResult,
+  AppLaunchSessionContext,
+  AppRunSessionContext,
   AppSessionActionResult,
   AppSessionState,
 } from "@elizaos/shared/contracts/apps";
@@ -59,23 +61,6 @@ const VIEWER_FRAME_ANCESTORS_DIRECTIVE =
   "http://[::1]:* http://[0:0:0:0:0:0:0:1]:* https://localhost:* " +
   "https://127.0.0.1:* https://[::1]:* https://[0:0:0:0:0:0:0:1]:* " +
   "electrobun: capacitor: capacitor-electron: app: tauri: file:";
-
-// ---------------------------------------------------------------------------
-// Types inlined from packages/agent — keeps this plugin free of circular deps
-// (same pattern as app-babylon + app-defense-of-the-agents)
-// ---------------------------------------------------------------------------
-
-interface AppLaunchSessionContext {
-  appName: string;
-  launchUrl: string | null;
-  runtime: IAgentRuntime | null;
-  viewer: AppLaunchResult["viewer"] | null;
-}
-
-interface AppRunSessionContext extends AppLaunchSessionContext {
-  runId: string;
-  session: AppSessionState | null;
-}
 
 interface RouteContext {
   method: string;

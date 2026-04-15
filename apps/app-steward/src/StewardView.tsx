@@ -3,7 +3,7 @@
  * Renders inside the Wallets tab as a sub-section or alongside inventory.
  */
 
-import { useApp } from "@elizaos/app-core/state/useApp";
+import { useApp } from "@elizaos/app-core";
 import type { StewardStatusResponse } from "@elizaos/shared/contracts/wallet";
 import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";

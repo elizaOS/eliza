@@ -1,8 +1,12 @@
-import type { AppEmoteEventDetail } from "@elizaos/app-core/events";
-import { APP_EMOTE_EVENT, STOP_EMOTE_EVENT } from "@elizaos/app-core/events";
-import { useApp } from "@elizaos/app-core/state/useApp";
-import { getVrmPreviewUrl, getVrmUrl } from "@elizaos/app-core/state/vrm";
-import { resolveAppAssetUrl } from "@elizaos/app-core/utils/asset-url";
+import {
+  APP_EMOTE_EVENT,
+  getVrmPreviewUrl,
+  getVrmUrl,
+  resolveAppAssetUrl,
+  STOP_EMOTE_EVENT,
+  useApp,
+  type AppEmoteEventDetail,
+} from "@elizaos/app-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { VrmEngine, VrmEngineState } from "../avatar/VrmEngine";

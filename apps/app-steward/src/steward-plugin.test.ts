@@ -26,8 +26,6 @@ vi.mock("./routes/wallet-core-routes", () => ({
 vi.mock("./routes/wallet-trade-compat-routes", () => ({
   handleWalletTradeCompatRoutes: vi.fn(async () => false),
 }));
-vi.mock("@elizaos/app-core/api/compat-route-shared", () => ({}));
-
 describe("stewardPlugin shape", () => {
   it("exports a valid Plugin with routes", async () => {
     const { stewardPlugin } = await import("./plugin");

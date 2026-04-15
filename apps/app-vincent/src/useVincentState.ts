@@ -10,8 +10,7 @@
  *   server-side exchange completes
  */
 
-import { client } from "@elizaos/app-core/api";
-import { openExternalUrl } from "@elizaos/app-core/utils";
+import { client, openExternalUrl } from "@elizaos/app-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 interface VincentStateParams {

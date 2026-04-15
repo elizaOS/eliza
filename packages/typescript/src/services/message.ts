@@ -2161,8 +2161,18 @@ export class DefaultMessageService implements IMessageService {
 				);
 			}
 
-			// Save response memory to database (simple mode persists after hooks; see below)
-			if (responseMessages.length > 0 && mode !== "simple") {
+			// Save response memory to database.
+			// - simple mode: persists after hooks in the branch below.
+			// - actions mode: do NOT persist the initial LLM text here.
+			//   The action callbacks produce the real user-facing messages;
+			//   saving the planner text now would emit a premature reply that
+			//   may be contradicted once the action completes or fails.
+			// - other non-simple modes (e.g. "none"): persist immediately.
+			if (
+				responseMessages.length > 0 &&
+				mode !== "simple" &&
+				mode !== "actions"
+			) {
 				for (const responseMemory of responseMessages) {
 					// Update the content in case inReplyTo was added
 					if (responseContent) {

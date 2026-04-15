@@ -1,4 +1,4 @@
-import type { CodingAgentSession } from "@elizaos/app-core/api/client-types-cloud";
+import type { CodingAgentSession } from "@elizaos/app-core";
 import { Z_OVERLAY } from "@elizaos/ui/lib/floating-layers";
 import { PtyConsoleBase } from "./PtyConsoleBase";
 

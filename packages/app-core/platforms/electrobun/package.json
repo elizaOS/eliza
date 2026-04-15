@@ -7,7 +7,7 @@
     "dev": "bun run build:preload && PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun dev",
     "build": "bun run build:preload && PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun build",
     "typecheck": "tsc --noEmit",
-    "test": "bunx vitest run --passWithNoTests",
+    "test": "bunx vitest run",
     "lint": "bunx @biomejs/biome check src",
     "build:preload": "node ../../scripts/build-electrobun-preload.mjs",
     "build:whisper": "bash scripts/build-whisper.sh",

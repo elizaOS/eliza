@@ -562,6 +562,11 @@ export interface OnboardingData {
   blooioApiKey?: string;
   blooioPhoneNumber?: string;
   githubToken?: string;
+  topics?: string[];
+  runMode?: string;
+  cloudProvider?: string;
+  smallModel?: string;
+  largeModel?: string;
 }
 
 export interface SubscriptionProviderStatus {

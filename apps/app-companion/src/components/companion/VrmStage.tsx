@@ -1,12 +1,13 @@
-import type { AppEmoteEventDetail } from "@elizaos/app-core/events";
-import { APP_EMOTE_EVENT, STOP_EMOTE_EVENT } from "@elizaos/app-core/events";
-import { useRenderGuard } from "@elizaos/app-core/hooks/useRenderGuard";
-import type {
-  CompanionHalfFramerateMode,
-  CompanionVrmPowerMode,
-} from "@elizaos/app-core/state/types";
-import type { TranslateFn } from "@elizaos/app-core/types";
-import { resolveAppAssetUrl } from "@elizaos/app-core/utils/asset-url";
+import {
+  APP_EMOTE_EVENT,
+  STOP_EMOTE_EVENT,
+  resolveAppAssetUrl,
+  useRenderGuard,
+  type AppEmoteEventDetail,
+  type CompanionHalfFramerateMode,
+  type CompanionVrmPowerMode,
+  type TranslateFn,
+} from "@elizaos/app-core";
 import {
   memo,
   type ReactElement,

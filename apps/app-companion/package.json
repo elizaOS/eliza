@@ -8,7 +8,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "biome check src/",
-    "test": "bunx vitest run --passWithNoTests",
+    "test": "bunx vitest run",
     "storybook": "storybook dev -p 6007",
     "build-storybook": "storybook build"
   },

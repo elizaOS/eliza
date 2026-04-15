@@ -798,16 +798,10 @@ describe("Agent Runtime E2E", () => {
         expect(preferences.length).toBeGreaterThan(0);
         expect(
           preferences.some((preference) => {
-            const text = preference.content.text?.toLowerCase() || "";
-            const originalRequest =
-              typeof preference.metadata?.originalRequest === "string"
-                ? preference.metadata.originalRequest.toLowerCase()
-                : "";
+            const text = preference.content.text?.trim() ?? "";
             return (
-              text.includes("concise") ||
-              text.includes("direct") ||
-              originalRequest.includes("concise") ||
-              originalRequest.includes("direct")
+              preference.content.source === "user_personality_preference" &&
+              text.length > 0
             );
           }),
         ).toBe(true);

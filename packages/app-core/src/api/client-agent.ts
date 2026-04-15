@@ -604,7 +604,7 @@ ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
 };
 
 ElizaClient.prototype.getAgentSelfStatus = async function (this: ElizaClient) {
-  return this.fetch("/api@elizaos/agent/self-status");
+  return this.fetch("/api/agent/self-status");
 };
 
 ElizaClient.prototype.getRuntimeSnapshot = async function (
@@ -820,7 +820,7 @@ ElizaClient.prototype.exchangeOpenAICode = async function (
 
 ElizaClient.prototype.startAgent = async function (this: ElizaClient) {
   const res = await this.fetch<{ status: AgentStatus }>(
-    "/api@elizaos/agent/start",
+    "/api/agent/start",
     {
       method: "POST",
     },
@@ -830,7 +830,7 @@ ElizaClient.prototype.startAgent = async function (this: ElizaClient) {
 
 ElizaClient.prototype.stopAgent = async function (this: ElizaClient) {
   const res = await this.fetch<{ status: AgentStatus }>(
-    "/api@elizaos/agent/stop",
+    "/api/agent/stop",
     {
       method: "POST",
     },
@@ -840,7 +840,7 @@ ElizaClient.prototype.stopAgent = async function (this: ElizaClient) {
 
 ElizaClient.prototype.pauseAgent = async function (this: ElizaClient) {
   const res = await this.fetch<{ status: AgentStatus }>(
-    "/api@elizaos/agent/pause",
+    "/api/agent/pause",
     {
       method: "POST",
     },
@@ -850,7 +850,7 @@ ElizaClient.prototype.pauseAgent = async function (this: ElizaClient) {
 
 ElizaClient.prototype.resumeAgent = async function (this: ElizaClient) {
   const res = await this.fetch<{ status: AgentStatus }>(
-    "/api@elizaos/agent/resume",
+    "/api/agent/resume",
     {
       method: "POST",
     },
@@ -859,21 +859,10 @@ ElizaClient.prototype.resumeAgent = async function (this: ElizaClient) {
 };
 
 ElizaClient.prototype.restartAgent = async function (this: ElizaClient) {
-  try {
-    const res = await this.fetch<{ status: AgentStatus }>("/api/agent/restart", {
-      method: "POST",
-    });
-    return res.status;
-  } catch {
-    // Back-compat for older runtimes that still expose the legacy restart path.
-    const legacy = await this.fetch<{ status: AgentStatus }>(
-      "/api@elizaos/agent/restart",
-      {
-        method: "POST",
-      },
-    );
-    return legacy.status;
-  }
+  const res = await this.fetch<{ status: AgentStatus }>("/api/agent/restart", {
+    method: "POST",
+  });
+  return res.status;
 };
 
 ElizaClient.prototype.restartAndWait = async function (

@@ -746,7 +746,7 @@ function InboxChatPanel({
         // oldest→newest (conversation layout) so reverse.
         const next = [...response.messages]
           .reverse()
-          .map((m) => m as unknown as ConversationMessage);
+          .map((m): ConversationMessage => m);
         setMessages(next);
       } catch {
         // Transient errors keep the last snapshot; next poll retries.
@@ -808,7 +808,7 @@ function InboxChatPanel({
       if (response.message) {
         setMessages((current) => [
           ...current,
-          response.message as unknown as ConversationMessage,
+          response.message as ConversationMessage,
         ]);
       }
 

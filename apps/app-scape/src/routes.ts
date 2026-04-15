@@ -3,6 +3,8 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type {
   AppLaunchDiagnostic,
   AppLaunchResult,
+  AppLaunchSessionContext,
+  AppRunSessionContext,
   AppSessionActivityItem,
   AppSessionJsonValue,
   AppSessionState,
@@ -97,23 +99,6 @@ const VIEWER_FRAME_ANCESTORS_DIRECTIVE =
   "http://[::1]:* http://[0:0:0:0:0:0:0:1]:* https://localhost:* " +
   "https://127.0.0.1:* https://[::1]:* https://[0:0:0:0:0:0:0:1]:* " +
   "electrobun: capacitor: capacitor-electron: app: tauri: file:";
-
-// ---------------------------------------------------------------------------
-// Context types (inlined from packages/agent to keep this plugin
-// free of circular deps — same pattern babylon and defense use)
-// ---------------------------------------------------------------------------
-
-interface AppLaunchSessionContext {
-  appName: string;
-  launchUrl: string | null;
-  runtime: IAgentRuntime | null;
-  viewer: AppLaunchResult["viewer"] | null;
-}
-
-interface AppRunSessionContext extends AppLaunchSessionContext {
-  runId: string;
-  session: AppSessionState | null;
-}
 
 // ---------------------------------------------------------------------------
 // Settings resolution

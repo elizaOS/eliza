@@ -360,7 +360,7 @@ async function stopOwnedServices(
 
     for (const ownedClass of ownedClasses) {
       if (typeof ownedClass.stopRuntime === "function") {
-        await ownedClass.stopRuntime(runtime as unknown as AgentRuntime);
+        await ownedClass.stopRuntime(runtime);
       }
       serviceClassOwners.delete(ownedClass);
     }

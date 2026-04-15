@@ -113,6 +113,14 @@ interface CompatPluginRecord {
   npmName?: string;
   version?: string;
   isActive?: boolean;
+  tags?: string[];
+  configKeys?: string[];
+  pluginDeps?: string[];
+  configUiHints?: Record<string, unknown>;
+  icon?: string | null;
+  homepage?: string;
+  repository?: string;
+  setupGuideUrl?: string;
 }
 
 type PluginDriftFlag =
@@ -463,7 +471,15 @@ export function analyzePluginStateDrift(
     ) {
       driftFlags.push("entries_vs_compat");
     }
-    if (enabledAllowList !== null && entryEnabled !== undefined) {
+    // Connector and streaming plugins load from config.connectors / config.streaming,
+    // not from plugins.allow.  Only flag allowlist drift for plugins whose load path
+    // actually depends on the allow list (i.e. optional core plugins).
+    if (
+      enabledAllowList !== null &&
+      entryEnabled !== undefined &&
+      category !== "connector" &&
+      category !== "streaming"
+    ) {
       if (enabledAllowList !== entryEnabled) {
         driftFlags.push("entries_vs_allowlist");
       }
@@ -513,7 +529,7 @@ function buildPluginDriftDiagnostics(
   runtime: AgentRuntime | null,
 ): PluginDriftDiagnosticsReport {
   const pluginList = buildPluginListResponse(runtime)
-    .plugins as unknown as CompatPluginRecord[];
+    .plugins;
   const config = loadElizaConfig();
   const configRecord = config as Record<string, unknown>;
   const configEntries = config.plugins?.entries ?? {};
@@ -902,7 +918,7 @@ function isPluginLoaded(
 }
 
 export function buildPluginListResponse(runtime: AgentRuntime | null): {
-  plugins: Array<Record<string, unknown>>;
+  plugins: CompatPluginRecord[];
 } {
   reconcilePluginEnabledStates();
   const config = loadElizaConfig();
@@ -918,7 +934,7 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
 
   const configEntries = config.plugins?.entries ?? {};
   const installEntries = config.plugins?.installs ?? {};
-  const plugins = new Map<string, Record<string, unknown>>();
+  const plugins = new Map<string, CompatPluginRecord>();
 
   for (const entry of manifest?.plugins ?? []) {
     const pluginId = normalizePluginId(entry.id);
@@ -1235,7 +1251,7 @@ export function persistCompatPluginMutation(
   }
 
   const refreshed = (
-    buildPluginListResponse(null).plugins as unknown as CompatPluginRecord[]
+    buildPluginListResponse(null).plugins
   ).find((candidate) => candidate.id === pluginId);
 
   return {
@@ -1317,7 +1333,7 @@ export async function handlePluginsCompatRoutes(
     );
     const plugin = (
       buildPluginListResponse(state.current)
-        .plugins as unknown as CompatPluginRecord[]
+        .plugins
     ).find((candidate) => candidate.id === pluginId);
 
     if (!plugin) {
@@ -1344,7 +1360,7 @@ export async function handlePluginsCompatRoutes(
 
       const refreshed = (
         buildPluginListResponse(state.current)
-          .plugins as unknown as CompatPluginRecord[]
+          .plugins
       ).find((candidate) => candidate.id === pluginId);
 
       result.payload.plugin = refreshed ?? result.payload.plugin ?? plugin;

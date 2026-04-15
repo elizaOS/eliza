@@ -5,14 +5,14 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../../test/helpers/live-provider";
+import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../../../packages/app-core/test/helpers/live-provider";
 import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../../test/helpers/http";
-import { createLiveRuntimeChildEnv } from "../../../../test/helpers/live-child-env.ts";
+} from "../../../packages/app-core/test/helpers/http";
+import { createLiveRuntimeChildEnv } from "../../../packages/app-core/test/helpers/live-child-env.ts";
 
 const LIVE_TESTS_ENABLED =
   process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";

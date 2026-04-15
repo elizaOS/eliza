@@ -1,13 +1,13 @@
-import type {
-  StreamEventEnvelope,
-  TrainingDatasetRecord,
-  TrainingJobRecord,
-  TrainingModelRecord,
-  TrainingStreamEvent,
-  TrainingTrajectoryDetail,
-  TrainingTrajectoryList,
-} from "@elizaos/app-core/api";
-import { formatTime } from "@elizaos/app-core/utils/format";
+import {
+  formatTime,
+  type StreamEventEnvelope,
+  type TrainingDatasetRecord,
+  type TrainingJobRecord,
+  type TrainingModelRecord,
+  type TrainingStreamEvent,
+  type TrainingTrajectoryDetail,
+  type TrainingTrajectoryList,
+} from "@elizaos/app-core";
 import { Button, Select, SelectContent, SelectItem, SelectValue, SettingsControls } from "@elizaos/ui";
 
 /* ── Constants ─────────────────────────────────────────────────────── */

@@ -1,10 +1,10 @@
-import { client } from "@elizaos/app-core/api/client";
 import {
+  client,
   dispatchAppEvent,
   EMOTE_PICKER_EVENT,
   STOP_EMOTE_EVENT,
-} from "@elizaos/app-core/events";
-import { useApp } from "@elizaos/app-core/state/useApp";
+  useApp,
+} from "@elizaos/app-core";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Input } from "@elizaos/ui/components/ui/input";
 import { useTimeout } from "@elizaos/ui/hooks/useTimeout";

@@ -1,5 +1,4 @@
-import { usePtySessions } from "@elizaos/app-core/state/PtySessionsContext";
-import { useApp } from "@elizaos/app-core/state/useApp";
+import { useApp, usePtySessions } from "@elizaos/app-core";
 import { useCallback, useEffect, useRef } from "react";
 import type { SceneOverlayManager } from "../avatar/SceneOverlayManager";
 import type {

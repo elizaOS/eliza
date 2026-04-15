@@ -2,6 +2,8 @@
  * Shared app manager contracts.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
+
 export type AppSessionMode = "viewer" | "spectate-and-steer" | "external";
 
 export type AppSessionFeature =
@@ -196,6 +198,22 @@ export interface AppLaunchResult {
   session: AppSessionState | null;
   run: AppRunSummary | null;
   diagnostics?: AppLaunchDiagnostic[];
+}
+
+// ── App Session Contexts ──────────────────────────────────────────────────
+
+/** Context available during app launch (before a run is started). */
+export interface AppLaunchSessionContext {
+  appName: string;
+  launchUrl: string | null;
+  runtime: IAgentRuntime | null;
+  viewer: AppLaunchResult["viewer"] | null;
+}
+
+/** Context available during an active app run. */
+export interface AppRunSessionContext extends AppLaunchSessionContext {
+  runId?: string;
+  session: AppSessionState | null;
 }
 
 export interface InstalledAppInfo {

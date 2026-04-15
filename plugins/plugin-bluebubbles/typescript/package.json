@@ -16,7 +16,7 @@
 	],
 	"scripts": {
 		"build": "bun run build.ts",
-		"test": "vitest run --passWithNoTests",
+		"test": "vitest run",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"lint:check": "bunx @biomejs/biome check .",
 		"format": "bunx @biomejs/biome format --write .",

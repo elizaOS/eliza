@@ -298,17 +298,11 @@ export function hasEvaluatorNamed(
   runtime: IAgentRuntime,
   name: string,
 ): boolean {
-  const runtimeLike = runtime as unknown as {
-    evaluators?: Array<{ name?: unknown }>;
-  };
-  const evaluators = runtimeLike.evaluators;
+  const evaluators = runtime.evaluators;
   if (!Array.isArray(evaluators)) return false;
   const target = name.trim().toUpperCase();
   return evaluators.some((evaluator) => {
-    const evaluatorName =
-      evaluator && typeof evaluator.name === "string"
-        ? evaluator.name.trim().toUpperCase()
-        : "";
+    const evaluatorName = evaluator?.name?.trim().toUpperCase() ?? "";
     return evaluatorName === target;
   });
 }
@@ -467,10 +461,7 @@ export function extractInsightsFromResponse(
 export function shouldRunObservationExtraction(
   runtime: IAgentRuntime,
 ): boolean {
-  const runtimeAny = runtime as unknown as {
-    getSetting?: (key: string) => unknown;
-  };
-  const explicitSetting = runtimeAny.getSetting?.(
+  const explicitSetting = runtime.getSetting(
     "TRAJECTORY_OBSERVATION_EXTRACTION",
   );
   const explicitValue = toOptionalBoolean(explicitSetting);
@@ -505,7 +496,7 @@ const observationFlushInProgress = new WeakMap<object, boolean>();
 export const TRAJECTORY_ARCHIVE_DIRNAME = "trajectory-archive";
 
 function getObservationBuffer(runtime: IAgentRuntime): BufferedExchange[] {
-  const key = runtime as unknown as object;
+  const key = runtime as object;
   let buffer = observationBuffers.get(key);
   if (!buffer) {
     buffer = [];
@@ -538,7 +529,7 @@ export function pushChatExchange(
   const buffer = getObservationBuffer(runtime);
   buffer.push(exchange);
 
-  const key = runtime as unknown as object;
+  const key = runtime as object;
 
   // Flush on threshold
   if (buffer.length >= OBSERVATION_BUFFER_THRESHOLD) {
@@ -565,7 +556,7 @@ export function pushChatExchange(
 export async function flushObservationBuffer(
   runtime: IAgentRuntime,
 ): Promise<string[]> {
-  const key = runtime as unknown as object;
+  const key = runtime as object;
 
   // Prevent concurrent flushes
   if (observationFlushInProgress.get(key)) return [];
@@ -592,10 +583,10 @@ export async function flushObservationBuffer(
 
   const prompt = OBSERVATION_EXTRACTION_PROMPT + exchangeText;
 
-  const runtimeAny = runtime as unknown as Record<string, unknown>;
+  const runtimeRecord = runtime as unknown as Record<string, unknown>;
   try {
     // Tag the call to prevent recursion
-    runtimeAny.__orchestratorTrajectoryCtx = {
+    runtimeRecord.__orchestratorTrajectoryCtx = {
       source: "orchestrator",
       decisionType: "observation-extraction",
     };
@@ -640,7 +631,7 @@ export async function flushObservationBuffer(
     // Non-critical — observations are best-effort
     return [];
   } finally {
-    delete runtimeAny.__orchestratorTrajectoryCtx;
+    delete runtimeRecord.__orchestratorTrajectoryCtx;
     observationFlushInProgress.set(key, false);
   }
 }
@@ -687,15 +678,12 @@ export async function getSqlRaw(): Promise<
 }
 
 export function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb | null {
-  const runtimeLike = runtime as unknown as {
-    adapter?: {
-      db?: RuntimeDb;
-    };
-    databaseAdapter?: {
-      db?: RuntimeDb;
-    };
-  };
-  const db = runtimeLike.adapter?.db || runtimeLike.databaseAdapter?.db;
+  const adapterDb = runtime.adapter?.db as RuntimeDb | undefined;
+  // Legacy runtimes may expose `databaseAdapter` instead of `adapter`
+  const fallbackDb = (
+    runtime as unknown as { databaseAdapter?: { db?: RuntimeDb } }
+  ).databaseAdapter?.db;
+  const db = adapterDb || fallbackDb;
   if (!db || typeof db.execute !== "function") return null;
   return db;
 }
@@ -752,13 +740,8 @@ export function warnRuntime(
   message: string,
   err?: unknown,
 ): void {
-  const runtimeLike = runtime as unknown as {
-    logger?: {
-      warn?: (meta: Record<string, unknown>, message: string) => void;
-    };
-  };
-  if (runtimeLike.logger?.warn) {
-    runtimeLike.logger.warn(
+  if (runtime.logger?.warn) {
+    runtime.logger.warn(
       { err, src: "eliza", subsystem: "trajectory-db" },
       message,
     );
@@ -772,7 +755,7 @@ export function warnRuntime(
 export async function ensureTrajectoriesTable(
   runtime: IAgentRuntime,
 ): Promise<boolean> {
-  const key = runtime as unknown as object;
+  const key = runtime as object;
 
   // Only skip if verified with current module version
   if (schemaVersions.get(key) === SCHEMA_VERSION) return true;
@@ -1096,11 +1079,6 @@ export function isLegacyTrajectoryLogger(
 export async function resolveTrajectoryLogger(
   runtime: IAgentRuntime,
 ): Promise<TrajectoryLoggerLike | null> {
-  const runtimeLike = runtime as unknown as {
-    getServicesByType?: (serviceType: string) => unknown;
-    getService?: (serviceType: string) => unknown;
-  };
-
   const candidates: TrajectoryLoggerLike[] = [];
   const seen = new Set<unknown>();
   const push = (candidate: unknown): void => {
@@ -1110,17 +1088,13 @@ export async function resolveTrajectoryLogger(
     candidates.push(candidate as TrajectoryLoggerLike);
   };
 
-  if (typeof runtimeLike.getServicesByType === "function") {
-    const byType = runtimeLike.getServicesByType("trajectories");
-    if (Array.isArray(byType)) {
-      for (const item of byType) push(item);
-    } else {
-      push(byType);
-    }
+  const byType = runtime.getServicesByType("trajectories");
+  if (Array.isArray(byType)) {
+    for (const item of byType) push(item);
+  } else {
+    push(byType);
   }
-  if (typeof runtimeLike.getService === "function") {
-    push(runtimeLike.getService("trajectories"));
-  }
+  push(runtime.getService("trajectories"));
 
   if (candidates.length === 0) return null;
 
@@ -1151,7 +1125,7 @@ export function enqueueStepWrite(
   stepId: string,
   work: () => Promise<void>,
 ): Promise<void> {
-  const runtimeKey = runtime as unknown as object;
+  const runtimeKey = runtime as object;
   let perStep = stepWriteQueues.get(runtimeKey);
   if (!perStep) {
     perStep = new Map<string, Promise<void>>();
@@ -1643,7 +1617,8 @@ export function readOrchestratorTrajectoryContext(runtime: unknown):
     }
   | undefined {
   if (!runtime || typeof runtime !== "object") return undefined;
-  const ctx = (runtime as Record<string, unknown>).__orchestratorTrajectoryCtx;
+  const ctx = (runtime as unknown as Record<string, unknown>)
+    .__orchestratorTrajectoryCtx;
   if (!ctx || typeof ctx !== "object") return undefined;
   const candidate = ctx as Record<string, unknown>;
   if (

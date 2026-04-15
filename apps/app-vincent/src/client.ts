@@ -2,6 +2,7 @@
  * Vincent domain methods — OAuth registration, token exchange, status, disconnect.
  */
 
+/** Declaration merging must target the module that declares `ElizaClient` (see `declare module` below). */
 import { ElizaClient } from "@elizaos/app-core/api/client-base";
 
 // ── Types ─────────────────────────────────────────────────────────────

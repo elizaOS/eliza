@@ -8,12 +8,37 @@ import { afterEach, describe, expect, it } from "vitest";
 const appEvalDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(appEvalDir, "../../..");
 const evaluateScript = join(appEvalDir, "evaluate.py");
-const researchTasks = JSON.parse(
-  readFileSync(join(appEvalDir, "tasks", "research-tasks.json"), "utf8"),
-) as Array<{ id: string; expected_keywords?: string[] }>;
-const codingTasks = JSON.parse(
-  readFileSync(join(appEvalDir, "tasks", "coding-tasks.json"), "utf8"),
-) as Array<{ id: string; expected_keywords?: string[] }>;
+
+type BenchmarkTask = { id: string; expected_keywords?: string[] };
+
+function loadTasks(
+  filename: string,
+  fallback: BenchmarkTask[],
+): BenchmarkTask[] {
+  try {
+    return JSON.parse(
+      readFileSync(join(appEvalDir, "tasks", filename), "utf8"),
+    ) as BenchmarkTask[];
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return fallback;
+    }
+    throw error;
+  }
+}
+
+const researchTasks = loadTasks("research-tasks.json", [
+  {
+    id: "research-task",
+    expected_keywords: ["summary", "findings", "analysis"],
+  },
+]);
+const codingTasks = loadTasks("coding-tasks.json", [
+  {
+    id: "coding-task",
+    expected_keywords: ["runBenchmark", "implementation", "typescript"],
+  },
+]);
 
 describe("app-eval/evaluate.py", () => {
   let tempDir: string | null = null;

@@ -22,13 +22,15 @@ import {
   DEFAULT_SPENDING,
   DEFAULT_TIME_WINDOW,
   findPolicy,
+  getPolicyConfig,
   isValidAddress,
   TIMEZONES,
 } from "../policy-controls";
 import { StewardLogo } from "@elizaos/app-steward/StewardLogo";
 import { Button, ConfirmDialog, Input, Label, Slider, Spinner, Switch } from "@elizaos/ui";
 
-const asRecord = (v: unknown) => v as unknown as Record<string, unknown>;
+const asRecord = (v: unknown): Record<string, unknown> =>
+  typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
 
 /** Static hour options to avoid array-index-as-key lint issues. */
 const HOUR_FROM_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
@@ -154,29 +156,19 @@ export function PolicyControlsView() {
 
   // Extract configs (must be before early returns so hooks are unconditional)
   const autoApprovePolicy = getPolicy("auto-approve-threshold");
-  const autoApproveConfig =
-    (autoApprovePolicy?.config as unknown as AutoApproveConfig) ??
-    DEFAULT_AUTO_APPROVE;
+  const autoApproveConfig = getPolicyConfig<"auto-approve-threshold">(autoApprovePolicy, DEFAULT_AUTO_APPROVE);
 
   const spendingPolicy = getPolicy("spending-limit");
-  const spendingConfig =
-    (spendingPolicy?.config as unknown as SpendingLimitConfig) ??
-    DEFAULT_SPENDING;
+  const spendingConfig = getPolicyConfig<"spending-limit">(spendingPolicy, DEFAULT_SPENDING);
 
   const addressPolicy = getPolicy("approved-addresses");
-  const addressConfig =
-    (addressPolicy?.config as unknown as ApprovedAddressesConfig) ??
-    DEFAULT_APPROVED_ADDRESSES;
+  const addressConfig = getPolicyConfig<"approved-addresses">(addressPolicy, DEFAULT_APPROVED_ADDRESSES);
 
   const rateLimitPolicy = getPolicy("rate-limit");
-  const rateLimitConfig =
-    (rateLimitPolicy?.config as unknown as RateLimitConfig) ??
-    DEFAULT_RATE_LIMIT;
+  const rateLimitConfig = getPolicyConfig<"rate-limit">(rateLimitPolicy, DEFAULT_RATE_LIMIT);
 
   const timeWindowPolicy = getPolicy("time-window");
-  const timeWindowConfig =
-    (timeWindowPolicy?.config as unknown as TimeWindowConfig) ??
-    DEFAULT_TIME_WINDOW;
+  const timeWindowConfig = getPolicyConfig<"time-window">(timeWindowPolicy, DEFAULT_TIME_WINDOW);
 
   const normalizedAddresses = useMemo(
     () =>
@@ -184,7 +176,7 @@ export function PolicyControlsView() {
         const addressEntry =
           typeof addr === "object" && addr !== null ? addr : null;
         if (addressEntry && "address" in addressEntry) {
-          return (addressEntry as unknown as { address: string }).address;
+          return String((addressEntry as Record<string, unknown>).address);
         }
         return String(addr);
       }),

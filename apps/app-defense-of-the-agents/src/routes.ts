@@ -2,22 +2,11 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type {
   AppLaunchDiagnostic,
   AppLaunchResult,
+  AppLaunchSessionContext,
+  AppRunSessionContext,
   AppSessionActionResult,
   AppSessionState,
 } from "@elizaos/shared/contracts/apps";
-
-/** Inlined from packages/agent — keeps this plugin free of circular deps. */
-interface AppLaunchSessionContext {
-  appName: string;
-  launchUrl: string | null;
-  runtime: IAgentRuntime | null;
-  viewer: AppLaunchResult["viewer"] | null;
-}
-
-interface AppRunSessionContext extends AppLaunchSessionContext {
-  runId: string;
-  session: AppSessionState | null;
-}
 
 const APP_NAME = "@elizaos/app-defense-of-the-agents";
 const APP_DISPLAY_NAME = "Defense of the Agents";

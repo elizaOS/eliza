@@ -1,5 +1,8 @@
 import {
   client,
+  confirmDesktopAction,
+  parsePositiveFloat,
+  parsePositiveInteger,
   type StartTrainingOptions,
   type StreamEventEnvelope,
   type TrainingDatasetRecord,
@@ -9,9 +12,8 @@ import {
   type TrainingStreamEvent,
   type TrainingTrajectoryDetail,
   type TrainingTrajectoryList,
-} from "@elizaos/app-core/api";
-import { useApp } from "@elizaos/app-core/state/useApp";
-import { confirmDesktopAction } from "@elizaos/app-core/utils/desktop-dialogs";
+  useApp,
+} from "@elizaos/app-core";
 
 import {
   type ReactNode,
@@ -20,10 +22,6 @@ import {
   useMemo,
   useState,
 } from "react";
-import {
-  parsePositiveFloat,
-  parsePositiveInteger,
-} from "@elizaos/app-core/utils/number-parsing";
 import { useIntervalWhenDocumentVisible, Button, ContentLayout } from "@elizaos/ui";
 import {
   asTrainingEvent,

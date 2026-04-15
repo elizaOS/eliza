@@ -201,11 +201,6 @@ export type SlackStatus = {
   lastProbeAt?: number | null;
 };
 
-export type {
-  WebsiteBlockerSettingsCardProps,
-  WebsiteBlockerSettingsMode,
-} from "./lifeops-ui";
-
 export type SignalProbe = {
   ok: boolean;
   status?: number | null;

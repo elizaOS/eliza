@@ -7,6 +7,10 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import type {
+  WalletExportRejection as WalletExportRejectionLike,
+  WalletExportRequestBody,
+} from "@elizaos/shared/contracts";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import {
   type CloudWalletDescriptor,
@@ -49,16 +53,6 @@ import {
   resolveWalletNetworkMode,
   resolveWalletRpcReadiness,
 } from "./wallet-rpc.js";
-
-interface WalletExportRequestBody {
-  confirm?: boolean;
-  exportToken?: string;
-}
-
-interface WalletExportRejectionLike {
-  status: 401 | 403;
-  reason: string;
-}
 
 // Rate limiter for wallet export.
 // In test/CI mode the limit is relaxed to avoid blocking E2E suites.
@@ -215,7 +209,7 @@ interface CachedCloudWalletDescriptor {
 function readCloudWalletCache(
   config: ElizaConfig,
 ): Partial<Record<WalletChainKind, CachedCloudWalletDescriptor>> {
-  const wallet = (config as unknown as { wallet?: unknown }).wallet;
+  const wallet = config.wallet;
   if (!wallet || typeof wallet !== "object") return {};
   const cloud = (wallet as { cloud?: unknown }).cloud;
   if (!cloud || typeof cloud !== "object") return {};
@@ -223,7 +217,7 @@ function readCloudWalletCache(
 }
 
 function readPrimaryMap(config: ElizaConfig): WalletPrimaryMap {
-  const wallet = (config as unknown as { wallet?: unknown }).wallet;
+  const wallet = config.wallet;
   const raw =
     wallet && typeof wallet === "object"
       ? (wallet as { primary?: unknown }).primary
@@ -357,12 +351,14 @@ function persistPrimarySelection(
   chain: WalletChainKind,
   source: WalletSource,
 ): void {
-  const target = config as unknown as { wallet?: Record<string, unknown> };
-  const wallet = (target.wallet ?? {}) as Record<string, unknown>;
+  if (!config.wallet) {
+    config.wallet = {};
+  }
+  const wallet = config.wallet;
   const primary = { ...((wallet.primary as Record<string, unknown>) ?? {}) };
   primary[chain] = source;
-  wallet.primary = primary;
-  target.wallet = wallet;
+  wallet.primary = primary as typeof wallet.primary;
+  config.wallet = wallet;
 }
 
 export interface WalletRouteContext
@@ -634,9 +630,10 @@ export async function handleWalletRoutes(
                 walletAddress?: string;
                 walletAddresses?: { evm?: string; solana?: string };
               };
+              walletAddress?: string;
+              walletAddresses?: { evm?: string; solana?: string };
             };
-            const agent =
-              agentBody.data ?? (agentBody as unknown as typeof agentBody.data);
+            const agent = agentBody.data ?? agentBody;
             agentEvm =
               agent?.walletAddresses?.evm?.trim() ||
               agent?.walletAddress?.trim() ||
@@ -668,10 +665,10 @@ export async function handleWalletRoutes(
               walletAddress?: string;
               walletAddresses?: { evm?: string; solana?: string };
             };
+            walletAddress?: string;
+            walletAddresses?: { evm?: string; solana?: string };
           };
-          const created =
-            createBody.data ??
-            (createBody as unknown as typeof createBody.data);
+          const created = createBody.data ?? createBody;
           agentEvm =
             created?.walletAddresses?.evm?.trim() ||
             created?.walletAddress?.trim() ||
@@ -898,13 +895,11 @@ export async function handleWalletRoutes(
       return true;
     }
 
-    const cloud = (config as unknown as { cloud?: Record<string, unknown> })
-      .cloud;
+    const cloud = config.cloud;
     const apiKey = resolveCloudApiKey(config, ctx.runtime) ?? "";
-    const baseUrl =
-      cloud && typeof cloud.baseUrl === "string" && cloud.baseUrl
-        ? normalizeCloudSiteUrl(cloud.baseUrl)
-        : "https://www.elizacloud.ai";
+    const baseUrl = cloud?.baseUrl
+      ? normalizeCloudSiteUrl(cloud.baseUrl)
+      : "https://www.elizacloud.ai";
     if (!apiKey) {
       error(res, "Cloud not linked — sign in to Eliza Cloud first", 400);
       return true;
@@ -972,10 +967,9 @@ export async function handleWalletRoutes(
       process.env.ENABLE_CLOUD_WALLET = "1";
       await persistConfigEnv("ENABLE_CLOUD_WALLET", "1");
 
-      const cloudConfig = { ...(cloud ?? {}) };
+      const cloudConfig: Record<string, unknown> = { ...(cloud ?? {}) };
       cloudConfig.clientAddressPublicKey = clientAddress;
-      (config as unknown as { cloud?: Record<string, unknown> }).cloud =
-        cloudConfig;
+      config.cloud = cloudConfig as typeof config.cloud;
 
       if (descriptors.evm?.walletAddress) {
         process.env.MILADY_CLOUD_EVM_ADDRESS = descriptors.evm.walletAddress;
