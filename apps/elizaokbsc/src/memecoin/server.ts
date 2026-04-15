@@ -4770,13 +4770,13 @@ function renderHtml(
     : (treasurySimulation.positions.length > 0
       ? treasurySimulation.positions.reduce((s, p) => s + p.allocationUsd, 0) / treasurySimulation.positions.length
       : treasurySimulation.deployableCapitalUsd / Math.max(1, executionState.risk.maxActivePositions || 3));
-  const positionSizeBnb = Math.min(1, Math.max(0.01, avgPositionUsd / bnbPriceEst));
-  const dailyCapBnb = Math.min(3, positionSizeBnb * Math.max(1, executionState.risk.maxActivePositions || 3));
+  const positionSizeBnb = Math.max(0.01, avgPositionUsd / bnbPriceEst);
+  const dailyCapBnb = positionSizeBnb * 3;
 
   const riskProfile =
-    positionSizeBnb <= 0.1
+    positionSizeBnb <= 1
       ? "Conservative"
-      : positionSizeBnb <= 0.5
+      : positionSizeBnb <= 5
         ? "Balanced"
         : "Aggressive";
   const sidebarWalletAddress = "0x2D6C3358A3acFe3be42b2Bdf7419e87091270c5F";
