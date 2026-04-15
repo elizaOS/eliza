@@ -12,7 +12,7 @@ import {
   type BabylonTeamAgent,
   type BabylonWallet,
 } from "../../api";
-import { useIntervalWhenDocumentVisible } from "../../hooks";
+import { useIntervalWhenDocumentVisible } from "@elizaos/ui";
 import { useBabylonSSE } from "../../hooks/useBabylonSSE";
 import { formatTime } from "../../utils/format";
 import { Button, Input } from "@elizaos/ui";

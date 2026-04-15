@@ -24,6 +24,17 @@ await runManagedTestCommand({
   env: buildTestEnv(appRoot),
 });
 
+const homepageRoot = path.join(repoRoot, "apps", "homepage");
+await runManagedTestCommand({
+  repoRoot,
+  lockName: "homepage-unit",
+  label: "homepage-unit",
+  command: nodeCmd,
+  args: ["./node_modules/.bin/vitest", "run"],
+  cwd: homepageRoot,
+  env: buildTestEnv(homepageRoot),
+});
+
 for (let shard = 1; shard <= unitShardCount; shard += 1) {
   await runManagedTestCommand({
     repoRoot,

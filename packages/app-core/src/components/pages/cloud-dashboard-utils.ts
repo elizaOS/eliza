@@ -46,7 +46,7 @@ export const STATUS_BADGE: Record<
 export function getCloudAuthToken(): string {
   if (typeof window === "undefined") return "";
   return (
-    ((window as unknown as Record<string, unknown>)
+    ((globalThis as Record<string, unknown>)
       .__ELIZA_CLOUD_AUTH_TOKEN__ as string) || ""
   );
 }

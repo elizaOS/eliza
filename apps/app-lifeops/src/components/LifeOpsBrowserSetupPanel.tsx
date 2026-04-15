@@ -13,6 +13,7 @@ import {
   Button,
   Input,
   Label,
+  SegmentedControl,
   Switch,
   Textarea,
 } from "@elizaos/app-core";
@@ -21,7 +22,6 @@ import {
   Download,
   FolderOpen,
   Package,
-  RefreshCw,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
@@ -269,6 +269,45 @@ function installHint(
   return browser === "chrome"
     ? "Load the unpacked build folder in Chrome, or use the packaged zip for distribution."
     : "Open the generated macOS app once, then enable the Safari extension in Safari Settings.";
+}
+
+function trackingModeLabel(mode: LifeOpsBrowserTrackingMode): string {
+  switch (mode) {
+    case "current_tab":
+      return "Current tab";
+    case "active_tabs":
+      return "Active tabs";
+    default:
+      return "Off";
+  }
+}
+
+function siteAccessModeLabel(mode: LifeOpsBrowserSiteAccessMode): string {
+  switch (mode) {
+    case "current_site_only":
+      return "Current site";
+    case "granted_sites":
+      return "Granted sites";
+    default:
+      return "All sites";
+  }
+}
+
+function BrowserSettingRow({
+  checked,
+  label,
+  onCheckedChange,
+}: {
+  checked: boolean;
+  label: string;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5">
+      <span className="text-sm text-txt">{label}</span>
+      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+    </div>
+  );
 }
 
 function releaseBadgeLabel(
@@ -742,18 +781,14 @@ export function LifeOpsBrowserSetupPanel() {
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-2 text-muted">
           <ShieldCheck className="h-4 w-4" />
           <div className="text-xs font-semibold uppercase tracking-wide">
             LifeOps Browser
           </div>
         </div>
-        <Button size="sm" variant="outline" onClick={() => void refresh()}>
-          <RefreshCw className="mr-1.5 h-3 w-3" />
-          Refresh
-        </Button>
       </div>
 
       {currentPage ? (
@@ -772,16 +807,18 @@ export function LifeOpsBrowserSetupPanel() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        {/* Left column: settings */}
-        <div className="space-y-3">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+        <div className="space-y-4">
           {draft ? (
             <>
               <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-semibold text-muted uppercase tracking-wide">Settings</div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Settings
+                </div>
                 <Button
                   size="sm"
                   variant="outline"
+                  className="h-8 rounded-xl px-3 text-xs font-semibold"
                   disabled={savingSettings || loading}
                   onClick={() => void saveSettings()}
                 >
@@ -789,96 +826,75 @@ export function LifeOpsBrowserSetupPanel() {
                 </Button>
               </div>
 
-              <div className="grid gap-2 grid-cols-2">
-                <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-bg/40 px-3 py-1.5">
-                  <span className="text-xs font-medium text-txt">Enabled</span>
-                  <Switch
-                    checked={draft.enabled}
-                    onCheckedChange={(checked) => updateDraft("enabled", checked)}
-                  />
-                </div>
-                <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-bg/40 px-3 py-1.5">
-                  <span className="text-xs font-medium text-txt">Browser control</span>
-                  <Switch
-                    checked={draft.allowBrowserControl}
-                    onCheckedChange={(checked) =>
-                      updateDraft("allowBrowserControl", checked)
-                    }
-                  />
-                </div>
-                <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-bg/40 px-3 py-1.5">
-                  <span className="text-xs font-medium text-txt">Require confirmation</span>
-                  <Switch
-                    checked={draft.requireConfirmationForAccountAffecting}
-                    onCheckedChange={(checked) =>
-                      updateDraft(
-                        "requireConfirmationForAccountAffecting",
-                        checked,
-                      )
-                    }
-                  />
-                </div>
-                <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-bg/40 px-3 py-1.5">
-                  <span className="text-xs font-medium text-txt">Incognito</span>
-                  <Switch
-                    checked={draft.incognitoEnabled}
-                    onCheckedChange={(checked) =>
-                      updateDraft("incognitoEnabled", checked)
-                    }
-                  />
-                </div>
+              <div className="divide-y divide-border/18">
+                <BrowserSettingRow
+                  checked={draft.enabled}
+                  label="Enabled"
+                  onCheckedChange={(checked) => updateDraft("enabled", checked)}
+                />
+                <BrowserSettingRow
+                  checked={draft.allowBrowserControl}
+                  label="Browser control"
+                  onCheckedChange={(checked) =>
+                    updateDraft("allowBrowserControl", checked)
+                  }
+                />
+                <BrowserSettingRow
+                  checked={draft.requireConfirmationForAccountAffecting}
+                  label="Require confirmation"
+                  onCheckedChange={(checked) =>
+                    updateDraft(
+                      "requireConfirmationForAccountAffecting",
+                      checked,
+                    )
+                  }
+                />
+                <BrowserSettingRow
+                  checked={draft.incognitoEnabled}
+                  label="Incognito"
+                  onCheckedChange={(checked) =>
+                    updateDraft("incognitoEnabled", checked)
+                  }
+                />
               </div>
 
-              <div className="grid gap-3 grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label className="text-xs text-muted">Tracking</Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(["off", "current_tab", "active_tabs"] as const).map(
-                      (mode) => (
-                        <Button
-                          key={mode}
-                          size="sm"
-                          variant={
-                            draft.trackingMode === mode ? "default" : "outline"
-                          }
-                          onClick={() => updateDraft("trackingMode", mode)}
-                        >
-                          {mode === "off"
-                            ? "Off"
-                            : mode === "current_tab"
-                              ? "Current tab"
-                              : "Active tabs"}
-                        </Button>
-                      ),
+                  <SegmentedControl<LifeOpsBrowserTrackingMode>
+                    value={draft.trackingMode}
+                    onValueChange={(mode) => updateDraft("trackingMode", mode)}
+                    items={(["off", "current_tab", "active_tabs"] as const).map(
+                      (mode) => ({
+                        value: mode,
+                        label: trackingModeLabel(mode),
+                      }),
                     )}
-                  </div>
+                    className="w-full max-w-full border-border/28 bg-transparent p-0.5"
+                    buttonClassName="min-h-8 flex-1 justify-center px-2.5 py-1.5 text-xs"
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs text-muted">Site access</Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {LIFEOPS_BROWSER_SITE_ACCESS_MODES.map((mode) => (
-                      <Button
-                        key={mode}
-                        size="sm"
-                        variant={
-                          draft.siteAccessMode === mode ? "default" : "outline"
-                        }
-                        onClick={() => updateDraft("siteAccessMode", mode)}
-                      >
-                        {mode === "current_site_only"
-                          ? "Current site"
-                          : mode === "granted_sites"
-                            ? "Granted sites"
-                            : "All sites"}
-                      </Button>
-                    ))}
-                  </div>
+                  <SegmentedControl<LifeOpsBrowserSiteAccessMode>
+                    value={draft.siteAccessMode}
+                    onValueChange={(mode) => updateDraft("siteAccessMode", mode)}
+                    items={LIFEOPS_BROWSER_SITE_ACCESS_MODES.map((mode) => ({
+                      value: mode,
+                      label: siteAccessModeLabel(mode),
+                    }))}
+                    className="w-full max-w-full border-border/28 bg-transparent p-0.5"
+                    buttonClassName="min-h-8 flex-1 justify-center px-2.5 py-1.5 text-xs"
+                  />
                 </div>
               </div>
 
-              <div className="grid gap-3 grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label htmlFor="lifeops-browser-max-tabs" className="text-xs text-muted">
+                  <Label
+                    htmlFor="lifeops-browser-max-tabs"
+                    className="text-xs text-muted"
+                  >
                     Max remembered tabs
                   </Label>
                   <Input
@@ -891,10 +907,13 @@ export function LifeOpsBrowserSetupPanel() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="lifeops-browser-pause-until" className="text-xs text-muted">
+                  <Label
+                    htmlFor="lifeops-browser-pause-until"
+                    className="text-xs text-muted"
+                  >
                     Pause until
                   </Label>
-                  <div className="flex gap-1.5">
+                  <div className="flex flex-wrap gap-1.5 sm:flex-nowrap">
                     <Input
                       id="lifeops-browser-pause-until"
                       type="datetime-local"
@@ -907,6 +926,7 @@ export function LifeOpsBrowserSetupPanel() {
                     <Button
                       size="sm"
                       variant="outline"
+                      className="h-9 rounded-xl px-3 text-xs font-semibold"
                       onClick={() =>
                         updateDraft(
                           "pauseUntilLocal",
@@ -921,6 +941,7 @@ export function LifeOpsBrowserSetupPanel() {
                     <Button
                       size="sm"
                       variant="outline"
+                      className="h-9 rounded-xl px-3 text-xs font-semibold"
                       onClick={() => updateDraft("pauseUntilLocal", "")}
                     >
                       Now
@@ -929,9 +950,12 @@ export function LifeOpsBrowserSetupPanel() {
                 </div>
               </div>
 
-              <div className="grid gap-3 grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label htmlFor="lifeops-browser-granted-origins" className="text-xs text-muted">
+                  <Label
+                    htmlFor="lifeops-browser-granted-origins"
+                    className="text-xs text-muted"
+                  >
                     Granted origins
                   </Label>
                   <Textarea
@@ -945,7 +969,10 @@ export function LifeOpsBrowserSetupPanel() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="lifeops-browser-blocked-origins" className="text-xs text-muted">
+                  <Label
+                    htmlFor="lifeops-browser-blocked-origins"
+                    className="text-xs text-muted"
+                  >
                     Blocked origins
                   </Label>
                   <Textarea
@@ -960,8 +987,11 @@ export function LifeOpsBrowserSetupPanel() {
                 </div>
               </div>
 
-              <div className="text-xs text-muted">
-                Companions: {companions.length} | Workspace: <span className="font-mono text-txt">{packageStatus?.extensionPath ?? "N/A"}</span>
+              <div className="pt-1 text-xs text-muted">
+                Companions: {companions.length} | Workspace:{" "}
+                <span className="font-mono text-txt">
+                  {packageStatus?.extensionPath ?? "N/A"}
+                </span>
               </div>
             </>
           ) : loading ? (
@@ -969,9 +999,10 @@ export function LifeOpsBrowserSetupPanel() {
           ) : null}
         </div>
 
-        {/* Right column: installation & connectivity */}
         <div className="space-y-3">
-          <div className="text-xs font-semibold text-muted uppercase tracking-wide">Installation</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted">
+            Installation
+          </div>
           <BrowserCompanionRow
             browser="chrome"
             buildPath={packageStatus?.chromeBuildPath}

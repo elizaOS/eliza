@@ -1094,6 +1094,10 @@ export interface LifeOpsCalendarEvent {
   metadata: Record<string, unknown>;
   syncedAt: string;
   updatedAt: string;
+  /** Set when aggregating across multiple Google accounts. */
+  grantId?: string;
+  /** Set when aggregating across multiple Google accounts. */
+  accountEmail?: string;
 }
 
 export interface LifeOpsCalendarFeed {
@@ -1108,6 +1112,8 @@ export interface LifeOpsCalendarFeed {
 export interface GetLifeOpsCalendarFeedRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  /** Target a specific Google account by grant ID (multi-account). */
+  grantId?: string;
   calendarId?: string;
   timeMin?: string;
   timeMax?: string;
@@ -1140,6 +1146,10 @@ export interface LifeOpsGmailMessageSummary {
   metadata: Record<string, unknown>;
   syncedAt: string;
   updatedAt: string;
+  /** Set when aggregating across multiple Google accounts. */
+  grantId?: string;
+  /** Set when aggregating across multiple Google accounts. */
+  accountEmail?: string;
 }
 
 export interface LifeOpsGmailTriageSummary {
@@ -1171,6 +1181,8 @@ export interface LifeOpsGmailNeedsResponseFeed {
 export interface GetLifeOpsGmailTriageRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  /** Target a specific Google account by grant ID (multi-account). */
+  grantId?: string;
   forceSync?: boolean;
   maxResults?: number;
 }
@@ -1182,6 +1194,7 @@ export interface GetLifeOpsGmailSearchRequest {
   maxResults?: number;
   query: string;
   replyNeededOnly?: boolean;
+  grantId?: string;
 }
 
 export interface LifeOpsGmailSearchSummary {
@@ -1206,6 +1219,7 @@ export interface CreateLifeOpsGmailReplyDraftRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   messageId: string;
+  grantId?: string;
   tone?: LifeOpsGmailDraftTone;
   intent?: string;
   includeQuotedOriginal?: boolean;
@@ -1229,6 +1243,7 @@ export interface LifeOpsGmailReplyDraft {
 export interface CreateLifeOpsGmailBatchReplyDraftsRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  grantId?: string;
   forceSync?: boolean;
   maxResults?: number;
   query?: string;
@@ -1260,6 +1275,7 @@ export interface LifeOpsGmailBatchReplyDraftsFeed {
 export interface SendLifeOpsGmailReplyRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  grantId?: string;
   messageId: string;
   bodyText: string;
   subject?: string;
@@ -1271,6 +1287,7 @@ export interface SendLifeOpsGmailReplyRequest {
 export interface SendLifeOpsGmailMessageRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  grantId?: string;
   to: string[];
   cc?: string[];
   bcc?: string[];
@@ -1290,6 +1307,7 @@ export interface LifeOpsGmailBatchReplySendItem {
 export interface SendLifeOpsGmailBatchReplyRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  grantId?: string;
   confirmSend?: boolean;
   items: LifeOpsGmailBatchReplySendItem[];
 }
@@ -1317,6 +1335,7 @@ export interface CreateLifeOpsCalendarEventRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   calendarId?: string;
+  grantId?: string;
   title: string;
   description?: string;
   location?: string;
@@ -1392,6 +1411,8 @@ export interface LifeOpsXConnectorStatus {
 export interface StartLifeOpsGoogleConnectorRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  /** Re-authenticate an existing account by grant ID (multi-account). */
+  grantId?: string;
   capabilities?: LifeOpsGoogleCapability[];
   redirectUrl?: string;
 }

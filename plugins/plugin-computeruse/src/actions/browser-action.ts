@@ -151,7 +151,7 @@ export const browserAction: Action = {
   ],
 
   validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
-    const service = runtime.getService<ComputerUseService>("computeruse");
+    const service = runtime.getService("computeruse") as unknown as ComputerUseService | undefined;
     if (!service) return false;
     return service.getCapabilities().browser.available;
   },
@@ -163,7 +163,7 @@ export const browserAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ) => {
-    const service = runtime.getService<ComputerUseService>("computeruse");
+    const service = runtime.getService("computeruse") as unknown as ComputerUseService | undefined;
     if (!service) {
       return { success: false, error: "ComputerUseService not available" };
     }
@@ -196,7 +196,7 @@ export const browserAction: Action = {
               title: "Browser Screenshot",
               source: "computeruse",
               description: "Browser viewport capture",
-              contentType: "image/png",
+              contentType: "image" as const,
             },
           ],
         });

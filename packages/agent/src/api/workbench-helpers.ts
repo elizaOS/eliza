@@ -112,9 +112,8 @@ export function toWorkbenchTask(task: Task): WorkbenchTaskView | null {
   if (!id) return null;
   const metadata = readTaskMetadata(task);
   const updatedAt =
-    normalizeTimestamp(
-      (task as unknown as Record<string, unknown>).updatedAt,
-    ) ?? normalizeTimestamp(metadata.updatedAt);
+    normalizeTimestamp(task.updatedAt) ??
+    normalizeTimestamp(metadata.updatedAt);
   return {
     id,
     name:

@@ -26,7 +26,7 @@ import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPan
 import { DatabasePageView } from "./components/pages/DatabasePageView";
 import { ConnectorsPageView } from "./components/pages/ConnectorsPageView";
 import { DesktopWorkspaceSection } from "./components/settings/DesktopWorkspaceSection";
-import { FineTuningView } from "./components/settings/FineTuningView";
+import { FineTuningView } from "@elizaos/app-training/ui/FineTuningView";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { Header } from "./components/shell/Header";
 import { AutomationsView } from "./components/pages/AutomationsView";

@@ -98,6 +98,7 @@ export interface OnboardingState {
   featurePhone: boolean;
   featureCrypto: boolean;
   featureBrowser: boolean;
+  featureComputerUse: boolean;
   featureOAuthPending: string | null;
 
   // Misc
@@ -231,6 +232,7 @@ function createInitialState(cloudOnly?: boolean): OnboardingState {
     featurePhone: false,
     featureCrypto: false,
     featureBrowser: false,
+    featureComputerUse: false,
     featureOAuthPending: null,
     restarting: false,
     cloudProvisionedContainer: false,

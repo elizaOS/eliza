@@ -21,17 +21,20 @@ import {
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import { useBranding } from "../../config/branding";
 import {
-  useDocumentVisibility,
-  useIntervalWhenDocumentVisible,
   useMediaQuery,
-  useTimeout,
 } from "../../hooks";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import type { DesktopClickAuditItem } from "../../utils/desktop-workspace";
 import { formatTime } from "../../utils/format";
 import { getAppOperatorSurface } from "./surfaces/registry";
-import { Button, Input } from "@elizaos/ui";
+import {
+  Button,
+  Input,
+  useDocumentVisibility,
+  useIntervalWhenDocumentVisible,
+  useTimeout,
+} from "@elizaos/ui";
 import {
   buildViewerSessionKey,
   resolveEmbeddedViewerUrl,

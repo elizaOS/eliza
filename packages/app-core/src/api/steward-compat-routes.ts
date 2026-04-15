@@ -29,7 +29,7 @@ import {
   resolveStewardAgentId,
   type StewardWebhookEventType,
   signViaSteward,
-} from "./steward-bridge";
+} from "@elizaos/app-steward/routes/steward-bridge";
 
 /**
  * Steward wallet routes:

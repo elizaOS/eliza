@@ -141,6 +141,9 @@ export function useOnboardingCompat({
       setOnboardingFeatureBrowser: bindField("featureBrowser") as (
         value: boolean,
       ) => void,
+      setOnboardingFeatureComputerUse: bindField("featureComputerUse") as (
+        value: boolean,
+      ) => void,
       setOnboardingFeatureOAuthPending: bindField("featureOAuthPending") as (
         value: string | null,
       ) => void,

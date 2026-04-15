@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { isTruthyEnvValue } from "../../utils/globals";
+import { isTruthyEnvValue } from "@elizaos/shared/env-utils";
 import { buildParseArgv, getPrimaryCommand, hasHelpOrVersion } from "../argv";
 
 function resolveActionArgs(command: Command | undefined): string[] {

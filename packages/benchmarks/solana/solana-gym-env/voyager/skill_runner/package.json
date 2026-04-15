@@ -2,6 +2,9 @@
   "name": "solana-swap-environment",
   "version": "1.0.0",
   "description": "Swap benchmark environment for Solana DEX interactions",
+  "scripts": {
+    "test": "vitest run"
+  },
   "dependencies": {
     "@codama/nodes-from-anchor": "^1.2.3",
     "@coral-xyz/anchor": "^0.30.1",

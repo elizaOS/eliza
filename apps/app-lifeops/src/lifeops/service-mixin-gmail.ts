@@ -25,6 +25,7 @@ import type {
 } from "@elizaos/shared/contracts/lifeops";
 import {
   resolveGoogleExecutionTarget,
+  resolveGoogleGrants,
 } from "./google-connector-gateway.js";
 import {
   fetchGoogleGmailMessage,
@@ -122,12 +123,14 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       requestUrl: URL;
       requestedMode?: LifeOpsConnectorMode;
       requestedSide?: LifeOpsConnectorSide;
+      grantId?: string;
       maxResults: number;
     }): Promise<LifeOpsGmailTriageFeed> {
       const grant = await this.requireGoogleGmailGrant(
         args.requestUrl,
         args.requestedMode,
         args.requestedSide,
+        args.grantId,
       );
       const syncTriage = async (): Promise<LifeOpsGmailTriageFeed> => {
         const syncedAt = new Date().toISOString();
@@ -136,6 +139,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
             ? (
                 await this.googleManagedClient.getGmailTriage({
                   side: grant.side,
+                  grantId: grant.id,
                   maxResults: args.maxResults,
                 })
               ).messages
@@ -219,10 +223,30 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
     ): Promise<LifeOpsGmailTriageFeed> {
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
+      const { grantId } = request;
       const maxResults = normalizeGmailTriageMaxResults(request.maxResults);
       const forceSync =
         normalizeOptionalBoolean(request.forceSync, "forceSync") ?? false;
-      const grant = await this.requireGoogleGmailGrant(requestUrl, mode, side);
+
+      // Multi-account aggregation: when no grantId specified, check if
+      // there are multiple grants and aggregate from all of them.
+      if (!grantId) {
+        const allGrants = (
+          await this.repository.listConnectorGrants(this.agentId())
+        ).filter((g) => g.provider === "google");
+        const grants = resolveGoogleGrants({
+          grants: allGrants,
+          requestedSide: side,
+          requestedMode: mode,
+        });
+        if (grants.length > 1) {
+          return this.aggregateGmailTriageFeeds(
+            requestUrl, grants, maxResults, forceSync, now,
+          );
+        }
+      }
+
+      const grant = await this.requireGoogleGmailGrant(requestUrl, mode, side, grantId);
       const effectiveSide = grant.side;
 
       const syncState = await this.repository.getGmailSyncState(
@@ -261,8 +285,67 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
         requestUrl,
         requestedMode: mode,
         requestedSide: effectiveSide,
+        grantId: grant.id,
         maxResults,
       });
+    }
+
+    private async aggregateGmailTriageFeeds(
+      requestUrl: URL,
+      grants: readonly LifeOpsConnectorGrant[],
+      maxResults: number,
+      forceSync: boolean,
+      now: Date,
+    ): Promise<LifeOpsGmailTriageFeed> {
+      const results = await Promise.allSettled(
+        grants.map((grant) =>
+          this.getGmailTriage(requestUrl, {
+            grantId: grant.id,
+            maxResults,
+            forceSync,
+          }, now).then((feed) => ({
+            feed,
+            grant,
+          })),
+        ),
+      );
+
+      const allMessages: LifeOpsGmailMessageSummary[] = [];
+      let latestSyncedAt: string | null = null;
+      let source: "cache" | "synced" = "cache";
+
+      for (const result of results) {
+        if (result.status === "rejected") {
+          this.logLifeOpsWarn("gmail_triage_aggregate", `Grant failed: ${result.reason}`, {});
+          continue;
+        }
+        const { feed, grant } = result.value;
+        if (feed.source === "synced") {
+          source = "synced";
+        }
+        if (
+          feed.syncedAt &&
+          (!latestSyncedAt || feed.syncedAt > latestSyncedAt)
+        ) {
+          latestSyncedAt = feed.syncedAt;
+        }
+        for (const message of feed.messages) {
+          allMessages.push({
+            ...message,
+            grantId: grant.id,
+            accountEmail: grant.identityEmail ?? undefined,
+          });
+        }
+      }
+
+      allMessages.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+
+      return {
+        messages: allMessages,
+        source,
+        syncedAt: latestSyncedAt,
+        summary: summarizeGmailTriage(allMessages),
+      };
     }
 
     async getGmailSearch(
@@ -272,6 +355,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
     ): Promise<LifeOpsGmailSearchFeed> {
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
+      const grantId = normalizeOptionalString(request.grantId);
       const maxResults = normalizeGmailTriageMaxResults(request.maxResults);
       const forceSync =
         normalizeOptionalBoolean(request.forceSync, "forceSync") ?? false;
@@ -279,7 +363,12 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       const replyNeededOnly =
         normalizeOptionalBoolean(request.replyNeededOnly, "replyNeededOnly") ??
         false;
-      const grant = await this.requireGoogleGmailGrant(requestUrl, mode, side);
+      const grant = await this.requireGoogleGmailGrant(
+        requestUrl,
+        mode,
+        side,
+        grantId,
+      );
       const effectiveSide = grant.side;
       const selfEmail =
         typeof grant.identity.email === "string"
@@ -303,6 +392,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
           {
             mode,
             side: effectiveSide,
+            grantId: grant.id,
             forceSync,
             maxResults: scanLimit,
           },
@@ -345,6 +435,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
         try {
           const managedSearch = await this.googleManagedClient.getGmailSearch({
             side: effectiveSide,
+            grantId: grant.id,
             query,
             maxResults,
           });
@@ -466,6 +557,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       request: {
         side?: LifeOpsConnectorSide;
         mode?: LifeOpsConnectorMode;
+        grantId?: string;
         forceSync?: boolean;
         maxResults?: number;
         messageId?: string;
@@ -482,6 +574,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
     }> {
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
+      const grantId = normalizeOptionalString(request.grantId);
       const forceSync =
         normalizeOptionalBoolean(request.forceSync, "forceSync") ?? false;
       const maxResults = normalizeGmailTriageMaxResults(request.maxResults);
@@ -498,7 +591,12 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
         fail(400, "Either messageId or query must be provided.");
       }
 
-      const grant = await this.requireGoogleGmailGrant(requestUrl, mode, side);
+      const grant = await this.requireGoogleGmailGrant(
+        requestUrl,
+        mode,
+        side,
+        grantId,
+      );
       if (
         resolveGoogleExecutionTarget(grant) !== "cloud" &&
         !hasGoogleGmailBodyReadScope(grant)
@@ -524,6 +622,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
           {
             mode,
             side: grant.side,
+            grantId: grant.id,
             forceSync,
             maxResults,
             query,
@@ -559,6 +658,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
           ? await this.googleManagedClient
               .readGmailMessage({
                 side: grant.side,
+                grantId: grant.id,
                 messageId: targetMessageId,
               })
               .then(
@@ -639,6 +739,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
     > {
       const mode = normalizeOptionalConnectorMode(args.request.mode, "mode");
       const side = normalizeOptionalConnectorSide(args.request.side, "side");
+      const grantId = normalizeOptionalString(args.request.grantId);
       const forceSync =
         normalizeOptionalBoolean(args.request.forceSync, "forceSync") ?? false;
       const maxResults = normalizeGmailTriageMaxResults(args.request.maxResults);
@@ -662,6 +763,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
         args.requestUrl,
         mode,
         side,
+        grantId,
       );
       const effectiveSide = grant.side;
       if (messageIds && messageIds.length > 0) {
@@ -672,6 +774,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
             {
               mode,
               side: effectiveSide,
+              grantId: grant.id,
               forceSync: true,
               maxResults: Math.max(maxResults, messageIds.length),
             },
@@ -737,6 +840,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
           {
             mode,
             side: effectiveSide,
+            grantId: grant.id,
             forceSync,
             maxResults,
             query,
@@ -757,6 +861,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
         {
           mode,
           side: effectiveSide,
+          grantId: grant.id,
           forceSync,
           maxResults,
         },
@@ -969,6 +1074,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
     ): Promise<LifeOpsGmailReplyDraft> {
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
+      const grantId = normalizeOptionalString(request.grantId);
       const messageId = requireNonEmptyString(request.messageId, "messageId");
       const tone = normalizeGmailDraftTone(request.tone);
       const intent = normalizeOptionalString(request.intent);
@@ -977,7 +1083,12 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
           request.includeQuotedOriginal,
           "includeQuotedOriginal",
         ) ?? false;
-      const grant = await this.requireGoogleGmailGrant(requestUrl, mode, side);
+      const grant = await this.requireGoogleGmailGrant(
+        requestUrl,
+        mode,
+        side,
+        grantId,
+      );
 
       let message = await this.repository.getGmailMessage(
         this.agentId(),
@@ -1001,6 +1112,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
             {
               mode,
               side: grant.side,
+              grantId,
               maxResults: DEFAULT_GMAIL_TRIAGE_MAX_RESULTS,
             },
             new Date(),
@@ -1106,6 +1218,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
         if (resolveGoogleExecutionTarget(args.grant) === "cloud") {
           await this.googleManagedClient.sendGmailReply({
             side: args.grant.side,
+            grantId: args.grant.id,
             to,
             cc,
             subject,
@@ -1143,6 +1256,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
     ): Promise<{ ok: true }> {
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
+      const grantId = normalizeOptionalString(request.grantId);
       const messageId = requireNonEmptyString(request.messageId, "messageId");
       const confirmSend =
         normalizeOptionalBoolean(request.confirmSend, "confirmSend") ?? false;
@@ -1154,6 +1268,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
         requestUrl,
         mode,
         side,
+        grantId,
       );
       let message = await this.repository.getGmailMessage(
         this.agentId(),
@@ -1168,6 +1283,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
             {
               mode,
               side: grant.side,
+              grantId,
               maxResults: DEFAULT_GMAIL_TRIAGE_MAX_RESULTS,
             },
             new Date(),
@@ -1239,6 +1355,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
     ): Promise<{ ok: true }> {
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
+      const grantId = normalizeOptionalString(request.grantId);
       const confirmSend =
         normalizeOptionalBoolean(request.confirmSend, "confirmSend") ?? false;
       if (!confirmSend) {
@@ -1257,12 +1374,14 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
         requestUrl,
         mode,
         side,
+        grantId,
       );
       let sentMessageId: string | null = null;
       const sendMessage = async () => {
         if (resolveGoogleExecutionTarget(grant) === "cloud") {
           await this.googleManagedClient.sendGmailMessage({
             side: grant.side,
+            grantId: grant.id,
             to,
             cc,
             bcc,
@@ -1317,6 +1436,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
     ): Promise<LifeOpsGmailBatchReplySendResult> {
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
+      const grantId = normalizeOptionalString(request.grantId);
       const confirmSend =
         normalizeOptionalBoolean(request.confirmSend, "confirmSend") ?? false;
       if (!confirmSend) {
@@ -1333,6 +1453,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
         requestUrl,
         mode,
         side,
+        grantId,
       );
       let sentCount = 0;
       for (const [index, item] of items.entries()) {
@@ -1354,6 +1475,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
               {
                 mode,
                 side: grant.side,
+                grantId,
                 maxResults: DEFAULT_GMAIL_TRIAGE_MAX_RESULTS,
               },
               new Date(),

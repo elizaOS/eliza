@@ -6,7 +6,7 @@ import {
   defaultRegistry,
   type JsonSchemaObject,
 } from "../../config";
-import { useTimeout } from "../../hooks";
+import { useTimeout } from "@elizaos/ui";
 import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { autoLabel } from "../../utils/labels";

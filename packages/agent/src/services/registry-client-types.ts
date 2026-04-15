@@ -68,34 +68,7 @@ export interface RegistryPluginInfo {
   appMeta?: RegistryAppMeta;
 }
 
-export interface RegistryAppInfo {
-  name: string;
-  displayName: string;
-  description: string;
-  category: string;
-  launchType: string;
-  launchUrl: string | null;
-  icon: string | null;
-  capabilities: string[];
-  stars: number;
-  repository: string;
-  latestVersion: string | null;
-  supports: { v0: boolean; v1: boolean; v2: boolean };
-  npm: {
-    package: string;
-    v0Version: string | null;
-    v1Version: string | null;
-    v2Version: string | null;
-  };
-  uiExtension?: AppUiExtensionConfig;
-  viewer?: {
-    url: string;
-    embedParams?: Record<string, string>;
-    postMessageAuth?: boolean;
-    sandbox?: string;
-  };
-  session?: RegistryAppSessionMeta;
-}
+export type { RegistryAppInfo } from "@elizaos/shared/contracts/apps";
 
 export interface RegistrySearchResult {
   name: string;

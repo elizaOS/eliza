@@ -15,6 +15,7 @@ import {
 import {
   resolveGoogleAvailableModes,
   resolveGoogleExecutionTarget,
+  resolveGoogleGrants,
   resolveGoogleSourceOfTruth,
   resolvePreferredGoogleGrant,
 } from "./google-connector-gateway.js";
@@ -32,9 +33,8 @@ import {
   resolveGoogleOAuthConfig,
   startGoogleConnectorOAuth,
 } from "./google-oauth.js";
-import {
-  createLifeOpsConnectorGrant,
-} from "./repository.js";
+import { createLifeOpsConnectorGrant } from "./repository.js";
+import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 import {
   normalizeGoogleCapabilityRequest,
@@ -42,7 +42,6 @@ import {
   normalizeOptionalConnectorMode,
   normalizeOptionalConnectorSide,
 } from "./service-normalize-connector.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 // ---------------------------------------------------------------------------
 // Local helpers
@@ -423,6 +422,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       requestUrl: URL,
       requestedMode?: LifeOpsConnectorMode,
       requestedSide?: LifeOpsConnectorSide,
+      grantId?: string,
     ): Promise<LifeOpsConnectorGrant> {
       const { hasGoogleCalendarReadCapability } = await import(
         "./service-normalize-calendar.js"
@@ -431,6 +431,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         requestUrl,
         requestedMode,
         requestedSide,
+        grantId,
       );
       const grant = status.grant;
       if (!status.connected || !grant) {
@@ -446,6 +447,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       requestUrl: URL,
       requestedMode?: LifeOpsConnectorMode,
       requestedSide?: LifeOpsConnectorSide,
+      grantId?: string,
     ): Promise<LifeOpsConnectorGrant> {
       const { hasGoogleCalendarWriteCapability } = await import(
         "./service-normalize-calendar.js"
@@ -454,6 +456,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         requestUrl,
         requestedMode,
         requestedSide,
+        grantId,
       );
       if (!hasGoogleCalendarWriteCapability(grant)) {
         fail(403, "Google Calendar write access has not been granted.");
@@ -465,6 +468,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       requestUrl: URL,
       requestedMode?: LifeOpsConnectorMode,
       requestedSide?: LifeOpsConnectorSide,
+      grantId?: string,
     ): Promise<LifeOpsConnectorGrant> {
       const { hasGoogleGmailTriageCapability } = await import(
         "./service-normalize-calendar.js"
@@ -473,6 +477,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         requestUrl,
         requestedMode,
         requestedSide,
+        grantId,
       );
       const grant = status.grant;
       if (!status.connected || !grant) {
@@ -488,6 +493,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       requestUrl: URL,
       requestedMode?: LifeOpsConnectorMode,
       requestedSide?: LifeOpsConnectorSide,
+      grantId?: string,
     ): Promise<LifeOpsConnectorGrant> {
       const { hasGoogleGmailSendCapability } = await import(
         "./service-normalize-calendar.js"
@@ -496,6 +502,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         requestUrl,
         requestedMode,
         requestedSide,
+        grantId,
       );
       if (!hasGoogleGmailSendCapability(grant)) {
         fail(403, "Google Gmail send access has not been granted.");
@@ -511,6 +518,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       requestUrl: URL,
       requestedMode?: LifeOpsConnectorMode,
       requestedSide?: LifeOpsConnectorSide,
+      grantId?: string,
     ): Promise<LifeOpsGoogleConnectorStatus> {
       const explicitMode = normalizeOptionalConnectorMode(
         requestedMode,
@@ -533,6 +541,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         grants,
         requestedMode: explicitMode,
         requestedSide: explicitSide,
+        grantId,
         defaultMode: modeAvailability.defaultMode,
       });
       const mode =
@@ -596,7 +605,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
 
         let managedStatus: ManagedGoogleConnectorStatusResponse;
         try {
-          managedStatus = await this.googleManagedClient.getStatus(side);
+          managedStatus = await this.googleManagedClient.getStatus(side, grantId);
         } catch (error) {
           if (error instanceof ManagedGoogleClientError) {
             if (error.status === 404) {
@@ -772,9 +781,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         preferredByAgent: grant.preferredByAgent,
         cloudConnectionId: grant.cloudConnectionId,
         identity:
-          Object.keys(grant.identity).length > 0
-            ? { ...grant.identity }
-            : null,
+          Object.keys(grant.identity).length > 0 ? { ...grant.identity } : null,
         grantedCapabilities: normalizeGrantCapabilities(grant.capabilities),
         grantedScopes: [...grant.grantedScopes],
         expiresAt: Number.isFinite(token.expiresAt)
@@ -783,6 +790,31 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         hasRefreshToken: refreshTokenValid,
         grant,
       };
+    }
+
+    async getGoogleConnectorAccounts(
+      requestUrl: URL,
+      requestedSide?: LifeOpsConnectorSide,
+    ): Promise<LifeOpsGoogleConnectorStatus[]> {
+      const side = normalizeOptionalConnectorSide(requestedSide, "side");
+      const allGrants = (
+        await this.repository.listConnectorGrants(this.agentId())
+      ).filter((g) => g.provider === "google");
+      const grants = resolveGoogleGrants({
+        grants: allGrants,
+        requestedSide: side,
+      });
+      const results: LifeOpsGoogleConnectorStatus[] = [];
+      for (const grant of grants) {
+        const status = await this.getGoogleConnectorStatus(
+          requestUrl,
+          grant.mode,
+          grant.side,
+          grant.id,
+        );
+        results.push(status);
+      }
+      return results;
     }
 
     async selectGoogleConnectorMode(
@@ -908,12 +940,16 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       }
 
       const resolvedConfig = resolveGoogleOAuthConfig(requestUrl, mode);
-      const existingGrant = await this.repository.getConnectorGrant(
-        this.agentId(),
-        "google",
-        resolvedConfig.mode,
-        requestedSide,
-      );
+      const existingGrant = request.grantId
+        ? ((await this.repository.listConnectorGrants(this.agentId())).find(
+            (g) => g.id === request.grantId,
+          ) ?? null)
+        : await this.repository.getConnectorGrant(
+            this.agentId(),
+            "google",
+            resolvedConfig.mode,
+            requestedSide,
+          );
 
       try {
         return startGoogleConnectorOAuth({
@@ -925,6 +961,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
           existingCapabilities: existingGrant
             ? normalizeGrantCapabilities(existingGrant.capabilities)
             : undefined,
+          grantId: request.grantId,
         });
       } catch (error) {
         if (error instanceof GoogleOAuthError) {
@@ -964,12 +1001,16 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         fail(409, "Google callback does not belong to the active agent.");
       }
 
-      const existingGrant = await this.repository.getConnectorGrant(
-        this.agentId(),
-        "google",
-        result.mode,
-        result.side,
-      );
+      const existingGrant = result.grantId
+        ? ((await this.repository.listConnectorGrants(this.agentId())).find(
+            (g) => g.id === result.grantId,
+          ) ?? null)
+        : await this.repository.getConnectorGrant(
+            this.agentId(),
+            "google",
+            result.mode,
+            result.side,
+          );
       const nowIso = new Date().toISOString();
       const clearedMetadata = clearGoogleGrantAuthFailureMetadata(
         existingGrant?.metadata ?? {},

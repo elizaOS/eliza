@@ -1,55 +1,18 @@
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
-  LifeOpsGoogleCapability,
 } from "@elizaos/shared/contracts/lifeops";
 import {
-  Badge,
   Button,
+  SegmentedControl,
+  useApp,
+  useGoogleLifeOpsConnector,
 } from "@elizaos/app-core";
-import {
-  Plug2,
-  RefreshCw,
-} from "lucide-react";
-import { useMemo } from "react";
-import { useGoogleLifeOpsConnector } from "@elizaos/app-core";
-import { useApp } from "@elizaos/app-core";
-import {
-  resolveLifeOpsLocalGoogleRedirectUri,
-  resolveLifeOpsRemoteGoogleRedirectUri,
-  resolveLifeOpsSettingsApiBaseUrl,
-} from "@elizaos/app-core";
+import { Plug2 } from "lucide-react";
 import { LifeOpsBrowserSetupPanel } from "./LifeOpsBrowserSetupPanel";
 
-function modeLabel(mode: LifeOpsConnectorMode): string {
-  switch (mode) {
-    case "cloud_managed":
-      return "Cloud";
-    case "remote":
-      return "Remote";
-    default:
-      return "Local";
-  }
-}
-
-function modeTone(mode: LifeOpsConnectorMode): "secondary" | "outline" {
-  return mode === "cloud_managed" ? "secondary" : "outline";
-}
-
-function capabilityLabel(capability: LifeOpsGoogleCapability): string {
-  switch (capability) {
-    case "google.calendar.read":
-      return "Calendar read";
-    case "google.calendar.write":
-      return "Calendar write";
-    case "google.gmail.triage":
-      return "Gmail triage";
-    case "google.gmail.send":
-      return "Gmail send";
-    default:
-      return "Identity";
-  }
-}
+const VISIBLE_CONNECTOR_MODES = ["cloud_managed", "local"] as const;
+type VisibleConnectorMode = (typeof VISIBLE_CONNECTOR_MODES)[number];
 
 function statusLabel(reason: string, connected: boolean): string {
   if (connected) {
@@ -63,7 +26,7 @@ function statusLabel(reason: string, connected: boolean): string {
     case "token_missing":
       return "Token missing";
     default:
-      return "Disconnected";
+      return "Not connected";
   }
 }
 
@@ -91,213 +54,195 @@ function readIdentity(identity: Record<string, unknown> | null): {
   };
 }
 
-function formatExpiry(value: string | null): string | null {
-  if (!value) {
-    return null;
-  }
-  const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed)) {
-    return null;
-  }
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(parsed));
+function modeLabel(mode: LifeOpsConnectorMode): string {
+  return mode === "local" ? "Local" : "Cloud";
+}
+
+function sideTitle(side: LifeOpsConnectorSide): string {
+  return side === "owner" ? "Owner" : "Agent";
+}
+
+function GoogleIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 48 48"
+      fill="none"
+      aria-hidden="true"
+      className={className}
+    >
+      <path
+        fill="#EA4335"
+        d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
+      />
+      <path
+        fill="#4285F4"
+        d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
+      />
+      <path
+        fill="#34A853"
+        d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+      />
+    </svg>
+  );
 }
 
 type GoogleConnectorController = ReturnType<typeof useGoogleLifeOpsConnector>;
 
-function sideTitle(side: LifeOpsConnectorSide): string {
-  return side === "owner" ? "Owner setup" : "Agent setup";
-}
-
-function sideDescription(side: LifeOpsConnectorSide): string {
-  return side === "owner"
-    ? "Connect the owner’s Google account."
-    : "Connect the Google account the agent should use as itself.";
-}
-
-function connectorSetupDetails(
-  side: LifeOpsConnectorSide,
-  activeMode: LifeOpsConnectorMode,
-  apiBaseUrl: URL,
-) {
-  if (activeMode === "cloud_managed") {
-    return {
-      eyebrow: "Recommended",
-      title: "Managed by Eliza Cloud",
-      lines: [
-        side === "owner"
-          ? "Use this when the owner’s Google account should stay in managed cloud storage."
-          : "Use this when the agent’s own Google account should stay in managed cloud storage.",
-        "Google refresh tokens stay in cloud-managed storage and this agent uses Gmail and Calendar through the managed gateway.",
-      ],
-      envVars: [] as string[],
-      redirectUri: null as string | null,
-    };
-  }
-
-  if (activeMode === "remote") {
-    return {
-      eyebrow: "Self-hosted",
-      title: "Remote web OAuth",
-      lines: [
-        "Use a Google Web OAuth client for a self-hosted deployment.",
-        "Register the exact redirect URI shown below with Google.",
-        "If your Google app is still in testing, add the relevant Google account to the allowlist before connecting.",
-      ],
-      envVars: [
-        "ELIZA_GOOGLE_OAUTH_WEB_CLIENT_ID",
-        "ELIZA_GOOGLE_OAUTH_WEB_CLIENT_SECRET",
-        "ELIZA_GOOGLE_OAUTH_PUBLIC_BASE_URL",
-      ],
-      redirectUri: resolveLifeOpsRemoteGoogleRedirectUri(apiBaseUrl),
-    };
-  }
-
-  return {
-    eyebrow: "Advanced",
-    title: "Local desktop OAuth",
-    lines: [
-      side === "owner"
-        ? "Use a desktop OAuth client when the owner’s Google tokens should stay on this machine."
-        : "Use a desktop OAuth client when the agent account’s Google tokens should stay on this machine.",
-      "Set the desktop client id before connecting. If your Google app is still in testing, add the account to the test-user allowlist first.",
-      "The app handles the local callback itself on the API loopback address shown below.",
-    ],
-    envVars: ["ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID"],
-    redirectUri: resolveLifeOpsLocalGoogleRedirectUri(apiBaseUrl),
-  };
-}
-
 function GoogleConnectorSideCard({
-  apiBaseUrl,
   connector,
   side,
 }: {
-  apiBaseUrl: URL;
   connector: GoogleConnectorController;
   side: LifeOpsConnectorSide;
 }) {
   const {
+    accounts,
     activeMode,
     actionPending,
     connect,
+    connectAdditional,
     disconnect,
+    disconnectAccount,
     error,
     loading,
-    modeOptions,
-    refresh,
     selectMode,
     status,
   } = connector;
   const identity = readIdentity(status?.identity ?? null);
-  const capabilityBadges = status?.grantedCapabilities ?? [];
   const currentStatusLabel = statusLabel(
     status?.reason ?? "disconnected",
     status?.connected === true,
   );
-  const setupDetails = useMemo(
-    () => connectorSetupDetails(side, activeMode, apiBaseUrl),
-    [activeMode, apiBaseUrl, side],
-  );
+  const controlDisabled = loading || actionPending;
+  const visibleMode: VisibleConnectorMode =
+    activeMode === "local" ? "local" : "cloud_managed";
+
+  const connectedAccounts = accounts.filter((a) => a.connected);
+  const hasMultipleAccounts = connectedAccounts.length > 1;
+  const preferredGrantId = status?.grant?.id ?? null;
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Badge variant="outline">{sideTitle(side)}</Badge>
-          {status?.preferredByAgent ? (
-            <Badge variant="secondary">Default</Badge>
+    <div className="space-y-3 rounded-2xl border border-border/24 bg-bg/20 px-4 py-4">
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted">
+        {sideTitle(side)}
+      </div>
+
+      {connectedAccounts.length > 0 ? (
+        <div className="space-y-2">
+          {connectedAccounts.map((acct) => {
+            const acctIdentity = readIdentity(acct.identity ?? null);
+            const isPreferred =
+              acct.grant?.id != null && acct.grant.id === preferredGrantId;
+            return (
+              <div
+                key={acct.grant?.id ?? acctIdentity.primary}
+                className="flex items-center gap-2 min-w-0"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 truncate text-sm font-semibold text-txt">
+                    {acctIdentity.primary}
+                    {isPreferred && hasMultipleAccounts ? (
+                      <span className="shrink-0 rounded bg-ok/16 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-ok">
+                        Preferred
+                      </span>
+                    ) : null}
+                  </div>
+                  {acctIdentity.secondary ? (
+                    <div className="mt-0.5 text-xs text-muted">
+                      {acctIdentity.secondary}
+                    </div>
+                  ) : null}
+                </div>
+                {acct.grant?.id ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 shrink-0 rounded-lg px-2 text-[11px] font-semibold"
+                    disabled={controlDisabled}
+                    onClick={() => void disconnectAccount(acct.grant!.id)}
+                  >
+                    Disconnect
+                  </Button>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold text-txt">
+            {identity.primary}
+          </div>
+          {identity.secondary ? (
+            <div className="mt-1 text-xs text-muted">{identity.secondary}</div>
           ) : null}
         </div>
-        <div className="flex items-center gap-1.5">
-          {status?.connected && !status.preferredByAgent ? (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={loading || actionPending}
-              onClick={() => void selectMode(activeMode)}
-            >
-              Use by default
-            </Button>
-          ) : null}
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
+          <GoogleIcon className="h-4 w-4 shrink-0" />
+          <span>Google</span>
+        </div>
+
+        <SegmentedControl<VisibleConnectorMode>
+          aria-label={`${sideTitle(side)} Google connection mode`}
+          value={visibleMode}
+          onValueChange={(mode) => void selectMode(mode)}
+          items={VISIBLE_CONNECTOR_MODES.map((mode) => ({
+            value: mode,
+            label: modeLabel(mode),
+            disabled: controlDisabled,
+          }))}
+          className="border-border/28 bg-card/24 p-0.5"
+          buttonClassName="min-h-8 px-3 py-1.5 text-xs"
+        />
+
+        {!status?.connected ? (
+          <Button
+            size="sm"
+            variant="default"
+            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            disabled={controlDisabled}
+            onClick={() => void connect()}
+          >
+            {status?.reason === "needs_reauth" ? "Reconnect" : "Connect"}
+          </Button>
+        ) : null}
+      </div>
+
+      {status?.connected ? (
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             variant="outline"
-            disabled={loading || actionPending}
-            onClick={() => void refresh()}
+            className="h-7 rounded-lg px-2 text-[11px] font-semibold"
+            disabled={controlDisabled}
+            onClick={() => void connectAdditional()}
           >
-            <RefreshCw className="mr-1.5 h-3 w-3" />
-            Refresh
+            + Add account
           </Button>
-          <Button
-            size="sm"
-            variant={status?.connected ? "outline" : "default"}
-            disabled={loading || actionPending}
-            onClick={() =>
-              void (status?.connected ? disconnect() : connect())
-            }
-          >
-            {status?.connected
-              ? "Disconnect"
-              : status?.reason === "needs_reauth"
-                ? "Reconnect"
-                : "Connect"}
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="min-w-0 truncate font-semibold text-txt">
-          {identity.primary}
-        </span>
-        <Badge variant={modeTone(activeMode)}>
-          {modeLabel(activeMode)}
-        </Badge>
-        <Badge variant="outline">{currentStatusLabel}</Badge>
-        {capabilityBadges.map((capability) => (
-          <Badge key={capability} variant="secondary" className="text-2xs">
-            {capabilityLabel(capability)}
-          </Badge>
-        ))}
-      </div>
-
-      <div className="flex flex-wrap gap-1.5">
-        {modeOptions.map((mode) => {
-          const isActive = mode === activeMode;
-          return (
+          {!hasMultipleAccounts ? (
             <Button
-              key={mode}
               size="sm"
-              variant={isActive ? "default" : "outline"}
-              disabled={loading || actionPending}
-              onClick={() => void selectMode(mode)}
+              variant="outline"
+              className="h-7 rounded-lg px-2 text-[11px] font-semibold"
+              disabled={controlDisabled}
+              onClick={() => void disconnect()}
             >
-              {modeLabel(mode)}
+              Disconnect
             </Button>
-          );
-        })}
-      </div>
+          ) : null}
+        </div>
+      ) : null}
 
-      {setupDetails.envVars.length > 0 ? (
-        <div className="rounded-lg border border-border/50 bg-bg/40 px-3 py-2">
-          <span className="text-xs font-semibold text-muted">Config: </span>
-          <span className="font-mono text-xs text-txt">
-            {setupDetails.envVars.join(", ")}
-          </span>
-        </div>
-      ) : null}
-      {setupDetails.redirectUri ? (
-        <div className="rounded-lg border border-border/50 bg-bg/40 px-3 py-2">
-          <span className="text-xs font-semibold text-muted">Redirect URI: </span>
-          <span className="break-all font-mono text-xs text-txt">
-            {setupDetails.redirectUri}
-          </span>
-        </div>
-      ) : null}
+      <div className={status?.connected ? "text-xs text-ok" : "text-xs text-muted"}>
+        {currentStatusLabel}
+      </div>
 
       {error ? <div className="text-xs text-danger">{error}</div> : null}
     </div>
@@ -308,7 +253,6 @@ export function LifeOpsSettingsSection() {
   const { t: translate } = useApp();
   const ownerConnector = useGoogleLifeOpsConnector({ side: "owner" });
   const agentConnector = useGoogleLifeOpsConnector({ side: "agent" });
-  const apiBaseUrl = useMemo(() => resolveLifeOpsSettingsApiBaseUrl(), []);
   const t =
     typeof translate === "function" ? translate : (key: string): string => key;
 
@@ -320,18 +264,12 @@ export function LifeOpsSettingsSection() {
           {t("settings.sections.lifeops.label")}
         </div>
       </div>
-      <div className="grid gap-6 xl:grid-cols-2">
-        <GoogleConnectorSideCard
-          apiBaseUrl={apiBaseUrl}
-          connector={ownerConnector}
-          side="owner"
-        />
-        <GoogleConnectorSideCard
-          apiBaseUrl={apiBaseUrl}
-          connector={agentConnector}
-          side="agent"
-        />
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <GoogleConnectorSideCard connector={ownerConnector} side="owner" />
+        <GoogleConnectorSideCard connector={agentConnector} side="agent" />
       </div>
+
       <LifeOpsBrowserSetupPanel />
     </div>
   );

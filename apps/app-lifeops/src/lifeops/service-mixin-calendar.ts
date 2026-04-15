@@ -5,6 +5,7 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
+  LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGmailMessageSummary,
@@ -19,6 +20,7 @@ import {
 } from "./google-calendar.js";
 import {
   resolveGoogleExecutionTarget,
+  resolveGoogleGrants,
 } from "./google-connector-gateway.js";
 import {
   ensureFreshGoogleAccessToken,
@@ -155,6 +157,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
       requestUrl: URL;
       requestedMode?: LifeOpsConnectorMode;
       requestedSide?: LifeOpsConnectorSide;
+      grantId?: string;
       calendarId: string;
       timeMin: string;
       timeMax: string;
@@ -164,6 +167,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
         args.requestUrl,
         args.requestedMode,
         args.requestedSide,
+        args.grantId,
       );
       const syncCalendar = async (): Promise<LifeOpsCalendarFeed> => {
         const syncedAt = new Date().toISOString();
@@ -179,6 +183,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
             ? (
                 await this.googleManagedClient.getCalendarFeed({
                   side: grant.side,
+                  grantId: grant.id,
                   calendarId: args.calendarId,
                   timeMin: args.timeMin,
                   timeMax: args.timeMax,
@@ -274,6 +279,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
     ): Promise<LifeOpsCalendarFeed> {
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
+      const { grantId } = request;
       const calendarId = normalizeCalendarId(request.calendarId);
       const timeZone = normalizeCalendarTimeZone(request.timeZone);
       const { timeMin, timeMax } = resolveCalendarWindow({
@@ -284,7 +290,26 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
       });
       const forceSync =
         normalizeOptionalBoolean(request.forceSync, "forceSync") ?? false;
-      const grant = await this.requireGoogleCalendarGrant(requestUrl, mode, side);
+
+      // Multi-account aggregation: when no grantId specified, check if
+      // there are multiple grants and aggregate from all of them.
+      if (!grantId) {
+        const allGrants = (
+          await this.repository.listConnectorGrants(this.agentId())
+        ).filter((g) => g.provider === "google");
+        const grants = resolveGoogleGrants({
+          grants: allGrants,
+          requestedSide: side,
+          requestedMode: mode,
+        });
+        if (grants.length > 1) {
+          return this.aggregateCalendarFeeds(
+            requestUrl, grants, calendarId, timeMin, timeMax, timeZone, forceSync, now,
+          );
+        }
+      }
+
+      const grant = await this.requireGoogleCalendarGrant(requestUrl, mode, side, grantId);
       const effectiveSide = grant.side;
 
       const syncState = await this.repository.getCalendarSyncState(
@@ -325,11 +350,78 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
         requestUrl,
         requestedMode: mode,
         requestedSide: effectiveSide,
+        grantId: grant.id,
         calendarId,
         timeMin,
         timeMax,
         timeZone,
       });
+    }
+
+    private async aggregateCalendarFeeds(
+      requestUrl: URL,
+      grants: readonly LifeOpsConnectorGrant[],
+      calendarId: string,
+      timeMin: string,
+      timeMax: string,
+      timeZone: string,
+      forceSync: boolean,
+      now: Date,
+    ): Promise<LifeOpsCalendarFeed> {
+      const results = await Promise.allSettled(
+        grants.map((grant) =>
+          this.getCalendarFeed(requestUrl, {
+            grantId: grant.id,
+            calendarId,
+            timeMin,
+            timeMax,
+            timeZone,
+            forceSync,
+          }, now).then((feed) => ({
+            feed,
+            grant,
+          })),
+        ),
+      );
+
+      const allEvents: LifeOpsCalendarEvent[] = [];
+      let latestSyncedAt: string | null = null;
+      let source: "cache" | "synced" = "cache";
+
+      for (const result of results) {
+        if (result.status === "rejected") {
+          this.logLifeOpsWarn("calendar_feed_aggregate", `Grant failed: ${result.reason}`, {});
+          continue;
+        }
+        const { feed, grant } = result.value;
+        if (feed.source === "synced") {
+          source = "synced";
+        }
+        if (
+          feed.syncedAt &&
+          (!latestSyncedAt || feed.syncedAt > latestSyncedAt)
+        ) {
+          latestSyncedAt = feed.syncedAt;
+        }
+        for (const event of feed.events) {
+          allEvents.push({
+            ...event,
+            grantId: grant.id,
+            accountEmail: grant.identityEmail ?? undefined,
+          });
+        }
+      }
+
+      allEvents.sort((a, b) => a.startAt.localeCompare(b.startAt));
+
+      return {
+        calendarId,
+        events: allEvents,
+        source,
+        timeMin,
+        timeMax,
+        syncedAt: latestSyncedAt,
+      };
     }
 
     async createCalendarEvent(
@@ -339,6 +431,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
     ): Promise<LifeOpsCalendarEvent> {
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
+      const grantId = normalizeOptionalString(request.grantId);
       const calendarId = normalizeCalendarId(request.calendarId);
       const title = requireNonEmptyString(request.title, "title");
       const description = normalizeOptionalString(request.description) ?? "";
@@ -353,6 +446,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
         requestUrl,
         mode,
         side,
+        grantId,
       );
       const createEvent = async () => {
         const created =
@@ -360,6 +454,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
             ? (
                 await this.googleManagedClient.createCalendarEvent({
                   side: grant.side,
+                  grantId: grant.id,
                   calendarId,
                   title,
                   description,
@@ -433,6 +528,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
       request: {
         mode?: LifeOpsConnectorMode | null;
         side?: LifeOpsConnectorSide | null;
+        grantId?: string;
         calendarId?: string | null;
         eventId: string;
         title?: string;
@@ -453,6 +549,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
         requestUrl,
         mode,
         side,
+        request.grantId,
       );
       const updateEvent = async () => {
         const normalizedAttendees = request.attendees
@@ -463,6 +560,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
             ? (
                 await this.googleManagedClient.updateCalendarEvent({
                   side: grant.side,
+                  grantId: grant.id,
                   calendarId,
                   eventId: externalEventId,
                   title: request.title,
@@ -601,6 +699,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
       request: {
         mode?: LifeOpsConnectorMode | null;
         side?: LifeOpsConnectorSide | null;
+        grantId?: string;
         calendarId?: string | null;
         eventId: string;
       },
@@ -614,11 +713,13 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
         requestUrl,
         mode,
         side,
+        request.grantId,
       );
       const deleteEvent = async () => {
         if (resolveGoogleExecutionTarget(grant) === "cloud") {
           await this.googleManagedClient.deleteCalendarEvent({
             side: grant.side,
+            grantId: grant.id,
             calendarId,
             eventId: externalEventId,
           });

@@ -71,11 +71,8 @@ export function formatSpeakerLabel(
  */
 export function roomSourceTag(room: Room | null): string {
   if (!room) return "[unknown]";
-  const roomAny = room as unknown as Record<string, unknown>;
-  const source =
-    typeof roomAny.source === "string" ? roomAny.source : (room.type ?? "chat");
-  const name =
-    typeof roomAny.name === "string" ? roomAny.name : room.id?.slice(0, 8);
+  const source = room.source || (room.type ?? "chat");
+  const name = room.name || room.id?.slice(0, 8);
   return `[${source}] ${name}`;
 }
 

@@ -77,6 +77,8 @@ interface PendingGoogleOAuthSession {
   requestedCapabilities: LifeOpsGoogleCapability[];
   codeVerifier: string;
   createdAt: number;
+  /** When re-authenticating an existing account, carries its grant ID. */
+  grantId?: string;
 }
 
 export interface StoredGoogleConnectorToken {
@@ -110,6 +112,8 @@ export interface GoogleConnectorCallbackResult {
   agentId: string;
   side: LifeOpsConnectorSide;
   mode: LifeOpsConnectorMode;
+  /** Set when re-authenticating an existing account. */
+  grantId?: string;
   tokenRef: string;
   identity: Record<string, unknown>;
   grantedCapabilities: LifeOpsGoogleCapability[];
@@ -335,11 +339,13 @@ function buildGoogleTokenRef(
   agentId: string,
   side: LifeOpsConnectorSide,
   mode: LifeOpsConnectorMode,
+  grantId?: string,
 ): string {
+  const filename = grantId ? `${mode}_${grantId}.json` : `${mode}.json`;
   return path.join(
     sanitizePathSegment(agentId),
     sanitizePathSegment(side),
-    `${mode}.json`,
+    filename,
   );
 }
 
@@ -513,6 +519,8 @@ export function startGoogleConnectorOAuth(args: {
   mode?: LifeOpsConnectorMode;
   requestedCapabilities?: readonly LifeOpsGoogleCapability[];
   existingCapabilities?: readonly LifeOpsGoogleCapability[];
+  /** When re-authenticating an existing account, pass its grant ID. */
+  grantId?: string;
   env?: NodeJS.ProcessEnv;
 }): StartLifeOpsGoogleConnectorResponse {
   cleanupExpiredGoogleOAuthSessions();
@@ -544,6 +552,7 @@ export function startGoogleConnectorOAuth(args: {
     requestedCapabilities,
     codeVerifier,
     createdAt: Date.now(),
+    grantId: args.grantId,
   });
 
   const params = new URLSearchParams({
@@ -643,6 +652,7 @@ export async function completeGoogleConnectorOAuth(args: {
     session.agentId,
     session.side,
     session.mode,
+    session.grantId,
   );
   const existing = readStoredGoogleTokenFile(tokenRef, args.env);
   const storedToken = buildStoredGoogleToken(
@@ -657,6 +667,7 @@ export async function completeGoogleConnectorOAuth(args: {
     agentId: session.agentId,
     side: session.side,
     mode: session.mode,
+    grantId: session.grantId,
     tokenRef,
     identity,
     grantedCapabilities,

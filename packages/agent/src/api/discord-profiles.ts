@@ -351,11 +351,7 @@ export async function resolveDiscordRoomProfile(
     typeof channelIdHint === "string" && channelIdHint.trim()
       ? channelIdHint.trim()
       : (() => {
-          const record =
-            room && typeof room === "object"
-              ? (room as unknown as Record<string, unknown>)
-              : undefined;
-          const raw = record?.channelId ?? record?.channel_id;
+          const raw = room?.channelId;
           return typeof raw === "string" && raw.trim() ? raw.trim() : "";
         })();
   if (!channelId) return null;

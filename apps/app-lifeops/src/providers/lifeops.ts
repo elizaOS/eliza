@@ -115,12 +115,27 @@ export const lifeOpsProvider: Provider = {
 
     const calendarLines: string[] = [];
     const emailLines: string[] = [];
+    const accountLines: string[] = [];
     let nextEventContext: LifeOpsNextCalendarEventContext | null = null;
     let gmailSummary: LifeOpsGmailTriageSummary | null = null;
 
     try {
-      const status = await service.getGoogleConnectorStatus(INTERNAL_URL);
-      if (status.connected) {
+      const accounts = await service.getGoogleConnectorAccounts(INTERNAL_URL);
+      const connectedAccounts = accounts.filter((a) => a.connected);
+
+      if (connectedAccounts.length > 1) {
+        accountLines.push("Available Google accounts:");
+        for (const account of connectedAccounts) {
+          const email =
+            (account.identity as Record<string, unknown> | null)?.email ??
+            "unknown";
+          const grantId = account.grant?.id ?? "unknown";
+          accountLines.push(`- ${email} (grantId: ${grantId})`);
+        }
+      }
+
+      const status = connectedAccounts[0];
+      if (status?.connected) {
         const capabilities = status.grantedCapabilities ?? [];
         const hasCalendar = capabilities.some((c) =>
           c.startsWith("google.calendar"),
@@ -176,6 +191,7 @@ export const lifeOpsProvider: Provider = {
           overview.owner.summary.activeReminderCount,
         ),
         ...ownerLines,
+        ...accountLines,
         ...calendarLines,
         ...emailLines,
         formatCount(

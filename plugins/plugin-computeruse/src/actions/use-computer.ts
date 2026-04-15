@@ -160,7 +160,7 @@ export const useComputerAction: Action = {
   ],
 
   validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
-    const service = runtime.getService<ComputerUseService>("computeruse");
+    const service = runtime.getService("computeruse") as unknown as ComputerUseService | undefined;
     return !!service;
   },
 
@@ -171,7 +171,7 @@ export const useComputerAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ) => {
-    const service = runtime.getService<ComputerUseService>("computeruse");
+    const service = runtime.getService("computeruse") as unknown as ComputerUseService | undefined;
     if (!service) {
       return { success: false, error: "ComputerUseService not available" };
     }
@@ -212,7 +212,7 @@ export const useComputerAction: Action = {
                   title: "Screenshot",
                   source: "computeruse",
                   description: `Screen capture after ${params.action}`,
-                  contentType: "image/png",
+                  contentType: "image" as const,
                 },
               ],
             }

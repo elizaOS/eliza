@@ -887,9 +887,8 @@ export async function handlePluginRoutes(
       }
 
       // Check if plugin exposes a test/health method
-      const testFn =
-        (plugin as unknown as Record<string, unknown>).testConnection ??
-        (plugin as unknown as Record<string, unknown>).healthCheck;
+      const pluginRecord = plugin as unknown as Record<string, unknown>;
+      const testFn = pluginRecord.testConnection ?? pluginRecord.healthCheck;
       if (typeof testFn === "function") {
         const result = await (
           testFn as () => Promise<{ ok: boolean; message?: string }>

@@ -21,7 +21,7 @@ import {
   type CloudCompatManagedGithubStatus,
   client,
 } from "../../api";
-import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
+import { useIntervalWhenDocumentVisible } from "@elizaos/ui";
 import { getVrmPreviewUrl, useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { STATUS_BADGE } from "./cloud-dashboard-utils";

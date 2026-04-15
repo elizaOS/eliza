@@ -3,7 +3,7 @@ import {
   type AgentAdminRouteState,
   handleAgentAdminRoutes as handleAutonomousAgentAdminRoutes,
 } from "@elizaos/agent/api/agent-admin-routes";
-import type { ElizaConfig } from "../config/config";
+import type { ElizaConfig } from "@elizaos/agent/config/types";
 
 export type { AgentAdminRouteState };
 
