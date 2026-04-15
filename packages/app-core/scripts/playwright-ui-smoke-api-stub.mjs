@@ -25,7 +25,8 @@ const stubPlugins = [
   {
     id: "anthropic",
     name: "Anthropic",
-    description: "Anthropic model provider for Claude chat and reasoning models.",
+    description:
+      "Anthropic model provider for Claude chat and reasoning models.",
     tags: ["ai-provider"],
     enabled: false,
     configured: false,
@@ -79,6 +80,149 @@ const stubMemoryBrowseResponse = {
   limit: 50,
   offset: 0,
 };
+
+function parsePositiveInt(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function buildRuntimeSnapshot(url) {
+  const maxDepth = parsePositiveInt(url.searchParams.get("depth"), 10);
+  const maxArrayLength = parsePositiveInt(
+    url.searchParams.get("maxArrayLength"),
+    1000,
+  );
+  const maxObjectEntries = parsePositiveInt(
+    url.searchParams.get("maxObjectEntries"),
+    1000,
+  );
+  const maxStringLength = parsePositiveInt(
+    url.searchParams.get("maxStringLength"),
+    280,
+  );
+
+  return {
+    runtimeAvailable: true,
+    generatedAt: Date.now(),
+    settings: {
+      maxDepth,
+      maxArrayLength,
+      maxObjectEntries,
+      maxStringLength,
+    },
+    meta: {
+      agentId: "playwright-ui-smoke-agent",
+      agentState: "running",
+      agentName: "UI Smoke Runtime",
+      model: "stubbed",
+      pluginCount: 1,
+      actionCount: 1,
+      providerCount: 1,
+      evaluatorCount: 1,
+      serviceTypeCount: 1,
+      serviceCount: 1,
+    },
+    order: {
+      plugins: [
+        {
+          index: 0,
+          name: "plugin-browser",
+          className: "BrowserWorkspacePlugin",
+          id: "plugin-browser",
+        },
+      ],
+      actions: [
+        {
+          index: 0,
+          name: "open_browser_workspace",
+          className: "BrowserWorkspaceAction",
+          id: "browser-workspace-action",
+        },
+      ],
+      providers: [
+        {
+          index: 0,
+          name: "browser_workspace_provider",
+          className: "BrowserWorkspaceProvider",
+          id: "browser-workspace-provider",
+        },
+      ],
+      evaluators: [
+        {
+          index: 0,
+          name: "browser_workspace_health",
+          className: "BrowserWorkspaceHealthEvaluator",
+          id: "browser-workspace-health",
+        },
+      ],
+      services: [
+        {
+          index: 0,
+          serviceType: "browser-workspace",
+          count: 1,
+          instances: [
+            {
+              index: 0,
+              name: "browser-workspace-service",
+              className: "BrowserWorkspaceService",
+              id: "browser-workspace-service",
+            },
+          ],
+        },
+      ],
+    },
+    sections: {
+      runtime: {
+        agent: {
+          id: "playwright-ui-smoke-agent",
+          name: "UI Smoke Runtime",
+          state: "running",
+        },
+        environment: {
+          mode: "stub",
+          ci: process.env.CI === "true",
+        },
+        settings: {
+          maxDepth,
+          maxArrayLength,
+          maxObjectEntries,
+          maxStringLength,
+        },
+      },
+      plugins: {
+        "plugin-browser": {
+          id: "plugin-browser",
+          source: "bundled",
+          enabled: true,
+        },
+      },
+      actions: {
+        open_browser_workspace: {
+          enabled: true,
+          description: "Stub browser workspace action for UI smoke tests.",
+        },
+      },
+      providers: {
+        browser_workspace_provider: {
+          enabled: true,
+          source: "stub",
+        },
+      },
+      evaluators: {
+        browser_workspace_health: {
+          enabled: true,
+          status: "ok",
+        },
+      },
+      services: {
+        "browser-workspace": {
+          instances: 1,
+          status: "ready",
+        },
+      },
+    },
+  };
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -292,6 +436,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/runtime") {
+    sendJson(req, res, 200, buildRuntimeSnapshot(url));
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/memories/stats") {
     sendJson(req, res, 200, stubMemoryStats);
     return;
@@ -380,7 +529,9 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "DELETE" && !action) {
-      browserWorkspaceTabs = browserWorkspaceTabs.filter((tab) => tab.id !== tabId);
+      browserWorkspaceTabs = browserWorkspaceTabs.filter(
+        (tab) => tab.id !== tabId,
+      );
       sendJson(req, res, 200, { closed: true });
       return;
     }
@@ -392,7 +543,9 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && action === "hide") {
       browserWorkspaceTabs = browserWorkspaceTabs.map((tab) =>
-        tab.id === tabId ? { ...tab, visible: false, updatedAt: nowIso() } : tab,
+        tab.id === tabId
+          ? { ...tab, visible: false, updatedAt: nowIso() }
+          : tab,
       );
       sendJson(req, res, 200, {
         tab: browserWorkspaceTabs.find((tab) => tab.id === tabId),
