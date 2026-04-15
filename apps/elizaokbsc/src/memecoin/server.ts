@@ -6527,7 +6527,42 @@ function renderHtml(
           <a class="ss-chip" href="#goo-section"><span class="ss-dot" style="background:var(--green)"></span><span class="ss-label">Goo</span><strong>${paperAgents.filter(a => a.chainState === 'active').length}/${paperAgents.length}</strong></a>
         </div>
 
-        <!-- ROW 3: Accordion detail sections -->
+        <!-- GOO ARENA PREVIEW -->
+        <div class="arena-preview">
+          <div class="arena-preview__head">
+            <span class="arena-preview__title">&#x1F9EC; Goo Arena — Live Agent Competition</span>
+            <a class="arena-preview__link" href="/goo">Full Arena &rarr;</a>
+          </div>
+          <div class="arena-grid">
+            ${paperAgents.sort((a, b) => b.acquisitionScore - a.acquisitionScore).map((agent, idx) => {
+              const stateColor = agent.chainState === 'active' ? 'var(--green)' : agent.chainState === 'starving' ? 'var(--yellow)' : 'var(--red, #ef4444)';
+              const pnlClass = agent.totalPnlUsd >= 0 ? 'g' : 'r';
+              const pnlSign = agent.totalPnlUsd >= 0 ? '+' : '';
+              const activePos = agent.positions.filter((p: any) => p.state === 'active').length;
+              const barWidth = Math.min(100, agent.acquisitionScore);
+              const isTop = idx === 0 && agent.acquisitionScore >= 40;
+              return `
+            <div class="arena-card${isTop ? ' arena-card--leader' : ''}" onclick="window.location='/goo/agent/${escapeHtml(agent.id)}'">
+              <div class="arena-card__rank">#${idx + 1}</div>
+              <div class="arena-card__head">
+                <div class="arena-card__dot" style="background:${stateColor}"></div>
+                <div class="arena-card__name">${escapeHtml(agent.agentName)}</div>
+                <span class="arena-card__badge">${escapeHtml(agent.strategy.label)}</span>
+              </div>
+              <div class="arena-card__pnl ${pnlClass}">${pnlSign}$${Math.abs(agent.totalPnlUsd).toFixed(2)}</div>
+              <div class="arena-card__stats">
+                <span>${agent.treasuryBnb.toFixed(2)} BNB</span>
+                <span>${agent.winRate.toFixed(0)}% win</span>
+                <span>${agent.totalTradesCount} trades</span>
+              </div>
+              <div class="arena-card__bar"><div class="arena-card__bar-fill" style="width:${barWidth}%"></div></div>
+              <div class="arena-card__score">Acq. Score <strong>${agent.acquisitionScore}/100</strong></div>
+            </div>`;
+            }).join('')}
+          </div>
+        </div>
+
+        <!-- Accordion detail sections -->
         <div class="accord-panel">
           <details class="panel-accord" id="discovery-section">
             <summary class="panel-accord__sum">
@@ -6686,41 +6721,6 @@ function renderHtml(
               <p class="candidate-thesis" style="margin-top:8px"><a href="/goo" style="color:var(--yellow)">View full Goo Arena →</a></p>
             </div>
           </details>
-        </div>
-
-        <!-- GOO ARENA PREVIEW -->
-        <div class="arena-preview">
-          <div class="arena-preview__head">
-            <span class="arena-preview__title">&#x1F9EC; Goo Arena — Live Agent Competition</span>
-            <a class="arena-preview__link" href="/goo">Full Arena &rarr;</a>
-          </div>
-          <div class="arena-grid">
-            ${paperAgents.sort((a, b) => b.acquisitionScore - a.acquisitionScore).map((agent, idx) => {
-              const stateColor = agent.chainState === 'active' ? 'var(--green)' : agent.chainState === 'starving' ? 'var(--yellow)' : 'var(--red, #ef4444)';
-              const pnlClass = agent.totalPnlUsd >= 0 ? 'g' : 'r';
-              const pnlSign = agent.totalPnlUsd >= 0 ? '+' : '';
-              const activePos = agent.positions.filter((p: any) => p.state === 'active').length;
-              const barWidth = Math.min(100, agent.acquisitionScore);
-              const isTop = idx === 0 && agent.acquisitionScore >= 40;
-              return `
-            <div class="arena-card${isTop ? ' arena-card--leader' : ''}" onclick="window.location='/goo/agent/${escapeHtml(agent.id)}'">
-              <div class="arena-card__rank">#${idx + 1}</div>
-              <div class="arena-card__head">
-                <div class="arena-card__dot" style="background:${stateColor}"></div>
-                <div class="arena-card__name">${escapeHtml(agent.agentName)}</div>
-                <span class="arena-card__badge">${escapeHtml(agent.strategy.label)}</span>
-              </div>
-              <div class="arena-card__pnl ${pnlClass}">${pnlSign}$${Math.abs(agent.totalPnlUsd).toFixed(2)}</div>
-              <div class="arena-card__stats">
-                <span>${agent.treasuryBnb.toFixed(2)} BNB</span>
-                <span>${agent.winRate.toFixed(0)}% win</span>
-                <span>${agent.totalTradesCount} trades</span>
-              </div>
-              <div class="arena-card__bar"><div class="arena-card__bar-fill" style="width:${barWidth}%"></div></div>
-              <div class="arena-card__score">Acq. Score <strong>${agent.acquisitionScore}/100</strong></div>
-            </div>`;
-            }).join('')}
-          </div>
         </div>
 
       </div><!-- /main -->
