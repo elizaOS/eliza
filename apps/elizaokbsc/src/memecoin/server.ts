@@ -4922,7 +4922,7 @@ function renderHtml(
     ),
   ].join("");
   const discoveryFoldSummary = `${snapshot.summary.candidateCount} scanned · ${snapshot.summary.topRecommendationCount} buy-ready · avg ${snapshot.summary.averageScore}`;
-  const portfolioFoldSummary = `${portfolioLifecycle.activePositions.length} active · ${portfolioLifecycle.watchPositions.length} watch · ${formatUsd(portfolioLifecycle.grossPortfolioValueUsd)}`;
+  const portfolioFoldSummary = `${portfolioLifecycle.activePositions.length} active · ${portfolioLifecycle.watchPositions.length} watch · ${formatBnb(portfolioLifecycle.totalAllocatedUsd / bnbPriceEst)} deployed`;
   const pfw = (portfolioLifecycle as any).flywheel ?? { totalProfitUsd: 0, reinvestedUsd: 0, elizaOKBuybackUsd: 0, airdropReserveUsd: 0, cycleCount: 0, trailingStopSaves: 0, gmgnExitSaves: 0 };
   const flywheelFoldSummary = `$${pfw.totalProfitUsd.toFixed(0)} profit · ${pfw.cycleCount} cycles · ${(portfolioLifecycle as any).winCount ?? 0}W/${(portfolioLifecycle as any).lossCount ?? 0}L`;
   const treasuryFoldSummary = `${formatBnb(positionSizeBnb)}/position · ${eligibleExecutionPlans} eligible · ${tradeLedger.records.length} ledger`;
@@ -5104,7 +5104,7 @@ function renderHtml(
           <h3><a class="candidate-link" href="${candidateHref(position.tokenAddress)}" target="_blank" rel="noreferrer">${escapeHtml(position.tokenSymbol)}</a></h3>
           <p class="candidate-subtitle">Score ${position.currentScore}/100 · held ${holdStr} · FDV ${currentFdv}</p>
           <div class="candidate-stats" style="grid-template-columns:1fr 1fr">
-            <div><span>Position Size</span><strong>${formatBnb(position.allocationUsd / bnbPriceEst)} BNB</strong></div>
+            <div><span>Position Size</span><strong>${formatBnb(position.allocationUsd / bnbPriceEst)}</strong></div>
             <div><span>Entry FDV</span><strong>${entryFdv}</strong></div>
             <div><span>P&L</span>${pnlDisplay}</div>${tpDisplay ? `
             <div><span>TP Stages</span>${tpDisplay}</div>` : ""}
@@ -5350,7 +5350,7 @@ function renderHtml(
     </div>`;
   const summaryRibbon = [
     `${snapshot.summary.strongestCandidate?.tokenSymbol || "n/a"} strongest signal`,
-    `${formatBnb(positionSizeBnb)} BNB per position`,
+    `${formatBnb(positionSizeBnb)} per position`,
     `${tradeLedger.records.length} executions tracked`,
     `${distributionPlan.selectedAsset.tokenSymbol || "distribution asset pending"}`,
   ]
@@ -5378,7 +5378,7 @@ function renderHtml(
     ),
     renderMetricCard(
       "Deployed",
-      `${formatBnb(treasurySimulation.allocatedUsd / bnbPriceEst)} BNB`,
+      `${formatBnb(treasurySimulation.allocatedUsd / bnbPriceEst)}`,
       "Simulated capital assigned to active positions.",
     ),
     renderMetricCard(
@@ -6477,7 +6477,7 @@ function renderHtml(
                 <div class="term-line"><span class="ts">${escapeHtml(new Date().toTimeString().slice(0,8))}</span><span class="tag tag-info">INFO</span><span class="msg">Initializing BSC mempool scan&hellip;</span></div>
                 <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-ok">SCAN</span><span class="msg">Found <span class="hi">${snapshot.summary.candidateCount}</span> pools · avg score <span class="hi">${snapshot.summary.averageScore}/100</span> · <span class="hi">${snapshot.summary.topRecommendationCount}</span> buy-ready</span></div>
                 ${snapshot.summary.strongestCandidate ? `<div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-ok">BEST</span><span class="msg"><span class="hi">${escapeHtml(snapshot.summary.strongestCandidate.tokenSymbol)}</span> &mdash; score <span class="ok">${snapshot.summary.strongestCandidate.score}/100</span></span></div>` : ''}
-                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">PORT</span><span class="msg">${portfolioLifecycle.activePositions.length} active · ${formatUsd(portfolioLifecycle.grossPortfolioValueUsd)} value · ${formatPct(winRatePct)} win rate</span></div>
+                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">PORT</span><span class="msg">${portfolioLifecycle.activePositions.length} active · ${formatBnb(portfolioLifecycle.totalAllocatedUsd / bnbPriceEst)} deployed · ${formatPct(winRatePct)} win rate</span></div>
                 <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">EXEC</span><span class="msg">${formatBnb(positionSizeBnb)}/pos · ${formatBnb(dailyCapBnb)}/day · next scan ~${Math.round(getDiscoveryConfig().intervalMs / 60_000)}m</span></div>
                 <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">WALL</span><span class="msg">${escapeHtml(sidebarWalletBalanceLabel)} · ${escapeHtml(shortAddress("0x2D6C3358A3acFe3be42b2Bdf7419e87091270c5F"))}</span></div>
                 <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">GOO</span><span class="msg">${paperAgents.length} agents · ${paperAgents.filter(a => a.chainState === 'active').length} active · ${acquirableCandidates.length} acquirable</span></div>
@@ -6524,7 +6524,7 @@ function renderHtml(
         <!-- STATUS STRIP -->
         <div class="status-strip">
           <a class="ss-chip" href="#discovery-section"><span class="ss-dot" style="background:${snapshot.summary.topRecommendationCount > 0 ? 'var(--green)' : 'var(--yellow)'}"></span><span class="ss-label">Discovery</span><strong>${snapshot.summary.topRecommendationCount}/${snapshot.summary.candidateCount}</strong></a>
-          <a class="ss-chip" href="#portfolio-section"><span class="ss-dot" style="background:var(--green)"></span><span class="ss-label">Portfolio</span><strong>${portfolioLifecycle.activePositions.length} · ${formatUsd(portfolioLifecycle.grossPortfolioValueUsd)}</strong></a>
+          <a class="ss-chip" href="#portfolio-section"><span class="ss-dot" style="background:var(--green)"></span><span class="ss-label">Portfolio</span><strong>${portfolioLifecycle.activePositions.length} · ${formatBnb(portfolioLifecycle.totalAllocatedUsd / bnbPriceEst)}</strong></a>
           <a class="ss-chip" href="#treasury-section"><span class="ss-dot" style="background:${executionState.dryRun ? 'var(--yellow)' : 'var(--green)'}"></span><span class="ss-label">Execution</span><strong>${executionState.dryRun ? "DRY-RUN" : "LIVE"}</strong></a>
           <a class="ss-chip" href="#flywheel-section"><span class="ss-dot" style="background:var(--green)"></span><span class="ss-label">Flywheel</span><strong>$${pfw.totalProfitUsd.toFixed(0)}</strong></a>
           <a class="ss-chip" href="#distribution-section"><span class="ss-dot" style="background:${distributionExecution.dryRun ? 'rgba(255,255,255,.3)' : 'var(--green)'}"></span><span class="ss-label">Distribution</span><strong>${distributionPlan.eligibleHolderCount} holders</strong></a>
@@ -6595,8 +6595,8 @@ function renderHtml(
             <div class="panel-accord__body">
               ${portfolioPnlChart}
               <div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-top:12px">
-                <div class="metric"><span>Total Deployed</span><strong>${formatBnb(portfolioLifecycle.totalAllocatedUsd / bnbPriceEst)} BNB</strong></div>
-                <div class="metric"><span>Current Value</span><strong>${formatBnb(portfolioLifecycle.totalCurrentValueUsd / bnbPriceEst)} BNB</strong></div>
+                <div class="metric"><span>Total Deployed</span><strong>${formatBnb(portfolioLifecycle.totalAllocatedUsd / bnbPriceEst)}</strong></div>
+                <div class="metric"><span>Current Value</span><strong>${formatBnb(portfolioLifecycle.totalCurrentValueUsd / bnbPriceEst)}</strong></div>
                 <div class="metric"><span>Unrealized P&L</span><strong class="${portfolioLifecycle.totalUnrealizedPnlUsd >= 0 ? 'g' : 'r'}">${portfolioLifecycle.totalUnrealizedPnlUsd >= 0 ? '+' : ''}${formatUsd(portfolioLifecycle.totalUnrealizedPnlUsd)} (${portfolioLifecycle.totalUnrealizedPnlPct >= 0 ? '+' : ''}${portfolioLifecycle.totalUnrealizedPnlPct.toFixed(1)}%)</strong></div>
                 <div class="metric"><span>Cash Balance</span><strong>${formatUsd(portfolioLifecycle.cashBalanceUsd)}</strong></div>
               </div>
