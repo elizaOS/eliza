@@ -40,6 +40,20 @@ describe("run-mobile-build", () => {
         "platforms",
         "ios",
         "App",
+        "App.xcodeproj",
+        "project.pbxproj",
+      ),
+      "ios-project\n",
+    );
+    writeFile(
+      path.join(
+        repoRoot,
+        "eliza",
+        "packages",
+        "app-core",
+        "platforms",
+        "ios",
+        "App",
         "Podfile",
       ),
       "ios-podfile\n",
@@ -81,12 +95,21 @@ describe("run-mobile-build", () => {
       log: () => {},
     });
 
-    expect(iosCopied).toEqual([path.join("App", "Podfile")]);
+    expect(iosCopied).toEqual([
+      path.join("App", "Podfile"),
+      path.join("App", "App.xcodeproj", "project.pbxproj"),
+    ]);
     expect(androidCopied).toContain("build.gradle");
     expect(androidCopied).toContain(path.join("app", "capacitor.build.gradle"));
     expect(
       fs.readFileSync(path.join(appDir, "ios", "App", "Podfile"), "utf8"),
     ).toBe("ios-podfile\n");
+    expect(
+      fs.readFileSync(
+        path.join(appDir, "ios", "App", "App.xcodeproj", "project.pbxproj"),
+        "utf8",
+      ),
+    ).toBe("ios-project\n");
     expect(
       fs.readFileSync(path.join(appDir, "android", "build.gradle"), "utf8"),
     ).toBe("android-root\n");

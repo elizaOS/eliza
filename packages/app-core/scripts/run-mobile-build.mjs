@@ -44,7 +44,10 @@ export const PLATFORM_TEMPLATE_FILES = {
     path.join("app", "build.gradle"),
     path.join("app", "capacitor.build.gradle"),
   ],
-  ios: [path.join("App", "Podfile")],
+  ios: [
+    path.join("App", "Podfile"),
+    path.join("App", "App.xcodeproj", "project.pbxproj"),
+  ],
 };
 
 export function resolvePlatformTemplateRoot(
