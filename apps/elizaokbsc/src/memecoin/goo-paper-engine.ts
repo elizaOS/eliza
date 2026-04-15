@@ -633,8 +633,11 @@ export function runPaperAgentCycle(
   const activePositions = updated.positions.filter(p => p.state === "active");
   updated.totalUnrealizedUsd = activePositions.reduce((sum, p) => sum + p.unrealizedPnlUsd, 0);
   updated.totalPnlUsd = updated.totalRealizedUsd + updated.totalUnrealizedUsd;
-  const totalClosed = updated.winCount + updated.lossCount;
-  updated.winRate = totalClosed > 0 ? (updated.winCount / totalClosed) * 100 : 0;
+  const allPositions = updated.positions.filter(p => p.state === "active" || p.state === "exited");
+  const profitableCount = allPositions.filter(p => (p.realizedPnlUsd + p.unrealizedPnlUsd) > 0).length;
+  updated.winCount = profitableCount;
+  updated.lossCount = allPositions.length - profitableCount;
+  updated.winRate = allPositions.length > 0 ? (profitableCount / allPositions.length) * 100 : 0;
   updated.acquisitionScore = computeAcquisitionScore(updated);
 
   return updated;

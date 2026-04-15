@@ -4731,13 +4731,20 @@ function renderHtml(
     )
     .join("");
 
-  const closedPositions = portfolioLifecycle.exitedPositions;
-  const profitableClosedPositions = closedPositions.filter(
-    (position) => position.realizedPnlUsd > 0,
+  const allTradedPositions = [
+    ...portfolioLifecycle.activePositions,
+    ...portfolioLifecycle.exitedPositions,
+  ].filter(p => p.initialAllocationUsd > 0);
+  const profitablePositions = allTradedPositions.filter(
+    p => (p.realizedPnlUsd + p.unrealizedPnlUsd) > 0,
   );
-  const winRatePct = closedPositions.length
-    ? (profitableClosedPositions.length / closedPositions.length) * 100
+  const winRatePct = allTradedPositions.length
+    ? (profitablePositions.length / allTradedPositions.length) * 100
     : null;
+  const totalPnlUsd = portfolioLifecycle.totalRealizedPnlUsd + portfolioLifecycle.totalUnrealizedPnlUsd;
+  const roiPct = portfolioLifecycle.totalAllocatedUsd > 0
+    ? (totalPnlUsd / portfolioLifecycle.totalAllocatedUsd) * 100
+    : 0;
   const tradeRecords = tradeLedger.records.filter(
     (record) => record.plannedBuyBnb > 0,
   );
@@ -4745,8 +4752,8 @@ function renderHtml(
     tradeRecords.map((record) => record.plannedBuyBnb),
   );
   const holdDurationsMs = (
-    closedPositions.length > 0
-      ? closedPositions
+    portfolioLifecycle.exitedPositions.length > 0
+      ? portfolioLifecycle.exitedPositions
       : portfolioLifecycle.activePositions
   )
     .map(
@@ -4821,6 +4828,7 @@ function renderHtml(
     </article>`;
   const snapshotStatTiles = [
     { label: "Win Rate", value: formatPct(winRatePct) },
+    { label: "ROI", value: `${roiPct >= 0 ? "+" : ""}${roiPct.toFixed(1)}%` },
     { label: "Trades", value: String(tradeRecords.length) },
     { label: "Avg Hold", value: formatDuration(averageHoldMs) },
     {
@@ -6490,7 +6498,7 @@ function renderHtml(
                 <div class="term-line"><span class="ts">${escapeHtml(new Date().toTimeString().slice(0,8))}</span><span class="tag tag-info">INFO</span><span class="msg">Initializing BSC mempool scan&hellip;</span></div>
                 <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-ok">SCAN</span><span class="msg">Found <span class="hi">${snapshot.summary.candidateCount}</span> pools · avg score <span class="hi">${snapshot.summary.averageScore}/100</span> · <span class="hi">${snapshot.summary.topRecommendationCount}</span> buy-ready</span></div>
                 ${snapshot.summary.strongestCandidate ? `<div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-ok">BEST</span><span class="msg"><span class="hi">${escapeHtml(snapshot.summary.strongestCandidate.tokenSymbol)}</span> &mdash; score <span class="ok">${snapshot.summary.strongestCandidate.score}/100</span></span></div>` : ''}
-                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">PORT</span><span class="msg">${portfolioLifecycle.activePositions.length} active · ${formatBnb(portfolioLifecycle.totalAllocatedUsd / bnbPriceEst)} deployed · ${formatPct(winRatePct)} win rate</span></div>
+                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">PORT</span><span class="msg">${portfolioLifecycle.activePositions.length} active · ${formatBnb(portfolioLifecycle.totalAllocatedUsd / bnbPriceEst)} deployed · ${formatPct(winRatePct)} WR · ${roiPct >= 0 ? "+" : ""}${roiPct.toFixed(1)}% ROI</span></div>
                 <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">EXEC</span><span class="msg">${formatBnb(positionSizeBnb)}/pos · ${formatBnb(dailyCapBnb)}/day · next scan ~${Math.round(getDiscoveryConfig().intervalMs / 60_000)}m</span></div>
                 <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">WALL</span><span class="msg">${escapeHtml(sidebarWalletBalanceLabel)} · ${escapeHtml(shortAddress("0x2D6C3358A3acFe3be42b2Bdf7419e87091270c5F"))}</span></div>
                 <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">GOO</span><span class="msg">${paperAgents.length} agents · ${paperAgents.filter(a => a.chainState === 'active').length} active · ${acquirableCandidates.length} acquirable</span></div>
@@ -6559,6 +6567,8 @@ function renderHtml(
               const activePos = agent.positions.filter((p: any) => p.state === 'active').length;
               const barWidth = Math.min(100, agent.acquisitionScore);
               const isTop = idx === 0 && agent.acquisitionScore >= 40;
+              const agentInvested = agent.initialTreasuryBnb * bnbPriceEst;
+              const agentRoi = agentInvested > 0 ? (agent.totalPnlUsd / agentInvested) * 100 : 0;
               return `
             <div class="arena-card${isTop ? ' arena-card--leader' : ''}" onclick="window.location='/goo/agent/${escapeHtml(agent.id)}'">
               <div class="arena-card__rank">#${idx + 1}</div>
@@ -6570,8 +6580,8 @@ function renderHtml(
               <div class="arena-card__pnl ${pnlClass}">${pnlSign}$${Math.abs(agent.totalPnlUsd).toFixed(2)}</div>
               <div class="arena-card__stats">
                 <span>${agent.treasuryBnb.toFixed(2)} BNB</span>
-                <span>${agent.winRate.toFixed(0)}% win</span>
-                <span>${agent.totalTradesCount} trades</span>
+                <span>${agent.winRate.toFixed(0)}% WR</span>
+                <span>${agentRoi >= 0 ? '+' : ''}${agentRoi.toFixed(1)}% ROI</span>
               </div>
               <div class="arena-card__bar"><div class="arena-card__bar-fill" style="width:${barWidth}%"></div></div>
               <div class="arena-card__score">Acq. Score <strong>${agent.acquisitionScore}/100</strong></div>
@@ -6620,8 +6630,8 @@ function renderHtml(
 
               <div class="split-h" style="margin-top:16px">&#x1F4CA; Strategy Backtest Report</div>
               <div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-top:6px">
-                <div class="metric"><span>Total Exits</span><strong>${portfolioLifecycle.exitedPositions.length}</strong></div>
                 <div class="metric"><span>Win Rate</span><strong class="${(winRatePct ?? 0) > 50 ? 'g' : 'w'}">${formatPct(winRatePct)}</strong></div>
+                <div class="metric"><span>ROI</span><strong class="${roiPct >= 0 ? 'g' : 'r'}">${roiPct >= 0 ? '+' : ''}${roiPct.toFixed(1)}%</strong></div>
                 <div class="metric"><span>Realized P&L</span><strong class="${portfolioLifecycle.totalRealizedPnlUsd >= 0 ? 'g' : 'r'}">${portfolioLifecycle.totalRealizedPnlUsd >= 0 ? '+' : ''}${formatUsd(portfolioLifecycle.totalRealizedPnlUsd)}</strong></div>
                 <div class="metric"><span>Avg Hold</span><strong>${formatDuration(averageHoldMs)}</strong></div>
               </div>
@@ -6760,6 +6770,7 @@ function renderHtml(
           <div class="aside-stat"><span>Watching</span><strong class="w">${portfolioLifecycle.watchPositions.length}</strong></div>
           <div class="aside-stat"><span>Exited</span><strong class="w">${portfolioLifecycle.exitedPositions.length}</strong></div>
           <div class="aside-stat"><span>Win rate</span><strong class="${(winRatePct ?? 0) > 50 ? 'g' : 'w'}">${formatPct(winRatePct)}</strong></div>
+          <div class="aside-stat"><span>ROI</span><strong class="${roiPct >= 0 ? 'g' : 'r'}">${roiPct >= 0 ? '+' : ''}${roiPct.toFixed(1)}%</strong></div>
           <div class="aside-stat"><span>Sim. P&L</span><strong class="${portfolioLifecycle.totalRealizedPnlUsd >= 0 ? 'g' : 'r'}">${formatUsd(portfolioLifecycle.totalRealizedPnlUsd)}</strong></div>
           <div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px;border-top:1px solid var(--border);padding-top:8px">Execution</div>
           <div class="aside-stat"><span>Per position</span><strong class="y">${formatBnb(positionSizeBnb)}</strong></div>
@@ -6903,7 +6914,7 @@ function renderHtml(
       'KOL-Adaptive TP': 'KOL自适应止盈',
       'Multi-Stage TP': '多阶段止盈', 'Exited Positions': '已退出仓位',
       'no TP hit': '未触发止盈', 'Alloc': '分配', 'Allocation': '模拟分配',
-      'deployed': '已部署', 'Deployed': '已部署',
+      'deployed': '已部署', 'Deployed': '已部署', 'ROI': '投资回报率',
       'Per position': '每仓', 'per position': '每仓',
       'Risk cap': '风险上限', 'Risk Profile': '风险级别',
       'Full Arena': '完整竞技场', 'Acq. Score': '收购评分',
