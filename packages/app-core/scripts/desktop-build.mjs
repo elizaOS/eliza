@@ -16,7 +16,23 @@ const ROOT = process.cwd();
 const appArgMatch = process.argv.find((a) => a.startsWith("--app="));
 const appName = appArgMatch ? appArgMatch.split("=")[1] : "app";
 const APP_DIR = path.join(ROOT, "apps", appName);
-const ELECTROBUN_DIR = path.join(APP_DIR, "electrobun");
+const CANONICAL_ELECTROBUN_DIR = path.join(
+  ROOT,
+  "eliza",
+  "packages",
+  "app-core",
+  "platforms",
+  "electrobun",
+);
+const LEGACY_ELECTROBUN_DIR = path.join(APP_DIR, "electrobun");
+const ELECTROBUN_DIR = fs.existsSync(CANONICAL_ELECTROBUN_DIR)
+  ? CANONICAL_ELECTROBUN_DIR
+  : LEGACY_ELECTROBUN_DIR;
+const STAGE_MACOS_RELEASE_SCRIPT = path.join(
+  ELECTROBUN_DIR,
+  "scripts",
+  "stage-macos-release-artifacts.sh",
+);
 const PROFILE_EXCLUDED_OPTIONAL_PACKS = {
   full: [],
   "no-streaming": ["streaming"],
@@ -547,20 +563,16 @@ function packageDesktopBuild() {
   }
 
   if (stageMacosReleaseApp && process.platform === "darwin") {
-    run(
-      "bash",
-      ["apps/app/electrobun/scripts/stage-macos-release-artifacts.sh"],
-      {
-        cwd: ROOT,
-        env: {
-          ...packageEnv,
-          ELECTROBUN_SKIP_CODESIGN: process.env.ELECTROBUN_SKIP_CODESIGN ?? "1",
-          ELIZA_STAGE_MACOS_SKIP_DMG:
-            process.env.ELIZA_STAGE_MACOS_SKIP_DMG ?? "1",
-        },
-        label: "Staging direct macOS release app",
+    run("bash", [STAGE_MACOS_RELEASE_SCRIPT], {
+      cwd: ROOT,
+      env: {
+        ...packageEnv,
+        ELECTROBUN_SKIP_CODESIGN: process.env.ELECTROBUN_SKIP_CODESIGN ?? "1",
+        ELIZA_STAGE_MACOS_SKIP_DMG:
+          process.env.ELIZA_STAGE_MACOS_SKIP_DMG ?? "1",
       },
-    );
+      label: "Staging direct macOS release app",
+    });
   }
 }
 
