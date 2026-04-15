@@ -508,8 +508,10 @@ export function CodingAgentTasksPanel({
   useEffect(() => {
     let cancelled = false;
 
-    const refreshThreads = async () => {
-      setLoading(true);
+    const refreshThreads = async (silent = false) => {
+      if (!silent) {
+        setLoading(true);
+      }
       try {
         const nextThreads = await client.listCodingAgentTaskThreads({
           includeArchived: showArchived,
@@ -532,19 +534,22 @@ export function CodingAgentTasksPanel({
         setLoadError(
           getClientErrorMessage(error, "Failed to load task threads."),
         );
-        setThreads([]);
-        setSelectedThreadId(null);
-        setSelectedThread(null);
+        if (!silent) {
+          setThreads([]);
+          setSelectedThreadId(null);
+          setSelectedThread(null);
+        }
       } finally {
-        if (!cancelled) {
+        if (!cancelled && !silent) {
           setLoading(false);
         }
       }
     };
 
-    void refreshThreads();
+    void refreshThreads(false);
     const timer = setInterval(() => {
-      void refreshThreads();
+      // Poll in the background without toggling loading UI to avoid flicker.
+      void refreshThreads(true);
     }, 5_000);
 
     return () => {
