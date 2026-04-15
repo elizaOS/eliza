@@ -40,11 +40,6 @@ interface RuntimeWithMessageTarget extends IAgentRuntime {
 	) => Promise<{ channelId?: string; source?: string } | null>;
 }
 
-interface SessionState {
-	startedAt: number;
-	timer: ReturnType<typeof setTimeout>;
-}
-
 /**
  * Install the heartbeat on a PTY service. Returns a disposer that
  * unsubscribes the listener. No-op when the service does not expose the
@@ -59,7 +54,10 @@ export function installTaskHeartbeat(
 		return () => {};
 	}
 
-	const sessions = new Map<string, SessionState>();
+	const sessions = new Map<
+		string,
+		{ startedAt: number; timer: ReturnType<typeof setTimeout> }
+	>();
 	// Global rate limit: one heartbeat per room per HEARTBEAT_MIN_INTERVAL_MS.
 	// A single user prompt can spawn multiple sessions; treating each as its
 	// own heartbeat target reads as spam.
@@ -107,7 +105,7 @@ export function installTaskHeartbeat(
 			return;
 		}
 		if (sessions.has(sessionId)) return;
-		const state: SessionState = {
+		sessions.set(sessionId, {
 			startedAt: Date.now(),
 			timer: setTimeout(() => {
 				void fire(sessionId).catch((err) => {
@@ -116,7 +114,6 @@ export function installTaskHeartbeat(
 					);
 				});
 			}, HEARTBEAT_AFTER_MS),
-		};
-		sessions.set(sessionId, state);
+		});
 	});
 }
