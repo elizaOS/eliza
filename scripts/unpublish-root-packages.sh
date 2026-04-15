@@ -37,7 +37,6 @@ PACKAGES=(
   "@elizaos/plugin-openai-root"
   "@elizaos/plugin-openrouter-root"
   "@elizaos/plugin-pdf-root"
-  "@elizaos/plugin-polymarket-root"
   "@elizaos/plugin-roblox-root"
   "@elizaos/plugin-rss-root"
   "@elizaos/plugin-s3-storage-root"

@@ -152,7 +152,6 @@
     "@elizaos/plugin-openai": "alpha",
     "@elizaos/plugin-sql": "alpha",
     "@elysiajs/cors": "^1.4.1",
-    "@polymarket/clob-client": "^5.2.0",
     "@sinclair/typebox": "^0.34.47",
     "elysia": "^1.4.21",
     "helmet": "^8.1.0",

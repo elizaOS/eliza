@@ -123,11 +123,6 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
     },
-    "@elizaos/plugin-polymarket-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
     "@elizaos/plugin-discord-root#build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],

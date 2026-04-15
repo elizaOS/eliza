@@ -684,38 +684,6 @@
       "category": "next"
     },
     {
-      "name": "polymarket",
-      "description": "This folder contains a small **autonomous Polymarket demo agent** with a CLI in:",
-      "path": "/root/eliza260106/examples/polymarket",
-      "languages": [
-        {
-          "language": "python",
-          "path": "/root/eliza260106/examples/polymarket/python",
-          "hasPackageJson": false,
-          "hasRequirementsTxt": true,
-          "hasCargoToml": false,
-          "hasPyprojectToml": true
-        },
-        {
-          "language": "rust",
-          "path": "/root/eliza260106/examples/polymarket/rust",
-          "hasPackageJson": false,
-          "hasRequirementsTxt": false,
-          "hasCargoToml": true,
-          "hasPyprojectToml": false
-        },
-        {
-          "language": "typescript",
-          "path": "/root/eliza260106/examples/polymarket/typescript",
-          "hasPackageJson": true,
-          "hasRequirementsTxt": false,
-          "hasCargoToml": false,
-          "hasPyprojectToml": false
-        }
-      ],
-      "category": "polymarket"
-    },
-    {
       "name": "react",
       "description": "A React implementation of the classic ELIZA chatbot powered by **elizaOS**, featuring a beautiful re",
       "path": "/root/eliza260106/examples/react",
@@ -1081,7 +1049,6 @@
     "moltbook",
     "next",
     "plugin",
-    "polymarket",
     "react",
     "react-wasm",
     "rest-api",
