@@ -158,7 +158,7 @@ export function SectionSurface({
 }: {
   title: string;
   icon: ReactNode;
-  subtitle: string;
+  subtitle?: string;
   children: ReactNode;
 }) {
   return (
@@ -169,7 +169,7 @@ export function SectionSurface({
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-txt">{title}</div>
-          <div className="mt-1 text-xs leading-5 text-muted">{subtitle}</div>
+          {subtitle ? <div className="mt-1 text-xs leading-5 text-muted">{subtitle}</div> : null}
         </div>
       </div>
       <div className="mt-4 space-y-3">{children}</div>
@@ -184,7 +184,7 @@ export function SummaryMetric({
 }: {
   label: string;
   value: string;
-  detail: string;
+  detail?: string;
 }) {
   return (
     <div className="rounded-2xl border border-border/40 bg-bg/72 p-4">
@@ -192,7 +192,7 @@ export function SummaryMetric({
         {label}
       </div>
       <div className="mt-2 text-lg font-semibold text-txt">{value}</div>
-      <div className="mt-1 text-xs-tight text-muted">{detail}</div>
+      {detail ? <div className="mt-1 text-xs-tight text-muted">{detail}</div> : null}
     </div>
   );
 }

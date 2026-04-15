@@ -573,7 +573,6 @@ export function LifeOpsPageView() {
         <PagePanel.Header
           eyebrow="LifeOps"
           heading="Personal Operations"
-          description="Tasks, goals, reminders, connected identities, calendar, and inbox in one operational tab."
           actions={
             <div className="flex flex-wrap gap-2">
               {appEnabled ? (
@@ -625,7 +624,6 @@ export function LifeOpsPageView() {
             variant="surface"
             className="mt-4 min-h-[12rem] rounded-3xl"
             title="LifeOps is disabled"
-            description="Enable LifeOps to turn on the chat widgets and unlock the operational workspace."
           />
         ) : null}
 
@@ -649,22 +647,20 @@ export function LifeOpsPageView() {
               <SummaryMetric
                 label="Open items"
                 value={`${overview.owner.summary.activeOccurrenceCount}`}
-                detail={`${overview.owner.summary.overdueOccurrenceCount} overdue`}
+                detail={overview.owner.summary.overdueOccurrenceCount > 0 ? `${overview.owner.summary.overdueOccurrenceCount} overdue` : undefined}
               />
               <SummaryMetric
                 label="Goals"
                 value={`${overview.owner.summary.activeGoalCount}`}
-                detail="Owner goals in motion"
               />
               <SummaryMetric
                 label="Reminders"
                 value={`${overview.owner.summary.activeReminderCount}`}
-                detail={`${overview.owner.summary.snoozedOccurrenceCount} snoozed items`}
+                detail={overview.owner.summary.snoozedOccurrenceCount > 0 ? `${overview.owner.summary.snoozedOccurrenceCount} snoozed` : undefined}
               />
               <SummaryMetric
                 label="Agent ops"
                 value={`${overview.agentOps.summary.activeOccurrenceCount}`}
-                detail={`${overview.agentOps.summary.activeGoalCount} active agent goals`}
               />
             </div>
 
@@ -672,21 +668,18 @@ export function LifeOpsPageView() {
               <SectionSurface
                 title="Current queue"
                 icon={<ListTodo className="h-4 w-4" />}
-                subtitle="The owner-facing tasks and occurrences that need attention next."
               >
                 <OccurrenceList occurrences={ownerOccurrences} />
               </SectionSurface>
               <SectionSurface
                 title="Goals"
                 icon={<Target className="h-4 w-4" />}
-                subtitle="Active LifeOps goals the agent is tracking for the owner."
               >
                 <GoalList goals={ownerGoals} />
               </SectionSurface>
               <SectionSurface
-                title="Live reminders"
+                title="Reminders"
                 icon={<BellRing className="h-4 w-4" />}
-                subtitle="Reminders that are currently scheduled or in-flight."
               >
                 <ReminderList reminders={ownerReminders} />
               </SectionSurface>
@@ -696,7 +689,6 @@ export function LifeOpsPageView() {
               <SectionSurface
                 title="Agent operations"
                 icon={<Bot className="h-4 w-4" />}
-                subtitle="Work the agent is carrying on your behalf across goals and active occurrences."
               >
                 <OccurrenceList occurrences={agentOccurrences} />
               </SectionSurface>
@@ -711,8 +703,7 @@ export function LifeOpsPageView() {
         <PagePanel variant="section" className="p-4 lg:p-5">
           <PagePanel.Header
             eyebrow="GitHub"
-            heading="LifeOps and Agent GitHub"
-            description="Keep the owner’s LifeOps GitHub separate from the cloud agent’s GitHub identity. Both authorization flows run through Eliza Cloud, and repo access depends on the GitHub account or app installation behind each connection."
+            heading="Connected accounts"
             actions={
               <Button
                 variant="outline"
@@ -730,7 +721,6 @@ export function LifeOpsPageView() {
               variant="surface"
               className="mt-4 min-h-[12rem] rounded-3xl"
               title="Connect Eliza Cloud first"
-              description="GitHub authorization runs through Eliza Cloud. Connect Cloud, then come back here to manage both accounts."
             />
           ) : (
             <>
@@ -753,7 +743,6 @@ export function LifeOpsPageView() {
                 <SectionSurface
                   title="LifeOps GitHub"
                   icon={<Github className="h-4 w-4" />}
-                  subtitle="Use this account for the owner’s LifeOps repos, issues, and planning context."
                 >
                   <div className="flex flex-wrap gap-2">
                     <Button
@@ -788,7 +777,6 @@ export function LifeOpsPageView() {
                 <SectionSurface
                   title="Agent GitHub"
                   icon={<Shield className="h-4 w-4" />}
-                  subtitle="Bind GitHub per cloud agent so coding work can use a separate identity from the owner account. Access may be read-only or write-enabled depending on the connected account or installation."
                 >
                   {agentGithubEntries.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-border/45 bg-bg/55 p-4 text-xs text-muted">
