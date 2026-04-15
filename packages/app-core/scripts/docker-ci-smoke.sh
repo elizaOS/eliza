@@ -161,6 +161,8 @@ if [[ -d "$REPO_ROOT/.eliza.ci-disabled" && ! -d "$REPO_ROOT/eliza" ]]; then
   log "Restoring eliza/ from .eliza.ci-disabled for downstream build steps"
   mv "$REPO_ROOT/.eliza.ci-disabled" "$REPO_ROOT/eliza"
 fi
+export MILADY_SKIP_LOCAL_UPSTREAMS=1
+export ELIZA_SKIP_LOCAL_UPSTREAMS=1
 
 log "Installing published-workspace fallback dependencies"
 bun add --no-save --dev \
