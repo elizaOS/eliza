@@ -70,6 +70,13 @@
         "default": "full_control",
         "enum": ["full_control", "smart_approve", "approve_all", "off"],
         "sensitive": false
+      },
+      "COMPUTER_USE_BROWSER_HEADLESS": {
+        "type": "boolean",
+        "description": "Launch browser automation in headless mode when the environment does not allow visible windows",
+        "required": false,
+        "default": false,
+        "sensitive": false
       }
     }
   }

@@ -65,6 +65,8 @@ import {
   listWindows,
   maximizeWindow,
   minimizeWindow,
+  restoreWindow,
+  switchWindow,
 } from "../platform/windows-list.js";
 import {
   clickBrowser,
@@ -627,12 +629,16 @@ export class ComputerUseService extends Service {
           });
         }
         case "focus":
-        case "switch":
           focusWindow(this.requireWindowTarget(params));
           return this.succeedEntry(entry, {
             success: true,
-            message:
-              params.action === "switch" ? "Switched window." : "Focused window.",
+            message: "Focused window.",
+          });
+        case "switch":
+          switchWindow(this.requireWindowTarget(params));
+          return this.succeedEntry(entry, {
+            success: true,
+            message: "Switched window.",
           });
         case "arrange":
           return this.succeedEntry(entry, {
@@ -659,7 +665,7 @@ export class ComputerUseService extends Service {
             message: "Window maximized.",
           });
         case "restore":
-          focusWindow(this.requireWindowTarget(params));
+          restoreWindow(this.requireWindowTarget(params));
           return this.succeedEntry(entry, {
             success: true,
             message: "Window restored.",
