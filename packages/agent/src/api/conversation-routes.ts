@@ -50,7 +50,6 @@ import {
   resolveDiscordUserProfile,
   resolveStoredDiscordEntityProfile,
 } from "./discord-profiles.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import { evictOldestConversation } from "./memory-bounds.js";
 import type { RouteRequestContext } from "./route-helpers.js";
 import {

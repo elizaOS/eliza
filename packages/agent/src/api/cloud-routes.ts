@@ -2,8 +2,6 @@ import fs from "node:fs/promises";
 import type http from "node:http";
 import path from "node:path";
 import { logger } from "@elizaos/core";
-import { isCloudWalletEnabled } from "../config/feature-flags.js";
-import { resolveStateDir } from "../config/paths.js";
 import {
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
@@ -21,6 +19,8 @@ import {
   provisionCloudWallets,
 } from "../cloud/cloud-wallet.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
+import { isCloudWalletEnabled } from "../config/feature-flags.js";
+import { resolveStateDir } from "../config/paths.js";
 import { persistConfigEnv } from "./config-env.js";
 import {
   readJsonBody as parseJsonBody,
