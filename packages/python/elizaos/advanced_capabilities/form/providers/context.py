@@ -63,47 +63,43 @@ async def _get_form_context(
         # Required fields: have
         if ctx.filled_fields:
             lines.append("\nRequired fields collected:")
-            for f in ctx.filled_fields:
-                lines.append(f"  - {f.label}: {f.display_value}")
+            for filled_field in ctx.filled_fields:
+                lines.append(f"  - {filled_field.label}: {filled_field.display_value}")
 
         # Required fields: don't have
         if ctx.missing_required:
             lines.append("\nRequired fields still needed:")
-            for f in ctx.missing_required:
-                prompt = f.ask_prompt or f"Ask for their {f.label}"
-                lines.append(f"  - {f.label}: {prompt}")
+            for missing_field in ctx.missing_required:
+                prompt = missing_field.ask_prompt or f"Ask for their {missing_field.label}"
+                lines.append(f"  - {missing_field.label}: {prompt}")
 
         # Uncertain fields
         if ctx.uncertain_fields:
             lines.append("\nFields needing confirmation:")
-            for f in ctx.uncertain_fields:
+            for uncertain_field in ctx.uncertain_fields:
                 lines.append(
-                    f"  - {f.label}: '{f.value}' (confidence: {f.confidence:.0%})"
+                    f"  - {uncertain_field.label}: '{uncertain_field.value}' (confidence: {uncertain_field.confidence:.0%})"
                 )
 
         # Pending external fields
         if ctx.pending_external_fields:
             lines.append("\nPending external actions:")
-            for f in ctx.pending_external_fields:
-                lines.append(f"  - {f.label}: {f.instructions}")
+            for pending_field in ctx.pending_external_fields:
+                lines.append(f"  - {pending_field.label}: {pending_field.instructions}")
 
         # Instruction
         if ctx.pending_cancel_confirmation:
             lines.append("\nInstruction: Confirm cancel -- user has invested effort.")
         elif ctx.uncertain_fields:
             uf = ctx.uncertain_fields[0]
-            lines.append(
-                f"\nInstruction: Confirm '{uf.label}' value with the user."
-            )
+            lines.append(f"\nInstruction: Confirm '{uf.label}' value with the user.")
         elif ctx.missing_required:
             nf = ctx.missing_required[0]
-            lines.append(
-                f"\nInstruction: Ask for {nf.label}."
-            )
+            lines.append(f"\nInstruction: Ask for {nf.label}.")
         elif ctx.status == "ready":
             lines.append("\nInstruction: All required fields collected. Confirm and submit.")
 
-        lines.append(f"[/ACTIVE FORM]")
+        lines.append("[/ACTIVE FORM]")
 
         text = "\n".join(lines)
 

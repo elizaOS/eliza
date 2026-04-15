@@ -1,4 +1,3 @@
-import { ErrorBoundary } from "@elizaos/app-core";
 import "@elizaos/app-core/styles/styles.css";
 import "@elizaos/app-core/styles/brand-gold.css";
 
@@ -12,9 +11,9 @@ import { App } from "@elizaos/app-core/App";
 import { client } from "@elizaos/app-core/api";
 import {
   initializeCapacitorBridge,
-  subscribeDesktopBridgeEvent,
   initializeStorageBridge,
   isElectrobunRuntime,
+  subscribeDesktopBridgeEvent,
 } from "@elizaos/app-core/bridge";
 import { CharacterEditor } from "@elizaos/app-core/components/character/CharacterEditor";
 import type { AppBootConfig, BrandingConfig } from "@elizaos/app-core/config";
@@ -52,9 +51,14 @@ import {
   DesktopTrayRuntime,
   DetachedShellRoot,
 } from "@elizaos/app-core/shell";
-import { AppProvider, applyUiTheme, loadUiTheme } from "@elizaos/app-core/state";
+import {
+  AppProvider,
+  applyUiTheme,
+  loadUiTheme,
+} from "@elizaos/app-core/state";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
+import { ErrorBoundary } from "@elizaos/ui";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { ELIZA_ENV_ALIASES } from "./brand-env";
@@ -74,7 +78,7 @@ const ELIZA_BRANDING: Partial<BrandingConfig> = {
   // other hosts inject an explicit API base before React boots, and that host
   // backend should control onboarding capabilities instead.
   cloudOnly: shouldUseCloudOnlyBranding({
-    isDev: import.meta.env.DEV,
+    isDev: import.meta.env.DEV ?? false,
     injectedApiBase:
       typeof window === "undefined" ? undefined : window.__ELIZA_API_BASE__,
     isNativePlatform: Capacitor.isNativePlatform(),

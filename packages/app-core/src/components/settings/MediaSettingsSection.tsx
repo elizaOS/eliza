@@ -225,7 +225,7 @@ export function MediaSettingsSection() {
             })}
           </SettingsControls.SegmentedGroup>
           <div
-            className="flex flex-col gap-2 border-t border-border pt-3"
+            className="flex flex-col gap-2 pt-3"
             data-testid="settings-companion-half-framerate"
           >
             <div className="min-w-0">
@@ -260,7 +260,7 @@ export function MediaSettingsSection() {
             </SettingsControls.SegmentedGroup>
           </div>
           <div
-            className="flex flex-col gap-2 border-t border-border pt-3"
+            className="flex flex-col gap-2 pt-3"
             data-testid="settings-companion-animate-when-hidden"
           >
             <div className="text-xs font-semibold text-txt">
@@ -290,7 +290,7 @@ export function MediaSettingsSection() {
           defaultValue: "Media generation by category",
         })}
       >
-        <header className="flex flex-col gap-0.5 pb-2 border-b border-border/80">
+        <header className="flex flex-col gap-0.5 pb-2">
           <p className="text-2xs font-bold uppercase tracking-[0.1em] text-muted">
             {t("mediasettingssection.GenerateGroupTitle", {
               defaultValue: "Generation",

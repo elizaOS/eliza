@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import math
 import time
@@ -67,10 +68,8 @@ class ExperienceService(Service):
         # Cancel the persistence loop
         if self._persist_task is not None:
             self._persist_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._persist_task
-            except asyncio.CancelledError:
-                pass
             self._persist_task = None
 
         # Final persist of all experiences
@@ -144,9 +143,7 @@ class ExperienceService(Service):
                 created_at=_to_timestamp(data.get("created_at"), memory_created_at),
                 updated_at=_to_timestamp(data.get("updated_at"), memory_created_at),
                 access_count=int(data.get("access_count", 0)),
-                last_accessed_at=_to_timestamp(
-                    data.get("last_accessed_at"), memory_created_at
-                ),
+                last_accessed_at=_to_timestamp(data.get("last_accessed_at"), memory_created_at),
                 embedding=(
                     list(memory.embedding)
                     if hasattr(memory, "embedding")
@@ -183,14 +180,8 @@ class ExperienceService(Service):
         )
         embedding: list[float] | None = None
         try:
-            result = await self.runtime.use_model(
-                ModelType.TEXT_EMBEDDING, text=embedding_text
-            )
-            if (
-                isinstance(result, list)
-                and len(result) > 0
-                and any(v != 0 for v in result)
-            ):
+            result = await self.runtime.use_model(ModelType.TEXT_EMBEDDING, text=embedding_text)
+            if isinstance(result, list) and len(result) > 0 and any(v != 0 for v in result):
                 embedding = result
             else:
                 logger.warning(
@@ -241,9 +232,7 @@ class ExperienceService(Service):
 
         # Check for contradictions and add relationships
         all_experiences = list(self._experiences.values())
-        contradictions = self._relationship_manager.find_contradictions(
-            experience, all_experiences
-        )
+        contradictions = self._relationship_manager.find_contradictions(experience, all_experiences)
 
         for contradiction in contradictions:
             self._relationship_manager.add_relationship(
@@ -353,9 +342,7 @@ class ExperienceService(Service):
             results = candidates[:limit]
         else:
             # Non-semantic path: filter then sort by quality
-            candidates = self._apply_filters(
-                list(self._experiences.values()), query
-            )
+            candidates = self._apply_filters(list(self._experiences.values()), query)
             candidates.sort(
                 key=lambda e: self._decay_manager.get_decayed_confidence(e) * e.importance,
                 reverse=True,
@@ -412,9 +399,7 @@ class ExperienceService(Service):
         if query.min_confidence is not None:
             min_conf = query.min_confidence
             filtered = [
-                e
-                for e in filtered
-                if self._decay_manager.get_decayed_confidence(e) >= min_conf
+                e for e in filtered if self._decay_manager.get_decayed_confidence(e) >= min_conf
             ]
 
         if query.min_importance is not None:
@@ -490,9 +475,7 @@ class ExperienceService(Service):
             recency_factor = 1 / (1 + age_days / 30)
 
             # Access frequency: log-scaled, capped at 1.0
-            access_factor = min(
-                1.0, math.log2(experience.access_count + 1) / math.log2(10)
-            )
+            access_factor = min(1.0, math.log2(experience.access_count + 1) / math.log2(10))
 
             # Weighted quality score (0-1 range)
             quality_score = (
@@ -669,7 +652,7 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     norm_a = 0.0
     norm_b = 0.0
 
-    for va, vb in zip(a, b):
+    for va, vb in zip(a, b, strict=False):
         dot_product += va * vb
         norm_a += va * va
         norm_b += vb * vb

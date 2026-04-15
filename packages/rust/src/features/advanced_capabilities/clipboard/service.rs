@@ -152,13 +152,9 @@ impl ClipboardService {
         let now = chrono::Utc::now().to_rfc3339();
         let item = TaskClipboardItem {
             id: Uuid::new_v4().to_string(),
-            title: input
-                .title
-                .unwrap_or_else(|| "Clipboard item".to_string()),
+            title: input.title.unwrap_or_else(|| "Clipboard item".to_string()),
             content: input.content,
-            source_type: input
-                .source_type
-                .unwrap_or(TaskClipboardSourceType::Manual),
+            source_type: input.source_type.unwrap_or(TaskClipboardSourceType::Manual),
             source_id: input.source_id,
             source_label: input.source_label,
             mime_type: input.mime_type,
@@ -184,10 +180,7 @@ impl ClipboardService {
     /// Get task clipboard snapshot.
     pub async fn get_task_clipboard(&self, task_id: &str) -> TaskClipboardSnapshot {
         let clipboards = self.task_clipboards.read().await;
-        let items = clipboards
-            .get(task_id)
-            .cloned()
-            .unwrap_or_default();
+        let items = clipboards.get(task_id).cloned().unwrap_or_default();
 
         TaskClipboardSnapshot {
             max_items: TASK_CLIPBOARD_MAX_ITEMS,

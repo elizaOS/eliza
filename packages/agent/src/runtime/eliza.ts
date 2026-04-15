@@ -150,10 +150,10 @@ import rolesPlugin from "./roles.js";
 import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.js";
 
 const require = createRequire(import.meta.url);
-// Agent orchestrator ships as @elizaos/core/orchestrator (PTY, workspaces, patched routes).
+// Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package.
 let pluginAgentOrchestrator: unknown = null;
 try {
-  pluginAgentOrchestrator = require("@elizaos/core/orchestrator");
+  pluginAgentOrchestrator = require("@elizaos/plugin-agent-orchestrator");
 } catch {
   pluginAgentOrchestrator = null;
 }

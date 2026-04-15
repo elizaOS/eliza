@@ -54,8 +54,9 @@ impl Provider for SecretsStatusProvider {
         let secrets = self.service.list(&context).await;
 
         if secrets.is_empty() {
-            return Ok(ProviderResult::new("No secrets configured.")
-                .with_value("secretCount", 0i64));
+            return Ok(
+                ProviderResult::new("No secrets configured.").with_value("secretCount", 0i64)
+            );
         }
 
         let mut valid_count = 0;

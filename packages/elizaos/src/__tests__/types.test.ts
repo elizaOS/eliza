@@ -51,6 +51,7 @@ describe("Template value types", () => {
   test("plugin values capture scaffold substitutions", () => {
     const values: PluginTemplateValues = {
       displayName: "Foo",
+      elizaVersion: "2.0.0-alpha.139",
       githubUsername: "octocat",
       pluginBaseName: "plugin-foo",
       pluginDescription: "plugin-foo plugin for elizaOS",

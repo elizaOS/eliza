@@ -60,7 +60,7 @@ export const chatStateProvider: Provider = {
 			BLUEBUBBLES_SERVICE_NAME,
 		);
 
-		if (!service || !service.getIsRunning()) {
+		if (!service?.getIsRunning()) {
 			return { text: "" };
 		}
 

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from elizaos.features.advanced_capabilities.experience.types import (
     Experience,
@@ -160,7 +160,10 @@ def _detect_failure_pattern(
         return FailurePattern(
             learning="Multiple consecutive failures detected. System may be in unstable state.",
             related_ids=[e.id for e in recent_failures[:5]],
-            insights=["Pause and reassess current approach", "Check system health and dependencies"],
+            insights=[
+                "Pause and reassess current approach",
+                "Check system health and dependencies",
+            ],
         )
 
     return None
@@ -217,9 +220,7 @@ async def detect_patterns(experiences: list[Experience]) -> list[DetectedPattern
 
     # Detect learning velocity
     learning_experiences = [
-        e
-        for e in experiences
-        if e.type in (ExperienceType.DISCOVERY, ExperienceType.LEARNING)
+        e for e in experiences if e.type in (ExperienceType.DISCOVERY, ExperienceType.LEARNING)
     ]
 
     if len(learning_experiences) >= 3:
@@ -250,6 +251,6 @@ async def detect_patterns(experiences: list[Experience]) -> list[DetectedPattern
 def _group_by_hour(experiences: list[Experience]) -> dict[int, list[Experience]]:
     groups: dict[int, list[Experience]] = {}
     for exp in experiences:
-        hour = datetime.fromtimestamp(exp.created_at / 1000, tz=timezone.utc).hour
+        hour = datetime.fromtimestamp(exp.created_at / 1000, tz=UTC).hour
         groups.setdefault(hour, []).append(exp)
     return groups

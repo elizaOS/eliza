@@ -150,12 +150,11 @@ impl Action for RecordExperienceAction {
             .await
             .map_err(|e| crate::error::PluginError::ActionFailed(e.to_string()))?;
 
-        Ok(ActionResult::success(format!(
-            "Experience recorded: {}",
-            learning_str
-        ))
-        .with_value("success", true)
-        .with_data("experienceId", event.experience_id.to_string())
-        .with_data("actionName", "RECORD_EXPERIENCE"))
+        Ok(
+            ActionResult::success(format!("Experience recorded: {}", learning_str))
+                .with_value("success", true)
+                .with_data("experienceId", event.experience_id.to_string())
+                .with_data("actionName", "RECORD_EXPERIENCE"),
+        )
     }
 }

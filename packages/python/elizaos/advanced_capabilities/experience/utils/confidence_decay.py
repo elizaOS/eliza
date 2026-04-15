@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -40,7 +40,7 @@ class ConfidenceDecayManager:
         # Calculate decay based on half-life
         decay_time = age - specific_config.decay_start_delay
         half_lives = decay_time / specific_config.half_life
-        decay_factor = 0.5 ** half_lives
+        decay_factor = 0.5**half_lives
 
         # Apply decay but respect minimum
         decayed_confidence = experience.confidence * decay_factor
@@ -93,7 +93,9 @@ class ConfidenceDecayManager:
             config.half_life *= 3  # Security lessons decay very slowly
             config.min_confidence = 0.3
         elif domain == "performance":
-            config.half_life = int(config.half_life * 0.5)  # Performance insights may change quickly
+            config.half_life = int(
+                config.half_life * 0.5
+            )  # Performance insights may change quickly
         elif domain == "user_preference":
             config.half_life = int(config.half_life * 0.7)  # User preferences can change
 
@@ -123,7 +125,7 @@ class ConfidenceDecayManager:
             else:
                 decay_time = age - specific_config.decay_start_delay
                 half_lives = decay_time / specific_config.half_life
-                decay_factor = 0.5 ** half_lives
+                decay_factor = 0.5**half_lives
                 confidence = max(
                     specific_config.min_confidence,
                     experience.confidence * decay_factor,

@@ -393,7 +393,7 @@ function SecretPicker({
         showCloseButton={false}
         className="w-[min(100%-2rem,35rem)] max-h-[min(80vh,36rem)] overflow-hidden rounded-2xl border border-border/60 bg-card/96 p-0 shadow-2xl"
       >
-        <DialogHeader className="flex flex-row items-center justify-between border-b border-border/60 px-4 py-3">
+        <DialogHeader className="flex flex-row items-center justify-between px-4 py-3">
           <div className="min-w-0">
             <DialogTitle className="text-sm font-semibold text-txt">
               {t("secretsview.AddSecretsToVault")}
@@ -414,7 +414,7 @@ function SecretPicker({
         </DialogHeader>
         <Input
           type="text"
-          className="h-12 w-full rounded-none border-0 border-b border-border/60 bg-transparent px-4 py-2.5 text-sm text-txt shadow-none focus-visible:ring-0 font-body"
+          className="h-12 w-full rounded-none border-0 bg-transparent px-4 py-2.5 text-sm text-txt shadow-none focus-visible:ring-0 font-body"
           placeholder={t("secretsview.SearchByKeyDescr")}
           aria-label={t("secretsview.SearchByKeyDescr")}
           value={search}

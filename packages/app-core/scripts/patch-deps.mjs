@@ -41,6 +41,8 @@ import {
   patchElizaCoreRolesSubpath,
   patchExtensionlessJsExports,
   patchNobleHashesCompat,
+  patchPtyManagerCursorPositionCompat,
+  patchPtyManagerEsmDirnameCompat,
   pruneNestedElizaPluginCoreCopies,
   warnStaleBunCache,
 } from "./lib/patch-bun-exports.mjs";
@@ -101,6 +103,8 @@ patchNobleHashesCompat(root);
 patchCodexFolderApprovalPromptCompat(root);
 patchBrokenElizaCoreRuntimeDists(root);
 patchElizaCoreRolesSubpath(root);
+patchPtyManagerEsmDirnameCompat(root);
+patchPtyManagerCursorPositionCompat(root);
 pruneNestedElizaPluginCoreCopies(root);
 try {
   patchAutonomousElizaOnboardingPresets(root);

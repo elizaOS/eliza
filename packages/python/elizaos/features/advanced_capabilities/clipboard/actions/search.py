@@ -26,9 +26,7 @@ Respond with XML containing:
 </response>"""
 
 
-async def _validate(
-    runtime: IAgentRuntime, message: Memory, _state: State | None = None
-) -> bool:
+async def _validate(runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
     text = (message.content.text or "").lower()
     search_keywords = ["search", "find", "look for", "clipboard", "notes", "retrieve", "lookup"]
     return any(kw in text for kw in search_keywords) and ("clipboard" in text or "search" in text)
@@ -63,7 +61,9 @@ async def _handler(
 
         if not results:
             if callback:
-                await callback(Content(text=f'No clipboard entries found matching "{parsed["query"]}".'))
+                await callback(
+                    Content(text=f'No clipboard entries found matching "{parsed["query"]}".')
+                )
             return ActionResult(text="No results found", success=True)
 
         result_lines = []

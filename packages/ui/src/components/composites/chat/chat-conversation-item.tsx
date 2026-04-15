@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { Z_OVERLAY } from "../../../lib/floating-layers";
+import { cn } from "../../../lib/utils";
 import { Button } from "../../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import { PagePanel } from "../page-panel";
@@ -56,23 +57,22 @@ function TruncatingConversationTitle({
     };
   }, [measure]);
 
-  const spanClass =
-    variant === "game-modal"
-      ? `block w-full min-w-0 max-w-full truncate text-left text-sm font-medium leading-tight transition-colors ${
-          isActive
-            ? "text-txt text-shadow-glow"
-            : "text-white/90 group-hover:text-white"
-        }`
-      : `block min-w-0 max-w-full flex-1 truncate text-left text-sm font-semibold leading-[1.2] tracking-[-0.01em] transition-colors ${
-          isActive
-            ? "text-txt"
-            : "text-[color:color-mix(in_srgb,var(--text-strong)_88%,var(--text)_12%)] group-hover:text-txt"
-        }`;
-
   const span = (
     <span
       ref={titleRef}
-      className={spanClass}
+      className={
+        variant === "game-modal"
+          ? `block w-full min-w-0 max-w-full truncate text-left text-sm font-medium leading-tight transition-colors ${
+              isActive
+                ? "text-txt text-shadow-glow"
+                : "text-white/90 group-hover:text-white"
+            }`
+          : `block min-w-0 max-w-full flex-1 truncate text-left text-sm font-semibold leading-[1.2] tracking-[-0.01em] transition-colors ${
+              isActive
+                ? "text-txt"
+                : "text-[color:color-mix(in_srgb,var(--text-strong)_88%,var(--text)_12%)] group-hover:text-txt"
+            }`
+      }
       {...(isTruncated ? { title: displayTitle } : {})}
     >
       {displayTitle}
@@ -168,10 +168,6 @@ export function ChatConversationItem({
     clearLongPressTimer();
   };
 
-  const rowActionVisibility = mobile
-    ? "opacity-100"
-    : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto";
-
   const renderedTitle = displayTitle ?? conversation.title;
   const conversationSource =
     typeof conversation.source === "string" && conversation.source.trim()
@@ -182,10 +178,6 @@ export function ChatConversationItem({
     !isGameModal &&
     conversationSource !== null &&
     conversationSource.trim().toLowerCase() !== "app";
-  const defaultButtonClassName = `m-0 flex h-auto w-full min-w-0 flex-1 cursor-pointer items-start gap-3 overflow-hidden rounded-none border-0 bg-transparent p-0 text-left hover:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 ${
-    showSourceBadge ? "pr-8" : ""
-  }`;
-
   return (
     <div
       data-testid="conv-item"
@@ -211,7 +203,9 @@ export function ChatConversationItem({
         className={
           isGameModal
             ? "flex h-auto w-full min-w-0 flex-1 cursor-pointer flex-col !items-start !justify-start overflow-hidden rounded-none border-none bg-transparent p-0 !text-left"
-            : defaultButtonClassName
+            : `m-0 flex h-auto w-full min-w-0 flex-1 cursor-pointer items-start gap-3 overflow-hidden rounded-none border-0 bg-transparent p-0 text-left hover:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 ${
+                showSourceBadge ? "pr-8" : ""
+              }`
         }
         onClick={() => {
           if (suppressClickRef.current) {
@@ -271,11 +265,14 @@ export function ChatConversationItem({
           variant={isGameModal ? "ghost" : "surface"}
           data-testid="conv-rename"
           aria-label={labels.rename ?? "Rename conversation"}
-          className={
+          className={cn(
             isGameModal
-              ? `h-8 w-8 shrink-0 self-center rounded-lg border border-white/10 bg-black/20 text-[color:var(--onboarding-text-muted)] shadow-sm transition-[border-color,background-color,color,opacity] hover:border-[color:var(--onboarding-accent-border)] hover:bg-[color:var(--onboarding-accent-bg)] hover:text-[color:var(--onboarding-text-strong)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${rowActionVisibility}`
-              : `h-8 w-8 shrink-0 rounded-lg ${rowActionVisibility} hover:text-accent`
-          }
+              ? "h-8 w-8 shrink-0 self-center rounded-lg border border-white/10 bg-black/20 text-[color:var(--onboarding-text-muted)] shadow-sm transition-[border-color,background-color,color,opacity] hover:border-[color:var(--onboarding-accent-border)] hover:bg-[color:var(--onboarding-accent-bg)] hover:text-[color:var(--onboarding-text-strong)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              : "h-8 w-8 shrink-0 rounded-lg hover:text-accent",
+            mobile
+              ? "opacity-100"
+              : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto",
+          )}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -292,11 +289,15 @@ export function ChatConversationItem({
           variant={isGameModal ? "ghost" : "surfaceDestructive"}
           data-testid="conv-delete"
           aria-label={labels.delete ?? "Delete conversation"}
-          className={
+          className={cn(
             isGameModal
-              ? `h-8 w-8 shrink-0 self-center rounded-lg border border-white/10 bg-black/20 text-[color:var(--onboarding-text-muted)] shadow-sm transition-[border-color,background-color,color,opacity] hover:border-[color:var(--onboarding-accent-border)] hover:bg-[color:var(--onboarding-accent-bg)] hover:text-[color:var(--onboarding-text-strong)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${rowActionVisibility} hover:text-danger`
-              : `h-8 w-8 shrink-0 rounded-lg ${rowActionVisibility} hover:text-danger`
-          }
+              ? "h-8 w-8 shrink-0 self-center rounded-lg border border-white/10 bg-black/20 text-[color:var(--onboarding-text-muted)] shadow-sm transition-[border-color,background-color,color,opacity] hover:border-[color:var(--onboarding-accent-border)] hover:bg-[color:var(--onboarding-accent-bg)] hover:text-[color:var(--onboarding-text-strong)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              : "h-8 w-8 shrink-0 rounded-lg",
+            mobile
+              ? "opacity-100"
+              : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto",
+            "hover:text-danger",
+          )}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();

@@ -1,7 +1,7 @@
 /**
  * Anthropic OAuth flow (Claude Pro/Max subscription)
  *
- * Uses inlined PKCE + token exchange (formerly from @mariozechner/pi-ai).
+ * Uses inlined PKCE + token exchange (vendored OAuth helpers).
  * The callback API is adapted to a start/exchange pattern for HTTP route handlers.
  *
  * TODO(plugin-extraction): This module is a candidate for extraction into

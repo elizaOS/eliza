@@ -160,7 +160,7 @@ export function EditSkillModal({
             />
           )}
         </div>
-        <div className="flex shrink-0 items-center justify-between border-t border-border px-5 py-3">
+        <div className="flex shrink-0 items-center justify-between px-5 py-3">
           <div className="text-xs-tight text-muted">
             {content
               ? `${content.split("\n").length} ${t("trajectorydetailview.lines")}`

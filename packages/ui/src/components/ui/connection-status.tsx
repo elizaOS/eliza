@@ -3,43 +3,6 @@ import { cn } from "../../lib/utils";
 
 export type ConnectionState = "connected" | "disconnected" | "error";
 
-const STATE_STYLES: Record<
-  ConnectionState,
-  {
-    dot: string;
-    text: string;
-    label: string;
-    surface: string;
-    liveRole: "status" | "alert";
-    liveMode: "polite" | "assertive";
-  }
-> = {
-  connected: {
-    dot: "bg-ok",
-    text: "text-txt",
-    label: "Connected",
-    surface: "border-ok/25 bg-ok-subtle/70",
-    liveRole: "status",
-    liveMode: "polite",
-  },
-  disconnected: {
-    dot: "bg-muted",
-    text: "text-muted-strong",
-    label: "Disconnected",
-    surface: "border-border/70 bg-bg-accent",
-    liveRole: "status",
-    liveMode: "polite",
-  },
-  error: {
-    dot: "bg-destructive",
-    text: "text-destructive",
-    label: "Error",
-    surface: "border-destructive/35 bg-destructive-subtle",
-    liveRole: "alert",
-    liveMode: "assertive",
-  },
-};
-
 export interface ConnectionStatusProps
   extends React.HTMLAttributes<HTMLDivElement> {
   state: ConnectionState;
@@ -71,27 +34,44 @@ export const ConnectionStatus = React.forwardRef<
     },
     ref,
   ) => {
-    const styles = STATE_STYLES[state];
     const overrideLabels: Record<ConnectionState, string | undefined> = {
       connected: connectedLabel,
       disconnected: disconnectedLabel,
       error: errorLabel,
     };
+    const defaultLabel =
+      state === "connected"
+        ? "Connected"
+        : state === "disconnected"
+          ? "Disconnected"
+          : "Error";
     return (
       <div
         ref={ref}
         className={cn(
           "inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs",
-          styles.surface,
-          styles.text,
+          state === "connected"
+            ? "border-ok/25 bg-ok-subtle/70 text-txt"
+            : state === "disconnected"
+              ? "border-border/70 bg-bg-accent text-muted-strong"
+              : "border-destructive/35 bg-destructive-subtle text-destructive",
           className,
         )}
-        role={role ?? styles.liveRole}
-        aria-live={ariaLive ?? styles.liveMode}
+        role={role ?? (state === "error" ? "alert" : "status")}
+        aria-live={ariaLive ?? (state === "error" ? "assertive" : "polite")}
         {...props}
       >
-        <span className={cn("h-2 w-2 rounded-full", styles.dot)} />
-        {label ?? overrideLabels[state] ?? styles.label}
+        <span
+          className={cn(
+            "h-2 w-2 rounded-full",
+            state === "connected"
+              ? "bg-ok"
+              : state === "disconnected"
+                ? "bg-muted"
+                : "bg-destructive",
+          )}
+        />
+        {label ?? overrideLabels[state] ?? defaultLabel}
       </div>
     );
   },

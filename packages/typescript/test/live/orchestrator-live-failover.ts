@@ -5,8 +5,8 @@ import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { elizaOSCloudPlugin } from "@elizaos/plugin-elizacloud";
 import { createTestRuntime } from "../helpers/pglite-runtime.ts";
-import type { SwarmCoordinator } from "@elizaos/core/orchestrator";
-import { PTYService } from "@elizaos/core/orchestrator";
+import type { SwarmCoordinator } from "@elizaos/plugin-agent-orchestrator";
+import { PTYService } from "@elizaos/plugin-agent-orchestrator";
 
 async function waitFor(
 	predicate: () => Promise<boolean>,

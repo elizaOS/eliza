@@ -35,9 +35,7 @@ logger = logging.getLogger("elizaos.plugin_manager.registry")
 _GENERATED_REGISTRY_URL = (
     "https://raw.githubusercontent.com/elizaos-plugins/registry/next/generated-registry.json"
 )
-_INDEX_REGISTRY_URL = (
-    "https://raw.githubusercontent.com/elizaos-plugins/registry/next/index.json"
-)
+_INDEX_REGISTRY_URL = "https://raw.githubusercontent.com/elizaos-plugins/registry/next/index.json"
 
 _CACHE_DURATION = 3_600  # 1 hour in seconds
 
@@ -58,6 +56,7 @@ def reset_registry_cache() -> None:
 # ---------------------------------------------------------------------------
 # Parsing helpers
 # ---------------------------------------------------------------------------
+
 
 def _entry_to_plugin(name: str, entry: dict) -> RegistryPlugin:
     git = entry.get("git", {})
@@ -126,10 +125,11 @@ def _to_metadata(plugin: RegistryPlugin) -> PluginMetadata:
 # Fetch
 # ---------------------------------------------------------------------------
 
+
 async def _fetch_json(url: str) -> Any:
     """Fetch JSON from *url* using httpx if available, falling back to urllib."""
     try:
-        import httpx  # type: ignore[import-untyped]
+        httpx = __import__("httpx")
 
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(url)
@@ -178,7 +178,11 @@ def _scan_local_plugins() -> dict[str, RegistryPlugin]:
             data = json.loads(manifest.read_text())
             name = data.get("id") or f"@elizaos/{entry.name}"
             description = data.get("description", "")
-            repo = (data.get("repository", "") or "").replace("https://github.com/", "").replace(".git", "")
+            repo = (
+                (data.get("repository", "") or "")
+                .replace("https://github.com/", "")
+                .replace(".git", "")
+            )
             if not repo:
                 repo = f"elizaos/{entry.name}"
             plugin = RegistryPlugin(
@@ -213,7 +217,10 @@ async def load_registry() -> dict[str, RegistryPlugin]:
     Results are cached in-memory for 1 hour.
     """
     global _registry_cache
-    if _registry_cache is not None and (time.time() - _registry_cache["timestamp"]) < _CACHE_DURATION:
+    if (
+        _registry_cache is not None
+        and (time.time() - _registry_cache["timestamp"]) < _CACHE_DURATION
+    ):
         return _registry_cache["plugins"]
 
     logger.info("[registry] Fetching from next@registry...")
@@ -248,8 +255,10 @@ async def load_registry() -> dict[str, RegistryPlugin]:
 # Lookup
 # ---------------------------------------------------------------------------
 
+
 def _resolve_plugin(
-    registry: dict[str, RegistryPlugin], name: str,
+    registry: dict[str, RegistryPlugin],
+    name: str,
 ) -> RegistryPlugin | None:
     p = registry.get(name)
     if p:
@@ -268,6 +277,7 @@ def _resolve_plugin(
 # ---------------------------------------------------------------------------
 # Search scoring
 # ---------------------------------------------------------------------------
+
 
 def _compute_search_score(plugin: RegistryPlugin, query: str) -> int:
     lq = query.lower()
@@ -311,6 +321,7 @@ def _compute_search_score(plugin: RegistryPlugin, query: str) -> int:
 # Service
 # ---------------------------------------------------------------------------
 
+
 class PluginRegistryService(Service):
     """Fetches, caches, and searches the elizaOS plugin registry."""
 
@@ -339,7 +350,9 @@ class PluginRegistryService(Service):
         return _resolve_plugin(registry, name)
 
     async def search_plugins(
-        self, query: str, limit: int = 10,
+        self,
+        query: str,
+        limit: int = 10,
     ) -> list[PluginSearchResult]:
         """Search the registry by content query, returning scored results."""
         registry = await load_registry()

@@ -137,7 +137,7 @@ type RendererLike = Pick<
   toneMappingExposure?: number;
   xr?: THREE.WebGLRenderer["xr"];
   setAnimationLoop?: (
-    callback: ((time: number, frame?: XRFrame) => void) | null,
+    callback: ((time: number, frame?: unknown) => void) | null,
   ) => void;
 };
 
@@ -162,6 +162,8 @@ const KNOWN_VRM_WEBGPU_WARNING =
 let knownVrmWebGpuWarningFilterRefs = 0;
 let releaseKnownVrmWebGpuWarningFilterGlobal: (() => void) | null = null;
 let sharedDracoLoader: DRACOLoader | null = null;
+type CompatibleDracoLoader = Parameters<GLTFLoader["setDRACOLoader"]>[0];
+type CompatibleMeshoptDecoder = Parameters<GLTFLoader["setMeshoptDecoder"]>[0];
 let teleportSparkleTexture: THREE.CanvasTexture | null = null;
 let _cachedDracoDecoderPath: string | null = null;
 /** Lazy + cached: module-load resolution can be wrong in bundled/desktop init order. */
@@ -234,18 +236,24 @@ function installKnownVrmWebGpuWarningFilter(): () => void {
   };
 }
 
-function getSharedDracoLoader(): DRACOLoader {
+function getSharedDracoLoader(): CompatibleDracoLoader {
   if (!sharedDracoLoader) {
     sharedDracoLoader = new DRACOLoader();
     sharedDracoLoader.setDecoderConfig({ type: "wasm" });
     sharedDracoLoader.setDecoderPath(getDracoDecoderPath());
     sharedDracoLoader.preload();
   }
-  return sharedDracoLoader;
+  // three/examples and the current GLTF loader declarations diverge on the
+  // decoder surface, but this runtime instance is the loader we use in app.
+  return sharedDracoLoader as unknown as CompatibleDracoLoader;
 }
 
 function configureVrmGltfLoader(loader: GLTFLoader): void {
-  loader.setMeshoptDecoder(MeshoptDecoder);
+  // three/examples and the current GLTF loader declarations diverge on the
+  // meshopt decoder surface, but this runtime instance is the decoder we ship.
+  loader.setMeshoptDecoder(
+    MeshoptDecoder as unknown as CompatibleMeshoptDecoder,
+  );
   loader.setDRACOLoader(getSharedDracoLoader());
 }
 

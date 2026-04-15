@@ -180,6 +180,10 @@ node_modules/
 # Task files
 tasks.json
 tasks/
+!packages/benchmarks/app-eval/tasks/
+!packages/benchmarks/app-eval/tasks/__init__.py
+!packages/benchmarks/app-eval/tasks/*-tasks.json
+!packages/benchmarks/app-eval/tasks/*_evaluator.py
 
 # Development database and tool directories
 **/data/

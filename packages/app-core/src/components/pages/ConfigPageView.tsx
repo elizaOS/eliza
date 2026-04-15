@@ -604,7 +604,7 @@ export function ConfigPageView({
               containerClassName="flex flex-wrap gap-1.5"
               t={t}
             />
-            <hr className="border-border" />
+            <div className="py-1" />
             <RpcConfigSection
               title={t("configpageview.BSC", { defaultValue: "BSC" })}
               description={t("configpageview.BSCDesc", {
@@ -625,7 +625,7 @@ export function ConfigPageView({
               containerClassName="flex flex-wrap gap-1.5"
               t={t}
             />
-            <hr className="border-border" />
+            <div className="py-1" />
             <RpcConfigSection
               title={t("configpageview.Solana", { defaultValue: "Solana" })}
               description={t("configpageview.SolanaDesc", {
@@ -679,7 +679,7 @@ export function ConfigPageView({
           className="w-[min(100%-2rem,42rem)] max-h-[min(88vh,48rem)] overflow-hidden rounded-2xl border border-border/70 bg-card/96 p-0 shadow-2xl"
         >
           <div className="flex max-h-[min(88vh,48rem)] flex-col">
-            <DialogHeader className="flex flex-row items-center justify-between border-b border-border/70 px-5 py-4">
+            <DialogHeader className="flex flex-row items-center justify-between px-5 py-4">
               <div className="flex items-center gap-2">
                 <svg
                   width="15"

@@ -113,7 +113,7 @@ function MemoryCard({
         {expanded ? text : truncateText(text)}
       </div>
       {expanded ? (
-        <div className="mt-3 space-y-1.5 border-t border-border/16 pt-3">
+        <div className="mt-3 space-y-1.5 pt-3">
           {memory.entityId ? (
             <div className="text-xs-tight text-muted">
               <span className="font-semibold uppercase tracking-[0.12em]">

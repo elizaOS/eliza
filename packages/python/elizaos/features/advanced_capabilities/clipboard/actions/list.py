@@ -12,9 +12,7 @@ if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
 
 
-async def _validate(
-    runtime: IAgentRuntime, message: Memory, _state: State | None = None
-) -> bool:
+async def _validate(runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
     text = (message.content.text or "").lower()
     return "clipboard" in text and "list" in text
 
@@ -33,9 +31,11 @@ async def _handler(
 
         if not entries:
             if callback:
-                await callback(Content(
-                    text="You don't have any clipboard entries yet. Use CLIPBOARD_WRITE to create one.",
-                ))
+                await callback(
+                    Content(
+                        text="You don't have any clipboard entries yet. Use CLIPBOARD_WRITE to create one.",
+                    )
+                )
             return ActionResult(text="No entries", success=True)
 
         lines = []

@@ -344,9 +344,14 @@ export function syncResolvedApiPort(
 ): void {
   const normalizedPort = String(actualPort);
   env.ELIZA_API_PORT = normalizedPort;
-  env.ELIZA_PORT = normalizedPort;
   if (opts?.overwriteUiPort) {
     env.ELIZA_UI_PORT = normalizedPort;
+    env.ELIZA_PORT = normalizedPort;
+    return;
+  }
+
+  if (!env.ELIZA_UI_PORT) {
+    env.ELIZA_PORT = normalizedPort;
   }
 }
 

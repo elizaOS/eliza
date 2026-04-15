@@ -52,7 +52,7 @@ export function PanelHeader({
         hasActions
           ? "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-4 py-3 sm:px-5"
           : "flex items-start gap-3 px-4 py-3 sm:px-5",
-        bordered && "border-b border-border/18",
+        bordered && "",
         className,
       )}
       {...props}
@@ -136,20 +136,17 @@ export function PanelNotice({
   tone = "default",
   ...props
 }: PanelNoticeProps) {
-  const toneClassName =
-    tone === "accent"
-      ? "border-accent bg-accent-subtle text-txt"
-      : tone === "warning"
-        ? "border-warn/30 bg-warn/10 text-txt"
-        : tone === "danger"
-          ? "border-danger/30 bg-danger/10 text-danger"
-          : "border-border/40 bg-card/30 text-muted";
-
   return (
     <div
       className={cn(
         "rounded-2xl border px-4 py-3 text-sm",
-        toneClassName,
+        tone === "accent"
+          ? "border-accent bg-accent-subtle text-txt"
+          : tone === "warning"
+            ? "border-warn/30 bg-warn/10 text-txt"
+            : tone === "danger"
+              ? "border-danger/30 bg-danger/10 text-danger"
+              : "border-border/40 bg-card/30 text-muted",
         className,
       )}
       {...props}

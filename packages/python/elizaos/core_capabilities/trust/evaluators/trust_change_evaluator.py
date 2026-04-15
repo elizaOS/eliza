@@ -6,7 +6,6 @@ trust movements for the agent to be aware of.
 
 from __future__ import annotations
 
-import time
 from typing import TYPE_CHECKING
 
 from elizaos.types import Evaluator, EvaluatorResult, HandlerOptions
@@ -38,9 +37,7 @@ async def _handler(
     """Evaluate trust changes for the message sender."""
     entity_id = message.entity_id
     if entity_id is None:
-        return EvaluatorResult.pass_result(
-            score=50, reason="No entity to evaluate"
-        )
+        return EvaluatorResult.pass_result(score=50, reason="No entity to evaluate")
 
     trust_engine: TrustEngineService | None = None
     for svc in (runtime.services or {}).values():
@@ -49,9 +46,7 @@ async def _handler(
             break
 
     if trust_engine is None:
-        return EvaluatorResult.pass_result(
-            score=50, reason="Trust engine not available"
-        )
+        return EvaluatorResult.pass_result(score=50, reason="Trust engine not available")
 
     context = TrustContext(evaluator_id=runtime.agent_id)
     profile = await trust_engine.calculate_trust(entity_id, context)
@@ -83,8 +78,7 @@ async def _handler(
 
     return EvaluatorResult.pass_result(
         score=int(min(100, profile.overall_trust)),
-        reason=f"Trust stable at {profile.overall_trust:.0f}/100 "
-        f"({profile.trend.direction.value})",
+        reason=f"Trust stable at {profile.overall_trust:.0f}/100 ({profile.trend.direction.value})",
     )
 
 

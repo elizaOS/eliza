@@ -11,8 +11,8 @@ const repoRoot = path.resolve(__dirname, "..");
 const pluginDir = path.join(
   repoRoot,
   "eliza",
-  "packages",
-  "agent-orchestrator",
+  "plugins",
+  "plugin-agent-orchestrator",
 );
 
 const externals = [

@@ -46,8 +46,8 @@ def derive_key_pbkdf2(
 ) -> bytes:
     """Derive an encryption key from a password using PBKDF2-HMAC-SHA256."""
     try:
-        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
         from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
     except ImportError as exc:
         raise ImportError(
             "The 'cryptography' package is required for secrets encryption. "
@@ -105,9 +105,7 @@ def encrypt_gcm(
         ) from exc
 
     if len(key) != KEY_LENGTH:
-        raise EncryptionError(
-            f"Invalid key length: expected {KEY_LENGTH}, got {len(key)}"
-        )
+        raise EncryptionError(f"Invalid key length: expected {KEY_LENGTH}, got {len(key)}")
 
     nonce = os.urandom(IV_LENGTH)
     aesgcm = AESGCM(key)
@@ -138,9 +136,7 @@ def decrypt_gcm(encrypted: EncryptedSecret, key: bytes) -> str:
         ) from exc
 
     if len(key) != KEY_LENGTH:
-        raise EncryptionError(
-            f"Invalid key length: expected {KEY_LENGTH}, got {len(key)}"
-        )
+        raise EncryptionError(f"Invalid key length: expected {KEY_LENGTH}, got {len(key)}")
 
     if encrypted.algorithm != "aes-256-gcm":
         raise EncryptionError(

@@ -29,9 +29,7 @@ Respond with XML containing:
 </response>"""
 
 
-async def _validate(
-    runtime: IAgentRuntime, message: Memory, _state: State | None = None
-) -> bool:
+async def _validate(runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
     text = (message.content.text or "").lower()
     return "clipboard" in text and "append" in text
 
@@ -50,7 +48,9 @@ async def _handler(
 
     if not entries:
         if callback:
-            await callback(Content(text="There are no clipboard entries to append to. Create one first."))
+            await callback(
+                Content(text="There are no clipboard entries to append to. Create one first.")
+            )
         return ActionResult(text="No entries available", success=False)
 
     prompt = EXTRACT_TEMPLATE.format(text=message.content.text or "", entries=entries_ctx)
@@ -63,18 +63,22 @@ async def _handler(
         or not isinstance(parsed.get("content"), str)
     ):
         if callback:
-            await callback(Content(
-                text=f"I couldn't determine which note to update or what to add. Available entries:\n{entries_ctx}"
-            ))
+            await callback(
+                Content(
+                    text=f"I couldn't determine which note to update or what to add. Available entries:\n{entries_ctx}"
+                )
+            )
         return ActionResult(text="Failed to extract append info", success=False)
 
     try:
         entry_id = str(parsed["id"])
         if not await service.exists(entry_id):
             if callback:
-                await callback(Content(
-                    text=f'Clipboard entry "{entry_id}" not found. Available entries:\n{entries_ctx}'
-                ))
+                await callback(
+                    Content(
+                        text=f'Clipboard entry "{entry_id}" not found. Available entries:\n{entries_ctx}'
+                    )
+                )
             return ActionResult(text="Entry not found", success=False)
 
         existing = await service.read(entry_id)

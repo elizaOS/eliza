@@ -25,7 +25,7 @@ export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="border-b border-border/40 px-6 py-5">
+      <div className="px-6 py-5">
         <div className="text-2xs font-semibold uppercase tracking-[0.16em] text-muted/60">
           {t("vectorbrowserview.Vectors", { defaultValue: "Vectors" })}
         </div>

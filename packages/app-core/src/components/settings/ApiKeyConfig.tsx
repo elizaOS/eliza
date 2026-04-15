@@ -143,7 +143,7 @@ export function ApiKeyConfig({
   }
 
   return (
-    <div className="mt-4 pt-4 border-t border-border">
+    <div className="mt-4 pt-4">
       <div className="flex justify-between items-center mb-3">
         <div className="text-xs font-semibold">
           {selectedProvider.name} {t("nav.settings")}

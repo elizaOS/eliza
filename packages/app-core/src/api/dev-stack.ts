@@ -63,7 +63,10 @@ export function resolveDevStackFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): DevStackPayload {
   const apiPort = resolveDesktopApiPort(env);
-  const uiPort = parsePositivePort(env.ELIZA_PORT) ?? resolveDesktopUiPort(env);
+  const uiPort =
+    parsePositivePort(env.ELIZA_UI_PORT) ??
+    parsePositivePort(env.ELIZA_PORT) ??
+    resolveDesktopUiPort(env);
 
   const rendererUrl = env.ELIZA_RENDERER_URL?.trim() || null;
   const desktopApiBase = env.ELIZA_DESKTOP_API_BASE?.trim() || null;

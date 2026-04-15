@@ -409,7 +409,7 @@ function HeartbeatRunHistory({
   t: TranslateFn;
 }) {
   return (
-    <div className="mt-10 grid gap-8 border-t border-border/40 pt-8">
+    <div className="mt-10 grid gap-8 pt-8">
       <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
         <PagePanel.SummaryCard className="px-4 py-4">
           <dt className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted">
@@ -459,7 +459,7 @@ function HeartbeatRunHistory({
       </dl>
 
       <PagePanel variant="padded" className="space-y-4">
-        <div className="flex items-center justify-between gap-3 border-b border-border/30 pb-3">
+        <div className="flex items-center justify-between gap-3 pb-3">
           <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
             {t("triggersview.RunHistory")}
           </div>

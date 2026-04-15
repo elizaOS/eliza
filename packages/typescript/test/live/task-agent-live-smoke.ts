@@ -12,7 +12,7 @@ import {
   PTYService,
   sendToAgentAction,
   spawnAgentAction,
-} from "@elizaos/core/orchestrator";
+} from "@elizaos/plugin-agent-orchestrator";
 
 type Framework = "claude" | "codex";
 type Mode = "sequential" | "web";

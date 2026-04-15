@@ -40,7 +40,7 @@ export function StatusBar({
 
   return (
     <div
-      className="flex items-center justify-between border-b border-border/60 bg-card/80 shadow-sm backdrop-blur-xl shrink-0 px-3 py-2 lg:px-4"
+      className="flex items-center justify-between bg-card/80 shadow-sm backdrop-blur-xl shrink-0 px-3 py-2 lg:px-4"
       style={
         IS_POPOUT ? ({ WebkitAppRegion: "drag" } as CSSProperties) : undefined
       }

@@ -55,7 +55,6 @@ export const AI_PROVIDER_PLUGINS: readonly string[] = [
   "@elizaos/plugin-groq",
   "@elizaos/plugin-xai",
   "@homunculuslabs/plugin-zai",
-  "@elizaos/plugin-pi-ai",
   "@elizaos/plugin-elizacloud",
 ];
 

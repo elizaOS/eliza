@@ -15,7 +15,10 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from google.protobuf.json_format import MessageToDict, ParseDict
+
 from elizaos.types import MemoryType, Service
+from elizaos.types.agent import CharacterSettings, StyleGuides
 
 from ..types import PERSONALITY_SERVICE_TYPE
 
@@ -78,10 +81,7 @@ def _validate_bio(value: Any) -> bool:
 def _validate_topics(value: Any) -> bool:
     if not isinstance(value, list):
         return False
-    return all(
-        isinstance(t, str) and 0 < len(t) < 100 and bool(_NAME_RE.match(t))
-        for t in value
-    )
+    return all(isinstance(t, str) and 0 < len(t) < 100 and bool(_NAME_RE.match(t)) for t in value)
 
 
 _FIELD_VALIDATORS: dict[str, Any] = {
@@ -119,7 +119,8 @@ class CharacterFileManager(Service):
         await self._detect_character_file()
         logger.debug(
             "CharacterFileManager initialized: file=%s, backup=%s",
-            self._character_file_path, self._backup_dir,
+            self._character_file_path,
+            self._backup_dir,
         )
 
     async def _detect_character_file(self) -> None:
@@ -142,7 +143,7 @@ class CharacterFileManager(Service):
         for file_path in possible_paths:
             if os.path.exists(file_path):
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
+                    with open(file_path, encoding="utf-8") as f:
                         content = json.load(f)
                     if content.get("name") == char_name:
                         self._character_file_path = file_path
@@ -191,9 +192,7 @@ class CharacterFileManager(Service):
         except Exception as e:
             logger.error("Error cleaning up old backups: %s", e)
 
-    def validate_modification(
-        self, modification: dict[str, Any]
-    ) -> dict[str, Any]:
+    def validate_modification(self, modification: dict[str, Any]) -> dict[str, Any]:
         """Validate a character modification. Returns {valid, errors}."""
         errors: list[str] = []
 
@@ -214,9 +213,7 @@ class CharacterFileManager(Service):
 
         return {"valid": len(errors) == 0, "errors": errors}
 
-    async def apply_modification(
-        self, modification: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def apply_modification(self, modification: dict[str, Any]) -> dict[str, Any]:
         """Apply a validated modification to the character."""
         validation = self.validate_modification(modification)
         if not validation["valid"]:
@@ -232,7 +229,7 @@ class CharacterFileManager(Service):
             await self.create_backup()
 
             character = self._runtime.character
-            previous_name = getattr(character, "name", None)
+            getattr(character, "name", None)
 
             # Apply modifications (additive merge, not replacement)
             if "name" in modification:
@@ -252,7 +249,8 @@ class CharacterFileManager(Service):
                     current_bio = []
 
                 new_elements = [
-                    b for b in modification["bio"]
+                    b
+                    for b in modification["bio"]
                     if not any(
                         existing.lower() in b.lower() or b.lower() in existing.lower()
                         for existing in current_bio
@@ -270,25 +268,37 @@ class CharacterFileManager(Service):
                 character.message_examples = current_examples + modification["message_examples"]
 
             if "style" in modification:
-                current_style = getattr(character, "style", {}) or {}
-                if isinstance(current_style, dict) and isinstance(modification["style"], dict):
-                    for key, value in modification["style"].items():
-                        if key in current_style and isinstance(current_style[key], list):
-                            current_style[key] = current_style[key] + (value if isinstance(value, list) else [value])
-                        else:
-                            current_style[key] = value
-                    character.style = current_style
+                style_update = modification["style"]
+                if isinstance(style_update, dict):
+                    current_style = MessageToDict(character.style, preserving_proto_field_name=True)
+                    for key, value in style_update.items():
+                        existing = current_style.get(key, [])
+                        existing_list = existing if isinstance(existing, list) else []
+                        incoming_list = value if isinstance(value, list) else [value]
+                        current_style[key] = existing_list + incoming_list
+                    character.style.CopyFrom(ParseDict(current_style, StyleGuides()))
 
             if "settings" in modification:
-                current_settings = getattr(character, "settings", {}) or {}
-                if isinstance(current_settings, dict):
-                    current_settings.update(modification["settings"])
-                    character.settings = current_settings
+                settings_update = modification["settings"]
+                if isinstance(settings_update, dict):
+                    current_settings = MessageToDict(
+                        character.settings, preserving_proto_field_name=True
+                    )
+                    current_settings.update(settings_update)
+                    character.settings.CopyFrom(ParseDict(current_settings, CharacterSettings()))
 
             # Write to file if available
             if self._character_file_path:
                 char_dict = {}
-                for attr in ("name", "system", "bio", "topics", "message_examples", "style", "settings"):
+                for attr in (
+                    "name",
+                    "system",
+                    "bio",
+                    "topics",
+                    "message_examples",
+                    "style",
+                    "settings",
+                ):
                     val = getattr(character, attr, None)
                     if val is not None:
                         char_dict[attr] = val
@@ -325,28 +335,30 @@ class CharacterFileManager(Service):
             logger.error("Failed to apply character modification: %s", e)
             return {"success": False, "error": f"Application failed: {e}"}
 
-    async def get_modification_history(
-        self, limit: int = 10
-    ) -> list[dict[str, Any]]:
+    async def get_modification_history(self, limit: int = 10) -> list[dict[str, Any]]:
         """Get recent modification history."""
         if not self._runtime:
             return []
 
-        memories = await self._runtime.get_memories({
-            "entityId": str(self._runtime.agent_id),
-            "count": limit,
-            "tableName": "character_modifications",
-        })
+        memories = await self._runtime.get_memories(
+            {
+                "entityId": str(self._runtime.agent_id),
+                "count": limit,
+                "tableName": "character_modifications",
+            }
+        )
 
         results: list[dict[str, Any]] = []
         for memory in memories:
             meta = memory.metadata if hasattr(memory, "metadata") else {}
             if isinstance(meta, dict):
-                results.append({
-                    "timestamp": meta.get("timestamp"),
-                    "modification": meta.get("modification"),
-                    "filePath": meta.get("filePath"),
-                })
+                results.append(
+                    {
+                        "timestamp": meta.get("timestamp"),
+                        "modification": meta.get("modification"),
+                        "filePath": meta.get("filePath"),
+                    }
+                )
         return results
 
     async def get_available_backups(self) -> list[dict[str, Any]]:
@@ -359,22 +371,22 @@ class CharacterFileManager(Service):
             if filename.endswith(".json"):
                 fpath = os.path.join(self._backup_dir, filename)
                 stat = os.stat(fpath)
-                backups.append({
-                    "path": fpath,
-                    "timestamp": int(stat.st_mtime * 1000),
-                    "size": stat.st_size,
-                })
+                backups.append(
+                    {
+                        "path": fpath,
+                        "timestamp": int(stat.st_mtime * 1000),
+                        "size": stat.st_size,
+                    }
+                )
         return sorted(backups, key=lambda b: b["timestamp"], reverse=True)
 
-    async def restore_from_backup(
-        self, backup_path: str
-    ) -> dict[str, Any]:
+    async def restore_from_backup(self, backup_path: str) -> dict[str, Any]:
         """Restore character from a backup file."""
         if not os.path.exists(backup_path):
             return {"success": False, "error": "Backup file not found"}
 
         try:
-            with open(backup_path, "r", encoding="utf-8") as f:
+            with open(backup_path, encoding="utf-8") as f:
                 backup_content = json.load(f)
 
             if not isinstance(backup_content.get("name"), str):

@@ -9,11 +9,16 @@ import type {
   VideoProvider,
   VisionProvider,
 } from "../../api";
+import {
+  COMPANION_HALF_FRAMERATE_OPTIONS,
+  COMPANION_VRM_POWER_OPTIONS,
+} from "@elizaos/app-companion/types/render-modes";
 import type { DesktopClickAuditItem } from "../../utils";
-import type {
-  CompanionHalfFramerateMode,
-  CompanionVrmPowerMode,
-} from "../../state/types";
+
+export {
+  COMPANION_HALF_FRAMERATE_OPTIONS,
+  COMPANION_VRM_POWER_OPTIONS,
+};
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -26,15 +31,6 @@ export interface ProviderOption {
 }
 
 // ── Constants ─────────────────────────────────────────────────────────
-
-export const COMPANION_VRM_POWER_OPTIONS: readonly CompanionVrmPowerMode[] = [
-  "quality",
-  "balanced",
-  "efficiency",
-];
-
-export const COMPANION_HALF_FRAMERATE_OPTIONS: readonly CompanionHalfFramerateMode[] =
-  ["off", "when_saving_power", "always"];
 
 export const DESKTOP_MEDIA_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
   {

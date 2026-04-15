@@ -455,7 +455,7 @@ export function TrajectoriesView({
           )}
 
           {totalPages > 1 && (
-            <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/20 pt-3 text-xs text-muted">
+            <div className="mt-3 flex items-center justify-between gap-2 pt-3 text-xs text-muted">
               <span className="min-w-0">
                 {t("trajectoriesview.ShowingRange", {
                   start: page * pageSize + 1,

@@ -353,7 +353,7 @@ export function CustomActionsView() {
                 </div>
               </Button>
 
-              <div className="mt-auto flex items-center justify-between gap-3 border-t border-border/35 pt-3">
+              <div className="mt-auto flex items-center justify-between gap-3 pt-3">
                 {/* biome-ignore lint/a11y/noLabelWithoutControl: form control is associated programmatically */}
                 <label className="flex min-h-touch cursor-pointer items-center gap-2">
                   <Switch

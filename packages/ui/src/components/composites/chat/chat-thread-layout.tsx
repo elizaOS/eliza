@@ -3,12 +3,6 @@ import * as React from "react";
 import { cn } from "../../../lib/utils";
 import type { ChatVariant } from "./chat-types";
 
-const GAME_MODAL_MESSAGE_LAYER_TOP = "calc(-100% + 1.5rem)";
-const GAME_MODAL_MESSAGE_LAYER_BOTTOM_FALLBACK = "5.25rem";
-const GAME_MODAL_COMPOSER_GAP_PX = 18;
-const GAME_MODAL_MESSAGE_LAYER_MASK =
-  "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.28) 6%, rgba(0,0,0,0.82) 12%, black 17%, black 100%)";
-
 export interface ChatThreadLayoutProps
   extends React.HTMLAttributes<HTMLElement> {
   composerHeight?: number;
@@ -35,9 +29,9 @@ export const ChatThreadLayout = React.forwardRef<
     composerHeight = 0,
     composer,
     footerStack,
-    gameModalComposerGapPx = GAME_MODAL_COMPOSER_GAP_PX,
-    gameModalMessageBottomFallback = GAME_MODAL_MESSAGE_LAYER_BOTTOM_FALLBACK,
-    gameModalMessageTop = GAME_MODAL_MESSAGE_LAYER_TOP,
+    gameModalComposerGapPx = 18,
+    gameModalMessageBottomFallback = "5.25rem",
+    gameModalMessageTop = "calc(-100% + 1.5rem)",
     imageDragOver = false,
     messagesClassName,
     messagesRef,
@@ -61,8 +55,10 @@ export const ChatThreadLayout = React.forwardRef<
         touchAction: "pan-y" as const,
         userSelect: "text" as const,
         WebkitUserSelect: "text" as const,
-        maskImage: GAME_MODAL_MESSAGE_LAYER_MASK,
-        WebkitMaskImage: GAME_MODAL_MESSAGE_LAYER_MASK,
+        maskImage:
+          "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.28) 6%, rgba(0,0,0,0.82) 12%, black 17%, black 100%)",
+        WebkitMaskImage:
+          "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.28) 6%, rgba(0,0,0,0.82) 12%, black 17%, black 100%)",
         ...messagesStyle,
       }
     : {

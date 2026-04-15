@@ -26,14 +26,37 @@ import {
 } from "@elizaos/core";
 
 // Dynamic import: app-lifeops self-control helpers (optional in minimal builds)
-let hasWebsiteBlockDeferralIntent: ((text: string) => boolean) | undefined;
-let hasWebsiteBlockIntent: ((text: string) => boolean) | undefined;
+function fallbackHasWebsiteBlockDeferralIntent(text: string): boolean {
+  return (
+    /\bdo not block\b/i.test(text) ||
+    /\bdon'?t block\b/i.test(text) ||
+    /\bnot yet\b/i.test(text) ||
+    /\bhold off\b/i.test(text) ||
+    /\bwait(?: for me)?(?: to)?\s+(?:confirm|say|tell|be ready)\b/i.test(
+      text,
+    ) ||
+    /\bblock\b.*\blater\b/i.test(text) ||
+    /\bself ?control\b.*\blater\b/i.test(text)
+  );
+}
+
+function fallbackHasWebsiteBlockIntent(text: string): boolean {
+  return /\b(block|unblock|self control|selfcontrol|focus)\b/i.test(text);
+}
+
+let hasWebsiteBlockDeferralIntent: (text: string) => boolean =
+  fallbackHasWebsiteBlockDeferralIntent;
+let hasWebsiteBlockIntent: (text: string) => boolean =
+  fallbackHasWebsiteBlockIntent;
 try {
   const mod = await import("@elizaos/app-lifeops/selfcontrol/selfcontrol");
-  hasWebsiteBlockDeferralIntent = mod.hasWebsiteBlockDeferralIntent;
-  hasWebsiteBlockIntent = mod.hasWebsiteBlockIntent;
+  hasWebsiteBlockDeferralIntent =
+    mod.hasWebsiteBlockDeferralIntent ?? fallbackHasWebsiteBlockDeferralIntent;
+  hasWebsiteBlockIntent =
+    mod.hasWebsiteBlockIntent ?? fallbackHasWebsiteBlockIntent;
 } catch {
-  // Self-control module not available — website blocker features disabled
+  // Keep regex-based fallback intent detection available even when the
+  // optional self-control module cannot be imported.
 }
 
 import type { ElizaConfig } from "../config/config.js";
@@ -1259,23 +1282,70 @@ export async function generateChatResponse(
               !coreHandledActions &&
               executableFallbackActions.length > 0
             ) {
-              runtime.logger?.error(
-                {
-                  src: "eliza-api",
-                  parsedActions: executableFallbackActions.map((a) => a.name),
-                },
-                "[eliza-api] Unexecuted action payload detected; failing closed",
-              );
-              const failureText = buildUnexecutedActionPayloadReply(
-                executableFallbackActions.map((action) => action.name),
-              );
-              if (opts?.onSnapshot) {
-                emitSnapshot(failureText);
-              } else {
-                responseText = failureText;
+              const selfControlFallbackActions =
+                executableFallbackActions.filter((action) => {
+                  const canonicalName =
+                    actionNameLookup.get(normalizeActionName(action.name)) ??
+                    normalizeActionName(action.name);
+                  return (
+                    canonicalName === "BLOCK_WEBSITES" ||
+                    canonicalName === "REQUEST_WEBSITE_BLOCKING_PERMISSION"
+                  );
+                });
+              const callbacksBeforeFallback = actionCallbacksSeen;
+
+              if (selfControlFallbackActions.length > 0) {
+                await executeFallbackParsedActions(
+                  runtime,
+                  message,
+                  selfControlFallbackActions,
+                  appendIncomingText,
+                  recordActionCallback,
+                  {
+                    getCurrentText: () => responseText || modelText,
+                  },
+                );
+              }
+
+              const selfControlFallbackExecuted =
+                actionCallbacksSeen > callbacksBeforeFallback;
+              const remainingExecutableFallbackActions =
+                executableFallbackActions.filter((action) => {
+                  const canonicalName =
+                    actionNameLookup.get(normalizeActionName(action.name)) ??
+                    normalizeActionName(action.name);
+                  if (
+                    canonicalName === "BLOCK_WEBSITES" ||
+                    canonicalName === "REQUEST_WEBSITE_BLOCKING_PERMISSION"
+                  ) {
+                    return !selfControlFallbackExecuted;
+                  }
+                  return true;
+                });
+
+              if (remainingExecutableFallbackActions.length > 0) {
+                runtime.logger?.error(
+                  {
+                    src: "eliza-api",
+                    parsedActions: remainingExecutableFallbackActions.map(
+                      (a) => a.name,
+                    ),
+                  },
+                  "[eliza-api] Unexecuted action payload detected; failing closed",
+                );
+                const failureText = buildUnexecutedActionPayloadReply(
+                  remainingExecutableFallbackActions.map(
+                    (action) => action.name,
+                  ),
+                );
+                if (opts?.onSnapshot) {
+                  emitSnapshot(failureText);
+                } else {
+                  responseText = failureText;
+                }
               }
               if (
-                executableFallbackActions.some(
+                remainingExecutableFallbackActions.some(
                   (action) =>
                     normalizeActionName(action.name) === "CHECK_BALANCE",
                 )

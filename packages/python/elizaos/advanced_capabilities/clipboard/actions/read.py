@@ -29,9 +29,7 @@ Respond with XML containing:
 </response>"""
 
 
-async def _validate(
-    runtime: IAgentRuntime, message: Memory, _state: State | None = None
-) -> bool:
+async def _validate(runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
     text = (message.content.text or "").lower()
     return "clipboard" in text and "read" in text
 
@@ -59,7 +57,11 @@ async def _handler(
 
     if not parsed or not isinstance(parsed.get("id"), str):
         if callback:
-            await callback(Content(text=f"I couldn't determine which note to read. Available entries:\n{entries_ctx}"))
+            await callback(
+                Content(
+                    text=f"I couldn't determine which note to read. Available entries:\n{entries_ctx}"
+                )
+            )
         return ActionResult(text="Failed to extract read info", success=False)
 
     try:

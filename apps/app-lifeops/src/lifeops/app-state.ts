@@ -12,7 +12,7 @@ type RuntimeCacheLike = {
 };
 
 const DEFAULT_LIFEOPS_APP_STATE: LifeOpsAppState = {
-  enabled: false,
+  enabled: true,
 };
 
 export async function loadLifeOpsAppState(
@@ -26,8 +26,11 @@ export async function loadLifeOpsAppState(
     const cached = await runtime.getCache<Partial<LifeOpsAppState>>(
       LIFEOPS_APP_STATE_CACHE_KEY,
     );
+    if (cached == null) {
+      return DEFAULT_LIFEOPS_APP_STATE;
+    }
     return {
-      enabled: cached?.enabled === true,
+      enabled: cached.enabled !== false,
     };
   } catch (error) {
     logger.debug(

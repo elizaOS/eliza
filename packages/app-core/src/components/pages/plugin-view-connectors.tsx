@@ -396,88 +396,88 @@ function ConnectorPluginCard({
     </span>
   );
   const connectorHeaderHeading = (
-    <div className="flex min-w-0 items-start justify-between gap-x-3 gap-y-2">
-      <div className="min-w-0">
-        <span
-          data-testid={`connector-header-${plugin.id}`}
-          className="flex min-w-0 flex-wrap items-center gap-2"
-        >
-          <span className="whitespace-normal break-words [overflow-wrap:anywhere] text-sm font-semibold leading-snug text-txt">
-            {connectorDisplayName(plugin)}
-          </span>
-          {hasParams ? (
-            <span className="text-xs-tight font-medium text-muted">
-              {setCount}/{totalCount} {t("pluginsview.configured")}
-            </span>
-          ) : (
-            <span className="text-xs-tight font-medium text-muted">
-              {noConfigurationNeededLabel}
-            </span>
-          )}
+    <div className="min-w-0">
+      <span
+        data-testid={`connector-header-${plugin.id}`}
+        className="flex min-w-0 flex-wrap items-center gap-2"
+      >
+        <span className="whitespace-normal break-words [overflow-wrap:anywhere] text-sm font-semibold leading-snug text-txt">
+          {connectorDisplayName(plugin)}
         </span>
-        <div className="mt-2">
-          <p className="text-sm text-muted">
-            {plugin.description || pluginDescriptionFallback}
-          </p>
-          {plugin.enabled && !plugin.isActive && (
-            <span className="mt-1.5 flex flex-wrap items-center gap-2 text-xs-tight text-muted">
-              <StatusBadge
-                label={inactiveLabel}
-                tone={plugin.loadError ? "danger" : "warning"}
-              />
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="inline-flex shrink-0 items-center justify-end gap-2 self-start">
-        <StatusBadge
-          label={allParamsSet ? readyLabel : needsSetupLabel}
-          tone={allParamsSet ? "success" : "warning"}
-        />
-        <Button
-          variant="outline"
-          size="sm"
-          className={`h-auto min-w-[3.75rem] rounded-[var(--radius-sm)] border px-3 py-1.5 text-2xs font-bold tracking-[0.16em] transition-colors ${
-            plugin.enabled
-              ? "border-accent bg-accent text-accent-fg"
-              : "border-border bg-transparent text-muted hover:border-accent/40 hover:text-txt"
-          } ${toggleDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
-          onClick={(event) => {
-            event?.stopPropagation();
-            void handleTogglePlugin(plugin.id, !plugin.enabled);
-          }}
-          disabled={toggleDisabled}
-        >
-          {isToggleBusy
-            ? "..."
-            : plugin.enabled
-              ? t("common.on")
-              : t("common.off")}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={`h-8 w-8 shrink-0 rounded-[var(--radius-sm)] border border-border/40 transition-colors ${
-            isExpanded
-              ? "bg-bg/25 text-txt"
-              : "text-muted hover:border-accent/40 hover:text-txt"
-          }`}
-          onClick={(event) => {
-            event?.stopPropagation();
-            handleConnectorSectionToggle(plugin.id);
-          }}
-          aria-expanded={isExpanded}
-          aria-label={`${isExpanded ? collapseLabel : expandLabel} ${connectorDisplayName(plugin)}`}
-          title={isExpanded ? collapseLabel : expandLabel}
-        >
-          <ChevronRight
-            className={`h-4 w-4 transition-transform ${
-              isExpanded ? "rotate-90" : ""
-            }`}
-          />
-        </Button>
+        {hasParams ? (
+          <span className="text-xs-tight font-medium text-muted">
+            {setCount}/{totalCount} {t("pluginsview.configured")}
+          </span>
+        ) : (
+          <span className="text-xs-tight font-medium text-muted">
+            {noConfigurationNeededLabel}
+          </span>
+        )}
+      </span>
+      <div className="mt-2">
+        <p className="text-sm text-muted">
+          {plugin.description || pluginDescriptionFallback}
+        </p>
+        {plugin.enabled && !plugin.isActive && (
+          <span className="mt-1.5 flex flex-wrap items-center gap-2 text-xs-tight text-muted">
+            <StatusBadge
+              label={inactiveLabel}
+              tone={plugin.loadError ? "danger" : "warning"}
+            />
+          </span>
+        )}
       </div>
     </div>
+  );
+  const connectorHeaderActions = (
+    <>
+      <StatusBadge
+        label={allParamsSet ? readyLabel : needsSetupLabel}
+        tone={allParamsSet ? "success" : "warning"}
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        className={`h-auto min-w-[3.75rem] rounded-[var(--radius-sm)] border px-3 py-1.5 text-2xs font-bold tracking-[0.16em] transition-colors ${
+          plugin.enabled
+            ? "border-accent bg-accent text-accent-fg"
+            : "border-border bg-transparent text-muted hover:border-accent/40 hover:text-txt"
+        } ${toggleDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+        onClick={(event) => {
+          event?.stopPropagation();
+          void handleTogglePlugin(plugin.id, !plugin.enabled);
+        }}
+        disabled={toggleDisabled}
+      >
+        {isToggleBusy
+          ? "..."
+          : plugin.enabled
+            ? t("common.on")
+            : t("common.off")}
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className={`h-8 w-8 shrink-0 rounded-[var(--radius-sm)] border border-border/40 transition-colors ${
+          isExpanded
+            ? "bg-bg/25 text-txt"
+            : "text-muted hover:border-accent/40 hover:text-txt"
+        }`}
+        onClick={(event) => {
+          event?.stopPropagation();
+          handleConnectorSectionToggle(plugin.id);
+        }}
+        aria-expanded={isExpanded}
+        aria-label={`${isExpanded ? collapseLabel : expandLabel} ${connectorDisplayName(plugin)}`}
+        title={isExpanded ? collapseLabel : expandLabel}
+      >
+        <ChevronRight
+          className={`h-4 w-4 transition-transform ${
+            isExpanded ? "rotate-90" : ""
+          }`}
+        />
+      </Button>
+    </>
   );
   const connectorSetupPanel = <ConnectorSetupPanel pluginId={plugin.id} />;
   const supportsConnectorSetupPanel = hasConnectorSetupPanel(plugin.id);
@@ -501,6 +501,7 @@ function ConnectorPluginCard({
         media={connectorHeaderMedia}
         heading={connectorHeaderHeading}
         headingClassName="w-full text-inherit"
+        actions={connectorHeaderActions}
       >
         {plugin.id === "discord" && (
           <PagePanel.Notice

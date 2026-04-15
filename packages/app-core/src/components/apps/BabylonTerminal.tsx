@@ -109,7 +109,7 @@ function Section({
 }) {
   return (
     <section className="rounded-md border border-border bg-card/60">
-      <div className="border-b border-border px-3 py-2 text-2xs font-semibold uppercase tracking-[0.18em] text-muted">
+      <div className="px-3 py-2 text-2xs font-semibold uppercase tracking-[0.18em] text-muted">
         {title}
       </div>
       <div className="p-3">{children}</div>
@@ -150,7 +150,7 @@ function ActivityFeed({
         return (
           <div
             key={key}
-            className="border-b border-border/50 px-3 py-2 hover:bg-card/60"
+            className="px-3 py-2 hover:bg-card/60"
           >
             <div className="flex items-start gap-2">
               <span className="text-xs">{icon}</span>
@@ -205,7 +205,7 @@ function AgentStatusHeader({
 }) {
   if (!agent) {
     return (
-      <div className="border-b border-border px-3 py-3">
+      <div className="px-3 py-3">
         <div className="text-xs italic text-muted">
           Connecting to Babylon...
         </div>
@@ -221,7 +221,7 @@ function AgentStatusHeader({
         : "default";
 
   return (
-    <div className="space-y-2 border-b border-border px-3 py-3">
+    <div className="space-y-2 px-3 py-3">
       <div className="flex items-center gap-2">
         <span
           className={`h-2 w-2 rounded-full ${
@@ -528,7 +528,7 @@ function LogsPanel({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+      <div className="flex items-center gap-2 px-3 py-2">
         <select
           value={logType}
           onChange={(event) => onTypeChange(event.target.value)}
@@ -562,7 +562,7 @@ function LogsPanel({
           logs.slice(0, 120).map((entry, index) => (
             <div
               key={entry.id ?? `${entry.timestamp}-${index}`}
-              className="border-b border-border/40 py-1"
+              className="py-1"
             >
               <span className="text-muted">
                 {formatTime(new Date(entry.timestamp).getTime(), {
@@ -1153,7 +1153,7 @@ export function BabylonTerminal({ appName: _appName }: BabylonTerminalProps) {
         onToggle={handleToggleAgent}
       />
 
-      <div className="flex items-center gap-1 border-b border-border px-2 py-2">
+      <div className="flex items-center gap-1 px-2 py-2">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -1171,14 +1171,14 @@ export function BabylonTerminal({ appName: _appName }: BabylonTerminalProps) {
       </div>
 
       {statusMessage ? (
-        <div className="border-b border-border bg-card/70 px-3 py-2 text-xs-tight text-muted">
+        <div className="bg-card/70 px-3 py-2 text-xs-tight text-muted">
           {statusMessage}
         </div>
       ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col">{content}</div>
 
-      <div className="border-t border-border px-3 py-3">
+      <div className="px-3 py-3">
         <div className="mb-2 text-2xs uppercase tracking-[0.18em] text-muted">
           Guide The Agent
         </div>

@@ -72,10 +72,7 @@ async def get_admin_trust(
             "unless contradictory evidence exists."
         )
     else:
-        text = (
-            "Admin trust: current speaker is not verified as OWNER "
-            "for this world."
-        )
+        text = "Admin trust: current speaker is not verified as OWNER for this world."
 
     return ProviderResult(
         text=text,

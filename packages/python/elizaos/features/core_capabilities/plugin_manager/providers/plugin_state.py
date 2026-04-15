@@ -29,9 +29,7 @@ async def get_plugin_state(
             break
 
     if pm_svc is None:
-        return ProviderResult(
-            text="", values={"pluginManagerAvailable": False}, data={}
-        )
+        return ProviderResult(text="", values={"pluginManagerAvailable": False}, data={})
 
     plugins = pm_svc.get_all_plugins()
     loaded = pm_svc.get_loaded_plugins()
@@ -62,10 +60,7 @@ async def get_plugin_state(
             "componentCounts": component_counts,
         },
         data={
-            "plugins": [
-                {"name": p.name, "status": p.status.value}
-                for p in plugins
-            ],
+            "plugins": [{"name": p.name, "status": p.status.value} for p in plugins],
         },
     )
 

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from elizaos.types import Evaluator, EvaluatorResult, HandlerOptions
 
-from ..types import SecurityContext, SecurityEvent, SecurityEventType, SecuritySeverity
+from ..types import SecurityContext, SecurityEvent, SecurityEventType
 
 if TYPE_CHECKING:
     from elizaos.types import ActionResult, IAgentRuntime, Memory, State
@@ -79,9 +79,7 @@ async def _handler(
             f"(severity={check.severity.value}, confidence={check.confidence:.2f})",
         )
 
-    return EvaluatorResult.pass_result(
-        score=100, reason="No security threats detected"
-    )
+    return EvaluatorResult.pass_result(score=100, reason="No security threats detected")
 
 
 security_evaluator = Evaluator(

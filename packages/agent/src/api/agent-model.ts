@@ -27,7 +27,6 @@ const PROVIDER_HINTS = [
   "mistral",
   "together",
   "zai",
-  "pi-ai",
 ] as const;
 
 const ENV_PROVIDER_SIGNALS: ReadonlyArray<{
@@ -45,8 +44,6 @@ const ENV_PROVIDER_SIGNALS: ReadonlyArray<{
   { envVar: "TOGETHER_API_KEY", label: "together" },
   { envVar: "ZAI_API_KEY", label: "zai" },
   { envVar: "OLLAMA_BASE_URL", label: "ollama" },
-  { envVar: "ELIZA_USE_PI_AI", label: "pi-ai" },
-  { envVar: "ELIZA_USE_PI_AI", label: "pi-ai" },
 ];
 
 function normalizeModelSpec(value: unknown): string | undefined {
@@ -179,7 +176,6 @@ export function resolveProviderFromModel(model: string): string | null {
     { match: "mistral", label: "Mistral" },
     { match: "together", label: "Together AI" },
     { match: "cohere", label: "Cohere" },
-    { match: "pi-ai", label: "Pi AI" },
     { match: "moonshot", label: "Moonshot" },
     { match: "kimi", label: "Kimi" },
   ];

@@ -89,7 +89,7 @@ export function SqlEditorPanel({
       {/* Inline query history (standalone layout only) */}
       {showHistory && queryHistory.length > 0 && !queryResult && (
         <div className="border border-border/40 bg-card/40 backdrop-blur-xl rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-4 py-2.5 text-2xs text-muted uppercase font-bold tracking-widest bg-bg/60 border-b border-border/40 shadow-inner">
+          <div className="px-4 py-2.5 text-2xs text-muted uppercase font-bold tracking-widest bg-bg/60 shadow-inner">
             {t("databaseview.RecentQueries")}
           </div>
           <div className="flex flex-col">
@@ -97,7 +97,7 @@ export function SqlEditorPanel({
               <Button
                 variant="ghost"
                 key={q}
-                className="w-full px-4 py-3 h-auto justify-start text-xs-tight font-mono text-txt text-left rounded-none border-b border-border/20 hover:bg-accent/10 hover:text-txt transition-colors truncate"
+                className="w-full px-4 py-3 h-auto justify-start text-xs-tight font-mono text-txt text-left rounded-none hover:bg-accent/10 hover:text-txt transition-colors truncate"
                 onClick={() => setQueryText(q)}
               >
                 <span className="truncate opacity-80 group-hover:opacity-100">

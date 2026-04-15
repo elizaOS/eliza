@@ -22,7 +22,6 @@ from .types import (
     StorageBackend,
 )
 
-
 # ---------------------------------------------------------------------------
 # Base storage interface
 # ---------------------------------------------------------------------------
@@ -100,7 +99,7 @@ class BaseSecretStorage:
         result: SecretMetadata = {}
         for scope_key, entry in self._store.items():
             if scope_key.startswith(prefix):
-                bare_key = scope_key[len(prefix):]
+                bare_key = scope_key[len(prefix) :]
                 result[bare_key] = entry.config
         return result
 
@@ -109,9 +108,7 @@ class BaseSecretStorage:
         entry = self._store.get(scope_key)
         return entry.config if entry else None
 
-    async def update_config(
-        self, key: str, context: SecretContext, config: dict[str, Any]
-    ) -> bool:
+    async def update_config(self, key: str, context: SecretContext, config: dict[str, Any]) -> bool:
         scope_key = self._scope_key(key, context)
         entry = self._store.get(scope_key)
         if entry is None:
@@ -217,7 +214,5 @@ class CompositeSecretStorage:
     async def get_config(self, key: str, context: SecretContext) -> SecretConfig | None:
         return await self._backend(context).get_config(key, context)
 
-    async def update_config(
-        self, key: str, context: SecretContext, config: dict[str, Any]
-    ) -> bool:
+    async def update_config(self, key: str, context: SecretContext, config: dict[str, Any]) -> bool:
         return await self._backend(context).update_config(key, context, config)

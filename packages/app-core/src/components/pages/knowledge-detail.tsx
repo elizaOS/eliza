@@ -170,7 +170,7 @@ export function DocumentViewer({ documentId }: { documentId: string | null }) {
                 {fragments.map((fragment) => (
                   <div
                     key={fragment.id}
-                    className="border-b border-border/15 py-3"
+                    className="py-3"
                   >
                     <p className="whitespace-pre-wrap text-sm leading-relaxed text-txt/90">
                       {fragment.text}

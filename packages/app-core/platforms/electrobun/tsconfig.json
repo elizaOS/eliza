@@ -13,7 +13,7 @@
     "declaration": false,
     "outDir": "./dist",
     "rootDir": ".",
-    "types": ["bun"]
+    "types": ["bun-types"]
   },
   "include": ["src/**/*.ts", "scripts/**/*.ts"],
   "exclude": ["node_modules", "dist"]

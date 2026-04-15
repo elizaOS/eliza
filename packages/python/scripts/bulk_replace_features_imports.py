@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Rewrite elizaos.* imports after moving packages under elizaos.features."""
+
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

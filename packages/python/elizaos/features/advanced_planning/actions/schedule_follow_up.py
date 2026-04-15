@@ -92,7 +92,9 @@ class ScheduleFollowUpAction:
         responses: list[Memory] | None = None,
     ) -> ActionResult:
         from elizaos.features.advanced_capabilities.services.follow_up import FollowUpService
-        from elizaos.features.advanced_capabilities.services.relationships import RelationshipsService
+        from elizaos.features.advanced_capabilities.services.relationships import (
+            RelationshipsService,
+        )
 
         relationships_service = runtime.get_service("relationships")
         follow_up_service = runtime.get_service("follow_up")

@@ -57,12 +57,9 @@ impl Action for SetSecretAction {
             .cloned()
             .unwrap_or_default();
 
-        let key = params
-            .get("key")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                crate::error::PluginError::InvalidInput("Missing 'key' parameter".to_string())
-            })?;
+        let key = params.get("key").and_then(|v| v.as_str()).ok_or_else(|| {
+            crate::error::PluginError::InvalidInput("Missing 'key' parameter".to_string())
+        })?;
 
         let value = params
             .get("value")
@@ -79,17 +76,28 @@ impl Action for SetSecretAction {
 
         let context = SecretContext {
             level,
-            world_id: params.get("worldId").and_then(|v| v.as_str()).map(String::from),
-            user_id: params.get("userId").and_then(|v| v.as_str()).map(String::from),
+            world_id: params
+                .get("worldId")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            user_id: params
+                .get("userId")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             agent_id: runtime.agent_id().to_string(),
             requester_id: None,
         };
 
         match self.service.set(key, value, &context, None).await {
-            Ok(_) => Ok(ActionResult::success(format!("Secret '{}' stored successfully", key))
-                .with_data("key", key.to_string())
-                .with_data("actionName", "SET_SECRET")),
-            Err(e) => Ok(ActionResult::error(format!("Failed to store secret: {}", e))),
+            Ok(_) => Ok(
+                ActionResult::success(format!("Secret '{}' stored successfully", key))
+                    .with_data("key", key.to_string())
+                    .with_data("actionName", "SET_SECRET"),
+            ),
+            Err(e) => Ok(ActionResult::error(format!(
+                "Failed to store secret: {}",
+                e
+            ))),
         }
     }
 }
@@ -140,12 +148,9 @@ impl Action for GetSecretAction {
             .cloned()
             .unwrap_or_default();
 
-        let key = params
-            .get("key")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                crate::error::PluginError::InvalidInput("Missing 'key' parameter".to_string())
-            })?;
+        let key = params.get("key").and_then(|v| v.as_str()).ok_or_else(|| {
+            crate::error::PluginError::InvalidInput("Missing 'key' parameter".to_string())
+        })?;
 
         let level = params
             .get("level")
@@ -155,8 +160,14 @@ impl Action for GetSecretAction {
 
         let context = SecretContext {
             level,
-            world_id: params.get("worldId").and_then(|v| v.as_str()).map(String::from),
-            user_id: params.get("userId").and_then(|v| v.as_str()).map(String::from),
+            world_id: params
+                .get("worldId")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            user_id: params
+                .get("userId")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             agent_id: runtime.agent_id().to_string(),
             requester_id: None,
         };
@@ -174,7 +185,10 @@ impl Action for GetSecretAction {
                 .with_data("key", key.to_string())
                 .with_data("found", serde_json::json!(false))
                 .with_data("actionName", "GET_SECRET")),
-            Err(e) => Ok(ActionResult::error(format!("Failed to retrieve secret: {}", e))),
+            Err(e) => Ok(ActionResult::error(format!(
+                "Failed to retrieve secret: {}",
+                e
+            ))),
         }
     }
 }
@@ -225,12 +239,9 @@ impl Action for DeleteSecretAction {
             .cloned()
             .unwrap_or_default();
 
-        let key = params
-            .get("key")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                crate::error::PluginError::InvalidInput("Missing 'key' parameter".to_string())
-            })?;
+        let key = params.get("key").and_then(|v| v.as_str()).ok_or_else(|| {
+            crate::error::PluginError::InvalidInput("Missing 'key' parameter".to_string())
+        })?;
 
         let level = params
             .get("level")
@@ -240,8 +251,14 @@ impl Action for DeleteSecretAction {
 
         let context = SecretContext {
             level,
-            world_id: params.get("worldId").and_then(|v| v.as_str()).map(String::from),
-            user_id: params.get("userId").and_then(|v| v.as_str()).map(String::from),
+            world_id: params
+                .get("worldId")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            user_id: params
+                .get("userId")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             agent_id: runtime.agent_id().to_string(),
             requester_id: None,
         };
@@ -251,7 +268,10 @@ impl Action for DeleteSecretAction {
                 .with_data("actionName", "DELETE_SECRET")),
             Ok(false) => Ok(ActionResult::success(format!("Secret '{}' not found", key))
                 .with_data("actionName", "DELETE_SECRET")),
-            Err(e) => Ok(ActionResult::error(format!("Failed to delete secret: {}", e))),
+            Err(e) => Ok(ActionResult::error(format!(
+                "Failed to delete secret: {}",
+                e
+            ))),
         }
     }
 }

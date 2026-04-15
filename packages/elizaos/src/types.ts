@@ -50,6 +50,7 @@ export interface UpgradeOptions {
 
 export interface PluginTemplateValues extends Record<string, string> {
   displayName: string;
+  elizaVersion: string;
   githubUsername: string;
   pluginBaseName: string;
   pluginDescription: string;

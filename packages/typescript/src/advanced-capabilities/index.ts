@@ -48,17 +48,17 @@ import {
 } from "./personality/index.ts";
 
 // Re-export action, provider, and evaluator modules
-export * from "./actions/index.ts";
+export * from "../features/advanced-capabilities/actions/index.ts";
+export * from "../features/advanced-capabilities/evaluators/index.ts";
+export * from "../features/advanced-capabilities/providers/index.ts";
 export * from "./clipboard/index.ts";
-export * from "./evaluators/index.ts";
 export * from "./experience/index.ts";
 export * from "./form/index.ts";
 export * from "./personality/index.ts";
-export * from "./providers/index.ts";
 
 // Import for local use
-import * as actions from "./actions/index.ts";
-import * as providers from "./providers/index.ts";
+import * as actions from "../features/advanced-capabilities/actions/index.ts";
+import * as providers from "../features/advanced-capabilities/providers/index.ts";
 
 /**
  * Advanced providers - extended context and state management

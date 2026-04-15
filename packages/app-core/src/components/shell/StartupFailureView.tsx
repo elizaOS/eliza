@@ -176,7 +176,7 @@ export function StartupFailureView({
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(220,38,38,0.1),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_42%)]"
       />
       <Card className={SCREEN_CARD_CLASS}>
-        <CardHeader className="border-b border-border/60 bg-danger/5 pb-6 pt-6">
+        <CardHeader className="bg-danger/5 pb-6 pt-6">
           <div className="flex flex-col gap-4">
             <StatusBadge
               label={reasonLabel}
@@ -219,7 +219,7 @@ export function StartupFailureView({
             </CardDescription>
           )}
 
-          <div className="flex flex-col gap-3 border-t border-border/40 pt-4 sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center">
             <Button
               variant="default"
               size="lg"

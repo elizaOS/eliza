@@ -2,14 +2,17 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-const repoRoot = path.resolve(import.meta.dirname, "..");
+// Script lives at eliza/packages/app-core/scripts/ — repo root is 4 levels up.
+const repoRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 const cwd = path.resolve(process.cwd());
 const pluginsManifestPath = path.join(repoRoot, "plugins.json");
 const liveTestPath = path.join(
   repoRoot,
+  "eliza",
   "packages",
-  "agent",
+  "app-core",
   "test",
+  "live-agent",
   "plugin-lifecycle.live.e2e.test.ts",
 );
 const vitestConfigPath = path.join(repoRoot, "test/vitest/live-e2e.config.ts");
@@ -20,6 +23,9 @@ function readJson(filePath) {
 
 function resolvePackageRoot(dirName) {
   const candidates = [
+    path.join(repoRoot, "eliza", "plugins", dirName, "typescript"),
+    path.join(repoRoot, "eliza", "plugins", dirName),
+    path.join(repoRoot, "eliza", "packages", dirName),
     path.join(repoRoot, "plugins", dirName, "typescript"),
     path.join(repoRoot, "plugins", dirName),
     path.join(repoRoot, "packages", dirName),
@@ -34,9 +40,9 @@ function resolvePackageRoot(dirName) {
   return null;
 }
 
-function resolvePluginFilter() {
+function resolvePluginCandidates() {
   if (!fs.existsSync(pluginsManifestPath)) {
-    return null;
+    return [];
   }
 
   const manifest = readJson(pluginsManifestPath);
@@ -55,6 +61,10 @@ function resolvePluginFilter() {
     });
   }
 
+  return candidates;
+}
+
+function resolvePluginFilter(candidates) {
   const match = candidates.find((plugin) => cwd === plugin.packageRoot);
   if (match) {
     return match.id;
@@ -79,10 +89,12 @@ function resolvePluginFilter() {
   return null;
 }
 
-const pluginId = resolvePluginFilter();
-if (!pluginId) {
+const pluginCandidates = resolvePluginCandidates();
+const pluginId = resolvePluginFilter(pluginCandidates);
+
+if (pluginCandidates.length === 0) {
   console.log(
-    `[plugin-live-smoke] Skipping plugin runtime smoke because ${cwd} does not map to an available first-party plugin package.`,
+    "[plugin-live-smoke] Skipping plugin runtime smoke because no local first-party plugin packages are available in this checkout.",
   );
   process.exit(0);
 }
@@ -102,7 +114,7 @@ const result = spawnSync(
     "run",
     "--config",
     "test/vitest/live-e2e.config.ts",
-    "eliza/agent/test/plugin-lifecycle.live.e2e.test.ts",
+    "eliza/packages/app-core/test/live-agent/plugin-lifecycle.live.e2e.test.ts",
   ],
   {
     cwd: repoRoot,
@@ -110,8 +122,8 @@ const result = spawnSync(
     env: {
       ...process.env,
       ELIZA_LIVE_TEST: "1",
-      ELIZA_LIVE_TEST: "1",
-      ELIZA_PLUGIN_LIFECYCLE_FILTER: pluginId,
+      MILADY_LIVE_TEST: "1",
+      ...(pluginId ? { ELIZA_PLUGIN_LIFECYCLE_FILTER: pluginId } : {}),
     },
   },
 );

@@ -9,7 +9,15 @@ import {
 } from "./managed-test-command.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, "..", "..");
+// Script lives at eliza/packages/app-core/test/scripts/ — repo root is 5 levels up.
+const repoRoot = path.resolve(here, "..", "..", "..", "..", "..");
+const appCoreScriptsDir = path.join(
+  repoRoot,
+  "eliza",
+  "packages",
+  "app-core",
+  "scripts",
+);
 const bunCmd = process.env.npm_execpath || process.env.BUN || "bun";
 const nodeCmd = resolveNodeCmd();
 const truthyValues = new Set(["1", "true", "yes", "on"]);
@@ -18,7 +26,7 @@ function buildLiveTestEnv(cwd) {
   return {
     ...buildTestEnv(cwd),
     ELIZA_LIVE_TEST: "1",
-    ELIZA_LIVE_TEST: "1",
+    MILADY_LIVE_TEST: "1",
   };
 }
 
@@ -47,6 +55,9 @@ function workspaceHasScript(cwd, scriptName) {
 
 function resolvePluginPackageRoot(dirName) {
   const candidates = [
+    path.join(repoRoot, "eliza", "plugins", dirName, "typescript"),
+    path.join(repoRoot, "eliza", "plugins", dirName),
+    path.join(repoRoot, "eliza", "packages", dirName),
     path.join(repoRoot, "plugins", dirName, "typescript"),
     path.join(repoRoot, "plugins", dirName),
     path.join(repoRoot, "packages", dirName),
@@ -133,12 +144,12 @@ const runs = [
     lockName: "ui-playwright",
     label: "ui-playwright",
     command: nodeCmd,
-    args: ["scripts/run-ui-smoke-playwright-suite.mjs"],
+    args: [path.join(appCoreScriptsDir, "run-ui-smoke-playwright-suite.mjs")],
     cwd: repoRoot,
     env: {
       ...process.env,
       ELIZA_LIVE_TEST: "1",
-      ELIZA_LIVE_TEST: "1",
+      MILADY_LIVE_TEST: "1",
     },
   },
   {
@@ -234,7 +245,7 @@ await runManagedTestCommand({
   lockName: "repo-live-smoke-summary",
   label: "repo-live-smoke-summary",
   command: nodeCmd,
-  args: ["scripts/audit-live-test-surface.mjs"],
+  args: [path.join(appCoreScriptsDir, "audit-live-test-surface.mjs")],
   cwd: repoRoot,
   env: buildLiveTestEnv(repoRoot),
 });

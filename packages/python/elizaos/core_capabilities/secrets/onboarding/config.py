@@ -8,8 +8,9 @@ Ported from secrets/onboarding/config.ts.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from ..types import SecretType
 
@@ -278,8 +279,7 @@ def get_next_setting(
 
     for key, setting in unconfigured:
         dependencies_met = all(
-            config.settings.get(dep) is not None
-            and config.settings[dep].value is not None
+            config.settings.get(dep) is not None and config.settings[dep].value is not None
             for dep in setting.depends_on
         )
         is_visible = setting.visible_if is None or setting.visible_if(config.settings)
@@ -290,8 +290,7 @@ def get_next_setting(
     optional_unconfigured = get_unconfigured_optional(config)
     for key, setting in optional_unconfigured:
         dependencies_met = all(
-            config.settings.get(dep) is not None
-            and config.settings[dep].value is not None
+            config.settings.get(dep) is not None and config.settings[dep].value is not None
             for dep in setting.depends_on
         )
         is_visible = setting.visible_if is None or setting.visible_if(config.settings)

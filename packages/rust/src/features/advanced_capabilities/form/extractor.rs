@@ -75,11 +75,7 @@ impl Evaluator for FormExtractorEvaluator {
             }
         };
 
-        let text = message
-            .content
-            .text
-            .as_deref()
-            .unwrap_or("");
+        let text = message.content.text.as_deref().unwrap_or("");
 
         if text.is_empty() {
             return Ok(EvaluatorResult {
@@ -141,13 +137,7 @@ impl Evaluator for FormExtractorEvaluator {
             if let Some(val) = value {
                 let _ = self
                     .service
-                    .update_field(
-                        &session.id,
-                        &control.key,
-                        val,
-                        0.7,
-                        FieldSource::Extraction,
-                    )
+                    .update_field(&session.id, &control.key, val, 0.7, FieldSource::Extraction)
                     .await;
                 extracted_count += 1;
             }

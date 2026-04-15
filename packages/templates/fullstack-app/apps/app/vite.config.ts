@@ -168,6 +168,60 @@ function pathIncludesAny(id: string, markers: string[]): boolean {
   return markers.some((marker) => id.includes(marker));
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function wildcardReplacement(value: string): string {
+  let index = 0;
+  return value.replace(/\*/g, () => `$${++index}`);
+}
+
+function createPackageExportAliases(options: {
+  packageDir: string;
+  packageExports?: Record<string, unknown>;
+  packageName: string;
+  preferJsAlias?: boolean;
+}): Array<{ find: RegExp; replacement: string }> {
+  const aliases: Array<{ find: RegExp; replacement: string }> = [];
+
+  for (const [key, value] of Object.entries(options.packageExports || {})) {
+    if (typeof value !== "string") continue;
+
+    const aliasKey =
+      key === "."
+        ? options.packageName
+        : `${options.packageName}/${key.replace(/^\.\//, "")}`;
+    const replacementPath = path.resolve(options.packageDir, value);
+
+    if (aliasKey.includes("*") || value.includes("*")) {
+      aliases.push({
+        find: new RegExp(`^${escapeRegex(aliasKey).replace(/\\\*/g, "(.*)")}$`),
+        replacement: wildcardReplacement(replacementPath),
+      });
+      continue;
+    }
+
+    aliases.push({
+      find: new RegExp(`^${escapeRegex(aliasKey)}$`),
+      replacement: replacementPath,
+    });
+
+    if (
+      options.preferJsAlias &&
+      !aliasKey.endsWith(".js") &&
+      !aliasKey.endsWith(".css")
+    ) {
+      aliases.push({
+        find: new RegExp(`^${escapeRegex(aliasKey)}\\.js$`),
+        replacement: replacementPath,
+      });
+    }
+  }
+
+  return aliases;
+}
+
 function resolveManualChunk(id: string): string | undefined {
   const normalizedId = id.split(path.sep).join("/");
 
@@ -982,23 +1036,16 @@ export default defineConfig({
           const pkgName = pkg.name;
           if (!pkgName) continue;
           const pkgDir = path.dirname(pkgPath);
-          // Generate export-map aliases
-          for (const [key, value] of Object.entries(pkg.exports || {})) {
-            if (typeof value !== "string") continue;
-            const aliasKey =
-              key === "." ? pkgName : `${pkgName}/${key.replace(/^\.\//, "")}`;
-            aliases.push({
-              find: new RegExp(
-                `^${aliasKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
-              ),
-              replacement: path.resolve(pkgDir, value),
-            });
-          }
+          aliases.push(
+            ...createPackageExportAliases({
+              packageDir: pkgDir,
+              packageExports: pkg.exports,
+              packageName: pkgName,
+            }),
+          );
           // Catch-all subpath for direct src/ access
           aliases.push({
-            find: new RegExp(
-              `^${pkgName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/(.*)`,
-            ),
+            find: new RegExp(`^${escapeRegex(pkgName)}/(.*)`),
             replacement: path.resolve(pkgDir, "src/$1"),
           });
         }
@@ -1011,22 +1058,11 @@ export default defineConfig({
         );
         const sharedPkgDir = path.dirname(sharedPkgPath);
         const sharedPkg = JSON.parse(fs.readFileSync(sharedPkgPath, "utf8"));
-        const aliases = [];
-        for (const [key, value] of Object.entries(sharedPkg.exports || {})) {
-          if (typeof value === "string") {
-            const aliasKey =
-              key === "."
-                ? "@elizaos/shared"
-                : `@elizaos/shared/${key.replace(/^\.\//, "")}`;
-            aliases.push({
-              find: new RegExp(
-                `^${aliasKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
-              ),
-              replacement: path.resolve(sharedPkgDir, value),
-            });
-          }
-        }
-        return aliases;
+        return createPackageExportAliases({
+          packageDir: sharedPkgDir,
+          packageExports: sharedPkg.exports,
+          packageName: "@elizaos/shared",
+        });
       })(),
       // Force local @elizaos/app-core when workspace-linked (prevents stale
       // bun cache copies from overriding the symlinked local source).
@@ -1038,33 +1074,15 @@ export default defineConfig({
         const appCorePkgDir = path.dirname(appCorePkgPath);
         const appCorePkg = JSON.parse(fs.readFileSync(appCorePkgPath, "utf8"));
 
-        const generatedAliases = [];
-
-        for (const [key, value] of Object.entries(appCorePkg.exports || {})) {
-          if (typeof value === "string") {
-            const aliasKey =
-              key === "."
-                ? "@elizaos/app-core"
-                : `@elizaos/app-core/${key.replace(/^\.\//, "")}`;
-            // If the package exports something ending with .js instead of .ts, we check for .ts locally
-            // But the exports in app-core point directly to .ts, .tsx, .css, so we can just resolve it
-            const targetPath = path.resolve(appCorePkgDir, value);
-
-            generatedAliases.push({
-              find: new RegExp(`^${aliasKey}$`),
-              replacement: targetPath,
-            });
-            // Also map .js extension for users importing it as .js
-            if (!aliasKey.endsWith(".js") && !aliasKey.endsWith(".css")) {
-              generatedAliases.push({
-                find: new RegExp(`^${aliasKey}\\.js$`),
-                replacement: targetPath,
-              });
-            }
-          }
-        }
-
-        const uiSource = path.resolve(elizaRoot, "packages/ui/src");
+        const generatedAliases = createPackageExportAliases({
+          packageDir: appCorePkgDir,
+          packageExports: appCorePkg.exports,
+          packageName: "@elizaos/app-core",
+          preferJsAlias: true,
+        });
+        const uiPkgPath = path.resolve(elizaRoot, "packages/ui/package.json");
+        const uiPkgDir = path.dirname(uiPkgPath);
+        const uiPkg = JSON.parse(fs.readFileSync(uiPkgPath, "utf8"));
         const _autonomousSource = path.resolve(
           elizaRoot,
           "node_modules/@elizaos/agent/packages/agent/src",
@@ -1072,14 +1090,11 @@ export default defineConfig({
 
         return [
           ...generatedAliases,
-          {
-            find: /^@elizaos\/ui$/,
-            replacement: path.join(uiSource, "index.ts"),
-          },
-          {
-            find: /^@elizaos\/ui\/(.*)$/,
-            replacement: `${uiSource}/$1/index.ts`, // assumes subpaths are directories
-          },
+          ...createPackageExportAliases({
+            packageDir: uiPkgDir,
+            packageExports: uiPkg.exports,
+            packageName: "@elizaos/ui",
+          }),
           // NOTE: @elizaos/agent barrel re-exports server-only code (eliza.ts,
           // server.ts) that imports native modules (node-llama-cpp, node:module).
           // Nothing in the browser needs the barrel — only subpath imports like
@@ -1192,7 +1207,7 @@ export default defineConfig({
       "node-llama-cpp",
       "@node-llama-cpp/mac-arm64-metal",
       // Contains native-only pty-state-capture import; skip pre-bundling.
-      "@elizaos/core/agent-orchestrator",
+      "@elizaos/plugin-agent-orchestrator",
       // @elizaos/plugin-secrets-manager is now built into @elizaos/core features
       // Node-only HTTP client — crashes in browser, stub via nativeModuleStubPlugin
       "undici",

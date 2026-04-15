@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import builtins
 import time
-from typing import TYPE_CHECKING, Any, Callable, ClassVar
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from elizaos.types import Service
 
@@ -23,7 +24,7 @@ from .storage import (
     WorldMetadataStorage,
 )
 from .types import (
-    MAX_ACCESS_LOG_ENTRIES,
+    PluginRequirementStatus,
     PluginSecretRequirement,
     SecretAccessLog,
     SecretChangeCallback,
@@ -32,10 +33,7 @@ from .types import (
     SecretContext,
     SecretLevel,
     SecretMetadata,
-    PluginRequirementStatus,
-    SecretsError,
     SecretsServiceConfig,
-    ValidationResult,
 )
 
 if TYPE_CHECKING:
@@ -102,9 +100,7 @@ class SecretsService(Service):
         self._change_callbacks.clear()
         self._global_change_callbacks.clear()
         if self._runtime:
-            self._runtime.logger.info(
-                "SecretsService stopped", src="service:secrets"
-            )
+            self._runtime.logger.info("SecretsService stopped", src="service:secrets")
 
     # ------------------------------------------------------------------
     # Core operations
@@ -134,14 +130,16 @@ class SecretsService(Service):
         previous = await self._storage.get(key, context)
         success = await self._storage.set(key, value, context, config)
         if success:
-            await self._emit_change_event(SecretChangeEvent(
-                type="created" if previous is None else "updated",
-                key=key,
-                value=value,
-                previous_value=previous,
-                context=context,
-                timestamp=time.time(),
-            ))
+            await self._emit_change_event(
+                SecretChangeEvent(
+                    type="created" if previous is None else "updated",
+                    key=key,
+                    value=value,
+                    previous_value=previous,
+                    context=context,
+                    timestamp=time.time(),
+                )
+            )
         return success
 
     async def delete(self, key: str, context: SecretContext) -> bool:
@@ -152,14 +150,16 @@ class SecretsService(Service):
         previous = await self._storage.get(key, context)
         success = await self._storage.delete(key, context)
         if success:
-            await self._emit_change_event(SecretChangeEvent(
-                type="deleted",
-                key=key,
-                value=None,
-                previous_value=previous,
-                context=context,
-                timestamp=time.time(),
-            ))
+            await self._emit_change_event(
+                SecretChangeEvent(
+                    type="deleted",
+                    key=key,
+                    value=None,
+                    previous_value=previous,
+                    context=context,
+                    timestamp=time.time(),
+                )
+            )
         return success
 
     async def exists(self, key: str, context: SecretContext) -> bool:
@@ -177,9 +177,7 @@ class SecretsService(Service):
             return None
         return await self._storage.get_config(key, context)
 
-    async def update_config(
-        self, key: str, context: SecretContext, config: dict[str, Any]
-    ) -> bool:
+    async def update_config(self, key: str, context: SecretContext, config: dict[str, Any]) -> bool:
         if self._storage is None:
             return False
         return await self._storage.update_config(key, context, config)
@@ -212,8 +210,10 @@ class SecretsService(Service):
 
     async def get_user(self, key: str, user_id: str) -> str | None:
         ctx = SecretContext(
-            level=SecretLevel.USER, user_id=user_id,
-            agent_id=str(self.runtime.agent_id), requester_id=user_id,
+            level=SecretLevel.USER,
+            user_id=user_id,
+            agent_id=str(self.runtime.agent_id),
+            requester_id=user_id,
         )
         return await self.get(key, ctx)
 
@@ -221,8 +221,10 @@ class SecretsService(Service):
         self, key: str, value: str, user_id: str, config: dict[str, Any] | None = None
     ) -> bool:
         ctx = SecretContext(
-            level=SecretLevel.USER, user_id=user_id,
-            agent_id=str(self.runtime.agent_id), requester_id=user_id,
+            level=SecretLevel.USER,
+            user_id=user_id,
+            agent_id=str(self.runtime.agent_id),
+            requester_id=user_id,
         )
         return await self.set(key, value, ctx, config)
 
@@ -274,26 +276,26 @@ class SecretsService(Service):
     # Change notifications
     # ------------------------------------------------------------------
 
-    def on_secret_changed(
-        self, key: str, callback: SecretChangeCallback
-    ) -> Callable[[], None]:
+    def on_secret_changed(self, key: str, callback: SecretChangeCallback) -> Callable[[], None]:
         cbs = self._change_callbacks.setdefault(key, [])
         cbs.append(callback)
+
         def unsubscribe() -> None:
             callbacks = self._change_callbacks.get(key, [])
             if callback in callbacks:
                 callbacks.remove(callback)
             if not callbacks:
                 self._change_callbacks.pop(key, None)
+
         return unsubscribe
 
-    def on_any_secret_changed(
-        self, callback: SecretChangeCallback
-    ) -> Callable[[], None]:
+    def on_any_secret_changed(self, callback: SecretChangeCallback) -> Callable[[], None]:
         self._global_change_callbacks.append(callback)
+
         def unsubscribe() -> None:
             if callback in self._global_change_callbacks:
                 self._global_change_callbacks.remove(callback)
+
         return unsubscribe
 
     async def _emit_change_event(self, event: SecretChangeEvent) -> None:
@@ -329,7 +331,7 @@ class SecretsService(Service):
         )
         self._access_logs.append(log)
         if len(self._access_logs) > self._secrets_config.max_access_log_entries:
-            self._access_logs = self._access_logs[-self._secrets_config.max_access_log_entries:]
+            self._access_logs = self._access_logs[-self._secrets_config.max_access_log_entries :]
 
     def get_access_logs(
         self,

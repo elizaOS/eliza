@@ -115,6 +115,33 @@ interface CompatPluginRecord {
   isActive?: boolean;
 }
 
+type PluginDriftFlag =
+  | "entries_vs_compat"
+  | "entries_vs_allowlist"
+  | "inactive_but_enabled"
+  | "active_but_disabled";
+
+interface PluginDriftDiagnostic {
+  pluginId: string;
+  npmName: string | null;
+  category: PluginCategory;
+  enabled_ui: boolean;
+  enabled_allowlist: boolean | null;
+  is_active: boolean;
+  drift_flags: PluginDriftFlag[];
+}
+
+interface PluginDriftDiagnosticsSummary {
+  total: number;
+  withDrift: number;
+  byFlag: Record<PluginDriftFlag, number>;
+}
+
+interface PluginDriftDiagnosticsReport {
+  summary: PluginDriftDiagnosticsSummary;
+  plugins: PluginDriftDiagnostic[];
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -171,6 +198,10 @@ const REVEALABLE_KEY_PREFIXES = [
   "LIVEPEER_",
   ...SENSITIVE_KEY_PREFIXES,
 ];
+
+const DRIFT_LOG_THROTTLE_MS = 5 * 60 * 1000;
+let _lastDriftWarningAt = 0;
+let _lastDriftWarningFingerprint = "";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -368,6 +399,169 @@ function resolvePersistedPluginEnabled(
   }
 
   return pluginEnabled;
+}
+
+function shortPluginIdFromNpmName(npmName: string | null): string | null {
+  if (!npmName || typeof npmName !== "string") {
+    return null;
+  }
+  if (npmName.startsWith("@elizaos/app-")) {
+    return npmName.slice("@elizaos/".length);
+  }
+  if (npmName.startsWith("@elizaos/plugin-")) {
+    return npmName.slice("@elizaos/plugin-".length);
+  }
+  return normalizePluginId(npmName);
+}
+
+export function analyzePluginStateDrift(
+  pluginList: CompatPluginRecord[],
+  configRecord: Record<string, unknown>,
+  configEntries: Record<string, { enabled?: unknown }>,
+  allowList: Set<string>,
+): PluginDriftDiagnosticsReport {
+  const diagnostics = pluginList.map((plugin): PluginDriftDiagnostic => {
+    const pluginId = String(plugin.id ?? "");
+    const category = normalizePluginCategory(plugin.category);
+    const npmName =
+      typeof plugin.npmName === "string" && plugin.npmName.length > 0
+        ? plugin.npmName
+        : null;
+    const shortId = shortPluginIdFromNpmName(npmName) ?? pluginId;
+    const uiEnabled = Boolean(plugin.enabled);
+    const compatEnabled =
+      category === "connector"
+        ? readCompatSectionEnabled(
+            configRecord.connectors,
+            resolveCompatConfigKey(pluginId, npmName ?? undefined, CONNECTOR_PLUGINS),
+          )
+        : category === "streaming"
+          ? readCompatSectionEnabled(
+              configRecord.streaming,
+              resolveCompatConfigKey(
+                pluginId,
+                npmName ?? undefined,
+                STREAMING_PLUGINS,
+              ),
+            )
+          : undefined;
+    const entryEnabled =
+      typeof configEntries[pluginId]?.enabled === "boolean"
+        ? Boolean(configEntries[pluginId]?.enabled)
+        : undefined;
+    const enabledAllowList =
+      npmName == null
+        ? null
+        : allowList.has(npmName) || allowList.has(shortId);
+    const isActive = Boolean(plugin.isActive);
+    const driftFlags: PluginDriftFlag[] = [];
+
+    if (
+      compatEnabled !== undefined &&
+      entryEnabled !== undefined &&
+      compatEnabled !== entryEnabled
+    ) {
+      driftFlags.push("entries_vs_compat");
+    }
+    // Connector and streaming plugins load from config.connectors / config.streaming,
+    // not from plugins.allow.  Only flag allowlist drift for plugins whose load path
+    // actually depends on the allow list (i.e. optional core plugins).
+    if (
+      enabledAllowList !== null &&
+      entryEnabled !== undefined &&
+      category !== "connector" &&
+      category !== "streaming"
+    ) {
+      if (enabledAllowList !== entryEnabled) {
+        driftFlags.push("entries_vs_allowlist");
+      }
+    }
+    if (uiEnabled && !isActive) {
+      driftFlags.push("inactive_but_enabled");
+    }
+    if (!uiEnabled && isActive) {
+      driftFlags.push("active_but_disabled");
+    }
+
+    return {
+      pluginId,
+      npmName,
+      category,
+      enabled_ui: uiEnabled,
+      enabled_allowlist: enabledAllowList,
+      is_active: isActive,
+      drift_flags: driftFlags,
+    };
+  });
+
+  const withDrift = diagnostics.filter((plugin) => plugin.drift_flags.length > 0);
+  const byFlag: Record<PluginDriftFlag, number> = {
+    entries_vs_compat: 0,
+    entries_vs_allowlist: 0,
+    inactive_but_enabled: 0,
+    active_but_disabled: 0,
+  };
+  for (const plugin of withDrift) {
+    for (const flag of plugin.drift_flags) {
+      byFlag[flag] += 1;
+    }
+  }
+
+  return {
+    summary: {
+      total: diagnostics.length,
+      withDrift: withDrift.length,
+      byFlag,
+    },
+    plugins: diagnostics,
+  };
+}
+
+function buildPluginDriftDiagnostics(
+  runtime: AgentRuntime | null,
+): PluginDriftDiagnosticsReport {
+  const pluginList = buildPluginListResponse(runtime)
+    .plugins as unknown as CompatPluginRecord[];
+  const config = loadElizaConfig();
+  const configRecord = config as Record<string, unknown>;
+  const configEntries = config.plugins?.entries ?? {};
+  const allowList = new Set(config.plugins?.allow ?? []);
+
+  return analyzePluginStateDrift(
+    pluginList,
+    configRecord,
+    configEntries,
+    allowList,
+  );
+}
+
+function maybeLogPluginStateDrift(report: PluginDriftDiagnosticsReport): void {
+  if (report.summary.withDrift === 0) {
+    return;
+  }
+  const drifted = report.plugins
+    .filter((plugin) => plugin.drift_flags.length > 0)
+    .map((plugin) => `${plugin.pluginId}:${plugin.drift_flags.join("+")}`)
+    .sort();
+  const fingerprint = drifted.join("|");
+  const now = Date.now();
+  if (
+    fingerprint === _lastDriftWarningFingerprint &&
+    now - _lastDriftWarningAt < DRIFT_LOG_THROTTLE_MS
+  ) {
+    return;
+  }
+  _lastDriftWarningAt = now;
+  _lastDriftWarningFingerprint = fingerprint;
+  logger.warn(
+    {
+      src: "api:plugins",
+      driftCount: report.summary.withDrift,
+      byFlag: report.summary.byFlag,
+      plugins: drifted,
+    },
+    "Plugin enable-state drift detected between /api/plugins and /api/plugins/core models",
+  );
 }
 
 // ── Enabled-state drift reconciliation ────────────────────────────────
@@ -1068,10 +1262,16 @@ export function persistCompatPluginMutation(
 /**
  * Plugin management routes.
  *
- * - `GET  /api/plugins`           — returns filtered plugin list
- * - `PUT  /api/plugins/:id`       — updates plugin config, writes env vars
- * - `POST /api/plugins/:id/test`  — tests plugin connectivity
- * - `POST /api/plugins/:id/reveal`— reveals plugin env var value
+ * Contract note:
+ * - `/api/plugins` is the Settings/UI model.
+ * - `/api/plugins/core` is the optional-core allow-list model.
+ * - These can drift; use `/api/plugins/diagnostics` to inspect mismatches.
+ *
+ * - `GET  /api/plugins`             — returns filtered plugin list
+ * - `GET  /api/plugins/diagnostics` — returns drift diagnostics
+ * - `PUT  /api/plugins/:id`         — updates plugin config, writes env vars
+ * - `POST /api/plugins/:id/test`    — tests plugin connectivity
+ * - `POST /api/plugins/:id/reveal`  — reveals plugin env var value
  */
 export async function handlePluginsCompatRoutes(
   req: http.IncomingMessage,
@@ -1095,7 +1295,18 @@ export async function handlePluginsCompatRoutes(
     logger.debug(
       `[api/plugins] manifest=${manifestPath ?? "NOT_FOUND"} total=${pluginResponse.plugins.length} runtime=${state.current ? "active" : "null"}`,
     );
+    maybeLogPluginStateDrift(buildPluginDriftDiagnostics(state.current));
     sendJsonResponse(res, 200, pluginResponse);
+    return true;
+  }
+
+  if (method === "GET" && url.pathname === "/api/plugins/diagnostics") {
+    if (!ensureCompatApiAuthorized(req, res)) {
+      return true;
+    }
+    const diagnostics = buildPluginDriftDiagnostics(state.current);
+    maybeLogPluginStateDrift(diagnostics);
+    sendJsonResponse(res, 200, diagnostics);
     return true;
   }
 
@@ -1151,6 +1362,10 @@ export async function handlePluginsCompatRoutes(
       result.payload.loadedPackages = runtimeApply.loadedPackages;
       result.payload.unloadedPackages = runtimeApply.unloadedPackages;
       result.payload.reloadedPackages = runtimeApply.reloadedPackages;
+      const diagnostics = buildPluginDriftDiagnostics(state.current);
+      if (diagnostics.summary.withDrift > 0) {
+        result.payload.diagnostics = diagnostics;
+      }
     }
     sendJsonResponse(res, result.status, result.payload);
     return true;
