@@ -531,9 +531,11 @@ export function CodingAgentTasksPanel({
         });
       } catch (error) {
         if (cancelled) return;
-        setLoadError(
-          getClientErrorMessage(error, "Failed to load task threads."),
-        );
+        if (!silent) {
+          setLoadError(
+            getClientErrorMessage(error, "Failed to load task threads."),
+          );
+        }
         if (!silent) {
           setThreads([]);
           setSelectedThreadId(null);
