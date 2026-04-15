@@ -11,7 +11,7 @@ import { req } from "../../../../test/helpers/http";
 const LIVE_TESTS_ENABLED =
   process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
-const WATCH_DESKTOP_SUPPORTED = process.platform !== "linux";
+const WATCH_DESKTOP_SUPPORTED = process.platform === "darwin";
 
 type DesktopMode = "dev:desktop" | "dev:desktop:watch";
 
@@ -361,9 +361,10 @@ describeIf(LIVE_TESTS_ENABLED)(
       });
     }, 300_000);
 
-    // Linux CI already covers the Vite-backed blocker flow via
-    // selfcontrol-dev.live.e2e.test.ts; the Electrobun watch-mode window can
-    // still fail there when CEF initialization flakes under Xvfb.
+    // The Vite-backed blocker flow is already covered by selfcontrol-dev on
+    // CI. The Electrobun watch-mode window remains flaky outside macOS: Linux
+    // can fail under Xvfb/CEF, and Windows can leave the dev build directory
+    // locked while Electrobun tries to replace it.
     it.skipIf(!WATCH_DESKTOP_SUPPORTED)(
       "boots bun run dev:desktop:watch with the Vite renderer and blocker API",
       async () => {

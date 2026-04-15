@@ -25,7 +25,8 @@ import {
   type UUID,
 } from "@elizaos/core";
 import dotenv from "dotenv";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
+import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
 import { USER_PREFS_TABLE } from "../../../typescript/src/advanced-capabilities/personality/types.ts";
 import { withTimeout } from "../../../../../test/helpers/test-utils";
@@ -93,8 +94,7 @@ async function handleMessageAndCollectText(
   return responseText;
 }
 
-if (hasModelProvider) {
-  describe("Personality Routing E2E", () => {
+describeIf(hasModelProvider)("Personality Routing E2E", () => {
     let runtime: AgentRuntime;
 
     const pgliteDir = fs.mkdtempSync(
@@ -282,4 +282,3 @@ if (hasModelProvider) {
       ).toBe(true);
     }, 120_000);
   });
-}
