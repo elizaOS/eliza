@@ -94,4 +94,55 @@ describe("run-mobile-build", () => {
       ),
     ).toBe("android-capacitor\n");
   });
+
+  it("keeps shipped platform templates on app-local capacitor packages", () => {
+    const repoRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+    const iosPodfile = fs.readFileSync(
+      path.join(
+        repoRoot,
+        "packages",
+        "app-core",
+        "platforms",
+        "ios",
+        "App",
+        "Podfile",
+      ),
+      "utf8",
+    );
+    const androidSettings = fs.readFileSync(
+      path.join(
+        repoRoot,
+        "packages",
+        "app-core",
+        "platforms",
+        "android",
+        "capacitor.settings.gradle",
+      ),
+      "utf8",
+    );
+    const androidBuild = fs.readFileSync(
+      path.join(
+        repoRoot,
+        "packages",
+        "app-core",
+        "platforms",
+        "android",
+        "app",
+        "capacitor.build.gradle",
+      ),
+      "utf8",
+    );
+
+    expect(iosPodfile).not.toContain("node_modules/.bun/");
+    expect(iosPodfile).toContain("../../node_modules/@capacitor/ios");
+    expect(iosPodfile).not.toContain("CapacitorStatusBar");
+
+    expect(androidSettings).not.toContain("node_modules/.bun/");
+    expect(androidSettings).toContain(
+      "../node_modules/@capacitor/android/capacitor",
+    );
+    expect(androidSettings).not.toContain("capacitor-status-bar");
+
+    expect(androidBuild).not.toContain("capacitor-status-bar");
+  });
 });

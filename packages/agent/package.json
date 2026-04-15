@@ -86,6 +86,7 @@
     "./test-support": "./src/test-support/index.ts",
     "./test-support/*": "./src/test-support/*.ts",
     "./testing": "./src/testing/index.ts",
+    "./types/trajectory": "./src/types/trajectory.ts",
     "./triggers": "./src/triggers/index.ts",
     "./triggers/*": "./src/triggers/*.ts",
     "./utils": "./src/utils/index.ts",
