@@ -165,7 +165,7 @@ export MILADY_SKIP_LOCAL_UPSTREAMS=1
 export ELIZA_SKIP_LOCAL_UPSTREAMS=1
 
 log "Installing published-workspace fallback dependencies"
-bash scripts/install-published-workspace-fallback-deps.sh
+bash "$REPO_ROOT/scripts/install-published-workspace-fallback-deps.sh"
 
 log "Running repository postinstall"
 SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 node eliza/packages/app-core/scripts/run-repo-setup.mjs
