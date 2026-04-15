@@ -31,7 +31,7 @@ import { loadCandidateHistory, persistScanArtifacts } from "./persist";
 import { buildPortfolioLifecycle, loadPortfolioLifecycle } from "./portfolio";
 import { scoreCandidates, setScoreWeights } from "./score";
 import { buildTreasurySimulation } from "./simulation";
-import { pushNotification, setGmgnSignals, setPaperAgents, setPaperSummary } from "./store";
+import { getBnbPriceUsd, pushNotification, setGmgnSignals, setPaperAgents, setPaperSummary } from "./store";
 import type { GmgnSignalSnapshot } from "./store";
 import { applyAbsorptionOverrides, loadAbsorptionState } from "./strategy-absorption";
 
@@ -109,9 +109,11 @@ export async function runElizaOkDiscoveryCycle(
     const previousCandidateHistory = await loadCandidateHistory(
       config.reportsDir,
     );
+    const bnbPriceEstimate = await getBnbPriceUsd();
     const treasurySimulation = buildTreasurySimulation(
       candidates,
       config.treasury,
+      bnbPriceEstimate,
     );
     const gooLane = buildExecutionGooLane(config, gooCandidates);
     const baseExecutionState = buildExecutionState(
@@ -287,9 +289,6 @@ export async function runElizaOkDiscoveryCycle(
     );
 
     // ── Goo Paper Agent cycle ──
-    const bnbPriceEstimate = treasurySimulation.paperCapitalUsd > 0
-      ? treasurySimulation.paperCapitalUsd / 100
-      : 600;
     let gooAgents = await loadPaperAgents(config.reportsDir);
     if (gooAgents.length === 0) {
       gooAgents = spawnDefaultAgentFleet(1.0);

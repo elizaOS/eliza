@@ -40,7 +40,7 @@ import {
   saveAbsorptionState,
   type AbsorptionState,
 } from "./strategy-absorption";
-import { getGmgnSignals, getLatestSnapshot, getNotificationSeq, getNotifications, getPaperAgents, getPaperSummary, setPaperAgents, setPaperSummary } from "./store";
+import { getBnbPriceUsd, getGmgnSignals, getLatestSnapshot, getNotificationSeq, getNotifications, getPaperAgents, getPaperSummary, setPaperAgents, setPaperSummary } from "./store";
 import type { GmgnSignalSnapshot } from "./store";
 import type {
   CandidateDetail,
@@ -4372,6 +4372,7 @@ function renderHtml(
   cloudSession: ElizaCloudSession | null,
   cloudSummary: ElizaCloudSummaryFields | null,
   sidebarWalletBalanceLabel = "n/a",
+  bnbPriceEst = 600,
 ): string {
   if (!snapshot) {
     return `<!doctype html>
@@ -4594,9 +4595,7 @@ function renderHtml(
     .map((rule) => `${rule.label} +${rule.gainPct}% -> sell ${rule.sellPct}%`)
     .join(" · ");
 
-  const bnbPriceEst = treasurySimulation.paperCapitalUsd > 0
-    ? 600
-    : 600;
+  // bnbPriceEst is now passed as a parameter
 
   const topCandidates = snapshot.topCandidates
     .slice(0, 5)
@@ -5105,8 +5104,7 @@ function renderHtml(
           <h3><a class="candidate-link" href="${candidateHref(position.tokenAddress)}" target="_blank" rel="noreferrer">${escapeHtml(position.tokenSymbol)}</a></h3>
           <p class="candidate-subtitle">Score ${position.currentScore}/100 · held ${holdStr} · FDV ${currentFdv}</p>
           <div class="candidate-stats" style="grid-template-columns:1fr 1fr">
-            <div><span>Allocated</span><strong>${formatUsd(position.allocationUsd)}</strong></div>
-            <div><span>Current Value</span><strong>${formatUsd(position.currentValueUsd)}</strong></div>
+            <div><span>Position Size</span><strong>${formatBnb(position.allocationUsd / bnbPriceEst)} BNB</strong></div>
             <div><span>Entry FDV</span><strong>${entryFdv}</strong></div>
             <div><span>P&L</span>${pnlDisplay}</div>${tpDisplay ? `
             <div><span>TP Stages</span>${tpDisplay}</div>` : ""}
@@ -5379,8 +5377,8 @@ function renderHtml(
       "Simulated capital available for new allocation.",
     ),
     renderMetricCard(
-      "Allocated",
-      formatUsd(treasurySimulation.allocatedUsd),
+      "Deployed",
+      `${formatBnb(treasurySimulation.allocatedUsd / bnbPriceEst)} BNB`,
       "Simulated capital assigned to active positions.",
     ),
     renderMetricCard(
@@ -6597,8 +6595,8 @@ function renderHtml(
             <div class="panel-accord__body">
               ${portfolioPnlChart}
               <div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-top:12px">
-                <div class="metric"><span>Total Allocated</span><strong>${formatUsd(portfolioLifecycle.totalAllocatedUsd)}</strong></div>
-                <div class="metric"><span>Current Value</span><strong>${formatUsd(portfolioLifecycle.totalCurrentValueUsd)}</strong></div>
+                <div class="metric"><span>Total Deployed</span><strong>${formatBnb(portfolioLifecycle.totalAllocatedUsd / bnbPriceEst)} BNB</strong></div>
+                <div class="metric"><span>Current Value</span><strong>${formatBnb(portfolioLifecycle.totalCurrentValueUsd / bnbPriceEst)} BNB</strong></div>
                 <div class="metric"><span>Unrealized P&L</span><strong class="${portfolioLifecycle.totalUnrealizedPnlUsd >= 0 ? 'g' : 'r'}">${portfolioLifecycle.totalUnrealizedPnlUsd >= 0 ? '+' : ''}${formatUsd(portfolioLifecycle.totalUnrealizedPnlUsd)} (${portfolioLifecycle.totalUnrealizedPnlPct >= 0 ? '+' : ''}${portfolioLifecycle.totalUnrealizedPnlPct.toFixed(1)}%)</strong></div>
                 <div class="metric"><span>Cash Balance</span><strong>${formatUsd(portfolioLifecycle.cashBalanceUsd)}</strong></div>
               </div>
@@ -6871,9 +6869,9 @@ function renderHtml(
       'simulate_buy': '模拟买入', 'simulate_sell': '模拟卖出',
       'Cumulative P&L': '累计盈亏', 'exits': '退出',
       'Entry Price': '入场价', 'Current Price': '当前价', 'Cost Basis': '成本基础',
-      'Allocation': '分配额', 'Current Value': '当前价值', 'Unrealized P&L': '未实现盈亏',
+      'Position Size': '仓位大小', 'Current Value': '当前价值', 'Unrealized P&L': '未实现盈亏',
       'Peak Gain': '峰值涨幅', 'TP Stages Hit': '止盈阶段', 'Entered': '入场时间',
-      'Last Update': '最后更新', 'Total Allocated': '总分配', 'Cash Balance': '现金余额',
+      'Last Update': '最后更新', 'Total Deployed': '总部署', 'Cash Balance': '现金余额',
       'Model Allocation': '模型分配', 'Portfolio Initial': '组合初始',
       'Portfolio Current': '组合当前', 'not in portfolio': '不在组合中',
       'Score': '评分', 'Weight': '权重', 'Liquidity': '流动性',
@@ -9152,10 +9150,13 @@ Guidelines:
   if (pathname === "/dashboard") {
     const refreshedCloud = await refreshElizaCloudSession(cloudSession);
     cloudSession = refreshedCloud.session;
-    const sidebarWalletBalanceLabel = await fetchWalletNativeBalanceLabel(
-      config.execution.rpcUrl,
-      "0x2D6C3358A3acFe3be42b2Bdf7419e87091270c5F",
-    );
+    const [sidebarWalletBalanceLabel, bnbPrice] = await Promise.all([
+      fetchWalletNativeBalanceLabel(
+        config.execution.rpcUrl,
+        "0x2D6C3358A3acFe3be42b2Bdf7419e87091270c5F",
+      ),
+      getBnbPriceUsd(),
+    ]);
     res.writeHead(200, {
       "content-type": "text/html; charset=utf-8",
       ...(cloudSession
@@ -9168,6 +9169,7 @@ Guidelines:
         cloudSession,
         refreshedCloud.summary,
         sidebarWalletBalanceLabel,
+        bnbPrice,
       ),
     );
     return;

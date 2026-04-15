@@ -11,6 +11,7 @@ function clampPercent(value: number): number {
 export function buildTreasurySimulation(
   candidates: ScoredCandidate[],
   treasury: TreasuryConfig,
+  bnbPriceUsd = 600,
 ): TreasurySimulation {
   const reservePct = clampPercent(treasury.reservePct);
   const paperCapitalUsd = treasury.paperCapitalUsd;
@@ -25,7 +26,7 @@ export function buildTreasurySimulation(
     (sum, candidate) => sum + candidate.score,
     0,
   );
-  const maxPerPositionUsd = 600;
+  const maxPerPositionUsd = bnbPriceUsd;
   const positions = selected.map((candidate) => {
     const weight = weightBase > 0 ? candidate.score / weightBase : 0;
     const allocationUsd = Math.min(maxPerPositionUsd, Math.round(deployableCapitalUsd * weight));

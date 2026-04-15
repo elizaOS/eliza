@@ -88,3 +88,27 @@ export function getNotifications(since?: string): LiveNotification[] {
 export function getNotificationSeq(): number {
   return notificationSeq;
 }
+
+/* ─── BNB Price (Binance, cached 60 s) ──────────────────────────── */
+
+let cachedBnbPrice = 600;
+let bnbPriceFetchedAt = 0;
+const BNB_CACHE_MS = 60_000;
+
+export async function getBnbPriceUsd(): Promise<number> {
+  if (Date.now() - bnbPriceFetchedAt < BNB_CACHE_MS) return cachedBnbPrice;
+  try {
+    const res = await fetch("https://api.binance.com/api/v3/ticker/price?symbol=BNBUSDT");
+    if (res.ok) {
+      const data = (await res.json()) as { price: string };
+      const price = parseFloat(data.price);
+      if (price > 0) {
+        cachedBnbPrice = price;
+        bnbPriceFetchedAt = Date.now();
+      }
+    }
+  } catch {
+    // keep last known price on network error
+  }
+  return cachedBnbPrice;
+}
