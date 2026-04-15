@@ -1,2 +1,2 @@
-/** Shell header — implemented in `@elizaos/ui`; re-exported for `@elizaos/app-core/components`. */
-export { Header } from "@elizaos/ui";
+/** Shell header — re-export the concrete shell module instead of the `@elizaos/ui` barrel. */
+export { Header } from "@elizaos/ui/components/shell/Header";
