@@ -6,6 +6,7 @@ import {
   ExternalLink,
   Github,
   ListTodo,
+  RefreshCw,
   Shield,
   Target,
 } from "lucide-react";
@@ -571,6 +572,25 @@ export function LifeOpsPageView() {
           eyebrow="LifeOps"
           heading="Personal Operations"
           className="px-0 py-0 sm:px-0"
+          actions={
+            appEnabled ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full px-4 text-xs-tight font-semibold"
+                onClick={() => void refreshAll()}
+                disabled={
+                  lifeOpsApp.loading ||
+                  lifeOpsApp.saving ||
+                  overviewLoading ||
+                  githubLoading
+                }
+              >
+                <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                Refresh
+              </Button>
+            ) : undefined
+          }
         />
 
         {lifeOpsApp.error ? (
