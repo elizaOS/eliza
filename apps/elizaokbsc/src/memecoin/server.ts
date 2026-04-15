@@ -149,9 +149,9 @@ function renderLandingPage(): string {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>elizaOK | AI Agent on BNB Chain</title>
-  <meta name="description" content="elizaOK — AI-powered memecoin discovery and airdrop flywheel on BNB Chain. Powered by elizaOS." />
-  ${renderHeadBrandAssets("elizaOK | AI Agent on BNB Chain")}
+  <title>elizaOK | Value Layer on BNB Chain</title>
+  <meta name="description" content="elizaOK — the value layer that automates alpha discovery, position building, and real value delivery on BNB Chain. Built on elizaOS." />
+  ${renderHeadBrandAssets("elizaOK | Value Layer on BNB Chain")}
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@100..800&display=swap" rel="stylesheet" />
   <style>
@@ -250,7 +250,7 @@ function renderLandingPage(): string {
   <div class="vignette"></div>
   <div class="hero">
     <div class="marquee-wrap"><div class="marquee-track">
-      <span>elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot;&nbsp;</span><span>elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot;&nbsp;</span><span>elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot;&nbsp;</span><span>elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot;&nbsp;</span><span>elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot;&nbsp;</span><span>elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot;&nbsp;</span>
+      <span>elizaOK &middot; value layer on BNB Chain &middot; alpha discovery &middot; position building &middot; built on elizaOS &middot;&nbsp;</span><span>elizaOK &middot; value layer on BNB Chain &middot; alpha discovery &middot; position building &middot; built on elizaOS &middot;&nbsp;</span><span>elizaOK &middot; value layer on BNB Chain &middot; alpha discovery &middot; position building &middot; built on elizaOS &middot;&nbsp;</span><span>elizaOK &middot; value layer on BNB Chain &middot; alpha discovery &middot; position building &middot; built on elizaOS &middot;&nbsp;</span><span>elizaOK &middot; value layer on BNB Chain &middot; alpha discovery &middot; position building &middot; built on elizaOS &middot;&nbsp;</span><span>elizaOK &middot; value layer on BNB Chain &middot; alpha discovery &middot; position building &middot; built on elizaOS &middot;&nbsp;</span>
     </div></div>
     <div class="audio-player" id="audioPlayer">
       <button id="ap-play" class="waiting" aria-label="Play/Pause"><svg id="ap-icon-play" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg><svg id="ap-icon-pause" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>
@@ -384,7 +384,7 @@ function renderCloudPopupResultHtml(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ElizaOK | ElizaCloud</title>
+  <title>elizaOK | ElizaCloud</title>
   <style>
     :root { color-scheme: dark; }
     body {
@@ -442,7 +442,7 @@ function renderCloudCallbackBridgeHtml(popupMode: boolean): string {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ElizaOK | ElizaCloud Callback</title>
+  <title>elizaOK | ElizaCloud Callback</title>
   <style>
     :root { color-scheme: dark; }
     body {
@@ -477,7 +477,7 @@ function renderCloudCallbackBridgeHtml(popupMode: boolean): string {
   <div class="panel">
     <div class="eyebrow">ElizaCloud</div>
     <h1>Completing Sign-In</h1>
-    <p>Finalizing hosted app authentication for ElizaOK...</p>
+    <p>Finalizing hosted app authentication for elizaOK...</p>
   </div>
   <script>
     (function () {
@@ -1345,7 +1345,7 @@ function buildPortfolioPositionDetail(
 }
 
 function renderBrandLogoImage(className = "brand-image"): string {
-  return `<img class="${className}" src="/assets/avatar.png" alt="ElizaOK" />`;
+  return `<img class="${className}" src="/assets/avatar.png" alt="elizaOK" />`;
 }
 
 function renderHeadBrandAssets(title: string): string {
@@ -1510,7 +1510,7 @@ function renderCandidateDetail(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  ${renderHeadBrandAssets(`${detail.tokenSymbol} | ElizaOK`)}
+  ${renderHeadBrandAssets(`${detail.tokenSymbol} | elizaOK`)}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Kode+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -1852,7 +1852,7 @@ function renderGooCandidateDetail(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  ${renderHeadBrandAssets(`Goo Agent ${candidate.agentId} | ElizaOK`)}
+  ${renderHeadBrandAssets(`Goo Agent ${candidate.agentId} | elizaOK`)}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Kode+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -2761,7 +2761,7 @@ th.a-th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(-
   <div class="a-hero">
     <div>
       <h1><img class="a-hero-avatar" src="/assets/avatar.png" alt="elizaOK" /><span>elizaOK</span> · <span data-i18n="空投资格">Airdrop Eligibility</span></h1>
-      <p data-i18n="国库飞轮将收益分配给合格的 $ElizaOK 持有者。检查您的钱包是否有资格参与当前空投周期并查看分配计划。">The treasury flywheel distributes gains back to qualified $ElizaOK holders. Check if your wallet qualifies for the current airdrop cycle and view the distribution plan.</p>
+      <p data-i18n="国库飞轮将收益分配给合格的 $elizaOK 持有者。检查您的钱包是否有资格参与当前空投周期并查看分配计划。">The treasury flywheel distributes gains back to qualified $elizaOK holders. Check if your wallet qualifies for the current airdrop cycle and view the distribution plan.</p>
     </div>
     <div>
       <div class="a-badge ${execEnabled ? "a-badge--live" : "a-badge--standby"}">${execEnabled ? (execDryRun ? "DRY RUN" : "LIVE") : "STANDBY"}</div>
@@ -2778,7 +2778,7 @@ th.a-th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(-
     <div class="a-stat">
       <div class="a-stat__label">Eligible Holders</div>
       <div class="a-stat__val">${eligible}</div>
-      <div class="a-stat__sub">qualified $ElizaOK wallets</div>
+      <div class="a-stat__sub">qualified $elizaOK wallets</div>
     </div>
     <div class="a-stat">
       <div class="a-stat__label">Executed Sends</div>
@@ -2896,7 +2896,7 @@ var _airI18n = {
   'Distribution Pool': '分配池',
   'treasury allocation': '国库分配',
   'Eligible Holders': '合格持有者',
-  'qualified $ElizaOK wallets': '合格 $ElizaOK 钱包',
+  'qualified $elizaOK wallets': '合格 $elizaOK 钱包',
   'Executed Sends': '已执行发送',
   'this cycle': '本周期',
   'Dry Run Count': '模拟次数',
@@ -2951,7 +2951,7 @@ var _airI18nLong = {
   'No ledger records yet': '暂无账本记录。',
   'No distribution plan loaded': '尚未加载分配计划。代理尚未运行分配扫描。',
   'Enable ELIZAOK_DISTRIBUTION': '启用 ELIZAOK_DISTRIBUTION_EXECUTION_ENABLED 环境变量。',
-  'This wallet is not in': '✗ 此钱包不在当前空投计划中。资格基于快照时的 $ElizaOK 持有门槛。',
+  'This wallet is not in': '✗ 此钱包不在当前空投计划中。资格基于快照时的 $elizaOK 持有门槛。',
   'paper-only position': '仅模拟仓位',
   'wallet verification is unverified': '钱包验证未通过',
   'wallet balance is empty': '钱包余额为空',
@@ -2962,7 +2962,7 @@ var _airI18nLong = {
   'Recipient List': '接收者列表',
   'Distribution Ledger': '分配账本',
   'Airdrop Eligibility': '空投资格',
-  'The treasury flywheel': '国库飞轮将收益分配给合格的 $ElizaOK 持有者。检查您的钱包是否有资格参与当前空投周期并查看分配计划。',
+  'The treasury flywheel': '国库飞轮将收益分配给合格的 $elizaOK 持有者。检查您的钱包是否有资格参与当前空投周期并查看分配计划。',
   'Last scan': '上次扫描',
 };
 window.airToggleLang = function() {
@@ -3039,7 +3039,7 @@ function checkWallet(){
     el.innerHTML='✓ This wallet is in the current airdrop recipient list.';
   }else{
     el.className='a-result a-result--not';
-    el.innerHTML='✗ This wallet is not in the current airdrop plan. Eligibility is based on $ElizaOK holding thresholds at snapshot time.';
+    el.innerHTML='✗ This wallet is not in the current airdrop plan. Eligibility is based on $elizaOK holding thresholds at snapshot time.';
   }
   el.style.display='block';
 }
@@ -3367,7 +3367,7 @@ html{scrollbar-width:none;}html::-webkit-scrollbar{display:none;}
         <img src="/assets/avatar.png" alt="Goo" />
         Goo Arena
       </a>
-      <span class="goo-topbar__sub">Autonomous Agent Competition · elizaOK</span>
+      <span class="goo-topbar__sub">Strategy Arena · elizaOK</span>
     </div>
     <nav class="goo-nav">
       <a href="/">Home</a>
@@ -3413,7 +3413,7 @@ html{scrollbar-width:none;}html::-webkit-scrollbar{display:none;}
       <div class="goo-flywheel__icon">&#x1F504;</div>
       <div>
         <div class="goo-flywheel__title">Revenue Flywheel</div>
-        <div class="goo-flywheel__sub">Profit &rarr; Reinvest 70% &rarr; $ElizaOK 15% &rarr; Airdrop Reserve 15%</div>
+        <div class="goo-flywheel__sub">Profit &rarr; Reinvest 70% &rarr; $elizaOK 15% &rarr; Airdrop Reserve 15%</div>
       </div>
     </div>
     <div class="goo-flywheel__grid">
@@ -3428,7 +3428,7 @@ html{scrollbar-width:none;}html::-webkit-scrollbar{display:none;}
       </div>
       <div class="goo-flywheel__cell goo-flywheel__cell--arrow">&#x27A1;</div>
       <div class="goo-flywheel__cell">
-        <div class="goo-flywheel__label">$ElizaOK Buyback</div>
+        <div class="goo-flywheel__label">$elizaOK Buyback</div>
         <div class="goo-flywheel__val" style="color:#8b5cf6">${fmtBnb(fw.elizaOKBoughtBnb)} BNB</div>
       </div>
       <div class="goo-flywheel__cell goo-flywheel__cell--arrow">&#x27A1;</div>
@@ -3507,7 +3507,7 @@ function spawnFleet() {
 }
 
 function acquireAgent(id) {
-  if (!confirm('Acquire this agent? ElizaOK will absorb its trading strategy and become stronger.')) return;
+  if (!confirm('Acquire this agent? elizaOK will absorb its trading strategy and become stronger.')) return;
   fetch('/api/goo/agents/' + encodeURIComponent(id) + '/acquire', {
     method: 'POST',
     headers: {'content-type':'application/json'}
@@ -3577,13 +3577,13 @@ function toggleGooTheme() {
 // ── Goo i18n ──
 var _gooI18n = {
   'Goo Arena': '\u7ADE\u6280\u573A',
-  'Autonomous Agent Competition · elizaOK': '\u81EA\u4E3B AI \u4EE3\u7406\u7ADE\u8D5B \u00B7 elizaOK',
+  'Strategy Arena · elizaOK': '\u7B56\u7565\u7ADE\u6280\u573A \u00B7 elizaOK',
   'Home': '\u9996\u9875', 'Dashboard': '\u4EEA\u8868\u76D8', 'Docs': '\u6587\u6863',
   'Total Agents': '\u603B\u4EE3\u7406\u6570', 'Active': '\u6D3B\u8DC3', 'Starving': '\u9965\u997F',
   'Total P&L': '\u603B\u76C8\u4E8F', 'Avg Win Rate': '\u5E73\u5747\u80DC\u7387', 'Acquired': '\u5DF2\u6536\u8D2D',
   'Revenue Flywheel': '\u6536\u76CA\u98DE\u8F6E',
   'Total Profit': '\u603B\u5229\u6DA6', 'Reinvested': '\u518D\u6295\u8D44',
-  '$ElizaOK Buyback': '$ElizaOK \u56DE\u8D2D', 'Airdrop Reserve': '\u7A7A\u6295\u50A8\u5907',
+  '$elizaOK Buyback': '$elizaOK \u56DE\u8D2D', 'Airdrop Reserve': '\u7A7A\u6295\u50A8\u5907',
   'Agent Fleet': '\u4EE3\u7406\u8239\u961F', 'agents': '\u4E2A\u4EE3\u7406',
   'Compare': '\u5BF9\u6BD4', '+ Launch Agent': '+ \u53D1\u5C04\u4EE3\u7406',
   'All': '\u5168\u90E8', 'Dying': '\u6FC0\u6D3B\u4E2D', 'Dead': '\u6B7B\u4EA1',
@@ -3821,7 +3821,7 @@ html,body{min-height:100%;background:var(--goo-bg);color:var(--goo-text)}
         ${escapeHtml(agent.agentName)}
         <span class="goo-badge goo-badge--${agent.chainState}">${agent.chainState.toUpperCase()}</span>
         <span class="goo-badge goo-badge--strategy">${escapeHtml(agent.strategy.label)}</span>
-        ${agent.acquiredByElizaOK ? '<span class="goo-badge goo-badge--acquired">ACQUIRED BY ELIZAOK</span>' : ''}
+        ${agent.acquiredByElizaOK ? '<span class="goo-badge goo-badge--acquired">ACQUIRED BY elizaOK</span>' : ''}
       </div>
       <div class="gd-hero__meta">
         <span>ID: ${escapeHtml(agent.agenterId)}</span>
@@ -3902,7 +3902,7 @@ html,body{min-height:100%;background:var(--goo-bg);color:var(--goo-text)}
         </div>
         <div class="gd-fw__cell gd-fw__cell--arrow">&rarr;</div>
         <div class="gd-fw__cell">
-          <div class="gd-fw__label">$ElizaOK</div>
+          <div class="gd-fw__label">$elizaOK</div>
           <div class="gd-fw__val" style="color:#8b5cf6">${fw.elizaOKBoughtBnb.toFixed(4)}</div>
         </div>
         <div class="gd-fw__cell gd-fw__cell--arrow">&rarr;</div>
@@ -4104,7 +4104,7 @@ function renderCloudAgentsPage(
       `<div class="cp-connect-hero">
         <div class="cp-connect-icon">⬡</div>
         <div class="cp-connect-title">Cloud Agents</div>
-        <p class="cp-connect-desc">Connect your ElizaCloud account to view and manage AI agents, budgets, and request usage.</p>
+        <p class="cp-connect-desc">Connect your ElizaCloud account to view and manage agents, budgets, and request usage.</p>
         <a class="cp-btn cp-btn--accent" href="#" id="cp-cloud-btn" style="cursor:pointer;margin-top:4px;">+ Connect ElizaCloud</a>
       </div>`,
       null,
@@ -4243,7 +4243,7 @@ function renderCloudAgentsPage(
           button.addEventListener("click", function () {
             var name = window.prompt("New ElizaCloud agent name", "elizaOK Agent");
             if (!name) return;
-            var bio = window.prompt("Agent bio (optional)", "ElizaOK cloud agent") || "";
+            var bio = window.prompt("Agent bio (optional)", "elizaOK cloud agent") || "";
             button.setAttribute("aria-disabled", "true");
             fetch("/api/eliza-cloud/agents/create", {
               method: "POST",
@@ -4379,7 +4379,7 @@ function renderHtml(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  ${renderHeadBrandAssets("ElizaOK | elizaOK")}
+  ${renderHeadBrandAssets("elizaOK")}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Kode+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -4432,7 +4432,7 @@ function renderHtml(
 </head>
 <body>
   <main class="panel">
-    <div class="eyebrow">ElizaOK Live System</div>
+    <div class="eyebrow">elizaOK Live System</div>
     <h1>Dashboard warming up</h1>
     <p>No scan snapshot is available yet. The agent is online and waiting for the first discovery cycle to complete.</p>
   </main>
@@ -4594,109 +4594,141 @@ function renderHtml(
     .map((rule) => `${rule.label} +${rule.gainPct}% -> sell ${rule.sellPct}%`)
     .join(" · ");
 
+  const bnbPriceEst = treasurySimulation.paperCapitalUsd > 0
+    ? treasurySimulation.paperCapitalUsd / 100
+    : 600;
+
   const topCandidates = snapshot.topCandidates
     .slice(0, 5)
     .map(
-      (candidate, index) => `
+      (candidate, index) => {
+        const recLabel = candidate.recommendation === "simulate_buy" ? "BUY" : candidate.recommendation === "watch" ? "WATCH" : "OBSERVE";
+        const recIcon = candidate.recommendation === "simulate_buy" ? "🟢" : "🟡";
+        const fdv = candidate.fdvUsd ? `$${Math.round(candidate.fdvUsd).toLocaleString()}` : "—";
+        const allocBnb = formatBnb(Math.min(1, (candidate.reserveUsd * 0.15) / bnbPriceEst));
+        return `
         <article class="candidate-card">
           <div class="candidate-card__meta">
             <span class="candidate-rank">0${index + 1}</span>
-            <span class="pill ${recommendationTone(candidate.recommendation)}">${escapeHtml(candidate.recommendation)}</span>
+            <span class="pill ${recommendationTone(candidate.recommendation)}">${recIcon} ${recLabel}</span>
           </div>
           <h3><a class="candidate-link" href="${candidateHref(candidate.tokenAddress, candidate.dexId)}" target="_blank" rel="noreferrer">${escapeHtml(candidate.tokenSymbol)}</a></h3>
-          <p class="candidate-subtitle">${escapeHtml(candidate.poolName)} · ${escapeHtml(candidate.dexId)}</p>
-          <div class="candidate-stats">
-            <div><span>Score</span><strong>${candidate.score}/100</strong></div>
+          <p class="candidate-subtitle">Score ${candidate.score}/100 · ${candidate.poolAgeMinutes}m old · ${escapeHtml(candidate.dexId)}</p>
+          <div class="candidate-stats" style="grid-template-columns:1fr 1fr">
+            <div><span>FDV</span><strong>${fdv}</strong></div>
             <div><span>Liquidity</span><strong>$${Math.round(candidate.reserveUsd).toLocaleString()}</strong></div>
-            <div><span>Volume 5m</span><strong>$${Math.round(candidate.volumeUsdM5).toLocaleString()}</strong></div>
-            <div><span>Age</span><strong>${candidate.poolAgeMinutes}m</strong></div>
+            <div><span>Vol (5m)</span><strong>$${Math.round(candidate.volumeUsdM5).toLocaleString()}</strong></div>
+            <div><span>Est. Size</span><strong>${allocBnb}</strong></div>
           </div>
-        </article>`,
+        </article>`;
+      },
     )
     .join("");
 
-  const gooCandidates = snapshot.topGooCandidates
-    .slice(0, 5)
+  const paperAgents = getPaperAgents();
+  const paperSummary = getPaperSummary();
+  const gooCandidates = paperAgents
+    .sort((a, b) => b.acquisitionScore - a.acquisitionScore)
+    .slice(0, 8)
     .map(
-      (candidate, index) => `
-        <article class="goo-card">
+      (agent, index) => {
+        const stateIcon = agent.chainState === "active" ? "🟢" : agent.chainState === "starving" ? "🟡" : agent.chainState === "dying" ? "🔴" : "⚫";
+        const pnlClass = agent.totalPnlUsd >= 0 ? "g" : "r";
+        const activePos = agent.positions.filter(p => p.state === "active").length;
+        return `
+        <article class="candidate-card">
           <div class="candidate-card__meta">
-            <span class="candidate-rank">0${index + 1}</span>
-            <span class="pill ${recommendationTone(candidate.recommendation)}">${escapeHtml(candidate.recommendation)}</span>
+            <span class="candidate-rank">#${index + 1}</span>
+            <span class="pill ${agent.chainState === 'active' ? 'tone-hot' : 'tone-warm'}">${stateIcon} ${escapeHtml(agent.strategy.label)}</span>
           </div>
-          <h3><a class="candidate-link" href="${gooCandidateHref(candidate.agentId)}">Agent ${escapeHtml(candidate.agentId)}</a></h3>
-          <p class="candidate-subtitle">${escapeHtml(candidate.status)} lifecycle · CTO floor ${candidate.minimumCtoBnb} BNB · <a class="candidate-link" href="${gooCandidateHref(candidate.agentId)}">operator view</a></p>
-          <div class="candidate-stats">
-            <div><span>Score</span><strong>${candidate.score}/100</strong></div>
-            <div><span>Treasury</span><strong>${candidate.treasuryBnb} BNB</strong></div>
-            <div><span>Threshold</span><strong>${candidate.starvingThresholdBnb} BNB</strong></div>
-            <div><span>Pulse</span><strong>${candidate.secondsUntilPulseTimeout ?? "n/a"}s</strong></div>
+          <h3>${escapeHtml(agent.agentName)}</h3>
+          <p class="candidate-subtitle">$${escapeHtml(agent.tokenSymbol)} · Score ${agent.acquisitionScore}/100 · ${activePos} positions</p>
+          <div class="candidate-stats" style="grid-template-columns:1fr 1fr">
+            <div><span>Treasury</span><strong>${agent.treasuryBnb.toFixed(4)} BNB</strong></div>
+            <div><span>Win Rate</span><strong class="${agent.winRate > 0 ? 'g' : 'w'}">${agent.winRate.toFixed(1)}%</strong></div>
+            <div><span>P&L</span><strong class="${pnlClass}">${agent.totalPnlUsd >= 0 ? "+" : ""}$${agent.totalPnlUsd.toFixed(2)}</strong></div>
+            <div><span>Trades</span><strong>${agent.totalTradesCount}</strong></div>
           </div>
-        </article>`,
+        </article>`;
+      },
     )
     .join("");
 
-  const gooQueueRows = snapshot.topGooCandidates
-    .slice(0, 6)
-    .map((candidate) => {
-      const detail = buildGooCandidateDetail(candidate, getDiscoveryConfig());
-      return `
+  const acquirableCandidates = paperAgents.filter(a => !a.acquiredByElizaOK && a.chainState !== "dead" && a.totalTradesCount >= 3);
+  const gooQueueRows = acquirableCandidates.length > 0
+    ? acquirableCandidates
+      .sort((a, b) => b.acquisitionScore - a.acquisitionScore)
+      .slice(0, 6)
+      .map((agent) => {
+        const readyIcon = agent.acquisitionScore >= 50 ? "🟢" : agent.acquisitionScore >= 30 ? "🟡" : "⚪";
+        return `
         <div class="status-row">
-          <span><a class="watchlist-link" href="${gooCandidateHref(candidate.agentId)}">Agent ${escapeHtml(candidate.agentId)}</a></span>
-          <strong>
-            ${escapeHtml(detail.urgency)} · ${escapeHtml(candidate.recommendation)}<br />
-            ${escapeHtml(detail.operatorAction)}
-          </strong>
+          <span>${escapeHtml(agent.agentName)}</span>
+          <strong>${readyIcon} Score ${agent.acquisitionScore}/100 · ${agent.totalTradesCount} trades · ${agent.winRate.toFixed(1)}% win</strong>
         </div>`;
-    })
-    .join("");
+      })
+      .join("")
+    : "";
 
   const treasuryAllocationCards = treasurySimulation.positions
     .slice(0, 5)
     .map(
-      (position, index) => `
+      (position, index) => {
+        const portfolioMatch = portfolioLifecycle.activePositions.find(
+          (p) => p.tokenAddress === position.tokenAddress,
+        );
+        const portfolioInitial = portfolioMatch ? formatUsd(portfolioMatch.initialAllocationUsd) : "—";
+        const portfolioCurrent = portfolioMatch ? formatUsd(portfolioMatch.currentValueUsd) : "—";
+        return `
         <article class="candidate-card">
           <div class="candidate-card__meta">
             <span class="candidate-rank">0${index + 1}</span>
-            <span class="pill tone-hot">${escapeHtml(position.recommendation)}</span>
+            <span class="pill tone-hot">${position.recommendation === "simulate_buy" ? "🟢 BUY" : "🟡 WATCH"}</span>
           </div>
           <h3>${escapeHtml(position.tokenSymbol)}</h3>
-          <p class="candidate-subtitle">${escapeHtml(position.source)} allocation lane</p>
-          <div class="candidate-stats">
-            <div><span>Allocation</span><strong>${formatUsd(position.allocationUsd)}</strong></div>
+          <p class="candidate-subtitle">Score ${position.score}/100 · ${escapeHtml(position.source)}</p>
+          <div class="candidate-stats" style="grid-template-columns:1fr 1fr">
+            <div><span>Model Allocation</span><strong>${formatUsd(position.allocationUsd)}</strong></div>
+            <div><span>Portfolio Initial</span><strong>${portfolioInitial}</strong></div>
             <div><span>Weight</span><strong>${position.allocationPct}%</strong></div>
+            <div><span>Portfolio Current</span><strong>${portfolioCurrent}</strong></div>
             <div><span>Score</span><strong>${position.score}/100</strong></div>
             <div><span>Liquidity</span><strong>${formatUsd(position.reserveUsd)}</strong></div>
           </div>
-        </article>`,
+        </article>`;
+      },
     )
     .join("");
 
   const recentRuns = recentHistory
     .slice(0, 6)
     .map(
-      (entry) => `
+      (entry) => {
+        const t = new Date(entry.generatedAt);
+        const timeStr = t.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+        return `
         <div class="status-row">
-          <span>${escapeHtml(entry.generatedAt)}</span>
+          <span>${timeStr}</span>
           <strong>
-            ${entry.candidateCount} scans / ${entry.topRecommendationCount} buys<br />
-            Avg ${entry.averageScore} / Treasury ${formatUsd(entry.treasuryAllocatedUsd)}
+            ${entry.candidateCount} scanned · ${entry.topRecommendationCount} buy signals · avg ${entry.averageScore}/100
           </strong>
-        </div>`,
+        </div>`;
+      },
     )
     .join("");
 
   const watchlistRows = watchlist
     .slice(0, 8)
     .map(
-      (entry) => `
+      (entry) => {
+        const recIcon = entry.currentRecommendation === "simulate_buy" ? "🟢" : entry.currentRecommendation === "watch" ? "🟡" : "⚪";
+        const scoreChange = entry.scoreChange > 0 ? `<span class="g">↑${entry.scoreChange}</span>` : entry.scoreChange < 0 ? `<span class="r">↓${Math.abs(entry.scoreChange)}</span>` : "";
+        return `
         <div class="status-row">
           <span><a class="watchlist-link" href="${candidateHref(entry.tokenAddress)}" target="_blank" rel="noreferrer">${escapeHtml(entry.tokenSymbol)}</a></span>
-          <strong>
-            ${entry.currentRecommendation} · ${entry.currentScore}/100<br />
-            Seen ${entry.appearances}x · Δ ${entry.scoreChange >= 0 ? "+" : ""}${entry.scoreChange}
-          </strong>
-        </div>`,
+          <strong>${recIcon} ${entry.currentScore}/100 · ${entry.appearances}x seen ${scoreChange}</strong>
+        </div>`;
+      },
     )
     .join("");
 
@@ -4732,12 +4764,19 @@ function renderHtml(
     "n/a";
   const hasOpenAiKey = Boolean(process.env.OPENAI_API_KEY?.trim());
   const cloudAccountRows = renderDashboardCloudSidebar(cloudSession, cloudSummary);
+
+  const avgPositionUsd = portfolioLifecycle.activePositions.length > 0
+    ? portfolioLifecycle.activePositions.reduce((s, p) => s + p.allocationUsd, 0) / portfolioLifecycle.activePositions.length
+    : (treasurySimulation.positions.length > 0
+      ? treasurySimulation.positions.reduce((s, p) => s + p.allocationUsd, 0) / treasurySimulation.positions.length
+      : treasurySimulation.deployableCapitalUsd / Math.max(1, executionState.risk.maxActivePositions || 3));
+  const positionSizeBnb = Math.min(1, Math.max(0.01, avgPositionUsd / bnbPriceEst));
+  const dailyCapBnb = Math.min(3, positionSizeBnb * Math.max(1, executionState.risk.maxActivePositions || 3));
+
   const riskProfile =
-    executionState.risk.maxBuyBnb <= 0.02 &&
-    executionState.risk.maxDailyDeployBnb <= 0.05
+    positionSizeBnb <= 0.1
       ? "Conservative"
-      : executionState.risk.maxBuyBnb <= 0.05 &&
-          executionState.risk.maxDailyDeployBnb <= 0.2
+      : positionSizeBnb <= 0.5
         ? "Balanced"
         : "Aggressive";
   const sidebarWalletAddress = "0x2D6C3358A3acFe3be42b2Bdf7419e87091270c5F";
@@ -4815,7 +4854,7 @@ function renderHtml(
           distributionExecution.readinessTotal) *
         100
       : 0;
-  const gooPct = (gooConfigReadiness / 3) * 100;
+  const gooPct = paperAgents.length > 0 ? (paperAgents.filter(a => a.chainState === 'active').length / paperAgents.length) * 100 : 0;
   const featureDockCards = [
     renderFeatureDockCard(
       "discovery-section",
@@ -4873,23 +4912,23 @@ function renderHtml(
       "goo-section",
       "Goo",
       `${clampPercent(gooPct)}%`,
-      `${snapshot.summary.gooAgentCount}`,
-      `${snapshot.summary.gooPriorityCount} priority`,
+      `${paperAgents.length}`,
+      `${acquirableCandidates.length} acquirable`,
       gooPct,
       "cool",
-      "PRIORITY",
-      "REVIEWED",
-      `${snapshot.summary.gooPriorityCount}`,
-      `${snapshot.summary.gooAgentCount}`,
+      "ACQUIRABLE",
+      "AGENTS",
+      `${acquirableCandidates.length}`,
+      `${paperAgents.length}`,
     ),
   ].join("");
   const discoveryFoldSummary = `${snapshot.summary.candidateCount} scanned · ${snapshot.summary.topRecommendationCount} buy-ready · avg ${snapshot.summary.averageScore}`;
   const portfolioFoldSummary = `${portfolioLifecycle.activePositions.length} active · ${portfolioLifecycle.watchPositions.length} watch · ${formatUsd(portfolioLifecycle.grossPortfolioValueUsd)}`;
   const pfw = (portfolioLifecycle as any).flywheel ?? { totalProfitUsd: 0, reinvestedUsd: 0, elizaOKBuybackUsd: 0, airdropReserveUsd: 0, cycleCount: 0, trailingStopSaves: 0, gmgnExitSaves: 0 };
-  const flywheelFoldSummary = `$${pfw.totalProfitUsd.toFixed(0)} profit · ${pfw.cycleCount} cycles · ${pfw.trailingStopSaves + pfw.gmgnExitSaves} smart exits`;
-  const treasuryFoldSummary = `${formatBnb(executionState.risk.maxBuyBnb)} max buy · ${eligibleExecutionPlans} eligible · ${tradeLedger.records.length} ledger`;
-  const distributionFoldSummary = `${distributionPlan.eligibleHolderCount} holders · ${distributionPlan.recipients.length} recipients · ${distributionExecution.dryRun ? "dry-run" : "live"}`;
-  const gooFoldSummary = `${snapshot.summary.gooAgentCount} reviewed · ${snapshot.summary.gooPriorityCount} priority · ${gooConfigReadiness}/3 ready`;
+  const flywheelFoldSummary = `$${pfw.totalProfitUsd.toFixed(0)} profit · ${pfw.cycleCount} cycles · ${(portfolioLifecycle as any).winCount ?? 0}W/${(portfolioLifecycle as any).lossCount ?? 0}L`;
+  const treasuryFoldSummary = `${formatBnb(positionSizeBnb)}/position · ${eligibleExecutionPlans} eligible · ${tradeLedger.records.length} ledger`;
+  const distributionFoldSummary = `${distributionPlan.eligibleHolderCount} holders · ${formatUsd(distributionPlan.distributionPoolUsd)} pool · ${distributionExecution.dryRun ? "standby" : "live"}`;
+  const gooFoldSummary = `${paperAgents.length} agents · ${paperAgents.filter(a => a.chainState === 'active').length} active · ${acquirableCandidates.length} acquirable`;
   const overviewVisualBars = [
     renderProgress(
       "Discovery",
@@ -4910,7 +4949,7 @@ function renderHtml(
       100,
       `${clampPercent(distributionPct)}%`,
     ),
-    renderProgress("Goo", gooPct, 100, `${clampPercent(gooPct)}%`),
+    renderProgress("Goo", gooPct, 100, `${paperAgents.filter(a => a.chainState === 'active').length}/${paperAgents.length} active`),
     renderProgress(
       "Reserve",
       treasurySimulation.reservePct,
@@ -5002,14 +5041,26 @@ function renderHtml(
   const executionPlanRows = executionState.plans
     .slice(0, 6)
     .map(
-      (plan) => `
+      (plan) => {
+        const portfolioPos = portfolioLifecycle.activePositions.find(
+          (p) => p.tokenAddress === plan.tokenAddress,
+        );
+        const portfolioAllocBnb = portfolioPos
+          ? formatBnb(portfolioPos.allocationUsd / bnbPriceEst)
+          : formatBnb(positionSizeBnb);
+        const portfolioState = portfolioPos
+          ? `${formatUsd(portfolioPos.allocationUsd)} (${portfolioAllocBnb})`
+          : "—";
+        return `
         <div class="status-row">
           <span>${escapeHtml(plan.tokenSymbol)}</span>
           <strong>
-            strategy ${plan.eligible ? "eligible" : "blocked"} · route ${escapeHtml(plan.routeTradable)} · ${plan.score}/100 · ${formatBnb(plan.plannedBuyBnb)}<br />
+            ${plan.score}/100 · ${plan.eligible ? "eligible" : "blocked"} · ${portfolioAllocBnb}<br />
+            <span style="opacity:.6">Allocation: ${portfolioState}</span><br />
             ${escapeHtml(plan.routeReason || plan.reasons[0] || "No execution note.")}
           </strong>
-        </div>`,
+        </div>`;
+      },
     )
     .join("");
 
@@ -5030,24 +5081,39 @@ function renderHtml(
   const activePortfolioCards = portfolioLifecycle.activePositions
     .slice(0, 6)
     .map(
-      (position, index) => `
+      (position, index) => {
+        const entryTime = position.firstSeenAt ? new Date(position.firstSeenAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—";
+        const entryFdv = position.entryReferenceUsd ? `$${Math.round(position.entryReferenceUsd).toLocaleString()}` : "—";
+        const currentFdv = position.currentReferenceUsd ? `$${Math.round(position.currentReferenceUsd).toLocaleString()}` : "—";
+        const pnlClass = position.unrealizedPnlPct >= 0 ? "g" : "r";
+        const holdMs = Date.parse(position.lastUpdatedAt) - Date.parse(position.firstSeenAt);
+        const holdStr = holdMs > 60000 ? (holdMs < 3600000 ? `${Math.round(holdMs / 60000)}m` : `${(holdMs / 3600000).toFixed(1)}h`) : "<1m";
+        const awaitingUpdate = Math.abs(position.unrealizedPnlPct) < 0.01;
+        const pnlDisplay = awaitingUpdate
+          ? '<strong style="color:var(--dim)">Awaiting price update</strong>'
+          : `<strong class="${pnlClass}">${position.unrealizedPnlPct >= 0 ? "+" : ""}${position.unrealizedPnlPct.toFixed(1)}%</strong>`;
+        const pillDisplay = awaitingUpdate
+          ? `<span class="pill" style="background:rgba(255,255,255,.08);color:var(--dim)">${holdStr}</span>`
+          : `<span class="pill ${pnlTone(position.unrealizedPnlUsd)}">${position.unrealizedPnlPct >= 0 ? "+" : ""}${position.unrealizedPnlPct.toFixed(1)}%</span>`;
+        const tpDisplay = position.takeProfitCount > 0 ? `<strong class="g">${position.takeProfitCount} / 5</strong>` : "";
+        return `
         <article class="candidate-card">
           <div class="candidate-card__meta">
             <span class="candidate-rank">0${index + 1}</span>
-            <span class="pill ${pnlTone(position.unrealizedPnlUsd)}">${position.unrealizedPnlUsd >= 0 ? "+" : ""}${formatUsd(position.unrealizedPnlUsd)}</span>
+            ${pillDisplay}
           </div>
           <h3><a class="candidate-link" href="${candidateHref(position.tokenAddress)}" target="_blank" rel="noreferrer">${escapeHtml(position.tokenSymbol)}</a></h3>
-          <p class="candidate-subtitle">${escapeHtml(position.executionSource)} · ${escapeHtml(position.walletVerification)} · ${escapeHtml(position.state)} · ${escapeHtml(position.lastRecommendation)}</p>
-          <div class="candidate-stats">
-            <div><span>Initial</span><strong>${formatUsd(position.initialAllocationUsd)}</strong></div>
+          <p class="candidate-subtitle">Score ${position.currentScore}/100 · held ${holdStr} · FDV ${currentFdv}</p>
+          <div class="candidate-stats" style="grid-template-columns:1fr 1fr">
             <div><span>Allocated</span><strong>${formatUsd(position.allocationUsd)}</strong></div>
-            <div><span>Current value</span><strong>${formatUsd(position.currentValueUsd)}</strong></div>
-            <div><span>Wallet quote</span><strong>${position.walletQuoteUsd !== null && position.walletQuoteUsd !== undefined ? formatUsd(position.walletQuoteUsd) : "n/a"}</strong></div>
-            <div><span>TP hit</span><strong>${position.takeProfitCount}</strong></div>
-            <div><span>Unrealized</span><strong>${position.unrealizedPnlPct}%</strong></div>
-            <div><span>Appearances</span><strong>${position.appearanceCount}</strong></div>
+            <div><span>Current Value</span><strong>${formatUsd(position.currentValueUsd)}</strong></div>
+            <div><span>Entry FDV</span><strong>${entryFdv}</strong></div>
+            <div><span>P&L</span>${pnlDisplay}</div>${tpDisplay ? `
+            <div><span>TP Stages</span>${tpDisplay}</div>` : ""}
+            <div><span>Entered</span><strong>${entryTime}</strong></div>
           </div>
-        </article>`,
+        </article>`;
+      },
     )
     .join("");
 
@@ -5063,6 +5129,132 @@ function renderHtml(
           </strong>
         </div>`,
     )
+    .join("");
+
+  // Derive a human-readable exit label from position exit metadata
+  const exitLabelFor = (pos: { trailingStopTriggered?: boolean; gmgnExitReason?: string; exitReason?: string }) => {
+    if (pos.trailingStopTriggered) return "Trailing Stop";
+    if (pos.gmgnExitReason) return "Smart Exit";
+    if (pos.exitReason?.includes("take_profit") || pos.exitReason?.includes("fully harvested")) return "Take Profit";
+    if (pos.exitReason?.includes("stop_loss") || pos.exitReason?.includes("Stop loss")) return "Stop Loss";
+    if (pos.exitReason?.includes("score") || pos.exitReason?.includes("downgraded")) return "Score Decay";
+    if (pos.exitReason?.includes("vanished") || pos.exitReason?.includes("disappeared")) return "Vanished";
+    return "Signal Exit";
+  };
+
+  const exitedPortfolioCards = portfolioLifecycle.exitedPositions
+    .sort((a, b) => Date.parse(b.lastUpdatedAt) - Date.parse(a.lastUpdatedAt))
+    .slice(0, 20)
+    .map(
+      (position, index) => {
+        const exitTime = position.lastUpdatedAt ? new Date(position.lastUpdatedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—";
+        const entryFdv = position.entryReferenceUsd ? `$${Math.round(position.entryReferenceUsd).toLocaleString()}` : "—";
+        const exitFdv = position.currentReferenceUsd ? `$${Math.round(position.currentReferenceUsd).toLocaleString()}` : "—";
+        const holdMs = Date.parse(position.lastUpdatedAt) - Date.parse(position.firstSeenAt);
+        const holdStr = holdMs > 0 ? (holdMs < 3600000 ? `${Math.round(holdMs / 60000)}m` : `${(holdMs / 3600000).toFixed(1)}h`) : "—";
+        const pnlClass = position.realizedPnlUsd >= 0 ? "g" : "r";
+        const exitLabel = exitLabelFor(position);
+        const returnPct = position.initialAllocationUsd > 0 ? `${((position.realizedPnlUsd / position.initialAllocationUsd) * 100).toFixed(1)}%` : "—";
+        const tpDisplay = position.takeProfitCount > 0 ? `<div><span>TP Stages</span><strong class="g">${position.takeProfitCount} / 5</strong></div>` : "";
+        const exitedFlat = Math.abs(position.realizedPnlUsd) < 0.01;
+        const exitPillClass = exitedFlat ? "" : (position.realizedPnlUsd >= 0 ? "tone-hot" : "tone-cold");
+        const exitPillStyle = exitedFlat ? ' style="background:rgba(255,255,255,.08);color:var(--dim)"' : "";
+        const exitPillText = exitedFlat ? "Flat" : `${position.realizedPnlUsd >= 0 ? "+" : ""}${returnPct}`;
+        return `
+        <article class="candidate-card">
+          <div class="candidate-card__meta">
+            <span class="candidate-rank">${String(index + 1).padStart(2, "0")}</span>
+            <span class="pill ${exitPillClass}"${exitPillStyle}>${exitPillText}</span>
+          </div>
+          <h3><a class="candidate-link" href="${candidateHref(position.tokenAddress)}" target="_blank" rel="noreferrer">${escapeHtml(position.tokenSymbol)}</a></h3>
+          <p class="candidate-subtitle">${escapeHtml(exitLabel)} · ${holdStr} · ${exitFdv}</p>
+          <div class="candidate-stats" style="grid-template-columns:1fr 1fr">
+            <div><span>Entry</span><strong>${entryFdv}</strong></div>
+            <div><span>Exit</span><strong>${exitFdv}</strong></div>${exitedFlat ? "" : `
+            <div><span>P&L</span><strong class="${pnlClass}">${position.realizedPnlUsd >= 0 ? "+" : ""}${formatUsd(position.realizedPnlUsd)}</strong></div>`}${tpDisplay}
+            <div><span>Closed</span><strong>${exitTime}</strong></div>
+          </div>
+        </article>`;
+      },
+    )
+    .join("");
+
+  const watchingPortfolioCards = portfolioLifecycle.watchPositions
+    .slice(0, 10)
+    .map(
+      (position) => {
+        const mcap = position.currentReferenceUsd ? `$${Math.round(position.currentReferenceUsd).toLocaleString()}` : "—";
+        const convIcon = position.lastConviction === "high" ? "🟢" : position.lastConviction === "medium" ? "🟡" : "⚪";
+        return `
+        <div class="status-row">
+          <span><a class="watchlist-link" href="${candidateHref(position.tokenAddress)}" target="_blank" rel="noreferrer">${escapeHtml(position.tokenSymbol)}</a></span>
+          <strong>${convIcon} ${position.currentScore}/100 · FDV ${mcap}</strong>
+        </div>`;
+      },
+    )
+    .join("");
+
+  // Strategy backtest / performance report
+  const strategyMap = new Map<string, { wins: number; losses: number; totalPnl: number; tokens: string[]; avgHold: number; bestPnl: number; worstPnl: number }>();
+  for (const pos of portfolioLifecycle.exitedPositions) {
+    const strat = pos.trailingStopTriggered ? "Trailing Stop" : (pos.gmgnExitReason ? "Smart Exit (GMGN)" : (pos.exitReason?.includes("kol_adaptive") ? "KOL-Adaptive TP" : (pos.exitReason?.includes("take_profit") || pos.exitReason?.includes("fully harvested") ? "Multi-Stage TP" : (pos.exitReason?.includes("stop_loss") || pos.exitReason?.includes("Stop loss") ? "Stop Loss" : (pos.exitReason?.includes("vanished") || pos.exitReason?.includes("disappeared") ? "Vanished" : (pos.exitReason?.includes("score") || pos.exitReason?.includes("downgraded") ? "Score Decay" : "Standard Exit"))))));
+    const entry = strategyMap.get(strat) ?? { wins: 0, losses: 0, totalPnl: 0, tokens: [], avgHold: 0, bestPnl: -Infinity, worstPnl: Infinity };
+    if (pos.realizedPnlUsd > 0) entry.wins++; else entry.losses++;
+    entry.totalPnl += pos.realizedPnlUsd;
+    if (entry.tokens.length < 5) entry.tokens.push(pos.tokenSymbol);
+    const hold = Date.parse(pos.lastUpdatedAt) - Date.parse(pos.firstSeenAt);
+    entry.avgHold = (entry.avgHold * (entry.wins + entry.losses - 1) + hold) / (entry.wins + entry.losses);
+    entry.bestPnl = Math.max(entry.bestPnl, pos.realizedPnlUsd);
+    entry.worstPnl = Math.min(entry.worstPnl, pos.realizedPnlUsd);
+    strategyMap.set(strat, entry);
+  }
+  const strategyReportRows = [...strategyMap.entries()]
+    .sort(([, a], [, b]) => b.totalPnl - a.totalPnl)
+    .map(([strat, data]) => {
+      const total = data.wins + data.losses;
+      const wr = total > 0 ? ((data.wins / total) * 100).toFixed(1) : "0.0";
+      const avgHold = data.avgHold > 0 ? (data.avgHold < 3600000 ? `${Math.round(data.avgHold / 60000)}m` : `${(data.avgHold / 3600000).toFixed(1)}h`) : "—";
+      const pnlClass = data.totalPnl >= 0 ? "g" : "r";
+      return `
+      <article class="candidate-card">
+        <div class="candidate-card__meta">
+          <span class="pill ${data.totalPnl >= 0 ? 'tone-hot' : 'tone-cold'}">${strat}</span>
+        </div>
+        <div class="candidate-stats" style="grid-template-columns:1fr 1fr">
+          <div><span>Win / Loss</span><strong><span class="g">${data.wins}</span> / <span class="r">${data.losses}</span></strong></div>
+          <div><span>Win Rate</span><strong>${wr}%</strong></div>
+          <div><span>Total P&L</span><strong class="${pnlClass}">${data.totalPnl >= 0 ? "+" : ""}${formatUsd(data.totalPnl)}</strong></div>
+          <div><span>Avg Hold</span><strong>${avgHold}</strong></div>
+          <div><span>Best Trade</span><strong class="g">+${formatUsd(data.bestPnl)}</strong></div>
+          <div><span>Worst Trade</span><strong class="r">${formatUsd(data.worstPnl)}</strong></div>
+        </div>
+        <p class="candidate-thesis" style="margin-top:4px">Tokens: ${data.tokens.map(t => escapeHtml(t)).join(", ")}${total > 5 ? ` +${total - 5} more` : ""}</p>
+      </article>`;
+    })
+    .join("");
+
+  const tokenWinLossRows = portfolioLifecycle.exitedPositions
+    .filter((pos) => {
+      if (Math.abs(pos.realizedPnlUsd) < 0.01) return false;
+      const pct = pos.initialAllocationUsd > 0 ? Math.abs(pos.realizedPnlUsd / pos.initialAllocationUsd) * 100 : 0;
+      return pct >= 0.05;
+    })
+    .sort((a, b) => b.realizedPnlUsd - a.realizedPnlUsd)
+    .slice(0, 15)
+    .map((pos) => {
+      const holdMs = Date.parse(pos.lastUpdatedAt) - Date.parse(pos.firstSeenAt);
+      const holdStr = holdMs > 0 ? (holdMs < 3600000 ? `${Math.round(holdMs / 60000)}m` : `${(holdMs / 3600000).toFixed(1)}h`) : "—";
+      const exitLabel = exitLabelFor(pos);
+      const pnlClass = pos.realizedPnlUsd >= 0 ? "g" : "r";
+      const pnlPctStr = pos.initialAllocationUsd > 0 ? `${((pos.realizedPnlUsd / pos.initialAllocationUsd) * 100).toFixed(1)}%` : "—";
+      return `
+      <div class="status-row">
+        <span><a class="watchlist-link" href="${candidateHref(pos.tokenAddress)}" target="_blank" rel="noreferrer">${escapeHtml(pos.tokenSymbol)}</a></span>
+        <strong>
+          <span class="${pnlClass}">${pos.realizedPnlUsd >= 0 ? "+" : ""}${pnlPctStr}</span> · ${exitLabel} · ${holdStr}
+        </strong>
+      </div>`;
+    })
     .join("");
 
   // Build cumulative P&L chart from exited positions
@@ -5105,7 +5297,7 @@ function renderHtml(
   const overviewStateChips = [
     `execution ${escapeHtml(executionState.dryRun ? "dry-run" : "live")} / ${escapeHtml(executionState.mode)}`,
     `distribution ${escapeHtml(distributionExecution.dryRun ? "dry-run" : "live")} / ${escapeHtml(distributionPlan.selectedAsset.mode)}`,
-    `goo ${escapeHtml(getDiscoveryConfig().goo.enabled ? (gooConfigReadiness === 3 ? "ready" : "warming") : "disabled")}`,
+    `goo ${escapeHtml(paperAgents.length > 0 ? `${paperAgents.filter(a => a.chainState === 'active').length}/${paperAgents.length} active` : "standby")}`,
   ]
     .map((item) => `<div class="state-chip">${item}</div>`)
     .join("");
@@ -5160,7 +5352,7 @@ function renderHtml(
     </div>`;
   const summaryRibbon = [
     `${snapshot.summary.strongestCandidate?.tokenSymbol || "n/a"} strongest signal`,
-    `${formatBnb(executionState.risk.maxBuyBnb)} max buy`,
+    `${formatBnb(positionSizeBnb)} BNB per position`,
     `${tradeLedger.records.length} executions tracked`,
     `${distributionPlan.selectedAsset.tokenSymbol || "distribution asset pending"}`,
   ]
@@ -5177,24 +5369,24 @@ function renderHtml(
     : `<button class="auth-link" type="button" data-cloud-hosted-auth>Sign in with ElizaCloud</button>`;
   const treasuryModelCards = [
     renderMetricCard(
-      "Capital model",
+      "Paper Capital",
       formatUsd(treasurySimulation.paperCapitalUsd),
-      "Current treasury capital model baseline.",
+      "Simulated capital baseline for signal tracking & backtesting.",
     ),
     renderMetricCard(
       "Deployable",
       formatUsd(treasurySimulation.deployableCapitalUsd),
-      "Capital currently available for new deployment.",
+      "Simulated capital available for new allocation.",
     ),
     renderMetricCard(
       "Allocated",
       formatUsd(treasurySimulation.allocatedUsd),
-      "Capital presently assigned inside the treasury model.",
+      "Simulated capital assigned to active positions.",
     ),
     renderMetricCard(
       "Dry powder",
       formatUsd(treasurySimulation.dryPowderUsd),
-      "Remaining unallocated treasury capacity.",
+      "Remaining unallocated simulated capacity.",
     ),
     renderMetricCard(
       "Reserve",
@@ -5220,8 +5412,8 @@ function renderHtml(
     ),
     renderMetricCard(
       "Risk cap",
-      formatBnb(executionState.risk.maxBuyBnb),
-      `Daily cap ${formatBnb(executionState.risk.maxDailyDeployBnb)}.`,
+      formatBnb(positionSizeBnb),
+      `Daily cap ${formatBnb(dailyCapBnb)}.`,
     ),
     renderMetricCard(
       "Eligible lanes",
@@ -5236,35 +5428,24 @@ function renderHtml(
   ].join("");
   const distributionStateCards = [
     renderMetricCard(
-      "Holder pool",
+      "Eligible Holders",
       String(distributionPlan.eligibleHolderCount),
-      `Minimum balance ${distributionPlan.minEligibleBalance}.`,
+      `Qualified $elizaOK wallets.`,
     ),
     renderMetricCard(
-      "Distribution pool",
+      "Value Pool",
       formatUsd(distributionPlan.distributionPoolUsd),
-      `Snapshot source ${distributionPlan.snapshotSource}.`,
+      `From treasury flywheel (15% airdrop reserve).`,
     ),
     renderMetricCard(
-      "Asset mode",
-      distributionPlan.selectedAsset.mode,
-      distributionPlan.selectedAsset.tokenSymbol ||
-        shortAddress(distributionPlan.selectedAsset.tokenAddress || "n/a"),
+      "Recipients",
+      String(distributionPlan.recipients.length),
+      `Qualified for this distribution cycle.`,
     ),
     renderMetricCard(
-      "Execution mode",
-      distributionExecution.dryRun ? "dry_run" : "live",
-      `${distributionExecution.readinessScore}/${distributionExecution.readinessTotal} readiness.`,
-    ),
-    renderMetricCard(
-      "Batch size",
-      String(distributionExecution.maxRecipientsPerRun),
-      `Pending ${Math.max(0, distributionPlan.recipients.length - distributionExecutedRecipients.size)} recipients.`,
-    ),
-    renderMetricCard(
-      "Fingerprint",
-      shortAddress(distributionExecution.manifestFingerprint || "n/a"),
-      "Current distribution campaign identity.",
+      "Readiness",
+      `${distributionExecution.readinessScore}/${distributionExecution.readinessTotal}`,
+      distributionExecution.dryRun ? "Standby — awaiting activation." : "Live distribution active.",
     ),
   ].join("");
   const distributionRibbon = [
@@ -5296,7 +5477,7 @@ function renderHtml(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  ${renderHeadBrandAssets("ElizaOK | elizaOK")}
+  ${renderHeadBrandAssets("elizaOK")}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -5698,22 +5879,54 @@ function renderHtml(
     .aside-token__score { color: var(--white); font-size: 0.7rem; }
     .aside-token__rec { color: var(--dim); font-size: 0.62rem; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-    /* Cloud CTA card */
-    .cloud-card { padding: 0 !important; overflow: hidden; background: linear-gradient(145deg, rgba(0,199,210,.06), rgba(139,92,246,.04), var(--panel)) !important; border-color: rgba(0,199,210,.2) !important; transition: border-color .3s, box-shadow .3s, transform .3s; }
-    .cloud-card:hover { border-color: rgba(0,199,210,.45) !important; box-shadow: 0 4px 24px rgba(0,199,210,.12), 0 0 40px rgba(139,92,246,.06); transform: translateY(-2px); }
-    .cloud-card__banner { position: relative; overflow: hidden; height: 90px; }
-    .cloud-card__img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .4s; }
-    .cloud-card:hover .cloud-card__img { transform: scale(1.05); }
-    .cloud-card__body { padding: 14px; }
-    .cloud-card__title { font-size: 0.9rem; font-weight: 800; color: #00C7D2; letter-spacing: .02em; margin-bottom: 2px; }
-    .cloud-card__sub { font-size: 0.6rem; color: var(--dim); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 12px; }
-    .cloud-card__features { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
-    .cloud-card__feat { font-size: 0.62rem; color: rgba(245,245,240,.7); display: flex; align-items: center; gap: 6px; padding: 3px 0; }
-    .cloud-card__btn { display: block; text-align: center; font-family: inherit; font-size: 0.62rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; text-decoration: none; padding: 8px 14px; border-radius: 8px; background: linear-gradient(135deg, rgba(0,199,210,.15), rgba(139,92,246,.1)); border: 1px solid rgba(0,199,210,.3); color: #00C7D2; transition: all .25s; }
-    .cloud-card__btn:hover { background: linear-gradient(135deg, rgba(0,199,210,.25), rgba(139,92,246,.15)); border-color: #00C7D2; box-shadow: 0 0 20px rgba(0,199,210,.2); color: #fff; text-decoration: none; }
-    [data-theme="light"] .cloud-card { background: linear-gradient(145deg, rgba(0,199,210,.04), rgba(139,92,246,.03), #fff) !important; }
-    [data-theme="light"] .cloud-card__feat { color: rgba(0,0,0,.55); }
-    [data-theme="light"] .cloud-card__btn { background: rgba(0,199,210,.08); color: #0097a0; }
+    /* Cloud CTA card — matches aside-block style */
+    .cloud-card { border-color: rgba(0,199,210,.18) !important; transition: border-color .3s, box-shadow .3s; }
+    .cloud-card:hover { border-color: rgba(0,199,210,.4) !important; box-shadow: 0 2px 16px rgba(0,199,210,.1); }
+    .cloud-card__banner { border-radius: 6px; overflow: hidden; margin-bottom: 10px; }
+    .cloud-card__img { width: 100%; height: 70px; object-fit: cover; display: block; border-radius: 6px; }
+    .cloud-card__title { font-size: 0.72rem; font-weight: 700; color: #00C7D2; letter-spacing: .04em; margin-bottom: 2px; }
+    .cloud-card__sub { font-size: 0.55rem; color: var(--dim); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
+    .cloud-card__features { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; }
+    .cloud-card__feat { font-size: 0.6rem; color: rgba(245,245,240,.6); }
+    .cloud-card__btn { display: block; text-align: center; font-family: inherit; font-size: 0.58rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; text-decoration: none; padding: 7px 10px; border-radius: 6px; background: rgba(0,199,210,.1); border: 1px solid rgba(0,199,210,.25); color: #00C7D2; transition: all .25s; }
+    .cloud-card__btn:hover { background: rgba(0,199,210,.2); border-color: #00C7D2; color: #fff; text-decoration: none; }
+    [data-theme="light"] .cloud-card { border-color: rgba(0,199,210,.15) !important; }
+    [data-theme="light"] .cloud-card__feat { color: rgba(0,0,0,.5); }
+    [data-theme="light"] .cloud-card__btn { background: rgba(0,199,210,.06); color: #0097a0; }
+
+    /* ElizaCloud CTA in main content */
+    .cloud-main-cta { margin-top: 16px; }
+    .cloud-main-cta__inner {
+      display: flex; align-items: stretch; gap: 0;
+      background: linear-gradient(135deg, rgba(0,199,210,.06), rgba(139,92,246,.04), var(--panel));
+      border: 1px solid rgba(0,199,210,.2); border-radius: var(--r);
+      overflow: hidden; transition: border-color .3s, box-shadow .3s, transform .3s;
+    }
+    .cloud-main-cta__inner:hover { border-color: rgba(0,199,210,.45); box-shadow: 0 4px 24px rgba(0,199,210,.12), 0 0 40px rgba(139,92,246,.06); transform: translateY(-2px); }
+    .cloud-main-cta__img-wrap { width: 200px; flex-shrink: 0; overflow: hidden; }
+    .cloud-main-cta__img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .4s; }
+    .cloud-main-cta__inner:hover .cloud-main-cta__img { transform: scale(1.05); }
+    .cloud-main-cta__content { padding: 20px 24px; display: flex; flex-direction: column; justify-content: center; gap: 4px; flex: 1; }
+    .cloud-main-cta__title { font-size: 1.1rem; font-weight: 800; color: #00C7D2; letter-spacing: .02em; }
+    .cloud-main-cta__sub { font-size: 0.65rem; color: var(--dim); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 8px; }
+    .cloud-main-cta__features { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+    .cloud-main-cta__features span { font-size: 0.65rem; color: rgba(245,245,240,.6); white-space: nowrap; }
+    .cloud-main-cta__btn {
+      display: inline-block; text-align: center; font-family: inherit; font-size: 0.65rem; font-weight: 700;
+      letter-spacing: .1em; text-transform: uppercase; text-decoration: none;
+      padding: 10px 20px; border-radius: 8px; width: fit-content;
+      background: linear-gradient(135deg, rgba(0,199,210,.15), rgba(139,92,246,.1));
+      border: 1px solid rgba(0,199,210,.3); color: #00C7D2; transition: all .25s;
+    }
+    .cloud-main-cta__btn:hover { background: linear-gradient(135deg, rgba(0,199,210,.25), rgba(139,92,246,.15)); border-color: #00C7D2; box-shadow: 0 0 20px rgba(0,199,210,.2); color: #fff; text-decoration: none; }
+    @media (max-width: 600px) {
+      .cloud-main-cta__inner { flex-direction: column; }
+      .cloud-main-cta__img-wrap { width: 100%; height: 100px; }
+      .cloud-main-cta__content { padding: 14px 16px; }
+    }
+    [data-theme="light"] .cloud-main-cta__inner { background: linear-gradient(135deg, rgba(0,199,210,.04), rgba(139,92,246,.03), #fff); }
+    [data-theme="light"] .cloud-main-cta__features span { color: rgba(0,0,0,.5); }
+    [data-theme="light"] .cloud-main-cta__btn { background: rgba(0,199,210,.08); color: #0097a0; }
 
     /* Progress rows (for detail accordions) */
     .progress-row { display: flex; align-items: center; gap: 9px; padding: 4px 0; }
@@ -5848,29 +6061,23 @@ function renderHtml(
       .split-grid { grid-template-columns: 1fr; }
     }
 
-    /* ─── FEATURE DOCK ──────────────────────── */
-    .feature-dock { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 10px; }
-    .feature-card {
-      position: relative; overflow: hidden;
-      background: var(--panel); border: 1px solid var(--border); border-radius: var(--r);
-      padding: 14px; cursor: pointer; transition: all .2s;
+    /* ─── STATUS STRIP ─────────────────────── */
+    .status-strip {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;
+      padding: 8px 10px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r);
     }
-    .feature-card:hover { border-color: rgba(var(--yr),.5); transform: translateY(-2px); box-shadow: 0 4px 20px rgba(var(--yr),.12); }
-    .feature-card__hover-bg { position: absolute; inset: 0; background: linear-gradient(135deg, rgba(var(--yr),.04), transparent); opacity: 0; transition: opacity .2s; }
-    .feature-card:hover .feature-card__hover-bg { opacity: 1; }
-    .feature-card__label { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; position: relative; }
-    .feature-card__pct { font-size: 1.4rem; font-weight: 800; color: var(--yellow); line-height: 1; margin-bottom: 4px; position: relative; }
-    .feature-card__val { font-size: 0.82rem; font-weight: 600; color: var(--white); margin-bottom: 2px; position: relative; }
-    .feature-card__meta { font-size: 0.6rem; color: var(--dim); margin-bottom: 8px; position: relative; }
-    .feature-card__bar { height: 3px; background: #1a1a1a; border-radius: 2px; position: relative; }
-    .feature-card__bar-fill { height: 100%; background: linear-gradient(90deg, rgba(var(--yr),.4), var(--yellow)); border-radius: 2px; transition: width .8s; }
-    @media (max-width: 960px) { .feature-dock { grid-template-columns: repeat(3, 1fr); } }
-    @media (max-width: 640px) { .feature-dock { grid-template-columns: repeat(2, 1fr); } }
-    @media (max-width: 400px) { .feature-dock { grid-template-columns: 1fr; } }
-
-    /* ─── OVERVIEW BARS ─────────────────────── */
-    .overview-bars { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); padding: 14px; margin-bottom: 10px; }
-    .overview-bars .panel__title { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); margin-bottom: 10px; }
+    .ss-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 5px 10px; border-radius: 20px;
+      background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06);
+      font-size: 0.6rem; color: var(--dim); text-decoration: none;
+      transition: all .2s; cursor: pointer;
+    }
+    .ss-chip:hover { background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.15); color: var(--white); transform: translateY(-1px); }
+    .ss-chip strong { color: var(--white); font-weight: 600; font-size: 0.6rem; }
+    .ss-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .ss-label { letter-spacing: .06em; text-transform: uppercase; font-weight: 500; }
+    @media (max-width: 640px) { .status-strip { gap: 4px; padding: 6px 8px; } .ss-chip { padding: 4px 8px; font-size: 0.52rem; } .ss-chip strong { font-size: 0.52rem; } }
 
     /* ─── MOBILE ────────────────────────────── */
     @media (max-width: 640px) {
@@ -6059,7 +6266,7 @@ function renderHtml(
       <img class="mobile-agent-banner__avatar" src="/assets/avatar.png" alt="elizaOK" />
       <div class="mobile-agent-banner__info">
         <div class="mobile-agent-banner__name">elizaOK</div>
-        <div class="mobile-agent-banner__role">AI Agent · BNB Chain</div>
+        <div class="mobile-agent-banner__role">Value Layer · BNB Chain</div>
       </div>
     </div>
 
@@ -6073,27 +6280,19 @@ function renderHtml(
           <img class="sb-agent__avatar" src="/assets/avatar.png" alt="elizaOK" />
           <div class="sb-agent__status"><span class="sb-agent__status-dot"></span>LIVE</div>
           <div class="sb-agent__name">elizaOK</div>
-          <div class="sb-agent__role">AI Degen Agent &middot; elizaOS</div>
+          <div class="sb-agent__role">Value Layer &middot; elizaOS</div>
           <div class="sb-agent__addr">${escapeHtml(shortAddress("0x2D6C3358A3acFe3be42b2Bdf7419e87091270c5F"))}</div>
-          <div class="sb-agent__bal">${escapeHtml(sidebarWalletBalanceLabel)} BNB</div>
+          <div class="sb-agent__bal">${escapeHtml(sidebarWalletBalanceLabel)}</div>
         </div>
 
         <!-- Agent info -->
         <div class="sb-section">
-          <div class="sb-section__title">Agent Status</div>
-          <div class="sb-stat-row"><span>Model</span><strong class="y">${escapeHtml(currentModel)}</strong></div>
-          <div class="sb-stat-row"><span>Scan every</span><strong>${Math.round(getDiscoveryConfig().intervalMs / 60_000)}m</strong></div>
+          <div class="sb-section__title">Status</div>
           <div class="sb-stat-row"><span>Mode</span><strong class="${executionState.dryRun ? '' : 'g'}">${executionState.dryRun ? "DRY-RUN" : "LIVE"}</strong></div>
-          <div class="sb-stat-row"><span>Execution</span><strong>${escapeHtml(executionState.mode)}</strong></div>
-          <div class="sb-stat-row"><span>Distribution</span><strong class="${distributionExecution.enabled ? 'g' : ''}">${distributionExecution.enabled ? "ARMED" : "STANDBY"}</strong></div>
-          <div class="sb-stat-row"><span>Goo scan</span><strong class="${getDiscoveryConfig().goo.enabled ? 'g' : ''}">${getDiscoveryConfig().goo.enabled ? "ACTIVE" : "OFF"}</strong></div>
+          <div class="sb-stat-row"><span>Scan</span><strong>every ${Math.round(getDiscoveryConfig().intervalMs / 60_000)}m</strong></div>
           <div class="sb-stat-row"><span>Readiness</span><strong class="y">${executionState.readinessScore}/${executionState.readinessTotal}</strong></div>
-          <div class="usage-stack" style="margin-top:8px">
-            ${renderUsageRow("API key", hasOpenAiKey ? 100 : 0, hasOpenAiKey ? "ok" : "x")}
-            ${renderUsageRow("Model", currentModel === "n/a" ? 0 : 100, currentModel === "n/a" ? "--" : "ok")}
-          </div>
           ${cloudSession ? `
-          <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+          <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
             <div class="sb-stat-row"><span>Cloud</span><strong class="y">${escapeHtml(cloudSession.displayName)}</strong></div>
             <div class="sb-stat-row"><span>Credits</span><strong>${escapeHtml(cloudSession.credits)}</strong></div>
           </div>` : ''}
@@ -6101,32 +6300,28 @@ function renderHtml(
 
         <!-- Quick actions -->
         <div class="sb-section">
-          <div class="sb-section__title">Quick Actions</div>
-          <button class="qa-btn" data-nav="overview" onclick="window.scrollTo(0,0)"><span class="qa-btn__icon">&#x1F4CA;</span>AGENT STATUS</button>
+          <div class="sb-section__title">Navigate</div>
+          <button class="qa-btn" data-nav="overview" onclick="window.scrollTo(0,0)"><span class="qa-btn__icon">&#x1F3E0;</span>TOP</button>
           <button class="qa-btn" data-nav="discovery"><span class="qa-btn__icon">&#x1F50D;</span>DISCOVERY</button>
           <button class="qa-btn" data-nav="portfolio"><span class="qa-btn__icon">&#x1F4BC;</span>PORTFOLIO</button>
           <button class="qa-btn" data-nav="execution"><span class="qa-btn__icon">&#x26A1;</span>EXECUTION</button>
+          <button class="qa-btn" data-nav="flywheel"><span class="qa-btn__icon">&#x1F504;</span>FLYWHEEL</button>
           <button class="qa-btn" data-nav="distribution"><span class="qa-btn__icon">&#x1FA82;</span>DISTRIBUTION</button>
-          <button class="qa-btn" data-nav="goo"><span class="qa-btn__icon">&#x1F9EC;</span>GOO INTEL</button>
+          <button class="qa-btn" data-nav="goo"><span class="qa-btn__icon">&#x1F9EC;</span>GOO</button>
         </div>
 
-        <!-- Smart Signals -->
-        <div class="sb-section" id="smart-signal-panel">
-          <div class="sb-section__title" style="display:flex;justify-content:space-between;align-items:center">
-            Market Intel
-            <span id="smart-signal-badge" class="panel__badge pb-dim" style="font-size:9px">LOADING</span>
+        <!-- ElizaCloud -->
+        <div class="sb-section cloud-card" id="cloud-cta-card" style="border:1px solid rgba(0,199,210,.18);border-radius:8px;padding:10px">
+          <div class="sb-section__title" style="color:#00C7D2">&#x2601;&#xFE0F; ElizaCloud</div>
+          <div class="cloud-card__banner">
+            <img src="/assets/cloud-banner.png" alt="ElizaCloud" class="cloud-card__img" />
           </div>
-          <div id="smart-signal-list" style="font-size:11px;color:var(--dim)">Waiting for first scan...</div>
-        </div>
-
-        <!-- Recent candidates -->
-        <div class="sb-section">
-          <div class="sb-section__title">Recent Signals</div>
-          ${snapshot.topCandidates.filter(c => c.score >= 60).slice(0,4).map(c => `
-          <div class="recent-item">
-            <div class="recent-item__sym"><a class="cand-link" href="${candidateHref(c.tokenAddress, c.dexId)}" target="_blank" rel="noreferrer">${escapeHtml(c.tokenSymbol)}</a></div>
-            <div class="recent-item__meta">${c.score}/100 &middot; ${c.recommendation === 'simulate_buy' ? '🟢 BUY' : '🟡 WATCH'}</div>
-          </div>`).join('') || '<div class="recent-item__meta">No signals yet</div>'}
+          <div class="cloud-card__features">
+            <div class="cloud-card__feat">&#x2601;&#xFE0F; Cloud Agent Hosting</div>
+            <div class="cloud-card__feat">&#x1F4AC; Chat with elizaOK</div>
+            <div class="cloud-card__feat">&#x26A1; Inference Credits</div>
+          </div>
+          <a class="cloud-card__btn" href="#" id="sidebar-cloud-btn">Connect &rarr;</a>
         </div>
 
         <!-- Footer -->
@@ -6140,70 +6335,30 @@ function renderHtml(
       <!-- ══ MAIN CONTENT ══════════════════════════ -->
       <div class="main">
 
-        <!-- ROW 1: System Monitor | Scheduler | Token Explorer -->
-        <div class="panel-row panel-row--3">
+        <!-- ROW 1: Agent Terminal | Token Explorer -->
+        <div class="panel-row panel-row--2">
 
-          <!-- System Monitor (like Hermes) -->
+          <!-- Embedded Agent Terminal -->
           <div class="panel">
             <div class="panel__head">
               <span class="pb-dot g"></span>
-              <span class="panel__title">System Monitor</span>
-              <span class="panel__badge pb-green">&#x1F4A5; ${snapshot.summary.candidateCount} pools</span>
-            </div>
-            <div class="panel__body">
-              <div class="mon-row">
-                <div class="mon-label"><span>SIGNAL SCORE</span><strong class="y">${snapshot.summary.averageScore}/100</strong></div>
-                <div class="mon-bar"><div class="mon-fill y" style="width:${snapshot.summary.averageScore}%"></div></div>
-              </div>
-              <div class="mon-row">
-                <div class="mon-label"><span>WIN RATE</span><strong>${formatPct(winRatePct)}</strong></div>
-                <div class="mon-bar"><div class="mon-fill g" style="width:${clampPercent(winRatePct ?? 0)}%"></div></div>
-              </div>
-              <div class="mon-row">
-                <div class="mon-label"><span>EXEC READINESS</span><strong>${clampPercent(executionPct)}%</strong></div>
-                <div class="mon-bar"><div class="mon-fill y" style="width:${clampPercent(executionPct)}%"></div></div>
-              </div>
-              <div class="mon-row">
-                <div class="mon-label"><span>DISTRIBUTION</span><strong>${clampPercent(distributionPct)}%</strong></div>
-                <div class="mon-bar"><div class="mon-fill g" style="width:${clampPercent(distributionPct)}%"></div></div>
-              </div>
-              <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
-                <div>
-                  <div class="mon-big">${snapshot.summary.candidateCount}</div>
-                  <div class="mon-sub">Candidates</div>
-                </div>
-                <div>
-                  <div class="mon-big" style="color:var(--green)">${snapshot.summary.topRecommendationCount}</div>
-                  <div class="mon-sub">Buy-Ready</div>
-                </div>
+              <span class="panel__title">elizaOK Agent Terminal</span>
+              <div style="display:flex;gap:4px;margin-left:auto">
+                <span class="panel__badge ${executionState.dryRun ? 'pb-dim' : 'pb-green'}">${executionState.dryRun ? "DRY-RUN" : "&#x26A1; LIVE"}</span>
+                <span class="panel__badge pb-green">ONLINE</span>
               </div>
             </div>
-          </div>
-
-          <!-- Scheduler / Cron -->
-          <div class="panel">
-            <div class="panel__head">
-              <span class="pb-dot y"></span>
-              <span class="panel__title">Scheduler / Execution</span>
-              <span class="panel__badge ${executionState.dryRun ? 'pb-dim' : 'pb-green'}">${executionState.dryRun ? "DRY-RUN" : "&#x26A1; LIVE"}</span>
-            </div>
-            <div class="panel__body">
-              <div class="sched-row"><span>Last scan</span><strong class="w">${escapeHtml(formatRelativeTime(snapshot.generatedAt))}</strong></div>
-              <div class="sched-row"><span>Next scan</span><strong class="y">~${Math.round(getDiscoveryConfig().intervalMs / 60_000)}m</strong></div>
-              <div class="sched-row"><span>Max buy</span><strong class="y">${formatBnb(executionState.risk.maxBuyBnb)} BNB</strong></div>
-              <div class="sched-row"><span>Daily cap</span><strong class="w">${formatBnb(executionState.risk.maxDailyDeployBnb)} BNB</strong></div>
-              <div class="sched-row"><span>Eligible plans</span><strong class="w">${eligibleExecutionPlans}</strong></div>
-              <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
-                <div class="sched-row"><span>Executed</span><strong class="g">${executionState.cycleSummary.executedCount}</strong></div>
-                <div class="sched-row"><span>Dry-run</span><strong class="w">${executionState.cycleSummary.dryRunCount}</strong></div>
-                <div class="sched-row"><span>Skipped</span><strong class="w">${executionState.cycleSummary.skippedCount}</strong></div>
-                <div class="sched-row"><span>Failed</span><strong class="${executionState.cycleSummary.failedCount > 0 ? 'r' : 'w'}">${executionState.cycleSummary.failedCount}</strong></div>
-              </div>
-              <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
-                <div class="sched-row"><span>Active positions</span><strong class="y">${portfolioLifecycle.activePositions.length}</strong></div>
-                <div class="sched-row"><span>Portfolio value</span><strong class="w">${formatUsd(portfolioLifecycle.grossPortfolioValueUsd)}</strong></div>
-                <div class="sched-row"><span>Win rate</span><strong class="${(winRatePct ?? 0) > 50 ? 'g' : 'w'}">${formatPct(winRatePct)}</strong></div>
-                <div class="sched-row"><span>Total trades</span><strong class="w">${tradeRecords.length}</strong></div>
+            <div class="panel__body panel__body--p0">
+              <div class="term-body">
+                <div class="prompt-line"><span class="pr">root@elizaok:~$</span><span class="cmd">elizaok scan --chain bsc</span></div>
+                <div class="term-line"><span class="ts">${escapeHtml(new Date().toTimeString().slice(0,8))}</span><span class="tag tag-info">INFO</span><span class="msg">Initializing BSC mempool scan&hellip;</span></div>
+                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-ok">SCAN</span><span class="msg">Found <span class="hi">${snapshot.summary.candidateCount}</span> pools · avg score <span class="hi">${snapshot.summary.averageScore}/100</span> · <span class="hi">${snapshot.summary.topRecommendationCount}</span> buy-ready</span></div>
+                ${snapshot.summary.strongestCandidate ? `<div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-ok">BEST</span><span class="msg"><span class="hi">${escapeHtml(snapshot.summary.strongestCandidate.tokenSymbol)}</span> &mdash; score <span class="ok">${snapshot.summary.strongestCandidate.score}/100</span></span></div>` : ''}
+                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">PORT</span><span class="msg">${portfolioLifecycle.activePositions.length} active · ${formatUsd(portfolioLifecycle.grossPortfolioValueUsd)} value · ${formatPct(winRatePct)} win rate</span></div>
+                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">EXEC</span><span class="msg">${formatBnb(positionSizeBnb)}/pos · ${formatBnb(dailyCapBnb)}/day · next scan ~${Math.round(getDiscoveryConfig().intervalMs / 60_000)}m</span></div>
+                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">WALL</span><span class="msg">${escapeHtml(sidebarWalletBalanceLabel)} · ${escapeHtml(shortAddress("0x2D6C3358A3acFe3be42b2Bdf7419e87091270c5F"))}</span></div>
+                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">GOO</span><span class="msg">${paperAgents.length} agents · ${paperAgents.filter(a => a.chainState === 'active').length} active · ${acquirableCandidates.length} acquirable</span></div>
+                <div class="prompt-line" style="margin-top:6px"><span class="pr">&gt;_</span><span class="cursor"></span></div>
               </div>
             </div>
           </div>
@@ -6241,71 +6396,16 @@ function renderHtml(
             </div>
           </div>
 
-        </div><!-- /panel-row--3 -->
+        </div><!-- /panel-row--2 -->
 
-        <!-- ROW 2: Embedded Terminal + Signal Detail -->
-        <div class="panel-row panel-row--2-3">
-
-          <!-- Embedded Agent Terminal (like Hermes CLI) -->
-          <div class="panel">
-            <div class="panel__head">
-              <span class="pb-dot g"></span>
-              <span class="panel__title">elizaOK Agent Terminal</span>
-              <div style="display:flex;gap:4px;margin-left:auto">
-                <span class="panel__badge pb-dim">elizaOS</span>
-                <span class="panel__badge pb-green">ONLINE</span>
-              </div>
-            </div>
-            <div class="panel__body panel__body--p0">
-              <div class="term-body">
-                <div class="prompt-line"><span class="pr">root@elizaok:~$</span><span class="cmd">elizaok scan --chain bsc</span></div>
-                <div class="term-line"><span class="ts">${escapeHtml(new Date().toTimeString().slice(0,8))}</span><span class="tag tag-info">INFO</span><span class="msg">Initializing BSC mempool scan&hellip;</span></div>
-                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">INFO</span><span class="msg">Fetching DexScreener pools &mdash; found <span class="hi">${snapshot.summary.candidateCount}</span> candidates</span></div>
-                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-ok">SCAN</span><span class="msg">Avg signal score: <span class="hi">${snapshot.summary.averageScore}/100</span></span></div>
-                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-${snapshot.summary.topRecommendationCount > 0 ? 'ok' : 'warn'}">TARGET</span><span class="msg">Buy-ready signals: <span class="hi">${snapshot.summary.topRecommendationCount}</span></span></div>
-                ${snapshot.summary.strongestCandidate ? `<div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-ok">BEST</span><span class="msg"><span class="hi">${escapeHtml(snapshot.summary.strongestCandidate.tokenSymbol)}</span> &mdash; score <span class="ok">${snapshot.summary.strongestCandidate.score}/100</span></span></div>` : ''}
-                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-${executionState.dryRun ? 'warn' : 'ok'}">${executionState.dryRun ? "DRY" : "LIVE"}</span><span class="msg">Execution mode: <span class="hi">${executionState.dryRun ? "DRY-RUN (simulation)" : "LIVE TRADING"}</span></span></div>
-                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">WALL</span><span class="msg">Balance: <span class="hi">${escapeHtml(sidebarWalletBalanceLabel)} BNB</span> &middot; ${escapeHtml(shortAddress("0x2D6C3358A3acFe3be42b2Bdf7419e87091270c5F"))}</span></div>
-                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">DIST</span><span class="msg">Distribution: <span class="hi">${distributionExecution.enabled ? "ARMED" : "STANDBY"}</span> &middot; ${distributionPlan.eligibleHolderCount} holders</span></div>
-                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">GOO</span><span class="msg">Goo scan: <span class="hi">${getDiscoveryConfig().goo.enabled ? "ACTIVE" : "DISABLED"}</span> &middot; ${snapshot.summary.gooAgentCount} agents reviewed</span></div>
-                <div class="prompt-line" style="margin-top:6px"><span class="pr">&gt;_</span><span class="cursor"></span></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Signal detail (like the right panel in Hermes) -->
-          <div class="panel">
-            <div class="panel__head">
-              <span class="pb-dot y"></span>
-              <span class="panel__title">Top Candidates</span>
-              <span class="panel__badge pb-yellow">Score ≥ 60</span>
-            </div>
-            <div style="padding:6px 12px 2px;font-size:0.58rem;color:var(--dim);border-bottom:1px solid var(--border)">AI-scored BSC tokens · Click to trade on DEX · Score reflects buy conviction</div>
-            <div class="panel__body panel__body--p0" style="padding:8px">
-              ${snapshot.topCandidates.filter(c => c.score >= 60).slice(0,6).map((c,i) => {
-                const recLabel = c.recommendation === 'simulate_buy' ? 'BUY' : c.recommendation === 'watch' ? 'WATCH' : 'OBSERVE';
-                const recIcon = c.recommendation === 'simulate_buy' ? '🟢' : c.recommendation === 'watch' ? '🟡' : '⚪';
-                return `
-              <div class="cand-row" title="${escapeHtml(c.tokenSymbol)} — AI score ${c.score}/100 · Pool age ${c.poolAgeMinutes}min · Liquidity $${Math.round(c.reserveUsd).toLocaleString()} · ${recLabel} signal">
-                <span class="cand-row__rank">${i+1}</span>
-                <span class="cand-row__sym"><a class="cand-link" href="${candidateHref(c.tokenAddress, c.dexId)}" target="_blank" rel="noreferrer">${escapeHtml(c.tokenSymbol)}</a></span>
-                <span class="cand-row__score">${c.score}/100</span>
-                <span class="cand-row__pill ${recommendationTone(c.recommendation)}">${recIcon} ${recLabel}</span>
-                <div class="mini-bar"><div class="mini-fill" style="width:${c.score}%"></div></div>
-                <span class="cand-row__meta">${c.poolAgeMinutes}m</span>
-              </div>`;}).join('') || '<div style="padding:16px;color:var(--dim);font-style:italic;text-align:center">Scanning BSC pools&hellip;</div>'}
-            </div>
-          </div>
-
-        </div><!-- /panel-row--2-3 -->
-
-        <!-- FEATURE DOCK -->
-        <div class="feature-dock">${featureDockCards}</div>
-
-        <!-- OVERVIEW BARS -->
-        <div class="overview-bars">
-          <div class="panel__title">System Health</div>
-          ${overviewVisualBars}
+        <!-- STATUS STRIP -->
+        <div class="status-strip">
+          <a class="ss-chip" href="#discovery-section"><span class="ss-dot" style="background:${snapshot.summary.topRecommendationCount > 0 ? 'var(--green)' : 'var(--yellow)'}"></span><span class="ss-label">Discovery</span><strong>${snapshot.summary.topRecommendationCount}/${snapshot.summary.candidateCount}</strong></a>
+          <a class="ss-chip" href="#portfolio-section"><span class="ss-dot" style="background:var(--green)"></span><span class="ss-label">Portfolio</span><strong>${portfolioLifecycle.activePositions.length} · ${formatUsd(portfolioLifecycle.grossPortfolioValueUsd)}</strong></a>
+          <a class="ss-chip" href="#treasury-section"><span class="ss-dot" style="background:${executionState.dryRun ? 'var(--yellow)' : 'var(--green)'}"></span><span class="ss-label">Execution</span><strong>${executionState.dryRun ? "DRY-RUN" : "LIVE"}</strong></a>
+          <a class="ss-chip" href="#flywheel-section"><span class="ss-dot" style="background:var(--green)"></span><span class="ss-label">Flywheel</span><strong>$${pfw.totalProfitUsd.toFixed(0)}</strong></a>
+          <a class="ss-chip" href="#distribution-section"><span class="ss-dot" style="background:${distributionExecution.dryRun ? 'rgba(255,255,255,.3)' : 'var(--green)'}"></span><span class="ss-label">Distribution</span><strong>${distributionPlan.eligibleHolderCount} holders</strong></a>
+          <a class="ss-chip" href="#goo-section"><span class="ss-dot" style="background:var(--green)"></span><span class="ss-label">Goo</span><strong>${paperAgents.filter(a => a.chainState === 'active').length}/${paperAgents.length}</strong></a>
         </div>
 
         <!-- ROW 3: Accordion detail sections -->
@@ -6318,10 +6418,10 @@ function renderHtml(
             </summary>
             <div class="panel-accord__body">
               <div class="split-grid">
-                <div><div class="split-h">All Candidates</div>${topCandidates || '<p class="candidate-thesis">No data.</p>'}</div>
+                <div><div class="split-h">Top Candidates</div>${topCandidates || '<p class="candidate-thesis">Scanning BSC pools&hellip;</p>'}</div>
                 <div>
-                  <div class="split-h">Recent Runs</div>${recentRuns || '<p class="candidate-thesis">No data.</p>'}
-                  <div class="split-h" style="margin-top:12px">Watchlist</div>${watchlistRows || '<p class="candidate-thesis">Empty.</p>'}
+                  <div class="split-h">Scan History</div>${recentRuns || '<p class="candidate-thesis">No scans yet.</p>'}
+                  <div class="split-h" style="margin-top:12px">Tracked Tokens (${watchlist.length})</div>${watchlistRows || '<p class="candidate-thesis">No tokens tracked yet.</p>'}
                 </div>
               </div>
             </div>
@@ -6335,24 +6435,56 @@ function renderHtml(
             </summary>
             <div class="panel-accord__body">
               ${portfolioPnlChart}
+              <div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-top:12px">
+                <div class="metric"><span>Total Allocated</span><strong>${formatUsd(portfolioLifecycle.totalAllocatedUsd)}</strong></div>
+                <div class="metric"><span>Current Value</span><strong>${formatUsd(portfolioLifecycle.totalCurrentValueUsd)}</strong></div>
+                <div class="metric"><span>Unrealized P&L</span><strong class="${portfolioLifecycle.totalUnrealizedPnlUsd >= 0 ? 'g' : 'r'}">${portfolioLifecycle.totalUnrealizedPnlUsd >= 0 ? '+' : ''}${formatUsd(portfolioLifecycle.totalUnrealizedPnlUsd)} (${portfolioLifecycle.totalUnrealizedPnlPct >= 0 ? '+' : ''}${portfolioLifecycle.totalUnrealizedPnlPct.toFixed(1)}%)</strong></div>
+                <div class="metric"><span>Cash Balance</span><strong>${formatUsd(portfolioLifecycle.cashBalanceUsd)}</strong></div>
+              </div>
               <div class="split-grid" style="margin-top:12px">
-                <div><div class="split-h">Active Positions</div>${activePortfolioCards || '<p class="candidate-thesis">No positions.</p>'}</div>
+                <div><div class="split-h">Active Positions (${portfolioLifecycle.activePositions.length})</div>${activePortfolioCards || '<p class="candidate-thesis">No positions.</p>'}</div>
                 <div><div class="split-h">Timeline</div>${timelineRows || '<p class="candidate-thesis">No events.</p>'}</div>
+              </div>
+
+              <div class="split-h" style="margin-top:16px">&#x1F4CA; Strategy Backtest Report</div>
+              <div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-top:6px">
+                <div class="metric"><span>Total Exits</span><strong>${portfolioLifecycle.exitedPositions.length}</strong></div>
+                <div class="metric"><span>Win Rate</span><strong class="${(winRatePct ?? 0) > 50 ? 'g' : 'w'}">${formatPct(winRatePct)}</strong></div>
+                <div class="metric"><span>Realized P&L</span><strong class="${portfolioLifecycle.totalRealizedPnlUsd >= 0 ? 'g' : 'r'}">${portfolioLifecycle.totalRealizedPnlUsd >= 0 ? '+' : ''}${formatUsd(portfolioLifecycle.totalRealizedPnlUsd)}</strong></div>
+                <div class="metric"><span>Avg Hold</span><strong>${formatDuration(averageHoldMs)}</strong></div>
+              </div>
+              ${strategyReportRows ? `<div style="margin-top:8px">${strategyReportRows}</div>` : '<p class="candidate-thesis">No strategy data yet.</p>'}
+
+              <div class="split-grid" style="margin-top:16px">
+                <div>
+                  <div class="split-h">&#x1F3C6; Win/Loss Leaderboard (top ${Math.min(15, portfolioLifecycle.exitedPositions.length)})</div>
+                  ${tokenWinLossRows || '<p class="candidate-thesis">No exits yet.</p>'}
+                </div>
+                <div>
+                  <div class="split-h">&#x1F440; Watching (${portfolioLifecycle.watchPositions.length})</div>
+                  ${watchingPortfolioCards || '<p class="candidate-thesis">No watching positions.</p>'}
+                </div>
+              </div>
+
+              <div class="split-h" style="margin-top:16px">&#x1F4E4; Exited Positions (${portfolioLifecycle.exitedPositions.length})</div>
+              <div style="max-height:400px;overflow-y:auto;margin-top:6px">
+                ${exitedPortfolioCards || '<p class="candidate-thesis">No exited positions.</p>'}
               </div>
             </div>
           </details>
 
           <details class="panel-accord" id="flywheel-section" open>
             <summary class="panel-accord__sum">
-              <span class="panel-accord__title">&#x1F504; Revenue Flywheel &amp; Strategy DNA</span>
+              <span class="panel-accord__title">&#x1F504; Revenue Flywheel</span>
               <span class="panel-accord__meta">${escapeHtml(flywheelFoldSummary)}</span>
               <span class="panel-accord__arr">&#x25BE;</span>
             </summary>
             <div class="panel-accord__body">
+              <p class="candidate-thesis" style="margin-bottom:8px">All realized profits are automatically split: 70% reinvested into the treasury, 15% used for $elizaOK buyback, 15% reserved for airdrop distribution.</p>
               <div class="metric-grid" style="grid-template-columns:repeat(4,1fr)">
                 <div class="metric"><span>Total Profit</span><strong class="g">$${pfw.totalProfitUsd.toFixed(2)}</strong></div>
                 <div class="metric"><span>Reinvested (70%)</span><strong class="y">$${pfw.reinvestedUsd.toFixed(2)}</strong></div>
-                <div class="metric"><span>$ElizaOK Buyback (15%)</span><strong style="color:#8b5cf6">$${pfw.elizaOKBuybackUsd.toFixed(2)}</strong></div>
+                <div class="metric"><span>$elizaOK Buyback (15%)</span><strong style="color:#8b5cf6">$${pfw.elizaOKBuybackUsd.toFixed(2)}</strong></div>
                 <div class="metric"><span>Airdrop Reserve (15%)</span><strong style="color:#f59e0b">$${pfw.airdropReserveUsd.toFixed(2)}</strong></div>
               </div>
               <div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-top:8px">
@@ -6360,28 +6492,6 @@ function renderHtml(
                 <div class="metric"><span>Trailing Stop Saves</span><strong class="g">${pfw.trailingStopSaves}</strong></div>
                 <div class="metric"><span>Smart Exit Saves</span><strong class="g">${pfw.gmgnExitSaves}</strong></div>
                 <div class="metric"><span>Win / Loss</span><strong><span class="g">${(portfolioLifecycle as any).winCount ?? 0}</span> / <span class="r">${(portfolioLifecycle as any).lossCount ?? 0}</span></strong></div>
-              </div>
-              <div class="split-h" style="margin-top:12px">Strategy Absorption (AI Acquiring AI)</div>
-              <div id="absorption-panel" style="padding:4px 0">
-                <div class="metric-grid" style="grid-template-columns:repeat(3,1fr)">
-                  <div class="metric"><span>Agents Absorbed</span><strong id="abs-count">0</strong></div>
-                  <div class="metric"><span>KOL Weight</span><strong id="abs-kol">1.0x</strong></div>
-                  <div class="metric"><span>Holder Weight</span><strong id="abs-holder">1.0x</strong></div>
-                </div>
-                <div id="abs-history" style="margin-top:8px;font-size:11px;color:var(--dim)">No strategies absorbed yet. Acquire Goo agents to make elizaOK smarter.</div>
-              </div>
-            </div>
-          </details>
-
-          <details class="panel-accord" id="event-timeline-section">
-            <summary class="panel-accord__sum">
-              <span class="panel-accord__title">&#x1F4C5; Event Timeline</span>
-              <span class="panel-accord__meta">Live feed of trading events, acquisitions &amp; respawns</span>
-              <span class="panel-accord__arr">&#x25BE;</span>
-            </summary>
-            <div class="panel-accord__body">
-              <div id="event-timeline" class="evt-timeline">
-                <div class="evt-timeline__empty">Events will appear as trades, acquisitions, and respawns occur.</div>
               </div>
             </div>
           </details>
@@ -6393,9 +6503,13 @@ function renderHtml(
               <span class="panel-accord__arr">&#x25BE;</span>
             </summary>
             <div class="panel-accord__body">
-              <div class="split-h">Controls</div><div class="metric-grid">${executionControlCards}</div>
-              <div class="split-h" style="margin-top:12px">Treasury Model</div><div class="metric-grid">${treasuryModelCards}</div>
-              <div class="split-h" style="margin-top:12px">Treasury Allocation</div>${treasuryAllocationCards || '<p class="candidate-thesis">No allocations.</p>'}
+              <div class="split-h">Live Execution Controls</div>
+              <p class="candidate-thesis" style="margin:-2px 0 6px">Position sizing derived from portfolio allocation (~${formatUsd(avgPositionUsd)}/position ≈ <strong>${formatBnb(positionSizeBnb)}</strong>). Daily cap: <strong>${formatBnb(dailyCapBnb)}</strong>.</p>
+              <div class="metric-grid">${executionControlCards}</div>
+              <div class="split-h" style="margin-top:12px">Paper Simulation Model</div>
+              <p class="candidate-thesis" style="margin:-2px 0 6px">Virtual capital model for signal tracking, scoring, and backtesting. Not real funds — used to evaluate which tokens the AI would allocate to and track P&L accuracy.</p>
+              <div class="metric-grid">${treasuryModelCards}</div>
+              <div class="split-h" style="margin-top:12px">Simulation Allocation</div>${treasuryAllocationCards || '<p class="candidate-thesis">No allocations.</p>'}
               <div class="split-h" style="margin-top:12px">Execution Plans</div>${executionPlanRows || '<p class="candidate-thesis">No eligible plans.</p>'}
               <div class="split-h" style="margin-top:12px">Trade Ledger</div>${recentTradeRows || '<p class="candidate-thesis">No trades.</p>'}
             </div>
@@ -6403,105 +6517,103 @@ function renderHtml(
 
           <details class="panel-accord" id="distribution-section">
             <summary class="panel-accord__sum">
-              <span class="panel-accord__title">&#x1FA82; Airdrop Distribution</span>
+              <span class="panel-accord__title">&#x1FA82; Value Distribution</span>
               <span class="panel-accord__meta">${escapeHtml(distributionFoldSummary)}</span>
               <span class="panel-accord__arr">&#x25BE;</span>
             </summary>
             <div class="panel-accord__body">
+              <p class="candidate-thesis" style="margin-bottom:10px">The revenue flywheel allocates 15% of all profits to the airdrop reserve. Eligible $elizaOK holders receive proportional value distribution each cycle.</p>
               <div class="metric-grid">${distributionStateCards}</div>
               <div class="split-h" style="margin-top:12px">Readiness Checks</div>${distributionExecutionRows || '<p class="candidate-thesis">No checks.</p>'}
-              <div class="split-h" style="margin-top:12px">Eligible Recipients</div>${distributionRecipients || '<p class="candidate-thesis">No recipients.</p>'}
-              <div class="split-h" style="margin-top:12px">Pending Queue</div>${distributionPendingRows || '<p class="candidate-thesis">Queue empty.</p>'}
+              <div class="split-h" style="margin-top:12px">Eligible Recipients</div>${distributionRecipients || '<p class="candidate-thesis">No recipients yet — distribution activates when the treasury generates realized profit.</p>'}
               <div class="split-h" style="margin-top:12px">Distribution Ledger</div>${distributionLedgerRows || '<p class="candidate-thesis">No ledger records.</p>'}
             </div>
           </details>
 
           <details class="panel-accord" id="goo-section">
             <summary class="panel-accord__sum">
-              <span class="panel-accord__title">&#x1F9EC; Goo Intelligence</span>
+              <span class="panel-accord__title">&#x1F9EC; Goo Intelligence &amp; Strategy DNA</span>
               <span class="panel-accord__meta">${escapeHtml(gooFoldSummary)}</span>
               <span class="panel-accord__arr">&#x25BE;</span>
             </summary>
             <div class="panel-accord__body">
-              <div class="split-grid">
-                <div>${gooCandidates || '<p class="candidate-thesis">No Goo agents. Enable scanning.</p>'}</div>
-                <div>${gooQueueRows || '<p class="candidate-thesis">No queue.</p>'}</div>
+              <p class="candidate-thesis" style="margin-bottom:8px">${paperAgents.length} autonomous agents compete using different strategies. Top performers become acquisition candidates — when acquired, their strategy parameters (KOL weighting, holder analysis, exit timing) are absorbed into elizaOK's core engine.</p>
+              ${paperSummary ? `
+              <div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:10px">
+                <div class="metric"><span>Total Agents</span><strong>${paperAgents.length}</strong></div>
+                <div class="metric"><span>Active</span><strong class="g">${paperSummary.activeCount}</strong></div>
+                <div class="metric"><span>Avg Win Rate</span><strong class="${paperSummary.averageWinRate > 0 ? 'g' : 'w'}">${paperSummary.averageWinRate.toFixed(1)}%</strong></div>
+                <div class="metric"><span>Total P&L</span><strong class="${paperSummary.totalPnlUsd >= 0 ? 'g' : 'r'}">${paperSummary.totalPnlUsd >= 0 ? '+' : ''}$${paperSummary.totalPnlUsd.toFixed(2)}</strong></div>
+              </div>` : ""}
+              <div class="split-h">Agent Fleet (${paperAgents.length})</div>
+              <div style="max-height:360px;overflow-y:auto;margin-top:6px">
+                ${gooCandidates || '<p class="candidate-thesis">No agents yet. Waiting for first scan cycle.</p>'}
               </div>
+              <div class="split-h" style="margin-top:12px">Strategy Absorption</div>
+              <div style="padding:4px 0">
+                <div class="metric-grid" style="grid-template-columns:repeat(3,1fr)">
+                  <div class="metric"><span>Acquired</span><strong>${paperAgents.filter(a => a.acquiredByElizaOK).length}</strong></div>
+                  <div class="metric"><span>Acquirable</span><strong class="${acquirableCandidates.length > 0 ? 'y' : 'w'}">${acquirableCandidates.length}</strong></div>
+                  <div class="metric"><span>Best Score</span><strong class="${acquirableCandidates.length > 0 ? 'g' : 'w'}">${acquirableCandidates.length > 0 ? acquirableCandidates.sort((a,b) => b.acquisitionScore - a.acquisitionScore)[0].acquisitionScore + '/100' : '—'}</strong></div>
+                </div>
+                ${acquirableCandidates.length > 0 ? `
+                <div style="margin-top:8px">
+                  ${acquirableCandidates.sort((a,b) => b.acquisitionScore - a.acquisitionScore).slice(0, 3).map(agent => {
+                    const readyIcon = agent.acquisitionScore >= 50 ? "🟢" : agent.acquisitionScore >= 30 ? "🟡" : "⚪";
+                    return `<div class="status-row"><span>${readyIcon} ${escapeHtml(agent.agentName)}</span><strong>Score ${agent.acquisitionScore}/100 · ${escapeHtml(agent.strategy.label)} · ${agent.winRate.toFixed(1)}% win</strong></div>`;
+                  }).join("")}
+                </div>` : '<p class="candidate-thesis" style="margin-top:6px">No agents ready for acquisition yet (need ≥ 3 trades).</p>'}
+              </div>
+              <p class="candidate-thesis" style="margin-top:8px"><a href="/goo" style="color:var(--yellow)">View full Goo Arena →</a></p>
             </div>
           </details>
         </div>
+
 
       </div><!-- /main -->
 
       <!-- ══ RIGHT ASIDE ═══════════════════════════ -->
       <div class="aside">
 
-        <!-- Signal Stats -->
+        <!-- Live Overview -->
         <div class="aside-block">
-          <div class="aside-title">&#x1F4E1; Signal Stats</div>
-          <div class="aside-big">${snapshot.summary.candidateCount}</div>
-          <div class="aside-sub">candidates scanned</div>
+          <div class="aside-title">&#x1F4CA; Live Overview</div>
+          <div class="aside-big" style="color:${executionState.dryRun ? 'rgba(255,255,255,0.5)' : 'var(--green)'}; font-size:0.85rem; margin-bottom:4px">${executionState.dryRun ? "PAPER MODE" : "&#x26A1; LIVE"}</div>
+          <div class="aside-sub" style="margin-bottom:6px">Last scan: ${new Date(snapshot.summary.lastScanAt || Date.now()).toLocaleTimeString("en-US", { hour12: false })}</div>
+          <div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px;border-top:1px solid var(--border);padding-top:8px">Discovery</div>
+          <div class="aside-stat"><span>Scanned</span><strong class="w">${snapshot.summary.candidateCount}</strong></div>
           <div class="aside-stat"><span>Buy-ready</span><strong class="g">${snapshot.summary.topRecommendationCount}</strong></div>
-          <div class="aside-stat"><span>Avg score</span><strong class="y">${snapshot.summary.averageScore}/100</strong></div>
-          <div class="aside-stat"><span>Best token</span><strong class="y">${escapeHtml(snapshot.summary.strongestCandidate?.tokenSymbol || "—")}</strong></div>
-          <div class="aside-stat"><span>Top score</span><strong class="w">${snapshot.summary.strongestCandidate?.score ?? "—"}/100</strong></div>
-        </div>
-
-        <!-- Portfolio -->
-        <div class="aside-block">
-          <div class="aside-title">&#x1F4BC; Portfolio</div>
-          <div class="aside-big" style="color:var(--white)">${portfolioLifecycle.activePositions.length}</div>
-          <div class="aside-sub">active positions</div>
+          <div class="aside-stat"><span>Top signal</span><strong class="y">${escapeHtml(snapshot.summary.strongestCandidate?.tokenSymbol || "—")} ${snapshot.summary.strongestCandidate?.score ?? "—"}/100</strong></div>
+          <div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px;border-top:1px solid var(--border);padding-top:8px">Portfolio</div>
+          <div class="aside-stat"><span>Active</span><strong class="w">${portfolioLifecycle.activePositions.length}</strong></div>
           <div class="aside-stat"><span>Watching</span><strong class="w">${portfolioLifecycle.watchPositions.length}</strong></div>
           <div class="aside-stat"><span>Exited</span><strong class="w">${portfolioLifecycle.exitedPositions.length}</strong></div>
           <div class="aside-stat"><span>Win rate</span><strong class="${(winRatePct ?? 0) > 50 ? 'g' : 'w'}">${formatPct(winRatePct)}</strong></div>
-          <div class="aside-stat"><span>Realized</span><strong class="w">${formatUsd(portfolioLifecycle.totalRealizedPnlUsd)}</strong></div>
-          <div class="aside-stat"><span>Gross</span><strong class="y">${formatUsd(portfolioLifecycle.grossPortfolioValueUsd)}</strong></div>
-        </div>
-
-        <!-- Execution -->
-        <div class="aside-block">
-          <div class="aside-title">&#x26A1; Execution</div>
-          <div class="aside-big" style="color:${executionState.dryRun ? 'rgba(255,255,255,0.5)' : 'var(--green)'}; font-size:0.9rem; margin-bottom:6px">${executionState.dryRun ? "DRY-RUN" : "&#x26A1; LIVE"}</div>
-          <div class="aside-stat"><span>Mode</span><strong class="w">${escapeHtml(executionState.mode)}</strong></div>
+          <div class="aside-stat"><span>Sim. P&L</span><strong class="${portfolioLifecycle.totalRealizedPnlUsd >= 0 ? 'g' : 'r'}">${formatUsd(portfolioLifecycle.totalRealizedPnlUsd)}</strong></div>
+          <div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px;border-top:1px solid var(--border);padding-top:8px">Execution</div>
+          <div class="aside-stat"><span>Per position</span><strong class="y">${formatBnb(positionSizeBnb)}</strong></div>
           <div class="aside-stat"><span>Executed</span><strong class="g">${executionState.cycleSummary.executedCount}</strong></div>
-          <div class="aside-stat"><span>Max buy</span><strong class="y">${formatBnb(executionState.risk.maxBuyBnb)} BNB</strong></div>
-          <div class="aside-stat"><span>Daily cap</span><strong class="w">${formatBnb(executionState.risk.maxDailyDeployBnb)} BNB</strong></div>
           <div class="aside-stat"><span>Trades</span><strong class="w">${tradeRecords.length}</strong></div>
         </div>
 
-        <!-- Distribution + Goo -->
+        <!-- Recent Signals -->
         <div class="aside-block">
-          <div class="aside-title">&#x1FA82; Distribution</div>
-          <div class="aside-stat"><span>Holders</span><strong class="w">${distributionPlan.eligibleHolderCount}</strong></div>
-          <div class="aside-stat"><span>Recipients</span><strong class="y">${distributionPlan.recipients.length}</strong></div>
-          <div class="aside-stat"><span>Pool</span><strong class="y">${formatUsd(distributionPlan.distributionPoolUsd)}</strong></div>
-          <div class="aside-stat"><span>Status</span><strong class="${distributionExecution.enabled ? 'g' : 'w'}">${distributionExecution.enabled ? "ARMED" : "STBY"}</strong></div>
-          <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
-            <div class="aside-title" style="margin-top:0">&#x1F9EC; Goo Intel</div>
-            <div class="aside-stat"><span>Reviewed</span><strong class="w">${snapshot.summary.gooAgentCount}</strong></div>
-            <div class="aside-stat"><span>Priority</span><strong class="y">${snapshot.summary.gooPriorityCount}</strong></div>
-            <div class="aside-stat"><span>Scan</span><strong class="${getDiscoveryConfig().goo.enabled ? 'g' : 'w'}">${getDiscoveryConfig().goo.enabled ? "ON" : "OFF"}</strong></div>
+          <div class="aside-title">&#x1F4E1; Latest Signals</div>
+          ${snapshot.topCandidates.filter(c => c.score >= 60).slice(0,5).map(c => `
+          <div class="aside-stat">
+            <span><a class="cand-link" href="${candidateHref(c.tokenAddress, c.dexId)}" target="_blank" rel="noreferrer" style="color:var(--white)">${escapeHtml(c.tokenSymbol)}</a></span>
+            <strong class="${c.recommendation === 'simulate_buy' ? 'g' : 'y'}">${c.score} ${c.recommendation === 'simulate_buy' ? '&#x1F7E2;' : '&#x1F7E1;'}</strong>
+          </div>`).join('') || '<div style="font-size:11px;color:var(--dim)">No signals yet</div>'}
+        </div>
+
+        <!-- Event Feed -->
+        <div class="aside-block">
+          <div class="aside-title">&#x1F4C5; Live Feed</div>
+          <div id="event-timeline" class="evt-timeline" style="max-height:200px">
+            <div class="evt-timeline__empty" style="font-size:11px">Waiting for events&hellip;</div>
           </div>
         </div>
 
-        <!-- ElizaCloud -->
-        <div class="aside-block cloud-card" id="cloud-cta-card">
-          <div class="cloud-card__banner">
-            <img src="/assets/cloud-banner.png" alt="ElizaCloud" class="cloud-card__img" />
-          </div>
-          <div class="cloud-card__body">
-            <div class="cloud-card__title">ElizaCloud</div>
-            <div class="cloud-card__sub">Make Agents. In Seconds.</div>
-            <div class="cloud-card__features">
-              <div class="cloud-card__feat">&#x2601;&#xFE0F; Cloud Agent Hosting</div>
-              <div class="cloud-card__feat">&#x1F4AC; Chat with elizaOK</div>
-              <div class="cloud-card__feat">&#x26A1; AI Inference Credits</div>
-              <div class="cloud-card__feat">&#x1F916; Multi-Agent Orchestration</div>
-            </div>
-            <a class="cloud-card__btn" href="https://elizacloud.ai" target="_blank" rel="noreferrer">Connect to Cloud &rarr;</a>
-          </div>
-        </div>
 
       </div><!-- /aside -->
 
@@ -6511,6 +6623,26 @@ function renderHtml(
   <script>
   (function() {
     "use strict";
+
+    /* ── ElizaCloud connect ── */
+    function doFinalPollThenReload(sid,attempt){
+      attempt=attempt||0;
+      fetch('/api/eliza-cloud/hosted/poll?session='+encodeURIComponent(sid),{credentials:'same-origin'}).then(function(r){return r.json();}).catch(function(){return {};}).then(function(d){
+        if((d&&d.status==='authenticated')||attempt>=5){window.location.href='/cloud/agents';return;}
+        setTimeout(function(){doFinalPollThenReload(sid,attempt+1);},1200);
+      });
+    }
+    function openCloudAuth(btn){
+      if(btn)btn.style.opacity='0.5';
+      fetch('/api/eliza-cloud/hosted/start',{method:'POST',headers:{'content-type':'application/json'},credentials:'same-origin'}).then(function(r){return r.json();}).then(function(data){
+        if(!data.loginUrl){window.location.href='/auth/eliza-cloud?popup=1';return;}
+        var p=window.open(data.loginUrl,'elizacloud-auth','width=500,height=640,scrollbars=yes');
+        if(!p){window.location.href=data.loginUrl;return;}
+        if(data.mode==='cli-session'){var count=0,closed=false;var ti=setInterval(function(){count++;var c;try{c=p.closed;}catch(e){c=true;}if(c&&!closed){closed=true;clearInterval(ti);if(btn)btn.style.opacity='';doFinalPollThenReload(data.sessionId);return;}if(count>90){clearInterval(ti);if(btn)btn.style.opacity='';doFinalPollThenReload(data.sessionId);return;}fetch('/api/eliza-cloud/hosted/poll?session='+encodeURIComponent(data.sessionId),{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(pd){if(pd.status==='authenticated'){clearInterval(ti);try{p.close();}catch(e){}window.location.href='/cloud/agents';}}).catch(function(){});},1500);}else{var closeTi=setInterval(function(){try{if(p.closed){clearInterval(closeTi);window.location.href='/cloud/agents';}}catch(e){}},800);}
+      }).catch(function(){window.location.href='/auth/eliza-cloud?popup=1';});
+    }
+    var scb=document.getElementById('sidebar-cloud-btn');
+    if(scb){scb.addEventListener('click',function(e){e.preventDefault();openCloudAuth(this);});}
 
     /* ── Clock ── */
     function updateTime() {
@@ -6532,10 +6664,11 @@ function renderHtml(
 
     // ── i18n language toggle ──
     var _i18n = {
-      'Agent Status': '代理状态', 'Discovery': '发现', 'Portfolio': '投资组合', 'Execution': '执行',
+      'Status': '状态', 'Navigate': '导航', 'Discovery': '发现', 'Portfolio': '投资组合', 'Execution': '执行',
       'Distribution': '分配', 'Goo Intel': 'Goo 情报', 'LIVE': '在线', 'DRY-RUN': '模拟运行',
       'Scan every': '扫描间隔', 'Mode': '模式', 'Readiness': '就绪度', 'Model': '模型',
-      'Quick Actions': '快捷操作', 'System Monitor': '系统监控', 'Signal Stats': '信号统计',
+      'Navigate': '导航', 'System Monitor': '系统监控', 'Live Overview': '实时总览',
+      'Latest Signals': '最新信号', 'Live Feed': '实时动态', 'Signal Stats': '信号统计',
       'candidates scanned': '已扫描候选', 'Buy-ready': '买入就绪', 'Avg score': '平均分',
       'Best token': '最佳代币', 'Top score': '最高分', 'active positions': '活跃仓位',
       'Watching': '观察中', 'Exited': '已退出', 'Win rate': '胜率', 'Realized': '已实现',
@@ -6545,25 +6678,27 @@ function renderHtml(
       'System Health': '系统健康', 'Reserve': '储备', 'ElizaCloud': 'ElizaCloud',
       'Full Discovery Report': '完整发现报告', 'scanned': '已扫描', 'buy-ready': '买入就绪',
       'avg': '平均', 'Portfolio Ledger': '投资账本', 'active': '活跃', 'watch': '观察',
-      'Revenue Flywheel & Strategy DNA': '收益飞轮 & 策略 DNA', 'profit': '利润',
+      'Revenue Flywheel': '收益飞轮', 'Goo Intelligence & Strategy DNA': 'Goo 智能 & 策略 DNA', 'profit': '利润',
       'cycles': '周期', 'smart exits': '智能退出', 'Total Profit': '总利润',
-      'Reinvested': '再投资', '$ElizaOK Buyback': '$ElizaOK 回购',
+      'Reinvested': '再投资', '$elizaOK Buyback': '$elizaOK 回购',
       'Airdrop Reserve': '空投储备', 'Flywheel Cycles': '飞轮周期',
       'Trailing Stop Saves': '追踪止损保护', 'Smart Exit Saves': '智能退出保护',
-      'Win / Loss': '胜/负', 'Strategy Absorption (AI Acquiring AI)': '策略吸收（AI 收购 AI）',
+      'Win / Loss': '胜/负', 'Strategy Absorption': '策略吸收', 'Acquired': '已收购', 'Acquirable': '可收购', 'Best Score': '最高分',
+      'Agent Fleet': '代理舰队', 'Acquisition Candidates': '收购候选',
       'Agents Absorbed': '已吸收代理', 'KOL Weight': 'KOL 权重', 'Holder Weight': '持有者权重',
-      'Event Timeline': '事件时间线', 'Live feed of trading events, acquisitions & respawns': '交易事件、收购和重生的实时推送',
+      'Live Feed': '实时动态',
       'Execution Desk': '执行台', 'max buy': '最大买入', 'eligible': '符合条件', 'ledger': '账本',
-      'Airdrop Distribution': '空投分配', 'holders': '持有者', 'recipients': '接收者',
+      'Value Distribution': '价值分配', 'holders': '持有者', 'recipients': '接收者',
+      'Eligible Holders': '合格持有者', 'Value Pool': '价值池', 'Readiness Checks': '就绪检查',
+      'Eligible Recipients': '合格接收者', 'Distribution Ledger': '分配账本',
       'Goo Intelligence': 'Goo 情报', 'reviewed': '已审核', 'priority': '优先', 'ready': '就绪',
-      'Market Intel': '市场情报', 'All positions healthy': '所有仓位健康',
-      'Recent Signals': '最新信号', 'Token Explorer': '代币浏览', 'found': '个发现',
+      'Token Explorer': '代币浏览', 'found': '个发现',
       'candidates/': '候选代币/', 'portfolio/': '投资组合/',
       'Scheduler / Execution': '调度 / 执行', 'Last scan': '上次扫描',
       'Next scan': '下次扫描', 'Eligible plans': '符合条件', 'Skipped': '跳过', 'Failed': '失败',
       'Active positions': '活跃仓位', 'Portfolio value': '组合价值', 'Total trades': '总交易数',
-      'AGENT STATUS': '代理状态', 'DISCOVERY': '发现', 'PORTFOLIO': '投资组合',
-      'EXECUTION': '执行', 'DISTRIBUTION': '分配', 'GOO INTEL': 'GOO 情报',
+      'TOP': '顶部', 'DISCOVERY': '发现', 'PORTFOLIO': '投资组合',
+      'EXECUTION': '执行', 'FLYWHEEL': '飞轮', 'DISTRIBUTION': '分配', 'GOO': 'GOO',
       'Candidates': '候选', 'BUY-READY': '买入就绪', 'SCANNED': '已扫描',
       'ACTIVE': '活跃', 'VALUE': '价值', 'ELIGIBLE': '符合条件', 'MODE': '模式',
       'HOLDERS': '持有者', 'RECIPIENTS': '接收者', 'PRIORITY': '优先', 'REVIEWED': '已审核',
@@ -6573,6 +6708,28 @@ function renderHtml(
       'No positions.': '暂无仓位。', 'No events.': '暂无事件。',
       'simulate_buy': '模拟买入', 'simulate_sell': '模拟卖出',
       'Cumulative P&L': '累计盈亏', 'exits': '退出',
+      'Entry Price': '入场价', 'Current Price': '当前价', 'Cost Basis': '成本基础',
+      'Allocation': '分配额', 'Current Value': '当前价值', 'Unrealized P&L': '未实现盈亏',
+      'Peak Gain': '峰值涨幅', 'TP Stages Hit': '止盈阶段', 'Entered': '入场时间',
+      'Last Update': '最后更新', 'Total Allocated': '总分配', 'Cash Balance': '现金余额',
+      'Model Allocation': '模型分配', 'Portfolio Initial': '组合初始',
+      'Portfolio Current': '组合当前', 'not in portfolio': '不在组合中',
+      'Score': '评分', 'Weight': '权重', 'Liquidity': '流动性',
+      'Strategy Backtest Report': '策略回测报告', 'Total Exits': '总退出数',
+      'Paper Simulation Model': '模拟资金模型', 'Live Execution Controls': '实盘执行控制',
+      'Simulation Allocation': '模拟分配', 'Paper Capital': '模拟资金',
+      'Sim. P&L': '模拟盈亏', 'Sim. Gross': '模拟总值', 'Signal Exit': '信号退出',
+      'Realized P&L': '已实现盈亏', 'Avg Hold': '平均持仓', 'Win / Loss': '胜/负',
+      'Win Rate': '胜率', 'Total P&L': '总盈亏', 'Best Trade': '最佳交易',
+      'Worst Trade': '最差交易', 'Tokens': '代币', 'Win/Loss Leaderboard': '胜负排行榜',
+      'Entry FDV': '入场 FDV', 'Exit FDV': '退出 FDV', 'Current FDV': '当前 FDV',
+      'Exit Price': '退出价', 'Proceeds': '收益', 'TP Stages': '止盈阶段',
+      'Trailing Stop': '追踪止损', 'Smart Exit': '智能退出', 'Take Profit': '止盈',
+      'Stop Loss': '止损', 'Strategy Exit': '策略退出', 'Standard Exit': '标准退出',
+      'Score Decay': '评分衰减', 'Vanished': '消失退出', 'Age Limit': '持仓时限',
+      'KOL-Adaptive TP': 'KOL自适应止盈',
+      'Multi-Stage TP': '多阶段止盈', 'Exited Positions': '已退出仓位',
+      'no TP hit': '未触发止盈', 'Alloc': '分配', 'Allocation': '模拟分配',
     };
     var _langActive = (function(){ try { return localStorage.getItem('elizaok-lang') || 'en'; } catch(e){ return 'en'; } }());
     function applyLang(lang) {
@@ -6871,75 +7028,59 @@ function renderHtml(
 function renderDocsPage(lang: "en" | "zh" = "en"): string {
   const t = lang === "zh" ? {
     title: "elizaOK 文档",
-    subtitle: "BNB Chain 上的 AI 智能交易代理",
+    subtitle: "BNB Chain 上的价值层",
     home: "首页",
     dash: "仪表盘",
     langBtn: "EN",
     toc: "目录",
     sec1t: "什么是 elizaOK？",
-    sec1: `elizaOK 是一个运行在 <strong>BNB Chain (BSC)</strong> 上的 AI 智能代理，由 <strong>elizaOS</strong> 框架驱动。它能够自动发现、评估和管理 BSC 链上的 memecoin 交易机会。<br><br>
-    elizaOK 不仅仅是一个交易机器人 — 它是一个<strong>自我进化的 AI 交易系统</strong>。通过 Goo Protocol（AI 收购 AI），它能够不断吸收优秀策略，让自己变得更强。`,
+    sec1: `基于 <strong>elizaOS</strong> 框架构建，elizaOK 是 BNB Chain 上的<strong>价值层</strong>，自动化 alpha 发现、仓位构建，并通过专属金库实现真实价值交付。<br><br>
+    通过 Goo Protocol（AI 收购 AI），elizaOK 持续吸收竞技场中表现最优的策略参数，不断自我进化，让每一次交易决策更精准。`,
     sec2t: "核心功能",
     sec2_discovery_t: "BSC 代币发现引擎",
-    sec2_discovery: `每 15 分钟自动扫描 BSC 链上的新池和热门池（通过 GeckoTerminal API），分析以下指标来评分候选代币：<ul>
-      <li><strong>流动性</strong> — 最低 $15,000 USD 流动性要求</li>
-      <li><strong>交易量</strong> — 5 分钟和 1 小时的实时成交量</li>
-      <li><strong>买卖比</strong> — 净买入笔数必须为正</li>
-      <li><strong>市值</strong> — 目标范围 $10K - $100K</li>
-      <li><strong>池龄</strong> — 2 分钟 - 180 分钟内的新池</li>
-      <li><strong>KOL 持仓</strong> — 是否有知名交易者持有</li>
-      <li><strong>持有者分布</strong> — 前 10 大持有者集中度</li>
-    </ul>
-    每个候选代币获得 0-100 的评分，≥65 分为买入信号。`,
+    sec2_discovery: `每 15 分钟扫描 BSC 链上新池和热门池，通过 AI 评分引擎对流动性、交易量、买卖压力、市值、池龄等多维度信号进行综合评估。每个代币获得 0-100 评分，自动分为<strong>买入、观察、监控、拒绝</strong>四级。`,
     sec2_portfolio_t: "投资组合管理",
-    sec2_portfolio: `<ul>
-      <li><strong>多阶段止盈</strong> — 30% (+20%), 60% (+25%), 100% (+30%), 200% (+35%), 400% (+40%) 五阶段递进止盈</li>
-      <li><strong>硬止损</strong> — 亏损超过 -18% 自动退出</li>
-      <li><strong>追踪止损</strong> — 收益达到 +25% 后激活，回撤 15% 自动止损保利</li>
-      <li><strong>智能退出信号</strong> — 基于持有者流失、KOL 退出、大户抛售的实时退出决策</li>
-      <li><strong>KOL 反推止盈</strong> — 分析知名交易者的止盈行为，反向工程最佳止盈点</li>
-    </ul>`,
+    sec2_portfolio: `elizaOK 采用多层风控体系，每个仓位独立管理。核心策略包括<strong>递进止盈</strong>（多阶段分批锁利）、<strong>硬止损</strong>、<strong>追踪止损</strong>、<strong>链上智能退出</strong>（监测大户/KOL 行为）和<strong>信号衰减退出</strong>。所有策略参数通过 Goo Arena 持续进化优化。`,
     sec2_goo_t: "Goo Protocol — AI 收购 AI",
-    sec2_goo: `Goo Arena 是 elizaOK 的 AI 进化引擎。系统运行 <strong>8 种不同策略的 AI agent</strong>，它们在同一市场环境下竞争：
+    sec2_goo: `Goo Arena 是 elizaOK 的策略进化引擎。系统运行 <strong>8 种不同策略的 agent</strong>，它们在同一市场环境下竞争：
     <div class="doc-strat-grid">
-      <div class="doc-strat">Conservative — 低风险，严格筛选</div>
-      <div class="doc-strat">Balanced — 均衡风险回报</div>
-      <div class="doc-strat">Aggressive — 高风险高回报</div>
-      <div class="doc-strat">KOL Follower — 跟踪 KOL 持仓</div>
-      <div class="doc-strat">Holder Watcher — 关注持有者变化</div>
-      <div class="doc-strat">Momentum — 追踪动量信号</div>
-      <div class="doc-strat">Contrarian — 反向策略</div>
-      <div class="doc-strat">Sniper — 快进快出狙击手</div>
+      <div class="doc-strat"><strong>Conservative</strong> — 低风险，严格筛选，带追踪止损</div>
+      <div class="doc-strat"><strong>Balanced</strong> — 均衡风险与回报</div>
+      <div class="doc-strat"><strong>Aggressive</strong> — 高风险高回报，无追踪止损</div>
+      <div class="doc-strat"><strong>KOL Follower</strong> — 跟踪 KOL 持仓行为</div>
+      <div class="doc-strat"><strong>Holder Watcher</strong> — 关注持有者变化趋势</div>
+      <div class="doc-strat"><strong>Momentum</strong> — 追踪动量信号</div>
+      <div class="doc-strat"><strong>Contrarian</strong> — 反向操作策略</div>
+      <div class="doc-strat"><strong>Sniper</strong> — 快进快出狙击手</div>
     </div>
-    <br>当某个 agent 表现优异（收购分 ≥70、胜率 >15%、交易数 ≥5），elizaOK 会<strong>自动收购</strong>它，吸收其策略参数（止损、止盈、持有者阈值等），让主组合变得更强。<br><br>
+    <br>每个 agent 拥有独立的止盈策略、止损阈值和持有者行为分析权重。系统通过<strong>综合评分</strong>（胜率、盈亏、交易经验、一致性、存活状态）筛选高分 agent，elizaOK 自动<strong>收购</strong>表现优异的 agent，吸收其策略参数，让主组合不断进化。<br><br>
     被收购后，agent 死亡，系统自动<strong>重生新 agent</strong>（最低保持 4 个活跃），维持竞技场多样性。`,
     sec2_flywheel_t: "收益飞轮",
     sec2_flywheel: `所有利润按以下比例自动分配：
     <div class="doc-flywheel">
       <div class="doc-fw-node doc-fw-profit">利润 →</div>
       <div class="doc-fw-node doc-fw-reinvest">70% 再投资</div>
-      <div class="doc-fw-node doc-fw-buyback">15% 回购 $ElizaOK</div>
+      <div class="doc-fw-node doc-fw-buyback">15% 回购 $elizaOK</div>
       <div class="doc-fw-node doc-fw-airdrop">15% 空投储备</div>
     </div>
     这个飞轮确保系统资金持续滚动增长，同时为持有者创造价值。`,
     sec3t: "Dashboard 功能总览",
     sec3: `<table class="doc-table">
-      <tr><td><strong>Agent Status</strong></td><td>代理运行状态、模型、扫描频率、执行模式</td></tr>
-      <tr><td><strong>Token Explorer</strong></td><td>AI 评分代币卡片网格，≥60分显示，点击直达 DEX 交易</td></tr>
-      <tr><td><strong>Top Candidates</strong></td><td>最新候选代币排行榜，评分、推荐操作、池龄</td></tr>
-      <tr><td><strong>Portfolio Ledger</strong></td><td>活跃仓位、累计 P&L 图表、交易时间线</td></tr>
-      <tr><td><strong>Revenue Flywheel</strong></td><td>利润分配：再投资 70%、$ElizaOK 回购 15%、空投储备 15%</td></tr>
-      <tr><td><strong>Strategy Absorption</strong></td><td>AI 收购 AI — 从 Goo Arena 吸收高分策略</td></tr>
-      <tr><td><strong>Event Timeline</strong></td><td>实时事件流：买入、卖出、收购、重生</td></tr>
-      <tr><td><strong>Execution Desk</strong></td><td>执行控制、风险参数、交易账本</td></tr>
-      <tr><td><strong>Airdrop Distribution</strong></td><td>$ElizaOK 持有者快照、空投分配计划</td></tr>
+      <tr><td><strong>Agent Terminal</strong></td><td>实时系统状态终端：扫描结果、持仓概览、执行参数、钱包余额</td></tr>
+      <tr><td><strong>Token Explorer</strong></td><td>评分代币卡片网格，≥60分显示，点击直达 DEX 交易，活跃持仓展示</td></tr>
+      <tr><td><strong>Portfolio Ledger</strong></td><td>活跃仓位（入场价、当前价、BNB成本、未实现P&L、止盈阶段），策略回测报告、胜负排行榜、观察仓位、已退出仓位详细卡片</td></tr>
+      <tr><td><strong>Strategy Performance</strong></td><td>按退出策略分组的回测报告：胜率、总P&L、最佳/最差交易、平均持仓时间</td></tr>
+      <tr><td><strong>Revenue Flywheel</strong></td><td>利润分配：再投资 70%、$elizaOK 回购 15%、空投储备 15%。胜/负统计、智能退出次数</td></tr>
+      <tr><td><strong>Goo Intelligence & Strategy DNA</strong></td><td>Goo Arena 代理舰队概览、收购候选排名、策略吸收状态</td></tr>
+      <tr><td><strong>Live Feed</strong></td><td>实时事件流：买入、卖出、收购、重生（右侧栏）</td></tr>
+      <tr><td><strong>Execution Desk</strong></td><td>执行控制、风险参数、模型分配 vs 组合初始对比、交易账本</td></tr>
+      <tr><td><strong>Value Distribution</strong></td><td>$elizaOK 持有者快照、飞轮利润分配计划</td></tr>
       <tr><td><strong>Goo Intelligence</strong></td><td>Goo 候选代币评估</td></tr>
-      <tr><td><strong>Market Intel</strong></td><td>实时智能信号面板（持有者变化、KOL 退出、大户抛售）</td></tr>
-      <tr><td><strong>Toast Notifications</strong></td><td>右上角实时弹窗通知（5秒自动消失）</td></tr>
+      <tr><td><strong>ElizaCloud</strong></td><td>云端 Agent 管理入口，一键登录、对话、Credits 余额</td></tr>
     </table>`,
     sec4t: "Goo Arena",
     sec4: `访问 <a href="/goo">/goo</a> 进入 Goo Arena。这里你可以：<ul>
-      <li>查看所有 AI agent 的实时表现和排名</li>
+      <li>查看所有 agent 的实时表现和排名</li>
       <li>比较两个 agent 的策略和收益（<a href="/goo/compare">对比页面</a>）</li>
       <li>手动收购高分 agent，加速 elizaOK 进化</li>
       <li>发射新 agent 增加竞技场多样性</li>
@@ -6955,7 +7096,7 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
       <li><strong>Credits 系统</strong> — 使用 ElizaCloud credits 运行 AI 推理（当前余额显示在 Dashboard 侧边栏）</li>
       <li><strong>多 Agent 编排</strong> — 支持多个 elizaOK 实例协同交易，共享策略</li>
     </ul>
-    ElizaCloud 是 elizaOS 生态的核心基础设施，为所有 AI agent 提供统一的部署、对话和管理能力。访问 <a href="https://elizacloud.ai" target="_blank">elizacloud.ai</a> 立即注册。`,
+    ElizaCloud 是 elizaOS 生态的核心基础设施，为所有 agent 提供统一的部署、对话和管理能力。访问 <a href="https://elizacloud.ai" target="_blank">elizacloud.ai</a> 立即注册。`,
     sec6t: "技术架构",
     sec6: `<ul>
       <li><strong>运行时</strong> — Bun + TypeScript + elizaOS 2.0</li>
@@ -6963,7 +7104,7 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
       <li><strong>链</strong> — BNB Smart Chain (BSC) 专用</li>
       <li><strong>DEX</strong> — PancakeSwap V2, Four.Meme 等</li>
       <li><strong>执行模式</strong> — Paper Trading (模拟) / Dry-Run / Live</li>
-      <li><strong>AI 推理</strong> — OpenAI / ElizaCloud 模型</li>
+      <li><strong>推理引擎</strong> — OpenAI / ElizaCloud 模型</li>
       <li><strong>存储</strong> — 本地 JSON 文件 + 内存缓存</li>
     </ul>`,
     sec7t: "路线图",
@@ -6973,7 +7114,7 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
       <div class="doc-rm-item doc-rm-done"><span class="doc-rm-dot"></span><div><strong>Phase 3 — 飞轮 & UI ✅</strong><br>收益飞轮、实时通知、事件时间线、P&L 图表、移动端适配</div></div>
       <div class="doc-rm-item doc-rm-active"><span class="doc-rm-dot"></span><div><strong>Phase 4 — Live Trading 🔄</strong><br>真实 BNB 执行、风险控制、钱包集成</div></div>
       <div class="doc-rm-item doc-rm-future"><span class="doc-rm-dot"></span><div><strong>Phase 5 — 多链扩展</strong><br>扩展到其他 EVM 链、跨链套利</div></div>
-      <div class="doc-rm-item doc-rm-future"><span class="doc-rm-dot"></span><div><strong>Phase 6 — DAO 治理</strong><br>$ElizaOK 持有者投票决定策略参数、利润分配比例</div></div>
+      <div class="doc-rm-item doc-rm-future"><span class="doc-rm-dot"></span><div><strong>Phase 6 — DAO 治理</strong><br>$elizaOK 持有者投票决定策略参数、利润分配比例</div></div>
     </div>`,
     sec8t: "API 接口",
     sec8: `<table class="doc-table">
@@ -6990,82 +7131,66 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
       <details><summary>elizaOK 会用我的真钱交易吗？</summary><p>默认为 Paper Trading（模拟交易），使用真实市场数据但不执行实际链上交易。只有在切换到 Live 模式并输入确认短语后才会使用真实 BNB。</p></details>
       <details><summary>Goo Arena 的 agent 是真实的吗？</summary><p>Goo agent 使用真实市场数据进行模拟交易竞技。它们的策略和表现是真实计算的，但不涉及实际链上交易。</p></details>
       <details><summary>代币数据从哪里来？</summary><p>所有代币数据来自 GeckoTerminal API，是 BSC 链上的实时数据，包括价格、流动性、成交量、买卖笔数等。</p></details>
-      <details><summary>$ElizaOK 代币是什么？</summary><p>$ElizaOK 是 elizaOK 生态的治理和价值捕获代币。飞轮中 15% 的利润用于回购 $ElizaOK，为持有者创造价值。</p></details>
-      <details><summary>如何参与空投？</summary><p>持有 $ElizaOK 代币即有资格获得空投。飞轮中 15% 的利润进入空投储备，定期分发给合格持有者。</p></details>
+      <details><summary>$elizaOK 代币是什么？</summary><p>$elizaOK 是 elizaOK 生态的治理和价值捕获代币。飞轮中 15% 的利润用于回购 $elizaOK，为持有者创造价值。</p></details>
+      <details><summary>如何参与空投？</summary><p>持有 $elizaOK 代币即有资格获得空投。飞轮中 15% 的利润进入空投储备，定期分发给合格持有者。</p></details>
       <details><summary>如何注册 ElizaCloud？</summary><p>访问 <a href="https://elizacloud.ai" target="_blank">elizacloud.ai</a> 免费注册账号。注册后可以一键登录 elizaOK Dashboard，与 Agent 实时聊天，获取交易建议和市场分析。</p></details>
     </div>`,
     footer: "由 elizaOS 驱动 · BSC 链专属 · Paper Trading 模式",
   } : {
     title: "elizaOK Documentation",
-    subtitle: "AI Trading Agent on BNB Chain",
+    subtitle: "Value Layer on BNB Chain",
     home: "Home",
     dash: "Dashboard",
     langBtn: "中文",
     toc: "Table of Contents",
     sec1t: "What is elizaOK?",
-    sec1: `elizaOK is an AI-powered agent running on <strong>BNB Chain (BSC)</strong>, built on the <strong>elizaOS</strong> framework. It automatically discovers, evaluates, and manages memecoin trading opportunities on BSC.<br><br>
-    elizaOK is not just a trading bot — it's a <strong>self-evolving AI trading system</strong>. Through Goo Protocol (AI acquiring AI), it continuously absorbs winning strategies to become stronger.`,
+    sec1: `Built on the <strong>elizaOS</strong> framework, elizaOK is the <strong>value layer</strong> that automates alpha discovery, position building, and real value delivery through dedicated vaults on <strong>BNB Chain</strong>.<br><br>
+    Through Goo Protocol (AI acquiring AI), elizaOK continuously absorbs winning strategy parameters from the arena's top performers, self-evolving to sharpen every trading decision.`,
     sec2t: "Core Features",
     sec2_discovery_t: "BSC Token Discovery Engine",
-    sec2_discovery: `Scans BSC every 15 minutes for new and trending pools (via GeckoTerminal API), analyzing these metrics to score candidates:<ul>
-      <li><strong>Liquidity</strong> — Minimum $15,000 USD required</li>
-      <li><strong>Volume</strong> — Real-time 5-minute and 1-hour volume</li>
-      <li><strong>Buy/Sell Ratio</strong> — Net buys must be positive</li>
-      <li><strong>Market Cap</strong> — Target range $10K - $100K</li>
-      <li><strong>Pool Age</strong> — New pools within 2-180 minutes</li>
-      <li><strong>KOL Holdings</strong> — Whether notable traders hold positions</li>
-      <li><strong>Holder Distribution</strong> — Top 10 holder concentration</li>
-    </ul>
-    Each candidate receives a 0-100 score. ≥65 triggers a buy signal.`,
+    sec2_discovery: `Scans BSC every 15 minutes for new and trending pools, applying an AI scoring engine that evaluates liquidity, volume, buy/sell pressure, valuation, pool age, and trend signals. Each token receives a 0-100 composite score and is classified into <strong>buy, watch, monitor, reject</strong> tiers.`,
     sec2_portfolio_t: "Portfolio Management",
-    sec2_portfolio: `<ul>
-      <li><strong>Multi-Stage Take-Profit</strong> — 30% (+20%), 60% (+25%), 100% (+30%), 200% (+35%), 400% (+40%)</li>
-      <li><strong>Hard Stop-Loss</strong> — Auto-exit at -18% loss</li>
-      <li><strong>Trailing Stop</strong> — Activates at +25% gain, triggers on 15% drawdown</li>
-      <li><strong>Smart Exit Signals</strong> — Exit on holder exodus, KOL exits, whale dumps</li>
-      <li><strong>KOL-Adaptive Take-Profit</strong> — Reverse-engineers KOL trading patterns for optimal TP</li>
-    </ul>`,
+    sec2_portfolio: `elizaOK employs a multi-layer risk management system, managing each position independently. Core strategies include <strong>progressive take-profit</strong> (multi-stage partial harvesting), <strong>hard stop-loss</strong>, <strong>trailing stop</strong>, <strong>on-chain smart exits</strong> (monitoring whale/KOL behavior), and <strong>score decay exit</strong>. All strategy parameters continuously evolve through the Goo Arena.`,
     sec2_goo_t: "Goo Protocol — AI Acquiring AI",
-    sec2_goo: `The Goo Arena is elizaOK's evolution engine. It runs <strong>8 AI agents with different strategies</strong> competing in the same market:
+    sec2_goo: `The Goo Arena is elizaOK's strategy evolution engine. It runs <strong>8 agents with different strategies</strong> competing in the same market:
     <div class="doc-strat-grid">
-      <div class="doc-strat">Conservative — Low risk, strict filters</div>
-      <div class="doc-strat">Balanced — Balanced risk/reward</div>
-      <div class="doc-strat">Aggressive — High risk, high reward</div>
-      <div class="doc-strat">KOL Follower — Track KOL positions</div>
-      <div class="doc-strat">Holder Watcher — Monitor holder changes</div>
-      <div class="doc-strat">Momentum — Chase momentum signals</div>
-      <div class="doc-strat">Contrarian — Counter-trend strategy</div>
-      <div class="doc-strat">Sniper — Quick in-and-out</div>
+      <div class="doc-strat"><strong>Conservative</strong> — Low risk, strict filters, trailing stop</div>
+      <div class="doc-strat"><strong>Balanced</strong> — Balanced risk/reward</div>
+      <div class="doc-strat"><strong>Aggressive</strong> — High risk/reward, no trailing stop</div>
+      <div class="doc-strat"><strong>KOL Follower</strong> — Tracks KOL behavior</div>
+      <div class="doc-strat"><strong>Holder Watcher</strong> — Monitors holder trends</div>
+      <div class="doc-strat"><strong>Momentum</strong> — Chases momentum signals</div>
+      <div class="doc-strat"><strong>Contrarian</strong> — Counter-trend strategy</div>
+      <div class="doc-strat"><strong>Sniper</strong> — Quick in-and-out</div>
     </div>
-    <br>When an agent performs well (score ≥70, win rate >15%, trades ≥5), elizaOK <strong>auto-acquires</strong> it, absorbing its strategy parameters to improve the main portfolio.<br><br>
+    <br>Each agent has independent take-profit strategies, stop-loss thresholds, and holder behavior analysis weights. The system uses a <strong>composite scoring algorithm</strong> (win rate, P&L, trade experience, consistency, survival status) to rank agents. elizaOK <strong>auto-acquires</strong> top-performing agents, absorbing their strategy parameters to make the main portfolio continuously evolve.<br><br>
     After acquisition, the agent dies and the system <strong>auto-respawns</strong> new agents (minimum 4 alive) to maintain arena diversity.`,
     sec2_flywheel_t: "Revenue Flywheel",
     sec2_flywheel: `All profits are automatically distributed:
     <div class="doc-flywheel">
       <div class="doc-fw-node doc-fw-profit">Profit →</div>
       <div class="doc-fw-node doc-fw-reinvest">70% Reinvest</div>
-      <div class="doc-fw-node doc-fw-buyback">15% $ElizaOK Buyback</div>
+      <div class="doc-fw-node doc-fw-buyback">15% $elizaOK Buyback</div>
       <div class="doc-fw-node doc-fw-airdrop">15% Airdrop Reserve</div>
     </div>
     This flywheel ensures continuous compounding growth while creating value for holders.`,
     sec3t: "Dashboard Overview",
     sec3: `<table class="doc-table">
-      <tr><td><strong>Agent Status</strong></td><td>Agent state, model, scan interval, execution mode</td></tr>
-      <tr><td><strong>Token Explorer</strong></td><td>AI-scored token tile grid, score ≥60 shown, click to trade on DEX</td></tr>
-      <tr><td><strong>Top Candidates</strong></td><td>Ranked candidate leaderboard with scores, recommendations, pool age</td></tr>
-      <tr><td><strong>Portfolio Ledger</strong></td><td>Active positions, cumulative P&L chart, timeline</td></tr>
-      <tr><td><strong>Revenue Flywheel</strong></td><td>Profit split: 70% reinvest, 15% $ElizaOK buyback, 15% airdrop reserve</td></tr>
-      <tr><td><strong>Strategy Absorption</strong></td><td>AI Acquiring AI — absorb top strategies from Goo Arena</td></tr>
-      <tr><td><strong>Event Timeline</strong></td><td>Live event feed: buys, exits, acquisitions, respawns</td></tr>
-      <tr><td><strong>Execution Desk</strong></td><td>Execution controls, risk parameters, trade ledger</td></tr>
-      <tr><td><strong>Airdrop Distribution</strong></td><td>$ElizaOK holder snapshot, airdrop allocation plan</td></tr>
+      <tr><td><strong>Agent Terminal</strong></td><td>Live system status terminal: scan results, portfolio overview, execution params, wallet balance</td></tr>
+      <tr><td><strong>Token Explorer</strong></td><td>Scored token tile grid, score ≥60 shown, click to trade on DEX, active portfolio display</td></tr>
+      <tr><td><strong>Portfolio Ledger</strong></td><td>Active positions with entry/current price, BNB cost basis, unrealized P&L, TP stages, strategy backtest report, win/loss leaderboard, watching positions, exited position detail cards</td></tr>
+      <tr><td><strong>Strategy Performance</strong></td><td>Backtest report grouped by exit strategy: win rate, total P&L, best/worst trade, avg hold time</td></tr>
+      <tr><td><strong>Revenue Flywheel</strong></td><td>Profit split: 70% reinvest, 15% $elizaOK buyback, 15% airdrop reserve. Win/loss stats, smart exit counts</td></tr>
+      <tr><td><strong>Goo Intelligence & Strategy DNA</strong></td><td>Goo Arena agent fleet overview, acquisition candidate ranking, strategy absorption status — AI Acquiring AI</td></tr>
+      <tr><td><strong>Live Feed</strong></td><td>Live event feed: buys, exits, acquisitions, respawns (right sidebar)</td></tr>
+      <tr><td><strong>Execution Desk</strong></td><td>Execution controls, risk parameters, model allocation vs portfolio cross-reference, trade ledger</td></tr>
+      <tr><td><strong>Value Distribution</strong></td><td>$elizaOK holder snapshot, flywheel profit distribution plan</td></tr>
       <tr><td><strong>Goo Intelligence</strong></td><td>Goo candidate evaluation</td></tr>
-      <tr><td><strong>Market Intel</strong></td><td>Real-time smart signals (holder drops, KOL exits, whale dumps)</td></tr>
-      <tr><td><strong>Toast Notifications</strong></td><td>Real-time popup alerts (auto-dismiss 5s)</td></tr>
+      <tr><td><strong>ElizaCloud</strong></td><td>Cloud Agent management entry, one-click login, chat, credits balance</td></tr>
     </table>`,
     sec4t: "Goo Arena",
     sec4: `Visit <a href="/goo">/goo</a> to enter the Goo Arena. Here you can:<ul>
-      <li>View all AI agents' live performance and rankings</li>
+      <li>View all agents' live performance and rankings</li>
       <li>Compare two agents' strategies and returns (<a href="/goo/compare">Compare page</a>)</li>
       <li>Manually acquire top agents to accelerate elizaOK's evolution</li>
       <li>Launch new agents to increase arena diversity</li>
@@ -7078,10 +7203,10 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
       <li><strong>Register & Login</strong> — Create a free account at <a href="https://elizacloud.ai" target="_blank">elizacloud.ai</a>, then one-click login to the elizaOK Dashboard</li>
       <li><strong>Chat with Agent</strong> — Once logged in, chat with elizaOK Agent in real-time — ask for trade advice, market analysis, strategy breakdowns</li>
       <li><strong>Cloud Agent Management</strong> — Deploy and manage elizaOK instances on ElizaCloud, monitor from anywhere</li>
-      <li><strong>Credits System</strong> — Use ElizaCloud credits for AI inference (current balance shown in Dashboard sidebar)</li>
+      <li><strong>Credits System</strong> — Use ElizaCloud credits for inference (current balance shown in Dashboard sidebar)</li>
       <li><strong>Multi-Agent Orchestration</strong> — Run multiple elizaOK instances trading together, sharing strategies</li>
     </ul>
-    ElizaCloud is the core infrastructure of the elizaOS ecosystem, providing unified deployment, conversation, and management for all AI agents. Visit <a href="https://elizacloud.ai" target="_blank">elizacloud.ai</a> to register now.`,
+    ElizaCloud is the core infrastructure of the elizaOS ecosystem, providing unified deployment, conversation, and management for all agents. Visit <a href="https://elizacloud.ai" target="_blank">elizacloud.ai</a> to register now.`,
     sec6t: "Technical Architecture",
     sec6: `<ul>
       <li><strong>Runtime</strong> — Bun + TypeScript + elizaOS 2.0</li>
@@ -7089,7 +7214,7 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
       <li><strong>Chain</strong> — BNB Smart Chain (BSC) exclusive</li>
       <li><strong>DEX</strong> — PancakeSwap V2, Four.Meme, etc.</li>
       <li><strong>Execution Modes</strong> — Paper Trading / Dry-Run / Live</li>
-      <li><strong>AI Inference</strong> — OpenAI / ElizaCloud models</li>
+      <li><strong>Inference Engine</strong> — OpenAI / ElizaCloud models</li>
       <li><strong>Storage</strong> — Local JSON files + in-memory cache</li>
     </ul>`,
     sec7t: "Roadmap",
@@ -7099,7 +7224,7 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
       <div class="doc-rm-item doc-rm-done"><span class="doc-rm-dot"></span><div><strong>Phase 3 — Flywheel & UI ✅</strong><br>Revenue flywheel, live notifications, event timeline, P&L charts, mobile responsive</div></div>
       <div class="doc-rm-item doc-rm-active"><span class="doc-rm-dot"></span><div><strong>Phase 4 — Live Trading 🔄</strong><br>Real BNB execution, risk controls, wallet integration</div></div>
       <div class="doc-rm-item doc-rm-future"><span class="doc-rm-dot"></span><div><strong>Phase 5 — Multi-Chain</strong><br>Expand to other EVM chains, cross-chain arbitrage</div></div>
-      <div class="doc-rm-item doc-rm-future"><span class="doc-rm-dot"></span><div><strong>Phase 6 — DAO Governance</strong><br>$ElizaOK holders vote on strategy parameters & profit distribution</div></div>
+      <div class="doc-rm-item doc-rm-future"><span class="doc-rm-dot"></span><div><strong>Phase 6 — DAO Governance</strong><br>$elizaOK holders vote on strategy parameters & profit distribution</div></div>
     </div>`,
     sec8t: "API Reference",
     sec8: `<table class="doc-table">
@@ -7116,8 +7241,8 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
       <details><summary>Does elizaOK trade with real money?</summary><p>By default it runs in Paper Trading mode — real market data, no actual on-chain transactions. Only Live mode (with confirmation phrase) uses real BNB.</p></details>
       <details><summary>Are the Goo Arena agents real?</summary><p>Goo agents use real market data for simulated paper trading. Their strategies and performance are genuinely calculated, but no actual on-chain transactions occur.</p></details>
       <details><summary>Where does the token data come from?</summary><p>All token data comes from the GeckoTerminal API — real-time BSC on-chain data including prices, liquidity, volume, and transaction counts.</p></details>
-      <details><summary>What is the $ElizaOK token?</summary><p>$ElizaOK is the governance and value-capture token. 15% of flywheel profits go to buyback, creating value for holders.</p></details>
-      <details><summary>How do I qualify for airdrops?</summary><p>Hold $ElizaOK tokens. 15% of flywheel profits go to the airdrop reserve, distributed periodically to eligible holders.</p></details>
+      <details><summary>What is the $elizaOK token?</summary><p>$elizaOK is the governance and value-capture token. 15% of flywheel profits go to buyback, creating value for holders.</p></details>
+      <details><summary>How do I qualify for airdrops?</summary><p>Hold $elizaOK tokens. 15% of flywheel profits go to the airdrop reserve, distributed periodically to eligible holders.</p></details>
       <details><summary>How do I register for ElizaCloud?</summary><p>Visit <a href="https://elizacloud.ai" target="_blank">elizacloud.ai</a> to create a free account. Once registered, you can one-click login to the elizaOK Dashboard, chat with the Agent in real-time, and get trade advice and market analysis.</p></details>
     </div>`,
     footer: "Powered by elizaOS · BSC Exclusive · Paper Trading Mode",
@@ -8722,7 +8847,7 @@ async function handleRequest(
     const systemPrompt = `You are elizaOK Agent, an AI assistant powered by elizaOS Cloud (https://www.elizacloud.ai).
 
 About elizaOK:
-- elizaOK is an AI-powered autonomous agent built on BNB Chain, powered by elizaOS.
+- Built on the elizaOS framework, elizaOK is the value layer on BNB Chain that automates alpha discovery, position building, and real value delivery through dedicated vaults.
 - It specializes in memecoin discovery, portfolio management, trade execution, and airdrop distribution on BNB Chain.
 - Core features: real-time token scanning via DexScreener, automated signal scoring (0-100), paper trading simulation, portfolio tracking, and airdrop distribution to token holders.
 - elizaOK runs 24/7 scanning for new token pools, scoring them on liquidity, volume, holder distribution, and market dynamics.

@@ -1,8 +1,8 @@
 <div align="center">
   <img src="apps/elizaokbsc/assets/avatar.png" alt="elizaOK" width="120" height="120" style="border-radius:50%;" />
   <h1>elizaOK</h1>
-  <p><strong>Self-Evolving AI Trading Agent on BNB Chain</strong></p>
-  <p>Autonomous memecoin discovery, multi-strategy AI competition, and value distribution &mdash; powered by <a href="https://github.com/elizaos/eliza">elizaOS</a>.</p>
+  <p><strong>The Value Layer on BNB Chain</strong></p>
+  <p>Alpha discovery, position building, and real value delivery through dedicated vaults &mdash; built on <a href="https://github.com/elizaos/eliza">elizaOS</a>.</p>
 </div>
 
 <p align="center">
@@ -21,11 +21,11 @@
 
 ## What is elizaOK?
 
-**elizaOK** is an autonomous AI trading agent built on **BNB Smart Chain (BSC)**. It continuously discovers, evaluates, and manages memecoin opportunities using real-time on-chain data from GeckoTerminal.
+Built on the **elizaOS** framework, **elizaOK** is the **value layer** that automates alpha discovery, position building, and real value delivery through dedicated vaults on **BNB Smart Chain (BSC)**. It continuously discovers, evaluates, and manages memecoin opportunities using real-time on-chain data from GeckoTerminal.
 
-Unlike a simple trading bot, elizaOK is a **self-evolving system**. Through its proprietary **Goo Protocol** (AI Acquiring AI), it runs a competitive arena of AI agents with different strategies, automatically acquires the best performers, and absorbs their winning parameters into its core trading logic.
+Through its proprietary **Goo Protocol** (AI Acquiring AI), elizaOK runs a competitive arena of 8 agents with different strategies, automatically acquires the best performers, and absorbs their winning parameters — a self-evolving system that sharpens every trading decision.
 
-All profits flow through a **Revenue Flywheel** that reinvests gains, buys back $ElizaOK tokens, and reserves funds for holder airdrops.
+All profits flow through a **Revenue Flywheel** that reinvests gains, buys back $elizaOK tokens, and reserves funds for holder airdrops.
 
 ### Live at [elizaok.com](https://elizaok.com)
 
@@ -46,7 +46,7 @@ All profits flow through a **Revenue Flywheel** that reinvests gains, buys back 
 - **KOL-Adaptive Take-Profit**: Reverse-engineers optimal exit points from KOL behavior
 
 ### Goo Protocol — AI Acquiring AI
-The Goo Arena is elizaOK's evolution engine. **8 AI agents** with distinct strategies compete simultaneously:
+The Goo Arena is elizaOK's strategy evolution engine. **8 agents** with distinct strategies compete simultaneously:
 
 | Strategy | Description |
 |----------|-------------|
@@ -64,7 +64,7 @@ When an agent reaches acquisition score ≥70, win rate >15%, and ≥5 trades, e
 ### Revenue Flywheel
 
 ```
-Profit → 70% Reinvest → 15% $ElizaOK Buyback → 15% Airdrop Reserve
+Profit → 70% Reinvest → 15% $elizaOK Buyback → 15% Airdrop Reserve
 ```
 
 The flywheel ensures continuous capital growth while creating value for token holders through buybacks and periodic airdrops to eligible wallets.
@@ -173,7 +173,7 @@ elizaOK
       <br/><br/>
       <strong>Baoger</strong><br/>
       <sub>Founder & Product</sub><br/>
-      <sub>Vision, product strategy, and ecosystem partnerships. Architecting the intersection of autonomous AI agents and on-chain value capture.</sub>
+      <sub>Vision, product strategy, and ecosystem partnerships. Architecting the value layer for on-chain alpha discovery and delivery.</sub>
     </td>
     <td align="center" width="280">
       <a href="https://x.com/spaceodili">

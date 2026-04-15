@@ -324,7 +324,7 @@ export interface PaperTradeRecord {
 
 export interface FlywheelConfig {
   reinvestPct: number;       // % of profit reinvested back to treasury (e.g. 70)
-  elizaOKBuyPct: number;     // % of profit used to "buy" $ElizaOK (e.g. 15)
+  elizaOKBuyPct: number;     // % of profit used to "buy" $elizaOK (e.g. 15)
   airdropReservePct: number; // % of profit reserved for airdrops (e.g. 15)
 }
 

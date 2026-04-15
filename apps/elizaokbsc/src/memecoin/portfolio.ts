@@ -749,6 +749,14 @@ export function buildPortfolioLifecycle(params: {
       continue;
     }
 
+    // Apply take-profit rules before closing, so TP count stays consistent
+    if (existing.allocationUsd > 0 && existing.currentValueUsd > 0) {
+      cashBalanceUsd = applyTakeProfit(
+        existing, treasury, cashBalanceUsd,
+        runId, generatedAt, timeline, kolTpSignals,
+      );
+    }
+
     const exitValueUsd = existing.currentValueUsd || existing.allocationUsd;
     const exitedPosition: PortfolioPosition = {
       ...existing,
@@ -762,7 +770,7 @@ export function buildPortfolioLifecycle(params: {
       unrealizedPnlPct: 0,
       state: "exited",
       exitReason:
-        "Position disappeared from the latest scan universe and was closed from the paper treasury.",
+        "Position vanished from the scan universe and was closed from the paper treasury.",
     };
     nextPositions.set(existing.tokenAddress, exitedPosition);
     cashBalanceUsd += exitValueUsd;
@@ -820,19 +828,23 @@ export function buildPortfolioLifecycle(params: {
 
   // Flywheel: distribute realized profits
   const prevFw = previous?.flywheel ?? {
-    totalProfitUsd: 0, reinvestedUsd: 0, elizaOKBuybackUsd: 0,
+    totalProfitUsd: 0, cumulativeDistributedUsd: 0, reinvestedUsd: 0, elizaOKBuybackUsd: 0,
     airdropReserveUsd: 0, cycleCount: 0, lastCycleAt: null,
     trailingStopSaves: 0, gmgnExitSaves: 0,
   };
-  const newProfit = Math.max(0, totalRealizedPnlUsd - (prevFw.totalProfitUsd > 0 ? prevFw.totalProfitUsd : 0));
+  const currentProfit = Math.max(0, totalRealizedPnlUsd);
+  const prevDistributed = prevFw.cumulativeDistributedUsd ?? prevFw.totalProfitUsd ?? 0;
+  const newProfit = Math.max(0, currentProfit - prevDistributed);
+  const cumulativeDistributed = prevDistributed + newProfit;
   const trailingStopSaves = exitedPositions.filter(p => p.trailingStopTriggered).length;
   const gmgnExitSaves = exitedPositions.filter(p => p.gmgnExitReason).length;
 
   const flywheel = {
-    totalProfitUsd: Math.max(0, totalRealizedPnlUsd),
-    reinvestedUsd: prevFw.reinvestedUsd + newProfit * 0.70,
-    elizaOKBuybackUsd: prevFw.elizaOKBuybackUsd + newProfit * 0.15,
-    airdropReserveUsd: prevFw.airdropReserveUsd + newProfit * 0.15,
+    totalProfitUsd: currentProfit,
+    cumulativeDistributedUsd: cumulativeDistributed,
+    reinvestedUsd: currentProfit * 0.70,
+    elizaOKBuybackUsd: currentProfit * 0.15,
+    airdropReserveUsd: currentProfit * 0.15,
     cycleCount: prevFw.cycleCount + (newProfit > 0 ? 1 : 0),
     lastCycleAt: newProfit > 0 ? generatedAt : prevFw.lastCycleAt,
     trailingStopSaves: Math.max(prevFw.trailingStopSaves, trailingStopSaves),
