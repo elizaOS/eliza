@@ -1,4 +1,4 @@
-import { PtyConsoleSidePanel } from "@elizaos/app-coding";
+import { PtyConsoleSidePanel } from "@elizaos/app-task-coordinator";
 import { ChatModalView } from "@elizaos/app-core/components/pages/ChatModalView";
 import { useRenderGuard } from "@elizaos/app-core/hooks/useRenderGuard";
 import { usePtySessions } from "@elizaos/app-core/state/PtySessionsContext";

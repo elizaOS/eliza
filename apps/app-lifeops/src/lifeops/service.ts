@@ -3,7 +3,7 @@ import {
   getSelfControlStatus,
   startSelfControlBlock,
   stopSelfControlBlock,
-} from "../selfcontrol/index.js";
+} from "../selfcontrol/index.ts";
 import {
   type IAgentRuntime,
   logger,

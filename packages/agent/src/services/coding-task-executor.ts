@@ -12,9 +12,9 @@ const CODING_PATTERNS =
   /\b(build|create|make|scaffold|generate|code|implement|develop|fix|debug|refactor|write)\b/i;
 
 /**
- * Minimal subset of the AgentOrchestratorService (CODE_TASK) used by
- * this executor. The full interface lives in the orchestrator plugin;
- * we only depend on the createTask / cancelTask surface.
+ * Minimal subset of the orchestrator plugin's CODE_TASK compatibility
+ * service used by this executor. We only depend on the createTask /
+ * cancelTask surface here.
  */
 interface CodeTaskServiceSubset extends Service {
   createTask(
@@ -79,9 +79,9 @@ function buildSyntheticTaskMemory(
 }
 
 /**
- * Wraps the existing CODE_TASK service (AgentOrchestratorService) as a
- * TaskExecutor. Delegates entirely to the orchestrator — does not
- * reimplement any orchestration logic.
+ * Wraps the existing CODE_TASK compatibility service as a TaskExecutor.
+ * Delegates entirely to the orchestrator plugin — does not reimplement
+ * any orchestration logic.
  *
  * The CODE_TASK service is registered by the orchestrator plugin and
  * discovered via `runtime.getService("CODE_TASK")`. The SWARM_COORDINATOR

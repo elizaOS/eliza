@@ -17,11 +17,17 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["node", "bun"],
+    "types": ["node", "bun-types"],
     "typeRoots": [
       "../app-core/node_modules/@types",
       "../../node_modules/@types",
-      "../../../node_modules/@types"
+      "../../node_modules/.bun/node_modules/@types",
+      "../../../node_modules/@types",
+      "../../../node_modules/.bun/node_modules/@types",
+      "../../node_modules",
+      "../../node_modules/.bun/node_modules",
+      "../../../node_modules",
+      "../../../node_modules/.bun/node_modules"
     ],
     "baseUrl": ".",
     "paths": {

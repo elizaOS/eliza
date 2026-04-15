@@ -48,9 +48,7 @@ def _extract_workdir(message: Memory, state: State | None = None) -> str | None:
     return None
 
 
-def _resolve_file_path(
-    input_path: str, message: Memory, state: State | None = None
-) -> str:
+def _resolve_file_path(input_path: str, message: Memory, state: State | None = None) -> str:
     """Resolve a file path (absolute or relative to workdir/cwd)."""
     if os.path.isabs(input_path):
         return os.path.normpath(input_path)
@@ -64,9 +62,11 @@ async def _extract_read_file_input(
 ) -> dict[str, Any] | None:
     """Extract file path and optional line range from message."""
     # Check explicit content attributes
-    file_path = getattr(message.content, "filePath", None) or getattr(
-        message.content, "file_path", None
-    ) or getattr(message.content, "path", None)
+    file_path = (
+        getattr(message.content, "filePath", None)
+        or getattr(message.content, "file_path", None)
+        or getattr(message.content, "path", None)
+    )
     if isinstance(file_path, str) and file_path.strip():
         from_line = getattr(message.content, "from", None) or getattr(
             message.content, "from_line", None
@@ -157,9 +157,7 @@ async def read_file_from_action_input(
 # ---------------------------------------------------------------------------
 
 
-async def _validate(
-    runtime: IAgentRuntime, message: Memory, _state: State | None = None
-) -> bool:
+async def _validate(runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
     has_explicit_path = isinstance(
         getattr(message.content, "filePath", None)
         or getattr(message.content, "file_path", None)
@@ -194,7 +192,9 @@ async def _handler(
                 from ..types import AddTaskClipboardItemInput
 
                 entity_id = (
-                    str(message.entity_id) if hasattr(message, "entity_id") and message.entity_id else None
+                    str(message.entity_id)
+                    if hasattr(message, "entity_id") and message.entity_id
+                    else None
                 )
                 item, replaced, snapshot = await service.add_item(
                     AddTaskClipboardItemInput(

@@ -1,11 +1,13 @@
 /**
  * CLI entry point for the training data pipeline.
  *
- * Usage:
- *   bun run packages/agent/src/training/cli.ts generate --variants 5 --output ./training-data
- *   bun run packages/agent/src/training/cli.ts validate --input ./training-data/raw_samples.json
- *   bun run packages/agent/src/training/cli.ts export-trajectories --output ./training-data/trajectories.jsonl
- *   bun run packages/agent/src/training/cli.ts tune --project my-gcp-project --bucket my-bucket --model flash-lite --data ./training-data/should_respond_training.jsonl
+ * Usage (from repo root):
+ *   bun run eliza/apps/app-training/src/core/cli.ts generate --variants 5 --output ./training-data
+ *   bun run eliza/apps/app-training/src/core/cli.ts validate --input ./training-data/raw_samples.json
+ *   bun run eliza/apps/app-training/src/core/cli.ts export-trajectories --output ./training-data/trajectories.jsonl
+ *   bun run eliza/apps/app-training/src/core/cli.ts tune --project my-gcp-project --bucket my-bucket --model flash-lite --data ./training-data/should_respond_training.jsonl
+ *
+ * Or: `cd eliza/packages/agent && bun run training:cli` (delegates to this file).
  */
 
 import { readFile } from "fs/promises";

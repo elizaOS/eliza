@@ -94,7 +94,7 @@ export function CellPopover({
       className="fixed z-50 bg-card/60 backdrop-blur-md border border-border/40 shadow-[0_8px_30px_rgba(var(--accent-rgb),0.15)] rounded-xl p-4 max-w-[500px] max-h-[300px] overflow-auto"
       style={{ top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
     >
-      <div className="flex items-center justify-between mb-3 border-b border-border/40 pb-2">
+      <div className="flex items-center justify-between mb-3 pb-2">
         <span className="text-xs text-muted uppercase font-bold tracking-wider">
           {t("databaseview.CellValue")}
         </span>
@@ -254,7 +254,7 @@ export function PaginationBar({
   const hasNext = offset + limit < total;
 
   return (
-    <div className="flex items-center justify-between px-4 py-2.5 border-t border-border/40 bg-card/60 backdrop-blur-md rounded-b-2xl text-xs-tight text-muted">
+    <div className="flex items-center justify-between px-4 py-2.5 bg-card/60 backdrop-blur-md rounded-b-2xl text-xs-tight text-muted">
       <span className="font-medium">
         {t("databaseview.RowCountSummary", {
           count: total.toLocaleString(),

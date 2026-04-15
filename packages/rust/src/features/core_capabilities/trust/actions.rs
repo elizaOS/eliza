@@ -175,12 +175,8 @@ impl Action for CheckTrustAction {
             minimum_trust,
             dimensions: None,
             required_evidence: None,
-            minimum_interactions: params
-                .get("minimumInteractions")
-                .and_then(|v| v.as_u64()),
-            minimum_confidence: params
-                .get("minimumConfidence")
-                .and_then(|v| v.as_f64()),
+            minimum_interactions: params.get("minimumInteractions").and_then(|v| v.as_u64()),
+            minimum_confidence: params.get("minimumConfidence").and_then(|v| v.as_f64()),
         };
 
         let decision = self.engine.check_trust(entity_id, &requirements).await;

@@ -1,7 +1,6 @@
 declare module "@elizaos/plugin-agent-orchestrator";
 declare module "@elizaos/plugin-agent-skills";
 declare module "@elizaos/plugin-elizacloud";
-declare module "@elizaos/plugin-pi-ai";
 declare module "@elizaos/plugin-commands";
 declare module "@elizaos/plugin-cron";
 declare module "@elizaos/plugin-edge-tts";
@@ -363,9 +362,14 @@ declare module "ws" {
       request: IncomingMessage,
       socket: Duplex,
       head: Buffer,
-      callback: (ws: WebSocket) => void,
+      callback: (ws: WebSocket, request: IncomingMessage) => void,
     ): void;
+    emit(event: "connection", ws: WebSocket, request: IncomingMessage): boolean;
     emit(event: string, ...args: unknown[]): boolean;
+    on(
+      event: "connection",
+      listener: (ws: WebSocket, request: IncomingMessage) => void,
+    ): this;
     on(event: string, listener: (...args: unknown[]) => void): this;
     close(callback?: () => void): void;
     clients: Set<WebSocket>;

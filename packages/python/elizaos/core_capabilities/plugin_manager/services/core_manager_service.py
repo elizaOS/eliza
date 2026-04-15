@@ -13,11 +13,13 @@ patterns (child_process.exec, fs-extra) to asyncio subprocess and pathlib.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
 import re
 import shutil
+from datetime import UTC
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
@@ -225,16 +227,15 @@ class CoreManagerService(Service):
         )
         _, stderr = await proc.communicate()
         if proc.returncode != 0:
-            raise RuntimeError(
-                f"Command failed ({proc.returncode}): {cmd}\n{stderr.decode()}"
-            )
+            raise RuntimeError(f"Command failed ({proc.returncode}): {cmd}\n{stderr.decode()}")
 
     # ------------------------------------------------------------------
     # Metadata
     # ------------------------------------------------------------------
 
     async def _read_core_package_version(
-        self, package_dir: Path | None = None,
+        self,
+        package_dir: Path | None = None,
     ) -> str:
         pkg_dir = package_dir or self._core_package_dir()
         pkg_json = pkg_dir / "package.json"
@@ -250,13 +251,7 @@ class CoreManagerService(Service):
     async def _resolve_installed_core_version(self) -> str:
         """Best-effort resolution of the installed @elizaos/core version."""
         try:
-            core_pkg = (
-                Path.cwd()
-                / "node_modules"
-                / "@elizaos"
-                / "core"
-                / "package.json"
-            )
+            core_pkg = Path.cwd() / "node_modules" / "@elizaos" / "core" / "package.json"
             if core_pkg.exists():
                 data = json.loads(core_pkg.read_text())
                 return data.get("version", "unknown")
@@ -326,7 +321,9 @@ class CoreManagerService(Service):
 
             monorepo = self._core_monorepo_dir()
             if not self._is_within_ejected_core_dir(monorepo):
-                return CoreEjectResult(False, str(monorepo), "", f"Refusing to write outside {base}")
+                return CoreEjectResult(
+                    False, str(monorepo), "", f"Refusing to write outside {base}"
+                )
 
             if monorepo.exists():
                 return CoreEjectResult(
@@ -346,10 +343,8 @@ class CoreManagerService(Service):
                 return CoreEjectResult(False, str(monorepo), "", str(exc))
 
             try:
-                commit_hash = await self._git_stdout(
-                    ["rev-parse", "HEAD"], str(monorepo)
-                )
-                from datetime import datetime, timezone
+                commit_hash = await self._git_stdout(["rev-parse", "HEAD"], str(monorepo))
+                from datetime import datetime
 
                 metadata = UpstreamMetadata(
                     schema="milaidy-upstream-v1",
@@ -357,7 +352,7 @@ class CoreManagerService(Service):
                     git_url=_CORE_GIT_URL,
                     branch=_CORE_BRANCH,
                     commit_hash=commit_hash,
-                    ejected_at=datetime.now(timezone.utc).isoformat(),
+                    ejected_at=datetime.now(UTC).isoformat(),
                     npm_package=_CORE_PACKAGE_NAME,
                     npm_version=npm_version,
                     last_sync_at=None,
@@ -380,28 +375,47 @@ class CoreManagerService(Service):
             monorepo = self._core_monorepo_dir()
             if not monorepo.exists():
                 return CoreSyncResult(
-                    False, "", 0, False, [], "",
+                    False,
+                    "",
+                    0,
+                    False,
+                    [],
+                    "",
                     f"{_CORE_PACKAGE_NAME} is not ejected",
                 )
             if not self._is_within_ejected_core_dir(monorepo):
                 return CoreSyncResult(
-                    False, str(monorepo), 0, False, [], "",
+                    False,
+                    str(monorepo),
+                    0,
+                    False,
+                    [],
+                    "",
                     f"Refusing to use core checkout outside {self._core_base_dir()}",
                 )
 
             upstream = await self._read_upstream_metadata()
             if upstream is None:
                 return CoreSyncResult(
-                    False, str(monorepo), 0, False, [], "",
+                    False,
+                    str(monorepo),
+                    0,
+                    False,
+                    [],
+                    "",
                     f"Missing or invalid {self._upstream_file_path()}",
                 )
 
-            if (
-                not _VALID_GIT_URL.match(upstream.git_url)
-                or not _VALID_BRANCH.match(upstream.branch)
+            if not _VALID_GIT_URL.match(upstream.git_url) or not _VALID_BRANCH.match(
+                upstream.branch
             ):
                 return CoreSyncResult(
-                    False, str(monorepo), 0, False, [], "",
+                    False,
+                    str(monorepo),
+                    0,
+                    False,
+                    [],
+                    "",
                     "Invalid upstream metadata",
                 )
 
@@ -409,17 +423,13 @@ class CoreManagerService(Service):
 
             # Unshallow if needed
             try:
-                is_shallow = await self._git_stdout(
-                    ["rev-parse", "--is-shallow-repository"], cwd
-                )
+                is_shallow = await self._git_stdout(["rev-parse", "--is-shallow-repository"], cwd)
                 if is_shallow == "true":
-                    try:
+                    with contextlib.suppress(Exception):
                         await self._run_cmd(
                             f"git fetch --unshallow origin {upstream.branch}",
                             cwd,
                         )
-                    except Exception:
-                        pass
             except Exception:
                 pass
 
@@ -427,10 +437,8 @@ class CoreManagerService(Service):
 
             # Detect local changes
             porcelain = ""
-            try:
+            with contextlib.suppress(Exception):
                 porcelain = await self._git_stdout(["status", "--porcelain"], cwd)
-            except Exception:
-                pass
             local_changes = len(porcelain) > 0
 
             # Count upstream commits
@@ -444,30 +452,27 @@ class CoreManagerService(Service):
 
             if upstream_commits > 0:
                 try:
-                    await self._run_cmd(
-                        f"git merge --no-edit origin/{upstream.branch}", cwd
-                    )
+                    await self._run_cmd(f"git merge --no-edit origin/{upstream.branch}", cwd)
                 except Exception as exc:
                     conflicts_raw = ""
-                    try:
+                    with contextlib.suppress(Exception):
                         conflicts_raw = await self._git_stdout(
                             ["diff", "--name-only", "--diff-filter=U"], cwd
                         )
-                    except Exception:
-                        pass
-                    conflicts = [
-                        l.strip()
-                        for l in conflicts_raw.splitlines()
-                        if l.strip()
-                    ]
+                    conflicts = [l.strip() for l in conflicts_raw.splitlines() if l.strip()]
                     return CoreSyncResult(
-                        False, cwd, upstream_commits, local_changes,
-                        conflicts, "", str(exc),
+                        False,
+                        cwd,
+                        upstream_commits,
+                        local_changes,
+                        conflicts,
+                        "",
+                        str(exc),
                     )
 
             commit_hash = await self._git_stdout(["rev-parse", "HEAD"], cwd)
 
-            from datetime import datetime, timezone
+            from datetime import datetime
 
             updated = UpstreamMetadata(
                 schema=upstream.schema,
@@ -478,22 +483,25 @@ class CoreManagerService(Service):
                 ejected_at=upstream.ejected_at,
                 npm_package=upstream.npm_package,
                 npm_version=upstream.npm_version,
-                last_sync_at=datetime.now(timezone.utc).isoformat(),
+                last_sync_at=datetime.now(UTC).isoformat(),
                 local_commits=upstream.local_commits,
             )
             await self._write_upstream_metadata(updated)
 
             return CoreSyncResult(
-                True, cwd, upstream_commits, local_changes, [], commit_hash,
+                True,
+                cwd,
+                upstream_commits,
+                local_changes,
+                [],
+                commit_hash,
             )
 
     async def reinject_core(self) -> CoreReinjectResult:
         async with self._lock:
             monorepo = self._core_monorepo_dir()
             if not monorepo.exists():
-                return CoreReinjectResult(
-                    False, "", f"{_CORE_PACKAGE_NAME} is not ejected"
-                )
+                return CoreReinjectResult(False, "", f"{_CORE_PACKAGE_NAME} is not ejected")
             if not self._is_within_ejected_core_dir(monorepo):
                 return CoreReinjectResult(
                     False,
@@ -540,17 +548,13 @@ class CoreManagerService(Service):
         version = await self._read_core_package_version(package_dir)
         cwd = str(monorepo)
         try:
-            commit_hash: str | None = await self._git_stdout(
-                ["rev-parse", "HEAD"], cwd
-            )
+            commit_hash: str | None = await self._git_stdout(["rev-parse", "HEAD"], cwd)
         except Exception:
             commit_hash = None
 
         porcelain = ""
-        try:
+        with contextlib.suppress(Exception):
             porcelain = await self._git_stdout(["status", "--porcelain"], cwd)
-        except Exception:
-            pass
         local_changes = len(porcelain) > 0
 
         return CoreStatus(

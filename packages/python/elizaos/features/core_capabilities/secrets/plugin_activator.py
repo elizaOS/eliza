@@ -12,8 +12,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from elizaos.types import Service
 
@@ -112,10 +113,7 @@ class PluginActivatorService(Service):
         else:
             self._bind_to_secrets_service()
 
-        if (
-            self._config.enable_auto_activation
-            and self._config.polling_interval_ms > 0
-        ):
+        if self._config.enable_auto_activation and self._config.polling_interval_ms > 0:
             self._start_polling()
 
         logger.info("[PluginActivator] Initialized")
@@ -184,9 +182,9 @@ class PluginActivatorService(Service):
             logger.debug("[PluginActivator] Plugin %s already activated", plugin_id)
             return True
 
-        required_secrets: dict[str, PluginSecretRequirement] = getattr(
-            plugin, "required_secrets", {}
-        ) or {}
+        required_secrets: dict[str, PluginSecretRequirement] = (
+            getattr(plugin, "required_secrets", {}) or {}
+        )
         all_secret_keys = list(required_secrets.keys())
 
         self._registered_plugins[plugin_id] = RegisteredPlugin(
@@ -217,14 +215,15 @@ class PluginActivatorService(Service):
             ", ".join(status.missing_required),
         )
 
-        required_keys = [
-            key for key, req in required_secrets.items() if req.required
-        ]
+        required_keys = [key for key, req in required_secrets.items() if req.required]
+
+        async def activate_pending_plugin() -> bool:
+            return await self._activate_plugin(plugin_id, plugin, activation_callback)
 
         self._pending_plugins[plugin_id] = PendingPluginActivation(
             plugin_id=plugin_id,
             required_secrets=required_keys,
-            callback=lambda pid=plugin_id, p=plugin, cb=activation_callback: self._activate_plugin(pid, p, cb),  # type: ignore[misc]
+            callback=activate_pending_plugin,
             registered_at=time.time(),
         )
 
@@ -296,14 +295,12 @@ class PluginActivatorService(Service):
             )
             return False
 
-    async def check_plugin_requirements(
-        self, plugin: Any
-    ) -> PluginRequirementStatus:
+    async def check_plugin_requirements(self, plugin: Any) -> PluginRequirementStatus:
         """Check requirements for a plugin."""
         plugin_id: str = getattr(plugin, "name", str(plugin))
-        required_secrets: dict[str, PluginSecretRequirement] = getattr(
-            plugin, "required_secrets", {}
-        ) or {}
+        required_secrets: dict[str, PluginSecretRequirement] = (
+            getattr(plugin, "required_secrets", {}) or {}
+        )
 
         if not required_secrets:
             return PluginRequirementStatus(
@@ -326,9 +323,7 @@ class PluginActivatorService(Service):
                 message="SecretsService not available",
             )
 
-        result = await self._secrets_service.check_plugin_requirements(
-            plugin_id, required_secrets
-        )
+        result = await self._secrets_service.check_plugin_requirements(plugin_id, required_secrets)
         return result
 
     def get_plugin_statuses(
@@ -480,9 +475,7 @@ class PluginActivatorService(Service):
 
             missing = await self._get_missing_secrets(pending.required_secrets)
             if not missing:
-                logger.info(
-                    "[PluginActivator] Secrets now available for %s", plugin_id
-                )
+                logger.info("[PluginActivator] Secrets now available for %s", plugin_id)
                 await pending.callback()
 
     # ------------------------------------------------------------------
@@ -526,6 +519,7 @@ class PluginActivatorService(Service):
         self._secrets_ready_listeners[plugin_id].append(callback)
 
         if plugin_id in self._activated_plugins:
+
             async def _dispatch_ready() -> None:
                 await callback(self.runtime)
 

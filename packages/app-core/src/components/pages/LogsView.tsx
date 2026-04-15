@@ -221,7 +221,7 @@ export function LogsView() {
           />
         ) : (
           <PagePanel variant="inset" className="overflow-hidden rounded-2xl">
-            <div className="hidden grid-cols-[5.75rem_3.5rem_5rem_14rem_minmax(0,1fr)] gap-3 border-b border-border/40 px-3 py-2 text-xs-tight font-medium uppercase tracking-[0.08em] text-muted md:grid">
+            <div className="hidden grid-cols-[5.75rem_3.5rem_5rem_14rem_minmax(0,1fr)] gap-3 px-3 py-2 text-xs-tight font-medium uppercase tracking-[0.08em] text-muted md:grid">
               <span>{t("logsview.Time")}</span>
               <span>{t("logsview.Level")}</span>
               <span>{t("logsview.Source")}</span>
@@ -231,7 +231,7 @@ export function LogsView() {
             {filteredLogs.map((entry: LogEntry) => (
               <div
                 key={`${entry.timestamp}-${entry.source}-${entry.level}-${entry.message}`}
-                className="flex items-start gap-3 border-b border-border/40 px-3 py-3 text-sm last:border-b-0"
+                className="flex items-start gap-3 px-3 py-3 text-sm"
                 data-testid="log-entry"
               >
                 {/* Timestamp */}

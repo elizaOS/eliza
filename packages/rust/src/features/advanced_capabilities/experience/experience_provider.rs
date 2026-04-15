@@ -44,11 +44,7 @@ impl Provider for ExperienceProvider {
         _state: Option<&State>,
     ) -> PluginResult<ProviderResult> {
         // Build a query from current message context
-        let query_text = message
-            .content
-            .text
-            .clone()
-            .unwrap_or_default();
+        let query_text = message.content.text.clone().unwrap_or_default();
 
         let query = ExperienceQuery {
             query: if query_text.is_empty() {
@@ -61,11 +57,7 @@ impl Provider for ExperienceProvider {
             ..Default::default()
         };
 
-        let experiences = self
-            .service
-            .search(&query)
-            .await
-            .unwrap_or_default();
+        let experiences = self.service.search(&query).await.unwrap_or_default();
 
         if experiences.is_empty() {
             return Ok(ProviderResult::new("").with_value("experienceCount", 0i64));
@@ -84,10 +76,7 @@ impl Provider for ExperienceProvider {
             })
             .collect();
 
-        let text = format!(
-            "# Relevant Experiences\n{}\n",
-            formatted.join("\n")
-        );
+        let text = format!("# Relevant Experiences\n{}\n", formatted.join("\n"));
 
         Ok(ProviderResult::new(text).with_value("experienceCount", experiences.len() as i64))
     }

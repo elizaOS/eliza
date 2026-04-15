@@ -34,7 +34,6 @@ export function ContentLayout({
       contentClassName={contentClassName}
       contentHeader={contentHeader}
       contentPadding={!inModal}
-      contentInnerClassName="min-h-0"
       headerPlacement="inside"
     >
       {children}

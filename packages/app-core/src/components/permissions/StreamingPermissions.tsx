@@ -253,7 +253,7 @@ export function StreamingPermissionsSettingsView({
               <div
                 key={def.id}
                 data-permission-id={def.id}
-                className="flex items-center gap-3 py-2.5 px-3 border-b border-border last:border-b-0"
+                className="flex items-center gap-3 py-2.5 px-3"
               >
                 <PermissionIcon icon={def.icon} />
                 <div className="flex-1 min-w-0">
@@ -401,7 +401,7 @@ export function StreamingPermissionsOnboardingView({
         })}
       </div>
 
-      <div className="flex justify-between items-center gap-6 mt-[18px] pt-3.5 border-t border-white/[0.08]">
+      <div className="flex justify-between items-center gap-6 mt-[18px] pt-3.5">
         {onBack ? (
           <Button
             variant="ghost"

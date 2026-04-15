@@ -23,9 +23,7 @@ if TYPE_CHECKING:
 class ManageSecretAction:
     name: str = "MANAGE_SECRET"
     similes: list[str] = field(
-        default_factory=lambda: [
-            "DELETE_SECRET", "REMOVE_SECRET", "LIST_SECRETS", "SECRET_STATUS"
-        ]
+        default_factory=lambda: ["DELETE_SECRET", "REMOVE_SECRET", "LIST_SECRETS", "SECRET_STATUS"]
     )
     description: str = "List, delete, or check the status of stored secrets"
 
@@ -53,9 +51,7 @@ class ManageSecretAction:
             return ActionResult(text="Secrets service is not available.", success=False)
 
         text = (message.content.text if message.content else "").strip().lower()
-        context = SecretContext(
-            level=SecretLevel.GLOBAL, agent_id=str(runtime.agent_id)
-        )
+        context = SecretContext(level=SecretLevel.GLOBAL, agent_id=str(runtime.agent_id))
 
         # Determine operation
         if "delete" in text or "remove" in text:
@@ -74,8 +70,7 @@ class ManageSecretAction:
             key = key.upper()
             success = await secrets_svc.delete(key, context)
             msg = (
-                f"Secret '{key}' deleted successfully." if success
-                else f"Secret '{key}' not found."
+                f"Secret '{key}' deleted successfully." if success else f"Secret '{key}' not found."
             )
             if callback:
                 await callback(Content(text=msg, actions=["MANAGE_SECRET"]))

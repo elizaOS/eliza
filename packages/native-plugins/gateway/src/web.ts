@@ -3,7 +3,6 @@ import { WebPlugin } from "@capacitor/core";
 import type {
   GatewayConnectOptions,
   GatewayConnectResult,
-  GatewayDiscoveryOptions,
   GatewayDiscoveryResult,
   GatewayErrorEvent,
   GatewayEvent,
@@ -99,9 +98,7 @@ export class GatewayWeb extends WebPlugin {
    * On web platforms, Bonjour/mDNS discovery is not available.
    * Returns an empty list of gateways.
    */
-  async startDiscovery(
-    _options?: GatewayDiscoveryOptions,
-  ): Promise<GatewayDiscoveryResult> {
+  async startDiscovery(): Promise<GatewayDiscoveryResult> {
     return {
       gateways: [],
       status: "Discovery not supported on web platform",

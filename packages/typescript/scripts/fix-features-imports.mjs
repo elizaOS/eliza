@@ -19,7 +19,6 @@ const MOVED_PREFIXES = [
 	"features/advanced-planning",
 	"features/autonomy",
 	"features/basic-capabilities",
-	"features/orchestrator",
 ];
 
 const SIBLING_FEATURE_ROOTS = new Set([
@@ -28,7 +27,6 @@ const SIBLING_FEATURE_ROOTS = new Set([
 	"advanced-memory",
 	"advanced-planning",
 	"basic-capabilities",
-	"orchestrator",
 	"secrets",
 	"trust",
 	"plugin-manager",

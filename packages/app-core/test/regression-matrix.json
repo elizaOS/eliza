@@ -17,7 +17,7 @@
         "regression-matrix-pr"
       ],
       "bannedSnippets": [
-        "--exclude packages/agent/test/apps-e2e.e2e.test.ts"
+        "--exclude eliza/packages/agent/test/apps-e2e.e2e.test.ts"
       ]
     },
     "nightly": {
@@ -307,7 +307,7 @@
       "name": "e2e-test-harness",
       "globs": [
         "test/**",
-        "eliza/packages/agent/test/**",
+        "eliza/apps/**/test/**",
         "eliza/packages/app-core/test/**",
         "test/vitest/integration.config.ts",
         "test/vitest/e2e.config.ts"
@@ -334,7 +334,7 @@
   "exceptions": {
     "heavyOnlyE2E": [
       {
-        "path": "eliza/packages/agent/test/anvil-contracts.real.e2e.test.ts",
+        "path": "eliza/apps/app-steward/test/anvil-contracts.real.e2e.test.ts",
         "suite": "e2e-heavy",
         "tier": "heavy",
         "rationale": "requires contract and anvil setup that stays out of the default live API/runtime lane"

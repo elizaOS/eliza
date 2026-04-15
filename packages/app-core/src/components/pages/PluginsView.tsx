@@ -1183,7 +1183,7 @@ function PluginListView({
             }
           />
         ) : (
-          <div data-testid="connectors-settings-content" className="space-y-6">
+          <div data-testid="connectors-settings-content" className="space-y-1">
             <ConnectorPluginGroups
               collapseLabel={collapseLabel}
               connectorExpandedIds={connectorExpandedIds}

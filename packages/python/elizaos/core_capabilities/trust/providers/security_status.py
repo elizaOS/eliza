@@ -6,7 +6,6 @@ agent can adapt its behaviour to the current threat landscape.
 
 from __future__ import annotations
 
-import time
 from typing import TYPE_CHECKING
 
 from elizaos.types import Provider, ProviderResult
@@ -30,16 +29,12 @@ async def get_security_status(
             break
 
     if security_module is None:
-        return ProviderResult(
-            text="", values={"securityAvailable": False}, data={}
-        )
+        return ProviderResult(text="", values={"securityAvailable": False}, data={})
 
     # Get room_id from message if available
     room_id = message.room_id if hasattr(message, "room_id") else None
 
-    recent_events = await security_module.get_recent_security_events(
-        room_id=room_id, hours=24
-    )
+    recent_events = await security_module.get_recent_security_events(room_id=room_id, hours=24)
 
     event_count = len(recent_events)
     severity_counts: dict[str, int] = {}
@@ -58,9 +53,7 @@ async def get_security_status(
     if event_count == 0:
         text = "# Security Status\nNo recent security events. Threat level: low."
     else:
-        severity_summary = ", ".join(
-            f"{k}: {v}" for k, v in sorted(severity_counts.items())
-        )
+        severity_summary = ", ".join(f"{k}: {v}" for k, v in sorted(severity_counts.items()))
         text = (
             f"# Security Status\n"
             f"Recent events (24h): {event_count}\n"

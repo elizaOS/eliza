@@ -448,7 +448,7 @@ export function CustomActionEditor({
         className={editorDialogContentClassName}
       >
         {/* Header */}
-        <DialogHeader className="flex flex-row items-center border-b border-border/70 px-5 py-4">
+        <DialogHeader className="flex flex-row items-center px-5 py-4">
           <DialogTitle className="flex-1 text-sm font-medium text-txt">
             {action ? "Edit Custom Action" : "New Custom Action"}
           </DialogTitle>
@@ -726,7 +726,7 @@ export function CustomActionEditor({
           )}
 
           {/* Parameters */}
-          <div className="flex flex-col gap-2 border-t border-border pt-3">
+          <div className="flex flex-col gap-2 pt-3">
             <div className="flex items-center justify-between">
               <span className={editorFieldLabelClassName}>
                 {t("customactioneditor.Parameters")}
@@ -787,7 +787,7 @@ export function CustomActionEditor({
           </div>
 
           {/* Test Section */}
-          <div className="flex flex-col gap-2 border-t border-border pt-3">
+          <div className="flex flex-col gap-2 pt-3">
             <Button
               variant="ghost"
               className="flex items-center justify-between text-xs text-muted hover:text-txt h-auto p-0 w-full"
@@ -851,7 +851,7 @@ export function CustomActionEditor({
         </div>
 
         {/* Footer */}
-        <DialogFooter className="border-t border-border/70 px-5 py-4 sm:justify-end sm:space-x-2">
+        <DialogFooter className="px-5 py-4 sm:justify-end sm:space-x-2">
           {testExpanded && (
             <Button
               variant="outline"

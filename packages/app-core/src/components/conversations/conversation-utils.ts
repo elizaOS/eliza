@@ -77,7 +77,6 @@ export function resolveProviderLabel(model: string | undefined): string {
     { match: "together", label: "Together AI" },
     { match: "zai", label: "z.ai" },
     { match: "cohere", label: "Cohere" },
-    { match: "pi-ai", label: "Pi AI" },
   ];
   for (const provider of knownProviders) {
     if (lower.includes(provider.match)) return provider.label;

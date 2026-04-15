@@ -294,13 +294,13 @@ export function Header({
                     const isActive = group.tabs.includes(tab);
                     return (
                       <Button
-                        variant={isActive ? "default" : "ghost"}
+                        variant="ghost"
                         key={group.label}
                         data-testid={`header-nav-button-${primaryTab}`}
-                        className={`relative z-10 min-h-touch shrink-0 rounded-xl border border-transparent px-3 py-2.5 text-xs transition-all duration-200 md:px-3.5 xl:px-4 ${
+                        className={`relative z-10 min-h-touch shrink-0 rounded-none border-b-2 border-transparent bg-transparent px-3 py-2.5 text-xs transition-all duration-200 md:px-3.5 xl:px-4 ${
                           isActive
-                            ? "border-accent/30 bg-accent/12 text-txt font-semibold shadow-[0_2px_10px_rgba(3,5,10,0.08)] ring-1 ring-inset ring-accent/18 dark:shadow-[0_0_0_1px_rgba(var(--accent-rgb),0.14),0_0_14px_rgba(var(--accent-rgb),0.14)]"
-                            : "text-muted hover:border-border/45 hover:bg-bg-hover/70 hover:text-txt"
+                            ? "border-b-accent text-accent font-semibold"
+                            : "text-muted hover:text-txt"
                         }`}
                         onClick={() => setTab(primaryTab)}
                         title={group.description}
@@ -334,7 +334,7 @@ export function Header({
             showCloseButton={false}
             className="fixed left-auto right-0 top-0 z-[240] flex h-[100dvh] w-[min(22rem,88vw)] max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-l border-border/60 bg-bg/98 p-0 shadow-[0_24px_70px_rgba(2,8,23,0.34)] backdrop-blur-2xl data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right max-sm:!bottom-0 max-sm:!left-auto max-sm:!right-0 max-sm:!top-0 max-sm:!max-h-[100dvh] max-sm:!w-[min(22rem,88vw)] max-sm:!translate-x-0 max-sm:!translate-y-0 max-sm:!rounded-none max-sm:data-[state=closed]:slide-out-to-right max-sm:data-[state=open]:slide-in-from-right sm:hidden"
           >
-            <DialogHeader className="border-b border-border/50 px-4 py-3 text-left">
+            <DialogHeader className="px-4 py-3 text-left">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
@@ -378,12 +378,12 @@ export function Header({
                     const isActive = group.tabs.includes(tab);
                     return (
                       <Button
-                        variant={isActive ? "default" : "ghost"}
+                        variant="ghost"
                         key={group.label}
-                        className={`flex min-h-[48px] w-full rounded-xl border px-3 py-3 text-sm font-medium transition-all duration-200 ${
+                        className={`flex min-h-[48px] w-full rounded-none border-b-2 border-transparent bg-transparent px-3 py-3 text-sm font-medium transition-all duration-200 ${
                           isActive
-                            ? "border-accent/30 bg-accent/12 text-txt shadow-[0_2px_10px_rgba(3,5,10,0.08)] ring-1 ring-inset ring-accent/18 dark:shadow-[0_0_0_1px_rgba(var(--accent-rgb),0.14),0_0_14px_rgba(var(--accent-rgb),0.14)]"
-                            : "border-transparent bg-transparent text-txt hover:border-border/45 hover:bg-bg-hover/70"
+                            ? "border-b-accent text-accent font-semibold"
+                            : "text-txt hover:text-accent/70"
                         }`}
                         style={{
                           clipPath: "none",
@@ -412,7 +412,7 @@ export function Header({
                   })}
                 </div>
               </div>
-              <div className="mt-3 flex flex-col gap-3 border-t border-border/50 pt-3">
+              <div className="mt-3 flex flex-col gap-3 pt-3">
                 <div className="flex items-center justify-end gap-2">
                   {renderMobileMenuLanguageDropdown()}
                   {renderMobileMenuThemeToggle()}

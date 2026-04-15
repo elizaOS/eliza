@@ -55,7 +55,7 @@ export function PairingView() {
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(var(--accent-rgb),0.12),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_40%)]"
       />
       <Card className={SCREEN_CARD_CLASS}>
-        <CardHeader className="border-b border-border/60 bg-card/70 pb-6 pt-6">
+        <CardHeader className="bg-card/70 pb-6 pt-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 space-y-1.5">
               <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/80">
@@ -131,7 +131,7 @@ export function PairingView() {
                 </div>
               ) : null}
 
-              <div className="flex flex-col gap-3 border-t border-border/40 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
                 <Button
                   asChild
                   variant="outline"

@@ -7,15 +7,12 @@ or for an existing world/server. Ported from the TypeScript
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 from elizaos.types import Action, ActionResult, Content
 
 if TYPE_CHECKING:
-    from uuid import UUID
-
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
 
 
@@ -24,13 +21,9 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def _is_setting_entry(value: Any) -> bool:
+def _is_setting_entry(value: Any) -> TypeGuard[dict[str, Any]]:
     """Check if *value* looks like a Setting dict with 'name' and 'value' keys."""
-    return (
-        isinstance(value, dict)
-        and "name" in value
-        and "value" in value
-    )
+    return isinstance(value, dict) and "name" in value and "value" in value
 
 
 def _format_setting_value(setting: dict[str, Any], is_onboarding: bool) -> str:
@@ -80,9 +73,7 @@ def _format_settings_list(world_settings: dict[str, Any]) -> str:
     return "\n".join(lines) if lines else "No settings available"
 
 
-def _extract_setting_values(
-    text: str, world_settings: dict[str, Any]
-) -> list[dict[str, Any]]:
+def _extract_setting_values(text: str, world_settings: dict[str, Any]) -> list[dict[str, Any]]:
     """Extract setting key/value pairs from user text.
 
     Uses simple heuristics: looks for known setting keys in the text and
@@ -92,9 +83,7 @@ def _extract_setting_values(
     results: list[dict[str, Any]] = []
     text_lower = text.lower()
 
-    _, required_unconfigured, optional_unconfigured = _categorize_settings(
-        world_settings
-    )
+    _, required_unconfigured, optional_unconfigured = _categorize_settings(world_settings)
     all_unconfigured = required_unconfigured + optional_unconfigured
 
     for key, setting in all_unconfigured:
@@ -111,22 +100,18 @@ def _extract_setting_values(
     return results
 
 
-def _extract_value_for_key(
-    text: str, key: str, setting: dict[str, Any]
-) -> str | None:
+def _extract_value_for_key(text: str, key: str, setting: dict[str, Any]) -> str | None:
     """Try to extract a value for a specific setting key from text."""
     import re
 
     # Pattern: "key to <value>" or "key = <value>" or "key: <value>"
     patterns = [
         rf"(?i){re.escape(key)}\s*(?:to|=|:)\s*(.+?)(?:\.|,|$)",
-        rf'(?i)set\s+{re.escape(key)}\s+(?:to\s+)?(.+?)(?:\.|,|$)',
+        rf"(?i)set\s+{re.escape(key)}\s+(?:to\s+)?(.+?)(?:\.|,|$)",
     ]
     name = setting.get("name", "")
     if name:
-        patterns.append(
-            rf"(?i){re.escape(name)}\s*(?:to|=|:)\s*(.+?)(?:\.|,|$)"
-        )
+        patterns.append(rf"(?i){re.escape(name)}\s*(?:to|=|:)\s*(.+?)(?:\.|,|$)")
 
     for pattern in patterns:
         match = re.search(pattern, text)
@@ -136,9 +121,7 @@ def _extract_value_for_key(
     return None
 
 
-async def _get_world_settings(
-    runtime: IAgentRuntime, server_id: str
-) -> dict[str, Any] | None:
+async def _get_world_settings(runtime: IAgentRuntime, server_id: str) -> dict[str, Any] | None:
     """Retrieve world settings from the runtime."""
     get_world = getattr(runtime, "get_world", None)
     if not callable(get_world):
@@ -215,8 +198,17 @@ class UpdateSettingsAction:
         """Validate that the message mentions settings/configuration keywords."""
         text = (message.content.text if message.content else "").lower()
         keywords = {
-            "setting", "settings", "configure", "configuration", "set up",
-            "setup", "update", "prefix", "channel", "enable", "disable",
+            "setting",
+            "settings",
+            "configure",
+            "configuration",
+            "set up",
+            "setup",
+            "update",
+            "prefix",
+            "channel",
+            "enable",
+            "disable",
         }
         return any(kw in text for kw in keywords)
 
@@ -229,7 +221,7 @@ class UpdateSettingsAction:
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> ActionResult:
-        entity_id: UUID | None = message.entity_id
+        entity_id = message.entity_id
         if entity_id is None:
             return ActionResult(
                 text="Cannot update settings: no entity specified.",
@@ -266,7 +258,7 @@ class UpdateSettingsAction:
             )
 
         # Extract setting updates from the message
-        text = (message.content.text if message.content else "")
+        text = message.content.text if message.content else ""
         extracted = _extract_setting_values(text, world_settings)
 
         if not extracted:
@@ -285,9 +277,7 @@ class UpdateSettingsAction:
                     "Please specify which setting you'd like to change and its new value."
                 )
             if callback:
-                await callback(
-                    Content(text=hint, actions=["SETTING_UPDATE_FAILED"])
-                )
+                await callback(Content(text=hint, actions=["SETTING_UPDATE_FAILED"]))
             return ActionResult(
                 text="No settings were updated from your message.",
                 values={"success": False, "reason": "NO_VALID_SETTINGS_FOUND"},
@@ -309,15 +299,14 @@ class UpdateSettingsAction:
             # Check dependencies
             depends_on = setting.get("dependsOn") or []
             if depends_on:
-                deps_met = all(
-                    _is_setting_entry(updated_settings.get(dep))
-                    and updated_settings[dep].get("value") is not None
-                    for dep in depends_on
-                )
+                deps_met = True
+                for dep in depends_on:
+                    dep_setting = updated_settings.get(dep)
+                    if not _is_setting_entry(dep_setting) or dep_setting.get("value") is None:
+                        deps_met = False
+                        break
                 if not deps_met:
-                    messages.append(
-                        f"Cannot update {setting['name']} -- dependencies not met"
-                    )
+                    messages.append(f"Cannot update {setting['name']} -- dependencies not met")
                     continue
 
             updated_settings[key] = {**setting, "value": value}
@@ -329,9 +318,7 @@ class UpdateSettingsAction:
             if not saved:
                 msg = "Failed to save updated settings."
                 if callback:
-                    await callback(
-                        Content(text=msg, actions=["SETTING_UPDATE_ERROR"])
-                    )
+                    await callback(Content(text=msg, actions=["SETTING_UPDATE_ERROR"]))
                 return ActionResult(text=msg, success=False)
 
         # Generate response
@@ -354,9 +341,7 @@ class UpdateSettingsAction:
                 action_tag = "SETTING_UPDATED"
 
             if callback:
-                await callback(
-                    Content(text=response_text, actions=[action_tag])
-                )
+                await callback(Content(text=response_text, actions=[action_tag]))
 
             return ActionResult(
                 text=". ".join(messages),
@@ -374,9 +359,7 @@ class UpdateSettingsAction:
         else:
             joined = ". ".join(messages) if messages else "No settings were updated."
             if callback:
-                await callback(
-                    Content(text=joined, actions=["SETTING_UPDATE_FAILED"])
-                )
+                await callback(Content(text=joined, actions=["SETTING_UPDATE_FAILED"]))
             return ActionResult(
                 text=joined,
                 values={"success": False},

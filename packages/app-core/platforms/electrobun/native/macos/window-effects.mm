@@ -275,7 +275,7 @@ static void elizaInstallResizeStripOverlays(NSWindow *window,
 	[right setFrame:rightR];
 	[corner setFrame:cornerR];
 
-	// Back → front among strips: bottom, right, corner (corner wins at BR).
+	// Back -> front among strips: bottom, right, corner (corner wins at BR).
 	[contentView addSubview:bottom
 				 positioned:NSWindowBelow
 				 relativeTo:dragView];
@@ -308,7 +308,7 @@ static CGFloat elizaChromeDepthPoints(NSWindow *window, double hostHeightHint) {
 	}
 
 	CGFloat scale = MAX(1.0, s.backingScaleFactor);
-	// ~20pt @1x → ~27pt @2x (similar physical hit target on Retina).
+	// ~20pt @1x -> ~27pt @2x (similar physical hit target on Retina).
 	CGFloat d = 20.0 + 7.0 * (scale - 1.0);
 
 	const CGFloat vw = NSWidth(s.visibleFrame);
@@ -361,7 +361,7 @@ static ElectrobunNativeDragView *findNativeDragRightEdgeView(NSView *contentView
 /**
  * Request accessibility permission with a system prompt.
  * Calls AXIsProcessTrustedWithOptions({kAXTrustedCheckOptionPrompt: true}),
- * which registers the app in System Preferences → Accessibility and shows the
+ * which registers the app in System Preferences -> Accessibility and shows the
  * authorization dialog. Must be called from within the app process.
  * Returns true if already trusted, false if the prompt was shown.
  */
@@ -380,7 +380,7 @@ extern "C" bool checkAccessibilityPermission(void) {
 /**
  * Request screen recording permission.
  * Calls CGRequestScreenCaptureAccess() which registers the app in
- * System Preferences → Screen Recording and shows the authorization dialog.
+ * System Preferences -> Screen Recording and shows the authorization dialog.
  * Returns true if already granted.
  */
 extern "C" bool requestScreenRecordingPermission(void) {
@@ -466,7 +466,7 @@ extern "C" bool enableWindowVibrancy(void *windowPtr) {
 		[window setBackgroundColor:[NSColor clearColor]];
 		[window setTitlebarAppearsTransparent:YES];
 		[window setHasShadow:YES];
-		// Helps some clicks in “empty” WKWebView chrome participate in window moves
+		// Helps some clicks in "empty" WKWebView chrome participate in window moves
 		// alongside our explicit ElectrobunNativeDragView strips.
 		[window setMovableByWindowBackground:YES];
 
@@ -701,7 +701,7 @@ extern "C" bool setNativeWindowDragRegion(void *windowPtr, double x,
 		if ([dragView superview] == nil) {
 			[contentView addSubview:dragView];
 		}
-		// Electrobun may insert WKWebView after our first pass — always re-stack on
+		// Electrobun may insert WKWebView after our first pass -> always re-stack on
 		// top so the drag strip is hit-testable (otherwise only a 1px seam works).
 		[contentView addSubview:dragView
 					 positioned:NSWindowAbove

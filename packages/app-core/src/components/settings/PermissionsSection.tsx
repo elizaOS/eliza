@@ -151,7 +151,7 @@ function DesktopPermissionsView() {
       {/* System Permissions */}
       <div>
         <div className="rounded-2xl border border-border/60 bg-card/92 shadow-sm">
-          <div className="flex flex-col gap-3 border-b border-border/50 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-1">
               <div className="font-bold text-sm text-txt">
                 {translateWithFallback(
@@ -281,7 +281,7 @@ function DesktopPermissionsView() {
       {/* Capability Toggles */}
       <div>
         <div className="rounded-2xl border border-border/60 bg-card/92 shadow-sm">
-          <div className="border-b border-border/50 px-4 py-4">
+          <div className="px-4 py-4">
             <div className="font-bold text-sm text-txt">
               {t("appsview.Capabilities")}
             </div>
@@ -630,7 +630,7 @@ function DesktopOnboardingPermissions({
         })}
       </div>
 
-      <div className="mt-[18px] border-t border-border/50 pt-3.5">
+      <div className="mt-[18px] pt-3.5">
         <div className="mb-4 space-y-1 text-xs-tight leading-5 text-muted">
           <p>{footerStatusMessage}</p>
           {!canProceed ? (

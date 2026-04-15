@@ -1,3 +1,4 @@
+export * from "@elizaos/app-task-coordinator/api/coordinator-wiring";
 export * from "./agent-admin-routes.js";
 export * from "./agent-lifecycle-routes.js";
 export * from "./agent-model.js";
@@ -19,7 +20,6 @@ export {
 } from "./cloud-status-routes.js";
 export * from "./compat-utils.js";
 export * from "./connector-health.js";
-export * from "./coordinator-wiring.js";
 export * from "./credit-detection.js";
 export * from "./database.js";
 export * from "./diagnostics-routes.js";

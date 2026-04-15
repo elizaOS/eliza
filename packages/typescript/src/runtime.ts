@@ -1182,14 +1182,13 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 		if (pluginToRegister.routes) {
 			for (const route of pluginToRegister.routes) {
+				// namespace plugin name infront of paths
 				const routePath = route.path.startsWith("/")
 					? route.path
 					: `/${route.path}`;
 				this.routes.push({
 					...route,
-					path: route.rawPath
-						? routePath
-						: `/${pluginToRegister.name}${routePath}`,
+					path: `/${pluginToRegister.name}${routePath}`,
 				});
 			}
 		}

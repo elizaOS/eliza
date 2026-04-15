@@ -192,14 +192,14 @@ export function CustomActionsPanel({
 
   return (
     <div
-      className={`border-l border-border bg-card flex flex-col transition-all duration-200 ${
+      className={`bg-card flex flex-col transition-all duration-200 ${
         open ? "w-80" : "w-0 overflow-hidden"
       }`}
     >
       {open && (
         <>
           {/* Header */}
-          <div className="flex items-start justify-between p-4 border-b border-border">
+          <div className="flex items-start justify-between p-4">
             <div>
               <h2 className="text-sm font-semibold text-txt">
                 {t("customactionspanel.CustomActions")}
@@ -228,7 +228,7 @@ export function CustomActionsPanel({
             </Button>
           </div>
 
-          <div className="space-y-3 p-3 border-b border-border">
+          <div className="space-y-3 p-3">
             <Button
               variant="default"
               size="sm"
@@ -306,7 +306,7 @@ export function CustomActionsPanel({
                     </p>
                   )}
 
-                  <div className="flex items-center gap-2 pt-1 border-t border-border">
+                  <div className="flex items-center gap-2 pt-1">
                     {/* biome-ignore lint/a11y/noLabelWithoutControl: form control is associated programmatically */}
                     <label className="flex items-center gap-1 cursor-pointer text-xs text-muted">
                       <Switch

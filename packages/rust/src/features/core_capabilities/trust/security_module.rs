@@ -56,12 +56,7 @@ impl SecurityModuleService {
     /// Get recent security events.
     pub async fn get_recent_events(&self, limit: usize) -> Vec<SecurityEvent> {
         let events = self.events.read().await;
-        events
-            .iter()
-            .rev()
-            .take(limit)
-            .cloned()
-            .collect()
+        events.iter().rev().take(limit).cloned().collect()
     }
 
     /// Get security events for a specific entity.
@@ -76,11 +71,7 @@ impl SecurityModuleService {
     }
 
     /// Resolve a security event.
-    pub async fn resolve_event(
-        &self,
-        event_id: Uuid,
-        resolution: &str,
-    ) -> anyhow::Result<bool> {
+    pub async fn resolve_event(&self, event_id: Uuid, resolution: &str) -> anyhow::Result<bool> {
         let mut events = self.events.write().await;
         if let Some(event) = events.iter_mut().find(|e| e.id == event_id) {
             event.resolved = true;

@@ -1,4 +1,4 @@
-import { CodingAgentSettingsSection } from "@elizaos/app-coding";
+import { CodingAgentSettingsSection } from "@elizaos/app-task-coordinator";
 import { ConversationsSidebar } from "../components/conversations/ConversationsSidebar";
 import { BrowserWorkspaceView } from "../components/pages/BrowserWorkspaceView";
 import { ChatView } from "../components/pages/ChatView";

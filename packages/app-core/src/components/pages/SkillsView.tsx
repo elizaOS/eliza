@@ -515,7 +515,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                       />
                     </div>
                   </div>
-                  <div className="border-t border-border/40 bg-bg/18 px-4 py-4 sm:px-5">
+                  <div className="bg-bg/18 px-4 py-4 sm:px-5">
                     <div className="mb-4 flex flex-wrap items-center gap-2">
                       <Button
                         variant="outline"
@@ -573,9 +573,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                             {skillReviewReport.findings.map((finding, idx) => (
                               <div
                                 key={`${finding.file}:${finding.line}:${finding.message}`}
-                                className={`flex items-start gap-2 px-3 py-2 text-xs-tight ${
-                                  idx > 0 ? "border-t border-border/30" : ""
-                                }`}
+                                className={`flex items-start gap-2 px-3 py-2 text-xs-tight`}
                               >
                                 <span
                                   className={`shrink-0 rounded-full px-2 py-0.5 text-3xs font-bold uppercase tracking-[0.12em] ${

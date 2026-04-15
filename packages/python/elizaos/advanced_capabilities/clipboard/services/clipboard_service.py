@@ -6,6 +6,8 @@ stored in the clipboard directory.
 
 from __future__ import annotations
 
+import builtins
+import contextlib
 import logging
 import os
 import re
@@ -50,12 +52,14 @@ def _resolve_clipboard_config(
         bp = runtime.get_setting("CLIPBOARD_BASE_PATH") if hasattr(runtime, "get_setting") else None
         if isinstance(bp, str) and bp.strip():
             base.base_path = bp.strip()
-        mfs = runtime.get_setting("CLIPBOARD_MAX_FILE_SIZE") if hasattr(runtime, "get_setting") else None
-        if mfs is not None:
-            try:
+        mfs = (
+            runtime.get_setting("CLIPBOARD_MAX_FILE_SIZE")
+            if hasattr(runtime, "get_setting")
+            else None
+        )
+        if isinstance(mfs, (str, int, float)):
+            with contextlib.suppress(ValueError, TypeError):
                 base.max_file_size = int(mfs)
-            except (ValueError, TypeError):
-                pass
 
     # Check env vars
     env_bp = os.environ.get("CLIPBOARD_BASE_PATH")
@@ -63,10 +67,8 @@ def _resolve_clipboard_config(
         base.base_path = env_bp.strip()
     env_mfs = os.environ.get("CLIPBOARD_MAX_FILE_SIZE")
     if env_mfs:
-        try:
+        with contextlib.suppress(ValueError, TypeError):
             base.max_file_size = int(env_mfs)
-        except (ValueError, TypeError):
-            pass
 
     # Override with explicit config
     if config:
@@ -94,11 +96,7 @@ class ClipboardService:
         Path(self._config.base_path).mkdir(parents=True, exist_ok=True)
 
     def _sanitize_filename(self, title: str) -> str:
-        return (
-            re.sub(r"[^a-z0-9\s-]", "", title.lower())
-            .replace(" ", "-")
-            .strip("-")[:100]
-        )
+        return re.sub(r"[^a-z0-9\s-]", "", title.lower()).replace(" ", "-").strip("-")[:100]
 
     def _get_file_path(self, entry_id: str) -> str:
         filename = entry_id if entry_id.endswith(".md") else f"{entry_id}.md"
@@ -127,9 +125,7 @@ class ClipboardService:
             final_content = f"{existing.content}\n\n---\n\n{content}"
             created_at = existing.created_at
         else:
-            tags_line = (
-                f"tags: [{', '.join(options.tags)}]" if options.tags else ""
-            )
+            tags_line = f"tags: [{', '.join(options.tags)}]" if options.tags else ""
             frontmatter_parts = [
                 "---",
                 f'title: "{title}"',
@@ -176,7 +172,7 @@ class ClipboardService:
             raise FileNotFoundError(f"Clipboard entry not found: {entry_id}")
 
         stat = os.stat(file_path)
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         # Handle line range
@@ -202,12 +198,8 @@ class ClipboardService:
             if tags_match:
                 tags = [t.strip() for t in tags_match.group(1).split(",")]
             if created_match:
-                try:
-                    created_at = datetime.fromisoformat(
-                        created_match.group(1).strip()
-                    )
-                except ValueError:
-                    pass
+                with contextlib.suppress(ValueError):
+                    created_at = datetime.fromisoformat(created_match.group(1).strip())
 
         return ClipboardEntry(
             id=entry_id,
@@ -239,7 +231,8 @@ class ClipboardService:
                 except Exception as e:
                     logger.warning(
                         "[ClipboardService] Failed to read entry %s: %s",
-                        filename, e,
+                        filename,
+                        e,
                     )
         except Exception as e:
             logger.error("[ClipboardService] Failed to list entries: %s", e)
@@ -250,15 +243,13 @@ class ClipboardService:
         self,
         query: str,
         options: ClipboardSearchOptions | None = None,
-    ) -> list[ClipboardSearchResult]:
+    ) -> builtins.list[ClipboardSearchResult]:
         """Search clipboard entries using text matching."""
         options = options or ClipboardSearchOptions()
         entries = await self.list()
-        results: list[ClipboardSearchResult] = []
+        results: builtins.list[ClipboardSearchResult] = []
 
-        query_terms = [
-            t for t in query.lower().split() if len(t) > 2
-        ]
+        query_terms = [t for t in query.lower().split() if len(t) > 2]
         if not query_terms:
             return results
 
@@ -289,14 +280,16 @@ class ClipboardService:
 
             snippet = "\n".join(lines[best_start:best_end])
 
-            results.append(ClipboardSearchResult(
-                path=entry.path,
-                start_line=best_start + 1,
-                end_line=best_end,
-                score=score,
-                snippet=snippet,
-                entry_id=entry.id,
-            ))
+            results.append(
+                ClipboardSearchResult(
+                    path=entry.path,
+                    start_line=best_start + 1,
+                    end_line=best_end,
+                    score=score,
+                    snippet=snippet,
+                    entry_id=entry.id,
+                )
+            )
 
         results.sort(key=lambda r: r.score, reverse=True)
         return results[: options.max_results]
@@ -320,8 +313,7 @@ class ClipboardService:
         parts = [f"**Clipboard Summary** ({len(entries)} entries)", ""]
         for entry in entries[:10]:
             preview = (
-                re.sub(r"^---[\s\S]*?---\n*", "", entry.content, count=1)
-                [:100]
+                re.sub(r"^---[\s\S]*?---\n*", "", entry.content, count=1)[:100]
                 .replace("\n", " ")
                 .strip()
             )

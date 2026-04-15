@@ -35,7 +35,7 @@ export const SaveFooter = React.forwardRef<HTMLDivElement, SaveFooterProps>(
       <div
         ref={ref}
         className={cn(
-          "flex items-center justify-end gap-3 border-t border-border pt-2",
+          "flex items-center justify-end gap-3 pt-2",
           className,
         )}
         {...props}

@@ -1024,6 +1024,100 @@
         "earlier"
       ]
     },
+    "contextSignal.read_messages.strong": {
+      "base": [
+        "read messages with",
+        "conversation with",
+        "messages with",
+        "chat with",
+        "dm history with",
+        "message history with",
+        "show messages with",
+        "check messages with"
+      ],
+      "zh-CN": [
+        "查看与某人的消息",
+        "与某人的对话",
+        "查看私信记录"
+      ],
+      "ko": [
+        "누군가와의 메시지 보기",
+        "누군가와의 대화",
+        "dm 기록 보기"
+      ],
+      "es": [
+        "leer mensajes con",
+        "conversación con",
+        "conversacion con",
+        "mensajes con",
+        "chat con"
+      ],
+      "pt": [
+        "ler mensagens com",
+        "conversa com",
+        "mensagens com",
+        "chat com"
+      ],
+      "vi": [
+        "đọc tin nhắn với",
+        "cuộc trò chuyện với",
+        "tin nhắn với"
+      ],
+      "tl": [
+        "basahin ang mga mensahe kasama si",
+        "usapan kasama si",
+        "mga mensahe kasama si"
+      ]
+    },
+    "contextSignal.read_messages.weak": {
+      "base": [
+        "messages with",
+        "conversation",
+        "dm",
+        "direct message",
+        "person",
+        "contact",
+        "chat with",
+        "history with"
+      ],
+      "zh-CN": [
+        "消息",
+        "对话",
+        "私信",
+        "联系人"
+      ],
+      "ko": [
+        "메시지",
+        "대화",
+        "dm",
+        "연락처"
+      ],
+      "es": [
+        "mensajes",
+        "conversación",
+        "conversacion",
+        "dm",
+        "contacto"
+      ],
+      "pt": [
+        "mensagens",
+        "conversa",
+        "dm",
+        "contato"
+      ],
+      "vi": [
+        "tin nhắn",
+        "cuộc trò chuyện",
+        "dm",
+        "liên hệ"
+      ],
+      "tl": [
+        "mensahe",
+        "usapan",
+        "dm",
+        "contact"
+      ]
+    },
     "contextSignal.stream_control.strong": {
       "base": [
         "go live",

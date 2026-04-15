@@ -1,6 +1,6 @@
 /**
  * OpenAI Codex (ChatGPT OAuth) — local callback on :1455 + PKCE.
- * Inlined from @mariozechner/pi-ai@0.52.12 (MIT) — dependency removed.
+ * Inlined OAuth flow (MIT) — vendored to avoid a runtime dependency.
  */
 
 let _randomBytes: typeof import("node:crypto").randomBytes | null = null;

@@ -42,6 +42,8 @@ from .secrets import (
     secrets_providers,
     secrets_status_provider,
     set_secret_action,
+)
+from .secrets import (
     update_settings_action as onboarding_update_settings_action,
 )
 from .trust import (

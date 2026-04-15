@@ -82,10 +82,7 @@ impl Action for LoadPluginAction {
             .with_data("pluginId", plugin.id)
             .with_data("status", serde_json::json!(plugin.status))
             .with_data("actionName", "LOAD_PLUGIN")),
-            Err(e) => Ok(ActionResult::error(format!(
-                "Failed to load plugin: {}",
-                e
-            ))),
+            Err(e) => Ok(ActionResult::error(format!("Failed to load plugin: {}", e))),
         }
     }
 }
@@ -154,12 +151,11 @@ impl Action for UnloadPluginAction {
         };
 
         match self.service.unload_plugin(&unload_params).await {
-            Ok(plugin) => Ok(ActionResult::success(format!(
-                "Plugin '{}' unloaded",
-                plugin.name
-            ))
-            .with_data("pluginId", plugin.id)
-            .with_data("actionName", "UNLOAD_PLUGIN")),
+            Ok(plugin) => Ok(
+                ActionResult::success(format!("Plugin '{}' unloaded", plugin.name))
+                    .with_data("pluginId", plugin.id)
+                    .with_data("actionName", "UNLOAD_PLUGIN"),
+            ),
             Err(e) => Ok(ActionResult::error(format!(
                 "Failed to unload plugin: {}",
                 e
@@ -246,13 +242,11 @@ impl Action for ListPluginsAction {
             .collect::<Vec<_>>()
             .join("\n");
 
-        Ok(ActionResult::success(format!(
-            "Plugins ({}):\n{}",
-            plugins.len(),
-            text
-        ))
-        .with_data("plugins", serde_json::json!(plugin_list))
-        .with_data("pluginCount", serde_json::json!(plugins.len()))
-        .with_data("actionName", "LIST_PLUGINS"))
+        Ok(
+            ActionResult::success(format!("Plugins ({}):\n{}", plugins.len(), text))
+                .with_data("plugins", serde_json::json!(plugin_list))
+                .with_data("pluginCount", serde_json::json!(plugins.len()))
+                .with_data("actionName", "LIST_PLUGINS"),
+        )
     }
 }

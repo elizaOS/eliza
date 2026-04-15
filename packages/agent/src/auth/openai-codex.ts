@@ -1,7 +1,7 @@
 /**
  * OpenAI Codex (ChatGPT Plus/Pro subscription) OAuth flow
  *
- * Uses inlined OAuth (formerly from @mariozechner/pi-ai).
+ * Uses inlined OAuth (vendored helpers).
  * Handles local callback server + manual code paste fallback.
  *
  * TODO(plugin-extraction): This module is a candidate for extraction into

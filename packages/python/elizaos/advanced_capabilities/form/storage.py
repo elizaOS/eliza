@@ -50,22 +50,23 @@ def _dict_to_session(data: dict[str, Any]) -> FormSession:
     fields: dict[str, FieldState] = {}
     for k, v in data.get("fields", {}).items():
         if isinstance(v, dict):
-            fields[k] = FieldState(**{
-                fk: fv for fk, fv in v.items()
-                if fk in FieldState.__dataclass_fields__
-            })
+            fields[k] = FieldState(
+                **{fk: fv for fk, fv in v.items() if fk in FieldState.__dataclass_fields__}
+            )
         else:
             fields[k] = FieldState()
 
     history: list[FieldHistoryEntry] = []
     for entry in data.get("history", []):
         if isinstance(entry, dict):
-            history.append(FieldHistoryEntry(
-                field=entry.get("field", ""),
-                old_value=entry.get("old_value"),
-                new_value=entry.get("new_value"),
-                timestamp=entry.get("timestamp", 0),
-            ))
+            history.append(
+                FieldHistoryEntry(
+                    field=entry.get("field", ""),
+                    old_value=entry.get("old_value"),
+                    new_value=entry.get("new_value"),
+                    timestamp=entry.get("timestamp", 0),
+                )
+            )
 
     effort_data = data.get("effort", {})
     effort = SessionEffort(
@@ -222,18 +223,20 @@ async def get_submissions(
     for comp in components:
         data = comp.get("data", {})
         if isinstance(data, dict):
-            results.append(FormSubmission(
-                id=data.get("id", ""),
-                form_id=data.get("form_id", ""),
-                session_id=data.get("session_id", ""),
-                entity_id=data.get("entity_id", ""),
-                values=data.get("values", {}),
-                form_version=data.get("form_version"),
-                mapped_values=data.get("mapped_values"),
-                files=data.get("files"),
-                submitted_at=data.get("submitted_at", 0),
-                meta=data.get("meta"),
-            ))
+            results.append(
+                FormSubmission(
+                    id=data.get("id", ""),
+                    form_id=data.get("form_id", ""),
+                    session_id=data.get("session_id", ""),
+                    entity_id=data.get("entity_id", ""),
+                    values=data.get("values", {}),
+                    form_version=data.get("form_version"),
+                    mapped_values=data.get("mapped_values"),
+                    files=data.get("files"),
+                    submitted_at=data.get("submitted_at", 0),
+                    meta=data.get("meta"),
+                )
+            )
     return sorted(results, key=lambda s: s.submitted_at, reverse=True)
 
 

@@ -7,14 +7,13 @@ facts and relationships between entities. Ported from the TypeScript
 
 from __future__ import annotations
 
+import contextlib
 import json
 from typing import TYPE_CHECKING, Any
 
 from elizaos.types import Evaluator, EvaluatorResult, HandlerOptions
 
 if TYPE_CHECKING:
-    from uuid import UUID
-
     from elizaos.types import ActionResult, IAgentRuntime, Memory, State
 
 
@@ -138,9 +137,7 @@ async def _handler(
     entity_id = message.entity_id
 
     if not agent_id or not room_id:
-        return EvaluatorResult.pass_result(
-            score=50, reason="Missing agentId or roomId"
-        )
+        return EvaluatorResult.pass_result(score=50, reason="Missing agentId or roomId")
 
     # Gather context
     get_relationships = getattr(runtime, "get_relationships", None)
@@ -150,9 +147,7 @@ async def _handler(
     existing_relationships: list[Any] = []
     if callable(get_relationships) and entity_id:
         try:
-            existing_relationships = await get_relationships(
-                entity_ids=[entity_id]
-            )
+            existing_relationships = await get_relationships(entity_ids=[entity_id])
         except Exception:
             existing_relationships = []
 
@@ -180,15 +175,13 @@ async def _handler(
     agent_name = getattr(character, "name", "Agent") if character else "Agent"
     sender_name = ""
     if state:
-        sender_name = getattr(state, "sender_name", "") or getattr(
-            state, "senderName", ""
-        )
-    channel_type = getattr(message.content, "channel_type", "unknown") if message.content else "unknown"
+        sender_name = getattr(state, "sender_name", "") or getattr(state, "senderName", "")
+    channel_type = (
+        getattr(message.content, "channel_type", "unknown") if message.content else "unknown"
+    )
 
     prompt = REFLECTION_TEMPLATE.format(
-        entities_in_room=json.dumps(
-            [str(e) for e in entities] if entities else [], indent=2
-        ),
+        entities_in_room=json.dumps([str(e) for e in entities] if entities else [], indent=2),
         existing_relationships=json.dumps(
             [str(r) for r in existing_relationships] if existing_relationships else [],
             indent=2,
@@ -197,9 +190,7 @@ async def _handler(
         room_type=str(channel_type),
         sender_name=sender_name or str(entity_id),
         sender_id=str(entity_id) if entity_id else "unknown",
-        recent_messages=(
-            state.text if state and hasattr(state, "text") and state.text else ""
-        ),
+        recent_messages=(state.text if state and hasattr(state, "text") and state.text else ""),
         known_facts=_format_facts(known_facts),
     )
 
@@ -213,9 +204,7 @@ async def _handler(
     try:
         reflection = await use_model("OBJECT_SMALL", prompt=prompt)
     except Exception:
-        return EvaluatorResult.pass_result(
-            score=50, reason="Reflection model call failed"
-        )
+        return EvaluatorResult.pass_result(score=50, reason="Reflection model call failed")
 
     if not reflection or not isinstance(reflection, dict):
         return EvaluatorResult.pass_result(
@@ -226,9 +215,7 @@ async def _handler(
     relationships = reflection.get("relationships", [])
 
     if not isinstance(facts, list) or not isinstance(relationships, list):
-        return EvaluatorResult.pass_result(
-            score=50, reason="Reflection returned invalid structure"
-        )
+        return EvaluatorResult.pass_result(score=50, reason="Reflection returned invalid structure")
 
     # Store new facts
     new_facts = [
@@ -247,12 +234,14 @@ async def _handler(
     if callable(add_embedding) and callable(create_memory):
         for fact in new_facts:
             try:
-                fact_memory = await add_embedding({
-                    "entity_id": agent_id,
-                    "agent_id": agent_id,
-                    "content": {"text": fact["claim"]},
-                    "room_id": room_id,
-                })
+                fact_memory = await add_embedding(
+                    {
+                        "entity_id": agent_id,
+                        "agent_id": agent_id,
+                        "content": {"text": fact["claim"]},
+                        "room_id": room_id,
+                    }
+                )
                 await create_memory(fact_memory, "facts", True)
             except Exception:
                 pass
@@ -306,26 +295,24 @@ async def _handler(
                 except Exception:
                     pass
             else:
-                try:
-                    await create_relationship({
-                        "sourceEntityId": source_id,
-                        "targetEntityId": target_id,
-                        "tags": tags,
-                        "metadata": {"interactions": 1},
-                    })
-                except Exception:
-                    pass
+                with contextlib.suppress(Exception):
+                    await create_relationship(
+                        {
+                            "sourceEntityId": source_id,
+                            "targetEntityId": target_id,
+                            "tags": tags,
+                            "metadata": {"interactions": 1},
+                        }
+                    )
 
     # Update cache with last processed message
     set_cache = getattr(runtime, "set_cache", None)
     if callable(set_cache) and message.id:
-        try:
+        with contextlib.suppress(Exception):
             await set_cache(
                 f"{room_id}-reflection-last-processed",
                 str(message.id),
             )
-        except Exception:
-            pass
 
     thought = reflection.get("thought", "")
     return EvaluatorResult.pass_result(

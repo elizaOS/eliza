@@ -654,7 +654,7 @@ function InlinePluginConfig({ pluginId: rawPluginId }: { pluginId: string }) {
   return (
     <div className="my-2 border border-border bg-card overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 bg-bg-hover border-b border-border">
+      <div className="flex items-center justify-between px-3 py-2 bg-bg-hover">
         <div className="flex items-center gap-2 text-xs font-bold text-txt">
           {plugin.icon ? (
             <span className="text-sm">{plugin.icon}</span>
@@ -708,7 +708,7 @@ function InlinePluginConfig({ pluginId: rawPluginId }: { pluginId: string }) {
       )}
 
       {/* Footer */}
-      <div className="flex items-center gap-2 px-3 py-2 border-t border-border flex-wrap">
+      <div className="flex items-center gap-2 px-3 py-2 flex-wrap">
         {schema && hasConfigurableParams && (
           <Button
             variant="default"
@@ -837,7 +837,7 @@ function UiSpecBlock({ spec, raw }: { spec: UiSpec; raw: string }) {
 
   return (
     <div className="my-2 border border-border overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-bg-hover border-b border-border">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-bg-hover">
         <span className="text-2xs font-semibold text-muted uppercase tracking-wider">
           {t("messagecontent.InteractiveUI")}
         </span>
@@ -857,7 +857,7 @@ function UiSpecBlock({ spec, raw }: { spec: UiSpec; raw: string }) {
         </Button>
       </div>
       {showRaw && (
-        <div className="px-3 py-2 bg-card border-b border-border overflow-x-auto">
+        <div className="px-3 py-2 bg-card overflow-x-auto">
           <pre className="text-2xs text-muted font-mono whitespace-pre-wrap break-words m-0">
             {raw}
           </pre>

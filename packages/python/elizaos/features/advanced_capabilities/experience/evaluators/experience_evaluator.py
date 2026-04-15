@@ -126,7 +126,7 @@ def _get_number_setting(runtime: IAgentRuntime, key: str, fallback: float) -> fl
     if isinstance(value, str):
         try:
             parsed = float(value)
-            if not (parsed != parsed):  # check for NaN
+            if parsed == parsed:  # check for NaN
                 return parsed
         except ValueError:
             pass
@@ -250,7 +250,7 @@ async def _handle_experience_evaluator(
             union = len(existing_words | new_words)
             if union > 0 and overlap / union > 0.6:
                 logger.debug(
-                    "[experienceEvaluator] Skipping duplicate experience: \"%s...\"",
+                    '[experienceEvaluator] Skipping duplicate experience: "%s..."',
                     learning_str[:80],
                 )
                 continue

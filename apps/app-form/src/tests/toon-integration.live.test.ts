@@ -1,9 +1,11 @@
-import { describe, expect, test } from "bun:test";
-import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseKeyValueXml } from "@elizaos/core";
 import { config } from "dotenv";
 
-config({ path: resolve(import.meta.dir, "../../../../../.env") });
+const testDir = dirname(fileURLToPath(import.meta.url));
+config({ path: resolve(testDir, "../../../../../.env") });
 
 let callLLM: (prompt: string) => Promise<string>;
 let hasApiKey = false;
@@ -41,7 +43,7 @@ try {
 }
 
 describe.skipIf(!hasApiKey)("TOON form field extraction integration", () => {
-  test(
+  it(
     "extracts a single field from a user message",
     async () => {
       const prompt = `Extract the following field from the user's message.
@@ -70,6 +72,6 @@ IMPORTANT: Your response must ONLY contain the TOON document above. No preamble 
       expect(confidence).toBeGreaterThanOrEqual(0);
       expect(confidence).toBeLessThanOrEqual(1);
     },
-    { timeout: 30_000 }
+    30_000,
   );
 });

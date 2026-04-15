@@ -65,7 +65,9 @@ impl Action for ClipboardAddAction {
             .to_string();
 
         if content.is_empty() {
-            return Ok(ActionResult::error("No content to add to clipboard".to_string()));
+            return Ok(ActionResult::error(
+                "No content to add to clipboard".to_string(),
+            ));
         }
 
         let title = params
@@ -76,7 +78,9 @@ impl Action for ClipboardAddAction {
         let source_type = params
             .get("sourceType")
             .and_then(|v| v.as_str())
-            .and_then(|s| serde_json::from_str::<TaskClipboardSourceType>(&format!("\"{}\"", s)).ok())
+            .and_then(|s| {
+                serde_json::from_str::<TaskClipboardSourceType>(&format!("\"{}\"", s)).ok()
+            })
             .unwrap_or(TaskClipboardSourceType::Manual);
 
         let task_id = message
@@ -88,18 +92,26 @@ impl Action for ClipboardAddAction {
             title,
             content: content.clone(),
             source_type: Some(source_type),
-            source_id: params.get("sourceId").and_then(|v| v.as_str()).map(String::from),
-            source_label: params.get("sourceLabel").and_then(|v| v.as_str()).map(String::from),
-            mime_type: params.get("mimeType").and_then(|v| v.as_str()).map(String::from),
+            source_id: params
+                .get("sourceId")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            source_label: params
+                .get("sourceLabel")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            mime_type: params
+                .get("mimeType")
+                .and_then(|v| v.as_str())
+                .map(String::from),
         };
 
         match self.service.add_task_item(&task_id, input).await {
-            Ok(item) => Ok(ActionResult::success(format!(
-                "Added '{}' to clipboard",
-                item.title
-            ))
-            .with_data("clipboardItemId", item.id)
-            .with_data("actionName", "CLIPBOARD_ADD")),
+            Ok(item) => Ok(
+                ActionResult::success(format!("Added '{}' to clipboard", item.title))
+                    .with_data("clipboardItemId", item.id)
+                    .with_data("actionName", "CLIPBOARD_ADD"),
+            ),
             Err(e) => Ok(ActionResult::error(format!(
                 "Failed to add to clipboard: {}",
                 e
@@ -169,8 +181,10 @@ impl Action for ClipboardRemoveAction {
         let removed = self.service.remove_task_item(&task_id, item_id).await;
 
         if removed {
-            Ok(ActionResult::success("Item removed from clipboard".to_string())
-                .with_data("actionName", "CLIPBOARD_REMOVE"))
+            Ok(
+                ActionResult::success("Item removed from clipboard".to_string())
+                    .with_data("actionName", "CLIPBOARD_REMOVE"),
+            )
         } else {
             Ok(ActionResult::error("Clipboard item not found".to_string()))
         }
@@ -231,11 +245,10 @@ impl Action for ClipboardClearAction {
             self.service.remove_task_item(&task_id, &item.id).await;
         }
 
-        Ok(ActionResult::success(format!(
-            "Cleared {} items from clipboard",
-            count
-        ))
-        .with_data("clearedCount", serde_json::json!(count))
-        .with_data("actionName", "CLIPBOARD_CLEAR"))
+        Ok(
+            ActionResult::success(format!("Cleared {} items from clipboard", count))
+                .with_data("clearedCount", serde_json::json!(count))
+                .with_data("actionName", "CLIPBOARD_CLEAR"),
+        )
     }
 }

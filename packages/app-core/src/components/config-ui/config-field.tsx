@@ -531,7 +531,7 @@ function SearchableSelectInner({
             className="border border-border bg-card shadow-lg rounded-sm"
           >
             {/* Search input */}
-            <div className="p-1.5 border-b border-border">
+            <div className="p-1.5">
               <input
                 // biome-ignore lint/a11y/noAutofocus: dropdown search needs immediate focus
                 autoFocus
@@ -596,7 +596,7 @@ function SearchableSelectInner({
                 </Button>
               ))}
             </div>
-            <div className="px-3 py-1 border-t border-border text-2xs text-muted">
+            <div className="px-3 py-1 text-2xs text-muted">
               {filtered.length} of {options.length}{" "}
               {t("config-field.options", { defaultValue: "options" })}
             </div>
@@ -1776,19 +1776,19 @@ function TableFieldInner(props: FieldRenderProps) {
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  className="text-left text-xs-tight font-semibold text-muted px-3 py-1.5 border-b border-border"
+                  className="text-left text-xs-tight font-semibold text-muted px-3 py-1.5"
                 >
                   {col.label}
                 </th>
               ))}
-              <th className="w-[36px] border-b border-border" />
+              <th className="w-[36px]" />
             </tr>
           </thead>
           <tbody>
             {rows.map((row, ri) => (
               <tr
                 key={JSON.stringify(row)}
-                className="border-b border-border last:border-b-0"
+                className=""
               >
                 {columns.map((col) => (
                   <td key={col.key} className="px-1 py-0.5">

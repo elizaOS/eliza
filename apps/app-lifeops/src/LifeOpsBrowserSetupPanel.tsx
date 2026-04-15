@@ -11,10 +11,6 @@ import {
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   Input,
   Label,
   Switch,
@@ -325,145 +321,113 @@ function BrowserCompanionRow({
   onOpenPath: (path: string, revealOnly?: boolean) => Promise<void>;
 }) {
   const browserLabel = browser === "chrome" ? "Chrome" : "Safari";
-  const installHintText = installHint(browser, releaseManifest);
   const installLabel = installButtonLabel(browser, releaseManifest);
   const distributionLabel = releaseBadgeLabel(browser, releaseManifest);
   const hasLocalArtifact = Boolean(buildPath || packagePath || appPath);
-  const showBuiltBadge = hasLocalArtifact || !distributionLabel;
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-bg/30 p-4 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline">{browserLabel}</Badge>
-            {distributionLabel ? (
-              <Badge variant="secondary">{distributionLabel}</Badge>
-            ) : null}
-            {showBuiltBadge && hasLocalArtifact ? (
-              <Badge variant="secondary">Built</Badge>
-            ) : null}
-            {showBuiltBadge && !hasLocalArtifact ? (
-              <Badge variant="outline">Not built</Badge>
-            ) : null}
-          </div>
-          <p className="text-sm text-muted">{installHintText}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            disabled={busy}
-            onClick={() => void onInstall(browser)}
-          >
-            <Sparkles className="mr-2 h-3.5 w-3.5" />
-            {busy ? "Preparing…" : installLabel}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy}
-            onClick={() => void onBuild(browser)}
-          >
-            <Package className="mr-2 h-3.5 w-3.5" />
-            {busy ? "Building…" : `Build ${browserLabel}`}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy}
-            onClick={() => void onCreatePairing(browser)}
-          >
-            <Sparkles className="mr-2 h-3.5 w-3.5" />
-            Pair {browserLabel}
-          </Button>
-          {pairing ? (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={() => void onCopyPairing(browser)}
-            >
-              <Copy className="mr-2 h-3.5 w-3.5" />
-              Copy pairing JSON
-            </Button>
-          ) : null}
-          {packagePath ? (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={() => void onDownload(browser)}
-            >
-              <Download className="mr-2 h-3.5 w-3.5" />
-              Download zip
-            </Button>
-          ) : null}
-        </div>
+    <div className="rounded-lg border border-border/50 bg-bg/30 p-3 space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline">{browserLabel}</Badge>
+        {distributionLabel ? (
+          <Badge variant="secondary" className="text-2xs">{distributionLabel}</Badge>
+        ) : null}
+        {hasLocalArtifact ? (
+          <Badge variant="secondary" className="text-2xs">Built</Badge>
+        ) : (
+          <Badge variant="outline" className="text-2xs">Not built</Badge>
+        )}
       </div>
-
-      <div className="grid gap-2 text-xs text-muted">
-        {buildPath ? (
-          <div className="rounded-xl border border-border/60 bg-bg/40 p-3">
-            <div className="font-semibold text-txt">Build folder</div>
-            <div className="mt-1 break-all font-mono">{buildPath}</div>
-            {isElectrobunRuntime() ? (
-              <div className="mt-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void onOpenPath(buildPath, true)}
-                >
-                  <FolderOpen className="mr-2 h-3.5 w-3.5" />
-                  Reveal build
-                </Button>
-              </div>
-            ) : null}
-          </div>
+      <div className="flex flex-wrap gap-1.5">
+        <Button
+          size="sm"
+          disabled={busy}
+          onClick={() => void onInstall(browser)}
+        >
+          <Sparkles className="mr-1.5 h-3 w-3" />
+          {busy ? "…" : installLabel}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() => void onBuild(browser)}
+        >
+          <Package className="mr-1.5 h-3 w-3" />
+          Build
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() => void onCreatePairing(browser)}
+        >
+          Pair
+        </Button>
+        {pairing ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => void onCopyPairing(browser)}
+          >
+            <Copy className="mr-1.5 h-3 w-3" />
+            Copy
+          </Button>
         ) : null}
         {packagePath ? (
-          <div className="rounded-xl border border-border/60 bg-bg/40 p-3">
-            <div className="font-semibold text-txt">Package</div>
-            <div className="mt-1 break-all font-mono">{packagePath}</div>
-            {isElectrobunRuntime() ? (
-              <div className="mt-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void onOpenPath(packagePath, true)}
-                >
-                  <FolderOpen className="mr-2 h-3.5 w-3.5" />
-                  Reveal package
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {appPath ? (
-          <div className="rounded-xl border border-border/60 bg-bg/40 p-3">
-            <div className="font-semibold text-txt">App bundle</div>
-            <div className="mt-1 break-all font-mono">{appPath}</div>
-            {isElectrobunRuntime() ? (
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void onOpenPath(appPath)}
-                >
-                  Open app
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void onOpenPath(appPath, true)}
-                >
-                  <FolderOpen className="mr-2 h-3.5 w-3.5" />
-                  Reveal app
-                </Button>
-              </div>
-            ) : null}
-          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => void onDownload(browser)}
+          >
+            <Download className="mr-1.5 h-3 w-3" />
+            Zip
+          </Button>
         ) : null}
       </div>
+
+      {(buildPath || packagePath || appPath) ? (
+        <div className="space-y-1 text-xs text-muted">
+          {buildPath ? (
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-txt">Build:</span>
+              <span className="min-w-0 truncate font-mono">{buildPath}</span>
+              {isElectrobunRuntime() ? (
+                <Button size="sm" variant="outline" onClick={() => void onOpenPath(buildPath, true)}>
+                  <FolderOpen className="h-3 w-3" />
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+          {packagePath ? (
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-txt">Pkg:</span>
+              <span className="min-w-0 truncate font-mono">{packagePath}</span>
+              {isElectrobunRuntime() ? (
+                <Button size="sm" variant="outline" onClick={() => void onOpenPath(packagePath, true)}>
+                  <FolderOpen className="h-3 w-3" />
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+          {appPath ? (
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-txt">App:</span>
+              <span className="min-w-0 truncate font-mono">{appPath}</span>
+              {isElectrobunRuntime() ? (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => void onOpenPath(appPath)}>Open</Button>
+                  <Button size="sm" variant="outline" onClick={() => void onOpenPath(appPath, true)}>
+                    <FolderOpen className="h-3 w-3" />
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -778,44 +742,236 @@ export function LifeOpsBrowserSetupPanel() {
   };
 
   return (
-    <Card className="border-border/60 bg-bg/20">
-      <CardHeader className="space-y-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-muted" />
-              <CardTitle className="text-sm font-semibold">
-                LifeOps Browser
-              </CardTitle>
-            </div>
-            <p className="text-sm text-muted">
-              Personal Chrome and Safari companions for the user’s browser,
-              separate from the browser workspace.
-            </p>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-muted">
+          <ShieldCheck className="h-4 w-4" />
+          <div className="text-xs font-semibold uppercase tracking-wide">
+            LifeOps Browser
           </div>
-          <Button size="sm" variant="outline" onClick={() => void refresh()}>
-            <RefreshCw className="mr-2 h-3.5 w-3.5" />
-            Refresh
-          </Button>
         </div>
-        {currentPage ? (
-          <div className="rounded-xl border border-border/60 bg-bg/40 px-3 py-2 text-xs text-muted">
-            Current page: <span className="text-txt">{currentPage}</span>
-          </div>
-        ) : null}
-        {statusMessage ? (
-          <div className="rounded-xl border border-border/60 bg-bg/40 px-3 py-2 text-xs text-txt">
-            {statusMessage}
-          </div>
-        ) : null}
-        {error ? (
-          <div className="rounded-xl border border-danger/50 bg-danger/10 px-3 py-2 text-xs text-danger">
-            {error}
-          </div>
-        ) : null}
-      </CardHeader>
-      <CardContent className="space-y-5">
-        <div className="grid gap-3 md:grid-cols-2">
+        <Button size="sm" variant="outline" onClick={() => void refresh()}>
+          <RefreshCw className="mr-1.5 h-3 w-3" />
+          Refresh
+        </Button>
+      </div>
+
+      {currentPage ? (
+        <div className="text-xs text-muted">
+          Current page: <span className="text-txt">{currentPage}</span>
+        </div>
+      ) : null}
+      {statusMessage ? (
+        <div className="rounded-lg border border-border/50 bg-bg/40 px-3 py-2 text-xs text-txt">
+          {statusMessage}
+        </div>
+      ) : null}
+      {error ? (
+        <div className="rounded-lg border border-danger/50 bg-danger/10 px-3 py-1.5 text-xs text-danger">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        {/* Left column: settings */}
+        <div className="space-y-3">
+          {draft ? (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-semibold text-muted uppercase tracking-wide">Settings</div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={savingSettings || loading}
+                  onClick={() => void saveSettings()}
+                >
+                  {savingSettings ? "Saving…" : "Save"}
+                </Button>
+              </div>
+
+              <div className="grid gap-2 grid-cols-2">
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-bg/40 px-3 py-1.5">
+                  <span className="text-xs font-medium text-txt">Enabled</span>
+                  <Switch
+                    checked={draft.enabled}
+                    onCheckedChange={(checked) => updateDraft("enabled", checked)}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-bg/40 px-3 py-1.5">
+                  <span className="text-xs font-medium text-txt">Browser control</span>
+                  <Switch
+                    checked={draft.allowBrowserControl}
+                    onCheckedChange={(checked) =>
+                      updateDraft("allowBrowserControl", checked)
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-bg/40 px-3 py-1.5">
+                  <span className="text-xs font-medium text-txt">Require confirmation</span>
+                  <Switch
+                    checked={draft.requireConfirmationForAccountAffecting}
+                    onCheckedChange={(checked) =>
+                      updateDraft(
+                        "requireConfirmationForAccountAffecting",
+                        checked,
+                      )
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-bg/40 px-3 py-1.5">
+                  <span className="text-xs font-medium text-txt">Incognito</span>
+                  <Switch
+                    checked={draft.incognitoEnabled}
+                    onCheckedChange={(checked) =>
+                      updateDraft("incognitoEnabled", checked)
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-3 grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted">Tracking</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(["off", "current_tab", "active_tabs"] as const).map(
+                      (mode) => (
+                        <Button
+                          key={mode}
+                          size="sm"
+                          variant={
+                            draft.trackingMode === mode ? "default" : "outline"
+                          }
+                          onClick={() => updateDraft("trackingMode", mode)}
+                        >
+                          {mode === "off"
+                            ? "Off"
+                            : mode === "current_tab"
+                              ? "Current tab"
+                              : "Active tabs"}
+                        </Button>
+                      ),
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted">Site access</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {LIFEOPS_BROWSER_SITE_ACCESS_MODES.map((mode) => (
+                      <Button
+                        key={mode}
+                        size="sm"
+                        variant={
+                          draft.siteAccessMode === mode ? "default" : "outline"
+                        }
+                        onClick={() => updateDraft("siteAccessMode", mode)}
+                      >
+                        {mode === "current_site_only"
+                          ? "Current site"
+                          : mode === "granted_sites"
+                            ? "Granted sites"
+                            : "All sites"}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 grid-cols-2">
+                <div className="space-y-1">
+                  <Label htmlFor="lifeops-browser-max-tabs" className="text-xs text-muted">
+                    Max remembered tabs
+                  </Label>
+                  <Input
+                    id="lifeops-browser-max-tabs"
+                    value={draft.maxRememberedTabs}
+                    onChange={(event) =>
+                      updateDraft("maxRememberedTabs", event.currentTarget.value)
+                    }
+                    inputMode="numeric"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="lifeops-browser-pause-until" className="text-xs text-muted">
+                    Pause until
+                  </Label>
+                  <div className="flex gap-1.5">
+                    <Input
+                      id="lifeops-browser-pause-until"
+                      type="datetime-local"
+                      value={draft.pauseUntilLocal}
+                      onChange={(event) =>
+                        updateDraft("pauseUntilLocal", event.currentTarget.value)
+                      }
+                      className="min-w-0 flex-1"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        updateDraft(
+                          "pauseUntilLocal",
+                          formatDateTimeLocalValue(
+                            new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+                          ),
+                        )
+                      }
+                    >
+                      1h
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => updateDraft("pauseUntilLocal", "")}
+                    >
+                      Now
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 grid-cols-2">
+                <div className="space-y-1">
+                  <Label htmlFor="lifeops-browser-granted-origins" className="text-xs text-muted">
+                    Granted origins
+                  </Label>
+                  <Textarea
+                    id="lifeops-browser-granted-origins"
+                    rows={3}
+                    placeholder="https://mail.google.com"
+                    value={draft.grantedOriginsText}
+                    onChange={(event) =>
+                      updateDraft("grantedOriginsText", event.currentTarget.value)
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="lifeops-browser-blocked-origins" className="text-xs text-muted">
+                    Blocked origins
+                  </Label>
+                  <Textarea
+                    id="lifeops-browser-blocked-origins"
+                    rows={3}
+                    placeholder="https://bank.example.com"
+                    value={draft.blockedOriginsText}
+                    onChange={(event) =>
+                      updateDraft("blockedOriginsText", event.currentTarget.value)
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="text-xs text-muted">
+                Companions: {companions.length} | Workspace: <span className="font-mono text-txt">{packageStatus?.extensionPath ?? "N/A"}</span>
+              </div>
+            </>
+          ) : loading ? (
+            <div className="text-xs text-muted">Loading settings…</div>
+          ) : null}
+        </div>
+
+        {/* Right column: installation & connectivity */}
+        <div className="space-y-3">
+          <div className="text-xs font-semibold text-muted uppercase tracking-wide">Installation</div>
           <BrowserCompanionRow
             browser="chrome"
             buildPath={packageStatus?.chromeBuildPath}
@@ -853,317 +1009,65 @@ export function LifeOpsBrowserSetupPanel() {
             onDownload={downloadPackage}
             onOpenPath={openPath}
           />
-        </div>
 
-        {(["chrome", "safari"] as const).map((browser) => {
-          const payload = pairingPayloads[browser];
-          if (!payload) {
-            return null;
-          }
-          return (
-            <div
-              key={browser}
-              className="rounded-2xl border border-border/60 bg-bg/30 p-4 space-y-2"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-txt">
-                  {browser === "chrome" ? "Chrome" : "Safari"} pairing payload
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void copyPairing(browser)}
-                >
-                  <Copy className="mr-2 h-3.5 w-3.5" />
-                  Copy
-                </Button>
-              </div>
-              <Textarea
-                readOnly
-                rows={8}
-                value={payload}
-                className="font-mono text-xs"
-              />
-            </div>
-          );
-        })}
-
-        {draft ? (
-          <div className="rounded-2xl border border-border/60 bg-bg/30 p-4 space-y-4">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-sm font-semibold text-txt">
-                LifeOps Browser settings
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={savingSettings || loading}
-                onClick={() => void saveSettings()}
-              >
-                {savingSettings ? "Saving…" : "Save settings"}
-              </Button>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-bg/40 px-3 py-2">
-                <div>
-                  <div className="text-sm font-medium text-txt">Enabled</div>
-                  <div className="text-xs text-muted">
-                    Allow the personal browser companion to sync with LifeOps.
-                  </div>
-                </div>
-                <Switch
-                  checked={draft.enabled}
-                  onCheckedChange={(checked) => updateDraft("enabled", checked)}
-                />
-              </div>
-
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-bg/40 px-3 py-2">
-                <div>
-                  <div className="text-sm font-medium text-txt">
-                    Browser control
-                  </div>
-                  <div className="text-xs text-muted">
-                    Let approved sessions drive the personal browser.
-                  </div>
-                </div>
-                <Switch
-                  checked={draft.allowBrowserControl}
-                  onCheckedChange={(checked) =>
-                    updateDraft("allowBrowserControl", checked)
-                  }
-                />
-              </div>
-
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-bg/40 px-3 py-2">
-                <div>
-                  <div className="text-sm font-medium text-txt">
-                    Require confirmation
-                  </div>
-                  <div className="text-xs text-muted">
-                    Keep account-affecting actions gated by confirmation.
-                  </div>
-                </div>
-                <Switch
-                  checked={draft.requireConfirmationForAccountAffecting}
-                  onCheckedChange={(checked) =>
-                    updateDraft(
-                      "requireConfirmationForAccountAffecting",
-                      checked,
-                    )
-                  }
-                />
-              </div>
-
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-bg/40 px-3 py-2">
-                <div>
-                  <div className="text-sm font-medium text-txt">
-                    Incognito access
-                  </div>
-                  <div className="text-xs text-muted">
-                    Allow companion sync from incognito browser tabs.
-                  </div>
-                </div>
-                <Switch
-                  checked={draft.incognitoEnabled}
-                  onCheckedChange={(checked) =>
-                    updateDraft("incognitoEnabled", checked)
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs uppercase tracking-[0.08em] text-muted">
-                Tracking mode
-              </Label>
-              <div className="flex flex-wrap gap-2">
-                {(["off", "current_tab", "active_tabs"] as const).map(
-                  (mode) => (
-                    <Button
-                      key={mode}
-                      size="sm"
-                      variant={
-                        draft.trackingMode === mode ? "default" : "outline"
-                      }
-                      onClick={() => updateDraft("trackingMode", mode)}
-                    >
-                      {mode === "off"
-                        ? "Off"
-                        : mode === "current_tab"
-                          ? "Current tab"
-                          : "Active tabs"}
-                    </Button>
-                  ),
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs uppercase tracking-[0.08em] text-muted">
-                Site access mode
-              </Label>
-              <div className="flex flex-wrap gap-2">
-                {LIFEOPS_BROWSER_SITE_ACCESS_MODES.map((mode) => (
+          {(["chrome", "safari"] as const).map((browser) => {
+            const payload = pairingPayloads[browser];
+            if (!payload) {
+              return null;
+            }
+            return (
+              <div key={browser} className="space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-txt">
+                    {browser === "chrome" ? "Chrome" : "Safari"} pairing
+                  </span>
                   <Button
-                    key={mode}
                     size="sm"
-                    variant={
-                      draft.siteAccessMode === mode ? "default" : "outline"
-                    }
-                    onClick={() => updateDraft("siteAccessMode", mode)}
+                    variant="outline"
+                    onClick={() => void copyPairing(browser)}
                   >
-                    {mode === "current_site_only"
-                      ? "Current site"
-                      : mode === "granted_sites"
-                        ? "Granted sites"
-                        : "All sites"}
+                    <Copy className="mr-1.5 h-3 w-3" />
+                    Copy
                   </Button>
+                </div>
+                <Textarea
+                  readOnly
+                  rows={5}
+                  value={payload}
+                  className="font-mono text-xs"
+                />
+              </div>
+            );
+          })}
+
+          {companions.length > 0 ? (
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-muted uppercase tracking-wide">Paired companions</div>
+              <div className="grid gap-2">
+                {companions.map((companion) => (
+                  <div
+                    key={companion.id}
+                    className="flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-bg/40 px-3 py-1.5 text-xs"
+                  >
+                    <Badge variant="outline" className="text-2xs">
+                      {companion.browser}/{companion.profileLabel}
+                    </Badge>
+                    <Badge variant="secondary" className="text-2xs">
+                      {companion.connectionState}
+                    </Badge>
+                    <span className="text-muted">
+                      {formatTimestamp(companion.lastSeenAt) ?? "Never seen"}
+                    </span>
+                    <span className="text-muted">
+                      {permissionSummary(companion.permissions)}
+                    </span>
+                  </div>
                 ))}
               </div>
             </div>
-
-            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
-              <div className="space-y-2">
-                <Label htmlFor="lifeops-browser-max-tabs">
-                  Max remembered tabs
-                </Label>
-                <Input
-                  id="lifeops-browser-max-tabs"
-                  value={draft.maxRememberedTabs}
-                  onChange={(event) =>
-                    updateDraft("maxRememberedTabs", event.currentTarget.value)
-                  }
-                  inputMode="numeric"
-                />
-              </div>
-              <div className="rounded-xl border border-border/60 bg-bg/40 px-3 py-2 text-xs text-muted">
-                Connected companions:{" "}
-                <span className="text-txt">{companions.length}</span>
-                <br />
-                Extension workspace:{" "}
-                <span className="break-all font-mono text-xs-tight text-txt">
-                  {packageStatus?.extensionPath ?? "Unavailable"}
-                </span>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto_auto]">
-              <div className="space-y-2">
-                <Label htmlFor="lifeops-browser-pause-until">
-                  Pause sharing until
-                </Label>
-                <Input
-                  id="lifeops-browser-pause-until"
-                  type="datetime-local"
-                  value={draft.pauseUntilLocal}
-                  onChange={(event) =>
-                    updateDraft("pauseUntilLocal", event.currentTarget.value)
-                  }
-                />
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="self-end"
-                onClick={() =>
-                  updateDraft(
-                    "pauseUntilLocal",
-                    formatDateTimeLocalValue(
-                      new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-                    ),
-                  )
-                }
-              >
-                Pause 1 hour
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="self-end"
-                onClick={() => updateDraft("pauseUntilLocal", "")}
-              >
-                Resume now
-              </Button>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="lifeops-browser-granted-origins">
-                  Granted origins
-                </Label>
-                <Textarea
-                  id="lifeops-browser-granted-origins"
-                  rows={5}
-                  placeholder="https://mail.google.com"
-                  value={draft.grantedOriginsText}
-                  onChange={(event) =>
-                    updateDraft("grantedOriginsText", event.currentTarget.value)
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="lifeops-browser-blocked-origins">
-                  Blocked origins
-                </Label>
-                <Textarea
-                  id="lifeops-browser-blocked-origins"
-                  rows={5}
-                  placeholder="https://bank.example.com"
-                  value={draft.blockedOriginsText}
-                  onChange={(event) =>
-                    updateDraft("blockedOriginsText", event.currentTarget.value)
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-border/60 bg-bg/40 px-3 py-2 text-xs text-muted">
-              Install Chrome or Safari in one click here. The framework builds the
-              companion, prepares a fresh pairing token, and launches the next
-              destination for that browser. Chrome still requires Load unpacked
-              approval, and Safari still requires enabling the extension in
-              Safari Settings.
-            </div>
-          </div>
-        ) : loading ? (
-          <div className="text-sm text-muted">
-            Loading LifeOps Browser settings…
-          </div>
-        ) : null}
-
-        {companions.length > 0 ? (
-          <div className="rounded-2xl border border-border/60 bg-bg/30 p-4 space-y-2">
-            <div className="text-sm font-semibold text-txt">
-              Paired companions
-            </div>
-            <div className="grid gap-2 text-sm">
-              {companions.map((companion) => (
-                <div
-                  key={companion.id}
-                  className="rounded-xl border border-border/60 bg-bg/40 px-3 py-2"
-                >
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">
-                      {companion.browser}/{companion.profileLabel}
-                    </Badge>
-                    <Badge variant="secondary">
-                      {companion.connectionState}
-                    </Badge>
-                  </div>
-                  <div className="mt-1 text-xs text-muted">
-                    Last seen:{" "}
-                    {formatTimestamp(companion.lastSeenAt) ?? "Never"}
-                  </div>
-                  <div className="mt-1 text-xs text-muted">
-                    {permissionSummary(companion.permissions)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }

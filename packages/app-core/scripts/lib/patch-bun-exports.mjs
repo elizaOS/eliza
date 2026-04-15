@@ -14,6 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 const ELIZA_CORE_RUNTIME_FILES = [
@@ -170,7 +171,7 @@ export function patchBrokenElizaCoreRuntimeDists(root, log = console.log) {
  */
 export function patchElizaCoreRolesSubpath(root, log = console.log) {
   const shimSource = resolve(
-    dirname(resolve(root, "scripts/lib/patch-bun-exports.mjs")),
+    dirname(fileURLToPath(import.meta.url)),
     "elizaos-core-roles-shim.js",
   );
   if (!existsSync(shimSource)) {
@@ -1184,10 +1185,13 @@ export function applyPtyManagerEsmDirnameCompat(filePath) {
  * code paths without crashing on an undefined __dirname reference.
  */
 export function patchPtyManagerEsmDirnameCompat(root, log = console.log) {
-  const candidates = findPackageFilePaths(
-    root,
-    "pty-manager",
-    "dist/index.mjs",
+  const searchRoots = dedupeRealPaths(
+    [root, resolve(root, "eliza")].filter((candidate) => existsSync(candidate)),
+  );
+  const candidates = dedupeRealPaths(
+    searchRoots.flatMap((searchRoot) =>
+      findPackageFilePaths(searchRoot, "pty-manager", "dist/index.mjs"),
+    ),
   );
   let patched = false;
   for (const filePath of candidates) {
@@ -1278,11 +1282,16 @@ export function applyPtyManagerCursorPositionCompat(filePath) {
  * responses when coding-agent CLIs run under node-pty.
  */
 export function patchPtyManagerCursorPositionCompat(root, log = console.log) {
-  const candidates = [
-    ...findPackageFilePaths(root, "pty-manager", "dist/index.js"),
-    ...findPackageFilePaths(root, "pty-manager", "dist/index.mjs"),
-    ...findPackageFilePaths(root, "pty-manager", "dist/pty-worker.js"),
-  ];
+  const searchRoots = dedupeRealPaths(
+    [root, resolve(root, "eliza")].filter((candidate) => existsSync(candidate)),
+  );
+  const candidates = dedupeRealPaths(
+    searchRoots.flatMap((searchRoot) => [
+      ...findPackageFilePaths(searchRoot, "pty-manager", "dist/index.js"),
+      ...findPackageFilePaths(searchRoot, "pty-manager", "dist/index.mjs"),
+      ...findPackageFilePaths(searchRoot, "pty-manager", "dist/pty-worker.js"),
+    ]),
+  );
   let patched = false;
   for (const filePath of candidates) {
     if (applyPtyManagerCursorPositionCompat(filePath)) {

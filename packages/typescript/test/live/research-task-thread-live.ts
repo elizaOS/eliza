@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { createTestRuntime } from "../helpers/pglite-runtime.ts";
-import { SwarmCoordinator } from "@elizaos/core/orchestrator";
+import { SwarmCoordinator } from "@elizaos/plugin-agent-orchestrator";
 
 type CodexEvent =
 	| {

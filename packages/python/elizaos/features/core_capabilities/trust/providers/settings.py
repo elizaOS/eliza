@@ -40,19 +40,19 @@ def _generate_status_message(
     for key, setting in world_settings.items():
         if key.startswith("_") or not _is_setting_entry(setting):
             continue
-        formatted.append({
-            "key": key,
-            "name": setting.get("name", key),
-            "value": _format_setting_value(setting, is_onboarding),
-            "description": setting.get("description", ""),
-            "usage_description": setting.get("usageDescription", ""),
-            "required": setting.get("required", False),
-            "configured": setting.get("value") is not None,
-        })
+        formatted.append(
+            {
+                "key": key,
+                "name": setting.get("name", key),
+                "value": _format_setting_value(setting, is_onboarding),
+                "description": setting.get("description", ""),
+                "usage_description": setting.get("usageDescription", ""),
+                "required": setting.get("required", False),
+                "configured": setting.get("value") is not None,
+            }
+        )
 
-    required_unconfigured = sum(
-        1 for s in formatted if s["required"] and not s["configured"]
-    )
+    required_unconfigured = sum(1 for s in formatted if s["required"] and not s["configured"])
 
     if is_onboarding:
         settings_list = "\n\n".join(
@@ -80,15 +80,13 @@ def _generate_status_message(
     header = ""
     if required_unconfigured > 0:
         header = (
-            f"IMPORTANT: {required_unconfigured} required settings "
-            f"still need configuration.\n\n"
+            f"IMPORTANT: {required_unconfigured} required settings still need configuration.\n\n"
         )
     else:
         header = "All required settings are configured.\n\n"
 
     details = "\n\n".join(
-        f"### {s['name']}\n**Value:** {s['value']}\n"
-        f"**Description:** {s['description']}"
+        f"### {s['name']}\n**Value:** {s['value']}\n**Description:** {s['description']}"
         for s in formatted
     )
     return f"## Current Configuration\n\n{header}{details}"

@@ -17,13 +17,15 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+export const REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 
 const require = createRequire(import.meta.url);
 
-function hasShippedSkillTree(dir) {
+export function hasShippedSkillTree(dir) {
   if (!existsSync(dir)) {
     return false;
   }
@@ -45,6 +47,16 @@ function hasShippedSkillTree(dir) {
   return false;
 }
 
+export function resolveRepoBundledSkillsAssetsDir(repoRoot = REPO_ROOT) {
+  const repoDir = join(repoRoot, "eliza", "packages", "skills", "skills");
+  if (hasShippedSkillTree(repoDir)) {
+    return repoDir;
+  }
+  throw new Error(
+    `Could not resolve repo-local bundled skills at ${repoDir}.`,
+  );
+}
+
 /**
  * Resolve the directory containing bundled skill folders (each with SKILL.md).
  * Prefer installed `@elizaos/skills`; fall back to repo-local `eliza/packages/skills/skills` for bootstrap.
@@ -60,16 +72,10 @@ export function resolveShippedSkillsAssetsDir() {
     // Package not resolvable yet (e.g. before first install).
   }
 
-  const repoFallback = join(
-    __dirname,
-    "..",
-    "eliza",
-    "packages",
-    "skills",
-    "skills",
-  );
-  if (hasShippedSkillTree(repoFallback)) {
-    return repoFallback;
+  try {
+    return resolveRepoBundledSkillsAssetsDir();
+  } catch {
+    // Repo-local skills tree not available.
   }
 
   throw new Error(

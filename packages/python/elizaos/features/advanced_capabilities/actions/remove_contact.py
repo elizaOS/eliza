@@ -54,7 +54,9 @@ class RemoveContactAction:
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> ActionResult:
-        from elizaos.features.advanced_capabilities.services.relationships import RelationshipsService
+        from elizaos.features.advanced_capabilities.services.relationships import (
+            RelationshipsService,
+        )
 
         relationships_service = runtime.get_service("relationships")
         if not relationships_service or not isinstance(relationships_service, RelationshipsService):

@@ -126,7 +126,7 @@ def _get_number_setting(runtime: IAgentRuntime, key: str, fallback: float) -> fl
     if isinstance(value, str):
         try:
             parsed = float(value)
-            if not (parsed != parsed):  # check for NaN
+            if parsed == parsed:  # check for NaN
                 return parsed
         except ValueError:
             pass
@@ -146,7 +146,11 @@ async def _validate_experience_evaluator(
     # Check cooldown - only extract experiences every 25 messages to reduce token cost
     last_extraction_key = "experience-extraction:last-message-count"
     current_count_raw = await runtime.get_cache(last_extraction_key)
-    current_count = int(current_count_raw) if current_count_raw else 0
+    current_count = (
+        int(current_count_raw)
+        if isinstance(current_count_raw, (str, int, float, bytes, bytearray))
+        else 0
+    )
     new_message_count = current_count + 1
 
     await runtime.set_cache(last_extraction_key, str(new_message_count))
@@ -235,7 +239,7 @@ async def _handle_experience_evaluator(
             union = len(existing_words | new_words)
             if union > 0 and overlap / union > 0.6:
                 logger.debug(
-                    "[experienceEvaluator] Skipping duplicate experience: \"%s...\"",
+                    '[experienceEvaluator] Skipping duplicate experience: "%s..."',
                     learning_str[:80],
                 )
                 continue

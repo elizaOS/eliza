@@ -67,11 +67,7 @@ def _normalize_string_list(value: Any) -> list[str] | None:
     trimmed = value.strip()
     if not trimmed:
         return None
-    delimited = [
-        entry.strip()
-        for entry in trimmed.split("||")
-        if entry.strip()
-    ]
+    delimited = [entry.strip() for entry in trimmed.split("||") if entry.strip()]
     return delimited if delimited else None
 
 
@@ -95,7 +91,9 @@ def _coerce_int(value: Any, default: int = 0) -> int:
 def parse_trigger_analysis(raw: dict[str, Any]) -> dict[str, Any]:
     return {
         "hasEvolutionTrigger": _normalize_boolean(raw.get("hasEvolutionTrigger")) or False,
-        "triggerType": raw.get("triggerType", "unknown") if isinstance(raw.get("triggerType"), str) else "unknown",
+        "triggerType": raw.get("triggerType", "unknown")
+        if isinstance(raw.get("triggerType"), str)
+        else "unknown",
         "reasoning": raw.get("reasoning", "") if isinstance(raw.get("reasoning"), str) else "",
         "confidence": _normalize_number(raw.get("confidence")) or 0,
     }
@@ -135,7 +133,9 @@ def parse_evolution_analysis(raw: dict[str, Any]) -> dict[str, Any]:
     return {
         "shouldModify": _normalize_boolean(raw.get("shouldModify")) or False,
         "confidence": _normalize_number(raw.get("confidence")) or 0,
-        "gradualChange": _normalize_boolean(raw.get("gradualChange")) if raw.get("gradualChange") is not None else True,
+        "gradualChange": _normalize_boolean(raw.get("gradualChange"))
+        if raw.get("gradualChange") is not None
+        else True,
         "reasoning": raw.get("reasoning", "") if isinstance(raw.get("reasoning"), str) else "",
         "modifications": build_modifications(raw),
     }
@@ -170,12 +170,14 @@ async def _validate(
             return False
 
     # Get recent messages for trigger detection
-    recent_messages = await runtime.get_memories({
-        "roomId": str(message.room_id),
-        "count": 10,
-        "unique": True,
-        "tableName": "messages",
-    })
+    recent_messages = await runtime.get_memories(
+        {
+            "roomId": str(message.room_id),
+            "count": 10,
+            "unique": True,
+            "tableName": "messages",
+        }
+    )
 
     # LLM-based trigger detection
     conversation_text = "\n".join(
@@ -242,8 +244,13 @@ confidence: 0.85"""
             any(
                 kw in (m.content.text or "").lower()
                 for kw in [
-                    "you should", "change your", "different way",
-                    "personality", "behavior", "remember that", "from now on",
+                    "you should",
+                    "change your",
+                    "different way",
+                    "personality",
+                    "behavior",
+                    "remember that",
+                    "from now on",
                 ]
             )
             for m in recent_messages
@@ -265,12 +272,14 @@ async def _handler(
         )
 
         # Get recent conversation context
-        recent_messages = await runtime.get_memories({
-            "roomId": str(message.room_id),
-            "count": 20,
-            "unique": True,
-            "tableName": "messages",
-        })
+        recent_messages = await runtime.get_memories(
+            {
+                "roomId": str(message.room_id),
+                "count": 20,
+                "unique": True,
+                "tableName": "messages",
+            }
+        )
 
         conversation_text = "\n".join(
             f"{runtime.character.name if m.entity_id == runtime.agent_id else 'User'}: {m.content.text}"
@@ -298,11 +307,11 @@ async def _handler(
         evolution_prompt = f"""You are conducting a comprehensive analysis to determine if an AI agent should evolve its character definition based on measurable patterns and outcomes.
 
 CURRENT CHARACTER STATE:
-Name: {character_summary['name']}
-System: {character_summary['system']}
-Bio: {'; '.join(str(b) for b in bio_list)}
-Topics: {', '.join(str(t) for t in topics_list)}
-Message Examples: {character_summary['messageExampleCount']}
+Name: {character_summary["name"]}
+System: {character_summary["system"]}
+Bio: {"; ".join(str(b) for b in bio_list)}
+Topics: {", ".join(str(t) for t in topics_list)}
+Message Examples: {character_summary["messageExampleCount"]}
 
 CONVERSATION TO ANALYZE:
 {conversation_text}
@@ -367,11 +376,13 @@ style_chat: Use encouraging tone when discussing environmental topics"""
                     "evaluatorName": "character-evolution",
                     "timestamp": int(time.time() * 1000),
                     "confidence": evolution["confidence"],
-                    "evolutionData": json.dumps({
-                        "shouldModify": evolution["shouldModify"],
-                        "gradualChange": evolution.get("gradualChange", True),
-                        "modifications": evolution["modifications"],
-                    }),
+                    "evolutionData": json.dumps(
+                        {
+                            "shouldModify": evolution["shouldModify"],
+                            "gradualChange": evolution.get("gradualChange", True),
+                            "modifications": evolution["modifications"],
+                        }
+                    ),
                 },
             },
             "character_evolution",
@@ -400,7 +411,12 @@ character_evolution_evaluator = Evaluator(
             "prompt": "Evaluating character evolution after many conversations about environmental issues",
             "messages": [
                 {"name": "{{user1}}", "content": {"text": "What can I do about climate change?"}},
-                {"name": "{{agentName}}", "content": {"text": "There are many ways to help, from reducing energy use to supporting renewable energy initiatives."}},
+                {
+                    "name": "{{agentName}}",
+                    "content": {
+                        "text": "There are many ways to help, from reducing energy use to supporting renewable energy initiatives."
+                    },
+                },
             ],
             "outcome": "Character develops environmental expertise and adds sustainability topics",
         },

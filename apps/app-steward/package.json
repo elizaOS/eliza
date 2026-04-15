@@ -19,11 +19,13 @@
     "./*": "./src/*"
   },
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
-    "@elizaos/ui": "workspace:*",
-    "@elizaos/core": "workspace:*",
     "@noble/curves": "^2.0.1",
+    "@stwd/sdk": "^0.3.0",
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/ui": "workspace:*",
     "ethers": "^6.16.0",
+    "lucide-react": "^0.575.0",
     "viem": "^2.21.0"
   }
 }

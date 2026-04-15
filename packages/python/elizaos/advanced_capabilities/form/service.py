@@ -17,12 +17,12 @@ from .types import (
     ExternalActivation,
     FieldHistoryEntry,
     FieldState,
+    FilledFieldSummary,
     FormContextState,
     FormControl,
     FormDefinition,
     FormSession,
     FormSubmission,
-    FilledFieldSummary,
     MissingFieldSummary,
     PendingExternalFieldSummary,
     SessionEffort,
@@ -187,9 +187,7 @@ class FormService(Service):
             await form_storage.save_session(self._runtime, session)
         return session
 
-    async def get_active_session(
-        self, entity_id: str, room_id: str
-    ) -> FormSession | None:
+    async def get_active_session(self, entity_id: str, room_id: str) -> FormSession | None:
         if not self._runtime:
             return None
         return await form_storage.get_active_session(self._runtime, entity_id, room_id)
@@ -224,9 +222,7 @@ class FormService(Service):
     ) -> None:
         if not self._runtime:
             return
-        session = await form_storage.get_session_by_id(
-            self._runtime, entity_id, session_id
-        )
+        session = await form_storage.get_session_by_id(self._runtime, entity_id, session_id)
         if not session:
             raise ValueError(f"Session not found: {session_id}")
 
@@ -245,7 +241,7 @@ class FormService(Service):
             )
             # Trim history
             definition = self._forms.get(session.form_id)
-            max_undo = (definition.ux.max_undo_steps if definition else 5)
+            max_undo = definition.ux.max_undo_steps if definition else 5
             session.history = session.history[-max_undo:]
 
         # Find control for threshold
@@ -277,14 +273,10 @@ class FormService(Service):
         session.updated_at = now
         await form_storage.save_session(self._runtime, session)
 
-    async def undo_last_change(
-        self, session_id: str, entity_id: str
-    ) -> dict[str, Any] | None:
+    async def undo_last_change(self, session_id: str, entity_id: str) -> dict[str, Any] | None:
         if not self._runtime:
             return None
-        session = await form_storage.get_session_by_id(
-            self._runtime, entity_id, session_id
-        )
+        session = await form_storage.get_session_by_id(self._runtime, entity_id, session_id)
         if not session or not session.history:
             return None
 
@@ -298,14 +290,10 @@ class FormService(Service):
         await form_storage.save_session(self._runtime, session)
         return {"field": entry.field, "restored_value": entry.old_value}
 
-    async def skip_field(
-        self, session_id: str, entity_id: str, field_key: str
-    ) -> bool:
+    async def skip_field(self, session_id: str, entity_id: str, field_key: str) -> bool:
         if not self._runtime:
             return False
-        session = await form_storage.get_session_by_id(
-            self._runtime, entity_id, session_id
-        )
+        session = await form_storage.get_session_by_id(self._runtime, entity_id, session_id)
         if not session:
             return False
 
@@ -328,9 +316,7 @@ class FormService(Service):
     ) -> None:
         if not self._runtime:
             return
-        session = await form_storage.get_session_by_id(
-            self._runtime, entity_id, session_id
-        )
+        session = await form_storage.get_session_by_id(self._runtime, entity_id, session_id)
         if not session:
             return
 
@@ -367,9 +353,7 @@ class FormService(Service):
     ) -> None:
         if not self._runtime:
             return
-        session = await form_storage.get_session_by_id(
-            self._runtime, entity_id, session_id
-        )
+        session = await form_storage.get_session_by_id(self._runtime, entity_id, session_id)
         if not session:
             raise ValueError(f"Session not found: {session_id}")
 
@@ -399,9 +383,7 @@ class FormService(Service):
         session.updated_at = now
         await form_storage.save_session(self._runtime, session)
 
-    def are_sub_fields_filled(
-        self, session: FormSession, parent_field: str
-    ) -> bool:
+    def are_sub_fields_filled(self, session: FormSession, parent_field: str) -> bool:
         parent_state = session.fields.get(parent_field)
         if not parent_state or not parent_state.sub_fields:
             return False
@@ -418,17 +400,11 @@ class FormService(Service):
                     return False
         return True
 
-    def get_sub_field_values(
-        self, session: FormSession, parent_field: str
-    ) -> dict[str, Any]:
+    def get_sub_field_values(self, session: FormSession, parent_field: str) -> dict[str, Any]:
         parent_state = session.fields.get(parent_field)
         if not parent_state or not parent_state.sub_fields:
             return {}
-        return {
-            k: v.value
-            for k, v in parent_state.sub_fields.items()
-            if v.value is not None
-        }
+        return {k: v.value for k, v in parent_state.sub_fields.items() if v.value is not None}
 
     async def activate_external_field(
         self,
@@ -439,9 +415,7 @@ class FormService(Service):
         if not self._runtime:
             raise RuntimeError("Runtime not available")
 
-        session = await form_storage.get_session_by_id(
-            self._runtime, entity_id, session_id
-        )
+        session = await form_storage.get_session_by_id(self._runtime, entity_id, session_id)
         if not session:
             raise ValueError(f"Session not found: {session_id}")
 
@@ -456,12 +430,14 @@ class FormService(Service):
         from .types import ExternalFieldState
 
         sub_values = self.get_sub_field_values(session, field_key)
-        activation = await ct.activate({
-            "runtime": self._runtime,
-            "session": session,
-            "control": control,
-            "sub_values": sub_values,
-        })
+        activation = await ct.activate(
+            {
+                "runtime": self._runtime,
+                "session": session,
+                "control": control,
+                "sub_values": sub_values,
+            }
+        )
 
         now = int(time.time() * 1000)
         field_state = session.fields.get(field_key, FieldState())
@@ -489,9 +465,7 @@ class FormService(Service):
     ) -> None:
         if not self._runtime:
             return
-        session = await form_storage.get_session_by_id(
-            self._runtime, entity_id, session_id
-        )
+        session = await form_storage.get_session_by_id(self._runtime, entity_id, session_id)
         if not session:
             return
 
@@ -524,9 +498,7 @@ class FormService(Service):
     ) -> None:
         if not self._runtime:
             return
-        session = await form_storage.get_session_by_id(
-            self._runtime, entity_id, session_id
-        )
+        session = await form_storage.get_session_by_id(self._runtime, entity_id, session_id)
         if not session:
             return
 
@@ -544,15 +516,11 @@ class FormService(Service):
     # Lifecycle operations
     # -----------------------------------------------------------------------
 
-    async def submit(
-        self, session_id: str, entity_id: str
-    ) -> FormSubmission:
+    async def submit(self, session_id: str, entity_id: str) -> FormSubmission:
         if not self._runtime:
             raise RuntimeError("Runtime not available")
 
-        session = await form_storage.get_session_by_id(
-            self._runtime, entity_id, session_id
-        )
+        session = await form_storage.get_session_by_id(self._runtime, entity_id, session_id)
         if not session:
             raise ValueError(f"Session not found: {session_id}")
 
@@ -579,18 +547,14 @@ class FormService(Service):
         await form_storage.save_session(self._runtime, session)
 
         # Save autofill data
-        await form_storage.save_autofill_data(
-            self._runtime, entity_id, session.form_id, values
-        )
+        await form_storage.save_autofill_data(self._runtime, entity_id, session.form_id, values)
 
         return submission
 
     async def stash(self, session_id: str, entity_id: str) -> None:
         if not self._runtime:
             return
-        session = await form_storage.get_session_by_id(
-            self._runtime, entity_id, session_id
-        )
+        session = await form_storage.get_session_by_id(self._runtime, entity_id, session_id)
         if not session:
             raise ValueError(f"Session not found: {session_id}")
 
@@ -602,9 +566,7 @@ class FormService(Service):
         if not self._runtime:
             raise RuntimeError("Runtime not available")
 
-        session = await form_storage.get_session_by_id(
-            self._runtime, entity_id, session_id
-        )
+        session = await form_storage.get_session_by_id(self._runtime, entity_id, session_id)
         if not session:
             raise ValueError(f"Session not found: {session_id}")
 
@@ -613,14 +575,10 @@ class FormService(Service):
         await form_storage.save_session(self._runtime, session)
         return session
 
-    async def cancel(
-        self, session_id: str, entity_id: str, force: bool = False
-    ) -> bool:
+    async def cancel(self, session_id: str, entity_id: str, force: bool = False) -> bool:
         if not self._runtime:
             return False
-        session = await form_storage.get_session_by_id(
-            self._runtime, entity_id, session_id
-        )
+        session = await form_storage.get_session_by_id(self._runtime, entity_id, session_id)
         if not session:
             return False
 
@@ -646,14 +604,10 @@ class FormService(Service):
             return []
         return await form_storage.get_submissions(self._runtime, entity_id, form_id)
 
-    async def get_autofill(
-        self, entity_id: str, form_id: str
-    ) -> dict[str, Any] | None:
+    async def get_autofill(self, entity_id: str, form_id: str) -> dict[str, Any] | None:
         if not self._runtime:
             return None
-        data = await form_storage.get_autofill_data(
-            self._runtime, entity_id, form_id
-        )
+        data = await form_storage.get_autofill_data(self._runtime, entity_id, form_id)
         return data.values if data else None
 
     async def apply_autofill(self, session: FormSession) -> list[str]:
@@ -702,45 +656,52 @@ class FormService(Service):
 
             if fs.status == "filled":
                 display = "***" if control.sensitive else str(fs.value or "")
-                filled.append(FilledFieldSummary(
-                    key=control.key, label=control.label, display_value=display
-                ))
+                filled.append(
+                    FilledFieldSummary(key=control.key, label=control.label, display_value=display)
+                )
             elif fs.status == "uncertain":
-                uncertain.append(UncertainFieldSummary(
-                    key=control.key,
-                    label=control.label,
-                    value=fs.value,
-                    confidence=fs.confidence or 0.0,
-                ))
+                uncertain.append(
+                    UncertainFieldSummary(
+                        key=control.key,
+                        label=control.label,
+                        value=fs.value,
+                        confidence=fs.confidence or 0.0,
+                    )
+                )
             elif fs.status == "pending" and fs.external_state:
-                pending_external.append(PendingExternalFieldSummary(
-                    key=control.key,
-                    label=control.label,
-                    instructions=fs.external_state.instructions or "",
-                    reference=fs.external_state.reference or "",
-                    activated_at=fs.external_state.activated_at or 0,
-                    address=fs.external_state.address,
-                ))
+                pending_external.append(
+                    PendingExternalFieldSummary(
+                        key=control.key,
+                        label=control.label,
+                        instructions=fs.external_state.instructions or "",
+                        reference=fs.external_state.reference or "",
+                        activated_at=fs.external_state.activated_at or 0,
+                        address=fs.external_state.address,
+                    )
+                )
             elif control.required and fs.status in ("empty", "invalid"):
-                missing_required.append(MissingFieldSummary(
-                    key=control.key,
-                    label=control.label,
-                    description=control.description,
-                    ask_prompt=control.ask_prompt,
-                ))
+                missing_required.append(
+                    MissingFieldSummary(
+                        key=control.key,
+                        label=control.label,
+                        description=control.description,
+                        ask_prompt=control.ask_prompt,
+                    )
+                )
 
         total = len(definition.controls)
-        filled_count = len(filled) + len([
-            c for c in definition.controls
-            if session.fields.get(c.key, FieldState()).status == "skipped"
-        ])
+        filled_count = len(filled) + len(
+            [
+                c
+                for c in definition.controls
+                if session.fields.get(c.key, FieldState()).status == "skipped"
+            ]
+        )
         progress = (filled_count / total * 100) if total > 0 else 0
 
         next_field: FormControl | None = None
         if missing_required:
-            next_field = self._find_control(
-                session.form_id, missing_required[0].key
-            )
+            next_field = self._find_control(session.form_id, missing_required[0].key)
 
         return FormContextState(
             has_active_form=True,
@@ -792,18 +753,14 @@ class FormService(Service):
 
     def should_confirm_cancel(self, session: FormSession) -> bool:
         """Return True if cancel should require confirmation (user invested effort)."""
-        filled_count = sum(
-            1 for fs in session.fields.values() if fs.status == "filled"
-        )
+        filled_count = sum(1 for fs in session.fields.values() if fs.status == "filled")
         return filled_count >= 2 and not session.cancel_confirmation_asked
 
     # -----------------------------------------------------------------------
     # Internal helpers
     # -----------------------------------------------------------------------
 
-    def _find_control(
-        self, form_id: str, field_key: str
-    ) -> FormControl | None:
+    def _find_control(self, form_id: str, field_key: str) -> FormControl | None:
         definition = self._forms.get(form_id)
         if not definition:
             return None

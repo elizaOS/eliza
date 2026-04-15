@@ -33,9 +33,6 @@ export * from "./entities";
 export * from "./features/advanced-memory";
 // Export capabilities and plugin creation
 export * from "./features/basic-capabilities/index";
-// Node-only task-agent orchestration surface.
-export * from "./features/orchestrator/index";
-export { default as orchestratorPluginDefault } from "./features/orchestrator/index";
 // Export generated action/provider/evaluator specs from centralized prompts
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
@@ -107,6 +104,15 @@ export * from "./types/message-service";
 // Export onboarding types and utilities
 export * from "./types/onboarding";
 export * from "./types/plugin-manifest";
+// Bun can drop these runtime exports when they are only surfaced through the
+// ./types barrel, which breaks plugin imports of @elizaos/core.
+export * as proto from "./types/proto";
+export {
+	fromJson,
+	type JsonObject,
+	type JsonValue,
+	toJson,
+} from "./types/proto";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
 /** Single implementation — see `utils/batch-queue/semaphore.ts` (was duplicated on `runtime.ts`). */

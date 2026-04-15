@@ -239,13 +239,6 @@ function setPrimaryModel(
   defaults.model = { ...defaults.model, primary: primaryModel };
 }
 
-function clearPiAiFlag(config: MutableElizaConfig): void {
-  for (const key of ["ELIZA_USE_PI_AI", "ELIZA_USE_PI_AI"] as const) {
-    clearPersistedEnvValue(config, key);
-    delete process.env[key];
-  }
-}
-
 function clearPersistedEnvValue(config: MutableElizaConfig, key: string): void {
   const env = asRecord(config.env);
   const vars = asRecord(env?.vars);
@@ -351,7 +344,6 @@ function applyLocalProviderCapabilities(
   clearCloudModelSelections(config);
 
   clearSubscriptionProviderConfig(config);
-  clearPiAiFlag(config);
 
   const storedProviderId = getStoredOnboardingProviderId(normalizedProvider);
   if (
@@ -675,7 +667,6 @@ export function clearPersistedOnboardingConfig(
       delete process.env[envKey];
     }
   }
-  clearPiAiFlag(config);
 
   delete process.env.ELIZAOS_CLOUD_API_KEY;
   delete process.env.ELIZAOS_CLOUD_ENABLED;
@@ -789,7 +780,6 @@ export async function applyOnboardingConnectionConfig(
 
     process.env.ELIZAOS_CLOUD_ENABLED = "true";
     clearSubscriptionProviderConfig(config);
-    clearPiAiFlag(config);
     migrateLegacyRuntimeConfig(config as Record<string, unknown>);
     return;
   }
@@ -809,7 +799,6 @@ export async function applyOnboardingConnectionConfig(
 
   if (normalizedConnection.kind === "remote-provider") {
     clearSubscriptionProviderConfig(config);
-    clearPiAiFlag(config);
     clearCloudModelSelections(config);
     clearRemoteProviderConfig(config);
 

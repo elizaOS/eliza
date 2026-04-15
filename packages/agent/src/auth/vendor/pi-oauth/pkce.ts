@@ -1,6 +1,6 @@
 /**
  * PKCE utilities using Web Crypto API (Node.js 20+ / Bun).
- * Inlined from @mariozechner/pi-ai@0.52.12 (MIT) — dependency removed.
+ * Inlined PKCE helpers (MIT) — vendored to avoid a runtime dependency.
  */
 
 function base64urlEncode(bytes: Uint8Array): string {

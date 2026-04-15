@@ -1,5 +1,5 @@
 /**
- * Re-exports the LifeOps implementation from the local `lifeops/` directory.
- * Core logic has been extracted from `@elizaos/agent/lifeops` into this package.
+ * Canonical LifeOps implementation entrypoint for app-lifeops.
+ * The agent package retains compatibility re-exports for legacy subpaths.
  */
 export * from "./lifeops/index.js";

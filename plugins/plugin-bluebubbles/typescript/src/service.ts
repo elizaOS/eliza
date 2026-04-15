@@ -12,9 +12,9 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	logger,
+	type Memory,
 	Service,
 	type UUID,
-	type Memory,
 } from "@elizaos/core";
 import { BlueBubblesClient } from "./client";
 import { BLUEBUBBLES_SERVICE_NAME, DEFAULT_WEBHOOK_PATH } from "./constants";
@@ -328,7 +328,9 @@ export class BlueBubblesService extends Service {
 					target.roomId && typeof runtime.getRoom === "function"
 						? await runtime.getRoom(target.roomId)
 						: null;
-				const chatGuid = String(target.channelId ?? room?.channelId ?? "").trim();
+				const chatGuid = String(
+					target.channelId ?? room?.channelId ?? "",
+				).trim();
 				if (!chatGuid) {
 					throw new Error("BlueBubbles target is missing a chat GUID");
 				}
@@ -569,8 +571,7 @@ export class BlueBubblesService extends Service {
 			url: `${config.serverUrl}/api/v1/attachment/${encodeURIComponent(att.guid)}?password=${encodeURIComponent(config.password)}`,
 			title: att.transferName,
 			description: att.mimeType ?? undefined,
-			contentType: (att.mimeType ??
-				"application/octet-stream") as ContentType,
+			contentType: (att.mimeType ?? "application/octet-stream") as ContentType,
 		}));
 
 		await this.runtime.ensureConnection({
@@ -612,14 +613,17 @@ export class BlueBubblesService extends Service {
 			bluebubblesChatGuid: chat.guid,
 			bluebubblesChatIdentifier: chat.chatIdentifier,
 			bluebubblesMessageGuid: message.guid,
-			bluebubblesThreadOriginatorGuid: message.threadOriginatorGuid ?? undefined,
+			bluebubblesThreadOriginatorGuid:
+				message.threadOriginatorGuid ?? undefined,
 		};
 
 		await this.runtime.createMemory(memory, "messages");
 
 		const room = await this.runtime.getRoom(roomId);
 		if (!room) {
-			logger.warn(`BlueBubbles room ${roomId} not found after ensureConnection`);
+			logger.warn(
+				`BlueBubbles room ${roomId} not found after ensureConnection`,
+			);
 			return;
 		}
 
@@ -740,7 +744,9 @@ export class BlueBubblesService extends Service {
 			return;
 		}
 
-		const callback: HandlerCallback = async (response: Content): Promise<Memory[]> => {
+		const callback: HandlerCallback = async (
+			response: Content,
+		): Promise<Memory[]> => {
 			const responseText =
 				typeof response.text === "string" ? response.text.trim() : "";
 			if (!responseText) {
@@ -751,12 +757,11 @@ export class BlueBubblesService extends Service {
 			if (
 				typeof memory.id === "string" &&
 				memory.metadata &&
-				typeof (memory.metadata as Record<string, unknown>).bluebubblesMessageGuid ===
-					"string"
+				typeof (memory.metadata as Record<string, unknown>)
+					.bluebubblesMessageGuid === "string"
 			) {
-				selectedMessageGuid = (
-					memory.metadata as Record<string, unknown>
-				).bluebubblesMessageGuid as string;
+				selectedMessageGuid = (memory.metadata as Record<string, unknown>)
+					.bluebubblesMessageGuid as string;
 			}
 
 			const sent = await this.sendMessage(

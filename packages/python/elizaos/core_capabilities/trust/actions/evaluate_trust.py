@@ -6,7 +6,6 @@ multi-dimensional scores from historical evidence.
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -15,8 +14,6 @@ from elizaos.types import Action, ActionResult, Content
 from ..types import TrustContext
 
 if TYPE_CHECKING:
-    from uuid import UUID
-
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
 
     from ..service import TrustEngineService
@@ -49,7 +46,7 @@ class EvaluateTrustAction:
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> ActionResult:
-        entity_id: UUID | None = message.entity_id
+        entity_id = message.entity_id
         if entity_id is None:
             return ActionResult(
                 text="Cannot evaluate trust: no entity specified.",

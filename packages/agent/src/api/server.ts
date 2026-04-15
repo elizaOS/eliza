@@ -23,6 +23,12 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
+import type {
+  SwarmEvent,
+  TaskCompletionSummary,
+  TaskContext,
+} from "@elizaos/app-task-coordinator/api/coordinator-types";
+import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator/api/coordinator-wiring";
 // Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
 // import { handleWalletTradeExecuteRoute } from "./wallet-trade-routes.js";
 // import {
@@ -163,12 +169,6 @@ import { handleConfigRoutes } from "./config-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
 import { handleConversationRoutes } from "./conversation-routes.js";
-import type {
-  SwarmEvent,
-  TaskCompletionSummary,
-  TaskContext,
-} from "./coordinator-types.js";
-import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.js";
 import { handleDatabaseRoute } from "./database.js";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.js";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
@@ -243,6 +243,7 @@ import {
 } from "./wallet-capability.js";
 import { handleWalletRoutes } from "./wallet-routes.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
+import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
 // handleWhatsAppRoute moved to @elizaos/plugin-whatsapp setup-routes.
 // applyWhatsAppQrOverride is still used by plugin-status routes.
 import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
@@ -342,7 +343,7 @@ import {
 const nodeRequire = createRequire(import.meta.url);
 let agentOrchestratorCompat: unknown = null;
 try {
-  agentOrchestratorCompat = nodeRequire("@elizaos/core/orchestrator");
+  agentOrchestratorCompat = nodeRequire("@elizaos/plugin-agent-orchestrator");
 } catch {
   agentOrchestratorCompat = null;
 }
@@ -3335,7 +3336,8 @@ function wireCoordinatorEventRouting(st: ServerState): boolean {
 /**
  * Fallback handler for /api/coding-agents/* routes when the plugin
  * doesn't export createCodingAgentRouteHandler.
- * Uses the AgentOrchestratorService (CODE_TASK) to provide task data.
+ * Uses the orchestrator plugin's CODE_TASK compatibility service to
+ * provide task data.
  */
 async function handleCodingAgentsFallback(
   runtime: AgentRuntime,
@@ -5135,8 +5137,20 @@ async function handleRequest(
     return;
   }
 
-  // Website-blocker routes: now served via lifeopsPlugin.routes (rawPath)
-  // on the runtime plugin route system. See app-lifeops/src/routes/plugin.ts.
+  if (
+    await handleWebsiteBlockerRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      runtime: state.runtime ?? undefined,
+      readJsonBody,
+      json,
+      error,
+    })
+  ) {
+    return;
+  }
 
   if (
     await handleBrowserWorkspaceRoutes({
@@ -5378,7 +5392,7 @@ async function handleRequest(
       );
     }
 
-    // Prefer @elizaos/core/orchestrator route handler so the full coordinator
+    // Prefer @elizaos/plugin-agent-orchestrator route handler so the full coordinator
     // contract is served from the embedded runtime (replaces the old plugin).
     if (!handled)
       try {
@@ -5403,7 +5417,7 @@ async function handleRequest(
         // Compat layer unavailable — final fallback below handles coding-agents routes.
       }
 
-    // Final fallback: Handle coding-agents routes using AgentOrchestratorService
+    // Final fallback: handle coding-agents routes using the plugin's CODE_TASK compatibility service.
     if (!handled && pathname.startsWith("/api/coding-agents")) {
       handled = await handleCodingAgentsFallback(
         state.runtime,
@@ -6470,8 +6484,7 @@ export async function startApiServer(opts?: {
   });
 
   // Handle WebSocket connections
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ws module typing workaround
-  (wss as any).on("connection", (ws: WebSocket, request: http.IncomingMessage) => {
+  wss.on("connection", (ws: WebSocket, request: http.IncomingMessage) => {
     let wsUrl: URL;
     try {
       wsUrl = new URL(

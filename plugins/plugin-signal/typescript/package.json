@@ -46,6 +46,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "qrcode": "^1.5.4",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -54,7 +55,13 @@
     "@biomejs/biome": "^2.3.11"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "workspace:*",
+    "@elizaos/signal-native": "*"
+  },
+  "peerDependenciesMeta": {
+    "@elizaos/signal-native": {
+      "optional": true
+    }
   },
   "publishConfig": {
     "access": "public"

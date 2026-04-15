@@ -7,11 +7,10 @@ for multi-dimensional trust scoring, evidence tracking, and security events.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from elizaos.types.primitives import UUID
-
 
 # ---------------------------------------------------------------------------
 # Trust Dimensions
@@ -46,7 +45,7 @@ class TrustDimensions:
 # ---------------------------------------------------------------------------
 
 
-class TrustEvidenceType(str, Enum):
+class TrustEvidenceType(StrEnum):
     """Evidence types that impact trust scores."""
 
     # Positive
@@ -72,7 +71,7 @@ class TrustEvidenceType(str, Enum):
     CONTEXT_SWITCH = "CONTEXT_SWITCH"
 
 
-class SecurityEventType(str, Enum):
+class SecurityEventType(StrEnum):
     """Types of security events detected by the security module."""
 
     PROMPT_INJECTION_ATTEMPT = "prompt_injection_attempt"
@@ -89,13 +88,13 @@ class SecurityEventType(str, Enum):
     MALICIOUS_LINK_CAMPAIGN = "malicious_link_campaign"
 
 
-class TrustTrendDirection(str, Enum):
+class TrustTrendDirection(StrEnum):
     INCREASING = "increasing"
     DECREASING = "decreasing"
     STABLE = "stable"
 
 
-class SecurityCheckType(str, Enum):
+class SecurityCheckType(StrEnum):
     PROMPT_INJECTION = "prompt_injection"
     SOCIAL_ENGINEERING = "social_engineering"
     CREDENTIAL_THEFT = "credential_theft"
@@ -103,14 +102,14 @@ class SecurityCheckType(str, Enum):
     NONE = "none"
 
 
-class SecuritySeverity(str, Enum):
+class SecuritySeverity(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
 
 
-class SecurityActionResponse(str, Enum):
+class SecurityActionResponse(StrEnum):
     BLOCK = "block"
     REQUIRE_VERIFICATION = "require_verification"
     ALLOW = "allow"
@@ -228,13 +227,15 @@ class TrustCalculationConfig:
     """Points per day."""
     minimum_evidence_count: int = 3
     verification_multiplier: float = 1.5
-    dimension_weights: TrustDimensions = field(default_factory=lambda: TrustDimensions(
-        reliability=0.25,
-        competence=0.20,
-        integrity=0.25,
-        benevolence=0.20,
-        transparency=0.10,
-    ))
+    dimension_weights: TrustDimensions = field(
+        default_factory=lambda: TrustDimensions(
+            reliability=0.25,
+            competence=0.20,
+            integrity=0.25,
+            benevolence=0.20,
+            transparency=0.10,
+        )
+    )
 
 
 # ---------------------------------------------------------------------------

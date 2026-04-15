@@ -72,10 +72,6 @@
 	path = plugins/plugin-pdf
 	url = https://github.com/elizaos-plugins/plugin-pdf.git
 	branch = alpha
-[submodule "plugins/plugin-pi-ai"]
-	path = plugins/plugin-pi-ai
-	url = https://github.com/elizaos-plugins/plugin-pi-ai.git
-	branch = next
 [submodule "plugins/plugin-selfcontrol"]
 	path = plugins/plugin-selfcontrol
 	url = https://github.com/elizaos-plugins/plugin-selfcontrol.git
@@ -123,3 +119,7 @@
 [submodule "plugins/plugin-wechat"]
 	path = plugins/plugin-wechat
 	url = https://github.com/milady-ai/plugin-wechat.git
+[submodule "plugins/plugin-agent-orchestrator"]
+	path = plugins/plugin-agent-orchestrator
+	url = https://github.com/elizaos-plugins/plugin-agent-orchestrator.git
+	branch = alpha

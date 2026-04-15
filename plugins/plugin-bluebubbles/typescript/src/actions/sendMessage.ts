@@ -180,7 +180,7 @@ export const sendMessageAction: Action = {
 		);
 		const currentState = state ?? (await runtime.composeState(message));
 
-		if (!service || !service.getIsRunning()) {
+		if (!service?.getIsRunning()) {
 			logger.error("BlueBubbles service is not available");
 			if (callback) {
 				await callback({

@@ -4,7 +4,7 @@ import {
   startSelfControlBlock,
   stopSelfControlBlock,
   syncWebsiteBlockerExpiryTask,
-} from "../selfcontrol/index.js";
+} from "../selfcontrol/index.ts";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {

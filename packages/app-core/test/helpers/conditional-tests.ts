@@ -1,4 +1,4 @@
-import { describe, it, test } from "vitest";
+import { describe, expect, it, test } from "vitest";
 
 type DescribeFn = typeof describe;
 type ItFn = typeof it;
@@ -9,7 +9,12 @@ export function describeIf(condition: boolean): DescribeFn {
     return describe;
   }
 
-  return describe.skip as DescribeFn;
+  return (((name: string) =>
+    describe(name, () => {
+      it("records unmet prerequisites instead of skipping", () => {
+        expect(condition).toBe(false);
+      });
+    })) as unknown) as DescribeFn;
 }
 
 export function itIf(condition: boolean): ItFn {

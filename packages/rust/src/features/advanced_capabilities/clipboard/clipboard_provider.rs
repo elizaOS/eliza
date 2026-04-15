@@ -70,10 +70,7 @@ impl Provider for ClipboardProvider {
                     snapshot.max_items,
                     item.title,
                     serde_json::to_string(&item.source_type).unwrap_or_default(),
-                    item.content
-                        .chars()
-                        .take(500)
-                        .collect::<String>()
+                    item.content.chars().take(500).collect::<String>()
                 )
             })
             .collect();
@@ -85,7 +82,6 @@ impl Provider for ClipboardProvider {
             formatted.join("\n")
         );
 
-        Ok(ProviderResult::new(text)
-            .with_value("clipboardCount", snapshot.items.len() as i64))
+        Ok(ProviderResult::new(text).with_value("clipboardCount", snapshot.items.len() as i64))
     }
 }

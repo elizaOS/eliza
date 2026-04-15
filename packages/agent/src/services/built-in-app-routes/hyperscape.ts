@@ -79,7 +79,11 @@ function resolveCharacterId(
       ? authMsg.characterId
       : null;
   if (fromViewer) return fromViewer;
-  return readStringSetting(runtime, "HYPERSCAPE_CHARACTER_ID");
+  const setting =
+    typeof runtime?.getSetting === "function"
+      ? runtime.getSetting("HYPERSCAPE_CHARACTER_ID")
+      : null;
+  return typeof setting === "string" ? setting : null;
 }
 
 async function fetchJson<T = unknown>(url: string): Promise<T | null> {

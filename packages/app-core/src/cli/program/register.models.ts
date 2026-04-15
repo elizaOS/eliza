@@ -21,7 +21,6 @@ export function registerModelsCli(program: Command) {
         ["COHERE_API_KEY", "Cohere"],
         ["PERPLEXITY_API_KEY", "Perplexity"],
         ["ZAI_API_KEY", "Zai"],
-        ["ELIZA_USE_PI_AI", "Pi AI"],
         ["OLLAMA_BASE_URL", "Ollama (local)"],
         ["ELIZAOS_CLOUD_API_KEY", "elizaOS Cloud"],
       ] as const;

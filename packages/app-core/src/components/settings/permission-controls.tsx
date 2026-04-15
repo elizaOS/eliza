@@ -241,7 +241,7 @@ export function PermissionRow({
   );
 
   return (
-    <div className="flex flex-col gap-3 border-b border-border/50 px-4 py-3 last:border-b-0 sm:flex-row sm:items-center">
+    <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
       <div className="flex min-w-0 flex-1 items-start gap-3">
         <PermissionIcon icon={def.icon} />
         <div className="min-w-0 flex-1">

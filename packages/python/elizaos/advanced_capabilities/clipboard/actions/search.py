@@ -8,6 +8,7 @@ from elizaos.types import Action, ActionResult, Content, ModelType
 from elizaos.utils.xml import parse_key_value_xml
 
 from ..services.clipboard_service import create_clipboard_service
+from ..types import ClipboardSearchResult
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
@@ -26,9 +27,7 @@ Respond with XML containing:
 </response>"""
 
 
-async def _validate(
-    runtime: IAgentRuntime, message: Memory, _state: State | None = None
-) -> bool:
+async def _validate(runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
     text = (message.content.text or "").lower()
     search_keywords = ["search", "find", "look for", "clipboard", "notes", "retrieve", "lookup"]
     return any(kw in text for kw in search_keywords) and ("clipboard" in text or "search" in text)
@@ -63,15 +62,18 @@ async def _handler(
 
         if not results:
             if callback:
-                await callback(Content(text=f'No clipboard entries found matching "{parsed["query"]}".'))
+                await callback(
+                    Content(text=f'No clipboard entries found matching "{parsed["query"]}".')
+                )
             return ActionResult(text="No results found", success=True)
 
-        result_lines = []
-        for i, r in enumerate(results):
-            score_pct = round(r.score * 100)
-            snippet = r.snippet[:200] + ("..." if len(r.snippet) > 200 else "")
+        typed_results: list[ClipboardSearchResult] = results
+        result_lines: list[str] = []
+        for i, result_item in enumerate(typed_results):
+            score_pct = round(result_item.score * 100)
+            snippet = result_item.snippet[:200] + ("..." if len(result_item.snippet) > 200 else "")
             result_lines.append(
-                f"**{i + 1}. {r.entry_id}** ({score_pct}% match, lines {r.start_line}-{r.end_line})\n```\n{snippet}\n```"
+                f"**{i + 1}. {result_item.entry_id}** ({score_pct}% match, lines {result_item.start_line}-{result_item.end_line})\n```\n{snippet}\n```"
             )
 
         msg = (

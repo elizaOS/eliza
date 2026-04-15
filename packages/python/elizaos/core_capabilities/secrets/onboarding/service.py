@@ -62,8 +62,7 @@ class OnboardingService(Service):
     capability_description: str = "Manage secrets onboarding across chat platforms"
 
     def __init__(self, runtime: IAgentRuntime | None = None) -> None:
-        super().__init__()
-        self.runtime = runtime
+        super().__init__(runtime)
         self._secrets_service: SecretsService | None = None
         self._sessions: dict[str, OnboardingSession] = {}
 
@@ -139,14 +138,11 @@ class OnboardingService(Service):
         config: OnboardingConfig,
     ) -> None:
         """Start onboarding via DM (Discord)."""
-        messages = (config.messages or {}).get(
-            "welcome", DEFAULT_ONBOARDING_MESSAGES["welcome"]
-        )
+        messages = (config.messages or {}).get("welcome", DEFAULT_ONBOARDING_MESSAGES["welcome"])
         _random_message = messages[random.randint(0, len(messages) - 1)]  # noqa: S311
 
         logger.info(
-            "[OnboardingService] Discord DM onboarding started - "
-            "server: %s, owner: %s, world: %s",
+            "[OnboardingService] Discord DM onboarding started - server: %s, owner: %s, world: %s",
             server_id,
             owner_id,
             world_id,
@@ -314,9 +310,8 @@ class OnboardingService(Service):
                 next_key, next_setting = next_pair
                 session.current_setting_key = next_key
                 ask_msg = (
-                    (session.config.messages or {}).get(
-                        "askSetting", DEFAULT_ONBOARDING_MESSAGES["askSetting"]
-                    )
+                    (session.config.messages or {})
+                    .get("askSetting", DEFAULT_ONBOARDING_MESSAGES["askSetting"])
                     .replace("{{settingName}}", next_setting.name)
                     .replace(
                         "{{usageDescription}}",
@@ -324,9 +319,9 @@ class OnboardingService(Service):
                     )
                 )
                 updated_msg = (
-                    (session.config.messages or {}).get(
-                        "settingUpdated", DEFAULT_ONBOARDING_MESSAGES["settingUpdated"]
-                    ).replace("{{settingName}}", current_setting.name)
+                    (session.config.messages or {})
+                    .get("settingUpdated", DEFAULT_ONBOARDING_MESSAGES["settingUpdated"])
+                    .replace("{{settingName}}", current_setting.name)
                 )
                 return {
                     "should_respond": True,
@@ -340,9 +335,8 @@ class OnboardingService(Service):
             next_key, next_setting = next_pair
             session.current_setting_key = next_key
             ask_msg = (
-                (session.config.messages or {}).get(
-                    "askSetting", DEFAULT_ONBOARDING_MESSAGES["askSetting"]
-                )
+                (session.config.messages or {})
+                .get("askSetting", DEFAULT_ONBOARDING_MESSAGES["askSetting"])
                 .replace("{{settingName}}", next_setting.name)
                 .replace(
                     "{{usageDescription}}",
@@ -383,7 +377,22 @@ class OnboardingService(Service):
                 "missing_required": [],
             }
 
-        settings = (world.metadata or {}).get("settings")
+        metadata: dict[str, Any] = world.metadata if isinstance(world.metadata, dict) else {}
+        raw_settings = metadata.get("settings")
+        if not isinstance(raw_settings, dict):
+            return {
+                "initialized": False,
+                "complete": False,
+                "configured_count": 0,
+                "required_count": 0,
+                "missing_required": [],
+            }
+
+        settings: dict[str, OnboardingSetting] = {
+            key: value
+            for key, value in raw_settings.items()
+            if isinstance(key, str) and isinstance(value, OnboardingSetting)
+        }
         if not settings:
             return {
                 "initialized": False,
@@ -447,7 +456,9 @@ class OnboardingService(Service):
 
         important = ""
         if unconfigured:
-            important = f"IMPORTANT: {len(unconfigured)} required settings still need configuration.\n\n"
+            important = (
+                f"IMPORTANT: {len(unconfigured)} required settings still need configuration.\n\n"
+            )
         else:
             important = "All required settings are configured.\n\n"
 

@@ -11,10 +11,9 @@ from __future__ import annotations
 import logging
 import os
 import time
-from typing import Awaitable, Callable
 from urllib.parse import urlparse
 
-from .types import CustomValidator, ValidationResult, ValidationStrategy
+from .types import CustomValidator, ValidationResult
 
 logger = logging.getLogger(__name__)
 
@@ -185,15 +184,20 @@ async def _validate_url_reachable(_key: str, value: str) -> ValidationResult:
     try:
         import aiohttp
 
-        async with aiohttp.ClientSession() as session:
-            async with session.head(value, timeout=aiohttp.ClientTimeout(total=5)) as resp:
-                if resp.status >= 400:
-                    return ValidationResult(
-                        is_valid=False,
-                        error=f"URL returned status {resp.status}",
-                        validated_at=validated_at,
-                    )
-                return ValidationResult(is_valid=True, validated_at=validated_at)
+        async with (
+            aiohttp.ClientSession() as session,
+            session.head(
+                value,
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as resp,
+        ):
+            if resp.status >= 400:
+                return ValidationResult(
+                    is_valid=False,
+                    error=f"URL returned status {resp.status}",
+                    validated_at=validated_at,
+                )
+            return ValidationResult(is_valid=True, validated_at=validated_at)
     except ImportError:
         # aiohttp not available, fall back to format check only
         return ValidationResult(is_valid=True, validated_at=validated_at)
@@ -316,25 +320,27 @@ async def _verify_openai_key(api_key: str) -> ValidationResult:
     try:
         import aiohttp
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
+        async with (
+            aiohttp.ClientSession() as session,
+            session.get(
                 "https://api.openai.com/v1/models",
                 headers={"Authorization": f"Bearer {api_key}"},
                 timeout=aiohttp.ClientTimeout(total=10),
-            ) as resp:
-                if resp.status == 401:
-                    return ValidationResult(
-                        is_valid=False, error="Invalid API key", validated_at=time.time()
-                    )
-                if resp.status == 429:
-                    return ValidationResult(is_valid=True, validated_at=time.time())
-                if resp.status >= 400:
-                    return ValidationResult(
-                        is_valid=False,
-                        error=f"API returned status {resp.status}",
-                        validated_at=time.time(),
-                    )
+            ) as resp,
+        ):
+            if resp.status == 401:
+                return ValidationResult(
+                    is_valid=False, error="Invalid API key", validated_at=time.time()
+                )
+            if resp.status == 429:
                 return ValidationResult(is_valid=True, validated_at=time.time())
+            if resp.status >= 400:
+                return ValidationResult(
+                    is_valid=False,
+                    error=f"API returned status {resp.status}",
+                    validated_at=time.time(),
+                )
+            return ValidationResult(is_valid=True, validated_at=time.time())
     except ImportError:
         return ValidationResult(is_valid=True, validated_at=time.time())
     except Exception as exc:
@@ -348,8 +354,9 @@ async def _verify_anthropic_key(api_key: str) -> ValidationResult:
     try:
         import aiohttp
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={
                     "x-api-key": api_key,
@@ -362,24 +369,25 @@ async def _verify_anthropic_key(api_key: str) -> ValidationResult:
                     "messages": [{"role": "user", "content": "Hi"}],
                 },
                 timeout=aiohttp.ClientTimeout(total=10),
-            ) as resp:
-                if resp.status == 401:
-                    return ValidationResult(
-                        is_valid=False, error="Invalid API key", validated_at=time.time()
-                    )
-                if resp.status == 429:
-                    return ValidationResult(is_valid=True, validated_at=time.time())
-                if resp.status == 400:
-                    body = await resp.json()
-                    if body.get("error", {}).get("type") == "invalid_request_error":
-                        return ValidationResult(is_valid=True, validated_at=time.time())
-                if resp.status >= 400 and resp.status != 400:
-                    return ValidationResult(
-                        is_valid=False,
-                        error=f"API returned status {resp.status}",
-                        validated_at=time.time(),
-                    )
+            ) as resp,
+        ):
+            if resp.status == 401:
+                return ValidationResult(
+                    is_valid=False, error="Invalid API key", validated_at=time.time()
+                )
+            if resp.status == 429:
                 return ValidationResult(is_valid=True, validated_at=time.time())
+            if resp.status == 400:
+                body = await resp.json()
+                if body.get("error", {}).get("type") == "invalid_request_error":
+                    return ValidationResult(is_valid=True, validated_at=time.time())
+            if resp.status >= 400 and resp.status != 400:
+                return ValidationResult(
+                    is_valid=False,
+                    error=f"API returned status {resp.status}",
+                    validated_at=time.time(),
+                )
+            return ValidationResult(is_valid=True, validated_at=time.time())
     except ImportError:
         return ValidationResult(is_valid=True, validated_at=time.time())
     except Exception as exc:

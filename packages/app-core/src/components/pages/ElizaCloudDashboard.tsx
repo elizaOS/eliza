@@ -1103,7 +1103,7 @@ export function CloudDashboard() {
             </div>
           )}
 
-          <hr className="border-border/40" />
+          <div className="py-1" />
           <div className="py-5">
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="text-sm font-semibold text-txt-strong">
@@ -1204,7 +1204,7 @@ export function CloudDashboard() {
             </div>
           </div>
 
-          <hr className="border-border/40" />
+          <div className="py-1" />
           <div className="py-5">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
@@ -1296,7 +1296,7 @@ export function CloudDashboard() {
             </div>
           </div>
 
-          <hr className="border-border/40" />
+          <div className="py-1" />
           <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
               <div className="flex items-center gap-2">
@@ -1385,7 +1385,7 @@ export function CloudDashboard() {
             </div>
           </div>
 
-          <hr className="border-border/40" />
+          <div className="py-1" />
           {!cloudNotReady && (
             <div className="py-4">
               {agentsLoading && cloudAgents.length === 0 ? (
@@ -1460,7 +1460,7 @@ export function CloudDashboard() {
           )}
           {selectedAgentId && selectedAgent && (
             <>
-              <hr className="border-border/40" />
+              <div className="py-1" />
               <AgentDetailSidebar
                 agent={selectedAgent}
                 onClose={() => setSelectedAgentId(null)}

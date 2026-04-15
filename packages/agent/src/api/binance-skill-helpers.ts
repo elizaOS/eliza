@@ -215,9 +215,13 @@ export async function executeFallbackParsedActions(
     ) {
       continue;
     }
+    // Prefer the built-in self-control actions for fallback execution.
+    // The runtime-registered wrappers can gate these too aggressively during
+    // early web-chat ownership bootstrap, while the built-in actions still
+    // enforce the actual self-control OWNER/ADMIN check.
     const action =
-      lookup.get(parsed.name) ??
-      (await resolveBuiltInFallbackAction(parsed.name));
+      (await resolveBuiltInFallbackAction(parsed.name)) ??
+      lookup.get(parsed.name);
     if (!action || typeof action.handler !== "function") continue;
 
     if (typeof action.validate === "function") {
@@ -271,10 +275,14 @@ export async function executeFallbackParsedActions(
             ? actionResult.text
             : ""
           : "";
+      const currentTextLooksLikeCompletedWebsiteBlock =
+        /\b(started|starting|blocked|blocking now|website block is active|block is active)\b/i.test(
+          currentText,
+        );
       const shouldSuppressSuccessFallbackText =
         parsed.name === "BLOCK_WEBSITES" &&
         actionSucceeded === true &&
-        /\b(block|blocking|self ?control)\b/i.test(currentText);
+        currentTextLooksLikeCompletedWebsiteBlock;
       if (fallbackText) {
         onActionCallback(parsed.name, !shouldSuppressSuccessFallbackText);
         if (!shouldSuppressSuccessFallbackText) {

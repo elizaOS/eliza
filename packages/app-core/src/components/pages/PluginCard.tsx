@@ -298,7 +298,7 @@ export function PluginCard({
           ))}
         </div>
       )}
-      <div className="mt-auto flex items-center gap-3 border-t border-border/40 bg-card/55 px-4 py-3">
+      <div className="mt-auto flex items-center gap-3 bg-card/55 px-4 py-3">
         {hasParams && !isShowcase ? (
           <>
             <span

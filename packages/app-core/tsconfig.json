@@ -6,7 +6,16 @@
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["node", "bun", "vite/client"],
+    "types": ["node", "bun-types"],
+    "typeRoots": [
+      "./node_modules/@types",
+      "../../node_modules/@types",
+      "../../../node_modules/@types",
+      "../../../node_modules/.bun/node_modules/@types",
+      "../../node_modules",
+      "../../../node_modules",
+      "../../../node_modules/.bun/node_modules"
+    ],
     "allowImportingTsExtensions": true,
     "declaration": false,
     "noEmit": true,
@@ -14,12 +23,14 @@
     "paths": {
       "@elizaos/app-lifeops": ["./apps/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["./apps/app-lifeops/src/*"],
-      "@elizaos/app-coding": ["./apps/app-coding/src/index.ts"],
-      "@elizaos/app-coding/*": ["./apps/app-coding/src/*"],
+      "@elizaos/app-task-coordinator": ["./apps/app-task-coordinator/src/index.ts"],
+      "@elizaos/app-task-coordinator/*": ["./apps/app-task-coordinator/src/*"],
       "@elizaos/app-steward": ["./apps/app-steward/src/index.ts"],
       "@elizaos/app-steward/*": ["./apps/app-steward/src/*"],
       "@elizaos/app-shopify": ["./apps/app-shopify/src/index.ts"],
       "@elizaos/app-shopify/*": ["./apps/app-shopify/src/*"],
+      "@elizaos/app-training": ["./apps/app-training/src/index.ts"],
+      "@elizaos/app-training/*": ["./apps/app-training/src/*"],
       "@elizaos/app-vincent": ["./apps/app-vincent/src/index.ts"],
       "@elizaos/app-vincent/*": ["./apps/app-vincent/src/*"],
       "@elizaos/plugin-lifeops-browser": [
@@ -69,6 +80,7 @@
   "include": [
     "src",
     "../agent/src/external-modules.d.ts",
-    "../../apps/app-companion/src"
+    "../../apps/app-companion/src",
+    "vite-env.d.ts"
   ]
 }
