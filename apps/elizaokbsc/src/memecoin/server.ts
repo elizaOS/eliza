@@ -6024,6 +6024,7 @@ function renderHtml(
     @media (max-width: 860px) {
       .sidebar { display: none; }
       .mobile-agent-banner { display: flex !important; }
+      .mobile-cloud-strip { display: flex !important; }
       .panel-row--3 { grid-template-columns: 1fr; }
       .panel-row--2 { grid-template-columns: 1fr; }
       .panel-row--2-3 { grid-template-columns: 1fr; }
@@ -6077,7 +6078,29 @@ function renderHtml(
     .ss-chip strong { color: var(--white); font-weight: 600; font-size: 0.6rem; }
     .ss-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
     .ss-label { letter-spacing: .06em; text-transform: uppercase; font-weight: 500; }
-    @media (max-width: 640px) { .status-strip { gap: 4px; padding: 6px 8px; } .ss-chip { padding: 4px 8px; font-size: 0.52rem; } .ss-chip strong { font-size: 0.52rem; } }
+    .mobile-cloud-strip {
+      display: none; align-items: center; gap: 8px;
+      padding: 8px 14px; background: rgba(0,199,210,.04);
+      border-bottom: 1px solid rgba(0,199,210,.12);
+      font-size: 11px; color: var(--dim);
+    }
+    .mobile-cloud-strip__btn {
+      margin-left: auto; padding: 4px 12px; border-radius: 14px;
+      background: rgba(0,199,210,.1); border: 1px solid rgba(0,199,210,.25);
+      color: #00C7D2; font-size: 10px; font-weight: 600; text-decoration: none;
+      letter-spacing: .04em;
+    }
+    @media (max-width: 640px) {
+      .status-strip { gap: 3px; padding: 6px 8px; flex-wrap: wrap; }
+      .ss-chip { padding: 3px 7px; font-size: 0.5rem; border-radius: 14px; }
+      .ss-chip strong { font-size: 0.5rem; }
+      .ss-label { display: none; }
+      .ss-dot { width: 5px; height: 5px; }
+    }
+    @media (min-width: 641px) and (max-width: 860px) {
+      .status-strip { gap: 5px; }
+      .ss-chip { font-size: 0.55rem; }
+    }
 
     /* ─── MOBILE ────────────────────────────── */
     @media (max-width: 640px) {
@@ -6111,8 +6134,17 @@ function renderHtml(
       .sched-row { font-size: 0.72rem; flex-wrap: wrap; gap: 2px; }
       .cand-row { font-size: 0.7rem; flex-wrap: wrap; gap: 4px; }
       .cand-row__meta { width: 100%; text-align: left; }
-      .term-body { max-height: 160px; font-size: 0.68rem; }
+      .term-body { max-height: 180px; font-size: 0.62rem; overflow-x: auto; }
+      .term-line .msg { word-break: break-all; }
+      .prompt-line { font-size: 0.6rem; }
+      .te-grid { grid-template-columns: repeat(3, 1fr); gap: 4px; }
+      .te-tile { padding: 6px 4px; }
+      .te-tile__name { font-size: 0.55rem; }
+      .te-tile__score { font-size: 0.7rem; }
       .np-footer { flex-wrap: wrap; gap: 4px; font-size: 0.44rem; }
+      .cloud-card__img { height: 50px; }
+      .cloud-card__feat { font-size: 0.52rem; }
+      .cloud-card__btn { font-size: 0.52rem; padding: 5px 8px; }
     }
 
     @media (max-width: 400px) {
@@ -6123,9 +6155,12 @@ function renderHtml(
       .panel-row { gap: 6px; margin-bottom: 6px; }
       .panel__head { padding: 7px 8px; }
       .panel__body { padding: 8px; }
-      .metric-grid { grid-template-columns: 1fr; }
-      .mon-label { font-size: 0.65rem; }
-      .sched-row { font-size: 0.65rem; }
+      .metric-grid { grid-template-columns: 1fr 1fr; }
+      .te-grid { grid-template-columns: repeat(3, 1fr); }
+      .term-body { max-height: 150px; font-size: 0.58rem; }
+      .term-line .tag { font-size: 0.48rem; padding: 1px 3px; }
+      .ss-chip { padding: 2px 6px; font-size: 0.46rem; }
+      .ss-chip strong { font-size: 0.46rem; }
     }
 
     /* ─── Extra mobile polish ───────────────── */
@@ -6135,10 +6170,18 @@ function renderHtml(
       .panel-accord__body { padding: 8px; }
       .status-row { font-size: 0.68rem; flex-wrap: wrap; }
       .status-row span { width: 100%; font-size: 0.6rem; }
-      .candidate-stats { grid-template-columns: 1fr 1fr; }
+      .candidate-stats { grid-template-columns: 1fr 1fr; gap: 4px; }
+      .candidate-card { padding: 10px; }
       .candidate-card h3 { font-size: 0.72rem; }
+      .candidate-card__meta { gap: 4px; }
+      .candidate-subtitle { font-size: 0.55rem; }
+      .candidate-rank { font-size: 0.6rem; min-width: 18px; }
+      .pill { font-size: 0.5rem; padding: 2px 6px; }
       #notif-toast-area { max-width: 220px; right: 6px; top: 6px; }
       .nt-body strong { font-size: 9px; }
+      .aside-block { padding: 8px; }
+      .aside-title { font-size: 0.6rem; }
+      .evt-timeline { max-height: 120px; }
       .nt-detail { font-size: 8px; }
       .nt-toast { padding: 5px 8px; gap: 4px; }
       .nt-icon { font-size: 11px; }
@@ -6268,6 +6311,11 @@ function renderHtml(
         <div class="mobile-agent-banner__name">elizaOK</div>
         <div class="mobile-agent-banner__role">Value Layer · BNB Chain</div>
       </div>
+    </div>
+    <!-- Mobile ElizaCloud strip (visible < 860px when sidebar hidden) -->
+    <div class="mobile-cloud-strip">
+      <span>&#x2601;&#xFE0F; ElizaCloud</span>
+      <a class="mobile-cloud-strip__btn" href="#" id="mobile-cloud-btn">Connect &rarr;</a>
     </div>
 
     <div class="content-area">
@@ -6643,6 +6691,8 @@ function renderHtml(
     }
     var scb=document.getElementById('sidebar-cloud-btn');
     if(scb){scb.addEventListener('click',function(e){e.preventDefault();openCloudAuth(this);});}
+    var mcb=document.getElementById('mobile-cloud-btn');
+    if(mcb){mcb.addEventListener('click',function(e){e.preventDefault();openCloudAuth(this);});}
 
     /* ── Clock ── */
     function updateTime() {
