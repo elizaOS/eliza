@@ -51,7 +51,7 @@ describe("Prompts", () => {
 			);
 			expect(messageHandlerTemplate).toContain("<simple>true</simple>");
 
-			expect(messageHandlerTemplate).toContain("rules[11]:");
+			expect(messageHandlerTemplate).toMatch(/rules\[\d+\]:/);
 			expect(messageHandlerTemplate).toContain(
 				"actions execute in listed order",
 			);

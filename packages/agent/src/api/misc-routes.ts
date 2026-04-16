@@ -4,7 +4,7 @@ import {
   EMOTE_BY_ID,
   EMOTE_CATALOG,
 } from "@elizaos/app-companion/emotes/catalog";
-import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
+import { type AgentRuntime, logger, ModelType, type UUID } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import type {

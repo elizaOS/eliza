@@ -42,6 +42,12 @@ export interface LLMCall {
 	actionType?: string;
 	stepType?: string;
 	tags?: string[];
+
+	modelSlot?: string;
+	runId?: string;
+	roomId?: string;
+	messageId?: string;
+	executionTraceId?: string;
 }
 
 export interface ProviderAccess {
@@ -57,6 +63,11 @@ export interface ProviderAccess {
 
 	// Context
 	purpose: string;
+
+	runId?: string;
+	roomId?: string;
+	messageId?: string;
+	executionTraceId?: string;
 }
 
 export interface ActionAttempt {

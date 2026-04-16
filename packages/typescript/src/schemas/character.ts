@@ -1,4 +1,4 @@
-import { z } from "zod";
+import z from "zod";
 import type { Character } from "../types/agent";
 import { ChannelType, ContentType } from "../types/primitives";
 import type { JsonValue } from "../types/proto";

@@ -5,6 +5,6 @@
   "private": true,
   "description": "ElizaOS documentation",
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "bun test ./test"
   }
 }
