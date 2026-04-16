@@ -909,13 +909,12 @@ export async function resolvePlugins(
         // under eliza-dist/plugins/* or from packaged node_modules.
         mod = await importOfficialPluginFromNodeModules();
       } else {
-        // Built-in/npm plugin — try bundled static import first, then
-        // fall back to bare node_modules resolution.
-        const staticMod = isOfficialElizaPlugin
-          ? await resolveStaticElizaPlugin(pluginName)
-          : null;
-        mod = staticMod
-          ? (staticMod as PluginModuleShape)
+        // Built-in/npm plugin — prefer a bundled static import regardless of
+        // naming convention (short-name plugins like "agent-orchestrator" are
+        // registered in STATIC_ELIZA_PLUGINS and would otherwise fail a bare
+        // node_modules resolution).
+        mod = staticElizaPlugin
+          ? (staticElizaPlugin as PluginModuleShape)
           : ((await import(pluginName)) as PluginModuleShape);
       }
 

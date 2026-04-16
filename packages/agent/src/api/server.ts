@@ -343,9 +343,12 @@ import {
 } from "./plugin-discovery-helpers.js";
 
 const nodeRequire = createRequire(import.meta.url);
+// Dynamic import (not require) because the plugin is ESM-only and bun's
+// createRequire cannot load ESM packages. Top-level await is settled before
+// any consumer reads the binding.
 let agentOrchestratorCompat: unknown = null;
 try {
-  agentOrchestratorCompat = nodeRequire("@elizaos/plugin-agent-orchestrator");
+  agentOrchestratorCompat = await import("@elizaos/plugin-agent-orchestrator");
 } catch {
   agentOrchestratorCompat = null;
 }
@@ -1378,7 +1381,6 @@ function getCoordinatorFromRuntime(runtime: AgentRuntime): {
   getTaskThread?: (
     threadId: string,
   ) => Promise<{ roomId?: string | null } | null>;
-  sourceRoomId?: string | null;
 } | null {
   const coordinator = runtime.getService("SWARM_COORDINATOR");
   if (coordinator) {
@@ -1465,17 +1467,26 @@ function wireCodingAgentWsBridge(st: ServerState): boolean {
  * persisted message in the conversation.
  */
 function wireCodingAgentSwarmSynthesis(st: ServerState): boolean {
-  // Same rationale as wireCodingAgentChatBridge: synthesis is generated
-  // from task metadata (originalTask = user's text), not from the
-  // subagent's actual output. The task-progress-streamer + jsonl watcher
-  // deliver the real answer. Install a no-op callback so the upstream
-  // wiring check considers this bridge wired.
+  // The task-progress-streamer was removed from this tree but the callback
+  // was left as a no-op, so subagent completions never reached the user.
+  // Invoke handleSwarmSynthesis directly so the synthesis LLM routes the
+  // final answer back to the conversation. The task jsonl is already the
+  // source of truth for per-task completionSummary.
   if (!st.runtime) return false;
   const coordinator = getCoordinatorFromRuntime(st.runtime);
   if (!coordinator?.setSwarmCompleteCallback) return false;
-  coordinator.setSwarmCompleteCallback(async () => {
-    // Deliberately no-op — synthesis happens via the streamer instead.
+  coordinator.setSwarmCompleteCallback(async (payload) => {
+    await handleSwarmSynthesis(st, payload);
   });
+  // Same wiring path — install the task heartbeat so sessions running past
+  // 45s emit periodic "still working" pings that report the subagent's
+  // current tool activity. Synthesis delivers the final answer; heartbeat
+  // just tells the user the task is alive and moving.
+  const ptyService = st.runtime.getService("PTY_SERVICE");
+  if (ptyService) {
+    installTaskHeartbeat(st.runtime, ptyService);
+    logger.info("[task-heartbeat] installed");
+  }
   return true;
 }
 
@@ -1497,6 +1508,8 @@ export async function handleSwarmSynthesis(
       originalTask: string;
       status: string;
       completionSummary: string;
+      workdir?: string;
+      roomId?: string;
     }>;
     total: number;
     completed: number;
@@ -1518,10 +1531,19 @@ export async function handleSwarmSynthesis(
     `[swarm-synthesis] Generating synthesis for ${payload.total} tasks (${payload.completed} completed, ${payload.stopped} stopped, ${payload.errored} errored)`,
   );
 
-  const resultText = await buildSynthesisResultText(payload);
-  logger.info("[swarm-synthesis] Synthesis generated, routing to user");
-  await routeMessage(resultText, "swarm_synthesis");
-  await routeSynthesisToConnector(runtime, resultText);
+  const resultText = await buildSynthesisResultText(payload, runtime);
+  logger.info(
+    `[swarm-synthesis] Synthesis generated (${resultText.length} chars), routing to user — preview: ${resultText.slice(0, 200).replace(/\n/g, " | ")}`,
+  );
+  // Route back to the originating chat channel via the roomId captured on
+  // the incoming user message (propagated through the task payload).
+  const roomId = payload.tasks.find((t) => t.roomId)?.roomId ?? null;
+  // Discord's per-message limit is 2000 chars. Deliver long answers as
+  // sequential chunks so the subagent's full output reaches the user.
+  for (const chunk of chunkForDiscord(resultText, 1900)) {
+    await routeMessage(chunk, "swarm_synthesis");
+    await routeSynthesisToConnector(runtime, chunk, roomId);
+  }
 }
 
 /**
@@ -1529,24 +1551,42 @@ export async function handleSwarmSynthesis(
  * For port-bound tasks, verifies the server is actually listening.
  * No LLM call required — task data already has what we need.
  */
-async function buildSynthesisResultText(payload: {
-  tasks: Array<{
-    originalTask: string;
-    completionSummary: string;
-    status: string;
-  }>;
-  total: number;
-}): Promise<string> {
-  const parts = await Promise.all(payload.tasks.map(buildTaskResultLine));
-  return parts.length === 1
-    ? `done — ${parts[0]}`
-    : `done — ${payload.total} tasks:\n${parts.map((p) => `• ${p}`).join("\n")}`;
-}
-
-async function buildTaskResultLine(task: {
+type SynthesisTask = {
+  sessionId: string;
   originalTask: string;
   completionSummary: string;
-}): Promise<string> {
+  status: string;
+  workdir?: string;
+};
+
+async function buildSynthesisResultText(
+  payload: { tasks: SynthesisTask[]; total: number },
+  runtime: AgentRuntime,
+): Promise<string> {
+  const parts = await Promise.all(
+    payload.tasks.map((task) => buildTaskLine(task, runtime)),
+  );
+  if (parts.length === 1) return parts[0];
+  return `done — ${parts.length} tasks:\n${parts.map((p) => `• ${p}`).join("\n")}`;
+}
+
+/**
+ * Deliver the subagent's actual final answer — the last end_turn assistant
+ * text from its session jsonl. Trust the agent to already have produced
+ * a coherent response; synthesis does not rewrite or trim it. Falls back
+ * to completionSummary, then a port-status check, then the original
+ * prompt text when no jsonl is available.
+ */
+async function buildTaskLine(
+  task: SynthesisTask,
+  runtime: AgentRuntime,
+): Promise<string> {
+  const workdir =
+    task.workdir ?? resolveSessionWorkdir(runtime, task.sessionId);
+  if (workdir) {
+    const assistantText = await readLastAssistantTextFromJsonl(workdir);
+    if (assistantText) return assistantText;
+  }
   if (task.completionSummary) return task.completionSummary;
   const portMatch = task.originalTask.match(/port\s+(\d+)/i);
   const port = portMatch?.[1];
@@ -1556,6 +1596,16 @@ async function buildTaskResultLine(task: {
     return `built and serving at http://${host}:${port}`;
   }
   return `built the files but server isn't running on port ${port} yet`;
+}
+
+function resolveSessionWorkdir(
+  runtime: AgentRuntime,
+  sessionId: string,
+): string | null {
+  const ptyService = runtime.getService("PTY_SERVICE") as
+    | { getSession?: (id: string) => { workdir?: string } | undefined }
+    | null;
+  return ptyService?.getSession?.(sessionId)?.workdir ?? null;
 }
 
 async function isPortServing(port: string): Promise<boolean> {
@@ -1577,13 +1627,22 @@ async function isPortServing(port: string): Promise<boolean> {
 async function routeSynthesisToConnector(
   runtime: AgentRuntime,
   resultText: string,
+  roomId: string | null,
 ): Promise<void> {
-  const coordinator = getCoordinatorFromRuntime(runtime);
-  const sourceRoomId = coordinator?.sourceRoomId;
-  if (!sourceRoomId) return;
+  if (!roomId) {
+    logger.debug(
+      "[swarm-synthesis] No roomId available — cannot route to connector",
+    );
+    return;
+  }
   try {
-    const room = await runtime.getRoom(sourceRoomId as UUID);
-    if (!room?.source) return;
+    const room = await runtime.getRoom(roomId as UUID);
+    if (!room?.source) {
+      logger.debug(
+        `[swarm-synthesis] Room ${roomId} has no source connector — cannot route`,
+      );
+      return;
+    }
     await runtime.sendMessageToTarget(
       {
         source: room.source,
@@ -1597,7 +1656,7 @@ async function routeSynthesisToConnector(
       `[swarm-synthesis] Routed result to ${room.source} room ${room.id}`,
     );
   } catch (err) {
-    logger.debug(`[swarm-synthesis] Connector routing failed: ${err}`);
+    logger.warn(`[swarm-synthesis] Connector routing failed: ${err}`);
   }
 }
 
@@ -1606,6 +1665,11 @@ import {
   parseActionBlock,
   stripActionBlockFromDisplay,
 } from "./parse-action-block.js";
+import {
+  chunkForDiscord,
+  readLastAssistantTextFromJsonl,
+} from "../runtime/subagent-output.js";
+import { installTaskHeartbeat } from "../runtime/task-heartbeat.js";
 
 // ── Coordinator Event Routing ───────────────────────────────────────────
 
