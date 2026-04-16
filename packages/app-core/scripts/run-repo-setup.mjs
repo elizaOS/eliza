@@ -19,6 +19,7 @@ export const repoSetupSteps = [
   "ensure-type-package-aliases.mjs",
   "scripts/setup-upstreams.mjs",
   "ensure-bundled-workspaces.mjs",
+  "ensure-shared-i18n-data.mjs",
   "ensure-skills.mjs",
   "scripts/sync-workspace-default-skills.mjs",
   "ensure-avatars.mjs",
