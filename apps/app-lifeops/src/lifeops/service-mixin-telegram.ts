@@ -23,6 +23,7 @@ import {
   cancelTelegramAuth,
   deleteStoredTelegramToken,
   findPendingTelegramAuthSession,
+  hasManagedTelegramCredentials,
   readStoredTelegramToken,
   startTelegramAuth as startTelegramAuthFlow,
   submitTelegramAuthCode,
@@ -42,7 +43,9 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
         this.agentId(),
         "telegram",
         "local",
+        side,
       );
+      const pendingSession = findPendingTelegramAuthSession(this.agentId(), side);
 
       const tokenRef = grant?.tokenRef ?? null;
       const storedToken = tokenRef
@@ -61,9 +64,11 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
         connected,
         reason: connected
           ? "connected"
-          : grant
-            ? "auth_expired"
-            : "disconnected",
+          : pendingSession && pendingSession.state !== "error"
+            ? "auth_pending"
+            : grant
+              ? "auth_expired"
+              : "disconnected",
         identity:
           storedToken?.identity &&
           Object.keys(storedToken.identity).length > 0 &&
@@ -74,6 +79,18 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
               ? (grant.identity as LifeOpsTelegramConnectorStatus["identity"])
               : null,
         grantedCapabilities: capabilities,
+        authState: connected
+          ? "connected"
+          : pendingSession?.state ?? "idle",
+        authError: pendingSession?.error ?? null,
+        phone:
+          pendingSession?.phone ??
+          storedToken?.phone ??
+          (typeof grant?.metadata.phone === "string" ? grant.metadata.phone : null),
+        managedCredentialsAvailable: hasManagedTelegramCredentials(),
+        storedCredentialsAvailable: Boolean(
+          storedToken?.apiId && storedToken?.apiHash,
+        ),
         grant: grant ?? null,
       };
     }
@@ -166,6 +183,7 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
         this.agentId(),
         "telegram",
         "local",
+        side,
       );
 
       if (grant?.tokenRef) {
@@ -177,6 +195,7 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
           this.agentId(),
           "telegram",
           "local",
+          side,
         );
       }
 
@@ -194,6 +213,11 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
         reason: "disconnected",
         identity: null,
         grantedCapabilities: [],
+        authState: "idle",
+        authError: null,
+        phone: null,
+        managedCredentialsAvailable: hasManagedTelegramCredentials(),
+        storedCredentialsAvailable: false,
         grant: null,
       };
     }
@@ -219,6 +243,7 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
         this.agentId(),
         "telegram",
         "local",
+        side,
       );
 
       const capabilities: LifeOpsTelegramCapability[] = [

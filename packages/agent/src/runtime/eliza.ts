@@ -108,7 +108,7 @@ import {
   collectConnectorEnvVars,
 } from "../config/env-vars.js";
 import { resolveStateDir, resolveUserPath } from "../config/paths.js";
-import { resolveServerOnlyPort } from "../config/runtime-env.js";
+import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
 import {
   createHookEvent,
   type LoadHooksOptions,
@@ -121,7 +121,7 @@ import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
-} from "../onboarding-presets.js";
+} from "@elizaos/shared/onboarding-presets";
 import {
   ensureAgentWorkspace,
   resolveDefaultAgentWorkspaceDir,

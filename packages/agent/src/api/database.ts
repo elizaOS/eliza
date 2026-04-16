@@ -19,7 +19,7 @@ import net from "node:net";
 import { promisify } from "node:util";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
-import { resolveApiBindHost } from "../config/runtime-env.js";
+import { resolveApiBindHost } from "@elizaos/shared/runtime-env";
 import type {
   DatabaseConfig,
   DatabaseProviderType,

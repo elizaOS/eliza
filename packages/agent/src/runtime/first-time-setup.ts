@@ -28,7 +28,7 @@ import {
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
 } from "../contracts/service-routing.js";
-import { getStylePresets } from "../onboarding-presets.js";
+import { getStylePresets } from "@elizaos/shared/onboarding-presets";
 import { pickRandomNames } from "./onboarding-names.js";
 
 // ---------------------------------------------------------------------------

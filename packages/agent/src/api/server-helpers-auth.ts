@@ -14,7 +14,7 @@ import {
   resolveApiToken,
   setApiToken,
   stripOptionalHostPort,
-} from "../config/runtime-env.js";
+} from "@elizaos/shared/runtime-env";
 import { sweepExpiredEntries } from "./memory-bounds.js";
 
 // ---------------------------------------------------------------------------

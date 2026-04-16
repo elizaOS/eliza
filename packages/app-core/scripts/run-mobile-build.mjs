@@ -190,6 +190,10 @@ function withPrependedPath(env, entries) {
 }
 
 async function buildSharedApp() {
+  if (process.env.ELIZA_SKIP_WEB_BUILD === "1") {
+    console.log("[mobile-build] Skipping web build (ELIZA_SKIP_WEB_BUILD=1).");
+    return;
+  }
   await run("bun", ["scripts/build.mjs"], { cwd: appDir });
 }
 

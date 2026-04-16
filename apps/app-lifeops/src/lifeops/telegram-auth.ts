@@ -110,6 +110,12 @@ function resolveApiHash(
   return null;
 }
 
+export function hasManagedTelegramCredentials(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return resolveApiId(undefined, env) !== null && resolveApiHash(undefined, env) !== null;
+}
+
 // ---------------------------------------------------------------------------
 // Storage helpers
 // ---------------------------------------------------------------------------

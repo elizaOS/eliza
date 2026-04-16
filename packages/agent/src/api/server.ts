@@ -77,7 +77,7 @@ import {
   resolveServerOnlyPort,
   setApiToken,
   stripOptionalHostPort,
-} from "../config/runtime-env.js";
+} from "@elizaos/shared/runtime-env";
 import {
   ONBOARDING_CLOUD_PROVIDER_OPTIONS,
   ONBOARDING_PROVIDER_CATALOG,
@@ -887,7 +887,7 @@ import {
   getStylePresets,
   normalizeCharacterLanguage,
   resolveStylePresetByAvatarIndex,
-} from "../onboarding-presets.js";
+} from "@elizaos/shared/onboarding-presets";
 import { pickRandomNames } from "../runtime/onboarding-names.js";
 
 import {

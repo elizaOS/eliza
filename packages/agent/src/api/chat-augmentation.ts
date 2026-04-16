@@ -16,7 +16,7 @@ import {
   type Media,
   type UUID,
 } from "@elizaos/core";
-import { normalizeCharacterLanguage } from "../onboarding-presets.js";
+import { normalizeCharacterLanguage } from "@elizaos/shared/onboarding-presets";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { extractCompatTextContent } from "./compat-utils.js";

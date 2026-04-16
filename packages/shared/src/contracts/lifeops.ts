@@ -1451,13 +1451,16 @@ export interface LifeOpsSignalConnectorStatus {
   reason: LifeOpsMessagingConnectorReason;
   identity: { phoneNumber?: string; uuid?: string; deviceName?: string } | null;
   grantedCapabilities: LifeOpsSignalCapability[];
+  pairing: LifeOpsSignalPairingStatus | null;
   grant: LifeOpsConnectorGrant | null;
 }
 
 export interface LifeOpsDiscordConnectorStatus {
   provider: "discord";
   side: LifeOpsConnectorSide;
+  available: boolean;
   connected: boolean;
+  authenticated: boolean;
   reason: LifeOpsMessagingConnectorReason;
   identity: {
     id?: string;
@@ -1467,10 +1470,25 @@ export interface LifeOpsDiscordConnectorStatus {
   } | null;
   grantedCapabilities: LifeOpsDiscordCapability[];
   grantedScopes: string[];
+  configuredChannelIds: string[];
+  subscribedChannelIds: string[];
   expiresAt: string | null;
   hasRefreshToken: boolean;
+  lastError: string | null;
+  ipcPath: string | null;
   grant: LifeOpsConnectorGrant | null;
 }
+
+export const LIFEOPS_TELEGRAM_AUTH_STATES = [
+  "idle",
+  "waiting_for_provisioning_code",
+  "waiting_for_code",
+  "waiting_for_password",
+  "connected",
+  "error",
+] as const;
+export type LifeOpsTelegramAuthState =
+  (typeof LIFEOPS_TELEGRAM_AUTH_STATES)[number];
 
 export interface LifeOpsTelegramConnectorStatus {
   provider: "telegram";
@@ -1484,6 +1502,11 @@ export interface LifeOpsTelegramConnectorStatus {
     phone?: string;
   } | null;
   grantedCapabilities: LifeOpsTelegramCapability[];
+  authState: LifeOpsTelegramAuthState;
+  authError: string | null;
+  phone: string | null;
+  managedCredentialsAvailable: boolean;
+  storedCredentialsAvailable: boolean;
   grant: LifeOpsConnectorGrant | null;
 }
 
@@ -1532,6 +1555,7 @@ export interface StartLifeOpsTelegramAuthResponse {
   provider: "telegram";
   side: LifeOpsConnectorSide;
   state:
+    | "waiting_for_provisioning_code"
     | "waiting_for_code"
     | "waiting_for_password"
     | "connected"

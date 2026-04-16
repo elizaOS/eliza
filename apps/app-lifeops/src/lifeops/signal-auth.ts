@@ -5,11 +5,12 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsSignalPairingStatus,
 } from "@elizaos/shared/contracts/lifeops";
+import {
+  SignalPairingSession,
+  type SignalPairingEvent,
+  type SignalPairingSnapshot,
+} from "@elizaos/agent/services/signal-pairing";
 import { resolveOAuthDir } from "@elizaos/agent/config/paths";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 export interface PendingSignalPairingSession {
   sessionId: string;
@@ -19,6 +20,8 @@ export interface PendingSignalPairingSession {
   state: LifeOpsSignalPairingStatus["state"];
   qrDataUrl: string | null;
   error: string | null;
+  phoneNumber: string | null;
+  uuid: string | null;
   createdAt: string;
 }
 
@@ -29,24 +32,14 @@ export interface SignalLinkedDeviceInfo {
   deviceName: string;
 }
 
-// ---------------------------------------------------------------------------
-// In-memory session store
-// ---------------------------------------------------------------------------
+interface ManagedSignalPairingSession extends PendingSignalPairingSession {
+  pairingSession: SignalPairingSession;
+}
 
-const pendingSignalPairingSessions = new Map<
-  string,
-  PendingSignalPairingSession
->();
-
+const pendingSignalPairingSessions = new Map<string, ManagedSignalPairingSession>();
 const SIGNAL_PAIRING_SESSION_TTL_MS = 10 * 60 * 1000;
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function signalStorageRoot(
-  env: NodeJS.ProcessEnv = process.env,
-): string {
+function signalStorageRoot(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(resolveOAuthDir(env), "lifeops", "signal");
 }
 
@@ -69,14 +62,111 @@ function cleanupExpiredSessions(): void {
       now - new Date(session.createdAt).getTime() >
       SIGNAL_PAIRING_SESSION_TTL_MS
     ) {
+      session.pairingSession.stop();
       pendingSignalPairingSessions.delete(sessionId);
     }
   }
 }
 
-// ---------------------------------------------------------------------------
-// Pairing lifecycle
-// ---------------------------------------------------------------------------
+function sessionForSide(
+  agentId: string,
+  side: LifeOpsConnectorSide,
+): ManagedSignalPairingSession | null {
+  cleanupExpiredSessions();
+  for (const session of pendingSignalPairingSessions.values()) {
+    if (session.agentId === agentId && session.side === side) {
+      return session;
+    }
+  }
+  return null;
+}
+
+function toLifeOpsPairingState(
+  snapshot: SignalPairingSnapshot,
+): LifeOpsSignalPairingStatus["state"] {
+  switch (snapshot.status) {
+    case "initializing":
+      return "generating_qr";
+    case "waiting_for_qr":
+      return "waiting_for_scan";
+    case "connected":
+      return "connected";
+    case "idle":
+    case "disconnected":
+      return "idle";
+    case "timeout":
+    case "error":
+      return "failed";
+    default:
+      return "failed";
+  }
+}
+
+function toPairingStatus(
+  session: PendingSignalPairingSession,
+): LifeOpsSignalPairingStatus {
+  return {
+    sessionId: session.sessionId,
+    state: session.state,
+    qrDataUrl: session.qrDataUrl,
+    error: session.error,
+  };
+}
+
+function writeDeviceInfo(session: ManagedSignalPairingSession): void {
+  if (!session.phoneNumber) {
+    return;
+  }
+  const info: SignalLinkedDeviceInfo = {
+    authDir: session.authDir,
+    phoneNumber: session.phoneNumber,
+    uuid: session.uuid ?? "",
+    deviceName: "Eliza Mac",
+  };
+  fs.mkdirSync(session.authDir, { recursive: true });
+  fs.writeFileSync(credentialFilePath(session.authDir), JSON.stringify(info, null, 2), {
+    encoding: "utf-8",
+    mode: 0o600,
+  });
+}
+
+function applySnapshot(
+  session: ManagedSignalPairingSession,
+  snapshot: SignalPairingSnapshot,
+): void {
+  session.state = toLifeOpsPairingState(snapshot);
+  session.qrDataUrl = snapshot.qrDataUrl;
+  session.error = snapshot.error;
+}
+
+function applyEvent(
+  session: ManagedSignalPairingSession,
+  event: SignalPairingEvent,
+): void {
+  const snapshot = session.pairingSession.getSnapshot();
+  applySnapshot(session, snapshot);
+
+  if (typeof event.phoneNumber === "string" && event.phoneNumber.trim().length > 0) {
+    session.phoneNumber = event.phoneNumber.trim();
+  }
+  if (typeof event.uuid === "string" && event.uuid.trim().length > 0) {
+    session.uuid = event.uuid.trim();
+  }
+
+  if (event.type === "signal-qr" && event.qrDataUrl) {
+    session.qrDataUrl = event.qrDataUrl;
+    session.state = "waiting_for_scan";
+    session.error = null;
+  }
+
+  if (event.type === "signal-status" && event.error) {
+    session.error = event.error;
+  }
+
+  if (session.state === "connected") {
+    writeDeviceInfo(session);
+  }
+}
 
 export function startSignalPairing(
   agentId: string,
@@ -84,12 +174,18 @@ export function startSignalPairing(
 ): PendingSignalPairingSession {
   cleanupExpiredSessions();
 
+  const existing = sessionForSide(agentId, side);
+  if (existing) {
+    existing.pairingSession.stop();
+    pendingSignalPairingSessions.delete(existing.sessionId);
+  }
+
   const sessionId = crypto.randomUUID();
   const authDir = signalAuthDir(agentId, side);
 
   fs.mkdirSync(authDir, { recursive: true });
 
-  const session: PendingSignalPairingSession = {
+  const managedSession: ManagedSignalPairingSession = {
     sessionId,
     agentId,
     side,
@@ -97,27 +193,28 @@ export function startSignalPairing(
     state: "generating_qr",
     qrDataUrl: null,
     error: null,
+    phoneNumber: null,
+    uuid: null,
     createdAt: new Date().toISOString(),
+    pairingSession: new SignalPairingSession({
+      authDir,
+      accountId: `${agentId}:${side}`,
+      onEvent: (event) => {
+        applyEvent(managedSession, event);
+      },
+    }),
   };
 
-  pendingSignalPairingSessions.set(sessionId, session);
+  pendingSignalPairingSessions.set(sessionId, managedSession);
 
-  // TODO: Spawn the actual Signal linked-device pairing process.
-  //
-  // Check for @nicovlabs/signal-native availability first; fall back to
-  // signal-cli binary if present. The pairing flow should:
-  //   1. Generate a provisioning URL and encode it as a QR data URL.
-  //   2. Update `session.state` to "waiting_for_scan" and set `qrDataUrl`.
-  //   3. Wait for the user to scan the QR code on their phone.
-  //   4. Transition to "linking" while the device registration completes.
-  //   5. On success: write device-info.json, set state to "connected".
-  //   6. On failure: set state to "failed" with an error message.
-  //
-  // For now, transition to "waiting_for_scan" with a placeholder so that
-  // the auth flow skeleton and grant management are exercisable.
-  session.state = "waiting_for_scan";
+  void managedSession.pairingSession.start().catch((error) => {
+    managedSession.state = "failed";
+    managedSession.error =
+      error instanceof Error ? error.message : String(error);
+    managedSession.qrDataUrl = null;
+  });
 
-  return session;
+  return managedSession;
 }
 
 export function getSignalPairingStatus(
@@ -135,24 +232,33 @@ export function getSignalPairingStatus(
     };
   }
 
-  return {
-    sessionId: session.sessionId,
-    state: session.state,
-    qrDataUrl: session.qrDataUrl,
-    error: session.error,
-  };
+  applySnapshot(session, session.pairingSession.getSnapshot());
+  return toPairingStatus(session);
 }
 
-export function cancelSignalPairing(sessionId: string): void {
-  const session = pendingSignalPairingSessions.get(sessionId);
-  if (session) {
-    pendingSignalPairingSessions.delete(sessionId);
+export function getSignalPairingStatusForSide(
+  agentId: string,
+  side: LifeOpsConnectorSide,
+): LifeOpsSignalPairingStatus | null {
+  const session = sessionForSide(agentId, side);
+  if (!session) {
+    return null;
   }
+  applySnapshot(session, session.pairingSession.getSnapshot());
+  return toPairingStatus(session);
 }
 
-// ---------------------------------------------------------------------------
-// Credential management
-// ---------------------------------------------------------------------------
+export function stopSignalPairing(
+  agentId: string,
+  side: LifeOpsConnectorSide,
+): void {
+  const session = sessionForSide(agentId, side);
+  if (!session) {
+    return;
+  }
+  session.pairingSession.stop();
+  pendingSignalPairingSessions.delete(session.sessionId);
+}
 
 export function readSignalLinkedDeviceInfo(
   tokenRef: string,
@@ -163,10 +269,15 @@ export function readSignalLinkedDeviceInfo(
   }
   const raw = fs.readFileSync(filePath, "utf-8");
   const parsed = JSON.parse(raw) as SignalLinkedDeviceInfo;
-  if (!parsed.authDir || !parsed.phoneNumber || !parsed.uuid) {
+  if (!parsed.authDir || !parsed.phoneNumber) {
     return null;
   }
-  return parsed;
+  return {
+    authDir: parsed.authDir,
+    phoneNumber: parsed.phoneNumber,
+    uuid: parsed.uuid ?? "",
+    deviceName: parsed.deviceName ?? "Eliza Mac",
+  };
 }
 
 export function deleteSignalLinkedDevice(tokenRef: string): void {

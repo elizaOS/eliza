@@ -18,6 +18,8 @@ import {
 import {
   startSignalPairing as startSignalPairingFlow,
   getSignalPairingStatus as getSignalPairingStatusFlow,
+  getSignalPairingStatusForSide,
+  stopSignalPairing as stopSignalPairingFlow,
   readSignalLinkedDeviceInfo,
   deleteSignalLinkedDevice,
 } from "./signal-auth.js";
@@ -35,7 +37,9 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
         this.agentId(),
         "signal",
         "local",
+        resolvedSide,
       );
+      const pairing = getSignalPairingStatusForSide(this.agentId(), resolvedSide);
 
       let connected = false;
       let reason: LifeOpsSignalConnectorStatus["reason"] = "disconnected";
@@ -51,9 +55,13 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
             uuid: deviceInfo.uuid,
             deviceName: deviceInfo.deviceName,
           };
+        } else if (pairing) {
+          reason = "pairing";
         } else {
           reason = "session_revoked";
         }
+      } else if (pairing) {
+        reason = "pairing";
       }
 
       const capabilities = (grant?.capabilities ?? []).filter(
@@ -68,6 +76,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
         reason,
         identity,
         grantedCapabilities: capabilities,
+        pairing,
         grant,
       };
     }
@@ -87,6 +96,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
         capabilities: [...LIFEOPS_SIGNAL_CAPABILITIES],
         tokenRef: session.authDir,
         mode: "local",
+        side: resolvedSide,
         metadata: {
           pairingSessionId: session.sessionId,
         },
@@ -110,6 +120,20 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
       return getSignalPairingStatusFlow(sessionId);
     }
 
+    stopSignalPairing(
+      side?: LifeOpsConnectorSide,
+    ): LifeOpsSignalPairingStatus {
+      const resolvedSide =
+        normalizeOptionalConnectorSide(side, "side") ?? "owner";
+      stopSignalPairingFlow(this.agentId(), resolvedSide);
+      return {
+        sessionId: "",
+        state: "idle",
+        qrDataUrl: null,
+        error: null,
+      };
+    }
+
     async disconnectSignal(
       side?: LifeOpsConnectorSide,
     ): Promise<LifeOpsSignalConnectorStatus> {
@@ -119,6 +143,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
         this.agentId(),
         "signal",
         "local",
+        resolvedSide,
       );
 
       if (grant) {
@@ -140,6 +165,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
         reason: "disconnected",
         identity: null,
         grantedCapabilities: [],
+        pairing: null,
         grant: null,
       };
     }

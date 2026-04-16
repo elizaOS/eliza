@@ -60,7 +60,7 @@ try {
 }
 
 import type { ElizaConfig } from "../config/config.js";
-import { normalizeCharacterLanguage } from "../onboarding-presets.js";
+import { normalizeCharacterLanguage } from "@elizaos/shared/onboarding-presets";
 import {
   resolveTrajectoryGrouping,
 } from "../runtime/trajectory-internals.js";

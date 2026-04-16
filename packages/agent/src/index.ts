@@ -44,4 +44,4 @@ export * from "./triggers/runtime.js";
 export * from "./triggers/scheduling.js";
 export * from "./triggers/types.js";
 export * from "./utils/number-parsing.js";
-export * from "./utils/spoken-text.js";
+export * from "@elizaos/shared/spoken-text";
