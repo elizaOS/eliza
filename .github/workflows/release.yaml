@@ -589,7 +589,14 @@ jobs:
           echo "✅ Workspace references replaced"
 
       # Publish to NPM (only after git operations succeed)
+      - name: Skip NPM publish on forks
+        if: github.repository != 'elizaOS/eliza'
+        run: |
+          echo "Skipping npm publish outside elizaOS/eliza."
+          echo "Fork workflows still validate the release build, but only the canonical upstream publishes packages."
+
       - name: Publish to NPM
+        if: github.repository == 'elizaOS/eliza'
         id: publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
