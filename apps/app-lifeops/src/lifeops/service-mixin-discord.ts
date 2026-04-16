@@ -34,12 +34,12 @@ interface DiscordLocalStatus {
   ipcPath?: string | null;
 }
 
-interface DiscordLocalGuild {
+export interface DiscordLocalGuild {
   id: string;
   name?: string;
 }
 
-interface DiscordLocalChannel {
+export interface DiscordLocalChannel {
   id: string;
   name?: string;
   type?: number;
@@ -50,7 +50,7 @@ interface DiscordLocalChannel {
   }>;
 }
 
-interface DiscordLocalServiceLike {
+export interface DiscordLocalServiceLike {
   getStatus(): DiscordLocalStatus;
   authorize(): Promise<DiscordLocalStatus>;
   disconnectSession(): Promise<void>;
