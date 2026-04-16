@@ -3,9 +3,13 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  canonicalKeyName,
   currentPlatform,
   escapeAppleScript,
   safeXdotoolKey,
+  toCliclickKeyName,
+  toWindowsSendKey,
+  toXdotoolKeyName,
   validateCoordinate,
   validateInt,
   validateKeypress,
@@ -31,9 +35,9 @@ describe("validateInt", () => {
     expect(() => validateInt("hello")).toThrow("Invalid numeric value");
   });
 
-  // null → Number(null) = 0, which is a valid coercion
-  it("coerces null to 0", () => {
-    expect(validateInt(null)).toBe(0);
+  it("rejects null and blank input", () => {
+    expect(() => validateInt(null)).toThrow("Invalid numeric value");
+    expect(() => validateInt("")).toThrow("Invalid numeric value");
   });
 });
 
@@ -108,6 +112,22 @@ describe("safeXdotoolKey", () => {
 
   it("rejects unknown multi-char keys", () => {
     expect(() => safeXdotoolKey("BADKEY")).toThrow("Invalid key for xdotool");
+  });
+});
+
+describe("key alias normalization", () => {
+  it("normalizes common special-key aliases", () => {
+    expect(canonicalKeyName("ESCAPE")).toBe("escape");
+    expect(canonicalKeyName("Return")).toBe("enter");
+    expect(canonicalKeyName("ArrowUp")).toBe("up");
+    expect(canonicalKeyName("Page_Down")).toBe("pagedown");
+  });
+
+  it("maps keys to platform-specific formats", () => {
+    expect(toCliclickKeyName("ESCAPE")).toBe("esc");
+    expect(toXdotoolKeyName("ESCAPE")).toBe("Escape");
+    expect(toWindowsSendKey("ESCAPE")).toBe("{ESC}");
+    expect(toWindowsSendKey("F5")).toBe("{F5}");
   });
 });
 
