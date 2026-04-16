@@ -157,7 +157,7 @@ export function StartupShell() {
   }
 
   return (
-    <div className="flex items-center justify-center h-full w-full bg-[#ffe600] text-black overflow-hidden">
+    <div data-testid="startup-shell-loading" data-startup-phase={phase} className="flex items-center justify-center h-full w-full bg-[#ffe600] text-black overflow-hidden">
       <img
         src={resolveAppAssetUrl("splash-bg.jpg")}
         alt=""
