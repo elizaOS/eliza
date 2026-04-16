@@ -3122,7 +3122,14 @@ async function handleRequest(
       auditEventTypes: AUDIT_EVENT_TYPES,
       auditSeverities: AUDIT_SEVERITIES,
       getAuditFeedSize,
-      queryAuditFeed: (query) => queryAuditFeed(query as never) as never,
+      queryAuditFeed: (query) =>
+        queryAuditFeed(query).map((entry) => ({
+          timestamp: entry.timestamp,
+          type: entry.type,
+          summary: entry.summary,
+          severity: entry.severity,
+          metadata: entry.metadata,
+        })),
       subscribeAuditFeed,
     })
   ) {
@@ -3845,8 +3852,49 @@ async function handleRequest(
       method,
       pathname,
       url,
-      appManager: state.appManager as never,
-      getPluginManager: () => getPluginManagerForState(state) as never,
+      appManager: {
+        listAvailable: (pluginManager) =>
+          state.appManager.listAvailable(pluginManager),
+        search: (pluginManager, query, limit) =>
+          state.appManager.search(pluginManager, query, limit),
+        listInstalled: (pluginManager) =>
+          state.appManager.listInstalled(pluginManager),
+        listRuns: (runtime) =>
+          state.appManager.listRuns(
+            runtime && typeof runtime === "object"
+              ? (runtime as IAgentRuntime)
+              : null,
+          ),
+        getRun: (runId, runtime) =>
+          state.appManager.getRun(
+            runId,
+            runtime && typeof runtime === "object"
+              ? (runtime as IAgentRuntime)
+              : null,
+          ),
+        attachRun: (runId, runtime) =>
+          state.appManager.attachRun(
+            runId,
+            runtime && typeof runtime === "object"
+              ? (runtime as IAgentRuntime)
+              : null,
+          ),
+        detachRun: (runId) => state.appManager.detachRun(runId),
+        launch: (pluginManager, name, onProgress, runtime) =>
+          state.appManager.launch(
+            pluginManager,
+            name,
+            onProgress,
+            runtime && typeof runtime === "object"
+              ? (runtime as IAgentRuntime)
+              : null,
+          ),
+        stop: (pluginManager, name, runId) =>
+          state.appManager.stop(pluginManager, name, runId),
+        getInfo: (pluginManager, name) =>
+          state.appManager.getInfo(pluginManager, name),
+      },
+      getPluginManager: () => getPluginManagerForState(state),
       parseBoundedLimit,
       readJsonBody,
       json,
@@ -4313,7 +4361,10 @@ export async function startApiServer(opts?: {
     defaultSource: string,
     defaultTags: string[],
   ): boolean => {
-    if ((target as unknown as Record<string, unknown>)[PATCHED_MARKER]) {
+    const patchedTarget = target as typeof logger & {
+      [PATCHED_MARKER]?: boolean;
+    };
+    if (patchedTarget[PATCHED_MARKER]) {
       return false;
     }
 
@@ -4352,7 +4403,7 @@ export async function startApiServer(opts?: {
       target[lvl] = patched;
     }
 
-    (target as unknown as Record<string, unknown>)[PATCHED_MARKER] = true;
+    patchedTarget[PATCHED_MARKER] = true;
     return true;
   };
 
@@ -5248,7 +5299,10 @@ export async function startApiServer(opts?: {
   ): Promise<void> => {
     try {
       const dbAgent = await rt.getAgent(rt.agentId);
-      const agentRecord = dbAgent as unknown as Record<string, unknown> | null;
+      const agentRecord =
+        dbAgent && typeof dbAgent === "object" && !Array.isArray(dbAgent)
+          ? Object.fromEntries(Object.entries(dbAgent))
+          : null;
       const saved = agentRecord?.character as
         | Record<string, unknown>
         | undefined;

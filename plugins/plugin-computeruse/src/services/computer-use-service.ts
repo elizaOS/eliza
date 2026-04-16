@@ -71,7 +71,7 @@ const MAX_RECENT_ACTIONS = 10;
 export class ComputerUseService extends Service {
   static serviceType = "computeruse";
   capabilityDescription =
-    "Desktop automation — screenshots, mouse/keyboard control, browser CDP, window management, and approval-gated local actions";
+    "Desktop automation — screenshots, mouse/keyboard control, browser CDP, window and file management, terminal access, and approval-gated local actions";
 
   private capabilities!: PlatformCapabilities;
   private recentActions: ActionHistoryEntry[] = [];
@@ -604,6 +604,8 @@ export class ComputerUseService extends Service {
       computerUse: { available: false, tool: "none" },
       windowList: { available: false, tool: "none" },
       browser: { available: false, tool: "none" },
+      terminal: { available: false, tool: "none" },
+      fileSystem: { available: true, tool: "node:fs" },
     };
 
     if (os === "darwin") {
@@ -657,6 +659,13 @@ export class ComputerUseService extends Service {
     caps.browser = isBrowserAvailable()
       ? { available: true, tool: "puppeteer-core (Chromium detected)" }
       : { available: false, tool: "none (no Chrome/Edge/Brave found)" };
+
+    caps.terminal =
+      os === "win32"
+        ? { available: true, tool: "powershell.exe" }
+        : commandExists(process.env.SHELL ?? "/bin/bash")
+          ? { available: true, tool: process.env.SHELL ?? "/bin/bash" }
+          : { available: true, tool: process.env.SHELL ?? "/bin/sh" };
 
     return caps;
   }

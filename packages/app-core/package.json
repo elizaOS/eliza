@@ -55,6 +55,7 @@
     "./bridge": "./src/bridge/index.ts",
     "./bridge/electrobun-rpc": "./src/bridge/electrobun-rpc.ts",
     "./bridge/electrobun-runtime": "./src/bridge/electrobun-runtime.ts",
+    "./bridge/native-plugins": "./src/bridge/native-plugins.ts",
     "./state": "./src/state/index.ts",
     "./state/internal": "./src/state/internal.ts",
     "./state/persistence": "./src/state/persistence.ts",
@@ -67,7 +68,6 @@
     "./state/vrm": "./src/state/vrm.ts",
     "./state/action-notice": "./src/state/action-notice.ts",
     "./state/ui-preferences": "./src/state/ui-preferences.ts",
-    "./state/useVincentState": "./src/state/useVincentState.ts",
     "./components": "./src/components/index.ts",
     "./components/*": "./src/components/*",
     "./components/*/*": "./src/components/*/*",
@@ -104,7 +104,6 @@
     "./onboarding-config": "./src/onboarding-config.ts",
     "./runtime/eliza": "./src/runtime/eliza.ts",
     "./providers": "./src/providers/index.ts",
-    "./actions": "./src/actions/index.ts",
     "./services/steward-credentials": "./src/services/steward-credentials.ts",
     "./services/steward-sidecar": "./src/services/steward-sidecar.ts",
     "./styles/base.css": "./src/styles/base.css",
@@ -114,7 +113,8 @@
     "./shell": "./src/shell/index.ts",
     "./styles/brand-gold.css": "./src/styles/brand-gold.css",
     "./character-catalog": "./src/character-catalog.ts",
-    "./test-support/test-helpers": "./src/test-support/test-helpers.ts"
+    "./test-support/test-helpers": "./src/test-support/test-helpers.ts",
+    "./test/live-agent/helpers/*": "./test/live-agent/helpers/*.ts"
   },
   "peerDependencies": {
     "react": "^19.0.0",
