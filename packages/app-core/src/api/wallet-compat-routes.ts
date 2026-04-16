@@ -40,7 +40,7 @@ import {
   readCompatJsonBody,
   type CompatRuntimeState,
 } from "./compat-route-shared";
-import { getStewardBridgeStatus, isStewardConfigured } from "./steward-bridge";
+import { getStewardBridgeStatus, isStewardConfigured } from "@elizaos/app-steward/routes/steward-bridge";
 
 export async function handleWalletCompatRoutes(
   req: http.IncomingMessage,

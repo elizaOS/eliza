@@ -8,7 +8,7 @@ const getCredentialsMock = vi.fn();
 const getApiBaseMock = vi.fn();
 const saveStewardCredentialsMock = vi.fn();
 
-vi.mock("@elizaos/app-core/services/steward-sidecar", () => ({
+vi.mock("../../../../src/services/steward-sidecar", () => ({
   createDesktopStewardSidecar: vi.fn(() => ({
     start: startMock,
     stop: stopMock,

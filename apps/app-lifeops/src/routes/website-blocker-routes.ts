@@ -3,8 +3,8 @@ import {
   parseSelfControlBlockRequest,
   startSelfControlBlock,
   stopSelfControlBlock,
-  syncWebsiteBlockerExpiryTask,
-} from "../selfcontrol/index.ts";
+} from "../website-blocker/engine.ts";
+import { syncWebsiteBlockerExpiryTask } from "../website-blocker/service.ts";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {

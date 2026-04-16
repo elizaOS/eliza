@@ -124,6 +124,9 @@ interface CoreToggleDriftDiagnostic {
   drift_flags: CoreToggleDriftFlag[];
 }
 
+type PluginHealthResult = { ok: boolean; message?: string };
+type PluginHealthProbe = () => Promise<PluginHealthResult>;
+
 export interface PluginRouteContext {
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -134,7 +137,7 @@ export interface PluginRouteContext {
     runtime: AgentRuntime | null;
     config: ElizaConfig;
     plugins: PluginEntry[];
-    broadcastWs: ((data: Record<string, unknown>) => void) | null;
+    broadcastWs: ((data: object) => void) | null;
   };
   // Helpers from server.ts
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
@@ -185,6 +188,18 @@ const pluginsListInFlight = new WeakMap<
   PluginRouteContext["state"],
   Promise<PluginEntry[]>
 >();
+
+function getPluginHealthProbe(plugin: object): PluginHealthProbe | null {
+  const testConnection = Reflect.get(plugin, "testConnection");
+  if (typeof testConnection === "function") {
+    return testConnection as PluginHealthProbe;
+  }
+
+  const healthCheck = Reflect.get(plugin, "healthCheck");
+  return typeof healthCheck === "function"
+    ? (healthCheck as PluginHealthProbe)
+    : null;
+}
 
 function readCompatEnabledFromConfig(
   config: ElizaConfig,
@@ -887,13 +902,9 @@ export async function handlePluginRoutes(
       }
 
       // Check if plugin exposes a test/health method
-      const testFn =
-        (plugin as unknown as Record<string, unknown>).testConnection ??
-        (plugin as unknown as Record<string, unknown>).healthCheck;
+      const testFn = getPluginHealthProbe(plugin);
       if (typeof testFn === "function") {
-        const result = await (
-          testFn as () => Promise<{ ok: boolean; message?: string }>
-        )();
+        const result = await testFn();
         json(res, {
           success: result.ok !== false,
           pluginId,

@@ -16,7 +16,7 @@ import {
   type JsonSchemaObject,
 } from "../../config";
 import { useBranding } from "../../config/branding";
-import { useTimeout } from "../../hooks";
+import { useTimeout } from "@elizaos/ui";
 import {
   getOnboardingProviderOption,
   isSubscriptionProviderSelectionId,

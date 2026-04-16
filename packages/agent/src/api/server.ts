@@ -17,6 +17,15 @@ type StreamableServerResponse = Pick<
   "write" | "once" | "off" | "removeListener" | "writableEnded" | "destroyed"
 >;
 
+function tokenMatches(expected: string, provided: string): boolean {
+  const expectedBuf = Buffer.from(expected);
+  const providedBuf = Buffer.from(provided);
+  return (
+    expectedBuf.length === providedBuf.length &&
+    crypto.timingSafeEqual(expectedBuf, providedBuf)
+  );
+}
+
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
 import net from "node:net";
@@ -43,6 +52,7 @@ import {
   type AgentRuntime,
   ChannelType,
   createMessageMemory,
+  type IAgentRuntime,
   logger,
   stringToUuid,
   type UUID,
@@ -67,7 +77,7 @@ import {
   resolveServerOnlyPort,
   setApiToken,
   stripOptionalHostPort,
-} from "../config/runtime-env.js";
+} from "@elizaos/shared/runtime-env";
 import {
   ONBOARDING_CLOUD_PROVIDER_OPTIONS,
   ONBOARDING_PROVIDER_CATALOG,
@@ -341,9 +351,12 @@ import {
 } from "./plugin-discovery-helpers.js";
 
 const nodeRequire = createRequire(import.meta.url);
+// Dynamic import (not require) because the plugin is ESM-only and bun's
+// createRequire cannot load ESM packages. Top-level await is settled before
+// any consumer reads the binding.
 let agentOrchestratorCompat: unknown = null;
 try {
-  agentOrchestratorCompat = nodeRequire("@elizaos/plugin-agent-orchestrator");
+  agentOrchestratorCompat = await import("@elizaos/plugin-agent-orchestrator");
 } catch {
   agentOrchestratorCompat = null;
 }
@@ -851,724 +864,54 @@ function parseBoundedLimit(rawLimit: string | null, fallback = 15): number {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Config redaction
-// ---------------------------------------------------------------------------
+// Config redaction, skill validation extracted to server-helpers-config.ts
+// isBlockedObjectKey, redactDeep, redactConfigSecrets, isRedactedSecretValue,
+// stripRedactedPlaceholderValuesDeep imported from server-helpers-config.ts above.
+// isBlockedObjectKey alias for local usage:
+const isBlockedObjectKey = isBlockedObjectKeyFromConfig;
 
-/**
- * Key patterns that indicate a value is sensitive and must be redacted.
- * Matches against the property key at unknown nesting depth.  Aligned with
- * SENSITIVE_PATTERNS in src/config/schema.ts so every field the UI marks
- * as sensitive is also redacted in the API response.
- *
- * RESIDUAL RISK: Key-based redaction is heuristic — secrets stored under
- * generic keys (e.g. "value", "data", "config") will not be caught.  A
- * stronger approach would be either (a) schema-level `sensitive: true`
- * annotations that drive redaction, or (b) an allowlist that only exposes
- * known-safe fields and strips everything else.  Both require deeper
- * changes to the config schema infrastructure.
- */
-const SENSITIVE_KEY_RE =
-  /password|secret|api.?key|private.?key|seed.?phrase|authorization|connection.?string|credential|(?<!max)tokens?$/i;
-
-function isBlockedObjectKey(key: string): boolean {
-  return (
-    key === "__proto__" ||
-    key === "constructor" ||
-    key === "prototype" ||
-    // Block config include directives — if an API caller embeds "$include"
-    // inside a config patch, the next loadElizaConfig() → resolveConfigIncludes
-    // pass would read arbitrary local files and merge them into the config.
-    key === "$include"
-  );
-}
-
-// hasBlockedObjectKeyDeep and cloneWithoutBlockedObjectKeys imported in the consolidated import at the top
-
-/**
- * Replace unknown non-empty value with "[REDACTED]".  For arrays, each string
- * element is individually redacted; for objects, all string leaves are
- * redacted.  Non-string primitives (booleans, numbers) are replaced with
- * the string "[REDACTED]" to avoid leaking e.g. numeric PINs.
- */
-function redactValue(val: unknown): unknown {
-  if (val === null || val === undefined) return val;
-  if (typeof val === "string") return val.length > 0 ? "[REDACTED]" : "";
-  if (typeof val === "number" || typeof val === "boolean") return "[REDACTED]";
-  if (Array.isArray(val)) return val.map(redactValue);
-  if (typeof val === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
-      out[k] = redactValue(v);
-    }
-    return out;
-  }
-  return "[REDACTED]";
-}
-
-/**
- * Recursively walk a JSON-safe value.  For every object property whose key
- * matches SENSITIVE_KEY_RE, redact the **entire value** regardless of type
- * (string, array, nested object).  This prevents leaks when secrets are
- * stored as arrays (e.g. `apiKeys: ["sk-1","sk-2"]`) or objects.
- * Returns a deep copy — the original is never mutated.
- */
-function redactDeep(val: unknown): unknown {
-  if (val === null || val === undefined) return val;
-  if (Array.isArray(val)) return val.map(redactDeep);
-  if (typeof val === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [key, child] of Object.entries(val as Record<string, unknown>)) {
-      if (SENSITIVE_KEY_RE.test(key)) {
-        out[key] = redactValue(child);
-      } else {
-        out[key] = redactDeep(child);
-      }
-    }
-    return out;
-  }
-  return val;
-}
-
-/**
- * Return a deep copy of the config with every sensitive value replaced by
- * "[REDACTED]".  Uses a recursive walk so that ANY future config field
- * whose key matches the sensitive pattern is automatically covered —
- * no manual enumeration required.
- */
-function redactConfigSecrets(
-  config: Record<string, unknown>,
-): Record<string, unknown> {
-  return redactDeep(config) as Record<string, unknown>;
-}
-
-function isRedactedSecretValue(value: unknown): boolean {
-  return (
-    typeof value === "string" && value.trim().toUpperCase() === "[REDACTED]"
-  );
-}
-
-/** Remove UI round-trip placeholders so GET /api/config → PUT never persists "[REDACTED]". */
-function stripRedactedPlaceholderValuesDeep(value: unknown): void {
-  if (value === null || typeof value !== "object") return;
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      stripRedactedPlaceholderValuesDeep(item);
-    }
-    return;
-  }
-  const obj = value as Record<string, unknown>;
-  for (const key of Object.keys(obj)) {
-    const v = obj[key];
-    if (isRedactedSecretValue(v)) {
-      delete obj[key];
-    } else if (v !== null && typeof v === "object") {
-      stripRedactedPlaceholderValuesDeep(v);
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Skill-ID path-traversal guard
-// ---------------------------------------------------------------------------
-
-/**
- * Validate that a user-supplied skill ID is safe to use in filesystem paths.
- * Rejects IDs containing path separators, ".." sequences, or unknown characters
- * outside the safe set used by the marketplace (`safeName()` in
- * skill-marketplace.ts).  Returns `null` and sends a 400 response if the
- * ID is invalid.
- */
-const SAFE_SKILL_ID_RE = /^[a-zA-Z0-9._-]+$/;
-
-function _validateSkillId(
-  skillId: string,
-  res: http.ServerResponse,
-): string | null {
-  if (
-    !skillId ||
-    !SAFE_SKILL_ID_RE.test(skillId) ||
-    skillId === "." ||
-    skillId.includes("..")
-  ) {
-    const safeDisplay = skillId.slice(0, 80).replace(/[^\x20-\x7e]/g, "?");
-    error(res, `Invalid skill ID: "${safeDisplay}"`, 400);
-    return null;
-  }
-  return skillId;
-}
-
-const ALLOWED_MCP_CONFIG_TYPES = new Set([
-  "stdio",
-  "http",
-  "streamable-http",
-  "sse",
-]);
-
-const ALLOWED_MCP_COMMANDS = new Set([
-  "npx",
-  "node",
-  "bun",
-  "bunx",
-  "deno",
-  "python",
-  "python3",
-  "uvx",
-  "uv",
-  "docker",
-  "podman",
-]);
-
-const BLOCKED_MCP_ENV_KEYS = new Set([
-  "LD_PRELOAD",
-  "LD_LIBRARY_PATH",
-  "DYLD_INSERT_LIBRARIES",
-  "DYLD_LIBRARY_PATH",
-  "NODE_OPTIONS",
-  "NODE_EXTRA_CA_CERTS",
-  "NODE_TLS_REJECT_UNAUTHORIZED",
-  "HTTP_PROXY",
-  "HTTPS_PROXY",
-  "ALL_PROXY",
-  "NO_PROXY",
-  "NODE_PATH",
-  "SSL_CERT_FILE",
-  "SSL_CERT_DIR",
-  "CURL_CA_BUNDLE",
-  "PATH",
-  "HOME",
-  "SHELL",
-]);
-
-const INTERPRETER_MCP_COMMANDS = new Set([
-  "node",
-  "bun",
-  "deno",
-  "python",
-  "python3",
-  "uv",
-]);
-
-const PACKAGE_RUNNER_MCP_COMMANDS = new Set(["npx", "bunx", "uvx"]);
-const CONTAINER_MCP_COMMANDS = new Set(["docker", "podman"]);
-
-const BLOCKED_INTERPRETER_FLAGS = new Set([
-  "-e",
-  "--eval",
-  "-p",
-  "--print",
-  "-r",
-  "--require",
-  "--import",
-  "--loader",
-  "--experimental-loader",
-  "--preload",
-  "-c",
-  "-m",
-  // V8 inspector — opens an unauthenticated debug port (default 9229) that
-  // allows arbitrary code execution via Chrome DevTools Protocol.  If bound
-  // to 0.0.0.0, any network peer can connect → RCE without any token.
-  "--inspect",
-  "--inspect-brk",
-  "--inspect-wait",
-  "--inspect-port",
-  "--inspect-publish-uid",
-  // Policy / diagnostics file access
-  "--experimental-policy",
-  "--diagnostic-dir",
-]);
-
-const BLOCKED_PACKAGE_RUNNER_FLAGS = new Set(["-c", "--call", "-e", "--eval"]);
-const BLOCKED_CONTAINER_FLAGS = new Set([
-  "--privileged",
-  "-v",
-  "--volume",
-  "--mount",
-  "--cap-add",
-  "--security-opt",
-  "--pid",
-  "--network",
-  "--device",
-  "--ipc",
-  "--uts",
-  "--userns",
-  "--cgroupns",
-]);
-const BLOCKED_DENO_SUBCOMMANDS = new Set(["eval"]);
-const BLOCKED_MCP_REMOTE_HOST_LITERALS = new Set([
-  "localhost",
-  "metadata.google.internal",
-]);
-
-function normalizeMcpCommand(command: string): string {
-  const baseName = command.replace(/\\/g, "/").split("/").pop() ?? "";
-  return baseName.replace(/\.(exe|cmd|bat)$/i, "").toLowerCase();
-}
-
-function hasBlockedFlag(
-  args: string[],
-  blockedFlags: ReadonlySet<string>,
-): string | null {
-  for (const arg of args) {
-    const trimmed = arg.trim();
-    for (const flag of blockedFlags) {
-      if (trimmed === flag || trimmed.startsWith(`${flag}=`)) {
-        return flag;
-      }
-      // Block attached short-option forms like -cpayload or -epayload.
-      if (
-        /^-[A-Za-z]$/.test(flag) &&
-        trimmed.startsWith(flag) &&
-        trimmed.length > flag.length
-      ) {
-        return flag;
-      }
-    }
-  }
-  return null;
-}
-
-function firstPositionalArg(args: string[]): string | null {
-  for (const arg of args) {
-    const trimmed = arg.trim();
-    if (!trimmed || trimmed === "--" || trimmed.startsWith("-")) continue;
-    return trimmed.toLowerCase();
-  }
-  return null;
-}
-
-async function resolveMcpRemoteUrlRejection(
-  rawUrl: string,
-): Promise<string | null> {
-  let parsed: URL;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    return "URL must be a valid absolute URL";
-  }
-
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return "URL must use http:// or https://";
-  }
-
-  const hostname = normalizeHostLike(parsed.hostname);
-  if (!hostname) return "URL hostname is required";
-
-  if (
-    BLOCKED_MCP_REMOTE_HOST_LITERALS.has(hostname) ||
-    hostname.endsWith(".localhost") ||
-    hostname.endsWith(".local")
-  ) {
-    return `URL host "${hostname}" is blocked for security reasons`;
-  }
-
-  if (net.isIP(hostname)) {
-    if (isBlockedPrivateOrLinkLocalIp(hostname)) {
-      return `URL host "${hostname}" is blocked for security reasons`;
-    }
-    return null;
-  }
-
-  let addresses: Array<{ address: string }>;
-  try {
-    const resolved = await dnsLookup(hostname, { all: true });
-    addresses = Array.isArray(resolved) ? resolved : [resolved];
-  } catch {
-    return `Could not resolve URL host "${hostname}"`;
-  }
-
-  if (addresses.length === 0) {
-    return `Could not resolve URL host "${hostname}"`;
-  }
-
-  for (const entry of addresses) {
-    if (isBlockedPrivateOrLinkLocalIp(entry.address)) {
-      return `URL host "${hostname}" resolves to blocked address ${entry.address}`;
-    }
-  }
-
-  return null;
-}
-
-export async function validateMcpServerConfig(
-  config: Record<string, unknown>,
-): Promise<string | null> {
-  const configType = config.type;
-  if (
-    typeof configType !== "string" ||
-    !ALLOWED_MCP_CONFIG_TYPES.has(configType)
-  ) {
-    return `Invalid config type. Must be one of: ${[...ALLOWED_MCP_CONFIG_TYPES].join(", ")}`;
-  }
-
-  if (configType === "stdio") {
-    const command =
-      typeof config.command === "string" ? config.command.trim() : "";
-    if (!command) {
-      return "Command is required for stdio servers";
-    }
-    if (!/^[A-Za-z0-9._-]+$/.test(command)) {
-      return "Command must be a bare executable name without path separators";
-    }
-
-    const normalizedCommand = normalizeMcpCommand(command);
-    if (!ALLOWED_MCP_COMMANDS.has(normalizedCommand)) {
-      return (
-        `Command "${command}" is not allowed. ` +
-        `Allowed commands: ${[...ALLOWED_MCP_COMMANDS].join(", ")}`
-      );
-    }
-
-    if (config.args !== undefined) {
-      if (!Array.isArray(config.args)) {
-        return "args must be an array of strings";
-      }
-      for (const arg of config.args) {
-        if (typeof arg !== "string") {
-          return "Each arg must be a string";
-        }
-      }
-      const args = config.args as string[];
-      if (INTERPRETER_MCP_COMMANDS.has(normalizedCommand)) {
-        const blocked = hasBlockedFlag(args, BLOCKED_INTERPRETER_FLAGS);
-        if (blocked) {
-          return `Flag "${blocked}" is not allowed for ${normalizedCommand} MCP servers`;
-        }
-      }
-      if (PACKAGE_RUNNER_MCP_COMMANDS.has(normalizedCommand)) {
-        const blocked = hasBlockedFlag(args, BLOCKED_PACKAGE_RUNNER_FLAGS);
-        if (blocked) {
-          return `Flag "${blocked}" is not allowed for ${normalizedCommand} MCP servers`;
-        }
-      }
-      if (CONTAINER_MCP_COMMANDS.has(normalizedCommand)) {
-        const blocked = hasBlockedFlag(args, BLOCKED_CONTAINER_FLAGS);
-        if (blocked) {
-          return `Flag "${blocked}" is not allowed for ${normalizedCommand} MCP servers`;
-        }
-      }
-      if (normalizedCommand === "deno") {
-        const subcommand = firstPositionalArg(args);
-        if (subcommand && BLOCKED_DENO_SUBCOMMANDS.has(subcommand)) {
-          return `Subcommand "${subcommand}" is not allowed for deno MCP servers`;
-        }
-      }
-    }
-  } else {
-    const url = typeof config.url === "string" ? config.url.trim() : "";
-    if (!url) {
-      return "URL is required for remote servers";
-    }
-    const urlRejection = await resolveMcpRemoteUrlRejection(url);
-    if (urlRejection) return urlRejection;
-  }
-
-  if (config.env !== undefined) {
-    if (
-      typeof config.env !== "object" ||
-      config.env === null ||
-      Array.isArray(config.env)
-    ) {
-      return "env must be a plain object of string key-value pairs";
-    }
-
-    for (const [key, value] of Object.entries(config.env)) {
-      if (isBlockedObjectKey(key)) {
-        return `env key "${key}" is blocked for security reasons`;
-      }
-      if (typeof value !== "string") {
-        return `env.${key} must be a string`;
-      }
-      if (BLOCKED_MCP_ENV_KEYS.has(key.toUpperCase())) {
-        return `env variable "${key}" is not allowed for security reasons`;
-      }
-    }
-  }
-
-  if (config.cwd !== undefined && typeof config.cwd !== "string") {
-    return "cwd must be a string";
-  }
-
-  if (config.timeoutInMillis !== undefined) {
-    if (
-      typeof config.timeoutInMillis !== "number" ||
-      !Number.isFinite(config.timeoutInMillis) ||
-      config.timeoutInMillis < 0
-    ) {
-      return "timeoutInMillis must be a non-negative number";
-    }
-  }
-
-  return null;
-}
-
-export async function resolveMcpServersRejection(
-  servers: Record<string, unknown>,
-): Promise<string | null> {
-  for (const [serverName, serverConfig] of Object.entries(servers)) {
-    if (isBlockedObjectKey(serverName)) {
-      return `Invalid server name: "${serverName}"`;
-    }
-    if (
-      !serverConfig ||
-      typeof serverConfig !== "object" ||
-      Array.isArray(serverConfig)
-    ) {
-      return `Server "${serverName}" config must be a JSON object`;
-    }
-    if (hasBlockedObjectKeyDeep(serverConfig)) {
-      return `Server "${serverName}" contains blocked object keys`;
-    }
-    const configError = await validateMcpServerConfig(
-      serverConfig as Record<string, unknown>,
-    );
-    if (configError) {
-      return `Server "${serverName}": ${configError}`;
-    }
-  }
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// Onboarding helpers
-// ---------------------------------------------------------------------------
-
-// Use shared presets for full parity between CLI and GUI onboarding.
+// MCP validation helpers extracted to server-helpers-mcp.ts
 import {
-  getDefaultStylePreset,
+  resolveMcpServersRejection as _resolveMcpServersRejection,
+  validateMcpServerConfig as _validateMcpServerConfig,
+} from "./server-helpers-mcp.js";
+
+export {
+  resolveMcpServersRejection,
+  validateMcpServerConfig,
+} from "./server-helpers-mcp.js";
+
+const validateMcpServerConfig = _validateMcpServerConfig;
+const resolveMcpServersRejection = _resolveMcpServersRejection;
+
+// ---------------------------------------------------------------------------
+// Onboarding / config helpers — extracted to server-helpers-config.ts
+// ---------------------------------------------------------------------------
+
+import {
   getStylePresets,
   normalizeCharacterLanguage,
   resolveStylePresetByAvatarIndex,
-} from "../onboarding-presets.js";
-
+} from "@elizaos/shared/onboarding-presets";
 import { pickRandomNames } from "../runtime/onboarding-names.js";
 
-const DEFAULT_ELEVENLABS_TTS_MODEL = "eleven_flash_v2_5";
-const ELEVENLABS_VOICE_ID_BY_PRESET: Record<string, string> = {
-  rachel: "21m00Tcm4TlvDq8ikWAM",
-  sarah: "EXAVITQu4vr4xnSDxMaL",
-  matilda: "XrExE9yKIg1WjnnlVkGX",
-  lily: "pFZP5JQG7iQjIQuC4Bku",
-  alice: "Xb7hH8MSUJpSbSDYk0k2",
-  brian: "nPczCjzI2devNBz1zQrb",
-  adam: "pNInz6obpgDQGcFmaJgB",
-  josh: "TxGEqnHWrfWFTfGW9XjX",
-  daniel: "onwK4e9ZLuTAKqWW03F9",
-  liam: "TX3LPaxmHKxFdv7VOQHJ",
-  gigi: "jBpfuIE2acCO8z3wKNLl",
-  mimi: "zrHiDhphv9ZnVXBqCLjz",
-  dorothy: "ThT5KcBeYPX3keUQqHPh",
-  glinda: "z9fAnlkpzviPz146aGWa",
-  charlotte: "XB0fDUnXU5powFXDhCwa",
-  callum: "N2lVS1w4EtoT3dr4eOWO",
-  momo: "n7Wi4g1bhpw4Bs8HK5ph",
-  yuki: "4tRn1lSkEn13EVTuqb0g",
-  rin: "cNYrMw9glwJZXR8RwbuR",
-  kei: "eadgjmk4R4uojdsheG9t",
-  jin: "6IwYbsNENZgAB1dtBZDp",
-  satoshi: "7cOBG34AiHrAzs842Rdi",
-  ryu: "QzTKubutNn9TjrB7Xb2Q",
-};
+import {
+  applyOnboardingVoicePreset,
+  ensureWalletKeysInEnvAndConfig,
+  getCloudProviderOptions,
+  getProviderOptions,
+  isBlockedObjectKey as isBlockedObjectKeyFromConfig,
+  isRedactedSecretValue,
+  isSafeResetStateDir,
+  readUiLanguageHeader,
+  redactConfigSecrets,
+  redactDeep,
+  resolveConfiguredCharacterLanguage,
+  resolveDefaultAgentName,
+  stripRedactedPlaceholderValuesDeep,
+} from "./server-helpers-config.js";
 
-function readUiLanguageHeader(
-  req: http.IncomingMessage | undefined,
-): string | undefined {
-  if (!req) {
-    return undefined;
-  }
-  const header =
-    req.headers["x-eliza-ui-language"] ?? req.headers["x-eliza-ui-language"];
-  if (Array.isArray(header)) {
-    return header.find((value) => value.trim())?.trim();
-  }
-  return typeof header === "string" && header.trim()
-    ? header.trim()
-    : undefined;
-}
-
-function resolveConfiguredCharacterLanguage(
-  config?: ElizaConfig,
-  req?: http.IncomingMessage,
-) {
-  const uiLanguage =
-    readUiLanguageHeader(req) ??
-    ((config?.ui as { language?: unknown } | undefined)?.language as
-      | string
-      | undefined);
-  return normalizeCharacterLanguage(uiLanguage);
-}
-
-function resolveOnboardingStylePreset(
-  body: Record<string, unknown>,
-  language: string,
-) {
-  const presets = getStylePresets(language);
-  const requestedPresetId =
-    typeof body.presetId === "string" ? body.presetId.trim() : "";
-  if (requestedPresetId) {
-    const byId = presets.find((preset) => preset.id === requestedPresetId);
-    if (byId) return byId;
-  }
-
-  if (
-    typeof body.avatarIndex === "number" &&
-    Number.isFinite(body.avatarIndex)
-  ) {
-    const byAvatar = presets.find(
-      (preset) => preset.avatarIndex === Number(body.avatarIndex),
-    );
-    if (byAvatar) return byAvatar;
-  }
-
-  const requestedName = typeof body.name === "string" ? body.name.trim() : "";
-  if (requestedName) {
-    const byName = presets.find((preset) => preset.name === requestedName);
-    if (byName) return byName;
-  }
-
-  return getDefaultStylePreset(language);
-}
-
-function applyOnboardingVoicePreset(
-  config: ElizaConfig,
-  body: Record<string, unknown>,
-  language: string,
-) {
-  const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY?.trim();
-  if (!elevenLabsApiKey) {
-    return;
-  }
-
-  const stylePreset = resolveOnboardingStylePreset(body, language);
-  const voicePresetId = stylePreset?.voicePresetId?.trim();
-  if (!voicePresetId) {
-    return;
-  }
-
-  const voiceId = ELEVENLABS_VOICE_ID_BY_PRESET[voicePresetId];
-  if (!voiceId) {
-    return;
-  }
-
-  if (!config.messages || typeof config.messages !== "object") {
-    config.messages = {};
-  }
-
-  const messages = config.messages as Record<string, unknown>;
-  const existingTts =
-    messages.tts && typeof messages.tts === "object"
-      ? (messages.tts as Record<string, unknown>)
-      : {};
-  const existingElevenlabs =
-    existingTts.elevenlabs && typeof existingTts.elevenlabs === "object"
-      ? (existingTts.elevenlabs as Record<string, unknown>)
-      : {};
-
-  messages.tts = {
-    ...existingTts,
-    provider: "elevenlabs",
-    elevenlabs: {
-      ...existingElevenlabs,
-      voiceId,
-      modelId:
-        typeof existingElevenlabs.modelId === "string" &&
-        existingElevenlabs.modelId.trim()
-          ? existingElevenlabs.modelId.trim()
-          : DEFAULT_ELEVENLABS_TTS_MODEL,
-    },
-  };
-}
-
-function resolveDefaultAgentName(
-  config?: ElizaConfig,
-  req?: http.IncomingMessage,
-): string {
-  const configuredName =
-    config?.ui?.assistant?.name?.trim() ??
-    config?.agents?.list?.[0]?.name?.trim();
-  if (configuredName) {
-    return configuredName;
-  }
-
-  return getDefaultStylePreset(resolveConfiguredCharacterLanguage(config, req))
-    .name;
-}
-
-function getProviderOptions(): Array<{
-  id: string;
-  name: string;
-  envKey: string | null;
-  pluginName: string;
-  keyPrefix: string | null;
-  description: string;
-}> {
-  return ONBOARDING_PROVIDER_CATALOG.map((provider) => ({
-    id: provider.id,
-    name: provider.name,
-    envKey: provider.envKey,
-    pluginName: provider.pluginName,
-    keyPrefix: provider.keyPrefix,
-    description: provider.description,
-  }));
-}
-
-function getCloudProviderOptions(): Array<{
-  id: string;
-  name: string;
-  description: string;
-}> {
-  return ONBOARDING_CLOUD_PROVIDER_OPTIONS.map((provider) => ({
-    id: provider.id,
-    name: provider.name,
-    description: provider.description,
-  }));
-}
-
-function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
-  const missingEvm =
-    typeof process.env.EVM_PRIVATE_KEY !== "string" ||
-    !process.env.EVM_PRIVATE_KEY.trim();
-  const missingSolana =
-    typeof process.env.SOLANA_PRIVATE_KEY !== "string" ||
-    !process.env.SOLANA_PRIVATE_KEY.trim();
-
-  if (!missingEvm && !missingSolana) {
-    return false;
-  }
-
-  try {
-    const walletKeys = generateWalletKeys();
-    if (
-      !config.env ||
-      typeof config.env !== "object" ||
-      Array.isArray(config.env)
-    ) {
-      config.env = {};
-    }
-    const envConfig = config.env as Record<string, string>;
-
-    if (missingEvm) {
-      envConfig.EVM_PRIVATE_KEY = walletKeys.evmPrivateKey;
-      process.env.EVM_PRIVATE_KEY = walletKeys.evmPrivateKey;
-      logger.info(`[eliza-api] Generated EVM wallet: ${walletKeys.evmAddress}`);
-    }
-
-    if (missingSolana) {
-      envConfig.SOLANA_PRIVATE_KEY = walletKeys.solanaPrivateKey;
-      setSolanaWalletEnv(walletKeys.solanaPrivateKey);
-      logger.info(
-        `[eliza-api] Generated Solana wallet: ${walletKeys.solanaAddress}`,
-      );
-    }
-
-    return true;
-  } catch (err) {
-    logger.warn(
-      `[eliza-api] Failed to generate wallet keys: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return false;
-  }
-}
+export { isSafeResetStateDir } from "./server-helpers-config.js";
 
 // ---------------------------------------------------------------------------
 // Trade permission helpers (exported for use by awareness contributors)
@@ -1723,360 +1066,40 @@ function buildPluginEvmDiagnosticEntry(
   };
 }
 
-// "send" alone is too broad — "send a slack message" shouldn't trigger wallet
-// mode.  Require "send" to appear near a crypto/wallet keyword within 40 chars.
-const _WALLET_CHAT_INTENT_RE =
-  /\b(wallet|privy|onchain|on-chain|address|balance|swap|trade|transfer|token|bnb|t?bnb|eth|sol)\b|(?:\bsend\b(?=[\s\S]{0,40}\b(?:token|eth|sol|t?bnb|wallet|crypto|coin)\b))/i;
+// Wallet intent/export helpers extracted to server-helpers-wallet.ts
+import {
+  hasUsableWalletFallbackParams as _hasUsableWalletFallbackParams,
+  inferWalletExecutionFallback as _inferWalletExecutionFallback,
+  resolveWalletExportRejection as _resolveWalletExportRejection,
+} from "./server-helpers-wallet.js";
 
-// WALLET_EXECUTION_INTENT_RE, WALLET_PROGRESS_ONLY_RE, isWalletActionRequiredIntent
-// moved to server-helpers.ts; re-exported above.
-// Keep private regex constants here for wallet intent fallback code that stays in server.ts.
-// isWalletActionRequiredIntent, WALLET_EXECUTION_INTENT_RE, WALLET_PROGRESS_ONLY_RE
-// imported in the consolidated import at the top
+export {
+  hasUsableWalletFallbackParams,
+  inferWalletExecutionFallback,
+  resolveWalletExportRejection,
+  type WalletExportRejection,
+} from "./server-helpers-wallet.js";
 
-const _WALLET_IDENTITY_INTENT_RE = /\b(wallet\s*address|address)\b/i;
+const inferWalletExecutionFallback = _inferWalletExecutionFallback;
+const hasUsableWalletFallbackParams = _hasUsableWalletFallbackParams;
+const resolveWalletExportRejection = _resolveWalletExportRejection;
 
-const _WALLET_ACTION_REQUIRED_INTENT_RE =
-  /\b(balance|portfolio|holdings|funds|swap|trade|transfer|send|buy|sell|execute|approve)\b/i;
+// Plugin config helpers extracted to server-helpers-plugin.ts
+import {
+  type PluginConfigMutationRejection as _PluginConfigMutationRejection,
+  resolvePluginConfigMutationRejections as _resolvePluginConfigMutationRejections,
+  resolvePluginConfigReply as _resolvePluginConfigReply,
+} from "./server-helpers-plugin.js";
 
-const _WALLET_PROGRESS_PREFIX_RE =
-  /^\s*(?:let me|i(?:'ll| will)|checking|fetching|looking up|pulling|one moment|just a second|hold on)[\s\S]{0,120}?(?:now|\.{3}|…)?\s*/i;
+export {
+  type PluginConfigMutationRejection,
+  resolvePluginConfigMutationRejections,
+  resolvePluginConfigReply,
+} from "./server-helpers-plugin.js";
 
-const EVM_ADDRESS_CAPTURE_RE = /\b0x[a-fA-F0-9]{40}\b/g;
-const DECIMAL_AMOUNT_CAPTURE_RE = /\b(\d+(?:\.\d+)?)\b/;
-const SEND_NATIVE_ASSET_RE =
-  /\b(?:t?bnb|bnb|eth|usdt|usdc|busd|dai|weth|wbtc)\b/i;
-const SWAP_ROUTE_PROVIDER_RE = /\b(pancakeswap-v2|0x|auto)\b/i;
-
-type WalletIntentFallback =
-  | { action: FallbackParsedAction; errorText?: undefined }
-  | { action?: undefined; errorText: string };
-
-function normalizeWalletAssetSymbol(asset: string): string {
-  const normalized = asset.trim().toUpperCase();
-  if (normalized === "TBNB") return "BNB";
-  return normalized;
-}
-
-function resolveWalletDrillTokenAddress(): string | null {
-  if (process.env.NODE_ENV === "production" && !process.env.VITEST) {
-    return null;
-  }
-  const raw = process.env.WALLET_DRILL_TOKEN_ADDRESS?.trim();
-  return raw && /^0x[a-fA-F0-9]{40}$/.test(raw) ? raw : null;
-}
-
-function buildWalletParameterFailureReply(
-  actionName: "TRANSFER_TOKEN" | "EXECUTE_TRADE",
-  reason: string,
-): string {
-  const walletNetwork =
-    process.env.ELIZA_WALLET_NETWORK?.trim().toLowerCase() === "testnet"
-      ? "BSC testnet"
-      : "BSC";
-  return [
-    `Action: ${actionName}`,
-    `Chain: ${walletNetwork}`,
-    "Executed: false",
-    `Reason: ${reason}`,
-  ].join("\n");
-}
-
-function inferTransferFallbackAction(
-  prompt: string,
-): WalletIntentFallback | null {
-  if (!/\b(send|transfer|pay)\b/i.test(prompt)) return null;
-
-  const recipient = prompt.match(EVM_ADDRESS_CAPTURE_RE)?.[0];
-  if (!recipient) {
-    return {
-      errorText: buildWalletParameterFailureReply(
-        "TRANSFER_TOKEN",
-        "I need a recipient EVM address to send funds.",
-      ),
-    };
-  }
-
-  const amount = prompt.match(DECIMAL_AMOUNT_CAPTURE_RE)?.[1];
-  if (!amount) {
-    return {
-      errorText: buildWalletParameterFailureReply(
-        "TRANSFER_TOKEN",
-        "I need a positive transfer amount.",
-      ),
-    };
-  }
-
-  const assetMatch = prompt.match(SEND_NATIVE_ASSET_RE)?.[0];
-  if (!assetMatch) {
-    return {
-      errorText: buildWalletParameterFailureReply(
-        "TRANSFER_TOKEN",
-        "I need an asset symbol such as BNB, USDT, or USDC.",
-      ),
-    };
-  }
-
-  return {
-    action: {
-      name: "TRANSFER_TOKEN",
-      parameters: {
-        toAddress: recipient,
-        amount,
-        assetSymbol: normalizeWalletAssetSymbol(assetMatch),
-      },
-    },
-  };
-}
-
-function inferTradeSide(prompt: string): "buy" | "sell" | null {
-  if (/\bsell\b/i.test(prompt)) return "sell";
-  if (/\b(buy|swap|trade)\b/i.test(prompt)) return "buy";
-  return null;
-}
-
-function inferTradeFallbackAction(prompt: string): WalletIntentFallback | null {
-  if (!/\b(swap|trade|buy|sell)\b/i.test(prompt)) return null;
-
-  const side = inferTradeSide(prompt);
-  if (!side) {
-    return {
-      errorText: buildWalletParameterFailureReply(
-        "EXECUTE_TRADE",
-        'I need a trade side ("buy" or "sell").',
-      ),
-    };
-  }
-
-  const amount = prompt.match(DECIMAL_AMOUNT_CAPTURE_RE)?.[1];
-  if (!amount) {
-    return {
-      errorText: buildWalletParameterFailureReply(
-        "EXECUTE_TRADE",
-        "I need a positive trade amount.",
-      ),
-    };
-  }
-
-  const addresses = prompt.match(EVM_ADDRESS_CAPTURE_RE) ?? [];
-  const drillTokenAddress = resolveWalletDrillTokenAddress();
-  const tokenAddress = addresses[0] ?? drillTokenAddress;
-  if (!tokenAddress) {
-    return {
-      errorText: buildWalletParameterFailureReply(
-        "EXECUTE_TRADE",
-        drillTokenAddress === null &&
-          process.env.NODE_ENV === "production" &&
-          !process.env.VITEST
-          ? "I need a target token contract address in the prompt."
-          : "I need a target token address. Set WALLET_DRILL_TOKEN_ADDRESS or include the token contract address in the prompt.",
-      ),
-    };
-  }
-
-  const routeProvider =
-    prompt.match(SWAP_ROUTE_PROVIDER_RE)?.[1]?.toLowerCase() ??
-    "pancakeswap-v2";
-
-  return {
-    action: {
-      name: "EXECUTE_TRADE",
-      parameters: {
-        side,
-        amount,
-        tokenAddress,
-        routeProvider,
-      },
-    },
-  };
-}
-
-export function inferWalletExecutionFallback(
-  prompt: string,
-): WalletIntentFallback | null {
-  return (
-    inferTransferFallbackAction(prompt) ?? inferTradeFallbackAction(prompt)
-  );
-}
-
-export function hasUsableWalletFallbackParams(
-  action: FallbackParsedAction,
-): boolean {
-  const parameters = action.parameters ?? {};
-  if (action.name === "TRANSFER_TOKEN") {
-    return (
-      typeof parameters.toAddress === "string" &&
-      /^0x[a-fA-F0-9]{40}$/.test(parameters.toAddress) &&
-      typeof parameters.amount === "string" &&
-      parameters.amount.trim().length > 0 &&
-      typeof parameters.assetSymbol === "string" &&
-      parameters.assetSymbol.trim().length > 0
-    );
-  }
-
-  if (action.name === "EXECUTE_TRADE") {
-    return (
-      (parameters.side === "buy" || parameters.side === "sell") &&
-      typeof parameters.amount === "string" &&
-      parameters.amount.trim().length > 0 &&
-      typeof parameters.tokenAddress === "string" &&
-      /^0x[a-fA-F0-9]{40}$/.test(parameters.tokenAddress)
-    );
-  }
-
-  return true;
-}
-
-// buildWalletActionNotExecutedReply and trimWalletProgressPrefix moved to server-helpers.ts;
-// re-exported above
-// buildWalletActionNotExecutedReply, trimWalletProgressPrefix imported in the consolidated import at the top
-
-// ── Plugin config intent detection ──────────────────────────────────
-// Matches: "set up telegram", "configure discord plugin", "connect slack",
-// "help me with the openai plugin", etc.
-const PLUGIN_CONFIG_RE =
-  /\b(?:set\s*up|configure|connect|enable|install|setup)\b.*?\b(telegram|discord|twitter|slack|anthropic|openai|openrouter|groq|google|gemini|deepseek|mistral|together|grok|zai|ollama)\b|\b(telegram|discord|twitter|slack|anthropic|openai|openrouter|groq|google|gemini|deepseek|mistral|together|grok|zai|ollama)\b.*?\b(?:plugin|connector|set\s*up|configure|connect|enable|setup)\b/i;
-
-const PLUGIN_PARAMS: Record<
-  string,
-  Array<{ key: string; label: string; secret: boolean }>
-> = {
-  telegram: [
-    {
-      key: "TELEGRAM_BOT_TOKEN",
-      label: "Bot Token (from @BotFather)",
-      secret: true,
-    },
-  ],
-  discord: [
-    { key: "DISCORD_API_TOKEN", label: "Bot Token", secret: true },
-    {
-      key: "DISCORD_APPLICATION_ID",
-      label: "Application ID (optional, auto-resolved when omitted)",
-      secret: false,
-    },
-  ],
-  twitter: [
-    { key: "TWITTER_USERNAME", label: "Username", secret: false },
-    { key: "TWITTER_PASSWORD", label: "Password", secret: true },
-    { key: "TWITTER_EMAIL", label: "Email", secret: false },
-  ],
-  slack: [
-    { key: "SLACK_APP_TOKEN", label: "App Token", secret: true },
-    { key: "SLACK_BOT_TOKEN", label: "Bot Token", secret: true },
-    { key: "SLACK_SIGNING_SECRET", label: "Signing Secret", secret: true },
-  ],
-  anthropic: [
-    {
-      key: "ANTHROPIC_API_KEY",
-      label: "API Key (console.anthropic.com)",
-      secret: true,
-    },
-  ],
-  openai: [
-    {
-      key: "OPENAI_API_KEY",
-      label: "API Key (platform.openai.com)",
-      secret: true,
-    },
-  ],
-  openrouter: [
-    {
-      key: "OPENROUTER_API_KEY",
-      label: "API Key (openrouter.ai)",
-      secret: true,
-    },
-  ],
-  groq: [
-    { key: "GROQ_API_KEY", label: "API Key (console.groq.com)", secret: true },
-  ],
-  google: [
-    { key: "GOOGLE_GENERATIVE_AI_API_KEY", label: "API Key", secret: true },
-  ],
-  gemini: [
-    { key: "GOOGLE_GENERATIVE_AI_API_KEY", label: "API Key", secret: true },
-  ],
-  deepseek: [{ key: "DEEPSEEK_API_KEY", label: "API Key", secret: true }],
-  mistral: [{ key: "MISTRAL_API_KEY", label: "API Key", secret: true }],
-  together: [{ key: "TOGETHER_API_KEY", label: "API Key", secret: true }],
-  grok: [{ key: "XAI_API_KEY", label: "API Key", secret: true }],
-  zai: [{ key: "ZAI_API_KEY", label: "API Key", secret: true }],
-  ollama: [
-    {
-      key: "OLLAMA_BASE_URL",
-      label: "Ollama URL (e.g. http://localhost:11434)",
-      secret: false,
-    },
-  ],
-};
-
-export async function resolvePluginConfigReply(
-  prompt: string,
-  _state: Pick<ServerState, "config" | "runtime">,
-): Promise<string | null> {
-  const match = prompt.match(PLUGIN_CONFIG_RE);
-  if (!match) return null;
-  const pluginName = (match[1] || match[2]).toLowerCase();
-  const params = PLUGIN_PARAMS[pluginName];
-  if (!params) return null;
-
-  const displayName = pluginName.charAt(0).toUpperCase() + pluginName.slice(1);
-  const elements: Record<string, unknown> = {};
-  const fieldIds: string[] = [];
-  const state: Record<string, string> = { pluginId: pluginName };
-
-  elements.title = {
-    type: "Heading",
-    props: { level: 3, text: `Configure ${displayName}` },
-  };
-  elements.sep = { type: "Separator", props: {} };
-
-  for (const param of params) {
-    const fid = `f_${param.key}`;
-    fieldIds.push(fid);
-    state[`config.${param.key}`] = "";
-    elements[fid] = {
-      type: "Input",
-      props: {
-        label: param.label,
-        placeholder: param.key,
-        statePath: `config.${param.key}`,
-        type: param.secret ? "password" : "text",
-        className: "font-mono text-xs",
-      },
-    };
-  }
-
-  elements.fields = { type: "Stack", props: { gap: "3", children: fieldIds } };
-  elements.saveBtn = {
-    type: "Button",
-    props: {
-      text: "Save & Enable",
-      variant: "default",
-      className: "font-semibold",
-      on: {
-        press: { action: "plugin:save", params: { pluginId: pluginName } },
-      },
-    },
-  };
-  elements.actions = {
-    type: "Stack",
-    props: { direction: "row", gap: "2", children: ["saveBtn"] },
-  };
-  elements.root = {
-    type: "Card",
-    props: {
-      children: ["title", "sep", "fields", "actions"],
-      className: "p-4 space-y-3",
-    },
-  };
-
-  const spec = JSON.stringify({ version: 1, root: "root", elements, state });
-  return `here's the config form for ${displayName} — fill in your credentials and hit save:\n\n\`\`\`json-render\n${spec}\n\`\`\``;
-}
-
-// resolveWalletModeGuidanceReply moved to server-helpers.ts; re-exported in top-level block
-// resolveWalletModeGuidanceReply imported in the consolidated import at the top
+const resolvePluginConfigReply = _resolvePluginConfigReply;
+const resolvePluginConfigMutationRejections =
+  _resolvePluginConfigMutationRejections;
 
 // ---------------------------------------------------------------------------
 // Route handler
@@ -2143,662 +1166,76 @@ export function resolveMcpTerminalAuthorizationRejection(
   return resolveTerminalRunRejection(req as http.IncomingMessage, body);
 }
 
-const LOCAL_ORIGIN_RE =
-  /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|\[0:0:0:0:0:0:0:1\])(:\d+)?$/i;
-const APP_ORIGIN_RE =
-  /^(capacitor|capacitor-electron|app|tauri|file|electrobun):\/\/.*$/i;
+// Auth, CORS, pairing, terminal, WebSocket auth helpers extracted to server-helpers-auth.ts
+import {
+  applyCors as _applyCors,
+  clearPairing as _clearPairing,
+  ensureApiTokenForBindHost as _ensureApiTokenForBindHost,
+  ensurePairingCode as _ensurePairingCode,
+  extractAuthToken as _extractAuthToken,
+  getConfiguredApiToken as _getConfiguredApiToken,
+  getPairingExpiresAt as _getPairingExpiresAt,
+  isAllowedHost as _isAllowedHost,
+  isAuthorized as _isAuthorized,
+  isSharedTerminalClientId as _isSharedTerminalClientId,
+  isWebSocketAuthorized as _isWebSocketAuthorized,
+  normalizePairingCode as _normalizePairingCode,
+  normalizeWsClientId as _normalizeWsClientId,
+  pairingEnabled as _pairingEnabled,
+  rateLimitPairing as _rateLimitPairing,
+  rejectWebSocketUpgrade as _rejectWebSocketUpgrade,
+  resolveCorsOrigin as _resolveCorsOrigin,
+  resolveTerminalRunClientId as _resolveTerminalRunClientId,
+  resolveTerminalRunRejection as _resolveTerminalRunRejection,
+  resolveWebSocketUpgradeRejection as _resolveWebSocketUpgradeRejection,
+  type WebSocketUpgradeRejection as _WebSocketUpgradeRejection,
+  type TerminalRunRejection,
+} from "./server-helpers-auth.js";
 
-/**
- * Hostname allowlist for DNS rebinding protection.
- * Requests with a Host header that doesn't match a known loopback name are
- * rejected before CORS / auth processing.  This prevents a malicious page
- * from rebinding its DNS to 127.0.0.1 and reading the unauthenticated API.
- */
-const LOCAL_HOST_RE =
-  /^(localhost|127\.0\.0\.1|\[?::1\]?|\[?0:0:0:0:0:0:0:1\]?|::ffff:127\.0\.0\.1)$/;
+export {
+  ensureApiTokenForBindHost,
+  extractAuthToken,
+  isAllowedHost,
+  isAuthorized,
+  normalizeWsClientId,
+  resolveCorsOrigin,
+  resolveTerminalRunClientId,
+  resolveTerminalRunRejection,
+  resolveWebSocketUpgradeRejection,
+  type TerminalRunRejection,
+  type WebSocketUpgradeRejection,
+} from "./server-helpers-auth.js";
 
-/** Wildcard bind addresses that listen on all interfaces. */
-const WILDCARD_BIND_RE = /^(0\.0\.0\.0|::|0:0:0:0:0:0:0:0)$/;
+const isAllowedHost = _isAllowedHost;
+const resolveCorsOrigin = _resolveCorsOrigin;
+const applyCors = _applyCors;
+const extractAuthToken = _extractAuthToken;
+const isAuthorized = _isAuthorized;
+const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
+const normalizeWsClientId = _normalizeWsClientId;
+const resolveTerminalRunClientId = _resolveTerminalRunClientId;
+const isSharedTerminalClientId = _isSharedTerminalClientId;
+const resolveTerminalRunRejection = _resolveTerminalRunRejection;
+const resolveWebSocketUpgradeRejection = _resolveWebSocketUpgradeRejection;
+const rejectWebSocketUpgrade = _rejectWebSocketUpgrade;
+const isWebSocketAuthorized = _isWebSocketAuthorized;
+const getConfiguredApiToken = _getConfiguredApiToken;
+const pairingEnabled = _pairingEnabled;
+const ensurePairingCode = _ensurePairingCode;
+const normalizePairingCode = _normalizePairingCode;
+const rateLimitPairing = _rateLimitPairing;
+const getPairingExpiresAt = _getPairingExpiresAt;
+const clearPairing = _clearPairing;
 
-export function isAllowedHost(req: http.IncomingMessage): boolean {
-  const raw = req.headers.host;
-  if (!raw) return true; // No Host header → non-browser client (e.g. curl)
-
-  let hostname: string;
-  const trimmed = raw.trim().toLowerCase();
-  if (!trimmed) return true;
-
-  if (trimmed.startsWith("[")) {
-    // Bracketed IPv6: [::1]:31337 → ::1
-    const close = trimmed.indexOf("]");
-    hostname = close > 0 ? trimmed.slice(1, close) : trimmed.slice(1);
-  } else if ((trimmed.match(/:/g) || []).length >= 2) {
-    // Bare IPv6 (multiple colons, no brackets): ::1 → ::1
-    hostname = trimmed;
-  } else {
-    // IPv4 or hostname: localhost:31337 → localhost
-    hostname = stripOptionalHostPort(trimmed);
-  }
-
-  if (!hostname) return true;
-
-  const bindHost = resolveApiBindHost(process.env).toLowerCase();
-
-  // When binding on all interfaces (0.0.0.0 / ::), any Host is acceptable —
-  // ensureApiTokenForBindHost already enforces a token for non-loopback binds.
-  if (WILDCARD_BIND_RE.test(stripOptionalHostPort(bindHost))) {
-    return true;
-  }
-
-  // Allow the exact configured bind hostname.
-  if (bindHost && hostname === stripOptionalHostPort(bindHost)) {
-    return true;
-  }
-
-  for (const allowedHost of resolveAllowedHosts(process.env)) {
-    if (stripOptionalHostPort(allowedHost).toLowerCase() === hostname) {
-      return true;
-    }
-  }
-
-  return LOCAL_HOST_RE.test(hostname);
-}
-
-export function resolveCorsOrigin(origin?: string): string | null {
-  if (!origin) return null;
-  const trimmed = origin.trim();
-  if (!trimmed) return null;
-
-  // Cloud-provisioned containers default to allowing all origins so the
-  // browser web UI can reach the agent API without extra config.
-  if (process.env.ELIZA_CLOUD_PROVISIONED === "1") {
-    return trimmed;
-  }
-
-  // When bound to a wildcard address, allow any origin. Non-loopback binds still
-  // require an explicit token, so this only relaxes the browser origin check.
-  const bindHost = resolveApiBindHost(process.env).toLowerCase();
-  if (WILDCARD_BIND_RE.test(stripOptionalHostPort(bindHost))) return trimmed;
-
-  // Explicit allowlist via env (comma-separated)
-  const allow = resolveAllowedOrigins(process.env);
-  if (allow.includes(trimmed)) {
-    return trimmed;
-  }
-
-  if (LOCAL_ORIGIN_RE.test(trimmed)) return trimmed;
-  if (APP_ORIGIN_RE.test(trimmed)) return trimmed;
-  if (trimmed === "null" || trimmed === "file://") {
-    if (isNullOriginAllowed(process.env)) {
-      return "null";
-    }
-  }
-  return null;
-}
-
-function isBrowserCompanionExtensionOrigin(
-  origin: string | undefined,
-): boolean {
-  if (!origin) {
-    return false;
-  }
-  const trimmed = origin.trim();
-  return (
-    /^chrome-extension:\/\/[a-z]{32}$/i.test(trimmed) ||
-    /^moz-extension:\/\/[0-9a-f-]+$/i.test(trimmed) ||
-    /^safari-web-extension:\/\/[A-Za-z0-9.-]+$/i.test(trimmed)
-  );
-}
-
-function applyCors(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  pathname: string,
-): boolean {
-  const origin =
-    typeof req.headers.origin === "string" ? req.headers.origin : undefined;
-  const allowBrowserCompanionOrigin =
-    pathname.startsWith("/api/lifeops/browser/companions/") &&
-    isBrowserCompanionExtensionOrigin(origin);
-  const allowed = allowBrowserCompanionOrigin
-    ? (origin?.trim() ?? null)
-    : resolveCorsOrigin(origin);
-
-  if (origin && !allowed) return false;
-
-  if (allowed) {
-    res.setHeader("Access-Control-Allow-Origin", allowed);
-    res.setHeader("Vary", "Origin");
-    res.setHeader(
-      "Access-Control-Allow-Methods",
-      "GET, POST, PUT, DELETE, OPTIONS",
-    );
-    res.setHeader(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-Eliza-Token, X-Api-Key, X-Eliza-Export-Token, X-Eliza-Client-Id, X-Eliza-Terminal-Token, X-Eliza-UI-Language, X-Eliza-Browser-Companion-Id",
-    );
-  }
-
-  // Security headers
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("X-XSS-Protection", "1; mode=block");
-  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-
-  return true;
-}
-
-const PAIRING_TTL_MS = 10 * 60 * 1000;
-const PAIRING_WINDOW_MS = 10 * 60 * 1000;
-const PAIRING_MAX_ATTEMPTS = 5;
-const PAIRING_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
-let pairingCode: string | null = null;
 /** Guard against concurrent provider switch requests (P0 §3). */
 let providerSwitchInProgress = false;
-let pairingExpiresAt = 0;
-const pairingAttempts = new Map<string, { count: number; resetAt: number }>();
 
-function pairingEnabled(): boolean {
-  return (
-    Boolean(getConfiguredApiToken()) &&
-    process.env.ELIZA_PAIRING_DISABLED !== "1"
-  );
-}
+// PluginConfigMutationRejection, resolvePluginConfigMutationRejections,
+// WalletExportRejection, resolveWalletExportRejection
+// extracted to server-helpers-plugin.ts and server-helpers-wallet.ts respectively.
+// Re-exported above.
 
-function normalizePairingCode(code: string): string {
-  return code.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-}
-
-function generatePairingCode(): string {
-  const bytes = crypto.randomBytes(8);
-  let raw = "";
-  for (let i = 0; i < bytes.length; i++) {
-    raw += PAIRING_ALPHABET[bytes[i] % PAIRING_ALPHABET.length];
-  }
-  return `${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
-}
-
-function ensurePairingCode(): string | null {
-  if (!pairingEnabled()) return null;
-  const now = Date.now();
-  if (!pairingCode || now > pairingExpiresAt) {
-    pairingCode = generatePairingCode();
-    pairingExpiresAt = now + PAIRING_TTL_MS;
-    logger.warn(
-      `[eliza-api] Pairing code: ${pairingCode} (valid for 10 minutes)`,
-    );
-  }
-  return pairingCode;
-}
-
-function rateLimitPairing(ip: string | null): boolean {
-  const key = ip ?? "unknown";
-  const now = Date.now();
-
-  // Lazy sweep: evict expired entries when map grows beyond 100
-  sweepExpiredEntries(pairingAttempts, now, 100);
-
-  const current = pairingAttempts.get(key);
-  if (!current || now > current.resetAt) {
-    pairingAttempts.set(key, { count: 1, resetAt: now + PAIRING_WINDOW_MS });
-    return true;
-  }
-  if (current.count >= PAIRING_MAX_ATTEMPTS) return false;
-  current.count += 1;
-  return true;
-}
-
-export function extractAuthToken(req: http.IncomingMessage): string | null {
-  const auth =
-    typeof req.headers.authorization === "string"
-      ? req.headers.authorization.trim()
-      : "";
-  if (auth) {
-    const match = /^Bearer\s+(.+)$/i.exec(auth);
-    if (match?.[1]) return match[1].trim();
-  }
-
-  const header =
-    (typeof req.headers["x-eliza-token"] === "string" &&
-      req.headers["x-eliza-token"]) ||
-    (typeof req.headers["x-eliza-token"] === "string" &&
-      req.headers["x-eliza-token"]) ||
-    (typeof req.headers["x-api-key"] === "string" && req.headers["x-api-key"]);
-  if (typeof header === "string" && header.trim()) return header.trim();
-
-  return null;
-}
-
-const SAFE_WS_CLIENT_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
-
-export function normalizeWsClientId(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (!SAFE_WS_CLIENT_ID_RE.test(trimmed)) return null;
-  return trimmed;
-}
-
-function firstHeaderValue(value: string | string[] | undefined): string | null {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
-  return null;
-}
-
-export function resolveTerminalRunClientId(
-  req: Pick<http.IncomingMessage, "headers">,
-  body: { clientId?: unknown } | null | undefined,
-): string | null {
-  const headerClientId = normalizeWsClientId(
-    firstHeaderValue(req.headers["x-eliza-client-id"]),
-  );
-  if (headerClientId) return headerClientId;
-  return normalizeWsClientId(body?.clientId);
-}
-
-const SHARED_TERMINAL_CLIENT_IDS = new Set([
-  "runtime-terminal-action",
-  "runtime-shell-action",
-]);
-
-function isSharedTerminalClientId(clientId: string): boolean {
-  return SHARED_TERMINAL_CLIENT_IDS.has(clientId);
-}
-
-function tokenMatches(expected: string, provided: string): boolean {
-  const a = Buffer.from(expected, "utf8");
-  const b = Buffer.from(provided, "utf8");
-  if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(a, b);
-}
-
-function getConfiguredApiToken(): string | undefined {
-  return resolveApiToken(process.env) ?? undefined;
-}
-
-function isLoopbackBindHost(host: string): boolean {
-  let normalized = host.trim().toLowerCase();
-
-  if (!normalized) return true;
-
-  // Allow users to provide full URLs by mistake (e.g. http://localhost:2138)
-  if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
-    try {
-      const parsed = new URL(normalized);
-      normalized = parsed.hostname.toLowerCase();
-    } catch {
-      // Fall through and parse as raw host value.
-    }
-  }
-
-  // [::1]:2138 -> ::1
-  const bracketedIpv6 = /^\[([^\]]+)\](?::\d+)?$/.exec(normalized);
-  if (bracketedIpv6?.[1]) {
-    normalized = bracketedIpv6[1];
-  } else {
-    // localhost:2138 -> localhost, 127.0.0.1:2138 -> 127.0.0.1
-    const singleColonHostPort = /^([^:]+):(\d+)$/.exec(normalized);
-    if (singleColonHostPort?.[1]) {
-      normalized = singleColonHostPort[1];
-    }
-  }
-
-  normalized = normalized.replace(/^\[|\]$/g, "");
-  if (!normalized) return true;
-  if (
-    normalized === "localhost" ||
-    normalized === "::1" ||
-    normalized === "0:0:0:0:0:0:0:1" ||
-    normalized === "::ffff:127.0.0.1"
-  ) {
-    return true;
-  }
-  if (normalized.startsWith("127.")) return true;
-  return false;
-}
-
-export function ensureApiTokenForBindHost(host: string): void {
-  const { disableAutoApiToken } = resolveApiSecurityConfig(process.env);
-
-  const token = getConfiguredApiToken();
-  if (token) return;
-
-  const cloudProvisioned = isCloudProvisionedContainer();
-
-  // Cloud-provisioned containers must never run without an inbound API token
-  // (isAuthorized rejects all requests when no token + cloud flag is set).
-  // Override the disable flag for cloud containers so they always get a
-  // fallback token rather than dead-locking into 401 on every request.
-  if (disableAutoApiToken && !cloudProvisioned) {
-    return;
-  }
-  if (!cloudProvisioned && isLoopbackBindHost(host)) return;
-
-  const generated = crypto.randomBytes(32).toString("hex");
-  setApiToken(process.env, generated);
-
-  if (cloudProvisioned) {
-    logger.warn(
-      "[eliza-api] Steward-managed cloud container started without ELIZA_API_TOKEN/ELIZA_API_TOKEN; generated a temporary inbound API token for this process.",
-    );
-  } else {
-    logger.warn(
-      `[eliza-api] ELIZA_API_BIND/ELIZA_API_BIND=${host} is non-loopback and ELIZA_API_TOKEN/ELIZA_API_TOKEN is unset.`,
-    );
-  }
-  const tokenFingerprint = `${generated.slice(0, 4)}...${generated.slice(-4)}`;
-  logger.warn(
-    `[eliza-api] Generated temporary API token (${tokenFingerprint}) for this process. Set ELIZA_API_TOKEN or ELIZA_API_TOKEN explicitly to override.`,
-  );
-}
-
-export function isAuthorized(req: http.IncomingMessage): boolean {
-  const expected = getConfiguredApiToken();
-  if (!expected) return !isCloudProvisionedContainer();
-  const provided = extractAuthToken(req);
-  if (!provided) return false;
-  return tokenMatches(expected, provided);
-}
-
-export interface PluginConfigMutationRejection {
-  field: string;
-  message: string;
-}
-
-export function resolvePluginConfigMutationRejections(
-  pluginParams: Array<{ key: string }>,
-  config: Record<string, unknown>,
-): PluginConfigMutationRejection[] {
-  const allowedParamKeys = new Set(
-    pluginParams.map((p) => p.key.toUpperCase().trim()),
-  );
-  const rejections: PluginConfigMutationRejection[] = [];
-
-  for (const key of Object.keys(config)) {
-    const normalized = key.toUpperCase().trim();
-
-    if (!allowedParamKeys.has(normalized)) {
-      rejections.push({
-        field: key,
-        message: `${key} is not a declared config key for this plugin`,
-      });
-      continue;
-    }
-
-    if (BLOCKED_ENV_KEYS.has(normalized)) {
-      rejections.push({
-        field: key,
-        message: `${key} is blocked for security reasons`,
-      });
-    }
-  }
-
-  return rejections;
-}
-
-interface WalletExportRequestBody {
-  confirm?: boolean;
-  exportToken?: string;
-}
-
-export interface WalletExportRejection {
-  status: 401 | 403;
-  reason: string;
-}
-
-export function resolveWalletExportRejection(
-  req: http.IncomingMessage,
-  body: WalletExportRequestBody,
-): WalletExportRejection | null {
-  if (!body.confirm) {
-    return {
-      status: 403,
-      reason:
-        'Export requires explicit confirmation. Send { "confirm": true } in the request body.',
-    };
-  }
-
-  const expected =
-    process.env.ELIZA_WALLET_EXPORT_TOKEN?.trim() ||
-    process.env.ELIZA_WALLET_EXPORT_TOKEN?.trim();
-  if (!expected) {
-    return {
-      status: 403,
-      reason:
-        "Wallet export is disabled. Set ELIZA_WALLET_EXPORT_TOKEN (or ELIZA_WALLET_EXPORT_TOKEN) to enable secure exports.",
-    };
-  }
-
-  const headerToken =
-    typeof req.headers["x-eliza-export-token"] === "string"
-      ? req.headers["x-eliza-export-token"].trim()
-      : "";
-  const bodyToken =
-    typeof body.exportToken === "string" ? body.exportToken.trim() : "";
-  const provided = headerToken || bodyToken;
-
-  if (!provided) {
-    return {
-      status: 401,
-      reason:
-        "Missing export token. Provide X-Eliza-Export-Token header or exportToken in request body.",
-    };
-  }
-
-  if (!tokenMatches(expected, provided)) {
-    return { status: 401, reason: "Invalid export token." };
-  }
-
-  return null;
-}
-
-interface TerminalRunRequestBody {
-  terminalToken?: string;
-}
-
-export interface TerminalRunRejection {
-  status: 401 | 403;
-  reason: string;
-}
-
-export function resolveTerminalRunRejection(
-  req: http.IncomingMessage,
-  body: TerminalRunRequestBody,
-): TerminalRunRejection | null {
-  const expected = process.env.ELIZA_TERMINAL_RUN_TOKEN?.trim();
-  const apiTokenEnabled = Boolean(getConfiguredApiToken());
-
-  // Compatibility mode: local loopback sessions without API token keep
-  // existing behavior unless an explicit terminal token is configured.
-  if (!expected && !apiTokenEnabled) {
-    return null;
-  }
-
-  if (!expected) {
-    return {
-      status: 403,
-      reason:
-        "Terminal run is disabled for token-authenticated API sessions. Set ELIZA_TERMINAL_RUN_TOKEN to enable command execution.",
-    };
-  }
-
-  const headerToken =
-    typeof req.headers["x-eliza-terminal-token"] === "string"
-      ? req.headers["x-eliza-terminal-token"].trim()
-      : "";
-  const bodyToken =
-    typeof body.terminalToken === "string" ? body.terminalToken.trim() : "";
-  const provided = headerToken || bodyToken;
-
-  if (!provided) {
-    return {
-      status: 401,
-      reason:
-        "Missing terminal token. Provide X-Eliza-Terminal-Token header or terminalToken in request body.",
-    };
-  }
-
-  if (!tokenMatches(expected, provided)) {
-    return {
-      status: 401,
-      reason: "Invalid terminal token.",
-    };
-  }
-
-  return null;
-}
-
-function extractWsQueryToken(url: URL): string | null {
-  const allowQueryToken = process.env.ELIZA_ALLOW_WS_QUERY_TOKEN === "1";
-  if (!allowQueryToken) return null;
-
-  const token =
-    url.searchParams.get("token") ??
-    url.searchParams.get("apiKey") ??
-    url.searchParams.get("api_key");
-  return token?.trim() || null;
-}
-
-function hasWsQueryToken(url: URL): boolean {
-  return (
-    url.searchParams.has("token") ||
-    url.searchParams.has("apiKey") ||
-    url.searchParams.has("api_key")
-  );
-}
-
-function extractWebSocketHandshakeToken(
-  request: http.IncomingMessage,
-  url: URL,
-): string | null {
-  const headerToken = extractAuthToken(request);
-  if (headerToken) return headerToken;
-  return extractWsQueryToken(url);
-}
-
-function isWebSocketAuthorized(
-  request: http.IncomingMessage,
-  url: URL,
-): boolean {
-  const expected = getConfiguredApiToken();
-  if (!expected) return !isCloudProvisionedContainer();
-
-  const handshakeToken = extractWebSocketHandshakeToken(request, url);
-  if (!handshakeToken) return false;
-  return tokenMatches(expected, handshakeToken);
-}
-
-export interface WebSocketUpgradeRejection {
-  status: 401 | 403 | 404;
-  reason: string;
-}
-
-export function resolveWebSocketUpgradeRejection(
-  req: http.IncomingMessage,
-  wsUrl: URL,
-): WebSocketUpgradeRejection | null {
-  if (wsUrl.pathname !== "/ws") {
-    return { status: 404, reason: "Not found" };
-  }
-
-  const origin =
-    typeof req.headers.origin === "string" ? req.headers.origin : undefined;
-  const allowedOrigin = resolveCorsOrigin(origin);
-  if (origin && !allowedOrigin) {
-    return { status: 403, reason: "Origin not allowed" };
-  }
-
-  const expected = getConfiguredApiToken();
-  if (!expected) {
-    return isCloudProvisionedContainer()
-      ? { status: 401, reason: "Unauthorized" }
-      : null;
-  }
-
-  if (
-    process.env.ELIZA_ALLOW_WS_QUERY_TOKEN !== "1" &&
-    hasWsQueryToken(wsUrl)
-  ) {
-    return { status: 401, reason: "Unauthorized" };
-  }
-
-  const handshakeToken = extractWebSocketHandshakeToken(req, wsUrl);
-  if (handshakeToken && !tokenMatches(expected, handshakeToken)) {
-    return { status: 401, reason: "Unauthorized" };
-  }
-
-  // Cloud containers must authenticate at the handshake level because there is
-  // no trusted upstream proxy handling auth for the WebSocket path.
-  if (!handshakeToken && isCloudProvisionedContainer()) {
-    return { status: 401, reason: "Unauthorized" };
-  }
-
-  return null;
-}
-
-const RESET_STATE_ALLOWED_SEGMENTS = new Set([
-  ".eliza",
-  "eliza",
-  ".eliza",
-  "eliza",
-]);
-
-function hasAllowedResetSegment(resolvedState: string): boolean {
-  return resolvedState
-    .split(path.sep)
-    .some((segment) =>
-      RESET_STATE_ALLOWED_SEGMENTS.has(segment.trim().toLowerCase()),
-    );
-}
-
-export function isSafeResetStateDir(
-  resolvedState: string,
-  homeDir: string,
-): boolean {
-  const normalizedState = path.resolve(resolvedState);
-  const normalizedHome = path.resolve(homeDir);
-  const parsedRoot = path.parse(normalizedState).root;
-
-  if (normalizedState === parsedRoot) return false;
-  if (normalizedState === normalizedHome) return false;
-
-  const relativeToHome = path.relative(normalizedHome, normalizedState);
-  const isUnderHome =
-    relativeToHome.length > 0 &&
-    !relativeToHome.startsWith("..") &&
-    !path.isAbsolute(relativeToHome);
-  if (!isUnderHome) return false;
-
-  return hasAllowedResetSegment(normalizedState);
-}
-
-// persistConversationRoomTitle imported in the consolidated import at the top
-
-function rejectWebSocketUpgrade(
-  socket: import("node:stream").Duplex,
-  statusCode: number,
-  message: string,
-): void {
-  const statusText =
-    statusCode === 401
-      ? "Unauthorized"
-      : statusCode === 403
-        ? "Forbidden"
-        : statusCode === 404
-          ? "Not Found"
-          : "Bad Request";
-  const body = `${message}\n`;
-  socket.write(
-    `HTTP/1.1 ${statusCode} ${statusText}\r\n` +
-      "Connection: close\r\n" +
-      "Content-Type: text/plain; charset=utf-8\r\n" +
-      `Content-Length: ${Buffer.byteLength(body)}\r\n` +
-      "\r\n" +
-      body,
-    () => socket.end(),
-  );
-}
+// Terminal/WS/state-dir helpers extracted to server-helpers-auth.ts; re-exported above.
 
 // decodePathComponent imported in the consolidated import at the top
 
@@ -2820,13 +1257,20 @@ const _WORKBENCH_TODO_TAG = WORKBENCH_TODO_TAG;
 
 // (workbench helpers moved to workbench-helpers.ts)
 
-// ── Autonomy → User message routing ──────────────────────────────────
+// ── Autonomy / swarm / coding-agent helpers — extracted to server-helpers-swarm.ts ──
 
-/**
- * Route non-conversation text output to the user's active conversation.
- * Stores the message as a Memory in the conversation room and broadcasts
- * a `proactive-message` WS event to the frontend.
- */
+import {
+  routeAutonomyTextToUser as _routeAutonomyTextToUser,
+} from "./server-helpers-swarm.js";
+
+export {
+  routeAutonomyTextToUser,
+} from "./server-helpers-swarm.js";
+
+const routeAutonomyTextToUser = _routeAutonomyTextToUser;
+
+// The full autonomy/swarm/coordinator/PTY bridge implementations are now in
+// server-helpers-swarm.ts. Only a compat stub remains for type checking.
 const CHAT_SUPPRESSED_AUTONOMY_SOURCES = new Set([
   "lifeops-reminder",
   "lifeops-workflow",
@@ -2835,7 +1279,7 @@ const CHAT_SUPPRESSED_AUTONOMY_SOURCES = new Set([
   "proactive-nudge",
 ]);
 
-export async function routeAutonomyTextToUser(
+async function _routeAutonomyTextToUserCompat(
   state: ServerState,
   responseText: string,
   source = "autonomy",
@@ -2939,7 +1383,6 @@ function getCoordinatorFromRuntime(runtime: AgentRuntime): {
   getTaskThread?: (
     threadId: string,
   ) => Promise<{ roomId?: string | null } | null>;
-  sourceRoomId?: string | null;
 } | null {
   const coordinator = runtime.getService("SWARM_COORDINATOR");
   if (coordinator) {
@@ -3026,17 +1469,26 @@ function wireCodingAgentWsBridge(st: ServerState): boolean {
  * persisted message in the conversation.
  */
 function wireCodingAgentSwarmSynthesis(st: ServerState): boolean {
-  // Same rationale as wireCodingAgentChatBridge: synthesis is generated
-  // from task metadata (originalTask = user's text), not from the
-  // subagent's actual output. The task-progress-streamer + jsonl watcher
-  // deliver the real answer. Install a no-op callback so the upstream
-  // wiring check considers this bridge wired.
+  // The task-progress-streamer was removed from this tree but the callback
+  // was left as a no-op, so subagent completions never reached the user.
+  // Invoke handleSwarmSynthesis directly so the synthesis LLM routes the
+  // final answer back to the conversation. The task jsonl is already the
+  // source of truth for per-task completionSummary.
   if (!st.runtime) return false;
   const coordinator = getCoordinatorFromRuntime(st.runtime);
   if (!coordinator?.setSwarmCompleteCallback) return false;
-  coordinator.setSwarmCompleteCallback(async () => {
-    // Deliberately no-op — synthesis happens via the streamer instead.
+  coordinator.setSwarmCompleteCallback(async (payload) => {
+    await handleSwarmSynthesis(st, payload);
   });
+  // Same wiring path — install the task heartbeat so sessions running past
+  // 45s emit periodic "still working" pings that report the subagent's
+  // current tool activity. Synthesis delivers the final answer; heartbeat
+  // just tells the user the task is alive and moving.
+  const ptyService = st.runtime.getService("PTY_SERVICE");
+  if (ptyService) {
+    installTaskHeartbeat(st.runtime, ptyService);
+    logger.info("[task-heartbeat] installed");
+  }
   return true;
 }
 
@@ -3058,6 +1510,8 @@ export async function handleSwarmSynthesis(
       originalTask: string;
       status: string;
       completionSummary: string;
+      workdir?: string;
+      roomId?: string;
     }>;
     total: number;
     completed: number;
@@ -3079,10 +1533,19 @@ export async function handleSwarmSynthesis(
     `[swarm-synthesis] Generating synthesis for ${payload.total} tasks (${payload.completed} completed, ${payload.stopped} stopped, ${payload.errored} errored)`,
   );
 
-  const resultText = await buildSynthesisResultText(payload);
-  logger.info("[swarm-synthesis] Synthesis generated, routing to user");
-  await routeMessage(resultText, "swarm_synthesis");
-  await routeSynthesisToConnector(runtime, resultText);
+  const resultText = await buildSynthesisResultText(payload, runtime);
+  logger.info(
+    `[swarm-synthesis] Synthesis generated (${resultText.length} chars), routing to user — preview: ${resultText.slice(0, 200).replace(/\n/g, " | ")}`,
+  );
+  // Route back to the originating chat channel via the roomId captured on
+  // the incoming user message (propagated through the task payload).
+  const roomId = payload.tasks.find((t) => t.roomId)?.roomId ?? null;
+  // Discord's per-message limit is 2000 chars. Deliver long answers as
+  // sequential chunks so the subagent's full output reaches the user.
+  for (const chunk of chunkForDiscord(resultText, 1900)) {
+    await routeMessage(chunk, "swarm_synthesis");
+    await routeSynthesisToConnector(runtime, chunk, roomId);
+  }
 }
 
 /**
@@ -3090,24 +1553,42 @@ export async function handleSwarmSynthesis(
  * For port-bound tasks, verifies the server is actually listening.
  * No LLM call required — task data already has what we need.
  */
-async function buildSynthesisResultText(payload: {
-  tasks: Array<{
-    originalTask: string;
-    completionSummary: string;
-    status: string;
-  }>;
-  total: number;
-}): Promise<string> {
-  const parts = await Promise.all(payload.tasks.map(buildTaskResultLine));
-  return parts.length === 1
-    ? `done — ${parts[0]}`
-    : `done — ${payload.total} tasks:\n${parts.map((p) => `• ${p}`).join("\n")}`;
-}
-
-async function buildTaskResultLine(task: {
+type SynthesisTask = {
+  sessionId: string;
   originalTask: string;
   completionSummary: string;
-}): Promise<string> {
+  status: string;
+  workdir?: string;
+};
+
+async function buildSynthesisResultText(
+  payload: { tasks: SynthesisTask[]; total: number },
+  runtime: AgentRuntime,
+): Promise<string> {
+  const parts = await Promise.all(
+    payload.tasks.map((task) => buildTaskLine(task, runtime)),
+  );
+  if (parts.length === 1) return parts[0];
+  return `done — ${parts.length} tasks:\n${parts.map((p) => `• ${p}`).join("\n")}`;
+}
+
+/**
+ * Deliver the subagent's actual final answer — the last end_turn assistant
+ * text from its session jsonl. Trust the agent to already have produced
+ * a coherent response; synthesis does not rewrite or trim it. Falls back
+ * to completionSummary, then a port-status check, then the original
+ * prompt text when no jsonl is available.
+ */
+async function buildTaskLine(
+  task: SynthesisTask,
+  runtime: AgentRuntime,
+): Promise<string> {
+  const workdir =
+    task.workdir ?? resolveSessionWorkdir(runtime, task.sessionId);
+  if (workdir) {
+    const assistantText = await readLastAssistantTextFromJsonl(workdir);
+    if (assistantText) return assistantText;
+  }
   if (task.completionSummary) return task.completionSummary;
   const portMatch = task.originalTask.match(/port\s+(\d+)/i);
   const port = portMatch?.[1];
@@ -3117,6 +1598,16 @@ async function buildTaskResultLine(task: {
     return `built and serving at http://${host}:${port}`;
   }
   return `built the files but server isn't running on port ${port} yet`;
+}
+
+function resolveSessionWorkdir(
+  runtime: AgentRuntime,
+  sessionId: string,
+): string | null {
+  const ptyService = runtime.getService("PTY_SERVICE") as
+    | { getSession?: (id: string) => { workdir?: string } | undefined }
+    | null;
+  return ptyService?.getSession?.(sessionId)?.workdir ?? null;
 }
 
 async function isPortServing(port: string): Promise<boolean> {
@@ -3138,13 +1629,22 @@ async function isPortServing(port: string): Promise<boolean> {
 async function routeSynthesisToConnector(
   runtime: AgentRuntime,
   resultText: string,
+  roomId: string | null,
 ): Promise<void> {
-  const coordinator = getCoordinatorFromRuntime(runtime);
-  const sourceRoomId = coordinator?.sourceRoomId;
-  if (!sourceRoomId) return;
+  if (!roomId) {
+    logger.debug(
+      "[swarm-synthesis] No roomId available — cannot route to connector",
+    );
+    return;
+  }
   try {
-    const room = await runtime.getRoom(sourceRoomId as UUID);
-    if (!room?.source) return;
+    const room = await runtime.getRoom(roomId as UUID);
+    if (!room?.source) {
+      logger.debug(
+        `[swarm-synthesis] Room ${roomId} has no source connector — cannot route`,
+      );
+      return;
+    }
     await runtime.sendMessageToTarget(
       {
         source: room.source,
@@ -3158,7 +1658,7 @@ async function routeSynthesisToConnector(
       `[swarm-synthesis] Routed result to ${room.source} room ${room.id}`,
     );
   } catch (err) {
-    logger.debug(`[swarm-synthesis] Connector routing failed: ${err}`);
+    logger.warn(`[swarm-synthesis] Connector routing failed: ${err}`);
   }
 }
 
@@ -3167,6 +1667,11 @@ import {
   parseActionBlock,
   stripActionBlockFromDisplay,
 } from "./parse-action-block.js";
+import {
+  chunkForDiscord,
+  readLastAssistantTextFromJsonl,
+} from "../runtime/subagent-output.js";
+import { installTaskHeartbeat } from "../runtime/task-heartbeat.js";
 
 // ── Coordinator Event Routing ───────────────────────────────────────────
 
@@ -3985,9 +2490,7 @@ async function handleCodingAgentsFallback(
  */
 function getPtyConsoleBridge(st: ServerState) {
   if (!st.runtime) return null;
-  const ptyService = st.runtime.getService(
-    "PTY_SERVICE",
-  ) as unknown as PTYService | null;
+  const ptyService = st.runtime.getService("PTY_SERVICE") as PTYService | null;
   return ptyService?.consoleBridge ?? null;
 }
 
@@ -4273,11 +2776,8 @@ async function handleRequest(
       ensurePairingCode,
       normalizePairingCode,
       rateLimitPairing,
-      getPairingExpiresAt: () => pairingExpiresAt,
-      clearPairing: () => {
-        pairingCode = null;
-        pairingExpiresAt = 0;
-      },
+      getPairingExpiresAt,
+      clearPairing,
     })
   ) {
     return;
@@ -4394,17 +2894,17 @@ async function handleRequest(
     readJsonBody,
     json,
     error,
-    executeTriggerTask: executeTriggerTask as never,
+    executeTriggerTask,
     getTriggerHealthSnapshot,
-    getTriggerLimit: getTriggerLimit as never,
-    listTriggerTasks: listTriggerTasks as never,
+    getTriggerLimit,
+    listTriggerTasks,
     readTriggerConfig,
     readTriggerRuns,
-    taskToTriggerSummary: taskToTriggerSummary as never,
+    taskToTriggerSummary,
     triggersFeatureEnabled,
-    buildTriggerConfig: buildTriggerConfig as never,
-    buildTriggerMetadata: buildTriggerMetadata as never,
-    normalizeTriggerDraft: normalizeTriggerDraft as never,
+    buildTriggerConfig,
+    buildTriggerMetadata,
+    normalizeTriggerDraft,
     DISABLED_TRIGGER_INTERVAL_MS,
     TRIGGER_TASK_NAME,
     TRIGGER_TASK_TAGS: [...TRIGGER_TASK_TAGS],
@@ -4689,7 +3189,27 @@ async function handleRequest(
       auditEventTypes: AUDIT_EVENT_TYPES,
       auditSeverities: AUDIT_SEVERITIES,
       getAuditFeedSize,
-      queryAuditFeed: (query) => queryAuditFeed(query as never) as never,
+      queryAuditFeed: (query) =>
+        queryAuditFeed({
+          type: (AUDIT_EVENT_TYPES as readonly string[]).includes(
+            query.type ?? "",
+          )
+            ? (query.type as (typeof AUDIT_EVENT_TYPES)[number])
+            : undefined,
+          severity: (AUDIT_SEVERITIES as readonly string[]).includes(
+            query.severity ?? "",
+          )
+            ? (query.severity as (typeof AUDIT_SEVERITIES)[number])
+            : undefined,
+          sinceMs: query.sinceMs,
+          limit: query.limit,
+        }).map((entry) => ({
+          timestamp: entry.timestamp,
+          type: entry.type,
+          summary: entry.summary,
+          severity: entry.severity,
+          metadata: entry.metadata,
+        })),
       subscribeAuditFeed,
     })
   ) {
@@ -5449,8 +3969,49 @@ async function handleRequest(
       method,
       pathname,
       url,
-      appManager: state.appManager as never,
-      getPluginManager: () => getPluginManagerForState(state) as never,
+      appManager: {
+        listAvailable: (pluginManager) =>
+          state.appManager.listAvailable(pluginManager),
+        search: (pluginManager, query, limit) =>
+          state.appManager.search(pluginManager, query, limit),
+        listInstalled: (pluginManager) =>
+          state.appManager.listInstalled(pluginManager),
+        listRuns: (runtime) =>
+          state.appManager.listRuns(
+            runtime && typeof runtime === "object"
+              ? (runtime as IAgentRuntime)
+              : null,
+          ),
+        getRun: (runId, runtime) =>
+          state.appManager.getRun(
+            runId,
+            runtime && typeof runtime === "object"
+              ? (runtime as IAgentRuntime)
+              : null,
+          ),
+        attachRun: (runId, runtime) =>
+          state.appManager.attachRun(
+            runId,
+            runtime && typeof runtime === "object"
+              ? (runtime as IAgentRuntime)
+              : null,
+          ),
+        detachRun: (runId) => state.appManager.detachRun(runId),
+        launch: (pluginManager, name, onProgress, runtime) =>
+          state.appManager.launch(
+            pluginManager,
+            name,
+            onProgress,
+            runtime && typeof runtime === "object"
+              ? (runtime as IAgentRuntime)
+              : null,
+          ),
+        stop: (pluginManager, name, runId) =>
+          state.appManager.stop(pluginManager, name, runId),
+        getInfo: (pluginManager, name) =>
+          state.appManager.getInfo(pluginManager, name),
+      },
+      getPluginManager: () => getPluginManagerForState(state),
       parseBoundedLimit,
       readJsonBody,
       json,
@@ -5917,7 +4478,10 @@ export async function startApiServer(opts?: {
     defaultSource: string,
     defaultTags: string[],
   ): boolean => {
-    if ((target as unknown as Record<string, unknown>)[PATCHED_MARKER]) {
+    const patchedTarget = target as typeof logger & {
+      [PATCHED_MARKER]?: boolean;
+    };
+    if (patchedTarget[PATCHED_MARKER]) {
       return false;
     }
 
@@ -5956,7 +4520,7 @@ export async function startApiServer(opts?: {
       target[lvl] = patched;
     }
 
-    (target as unknown as Record<string, unknown>)[PATCHED_MARKER] = true;
+    patchedTarget[PATCHED_MARKER] = true;
     return true;
   };
 
@@ -6714,7 +5278,7 @@ export async function startApiServer(opts?: {
   state.broadcastStatus = broadcastStatus;
 
   // Generic broadcast — sends an arbitrary JSON payload to all WS clients.
-  state.broadcastWs = (data: Record<string, unknown>) => {
+  state.broadcastWs = (data: object) => {
     const message = JSON.stringify(data);
     for (const client of wsClients) {
       if (client.readyState === 1) {
@@ -6731,7 +5295,7 @@ export async function startApiServer(opts?: {
 
   state.broadcastWsToClientId = (
     clientId: string,
-    data: Record<string, unknown>,
+    data: object,
   ) => {
     const message = JSON.stringify(data);
     let delivered = 0;
@@ -6809,9 +5373,7 @@ export async function startApiServer(opts?: {
 
         state.conversations.set(convId, {
           id: convId,
-          title:
-            ((room as unknown as Record<string, unknown>).name as string) ||
-            "Chat",
+          title: room.name || "Chat",
           roomId: room.id as UUID,
           createdAt: updatedAt,
           updatedAt,
@@ -6854,7 +5416,10 @@ export async function startApiServer(opts?: {
   ): Promise<void> => {
     try {
       const dbAgent = await rt.getAgent(rt.agentId);
-      const agentRecord = dbAgent as unknown as Record<string, unknown> | null;
+      const agentRecord =
+        dbAgent && typeof dbAgent === "object" && !Array.isArray(dbAgent)
+          ? Object.fromEntries(Object.entries(dbAgent))
+          : null;
       const saved = agentRecord?.character as
         | Record<string, unknown>
         | undefined;

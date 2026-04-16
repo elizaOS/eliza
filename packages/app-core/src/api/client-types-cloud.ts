@@ -4,6 +4,14 @@
 // ---------------------------------------------------------------------------
 
 import type { TrajectoryExportFormat } from "./client-types-core";
+import type {
+  AppSessionConfig,
+  AppUiExtensionConfig,
+  AppViewerConfig,
+  RegistryAppInfo,
+} from "@elizaos/shared/contracts/apps";
+
+export type { AppSessionConfig, AppUiExtensionConfig, AppViewerConfig, RegistryAppInfo };
 
 // Cloud
 export interface CloudStatus {
@@ -396,17 +404,7 @@ export interface AppViewerAuthMessage {
   followEntity?: string;
 }
 
-export interface AppViewerConfig {
-  url: string;
-  embedParams?: Record<string, string>;
-  postMessageAuth?: boolean;
-  sandbox?: string;
-  authMessage?: AppViewerAuthMessage;
-}
-
-export interface AppUiExtensionConfig {
-  detailPanelId: string;
-}
+// AppViewerConfig, AppUiExtensionConfig — imported from @elizaos/shared/contracts/apps
 
 export interface AppSessionRecommendation {
   id: string;
@@ -425,10 +423,7 @@ export interface AppSessionActivityItem {
   severity?: "info" | "warning" | "error";
 }
 
-export interface AppSessionConfig {
-  mode: AppSessionMode;
-  features?: AppSessionFeature[];
-}
+// AppSessionConfig — imported from @elizaos/shared/contracts/apps
 
 export interface AppSessionState {
   sessionId: string;
@@ -534,29 +529,7 @@ export interface AppLaunchDiagnostic {
   message: string;
 }
 
-export interface RegistryAppInfo {
-  name: string;
-  displayName: string;
-  description: string;
-  category: string;
-  launchType: string;
-  launchUrl: string | null;
-  icon: string | null;
-  capabilities: string[];
-  stars: number;
-  repository: string;
-  latestVersion: string | null;
-  supports: { v0: boolean; v1: boolean; v2: boolean };
-  npm: {
-    package: string;
-    v0Version: string | null;
-    v1Version: string | null;
-    v2Version: string | null;
-  };
-  uiExtension?: AppUiExtensionConfig;
-  viewer?: AppViewerConfig;
-  session?: AppSessionConfig;
-}
+// RegistryAppInfo — imported from @elizaos/shared/contracts/apps
 
 export interface InstalledAppInfo {
   name: string;

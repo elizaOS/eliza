@@ -31,7 +31,7 @@ import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
-} from "../onboarding-presets.js";
+} from "@elizaos/shared/onboarding-presets";
 import {
   type AgentEventServiceLike,
   getAgentEventService,

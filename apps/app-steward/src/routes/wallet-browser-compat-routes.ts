@@ -17,13 +17,13 @@ export function safeParseBigInt(value: string): bigint {
   }
 }
 
-import { ensureCompatApiAuthorized } from "@elizaos/app-core/api/auth";
-import type { CompatRuntimeState } from "@elizaos/app-core/api/compat-route-shared";
-import { readCompatJsonBody } from "@elizaos/app-core/api/compat-route-shared";
 import {
+  ensureCompatApiAuthorized,
+  type CompatRuntimeState,
+  readCompatJsonBody,
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
-} from "@elizaos/app-core/api/response";
+} from "@elizaos/app-core";
 import { isStewardConfigured, signViaSteward } from "./steward-bridge";
 
 function normalizeHexData(value: unknown): string | undefined {

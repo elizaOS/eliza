@@ -22,7 +22,7 @@ import {
   getStylePresets,
   normalizeCharacterLanguage,
 } from "@elizaos/shared/onboarding-presets";
-import { loadElizaConfig, saveElizaConfig } from "../config/config";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
 import { resolveProviderCredential } from "./credential-resolver";
 import { PREMADE_VOICES } from "../voice/types";
 import { applyOnboardingCredentialPersistence } from "@elizaos/agent/api/provider-switch-config";

@@ -454,6 +454,10 @@ declare module "./client-base" {
     disconnectGoogleLifeOpsConnector(
       data?: DisconnectLifeOpsGoogleConnectorRequest,
     ): Promise<LifeOpsGoogleConnectorStatus>;
+    getGoogleLifeOpsConnectorAccounts(
+      mode?: LifeOpsConnectorMode,
+      side?: LifeOpsConnectorSide,
+    ): Promise<LifeOpsGoogleConnectorStatus[]>;
     listWorkbenchTasks(): Promise<{ tasks: WorkbenchTask[] }>;
     getWorkbenchTask(taskId: string): Promise<{ task: WorkbenchTask }>;
     createWorkbenchTask(data: {
@@ -1630,6 +1634,22 @@ ElizaClient.prototype.disconnectGoogleLifeOpsConnector = async function (
     method: "POST",
     body: JSON.stringify(data),
   });
+};
+
+ElizaClient.prototype.getGoogleLifeOpsConnectorAccounts = async function (
+  this: ElizaClient,
+  mode,
+  side,
+) {
+  const params = new URLSearchParams();
+  if (mode) {
+    params.set("mode", mode);
+  }
+  if (side) {
+    params.set("side", side);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return this.fetch(`/api/lifeops/connectors/google/accounts${query}`);
 };
 
 ElizaClient.prototype.listWorkbenchTasks = async function (this: ElizaClient) {

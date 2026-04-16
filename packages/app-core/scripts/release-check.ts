@@ -4,6 +4,10 @@ import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  findLocalPackHotspots,
+  shouldSkipExactPackDryRun,
+} from "./lib/release-check-pack-dry-run";
 import { validateStaticAssetManifest } from "./lib/static-asset-manifest.mjs";
 
 type PackFile = { path: string };
@@ -19,12 +23,21 @@ const requiredPaths = [
 ];
 const forbiddenPrefixes = ["dist/Eliza.app/"];
 const orchestratorBrokenLifecycleTarget = "./scripts/ensure-node-pty.mjs";
-const orchestratorPluginPackageJsonPath = resolve(
-  "eliza",
-  "plugins",
-  "plugin-agent-orchestrator",
-  "package.json",
-);
+const orchestratorPluginPackageJsonPathCandidates = [
+  resolve("eliza", "plugins", "plugin-agent-orchestrator", "package.json"),
+  resolve(
+    ".eliza.ci-disabled",
+    "plugins",
+    "plugin-agent-orchestrator",
+    "package.json",
+  ),
+  resolve(
+    "node_modules",
+    "@elizaos",
+    "plugin-agent-orchestrator",
+    "package.json",
+  ),
+] as const;
 const autonomousServerPathCandidates = [
   "node_modules/@elizaos/agent/src/api/server.js",
   "eliza/packages/agent/src/api/server.ts",
@@ -36,6 +49,14 @@ const autonomousElizaPathCandidates = [
 const homepageReleaseDataPathCandidates = [
   "apps/homepage/src/generated/release-data.ts",
 ] as const;
+
+function resolveExistingPath(candidates: readonly string[]) {
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
+function resolveOrchestratorPluginPackageJsonPath() {
+  return resolveExistingPath(orchestratorPluginPackageJsonPathCandidates);
+}
 const requiredWorkflowSnippets = [
   'BUN_VERSION: "1.3.11"',
   "workflow_call:",
@@ -237,14 +258,28 @@ const requiredElectrobunConfigSnippets = [
   'postBuild: "scripts/postwrap-sign-runtime-macos.ts"',
   'postWrap: "scripts/postwrap-diagnostics.ts"',
   "process.env.ELIZA_ELECTROBUN_NOTARIZE ??",
-  '"../../../plugins.json": `${runtimeDistDir}/plugins.json`',
-  '"../../../package.json": `${runtimeDistDir}/package.json`',
+  "[repoPluginsJsonPath]: `${runtimeDistDir}/plugins.json`",
+  "[repoPackageJsonPath]: `${runtimeDistDir}/package.json`",
 ];
-const localPackHotspotPaths = [
-  "dist/node_modules",
-  "apps/app/dist/vrms",
-  "apps/app/dist/animations",
+const electrobunDirCandidates = [
+  resolve("eliza", "packages", "app-core", "platforms", "electrobun"),
+  resolve("apps", "app", "electrobun"),
 ];
+
+function resolveElectrobunPath(...segments: string[]) {
+  for (const candidate of electrobunDirCandidates) {
+    const targetPath = resolve(candidate, ...segments);
+    if (existsSync(targetPath)) {
+      return targetPath;
+    }
+  }
+
+  return resolve(electrobunDirCandidates[0]!, ...segments);
+}
+
+function readElectrobunFile(...segments: string[]) {
+  return readFileSync(resolveElectrobunPath(...segments), "utf8");
+}
 
 type RootPackageJson = {
   bundleDependencies?: string[];
@@ -453,32 +488,6 @@ function runPackDry(): PackResult[] {
   });
 }
 
-export function findLocalPackHotspots(
-  candidates = localPackHotspotPaths,
-  pathExists: (candidate: string) => boolean = existsSync,
-): string[] {
-  return candidates.filter((candidate) => pathExists(candidate));
-}
-
-export function shouldSkipExactPackDryRun(
-  hotspots: string[],
-  env = process.env,
-): boolean {
-  if (hotspots.length === 0) {
-    return false;
-  }
-
-  if (env.CI || env.GITHUB_ACTIONS) {
-    return false;
-  }
-
-  if (env.ELIZA_FORCE_PACK_DRY_RUN === "1") {
-    return false;
-  }
-
-  return true;
-}
-
 export function isPackPathCoveredByFilesList(
   packPath: string,
   filesList: string[],
@@ -611,7 +620,7 @@ function readExistingReleaseCheckFile(
 
 function runFastLocalPackCheck(hotspots: string[]) {
   console.warn(
-    "release-check: skipping exact npm pack --dry-run because local desktop build artifacts are present and package.json whitelists broad build directories:",
+    "release-check: skipping exact npm pack --dry-run because build artifacts are present and package.json whitelists broad build directories:",
   );
   for (const hotspot of hotspots) {
     console.warn(`  - ${hotspot}`);
@@ -663,6 +672,8 @@ function assertBundledAgentOrchestratorInstallFix() {
   const rootPackage = JSON.parse(
     readFileSync("package.json", "utf8"),
   ) as RootPackageJson;
+  const orchestratorPluginPackageJsonPath =
+    resolveOrchestratorPluginPackageJsonPath();
   if (!bundlesDependency(rootPackage, "@elizaos/plugin-agent-orchestrator")) {
     console.error(
       "release-check: package.json must bundle @elizaos/plugin-agent-orchestrator so packaged Eliza includes the standalone orchestrator implementation.",
@@ -670,10 +681,13 @@ function assertBundledAgentOrchestratorInstallFix() {
     process.exit(1);
   }
 
-  if (!existsSync(orchestratorPluginPackageJsonPath)) {
+  if (!orchestratorPluginPackageJsonPath) {
     console.error(
-      "release-check: eliza/plugins/plugin-agent-orchestrator/package.json is missing.",
+      "release-check: @elizaos/plugin-agent-orchestrator/package.json is missing from all expected locations.",
     );
+    for (const candidate of orchestratorPluginPackageJsonPathCandidates) {
+      console.error(`  - ${candidate}`);
+    }
     process.exit(1);
   }
 
@@ -704,6 +718,8 @@ function assertOrchestratorVersionPinned() {
   const rootPackage = JSON.parse(
     readFileSync("package.json", "utf8"),
   ) as RootPackageJson;
+  const orchestratorPluginPackageJsonPath =
+    resolveOrchestratorPluginPackageJsonPath();
   const version =
     rootPackage.dependencies?.["@elizaos/plugin-agent-orchestrator"];
   if (!version) {
@@ -713,10 +729,13 @@ function assertOrchestratorVersionPinned() {
     process.exit(1);
   }
   if (isWorkspaceSpecifier(version)) {
-    if (!existsSync(orchestratorPluginPackageJsonPath)) {
+    if (!orchestratorPluginPackageJsonPath) {
       console.error(
-        "release-check: @elizaos/plugin-agent-orchestrator is configured as workspace:*, but eliza/plugins/plugin-agent-orchestrator/package.json is missing.",
+        "release-check: @elizaos/plugin-agent-orchestrator is configured as workspace:*, but no local package.json was found.",
       );
+      for (const candidate of orchestratorPluginPackageJsonPathCandidates) {
+        console.error(`  - ${candidate}`);
+      }
       process.exit(1);
     }
     return;
@@ -864,10 +883,7 @@ function assertElectrobunPrWorkflowExists() {
 }
 
 function assertElectrobunConfigHasPostWrapSigner() {
-  const config = readFileSync(
-    "apps/app/electrobun/electrobun.config.ts",
-    "utf8",
-  );
+  const config = readElectrobunFile("electrobun.config.ts");
   const missing = requiredElectrobunConfigSnippets.filter(
     (snippet) => !config.includes(snippet),
   );
@@ -884,10 +900,7 @@ function assertElectrobunConfigHasPostWrapSigner() {
 }
 
 function assertMacArtifactStagerLooksCorrect() {
-  const script = readFileSync(
-    "apps/app/electrobun/scripts/stage-macos-release-artifacts.sh",
-    "utf8",
-  );
+  const script = readElectrobunFile("scripts", "stage-macos-release-artifacts.sh");
   const requiredSnippets = [
     'find "$ARTIFACTS_DIR" -maxdepth 1 -type f -name "*-macos-*.app.tar.zst"',
     "no macOS updater tarball found",
@@ -937,10 +950,7 @@ function assertMacArtifactStagerLooksCorrect() {
 }
 
 function assertWindowsSmokeScriptHasLeadingParamBlock() {
-  const script = readFileSync(
-    "apps/app/electrobun/scripts/smoke-test-windows.ps1",
-    "utf8",
-  );
+  const script = readElectrobunFile("scripts", "smoke-test-windows.ps1");
   const firstRelevantLine = script
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -1007,9 +1017,9 @@ function assertWindowsSmokeScriptHasLeadingParamBlock() {
 }
 
 function assertWindowsInstallerProofScript() {
-  const script = readFileSync(
-    "apps/app/electrobun/scripts/verify-windows-installer-proof.ps1",
-    "utf8",
+  const script = readElectrobunFile(
+    "scripts",
+    "verify-windows-installer-proof.ps1",
   );
 
   const requiredSnippets = [
@@ -1100,10 +1110,7 @@ function assertInnoTemplateTargetsBundledLauncher() {
 }
 
 function assertMacSmokeScriptLaunchesPackagedLauncherDirectly() {
-  const script = readFileSync(
-    "apps/app/electrobun/scripts/smoke-test.sh",
-    "utf8",
-  );
+  const script = readElectrobunFile("scripts", "smoke-test.sh");
 
   if (
     !script.includes(

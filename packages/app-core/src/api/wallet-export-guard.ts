@@ -13,18 +13,12 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
+import type {
+  WalletExportRequestBody,
+  WalletExportRejection,
+} from "@elizaos/shared/contracts";
 
-// ── Types ────────────────────────────────────────────────────────────────────
-
-interface WalletExportRequestBody {
-  confirm?: boolean;
-  exportToken?: string;
-}
-
-export interface WalletExportRejection {
-  status: 400 | 401 | 402 | 403 | 429;
-  reason: string;
-}
+export type { WalletExportRejection };
 
 type UpstreamRejectionFn = (
   req: http.IncomingMessage,

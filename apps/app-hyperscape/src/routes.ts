@@ -1,26 +1,12 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {
+  AppLaunchSessionContext,
+  AppRunSessionContext,
   AppSessionJsonValue,
   AppSessionState,
   AppLaunchResult,
 } from "@elizaos/shared/contracts/apps";
-
-// ---------------------------------------------------------------------------
-// Inline context types (previously from @elizaos/agent app-package-modules)
-// ---------------------------------------------------------------------------
-
-interface AppLaunchSessionContext {
-  appName: string;
-  launchUrl: string | null;
-  runtime: IAgentRuntime | null;
-  viewer: AppLaunchResult["viewer"] | null;
-}
-
-interface AppRunSessionContext extends AppLaunchSessionContext {
-  runId?: string;
-  session: AppSessionState | null;
-}
 
 // ---------------------------------------------------------------------------
 // Constants

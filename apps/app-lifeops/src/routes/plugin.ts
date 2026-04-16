@@ -113,6 +113,7 @@ const LIFEOPS_STATIC_ROUTES: Array<{ type: string; path: string; public?: boolea
   { type: "POST", path: "/api/lifeops/connectors/google/preference" },
   { type: "GET", path: "/api/lifeops/connectors/google/callback", public: true },
   { type: "GET", path: "/api/lifeops/connectors/google/success", public: true },
+  { type: "GET", path: "/api/lifeops/connectors/google/accounts" },
   { type: "POST", path: "/api/lifeops/connectors/google/disconnect" },
   { type: "GET", path: "/api/lifeops/connectors/x/status" },
   { type: "POST", path: "/api/lifeops/connectors/x" },

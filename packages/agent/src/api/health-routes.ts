@@ -536,7 +536,7 @@ export async function handleHealthRoutes(
     }
 
     try {
-      const servicesMap = runtime.services as unknown as Map<string, unknown[]>;
+      const servicesMap = runtime.services as Map<string, unknown[]>;
       const serviceCount = Array.from(servicesMap.values()).reduce(
         (sum, entries) => sum + (Array.isArray(entries) ? entries.length : 0),
         0,

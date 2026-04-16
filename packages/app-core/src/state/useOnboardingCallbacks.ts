@@ -170,6 +170,7 @@ function buildOnboardingFeatureSubmitPayload(args: {
   onboardingFeatureTelegram: boolean;
   onboardingFeatureDiscord: boolean;
   onboardingFeatureBrowser: boolean;
+  onboardingFeatureComputerUse: boolean;
 }): {
   connectors?: Record<string, { enabled: true; managed: true }>;
   features?: Record<string, { enabled: true }>;
@@ -185,9 +186,10 @@ function buildOnboardingFeatureSubmitPayload(args: {
             : {}),
         }
       : undefined;
-  const features = args.onboardingFeatureBrowser
-    ? { browser: { enabled: true as const } }
-    : undefined;
+  const featureEntries: Record<string, { enabled: true }> = {};
+  if (args.onboardingFeatureBrowser) featureEntries.browser = { enabled: true as const };
+  if (args.onboardingFeatureComputerUse) featureEntries.computeruse = { enabled: true as const };
+  const features = Object.keys(featureEntries).length > 0 ? featureEntries : undefined;
 
   return {
     ...(connectors ? { connectors } : {}),
@@ -226,6 +228,7 @@ export interface OnboardingCallbacksDeps {
   setOnboardingRemoteConnected: (v: boolean) => void;
   setPostOnboardingChecklistDismissed: (v: boolean) => void;
   setBrowserEnabled?: (v: boolean) => void;
+  setComputerUseEnabled?: (v: boolean) => void;
   setWalletEnabled?: (v: boolean) => void;
 
   /** Lifecycle / global */
@@ -270,6 +273,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
     setOnboardingRemoteConnected,
     setPostOnboardingChecklistDismissed,
     setBrowserEnabled,
+    setComputerUseEnabled,
     setOnboardingComplete,
     coordinatorOnboardingCompleteRef,
     initialTabSetRef,
@@ -317,6 +321,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
       featurePhone: onboardingFeaturePhone,
       featureCrypto: onboardingFeatureCrypto,
       featureBrowser: onboardingFeatureBrowser,
+      featureComputerUse: onboardingFeatureComputerUse,
       cloudProvisionedContainer,
     },
     completionCommittedRef: onboardingCompletionCommittedRef,
@@ -384,12 +389,14 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
           onboardingFeatureTelegram,
           onboardingFeatureDiscord,
           onboardingFeatureBrowser,
+          onboardingFeatureComputerUse,
         });
         const shouldApplyLocalCapabilities = onboardingStep === "features";
         const applySelectedLocalCapabilities = () => {
           if (!shouldApplyLocalCapabilities) return;
           setWalletEnabled?.(onboardingFeatureCrypto);
           setBrowserEnabled?.(onboardingFeatureBrowser);
+          setComputerUseEnabled?.(onboardingFeatureComputerUse);
         };
 
         if (useCloudFastTrack) {
@@ -424,7 +431,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
             smallModel: onboardingSmallModel,
             largeModel: onboardingLargeModel,
             ...onboardingFeaturePayload,
-          } as unknown as Parameters<typeof client.submitOnboarding>[0]);
+          });
           try {
             await persistOnboardingStyleVoice({
               style,
@@ -498,8 +505,10 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
         if (isSandboxMode) {
           const cloudApiBase =
             getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
-          const authToken = ((window as unknown as Record<string, unknown>)
-            .__ELIZA_CLOUD_AUTH_TOKEN__ ?? "") as string;
+          const authToken = String(
+            (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ ??
+              "",
+          );
 
           if (!authToken) {
             throw new Error(
@@ -665,6 +674,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
       onboardingFeaturePhone,
       onboardingFeatureCrypto,
       onboardingFeatureBrowser,
+      onboardingFeatureComputerUse,
       onboardingVoiceProvider,
       onboardingVoiceApiKey,
       selectedVrmIndex,
@@ -672,6 +682,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
       onboardingRpcSelections,
       onboardingRpcKeys,
       setBrowserEnabled,
+      setComputerUseEnabled,
       walletConfig,
       onboardingMode,
       elizaCloudConnected,

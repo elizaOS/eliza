@@ -371,7 +371,7 @@ export async function installDatabaseTrajectoryLogger(
     return;
   }
 
-  const loggerObject = logger as unknown as object;
+  const loggerObject = logger as object;
   if (patchedLoggers.has(loggerObject)) return;
 
   const shouldEnableByDefault = shouldEnableTrajectoryLoggingByDefault();
@@ -432,7 +432,7 @@ export async function installDatabaseTrajectoryLogger(
         await appendLlmCall(runtime, normalized.stepId, normalized.params);
       },
     );
-    const runtimeKey = runtime as unknown as object;
+    const runtimeKey = runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
   }) as unknown as (params: Record<string, unknown>) => void;
 
@@ -461,7 +461,7 @@ export async function installDatabaseTrajectoryLogger(
         );
       },
     );
-    const runtimeKey = runtime as unknown as object;
+    const runtimeKey = runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
   }) as unknown as (params: Record<string, unknown>) => void;
 
@@ -526,7 +526,7 @@ export async function installDatabaseTrajectoryLogger(
       });
     });
 
-    const runtimeKey = runtime as unknown as object;
+    const runtimeKey = runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
 
     return stepId;
@@ -555,7 +555,7 @@ export async function installDatabaseTrajectoryLogger(
       },
     );
 
-    const runtimeKey = runtime as unknown as object;
+    const runtimeKey = runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
   };
 
@@ -926,7 +926,7 @@ export async function clearPersistedTrajectoryRows(
 export async function flushTrajectoryWrites(
   runtime: IAgentRuntime,
 ): Promise<void> {
-  const runtimeKey = runtime as unknown as object;
+  const runtimeKey = runtime as object;
   const perStep = stepWriteQueues.get(runtimeKey);
   if (perStep) {
     const pending = Array.from(perStep.values());
@@ -1023,7 +1023,7 @@ export class DatabaseTrajectoryLogger extends Service {
       });
     });
 
-    const runtimeKey = this.runtime as unknown as object;
+    const runtimeKey = this.runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
 
     return stepId;
@@ -1054,7 +1054,7 @@ export class DatabaseTrajectoryLogger extends Service {
       },
     );
 
-    const runtimeKey = this.runtime as unknown as object;
+    const runtimeKey = this.runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
   }
 
@@ -1072,7 +1072,7 @@ export class DatabaseTrajectoryLogger extends Service {
         await appendLlmCall(this.runtime, normalized.stepId, normalized.params);
       },
     );
-    const runtimeKey = this.runtime as unknown as object;
+    const runtimeKey = this.runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
   }
 
@@ -1094,7 +1094,7 @@ export class DatabaseTrajectoryLogger extends Service {
         );
       },
     );
-    const runtimeKey = this.runtime as unknown as object;
+    const runtimeKey = this.runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
   }
 

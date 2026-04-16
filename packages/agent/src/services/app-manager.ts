@@ -1625,13 +1625,9 @@ function isRuntimePluginReady(
     return false;
   }
   if (isHyperscapeAppName(appInfo.name)) {
-    const rt = runtime as unknown as {
-      hasService?: (name: string) => boolean;
-      getService?: (name: string) => unknown;
-    };
     return Boolean(
-      rt.hasService?.("hyperscapeService") ||
-        rt.getService?.("hyperscapeService"),
+      runtime?.hasService?.("hyperscapeService") ||
+        runtime?.getService?.("hyperscapeService"),
     );
   }
   return true;

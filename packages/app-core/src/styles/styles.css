@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "./base.css";
-@import "./electrobun-mac-window-drag.css";
+@import "../../../ui/src/styles/electrobun-mac-window-drag.css";
 
 @source "..";
 @source "../../../ui/src";

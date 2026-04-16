@@ -60,9 +60,8 @@ try {
 }
 
 import type { ElizaConfig } from "../config/config.js";
-import { normalizeCharacterLanguage } from "../onboarding-presets.js";
+import { normalizeCharacterLanguage } from "@elizaos/shared/onboarding-presets";
 import {
-  asRecord,
   resolveTrajectoryGrouping,
 } from "../runtime/trajectory-internals.js";
 import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.js";
@@ -196,6 +195,21 @@ function isExecutableFallbackAction(action: { name: string }): boolean {
 
 function normalizeActionName(value: unknown): string {
   return typeof value === "string" ? value.trim().toUpperCase() : "";
+}
+
+function ensureMessageMemoryContent(
+  content: Content,
+): Content & { text: string } {
+  return typeof content.text === "string"
+    ? { ...content, text: content.text }
+    : { ...content, text: "" };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
 }
 
 function buildRuntimeActionNameLookup(
@@ -1211,13 +1225,17 @@ export async function generateChatResponse(
               typeof runtime.emitEvent === "function"
             ) {
               for (const responseMessage of messagesToEmit) {
-                const memoryLike = {
-                  id: responseMessage.id ?? crypto.randomUUID(),
+                const memoryLike = createMessageMemory({
+                  id:
+                    (responseMessage.id as UUID | undefined) ??
+                    (crypto.randomUUID() as UUID),
                   roomId: message.roomId,
                   entityId: runtime.agentId,
-                  content: responseMessage.content ?? { text: "" },
-                  metadata: message.metadata,
-                } as unknown as ReturnType<typeof createMessageMemory>;
+                  content: ensureMessageMemoryContent(
+                    responseMessage.content ?? { text: "" },
+                  ),
+                });
+                memoryLike.metadata = message.metadata;
                 await runtime.emitEvent("MESSAGE_SENT", {
                   message: memoryLike,
                   source: messageSource,
@@ -1238,11 +1256,11 @@ export async function generateChatResponse(
           // Post-process fallback actions
           if (result) {
             const rc = result.responseContent as Record<string, unknown> | null;
-            const resultRecord = result as unknown as Record<string, unknown>;
+            const resultRecord = asRecord(result);
             runtime.logger?.info(
               {
                 src: "eliza-api",
-                mode: resultRecord.mode,
+                mode: resultRecord?.mode,
                 actions: rc?.actions,
                 simple: rc?.simple,
                 hasText: Boolean(rc?.text),
@@ -1250,7 +1268,7 @@ export async function generateChatResponse(
               "[eliza-api] Chat response metadata",
             );
 
-            const rawActionsPayload = rc?.actions ?? resultRecord.actions;
+            const rawActionsPayload = rc?.actions ?? resultRecord?.actions;
             const modelText = String(
               extractCompatTextContent(result.responseContent) ?? "",
             );
@@ -1265,7 +1283,7 @@ export async function generateChatResponse(
             );
 
             // Only run fallback execution when the core did NOT dispatch actions itself.
-            const coreHandledActions = resultRecord.mode === "actions";
+            const coreHandledActions = resultRecord?.mode === "actions";
             const executableFallbackActions = parsedFallbackActions.filter(
               (action) => {
                 if (!isExecutableFallbackAction(action)) {

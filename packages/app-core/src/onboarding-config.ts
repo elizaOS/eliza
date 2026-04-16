@@ -42,6 +42,7 @@ export interface BuildOnboardingConnectionArgs {
   onboardingFeaturePhone?: boolean;
   onboardingFeatureCrypto?: boolean;
   onboardingFeatureBrowser?: boolean;
+  onboardingFeatureComputerUse?: boolean;
 }
 
 /** Feature selections from the onboarding features step. */
@@ -53,6 +54,7 @@ export interface OnboardingFeatureSetup {
   capabilities: {
     crypto?: boolean;
     browser?: boolean;
+    computeruse?: boolean;
   };
 }
 
@@ -240,7 +242,8 @@ export function buildOnboardingRuntimeConfig(
     args.onboardingFeatureTelegram ||
     args.onboardingFeatureDiscord ||
     args.onboardingFeatureCrypto ||
-    args.onboardingFeatureBrowser;
+    args.onboardingFeatureBrowser ||
+    args.onboardingFeatureComputerUse;
 
   const featureSetup: OnboardingFeatureSetup | undefined = hasFeatures
     ? {
@@ -255,6 +258,7 @@ export function buildOnboardingRuntimeConfig(
         capabilities: {
           ...(args.onboardingFeatureCrypto ? { crypto: true } : {}),
           ...(args.onboardingFeatureBrowser ? { browser: true } : {}),
+          ...(args.onboardingFeatureComputerUse ? { computeruse: true } : {}),
         },
       }
     : undefined;

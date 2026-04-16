@@ -760,3 +760,41 @@ export interface StewardSignResponse {
   denied?: boolean;
   violations?: Array<{ policy: string; reason: string }>;
 }
+
+// ── Wallet Export ──────────────────────────────────────────────────────────
+
+/** Request body for wallet private key export endpoints. */
+export interface WalletExportRequestBody {
+  confirm?: boolean;
+  exportToken?: string;
+}
+
+/** Rejection returned by the wallet export guard. */
+export interface WalletExportRejection {
+  status: 400 | 401 | 402 | 403 | 429;
+  reason: string;
+}
+
+// ── Wallet Trade Ledger ───────────────────────────────────────────────────
+
+/** Input for recording a trade in the wallet trading profile ledger. */
+export interface WalletTradeLedgerRecordInput {
+  hash: string;
+  source: WalletTradeSource;
+  side: BscTradeSide;
+  tokenAddress: string;
+  slippageBps: number;
+  route: string[];
+  quoteIn: WalletTradeLedgerQuoteLeg;
+  quoteOut: WalletTradeLedgerQuoteLeg;
+  status: BscTradeTxStatus;
+  confirmations: number;
+  nonce: number | null;
+  blockNumber: number | null;
+  gasUsed: string | null;
+  effectiveGasPriceWei: string | null;
+  reason?: string;
+  explorerUrl: string;
+  createdAt?: string;
+  updatedAt?: string;
+}

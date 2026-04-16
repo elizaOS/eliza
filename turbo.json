@@ -43,6 +43,51 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
     },
+    "@elizaos/plugin-cli-root#build": {
+      "outputs": []
+    },
+    "@elizaos/plugin-commands-root#build": {
+      "outputs": []
+    },
+    "@elizaos/plugin-cron-root#build": {
+      "outputs": []
+    },
+    "@elizaos/plugin-discord-root#build": {
+      "outputs": []
+    },
+    "@elizaos/plugin-elizacloud-root#build": {
+      "outputs": []
+    },
+    "@elizaos/plugin-groq-root#build": {
+      "outputs": []
+    },
+    "@elizaos/plugin-imessage-root#build": {
+      "outputs": []
+    },
+    "@elizaos/plugin-local-ai-root#build": {
+      "outputs": []
+    },
+    "@elizaos/plugin-ollama-root#build": {
+      "outputs": []
+    },
+    "@elizaos/plugin-openai-root#build": {
+      "outputs": []
+    },
+    "@elizaos/plugin-openrouter-root#build": {
+      "outputs": []
+    },
+    "@elizaos/plugin-shell-root#build": {
+      "outputs": []
+    },
+    "@elizaos/plugin-solana-root#build": {
+      "outputs": []
+    },
+    "@elizaos/plugin-sql-root#build": {
+      "outputs": []
+    },
+    "@elizaos/schemas#build": {
+      "outputs": []
+    },
     "lint": {
       "outputs": []
     },

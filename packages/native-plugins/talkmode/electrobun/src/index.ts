@@ -20,7 +20,7 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "@elizaos/app-core";
-import type { EventCallback } from "../../../shared-types.js";
+import type { EventCallback, ListenerEntry as BaseListenerEntry } from "../../../shared-types.js";
 import type {
   SpeakOptions,
   SpeakResult,
@@ -42,10 +42,7 @@ type TalkModeEvent =
   | TTSCompleteEvent
   | TalkModeErrorEvent;
 
-interface ListenerEntry {
-  eventName: string;
-  callback: EventCallback<TalkModeEvent>;
-}
+type ListenerEntry = BaseListenerEntry<string, TalkModeEvent>;
 
 interface NativeTalkModeConfig {
   engine?: "whisper" | "web";

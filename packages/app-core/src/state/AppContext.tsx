@@ -4,7 +4,14 @@
  * Children access state and actions through the useApp() hook.
  */
 
+import { useVincentState } from "@elizaos/app-vincent/useVincentState";
 import { ONBOARDING_PROVIDER_CATALOG } from "@elizaos/shared/contracts/onboarding";
+import {
+  ConfirmDialog,
+  PromptDialog,
+  useConfirm,
+  usePrompt,
+} from "@elizaos/ui";
 import {
   type ReactNode,
   useCallback,
@@ -51,9 +58,9 @@ import {
   isElectrobunRuntime,
 } from "../bridge";
 import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
-import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import { AppBootContext } from "../config/boot-config-react";
 import { getBootConfig } from "../config/boot-config-store";
+import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import {
   dispatchAppEmoteEvent,
   dispatchElizaCloudStatusUpdated,
@@ -63,8 +70,8 @@ import {
   COMPANION_ENABLED,
   isRouteRootPath,
   resolveInitialTabForPath,
-  tabFromPath,
   type Tab,
+  tabFromPath,
 } from "../navigation";
 import {
   alertDesktopMessage,
@@ -75,11 +82,15 @@ import {
   yieldHttpAfterNativeMessageBox,
 } from "../utils";
 import {
+  getActiveProfile,
+  loadAgentProfileRegistry,
+  setActiveProfileId,
+} from "./agent-profiles";
+import {
   computeAgentDeadlineExtensions,
   getAgentReadyTimeoutMs,
 } from "./agent-startup-timing";
 import { ChatComposerCtx, ChatInputRefCtx } from "./ChatComposerContext";
-import { PtySessionsCtx } from "./PtySessionsContext";
 import { CompanionSceneConfigCtx } from "./CompanionSceneConfigContext";
 import {
   AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
@@ -133,43 +144,37 @@ import {
   type UiShellMode,
   type UiTheme,
 } from "./internal";
-import {
-  getActiveProfile,
-  loadAgentProfileRegistry,
-  setActiveProfileId,
-} from "./agent-profiles";
+import { detectExistingOnboardingConnection } from "./onboarding-bootstrap";
+import { PtySessionsCtx } from "./PtySessionsContext";
 import {
   createPersistedActiveServer,
   loadFavoriteApps,
   saveFavoriteApps,
   savePersistedActiveServer,
 } from "./persistence";
-import { detectExistingOnboardingConnection } from "./onboarding-bootstrap";
 import { deriveUiShellModeForTab } from "./shell-routing";
+import type { RuntimeTarget } from "./startup-coordinator";
 import { TranslationProvider, useTranslation } from "./TranslationContext";
 import type { InventoryChainFilters } from "./types";
+import { useCharacterState } from "./useCharacterState";
+import { useChatCallbacks } from "./useChatCallbacks";
 import { useChatState } from "./useChatState";
-import { useLifecycleState } from "./useLifecycleState";
-import type { RuntimeTarget } from "./startup-coordinator";
-import { useStartupCoordinator } from "./useStartupCoordinator";
-import { useTriggersState } from "./useTriggersState";
-import { usePairingState } from "./usePairingState";
+import { useCloudState } from "./useCloudState";
+import { useDataLoaders } from "./useDataLoaders";
+import { useDisplayPreferences } from "./useDisplayPreferences";
 import { useExportImportState } from "./useExportImportState";
+import { useLifecycleState } from "./useLifecycleState";
 import { useLogsState } from "./useLogsState";
 import { useMiscUiState } from "./useMiscUiState";
-import { useDisplayPreferences } from "./useDisplayPreferences";
-import { useOnboardingState } from "./useOnboardingState";
-import { useOnboardingCompat } from "./useOnboardingCompat";
-import { useCharacterState } from "./useCharacterState";
-import { useWalletState } from "./useWalletState";
-import { usePluginsSkillsState } from "./usePluginsSkillsState";
-import { useCloudState } from "./useCloudState";
-import { useVincentState } from "./useVincentState";
-import { useDataLoaders } from "./useDataLoaders";
 import { useNavigationState } from "./useNavigationState";
 import { useOnboardingCallbacks } from "./useOnboardingCallbacks";
-import { useChatCallbacks } from "./useChatCallbacks";
-import { ConfirmDialog, PromptDialog, useConfirm, usePrompt } from "@elizaos/ui";
+import { useOnboardingCompat } from "./useOnboardingCompat";
+import { useOnboardingState } from "./useOnboardingState";
+import { usePairingState } from "./usePairingState";
+import { usePluginsSkillsState } from "./usePluginsSkillsState";
+import { useStartupCoordinator } from "./useStartupCoordinator";
+import { useTriggersState } from "./useTriggersState";
+import { useWalletState } from "./useWalletState";
 
 export {
   type ActionNotice,
@@ -812,6 +817,7 @@ function AppProviderInner({
       featurePhone: onboardingFeaturePhone,
       featureCrypto: onboardingFeatureCrypto,
       featureBrowser: onboardingFeatureBrowser,
+      featureComputerUse: onboardingFeatureComputerUse,
       featureOAuthPending: onboardingFeatureOAuthPending,
     },
     setStep: setOnboardingStep,
@@ -876,6 +882,7 @@ function AppProviderInner({
     setOnboardingFeaturePhone,
     setOnboardingFeatureCrypto,
     setOnboardingFeatureBrowser,
+    setOnboardingFeatureComputerUse,
     setOnboardingFeatureOAuthPending,
     setOnboardingCloudProvisionedContainer,
     setPostOnboardingChecklistDismissed,
@@ -1022,6 +1029,7 @@ function AppProviderInner({
   const {
     state: {
       browserEnabled,
+      computerUseEnabled,
       walletEnabled,
       walletAddresses,
       walletConfig,
@@ -1056,6 +1064,7 @@ function AppProviderInner({
       cloudRefreshing,
     },
     setBrowserEnabled,
+    setComputerUseEnabled,
     setWalletEnabled,
     setWalletAddresses,
     setInventoryView,
@@ -1407,6 +1416,7 @@ function AppProviderInner({
     setOnboardingRemoteConnected,
     setPostOnboardingChecklistDismissed,
     setBrowserEnabled,
+    setComputerUseEnabled,
     setOnboardingComplete,
     coordinatorOnboardingCompleteRef,
     initialTabSetRef,
@@ -1474,6 +1484,7 @@ function AppProviderInner({
         logLevelFilter: setLogLevelFilter,
         logSourceFilter: setLogSourceFilter,
         browserEnabled: setBrowserEnabled,
+        computerUseEnabled: setComputerUseEnabled,
         walletEnabled: setWalletEnabled,
         inventoryView: setInventoryView,
         inventorySort: setInventorySort,
@@ -1527,6 +1538,7 @@ function AppProviderInner({
         onboardingFeaturePhone: setOnboardingFeaturePhone,
         onboardingFeatureCrypto: setOnboardingFeatureCrypto,
         onboardingFeatureBrowser: setOnboardingFeatureBrowser,
+        onboardingFeatureComputerUse: setOnboardingFeatureComputerUse,
         onboardingFeatureOAuthPending: setOnboardingFeatureOAuthPending,
         elizaCloudEnabled: setElizaCloudEnabled,
         elizaCloudVoiceProxyAvailable: setElizaCloudVoiceProxyAvailable,
@@ -2032,6 +2044,7 @@ function AppProviderInner({
       logSourceFilter,
       logLoadError,
       browserEnabled,
+      computerUseEnabled,
       walletEnabled,
       walletAddresses,
       walletConfig,
@@ -2184,6 +2197,7 @@ function AppProviderInner({
       onboardingFeaturePhone,
       onboardingFeatureCrypto,
       onboardingFeatureBrowser,
+      onboardingFeatureComputerUse,
       onboardingFeatureOAuthPending,
       commandPaletteOpen,
       commandQuery,
@@ -2440,6 +2454,7 @@ function AppProviderInner({
       logSourceFilter,
       logLoadError,
       browserEnabled,
+      computerUseEnabled,
       walletEnabled,
       walletAddresses,
       walletConfig,
@@ -2591,6 +2606,7 @@ function AppProviderInner({
       onboardingFeaturePhone,
       onboardingFeatureCrypto,
       onboardingFeatureBrowser,
+      onboardingFeatureComputerUse,
       onboardingFeatureOAuthPending,
       commandPaletteOpen,
       commandQuery,

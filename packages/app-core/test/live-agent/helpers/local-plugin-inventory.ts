@@ -85,7 +85,7 @@ function findPackageRoot(dirName: string): string | null {
   return null;
 }
 
-function chooseExistingPath(candidates: string[]): string {
+function chooseExistingPath(candidates: string[]): string | null {
   const seen = new Set<string>();
   for (const candidate of candidates) {
     const resolved = path.resolve(candidate);
@@ -97,7 +97,7 @@ function chooseExistingPath(candidates: string[]): string {
       return resolved;
     }
   }
-  return path.resolve(candidates[0] ?? "");
+  return null;
 }
 
 function readPackageJson(filePath: string): PackageJson | null {
@@ -149,7 +149,7 @@ function collectPackageMetadata(packageRoot: string): {
   };
 }
 
-function resolvePackageEntrySync(packageRoot: string): string {
+function resolvePackageEntrySync(packageRoot: string): string | null {
   const fallbackCandidates = [
     path.join(packageRoot, "dist", "node", "index.node.js"),
     path.join(packageRoot, "dist", "index.js"),
@@ -240,6 +240,9 @@ export async function listLocalWorkspacePlugins(): Promise<
 
       seen.add(entry.npmName);
       const entryPath = resolvePackageEntrySync(packageRoot);
+      if (!entryPath) {
+        continue;
+      }
       const metadata = collectPackageMetadata(packageRoot);
       localPlugins.push({
         id: entry.id,

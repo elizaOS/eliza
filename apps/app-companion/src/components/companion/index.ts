@@ -1,8 +1,8 @@
 /**
  * Companion / 3D avatar components.
  *
- * Import from `@elizaos/app-core/companion` instead of
- * `@elizaos/app-core/components` to opt-in to the three.js-based
+ * Opt in to the three.js-based stack via `@elizaos/app-companion` / this
+ * package’s UI entry — not the generic `@elizaos/app-core/components`
  * avatar rendering stack (~850 KB+). Consumers that don't need 3D
  * companions can skip this entry point entirely.
  */

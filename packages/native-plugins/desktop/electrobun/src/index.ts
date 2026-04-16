@@ -20,7 +20,7 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "@elizaos/app-core";
-import type { EventCallback } from "../../../shared-types.js";
+import type { EventCallback, ListenerEntry as BaseListenerEntry } from "../../../shared-types.js";
 import type {
   AutoLaunchOptions,
   DesktopPlugin,
@@ -62,10 +62,7 @@ type DesktopEventPayloads = {
 type DesktopEventName = keyof DesktopEventPayloads;
 type DesktopEventData = DesktopEventPayloads[DesktopEventName];
 
-interface ListenerEntry {
-  eventName: DesktopEventName;
-  callback: EventCallback<DesktopEventData>;
-}
+type ListenerEntry = BaseListenerEntry<DesktopEventName, DesktopEventData>;
 
 type AlwaysOnTopLevel = Parameters<DesktopPlugin["setAlwaysOnTop"]>[0]["level"];
 type DesktopPathName = Parameters<DesktopPlugin["getPath"]>[0]["name"];

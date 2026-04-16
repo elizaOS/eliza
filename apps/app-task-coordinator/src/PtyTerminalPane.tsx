@@ -1,4 +1,4 @@
-import { client } from "@elizaos/app-core/api/client";
+import { client } from "@elizaos/app-core";
 import { useEffect, useRef } from "react";
 
 /**

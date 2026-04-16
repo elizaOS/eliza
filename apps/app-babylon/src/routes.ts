@@ -1,6 +1,8 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type {
   AppLaunchResult,
+  AppLaunchSessionContext,
+  AppRunSessionContext,
   AppSessionState,
 } from "@elizaos/shared/contracts/apps";
 import {
@@ -13,19 +15,6 @@ import {
 
 const APP_NAME = "@elizaos/app-babylon";
 const APP_DISPLAY_NAME = "Babylon";
-
-/** Inlined from packages/agent — keeps this plugin free of circular deps. */
-interface AppLaunchSessionContext {
-  appName: string;
-  launchUrl: string | null;
-  runtime: IAgentRuntime | null;
-  viewer: AppLaunchResult["viewer"] | null;
-}
-
-interface AppRunSessionContext extends AppLaunchSessionContext {
-  runId: string;
-  session: AppSessionState | null;
-}
 
 // ---------------------------------------------------------------------------
 // Route context type (mirrors AppPackageRouteContext)

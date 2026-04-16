@@ -1,6 +1,8 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { Database } from "bun:sqlite";
 
 export interface DetectedProvider {
   id: string;
@@ -182,6 +184,321 @@ async function scanClaudeKeychainCredentials(): Promise<DetectedProvider | null>
   }
 }
 
+// ── Copilot (GitHub) ──────────────────────────────────────────────────
+
+interface CopilotHostsJson {
+  [host: string]: { oauth_token?: string; user?: string };
+}
+
+async function scanCopilotCredentials(
+  home: string,
+): Promise<DetectedProvider | null> {
+  // GitHub Copilot stores OAuth tokens in ~/.config/github-copilot/hosts.json
+  const hostsPath = path.join(home, ".config", "github-copilot", "hosts.json");
+  const data = readJsonFile<CopilotHostsJson>(hostsPath);
+  if (!data) {
+    // Try macOS keychain as fallback
+    const keychainToken = await readKeychainCredential("copilot-cli");
+    if (!keychainToken) return null;
+    return {
+      id: "openai-subscription",
+      source: "copilot-keychain",
+      apiKey: keychainToken,
+      authMode: "oauth",
+      cliInstalled: await isCliInstalled("gh"),
+      status: "unchecked",
+    };
+  }
+
+  // Find first host entry with an oauth_token
+  for (const [, entry] of Object.entries(data)) {
+    if (entry.oauth_token?.trim()) {
+      return {
+        id: "openai-subscription",
+        source: "copilot-hosts",
+        apiKey: entry.oauth_token.trim(),
+        authMode: "oauth",
+        cliInstalled: await isCliInstalled("gh"),
+        status: "unchecked",
+      };
+    }
+  }
+  return null;
+}
+
+// ── Cursor ────────────────────────────────────────────────────────────
+
+async function scanCursorCredentials(): Promise<DetectedProvider | null> {
+  // Cursor stores auth in the macOS keychain under "Cursor Safe Storage"
+  if (process.platform !== "darwin") return null;
+  const keychainData = await readKeychainCredential("Cursor Safe Storage");
+  if (!keychainData) return null;
+
+  return {
+    id: "cursor",
+    source: "keychain",
+    apiKey: keychainData,
+    authMode: "oauth",
+    cliInstalled: await isCliInstalled("cursor"),
+    status: "unchecked",
+  };
+}
+
+// ── Ollama (local) ────────────────────────────────────────────────────
+
+async function scanOllamaLocal(): Promise<DetectedProvider | null> {
+  // Check if Ollama is running by hitting its API
+  try {
+    const baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+    const res = await fetch(`${baseUrl}/api/tags`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { models?: unknown[] };
+      const modelCount = data.models?.length ?? 0;
+      return {
+        id: "ollama",
+        source: "local-server",
+        authMode: "local",
+        cliInstalled: true,
+        status: "valid",
+        statusDetail: `${modelCount} model${modelCount !== 1 ? "s" : ""} available`,
+      };
+    }
+  } catch {
+    // Not running — check if the binary exists
+  }
+  const cliInstalled = await isCliInstalled("ollama");
+  if (cliInstalled) {
+    return {
+      id: "ollama",
+      source: "cli-installed",
+      authMode: "local",
+      cliInstalled: true,
+      status: "unchecked",
+      statusDetail: "Ollama installed but not running",
+    };
+  }
+  return null;
+}
+
+// ── Gemini CLI ────────────────────────────────────────────────────────
+
+async function scanGeminiCredentials(
+  home: string,
+): Promise<DetectedProvider | null> {
+  // Gemini CLI stores config in ~/.config/gemini/
+  const configPath = path.join(home, ".config", "gemini", "settings.json");
+  const data = readJsonFile<{ apiKey?: string }>(configPath);
+  if (data?.apiKey?.trim()) {
+    return {
+      id: "gemini",
+      source: "gemini-cli",
+      apiKey: data.apiKey.trim(),
+      authMode: "api-key",
+      cliInstalled: await isCliInstalled("gemini"),
+      status: "unchecked",
+    };
+  }
+  // Also check for gcloud application default credentials
+  const adcPath = path.join(home, ".config", "gcloud", "application_default_credentials.json");
+  const adc = readJsonFile<{ client_id?: string; refresh_token?: string }>(adcPath);
+  if (adc?.refresh_token) {
+    return {
+      id: "gemini",
+      source: "gcloud-adc",
+      apiKey: adc.refresh_token,
+      authMode: "oauth",
+      cliInstalled: await isCliInstalled("gcloud"),
+      status: "unchecked",
+    };
+  }
+  return null;
+}
+
+// ── Browser cookie extraction (Chrome/Chromium on macOS) ──────────────────
+
+interface ChromiumBrowserDef {
+  name: string;
+  cookiePath: string;
+  keychainService: string;
+}
+
+const CHROMIUM_BROWSERS: ChromiumBrowserDef[] = [
+  {
+    name: "Chrome",
+    cookiePath: "Google/Chrome/Default/Cookies",
+    keychainService: "Chrome Safe Storage",
+  },
+  {
+    name: "Arc",
+    cookiePath: "Arc/User Data/Default/Cookies",
+    keychainService: "Arc Safe Storage",
+  },
+  {
+    name: "Brave",
+    cookiePath: "BraveSoftware/Brave-Browser/Default/Cookies",
+    keychainService: "Brave Safe Storage",
+  },
+  {
+    name: "Edge",
+    cookiePath: "Microsoft Edge/Default/Cookies",
+    keychainService: "Microsoft Edge Safe Storage",
+  },
+  {
+    name: "Chromium",
+    cookiePath: "Chromium/Default/Cookies",
+    keychainService: "Chromium Safe Storage",
+  },
+];
+
+function deriveChromiumCookieKey(password: string): Buffer {
+  // Chrome on macOS: PBKDF2 with salt='saltysalt', 1003 iterations, 16-byte key
+  return crypto.pbkdf2Sync(password, "saltysalt", 1003, 16, "sha1");
+}
+
+function decryptChromiumCookieValue(encrypted: Buffer, key: Buffer): string | null {
+  // Chrome encrypted cookies start with 'v10' (3 bytes) then AES-128-CBC with 16 zero-byte IV
+  if (encrypted.length < 4) return null;
+  const version = encrypted.subarray(0, 3).toString("ascii");
+  if (version !== "v10") return null;
+
+  const ciphertext = encrypted.subarray(3);
+  try {
+    const iv = Buffer.alloc(16, 0);
+    const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv);
+    decipher.setAutoPadding(true);
+    const decrypted = Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]);
+    return decrypted.toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+interface BrowserCookieResult {
+  name: string;
+  value: string;
+  browser: string;
+  expiresUtc: number;
+}
+
+/**
+ * Read specific cookies from Chromium-based browsers on macOS.
+ * Decrypts using the Safe Storage key from Keychain.
+ * Falls back through installed browsers until one succeeds.
+ */
+export async function readChromiumCookies(
+  host: string,
+  cookieNames: string[],
+): Promise<BrowserCookieResult[]> {
+  if (process.platform !== "darwin") return [];
+
+  const appSupport = path.join(os.homedir(), "Library", "Application Support");
+
+  for (const browser of CHROMIUM_BROWSERS) {
+    const dbPath = path.join(appSupport, browser.cookiePath);
+    if (!fs.existsSync(dbPath)) continue;
+
+    // Get the decryption key from Keychain
+    const password = await readKeychainCredential(browser.keychainService);
+    if (!password) continue;
+
+    const key = deriveChromiumCookieKey(password);
+
+    try {
+      // Copy the DB to a temp file to avoid locking issues with the running browser
+      const tmpDb = path.join(os.tmpdir(), `milady-cookies-${browser.name}-${Date.now()}.db`);
+      fs.copyFileSync(dbPath, tmpDb);
+
+      const db = new Database(tmpDb, { readonly: true });
+      const nameParams = cookieNames.map(() => "?").join(", ");
+      const rows = db
+        .query(
+          `SELECT name, encrypted_value, expires_utc FROM cookies WHERE host_key = ? AND name IN (${nameParams})`,
+        )
+        .all(host, ...cookieNames) as Array<{
+        name: string;
+        encrypted_value: Buffer;
+        expires_utc: number;
+      }>;
+      db.close();
+
+      // Clean up temp file
+      try { fs.unlinkSync(tmpDb); } catch { /* best effort */ }
+
+      const results: BrowserCookieResult[] = [];
+      for (const row of rows) {
+        const value = decryptChromiumCookieValue(
+          Buffer.from(row.encrypted_value),
+          key,
+        );
+        if (value) {
+          results.push({
+            name: row.name,
+            value,
+            browser: browser.name,
+            expiresUtc: row.expires_utc,
+          });
+        }
+      }
+
+      if (results.length > 0) return results;
+    } catch (err) {
+      console.warn(`[credentials] Failed to read ${browser.name} cookies:`, err);
+    }
+  }
+
+  return [];
+}
+
+// ── Eliza Cloud (browser cookie auto-import) ─────────────────────────
+
+interface PrivyTokenPayload {
+  sub?: string;
+  aud?: string;
+  exp?: number;
+  iat?: number;
+  sid?: string;
+}
+
+function decodeJwtPayload(jwt: string): PrivyTokenPayload | null {
+  try {
+    const parts = jwt.split(".");
+    if (parts.length !== 3) return null;
+    const payload = Buffer.from(parts[1], "base64url").toString("utf8");
+    return JSON.parse(payload) as PrivyTokenPayload;
+  } catch {
+    return null;
+  }
+}
+
+async function scanElizaCloudBrowserSession(): Promise<DetectedProvider | null> {
+  // Check if user has an active elizacloud.ai session in their browser.
+  // The privy-token JWT is in-memory only (not persisted to SQLite),
+  // but privy-session indicates an active browser session exists.
+  const cookies = await readChromiumCookies("www.elizacloud.ai", [
+    "privy-session",
+  ]);
+
+  const hasSession = cookies.some((c) => c.name === "privy-session");
+  if (!hasSession) return null;
+
+  // The user is logged into elizacloud.ai in their browser.
+  // The "Deploy to Cloud" flow will open the browser and complete
+  // auth instantly since they already have a session (no re-login).
+  return {
+    id: "elizacloud",
+    source: "browser-session",
+    authMode: "oauth",
+    cliInstalled: false,
+    status: "unchecked",
+    statusDetail: "Logged in via browser",
+  };
+}
+
 /**
  * Environment variable → provider ID mapping for all Eliza AI providers.
  * Each entry maps an env var name to its provider plugin ID.
@@ -301,18 +618,34 @@ async function scanProviderCredentialsRaw(): Promise<DetectedProvider[]> {
   const detected = new Map<string, DetectedProvider>();
 
   // File-based credentials (highest priority)
-  const [codex, claudeFile] = await Promise.all([
+  const [codex, claudeFile, copilot, geminiCli, ollamaLocal] = await Promise.all([
     scanCodexCredentials(home),
     scanClaudeFileCredentials(home),
+    scanCopilotCredentials(home),
+    scanGeminiCredentials(home),
+    scanOllamaLocal(),
   ]);
 
   if (codex) detected.set(codex.id, codex);
   if (claudeFile) detected.set(claudeFile.id, claudeFile);
+  if (copilot && !detected.has(copilot.id)) detected.set(copilot.id, copilot);
+  if (geminiCli && !detected.has(geminiCli.id)) detected.set(geminiCli.id, geminiCli);
+  if (ollamaLocal) detected.set(ollamaLocal.id, ollamaLocal);
 
-  // Keychain (only if no Claude subscription credential was detected from file)
+  // Keychain (fills gaps for providers not yet found from files)
   if (!detected.has("anthropic-subscription")) {
     const keychainResult = await scanClaudeKeychainCredentials();
     if (keychainResult) detected.set(keychainResult.id, keychainResult);
+  }
+  if (!detected.has("cursor")) {
+    const cursorResult = await scanCursorCredentials();
+    if (cursorResult) detected.set(cursorResult.id, cursorResult);
+  }
+
+  // Browser cookies (Eliza Cloud session import)
+  if (!detected.has("elizacloud")) {
+    const cloudSession = await scanElizaCloudBrowserSession();
+    if (cloudSession) detected.set(cloudSession.id, cloudSession);
   }
 
   // Environment variables (lowest priority — only fills gaps)

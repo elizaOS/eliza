@@ -84,7 +84,11 @@ function applyProviderSettings(
 ): void {
 	switch (providerName) {
 		case "openai":
-			runtime.setSetting("OPENAI_API_KEY", process.env.OPENAI_API_KEY ?? "", true);
+			runtime.setSetting(
+				"OPENAI_API_KEY",
+				process.env.OPENAI_API_KEY ?? "",
+				true,
+			);
 			break;
 		case "anthropic":
 			runtime.setSetting(

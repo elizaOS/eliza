@@ -1,8 +1,9 @@
 import os from "node:os";
 import nodePath from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
+import {
   InstallProgressLike,
+  isPluginManagerLike,
   PluginManagerLike,
 } from "@elizaos/agent/services/plugin-manager-types";
 import chalk from "chalk";
@@ -128,23 +129,24 @@ async function getPluginManager(): Promise<PluginManagerLike> {
   const { PluginManagerService } = await import(
     "@elizaos/core/features/plugin-manager/index"
   );
-  const PluginManagerServiceCtor = PluginManagerService as unknown as new (
-    runtime: IAgentRuntime,
-  ) => PluginManagerLike;
-  const mockRuntime = {
+  const mockRuntime: Partial<IAgentRuntime> = {
     plugins: [],
     actions: [],
     providers: [],
     evaluators: [],
-    services: [],
+    services: new Map(),
     getService: () => null,
-    registerService: () => {},
+    registerService: async () => {},
     registerAction: () => {},
     registerProvider: () => {},
     registerEvaluator: () => {},
     registerEvent: () => {},
-  } as unknown as IAgentRuntime;
-  return new PluginManagerServiceCtor(mockRuntime);
+  };
+  const pluginManager = new PluginManagerService(mockRuntime as IAgentRuntime);
+  if (!isPluginManagerLike(pluginManager)) {
+    throw new Error("Plugin manager service does not match the CLI contract");
+  }
+  return pluginManager;
 }
 
 export function registerPluginsCli(program: Command): void {

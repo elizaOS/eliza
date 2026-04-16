@@ -167,7 +167,7 @@ export function ConnectionStep() {
     onboardingOptions?.providers as ProviderOption[] | undefined
   )?.length
     ? (onboardingOptions?.providers as ProviderOption[])
-    : ([...ONBOARDING_PROVIDER_CATALOG] as unknown as ProviderOption[]);
+    : ([...ONBOARDING_PROVIDER_CATALOG] as ProviderOption[]);
   const customProviders = branding.customProviders ?? [];
   const catalogIds = new Set(catalogProviders.map((p: ProviderOption) => p.id));
   const providers = [
@@ -331,12 +331,14 @@ export function ConnectionStep() {
   };
 
   return (
-    <ConnectionUiRoot
-      spec={spec}
-      shared={shared}
-      providerDetail={
-        <ConnectionProviderDetailScreen dispatch={dispatchConnection} />
-      }
-    />
+    <div className="relative h-full w-full">
+      <ConnectionUiRoot
+        spec={spec}
+        shared={shared}
+        providerDetail={
+          <ConnectionProviderDetailScreen dispatch={dispatchConnection} />
+        }
+      />
+    </div>
   );
 }

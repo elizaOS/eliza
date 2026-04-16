@@ -6,7 +6,7 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import type { AwarenessContributor } from "@elizaos/agent/contracts";
-import { loadElizaConfig } from "../../config/config.js";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
 
 type AutomationMode = "connectors-only" | "full";
 
