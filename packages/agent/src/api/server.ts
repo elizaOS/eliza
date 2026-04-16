@@ -3146,15 +3146,17 @@ async function buildTaskLine(
     const assistantText = await readLastAssistantTextFromJsonl(workdir);
     if (assistantText) return assistantText;
   }
-  if (task.completionSummary) return task.completionSummary;
-  const portMatch = task.originalTask.match(/port\s+(\d+)/i);
-  const port = portMatch?.[1];
-  if (!port) return task.originalTask;
-  if (await isPortServing(port)) {
-    const host = process.env.ELIZA_PUBLIC_HOST ?? "localhost";
-    return `built and serving at http://${host}:${port}`;
+  const port = task.originalTask.match(/port\s+(\d+)/i)?.[1];
+  if (port) {
+    if (await isPortServing(port)) {
+      const host = process.env.ELIZA_PUBLIC_HOST ?? "localhost";
+      return `built and serving at http://${host}:${port}`;
+    }
+    return `built the files but server isn't running on port ${port} yet`;
   }
-  return `built the files but server isn't running on port ${port} yet`;
+  // Avoid falling back to originalTask (would echo the user's prompt) or
+  // completionSummary (validator LLM analysis, not the agent's answer).
+  return "The task finished but produced no captured output. Try again.";
 }
 
 function resolveSessionWorkdir(

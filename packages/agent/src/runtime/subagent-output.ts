@@ -8,9 +8,10 @@
  * message from the Claude Code session jsonl. This module reads that and
  * provides Discord-safe chunking.
  *
- * Path encoding mirrors Claude Code: `/home/milady/.milady/workspaces/abc`
- * becomes `-home-milady--milady-workspaces-abc` (every `/` and `.` maps to
- * `-`; the sequence `/.` produces `--`).
+ * Path encoding mirrors Claude Code: every `/` and `.` in the workdir maps
+ * to `-`, and the sequence `/.` produces `--`. A workdir like
+ * `/home/user/.milady/workspaces/abc` becomes the project directory
+ * `-home-user--milady-workspaces-abc` under `~/.claude/projects/`.
  *
  * @module runtime/subagent-output
  */
@@ -23,8 +24,11 @@ import { join } from "node:path";
  *  end-turn reader and the activity scanner so both agree on what a parsed
  *  assistant line looks like. */
 interface JsonlAssistantLine {
+	subtype?: string;
+	isApiErrorMessage?: boolean;
 	message?: {
 		role?: string;
+		model?: string;
 		stop_reason?: string;
 		content?: Array<{ type?: string; text?: string; name?: string }>;
 	};
@@ -54,7 +58,7 @@ export async function readLastAssistantTextFromJsonl(
  * Locate the newest `.jsonl` file under Claude Code's project directory for
  * the given workdir.
  */
-export async function findLatestJsonl(workdir: string): Promise<string | null> {
+async function findLatestJsonl(workdir: string): Promise<string | null> {
 	const projectKey = workdir.replace(/[/.]/g, "-");
 	const projectDir = join(homedir(), ".claude", "projects", projectKey);
 	let entries: string[];
@@ -80,8 +84,10 @@ async function readJsonl(workdir: string): Promise<string | null> {
 
 /**
  * Scan jsonl text tail-first for the latest assistant message with
- * `stop_reason: end_turn` and return its text. Returns null if the latest
- * assistant line is still in a tool_use turn or no assistant line exists.
+ * `stop_reason: end_turn` and return its text. Walks past any in-progress
+ * tool_use turns at the tail (which happen when the coordinator's "respond"
+ * follow-up triggers another tool round after the agent's actual end_turn
+ * answer). Returns null only when no end_turn message exists at all.
  */
 export function findLatestEndTurnText(content: string): string | null {
 	const lines = content.split("\n");
@@ -90,48 +96,18 @@ export function findLatestEndTurnText(content: string): string | null {
 		if (!line) continue;
 		const parsed = parseJsonlLine(line);
 		if (!parsed) continue;
+		if (parsed.subtype === "api_error" || parsed.isApiErrorMessage) continue;
 		const msg = parsed.message;
 		if (!msg || msg.role !== "assistant") continue;
-		if (msg.stop_reason !== "end_turn") return null;
-		let text = "";
+		if (msg.model === "<synthetic>") continue;
+		if (msg.stop_reason !== "end_turn") continue;
+		const textParts: string[] = [];
 		for (const c of msg.content ?? []) {
 			if (c.type === "text" && typeof c.text === "string" && c.text.trim()) {
-				text = c.text.trim();
+				textParts.push(c.text.trim());
 			}
 		}
-		return text || null;
-	}
-	return null;
-}
-
-/**
- * Scan jsonl tail-first for the most recent subagent activity worth showing
- * the user in a heartbeat — the name of the most recent `tool_use` call,
- * falling back to the leading text of the latest assistant block. Returns
- * null if the jsonl has no assistant/tool activity yet.
- */
-export async function readCurrentActivityFromJsonl(
-	workdir: string,
-): Promise<string | null> {
-	const content = await readJsonl(workdir);
-	if (content === null) return null;
-	const lines = content.split("\n");
-	for (let i = lines.length - 1; i >= 0; i--) {
-		const line = lines[i].trim();
-		if (!line) continue;
-		const parsed = parseJsonlLine(line);
-		if (!parsed) continue;
-		const msg = parsed.message;
-		if (!msg || msg.role !== "assistant") continue;
-		for (const c of msg.content ?? []) {
-			if (c.type === "tool_use" && typeof c.name === "string") return c.name;
-		}
-		for (const c of msg.content ?? []) {
-			if (c.type === "text" && typeof c.text === "string" && c.text.trim()) {
-				const first = c.text.trim().split("\n")[0] ?? "";
-				return first.length > 80 ? `${first.slice(0, 77)}…` : first;
-			}
-		}
+		if (textParts.length > 0) return textParts.join("\n\n");
 	}
 	return null;
 }
