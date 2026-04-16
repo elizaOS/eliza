@@ -61,9 +61,7 @@ try {
 
 import type { ElizaConfig } from "../config/config.js";
 import { normalizeCharacterLanguage } from "@elizaos/shared/onboarding-presets";
-import {
-  resolveTrajectoryGrouping,
-} from "../runtime/trajectory-internals.js";
+import { resolveTrajectoryGrouping } from "../runtime/trajectory-internals.js";
 import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.js";
 import { syncCharacterIntoConfig } from "../services/character-persistence.js";
 import { detectRuntimeModel } from "./agent-model.js";
