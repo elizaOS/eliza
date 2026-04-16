@@ -47,7 +47,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
   }
-  return value;
+  return value as Record<string, unknown>;
 }
 
 function toTerminalRunRequestBody(
@@ -100,10 +100,10 @@ export interface MiscRouteContext {
     agentState: string;
     agentName: string;
     shellEnabled: boolean | undefined;
-    broadcastWs?: ((data: Record<string, unknown>) => void) | null;
+    broadcastWs?: ((data: object) => void) | null;
     broadcastWsToClientId?: (
       clientId: string,
-      data: Record<string, unknown>,
+      data: object,
     ) => void;
     nextEventId: number;
     eventBuffer: StreamEventEnvelope[];
@@ -329,7 +329,7 @@ export async function handleMiscRoutes(
       return true;
     }
 
-    const emitTerminalEvent = (payload: Record<string, unknown>) => {
+    const emitTerminalEvent = (payload: object) => {
       if (ctx.isSharedTerminalClientId(targetClientId)) {
         state.broadcastWs?.(payload);
         return;

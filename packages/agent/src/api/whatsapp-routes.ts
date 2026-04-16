@@ -15,7 +15,7 @@ export interface WhatsAppPairingSessionLike {
 
 export interface WhatsAppRouteState {
   whatsappPairingSessions: Map<string, WhatsAppPairingSessionLike>;
-  broadcastWs?: (data: Record<string, unknown>) => void;
+  broadcastWs?: (data: object) => void;
   config: {
     connectors?: Record<string, unknown>;
   };
@@ -160,7 +160,7 @@ export async function handleWhatsAppRoute(
       authDir,
       accountId,
       onEvent: (event) => {
-        state.broadcastWs?.(event as unknown as Record<string, unknown>);
+        state.broadcastWs?.(event);
 
         if (event.status === "connected") {
           if (!state.config.connectors) state.config.connectors = {};

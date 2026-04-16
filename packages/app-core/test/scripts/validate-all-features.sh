@@ -241,13 +241,13 @@ run_vision_tests() {
 }
 
 # ============================================================================
-# COMPUTER USE TESTS (RUST)
+# COMPUTER USE TESTS
 # ============================================================================
 run_computeruse_tests() {
-    log_header "COMPUTER USE TESTS (RUST)"
-    log_info "Testing desktop automation: MCP agent, workflow recorder, UI automation"
+    log_header "COMPUTER USE TESTS"
+    log_info "Testing plugin-based desktop automation, approvals, runtime wiring, and UI smoke coverage"
 
-    local computeruse_dir="$ELIZA_ROOT/packages/computeruse"
+    local computeruse_dir="$ELIZA_ROOT/plugins/plugin-computeruse"
 
     if [[ ! -d "$computeruse_dir" ]]; then
         log_skip "Computer Use tests - directory not found: $computeruse_dir"
@@ -260,23 +260,8 @@ run_computeruse_tests() {
     fi
 
     run_test_suite \
-        "Computer Use - Core (computeruse-computer-use)" \
-        "cargo test --lib -p computeruse-computer-use" \
-        "$computeruse_dir" || true
-
-    run_test_suite \
-        "Computer Use - MCP Agent" \
-        "cargo test --lib -p computeruse-mcp-agent" \
-        "$computeruse_dir" || true
-
-    run_test_suite \
-        "Computer Use - Main Library (computeruse-rs)" \
-        "cargo test --lib -p computeruse-rs" \
-        "$computeruse_dir" || true
-
-    run_test_suite \
-        "Computer Use - Workflow Recorder" \
-        "cargo test --lib -p computeruse-workflow-recorder" \
+        "Computer Use - Plugin Suite" \
+        "bun run test" \
         "$computeruse_dir" || true
 }
 

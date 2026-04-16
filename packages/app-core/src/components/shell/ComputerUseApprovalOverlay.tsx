@@ -13,7 +13,7 @@ import { useApp } from "../../state";
 const OVERLAY_SHELL_CLASS =
   "fixed inset-0 z-[1002] flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg/75 px-4 py-6 font-body text-txt backdrop-blur-sm sm:px-6";
 const OVERLAY_CARD_CLASS =
-  "relative z-10 w-full max-w-[720px] overflow-hidden border border-border/60 bg-card/95 shadow-[0_30px_120px_rgba(0,0,0,0.36)] backdrop-blur-xl";
+  "relative z-10 w-full max-w-[820px] overflow-hidden border border-border/60 bg-card/95 shadow-[0_30px_120px_rgba(0,0,0,0.36)] backdrop-blur-xl";
 const EMPTY_SNAPSHOT: ComputerUseApprovalSnapshot = {
   mode: "full_control",
   pendingCount: 0,
@@ -21,52 +21,116 @@ const EMPTY_SNAPSHOT: ComputerUseApprovalSnapshot = {
 };
 const POLL_MS = 1500;
 
+function approvalStreamUrl(): string {
+  const baseUrl = client.getBaseUrl();
+  const restToken = client.getRestAuthToken();
+  const url = new URL(
+    "/api/computer-use/approvals/stream",
+    baseUrl || window.location.origin,
+  );
+  if (restToken) {
+    url.searchParams.set("token", restToken);
+  }
+  return url.toString();
+}
+
 export function ComputerUseApprovalOverlay() {
   const { setActionNotice, t } = useApp();
   const [snapshot, setSnapshot] =
     useState<ComputerUseApprovalSnapshot>(EMPTY_SNAPSHOT);
   const [busyApprovalId, setBusyApprovalId] = useState<string | null>(null);
+  const [denyTargetId, setDenyTargetId] = useState<string | null>(null);
+  const [denyReason, setDenyReason] = useState("");
 
   const refresh = useCallback(async () => {
     try {
-      const next = await client.getComputerUseApprovals();
-      setSnapshot(next);
+      setSnapshot(await client.getComputerUseApprovals());
     } catch {
       setSnapshot(EMPTY_SNAPSHOT);
     }
   }, []);
 
   useEffect(() => {
-    void refresh();
-    const intervalId = window.setInterval(() => {
+    let cancelled = false;
+    let pollingTimer: number | null = null;
+    let eventSource: EventSource | null = null;
+
+    const startPolling = () => {
+      if (pollingTimer !== null) {
+        return;
+      }
       void refresh();
-    }, POLL_MS);
+      pollingTimer = window.setInterval(() => {
+        void refresh();
+      }, POLL_MS);
+    };
+
+    try {
+      eventSource = new EventSource(approvalStreamUrl());
+      eventSource.onmessage = (event) => {
+        if (cancelled) {
+          return;
+        }
+        try {
+          const payload = JSON.parse(event.data) as {
+            type?: string;
+            snapshot?: ComputerUseApprovalSnapshot;
+          };
+          if (payload.type === "snapshot" && payload.snapshot) {
+            setSnapshot(payload.snapshot);
+            if (pollingTimer !== null) {
+              window.clearInterval(pollingTimer);
+              pollingTimer = null;
+            }
+          }
+        } catch {
+          // Ignore malformed events.
+        }
+      };
+      eventSource.onerror = () => {
+        eventSource?.close();
+        eventSource = null;
+        startPolling();
+      };
+    } catch {
+      startPolling();
+    }
+
+    if (!eventSource) {
+      startPolling();
+    }
+
     return () => {
-      window.clearInterval(intervalId);
+      cancelled = true;
+      if (pollingTimer !== null) {
+        window.clearInterval(pollingTimer);
+      }
+      eventSource?.close();
     };
   }, [refresh]);
 
-  const currentApproval = snapshot.pendingApprovals[0] ?? null;
-  const queuedCount = Math.max(0, snapshot.pendingCount - 1);
-  const parametersText = useMemo(
+  const visibleApprovals = snapshot.pendingApprovals;
+  const approvalCards = useMemo(
     () =>
-      currentApproval
-        ? JSON.stringify(currentApproval.parameters ?? {}, null, 2)
-        : "",
-    [currentApproval],
+      visibleApprovals.map((approval) => ({
+        ...approval,
+        parametersText: JSON.stringify(approval.parameters ?? {}, null, 2),
+      })),
+    [visibleApprovals],
   );
 
   const handleRespond = useCallback(
-    async (approved: boolean) => {
-      if (!currentApproval || busyApprovalId) {
+    async (approvalId: string, approved: boolean, reason?: string) => {
+      if (busyApprovalId) {
         return;
       }
 
-      setBusyApprovalId(currentApproval.id);
+      setBusyApprovalId(approvalId);
       try {
         const resolution = await client.respondToComputerUseApproval(
-          currentApproval.id,
+          approvalId,
           approved,
+          reason,
         );
         setActionNotice(
           approved
@@ -79,6 +143,8 @@ export function ComputerUseApprovalOverlay() {
           approved ? "success" : "info",
           2600,
         );
+        setDenyTargetId(null);
+        setDenyReason("");
         await refresh();
       } catch (error) {
         setActionNotice(
@@ -94,14 +160,12 @@ export function ComputerUseApprovalOverlay() {
         setBusyApprovalId(null);
       }
     },
-    [busyApprovalId, currentApproval, refresh, setActionNotice, t],
+    [busyApprovalId, refresh, setActionNotice, t],
   );
 
-  if (!currentApproval) {
+  if (approvalCards.length === 0) {
     return null;
   }
-
-  const busy = busyApprovalId === currentApproval.id;
 
   return (
     <div
@@ -127,95 +191,143 @@ export function ComputerUseApprovalOverlay() {
                 className="text-xl font-semibold leading-tight text-txt"
               >
                 {t("computeruseapprovaloverlay.Title", {
-                  defaultValue: "Allow this computer action?",
+                  defaultValue: "Review queued computer actions",
                 })}
               </h1>
-              <CardDescription className="max-w-[58ch] leading-relaxed">
+              <CardDescription className="max-w-[62ch] leading-relaxed">
                 {t("computeruseapprovaloverlay.Body", {
                   defaultValue:
-                    "The agent requested a local computer-use action that requires approval before it runs.",
+                    "The agent requested local computer-use actions that need approval before they run.",
                 })}
               </CardDescription>
+              <div className="text-xs text-muted">
+                {t("computeruseapprovaloverlay.ModeLine", {
+                  defaultValue: "Approval mode: {{mode}}.",
+                  mode: snapshot.mode,
+                })}
+              </div>
             </div>
           </div>
         </CardHeader>
 
-        <CardContent className="flex flex-col gap-5 pt-6">
-          <div className="rounded-2xl border border-border/50 bg-bg/35 p-4 shadow-sm">
-            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">
-              {t("computeruseapprovaloverlay.Command", {
-                defaultValue: "Command",
-              })}
-            </div>
-            <div className="mt-2 break-all text-sm font-medium text-txt">
-              {currentApproval.command}
-            </div>
-            <div className="mt-3 text-xs text-muted">
-              {t("computeruseapprovaloverlay.ModeLine", {
-                defaultValue:
-                  "Approval mode: {{mode}}. Requested at {{time}}.",
-                mode: snapshot.mode,
-                time: new Date(currentApproval.requestedAt).toLocaleTimeString(),
-              })}
-            </div>
-            {queuedCount > 0 ? (
-              <div className="mt-2 text-xs text-muted">
-                {t("computeruseapprovaloverlay.QueueNotice", {
-                  defaultValue:
-                    "{{count}} more computer-use approval(s) are waiting.",
-                  count: String(queuedCount),
-                })}
+        <CardContent className="flex max-h-[70vh] flex-col gap-4 overflow-auto pt-6">
+          {approvalCards.map((approval) => {
+            const busy = busyApprovalId === approval.id;
+            const isDenying = denyTargetId === approval.id;
+            return (
+              <div
+                key={approval.id}
+                className="rounded-2xl border border-border/50 bg-card/75 p-4 shadow-sm"
+              >
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">
+                      {t("computeruseapprovaloverlay.Command", {
+                        defaultValue: "Command",
+                      })}
+                    </div>
+                    <div className="mt-2 break-all text-sm font-medium text-txt">
+                      {approval.command}
+                    </div>
+                    <div className="mt-2 text-xs text-muted">
+                      {new Date(approval.requestedAt).toLocaleTimeString()}
+                    </div>
+                    <pre className="mt-4 max-h-56 overflow-auto rounded-xl bg-bg/60 p-3 text-xs leading-relaxed text-txt">
+                      {approval.parametersText || "{}"}
+                    </pre>
+                  </div>
+
+                  <div className="w-full max-w-[18rem] space-y-3">
+                    {isDenying ? (
+                      <>
+                        <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+                          {t("computeruseapprovaloverlay.DenyReason", {
+                            defaultValue: "Deny reason",
+                          })}
+                        </label>
+                        <textarea
+                          value={denyReason}
+                          onChange={(event) => setDenyReason(event.target.value)}
+                          rows={4}
+                          className="w-full rounded-xl border border-border/60 bg-bg/50 px-3 py-2 text-sm text-txt outline-none"
+                          placeholder={t(
+                            "computeruseapprovaloverlay.DenyReasonPlaceholder",
+                            {
+                              defaultValue:
+                                "Optional reason shown to the agent.",
+                            },
+                          )}
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => {
+                              setDenyTargetId(null);
+                              setDenyReason("");
+                            }}
+                            className="flex-1"
+                          >
+                            {t("common.cancel", { defaultValue: "Cancel" })}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => {
+                              void handleRespond(
+                                approval.id,
+                                false,
+                                denyReason.trim() || undefined,
+                              );
+                            }}
+                            className="flex-1"
+                          >
+                            {busy
+                              ? t("computeruseapprovaloverlay.Resolving", {
+                                  defaultValue: "Resolving...",
+                                })
+                              : t("computeruseapprovaloverlay.Reject", {
+                                  defaultValue: "Reject",
+                                })}
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        <Button
+                          variant="default"
+                          disabled={busyApprovalId !== null}
+                          onClick={() => {
+                            void handleRespond(approval.id, true);
+                          }}
+                        >
+                          {busy
+                            ? t("computeruseapprovaloverlay.Resolving", {
+                                defaultValue: "Resolving...",
+                              })
+                            : t("computeruseapprovaloverlay.Approve", {
+                                defaultValue: "Approve",
+                              })}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          disabled={busyApprovalId !== null}
+                          onClick={() => {
+                            setDenyTargetId(approval.id);
+                            setDenyReason("");
+                          }}
+                        >
+                          {t("computeruseapprovaloverlay.Reject", {
+                            defaultValue: "Reject",
+                          })}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-            ) : null}
-          </div>
-
-          <div className="rounded-2xl border border-border/50 bg-card/70 p-4 shadow-sm">
-            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">
-              {t("computeruseapprovaloverlay.Parameters", {
-                defaultValue: "Parameters",
-              })}
-            </div>
-            <pre className="mt-3 max-h-64 overflow-auto rounded-xl bg-bg/60 p-3 text-xs leading-relaxed text-txt">
-              {parametersText || "{}"}
-            </pre>
-          </div>
-
-          <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-end">
-            <Button
-              variant="outline"
-              size="lg"
-              disabled={busy}
-              onClick={() => {
-                void handleRespond(false);
-              }}
-              className="w-full sm:w-auto sm:min-w-[10rem]"
-            >
-              {busy
-                ? t("computeruseapprovaloverlay.Resolving", {
-                    defaultValue: "Resolving...",
-                  })
-                : t("computeruseapprovaloverlay.Reject", {
-                    defaultValue: "Reject",
-                  })}
-            </Button>
-            <Button
-              variant="default"
-              size="lg"
-              disabled={busy}
-              onClick={() => {
-                void handleRespond(true);
-              }}
-              className="w-full sm:w-auto sm:min-w-[10rem]"
-            >
-              {busy
-                ? t("computeruseapprovaloverlay.Resolving", {
-                    defaultValue: "Resolving...",
-                  })
-                : t("computeruseapprovaloverlay.Approve", {
-                    defaultValue: "Approve",
-                  })}
-            </Button>
-          </div>
+            );
+          })}
         </CardContent>
       </Card>
     </div>

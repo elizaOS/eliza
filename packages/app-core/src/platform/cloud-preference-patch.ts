@@ -14,6 +14,7 @@ import type {
 } from "./types";
 
 const PATCH_STATE = Symbol.for("elizaos.cloudPreferencePatch");
+type PatchableClient = ClientLike & { [PATCH_STATE]?: PatchState };
 
 type StorageConfig = Record<string, unknown>;
 
@@ -100,14 +101,15 @@ export function shouldMaskInactiveCloudStatus(args: {
 export function installLocalProviderCloudPreferencePatch(
   client: ClientLike,
 ): () => void {
-  const existingPatch = client[PATCH_STATE] as PatchState | undefined;
+  const patchableClient = client as PatchableClient;
+  const existingPatch = patchableClient[PATCH_STATE];
   if (existingPatch) {
     return () => {};
   }
 
   const originalGetConfig = client.getConfig.bind(client);
 
-  client[PATCH_STATE] = {
+  patchableClient[PATCH_STATE] = {
     getConfig: client.getConfig,
     getCloudStatus: client.getCloudStatus,
     getCloudCredits: client.getCloudCredits,
@@ -125,7 +127,7 @@ export function installLocalProviderCloudPreferencePatch(
   }) as typeof client.getConfig;
 
   return () => {
-    const patchState = client[PATCH_STATE] as PatchState | undefined;
+    const patchState = patchableClient[PATCH_STATE];
     if (!patchState) {
       return;
     }
@@ -136,6 +138,6 @@ export function installLocalProviderCloudPreferencePatch(
     } else {
       delete client.getCloudCredits;
     }
-    delete client[PATCH_STATE];
+    delete patchableClient[PATCH_STATE];
   };
 }

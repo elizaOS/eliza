@@ -6,6 +6,7 @@ import type {
 } from "./types";
 
 const PATCH_STATE = Symbol.for("elizaos.desktopPermissionsPatch");
+type PatchableClient = ClientLike & { [PATCH_STATE]?: PatchState };
 
 type SystemPermissionId = Parameters<typeof appClient.getPermission>[0];
 type PermissionState = Awaited<ReturnType<typeof appClient.getPermission>>;
@@ -40,7 +41,8 @@ async function mergeRuntimePermissions(
 export function installDesktopPermissionsClientPatch(
   client: ClientLike,
 ): () => void {
-  const existingPatch = client[PATCH_STATE] as PatchState | undefined;
+  const patchableClient = client as PatchableClient;
+  const existingPatch = patchableClient[PATCH_STATE];
   if (existingPatch) {
     return () => {};
   }
@@ -54,7 +56,7 @@ export function installDesktopPermissionsClientPatch(
   const originalSetShellEnabled = client.setShellEnabled.bind(client);
   const originalIsShellEnabled = client.isShellEnabled.bind(client);
 
-  client[PATCH_STATE] = {
+  patchableClient[PATCH_STATE] = {
     getPermissions: client.getPermissions,
     getPermission: client.getPermission,
     requestPermission: client.requestPermission,
@@ -144,7 +146,7 @@ export function installDesktopPermissionsClientPatch(
   };
 
   return () => {
-    const patchState = client[PATCH_STATE] as PatchState | undefined;
+    const patchState = patchableClient[PATCH_STATE];
     if (!patchState) {
       return;
     }
@@ -155,6 +157,6 @@ export function installDesktopPermissionsClientPatch(
     client.refreshPermissions = patchState.refreshPermissions;
     client.setShellEnabled = patchState.setShellEnabled;
     client.isShellEnabled = patchState.isShellEnabled;
-    delete client[PATCH_STATE];
+    delete patchableClient[PATCH_STATE];
   };
 }

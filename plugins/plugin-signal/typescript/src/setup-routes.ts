@@ -59,7 +59,7 @@ interface ConnectorSetupService {
     roomId?: string;
   }): boolean;
   getWorkspaceDir(): string;
-  broadcastWs(data: Record<string, unknown>): void;
+  broadcastWs(data: object): void;
 }
 
 function getSetupService(
@@ -159,7 +159,7 @@ async function handlePair(
     accountId,
     cliPath: configuredCliPath,
     onEvent: (event) => {
-      setupService?.broadcastWs(event as unknown as Record<string, unknown>);
+      setupService?.broadcastWs(event);
       signalPairingSnapshots.set(accountId, session.getSnapshot());
 
       if (event.status === "connected") {

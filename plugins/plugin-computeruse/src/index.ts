@@ -49,12 +49,16 @@ export const computerUsePlugin: Plugin = {
     terminalAction,
   ],
 
+  evaluators: [],
+
   providers: [computerStateProvider],
 
   autoEnable: {
     envKeys: ["COMPUTER_USE_ENABLED"],
   },
 };
+
+export const computerusePlugin = computerUsePlugin;
 
 export default computerUsePlugin;
 

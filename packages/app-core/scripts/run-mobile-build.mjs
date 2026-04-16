@@ -105,6 +105,28 @@ const androidBuildGradleTemplate = path.join(
   "build.gradle",
 );
 
+// ── App identity ────────────────────────────────────────────────────────
+// Read appId and appName from app.config.ts (primary) or capacitor.config.ts
+// (fallback). The build script uses these to parameterize entitlements,
+// manifest service names, notification strings, etc.
+
+function readAppIdentity() {
+  const defaults = { appId: "ai.elizaos.app", appName: "Eliza" };
+  for (const file of ["app.config.ts", "capacitor.config.ts"]) {
+    const fp = path.join(appDir, file);
+    if (!fs.existsSync(fp)) continue;
+    const src = fs.readFileSync(fp, "utf8");
+    const id = src.match(/appId\s*[:=]\s*["']([^"']+)["']/)?.[1];
+    const name = src.match(/appName\s*[:=]\s*["']([^"']+)["']/)?.[1];
+    if (id) defaults.appId = id;
+    if (name) defaults.appName = name;
+  }
+  return { ...defaults, appGroup: `group.${defaults.appId}` };
+}
+
+const APP = readAppIdentity();
+console.log(`[mobile-build] App: ${APP.appName} (${APP.appId})`);
+
 function run(command, args, { cwd, env = process.env } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -497,7 +519,7 @@ function overlayIosNativeFiles() {
     // Replace the generic app group with the Milady-specific one
     entitlements = entitlements.replace(
       "group.ai.elizaos.app",
-      "group.com.miladyai.milady",
+      APP.appGroup,
     );
     fs.writeFileSync(targetEntitlements, entitlements, "utf8");
     console.log("[mobile-build] Copied iOS entitlements (with Milady app group).");
@@ -544,14 +566,15 @@ function generateIosPodfile() {
     return;
   }
 
-  // Official Capacitor 8.0.x plugins (App, StatusBar, Preferences) have
-  // Swift source that fails to compile with Xcode 16.1 (existential type
-  // rules, missing CAPPluginCall.reject, getString arity changes).
-  // These are excluded from the Podfile; Capacitor auto-registers their
-  // web/JS implementations as fallbacks. Keyboard is the only official
-  // plugin whose Swift source compiles cleanly.
+  // All official plugins compile fine from source via CocoaPods. The errors
+  // only occur with the precompiled SPM binary (capacitor-swift-pm) which
+  // gates APIs behind $NonescapableTypes (a Swift 6.2/Xcode 26 feature).
+  // These same plugins are stripped from SPM by patchIosPluginSwiftCompat().
   const pluginPods = [
+    ["CapacitorApp", "@capacitor/app"],
     ["CapacitorKeyboard", "@capacitor/keyboard"],
+    ["CapacitorPreferences", "@capacitor/preferences"],
+    ["CapacitorStatusBar", "@capacitor/status-bar"],
   ];
 
   const nativePluginPods = [
@@ -612,26 +635,21 @@ end
 }
 
 /**
- * Capacitor 8.3.0 ships a binary xcframework whose Swift API differs from
- * what older official plugins (status-bar ≤8.0.2, preferences ≤8.0.1)
- * expect. Until the lockfile pins @capacitor/ios to a compatible range,
- * strip those plugins from the SPM Package.swift so they fall back to
- * their web implementations. The native code is not lost — it reactivates
- * automatically once the Capacitor versions are aligned.
+ * Strip official Capacitor plugins from SPM Package.swift.
+ *
+ * The capacitor-swift-pm xcframework was built with Xcode 26 / Swift 6.2.
+ * Its .swiftinterface files gate APIs behind $NonescapableTypes, making
+ * them invisible to Xcode 16. These plugins compile fine from source via
+ * CocoaPods (included in the Podfile), so we only strip them from SPM to
+ * prevent Xcode from trying to build them through the broken binary path.
+ *
+ * This becomes a no-op once the project uses Xcode 26+.
  */
 function patchIosPluginSwiftCompat() {
   const packageSwiftPath = path.join(appDir, "ios", "App", "CapApp-SPM", "Package.swift");
   if (!fs.existsSync(packageSwiftPath)) return;
 
   let content = fs.readFileSync(packageSwiftPath, "utf8");
-  const spmMatch = content.match(/capacitor-swift-pm\.git",\s*exact:\s*"([^"]+)"/);
-  if (!spmMatch) return;
-
-  // Always strip incompatible plugins regardless of version — all Capacitor
-  // 8.0.x official plugins have Swift source incompatible with Xcode 16.
-
-  // Plugins whose Swift source is incompatible with the resolved SPM core.
-  // These all have working web fallbacks so functionality is preserved.
   const incompatible = ["CapacitorStatusBar", "CapacitorPreferences", "CapacitorApp"];
   let changed = false;
 

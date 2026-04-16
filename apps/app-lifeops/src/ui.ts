@@ -1,3 +1,9 @@
+import "./client.ts";
+
+export type {
+  AppBlockerSettingsCardProps,
+  AppBlockerSettingsMode,
+} from "./types/index.ts";
 export type {
   WebsiteBlockerSettingsCardProps,
   WebsiteBlockerSettingsMode,

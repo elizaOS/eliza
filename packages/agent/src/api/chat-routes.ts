@@ -62,7 +62,6 @@ try {
 import type { ElizaConfig } from "../config/config.js";
 import { normalizeCharacterLanguage } from "../onboarding-presets.js";
 import {
-  asRecord,
   resolveTrajectoryGrouping,
 } from "../runtime/trajectory-internals.js";
 import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.js";
@@ -210,7 +209,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
   }
-  return value;
+  return value as Record<string, unknown>;
 }
 
 function buildRuntimeActionNameLookup(
