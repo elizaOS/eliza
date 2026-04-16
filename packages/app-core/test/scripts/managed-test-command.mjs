@@ -19,6 +19,46 @@ const REPO_TEST_PROCESS_MARKERS = [
   "bun run test:orchestrator:integration",
 ];
 
+let cachedCloudApiKey;
+
+function readJson(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function resolveSavedCloudApiKey() {
+  if (cachedCloudApiKey !== undefined) {
+    return cachedCloudApiKey;
+  }
+
+  const homeDir =
+    process.env.HOME?.trim() ||
+    process.env.USERPROFILE?.trim() ||
+    process.env.HOMEDRIVE?.trim();
+  if (!homeDir) {
+    cachedCloudApiKey = null;
+    return cachedCloudApiKey;
+  }
+
+  for (const candidate of [
+    path.join(homeDir, ".milady", "milady.json"),
+    path.join(homeDir, ".eliza", "eliza.json"),
+  ]) {
+    const config = readJson(candidate);
+    const apiKey = config?.cloud?.apiKey;
+    if (typeof apiKey === "string" && apiKey.trim()) {
+      cachedCloudApiKey = apiKey.trim();
+      return cachedCloudApiKey;
+    }
+  }
+
+  cachedCloudApiKey = null;
+  return cachedCloudApiKey;
+}
+
 function isRealNodeExecutable(candidate) {
   if (!candidate || !fs.existsSync(candidate)) {
     return false;
@@ -61,6 +101,12 @@ export function buildTestEnv(cwd) {
   env.ELIZA_LIVE_TEST = "0";
   env.ELIZA_LIVE_TEST = "0";
   env.PWD = path.resolve(cwd);
+  if (!env.ELIZAOS_CLOUD_API_KEY) {
+    const savedCloudApiKey = resolveSavedCloudApiKey();
+    if (savedCloudApiKey) {
+      env.ELIZAOS_CLOUD_API_KEY = savedCloudApiKey;
+    }
+  }
   return env;
 }
 

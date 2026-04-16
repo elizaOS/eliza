@@ -1,22 +1,18 @@
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
-} from "@elizaos/shared/contracts/lifeops";
-import {
-  Button,
-  SegmentedControl,
-  useApp,
-  useGoogleLifeOpsConnector,
-} from "@elizaos/app-core";
+  LifeOpsGoogleCapability,
+} from "@elizaos/app-lifeops/contracts";
+import { Button, SegmentedControl, useGoogleLifeOpsConnector } from "@elizaos/app-core";
 import { Plug2 } from "lucide-react";
-import { LifeOpsBrowserSetupPanel } from "./LifeOpsBrowserSetupPanel";
 
+const MAX_GOOGLE_ACCOUNTS_PER_SIDE = 6;
 const VISIBLE_CONNECTOR_MODES = ["cloud_managed", "local"] as const;
 type VisibleConnectorMode = (typeof VISIBLE_CONNECTOR_MODES)[number];
 
 function statusLabel(reason: string, connected: boolean): string {
   if (connected) {
-    return "Connected";
+    return "Ready";
   }
   switch (reason) {
     case "needs_reauth":
@@ -30,36 +26,47 @@ function statusLabel(reason: string, connected: boolean): string {
   }
 }
 
-function readIdentity(identity: Record<string, unknown> | null): {
-  primary: string;
-  secondary: string | null;
-} {
+function readIdentity(identity: Record<string, unknown> | null): string {
   if (!identity) {
-    return {
-      primary: "Google not connected",
-      secondary: null,
-    };
+    return "No account";
   }
-  const name =
-    typeof identity.name === "string" && identity.name.trim().length > 0
-      ? identity.name.trim()
-      : null;
   const email =
     typeof identity.email === "string" && identity.email.trim().length > 0
       ? identity.email.trim()
       : null;
-  return {
-    primary: name ?? email ?? "Google connected",
-    secondary: name && email ? email : null,
-  };
+  const name =
+    typeof identity.name === "string" && identity.name.trim().length > 0
+      ? identity.name.trim()
+      : null;
+  return email ?? name ?? "Google";
+}
+
+function sideTitle(side: LifeOpsConnectorSide): string {
+  return side === "owner" ? "User" : "Agent";
 }
 
 function modeLabel(mode: LifeOpsConnectorMode): string {
   return mode === "local" ? "Local" : "Cloud";
 }
 
-function sideTitle(side: LifeOpsConnectorSide): string {
-  return side === "owner" ? "Owner" : "Agent";
+function capabilityTokens(
+  grantedCapabilities: LifeOpsGoogleCapability[] | undefined,
+): string[] {
+  const capabilities = new Set(grantedCapabilities ?? []);
+  const tokens: string[] = [];
+  if (
+    capabilities.has("google.gmail.triage") ||
+    capabilities.has("google.gmail.send")
+  ) {
+    tokens.push("Mail");
+  }
+  if (
+    capabilities.has("google.calendar.read") ||
+    capabilities.has("google.calendar.write")
+  ) {
+    tokens.push("Cal");
+  }
+  return tokens;
 }
 
 function GoogleIcon({ className }: { className?: string }) {
@@ -92,7 +99,7 @@ function GoogleIcon({ className }: { className?: string }) {
 
 type GoogleConnectorController = ReturnType<typeof useGoogleLifeOpsConnector>;
 
-function GoogleConnectorSideCard({
+function GoogleSetupRow({
   connector,
   side,
 }: {
@@ -112,85 +119,44 @@ function GoogleConnectorSideCard({
     selectMode,
     status,
   } = connector;
-  const identity = readIdentity(status?.identity ?? null);
-  const currentStatusLabel = statusLabel(
-    status?.reason ?? "disconnected",
-    status?.connected === true,
+
+  const connectedAccounts = accounts.filter((account) => account.connected);
+  const remainingSlots = Math.max(
+    0,
+    MAX_GOOGLE_ACCOUNTS_PER_SIDE - connectedAccounts.length,
   );
   const controlDisabled = loading || actionPending;
   const visibleMode: VisibleConnectorMode =
     activeMode === "local" ? "local" : "cloud_managed";
-
-  const connectedAccounts = accounts.filter((a) => a.connected);
-  const hasMultipleAccounts = connectedAccounts.length > 1;
-  const preferredGrantId = status?.grant?.id ?? null;
+  const showAddAccount =
+    status?.connected === true &&
+    connectedAccounts.length < MAX_GOOGLE_ACCOUNTS_PER_SIDE;
+  const showDisconnectAll =
+    status?.connected === true && connectedAccounts.length <= 1;
+  const currentStatusLabel = statusLabel(
+    status?.reason ?? "disconnected",
+    status?.connected === true,
+  );
 
   return (
-    <div className="space-y-3 rounded-2xl border border-border/24 bg-bg/20 px-4 py-4">
-      <div className="text-xs font-semibold uppercase tracking-wide text-muted">
-        {sideTitle(side)}
+    <div className="space-y-4 rounded-3xl bg-card/16 px-4 py-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+          {sideTitle(side)}
+        </div>
+        <div className="text-xs font-medium text-muted">
+          {connectedAccounts.length} / {MAX_GOOGLE_ACCOUNTS_PER_SIDE}
+        </div>
       </div>
 
-      {connectedAccounts.length > 0 ? (
-        <div className="space-y-2">
-          {connectedAccounts.map((acct) => {
-            const acctIdentity = readIdentity(acct.identity ?? null);
-            const isPreferred =
-              acct.grant?.id != null && acct.grant.id === preferredGrantId;
-            return (
-              <div
-                key={acct.grant?.id ?? acctIdentity.primary}
-                className="flex items-center gap-2 min-w-0"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 truncate text-sm font-semibold text-txt">
-                    {acctIdentity.primary}
-                    {isPreferred && hasMultipleAccounts ? (
-                      <span className="shrink-0 rounded bg-ok/16 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-ok">
-                        Preferred
-                      </span>
-                    ) : null}
-                  </div>
-                  {acctIdentity.secondary ? (
-                    <div className="mt-0.5 text-xs text-muted">
-                      {acctIdentity.secondary}
-                    </div>
-                  ) : null}
-                </div>
-                {acct.grant?.id ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 shrink-0 rounded-lg px-2 text-[11px] font-semibold"
-                    disabled={controlDisabled}
-                    onClick={() => void disconnectAccount(acct.grant!.id)}
-                  >
-                    Disconnect
-                  </Button>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-txt">
-            {identity.primary}
-          </div>
-          {identity.secondary ? (
-            <div className="mt-1 text-xs text-muted">{identity.secondary}</div>
-          ) : null}
-        </div>
-      )}
-
       <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
-          <GoogleIcon className="h-4 w-4 shrink-0" />
+        <div className="inline-flex items-center gap-1.5 rounded-full bg-card/24 px-2 py-1 text-xs text-muted">
+          <GoogleIcon className="h-3.5 w-3.5 shrink-0" />
           <span>Google</span>
         </div>
 
         <SegmentedControl<VisibleConnectorMode>
-          aria-label={`${sideTitle(side)} Google connection mode`}
+          aria-label={`${sideTitle(side)} Google mode`}
           value={visibleMode}
           onValueChange={(mode) => void selectMode(mode)}
           items={VISIBLE_CONNECTOR_MODES.map((mode) => ({
@@ -198,7 +164,7 @@ function GoogleConnectorSideCard({
             label: modeLabel(mode),
             disabled: controlDisabled,
           }))}
-          className="border-border/28 bg-card/24 p-0.5"
+          className="border-border/24 bg-card/24 p-0.5"
           buttonClassName="min-h-8 px-3 py-1.5 text-xs"
         />
 
@@ -213,35 +179,82 @@ function GoogleConnectorSideCard({
             {status?.reason === "needs_reauth" ? "Reconnect" : "Connect"}
           </Button>
         ) : null}
-      </div>
 
-      {status?.connected ? (
-        <div className="flex flex-wrap items-center gap-2">
+        {showAddAccount ? (
           <Button
             size="sm"
             variant="outline"
-            className="h-7 rounded-lg px-2 text-[11px] font-semibold"
+            className="h-8 rounded-xl px-3 text-xs font-semibold"
             disabled={controlDisabled}
             onClick={() => void connectAdditional()}
           >
-            + Add account
+            + Account
           </Button>
-          {!hasMultipleAccounts ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 rounded-lg px-2 text-[11px] font-semibold"
-              disabled={controlDisabled}
-              onClick={() => void disconnect()}
-            >
-              Disconnect
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
+        ) : null}
 
-      <div className={status?.connected ? "text-xs text-ok" : "text-xs text-muted"}>
+        {showDisconnectAll ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            disabled={controlDisabled}
+            onClick={() => void disconnect()}
+          >
+            Disconnect
+          </Button>
+        ) : null}
+      </div>
+
+      <div
+        className={
+          status?.connected === true
+            ? "text-xs font-medium text-ok"
+            : "text-xs font-medium text-muted"
+        }
+      >
         {currentStatusLabel}
+      </div>
+
+      <div className="flex min-w-0 flex-wrap gap-2">
+        {connectedAccounts.map((account) => {
+          const tokens = capabilityTokens(account.grantedCapabilities);
+          const label = readIdentity(account.identity ?? null);
+          return (
+            <div
+              key={account.grant?.id ?? label}
+              className="inline-flex min-h-9 max-w-full items-center gap-2 rounded-2xl bg-card/44 px-3 py-2"
+            >
+              <span className="max-w-[14rem] truncate text-sm font-semibold text-txt">
+                {label}
+              </span>
+              {tokens.length > 0 ? (
+                <span className="text-[10px] uppercase tracking-[0.12em] text-muted">
+                  {tokens.join(" ")}
+                </span>
+              ) : null}
+              {account.grant?.id ? (
+                <button
+                  type="button"
+                  className="rounded-md px-1.5 py-0.5 text-[11px] text-muted transition-colors hover:bg-bg-hover hover:text-txt"
+                  disabled={controlDisabled}
+                  onClick={() => void disconnectAccount(account.grant!.id)}
+                  aria-label={`Disconnect ${label}`}
+                >
+                  x
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+
+        {Array.from({ length: remainingSlots }).map((_, index) => (
+          <div
+            key={`${side}-slot-${index}`}
+            className="inline-flex min-h-9 items-center rounded-2xl bg-card/16 px-3 py-2 text-sm text-muted/40"
+          >
+            slot {connectedAccounts.length + index + 1}
+          </div>
+        ))}
       </div>
 
       {error ? <div className="text-xs text-danger">{error}</div> : null}
@@ -250,27 +263,28 @@ function GoogleConnectorSideCard({
 }
 
 export function LifeOpsSettingsSection() {
-  const { t: translate } = useApp();
   const ownerConnector = useGoogleLifeOpsConnector({ side: "owner" });
   const agentConnector = useGoogleLifeOpsConnector({ side: "agent" });
-  const t =
-    typeof translate === "function" ? translate : (key: string): string => key;
+  const setupReady =
+    ownerConnector.status?.connected === true &&
+    agentConnector.status?.connected === true;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 text-muted">
-        <Plug2 className="h-4 w-4" />
-        <div className="text-xs font-semibold uppercase tracking-wide">
-          {t("settings.sections.lifeops.label")}
+    <section className="overflow-hidden rounded-3xl border border-border/16 bg-card/18 px-4 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-txt">
+          <Plug2 className="h-4 w-4 text-muted" />
+          <div className="text-sm font-semibold">Google</div>
+        </div>
+        <div className="text-xs font-medium text-muted">
+          {setupReady ? "Calendar + email ready" : "User + agent required"}
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <GoogleConnectorSideCard connector={ownerConnector} side="owner" />
-        <GoogleConnectorSideCard connector={agentConnector} side="agent" />
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <GoogleSetupRow connector={ownerConnector} side="owner" />
+        <GoogleSetupRow connector={agentConnector} side="agent" />
       </div>
-
-      <LifeOpsBrowserSetupPanel />
-    </div>
+    </section>
   );
 }

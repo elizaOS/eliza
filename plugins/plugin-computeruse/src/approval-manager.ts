@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type {
   ApprovalMode,
   ApprovalResolution,
@@ -16,9 +19,21 @@ const SAFE_COMMANDS = new Set<string>([
   "screenshot",
   "browser_screenshot",
   "browser_state",
+  "browser_info",
+  "browser_get_dom",
   "browser_dom",
+  "browser_get_clickables",
   "browser_clickables",
+  "browser_get_context",
   "browser_list_tabs",
+  "browser_wait",
+  "file_read",
+  "file_exists",
+  "directory_list",
+  "file_list_downloads",
+  "file_download",
+  "terminal_read",
+  "terminal_connect",
   "list_windows",
 ]);
 
@@ -39,6 +54,15 @@ export function isApprovalMode(value: string): value is ApprovalMode {
 export class ComputerUseApprovalManager {
   private mode: ApprovalMode = "full_control";
   private pending = new Map<string, PendingApprovalRecord>();
+  private readonly configPath = path.join(
+    os.homedir(),
+    ".milady",
+    "computer-use-approval.json",
+  );
+
+  constructor() {
+    this.loadConfig();
+  }
 
   getMode(): ApprovalMode {
     return this.mode;
@@ -47,6 +71,7 @@ export class ComputerUseApprovalManager {
   setMode(mode: string): ApprovalMode {
     if (isApprovalMode(mode)) {
       this.mode = mode;
+      this.saveConfig();
     }
     return this.mode;
   }
@@ -130,5 +155,30 @@ export class ComputerUseApprovalManager {
       pending.resolve({ approved: false, cancelled: true, reason });
     }
     this.pending.clear();
+  }
+
+  private loadConfig(): void {
+    try {
+      const raw = fs.readFileSync(this.configPath, "utf8");
+      const parsed = JSON.parse(raw) as { mode?: unknown };
+      if (typeof parsed.mode === "string" && isApprovalMode(parsed.mode)) {
+        this.mode = parsed.mode;
+      }
+    } catch {
+      // Keep the default mode when the config file is missing or invalid.
+    }
+  }
+
+  private saveConfig(): void {
+    try {
+      fs.mkdirSync(path.dirname(this.configPath), { recursive: true });
+      fs.writeFileSync(
+        this.configPath,
+        JSON.stringify({ mode: this.mode }, null, 2),
+        "utf8",
+      );
+    } catch {
+      // Ignore persistence failures; approval mode still applies in-memory.
+    }
   }
 }

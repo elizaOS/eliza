@@ -8,3 +8,4 @@ export * from "./components/LifeOpsPageSections.tsx";
 export * from "./components/LifeOpsSettingsSection.tsx";
 export * from "./components/LifeOpsWorkspaceView.tsx";
 export * from "./components/WebsiteBlockerSettingsCard.tsx";
+export * from "./components/AppBlockerSettingsCard.tsx";

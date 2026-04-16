@@ -7,7 +7,7 @@ import {
   type LifeOpsBrowserSettings,
   type LifeOpsBrowserSiteAccessMode,
   type LifeOpsBrowserTrackingMode,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   Badge,
   Button,
@@ -22,7 +22,6 @@ import {
   Download,
   FolderOpen,
   Package,
-  RefreshCw,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
@@ -250,28 +249,6 @@ function installButtonLabel(
   return `Install ${browser === "chrome" ? "Chrome" : "Safari"}`;
 }
 
-function installHint(
-  browser: LifeOpsBrowserKind,
-  releaseManifest: LifeOpsBrowserCompanionReleaseManifest | null | undefined,
-): string {
-  const target = releaseTargetForBrowser(browser, releaseManifest);
-  if (target?.installKind === "chrome_web_store") {
-    return "Open the Chrome Web Store listing, install the release build, then import the copied pairing JSON in the extension popup.";
-  }
-  if (target?.installKind === "apple_app_store") {
-    return "Open the Safari companion listing, install the released app, then enable the extension and import the copied pairing JSON.";
-  }
-  if (target?.installKind === "github_release") {
-    return "Download the tagged release bundle, install it, then import the copied pairing JSON in the extension popup.";
-  }
-  if (target?.installKind === "local_download") {
-    return "Download the packaged companion bundle, install it locally, then import the copied pairing JSON.";
-  }
-  return browser === "chrome"
-    ? "Load the unpacked build folder in Chrome, or use the packaged zip for distribution."
-    : "Open the generated macOS app once, then enable the Safari extension in Safari Settings.";
-}
-
 function trackingModeLabel(mode: LifeOpsBrowserTrackingMode): string {
   switch (mode) {
     case "current_tab":
@@ -366,7 +343,7 @@ function BrowserCompanionRow({
   const hasLocalArtifact = Boolean(buildPath || packagePath || appPath);
 
   return (
-    <div className="rounded-lg border border-border/50 bg-bg/30 p-3 space-y-2">
+    <div className="space-y-2 rounded-2xl bg-card/16 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="outline">{browserLabel}</Badge>
         {distributionLabel ? (
@@ -783,36 +760,25 @@ export function LifeOpsBrowserSetupPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-2 text-muted">
           <ShieldCheck className="h-4 w-4" />
-          <div className="text-xs font-semibold uppercase tracking-wide">
-            LifeOps Browser
-          </div>
+          <div className="text-sm font-semibold text-txt">Browser</div>
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 rounded-xl px-3 text-xs font-semibold"
-          onClick={() => void refresh()}
-        >
-          <RefreshCw className="mr-1.5 h-3 w-3" />
-          Refresh
-        </Button>
       </div>
 
       {currentPage ? (
-        <div className="text-xs text-muted">
-          Current page: <span className="text-txt">{currentPage}</span>
+        <div className="text-xs text-muted/80">
+          <span className="text-txt">{currentPage}</span>
         </div>
       ) : null}
       {statusMessage ? (
-        <div className="rounded-lg border border-border/50 bg-bg/40 px-3 py-2 text-xs text-txt">
+        <div className="rounded-2xl bg-card/22 px-3 py-2 text-xs text-txt">
           {statusMessage}
         </div>
       ) : null}
       {error ? (
-        <div className="rounded-lg border border-danger/50 bg-danger/10 px-3 py-1.5 text-xs text-danger">
+        <div className="rounded-2xl bg-danger/10 px-3 py-1.5 text-xs text-danger">
           {error}
         </div>
       ) : null}
@@ -822,9 +788,7 @@ export function LifeOpsBrowserSetupPanel() {
           {draft ? (
             <>
               <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Settings
-                </div>
+                <div className="text-sm font-semibold text-txt">Settings</div>
                 <Button
                   size="sm"
                   variant="outline"
@@ -832,7 +796,7 @@ export function LifeOpsBrowserSetupPanel() {
                   disabled={savingSettings || loading}
                   onClick={() => void saveSettings()}
                 >
-                  {savingSettings ? "Saving…" : "Save"}
+                  {savingSettings ? "Saving..." : "Save"}
                 </Button>
               </div>
 
@@ -997,22 +961,14 @@ export function LifeOpsBrowserSetupPanel() {
                 </div>
               </div>
 
-              <div className="pt-1 text-xs text-muted">
-                Companions: {companions.length} | Workspace:{" "}
-                <span className="font-mono text-txt">
-                  {packageStatus?.extensionPath ?? "N/A"}
-                </span>
-              </div>
             </>
           ) : loading ? (
-            <div className="text-xs text-muted">Loading settings…</div>
+            <div className="text-xs text-muted">Loading</div>
           ) : null}
         </div>
 
         <div className="space-y-3">
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted">
-            Installation
-          </div>
+          <div className="text-sm font-semibold text-txt">Install</div>
           <BrowserCompanionRow
             browser="chrome"
             buildPath={packageStatus?.chromeBuildPath}
@@ -1083,12 +1039,14 @@ export function LifeOpsBrowserSetupPanel() {
 
           {companions.length > 0 ? (
             <div className="space-y-2">
-              <div className="text-xs font-semibold text-muted uppercase tracking-wide">Paired companions</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Companions
+              </div>
               <div className="grid gap-2">
                 {companions.map((companion) => (
                   <div
                     key={companion.id}
-                    className="flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-bg/40 px-3 py-1.5 text-xs"
+                    className="flex flex-wrap items-center gap-2 rounded-2xl bg-card/16 px-3 py-2 text-xs"
                   >
                     <Badge variant="outline" className="text-2xs">
                       {companion.browser}/{companion.profileLabel}

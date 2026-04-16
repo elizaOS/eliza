@@ -11,8 +11,7 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/agent": "workspace:*"
+    "@elizaos/core": "workspace:*"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
