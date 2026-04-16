@@ -45,7 +45,7 @@ export interface CharacterAutonomousConfigLike extends AutonomousConfigLike {
 }
 
 interface CharacterParseIssueLike {
-  path: Array<string | number>;
+  path: PropertyKey[];
   message: string;
 }
 
@@ -54,7 +54,7 @@ interface CharacterParseErrorLike {
 }
 
 type CharacterValidationResult =
-  | { success: true }
+  | { success: true; data?: unknown }
   | { success: false; error: CharacterParseErrorLike };
 
 export interface CharacterRouteState {
