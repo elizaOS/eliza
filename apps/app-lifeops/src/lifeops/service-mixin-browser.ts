@@ -297,7 +297,7 @@ import {
 export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {
-  return class extends Base {
+  class LifeOpsBrowserServiceMixin extends Base {
     protected async createBrowserSessionInternal(
       request: CreateLifeOpsBrowserSessionRequest,
     ): Promise<LifeOpsBrowserSession> {
@@ -1206,5 +1206,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       await this.requireBrowserSessionForCompanion(companion, sessionId);
       return this.completeBrowserSession(sessionId, request);
     }
-  };
+  }
+
+  return LifeOpsBrowserServiceMixin;
 }

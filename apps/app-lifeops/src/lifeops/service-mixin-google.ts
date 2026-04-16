@@ -78,7 +78,7 @@ function sameNormalizedStringSet(
 export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {
-  return class extends Base {
+  class LifeOpsGoogleServiceMixin extends Base {
     // -----------------------------------------------------------------
     // Internal Google grant operations
     // -----------------------------------------------------------------
@@ -1184,5 +1184,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       );
       return this.getGoogleConnectorStatus(requestUrl, mode, side);
     }
-  };
+  }
+
+  return LifeOpsGoogleServiceMixin;
 }

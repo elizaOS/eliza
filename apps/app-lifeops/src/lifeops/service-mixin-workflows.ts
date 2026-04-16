@@ -43,7 +43,7 @@ import { LifeOpsServiceError } from "./service-types.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
-  return class extends Base {
+  class LifeOpsWorkflowsServiceMixin extends Base {
     protected readWorkflowSchedulerState(
       workflow: LifeOpsWorkflowDefinition,
     ): LifeOpsWorkflowSchedulerState | null {
@@ -578,5 +578,7 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(Bas
       }
       return result.run;
     }
-  };
+  }
+
+  return LifeOpsWorkflowsServiceMixin;
 }

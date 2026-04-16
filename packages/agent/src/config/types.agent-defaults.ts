@@ -4,6 +4,7 @@ import type {
   HumanDelayConfig,
   TypingMode,
 } from "@elizaos/core";
+import type { InboxTriageConfig } from "@elizaos/shared/config";
 import type { MemorySearchConfig } from "./types.tools.js";
 
 // --- Sandbox types (merged from types.sandbox.ts) ---
@@ -205,7 +206,7 @@ export type AgentDefaultsConfig = {
   /** Escalation behavior config. */
   escalation?: EscalationConfig;
   /** Inbox triage config (multi-channel message scanning, daily digest, auto-reply). */
-  inboxTriage?: import("@elizaos/app-lifeops/inbox/types").InboxTriageConfig;
+  inboxTriage?: InboxTriageConfig;
   /** Optional repository root for system prompt runtime line (overrides auto-detect). */
   repoRoot?: string;
   /** Skip init (INIT.md creation, etc.) for pre-configured deployments. */

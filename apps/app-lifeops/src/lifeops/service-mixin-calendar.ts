@@ -69,7 +69,7 @@ import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 const DEFAULT_GMAIL_TRIAGE_MAX_RESULTS = 12;
 
 export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
-  return class extends Base {
+  class LifeOpsCalendarServiceMixin extends Base {
 
     protected async recordCalendarEventAudit(
       ownerId: string,
@@ -865,5 +865,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
         linkedMailError,
       );
     }
-  };
+  }
+
+  return LifeOpsCalendarServiceMixin;
 }
