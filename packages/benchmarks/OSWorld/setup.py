@@ -39,7 +39,7 @@ setup(
     python_requires='>=3.10',
     install_requires=[
         "numpy>=1.26,<3",
-        "Pillow~=11.0.0",
+        "Pillow~=12.2.0",
         "fabric",
         "gymnasium~=0.28.1",
         "requests~=2.33.0",
