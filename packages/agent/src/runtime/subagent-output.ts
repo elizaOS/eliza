@@ -63,9 +63,16 @@ export async function findLatestJsonl(workdir: string): Promise<string | null> {
 	} catch {
 		return null;
 	}
-	const jsonls = entries.filter((f) => f.endsWith(".jsonl")).sort();
+	const jsonls = entries.filter((f) => f.endsWith(".jsonl"));
 	if (jsonls.length === 0) return null;
-	return join(projectDir, jsonls[jsonls.length - 1]);
+	const withMtime = await Promise.all(
+		jsonls.map(async (f) => {
+			const s = await fs.stat(join(projectDir, f));
+			return { f, mtime: s.mtimeMs };
+		}),
+	);
+	withMtime.sort((a, b) => b.mtime - a.mtime);
+	return join(projectDir, withMtime[0].f);
 }
 
 async function readJsonl(workdir: string): Promise<string | null> {
@@ -93,13 +100,13 @@ export function findLatestEndTurnText(content: string): string | null {
 		const msg = parsed.message;
 		if (!msg || msg.role !== "assistant") continue;
 		if (msg.stop_reason !== "end_turn") return null;
-		let text = "";
+		const textParts: string[] = [];
 		for (const c of msg.content ?? []) {
 			if (c.type === "text" && typeof c.text === "string" && c.text.trim()) {
-				text = c.text.trim();
+				textParts.push(c.text.trim());
 			}
 		}
-		return text || null;
+		return textParts.length > 0 ? textParts.join("\n\n") : null;
 	}
 	return null;
 }
