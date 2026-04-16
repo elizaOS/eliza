@@ -1,7 +1,7 @@
 import type {
   CompanionHalfFramerateMode,
   CompanionVrmPowerMode,
-} from "@elizaos/app-core/state/types";
+} from "@elizaos/app-core";
 
 export const COMPANION_VRM_POWER_OPTIONS: readonly CompanionVrmPowerMode[] = [
   "quality",

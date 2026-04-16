@@ -1,1 +1,1 @@
-ai.milady.plugins.talkmode
+ai.eliza.plugins.talkmode

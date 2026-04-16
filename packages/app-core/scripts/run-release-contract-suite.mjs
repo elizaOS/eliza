@@ -32,22 +32,21 @@ function run(command, args, cwd = APP_CORE_ROOT) {
   }
 }
 
-run("bunx", ["vitest", "run", "--passWithNoTests", ...releaseContractTests], REPO_ROOT);
+run("bunx", ["vitest", "run", ...releaseContractTests], REPO_ROOT);
 run("bunx", [
   "vitest",
   "run",
-  "--passWithNoTests",
   "eliza/packages/app-core/scripts/startup-integration-script-drift.test.ts",
 ], REPO_ROOT);
 
 // tsdown and the release check both resolve repo-root-relative entries/config.
 run("bunx", ["tsdown", "--fail-on-warn", "false"], REPO_ROOT);
-fs.mkdirSync(path.join(APP_CORE_ROOT, "dist"), { recursive: true });
+fs.mkdirSync(path.join(REPO_ROOT, "dist"), { recursive: true });
 fs.writeFileSync(
-  path.join(APP_CORE_ROOT, "dist", "package.json"),
+  path.join(REPO_ROOT, "dist", "package.json"),
   '{"type":"module"}\n',
 );
-run("node", ["--import", "tsx", "scripts/write-build-info.ts"]);
+run("node", ["--import", "tsx", "scripts/write-build-info.ts"], REPO_ROOT);
 // Regenerate static asset manifest from the CI build output so hashes
 // match what release:check will validate.
 run("node", ["scripts/generate-static-asset-manifest.mjs"]);

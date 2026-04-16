@@ -5,13 +5,15 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, describe, expect, it } from "vitest";
-import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
-import { req } from "../../../../test/helpers/http";
+import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
+import { req } from "../../../packages/app-core/test/helpers/http";
 
 const LIVE_TESTS_ENABLED =
   process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 const WATCH_DESKTOP_SUPPORTED = process.platform === "darwin";
+const DESKTOP_STACK_TEST_TIMEOUT_MS =
+  process.platform === "win32" ? 480_000 : 300_000;
 
 type DesktopMode = "dev:desktop" | "dev:desktop:watch";
 
@@ -306,60 +308,64 @@ describeIf(LIVE_TESTS_ENABLED)(
       }
     });
 
-    it("boots bun run dev:desktop and exposes the website blocker through the desktop stack", async () => {
-      const stack = await startDesktopStack("dev:desktop");
-      startedStacks.push(stack);
+    it(
+      "boots bun run dev:desktop and exposes the website blocker through the desktop stack",
+      async () => {
+        const stack = await startDesktopStack("dev:desktop");
+        startedStacks.push(stack);
 
-      const permissionResponse = await req(
-        stack.apiPort,
-        "GET",
-        "/api/permissions/website-blocking",
-      );
-      expect(permissionResponse.status).toBe(200);
-      expect(permissionResponse.data).toMatchObject({
-        id: "website-blocking",
-        status: "granted",
-      });
+        const permissionResponse = await req(
+          stack.apiPort,
+          "GET",
+          "/api/permissions/website-blocking",
+        );
+        expect(permissionResponse.status).toBe(200);
+        expect(permissionResponse.data).toMatchObject({
+          id: "website-blocking",
+          status: "granted",
+        });
 
-      const startResponse = await req(
-        stack.apiPort,
-        "PUT",
-        "/api/website-blocker",
-        {
-          websites: ["x.com", "twitter.com"],
-          durationMinutes: 5,
-        },
-      );
-      expect(startResponse.status).toBe(200);
-      expect(startResponse.data).toMatchObject({
-        success: true,
-        request: {
-          websites: ["x.com", "twitter.com"],
-          durationMinutes: 5,
-        },
-      });
+        const startResponse = await req(
+          stack.apiPort,
+          "PUT",
+          "/api/website-blocker",
+          {
+            websites: ["x.com", "twitter.com"],
+            durationMinutes: 5,
+          },
+        );
+        expect(startResponse.status).toBe(200);
+        expect(startResponse.data).toMatchObject({
+          success: true,
+          request: {
+            websites: ["x.com", "twitter.com"],
+            durationMinutes: 5,
+          },
+        });
 
-      const hosts = await waitForHostsBlock(stack.hostsFilePath, [
-        "x.com",
-        "twitter.com",
-      ]);
-      expect(hosts).toContain("0.0.0.0 x.com");
-      expect(hosts).toContain("0.0.0.0 twitter.com");
+        const hosts = await waitForHostsBlock(stack.hostsFilePath, [
+          "x.com",
+          "twitter.com",
+        ]);
+        expect(hosts).toContain("0.0.0.0 x.com");
+        expect(hosts).toContain("0.0.0.0 twitter.com");
 
-      const stopResponse = await req(
-        stack.apiPort,
-        "DELETE",
-        "/api/website-blocker",
-      );
-      expect(stopResponse.status).toBe(200);
-      expect(stopResponse.data).toMatchObject({
-        success: true,
-        removed: true,
-        status: {
-          active: false,
-        },
-      });
-    }, 300_000);
+        const stopResponse = await req(
+          stack.apiPort,
+          "DELETE",
+          "/api/website-blocker",
+        );
+        expect(stopResponse.status).toBe(200);
+        expect(stopResponse.data).toMatchObject({
+          success: true,
+          removed: true,
+          status: {
+            active: false,
+          },
+        });
+      },
+      DESKTOP_STACK_TEST_TIMEOUT_MS,
+    );
 
     // The Vite-backed blocker flow is already covered by selfcontrol-dev on
     // CI. The Electrobun watch-mode window remains flaky outside macOS: Linux

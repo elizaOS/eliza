@@ -54,14 +54,14 @@ import { evictOldestConversation } from "./memory-bounds.js";
 import type { RouteRequestContext } from "./route-helpers.js";
 import {
   buildUserMessages,
+  type ConversationMeta,
   getErrorMessage,
   isUuidLike,
   persistConversationRoomTitle,
   resolveAppUserName,
   resolveConversationGreetingText,
   resolveWalletModeGuidanceReply,
-} from "./server-helpers.js";
-import type { ConversationMeta } from "./server-types.js";
+} from "./server.js";
 
 // ---------------------------------------------------------------------------
 // Deleted-conversations state persistence
@@ -134,7 +134,7 @@ export interface ConversationRouteState {
   conversations: Map<string, ConversationMeta>;
   conversationRestorePromise: Promise<void> | null;
   deletedConversationIds: Set<string>;
-  broadcastWs: ((data: Record<string, unknown>) => void) | null;
+  broadcastWs: ((data: object) => void) | null;
   /** Wallet trade permission mode for wallet-mode guidance replies. */
   tradePermissionMode?: string;
 }

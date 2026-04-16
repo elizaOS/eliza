@@ -19,6 +19,9 @@ export const LANGUAGES: { id: UiLanguage; flag: string; label: string }[] = [
   { id: "tl", flag: "\u{1F1F5}\u{1F1ED}", label: "Tagalog" },
 ];
 
+export const LANGUAGE_DROPDOWN_TRIGGER_CLASSNAME =
+  "!h-11 !min-h-11 !rounded-xl !px-3.5";
+
 export interface LanguageDropdownProps {
   uiLanguage: UiLanguage;
   setUiLanguage: (language: UiLanguage) => void;

@@ -15,8 +15,6 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 
-export * from "@elizaos/agent/runtime/eliza";
-
 import { loadElizaConfig } from "@elizaos/agent/config/config";
 import { resolveUserPath } from "@elizaos/agent/config/paths";
 import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
@@ -31,6 +29,11 @@ import {
   shutdownRuntime as upstreamShutdownRuntime,
   startEliza as upstreamStartEliza,
 } from "@elizaos/agent/runtime/eliza";
+export {
+  CUSTOM_PLUGINS_DIRNAME,
+  resolvePackageEntry,
+  scanDropInPlugins,
+} from "@elizaos/agent/runtime/plugin-types";
 import { getLastFailedPluginNames } from "@elizaos/agent/runtime/plugin-resolver";
 import {
   resolveServerOnlyPort,
@@ -74,6 +77,8 @@ const PLUGIN_SQL_GLOBAL_SINGLETONS = Symbol.for(
   "@elizaos/plugin-sql/global-singletons",
 );
 const ELIZA_AUTO_RESET_PGLITE_ERROR_CODE = "ELIZA_PGLITE_MANUAL_RESET_REQUIRED";
+
+export const shutdownRuntime = upstreamShutdownRuntime;
 
 interface PluginSqlGlobalSingletons {
   pgLiteClientManager?: {
@@ -525,7 +530,7 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
         dropPendingUpdates: true,
         allowedUpdates: ["message", "message_reaction"],
       })
-      .catch((err) =>
+      .catch((err: unknown) =>
         logger.warn(
           `[eliza] Telegram bot launch error: ${err instanceof Error ? err.message : String(err)}`,
         ),

@@ -14,7 +14,7 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "@elizaos/app-core";
-import type { EventCallback } from "../../../shared-types.js";
+import type { EventCallback, ListenerEntry as BaseListenerEntry } from "../../../shared-types.js";
 import type {
   LocationErrorEvent,
   LocationOptions,
@@ -26,10 +26,7 @@ import type {
 
 type LocationEventData = LocationResult | LocationErrorEvent;
 
-interface ListenerEntry {
-  eventName: string;
-  callback: EventCallback<LocationEventData>;
-}
+type ListenerEntry = BaseListenerEntry<string, LocationEventData>;
 
 interface NativeLocationPosition {
   latitude: number;

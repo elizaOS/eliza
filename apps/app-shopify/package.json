@@ -10,7 +10,6 @@
     "./*": "./src/*"
   },
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "lucide-react": "^0.575.0"
   }

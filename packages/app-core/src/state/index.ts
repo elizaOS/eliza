@@ -1,5 +1,8 @@
 export * from "./AppContext";
 export * from "./ChatComposerContext";
+export * from "./TranslationContext";
+export * from "./action-notice";
+export * from "./ui-preferences";
 export * from "./PtySessionsContext";
 export * from "./CompanionSceneConfigContext";
 export * from "./parsers";
@@ -7,5 +10,4 @@ export * from "./agent-profiles";
 export * from "./persistence";
 export * from "./types";
 export * from "./useApp";
-export { useVincentState } from "./useVincentState";
 export * from "./vrm";

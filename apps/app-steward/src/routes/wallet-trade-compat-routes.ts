@@ -7,13 +7,13 @@
  */
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
-import { ensureCompatApiAuthorized } from "@elizaos/app-core/api/auth";
-import type { CompatRuntimeState } from "@elizaos/app-core/api/compat-route-shared";
-import { readCompatJsonBody } from "@elizaos/app-core/api/compat-route-shared";
 import {
+  ensureCompatApiAuthorized,
+  type CompatRuntimeState,
+  readCompatJsonBody,
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
-} from "@elizaos/app-core/api/response";
+} from "@elizaos/app-core";
 import { logger } from "@elizaos/core";
 import { type PolicyResult, StewardApiError } from "@stwd/sdk";
 import { ethers } from "ethers";

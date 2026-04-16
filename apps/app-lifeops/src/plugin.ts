@@ -8,14 +8,20 @@ import {
   getWebsiteBlockStatusAction,
   requestWebsiteBlockingPermissionAction,
   unblockWebsitesAction,
-} from "./selfcontrol/action.ts";
-import { websiteBlockerProvider } from "./selfcontrol/provider.ts";
+} from "./actions/website-blocker.js";
+import {
+  blockAppsAction,
+  unblockAppsAction,
+  getAppBlockStatusAction,
+} from "./actions/app-blocker.js";
+import { websiteBlockerProvider } from "./providers/website-blocker.js";
+import { appBlockerProvider } from "./providers/app-blocker.js";
 import {
   type SelfControlPluginConfig,
   getSelfControlStatus,
   setSelfControlPluginConfig,
-} from "./selfcontrol/selfcontrol.ts";
-import { WebsiteBlockerService } from "./selfcontrol/service.ts";
+} from "./website-blocker/engine.js";
+import { WebsiteBlockerService } from "./website-blocker/service.js";
 
 // LifeOps core actions (calendar, gmail, life/tasks, goals, inbox, owner profile)
 import { calendarAction } from "./actions/calendar.js";
@@ -37,13 +43,16 @@ import {
 const rawAppLifeOpsPlugin: Plugin = {
   name: "@elizaos/app-lifeops",
   description:
-    "LifeOps: routines, goals, Google Workspace, Apple Reminders, Twilio, browser companions (Chrome/Safari), hosts-file website blocking, and related surfaces.",
+    "LifeOps: routines, goals, Google Workspace, Apple Reminders, Twilio, browser companions (Chrome/Safari), website blocking, app blocking, and related surfaces.",
   actions: [
     manageLifeOpsBrowserAction,
     blockWebsitesAction,
     getWebsiteBlockStatusAction,
     requestWebsiteBlockingPermissionAction,
     unblockWebsitesAction,
+    blockAppsAction,
+    unblockAppsAction,
+    getAppBlockStatusAction,
     calendarAction,
     gmailAction,
     inboxAction,
@@ -53,6 +62,7 @@ const rawAppLifeOpsPlugin: Plugin = {
   providers: [
     lifeOpsBrowserProvider,
     websiteBlockerProvider,
+    appBlockerProvider,
     lifeOpsProvider,
     inboxTriageProvider,
   ],
@@ -140,6 +150,20 @@ export {
   LIFEOPS_TASK_JITTER_MS,
 } from "./lifeops/runtime.js";
 
-export * from "./selfcontrol/index.ts";
+export * from "./website-blocker/public.ts";
+
+// App blocker exports
+export { blockAppsAction, unblockAppsAction, getAppBlockStatusAction } from "./actions/app-blocker.js";
+export { appBlockerProvider } from "./providers/app-blocker.js";
+export {
+  getAppBlockerStatus,
+  getCachedAppBlockerStatus,
+  getAppBlockerPermissionState,
+  requestAppBlockerPermission,
+  getInstalledApps,
+  selectAppsForBlocking,
+  startAppBlock,
+  stopAppBlock,
+} from "./app-blocker/engine.js";
 
 export default appLifeOpsPlugin;

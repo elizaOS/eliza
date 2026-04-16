@@ -1,6 +1,8 @@
-import { client } from "@elizaos/app-core/api/client";
-import type { AgentPreflightResult } from "@elizaos/app-core/api/client-types-cloud";
-import { useApp } from "@elizaos/app-core/state/useApp";
+import {
+  client,
+  useApp,
+  type AgentPreflightResult,
+} from "@elizaos/app-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AgentTabsSection } from "./AgentTabsSection";
 import {

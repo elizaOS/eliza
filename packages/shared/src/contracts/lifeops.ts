@@ -114,6 +114,27 @@ export type LifeOpsGoogleCapability =
 export const LIFEOPS_X_CAPABILITIES = ["x.read", "x.write"] as const;
 export type LifeOpsXCapability = (typeof LIFEOPS_X_CAPABILITIES)[number];
 
+export const LIFEOPS_SIGNAL_CAPABILITIES = [
+  "signal.read",
+  "signal.send",
+] as const;
+export type LifeOpsSignalCapability =
+  (typeof LIFEOPS_SIGNAL_CAPABILITIES)[number];
+
+export const LIFEOPS_DISCORD_CAPABILITIES = [
+  "discord.read",
+  "discord.send",
+] as const;
+export type LifeOpsDiscordCapability =
+  (typeof LIFEOPS_DISCORD_CAPABILITIES)[number];
+
+export const LIFEOPS_TELEGRAM_CAPABILITIES = [
+  "telegram.read",
+  "telegram.send",
+] as const;
+export type LifeOpsTelegramCapability =
+  (typeof LIFEOPS_TELEGRAM_CAPABILITIES)[number];
+
 export const LIFEOPS_REMINDER_CHANNELS = [
   "in_app",
   "sms",
@@ -1094,6 +1115,10 @@ export interface LifeOpsCalendarEvent {
   metadata: Record<string, unknown>;
   syncedAt: string;
   updatedAt: string;
+  /** Set when aggregating across multiple Google accounts. */
+  grantId?: string;
+  /** Set when aggregating across multiple Google accounts. */
+  accountEmail?: string;
 }
 
 export interface LifeOpsCalendarFeed {
@@ -1108,6 +1133,8 @@ export interface LifeOpsCalendarFeed {
 export interface GetLifeOpsCalendarFeedRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  /** Target a specific Google account by grant ID (multi-account). */
+  grantId?: string;
   calendarId?: string;
   timeMin?: string;
   timeMax?: string;
@@ -1140,6 +1167,10 @@ export interface LifeOpsGmailMessageSummary {
   metadata: Record<string, unknown>;
   syncedAt: string;
   updatedAt: string;
+  /** Set when aggregating across multiple Google accounts. */
+  grantId?: string;
+  /** Set when aggregating across multiple Google accounts. */
+  accountEmail?: string;
 }
 
 export interface LifeOpsGmailTriageSummary {
@@ -1171,6 +1202,8 @@ export interface LifeOpsGmailNeedsResponseFeed {
 export interface GetLifeOpsGmailTriageRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  /** Target a specific Google account by grant ID (multi-account). */
+  grantId?: string;
   forceSync?: boolean;
   maxResults?: number;
 }
@@ -1182,6 +1215,7 @@ export interface GetLifeOpsGmailSearchRequest {
   maxResults?: number;
   query: string;
   replyNeededOnly?: boolean;
+  grantId?: string;
 }
 
 export interface LifeOpsGmailSearchSummary {
@@ -1206,6 +1240,7 @@ export interface CreateLifeOpsGmailReplyDraftRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   messageId: string;
+  grantId?: string;
   tone?: LifeOpsGmailDraftTone;
   intent?: string;
   includeQuotedOriginal?: boolean;
@@ -1229,6 +1264,7 @@ export interface LifeOpsGmailReplyDraft {
 export interface CreateLifeOpsGmailBatchReplyDraftsRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  grantId?: string;
   forceSync?: boolean;
   maxResults?: number;
   query?: string;
@@ -1260,6 +1296,7 @@ export interface LifeOpsGmailBatchReplyDraftsFeed {
 export interface SendLifeOpsGmailReplyRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  grantId?: string;
   messageId: string;
   bodyText: string;
   subject?: string;
@@ -1271,6 +1308,7 @@ export interface SendLifeOpsGmailReplyRequest {
 export interface SendLifeOpsGmailMessageRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  grantId?: string;
   to: string[];
   cc?: string[];
   bcc?: string[];
@@ -1290,6 +1328,7 @@ export interface LifeOpsGmailBatchReplySendItem {
 export interface SendLifeOpsGmailBatchReplyRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  grantId?: string;
   confirmSend?: boolean;
   items: LifeOpsGmailBatchReplySendItem[];
 }
@@ -1317,6 +1356,7 @@ export interface CreateLifeOpsCalendarEventRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   calendarId?: string;
+  grantId?: string;
   title: string;
   description?: string;
   location?: string;
@@ -1389,9 +1429,156 @@ export interface LifeOpsXConnectorStatus {
   grant: LifeOpsConnectorGrant | null;
 }
 
+// ---------------------------------------------------------------------------
+// Messaging connector types (Signal, Discord, Telegram)
+// ---------------------------------------------------------------------------
+
+export const LIFEOPS_MESSAGING_CONNECTOR_REASONS = [
+  "connected",
+  "disconnected",
+  "pairing",
+  "auth_pending",
+  "auth_expired",
+  "session_revoked",
+] as const;
+export type LifeOpsMessagingConnectorReason =
+  (typeof LIFEOPS_MESSAGING_CONNECTOR_REASONS)[number];
+
+export interface LifeOpsSignalConnectorStatus {
+  provider: "signal";
+  side: LifeOpsConnectorSide;
+  connected: boolean;
+  reason: LifeOpsMessagingConnectorReason;
+  identity: { phoneNumber?: string; uuid?: string; deviceName?: string } | null;
+  grantedCapabilities: LifeOpsSignalCapability[];
+  pairing: LifeOpsSignalPairingStatus | null;
+  grant: LifeOpsConnectorGrant | null;
+}
+
+export interface LifeOpsDiscordConnectorStatus {
+  provider: "discord";
+  side: LifeOpsConnectorSide;
+  available: boolean;
+  connected: boolean;
+  authenticated: boolean;
+  reason: LifeOpsMessagingConnectorReason;
+  identity: {
+    id?: string;
+    username?: string;
+    discriminator?: string;
+    email?: string;
+  } | null;
+  grantedCapabilities: LifeOpsDiscordCapability[];
+  grantedScopes: string[];
+  configuredChannelIds: string[];
+  subscribedChannelIds: string[];
+  expiresAt: string | null;
+  hasRefreshToken: boolean;
+  lastError: string | null;
+  ipcPath: string | null;
+  grant: LifeOpsConnectorGrant | null;
+}
+
+export const LIFEOPS_TELEGRAM_AUTH_STATES = [
+  "idle",
+  "waiting_for_provisioning_code",
+  "waiting_for_code",
+  "waiting_for_password",
+  "connected",
+  "error",
+] as const;
+export type LifeOpsTelegramAuthState =
+  (typeof LIFEOPS_TELEGRAM_AUTH_STATES)[number];
+
+export interface LifeOpsTelegramConnectorStatus {
+  provider: "telegram";
+  side: LifeOpsConnectorSide;
+  connected: boolean;
+  reason: LifeOpsMessagingConnectorReason;
+  identity: {
+    id?: string;
+    username?: string;
+    firstName?: string;
+    phone?: string;
+  } | null;
+  grantedCapabilities: LifeOpsTelegramCapability[];
+  authState: LifeOpsTelegramAuthState;
+  authError: string | null;
+  phone: string | null;
+  managedCredentialsAvailable: boolean;
+  storedCredentialsAvailable: boolean;
+  grant: LifeOpsConnectorGrant | null;
+}
+
+export interface StartLifeOpsSignalPairingRequest {
+  side?: LifeOpsConnectorSide;
+}
+
+export interface StartLifeOpsSignalPairingResponse {
+  provider: "signal";
+  side: LifeOpsConnectorSide;
+  sessionId: string;
+}
+
+export interface LifeOpsSignalPairingStatus {
+  sessionId: string;
+  state:
+    | "idle"
+    | "generating_qr"
+    | "waiting_for_scan"
+    | "linking"
+    | "connected"
+    | "failed";
+  qrDataUrl: string | null;
+  error: string | null;
+}
+
+export interface StartLifeOpsDiscordConnectorRequest {
+  side?: LifeOpsConnectorSide;
+  redirectUrl?: string;
+}
+
+export interface StartLifeOpsDiscordConnectorResponse {
+  provider: "discord";
+  side: LifeOpsConnectorSide;
+  authUrl: string;
+}
+
+export interface StartLifeOpsTelegramAuthRequest {
+  side?: LifeOpsConnectorSide;
+  phone: string;
+  apiId?: number;
+  apiHash?: string;
+}
+
+export interface StartLifeOpsTelegramAuthResponse {
+  provider: "telegram";
+  side: LifeOpsConnectorSide;
+  state:
+    | "waiting_for_provisioning_code"
+    | "waiting_for_code"
+    | "waiting_for_password"
+    | "connected"
+    | "error";
+  error?: string;
+}
+
+export interface SubmitLifeOpsTelegramAuthRequest {
+  side?: LifeOpsConnectorSide;
+  code?: string;
+  password?: string;
+}
+
+export interface DisconnectLifeOpsMessagingConnectorRequest {
+  side?: LifeOpsConnectorSide;
+  provider: "signal" | "discord" | "telegram";
+}
+
 export interface StartLifeOpsGoogleConnectorRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  /** Re-authenticate an existing account by grant ID (multi-account). */
+  grantId?: string;
   capabilities?: LifeOpsGoogleCapability[];
   redirectUrl?: string;
 }

@@ -5,7 +5,7 @@ import {
   handlePermissionRoutes as handleAutonomousPermissionRoutes,
 } from "@elizaos/agent/api/permissions-routes";
 import type { PermissionState } from "@elizaos/shared/contracts/permissions";
-import type { ElizaConfig } from "../config/config";
+import type { ElizaConfig } from "@elizaos/agent/config/types";
 
 export type { PermissionState };
 

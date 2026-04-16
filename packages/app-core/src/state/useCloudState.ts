@@ -266,8 +266,7 @@ export function useCloudState({
     elizaCloudPreferDisconnectedUntilLoginRef.current = false;
 
     // Determine if we should use direct cloud auth (no local backend) or
-    // go through the local agent's proxy. During sandbox onboarding there is
-    // no local backend, so we talk to Eliza Cloud directly.
+    // go through the local agent's proxy.
     const hasBackend = Boolean(client.getBaseUrl());
     const cloudApiBase =
       getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
@@ -306,15 +305,12 @@ export function useCloudState({
         return;
       }
 
-      // Try to open the login URL in the system browser (uses desktop bridge
-      // in Electrobun, falls back to window.open in web contexts).
+      // Open the login URL in the system browser.
       if (resp.browserUrl) {
         try {
           await openExternalUrl(resp.browserUrl);
         } catch {
-          // Popup was blocked (common when window.open runs after an async
-          // gap and loses user-gesture context). Surface the URL so the user
-          // can open it manually — the polling loop below still runs.
+          // Popup was blocked — show a clickable link so the user can open it.
           setElizaCloudLoginError(
             `Open this link to log in: ${resp.browserUrl}`,
           );
@@ -376,7 +372,7 @@ export function useCloudState({
             // Store the cloud auth token for provisioning
             if (poll.token && typeof window !== "undefined") {
               (
-                window as unknown as Record<string, unknown>
+                globalThis as Record<string, unknown>
               ).__ELIZA_CLOUD_AUTH_TOKEN__ = poll.token;
               // Also update boot config so subsequent reads use the resolved cloud base.
               const cfg = getBootConfig();

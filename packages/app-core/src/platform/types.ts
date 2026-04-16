@@ -11,8 +11,7 @@ export type PermissionsClientLike = Pick<
   | "refreshPermissions"
   | "setShellEnabled"
   | "isShellEnabled"
-> &
-  Record<string | symbol, unknown>;
+>;
 
 export type PermissionsPatchState = {
   getPermissions: PermissionsClientLike["getPermissions"];
@@ -29,8 +28,7 @@ export type PermissionsPatchState = {
 export type OnboardingClientLike = Pick<
   typeof appClient,
   "getConfig" | "getOnboardingStatus" | "submitOnboarding"
-> &
-  Record<string | symbol, unknown>;
+>;
 
 export type OnboardingPatchState = {
   getConfig: OnboardingClientLike["getConfig"];
@@ -45,7 +43,6 @@ export type CloudPreferenceClientLike = Pick<
   "getCloudStatus" | "getConfig"
 > & {
   getCloudCredits?: typeof appClient.getCloudCredits;
-  [key: string | symbol]: unknown;
 };
 
 export type CloudPreferencePatchState = {

@@ -1,6 +1,7 @@
 
 
 import { getStylePresets } from "@elizaos/shared/onboarding-presets";
+import type { CharacterData } from "../../api/client";
 import { client } from "../../api/client";
 import {
   APP_EMOTE_EVENT,
@@ -194,17 +195,18 @@ export function CharacterEditor({
   const handleFieldEdit = useCallback(
     (field: string, value: unknown) => {
       if (!suppressDirtyRef.current) setFieldsEdited(true);
-      // biome-ignore lint/suspicious/noExplicitAny: typed field key interop
-      handleCharacterFieldInput(field as any, value as any);
+      handleCharacterFieldInput(
+        field as keyof CharacterData,
+        value as CharacterData[keyof CharacterData],
+      );
     },
     [handleCharacterFieldInput],
   );
 
   const handleStyleEdit = useCallback(
-    (key: string, value: string) => {
+    (key: "all" | "chat" | "post", value: string) => {
       if (!suppressDirtyRef.current) setFieldsEdited(true);
-      // biome-ignore lint/suspicious/noExplicitAny: typed field key interop
-      handleCharacterStyleInput(key as any, value);
+      handleCharacterStyleInput(key, value);
     },
     [handleCharacterStyleInput],
   );
@@ -286,8 +288,7 @@ export function CharacterEditor({
     cloudConnected: useElevenLabs,
     interruptOnSpeech: false,
     lang: "en-US",
-    // biome-ignore lint/suspicious/noExplicitAny: complex type
-    voiceConfig: voiceConfig as any,
+    voiceConfig,
     onTranscript: () => {},
   });
 
@@ -326,15 +327,11 @@ export function CharacterEditor({
         return {
           ...serverPreset,
           id: localMeta?.id ?? serverPreset.id,
-          name:
-            localMeta?.name ??
-            ("name" in serverPreset
-              ? (serverPreset as unknown as { name: string }).name
-              : undefined),
+          name: localMeta?.name ?? serverPreset.name,
           avatarIndex: localMeta?.avatarIndex,
           voicePresetId: localMeta?.voicePresetId,
           greetingAnimation: localMeta?.greetingAnimation,
-        } as unknown as OnboardingPreset;
+        } as OnboardingPreset;
       });
       setRosterStyles(merged);
     } else {
@@ -1167,7 +1164,7 @@ export function CharacterEditor({
       const nextItems = [...(d.style?.[key as "all" | "chat" | "post"] ?? [])];
       if (!nextItems.includes(value)) {
         nextItems.push(value);
-        handleStyleEdit(key, nextItems.join("\n"));
+        handleStyleEdit(key as "all" | "chat" | "post", nextItems.join("\n"));
       }
       setPendingStyleEntries((prev) => ({ ...prev, [key]: "" }));
     },
@@ -1178,7 +1175,7 @@ export function CharacterEditor({
     (key: string, index: number) => {
       const nextItems = [...(d.style?.[key as "all" | "chat" | "post"] ?? [])];
       nextItems.splice(index, 1);
-      handleStyleEdit(key, nextItems.join("\n"));
+      handleStyleEdit(key as "all" | "chat" | "post", nextItems.join("\n"));
     },
     [d.style, handleStyleEdit],
   );
@@ -1203,7 +1200,7 @@ export function CharacterEditor({
       } else {
         nextItems[index] = nextValue;
       }
-      handleStyleEdit(key, nextItems.join("\n"));
+      handleStyleEdit(key as "all" | "chat" | "post", nextItems.join("\n"));
     },
     [d.style, handleStyleEdit, styleEntryDrafts],
   );

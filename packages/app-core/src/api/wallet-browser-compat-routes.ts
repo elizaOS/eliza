@@ -26,7 +26,7 @@ import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
-import { isStewardConfigured, signViaSteward } from "./steward-bridge";
+import { isStewardConfigured, signViaSteward } from "@elizaos/app-steward/routes/steward-bridge";
 
 function normalizeHexData(value: unknown): string | undefined {
   if (typeof value !== "string") {

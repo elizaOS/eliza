@@ -77,20 +77,8 @@ export interface BugReportBundleResult {
   startupStatusPath: string | null;
 }
 
-type ExistingElizaInstallSource =
-  | "config-path-env"
-  | "state-dir-env"
-  | "default-state-dir";
-
-export interface ExistingElizaInstallInfo {
-  detected: boolean;
-  stateDir: string;
-  configPath: string;
-  configExists: boolean;
-  stateDirExists: boolean;
-  hasStateEntries: boolean;
-  source: ExistingElizaInstallSource;
-}
+import type { ExistingElizaInstallInfo } from "../rpc-schema";
+export type { ExistingElizaInstallInfo };
 
 // Subprocess type from Bun.spawn
 type BunSubprocess = ReturnType<typeof Bun.spawn>;

@@ -28,6 +28,11 @@ import type {
   WalletKeys,
 } from "../contracts/wallet.js";
 
+type StewardAgentPayload = {
+  walletAddress?: string;
+  walletAddresses?: { evm?: string; solana?: string };
+};
+
 // ── Re-exports from contracts/wallet ──────────────────────────────────
 
 export type {
@@ -592,13 +597,10 @@ export async function initStewardWalletCache(): Promise<void> {
 
     const body = (await res.json()) as {
       ok?: boolean;
-      data?: {
-        walletAddress?: string;
-        walletAddresses?: { evm?: string; solana?: string };
-      };
-    };
+      data?: StewardAgentPayload;
+    } & StewardAgentPayload;
 
-    const agent = body.data ?? (body as unknown as typeof body.data);
+    const agent = body.data ?? body;
     const stewardEvm =
       agent?.walletAddresses?.evm?.trim() ||
       agent?.walletAddress?.trim() ||
@@ -732,13 +734,10 @@ export async function getWalletAddressesWithSteward(): Promise<
 
     const body = (await res.json()) as {
       ok?: boolean;
-      data?: {
-        walletAddress?: string;
-        walletAddresses?: { evm?: string; solana?: string };
-      };
-    };
+      data?: StewardAgentPayload;
+    } & StewardAgentPayload;
 
-    const agent = body.data ?? (body as unknown as typeof body.data);
+    const agent = body.data ?? body;
     const stewardEvm =
       agent?.walletAddresses?.evm?.trim() ||
       agent?.walletAddress?.trim() ||

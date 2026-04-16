@@ -26,14 +26,15 @@ import {
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
-import { USER_PREFS_TABLE } from "../../../typescript/src/advanced-capabilities/personality/types.ts";
-import { withTimeout } from "../../../../../test/helpers/test-utils";
+import { describeIf } from "../helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../helpers/live-provider";
+/** Matches the table name used by @elizaos/core personality module. */
+const USER_PREFS_TABLE = "user_personality_preferences";
+import { withTimeout } from "../helpers/test-utils";
 import { configureLocalEmbeddingPlugin } from "@elizaos/agent/runtime/eliza";
 import {
   extractPlugin,
-  type PluginModuleShape,
+  type TestPluginModule,
 } from "@elizaos/agent/test-support/test-helpers";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
@@ -52,7 +53,7 @@ const hasModelProvider = liveModelTestsEnabled && selectedLiveProvider !== null;
 async function loadPlugin(name: string): Promise<Plugin | null> {
   try {
     return extractPlugin(
-      (await import(name)) as PluginModuleShape,
+      (await import(name)) as TestPluginModule,
     ) as Plugin | null;
   } catch (error) {
     logger.warn(

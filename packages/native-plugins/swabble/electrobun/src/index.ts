@@ -5,7 +5,7 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "@elizaos/app-core";
-import type { EventCallback } from "../../../shared-types.js";
+import type { EventCallback, ListenerEntry as BaseListenerEntry } from "../../../shared-types.js";
 import type {
   SwabbleAudioLevelEvent,
   SwabbleConfig,
@@ -27,10 +27,7 @@ type SwabbleEvent =
   | SwabbleAudioLevelEvent
   | SwabbleErrorEvent;
 
-interface ListenerEntry {
-  eventName: string;
-  callback: EventCallback<SwabbleEvent>;
-}
+type ListenerEntry = BaseListenerEntry<string, SwabbleEvent>;
 
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;

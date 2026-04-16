@@ -16,7 +16,10 @@ const isPlaywrightE2E = process.env.ELIZA_PLAYWRIGHT_E2E === "1";
 if (isPlaywrightE2E) {
 	// Skip the entire suite when no provider is available (set by global-setup).
 	test.beforeEach(() => {
-		test.skip(process.env.__E2E_SKIP__ === "1", "No inference provider available");
+		test.skip(
+			process.env.__E2E_SKIP__ === "1",
+			"No inference provider available",
+		);
 	});
 
 	// ─── Health & status ──────────────────────────────────────────────────────
@@ -121,7 +124,9 @@ if (isPlaywrightE2E) {
 		expect(body.error).toBeTruthy();
 	});
 
-	test("POST /chat with missing text field returns 400", async ({ request }) => {
+	test("POST /chat with missing text field returns 400", async ({
+		request,
+	}) => {
 		const res = await request.post("/chat", {
 			data: {},
 		});

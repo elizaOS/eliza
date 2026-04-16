@@ -86,7 +86,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "23.3.0"
+          node-version: "24.x"
           registry-url: "https://registry.npmjs.org"
 
       - name: Setup Bun
@@ -544,9 +544,21 @@ jobs:
           SKIP_PYTHON_BUILD: "1"
         run: |
           echo "Building packages with version v${{ steps.version.outputs.version }}..."
-          # Use --continue so platform-specific build failures (Rust/Python) don't block the release.
-          # But verify critical packages built successfully afterward.
-          bunx turbo run build --continue || echo "Some packages had build errors — checking critical packages..."
+          # Build only the publish-critical package graph so unrelated plugin cycles
+          # do not block alpha/beta releases.
+          RELEASE_BUILD_FILTERS=(
+            --filter=@elizaos/agent
+            --filter=@elizaos/app-core
+            --filter=elizaos
+            --filter=@elizaos/interop
+            --filter=@elizaos/prompts
+            --filter=@elizaos/shared
+            --filter=@elizaos/skills
+            --filter=@elizaos/core
+            --filter=@elizaos/ui
+          )
+          bunx turbo run build --continue "${RELEASE_BUILD_FILTERS[@]}" || \
+            echo "Some packages had build errors — checking critical packages..."
 
           # Fail fast if any publish-critical package is missing its release artifacts.
           for artifact in \
@@ -577,7 +589,14 @@ jobs:
           echo "✅ Workspace references replaced"
 
       # Publish to NPM (only after git operations succeed)
+      - name: Skip NPM publish on forks
+        if: github.repository != 'elizaOS/eliza'
+        run: |
+          echo "Skipping npm publish outside elizaOS/eliza."
+          echo "Fork workflows still validate the release build, but only the canonical upstream publishes packages."
+
       - name: Publish to NPM
+        if: github.repository == 'elizaOS/eliza'
         id: publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -998,6 +1017,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+
+          if [[ "$(gh api repos/${{ github.repository }} --jq '.has_issues')" != "true" ]]; then
+            echo "Repository issues are disabled; skipping failure issue automation"
+            echo "should_create=false" >> "$GITHUB_OUTPUT"
+            echo "issue_number=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           EXISTING_ISSUE="$(
             gh issue list \
               --repo "${{ github.repository }}" \
