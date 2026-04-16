@@ -21,7 +21,7 @@ export const fileAction: Action = {
     "FILE_OPERATION",
   ],
   description:
-    "Perform local filesystem operations through the computer-use service. This includes reading files, writing content, editing by replacement, appending, deleting files, checking existence, listing directories, deleting directories, and parity aliases for upload/download/list_downloads.\n\n" +
+    "Perform local filesystem operations through the computer-use service. This includes read, write, edit, append, delete, exists, list, delete_directory, upload, download, and list_downloads actions.\n\n" +
     "Why this exists: it gives the agent controlled local file access with the same approval, safety, and history path as the rest of computer use.",
   parameters: [
     {

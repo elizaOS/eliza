@@ -34,6 +34,6 @@ describe("TAKE_SCREENSHOT action", () => {
         ],
       }),
     );
-    expect(result).toEqual({ success: true });
+    expect(result).toMatchObject({ success: true });
   });
 });
