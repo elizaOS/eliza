@@ -84,7 +84,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
     // Internal Google grant operations
     // -----------------------------------------------------------------
 
-    protected async withGoogleGrantOperation<T>(
+    public async withGoogleGrantOperation<T>(
       grant: LifeOpsConnectorGrant,
       operation: () => Promise<T>,
     ): Promise<T> {
@@ -97,7 +97,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    protected async rethrowGoogleServiceError(
+    public async rethrowGoogleServiceError(
       grant: LifeOpsConnectorGrant,
       error: unknown,
     ): Promise<never> {
@@ -160,7 +160,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       throw error;
     }
 
-    protected async clearGoogleConnectorData(
+    public async clearGoogleConnectorData(
       side?: LifeOpsConnectorSide,
     ): Promise<void> {
       const calendarEvents = await this.repository.listCalendarEvents(
@@ -203,7 +203,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
      * This is a helper used by clearGoogleConnectorData. Subclasses that
      * add calendar functionality may override or extend this.
      */
-    protected async deleteCalendarReminderPlansForEvents(
+    public async deleteCalendarReminderPlansForEvents(
       eventIds: string[],
     ): Promise<void> {
       if (eventIds.length === 0) {
@@ -219,7 +219,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    protected async setPreferredGoogleConnectorMode(
+    public async setPreferredGoogleConnectorMode(
       preferredMode: LifeOpsConnectorMode | null,
       preferredSide?: LifeOpsConnectorSide | null,
     ): Promise<LifeOpsConnectorGrant | null> {
@@ -269,7 +269,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       return resolvedPreferredGrant;
     }
 
-    protected async upsertManagedGoogleGrant(
+    public async upsertManagedGoogleGrant(
       status: ManagedGoogleConnectorStatusResponse,
       side: LifeOpsConnectorSide,
     ): Promise<LifeOpsConnectorGrant | null> {
@@ -379,7 +379,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       return nextGrant;
     }
 
-    protected async runManagedGoogleOperation<T>(
+    public async runManagedGoogleOperation<T>(
       grant: LifeOpsConnectorGrant,
       operation: () => Promise<T>,
     ): Promise<T> {
@@ -419,7 +419,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
     // Google grant requirement helpers
     // -----------------------------------------------------------------
 
-    protected async requireGoogleCalendarGrant(
+    public async requireGoogleCalendarGrant(
       requestUrl: URL,
       requestedMode?: LifeOpsConnectorMode,
       requestedSide?: LifeOpsConnectorSide,
@@ -444,7 +444,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       return grant;
     }
 
-    protected async requireGoogleCalendarWriteGrant(
+    public async requireGoogleCalendarWriteGrant(
       requestUrl: URL,
       requestedMode?: LifeOpsConnectorMode,
       requestedSide?: LifeOpsConnectorSide,
@@ -465,7 +465,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       return grant;
     }
 
-    protected async requireGoogleGmailGrant(
+    public async requireGoogleGmailGrant(
       requestUrl: URL,
       requestedMode?: LifeOpsConnectorMode,
       requestedSide?: LifeOpsConnectorSide,
@@ -490,7 +490,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       return grant;
     }
 
-    protected async requireGoogleGmailSendGrant(
+    public async requireGoogleGmailSendGrant(
       requestUrl: URL,
       requestedMode?: LifeOpsConnectorMode,
       requestedSide?: LifeOpsConnectorSide,

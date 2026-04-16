@@ -45,7 +45,7 @@ import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 /** @internal */
 export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
   class LifeOpsWorkflowsServiceMixin extends Base {
-    protected readWorkflowSchedulerState(
+    public readWorkflowSchedulerState(
       workflow: LifeOpsWorkflowDefinition,
     ): LifeOpsWorkflowSchedulerState | null {
       return parseWorkflowSchedulerState(
@@ -53,7 +53,7 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(Bas
       );
     }
 
-    protected computeWorkflowNextDueAt(
+    public computeWorkflowNextDueAt(
       workflow: LifeOpsWorkflowDefinition,
       cursorIso?: string | null,
     ): string | null {
@@ -82,7 +82,7 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(Bas
       return nextRunMs === null ? null : new Date(nextRunMs).toISOString();
     }
 
-    protected withWorkflowSchedulerState(
+    public withWorkflowSchedulerState(
       workflow: LifeOpsWorkflowDefinition,
       state: LifeOpsWorkflowSchedulerState | null,
     ): LifeOpsWorkflowDefinition {
@@ -99,7 +99,7 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(Bas
       };
     }
 
-    protected initializeWorkflowSchedulerState(
+    public initializeWorkflowSchedulerState(
       workflow: LifeOpsWorkflowDefinition,
     ): LifeOpsWorkflowDefinition {
       const nextDueAt = this.computeWorkflowNextDueAt(workflow);
@@ -129,7 +129,7 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(Bas
       return this.withWorkflowSchedulerState(workflow, targetState);
     }
 
-    protected async runDueWorkflows(args: {
+    public async runDueWorkflows(args: {
       now: string;
       limit: number;
     }): Promise<LifeOpsWorkflowRun[]> {
@@ -358,7 +358,7 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(Bas
       return this.getWorkflow(nextDefinition.id);
     }
 
-    protected async executeWorkflowDefinition(
+    public async executeWorkflowDefinition(
       definition: LifeOpsWorkflowDefinition,
       args: {
         startedAt: string;
