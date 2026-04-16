@@ -61,10 +61,13 @@
       "react-dom": [
         "./packages/app-core/node_modules/@types/react-dom/index.d.ts"
       ],
-      "@elizaos/*": ["./node_modules/@elizaos/*"]
+      "@elizaos/*": ["./node_modules/@elizaos/*"],
+      "lucide-react": ["./packages/app-core/node_modules/lucide-react"]
     }
   },
   "exclude": [
+    "src/cli/**",
+    "src/benchmark/**",
     "src/**/*.stories.ts",
     "src/**/*.stories.tsx",
     "src/**/*.test.ts",

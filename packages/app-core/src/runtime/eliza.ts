@@ -530,7 +530,7 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
         dropPendingUpdates: true,
         allowedUpdates: ["message", "message_reaction"],
       })
-      .catch((err) =>
+      .catch((err: unknown) =>
         logger.warn(
           `[eliza] Telegram bot launch error: ${err instanceof Error ? err.message : String(err)}`,
         ),

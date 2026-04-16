@@ -258,6 +258,25 @@ export interface ServerState {
   connectorRouteHandlers: ConnectorRouteHandler[];
   /** Connector health monitor for detecting dead connectors. */
   connectorHealthMonitor: ConnectorHealthMonitor | null;
+  /** Active WhatsApp pairing sessions (QR code flow). */
+  whatsappPairingSessions?: Map<
+    string,
+    import("../services/whatsapp-pairing.js").WhatsAppPairingSession
+  >;
+  /** Active Signal pairing sessions (device linking flow). */
+  signalPairingSessions?: Map<
+    string,
+    import("../services/signal-pairing.js").SignalPairingSession
+  >;
+  /** Last known Signal pairing snapshots, including terminal failures. */
+  signalPairingSnapshots?: Map<
+    string,
+    import("../services/signal-pairing.js").SignalPairingSnapshot
+  >;
+  /** Active Telegram account auth session (user-account login flow). */
+  telegramAccountAuthSession?:
+    | import("../services/telegram-account-auth.js").TelegramAccountAuthSessionLike
+    | null;
 }
 
 /**

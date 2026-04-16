@@ -39,7 +39,7 @@ setup(
     python_requires='>=3.10',
     install_requires=[
         "numpy>=1.26,<3",
-        "Pillow~=11.0.0",
+        "Pillow~=12.2.0",
         "fabric",
         "gymnasium~=0.28.1",
         "requests~=2.33.0",
@@ -52,7 +52,7 @@ setup(
         "pynput~=1.7.6",
         "pyautogui~=0.9.54",
         "psutil~=5.9.6",
-        "tqdm~=4.65.0",
+        "tqdm~=4.66.3",
         "pandas>=2.2,<2.3",
         "flask~=3.1.3",
         "requests-toolbelt~=1.0.0",
