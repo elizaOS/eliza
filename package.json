@@ -32,7 +32,7 @@
     "build:server": "turbo run build --filter=@elizaos/server --no-cache",
     "lint": "turbo run lint",
     "lint:check": "turbo run lint:check",
-    "typecheck": "./node_modules/.bin/turbo run typecheck --force",
+    "typecheck": "turbo run typecheck",
     "lint:rust": "turbo run lint:rust",
     "typecheck:rust": "turbo run typecheck:rust",
     "lint:python": "turbo run lint:python",

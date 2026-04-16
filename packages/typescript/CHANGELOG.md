@@ -4,6 +4,14 @@
 
 ### Added
 
+- **Documentation: pipeline hooks.** Single guide [docs/PIPELINE_HOOKS.md](./docs/PIPELINE_HOOKS.md) (all phases including outgoing text, stream dedupe, DPE); README links to it; code comments in `pipeline-hooks.ts`, `streaming-context.ts`, and prompt optimization types.
+  - **Why:** One maintained entry point beats split “outgoing-only” vs “rest of pipeline” docs that duplicate metrics/API context.
+
+### Changed
+
+- **Documentation:** Removed `docs/OUTGOING_CONTENT_HOOKS.md` and `docs/PIPELINE_MODEL_STREAMING_AND_DPE.md` in favor of [docs/PIPELINE_HOOKS.md](./docs/PIPELINE_HOOKS.md).
+  - **Why:** One hooks guide is easier to discover and update than parallel granular files.
+
 - **Shared batch-queue subsystem (`utils/batch-queue`).** Composable building blocks: `PriorityQueue`, `BatchProcessor` (semaphore-limited concurrency + retries using `utils/retry`), `TaskDrain` (repeat `queue` tasks, optional `skipRegisterWorker` when a global worker already owns the task name), composed `BatchQueue`, and one shared `Semaphore` (re-exported from `prompt-batcher/shared.ts` for existing imports). Tests: `src/__tests__/batch-queue.test.ts`, `src/__tests__/task-drain.test.ts`.
   - **Why (architecture, not a single hot path):** The runtime is not globally “batching-bound”; a minimal fix in one service could be a few lines. The goal here is **forward-looking consolidation** so embedding drains, action-index embedding, batcher affinity scheduling, and shared throttling do not each grow a bespoke queue + task + retry stack that drifts over time. One composable surface caps proliferation of incompatible queuing patterns. See `src/utils/batch-queue.ts` (module comment) and `docs/BATCH_QUEUE.md`.
 - **Prompt cache hints (PromptSegment, promptSegments).** The core can pass ordered segments with stability metadata so providers can use prompt-caching APIs. `GenerateTextParams` now has optional `promptSegments?: PromptSegment[]` where each segment is `{ content: string; stable: boolean }`. When set, `prompt` must equal `promptSegments.map(s => s.content).join("")`.

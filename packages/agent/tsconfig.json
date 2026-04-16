@@ -6,16 +6,14 @@
     "jsx": "react-jsx",
     "strict": false,
     "skipLibCheck": true,
-    "types": ["node", "bun-types", "react", "react-dom"],
+    "types": ["node", "bun", "react", "react-dom"],
     "typeRoots": [
       "./node_modules/@types",
+      "../app-core/node_modules/@types",
       "../ui/node_modules/@types",
       "../../node_modules/@types",
       "../../../node_modules/@types",
-      "../../../node_modules/.bun/node_modules/@types",
-      "../../node_modules",
-      "../../../node_modules",
-      "../../../node_modules/.bun/node_modules"
+      "../../../node_modules/.bun/node_modules/@types"
     ],
     "declaration": false,
     "allowImportingTsExtensions": true,
@@ -48,15 +46,24 @@
       "@elizaos/agent/*": ["./src/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],
-      "react": ["../ui/node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": ["../ui/node_modules/@types/react/jsx-runtime.d.ts"],
-      "react/jsx-dev-runtime": [
-        "../ui/node_modules/@types/react/jsx-dev-runtime.d.ts"
+      "@elizaos/skills": ["../skills/src/index.ts"],
+      "@elizaos/skills/*": ["../skills/src/*"],
+      "react": ["../app-core/node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": [
+        "../app-core/node_modules/@types/react/jsx-runtime.d.ts"
       ],
-      "react-dom": ["../ui/node_modules/@types/react-dom/index.d.ts"],
+      "react/jsx-dev-runtime": [
+        "../app-core/node_modules/@types/react/jsx-dev-runtime.d.ts"
+      ],
+      "react-dom": ["../app-core/node_modules/@types/react-dom/index.d.ts"],
       "@elizaos/*": ["../../node_modules/@elizaos/*"]
     }
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts", "src/**/__tests__/**"]
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.spec.ts",
+    "src/**/__tests__/**"
+  ]
 }

@@ -14,6 +14,17 @@ const FETCH_TIMEOUT_MS = 8_000;
 const THOUGHTS_LIMIT = 5;
 const HYPERSCAPE_SESSION_MODE = "spectate-and-steer" as const;
 
+function readStringSetting(
+  runtime: IAgentRuntime | null,
+  key: string,
+): string | null {
+  if (typeof runtime?.getSetting !== "function") {
+    return null;
+  }
+  const value = runtime.getSetting(key);
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 function resolveApiBase(runtime: IAgentRuntime | null): string | null {
   // Prefer the explicit API URL when the host has configured one;
   // otherwise fall back to the viewer client URL. Unit tests and
@@ -21,14 +32,10 @@ function resolveApiBase(runtime: IAgentRuntime | null): string | null {
   // is served from the same origin as the client), so treating the
   // client URL as an API fallback keeps the route module active in
   // those contexts without requiring duplicated env configuration.
-  const rawCandidates: Array<string | number | boolean | null | undefined> = [
-    typeof runtime?.getSetting === "function"
-      ? runtime.getSetting("HYPERSCAPE_API_URL")
-      : null,
+  const rawCandidates: Array<string | null | undefined> = [
+    readStringSetting(runtime, "HYPERSCAPE_API_URL"),
     process.env.HYPERSCAPE_API_URL,
-    typeof runtime?.getSetting === "function"
-      ? runtime.getSetting("HYPERSCAPE_CLIENT_URL")
-      : null,
+    readStringSetting(runtime, "HYPERSCAPE_CLIENT_URL"),
     process.env.HYPERSCAPE_CLIENT_URL,
   ];
   for (const raw of rawCandidates) {

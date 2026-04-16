@@ -35,7 +35,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-telegram": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "drizzle-orm": "0.45.2",
+    "drizzle-orm": "^0.45.1",
     "lucide-react": "^0.575.0",
     "sharp": "^0.34.5"
   },

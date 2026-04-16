@@ -26,8 +26,6 @@ export {
   validateMcpServerConfig,
 } from "./api/server.js";
 export * from "./auth/index.js";
-export * from "./autonomy";
-export * from "./autonomy/index.js";
 export type { RolesConfig } from "./config/index.js";
 export * from "./config/index.js";
 export * from "./contracts/permissions.js";
