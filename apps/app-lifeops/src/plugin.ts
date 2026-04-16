@@ -9,7 +9,13 @@ import {
   requestWebsiteBlockingPermissionAction,
   unblockWebsitesAction,
 } from "./actions/website-blocker.js";
+import {
+  blockAppsAction,
+  unblockAppsAction,
+  getAppBlockStatusAction,
+} from "./actions/app-blocker.js";
 import { websiteBlockerProvider } from "./providers/website-blocker.js";
+import { appBlockerProvider } from "./providers/app-blocker.js";
 import {
   type SelfControlPluginConfig,
   getSelfControlStatus,
@@ -37,13 +43,16 @@ import {
 const rawAppLifeOpsPlugin: Plugin = {
   name: "@elizaos/app-lifeops",
   description:
-    "LifeOps: routines, goals, Google Workspace, Apple Reminders, Twilio, browser companions (Chrome/Safari), hosts-file website blocking, and related surfaces.",
+    "LifeOps: routines, goals, Google Workspace, Apple Reminders, Twilio, browser companions (Chrome/Safari), website blocking, app blocking, and related surfaces.",
   actions: [
     manageLifeOpsBrowserAction,
     blockWebsitesAction,
     getWebsiteBlockStatusAction,
     requestWebsiteBlockingPermissionAction,
     unblockWebsitesAction,
+    blockAppsAction,
+    unblockAppsAction,
+    getAppBlockStatusAction,
     calendarAction,
     gmailAction,
     inboxAction,
@@ -53,6 +62,7 @@ const rawAppLifeOpsPlugin: Plugin = {
   providers: [
     lifeOpsBrowserProvider,
     websiteBlockerProvider,
+    appBlockerProvider,
     lifeOpsProvider,
     inboxTriageProvider,
   ],
@@ -141,5 +151,19 @@ export {
 } from "./lifeops/runtime.js";
 
 export * from "./website-blocker/public.ts";
+
+// App blocker exports
+export { blockAppsAction, unblockAppsAction, getAppBlockStatusAction } from "./actions/app-blocker.js";
+export { appBlockerProvider } from "./providers/app-blocker.js";
+export {
+  getAppBlockerStatus,
+  getCachedAppBlockerStatus,
+  getAppBlockerPermissionState,
+  requestAppBlockerPermission,
+  getInstalledApps,
+  selectAppsForBlocking,
+  startAppBlock,
+  stopAppBlock,
+} from "./app-blocker/engine.js";
 
 export default appLifeOpsPlugin;

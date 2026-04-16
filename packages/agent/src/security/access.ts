@@ -1,5 +1,9 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import * as roles from "@elizaos/core";
+import {
+  checkSenderPrivateAccess,
+  checkSenderRole,
+  resolveCanonicalOwnerIdForMessage,
+} from "@elizaos/core";
 
 /** Role names matching the elizaOS role hierarchy. */
 export type RequiredRole = "OWNER" | "ADMIN" | "USER" | "GUEST";
@@ -51,20 +55,8 @@ async function isCanonicalOwner(
   runtime: IAgentRuntime,
   message: Memory,
 ): Promise<boolean> {
-  const resolveOwner = (
-    roles as unknown as {
-      resolveCanonicalOwnerIdForMessage?: (
-        runtime: IAgentRuntime,
-        message: Memory,
-      ) => Promise<string | null>;
-    }
-  ).resolveCanonicalOwnerIdForMessage;
-  if (typeof resolveOwner !== "function") {
-    return false;
-  }
-
   try {
-    const ownerId = await resolveOwner(runtime, message);
+    const ownerId = await resolveCanonicalOwnerIdForMessage(runtime, message);
     return typeof ownerId === "string" && ownerId === message.entityId;
   } catch {
     return false;
@@ -88,20 +80,8 @@ export async function hasOwnerAccess(
     return true;
   }
 
-  const checkRole = (
-    roles as unknown as {
-      checkSenderRole?: (
-        runtime: IAgentRuntime,
-        message: Memory,
-      ) => Promise<{ isOwner?: boolean } | null>;
-    }
-  ).checkSenderRole;
-  if (typeof checkRole !== "function") {
-    return false;
-  }
-
   try {
-    const role = await checkRole(context.runtime, context.message);
+    const role = await checkSenderRole(context.runtime, context.message);
     return role?.isOwner === true;
   } catch {
     return false;
@@ -125,20 +105,8 @@ export async function hasAdminAccess(
     return true;
   }
 
-  const checkRole = (
-    roles as unknown as {
-      checkSenderRole?: (
-        runtime: IAgentRuntime,
-        message: Memory,
-      ) => Promise<{ isAdmin?: boolean } | null>;
-    }
-  ).checkSenderRole;
-  if (typeof checkRole !== "function") {
-    return false;
-  }
-
   try {
-    const role = await checkRole(context.runtime, context.message);
+    const role = await checkSenderRole(context.runtime, context.message);
     return role?.isAdmin === true;
   } catch {
     return false;
@@ -162,20 +130,11 @@ export async function hasPrivateAccess(
     return true;
   }
 
-  const checkPrivateAccess = (
-    roles as unknown as {
-      checkSenderPrivateAccess?: (
-        runtime: IAgentRuntime,
-        message: Memory,
-      ) => Promise<{ hasPrivateAccess?: boolean } | null>;
-    }
-  ).checkSenderPrivateAccess;
-  if (typeof checkPrivateAccess !== "function") {
-    return false;
-  }
-
   try {
-    const access = await checkPrivateAccess(context.runtime, context.message);
+    const access = await checkSenderPrivateAccess(
+      context.runtime,
+      context.message,
+    );
     return access?.hasPrivateAccess === true;
   } catch {
     return false;
@@ -212,20 +171,8 @@ export async function hasRoleAccess(
     return true;
   }
 
-  const checkRole = (
-    roles as unknown as {
-      checkSenderRole?: (
-        runtime: IAgentRuntime,
-        message: Memory,
-      ) => Promise<{ role?: string } | null>;
-    }
-  ).checkSenderRole;
-  if (typeof checkRole !== "function") {
-    return false;
-  }
-
   try {
-    const result = await checkRole(context.runtime, context.message);
+    const result = await checkSenderRole(context.runtime, context.message);
     if (!result) {
       // No world context — allow through (same lenient fallback as plugin-role-gating)
       return true;

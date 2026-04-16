@@ -143,6 +143,8 @@ export interface PlatformCapabilities {
   computerUse: { available: boolean; tool: string };
   windowList: { available: boolean; tool: string };
   browser: { available: boolean; tool: string };
+  terminal: { available: boolean; tool: string };
+  fileSystem: { available: boolean; tool: string };
 }
 
 export interface ActionHistoryEntry {
@@ -214,4 +216,47 @@ export interface BrowserTab {
   url: string;
   title: string;
   active: boolean;
+}
+
+// ── Permission Types ──────────────────────────────────────────────────────
+
+export type PermissionType =
+  | "accessibility"
+  | "screen_recording"
+  | "microphone"
+  | "camera"
+  | "shell";
+
+// ── File Operation Types ────────────────────────────────────────────────
+
+export interface FileEntry {
+  name: string;
+  type: "file" | "directory";
+  path: string;
+}
+
+export interface FileActionResult {
+  success: boolean;
+  path?: string;
+  content?: string;
+  message?: string;
+  error?: string;
+  exists?: boolean;
+  isFile?: boolean;
+  isDirectory?: boolean;
+  size?: number;
+  items?: FileEntry[];
+  count?: number;
+}
+
+// ── Terminal Types ──────────────────────────────────────────────────────
+
+export interface TerminalActionResult {
+  success: boolean;
+  output?: string;
+  exitCode?: number;
+  cwd?: string;
+  sessionId?: string;
+  message?: string;
+  error?: string;
 }

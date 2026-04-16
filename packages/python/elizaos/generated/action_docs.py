@@ -6,7 +6,9 @@ DO NOT EDIT - Generated from packages/prompts/specs/**.
 from __future__ import annotations
 
 import json
+
 from typing import Literal, TypedDict
+
 
 JsonSchemaType = Literal["string", "number", "boolean", "object", "array"]
 ActionDocParameterExampleValue = str | int | float | bool | None
@@ -17,8 +19,8 @@ class ActionDocParameterSchema(TypedDict, total=False):
     description: str
     default: ActionDocParameterExampleValue
     enum: list[str]
-    properties: dict[str, ActionDocParameterSchema]
-    items: ActionDocParameterSchema
+    properties: dict[str, "ActionDocParameterSchema"]
+    items: "ActionDocParameterSchema"
     minimum: float
     maximum: float
     pattern: str
@@ -2764,6 +2766,20 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
+      "name": "BROWSER_ACTION",
+      "description": "Control a web browser to navigate websites, click elements, fill forms, read page content, ",
+      "parameters": [],
+      "similes": [
+        "CONTROL_BROWSER",
+        "WEB_BROWSER",
+        "OPEN_BROWSER",
+        "BROWSE_WEB",
+        "NAVIGATE_BROWSER",
+        "BROWSER_CLICK",
+        "BROWSER_TYPE"
+      ]
+    },
+    {
       "name": "CHECK_CLOUD_CREDITS",
       "description": "Check ElizaCloud credit balance, container costs, and estimated remaining runtime.",
       "parameters": [],
@@ -2852,6 +2868,55 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
+      "name": "FILE_ACTION",
+      "description": "Perform file operations — read, write, edit, append, delete files, or list directory contents.\\n\\n",
+      "parameters": [],
+      "similes": [
+        "READ_FILE",
+        "WRITE_FILE",
+        "EDIT_FILE",
+        "DELETE_FILE",
+        "LIST_DIRECTORY",
+        "FILE_OPERATION"
+      ]
+    },
+    {
+      "name": "FINALIZE_WORKSPACE",
+      "description": "Finalize workspace changes by committing, pushing, and optionally creating a pull request. ",
+      "parameters": [
+        {
+          "name": "codingWorkspace",
+          "description": "The coding workspace to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "COMMIT_AND_PR",
+        "CREATE_PR",
+        "SUBMIT_CHANGES",
+        "FINISH_WORKSPACE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use FINALIZE_WORKSPACE with the provided parameters.",
+          "actions": [
+            "FINALIZE_WORKSPACE"
+          ],
+          "params": {
+            "FINALIZE_WORKSPACE": {
+              "codingWorkspace": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "FREEZE_CLOUD_AGENT",
       "description": "Freeze a cloud agent: snapshot state, disconnect bridge, stop container.",
       "parameters": [],
@@ -2914,6 +2979,21 @@ _ALL_ACTION_DOCS_JSON = """{
         "DOWNLOAD_SKILL",
         "ADD_SKILL",
         "GET_SKILL"
+      ]
+    },
+    {
+      "name": "LIST_AGENTS",
+      "description": "List active task agents together with current task progress so the main agent can keep the user updated while work continues asynchronously.",
+      "parameters": [],
+      "similes": [
+        "LIST_CODING_AGENTS",
+        "SHOW_CODING_AGENTS",
+        "GET_ACTIVE_AGENTS",
+        "LIST_SESSIONS",
+        "SHOW_CODING_SESSIONS",
+        "SHOW_TASK_AGENTS",
+        "LIST_SUB_AGENTS",
+        "SHOW_TASK_STATUS"
       ]
     },
     {
@@ -2989,6 +3069,19 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
+      "name": "MANAGE_ISSUES",
+      "description": "Manage GitHub issues for a repository. ",
+      "parameters": [],
+      "similes": [
+        "CREATE_ISSUE",
+        "LIST_ISSUES",
+        "CLOSE_ISSUE",
+        "COMMENT_ISSUE",
+        "UPDATE_ISSUE",
+        "GET_ISSUE"
+      ]
+    },
+    {
       "name": "MANAGE_SHOPIFY_CUSTOMERS",
       "description": "List and search customers in a connected Shopify store.",
       "parameters": [],
@@ -3029,6 +3122,20 @@ _ALL_ACTION_DOCS_JSON = """{
         "CREATE_PRODUCT",
         "UPDATE_PRODUCT",
         "SEARCH_PRODUCTS"
+      ]
+    },
+    {
+      "name": "MANAGE_WINDOW",
+      "description": "Manage desktop windows — list all visible windows, bring a window to the front, ",
+      "parameters": [],
+      "similes": [
+        "LIST_WINDOWS",
+        "FOCUS_WINDOW",
+        "SWITCH_WINDOW",
+        "MINIMIZE_WINDOW",
+        "MAXIMIZE_WINDOW",
+        "CLOSE_WINDOW",
+        "WINDOW_MANAGEMENT"
       ]
     },
     {
@@ -3081,6 +3188,18 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
+      "name": "POST_TWEET",
+      "description": "Post a tweet on Twitter",
+      "parameters": [],
+      "similes": [
+        "TWEET",
+        "SEND_TWEET",
+        "TWITTER_POST",
+        "POST_ON_TWITTER",
+        "SHARE_ON_TWITTER"
+      ]
+    },
+    {
       "name": "PROVISION_CLOUD_AGENT",
       "description": "Deploy an ElizaOS agent to ElizaCloud. Provisions a container, waits for deployment, connects the bridge, and starts auto-backup.",
       "parameters": [],
@@ -3089,6 +3208,42 @@ _ALL_ACTION_DOCS_JSON = """{
         "launch cloud agent",
         "start remote agent",
         "provision container"
+      ]
+    },
+    {
+      "name": "PROVISION_WORKSPACE",
+      "description": "Create a git workspace for coding tasks. ",
+      "parameters": [
+        {
+          "name": "codingWorkspace",
+          "description": "The coding workspace to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "CREATE_WORKSPACE",
+        "CLONE_REPO",
+        "SETUP_WORKSPACE",
+        "PREPARE_WORKSPACE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use PROVISION_WORKSPACE with the provided parameters.",
+          "actions": [
+            "PROVISION_WORKSPACE"
+          ],
+          "params": {
+            "PROVISION_WORKSPACE": {
+              "codingWorkspace": "example"
+            }
+          }
+        }
       ]
     },
     {
@@ -3238,6 +3393,45 @@ _ALL_ACTION_DOCS_JSON = """{
         "IMESSAGE_REPLY",
         "BLUEBUBBLES_SEND",
         "APPLE_MESSAGE"
+      ]
+    },
+    {
+      "name": "SEND_TO_AGENT",
+      "description": "Send text input or key presses to a running task-agent session. ",
+      "parameters": [
+        {
+          "name": "codingSession",
+          "description": "The coding session to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "SEND_TO_CODING_AGENT",
+        "MESSAGE_CODING_AGENT",
+        "INPUT_TO_AGENT",
+        "RESPOND_TO_AGENT",
+        "TELL_CODING_AGENT",
+        "MESSAGE_AGENT",
+        "TELL_TASK_AGENT"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SEND_TO_AGENT with the provided parameters.",
+          "actions": [
+            "SEND_TO_AGENT"
+          ],
+          "params": {
+            "SEND_TO_AGENT": {
+              "codingSession": "example"
+            }
+          }
+        }
       ]
     },
     {
@@ -3394,12 +3588,92 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
+      "name": "SPAWN_AGENT",
+      "description": "Spawn a specific task agent inside an existing workspace when you need direct control. ",
+      "parameters": [
+        {
+          "name": "codingWorkspace",
+          "description": "The coding workspace to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "SPAWN_CODING_AGENT",
+        "START_CODING_AGENT",
+        "LAUNCH_CODING_AGENT",
+        "CREATE_CODING_AGENT",
+        "SPAWN_CODER",
+        "RUN_CODING_AGENT",
+        "SPAWN_SUB_AGENT",
+        "START_TASK_AGENT",
+        "CREATE_AGENT"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SPAWN_AGENT with the provided parameters.",
+          "actions": [
+            "SPAWN_AGENT"
+          ],
+          "params": {
+            "SPAWN_AGENT": {
+              "codingWorkspace": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "STATUS_COMMAND",
       "description": "Show session directive settings via /status slash command. Only activates for /status or /s prefix.",
       "parameters": [],
       "similes": [
         "/status",
         "/s"
+      ]
+    },
+    {
+      "name": "STOP_AGENT",
+      "description": "Stop a running task-agent session. ",
+      "parameters": [
+        {
+          "name": "codingSession",
+          "description": "The coding session to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "STOP_CODING_AGENT",
+        "KILL_CODING_AGENT",
+        "TERMINATE_AGENT",
+        "END_CODING_SESSION",
+        "CANCEL_AGENT",
+        "CANCEL_TASK_AGENT",
+        "STOP_SUB_AGENT"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use STOP_AGENT with the provided parameters.",
+          "actions": [
+            "STOP_AGENT"
+          ],
+          "params": {
+            "STOP_AGENT": {
+              "codingSession": "example"
+            }
+          }
+        }
       ]
     },
     {
@@ -3435,6 +3709,70 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
+      "name": "TAKE_SCREENSHOT",
+      "description": "Take a screenshot of the current screen to see what is displayed. ",
+      "parameters": [],
+      "similes": [
+        "CAPTURE_SCREEN",
+        "SCREEN_CAPTURE",
+        "GET_SCREENSHOT",
+        "SEE_SCREEN",
+        "LOOK_AT_SCREEN",
+        "VIEW_SCREEN",
+        "SCREEN_STATE"
+      ]
+    },
+    {
+      "name": "TASK_CONTROL",
+      "description": "Pause, stop, resume, continue, archive, or reopen a coordinator task thread while preserving the durable thread history.",
+      "parameters": [],
+      "similes": [
+        "CONTROL_TASK",
+        "PAUSE_TASK",
+        "RESUME_TASK",
+        "STOP_TASK",
+        "CONTINUE_TASK",
+        "ARCHIVE_TASK",
+        "REOPEN_TASK"
+      ]
+    },
+    {
+      "name": "TASK_HISTORY",
+      "description": "Query coordinator task history without stuffing raw transcripts into model context. Use this for active work, yesterday/last-week summaries, topic search, counts, and thread detail lookup.",
+      "parameters": [],
+      "similes": [
+        "LIST_TASK_HISTORY",
+        "GET_TASK_HISTORY",
+        "SHOW_TASKS",
+        "COUNT_TASKS",
+        "TASK_STATUS_HISTORY"
+      ]
+    },
+    {
+      "name": "TASK_SHARE",
+      "description": "Discover the best available way to view or share a task result, including artifacts, live preview URLs, workspace paths, and environment share capabilities.",
+      "parameters": [],
+      "similes": [
+        "SHARE_TASK_RESULT",
+        "SHOW_TASK_ARTIFACT",
+        "VIEW_TASK_OUTPUT",
+        "CAN_I_SEE_IT",
+        "PULL_IT_UP"
+      ]
+    },
+    {
+      "name": "TERMINAL_ACTION",
+      "description": "Execute terminal commands or manage terminal sessions.\\n\\n",
+      "parameters": [],
+      "similes": [
+        "RUN_COMMAND",
+        "EXECUTE_COMMAND",
+        "SHELL_COMMAND",
+        "TERMINAL",
+        "RUN_SHELL"
+      ]
+    },
+    {
       "name": "TOGGLE_SKILL",
       "description": "Enable or disable an installed skill. Say 'enable <skill>' or 'disable <skill>'.",
       "parameters": [],
@@ -3454,6 +3792,25 @@ _ALL_ACTION_DOCS_JSON = """{
       "similes": [
         "REMOVE_SKILL",
         "DELETE_SKILL"
+      ]
+    },
+    {
+      "name": "USE_COMPUTER",
+      "description": "Control the computer desktop by performing mouse and keyboard actions, or capture a screenshot of the current screen. ",
+      "parameters": [],
+      "similes": [
+        "CONTROL_COMPUTER",
+        "COMPUTER_ACTION",
+        "DESKTOP_ACTION",
+        "CLICK",
+        "CLICK_SCREEN",
+        "TYPE_TEXT",
+        "PRESS_KEY",
+        "KEY_COMBO",
+        "SCROLL_SCREEN",
+        "MOVE_MOUSE",
+        "DRAG",
+        "MOUSE_CLICK"
       ]
     }
   ]
