@@ -397,6 +397,17 @@ async function getDrizzleSql(): Promise<typeof _sqlHelper> {
   return _sqlHelper;
 }
 
+function isQueryRow(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function normalizeQueryRows(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isQueryRow);
+}
+
 /** Execute raw SQL via the runtime's Drizzle adapter. */
 async function executeRawSql(
   runtime: AgentRuntime,
@@ -412,9 +423,7 @@ async function executeRawSql(
   const rawQuery = drizzleSql?.raw(sqlText);
   if (!rawQuery) throw new Error("SQL module not available");
   const result = await db.execute(rawQuery);
-  const rows = Array.isArray(result.rows)
-    ? result.rows
-    : (result as unknown as Record<string, unknown>[]);
+  const rows = normalizeQueryRows(result.rows);
 
   let columns: string[] = [];
   if (result.fields && Array.isArray(result.fields)) {

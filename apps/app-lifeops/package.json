@@ -30,8 +30,6 @@
     "test:integration": "cd ../../.. && vitest run --config test/vitest/integration.config.ts eliza/apps/app-lifeops/test/life-smoke.integration.test.ts"
   },
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
-    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "drizzle-orm": "0.45.2",

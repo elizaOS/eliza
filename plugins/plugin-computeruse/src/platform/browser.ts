@@ -13,7 +13,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { currentPlatform } from "./helpers.js";
-import type { BrowserState, BrowserTab, ClickableElement } from "../types.js";
+import type {
+  BrowserInfo,
+  BrowserState,
+  BrowserTab,
+  ClickableElement,
+} from "../types.js";
 
 // Lazy-load puppeteer-core so the plugin still loads if it's not installed
 let puppeteer: typeof import("puppeteer-core") | null = null;
@@ -236,6 +241,29 @@ export async function scrollBrowser(
 export async function getBrowserState(): Promise<BrowserState> {
   const page = await ensureBrowser();
   return { url: page.url(), title: await page.title() };
+}
+
+export async function getBrowserContext(): Promise<BrowserState> {
+  return getBrowserState();
+}
+
+export async function getBrowserInfo(): Promise<BrowserInfo> {
+  try {
+    const state = await getBrowserState();
+    return {
+      success: true,
+      isOpen: true,
+      ...state,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      isOpen: false,
+      url: "",
+      title: "",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 // ── DOM ─────────────────────────────────────────────────────────────────────

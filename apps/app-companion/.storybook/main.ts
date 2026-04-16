@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { StorybookConfig } from "@storybook/react-vite";
 
-const companionRoot = path.resolve(import.meta.dirname, "..");
+const companionRoot = path.resolve(__dirname, "..");
 const elizaRoot = path.resolve(companionRoot, "../..");
 
 const config: StorybookConfig = {

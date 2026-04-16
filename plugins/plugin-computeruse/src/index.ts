@@ -24,6 +24,8 @@ import { useComputerAction } from "./actions/use-computer.js";
 import { takeScreenshotAction } from "./actions/take-screenshot.js";
 import { browserAction } from "./actions/browser-action.js";
 import { manageWindowAction } from "./actions/manage-window.js";
+import { fileAction } from "./actions/file-action.js";
+import { terminalAction } from "./actions/terminal-action.js";
 import { computerStateProvider } from "./providers/computer-state.js";
 import { ComputerUseService } from "./services/computer-use-service.js";
 
@@ -31,7 +33,8 @@ export const computerUsePlugin: Plugin = {
   name: "@elizaos/plugin-computeruse",
   description:
     "Desktop automation — take screenshots, control mouse and keyboard, " +
-    "automate web browsers via CDP, and manage desktop windows. " +
+    "automate web browsers via CDP, manage desktop windows, read/write files, " +
+    "and execute terminal commands. " +
     "Ported from open-computer-use (Apache 2.0).",
 
   // biome-ignore lint/suspicious/noExplicitAny: ElizaOS Plugin type expects Service[] but our class uses static start()
@@ -42,6 +45,8 @@ export const computerUsePlugin: Plugin = {
     takeScreenshotAction,
     browserAction,
     manageWindowAction,
+    fileAction,
+    terminalAction,
   ],
 
   providers: [computerStateProvider],

@@ -1,4 +1,4 @@
-import { runCoordinatorPreflight } from "../../../agent/src/evals/coordinator-preflight.ts";
+import { runCoordinatorPreflight } from "@elizaos/agent/evals/coordinator-preflight";
 
 try {
 	const result = await runCoordinatorPreflight({
