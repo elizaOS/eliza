@@ -30,7 +30,10 @@ interface PTYServiceWithEvents {
 	getSession?: (sessionId: string) => { workdir?: string } | undefined;
 }
 
-interface RuntimeWithMessageTarget extends IAgentRuntime {
+type RuntimeWithMessageTarget = Omit<
+	IAgentRuntime,
+	"sendMessageToTarget" | "getRoom"
+> & {
 	sendMessageToTarget: (
 		target: { source?: string; roomId?: UUID; channelId?: string },
 		message: { text: string; source?: string },
@@ -38,7 +41,7 @@ interface RuntimeWithMessageTarget extends IAgentRuntime {
 	getRoom: (
 		roomId: UUID,
 	) => Promise<{ channelId?: string; source?: string } | null>;
-}
+};
 
 /**
  * Install the heartbeat on a PTY service. Returns a disposer that

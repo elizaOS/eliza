@@ -237,7 +237,7 @@ import { applySignalQrOverride } from "./signal-routes.js";
 import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
-import { routeTaskAgentTextToConnector } from "./task-agent-message-routing.js";
+import { routeTaskAgentTextToConnector } from "@elizaos/app-task-coordinator/api/task-agent-message-routing";
 import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
 import { handleTriggerRoutes } from "./trigger-routes.js";
 import { handleTtsRoutes } from "./tts-routes.js";
@@ -261,7 +261,7 @@ import {
 } from "./wallet-capability.js";
 import { handleWalletRoutes } from "./wallet-routes.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
-import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
+import { handleWebsiteBlockerRoutes } from "@elizaos/app-lifeops/routes/website-blocker-routes";
 // handleWhatsAppRoute moved to @elizaos/plugin-whatsapp setup-routes.
 // applyWhatsAppQrOverride is still used by plugin-status routes.
 import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
@@ -1864,7 +1864,7 @@ async function handleCodingAgentsFallback(
     installed?: boolean;
     installCommand?: string;
     docsUrl?: string;
-    auth?: import("./coding-agents-preflight-normalize").NormalizedPreflightAuth;
+    auth?: import("@elizaos/app-task-coordinator/api/coding-agents-preflight-normalize").NormalizedPreflightAuth;
   };
   /** CLI login hook on adapter instances — union `.d.ts` omits it even when runtime provides it. */
   type CodingAgentAdapterAuthHook = {
@@ -2135,7 +2135,7 @@ async function handleCodingAgentsFallback(
         }
       }
       const { normalizePreflightAuth } = await import(
-        "./coding-agents-preflight-normalize"
+        "@elizaos/app-task-coordinator/api/coding-agents-preflight-normalize"
       );
       const normalized = rows.flatMap((item): AgentPreflightRecord[] => {
         if (!item || typeof item !== "object") return [];
@@ -2462,7 +2462,7 @@ async function handleCodingAgentsFallback(
         // Whitelist + URL-scheme-validate before forwarding to the
         // browser. See `coding-agents-auth-sanitize.ts` for rationale.
         const { sanitizeAuthResult } = await import(
-          "./coding-agents-auth-sanitize"
+          "@elizaos/app-task-coordinator/api/coding-agents-auth-sanitize"
         );
         json(res, sanitizeAuthResult(triggered));
       }
