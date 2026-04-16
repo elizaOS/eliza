@@ -1141,7 +1141,7 @@
   "inboxview.EmptyRoom": "No messages in this chat yet.",
   "inboxview.Loading": "Loading messages…",
   "inboxview.ReadOnlyReplyHint": "Read-only view. Reply from the {{source}} app — the connector plugin handles outbound messages.",
-  "inboxview.ReplyHint": "Sent through the connected {{source}} account on this Mac.",
+  "inboxview.ReplyHint": "Sent through the connected {{source}} account on this device.",
   "inboxview.ReplyPlaceholder": "Reply in {{source}}",
   "inboxview.Send": "Send",
   "inboxview.SendFailed": "Failed to send message.",
