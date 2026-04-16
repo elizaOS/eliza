@@ -90,9 +90,9 @@
     "vitest": "^4.0.17"
   },
   "resolutions": {
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "@types/react": "19.2.3",
+    "react": "19.2.5",
+    "react-dom": "19.2.5",
+    "@types/react": "19.2.14",
     "@types/node": "25.4.0",
     "typedoc-plugin-markdown": "4.2.10",
     "typedoc": "0.27.9",
