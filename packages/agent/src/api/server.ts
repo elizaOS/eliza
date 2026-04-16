@@ -1480,15 +1480,6 @@ function wireCodingAgentSwarmSynthesis(st: ServerState): boolean {
   coordinator.setSwarmCompleteCallback(async (payload) => {
     await handleSwarmSynthesis(st, payload);
   });
-  // Same wiring path — install the task heartbeat so sessions running past
-  // 45s emit periodic "still working" pings that report the subagent's
-  // current tool activity. Synthesis delivers the final answer; heartbeat
-  // just tells the user the task is alive and moving.
-  const ptyService = st.runtime.getService("PTY_SERVICE");
-  if (ptyService) {
-    installTaskHeartbeat(st.runtime, ptyService);
-    logger.info("[task-heartbeat] installed");
-  }
   return true;
 }
 
@@ -1672,7 +1663,6 @@ import {
   chunkForDiscord,
   readLastAssistantTextFromJsonl,
 } from "../runtime/subagent-output.js";
-import { installTaskHeartbeat } from "../runtime/task-heartbeat.js";
 
 // ── Coordinator Event Routing ───────────────────────────────────────────
 
