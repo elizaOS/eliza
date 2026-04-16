@@ -11,7 +11,7 @@ import {
   resolveApiSecurityConfig,
   resolveApiToken,
   setApiToken,
-} from "../config/runtime-env.js";
+} from "@elizaos/shared/runtime-env";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { sendJsonError } from "./http-helpers.js";
 import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.js";

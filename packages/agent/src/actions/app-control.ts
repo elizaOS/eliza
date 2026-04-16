@@ -19,7 +19,7 @@ import {
   normalizeKeywordMatchText,
   textIncludesKeywordTerm,
 } from "@elizaos/shared/validation-keywords";
-import { resolveServerOnlyPort } from "../config/runtime-env.js";
+import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
 import { hasOwnerAccess } from "../security/access.js";
 
 const LAUNCH_APP_TERMS = getValidationKeywordTerms(
