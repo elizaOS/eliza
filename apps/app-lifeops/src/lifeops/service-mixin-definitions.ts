@@ -47,6 +47,7 @@ import {
 } from "./seed-routines.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
+/** @internal */
 export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
   class LifeOpsDefinitionsServiceMixin extends Base {
     async listDefinitions(): Promise<LifeOpsDefinitionRecord[]> {

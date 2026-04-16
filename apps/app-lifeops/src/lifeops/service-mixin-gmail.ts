@@ -87,6 +87,7 @@ const DEFAULT_GMAIL_TRIAGE_MAX_RESULTS = 12;
 const DEFAULT_GMAIL_SEARCH_SCAN_LIMIT = 50;
 const DEFAULT_GMAIL_SEARCH_CACHE_SCAN_LIMIT = 200;
 
+/** @internal */
 export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
   class LifeOpsGmailServiceMixin extends Base {
 

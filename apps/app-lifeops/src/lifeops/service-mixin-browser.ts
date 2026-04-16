@@ -294,6 +294,7 @@ import {
 // Browser mixin
 // ---------------------------------------------------------------------------
 
+/** @internal */
 export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {

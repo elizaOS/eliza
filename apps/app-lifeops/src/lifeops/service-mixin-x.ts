@@ -38,6 +38,7 @@ function normalizeXCapabilityRequest(
   return [...new Set(capabilities)];
 }
 
+/** @internal */
 export function withX<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
   class LifeOpsXServiceMixin extends Base {
     async getXConnectorStatus(
