@@ -359,6 +359,7 @@ export const manageLifeOpsBrowserAction: Action = {
   similes: ["PERSONAL_BROWSER", "LIFEOPS_BROWSER", "MANAGE_PERSONAL_BROWSER"],
   description:
     "Read and control the user's personal LifeOps Browser companions for Chrome and Safari. This is not the Eliza browser workspace.",
+  descriptionCompressed: "Control user's personal LifeOps Browser companions (Chrome/Safari). Not Eliza browser workspace.",
   validate: async (runtime, message) => hasAdminAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,
