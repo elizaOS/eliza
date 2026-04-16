@@ -111,7 +111,7 @@
     "ai": "6.0.30",
     "@ai-sdk/provider": "3.0.2",
     "@ai-sdk/provider-utils": "4.0.5",
-    "@ai-sdk/openai": "3.0.9",
+    "@ai-sdk/openai": "3.0.53",
     "pg-native": "npm:empty-npm-package@1.0.0",
     "libpq": "npm:empty-npm-package@1.0.0",
     "@uniswap/sdk-core": "^5.9.0",
