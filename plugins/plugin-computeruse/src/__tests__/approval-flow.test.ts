@@ -23,12 +23,40 @@ vi.mock("../platform/browser.js", () => ({
   closeBrowser: vi.fn(async () => {}),
   executeBrowser: vi.fn(),
   getBrowserClickables: vi.fn(async () => []),
+  getBrowserContext: vi.fn(async () => ({
+    isOpen: true,
+    is_open: true,
+    title: "Blank",
+    url: "about:blank",
+  })),
   getBrowserDom: vi.fn(async () => "<html></html>"),
-  getBrowserState: vi.fn(async () => ({ url: "about:blank", title: "Blank" })),
+  getBrowserInfo: vi.fn(async () => ({
+    success: true,
+    isOpen: true,
+    is_open: true,
+    title: "Blank",
+    url: "about:blank",
+  })),
+  getBrowserState: vi.fn(async () => ({
+    isOpen: true,
+    is_open: true,
+    title: "Blank",
+    url: "about:blank",
+  })),
   isBrowserAvailable: vi.fn(() => true),
   listBrowserTabs: vi.fn(async () => []),
-  navigateBrowser: vi.fn(async () => ({ url: "about:blank", title: "Blank" })),
-  openBrowser: vi.fn(async () => ({ url: "about:blank", title: "Blank" })),
+  navigateBrowser: vi.fn(async () => ({
+    isOpen: true,
+    is_open: true,
+    title: "Blank",
+    url: "about:blank",
+  })),
+  openBrowser: vi.fn(async () => ({
+    isOpen: true,
+    is_open: true,
+    title: "Blank",
+    url: "about:blank",
+  })),
   openBrowserTab: vi.fn(async () => ({
     active: true,
     id: "tab-1",
@@ -40,8 +68,15 @@ vi.mock("../platform/browser.js", () => ({
     Buffer.from("fake-browser").toString("base64"),
   ),
   scrollBrowser: vi.fn(async () => {}),
-  switchBrowserTab: vi.fn(async () => ({ url: "about:blank", title: "Blank" })),
+  setBrowserRuntimeOptions: vi.fn(),
+  switchBrowserTab: vi.fn(async () => ({
+    isOpen: true,
+    is_open: true,
+    title: "Blank",
+    url: "about:blank",
+  })),
   typeBrowser: vi.fn(async () => {}),
+  waitBrowser: vi.fn(async () => {}),
 }));
 
 describe("ComputerUseService approval flow", () => {

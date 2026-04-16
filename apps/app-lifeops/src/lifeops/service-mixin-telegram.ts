@@ -66,7 +66,8 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
             : "disconnected",
         identity:
           storedToken?.identity &&
-          Object.keys(storedToken.identity).length > 0
+          Object.keys(storedToken.identity).length > 0 &&
+          storedToken.identity.id
             ? storedToken.identity
             : grant?.identity &&
                 Object.keys(grant.identity).length > 0
@@ -84,7 +85,8 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
       const phone = requireNonEmptyString(request.phone, "phone");
 
-      const session = startTelegramAuthFlow({
+      // startTelegramAuthFlow is now async — it creates a real GramJS client.
+      const session = await startTelegramAuthFlow({
         agentId: this.agentId(),
         side,
         phone,
@@ -95,7 +97,11 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
       return {
         provider: "telegram",
         side,
-        state: session.state === "idle" ? "waiting_for_code" : session.state as StartLifeOpsTelegramAuthResponse["state"],
+        state: session.state === "idle"
+          ? "waiting_for_code"
+          : session.state === "waiting_for_provisioning_code"
+            ? "waiting_for_provisioning_code"
+            : session.state as StartLifeOpsTelegramAuthResponse["state"],
         error: session.error ?? undefined,
       };
     }
@@ -106,8 +112,6 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
 
-      // Determine which submission to make based on presence of code vs password.
-      // The client sends code first; if 2FA is needed, a second request with password follows.
       let resultState: StartLifeOpsTelegramAuthResponse["state"];
       let resultError: string | undefined;
 
@@ -116,20 +120,21 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
         if (!session) {
           fail(404, "No pending Telegram auth session found for this agent/side.");
         }
-        const result = submitTelegramAuthCode(session.sessionId, request.code);
+        // submitTelegramAuthCode is now async — it invokes GramJS.
+        const result = await submitTelegramAuthCode(session.sessionId, request.code);
         resultState = result.state as StartLifeOpsTelegramAuthResponse["state"];
         resultError = result.error ?? undefined;
 
         if (result.state === "connected") {
-          await this.persistTelegramGrant(side, result.phone);
-          cancelTelegramAuth(result.sessionId);
+          await this.persistTelegramGrant(side, result.phone, result.identity);
+          await cancelTelegramAuth(result.sessionId);
         }
       } else if (request.password) {
         const session = findPendingTelegramAuthSession(this.agentId(), side);
         if (!session) {
           fail(404, "No pending Telegram auth session found for this agent/side.");
         }
-        const result = submitTelegramAuthPassword(
+        const result = await submitTelegramAuthPassword(
           session.sessionId,
           request.password,
         );
@@ -137,8 +142,8 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
         resultError = result.error ?? undefined;
 
         if (result.state === "connected") {
-          await this.persistTelegramGrant(side, result.phone);
-          cancelTelegramAuth(result.sessionId);
+          await this.persistTelegramGrant(side, result.phone, result.identity);
+          await cancelTelegramAuth(result.sessionId);
         }
       } else {
         fail(400, "Either code or password must be provided.");
@@ -200,12 +205,15 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
     private async persistTelegramGrant(
       side: LifeOpsConnectorSide,
       phone: string,
+      authIdentity?: { id: string; username: string; firstName: string } | null,
     ): Promise<void> {
       const tokenRef = buildTelegramTokenRef(this.agentId(), side);
       const storedToken = readStoredTelegramToken(tokenRef);
-      const identity: Record<string, unknown> = storedToken?.identity
-        ? { ...storedToken.identity, phone }
-        : { phone };
+      const identity: Record<string, unknown> = authIdentity
+        ? { ...authIdentity, phone }
+        : storedToken?.identity
+          ? { ...storedToken.identity, phone }
+          : { phone };
 
       const existing = await this.repository.getConnectorGrant(
         this.agentId(),
@@ -255,4 +263,3 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
 
   return LifeOpsTelegramServiceMixin;
 }
-

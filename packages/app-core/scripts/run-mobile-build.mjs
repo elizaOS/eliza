@@ -522,7 +522,14 @@ function overlayIosNativeFiles() {
       APP.appGroup,
     );
     fs.writeFileSync(targetEntitlements, entitlements, "utf8");
-    console.log("[mobile-build] Copied iOS entitlements (with Milady app group).");
+    console.log(`[mobile-build] Copied iOS entitlements (app group: ${APP.appGroup}).`);
+  }
+
+  // -- Copy AppDelegate.swift (Capacitor CLI template has broken API call) --
+  const srcAppDelegate = path.join(iosPlatformSrc, "App", "App", "AppDelegate.swift");
+  if (fs.existsSync(srcAppDelegate)) {
+    fs.copyFileSync(srcAppDelegate, path.join(targetAppDir, "AppDelegate.swift"));
+    console.log("[mobile-build] Copied iOS AppDelegate.swift.");
   }
 
   // -- Patch xcconfigs to include CocoaPods settings --

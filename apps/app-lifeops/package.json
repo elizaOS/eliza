@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-telegram": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "drizzle-orm": "0.45.2",
     "lucide-react": "^0.575.0",

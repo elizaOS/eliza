@@ -18,6 +18,9 @@ import { withWorkflows } from "./service-mixin-workflows.js";
 import { withDefinitions } from "./service-mixin-definitions.js";
 import { withGoals } from "./service-mixin-goals.js";
 import { withX } from "./service-mixin-x.js";
+import { withTelegram } from "./service-mixin-telegram.js";
+import { withDiscord } from "./service-mixin-discord.js";
+import { withSignal } from "./service-mixin-signal.js";
 
 /**
  * Main LifeOps service — assembled from domain mixins layered on top of
@@ -25,17 +28,23 @@ import { withX } from "./service-mixin-x.js";
  *
  * Mixin order follows dependency direction: Google auth → data layers
  * (Calendar, Gmail) → business logic (Reminders, Browser, Workflows,
- * Definitions, Goals) → connectors (X).
+ * Definitions, Goals) → connectors (X, Telegram, Discord, Signal).
  */
-class LifeOpsServiceComposedBase extends withX(
-  withGoals(
-    withDefinitions(
-      withWorkflows(
-        withBrowser(
-          withReminders(
-            withGmail(
-              withCalendar(
-                withGoogle(LifeOpsServiceBase),
+class LifeOpsServiceComposedBase extends withSignal(
+  withDiscord(
+    withTelegram(
+      withX(
+        withGoals(
+          withDefinitions(
+            withWorkflows(
+              withBrowser(
+                withReminders(
+                  withGmail(
+                    withCalendar(
+                      withGoogle(LifeOpsServiceBase),
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
