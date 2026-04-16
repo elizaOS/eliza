@@ -8,7 +8,8 @@ import {
   useApp,
   useGoogleLifeOpsConnector,
 } from "@elizaos/app-core";
-import { Plug2 } from "lucide-react";
+import { Copy, ExternalLink, Plug2 } from "lucide-react";
+import { useCallback, useState } from "react";
 import { LifeOpsBrowserSetupPanel } from "./LifeOpsBrowserSetupPanel";
 
 const VISIBLE_CONNECTOR_MODES = ["cloud_managed", "local"] as const;
@@ -92,6 +93,64 @@ function GoogleIcon({ className }: { className?: string }) {
 
 type GoogleConnectorController = ReturnType<typeof useGoogleLifeOpsConnector>;
 
+function PendingAuthBanner({
+  url,
+  onDismiss,
+}: {
+  url: string;
+  onDismiss: () => void;
+}) {
+  const handleCopy = useCallback(async () => {
+    await navigator.clipboard.writeText(url);
+  }, [url]);
+
+  const handleOpen = useCallback(() => {
+    const parsed = new URL(url);
+    if (
+      parsed.protocol !== "https:" ||
+      parsed.hostname !== "accounts.google.com"
+    ) {
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, [url]);
+
+  return (
+    <div className="rounded-xl border border-border/32 bg-card/28 p-3 text-xs text-muted">
+      <div className="font-semibold text-txt">Continue Google sign-in</div>
+      <div className="mt-1 break-all text-[11px]">{url}</div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 rounded-lg px-2 text-[11px] font-semibold"
+          onClick={() => void handleCopy()}
+        >
+          <Copy className="mr-1.5 h-3.5 w-3.5" />
+          Copy URL
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 rounded-lg px-2 text-[11px] font-semibold"
+          onClick={handleOpen}
+        >
+          <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+          Open
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 rounded-lg px-2 text-[11px] font-semibold"
+          onClick={onDismiss}
+        >
+          Dismiss
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function GoogleConnectorSideCard({
   connector,
   side,
@@ -109,9 +168,11 @@ function GoogleConnectorSideCard({
     disconnectAccount,
     error,
     loading,
+    pendingAuthUrl,
     selectMode,
     status,
   } = connector;
+  const [dismissedAuthUrl, setDismissedAuthUrl] = useState<string | null>(null);
   const identity = readIdentity(status?.identity ?? null);
   const currentStatusLabel = statusLabel(
     status?.reason ?? "disconnected",
@@ -124,6 +185,8 @@ function GoogleConnectorSideCard({
   const connectedAccounts = accounts.filter((a) => a.connected);
   const hasMultipleAccounts = connectedAccounts.length > 1;
   const preferredGrantId = status?.grant?.id ?? null;
+  const visibleAuthUrl =
+    pendingAuthUrl && pendingAuthUrl !== dismissedAuthUrl ? pendingAuthUrl : null;
 
   return (
     <div className="space-y-3 rounded-2xl border border-border/24 bg-bg/20 px-4 py-4">
@@ -244,6 +307,12 @@ function GoogleConnectorSideCard({
         {currentStatusLabel}
       </div>
 
+      {visibleAuthUrl ? (
+        <PendingAuthBanner
+          url={visibleAuthUrl}
+          onDismiss={() => setDismissedAuthUrl(visibleAuthUrl)}
+        />
+      ) : null}
       {error ? <div className="text-xs text-danger">{error}</div> : null}
     </div>
   );
