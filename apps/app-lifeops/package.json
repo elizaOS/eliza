@@ -8,6 +8,7 @@
   "exports": {
     "./package.json": "./package.json",
     ".": "./src/index.ts",
+    "./inbox/types": "./src/inbox/types.ts",
     "./types": "./src/types/index.ts",
     "./types/website-blocker-settings-card": "./src/types/website-blocker-settings-card.ts",
     "./ui": "./src/ui.ts",

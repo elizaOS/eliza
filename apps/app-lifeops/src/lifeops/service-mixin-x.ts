@@ -39,7 +39,7 @@ function normalizeXCapabilityRequest(
 }
 
 export function withX<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
-  return class extends Base {
+  class LifeOpsXServiceMixin extends Base {
     async getXConnectorStatus(
       requestedMode?: LifeOpsConnectorMode,
     ): Promise<LifeOpsXConnectorStatus> {
@@ -188,5 +188,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase
         category: result.category,
       };
     }
-  };
+  }
+
+  return LifeOpsXServiceMixin;
 }

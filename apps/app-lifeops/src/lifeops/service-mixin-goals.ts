@@ -70,7 +70,7 @@ import {
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
-  return class extends Base {
+  class LifeOpsGoalsServiceMixin extends Base {
     async deleteGoal(goalId: string): Promise<void> {
       const goal = await this.repository.getGoal(this.agentId(), goalId);
       if (!goal) {
@@ -1066,5 +1066,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
     async listChannelPolicies(): Promise<LifeOpsChannelPolicy[]> {
       return this.repository.listChannelPolicies(this.agentId());
     }
-  };
+  }
+
+  return LifeOpsGoalsServiceMixin;
 }

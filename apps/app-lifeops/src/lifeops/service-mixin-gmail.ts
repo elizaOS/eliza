@@ -88,7 +88,7 @@ const DEFAULT_GMAIL_SEARCH_SCAN_LIMIT = 50;
 const DEFAULT_GMAIL_SEARCH_CACHE_SCAN_LIMIT = 200;
 
 export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
-  return class extends Base {
+  class LifeOpsGmailServiceMixin extends Base {
 
     protected async recordGmailAudit(
       eventType:
@@ -1540,5 +1540,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       }
       return { ok: true, sentCount };
     }
-  };
+  }
+
+  return LifeOpsGmailServiceMixin;
 }

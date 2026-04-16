@@ -799,7 +799,7 @@ function computeDefinitionPerformance(
 export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {
-  return class extends Base {
+  class LifeOpsRemindersServiceMixin extends Base {
     protected emitInAppReminderNudge(args: {
       text: string;
       ownerType: "occurrence" | "calendar_event";
@@ -3499,5 +3499,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       });
       return { ok: true };
     }
-  };
+  }
+
+  return LifeOpsRemindersServiceMixin;
 }
