@@ -1,9 +1,13 @@
-import { cva, type VariantProps } from "class-variance-authority";
+import { cva } from "class-variance-authority";
 import * as React from "react";
 
 import { cn } from "../../lib/utils";
 
-const textVariants = cva("text-txt", {
+export interface TextVariantProps {
+  variant?: "default" | "medium" | "small" | "muted" | "lead" | "large" | null;
+}
+
+const _textVariants = cva("text-txt", {
   variants: {
     variant: {
       default: "text-base",
@@ -19,9 +23,11 @@ const textVariants = cva("text-txt", {
   },
 });
 
+const textVariants: (props?: TextVariantProps) => string = _textVariants as (props?: TextVariantProps) => string;
+
 export interface TextProps
   extends React.HTMLAttributes<HTMLParagraphElement>,
-    VariantProps<typeof textVariants> {
+    TextVariantProps {
   asChild?: boolean;
 }
 
@@ -39,7 +45,11 @@ export const Text = React.forwardRef<HTMLParagraphElement, TextProps>(
 );
 Text.displayName = "Text";
 
-const headingVariants = cva("text-txt font-semibold tracking-tight", {
+export interface HeadingVariantProps {
+  level?: "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | null;
+}
+
+const _headingVariants = cva("text-txt font-semibold tracking-tight", {
   variants: {
     level: {
       h1: "text-4xl font-extrabold lg:text-5xl",
@@ -55,9 +65,11 @@ const headingVariants = cva("text-txt font-semibold tracking-tight", {
   },
 });
 
+const headingVariants: (props?: HeadingVariantProps) => string = _headingVariants as (props?: HeadingVariantProps) => string;
+
 export interface HeadingProps
   extends React.HTMLAttributes<HTMLHeadingElement>,
-    VariantProps<typeof headingVariants> {}
+    HeadingVariantProps {}
 
 export const Heading = React.forwardRef<HTMLHeadingElement, HeadingProps>(
   ({ className, level = "h1", ...props }, ref) => {

@@ -1,8 +1,15 @@
-import { cva, type VariantProps } from "class-variance-authority";
+import { cva } from "class-variance-authority";
 import * as React from "react";
 import { cn } from "../../lib/utils";
 
-const stackVariants = cva("flex", {
+export interface StackVariantProps {
+  direction?: "row" | "col" | null;
+  align?: "start" | "center" | "end" | "stretch" | "baseline" | null;
+  justify?: "start" | "center" | "end" | "between" | null;
+  spacing?: "none" | "sm" | "md" | "lg" | null;
+}
+
+const _stackVariants = cva("flex", {
   variants: {
     direction: {
       row: "flex-row",
@@ -34,9 +41,11 @@ const stackVariants = cva("flex", {
   },
 });
 
+const stackVariants: (props?: StackVariantProps) => string = _stackVariants as (props?: StackVariantProps) => string;
+
 export interface StackProps
   extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof stackVariants> {}
+    StackVariantProps {}
 
 export const Stack = React.forwardRef<HTMLDivElement, StackProps>(
   ({ className, direction, align, justify, spacing, ...props }, ref) => {
