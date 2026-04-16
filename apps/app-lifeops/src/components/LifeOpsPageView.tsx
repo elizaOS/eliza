@@ -238,6 +238,10 @@ export function LifeOpsPageView() {
     void loadGithub();
   }, [loadGithub]);
 
+  const refreshAll = useCallback(async () => {
+    await Promise.all([loadOverview(), loadGithub()]);
+  }, [loadGithub, loadOverview]);
+
   const handleGithubCallback = useCallback(
     (detail: LifeOpsGithubCallbackDetail) => {
       consumeQueuedLifeOpsGithubCallback(detail);

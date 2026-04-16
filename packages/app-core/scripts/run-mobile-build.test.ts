@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  resolvePlatformTemplateRoot,
   shouldRunIosPodInstall,
   syncPlatformTemplateFiles,
 } from "./run-mobile-build.mjs";
@@ -220,13 +221,20 @@ describe("run-mobile-build", () => {
 
   it("keeps shipped platform templates on app-local capacitor packages", () => {
     const repoRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+    const iosTemplateRoot = resolvePlatformTemplateRoot("ios", {
+      repoRootValue: repoRoot,
+    });
+    const androidTemplateRoot = resolvePlatformTemplateRoot("android", {
+      repoRootValue: repoRoot,
+    });
+
+    if (!iosTemplateRoot || !androidTemplateRoot) {
+      throw new Error("Expected platform templates to exist for iOS and Android.");
+    }
+
     const iosPodfile = fs.readFileSync(
       path.join(
-        repoRoot,
-        "packages",
-        "app-core",
-        "platforms",
-        "ios",
+        iosTemplateRoot,
         "App",
         "Podfile",
       ),
@@ -234,22 +242,14 @@ describe("run-mobile-build", () => {
     );
     const androidSettings = fs.readFileSync(
       path.join(
-        repoRoot,
-        "packages",
-        "app-core",
-        "platforms",
-        "android",
+        androidTemplateRoot,
         "capacitor.settings.gradle",
       ),
       "utf8",
     );
     const androidBuild = fs.readFileSync(
       path.join(
-        repoRoot,
-        "packages",
-        "app-core",
-        "platforms",
-        "android",
+        androidTemplateRoot,
         "app",
         "capacitor.build.gradle",
       ),
