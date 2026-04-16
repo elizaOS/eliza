@@ -52,6 +52,22 @@ const schemaReady = new WeakSet<object>();
 const schemaInitializing = new WeakMap<object, Promise<void>>();
 const LIFEOPS_SCHEMA_RETRY_DELAY_MS = 150;
 
+function normalizeConnectorIdentityEmail(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function deriveConnectorIdentityEmail(
+  identity: Record<string, unknown>,
+): string | null {
+  return (
+    normalizeConnectorIdentityEmail(identity.email) ??
+    normalizeConnectorIdentityEmail(identity.emailAddress) ??
+    normalizeConnectorIdentityEmail(identity.primaryEmail)
+  );
+}
+
 async function hasLifeOpsSchema(runtime: IAgentRuntime): Promise<boolean> {
   try {
     const rows = await executeRawSql(
@@ -348,12 +364,13 @@ function parseWebsiteAccessGrant(
 function parseConnectorGrant(
   row: Record<string, unknown>,
 ): LifeOpsConnectorGrant {
+  const identity = parseJsonRecord(row.identity_json);
   return {
     id: toText(row.id),
     agentId: toText(row.agent_id),
     provider: toText(row.provider) as LifeOpsConnectorGrant["provider"],
     side: toText(row.side, "owner") as LifeOpsConnectorGrant["side"],
-    identity: parseJsonRecord(row.identity_json),
+    identity,
     grantedScopes: parseJsonArray(row.granted_scopes_json),
     capabilities: parseJsonArray(row.capabilities_json),
     tokenRef: row.token_ref ? toText(row.token_ref) : null,
@@ -1533,6 +1550,7 @@ async function runLifeOpsSchemaSetup(
         provider TEXT NOT NULL,
         side TEXT NOT NULL DEFAULT 'owner',
         identity_json TEXT NOT NULL DEFAULT '{}',
+        identity_email TEXT,
         granted_scopes_json TEXT NOT NULL DEFAULT '[]',
         capabilities_json TEXT NOT NULL DEFAULT '[]',
         token_ref TEXT,
@@ -1551,7 +1569,7 @@ async function runLifeOpsSchemaSetup(
         await executeRawSql(
           runtime,
           `INSERT INTO life_connector_grants_next (
-        id, agent_id, provider, side, identity_json, granted_scopes_json,
+        id, agent_id, provider, side, identity_json, identity_email, granted_scopes_json,
         capabilities_json, token_ref, mode, execution_target, source_of_truth,
         preferred_by_agent, cloud_connection_id, metadata_json,
         last_refresh_at, created_at, updated_at
@@ -1562,6 +1580,7 @@ async function runLifeOpsSchemaSetup(
         provider,
         'owner',
         identity_json,
+        NULL,
         granted_scopes_json,
         capabilities_json,
         token_ref,
@@ -1589,6 +1608,10 @@ async function runLifeOpsSchemaSetup(
     {
       name: "side",
       definition: "TEXT NOT NULL DEFAULT 'owner'",
+    },
+    {
+      name: "identity_email",
+      definition: "TEXT",
     },
     {
       name: "execution_target",
@@ -2784,10 +2807,12 @@ export class LifeOpsRepository {
 
   async upsertConnectorGrant(grant: LifeOpsConnectorGrant): Promise<void> {
     await this.ensureReady();
+    const identityEmail = deriveConnectorIdentityEmail(grant.identity);
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_connector_grants (
-        id, agent_id, provider, side, identity_json, granted_scopes_json,
+        id, agent_id, provider, side, identity_json, identity_email,
+        granted_scopes_json,
         capabilities_json, token_ref, mode, execution_target, source_of_truth,
         preferred_by_agent, cloud_connection_id, metadata_json,
         last_refresh_at, created_at, updated_at
@@ -2797,6 +2822,7 @@ export class LifeOpsRepository {
         ${sqlQuote(grant.provider)},
         ${sqlQuote(grant.side)},
         ${sqlJson(grant.identity)},
+        ${sqlText(identityEmail)},
         ${sqlJson(grant.grantedScopes)},
         ${sqlJson(grant.capabilities)},
         ${sqlText(grant.tokenRef)},
@@ -2812,6 +2838,7 @@ export class LifeOpsRepository {
       )
       ON CONFLICT(agent_id, provider, side, mode) DO UPDATE SET
         identity_json = excluded.identity_json,
+        identity_email = excluded.identity_email,
         granted_scopes_json = excluded.granted_scopes_json,
         capabilities_json = excluded.capabilities_json,
         token_ref = excluded.token_ref,

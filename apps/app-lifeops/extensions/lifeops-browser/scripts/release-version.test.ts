@@ -32,8 +32,8 @@ describe("LifeOps Browser release versioning", () => {
       parseReleaseVersion("2.0.0-nightly.20260411"),
     );
 
-    expect(metadata.chromeVersion).toBe("2.0.0.12393");
-    expect(metadata.safariBuildVersion).toBe("200005393");
+    expect(metadata.chromeVersion).toBe("2.0.0.12293");
+    expect(metadata.safariBuildVersion).toBe("200007293");
   });
 
   it("derives Safari marketing and build versions from tagged releases", () => {

@@ -7,7 +7,7 @@
  * The ElizaClient class is defined in client-base.ts and re-exported here.
  * Domain methods are defined via declaration merging + prototype augmentation
  * in the companion files: client-agent, client-chat, client-wallet,
- * client-cloud, client-skills.
+ * client-cloud, client-skills, client-computeruse.
  */
 
 import type {
@@ -193,6 +193,12 @@ export type {
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
 };
+export type {
+  ComputerUseApprovalMode,
+  ComputerUseApprovalResolution,
+  ComputerUseApprovalSnapshot,
+  ComputerUsePendingApproval,
+} from "./client-computeruse";
 export {
   DEFAULT_WALLET_RPC_SELECTIONS,
   normalizeWalletRpcProviderId,
@@ -211,6 +217,7 @@ import "./client-chat";
 import "./client-wallet";
 import "./client-cloud";
 import "./client-skills";
+import "./client-computeruse";
 import "@elizaos/app-vincent/client";
 
 // ---------------------------------------------------------------------------

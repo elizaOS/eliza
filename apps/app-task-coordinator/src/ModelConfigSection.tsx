@@ -1,4 +1,4 @@
-import { useApp } from "@elizaos/app-core/state/useApp";
+import { useApp } from "@elizaos/app-core";
 import {
   Select,
   SelectContent,

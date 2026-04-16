@@ -34,7 +34,7 @@ import {
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
 } from "../contracts/service-routing.js";
-import { getStylePresets } from "../onboarding-presets.js";
+import { getStylePresets } from "@elizaos/shared/onboarding-presets";
 import { pickRandomNames } from "./onboarding-names.js";
 
 // ---------------------------------------------------------------------------
@@ -151,9 +151,9 @@ function cancelOnboarding(): never {
  * cloud-wallet module (Phase 3) and may not exist in older configs.
  */
 function hasCloudWalletBinding(config: ElizaConfig): boolean {
-  const walletSection = (config as unknown as { wallet?: unknown }).wallet;
+  const walletSection = config.wallet;
   if (!walletSection || typeof walletSection !== "object") return false;
-  const cloud = (walletSection as { cloud?: unknown }).cloud;
+  const cloud = walletSection.cloud;
   if (!cloud || typeof cloud !== "object") return false;
   const cloudObj = cloud as Record<string, unknown>;
   return Boolean(cloudObj.evm || cloudObj.solana);
@@ -163,18 +163,7 @@ function readCloudWalletAddress(
   config: ElizaConfig,
   chain: "evm" | "solana",
 ): string | null {
-  const walletSection = (
-    config as unknown as {
-      wallet?: {
-        cloud?: Partial<
-          Record<
-            "evm" | "solana",
-            { walletAddress?: unknown; address?: unknown } | undefined
-          >
-        >;
-      };
-    }
-  ).wallet;
+  const walletSection = config.wallet;
   const descriptor = walletSection?.cloud?.[chain];
   if (!descriptor || typeof descriptor !== "object") return null;
 
@@ -198,22 +187,18 @@ function readUserPrimarySelection(config: ElizaConfig): {
   evm: "local" | "cloud" | null;
   solana: "local" | "cloud" | null;
 } {
-  const wallet = (config as unknown as { wallet?: unknown }).wallet;
-  const raw =
-    wallet && typeof wallet === "object"
-      ? (wallet as { primary?: unknown }).primary
-      : undefined;
+  const wallet = config.wallet;
+  const raw = wallet?.primary;
   const result: {
     evm: "local" | "cloud" | null;
     solana: "local" | "cloud" | null;
   } = { evm: null, solana: null };
-  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-    const record = raw as Record<string, unknown>;
-    if (record.evm === "cloud" || record.evm === "local") {
-      result.evm = record.evm;
+  if (raw) {
+    if (raw.evm === "cloud" || raw.evm === "local") {
+      result.evm = raw.evm;
     }
-    if (record.solana === "cloud" || record.solana === "local") {
-      result.solana = record.solana;
+    if (raw.solana === "cloud" || raw.solana === "local") {
+      result.solana = raw.solana;
     }
   }
   return result;
@@ -237,9 +222,7 @@ export async function bindCloudProvider(config: ElizaConfig): Promise<void> {
   if (!isCloudWalletEnabled()) return;
   if (!hasCloudWalletBinding(config)) return;
 
-  const walletSection = (
-    config as unknown as { wallet?: { cloud?: Record<string, unknown> } }
-  ).wallet;
+  const walletSection = config.wallet;
   const cloud = walletSection?.cloud ?? {};
   const evmAddress = readCloudWalletAddress(config, "evm");
   const solanaAddress = readCloudWalletAddress(config, "solana");

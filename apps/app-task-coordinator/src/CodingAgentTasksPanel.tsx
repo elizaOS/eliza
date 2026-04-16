@@ -1,20 +1,16 @@
-import { client } from "@elizaos/app-core/api/client";
-import type {
-  CodingAgentSession,
-  CodingAgentTaskThread,
-  CodingAgentTaskThreadDetail,
-} from "@elizaos/app-core/api/client-types-cloud";
 import {
+  client,
+  EmptyWidgetState,
   PULSE_STATUSES,
   STATUS_DOT,
   TERMINAL_STATUSES,
-} from "@elizaos/app-core/chat/coding-agent-session-state";
-import {
-  EmptyWidgetState,
   WidgetSection,
-} from "@elizaos/app-core/components/chat/widgets/shared";
-import { usePtySessions } from "@elizaos/app-core/state/PtySessionsContext";
-import { useApp } from "@elizaos/app-core/state/useApp";
+  usePtySessions,
+  useApp,
+  type CodingAgentSession,
+  type CodingAgentTaskThread,
+  type CodingAgentTaskThreadDetail,
+} from "@elizaos/app-core";
 import { Badge, Button } from "@elizaos/ui";
 import { Activity, SquareArrowOutUpRight } from "lucide-react";
 import {
@@ -508,8 +504,10 @@ export function CodingAgentTasksPanel({
   useEffect(() => {
     let cancelled = false;
 
-    const refreshThreads = async () => {
-      setLoading(true);
+    const refreshThreads = async (silent = false) => {
+      if (!silent) {
+        setLoading(true);
+      }
       try {
         const nextThreads = await client.listCodingAgentTaskThreads({
           includeArchived: showArchived,
@@ -529,22 +527,27 @@ export function CodingAgentTasksPanel({
         });
       } catch (error) {
         if (cancelled) return;
-        setLoadError(
-          getClientErrorMessage(error, "Failed to load task threads."),
-        );
-        setThreads([]);
-        setSelectedThreadId(null);
-        setSelectedThread(null);
+        if (!silent) {
+          setLoadError(
+            getClientErrorMessage(error, "Failed to load task threads."),
+          );
+        }
+        if (!silent) {
+          setThreads([]);
+          setSelectedThreadId(null);
+          setSelectedThread(null);
+        }
       } finally {
-        if (!cancelled) {
+        if (!cancelled && !silent) {
           setLoading(false);
         }
       }
     };
 
-    void refreshThreads();
+    void refreshThreads(false);
     const timer = setInterval(() => {
-      void refreshThreads();
+      // Poll in the background without toggling loading UI to avoid flicker.
+      void refreshThreads(true);
     }, 5_000);
 
     return () => {

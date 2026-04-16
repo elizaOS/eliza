@@ -86,8 +86,15 @@ export function resolvePreferredGoogleGrant(args: {
   grants: readonly LifeOpsConnectorGrant[];
   requestedMode?: LifeOpsConnectorMode;
   requestedSide?: LifeOpsConnectorSide;
+  /** When set, resolve this specific grant by ID (multi-account). */
+  grantId?: string;
   defaultMode: LifeOpsConnectorMode;
 }): LifeOpsConnectorGrant | null {
+  // Direct lookup by grant ID — multi-account path.
+  if (args.grantId) {
+    return args.grants.find((g) => g.id === args.grantId) ?? null;
+  }
+
   const googleGrants = args.grants.filter(
     (grant) => grant.provider === "google",
   );
@@ -121,4 +128,30 @@ export function resolvePreferredGoogleGrant(args: {
       right.updatedAt.localeCompare(left.updatedAt),
     )[0] ?? null
   );
+}
+
+/**
+ * Resolve all Google grants matching the given filters, for multi-account aggregation.
+ * When `grantId` is set, returns at most one grant.
+ * When not set, returns all Google grants matching `side` (and optionally `mode`).
+ */
+export function resolveGoogleGrants(args: {
+  grants: readonly LifeOpsConnectorGrant[];
+  requestedMode?: LifeOpsConnectorMode;
+  requestedSide?: LifeOpsConnectorSide;
+  grantId?: string;
+}): LifeOpsConnectorGrant[] {
+  if (args.grantId) {
+    const match = args.grants.find((g) => g.id === args.grantId);
+    return match ? [match] : [];
+  }
+
+  let filtered = args.grants.filter((g) => g.provider === "google");
+  if (args.requestedSide) {
+    filtered = filtered.filter((g) => g.side === args.requestedSide);
+  }
+  if (args.requestedMode) {
+    filtered = filtered.filter((g) => g.mode === args.requestedMode);
+  }
+  return filtered;
 }

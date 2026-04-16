@@ -155,23 +155,17 @@ trap cleanup EXIT
 
 log "Installing dependencies"
 node scripts/init-submodules.mjs
-node scripts/disable-local-eliza-workspace.mjs
-bun install --ignore-scripts --no-frozen-lockfile
+MILADY_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 node scripts/disable-local-eliza-workspace.mjs
+MILADY_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 bun install --ignore-scripts --no-frozen-lockfile
 if [[ -d "$REPO_ROOT/.eliza.ci-disabled" && ! -d "$REPO_ROOT/eliza" ]]; then
   log "Restoring eliza/ from .eliza.ci-disabled for downstream build steps"
   mv "$REPO_ROOT/.eliza.ci-disabled" "$REPO_ROOT/eliza"
 fi
+export MILADY_SKIP_LOCAL_UPSTREAMS=1
+export ELIZA_SKIP_LOCAL_UPSTREAMS=1
 
 log "Installing published-workspace fallback dependencies"
-bun add --no-save --dev \
-  react react-dom vite \
-  @types/react @types/react-dom @types/three \
-  tailwindcss three clsx class-variance-authority tailwind-merge sonner \
-  @radix-ui/react-checkbox @radix-ui/react-dialog @radix-ui/react-dropdown-menu @radix-ui/react-label \
-  @radix-ui/react-popover @radix-ui/react-select @radix-ui/react-separator @radix-ui/react-slider \
-  @radix-ui/react-slot @radix-ui/react-switch @radix-ui/react-tabs @radix-ui/react-tooltip \
-  @capacitor/core @capacitor/haptics @capacitor/keyboard @capacitor/preferences \
-  @xterm/xterm @xterm/addon-fit
+bash "$REPO_ROOT/scripts/install-published-workspace-fallback-deps.sh"
 
 log "Running repository postinstall"
 SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 node eliza/packages/app-core/scripts/run-repo-setup.mjs

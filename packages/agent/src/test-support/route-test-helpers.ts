@@ -18,7 +18,7 @@ export type RouteInvokeArgs<TBody = RouteBody, TRuntime = unknown> = {
   headers?: { host?: string };
 };
 
-export type RouteRequestContext<TBody, TRuntime> = {
+export type RouteInvokeContext<TBody, TRuntime> = {
   req: IncomingMessage;
   res: ServerResponse;
   method: string;
@@ -44,7 +44,7 @@ export function createRouteInvoker<
   TRuntime = unknown,
   TPayload = unknown,
 >(
-  handler: (ctx: RouteRequestContext<TBody, TRuntime>) => Promise<boolean>,
+  handler: (ctx: RouteInvokeContext<TBody, TRuntime>) => Promise<boolean>,
   options: RouteInvokerOptions<TRuntime>,
 ): (
   args: RouteInvokeArgs<TBody, TRuntime>,

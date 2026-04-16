@@ -16,7 +16,10 @@
  *   } satisfies AppConfig;
  */
 
-import type { BrandingConfig } from "./branding";
+import {
+  DEFAULT_BRANDING,
+  type BrandingConfig,
+} from "./branding";
 
 export interface AppDesktopConfig {
   /** Reverse-domain bundle identifier (e.g. "com.miladyai.milady") */
@@ -122,7 +125,6 @@ export interface AppConfig {
  * Merges app-specific overrides with the framework defaults.
  */
 export function resolveAppBranding(appConfig: AppConfig): BrandingConfig {
-  const { DEFAULT_BRANDING } = require("./branding");
   return {
     ...DEFAULT_BRANDING,
     appName: appConfig.appName,

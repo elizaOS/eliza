@@ -1,0 +1,449 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import type {
+  LifeOpsConnectorSide,
+} from "@elizaos/shared/contracts/lifeops";
+import { resolveOAuthDir } from "@elizaos/agent/config/paths";
+
+// Re-export the real GramJS auth session from plugin-telegram.
+// The plugin's TelegramAccountAuthSession handles the full MTProto flow:
+//   provisioning → code → 2FA → session persistence.
+// LifeOps wraps it with its own session management and token storage.
+import {
+  TelegramAccountAuthSession,
+  type TelegramAccountAuthSessionLike,
+  type TelegramAccountAuthSnapshot,
+  type TelegramAccountConnectorConfig,
+} from "@elizaos/plugin-telegram/account-auth-service";
+
+export type {
+  TelegramAccountAuthSnapshot,
+  TelegramAccountConnectorConfig,
+};
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export type TelegramAuthState =
+  | "idle"
+  | "waiting_for_provisioning_code"
+  | "waiting_for_code"
+  | "waiting_for_password"
+  | "connected"
+  | "error";
+
+export interface PendingTelegramAuthSession {
+  sessionId: string;
+  agentId: string;
+  side: LifeOpsConnectorSide;
+  phone: string;
+  apiId: number | null;
+  apiHash: string | null;
+  state: TelegramAuthState;
+  error: string | null;
+  identity: {
+    id: string;
+    username: string;
+    firstName: string;
+  } | null;
+  createdAt: string;
+  /** The real GramJS auth session that does the heavy lifting. */
+  authSession: TelegramAccountAuthSessionLike;
+}
+
+export interface StoredTelegramConnectorToken {
+  provider: "telegram";
+  agentId: string;
+  side: LifeOpsConnectorSide;
+  sessionString: string;
+  apiId: number;
+  apiHash: string;
+  phone: string;
+  identity: {
+    id: string;
+    username: string;
+    firstName: string;
+  };
+  connectorConfig: TelegramAccountConnectorConfig | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// In-memory session store
+// ---------------------------------------------------------------------------
+
+const pendingTelegramAuthSessions = new Map<
+  string,
+  PendingTelegramAuthSession
+>();
+
+const TELEGRAM_AUTH_SESSION_TTL_MS = 10 * 60 * 1000;
+
+// ---------------------------------------------------------------------------
+// Default API credentials
+// ---------------------------------------------------------------------------
+
+function resolveApiId(
+  explicit?: number,
+  env: NodeJS.ProcessEnv = process.env,
+): number | null {
+  if (explicit !== undefined && explicit > 0) return explicit;
+  const envValue = env.ELIZA_TELEGRAM_API_ID;
+  if (envValue) {
+    const parsed = Number.parseInt(envValue, 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  // Return null to trigger provisioning flow (my.telegram.org).
+  return null;
+}
+
+function resolveApiHash(
+  explicit?: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  if (explicit && explicit.length > 0) return explicit;
+  const envValue = env.ELIZA_TELEGRAM_API_HASH;
+  if (envValue && envValue.length > 0) return envValue;
+  return null;
+}
+
+export function hasManagedTelegramCredentials(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return resolveApiId(undefined, env) !== null && resolveApiHash(undefined, env) !== null;
+}
+
+// ---------------------------------------------------------------------------
+// Storage helpers
+// ---------------------------------------------------------------------------
+
+function telegramStorageRoot(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return path.join(resolveOAuthDir(env), "lifeops", "telegram");
+}
+
+function sanitizePathSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function buildTelegramTokenRef(
+  agentId: string,
+  side: LifeOpsConnectorSide,
+): string {
+  return path.join(
+    sanitizePathSegment(agentId),
+    sanitizePathSegment(side),
+    "local.json",
+  );
+}
+
+function resolveTokenPath(
+  tokenRef: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return path.join(telegramStorageRoot(env), tokenRef);
+}
+
+function ensureTokenStorageDir(dir: string): void {
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+}
+
+// ---------------------------------------------------------------------------
+// Session lifecycle helpers
+// ---------------------------------------------------------------------------
+
+function cleanupExpiredSessions(): void {
+  const now = Date.now();
+  for (const [sessionId, session] of pendingTelegramAuthSessions) {
+    if (
+      now - new Date(session.createdAt).getTime() >
+      TELEGRAM_AUTH_SESSION_TTL_MS
+    ) {
+      // Stop the GramJS client before evicting.
+      session.authSession.stop().catch(() => {});
+      pendingTelegramAuthSessions.delete(sessionId);
+    }
+  }
+}
+
+/** Map plugin-telegram's status names to LifeOps auth state names. */
+function mapSnapshotStatus(snapshot: TelegramAccountAuthSnapshot): TelegramAuthState {
+  switch (snapshot.status) {
+    case "idle":
+      return "idle";
+    case "waiting_for_provisioning_code":
+      return "waiting_for_provisioning_code";
+    case "waiting_for_telegram_code":
+      return "waiting_for_code";
+    case "waiting_for_password":
+      return "waiting_for_password";
+    case "configured":
+    case "connected":
+      return "connected";
+    case "error":
+      return "error";
+    default:
+      return "error";
+  }
+}
+
+function mapSnapshotIdentity(
+  snapshot: TelegramAccountAuthSnapshot,
+): PendingTelegramAuthSession["identity"] {
+  if (!snapshot.account) return null;
+  return {
+    id: snapshot.account.id,
+    username: snapshot.account.username ?? "",
+    firstName: snapshot.account.firstName ?? "",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Auth flow
+// ---------------------------------------------------------------------------
+
+export async function startTelegramAuth(args: {
+  agentId: string;
+  side: LifeOpsConnectorSide;
+  phone: string;
+  apiId?: number;
+  apiHash?: string;
+}): Promise<PendingTelegramAuthSession> {
+  cleanupExpiredSessions();
+
+  const sessionId = crypto.randomUUID();
+  const apiId = resolveApiId(args.apiId);
+  const apiHash = resolveApiHash(args.apiHash);
+
+  // Create the real GramJS auth session.
+  const authSession = new TelegramAccountAuthSession();
+
+  const session: PendingTelegramAuthSession = {
+    sessionId,
+    agentId: args.agentId,
+    side: args.side,
+    phone: args.phone,
+    apiId,
+    apiHash,
+    state: "idle",
+    error: null,
+    identity: null,
+    createdAt: new Date().toISOString(),
+    authSession,
+  };
+
+  pendingTelegramAuthSessions.set(sessionId, session);
+
+  // Start the real auth flow. If credentials are provided, it goes straight
+  // to Telegram code. If not, it starts provisioning via my.telegram.org.
+  const credentials =
+    apiId && apiHash ? { apiId, apiHash } : null;
+
+  try {
+    const snapshot = await authSession.start({
+      phone: args.phone,
+      credentials,
+    });
+    session.state = mapSnapshotStatus(snapshot);
+    session.error = snapshot.error;
+    session.identity = mapSnapshotIdentity(snapshot);
+  } catch (error) {
+    session.state = "error";
+    session.error =
+      error instanceof Error ? error.message : String(error);
+  }
+
+  return session;
+}
+
+export async function submitTelegramAuthCode(
+  sessionId: string,
+  code: string,
+): Promise<PendingTelegramAuthSession> {
+  cleanupExpiredSessions();
+
+  const session = pendingTelegramAuthSessions.get(sessionId);
+  if (!session) {
+    return {
+      sessionId,
+      agentId: "",
+      side: "owner",
+      phone: "",
+      apiId: null,
+      apiHash: null,
+      state: "error",
+      error: "Auth session not found or expired",
+      identity: null,
+      createdAt: new Date().toISOString(),
+      authSession: new TelegramAccountAuthSession(),
+    };
+  }
+
+  try {
+    // Determine which type of code to submit based on current state.
+    const submitInput =
+      session.state === "waiting_for_provisioning_code"
+        ? { provisioningCode: code }
+        : { telegramCode: code };
+
+    const snapshot = await session.authSession.submit(submitInput);
+    session.state = mapSnapshotStatus(snapshot);
+    session.error = snapshot.error;
+    session.identity = mapSnapshotIdentity(snapshot);
+
+    // If connected, persist the token.
+    if (session.state === "connected") {
+      persistTelegramToken(session);
+    }
+  } catch (error) {
+    session.state = "error";
+    session.error =
+      error instanceof Error ? error.message : String(error);
+  }
+
+  return session;
+}
+
+export async function submitTelegramAuthPassword(
+  sessionId: string,
+  password: string,
+): Promise<PendingTelegramAuthSession> {
+  cleanupExpiredSessions();
+
+  const session = pendingTelegramAuthSessions.get(sessionId);
+  if (!session) {
+    return {
+      sessionId,
+      agentId: "",
+      side: "owner",
+      phone: "",
+      apiId: null,
+      apiHash: null,
+      state: "error",
+      error: "Auth session not found or expired",
+      identity: null,
+      createdAt: new Date().toISOString(),
+      authSession: new TelegramAccountAuthSession(),
+    };
+  }
+
+  if (session.state !== "waiting_for_password") {
+    session.state = "error";
+    session.error = `Cannot submit password in state "${session.state}"`;
+    return session;
+  }
+
+  try {
+    const snapshot = await session.authSession.submit({ password });
+    session.state = mapSnapshotStatus(snapshot);
+    session.error = snapshot.error;
+    session.identity = mapSnapshotIdentity(snapshot);
+
+    if (session.state === "connected") {
+      persistTelegramToken(session);
+    }
+  } catch (error) {
+    session.state = "error";
+    session.error =
+      error instanceof Error ? error.message : String(error);
+  }
+
+  return session;
+}
+
+function persistTelegramToken(session: PendingTelegramAuthSession): void {
+  const snapshot = session.authSession.getSnapshot();
+  const connectorConfig = session.authSession.getResolvedConnectorConfig();
+  const now = new Date().toISOString();
+
+  const token: StoredTelegramConnectorToken = {
+    provider: "telegram",
+    agentId: session.agentId,
+    side: session.side,
+    // The session string is persisted by TelegramAccountAuthSession
+    // in ~/.eliza/telegram-account/session.txt — we store the path reference.
+    sessionString: connectorConfig?.appId ? "persisted" : "",
+    apiId: connectorConfig ? Number(connectorConfig.appId) : (session.apiId ?? 0),
+    apiHash: connectorConfig?.appHash ?? session.apiHash ?? "",
+    phone: session.phone,
+    identity: session.identity ?? { id: "", username: "", firstName: "" },
+    connectorConfig,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const tokenRef = buildTelegramTokenRef(session.agentId, session.side);
+  const tokenPath = resolveTokenPath(tokenRef);
+  ensureTokenStorageDir(path.dirname(tokenPath));
+  fs.writeFileSync(tokenPath, JSON.stringify(token, null, 2), {
+    mode: 0o600,
+  });
+}
+
+export function getTelegramAuthStatus(
+  sessionId: string,
+): PendingTelegramAuthSession | null {
+  cleanupExpiredSessions();
+  return pendingTelegramAuthSessions.get(sessionId) ?? null;
+}
+
+export async function cancelTelegramAuth(sessionId: string): Promise<void> {
+  const session = pendingTelegramAuthSessions.get(sessionId);
+  if (session) {
+    await session.authSession.stop().catch(() => {});
+    pendingTelegramAuthSessions.delete(sessionId);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Token ref builder (exported for service mixin)
+// ---------------------------------------------------------------------------
+
+export { buildTelegramTokenRef };
+
+// ---------------------------------------------------------------------------
+// Session lookup
+// ---------------------------------------------------------------------------
+
+export function findPendingTelegramAuthSession(
+  agentId: string,
+  side: LifeOpsConnectorSide,
+): PendingTelegramAuthSession | null {
+  cleanupExpiredSessions();
+  for (const session of pendingTelegramAuthSessions.values()) {
+    if (session.agentId === agentId && session.side === side) {
+      return session;
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Credential management
+// ---------------------------------------------------------------------------
+
+export function readStoredTelegramToken(
+  tokenRef: string,
+): StoredTelegramConnectorToken | null {
+  const filePath = resolveTokenPath(tokenRef);
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  const raw = fs.readFileSync(filePath, "utf-8");
+  const parsed = JSON.parse(raw) as Partial<StoredTelegramConnectorToken>;
+  if (!parsed || typeof parsed !== "object" || parsed.provider !== "telegram") {
+    return null;
+  }
+  return parsed as StoredTelegramConnectorToken;
+}
+
+export function deleteStoredTelegramToken(tokenRef: string): void {
+  const filePath = resolveTokenPath(tokenRef);
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
+}

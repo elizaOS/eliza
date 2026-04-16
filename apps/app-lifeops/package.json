@@ -8,11 +8,17 @@
   "exports": {
     "./package.json": "./package.json",
     ".": "./src/index.ts",
+    "./client": "./src/client.ts",
+    "./inbox/types": "./src/inbox/types.ts",
+    "./types": "./src/types/index.ts",
+    "./types/app-blocker-settings-card": "./src/types/app-blocker-settings-card.ts",
+    "./types/website-blocker-settings-card": "./src/types/website-blocker-settings-card.ts",
     "./ui": "./src/ui.ts",
     "./agent-lifeops": "./src/agent-lifeops.ts",
     "./plugin": "./src/plugin.ts",
-    "./selfcontrol": "./src/selfcontrol/index.ts",
-    "./selfcontrol/selfcontrol": "./src/selfcontrol/selfcontrol.ts",
+    "./selfcontrol": "./src/website-blocker/public.ts",
+    "./selfcontrol/selfcontrol": "./src/website-blocker/engine.ts",
+    "./website-blocker": "./src/website-blocker/public.ts",
     "./lifeops": "./src/lifeops/index.ts",
     "./lifeops/*": "./src/lifeops/*.ts",
     "./inbox/*": "./src/inbox/*.ts",
@@ -21,14 +27,13 @@
     "./routes/*": "./src/routes/*.ts"
   },
   "scripts": {
-    "test": "cd ../../.. && vitest run --config test/vitest/default.config.ts eliza/apps/app-lifeops/src/lifeops-plugin.test.ts eliza/apps/app-lifeops/test/lifeops-google-helpers.test.ts eliza/apps/app-lifeops/test/life-goal-extractor.test.ts eliza/apps/app-lifeops/test/lifeops-app-state.test.ts",
-    "test:app-state": "cd ../../.. && vitest run --config test/vitest/default.config.ts eliza/apps/app-lifeops/test/lifeops-app-state.test.ts",
+    "test": "vitest run --config vitest.config.ts",
+    "test:app-state": "vitest run --config vitest.config.ts eliza/apps/app-lifeops/test/lifeops-app-state.test.ts",
     "test:integration": "cd ../../.. && vitest run --config test/vitest/integration.config.ts eliza/apps/app-lifeops/test/life-smoke.integration.test.ts"
   },
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
-    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-telegram": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "lucide-react": "^0.575.0",

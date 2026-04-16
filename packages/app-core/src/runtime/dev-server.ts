@@ -259,7 +259,7 @@ async function createRuntime(): Promise<AgentRuntime> {
     throw new Error("startEliza returned null — runtime failed to initialize");
   }
 
-  currentRuntime = result as unknown as AgentRuntime;
+  currentRuntime = result as AgentRuntime;
   return currentRuntime;
 }
 

@@ -6,7 +6,7 @@ import type { AgentRuntime } from "@elizaos/core";
  */
 export interface WirableState {
   runtime: AgentRuntime | null;
-  broadcastWs?: ((data: Record<string, unknown>) => void) | null;
+  broadcastWs?: ((data: object) => void) | null;
 }
 
 export interface WireCoordinatorOpts<S extends WirableState = WirableState> {

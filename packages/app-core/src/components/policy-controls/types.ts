@@ -51,3 +51,23 @@ export interface AutoApproveConfig {
   /** USD amount */
   threshold: string;
 }
+
+/** Maps each policy type to its strongly-typed config shape. */
+export interface PolicyConfigMap {
+  "spending-limit": SpendingLimitConfig;
+  "approved-addresses": ApprovedAddressesConfig;
+  "auto-approve-threshold": AutoApproveConfig;
+  "time-window": TimeWindowConfig;
+  "rate-limit": RateLimitConfig;
+}
+
+/**
+ * Extract a policy's config with the correct type for its `type` discriminant.
+ * Falls back to `fallback` when the policy is missing.
+ */
+export function getPolicyConfig<T extends PolicyType>(
+  policy: PolicyRule | undefined,
+  fallback: PolicyConfigMap[T],
+): PolicyConfigMap[T] {
+  return policy?.config ? Object.assign({}, fallback, policy.config) : fallback;
+}

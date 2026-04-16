@@ -1,0 +1,76 @@
+{
+  "name": "@elizaos/capacitor-appblocker",
+  "version": "1.0.0",
+  "description": "Blocks selected apps on Android with Usage Access and an overlay shield, and on iPhone with Family Controls.",
+  "keywords": [
+    "app-blocker",
+    "focus",
+    "family-controls",
+    "usage-stats"
+  ],
+  "main": "./dist/plugin.cjs.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/plugin.cjs.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/",
+    "ios/Sources/",
+    "*.podspec"
+  ],
+  "scripts": {
+    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
+    "clean": "rimraf ./dist"
+  },
+  "author": "elizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git",
+    "directory": "packages/native-plugins/appblocker"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios",
+      "podName": "ElizaosCapacitorAppblocker"
+    },
+    "android": {
+      "src": "android"
+    }
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "rimraf": "^5.0.0",
+    "rollup": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "elizaos": {
+    "platforms": [
+      "browser",
+      "android",
+      "ios"
+    ],
+    "runtime": "native",
+    "platformDetails": {
+      "browser": "Not available in browsers.",
+      "ios": "Uses Family Controls and Managed Settings to shield selected apps.",
+      "android": "Uses Usage Access polling plus a system overlay shield."
+    }
+  }
+}

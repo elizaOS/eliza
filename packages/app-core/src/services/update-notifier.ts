@@ -7,7 +7,7 @@ import {
   checkForUpdate,
   resolveChannel,
 } from "@elizaos/agent/services/update-checker";
-import { loadElizaConfig } from "../config/config";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
 import { theme } from "../terminal/theme";
 
 let notified = false;

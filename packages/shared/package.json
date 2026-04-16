@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/shared",
-  "version": "2.0.0-alpha.172",
+  "version": "2.0.0-alpha.174",
   "description": "Shared code for Eliza agent and app-core.",
   "type": "module",
   "main": "src/index.ts",
@@ -15,6 +15,11 @@
     "build": "bun run build:i18n && bun run build:dist",
     "build:i18n": "node scripts/generate-keywords.mjs --target ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "bunx @biomejs/biome check src",
+    "lint:fix": "bunx @biomejs/biome check --write src",
+    "format": "bunx @biomejs/biome format src",
+    "format:fix": "bunx @biomejs/biome format --write src",
     "build:dist": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/shared",
     "pack:dry-run": "cd dist && npm pack --dry-run"
   },

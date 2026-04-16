@@ -11,6 +11,7 @@
     "resolveJsonModule": true,
     "rootDir": "../..",
     "rewriteRelativeImportExtensions": true,
+    "stripInternal": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "types": ["node", "bun-types", "react", "react-dom"],
     "typeRoots": [

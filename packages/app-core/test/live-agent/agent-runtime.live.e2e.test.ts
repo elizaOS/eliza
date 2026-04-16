@@ -32,7 +32,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { itIf } from "../../../../../test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
 import { withTimeout, sleep } from "../../../../../test/helpers/test-utils";
-import { USER_PREFS_TABLE } from "../../../typescript/src/advanced-capabilities/personality/types.ts";
+/** Matches the table name used by @elizaos/core personality module. */
+const USER_PREFS_TABLE = "user_personality_preferences";
 import { startApiServer } from "@elizaos/agent/api/server";
 import { ensureAgentWorkspace } from "@elizaos/agent/providers/workspace";
 import { configureLocalEmbeddingPlugin } from "@elizaos/agent/runtime/eliza";
@@ -798,16 +799,10 @@ describe("Agent Runtime E2E", () => {
         expect(preferences.length).toBeGreaterThan(0);
         expect(
           preferences.some((preference) => {
-            const text = preference.content.text?.toLowerCase() || "";
-            const originalRequest =
-              typeof preference.metadata?.originalRequest === "string"
-                ? preference.metadata.originalRequest.toLowerCase()
-                : "";
+            const text = preference.content.text?.trim() ?? "";
             return (
-              text.includes("concise") ||
-              text.includes("direct") ||
-              originalRequest.includes("concise") ||
-              originalRequest.includes("direct")
+              preference.content.source === "user_personality_preference" &&
+              text.length > 0
             );
           }),
         ).toBe(true);

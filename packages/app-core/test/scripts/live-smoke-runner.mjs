@@ -189,11 +189,9 @@ const runs = [
     cwd: path.join(repoRoot, "eliza", "cloud"),
     scriptName: "test:e2e:smoke",
     skipEnvVar: "ELIZA_SKIP_CLOUD_LIVE_SMOKE",
-    async getSkipReason() {
-      if (await isPortBusy(3000)) {
-        return "port 3000 is already in use, so cloud smoke is unavailable";
-      }
-      return null;
+    env: {
+      ...buildLiveTestEnv(path.join(repoRoot, "eliza", "cloud")),
+      TEST_SERVER_PORT: "3104",
     },
   },
   {
@@ -213,12 +211,6 @@ const runs = [
     cwd: path.join(repoRoot, "eliza", "steward-fi"),
     scriptName: "test:e2e:smoke",
     skipEnvVar: "ELIZA_SKIP_STEWARD_FI_LIVE_SMOKE",
-    getSkipReason() {
-      if (!process.env.STEWARD_URL?.trim()) {
-        return "STEWARD_URL is not configured";
-      }
-      return null;
-    },
   },
 ];
 

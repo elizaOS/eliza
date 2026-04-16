@@ -44,7 +44,7 @@ async function getFreePort(): Promise<number> {
   });
 }
 
-type Runtime = { port: number; close: () => Promise<void>; logs: () => string };
+import type { RuntimeHarness as Runtime } from "@elizaos/app-core/test/live-agent/helpers/runtime-harness";
 
 async function startRuntime(): Promise<Runtime> {
   const tmp = await mkdtemp(path.join(os.tmpdir(), "eliza-companion-e2e-"));

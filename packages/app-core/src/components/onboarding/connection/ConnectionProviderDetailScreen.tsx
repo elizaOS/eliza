@@ -198,7 +198,7 @@ export function ConnectionProviderDetailScreen({
     onboardingOptions?.providers as ProviderOption[] | undefined
   )?.length
     ? (onboardingOptions?.providers as ProviderOption[])
-    : ([...ONBOARDING_PROVIDER_CATALOG] as unknown as ProviderOption[]);
+    : ([...ONBOARDING_PROVIDER_CATALOG] as ProviderOption[]);
   const customProviders = branding.customProviders ?? [];
   const catalogIds = new Set(catalogProviders.map((p: ProviderOption) => p.id));
   const providers = [
@@ -850,6 +850,11 @@ export function ConnectionProviderDetailScreen({
               >
                 {t("onboarding.loginWithOpenAI")}
               </Button>
+              {openaiError && (
+                <OnboardingStatusBanner tone="error">
+                  {openaiError}
+                </OnboardingStatusBanner>
+              )}
               <div className={`${onboardingHelperTextClassName} text-center`}>
                 {t("onboarding.requiresChatGPTSub")}
               </div>

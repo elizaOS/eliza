@@ -4,12 +4,7 @@
  * Dual build script for @elizaos/core - generates both Node.js and browser builds
  */
 
-import {
-	existsSync,
-	type FSWatcher,
-	mkdirSync,
-	watch,
-} from "node:fs";
+import { existsSync, type FSWatcher, mkdirSync, watch } from "node:fs";
 import { join } from "node:path";
 import type { BuildConfig, BunPlugin } from "bun";
 

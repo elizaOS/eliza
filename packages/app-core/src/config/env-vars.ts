@@ -1,5 +1,3 @@
-export * from "@elizaos/agent/config/env-vars";
-
 import {
   CONNECTOR_ENV_MAP as upstreamConnectorEnvMap,
   collectConfigEnvVars as upstreamCollectConfigEnvVars,

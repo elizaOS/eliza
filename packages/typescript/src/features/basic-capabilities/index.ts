@@ -65,12 +65,6 @@ const ROLE_OWNER: Role = "OWNER";
 export * from "./actions/index.ts";
 export * from "./providers/index.ts";
 
-// Import core capabilities (trust, secrets, plugin-manager)
-import {
-	pluginManagerCapability,
-	secretsCapability,
-	trustCapability,
-} from "../../core-capabilities/index.ts";
 // Import advanced capabilities
 import {
 	advancedActions,
@@ -79,17 +73,16 @@ import {
 	advancedProviders,
 	advancedServices,
 } from "../advanced-capabilities/index.ts";
+// Import core capabilities (trust, secrets, plugin-manager)
+import {
+	pluginManagerCapability,
+	secretsCapability,
+	trustCapability,
+} from "../index.ts";
 // Import for local use
 import * as actions from "./actions/index.ts";
 import * as providers from "./providers/index.ts";
 
-// Re-export core capabilities (trust, secrets, plugin-manager)
-export {
-	coreCapabilities,
-	pluginManagerCapability,
-	secretsCapability,
-	trustCapability,
-} from "../../core-capabilities/index.ts";
 // Re-export advanced capability modules
 export * from "../advanced-capabilities/actions/index.ts";
 export * from "../advanced-capabilities/evaluators/index.ts";
@@ -104,6 +97,13 @@ export {
 export * from "../advanced-capabilities/providers/index.ts";
 // Re-export autonomy
 export * from "../autonomy/index.ts";
+// Re-export core capabilities (trust, secrets, plugin-manager)
+export {
+	coreCapabilities,
+	pluginManagerCapability,
+	secretsCapability,
+	trustCapability,
+} from "../index.ts";
 
 // ============================================================================
 // XML Response Interfaces

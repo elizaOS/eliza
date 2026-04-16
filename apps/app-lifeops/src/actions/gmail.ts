@@ -1179,6 +1179,7 @@ async function resolveGmailTargetMessage(args: {
       | "cloud_managed"
       | undefined,
     side: detailString(args.details, "side") as "owner" | "agent" | undefined,
+    grantId: detailString(args.details, "grantId"),
     forceSync: detailBoolean(args.details, "forceSync"),
     maxResults: detailNumber(args.details, "maxResults") ?? 10,
     replyNeededOnly:
@@ -1625,6 +1626,7 @@ export const gmailAction: Action & {
             | "cloud_managed"
             | undefined,
           side: detailString(details, "side") as "owner" | "agent" | undefined,
+          grantId: detailString(details, "grantId"),
           forceSync: detailBoolean(details, "forceSync"),
           maxResults: detailNumber(details, "maxResults") ?? 10,
         });
@@ -1647,6 +1649,7 @@ export const gmailAction: Action & {
             | "cloud_managed"
             | undefined,
           side: detailString(details, "side") as "owner" | "agent" | undefined,
+          grantId: detailString(details, "grantId"),
           forceSync: detailBoolean(details, "forceSync"),
           maxResults: detailNumber(details, "maxResults") ?? 10,
         });
@@ -1688,6 +1691,7 @@ export const gmailAction: Action & {
             | "cloud_managed"
             | undefined,
           side: detailString(details, "side") as "owner" | "agent" | undefined,
+          grantId: detailString(details, "grantId"),
           forceSync: detailBoolean(details, "forceSync"),
           maxResults: detailNumber(details, "maxResults") ?? 10,
           replyNeededOnly:
@@ -1744,6 +1748,7 @@ export const gmailAction: Action & {
               | "owner"
               | "agent"
               | undefined,
+            grantId: detailString(details, "grantId"),
             forceSync: detailBoolean(details, "forceSync"),
             messageId,
           });
@@ -1795,6 +1800,7 @@ export const gmailAction: Action & {
             | "cloud_managed"
             | undefined,
           side: detailString(details, "side") as "owner" | "agent" | undefined,
+          grantId: detailString(details, "grantId"),
           forceSync: detailBoolean(details, "forceSync"),
           messageId: resolvedTarget.target.messageId,
         });
@@ -1870,6 +1876,7 @@ export const gmailAction: Action & {
             | "cloud_managed"
             | undefined,
           side: detailString(details, "side") as "owner" | "agent" | undefined,
+          grantId: detailString(details, "grantId"),
           messageId,
           tone: detailString(details, "tone") as
             | "brief"
@@ -1928,6 +1935,7 @@ export const gmailAction: Action & {
             | "cloud_managed"
             | undefined,
           side: detailString(details, "side") as "owner" | "agent" | undefined,
+          grantId: detailString(details, "grantId"),
           forceSync: detailBoolean(details, "forceSync"),
           maxResults: detailNumber(details, "maxResults") ?? 10,
           query: batchSearchQueries[0],
@@ -2025,6 +2033,7 @@ export const gmailAction: Action & {
             | "cloud_managed"
             | undefined,
           side: detailString(details, "side") as "owner" | "agent" | undefined,
+          grantId: detailString(details, "grantId"),
           messageId,
           bodyText,
           subject:
@@ -2095,6 +2104,7 @@ export const gmailAction: Action & {
             | "cloud_managed"
             | undefined,
           side: detailString(details, "side") as "owner" | "agent" | undefined,
+          grantId: detailString(details, "grantId"),
           to,
           cc,
           bcc,
@@ -2147,6 +2157,7 @@ export const gmailAction: Action & {
           | "cloud_managed"
           | undefined,
         side: detailString(details, "side") as "owner" | "agent" | undefined,
+        grantId: detailString(details, "grantId"),
         confirmSend: detailBoolean(details, "confirmSend") ?? true,
         items,
       } satisfies SendLifeOpsGmailBatchReplyRequest);
@@ -2230,7 +2241,7 @@ export const gmailAction: Action & {
     {
       name: "details",
       description:
-        "Structured Gmail arguments. Supported keys include mode, side, forceSync, maxResults, query, queries, replyNeededOnly, tone, includeQuotedOriginal, messageId, messageIds, draftIntent, subject, to, cc, bodyText, confirmSend, and items for batch send.",
+        "Structured Gmail arguments. Supported keys include mode, side, grantId, forceSync, maxResults, query, queries, replyNeededOnly, tone, includeQuotedOriginal, messageId, messageIds, draftIntent, subject, to, cc, bodyText, confirmSend, and items for batch send.",
       required: false,
       schema: { type: "object" as const },
     },

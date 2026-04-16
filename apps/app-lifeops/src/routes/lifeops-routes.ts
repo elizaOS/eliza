@@ -474,6 +474,7 @@ export async function handleLifeOpsRoutes(
       if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
         throw new LifeOpsServiceError(400, "side must be one of: owner, agent");
       }
+      const rawGrantId = url.searchParams.get("grantId");
       json(
         res,
         await service.getGoogleConnectorStatus(
@@ -483,6 +484,27 @@ export async function handleLifeOpsRoutes(
             | "remote"
             | "cloud_managed"
             | undefined,
+          (rawSide ?? undefined) as "owner" | "agent" | undefined,
+          rawGrantId ?? undefined,
+        ),
+      );
+    });
+  }
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/google/accounts"
+  ) {
+    if (rateLimitRequest(ctx, "google_api_read")) return true;
+    return runRoute(ctx, async (service) => {
+      const rawSide = url.searchParams.get("side");
+      if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
+        throw new LifeOpsServiceError(400, "side must be one of: owner, agent");
+      }
+      json(
+        res,
+        await service.getGoogleConnectorAccounts(
+          url,
           (rawSide ?? undefined) as "owner" | "agent" | undefined,
         ),
       );
@@ -533,6 +555,7 @@ export async function handleLifeOpsRoutes(
           rawForceSync === null
             ? undefined
             : rawForceSync === "true" || rawForceSync === "1",
+        grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getCalendarFeed(url, request));
     });
@@ -617,6 +640,7 @@ export async function handleLifeOpsRoutes(
           url.searchParams.get("maxResults") === null
             ? undefined
             : Number(url.searchParams.get("maxResults")),
+        grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getGmailTriage(url, request));
     });
@@ -682,6 +706,7 @@ export async function handleLifeOpsRoutes(
           rawReplyNeededOnly === null
             ? undefined
             : rawReplyNeededOnly === "true" || rawReplyNeededOnly === "1",
+        grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getGmailSearch(url, request));
     });
@@ -731,6 +756,7 @@ export async function handleLifeOpsRoutes(
           url.searchParams.get("maxResults") === null
             ? undefined
             : Number(url.searchParams.get("maxResults")),
+        grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getGmailNeedsResponse(url, request));
     });
@@ -909,13 +935,15 @@ export async function handleLifeOpsRoutes(
     pathname === "/api/lifeops/connectors/google/disconnect"
   ) {
     if (rateLimitRequest(ctx, "google_api_write")) return true;
-    const body = await readJsonBody<DisconnectLifeOpsGoogleConnectorRequest>(
-      req,
-      res,
-    );
+    const body = await readJsonBody<
+      DisconnectLifeOpsGoogleConnectorRequest & { grantId?: string }
+    >(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(res, await service.disconnectGoogleConnector(body, url));
+      json(
+        res,
+        await service.disconnectGoogleConnector(body, url),
+      );
     });
   }
 

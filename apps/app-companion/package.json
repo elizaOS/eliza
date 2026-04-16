@@ -8,7 +8,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "biome check src/",
-    "test": "bunx vitest run --passWithNoTests",
+    "test": "bunx vitest run",
+    "test:e2e": "node test/run-storybook-e2e.mjs",
     "storybook": "storybook dev -p 6007",
     "build-storybook": "storybook build"
   },
@@ -19,13 +20,14 @@
     "./plugin": "./src/plugin.ts",
     "./register": "./src/register.ts",
     "./assets.json": "./assets.json",
+    "./components/avatar/VrmEngine": "./src/components/avatar/VrmEngine.ts",
+    "./components/companion/shell-control-styles": "./src/components/companion/shell-control-styles.ts",
     "./components/*": "./src/components/*",
     "./types/*": "./src/types/*",
     "./emotes": "./src/emotes/index.ts",
     "./emotes/*": "./src/emotes/*.ts"
   },
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
     "@elizaos/app-task-coordinator": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@elizaos/core": "workspace:*",
@@ -38,6 +40,7 @@
     "@storybook/addon-a11y": "^8.6.0",
     "@storybook/addon-essentials": "^8.6.0",
     "@storybook/addon-themes": "^8.6.0",
+    "@playwright/test": "^1.58.2",
     "@storybook/react": "^8.6.0",
     "@storybook/react-vite": "^8.6.0",
     "@types/react": "^19.0.0",
@@ -46,7 +49,6 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@elizaos/app-core": "workspace:*",
     "@pixiv/three-vrm": "^3.4.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

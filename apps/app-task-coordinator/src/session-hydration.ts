@@ -2,4 +2,4 @@ export {
   mapServerTasksToSessions,
   type ServerTask,
   TERMINAL_STATUSES,
-} from "@elizaos/app-core/chat/coding-agent-session-state";
+} from "@elizaos/app-core";

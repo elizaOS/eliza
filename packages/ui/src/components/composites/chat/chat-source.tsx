@@ -16,7 +16,7 @@ type SourceIconProps = {
   className?: string;
 };
 
-type ChatSourceMeta = {
+export type ChatSourceMeta = {
   badgeClassName: string;
   borderClassName: string;
   iconClassName: string;
@@ -130,6 +130,14 @@ const SOURCE_META: Record<string, ChatSourceMeta> = {
     label: "WhatsApp",
   },
 };
+
+export function registerChatSourceMetaEntries(
+  entries: Record<string, ChatSourceMeta>,
+): void {
+  for (const [source, meta] of Object.entries(entries)) {
+    SOURCE_META[source.trim().toLowerCase()] = meta;
+  }
+}
 
 function toTitleCase(source: string): string {
   return source

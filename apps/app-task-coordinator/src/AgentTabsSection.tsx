@@ -1,5 +1,4 @@
-import type { AgentPreflightResult } from "@elizaos/app-core/api/client-types-cloud";
-import { useApp } from "@elizaos/app-core/state/useApp";
+import { useApp, type AgentPreflightResult } from "@elizaos/app-core";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
 import {

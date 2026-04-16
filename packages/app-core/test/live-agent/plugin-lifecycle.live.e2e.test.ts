@@ -194,7 +194,7 @@ async function getFreePort(): Promise<number> {
   });
 }
 
-type Runtime = { port: number; close: () => Promise<void>; logs: () => string };
+import type { RuntimeHarness as Runtime } from "./helpers/runtime-harness";
 
 async function startRuntimeWithPlugins(
   allowPlugins: string[],

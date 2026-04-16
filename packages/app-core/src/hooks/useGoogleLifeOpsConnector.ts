@@ -1,4 +1,5 @@
 import type {
+  DisconnectLifeOpsGoogleConnectorRequest,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGoogleConnectorStatus,
@@ -197,9 +198,12 @@ export function useGoogleLifeOpsConnector(
   const [status, setStatus] = useState<LifeOpsGoogleConnectorStatus | null>(
     null,
   );
+  const [accounts, setAccounts] = useState<LifeOpsGoogleConnectorStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionPending, setActionPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Keep the latest OAuth URL local to the hook so it resets when the UI unmounts.
+  const [pendingAuthUrl, setPendingAuthUrl] = useState<string | null>(null);
   const runtimeReady = isLifeOpsRuntimeReady({
     startupPhase,
     agentState: agentStatus?.state ?? null,
@@ -233,6 +237,18 @@ export function useGoogleLifeOpsConnector(
         selectedModeRef.current = nextSelectedMode;
         setSelectedMode(nextSelectedMode);
         setStatus(nextStatus);
+        try {
+          const accts = await client.getGoogleLifeOpsConnectorAccounts(
+            undefined,
+            side,
+          );
+          setAccounts(accts);
+        } catch {
+          // accounts endpoint may not be available; keep stale list
+        }
+        if (nextStatus.connected) {
+          setPendingAuthUrl(null);
+        }
         setError(null);
       } catch (cause) {
         if (isTransientLifeOpsAvailabilityError(cause)) {
@@ -417,6 +433,7 @@ export function useGoogleLifeOpsConnector(
     async (mode: LifeOpsConnectorMode) => {
       try {
         setActionPending(true);
+        setPendingAuthUrl(null);
         const nextStatus = (status?.availableModes ?? []).includes(mode)
           ? await client.selectGoogleLifeOpsConnectorMode({ mode, side })
           : await client.getGoogleLifeOpsConnectorStatus(mode, side);
@@ -444,6 +461,7 @@ export function useGoogleLifeOpsConnector(
   const connect = useCallback(async () => {
     try {
       setActionPending(true);
+      setPendingAuthUrl(null);
       const requestedCapabilities = [...LIFEOPS_GOOGLE_CAPABILITIES];
       const connectMode = resolveConnectMode(
         status ?? null,
@@ -459,8 +477,10 @@ export function useGoogleLifeOpsConnector(
         mode: connectMode,
       });
       await openExternalUrl(result.authUrl);
+      setPendingAuthUrl(result.authUrl);
       setError(null);
     } catch (cause) {
+      setPendingAuthUrl(null);
       setError(
         formatConnectorError(cause, "Google connector setup failed to start."),
       );
@@ -475,6 +495,7 @@ export function useGoogleLifeOpsConnector(
     }
     try {
       setActionPending(true);
+      setPendingAuthUrl(null);
       await client.disconnectGoogleLifeOpsConnector({
         side,
         mode: selectedModeRef.current ?? status.mode,
@@ -495,18 +516,79 @@ export function useGoogleLifeOpsConnector(
     }
   }, [refresh, side, status]);
 
+  const disconnectAccount = useCallback(
+    async (grantId: string) => {
+      try {
+        setActionPending(true);
+        await client.disconnectGoogleLifeOpsConnector({
+          side,
+          mode: selectedModeRef.current ?? status?.mode,
+          grantId,
+        } as DisconnectLifeOpsGoogleConnectorRequest & { grantId: string });
+        await refresh({ mode: selectedModeRef.current });
+        dispatchLifeOpsGoogleConnectorRefresh({
+          origin: instanceIdRef.current,
+          side,
+          source: "disconnect",
+        });
+      } catch (cause) {
+        setError(
+          formatConnectorError(cause, "Google account disconnect failed."),
+        );
+      } finally {
+        setActionPending(false);
+      }
+    },
+    [refresh, side, status],
+  );
+
+  const connectAdditional = useCallback(async () => {
+    try {
+      setActionPending(true);
+      const requestedCapabilities = [...LIFEOPS_GOOGLE_CAPABILITIES];
+      const connectMode = resolveConnectMode(
+        status ?? null,
+        selectedModeRef.current,
+      );
+      const result = await client.startGoogleLifeOpsConnector({
+        capabilities: requestedCapabilities,
+        redirectUrl:
+          connectMode === "cloud_managed"
+            ? resolveSuccessRedirectUrl(side)
+            : undefined,
+        side,
+        mode: connectMode,
+      });
+      await openExternalUrl(result.authUrl);
+      setError(null);
+    } catch (cause) {
+      setError(
+        formatConnectorError(
+          cause,
+          "Google connector setup failed to start.",
+        ),
+      );
+    } finally {
+      setActionPending(false);
+    }
+  }, [side, status?.defaultMode, status?.mode]);
+
   const modeOptions = useMemo(() => resolveVisibleModes(status), [status]);
   const activeMode =
     selectedMode ?? status?.mode ?? status?.defaultMode ?? "cloud_managed";
 
   return {
+    accounts,
     activeMode,
     actionPending,
     connect,
+    connectAdditional,
     disconnect,
+    disconnectAccount,
     error,
     loading,
     modeOptions,
+    pendingAuthUrl,
     refresh,
     selectMode,
     selectedMode,
