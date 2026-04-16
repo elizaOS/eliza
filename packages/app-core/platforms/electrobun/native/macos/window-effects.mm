@@ -35,17 +35,17 @@ static NSString *const kElectrobunNativeDragRightEdgeIdentifier =
 }
 @end
 
-static NSString *const kMiladyResizeStripRightIdentifier =
-	@"MiladyResizeStripRight";
-static NSString *const kMiladyResizeStripBottomIdentifier =
-	@"MiladyResizeStripBottom";
-static NSString *const kMiladyResizeStripCornerIdentifier =
-	@"MiladyResizeStripCorner";
+static NSString *const kElizaResizeStripRightIdentifier =
+	@"ElizaResizeStripRight";
+static NSString *const kElizaResizeStripBottomIdentifier =
+	@"ElizaResizeStripBottom";
+static NSString *const kElizaResizeStripCornerIdentifier =
+	@"ElizaResizeStripCorner";
 
-typedef NS_ENUM(NSInteger, MiladyResizeStripKind) {
-	MiladyResizeStripKindRightEdge = 0,
-	MiladyResizeStripKindBottomEdge = 1,
-	MiladyResizeStripKindBottomRightCorner = 2,
+typedef NS_ENUM(NSInteger, ElizaResizeStripKind) {
+	ElizaResizeStripKindRightEdge = 0,
+	ElizaResizeStripKindBottomEdge = 1,
+	ElizaResizeStripKindBottomRightCorner = 2,
 };
 
 /**
@@ -63,14 +63,14 @@ typedef NS_ENUM(NSInteger, MiladyResizeStripKind) {
  * would otherwise swallow events; the loop adjusts window frame from screen
  * mouse deltas until mouse up (clamped to min/max size).
  */
-@interface MiladyResizeStripView : NSView
-@property (nonatomic, assign) MiladyResizeStripKind miladyKind;
+@interface ElizaResizeStripView : NSView
+@property (nonatomic, assign) ElizaResizeStripKind elizaKind;
 @end
 
-static void miladyRunWindowResizeLoop(NSWindow *window,
-									  MiladyResizeStripKind kind);
+static void elizaRunWindowResizeLoop(NSWindow *window,
+									  ElizaResizeStripKind kind);
 
-@implementation MiladyResizeStripView
+@implementation ElizaResizeStripView
 
 - (BOOL)isOpaque {
 	return NO;
@@ -80,9 +80,9 @@ static void miladyRunWindowResizeLoop(NSWindow *window,
 	(void)dirtyRect;
 }
 
-- (nullable NSCursor *)miladyCursorForKind {
-	switch (self.miladyKind) {
-		case MiladyResizeStripKindBottomRightCorner:
+- (nullable NSCursor *)elizaCursorForKind {
+	switch (self.elizaKind) {
+		case ElizaResizeStripKindBottomRightCorner:
 			// GitHub's macOS builders may use a pre-15 AppKit SDK where the new
 			// frame resize cursor API is not declared yet.
 #if defined(MAC_OS_VERSION_15_0) &&                                      \
@@ -97,9 +97,9 @@ static void miladyRunWindowResizeLoop(NSWindow *window,
 			}
 #endif
 			return [NSCursor crosshairCursor];
-		case MiladyResizeStripKindRightEdge:
+		case ElizaResizeStripKindRightEdge:
 			return [NSCursor resizeLeftRightCursor];
-		case MiladyResizeStripKindBottomEdge:
+		case ElizaResizeStripKindBottomEdge:
 			return [NSCursor resizeUpDownCursor];
 	}
 	return nil;
@@ -107,7 +107,7 @@ static void miladyRunWindowResizeLoop(NSWindow *window,
 
 - (void)resetCursorRects {
 	[super resetCursorRects];
-	NSCursor *c = [self miladyCursorForKind];
+	NSCursor *c = [self elizaCursorForKind];
 	if (c != nil) {
 		[self addCursorRect:[self bounds] cursor:c];
 	}
@@ -116,13 +116,13 @@ static void miladyRunWindowResizeLoop(NSWindow *window,
 - (void)mouseDown:(NSEvent *)event {
 	(void)event;
 	NSWindow *w = [self window];
-	miladyRunWindowResizeLoop(w, self.miladyKind);
+	elizaRunWindowResizeLoop(w, self.elizaKind);
 }
 
 @end
 
-static void miladyRunWindowResizeLoop(NSWindow *window,
-									  MiladyResizeStripKind kind) {
+static void elizaRunWindowResizeLoop(NSWindow *window,
+									  ElizaResizeStripKind kind) {
 	if (window == nil) {
 		return;
 	}
@@ -151,19 +151,19 @@ static void miladyRunWindowResizeLoop(NSWindow *window,
 
 		NSRect fr = startFrame;
 		switch (kind) {
-			case MiladyResizeStripKindRightEdge: {
+			case ElizaResizeStripKindRightEdge: {
 				CGFloat w = startFrame.size.width + deltaX;
 				fr.size.width = MAX(minW, MIN(maxW, w));
 				break;
 			}
-			case MiladyResizeStripKindBottomEdge: {
+			case ElizaResizeStripKindBottomEdge: {
 				CGFloat h = startFrame.size.height + deltaY;
 				fr.size.height = MAX(minH, MIN(maxH, h));
 				fr.origin.y = startFrame.origin.y -
 							  (fr.size.height - startFrame.size.height);
 				break;
 			}
-			case MiladyResizeStripKindBottomRightCorner: {
+			case ElizaResizeStripKindBottomRightCorner: {
 				CGFloat w = startFrame.size.width + deltaX;
 				CGFloat h = startFrame.size.height + deltaY;
 				fr.size.width = MAX(minW, MIN(maxW, w));
@@ -177,25 +177,25 @@ static void miladyRunWindowResizeLoop(NSWindow *window,
 	}
 }
 
-static MiladyResizeStripView *miladyFindResizeStrip(NSView *contentView,
+static ElizaResizeStripView *elizaFindResizeStrip(NSView *contentView,
 													NSString *identifier) {
 	if (contentView == nil || identifier == nil) {
 		return nil;
 	}
 	for (NSView *sv in [contentView subviews]) {
-		if ([sv isKindOfClass:[MiladyResizeStripView class]] &&
+		if ([sv isKindOfClass:[ElizaResizeStripView class]] &&
 			[[sv identifier] isEqualToString:identifier]) {
-			return (MiladyResizeStripView *)sv;
+			return (ElizaResizeStripView *)sv;
 		}
 	}
 	return nil;
 }
 
-static MiladyResizeStripView *miladyEnsureResizeStrip(NSView *contentView,
+static ElizaResizeStripView *elizaEnsureResizeStrip(NSView *contentView,
 													  NSString *identifier) {
-	MiladyResizeStripView *v = miladyFindResizeStrip(contentView, identifier);
+	ElizaResizeStripView *v = elizaFindResizeStrip(contentView, identifier);
 	if (v == nil) {
-		v = [[MiladyResizeStripView alloc] initWithFrame:NSZeroRect];
+		v = [[ElizaResizeStripView alloc] initWithFrame:NSZeroRect];
 		[v setIdentifier:identifier];
 	}
 	return v;
@@ -203,17 +203,17 @@ static MiladyResizeStripView *miladyEnsureResizeStrip(NSView *contentView,
 
 /** Removes strips when the window is too small for rb geometry so we never
  *  leave stale hit targets with zero/invalid frames. */
-static void miladyRemoveResizeStripOverlays(NSView *contentView) {
+static void elizaRemoveResizeStripOverlays(NSView *contentView) {
 	if (contentView == nil) {
 		return;
 	}
 	NSArray<NSString *> *idents = @[
-		kMiladyResizeStripBottomIdentifier,
-		kMiladyResizeStripRightIdentifier,
-		kMiladyResizeStripCornerIdentifier,
+		kElizaResizeStripBottomIdentifier,
+		kElizaResizeStripRightIdentifier,
+		kElizaResizeStripCornerIdentifier,
 	];
 	for (NSString *ident in idents) {
-		MiladyResizeStripView *v = miladyFindResizeStrip(contentView, ident);
+		ElizaResizeStripView *v = elizaFindResizeStrip(contentView, ident);
 		if (v != nil) {
 			[v removeFromSuperview];
 		}
@@ -222,7 +222,7 @@ static void miladyRemoveResizeStripOverlays(NSView *contentView) {
 
 /** Positions right/bottom/BR strips; z-order: below dragView, corner above
  *  right above bottom so BR gets diagonal hit testing. */
-static void miladyInstallResizeStripOverlays(NSWindow *window,
+static void elizaInstallResizeStripOverlays(NSWindow *window,
 											 NSView *contentView,
 											 CGFloat chromeDepth,
 											 ElectrobunNativeDragView *dragView) {
@@ -235,22 +235,22 @@ static void miladyInstallResizeStripOverlays(NSWindow *window,
 	CGFloat W = contentView.bounds.size.width;
 	CGFloat H = contentView.bounds.size.height;
 	if (W < rb * 3.0 || H < topExcl + rb + 4.0) {
-		miladyRemoveResizeStripOverlays(contentView);
+		elizaRemoveResizeStripOverlays(contentView);
 		return;
 	}
 
 	BOOL flipped = [contentView isFlipped];
 
-	MiladyResizeStripView *bottom =
-		miladyEnsureResizeStrip(contentView, kMiladyResizeStripBottomIdentifier);
-	MiladyResizeStripView *right =
-		miladyEnsureResizeStrip(contentView, kMiladyResizeStripRightIdentifier);
-	MiladyResizeStripView *corner =
-		miladyEnsureResizeStrip(contentView, kMiladyResizeStripCornerIdentifier);
+	ElizaResizeStripView *bottom =
+		elizaEnsureResizeStrip(contentView, kElizaResizeStripBottomIdentifier);
+	ElizaResizeStripView *right =
+		elizaEnsureResizeStrip(contentView, kElizaResizeStripRightIdentifier);
+	ElizaResizeStripView *corner =
+		elizaEnsureResizeStrip(contentView, kElizaResizeStripCornerIdentifier);
 
-	bottom.miladyKind = MiladyResizeStripKindBottomEdge;
-	right.miladyKind = MiladyResizeStripKindRightEdge;
-	corner.miladyKind = MiladyResizeStripKindBottomRightCorner;
+	bottom.elizaKind = ElizaResizeStripKindBottomEdge;
+	right.elizaKind = ElizaResizeStripKindRightEdge;
+	corner.elizaKind = ElizaResizeStripKindBottomRightCorner;
 
 	// Frames set explicitly when setNativeWindowDragRegion runs from TS (resize,
 	// move, dom-ready). Autoresizing would double-apply with contentView bounds.
@@ -294,7 +294,7 @@ static void miladyInstallResizeStripOverlays(NSWindow *window,
 /// Inside-facing drag + resize band thickness (points).
 /// WHY auto: one constant looks wrong on 1x vs 2x and on very wide displays.
 /// `hostHeightHint` > 0.5 pins thickness (debug / product override).
-static CGFloat miladyChromeDepthPoints(NSWindow *window, double hostHeightHint) {
+static CGFloat elizaChromeDepthPoints(NSWindow *window, double hostHeightHint) {
 	if (hostHeightHint > 0.5) {
 		return MAX(12.0, MIN(48.0, (CGFloat)hostHeightHint));
 	}
@@ -653,7 +653,7 @@ extern "C" bool isWindowKey(void *windowPtr) {
 }
 
 /** Lays out top drag strip + resize overlays (same depth for both).
- *  `height` <= 0: derive depth from window.screen (see miladyChromeDepthPoints).
+ *  `height` ≤ 0: derive depth from window.screen (see elizaChromeDepthPoints).
  *  WHY one entry point: TS calls this whenever geometry may have changed so
  *  dragView stays NSWindowAbove WKWebView and strips stay in sync. */
 extern "C" bool setNativeWindowDragRegion(void *windowPtr, double x,
@@ -675,7 +675,7 @@ extern "C" bool setNativeWindowDragRegion(void *windowPtr, double x,
 		}
 
 		CGFloat dragX = MAX(0.0, x);
-		CGFloat dragHeight = miladyChromeDepthPoints(window, height);
+		CGFloat dragHeight = elizaChromeDepthPoints(window, height);
 		CGFloat dragWidth = MAX(0.0, contentView.bounds.size.width - dragX);
 		if (dragWidth <= 0.0) {
 			return;
@@ -708,14 +708,14 @@ extern "C" bool setNativeWindowDragRegion(void *windowPtr, double x,
 					 relativeTo:nil];
 
 		// Legacy Electrobun right-edge drag view would steal drags from the resize
-		// band; remove so MiladyResizeStripView owns the east edge.
+		// band; remove so ElizaResizeStripView owns the east edge.
 		ElectrobunNativeDragView *legacyRight =
 			findNativeDragRightEdgeView(contentView);
 		if (legacyRight != nil) {
 			[legacyRight removeFromSuperview];
 		}
 
-		miladyInstallResizeStripOverlays(window, contentView, dragHeight, dragView);
+		elizaInstallResizeStripOverlays(window, contentView, dragHeight, dragView);
 
 		success = YES;
 	});

@@ -101,6 +101,7 @@
       "outputs": []
     },
     "typecheck": {
+      "dependsOn": ["@elizaos/core#build"],
       "outputs": []
     },
     "typecheck:rust": {

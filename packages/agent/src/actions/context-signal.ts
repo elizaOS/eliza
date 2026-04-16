@@ -25,7 +25,7 @@ import {
 import {
   recentConversationTexts as collectRecentConversationTexts,
   recentConversationTextsFromState,
-} from "./life-recent-context.js";
+} from "@elizaos/app-lifeops/actions/life-recent-context.js";
 
 export { collectKeywordTermMatches, textIncludesKeywordTerm };
 

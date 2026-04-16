@@ -409,11 +409,14 @@ export function registerTriggerTaskWorker(runtime: IAgentRuntime): void {
     name: TRIGGER_TASK_NAME,
     shouldRun: async () => true,
     execute: async (rt, options, task) => {
-      await executeTriggerTask(rt, task, {
+      // Return the full result so callers (tests, dashboards) can inspect
+      // trigger-specific fields like taskDeleted and runRecord.
+      // TaskWorker.execute is typed as returning only scheduling metadata; trigger
+      // workers return TriggerExecutionResult for tests and dashboards.
+      return (await executeTriggerTask(rt, task, {
         source: options.source === "manual" ? "manual" : "scheduler",
         force: options.force === true,
-      });
-      return undefined;
+      })) as unknown as undefined | { nextInterval?: number };
     },
   });
 }

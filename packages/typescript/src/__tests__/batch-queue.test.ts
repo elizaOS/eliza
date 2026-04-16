@@ -104,7 +104,7 @@ describe("BatchProcessor", () => {
 		expect(onExhausted).toHaveBeenCalled();
 	});
 
-	it("uses per-item _batchMaxAttempts", async () => {
+	it("uses per-item _batchMaxAttempts (total tries)", async () => {
 		type Item = { _batchMaxAttempts: number };
 		let attempts = 0;
 		const processor = new BatchProcessor<Item>({

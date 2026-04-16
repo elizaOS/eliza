@@ -124,6 +124,13 @@ import {
 // signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout extracted to @elizaos/plugin-signal
 import { signalAuthExists } from "../services/signal-pairing.js";
 import { streamManager } from "../services/stream-manager.js";
+import {
+  clearTelegramAccountAuthState,
+  clearTelegramAccountSession,
+  TelegramAccountAuthSession,
+  telegramAccountAuthStateExists,
+  telegramAccountSessionExists,
+} from "../services/telegram-account-auth.js";
 // Telegram account auth: moved to @elizaos/plugin-telegram (account-setup-routes + account-auth-service).
 // WhatsApp pairing: route handlers moved to @elizaos/plugin-whatsapp.
 import {
@@ -230,7 +237,8 @@ import { applySignalQrOverride } from "./signal-routes.js";
 import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
-import { routeTaskAgentTextToConnector } from "./task-agent-message-routing.js";
+import { routeTaskAgentTextToConnector } from "@elizaos/app-task-coordinator/api/task-agent-message-routing";
+import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
 import { handleTriggerRoutes } from "./trigger-routes.js";
 import { handleTtsRoutes } from "./tts-routes.js";
 import { TxService } from "./tx-service.js";
@@ -253,7 +261,7 @@ import {
 } from "./wallet-capability.js";
 import { handleWalletRoutes } from "./wallet-routes.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
-import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
+import { handleWebsiteBlockerRoutes } from "@elizaos/app-lifeops/routes/website-blocker-routes";
 // handleWhatsAppRoute moved to @elizaos/plugin-whatsapp setup-routes.
 // applyWhatsAppQrOverride is still used by plugin-status routes.
 import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
@@ -538,30 +546,24 @@ function initializeOGCodeInState(): void {
   });
 }
 
-// ConversationMeta re-exported from server-types.ts
-export type { ConversationMeta } from "./server-types.js";
-
-import type { ConversationMeta } from "./server-types.js";
-
-// resolveAppUserName, patchTouchesProviderSelection, resolveConversationGreetingText
-// moved to server-helpers.ts; imported in the consolidated import at the top
-
-// AgentStartupDiagnostics, ServerState re-exported from server-types.ts
-export type { AgentStartupDiagnostics, ServerState } from "./server-types.js";
-
-import type { AgentStartupDiagnostics, ServerState } from "./server-types.js";
-
-// ShareIngestItem, SkillEntry, LogEntry, StreamEventType, StreamEventEnvelope
-// re-exported from server-types.ts
+// Canonical server surface types (single source in server-types.ts).
 export type {
+  AgentStartupDiagnostics,
+  ConversationMeta,
   LogEntry,
+  ServerState,
   ShareIngestItem,
   SkillEntry,
   StreamEventEnvelope,
   StreamEventType,
 } from "./server-types.js";
 
-import type { StreamEventEnvelope } from "./server-types.js";
+import type {
+  AgentStartupDiagnostics,
+  ConversationMeta,
+  ServerState,
+  StreamEventEnvelope,
+} from "./server-types.js";
 
 // ---------------------------------------------------------------------------
 // Package root resolution (for reading bundled plugins.json)
@@ -1862,7 +1864,7 @@ async function handleCodingAgentsFallback(
     installed?: boolean;
     installCommand?: string;
     docsUrl?: string;
-    auth?: import("./coding-agents-preflight-normalize").NormalizedPreflightAuth;
+    auth?: import("@elizaos/app-task-coordinator/api/coding-agents-preflight-normalize").NormalizedPreflightAuth;
   };
   /** CLI login hook on adapter instances — union `.d.ts` omits it even when runtime provides it. */
   type CodingAgentAdapterAuthHook = {
@@ -2133,7 +2135,7 @@ async function handleCodingAgentsFallback(
         }
       }
       const { normalizePreflightAuth } = await import(
-        "./coding-agents-preflight-normalize"
+        "@elizaos/app-task-coordinator/api/coding-agents-preflight-normalize"
       );
       const normalized = rows.flatMap((item): AgentPreflightRecord[] => {
         if (!item || typeof item !== "object") return [];
@@ -2460,7 +2462,7 @@ async function handleCodingAgentsFallback(
         // Whitelist + URL-scheme-validate before forwarding to the
         // browser. See `coding-agents-auth-sanitize.ts` for rationale.
         const { sanitizeAuthResult } = await import(
-          "./coding-agents-auth-sanitize"
+          "@elizaos/app-task-coordinator/api/coding-agents-auth-sanitize"
         );
         json(res, sanitizeAuthResult(triggered));
       }
@@ -3467,9 +3469,46 @@ async function handleRequest(
   // Telegram setup routes: now handled by @elizaos/plugin-telegram via
   // runtime plugin routes (rawPath: true). See plugin-telegram/src/setup-routes.ts.
 
-  // Telegram account routes (/api/telegram-account/*): now handled by
-  // @elizaos/plugin-telegram via runtime plugin routes (rawPath: true).
-  // See plugin-telegram/src/account-setup-routes.ts.
+  // ── Telegram account routes (/api/telegram-account/*) ────────────────
+  if (pathname.startsWith("/api/telegram-account")) {
+    const routeState = {
+      config: state.config,
+      saveConfig: () => saveElizaConfig(state.config),
+      runtime: state.runtime
+        ? {
+            getService: (type: string) =>
+              (
+                state.runtime as { getService: (t: string) => unknown }
+              ).getService(type),
+            getSetting: (key: string) =>
+              (
+                state.runtime as {
+                  getSetting: (k: string) => string | undefined;
+                }
+              ).getSetting(key),
+          }
+        : undefined,
+      telegramAccountAuthSession: state.telegramAccountAuthSession,
+    };
+    const handled = await handleTelegramAccountRoute(
+      req,
+      res,
+      pathname,
+      method,
+      routeState,
+      { json, error, readJsonBody },
+      {
+        createAuthSession: (options) => new TelegramAccountAuthSession(options),
+        authStateExists: telegramAccountAuthStateExists,
+        sessionExists: telegramAccountSessionExists,
+        clearAuthState: clearTelegramAccountAuthState,
+        clearSession: clearTelegramAccountSession,
+      },
+    );
+    state.telegramAccountAuthSession =
+      routeState.telegramAccountAuthSession ?? null;
+    if (handled) return;
+  }
 
   // ── Discord Local routes (/api/discord-local/*) — extracted to @elizaos/plugin-discord (setup-routes.ts) ──
 
@@ -5565,24 +5604,14 @@ export async function startApiServer(opts?: {
         port: actualPort,
         close: async () =>
           await new Promise<void>((r) => {
-            const closeAllConnections = (
-              server as { closeAllConnections?: () => void }
-            ).closeAllConnections;
-            const closeIdleConnections = (
-              server as { closeIdleConnections?: () => void }
-            ).closeIdleConnections;
-            const resolved = { done: false };
-            const finalize = () => {
-              if (!resolved.done) {
-                resolved.done = true;
-                r();
-              }
-            };
-            const closeTimeout = setTimeout(() => {
-              clearTimeout(closeTimeout);
-              finalize();
-            }, 5_000);
             void (async () => {
+              const closeAllConnections = (
+                server as { closeAllConnections?: () => void }
+              ).closeAllConnections;
+              const closeIdleConnections = (
+                server as { closeIdleConnections?: () => void }
+              ).closeIdleConnections;
+
               clearInterval(statusInterval);
               if (state.connectorHealthMonitor) {
                 state.connectorHealthMonitor.stop();
@@ -5602,13 +5631,46 @@ export async function startApiServer(opts?: {
                 }
               }
               wsClients.clear();
-              // WhatsApp pairing session cleanup now handled by
-              // @elizaos/plugin-whatsapp (stopAllPairingSessions).
-              // Signal pairing session cleanup now handled by
-              // @elizaos/plugin-signal (setup-routes module state).
-              // Telegram account auth session cleanup now handled by
-              // @elizaos/plugin-telegram (stopTelegramAccountAuthSession).
+              // Clean up WhatsApp pairing sessions
+              if (state.whatsappPairingSessions) {
+                for (const s of state.whatsappPairingSessions.values()) {
+                  try {
+                    s.stop();
+                  } catch {
+                    /* non-fatal */
+                  }
+                }
+                state.whatsappPairingSessions.clear();
+              }
+              // Clean up Signal pairing sessions
+              if (state.signalPairingSessions) {
+                for (const s of state.signalPairingSessions.values()) {
+                  try {
+                    s.stop();
+                  } catch {
+                    /* non-fatal */
+                  }
+                }
+                state.signalPairingSessions.clear();
+              }
+              if (state.telegramAccountAuthSession) {
+                try {
+                  await state.telegramAccountAuthSession.stop();
+                } catch {
+                  /* non-fatal */
+                }
+                state.telegramAccountAuthSession = null;
+              }
               wss.close();
+              const closeTimeout = setTimeout(() => r(), 5_000);
+              const resolved = { done: false };
+              const finalize = () => {
+                if (!resolved.done) {
+                  resolved.done = true;
+                  clearTimeout(closeTimeout);
+                  r();
+                }
+              };
               if (typeof closeAllConnections === "function") {
                 try {
                   closeAllConnections();
@@ -5624,7 +5686,7 @@ export async function startApiServer(opts?: {
                 }
               }
               server.close(finalize);
-            })().catch(() => finalize());
+            })();
           }),
         updateRuntime,
         updateStartup,

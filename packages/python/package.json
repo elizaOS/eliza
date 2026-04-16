@@ -10,7 +10,7 @@
     "lint:fix": "uv run ruff check --fix . && uv run ruff format .",
     "format": "uv run ruff format .",
     "format:check": "uv run ruff format --check .",
-    "typecheck": "python3.13 -m mypy elizaos || echo 'mypy not installed, skipping typecheck'"
+    "typecheck": "sh ./scripts/typecheck-or-skip.sh"
   },
   "author": "elizaOS",
   "license": "MIT"

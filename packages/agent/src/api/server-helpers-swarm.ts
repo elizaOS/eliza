@@ -26,7 +26,7 @@ import {
   stripActionBlockFromDisplay,
 } from "./parse-action-block.js";
 import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.js";
-import { routeTaskAgentTextToConnector } from "./task-agent-message-routing.js";
+import { routeTaskAgentTextToConnector } from "@elizaos/app-task-coordinator/api/task-agent-message-routing";
 import { resolveAppUserName } from "./server-helpers.js";
 import type { ConversationMeta, ServerState } from "./server-types.js";
 
