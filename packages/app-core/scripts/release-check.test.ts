@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   findLocalPackHotspots,
   shouldSkipExactPackDryRun,
-} from "./release-check";
+} from "./lib/release-check-pack-dry-run";
 
 describe("release-check pack dry-run guard", () => {
   it("treats broad publish roots as pack hotspots", () => {
