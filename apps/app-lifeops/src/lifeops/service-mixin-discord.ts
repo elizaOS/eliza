@@ -14,7 +14,7 @@ import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 const DISCORD_LOCAL_SERVICE_NAME = "discord-local";
 
-interface DiscordLocalUser {
+export interface DiscordLocalUser {
   id?: string;
   username?: string;
   discriminator?: string;
@@ -22,7 +22,7 @@ interface DiscordLocalUser {
   email?: string;
 }
 
-interface DiscordLocalStatus {
+export interface DiscordLocalStatus {
   available?: boolean;
   connected?: boolean;
   authenticated?: boolean;
@@ -34,12 +34,12 @@ interface DiscordLocalStatus {
   ipcPath?: string | null;
 }
 
-interface DiscordLocalGuild {
+export interface DiscordLocalGuild {
   id: string;
   name?: string;
 }
 
-interface DiscordLocalChannel {
+export interface DiscordLocalChannel {
   id: string;
   name?: string;
   type?: number;
@@ -50,7 +50,7 @@ interface DiscordLocalChannel {
   }>;
 }
 
-interface DiscordLocalServiceLike {
+export interface DiscordLocalServiceLike {
   getStatus(): DiscordLocalStatus;
   authorize(): Promise<DiscordLocalStatus>;
   disconnectSession(): Promise<void>;
