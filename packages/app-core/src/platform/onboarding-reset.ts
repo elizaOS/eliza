@@ -12,6 +12,7 @@ const LEGACY_ONBOARDING_COMPLETE_STORAGE_KEY = "eliza:onboarding-complete";
 const FORCE_FRESH_ONBOARDING_STORAGE_KEY = "elizaos:onboarding:force-fresh";
 const RESET_QUERY_PARAM = "reset";
 const PATCH_STATE = Symbol.for("elizaos.forceFreshOnboardingPatch");
+type PatchableClient = ClientLike & { [PATCH_STATE]?: PatchState };
 
 type OnboardingStatus = { complete: boolean } & Record<string, unknown>;
 
@@ -114,7 +115,8 @@ export function installForceFreshOnboardingClientPatch(
   client: ClientLike,
   storage?: StorageLike | null,
 ): () => void {
-  const existingPatch = client[PATCH_STATE] as PatchState | undefined;
+  const patchableClient = client as PatchableClient;
+  const existingPatch = patchableClient[PATCH_STATE];
   if (existingPatch) {
     return () => {};
   }
@@ -123,7 +125,7 @@ export function installForceFreshOnboardingClientPatch(
   const originalGetOnboardingStatus = client.getOnboardingStatus.bind(client);
   const originalSubmitOnboarding = client.submitOnboarding.bind(client);
 
-  client[PATCH_STATE] = {
+  patchableClient[PATCH_STATE] = {
     getConfig: client.getConfig,
     getOnboardingStatus: client.getOnboardingStatus,
     submitOnboarding: client.submitOnboarding,
@@ -150,13 +152,13 @@ export function installForceFreshOnboardingClientPatch(
   };
 
   return () => {
-    const patchState = client[PATCH_STATE] as PatchState | undefined;
+    const patchState = patchableClient[PATCH_STATE];
     if (!patchState) {
       return;
     }
     client.getConfig = patchState.getConfig;
     client.getOnboardingStatus = patchState.getOnboardingStatus;
     client.submitOnboarding = patchState.submitOnboarding;
-    delete client[PATCH_STATE];
+    delete patchableClient[PATCH_STATE];
   };
 }

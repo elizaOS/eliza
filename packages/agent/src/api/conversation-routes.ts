@@ -134,7 +134,7 @@ export interface ConversationRouteState {
   conversations: Map<string, ConversationMeta>;
   conversationRestorePromise: Promise<void> | null;
   deletedConversationIds: Set<string>;
-  broadcastWs: ((data: Record<string, unknown>) => void) | null;
+  broadcastWs: ((data: object) => void) | null;
   /** Wallet trade permission mode for wallet-mode guidance replies. */
   tradePermissionMode?: string;
 }

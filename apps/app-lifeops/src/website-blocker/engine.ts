@@ -13,6 +13,44 @@ const BLOCK_END_MARKER = "# <<< eliza-selfcontrol <<<";
 const BLOCK_METADATA_PREFIX = "# eliza-selfcontrol ";
 const DEFAULT_STATUS_CACHE_TTL_MS = 5_000;
 const DEFAULT_DURATION_MINUTES = 60;
+
+// ---------------------------------------------------------------------------
+// Native backend adapter
+// ---------------------------------------------------------------------------
+// On iOS and Android the hosts-file engine is not available. A native backend
+// can be registered at startup so the action/provider layer dispatches to the
+// Capacitor native plugin (Safari content blocker on iOS, VPN DNS on Android)
+// instead of falling through to "not-applicable".
+//
+// The mobile app's webview startup code calls `registerNativeWebsiteBlockerBackend`
+// with an adapter that wraps the Capacitor plugin.
+// ---------------------------------------------------------------------------
+
+export interface NativeWebsiteBlockerBackend {
+  getStatus(): Promise<SelfControlStatus>;
+  startBlock(request: SelfControlBlockRequest): Promise<
+    | { success: true; endsAt: string | null }
+    | { success: false; error: string; status?: SelfControlStatus }
+  >;
+  stopBlock(): Promise<
+    | { success: true; removed: boolean; status: SelfControlStatus }
+    | { success: false; error: string; status?: SelfControlStatus }
+  >;
+  getPermissionState(): Promise<SelfControlPermissionState>;
+  requestPermission(): Promise<SelfControlPermissionState>;
+}
+
+let nativeBackend: NativeWebsiteBlockerBackend | null = null;
+
+export function registerNativeWebsiteBlockerBackend(
+  backend: NativeWebsiteBlockerBackend,
+): void {
+  nativeBackend = backend;
+}
+
+export function getNativeWebsiteBlockerBackend(): NativeWebsiteBlockerBackend | null {
+  return nativeBackend;
+}
 const MAX_BLOCK_MINUTES = 7 * 24 * 60;
 const PRIVILEGED_WRITE_TMP_PREFIX = "eliza-selfcontrol-write-";
 const WINDOWS_WORKER_SCRIPT_NAME = "write-hosts.ps1";
@@ -275,6 +313,9 @@ export async function reconcileSelfControlBlockState(
 export async function getSelfControlStatus(
   config: SelfControlPluginConfig = currentConfig,
 ): Promise<SelfControlStatus> {
+  if (nativeBackend) {
+    return await nativeBackend.getStatus();
+  }
   return await reconcileSelfControlBlockState(config);
 }
 
@@ -297,6 +338,9 @@ export async function getCachedSelfControlStatus(
 export async function getSelfControlPermissionState(
   config: SelfControlPluginConfig = currentConfig,
 ): Promise<SelfControlPermissionState> {
+  if (nativeBackend) {
+    return await nativeBackend.getPermissionState();
+  }
   const status = await getSelfControlStatus(config);
   const permissionStatus = mapSelfControlStatusToPermissionStatus(status);
   const canRequest =
@@ -322,6 +366,9 @@ export async function getSelfControlPermissionState(
 export async function requestSelfControlPermission(
   config: SelfControlPluginConfig = currentConfig,
 ): Promise<SelfControlPermissionState> {
+  if (nativeBackend) {
+    return await nativeBackend.requestPermission();
+  }
   const status = await getSelfControlStatus(config);
   if (!status.hostsFilePath) {
     return await getSelfControlPermissionState(config);
@@ -402,6 +449,12 @@ export async function startSelfControlBlock(
       status?: SelfControlStatus;
     }
 > {
+  // Dispatch to native backend (iOS/Android) when registered
+  if (nativeBackend) {
+    resetSelfControlStatusCache();
+    return await nativeBackend.startBlock(request);
+  }
+
   const normalizedRequest = normalizeSelfControlBlockRequest(request);
   if (normalizedRequest.success === false) {
     return {
@@ -516,6 +569,12 @@ export async function stopSelfControlBlock(
       status?: SelfControlStatus;
     }
 > {
+  // Dispatch to native backend (iOS/Android) when registered
+  if (nativeBackend) {
+    resetSelfControlStatusCache();
+    return await nativeBackend.stopBlock();
+  }
+
   const status = await reconcileSelfControlBlockState(config);
   if (!status.available || !status.hostsFilePath) {
     return {

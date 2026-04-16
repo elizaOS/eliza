@@ -153,6 +153,7 @@ export function FeaturesStep() {
       onboardingFeatureDiscord,
       onboardingFeatureCrypto,
       onboardingFeatureBrowser,
+      onboardingFeatureComputerUse,
     ],
   );
 

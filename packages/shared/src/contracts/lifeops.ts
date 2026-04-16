@@ -114,6 +114,27 @@ export type LifeOpsGoogleCapability =
 export const LIFEOPS_X_CAPABILITIES = ["x.read", "x.write"] as const;
 export type LifeOpsXCapability = (typeof LIFEOPS_X_CAPABILITIES)[number];
 
+export const LIFEOPS_SIGNAL_CAPABILITIES = [
+  "signal.read",
+  "signal.send",
+] as const;
+export type LifeOpsSignalCapability =
+  (typeof LIFEOPS_SIGNAL_CAPABILITIES)[number];
+
+export const LIFEOPS_DISCORD_CAPABILITIES = [
+  "discord.read",
+  "discord.send",
+] as const;
+export type LifeOpsDiscordCapability =
+  (typeof LIFEOPS_DISCORD_CAPABILITIES)[number];
+
+export const LIFEOPS_TELEGRAM_CAPABILITIES = [
+  "telegram.read",
+  "telegram.send",
+] as const;
+export type LifeOpsTelegramCapability =
+  (typeof LIFEOPS_TELEGRAM_CAPABILITIES)[number];
+
 export const LIFEOPS_REMINDER_CHANNELS = [
   "in_app",
   "sms",
@@ -1406,6 +1427,127 @@ export interface LifeOpsXConnectorStatus {
   identity: Record<string, unknown> | null;
   hasCredentials: boolean;
   grant: LifeOpsConnectorGrant | null;
+}
+
+// ---------------------------------------------------------------------------
+// Messaging connector types (Signal, Discord, Telegram)
+// ---------------------------------------------------------------------------
+
+export const LIFEOPS_MESSAGING_CONNECTOR_REASONS = [
+  "connected",
+  "disconnected",
+  "pairing",
+  "auth_pending",
+  "auth_expired",
+  "session_revoked",
+] as const;
+export type LifeOpsMessagingConnectorReason =
+  (typeof LIFEOPS_MESSAGING_CONNECTOR_REASONS)[number];
+
+export interface LifeOpsSignalConnectorStatus {
+  provider: "signal";
+  side: LifeOpsConnectorSide;
+  connected: boolean;
+  reason: LifeOpsMessagingConnectorReason;
+  identity: { phoneNumber?: string; uuid?: string; deviceName?: string } | null;
+  grantedCapabilities: LifeOpsSignalCapability[];
+  grant: LifeOpsConnectorGrant | null;
+}
+
+export interface LifeOpsDiscordConnectorStatus {
+  provider: "discord";
+  side: LifeOpsConnectorSide;
+  connected: boolean;
+  reason: LifeOpsMessagingConnectorReason;
+  identity: {
+    id?: string;
+    username?: string;
+    discriminator?: string;
+    email?: string;
+  } | null;
+  grantedCapabilities: LifeOpsDiscordCapability[];
+  grantedScopes: string[];
+  expiresAt: string | null;
+  hasRefreshToken: boolean;
+  grant: LifeOpsConnectorGrant | null;
+}
+
+export interface LifeOpsTelegramConnectorStatus {
+  provider: "telegram";
+  side: LifeOpsConnectorSide;
+  connected: boolean;
+  reason: LifeOpsMessagingConnectorReason;
+  identity: {
+    id?: string;
+    username?: string;
+    firstName?: string;
+    phone?: string;
+  } | null;
+  grantedCapabilities: LifeOpsTelegramCapability[];
+  grant: LifeOpsConnectorGrant | null;
+}
+
+export interface StartLifeOpsSignalPairingRequest {
+  side?: LifeOpsConnectorSide;
+}
+
+export interface StartLifeOpsSignalPairingResponse {
+  provider: "signal";
+  side: LifeOpsConnectorSide;
+  sessionId: string;
+}
+
+export interface LifeOpsSignalPairingStatus {
+  sessionId: string;
+  state:
+    | "idle"
+    | "generating_qr"
+    | "waiting_for_scan"
+    | "linking"
+    | "connected"
+    | "failed";
+  qrDataUrl: string | null;
+  error: string | null;
+}
+
+export interface StartLifeOpsDiscordConnectorRequest {
+  side?: LifeOpsConnectorSide;
+  redirectUrl?: string;
+}
+
+export interface StartLifeOpsDiscordConnectorResponse {
+  provider: "discord";
+  side: LifeOpsConnectorSide;
+  authUrl: string;
+}
+
+export interface StartLifeOpsTelegramAuthRequest {
+  side?: LifeOpsConnectorSide;
+  phone: string;
+  apiId?: number;
+  apiHash?: string;
+}
+
+export interface StartLifeOpsTelegramAuthResponse {
+  provider: "telegram";
+  side: LifeOpsConnectorSide;
+  state:
+    | "waiting_for_code"
+    | "waiting_for_password"
+    | "connected"
+    | "error";
+  error?: string;
+}
+
+export interface SubmitLifeOpsTelegramAuthRequest {
+  side?: LifeOpsConnectorSide;
+  code?: string;
+  password?: string;
+}
+
+export interface DisconnectLifeOpsMessagingConnectorRequest {
+  side?: LifeOpsConnectorSide;
+  provider: "signal" | "discord" | "telegram";
 }
 
 export interface StartLifeOpsGoogleConnectorRequest {

@@ -230,10 +230,10 @@ export interface ServerState {
   /** Broadcast current agent status to all WebSocket clients. Set by startApiServer. */
   broadcastStatus: (() => void) | null;
   /** Broadcast an arbitrary JSON message to all WebSocket clients. Set by startApiServer. */
-  broadcastWs: ((data: Record<string, unknown>) => void) | null;
+  broadcastWs: ((data: object) => void) | null;
   /** Broadcast a JSON payload to WebSocket clients bound to a specific client id. */
   broadcastWsToClientId:
-    | ((clientId: string, data: Record<string, unknown>) => number)
+    | ((clientId: string, data: object) => number)
     | null;
   /** Currently active conversation ID from the frontend (sent via WS). */
   activeConversationId: string | null;

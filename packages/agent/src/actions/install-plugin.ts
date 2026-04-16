@@ -1,18 +1,9 @@
 import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
+import { isPluginManagerLike, type PluginManagerLike } from "../services/plugin-manager-types.js";
 
-function getPluginManager(runtime: IAgentRuntime) {
-  return runtime.getService("plugin_manager") as unknown as {
-    installPlugin(
-      name: string,
-      onProgress?: (progress: { stage: string; message: string }) => void,
-    ): Promise<{
-      success: boolean;
-      pluginName: string;
-      version: string;
-      requiresRestart: boolean;
-      error?: string;
-    }>;
-  } | null;
+function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
+  const svc = runtime.getService("plugin_manager");
+  return isPluginManagerLike(svc) ? svc : null;
 }
 
 export const installPluginAction: Action = {

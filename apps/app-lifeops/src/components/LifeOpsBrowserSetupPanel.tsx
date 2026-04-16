@@ -456,7 +456,6 @@ export function LifeOpsBrowserSetupPanel() {
       ReturnType<typeof client.listLifeOpsBrowserCompanions>
     >["companions"]
   >([]);
-  const [currentPage, setCurrentPage] = useState<string | null>(null);
   const [packageStatus, setPackageStatus] = useState<ExtensionStatus | null>(
     null,
   );
@@ -478,24 +477,13 @@ export function LifeOpsBrowserSetupPanel() {
     setLoading(true);
     setError(null);
     try {
-      const [
-        settingsResponse,
-        companionsResponse,
-        currentPageResponse,
-        status,
-      ] = await Promise.all([
+      const [settingsResponse, companionsResponse, status] = await Promise.all([
         client.getLifeOpsBrowserSettings(),
         client.listLifeOpsBrowserCompanions(),
-        client.getLifeOpsBrowserCurrentPage(),
         client.getLifeOpsBrowserPackageStatus(),
       ]);
       setDraft(settingsToDraft(settingsResponse.settings));
       setCompanions(companionsResponse.companions);
-      setCurrentPage(
-        currentPageResponse.page
-          ? `${currentPageResponse.page.title} ${currentPageResponse.page.url}`
-          : null,
-      );
       setPackageStatus((current) => mergePackageStatus(current, status.status));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -766,12 +754,6 @@ export function LifeOpsBrowserSetupPanel() {
           <div className="text-sm font-semibold text-txt">Browser</div>
         </div>
       </div>
-
-      {currentPage ? (
-        <div className="text-xs text-muted/80">
-          <span className="text-txt">{currentPage}</span>
-        </div>
-      ) : null}
       {statusMessage ? (
         <div className="rounded-2xl bg-card/22 px-3 py-2 text-xs text-txt">
           {statusMessage}

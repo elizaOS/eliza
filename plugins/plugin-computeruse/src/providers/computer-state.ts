@@ -16,7 +16,8 @@ import type { ComputerUseService } from "../services/computer-use-service.js";
 
 export const computerStateProvider: Provider = {
   name: "computerState",
-  description: "Current computer state: platform, screen size, available tools, recent desktop actions",
+  description:
+    "Current computer state: platform, screen size, available tools, recent computer-use actions, and approval queue",
 
   get: async (
     runtime: IAgentRuntime,
@@ -43,7 +44,17 @@ export const computerStateProvider: Provider = {
       `Mouse/Keyboard: ${caps.computerUse.available ? caps.computerUse.tool : "unavailable"}`,
       `Browser: ${caps.browser.available ? caps.browser.tool : "unavailable"}`,
       `Window List: ${caps.windowList.available ? caps.windowList.tool : "unavailable"}`,
+      `Terminal: ${caps.terminal.available ? caps.terminal.tool : "unavailable"}`,
+      `Filesystem: ${caps.fileSystem.available ? caps.fileSystem.tool : "unavailable"}`,
     ];
+
+    if (approvals.pendingApprovals.length > 0) {
+      lines.push("");
+      lines.push("Approval queue:");
+      for (const approval of approvals.pendingApprovals.slice(0, 5)) {
+        lines.push(`  - ${approval.command}`);
+      }
+    }
 
     if (recent.length > 0) {
       lines.push("");

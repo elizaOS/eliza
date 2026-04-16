@@ -1,5 +1,11 @@
 import http from "node:http";
-import { ensureCompatApiAuthorized, ensureCompatSensitiveRouteAuthorized } from "./auth";
+import {
+  ensureCompatApiAuthorized,
+  ensureCompatSensitiveRouteAuthorized,
+  getCompatApiToken,
+  getProvidedApiToken,
+  tokenMatches,
+} from "./auth";
 import { type CompatRuntimeState, readCompatJsonBody } from "./compat-route-shared";
 import {
   sendJson as sendJsonResponse,
@@ -42,6 +48,9 @@ type ComputerUseServiceLike = {
     approved: boolean,
     reason?: string,
   ): ComputerUseApprovalResolution | null;
+  subscribeApprovals?(
+    listener: (snapshot: ComputerUseApprovalSnapshot) => void,
+  ): () => void;
 };
 
 const VALID_APPROVAL_MODES: ComputerUseApprovalMode[] = [
@@ -82,6 +91,37 @@ function getComputerUseService(
   return candidate as ComputerUseServiceLike;
 }
 
+function isStreamAuthorized(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  url: URL,
+): boolean {
+  const expectedToken = getCompatApiToken();
+  if (!expectedToken) {
+    return true;
+  }
+
+  const headerToken = getProvidedApiToken(req);
+  const providedToken = url.searchParams.get("token")?.trim();
+  if (
+    (headerToken && tokenMatches(expectedToken, headerToken)) ||
+    (providedToken && tokenMatches(expectedToken, providedToken))
+  ) {
+    return true;
+  }
+
+  res.writeHead(401, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ error: "Unauthorized" }));
+  return false;
+}
+
+function writeSseEvent(
+  res: http.ServerResponse,
+  payload: Record<string, unknown>,
+): void {
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
 export async function handleComputerUseCompatRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -92,6 +132,59 @@ export async function handleComputerUseCompatRoutes(
 
   if (!url.pathname.startsWith("/api/computer-use/")) {
     return false;
+  }
+
+  if (
+    method === "GET" &&
+    url.pathname === "/api/computer-use/approvals/stream"
+  ) {
+    if (!isStreamAuthorized(req, res, url)) {
+      return true;
+    }
+
+    const service = getComputerUseService(state);
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+
+    const initialSnapshot =
+      service?.getApprovalSnapshot() ??
+      ({
+        mode: "full_control",
+        pendingCount: 0,
+        pendingApprovals: [],
+      } satisfies ComputerUseApprovalSnapshot);
+
+    writeSseEvent(res, {
+      type: "snapshot",
+      snapshot: initialSnapshot,
+    });
+
+    const heartbeat = setInterval(() => {
+      res.write(": heartbeat\n\n");
+    }, 15_000);
+    if (typeof heartbeat === "object" && "unref" in heartbeat) {
+      heartbeat.unref();
+    }
+
+    const unsubscribe = service?.subscribeApprovals?.((snapshot) => {
+      writeSseEvent(res, {
+        type: "snapshot",
+        snapshot,
+      });
+    });
+
+    const cleanup = () => {
+      clearInterval(heartbeat);
+      unsubscribe?.();
+    };
+
+    req.on("close", cleanup);
+    req.on("aborted", cleanup);
+    return true;
   }
 
   if (method === "GET" && url.pathname === "/api/computer-use/approvals") {

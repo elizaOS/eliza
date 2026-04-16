@@ -380,7 +380,7 @@ export function getDesktopPlugin(): GenericNativePlugin {
 
 export function getWebsiteBlockerPlugin(): WebsiteBlockerPluginLike {
   const plugins = getCapacitorPlugins();
-  return (plugins.WebsiteBlocker ??
+  return (plugins.ElizaWebsiteBlocker ??
     plugins.WebsiteBlocker ??
     {}) as WebsiteBlockerPluginLike;
 }

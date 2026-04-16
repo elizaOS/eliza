@@ -8,8 +8,10 @@
   "exports": {
     "./package.json": "./package.json",
     ".": "./src/index.ts",
+    "./client": "./src/client.ts",
     "./inbox/types": "./src/inbox/types.ts",
     "./types": "./src/types/index.ts",
+    "./types/app-blocker-settings-card": "./src/types/app-blocker-settings-card.ts",
     "./types/website-blocker-settings-card": "./src/types/website-blocker-settings-card.ts",
     "./ui": "./src/ui.ts",
     "./agent-lifeops": "./src/agent-lifeops.ts",

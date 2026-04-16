@@ -43,6 +43,7 @@ export async function connectTerminal(
   return {
     success: true,
     sessionId,
+    session_id: sessionId,
     cwd: sessionCwd,
     message: `Terminal session ${sessionId} created.`,
   };
@@ -88,8 +89,10 @@ export async function executeTerminal(params: {
             success: true,
             output,
             exitCode: 0,
+            exit_code: 0,
             cwd: sessionCwd,
             sessionId: params.sessionId,
+            session_id: params.sessionId,
           });
           return;
         }
@@ -100,8 +103,10 @@ export async function executeTerminal(params: {
           success: false,
           output,
           exitCode,
+          exit_code: exitCode,
           cwd: sessionCwd,
           sessionId: params.sessionId,
+          session_id: params.sessionId,
           error: error.message,
         });
       },
@@ -113,8 +118,10 @@ export async function executeTerminal(params: {
         success: false,
         output: "",
         exitCode: -1,
+        exit_code: -1,
         cwd: sessionCwd,
         sessionId: params.sessionId,
+        session_id: params.sessionId,
         error: `Command timed out after ${timeoutSeconds}s.`,
       });
     }, (timeoutSeconds + 1) * 1000);
@@ -131,6 +138,7 @@ export async function readTerminal(
   return {
     success: true,
     sessionId,
+    session_id: sessionId,
     output: "",
     message: "No pending terminal output.",
   };
@@ -167,6 +175,7 @@ export async function closeTerminal(
   return {
     success: true,
     sessionId,
+    session_id: sessionId,
     message: `Terminal session ${sessionId ?? "default"} closed.`,
   };
 }

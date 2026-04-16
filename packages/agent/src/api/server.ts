@@ -52,6 +52,7 @@ import {
   type AgentRuntime,
   ChannelType,
   createMessageMemory,
+  type IAgentRuntime,
   logger,
   stringToUuid,
   type UUID,
@@ -2827,17 +2828,17 @@ async function handleRequest(
     readJsonBody,
     json,
     error,
-    executeTriggerTask: executeTriggerTask as never,
+    executeTriggerTask,
     getTriggerHealthSnapshot,
-    getTriggerLimit: getTriggerLimit as never,
-    listTriggerTasks: listTriggerTasks as never,
+    getTriggerLimit,
+    listTriggerTasks,
     readTriggerConfig,
     readTriggerRuns,
-    taskToTriggerSummary: taskToTriggerSummary as never,
+    taskToTriggerSummary,
     triggersFeatureEnabled,
-    buildTriggerConfig: buildTriggerConfig as never,
-    buildTriggerMetadata: buildTriggerMetadata as never,
-    normalizeTriggerDraft: normalizeTriggerDraft as never,
+    buildTriggerConfig,
+    buildTriggerMetadata,
+    normalizeTriggerDraft,
     DISABLED_TRIGGER_INTERVAL_MS,
     TRIGGER_TASK_NAME,
     TRIGGER_TASK_TAGS: [...TRIGGER_TASK_TAGS],
@@ -3123,7 +3124,20 @@ async function handleRequest(
       auditSeverities: AUDIT_SEVERITIES,
       getAuditFeedSize,
       queryAuditFeed: (query) =>
-        queryAuditFeed(query).map((entry) => ({
+        queryAuditFeed({
+          type: (AUDIT_EVENT_TYPES as readonly string[]).includes(
+            query.type ?? "",
+          )
+            ? (query.type as (typeof AUDIT_EVENT_TYPES)[number])
+            : undefined,
+          severity: (AUDIT_SEVERITIES as readonly string[]).includes(
+            query.severity ?? "",
+          )
+            ? (query.severity as (typeof AUDIT_SEVERITIES)[number])
+            : undefined,
+          sinceMs: query.sinceMs,
+          limit: query.limit,
+        }).map((entry) => ({
           timestamp: entry.timestamp,
           type: entry.type,
           summary: entry.summary,
@@ -5161,7 +5175,7 @@ export async function startApiServer(opts?: {
   state.broadcastStatus = broadcastStatus;
 
   // Generic broadcast — sends an arbitrary JSON payload to all WS clients.
-  state.broadcastWs = (data: Record<string, unknown>) => {
+  state.broadcastWs = (data: object) => {
     const message = JSON.stringify(data);
     for (const client of wsClients) {
       if (client.readyState === 1) {
@@ -5178,7 +5192,7 @@ export async function startApiServer(opts?: {
 
   state.broadcastWsToClientId = (
     clientId: string,
-    data: Record<string, unknown>,
+    data: object,
   ) => {
     const message = JSON.stringify(data);
     let delivered = 0;

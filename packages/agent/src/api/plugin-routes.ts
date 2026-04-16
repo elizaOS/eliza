@@ -137,7 +137,7 @@ export interface PluginRouteContext {
     runtime: AgentRuntime | null;
     config: ElizaConfig;
     plugins: PluginEntry[];
-    broadcastWs: ((data: Record<string, unknown>) => void) | null;
+    broadcastWs: ((data: object) => void) | null;
   };
   // Helpers from server.ts
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;

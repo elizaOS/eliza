@@ -47,6 +47,8 @@ type PendingApprovalRecord = PendingApproval & {
   resolve: (result: ApprovalDecision) => void;
 };
 
+type ApprovalListener = (snapshot: ApprovalSnapshot) => void;
+
 export function isApprovalMode(value: string): value is ApprovalMode {
   return VALID_APPROVAL_MODES.includes(value as ApprovalMode);
 }
@@ -54,6 +56,7 @@ export function isApprovalMode(value: string): value is ApprovalMode {
 export class ComputerUseApprovalManager {
   private mode: ApprovalMode = "full_control";
   private pending = new Map<string, PendingApprovalRecord>();
+  private listeners = new Set<ApprovalListener>();
   private readonly configPath = path.join(
     os.homedir(),
     ".milady",
@@ -72,6 +75,7 @@ export class ComputerUseApprovalManager {
     if (isApprovalMode(mode)) {
       this.mode = mode;
       this.saveConfig();
+      this.emit();
     }
     return this.mode;
   }
@@ -107,6 +111,7 @@ export class ComputerUseApprovalManager {
         requestedAt,
         resolve,
       });
+      this.emit();
     });
   }
 
@@ -137,6 +142,7 @@ export class ComputerUseApprovalManager {
 
     this.pending.delete(id);
     pending.resolve({ approved, cancelled: false, reason });
+    this.emit();
 
     return {
       id: pending.id,
@@ -155,6 +161,15 @@ export class ComputerUseApprovalManager {
       pending.resolve({ approved: false, cancelled: true, reason });
     }
     this.pending.clear();
+    this.emit();
+  }
+
+  subscribe(listener: ApprovalListener): () => void {
+    this.listeners.add(listener);
+    listener(this.getSnapshot());
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
 
   private loadConfig(): void {
@@ -179,6 +194,13 @@ export class ComputerUseApprovalManager {
       );
     } catch {
       // Ignore persistence failures; approval mode still applies in-memory.
+    }
+  }
+
+  private emit(): void {
+    const snapshot = this.getSnapshot();
+    for (const listener of this.listeners) {
+      listener(snapshot);
     }
   }
 }

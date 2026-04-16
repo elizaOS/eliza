@@ -144,6 +144,8 @@ export async function fileExists(
       exists: true,
       isFile: stat.isFile(),
       isDirectory: stat.isDirectory(),
+      is_file: stat.isFile(),
+      is_directory: stat.isDirectory(),
       size: stat.size,
     };
   } catch {
@@ -153,6 +155,8 @@ export async function fileExists(
       exists: false,
       isFile: false,
       isDirectory: false,
+      is_file: false,
+      is_directory: false,
       size: 0,
     };
   }

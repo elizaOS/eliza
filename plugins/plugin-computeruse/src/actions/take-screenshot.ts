@@ -1,10 +1,3 @@
-/**
- * TAKE_SCREENSHOT action — dedicated screen capture.
- *
- * A simpler entry point than USE_COMPUTER for when the agent just needs
- * to see the current screen state. No parameters needed.
- */
-
 import type {
   Action,
   HandlerCallback,
@@ -13,10 +6,10 @@ import type {
   State,
 } from "@elizaos/core";
 import type { ComputerUseService } from "../services/computer-use-service.js";
+import { buildScreenshotAttachment } from "./helpers.js";
 
 export const takeScreenshotAction: Action = {
   name: "TAKE_SCREENSHOT",
-
   similes: [
     "CAPTURE_SCREEN",
     "SCREEN_CAPTURE",
@@ -26,43 +19,19 @@ export const takeScreenshotAction: Action = {
     "VIEW_SCREEN",
     "SCREEN_STATE",
   ],
-
   description:
-    "Take a screenshot of the current screen to see what is displayed. " +
-    "Use this to observe the desktop state before deciding what actions to take. " +
-    "Returns a full-resolution PNG screenshot of the primary display.",
-
+    "Capture the current screen through the computer-use service. This uses the same approval, permission, and history path as USE_COMPUTER action=screenshot.",
   parameters: [],
-
-  examples: [
-    [
-      {
-        name: "{{user1}}",
-        content: { text: "What's on my screen right now?" },
-      },
-      {
-        name: "{{agentName}}",
-        content: { text: "Let me take a screenshot to see.", action: "TAKE_SCREENSHOT" },
-      },
-    ],
-    [
-      {
-        name: "{{user1}}",
-        content: { text: "Show me what the desktop looks like." },
-      },
-      {
-        name: "{{agentName}}",
-        content: { text: "I'll capture the screen.", action: "TAKE_SCREENSHOT" },
-      },
-    ],
-  ],
-
-  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
-    const service = runtime.getService("computeruse") as unknown as ComputerUseService | undefined;
-    if (!service) return false;
-    return service.getCapabilities().screenshot.available;
+  validate: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state?: State,
+  ): Promise<boolean> => {
+    const service =
+      (runtime.getService("computeruse") as unknown as ComputerUseService) ??
+      null;
+    return !!service && service.getCapabilities().screenshot.available;
   },
-
   handler: async (
     runtime: IAgentRuntime,
     _message: Memory,
@@ -70,37 +39,35 @@ export const takeScreenshotAction: Action = {
     _options?: unknown,
     callback?: HandlerCallback,
   ) => {
-    const service = runtime.getService("computeruse") as unknown as ComputerUseService | undefined;
+    const service =
+      (runtime.getService("computeruse") as unknown as ComputerUseService) ??
+      null;
     if (!service) {
       return { success: false, error: "ComputerUseService not available" };
     }
 
-    try {
-      const buf = await service.captureScreen();
-      const b64 = buf.toString("base64");
+    const result = await service.executeDesktopAction({ action: "screenshot" });
 
-      if (callback) {
-        await callback({
-          text: "Here is the current screen.",
-          attachments: [
-            {
-              id: `screenshot-${Date.now()}`,
-              url: `data:image/png;base64,${b64}`,
-              title: "Screenshot",
-              source: "computeruse",
-              description: "Full screen capture",
-              contentType: "image" as const,
-            },
-          ],
-        });
-      }
-
-      return { success: true };
-    } catch (err) {
-      if (callback) {
-        await callback({ text: `Screenshot failed: ${String(err)}` });
-      }
-      return { success: false, error: String(err) };
+    if (callback) {
+      await callback({
+        text: result.success
+          ? "Here is the current screen."
+          : `Screenshot failed: ${result.error}`,
+        ...(result.screenshot
+          ? {
+              attachments: [
+                buildScreenshotAttachment({
+                  idPrefix: "screenshot",
+                  screenshot: result.screenshot,
+                  title: "Screenshot",
+                  description: "Full screen capture",
+                }),
+              ],
+            }
+          : {}),
+      });
     }
+
+    return result as unknown as any;
   },
 };

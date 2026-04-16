@@ -13,8 +13,8 @@ import {
 import { useLifeOpsAppState } from "@elizaos/app-core";
 import { useApp } from "@elizaos/app-core";
 import { openExternalUrl } from "@elizaos/app-core";
-import { Github } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
 import { LifeOpsBrowserSetupPanel } from "./LifeOpsBrowserSetupPanel";
 import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
@@ -127,33 +127,6 @@ function selectPrimaryAgentGithubEntry(
   return entries.find((entry) => entry.github?.connected) ?? entries[0] ?? null;
 }
 
-function CompactGithubRow({
-  label,
-  value,
-  status,
-  actions,
-}: {
-  label: string;
-  value: string;
-  status: string;
-  actions?: ReactNode;
-}) {
-  return (
-    <div className="grid gap-3 border-t border-border/12 px-4 py-4 first:border-t-0 xl:grid-cols-[72px_minmax(0,1fr)_auto] xl:items-center">
-      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-        {label}
-      </div>
-      <div className="min-w-0">
-        <div className="truncate text-sm font-semibold text-txt">{value}</div>
-        <div className="mt-1 text-xs text-muted">{status}</div>
-      </div>
-      <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
-        {actions}
-      </div>
-    </div>
-  );
-}
-
 export function LifeOpsPageView() {
   const lifeOpsApp = useLifeOpsAppState();
   const {
@@ -179,6 +152,7 @@ export function LifeOpsPageView() {
   const [busyAgentGithubId, setBusyAgentGithubId] = useState<string | null>(
     null,
   );
+  const [setupOpen, setSetupOpen] = useState(true);
   const appEnabled = lifeOpsApp.enabled;
 
   const runtimeReady =
@@ -253,10 +227,6 @@ export function LifeOpsPageView() {
   useEffect(() => {
     void loadGithub();
   }, [loadGithub]);
-
-  const refreshAll = useCallback(async () => {
-    await Promise.all([loadOverview(), loadGithub()]);
-  }, [loadGithub, loadOverview]);
 
   const handleGithubCallback = useCallback(
     (detail: LifeOpsGithubCallbackDetail) => {
@@ -444,44 +414,6 @@ export function LifeOpsPageView() {
     [setActionNotice],
   );
 
-  const handleUseOwnerGithub = useCallback(
-    async (agentId: string, connectionId: string) => {
-      setBusyAgentGithubId(agentId);
-      try {
-        const response = await client.linkCloudCompatAgentManagedGithub(
-          agentId,
-          connectionId,
-        );
-        setAgentGithubEntries((current) =>
-          current.map((entry) =>
-            entry.agent.agent_id === agentId
-              ? { ...entry, github: response.data }
-              : entry,
-          ),
-        );
-        setActionNotice(
-          response.data.restarted
-            ? "Agent is using the LifeOps GitHub account and the cloud runtime is restarting."
-            : "Agent is using the LifeOps GitHub account.",
-          "success",
-          4200,
-        );
-        await loadGithub();
-      } catch (cause) {
-        setActionNotice(
-          cause instanceof Error
-            ? cause.message
-            : "Failed to link the LifeOps GitHub account to this agent.",
-          "error",
-          4200,
-        );
-      } finally {
-        setBusyAgentGithubId(null);
-      }
-    },
-    [loadGithub, setActionNotice],
-  );
-
   useEffect(() => {
     drainLifeOpsGithubCallbacks().forEach(handleGithubCallback);
 
@@ -553,6 +485,99 @@ export function LifeOpsPageView() {
     () => selectPrimaryAgentGithubEntry(agentGithubEntries),
     [agentGithubEntries],
   );
+  const ownerGithubSetup = useMemo(
+    () => ({
+      identity: elizaCloudConnected
+        ? readGithubIdentity(primaryOwnerGithubConnection)
+        : "Cloud required",
+      status: elizaCloudConnected
+        ? primaryOwnerGithubConnection
+          ? "1 / 1"
+          : githubLoading
+            ? "Loading"
+            : "0 / 1"
+        : "Cloud required",
+      connectLabel: primaryOwnerGithubConnection ? "Reconnect" : "Connect",
+      connectDisabled: ownerGithubBusy || !elizaCloudConnected,
+      disconnectDisabled:
+        disconnectingOwnerConnectionId === primaryOwnerGithubConnection?.id,
+      onConnect: elizaCloudConnected
+        ? () => {
+            void handleConnectOwnerGithub();
+          }
+        : undefined,
+      onDisconnect: primaryOwnerGithubConnection
+        ? () => {
+            void handleDisconnectOwnerGithub(primaryOwnerGithubConnection.id);
+          }
+        : undefined,
+    }),
+    [
+      disconnectingOwnerConnectionId,
+      elizaCloudConnected,
+      githubLoading,
+      handleConnectOwnerGithub,
+      handleDisconnectOwnerGithub,
+      ownerGithubBusy,
+      primaryOwnerGithubConnection,
+    ],
+  );
+  const agentGithubSetup = useMemo(
+    () => ({
+      identity: elizaCloudConnected
+        ? primaryAgentGithubEntry?.github?.connected
+          ? readGithubIdentity({
+              displayName: primaryAgentGithubEntry.github.githubDisplayName,
+              username: primaryAgentGithubEntry.github.githubUsername,
+              email: primaryAgentGithubEntry.github.githubEmail,
+            })
+          : primaryAgentGithubEntry?.agent.agent_name ?? "No cloud agent"
+        : "Cloud required",
+      status: elizaCloudConnected
+        ? primaryAgentGithubEntry?.github?.connected
+          ? "1 / 1"
+          : primaryAgentGithubEntry
+            ? "0 / 1"
+            : githubLoading
+              ? "Loading"
+              : "No cloud agent"
+        : "Cloud required",
+      connectLabel:
+        primaryAgentGithubEntry?.github?.connected ? "Reconnect" : "Connect",
+      connectDisabled:
+        !primaryAgentGithubEntry ||
+        busyAgentGithubId === primaryAgentGithubEntry.agent.agent_id,
+      disconnectDisabled:
+        !primaryAgentGithubEntry ||
+        busyAgentGithubId === primaryAgentGithubEntry.agent.agent_id,
+      onConnect:
+        elizaCloudConnected && primaryAgentGithubEntry
+          ? () => {
+              void handleConnectAgentGithub(
+                primaryAgentGithubEntry.agent.agent_id,
+              );
+            }
+          : undefined,
+      onDisconnect:
+        elizaCloudConnected &&
+        primaryAgentGithubEntry?.github?.connected &&
+        primaryAgentGithubEntry
+          ? () => {
+              void handleDisconnectAgentGithub(
+                primaryAgentGithubEntry.agent.agent_id,
+              );
+            }
+          : undefined,
+    }),
+    [
+      busyAgentGithubId,
+      elizaCloudConnected,
+      githubLoading,
+      handleConnectAgentGithub,
+      handleDisconnectAgentGithub,
+      primaryAgentGithubEntry,
+    ],
+  );
 
   return (
     <div
@@ -585,170 +610,29 @@ export function LifeOpsPageView() {
 
       {appEnabled && runtimeReady ? (
         <>
-          <LifeOpsSettingsSection />
+          <section className="overflow-hidden rounded-3xl border border-border/16 bg-card/18">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left"
+              onClick={() => setSetupOpen((current) => !current)}
+              aria-expanded={setupOpen}
+            >
+              <div className="text-sm font-semibold text-txt">Setup</div>
+              <ChevronDown
+                className={`h-4 w-4 text-muted transition-transform ${
+                  setupOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+
+            {setupOpen ? (
+              <div className="space-y-4 border-t border-border/12 px-4 pb-4 pt-4">
+                <LifeOpsSettingsSection />
+              </div>
+            ) : null}
+          </section>
 
           <LifeOpsWorkspaceView />
-
-          <div className="space-y-4">
-            <section className="overflow-hidden rounded-3xl border border-border/16 bg-card/18">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/12 px-4 py-4">
-                <div className="flex items-center gap-2 text-txt">
-                  <Github className="h-4 w-4 text-muted" />
-                  <div className="text-sm font-semibold">GitHub</div>
-                </div>
-                {!elizaCloudConnected ? (
-                  <Button variant="outline" size="sm" onClick={openCloudAgents}>
-                    Open Cloud
-                  </Button>
-                ) : null}
-              </div>
-
-              {githubError ? (
-                <div className="border-b border-danger/20 bg-danger/8 px-4 py-2 text-xs text-danger">
-                  {githubError}
-                </div>
-              ) : null}
-
-              <CompactGithubRow
-                label="User"
-                value={
-                  elizaCloudConnected
-                    ? readGithubIdentity(primaryOwnerGithubConnection)
-                    : "Cloud required"
-                }
-                status={
-                  elizaCloudConnected
-                    ? primaryOwnerGithubConnection
-                      ? "1 / 1"
-                      : githubLoading
-                        ? "Loading"
-                        : "0 / 1"
-                    : "Cloud required"
-                }
-                actions={
-                  elizaCloudConnected ? (
-                    <>
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="rounded-xl px-3 text-xs font-semibold"
-                        disabled={ownerGithubBusy}
-                        onClick={() => void handleConnectOwnerGithub()}
-                      >
-                        {primaryOwnerGithubConnection ? "Reconnect" : "Connect"}
-                      </Button>
-                      {primaryOwnerGithubConnection ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="rounded-xl px-3 text-xs font-semibold"
-                          disabled={
-                            disconnectingOwnerConnectionId ===
-                            primaryOwnerGithubConnection.id
-                          }
-                          onClick={() =>
-                            void handleDisconnectOwnerGithub(
-                              primaryOwnerGithubConnection.id,
-                            )
-                          }
-                        >
-                          Disconnect
-                        </Button>
-                      ) : null}
-                    </>
-                  ) : null
-                }
-              />
-
-              <CompactGithubRow
-                label="Agent"
-                value={
-                  elizaCloudConnected
-                    ? primaryAgentGithubEntry?.github?.connected
-                      ? readGithubIdentity({
-                          displayName:
-                            primaryAgentGithubEntry.github.githubDisplayName,
-                          username:
-                            primaryAgentGithubEntry.github.githubUsername,
-                          email: primaryAgentGithubEntry.github.githubEmail,
-                        })
-                      : primaryAgentGithubEntry?.agent.agent_name ?? "No cloud agent"
-                    : "Cloud required"
-                }
-                status={
-                  elizaCloudConnected
-                    ? primaryAgentGithubEntry?.github?.connected
-                      ? "1 / 1"
-                      : primaryAgentGithubEntry
-                        ? "0 / 1"
-                        : githubLoading
-                          ? "Loading"
-                          : "No cloud agent"
-                    : "Cloud required"
-                }
-                actions={
-                  elizaCloudConnected && primaryAgentGithubEntry ? (
-                    <>
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="rounded-xl px-3 text-xs font-semibold"
-                        disabled={
-                          busyAgentGithubId === primaryAgentGithubEntry.agent.agent_id
-                        }
-                        onClick={() =>
-                          void handleConnectAgentGithub(
-                            primaryAgentGithubEntry.agent.agent_id,
-                          )
-                        }
-                      >
-                        {primaryAgentGithubEntry.github?.connected
-                          ? "Reconnect"
-                          : "Connect"}
-                      </Button>
-                      {primaryOwnerGithubConnection ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="rounded-xl px-3 text-xs font-semibold"
-                          disabled={
-                            busyAgentGithubId === primaryAgentGithubEntry.agent.agent_id
-                          }
-                          onClick={() =>
-                            void handleUseOwnerGithub(
-                              primaryAgentGithubEntry.agent.agent_id,
-                              primaryOwnerGithubConnection.id,
-                            )
-                          }
-                        >
-                          Use user GitHub
-                        </Button>
-                      ) : null}
-                      {primaryAgentGithubEntry.github?.connected ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="rounded-xl px-3 text-xs font-semibold"
-                          disabled={
-                            busyAgentGithubId === primaryAgentGithubEntry.agent.agent_id
-                          }
-                          onClick={() =>
-                            void handleDisconnectAgentGithub(
-                              primaryAgentGithubEntry.agent.agent_id,
-                            )
-                          }
-                        >
-                          Disconnect
-                        </Button>
-                      ) : null}
-                    </>
-                  ) : null
-                }
-              />
-            </section>
-
-            <LifeOpsBrowserSetupPanel />
-          </div>
         </>
       ) : null}
 
