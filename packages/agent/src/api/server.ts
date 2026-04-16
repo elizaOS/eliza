@@ -52,6 +52,7 @@ import {
   type AgentRuntime,
   ChannelType,
   createMessageMemory,
+  type IAgentRuntime,
   logger,
   stringToUuid,
   type UUID,
@@ -3123,7 +3124,24 @@ async function handleRequest(
       auditSeverities: AUDIT_SEVERITIES,
       getAuditFeedSize,
       queryAuditFeed: (query) =>
-        queryAuditFeed(query).map((entry) => ({
+        queryAuditFeed({
+          type:
+            typeof query.type === "string" &&
+            AUDIT_EVENT_TYPES.includes(
+              query.type as (typeof AUDIT_EVENT_TYPES)[number],
+            )
+              ? (query.type as (typeof AUDIT_EVENT_TYPES)[number])
+              : undefined,
+          severity:
+            typeof query.severity === "string" &&
+            AUDIT_SEVERITIES.includes(
+              query.severity as (typeof AUDIT_SEVERITIES)[number],
+            )
+              ? (query.severity as (typeof AUDIT_SEVERITIES)[number])
+              : undefined,
+          sinceMs: query.sinceMs,
+          limit: query.limit,
+        }).map((entry) => ({
           timestamp: entry.timestamp,
           type: entry.type,
           summary: entry.summary,

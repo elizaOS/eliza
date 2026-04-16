@@ -73,6 +73,25 @@ export interface CompanionShellComponentProps {
   actionNotice: ActionNotice | null;
 }
 
+export type CompanionInferenceNotice =
+  | { kind: "cloud"; variant: "danger" | "warn"; tooltip: string }
+  | { kind: "settings"; variant: "warn"; tooltip: string };
+
+export interface ResolveCompanionInferenceNoticeArgs {
+  elizaCloudConnected: boolean;
+  elizaCloudAuthRejected: boolean;
+  elizaCloudCreditsError: string | null | undefined;
+  elizaCloudEnabled: boolean;
+  chatLastUsageModel?: string;
+  hasInterruptedAssistant: boolean;
+  t: (key: string) => string;
+}
+
+export interface CompanionInferenceAlertButtonProps {
+  notice: CompanionInferenceNotice;
+  onClick: () => void;
+}
+
 export interface AppBootConfig {
   /** Branding overrides (product name, URLs, etc.). */
   branding: Partial<BrandingConfig>;
@@ -92,6 +111,14 @@ export interface AppBootConfig {
   characterEditor?: ComponentType<Record<string, unknown>>;
   /** Companion shell implementation provided by the host app. */
   companionShell?: ComponentType<CompanionShellComponentProps>;
+  /** Companion notice resolver injected by the host app. */
+  resolveCompanionInferenceNotice?: (
+    args: ResolveCompanionInferenceNoticeArgs,
+  ) => CompanionInferenceNotice | null;
+  /** Companion warning button implementation provided by the host app. */
+  companionInferenceAlertButton?: ComponentType<CompanionInferenceAlertButtonProps>;
+  /** Companion overlay content mounted above the shared shell. */
+  companionGlobalOverlay?: ComponentType<Record<string, never>>;
   /** LifeOps page implementation provided by the host app. */
   lifeOpsPageView?: ComponentType<Record<string, never>>;
   /** LifeOps browser setup panel provided by the host app. */
