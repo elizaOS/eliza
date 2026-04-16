@@ -3,6 +3,7 @@
   "compilerOptions": {
     "allowJs": true,
     "noEmit": false,
+    "rewriteRelativeImportExtensions": true,
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,

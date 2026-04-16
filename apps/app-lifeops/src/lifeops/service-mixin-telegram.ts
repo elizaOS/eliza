@@ -226,7 +226,8 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
     // Internal helpers
     // -----------------------------------------------------------------------
 
-    private async persistTelegramGrant(
+    /** @internal */
+    async persistTelegramGrant(
       side: LifeOpsConnectorSide,
       phone: string,
       authIdentity?: { id: string; username: string; firstName: string } | null,
