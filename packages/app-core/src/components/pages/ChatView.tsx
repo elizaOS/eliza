@@ -927,7 +927,7 @@ function InboxChatPanel({
                   ? replyError
                   : t("inboxview.ReplyHint", {
                       defaultValue:
-                        "Sent through the connected {{source}} account on this Mac.",
+                        "Sent through the connected {{source}} account on this device.",
                       source: sourceLabel,
                     })}
               </div>
