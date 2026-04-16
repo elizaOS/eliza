@@ -1,3 +1,4 @@
+import * as SelectPrimitive from "@radix-ui/react-select";
 import * as React from "react";
 
 import { cn } from "../../lib/utils";
@@ -48,8 +49,8 @@ export function FormSelect({
 }
 
 export const FormSelectItem = React.forwardRef<
-  React.ElementRef<typeof SelectItem>,
-  React.ComponentPropsWithoutRef<typeof SelectItem>
+  React.ElementRef<typeof SelectPrimitive.Item>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
 >(({ className, ...props }, ref) => (
   <SelectItem
     ref={ref}
