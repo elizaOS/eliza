@@ -377,6 +377,14 @@ export function runChecks() {
     if (!result.ok) {
       issues.push(`${check.name} failed.`);
       checklist.push(`${check.name} must pass before approval.`);
+      const tail = (text) => {
+        const lines = String(text || "").split("\n");
+        return lines.slice(-80).join("\n");
+      };
+      console.error(`\n=== ${check.name} stdout (last 80 lines) ===`);
+      console.error(tail(result.stdout));
+      console.error(`\n=== ${check.name} stderr (last 80 lines) ===`);
+      console.error(tail(result.stderr));
     }
   }
 
