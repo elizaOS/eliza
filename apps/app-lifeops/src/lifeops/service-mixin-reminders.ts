@@ -801,7 +801,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {
   class LifeOpsRemindersServiceMixin extends Base {
-    protected emitInAppReminderNudge(args: {
+    public emitInAppReminderNudge(args: {
       text: string;
       ownerType: "occurrence" | "calendar_event";
       ownerId: string;
@@ -818,7 +818,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       });
     }
 
-    protected async readRecentReminderConversation(args: {
+    public async readRecentReminderConversation(args: {
       subjectType: LifeOpsSubjectType;
       limit?: number;
     }): Promise<string[]> {
@@ -875,7 +875,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    protected async renderReminderBody(args: {
+    public async renderReminderBody(args: {
       title: string;
       scheduledFor: string;
       dueAt: string | null;
@@ -951,7 +951,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    protected async renderWorkflowRunBody(args: {
+    public async renderWorkflowRunBody(args: {
       workflow: Pick<LifeOpsWorkflowDefinition, "title" | "subjectType">;
       run: Pick<LifeOpsWorkflowRun, "status">;
     }): Promise<string> {
@@ -1011,7 +1011,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    protected async emitWorkflowRunNudge(
+    public async emitWorkflowRunNudge(
       workflow: LifeOpsWorkflowDefinition,
       run: LifeOpsWorkflowRun,
     ): Promise<void> {
@@ -1031,7 +1031,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       });
     }
 
-    protected withNativeAppleReminderId(
+    public withNativeAppleReminderId(
       definition: LifeOpsTaskDefinition,
       reminderId: string | null,
     ): LifeOpsTaskDefinition {
@@ -1053,7 +1053,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
-    protected async syncNativeAppleReminderForDefinition(args: {
+    public async syncNativeAppleReminderForDefinition(args: {
       definition: LifeOpsTaskDefinition | null;
       previousDefinition?: LifeOpsTaskDefinition | null;
     }): Promise<LifeOpsTaskDefinition | null> {
@@ -1156,7 +1156,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       );
     }
 
-    protected async getDefinitionRecord(
+    public async getDefinitionRecord(
       definitionId: string,
       now = new Date(),
     ): Promise<LifeOpsDefinitionRecord> {
@@ -1184,7 +1184,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
-    protected async getGoalRecord(goalId: string): Promise<LifeOpsGoalRecord> {
+    public async getGoalRecord(goalId: string): Promise<LifeOpsGoalRecord> {
       const goal = await this.repository.getGoal(this.agentId(), goalId);
       if (!goal) {
         fail(404, "life-ops goal not found");
@@ -1196,7 +1196,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return { goal, links };
     }
 
-    protected async ensureGoalExists(
+    public async ensureGoalExists(
       goalId: string | null,
       ownership?: Pick<LifeOpsOwnership, "domain" | "subjectType" | "subjectId">,
     ): Promise<string | null> {
@@ -1219,7 +1219,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return goal.id;
     }
 
-    protected async syncGoalLink(definition: LifeOpsTaskDefinition): Promise<void> {
+    public async syncGoalLink(definition: LifeOpsTaskDefinition): Promise<void> {
       await this.repository.deleteGoalLinksForLinked(
         definition.agentId,
         "definition",
@@ -1236,7 +1236,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       });
     }
 
-    protected async syncReminderPlan(
+    public async syncReminderPlan(
       definition: LifeOpsTaskDefinition,
       draft:
         | {
@@ -1297,13 +1297,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     /** Max age for the cached adaptive window policy (30 minutes). */
-    protected static readonly ADAPTIVE_POLICY_TTL_MS = 30 * 60 * 1000;
+    public static readonly ADAPTIVE_POLICY_TTL_MS = 30 * 60 * 1000;
 
     /**
      * Read the activity profile from the proactive task metadata and return
      * an adaptive window policy.  Result is cached for up to 30 minutes.
      */
-    protected async resolveAdaptiveWindowPolicy(
+    public async resolveAdaptiveWindowPolicy(
       timezone: string,
       now: Date,
     ): Promise<ReturnType<typeof computeAdaptiveWindowPolicy> | null> {
@@ -1353,7 +1353,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    protected async refreshDefinitionOccurrences(
+    public async refreshDefinitionOccurrences(
       definition: LifeOpsTaskDefinition,
       now = new Date(),
     ): Promise<LifeOpsOccurrence[]> {
@@ -1392,7 +1392,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return materialized;
     }
 
-    protected async getFreshOccurrence(
+    public async getFreshOccurrence(
       occurrenceId: string,
       now = new Date(),
     ): Promise<{
@@ -1429,7 +1429,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
-    protected async resolvePrimaryChannelPolicy(
+    public async resolvePrimaryChannelPolicy(
       channelType: LifeOpsChannelPolicy["channelType"],
     ): Promise<LifeOpsChannelPolicy | null> {
       const policies = (
@@ -1442,7 +1442,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       );
     }
 
-    protected async resolveRuntimeReminderTarget(
+    public async resolveRuntimeReminderTarget(
       channel: Exclude<
         LifeOpsReminderStep["channel"],
         "in_app" | "sms" | "voice"
@@ -1535,7 +1535,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
-    protected async readReminderActivityProfileSnapshot(): Promise<ReminderActivityProfileSnapshot | null> {
+    public async readReminderActivityProfileSnapshot(): Promise<ReminderActivityProfileSnapshot | null> {
       try {
         const tasks = await this.runtime.getTasks({
           agentIds: [this.runtime.agentId],
@@ -1584,7 +1584,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
      * owner was seen active after the reminder was sent. This gives escalation
      * better signal about whether the owner is reachable.
      */
-    protected async scanReadReceipts(
+    public async scanReadReceipts(
       attempts: LifeOpsReminderAttempt[],
       activityProfile: ReminderActivityProfileSnapshot | null,
       now: Date,
@@ -1627,7 +1627,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    protected buildReminderPlanSchedule(args: {
+    public buildReminderPlanSchedule(args: {
       ownerType: "occurrence" | "calendar_event";
       ownerId: string;
       occurrenceId: string | null;
@@ -1700,7 +1700,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return rows;
     }
 
-    protected async resolveReminderEscalationChannels(args: {
+    public async resolveReminderEscalationChannels(args: {
       activityProfile: ReminderActivityProfileSnapshot | null;
       policies: LifeOpsChannelPolicy[];
       urgency: LifeOpsReminderUrgency;
@@ -1799,7 +1799,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return ordered;
     }
 
-    protected async markReminderEscalationStarted(args: {
+    public async markReminderEscalationStarted(args: {
       ownerType: "occurrence" | "calendar_event";
       ownerId: string;
       attemptedAt: string;
@@ -1875,7 +1875,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       });
     }
 
-    protected async resolveReminderEscalation(args: {
+    public async resolveReminderEscalation(args: {
       ownerType: "occurrence" | "calendar_event";
       ownerId: string;
       resolvedAt: string;
@@ -1975,7 +1975,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       );
     }
 
-    protected async dispatchDueReminderEscalation(args: {
+    public async dispatchDueReminderEscalation(args: {
       plan: LifeOpsReminderPlan;
       ownerType: "occurrence" | "calendar_event";
       ownerId: string;
@@ -2158,7 +2158,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return attempt;
     }
 
-    protected async awardWebsiteAccessGrant(
+    public async awardWebsiteAccessGrant(
       definition: LifeOpsTaskDefinition,
       occurrenceId: string,
       now = new Date(),
@@ -2200,7 +2200,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       await this.repository.upsertWebsiteAccessGrant(grant);
     }
 
-    protected async syncWebsiteAccessState(now = new Date()): Promise<void> {
+    public async syncWebsiteAccessState(now = new Date()): Promise<void> {
       const definitions = (
         await this.repository.listDefinitions(this.agentId())
       ).filter(
@@ -2317,7 +2317,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    protected async dispatchReminderAttempt(args: {
+    public async dispatchReminderAttempt(args: {
       plan: LifeOpsReminderPlan;
       ownerType: "occurrence" | "calendar_event";
       ownerId: string;
@@ -2609,7 +2609,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return attempt;
     }
 
-    protected resolveGlobalReminderPreferencePolicy(
+    public resolveGlobalReminderPreferencePolicy(
       policies: LifeOpsChannelPolicy[],
     ): LifeOpsChannelPolicy | null {
       const candidates = policies.filter(
@@ -2625,7 +2625,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       );
     }
 
-    protected buildReminderPreferenceResponse(
+    public buildReminderPreferenceResponse(
       definition: LifeOpsTaskDefinition | null,
       policies: LifeOpsChannelPolicy[],
     ): LifeOpsReminderPreference {
@@ -2654,7 +2654,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
-    protected resolveEffectiveReminderPlan(
+    public resolveEffectiveReminderPlan(
       plan: LifeOpsReminderPlan | null,
       preference: LifeOpsReminderPreference,
     ): LifeOpsReminderPlan | null {

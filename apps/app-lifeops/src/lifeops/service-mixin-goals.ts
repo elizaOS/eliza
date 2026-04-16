@@ -246,7 +246,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       };
     }
 
-    protected async collectLinkedDefinitionsForGoal(
+    public async collectLinkedDefinitionsForGoal(
       goalRecord: LifeOpsGoalRecord,
     ): Promise<LifeOpsTaskDefinition[]> {
       const linkedDefinitionIds = new Set(
@@ -265,7 +265,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
         .sort((left, right) => left.title.localeCompare(right.title));
     }
 
-    protected async collectOccurrenceViewsForDefinitions(
+    public async collectOccurrenceViewsForDefinitions(
       definitions: LifeOpsTaskDefinition[],
     ): Promise<LifeOpsOccurrenceView[]> {
       const views: LifeOpsOccurrenceView[] = [];
@@ -292,7 +292,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       return views;
     }
 
-    protected deriveGoalReviewState(
+    public deriveGoalReviewState(
       goal: LifeOpsGoalDefinition,
       definitions: LifeOpsTaskDefinition[],
       activeOccurrences: LifeOpsOccurrenceView[],
@@ -341,7 +341,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       return "on_track";
     }
 
-    protected buildGoalReviewExplanation(args: {
+    public buildGoalReviewExplanation(args: {
       goal: LifeOpsGoalDefinition;
       linkedDefinitionCount: number;
       activeOccurrenceCount: number;
@@ -374,7 +374,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       return "This goal has support structure and does not currently have overdue work.";
     }
 
-    protected buildGoalSupportSuggestions(args: {
+    public buildGoalSupportSuggestions(args: {
       goal: LifeOpsGoalDefinition;
       linkedDefinitions: LifeOpsTaskDefinition[];
       activeOccurrences: LifeOpsOccurrenceView[];
@@ -440,7 +440,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       return suggestions.slice(0, 3);
     }
 
-    protected formatLocalHourMinute(
+    public formatLocalHourMinute(
       isoValue: string | null,
       timeZone: string,
     ): string | null {
@@ -457,7 +457,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       ).padStart(2, "0")}`;
     }
 
-    protected median(values: number[]): number | null {
+    public median(values: number[]): number | null {
       if (values.length === 0) {
         return null;
       }
@@ -469,7 +469,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       return (sorted[middle - 1] + sorted[middle]) / 2;
     }
 
-    protected async buildGoalSemanticEvidence(args: {
+    public async buildGoalSemanticEvidence(args: {
       activeOccurrences: LifeOpsOccurrenceView[];
       goal: LifeOpsGoalDefinition;
       lastActivityAt: string | null;
@@ -596,7 +596,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       };
     }
 
-    protected getCachedSemanticGoalReview(args: {
+    public getCachedSemanticGoalReview(args: {
       goal: LifeOpsGoalDefinition;
       now: Date;
     }) {
@@ -614,7 +614,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       return cached;
     }
 
-    protected async syncComputedGoalReviewState(
+    public async syncComputedGoalReviewState(
       goal: LifeOpsGoalDefinition,
       reviewState: LifeOpsGoalDefinition["reviewState"],
       summary: LifeOpsGoalReview["summary"],
@@ -668,7 +668,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       return nextGoal;
     }
 
-    protected async buildGoalReview(
+    public async buildGoalReview(
       goalRecord: LifeOpsGoalRecord,
       now: Date,
       options: { allowSemanticEvaluation?: boolean } = {},
@@ -888,7 +888,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       };
     }
 
-    protected async refreshGoalReviewStates(
+    public async refreshGoalReviewStates(
       now: Date,
     ): Promise<LifeOpsGoalDefinition[]> {
       const goals = (await this.repository.listGoals(this.agentId())).filter(

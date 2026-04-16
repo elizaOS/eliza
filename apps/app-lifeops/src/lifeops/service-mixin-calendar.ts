@@ -72,7 +72,7 @@ const DEFAULT_GMAIL_TRIAGE_MAX_RESULTS = 12;
 export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
   class LifeOpsCalendarServiceMixin extends Base {
 
-    protected async recordCalendarEventAudit(
+    public async recordCalendarEventAudit(
       ownerId: string,
       reason: string,
       inputs: Record<string, unknown>,
@@ -96,7 +96,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
       );
     }
 
-    protected async syncCalendarReminderPlans(
+    public async syncCalendarReminderPlans(
       events: LifeOpsCalendarEvent[],
     ): Promise<void> {
       const eventIds = events.map((event) => event.id);
@@ -138,7 +138,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
       }
     }
 
-    protected async deleteCalendarReminderPlansForEvents(
+    public async deleteCalendarReminderPlansForEvents(
       eventIds: string[],
     ): Promise<void> {
       if (eventIds.length === 0) {
@@ -154,7 +154,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
       }
     }
 
-    protected async syncGoogleCalendarFeed(args: {
+    public async syncGoogleCalendarFeed(args: {
       requestUrl: URL;
       requestedMode?: LifeOpsConnectorMode;
       requestedSide?: LifeOpsConnectorSide;
@@ -359,7 +359,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
       });
     }
 
-    private async aggregateCalendarFeeds(
+    public async aggregateCalendarFeeds(
       requestUrl: URL,
       grants: readonly LifeOpsConnectorGrant[],
       calendarId: string,

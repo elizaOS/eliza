@@ -299,7 +299,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {
   class LifeOpsBrowserServiceMixin extends Base {
-    protected async createBrowserSessionInternal(
+    public async createBrowserSessionInternal(
       request: CreateLifeOpsBrowserSessionRequest,
     ): Promise<LifeOpsBrowserSession> {
       const workflowId = normalizeOptionalString(request.workflowId) ?? null;
@@ -355,7 +355,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       return session;
     }
 
-    protected async requireBrowserCompanion(
+    public async requireBrowserCompanion(
       companionId: string,
       pairingToken: string,
     ): Promise<LifeOpsBrowserCompanionStatus> {
@@ -427,7 +427,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
-    protected async claimQueuedBrowserSession(
+    public async claimQueuedBrowserSession(
       companion: LifeOpsBrowserCompanionStatus,
     ): Promise<LifeOpsBrowserSession | null> {
       const claimable = (await this.listBrowserSessions())
@@ -478,7 +478,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       return nextSession;
     }
 
-    protected async requireBrowserSessionForCompanion(
+    public async requireBrowserSessionForCompanion(
       companion: LifeOpsBrowserCompanionStatus,
       sessionId: string,
     ): Promise<LifeOpsBrowserSession> {
