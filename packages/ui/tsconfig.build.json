@@ -8,8 +8,9 @@
     "outDir": "./dist",
     "rootDir": "../../",
     "rewriteRelativeImportExtensions": true,
+    "stripInternal": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo"
   },
   "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"],
-  "include": ["src"]
+  "include": ["src", "../agent/src/external-modules.d.ts"]
 }

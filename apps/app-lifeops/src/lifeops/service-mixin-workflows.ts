@@ -42,6 +42,7 @@ import type { LifeOpsWorkflowSchedulerState, ExecuteWorkflowResult } from "./ser
 import { LifeOpsServiceError } from "./service-types.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
+/** @internal */
 export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
   class LifeOpsWorkflowsServiceMixin extends Base {
     protected readWorkflowSchedulerState(

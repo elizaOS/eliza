@@ -9,6 +9,7 @@
     "resolveJsonModule": true,
     "rootDir": "../../",
     "rewriteRelativeImportExtensions": true,
+    "stripInternal": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo"
   },
   "exclude": [

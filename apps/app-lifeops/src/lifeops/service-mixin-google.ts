@@ -75,6 +75,7 @@ function sameNormalizedStringSet(
 // Google mixin
 // ---------------------------------------------------------------------------
 
+/** @internal */
 export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {

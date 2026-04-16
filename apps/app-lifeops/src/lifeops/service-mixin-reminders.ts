@@ -796,6 +796,7 @@ function computeDefinitionPerformance(
 // Reminders mixin
 // ---------------------------------------------------------------------------
 
+/** @internal */
 export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {

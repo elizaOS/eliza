@@ -69,6 +69,7 @@ import {
 } from "./service-constants.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
+/** @internal */
 export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
   class LifeOpsGoalsServiceMixin extends Base {
     async deleteGoal(goalId: string): Promise<void> {

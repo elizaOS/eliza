@@ -27,7 +27,7 @@ import { withX } from "./service-mixin-x.js";
  * (Calendar, Gmail) → business logic (Reminders, Browser, Workflows,
  * Definitions, Goals) → connectors (X).
  */
-const LifeOpsServiceComposedBase = withX(
+class LifeOpsServiceComposedBase extends withX(
   withGoals(
     withDefinitions(
       withWorkflows(

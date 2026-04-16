@@ -68,6 +68,7 @@ import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 const DEFAULT_GMAIL_TRIAGE_MAX_RESULTS = 12;
 
+/** @internal */
 export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
   class LifeOpsCalendarServiceMixin extends Base {
 
