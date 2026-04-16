@@ -21,6 +21,7 @@
     "package.json"
   ],
   "scripts": {
+    "postinstall": "node scripts/ensure-platform-deps.mjs",
     "build": "bun run build.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
