@@ -34,6 +34,7 @@ export function isTestExempt(file) {
   if (/(^|\/)(bun\.lock|package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/.test(file))
     return true;
   if (/(^|\/)package\.json$/.test(file)) return true;
+  if (/(^|\/)tsconfig(\.[\w-]+)?\.json$/.test(file)) return true;
   if (/(^|\/)(vite|vitest|tsdown|rollup|tsup|webpack|esbuild)\.config\.[cm]?[jt]s$/.test(file))
     return true;
   if (file.startsWith("test/helpers/") || /(^|\/)test\/helpers\//.test(file))
