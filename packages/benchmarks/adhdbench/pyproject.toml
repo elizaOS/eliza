@@ -5,7 +5,7 @@ description = "Attention & context scaling benchmark for ElizaOS agents"
 requires-python = ">=3.11"
 dependencies = [
     "elizaos",
-    "rich>=13.0,<15",
+    "rich>=15,<16",
     "pyyaml>=6.0,<7",
 ]
 
