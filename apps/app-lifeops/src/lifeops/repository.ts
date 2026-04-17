@@ -1671,6 +1671,65 @@ export class LifeOpsRepository {
 
     await executeRawSql(
       runtime,
+      `CREATE TABLE IF NOT EXISTS life_inbox_triage_entries (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        source TEXT NOT NULL,
+        source_room_id TEXT,
+        source_entity_id TEXT,
+        source_message_id TEXT,
+        channel_name TEXT NOT NULL,
+        channel_type TEXT NOT NULL,
+        deep_link TEXT,
+        classification TEXT NOT NULL,
+        urgency TEXT NOT NULL DEFAULT 'low',
+        confidence REAL NOT NULL DEFAULT 0.5,
+        snippet TEXT NOT NULL DEFAULT '',
+        sender_name TEXT,
+        thread_context TEXT,
+        triage_reasoning TEXT,
+        suggested_response TEXT,
+        draft_response TEXT,
+        auto_replied BOOLEAN NOT NULL DEFAULT FALSE,
+        resolved BOOLEAN NOT NULL DEFAULT FALSE,
+        resolved_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE INDEX IF NOT EXISTS idx_life_inbox_triage_entries_agent_created
+       ON life_inbox_triage_entries(agent_id, created_at DESC)`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE INDEX IF NOT EXISTS idx_life_inbox_triage_entries_agent_source_message
+       ON life_inbox_triage_entries(agent_id, source_message_id)`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_inbox_triage_examples (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        source TEXT NOT NULL,
+        snippet TEXT NOT NULL DEFAULT '',
+        classification TEXT NOT NULL,
+        owner_action TEXT NOT NULL,
+        owner_classification TEXT,
+        context_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL
+      )`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE INDEX IF NOT EXISTS idx_life_inbox_triage_examples_agent_created
+       ON life_inbox_triage_examples(agent_id, created_at DESC)`,
+    );
+
+    await executeRawSql(
+      runtime,
       `CREATE TABLE IF NOT EXISTS life_x_dms (
         id TEXT PRIMARY KEY,
         agent_id TEXT NOT NULL,

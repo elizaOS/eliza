@@ -1,4 +1,5 @@
 import { promises as fs } from "node:fs";
+import type http from "node:http";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
@@ -33,10 +34,14 @@ const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
 };
 
 async function streamAppHero(
-  res: unknown,
+  res: http.ServerResponse,
   absolutePath: string,
   contentType: string,
-  error: (response: unknown, message: string, status?: number) => void,
+  error: (
+    response: http.ServerResponse,
+    message: string,
+    status?: number,
+  ) => void,
 ): Promise<void> {
   let data: Buffer;
   try {

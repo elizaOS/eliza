@@ -6,6 +6,7 @@
  */
 
 import type { DeviceBridgeStatus } from "../services/local-inference/device-bridge";
+import type { VerifyResult } from "../services/local-inference/verify";
 import type {
   ActiveModelState,
   AgentModelSlot,
@@ -30,6 +31,7 @@ export type {
   ModelAssignments,
   ModelBucket,
   ModelHubSnapshot,
+  VerifyResult,
 };
 
 declare module "./client-base" {
@@ -60,6 +62,7 @@ declare module "./client-base" {
       slot: AgentModelSlot,
       modelId: string | null,
     ): Promise<{ assignments: ModelAssignments }>;
+    verifyLocalInferenceModel(id: string): Promise<VerifyResult>;
   }
 }
 
@@ -176,4 +179,14 @@ ElizaClient.prototype.setLocalInferenceAssignment = async function (
     method: "POST",
     body: JSON.stringify({ slot, modelId }),
   });
+};
+
+ElizaClient.prototype.verifyLocalInferenceModel = async function (
+  this: ElizaClient,
+  id: string,
+) {
+  return this.fetch(
+    `/api/local-inference/installed/${encodeURIComponent(id)}/verify`,
+    { method: "POST" },
+  );
 };

@@ -80,7 +80,8 @@ export const lifeOpsComputerUseAction: Action = {
     "Control the owner's desktop (screenshots, mouse, keyboard, browser, " +
     "windows, files, terminal) via @elizaos/plugin-computeruse. Use this for " +
     "portal uploads, browser form-filling, and other on-machine workflows the " +
-    "assistant should perform directly. Owner-only. " +
+    "assistant should perform directly, including standing instructions like " +
+    "'when I send the file, upload it to the portal for me.' Owner-only. " +
     "Disabled when ELIZA_LIFEOPS_COMPUTER_USE_ENABLED=0.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {

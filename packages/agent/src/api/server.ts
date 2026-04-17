@@ -4025,8 +4025,16 @@ async function handleRequest(
               ? (runtime as IAgentRuntime)
               : null,
           ),
-        stop: (pluginManager, name, runId) =>
-          state.appManager.stop(pluginManager, name, runId),
+        stop: (pluginManager, name, runId, runtime) =>
+          state.appManager.stop(
+            pluginManager,
+            name,
+            runId,
+            runtime && typeof runtime === "object"
+              ? (runtime as IAgentRuntime)
+              : null,
+          ),
+        recordHeartbeat: (runId) => state.appManager.recordHeartbeat(runId),
         getInfo: (pluginManager, name) =>
           state.appManager.getInfo(pluginManager, name),
       },

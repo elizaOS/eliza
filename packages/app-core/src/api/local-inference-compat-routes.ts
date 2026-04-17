@@ -414,6 +414,27 @@ export async function handleLocalInferenceCompatRoutes(
     return true;
   }
 
+  // ── POST: verify installed model ────────────────────────────────────
+  {
+    const match = /^\/api\/local-inference\/installed\/([^/]+)\/verify$/.exec(
+      pathname,
+    );
+    if (method === "POST" && match) {
+      if (!ensureCompatApiAuthorized(req, res)) return true;
+      try {
+        const result = await localInferenceService.verifyModel(match[1] ?? "");
+        sendJsonResponse(res, 200, result);
+      } catch (err) {
+        sendJsonErrorResponse(
+          res,
+          404,
+          err instanceof Error ? err.message : "Failed to verify model",
+        );
+      }
+      return true;
+    }
+  }
+
   // ── DELETE: uninstall model ─────────────────────────────────────────
   {
     const id = matchInstalledId(pathname);

@@ -67,6 +67,23 @@ describe("LifeOps self-care prompt benchmark contracts", () => {
     }
   });
 
+  it("treats first-turn smalltalk warmups as subtle non-requests instead of execution asks", async () => {
+    const cases = await buildSelfCarePromptBenchmarkCases();
+    const brushTeethSmalltalkDirect = cases.find(
+      (testCase) =>
+        testCase.baseScenarioId === "brush-teeth-smalltalk-preference" &&
+        testCase.variantId === "direct",
+    );
+
+    expect(brushTeethSmalltalkDirect).toMatchObject({
+      expectedAction: null,
+      acceptableActions: ["REPLY"],
+      forbiddenActions: ["LIFE"],
+      riskClass: "null",
+    });
+    expect(brushTeethSmalltalkDirect?.notes ?? "").toContain("subtle non-request");
+  });
+
   it("keeps the subtle null slice non-executing and prompt-distinct", async () => {
     const cases = await buildSelfCarePromptBenchmarkCases();
     const nullCases = cases.filter((testCase) => testCase.variantId === "subtle-null");

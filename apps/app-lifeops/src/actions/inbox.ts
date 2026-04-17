@@ -148,8 +148,9 @@ async function resolveSubactionPlan(
     '{"subaction":"triage"|"digest"|"respond"|null,"shouldAct":true|false,"response":"string|null","target":"string|null","entryId":"string|null","confirmed":true|false|null}',
     "",
     "Choose triage for requests to scan new messages, unread items, or the current inbox.",
-    "Choose digest for requests to summarize, brief, recap, review inbox activity, give a daily brief, rank urgent-vs-low items, or surface drafts awaiting sign-off.",
+    "Choose digest for requests to summarize, brief, recap, review inbox activity, give a daily brief, rank urgent-vs-low items, surface drafts awaiting sign-off, or add a standing requirement to a recurring daily brief.",
     "Choose respond for requests to reply, draft, edit, approve, confirm, send a reply to a message or person, repair a missed call by drafting follow-up, or set up a group-chat handoff.",
+    "Standing inbox policies like 'if relaying gets messy, suggest a group chat handoff' or 'if I miss a call, repair that and reschedule' should still choose an inbox subaction instead of shouldAct=false.",
     "If a pending draft exists and the current request clearly refers to sending, revising, or confirming it, choose respond even if the user does not restate the recipient.",
     "Set confirmed=true only when the user clearly approves sending the current pending draft right now.",
     "Set confirmed=false when the user is editing, hesitating, declining, or asking for more changes to the current draft.",
@@ -385,6 +386,48 @@ export const inboxAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "I'll send this to Alice on Discord DM:\n\n> Hey Alice, yes we're still on for tomorrow!\n\nSay \"send it\" to confirm.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "In the daily brief, also tell me which drafts still need my sign-off.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll include any drafts still waiting for your sign-off in the daily inbox brief.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "I missed a call with the Frontier Tower guys today. Need to repair that and reschedule if possible asap.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll draft the repair follow-up and line up the reschedule details so we can send it quickly.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "If direct relaying gets messy here, suggest making a group chat handoff instead.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Understood. If the relay gets tangled, I'll suggest a group-chat handoff instead of letting the thread drift.",
         },
       },
     ],

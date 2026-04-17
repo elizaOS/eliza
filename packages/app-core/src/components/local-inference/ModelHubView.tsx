@@ -20,6 +20,8 @@ interface ModelHubViewProps {
   onCancel: (modelId: string) => void;
   onActivate: (modelId: string) => void;
   onUninstall: (modelId: string) => void;
+  onVerify?: (modelId: string) => void;
+  onRedownload?: (modelId: string) => void;
   busy: boolean;
 }
 
@@ -41,6 +43,8 @@ export function ModelHubView({
   onCancel,
   onActivate,
   onUninstall,
+  onVerify,
+  onRedownload,
   busy,
 }: ModelHubViewProps) {
   const grouped = useMemo(() => groupByBucket(catalog), [catalog]);
