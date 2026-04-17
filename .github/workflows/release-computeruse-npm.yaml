@@ -133,7 +133,7 @@ jobs:
           targets: ${{ matrix.settings.target }}
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
