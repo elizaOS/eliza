@@ -9,16 +9,16 @@
  * persisted to disk and immediately visible to `resolveAppUserName`.
  */
 
-import type { Action, HandlerOptions, State } from "@elizaos/core";
-import {
-  getValidationKeywordTerms,
-  textIncludesKeywordTerm,
-} from "@elizaos/shared/validation-keywords";
 import {
   fetchConfiguredOwnerName,
   OWNER_NAME_MAX_LENGTH,
   persistConfiguredOwnerName,
 } from "@elizaos/app-lifeops/lifeops/owner-profile";
+import type { Action, HandlerOptions, State } from "@elizaos/core";
+import {
+  getValidationKeywordTerms,
+  textIncludesKeywordTerm,
+} from "@elizaos/shared/validation-keywords";
 import { hasOwnerAccess } from "../security/access.js";
 
 const SET_USER_NAME_CONTEXT_TERMS = getValidationKeywordTerms(

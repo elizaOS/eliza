@@ -1,14 +1,8 @@
-import { LanguageDropdown } from "../shared/LanguageDropdown";
-import { ThemeToggle } from "../shared/ThemeToggle";
-import { useMediaQuery } from "../../hooks/useMediaQuery";
-import type { UiLanguage } from "../../i18n/messages";
-import type { ShellView } from "../../state/types";
-import type { UiTheme } from "../../state/ui-preferences";
-
+import { Button } from "@elizaos/ui";
 import {
-  type LucideIcon,
   Check,
   Loader2,
+  type LucideIcon,
   MessageCirclePlus,
   Monitor,
   PencilLine,
@@ -19,7 +13,13 @@ import {
   VolumeX,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { Button } from "@elizaos/ui";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
+import type { UiLanguage } from "../../i18n/messages";
+import type { ShellView } from "../../state/types";
+import type { UiTheme } from "../../state/ui-preferences";
+import { LanguageDropdown } from "../shared/LanguageDropdown";
+import { ThemeToggle } from "../shared/ThemeToggle";
+
 type ShellHeaderTranslator = (key: string) => string;
 
 const SHELL_MODE_MOBILE_BREAKPOINT = 639;

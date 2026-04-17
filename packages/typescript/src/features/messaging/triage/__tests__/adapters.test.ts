@@ -11,12 +11,32 @@ import { createFakeRuntime } from "./fake-runtime.ts";
 
 const cases = [
 	{ name: "gmail", make: () => new GmailMessageAdapter(), service: "gmail" },
-	{ name: "discord", make: () => new DiscordMessageAdapter(), service: "discord" },
-	{ name: "telegram", make: () => new TelegramMessageAdapter(), service: "telegram" },
-	{ name: "twitter", make: () => new TwitterMessageAdapter(), service: "twitter" },
-	{ name: "imessage", make: () => new IMessageMessageAdapter(), service: "imessage" },
+	{
+		name: "discord",
+		make: () => new DiscordMessageAdapter(),
+		service: "discord",
+	},
+	{
+		name: "telegram",
+		make: () => new TelegramMessageAdapter(),
+		service: "telegram",
+	},
+	{
+		name: "twitter",
+		make: () => new TwitterMessageAdapter(),
+		service: "twitter",
+	},
+	{
+		name: "imessage",
+		make: () => new IMessageMessageAdapter(),
+		service: "imessage",
+	},
 	{ name: "signal", make: () => new SignalMessageAdapter(), service: "signal" },
-	{ name: "whatsapp", make: () => new WhatsappMessageAdapter(), service: "whatsapp" },
+	{
+		name: "whatsapp",
+		make: () => new WhatsappMessageAdapter(),
+		service: "whatsapp",
+	},
 ];
 
 describe("message adapters: graceful degradation", () => {
@@ -44,9 +64,9 @@ describe("message adapters: graceful degradation", () => {
 		it(`${c.name}: sendDraft throws NotYetImplementedError when unavailable`, async () => {
 			const adapter = c.make();
 			const runtime = createFakeRuntime();
-			await expect(adapter.sendDraft(runtime, "draft-1")).rejects.toBeInstanceOf(
-				NotYetImplementedError,
-			);
+			await expect(
+				adapter.sendDraft(runtime, "draft-1"),
+			).rejects.toBeInstanceOf(NotYetImplementedError);
 		});
 
 		it(`${c.name}: createDraft throws NotYetImplementedError when unavailable`, async () => {

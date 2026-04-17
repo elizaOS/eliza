@@ -1,5 +1,24 @@
-
-
+import {
+  Banner,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Field,
+  FieldDescription,
+  FieldLabel,
+  FieldMessage,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Textarea,
+} from "@elizaos/ui";
 import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
@@ -8,7 +27,6 @@ import { useBranding } from "../../config/branding";
 import { useBugReport } from "../../hooks";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
-import { Banner, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldDescription, FieldLabel, FieldMessage, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from "@elizaos/ui";
 import {
   createDesktopBugReportBundle,
   type DesktopBugReportDiagnostics,
@@ -546,7 +564,9 @@ export function BugReportModal() {
                 </FieldLabel>
                 <Select
                   value={form.environment}
-                  onValueChange={(value: string) => updateField("environment", value)}
+                  onValueChange={(value: string) =>
+                    updateField("environment", value)
+                  }
                 >
                   <SelectTrigger
                     id="bug-report-environment"

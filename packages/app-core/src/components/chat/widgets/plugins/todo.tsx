@@ -1,9 +1,8 @@
-import type { WorkbenchTodo } from "../../../../api/client-types-config";
-
 import { Badge } from "@elizaos/ui";
 import { ListTodo } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../../../api";
+import type { WorkbenchTodo } from "../../../../api/client-types-config";
 import { useApp } from "../../../../state";
 import { EmptyWidgetState, WidgetSection } from "../shared";
 import type {

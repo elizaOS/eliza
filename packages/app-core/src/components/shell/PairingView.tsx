@@ -1,8 +1,15 @@
-
-
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+} from "@elizaos/ui";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { useApp } from "../../state";
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from "@elizaos/ui";
 
 const SCREEN_SHELL_CLASS =
   "relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg px-4 py-6 font-body text-txt sm:px-6";

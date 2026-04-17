@@ -3,15 +3,20 @@
 // Verification*, Wallet display types, CodingAgent*, Pty*
 // ---------------------------------------------------------------------------
 
-import type { TrajectoryExportFormat } from "./client-types-core";
 import type {
   AppSessionConfig,
   AppUiExtensionConfig,
   AppViewerConfig,
   RegistryAppInfo,
 } from "@elizaos/shared/contracts/apps";
+import type { TrajectoryExportFormat } from "./client-types-core";
 
-export type { AppSessionConfig, AppUiExtensionConfig, AppViewerConfig, RegistryAppInfo };
+export type {
+  AppSessionConfig,
+  AppUiExtensionConfig,
+  AppViewerConfig,
+  RegistryAppInfo,
+};
 
 // Cloud
 export interface CloudStatus {

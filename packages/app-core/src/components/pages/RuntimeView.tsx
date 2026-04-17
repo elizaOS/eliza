@@ -1,5 +1,15 @@
-
-
+import {
+  Button,
+  Input,
+  MetaPill,
+  PageLayout,
+  PagePanel,
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "@elizaos/ui";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import {
   client,
@@ -9,7 +19,6 @@ import {
 } from "../../api";
 import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";
-import { PagePanel, MetaPill, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, PageLayout } from "@elizaos/ui";
 
 type RuntimeSectionKey =
   | "summary"

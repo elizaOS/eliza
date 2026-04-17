@@ -144,6 +144,25 @@ async function ensureTaskWithRetries(args: {
   }
 }
 
+function scheduleTaskEnsureAfterRuntimeInit(args: {
+  runtime: IAgentRuntime;
+  prefix: string;
+  label: string;
+  ensure: () => Promise<unknown>;
+  delays?: readonly number[];
+}): void {
+  void args.runtime.initPromise
+    .then(async () => {
+      await ensureTaskWithRetries(args);
+    })
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      args.runtime.logger?.error?.(
+        `${args.prefix} ${args.label} init failed after runtime initialization: ${message}`,
+      );
+    });
+}
+
 const rawAppLifeOpsPlugin: Plugin = {
   name: "@elizaos/app-lifeops",
   description:
@@ -264,7 +283,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     })();
     if (!proactiveAgentDisabled) {
       registerProactiveTaskWorker(runtime);
-      await ensureTaskWithRetries({
+      scheduleTaskEnsureAfterRuntimeInit({
         runtime,
         prefix: "[proactive]",
         label: "task",
@@ -287,7 +306,7 @@ const rawAppLifeOpsPlugin: Plugin = {
 
     // Register the LifeOps scheduler task worker and ensure the scheduler task exists
     registerLifeOpsTaskWorker(runtime);
-    await ensureTaskWithRetries({
+    scheduleTaskEnsureAfterRuntimeInit({
       runtime,
       prefix: "[lifeops]",
       label: "scheduler task",

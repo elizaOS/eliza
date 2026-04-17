@@ -1,13 +1,13 @@
-import type { AppRunSummary } from "../../../../api/client-types-cloud";
 import { CodingAgentTasksPanel as AppCodingAgentTasksPanel } from "@elizaos/app-task-coordinator";
+import { Badge, Button } from "@elizaos/ui";
 import { Activity } from "lucide-react";
 import { startTransition, useEffect, useMemo, useState } from "react";
 import { client } from "../../../../api";
+import type { AppRunSummary } from "../../../../api/client-types-cloud";
 import type { ActivityEvent } from "../../../../hooks/useActivityEvents";
 import { useApp } from "../../../../state";
 import { getRunAttentionReasons } from "../../../apps/run-attention";
 import { EmptyWidgetState, WidgetSection } from "../shared";
-import { Badge, Button } from "@elizaos/ui";
 import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,

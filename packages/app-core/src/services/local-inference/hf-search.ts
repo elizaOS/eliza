@@ -58,9 +58,7 @@ function pickQuantFile(siblings: HfSiblingRaw[]): HfSiblingRaw | null {
   if (ggufs.length === 0) return null;
 
   for (const quant of QUANT_PREFERENCE) {
-    const match = ggufs.find((s) =>
-      s.rfilename?.toUpperCase().includes(quant),
-    );
+    const match = ggufs.find((s) => s.rfilename?.toUpperCase().includes(quant));
     if (match) return match;
   }
   // No preferred quant — pick the smallest GGUF so we don't surprise the
@@ -123,7 +121,8 @@ function inferCategory(
   }
   if (
     lowerTags.some(
-      (t) => t.includes("function") || t.includes("tool") || t.includes("hermes"),
+      (t) =>
+        t.includes("function") || t.includes("tool") || t.includes("hermes"),
     )
   ) {
     return "tools";
@@ -161,7 +160,10 @@ export async function searchHuggingFaceGguf(
   const searchUrl = new URL(`${HF_API}/models`);
   searchUrl.searchParams.set("search", trimmed);
   searchUrl.searchParams.set("filter", "gguf");
-  searchUrl.searchParams.set("limit", String(Math.min(50, Math.max(1, limit * 2))));
+  searchUrl.searchParams.set(
+    "limit",
+    String(Math.min(50, Math.max(1, limit * 2))),
+  );
   searchUrl.searchParams.set("sort", "downloads");
   searchUrl.searchParams.set("direction", "-1");
 

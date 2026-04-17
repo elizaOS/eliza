@@ -6,6 +6,7 @@
  */
 
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -483,6 +484,7 @@ async function sendViaBlueBubbles(
   req: IMessageSendRequest,
   config: IMessageBridgeConfig,
 ): Promise<{ ok: true; messageId?: string }> {
+  const target = await resolveBlueBubblesTarget(req.to, config);
   const result = await bluebubblesRequest<BlueBubblesMessage>(
     config,
     "/api/v1/message/text",
@@ -490,8 +492,9 @@ async function sendViaBlueBubbles(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chatGuid: req.to,
+        chatGuid: target,
         message: req.text,
+        tempGuid: randomUUID(),
         method: "apple-script",
       }),
     },
@@ -503,28 +506,40 @@ async function readViaBlueBubbles(
   opts: { chatId?: string; since?: string; limit?: number },
   config: IMessageBridgeConfig,
 ): Promise<IMessageRecord[]> {
-  const search: Record<string, string> = {};
-  if (opts.limit !== undefined) search.limit = String(opts.limit);
-  if (opts.since) {
-    const parsed = Date.parse(opts.since);
-    if (!Number.isFinite(parsed)) {
-      throw new IMessageBridgeError(
-        `Invalid "since" timestamp: ${opts.since}`,
-        "bluebubbles",
-      );
-    }
-    search.after = String(parsed);
+  const parsedSince = opts.since ? Date.parse(opts.since) : Number.NaN;
+  if (opts.since && !Number.isFinite(parsedSince)) {
+    throw new IMessageBridgeError(
+      `Invalid "since" timestamp: ${opts.since}`,
+      "bluebubbles",
+    );
   }
 
-  const pathname = opts.chatId
-    ? `/api/v1/chat/${encodeURIComponent(opts.chatId)}/message`
-    : "/api/v1/message/query";
-
-  const data = await bluebubblesRequest<BlueBubblesMessage[]>(
-    config,
-    pathname,
-    { method: "GET", search },
-  );
+  const data = opts.chatId
+    ? await bluebubblesRequest<BlueBubblesMessage[]>(
+        config,
+        `/api/v1/chat/${encodeURIComponent(opts.chatId)}/message`,
+        {
+          method: "GET",
+          search: {
+            ...(opts.limit !== undefined
+              ? { limit: String(opts.limit) }
+              : {}),
+            offset: "0",
+          },
+        },
+      )
+    : await bluebubblesRequest<BlueBubblesMessage[]>(
+        config,
+        "/api/v1/message/query",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+            ...(Number.isFinite(parsedSince) ? { after: parsedSince } : {}),
+          }),
+        },
+      );
 
   if (!Array.isArray(data)) {
     throw new IMessageBridgeError(
@@ -541,7 +556,15 @@ async function listChatsViaBlueBubbles(
   const data = await bluebubblesRequest<BlueBubblesChat[]>(
     config,
     "/api/v1/chat/query",
-    { method: "GET" },
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        limit: 100,
+        offset: 0,
+        with: ["lastMessage", "participants"],
+      }),
+    },
   );
   if (!Array.isArray(data)) {
     throw new IMessageBridgeError(
@@ -550,6 +573,35 @@ async function listChatsViaBlueBubbles(
     );
   }
   return data.map(normalizeBlueBubblesChat);
+}
+
+async function resolveBlueBubblesTarget(
+  target: string,
+  config: IMessageBridgeConfig,
+): Promise<string> {
+  const trimmed = target.trim();
+  if (
+    trimmed.startsWith("iMessage;") ||
+    trimmed.startsWith("SMS;") ||
+    trimmed.startsWith("any;")
+  ) {
+    return trimmed;
+  }
+
+  const normalized = trimmed.toLowerCase();
+  const chats = await listChatsViaBlueBubbles(config);
+  const matchedChat = chats.find(
+    (chat) =>
+      chat.id.toLowerCase() === normalized ||
+      chat.participants.some(
+        (participant) => participant.trim().toLowerCase() === normalized,
+      ),
+  );
+  if (matchedChat) {
+    return matchedChat.id;
+  }
+
+  return `iMessage;-;${trimmed}`;
 }
 
 // ---------------------------------------------------------------------------

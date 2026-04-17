@@ -1,24 +1,11 @@
-/**
- * Shared live LLM provider selection for real integration tests.
- *
- * Extracts and generalizes the provider detection pattern used across
- * the codebase (lifeops-live-harness.ts, lifeops-llm-extraction.live.test.ts)
- * into a single reusable module.
- *
- * Usage:
- *   import { selectLiveProvider, requireLiveProvider } from "../../../../../test/helpers/live-provider";
- *
- *   const provider = selectLiveProvider();            // null if none available
- *   const provider = requireLiveProvider();           // skips test and returns null if none
- *   const provider = requireLiveProvider("openai");   // same, but for a specific provider
- */
+/** Selects a live LLM provider for integration tests from env and local config. */
 
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "vitest";
 
-// Load .env from repo root if dotenv is available
+// Load `.env` from the repo root when `dotenv` is available.
 const REPO_ROOT = path.resolve(
   import.meta.dirname,
   "..",
@@ -74,10 +61,6 @@ function loadConfiguredCloudApiKey(): string {
 
 const configuredCloudApiKey = loadConfiguredCloudApiKey();
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 export type LiveProviderName =
   | "groq"
   | "openai"
@@ -96,10 +79,6 @@ export type LiveProviderConfig = {
   /** Env vars to set for the runtime process. */
   env: Record<string, string>;
 };
-
-// ---------------------------------------------------------------------------
-// Provider definitions
-// ---------------------------------------------------------------------------
 
 const PROVIDERS: Array<{
   name: LiveProviderName;
@@ -165,15 +144,11 @@ const PROVIDERS: Array<{
   },
 ];
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
 /**
  * Select the first available LLM provider based on environment variables.
  * Returns null if no provider API keys are found.
  *
- * Preference order: groq (cheapest/fastest) -> openai -> anthropic -> google -> openrouter
+ * Preference order: groq -> openai -> anthropic -> google -> openrouter.
  */
 export function selectLiveProvider(
   preferredProvider?: LiveProviderName,
@@ -194,11 +169,13 @@ export function selectLiveProvider(
     if (!apiKey) continue;
 
     const baseUrl = def.baseUrlEnvVar
-      ? getTrimmedEnv(def.baseUrlEnvVar) ?? def.defaultBaseUrl
+      ? (getTrimmedEnv(def.baseUrlEnvVar) ?? def.defaultBaseUrl)
       : def.defaultBaseUrl;
 
-    const smallModel = getTrimmedEnv(def.smallModelEnvVar) ?? def.defaultSmallModel;
-    const largeModel = getTrimmedEnv(def.largeModelEnvVar) ?? def.defaultLargeModel;
+    const smallModel =
+      getTrimmedEnv(def.smallModelEnvVar) ?? def.defaultSmallModel;
+    const largeModel =
+      getTrimmedEnv(def.largeModelEnvVar) ?? def.defaultLargeModel;
 
     const env: Record<string, string> = {};
     for (const envVar of def.keyEnvVars) {

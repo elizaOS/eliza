@@ -1,9 +1,9 @@
 import {
   LanguageDropdown,
   ThemeToggle,
-  useMediaQuery,
   type UiLanguage,
   type UiTheme,
+  useMediaQuery,
 } from "@elizaos/app-core";
 import { Button } from "@elizaos/ui/components/ui/button";
 import {

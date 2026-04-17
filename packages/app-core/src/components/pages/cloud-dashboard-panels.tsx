@@ -1,5 +1,15 @@
-
-
+import {
+  Button,
+  Input,
+  SectionCard,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Switch,
+  useIntervalWhenDocumentVisible,
+} from "@elizaos/ui";
 import {
   ChevronDown,
   ExternalLink,
@@ -21,11 +31,9 @@ import {
   type CloudCompatManagedGithubStatus,
   client,
 } from "../../api";
-import { useIntervalWhenDocumentVisible } from "@elizaos/ui";
 import { getVrmPreviewUrl, useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { STATUS_BADGE } from "./cloud-dashboard-utils";
-import { Button, Input, SectionCard, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch } from "@elizaos/ui";
 
 export function AgentStatusBadge({ status }: { status: string }) {
   const { t } = useApp();
@@ -413,7 +421,9 @@ function DiscordSettingsPanel({
                     </span>
                     <Switch
                       checked={config.dm?.groupEnabled ?? false}
-                      onCheckedChange={(v: boolean) => patchDm({ groupEnabled: v })}
+                      onCheckedChange={(v: boolean) =>
+                        patchDm({ groupEnabled: v })
+                      }
                       className="scale-75"
                     />
                   </div>
@@ -436,7 +446,9 @@ function DiscordSettingsPanel({
                     </span>
                     <Switch
                       checked={config.requireMention ?? false}
-                      onCheckedChange={(v: boolean) => patch({ requireMention: v })}
+                      onCheckedChange={(v: boolean) =>
+                        patch({ requireMention: v })
+                      }
                       className="scale-75"
                     />
                   </div>
@@ -565,7 +577,9 @@ function DiscordSettingsPanel({
                     </span>
                     <Switch
                       checked={config.intents?.presence ?? false}
-                      onCheckedChange={(v: boolean) => patchIntents({ presence: v })}
+                      onCheckedChange={(v: boolean) =>
+                        patchIntents({ presence: v })
+                      }
                       className="scale-75"
                     />
                   </div>
@@ -577,7 +591,9 @@ function DiscordSettingsPanel({
                     </span>
                     <Switch
                       checked={config.intents?.guildMembers ?? false}
-                      onCheckedChange={(v: boolean) => patchIntents({ guildMembers: v })}
+                      onCheckedChange={(v: boolean) =>
+                        patchIntents({ guildMembers: v })
+                      }
                       className="scale-75"
                     />
                   </div>
@@ -606,7 +622,9 @@ function DiscordSettingsPanel({
                     </span>
                     <Switch
                       checked={config.pluralkit?.enabled ?? false}
-                      onCheckedChange={(v: boolean) => patchFlagSetting("pluralkit", v)}
+                      onCheckedChange={(v: boolean) =>
+                        patchFlagSetting("pluralkit", v)
+                      }
                       className="scale-75"
                     />
                   </div>

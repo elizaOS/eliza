@@ -257,7 +257,10 @@ export function LocalInferencePanel() {
           [
             ["curated", "Curated"],
             ["search", "Search HuggingFace"],
-            ["downloads", `Downloads${hub.downloads.length > 0 ? ` (${hub.downloads.length})` : ""}`],
+            [
+              "downloads",
+              `Downloads${hub.downloads.length > 0 ? ` (${hub.downloads.length})` : ""}`,
+            ],
           ] as const
         ).map(([id, label]) => (
           <button

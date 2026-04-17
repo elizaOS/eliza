@@ -3,21 +3,21 @@
  */
 
 import type http from "node:http";
-import path from "node:path";
 import os from "node:os";
-import type { ElizaConfig } from "../config/config.js";
-import {
-  ONBOARDING_CLOUD_PROVIDER_OPTIONS,
-  ONBOARDING_PROVIDER_CATALOG,
-} from "../contracts/onboarding.js";
+import path from "node:path";
+import { logger } from "@elizaos/core";
 import {
   getDefaultStylePreset,
   getStylePresets,
   normalizeCharacterLanguage,
 } from "@elizaos/shared/onboarding-presets";
-import { generateWalletKeys, setSolanaWalletEnv } from "./wallet.js";
+import type { ElizaConfig } from "../config/config.js";
+import {
+  ONBOARDING_CLOUD_PROVIDER_OPTIONS,
+  ONBOARDING_PROVIDER_CATALOG,
+} from "../contracts/onboarding.js";
 import { sendJsonError } from "./http-helpers.js";
-import { logger } from "@elizaos/core";
+import { generateWalletKeys, setSolanaWalletEnv } from "./wallet.js";
 
 // ---------------------------------------------------------------------------
 // Config redaction

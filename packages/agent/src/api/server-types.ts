@@ -5,13 +5,13 @@
  */
 
 import type http from "node:http";
+import type { DropService } from "@elizaos/app-elizamaker";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import type { AppManager } from "../services/app-manager.js";
 import type { SandboxManager } from "../services/sandbox-manager.js";
 import type { CloudRouteState } from "./cloud-routes.js";
 import type { ConnectorHealthMonitor } from "./connector-health.js";
-import type { DropService } from "@elizaos/app-elizamaker";
 // PluginEntry and PluginParamDef are defined here to avoid a circular dependency
 // with plugin-discovery-helpers.ts (which imports from server-helpers.ts).
 import type { RegistryService } from "./registry-service.js";
@@ -271,9 +271,7 @@ export interface ServerState {
   /** Broadcast an arbitrary JSON message to all WebSocket clients. Set by startApiServer. */
   broadcastWs: ((data: object) => void) | null;
   /** Broadcast a JSON payload to WebSocket clients bound to a specific client id. */
-  broadcastWsToClientId:
-    | ((clientId: string, data: object) => number)
-    | null;
+  broadcastWsToClientId: ((clientId: string, data: object) => number) | null;
   /** Currently active conversation ID from the frontend (sent via WS). */
   activeConversationId: string | null;
   /** Transient OAuth flow state for subscription auth. */

@@ -5,7 +5,9 @@ import { describe, expect, it } from "vitest";
  * (forwardRef components). This helper checks for both.
  */
 function isReactComponent(value: unknown): boolean {
-  return typeof value === "function" || (typeof value === "object" && value !== null);
+  return (
+    typeof value === "function" || (typeof value === "object" && value !== null)
+  );
 }
 
 describe("@elizaos/ui", () => {

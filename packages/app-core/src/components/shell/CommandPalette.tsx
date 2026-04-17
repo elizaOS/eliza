@@ -1,11 +1,18 @@
-
-
 import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Input,
+} from "@elizaos/ui";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
   useMemo,
   useRef,
-  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { isElectrobunRuntime } from "../../bridge";
 import {
@@ -15,7 +22,6 @@ import {
 import { COMMAND_PALETTE_EVENT } from "../../events";
 import { useBugReport } from "../../hooks";
 import { useApp } from "../../state";
-import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input } from "@elizaos/ui";
 import {
   openDesktopSettingsWindow,
   openDesktopSurfaceWindow,

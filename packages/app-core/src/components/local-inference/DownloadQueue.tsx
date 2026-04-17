@@ -37,8 +37,7 @@ export function DownloadQueue({
       {downloads.map((job) => {
         const entry = findCatalogModel(job.modelId, catalog);
         const label = entry?.displayName ?? job.modelId;
-        const isActive =
-          job.state === "downloading" || job.state === "queued";
+        const isActive = job.state === "downloading" || job.state === "queued";
         return (
           <li
             key={job.jobId}

@@ -59,8 +59,8 @@ try {
   // optional self-control module cannot be imported.
 }
 
-import type { ElizaConfig } from "../config/config.js";
 import { normalizeCharacterLanguage } from "@elizaos/shared/onboarding-presets";
+import type { ElizaConfig } from "../config/config.js";
 import { resolveTrajectoryGrouping } from "../runtime/trajectory-internals.js";
 import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.js";
 import { syncCharacterIntoConfig } from "../services/character-persistence.js";

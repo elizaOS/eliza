@@ -1,12 +1,11 @@
+import { Button } from "@elizaos/ui";
+import { ExternalLink } from "lucide-react";
+import { type CSSProperties, useEffect, useRef } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
 import { useApp } from "../../state/useApp";
-
-import { ExternalLink } from "lucide-react";
-import { type CSSProperties, useEffect, useRef } from "react";
 import { formatUptime } from "../../utils/format";
 import { IS_POPOUT } from "./helpers";
-import { Button } from "@elizaos/ui";
 
 export function StatusBar({
   agentName,

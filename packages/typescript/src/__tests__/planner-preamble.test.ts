@@ -19,11 +19,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { Action, Content, IAgentRuntime } from "../types/index.ts";
 import {
 	shouldEmitPlannerPreamble,
 	stripPlannerReplyForSuppressiveActions,
 } from "../services/message.ts";
+import type { Action, Content, IAgentRuntime } from "../types/index.ts";
 
 function runtimeWithActions(actions: Action[]): IAgentRuntime {
 	return { actions } as unknown as IAgentRuntime;
@@ -102,18 +102,18 @@ describe("shouldEmitPlannerPreamble", () => {
 	});
 
 	it("does not emit when actions array is empty", () => {
-		expect(
-			shouldEmitPlannerPreamble({ text: "something", actions: [] }),
-		).toBe(false);
+		expect(shouldEmitPlannerPreamble({ text: "something", actions: [] })).toBe(
+			false,
+		);
 	});
 
 	it("normalizes action identifiers (underscores, case)", () => {
-		expect(
-			shouldEmitPlannerPreamble({ text: "hi", actions: ["reply"] }),
-		).toBe(false);
-		expect(
-			shouldEmitPlannerPreamble({ text: "hi", actions: ["Re_Ply"] }),
-		).toBe(false);
+		expect(shouldEmitPlannerPreamble({ text: "hi", actions: ["reply"] })).toBe(
+			false,
+		);
+		expect(shouldEmitPlannerPreamble({ text: "hi", actions: ["Re_Ply"] })).toBe(
+			false,
+		);
 	});
 
 	it("returns false for null / undefined content", () => {

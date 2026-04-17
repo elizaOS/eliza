@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { useSignalConnector } from "../hooks/useSignalConnector.js";
 import { useDiscordConnector } from "../hooks/useDiscordConnector.js";
 import { useTelegramConnector } from "../hooks/useTelegramConnector.js";
+import { useIMessageConnector } from "../hooks/useIMessageConnector.js";
 
 function ConnectorCardShell({
   icon,
@@ -157,26 +158,31 @@ export function DiscordConnectorCard() {
   const available = discord.status?.available !== false;
   const dmInboxVisible = discord.status?.dmInbox.visible === true;
   const visibleDmCount = discord.status?.dmInbox.count ?? 0;
+  const lastError = discord.status?.lastError;
   const visibleDmLabels =
     discord.status?.dmInbox.previews
       ?.map((preview) => preview.label)
       .filter((label, index, labels) => labels.indexOf(label) === index)
       .slice(0, 3) ?? [];
   const pairing = discord.status?.reason === "pairing";
+  const authPending = discord.status?.reason === "auth_pending";
+  const showConnectButton = available && (!isConnected || !dmInboxVisible);
   const statusLabel = !available
-    ? "Open in Milady desktop"
-    : isConnected
+    ? "Browser access unavailable"
+    : authPending
+      ? "Log in to Discord in your browser"
+      : isConnected
       ? dmInboxVisible
         ? `Connected • ${visibleDmCount} DM${visibleDmCount === 1 ? "" : "s"} visible`
-        : "Connected, waiting for DM inbox"
+        : "Connected, opening DM inbox"
       : pairing
-        ? "Sign in to Discord in the opened tab…"
+        ? "Opening Discord in LifeOps Browser…"
         : "Not connected";
   const statusVariant: "ok" | "muted" | "warning" = isConnected
     ? dmInboxVisible
       ? "ok"
       : "warning"
-    : pairing
+    : pairing || authPending
       ? "warning"
       : "muted";
 
@@ -187,14 +193,20 @@ export function DiscordConnectorCard() {
       status={statusLabel}
       statusVariant={statusVariant}
     >
-      {!isConnected ? (
+      {showConnectButton ? (
         <Button
           size="sm"
           className="h-8 rounded-xl px-3 text-xs font-semibold"
           disabled={busy || !available}
           onClick={() => void discord.connect()}
         >
-          {pairing ? "Reopen Discord tab" : "Connect Discord"}
+          {authPending
+            ? "Open Discord Login"
+            : isConnected
+              ? "Show Discord DMs"
+              : pairing
+                ? "Open Discord"
+                : "Connect Discord"}
         </Button>
       ) : null}
 
@@ -215,7 +227,8 @@ export function DiscordConnectorCard() {
             </div>
           ) : (
             <div className="text-xs text-muted">
-              Discord is logged in, but LifeOps does not yet see the DM inbox in that tab.
+              LifeOps sees your Discord session, but not the DM inbox yet. Use
+              {" "}Show Discord DMs to focus the right tab.
             </div>
           )}
           <Button
@@ -230,14 +243,23 @@ export function DiscordConnectorCard() {
         </div>
       ) : null}
 
+      {!isConnected && authPending ? (
+        <div className="text-xs text-muted">
+          LifeOps found Discord, but that browser profile still needs you to log in.
+        </div>
+      ) : null}
+
       {!available ? (
         <div className="text-xs text-muted">
-          Discord runs inside a Milady browser tab. Open the desktop app to connect.
+          Discord needs either a connected LifeOps Browser companion or the
+          Milady desktop browser workspace.
         </div>
       ) : null}
 
       {discord.error ? (
         <div className="text-xs text-danger">{discord.error}</div>
+      ) : lastError ? (
+        <div className="text-xs text-danger">{lastError}</div>
       ) : null}
     </ConnectorCardShell>
   );
@@ -251,7 +273,8 @@ export function TelegramConnectorCard() {
 
   const isConnected = telegram.status?.connected === true;
   const authState = telegram.authState ?? "idle";
-  const busy = telegram.actionPending || telegram.loading;
+  const busy =
+    telegram.actionPending || telegram.loading || telegram.verifyPending;
 
   const handleSendCode = useCallback(() => {
     if (phoneInput.trim().length > 0) {
@@ -273,7 +296,9 @@ export function TelegramConnectorCard() {
 
   const statusLabel = isConnected
     ? "Connected"
-    : authState === "waiting_for_code"
+    : authState === "waiting_for_provisioning_code"
+      ? "Enter provisioning code"
+      : authState === "waiting_for_code"
       ? "Enter verification code"
       : authState === "waiting_for_password"
         ? "2FA password required"
@@ -311,11 +336,16 @@ export function TelegramConnectorCard() {
         </div>
       ) : null}
 
-      {authState === "waiting_for_code" ? (
+      {authState === "waiting_for_provisioning_code" ||
+      authState === "waiting_for_code" ? (
         <div className="flex items-center gap-2">
           <input
             type="text"
-            placeholder="Verification code"
+            placeholder={
+              authState === "waiting_for_provisioning_code"
+                ? "my.telegram.org code"
+                : "Verification code"
+            }
             value={codeInput}
             onChange={(e) => setCodeInput(e.target.value)}
             className="h-8 flex-1 rounded-xl border border-border/28 bg-card/24 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
@@ -370,6 +400,43 @@ export function TelegramConnectorCard() {
               {String(telegram.status.identity.username || telegram.status.identity.phone || "")}
             </div>
           ) : null}
+          <div className="rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
+            Reads recent chats and sends a test note to Saved Messages.
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            disabled={busy}
+            onClick={() => void telegram.verify()}
+          >
+            {telegram.verifyPending ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : null}
+            Verify Read + Send
+          </Button>
+          {telegram.verification ? (
+            <div className="rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
+              <div>
+                Read: {telegram.verification.read.ok
+                  ? `${telegram.verification.read.dialogCount} recent chats`
+                  : telegram.verification.read.error ?? "failed"}
+              </div>
+              <div>
+                Send: {telegram.verification.send.ok
+                  ? `sent to ${telegram.verification.send.target}`
+                  : telegram.verification.send.error ?? "failed"}
+              </div>
+              {telegram.verification.read.dialogs.length > 0 ? (
+                <div className="mt-1 truncate">
+                  Recent: {telegram.verification.read.dialogs
+                    .slice(0, 3)
+                    .map((dialog) => dialog.title)
+                    .join(", ")}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <Button
             size="sm"
             variant="outline"
@@ -390,35 +457,77 @@ export function TelegramConnectorCard() {
 }
 
 export function IMessageConnectorCard() {
-  // iMessage is auto-detected, no connect/disconnect needed.
-  // This is a read-only status card.
-  const [status] = useState<"available" | "unavailable" | "unknown">("unknown");
+  const imessage = useIMessageConnector();
+  const status = imessage.status;
+  const busy = imessage.loading;
+  const isConnected = status?.connected === true;
+  const bridgeLabel =
+    status?.bridgeType === "bluebubbles"
+      ? "BlueBubbles"
+      : status?.bridgeType === "imsg"
+        ? "imsg"
+        : null;
+  const statusLabel =
+    busy && !status
+      ? "Checking..."
+      : isConnected
+        ? bridgeLabel
+          ? `Connected via ${bridgeLabel}`
+          : "Connected"
+        : "Not connected";
+  const statusVariant: "ok" | "muted" | "warning" =
+    isConnected ? "ok" : busy && !status ? "warning" : "muted";
 
   return (
     <ConnectorCardShell
       icon={<MessageCircle className="h-5 w-5 shrink-0 text-muted" />}
       platform="iMessage"
-      status={
-        status === "available"
-          ? "Available"
-          : status === "unavailable"
-            ? "Unavailable"
-            : "Checking..."
-      }
-      statusVariant={
-        status === "available"
-          ? "ok"
-          : status === "unavailable"
-            ? "muted"
-            : "warning"
-      }
+      status={statusLabel}
+      statusVariant={statusVariant}
     >
-      <div className="text-xs text-muted">
-        {status === "available"
-          ? "Detected via local imsg CLI or BlueBubbles."
-          : status === "unavailable"
-            ? "No iMessage bridge detected. Requires macOS with imsg CLI or BlueBubbles."
-            : "Auto-detected on macOS desktop. No manual setup needed."}
+      <div className="space-y-2">
+        <div className="text-xs text-muted">
+          {isConnected
+            ? bridgeLabel === "BlueBubbles"
+              ? "LifeOps is using the local BlueBubbles bridge for iMessage access."
+              : "LifeOps is using the local imsg bridge for iMessage access."
+            : "LifeOps could not detect an iMessage bridge. Configure BlueBubbles or the imsg CLI in Milady settings."}
+        </div>
+        {status?.accountHandle ? (
+          <div className="flex items-center gap-1.5 text-xs text-muted">
+            <Phone className="h-3.5 w-3.5" />
+            {status.accountHandle}
+          </div>
+        ) : null}
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            disabled={busy}
+            onClick={() => void imessage.refresh()}
+          >
+            {busy ? (
+              <>
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                Refreshing
+              </>
+            ) : (
+              "Refresh"
+            )}
+          </Button>
+          {status?.lastCheckedAt ? (
+            <span className="text-xs text-muted">
+              Checked {new Date(status.lastCheckedAt).toLocaleTimeString()}
+            </span>
+          ) : null}
+        </div>
+        {status?.error ? (
+          <div className="text-xs text-danger">{status.error}</div>
+        ) : null}
+        {imessage.error ? (
+          <div className="text-xs text-danger">{imessage.error}</div>
+        ) : null}
       </div>
     </ConnectorCardShell>
   );

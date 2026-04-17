@@ -2750,8 +2750,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "PUT_IN_PLAYLIST",
         "SAVE_TO_PLAYLIST",
         "ADD_TRACK_TO_PLAYLIST"
-      ],
-      "descriptionCompressed": "Add track to playlist. Creates playlist if missing. Fetches track if not in library."
+      ]
     },
     {
       "name": "BLUEBUBBLES_SEND_REACTION",
@@ -2761,12 +2760,11 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "BLUEBUBBLES_REACT",
         "BB_REACTION",
         "IMESSAGE_REACT"
-      ],
-      "descriptionCompressed": "React on iMessage via BlueBubbles."
+      ]
     },
     {
       "name": "BROWSER_ACTION",
-      "description": "Control a web browser to navigate websites, click elements, fill forms, read page content, ",
+      "description": "Control a Chromium-based browser through the local runtime. This action opens or connects to a browser session, navigates pages, clicks elements, types into forms, reads DOM state, executes JavaScript, waits for conditions, and manages tabs.\n\n",
       "parameters": [],
       "similes": [
         "CONTROL_BROWSER",
@@ -2776,8 +2774,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "NAVIGATE_BROWSER",
         "BROWSER_CLICK",
         "BROWSER_TYPE"
-      ],
-      "descriptionCompressed": "Browser control: navigate, click, type, scroll, screenshot, DOM, JS exec, tabs."
+      ]
     },
     {
       "name": "CHECK_CLOUD_CREDITS",
@@ -2788,8 +2785,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "check balance",
         "how much credit",
         "cloud billing"
-      ],
-      "descriptionCompressed": "Check ElizaCloud credits, container costs, remaining runtime."
+      ]
     },
     {
       "name": "COMMANDS_LIST",
@@ -2798,8 +2794,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "similes": [
         "/commands",
         "/cmds"
-      ],
-      "descriptionCompressed": "List available commands. Trigger: /commands, /cmds."
+      ]
     },
     {
       "name": "DELETE_MESSAGE",
@@ -2809,8 +2804,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "REMOVE_MESSAGE",
         "UNSEND_MESSAGE",
         "DELETE_DISCORD_MESSAGE"
-      ],
-      "descriptionCompressed": "Delete Discord channel message."
+      ]
     },
     {
       "name": "DELETE_PLAYLIST",
@@ -2845,8 +2839,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ],
-      "descriptionCompressed": "Delete saved playlist."
+      ]
     },
     {
       "name": "DOWNLOAD_MUSIC",
@@ -2858,8 +2851,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "DOWNLOAD_SONG",
         "SAVE_MUSIC",
         "GRAB_MUSIC"
-      ],
-      "descriptionCompressed": "Download track to library without playing."
+      ]
     },
     {
       "name": "EDIT_MESSAGE",
@@ -2870,12 +2862,21 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "MODIFY_MESSAGE",
         "CHANGE_MESSAGE",
         "EDIT_DISCORD_MESSAGE"
-      ],
-      "descriptionCompressed": "Edit existing Discord message."
+      ]
+    },
+    {
+      "name": "FETCH_FEED_TOP",
+      "description": "Fetch the home timeline from X and return the top-N tweets ranked by engagement (likes + retweets * 2).",
+      "parameters": [],
+      "similes": [
+        "GET_X_FEED",
+        "TOP_TWEETS",
+        "FEED_TOP"
+      ]
     },
     {
       "name": "FILE_ACTION",
-      "description": "Perform file operations — read, write, edit, append, delete files, or list directory contents.\n\n",
+      "description": "Perform local filesystem operations through the computer-use service. This includes read, write, edit, append, delete, exists, list, delete_directory, upload, download, and list_downloads actions.\n\n",
       "parameters": [],
       "similes": [
         "READ_FILE",
@@ -2884,8 +2885,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "DELETE_FILE",
         "LIST_DIRECTORY",
         "FILE_OPERATION"
-      ],
-      "descriptionCompressed": "File ops: read, write, edit, append, delete, list directory."
+      ]
     },
     {
       "name": "FINALIZE_WORKSPACE",
@@ -2921,8 +2921,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ],
-      "descriptionCompressed": "Commit, push, opt. create PR for workspace changes."
+      ]
     },
     {
       "name": "FREEZE_CLOUD_AGENT",
@@ -2933,8 +2932,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "hibernate agent",
         "pause agent",
         "stop cloud agent"
-      ],
-      "descriptionCompressed": "Freeze cloud agent: snapshot, disconnect, stop container."
+      ]
     },
     {
       "name": "GET_SKILL_DETAILS",
@@ -2943,8 +2941,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "similes": [
         "SKILL_INFO",
         "SKILL_DETAILS"
-      ],
-      "descriptionCompressed": "Get skill version, owner, stats."
+      ]
     },
     {
       "name": "GET_SKILL_GUIDANCE",
@@ -2958,8 +2955,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "GET_INSTRUCTIONS",
         "LEARN_SKILL",
         "LOOKUP_SKILL"
-      ],
-      "descriptionCompressed": "Search/get skill instructions for capability."
+      ]
     },
     {
       "name": "HELP_COMMAND",
@@ -2969,8 +2965,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "/help",
         "/h",
         "/?"
-      ],
-      "descriptionCompressed": "Show commands and descriptions. Trigger: /help, /h, /?."
+      ]
     },
     {
       "name": "IMESSAGE_SEND_MESSAGE",
@@ -2981,8 +2976,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "IMESSAGE_TEXT",
         "TEXT_IMESSAGE",
         "SEND_IMSG"
-      ],
-      "descriptionCompressed": "Send iMessage (macOS)."
+      ]
     },
     {
       "name": "INSTALL_SKILL",
@@ -2992,8 +2986,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "DOWNLOAD_SKILL",
         "ADD_SKILL",
         "GET_SKILL"
-      ],
-      "descriptionCompressed": "Install skill from ClawHub registry. Security-scanned before activation."
+      ]
     },
     {
       "name": "LIST_AGENTS",
@@ -3008,8 +3001,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "SHOW_TASK_AGENTS",
         "LIST_SUB_AGENTS",
         "SHOW_TASK_STATUS"
-      ],
-      "descriptionCompressed": "List active task agents with progress for async status updates."
+      ]
     },
     {
       "name": "LIST_PLAYLISTS",
@@ -3045,8 +3037,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ],
-      "descriptionCompressed": "List all saved playlists."
+      ]
     },
     {
       "name": "LOAD_PLAYLIST",
@@ -3082,8 +3073,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ],
-      "descriptionCompressed": "Load saved playlist, add tracks to queue."
+      ]
     },
     {
       "name": "MANAGE_ISSUES",
@@ -3096,8 +3086,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "COMMENT_ISSUE",
         "UPDATE_ISSUE",
         "GET_ISSUE"
-      ],
-      "descriptionCompressed": "Manage GitHub issues: create, list, comment, close, reopen."
+      ]
     },
     {
       "name": "MANAGE_SHOPIFY_CUSTOMERS",
@@ -3107,8 +3096,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "LIST_CUSTOMERS",
         "FIND_CUSTOMER",
         "SEARCH_CUSTOMERS"
-      ],
-      "descriptionCompressed": "List/search Shopify customers."
+      ]
     },
     {
       "name": "MANAGE_SHOPIFY_INVENTORY",
@@ -3119,8 +3107,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "ADJUST_INVENTORY",
         "CHECK_STOCK",
         "UPDATE_STOCK"
-      ],
-      "descriptionCompressed": "Check inventory, adjust stock, list Shopify locations."
+      ]
     },
     {
       "name": "MANAGE_SHOPIFY_ORDERS",
@@ -3131,8 +3118,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "CHECK_ORDERS",
         "FULFILL_ORDER",
         "ORDER_STATUS"
-      ],
-      "descriptionCompressed": "List orders, check status, mark fulfilled in Shopify."
+      ]
     },
     {
       "name": "MANAGE_SHOPIFY_PRODUCTS",
@@ -3143,12 +3129,11 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "CREATE_PRODUCT",
         "UPDATE_PRODUCT",
         "SEARCH_PRODUCTS"
-      ],
-      "descriptionCompressed": "List/search/create/update Shopify products."
+      ]
     },
     {
       "name": "MANAGE_WINDOW",
-      "description": "Manage desktop windows — list all visible windows, bring a window to the front, ",
+      "description": "Manage desktop windows through the local runtime. This includes listing visible windows, focusing or switching windows, minimizing, maximizing, restoring, closing, and parity no-op arrange/move commands.\n\n",
       "parameters": [],
       "similes": [
         "LIST_WINDOWS",
@@ -3158,8 +3143,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "MAXIMIZE_WINDOW",
         "CLOSE_WINDOW",
         "WINDOW_MANAGEMENT"
-      ],
-      "descriptionCompressed": "Desktop window mgmt: list, focus, minimize, maximize, close."
+      ]
     },
     {
       "name": "MODELS_COMMAND",
@@ -3167,8 +3151,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "parameters": [],
       "similes": [
         "/models"
-      ],
-      "descriptionCompressed": "List AI models/providers. Trigger: /models."
+      ]
     },
     {
       "name": "PAUSE_MUSIC",
@@ -3179,8 +3162,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "PAUSE_AUDIO",
         "PAUSE_SONG",
         "PAUSE_PLAYBACK"
-      ],
-      "descriptionCompressed": "Pause current track. Not via PLAY_AUDIO."
+      ]
     },
     {
       "name": "PLAY_AUDIO",
@@ -3199,8 +3181,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "PLAY_FROM_YOUTUBE",
         "QUEUE_SONG",
         "ADD_TO_QUEUE"
-      ],
-      "descriptionCompressed": "Play new song by name/artist/URL. Not for pause/resume/stop/skip."
+      ]
     },
     {
       "name": "PLAY_MUSIC_QUERY",
@@ -3211,8 +3192,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "RESEARCH_AND_PLAY",
         "FIND_AND_PLAY",
         "INTELLIGENT_MUSIC_SEARCH"
-      ],
-      "descriptionCompressed": "Complex music search: artist, genre, mood, era, activity, charts, soundtracks, versions. Uses web search + databases."
+      ]
     },
     {
       "name": "POST_TWEET",
@@ -3224,8 +3204,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "TWITTER_POST",
         "POST_ON_TWITTER",
         "SHARE_ON_TWITTER"
-      ],
-      "descriptionCompressed": "Post tweet."
+      ]
     },
     {
       "name": "PROVISION_CLOUD_AGENT",
@@ -3236,8 +3215,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "launch cloud agent",
         "start remote agent",
         "provision container"
-      ],
-      "descriptionCompressed": "Deploy agent to ElizaCloud. Provisions container, connects bridge, starts backup."
+      ]
     },
     {
       "name": "PROVISION_WORKSPACE",
@@ -3273,8 +3251,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ],
-      "descriptionCompressed": "Create git workspace for coding tasks."
+      ]
     },
     {
       "name": "QUEUE_MUSIC",
@@ -3310,8 +3287,27 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ],
-      "descriptionCompressed": "Queue song for later."
+      ]
+    },
+    {
+      "name": "READ_UNREAD_X_DMS",
+      "description": "List unread Twitter/X direct messages.",
+      "parameters": [],
+      "similes": [
+        "READ_X_DMS",
+        "GET_X_UNREAD_DMS",
+        "CHECK_X_DMS"
+      ]
+    },
+    {
+      "name": "REPLY_X_DM",
+      "description": "Reply to a Twitter/X direct message. Two-stage: without `confirmed: true` this returns a preview and requires confirmation; with `confirmed: true` the DM is sent.",
+      "parameters": [],
+      "similes": [
+        "SEND_X_DM",
+        "REPLY_TWITTER_DM",
+        "X_DM_REPLY"
+      ]
     },
     {
       "name": "RESUME_CLOUD_AGENT",
@@ -3322,8 +3318,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "unfreeze agent",
         "restart cloud agent",
         "restore agent"
-      ],
-      "descriptionCompressed": "Resume frozen cloud agent from snapshot."
+      ]
     },
     {
       "name": "RESUME_MUSIC",
@@ -3336,8 +3331,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "UNPAUSE",
         "UNPAUSE_MUSIC",
         "CONTINUE_MUSIC"
-      ],
-      "descriptionCompressed": "Resume paused music. Not via PLAY_AUDIO."
+      ]
     },
     {
       "name": "RUN_SKILL_SCRIPT",
@@ -3346,8 +3340,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "similes": [
         "EXECUTE_SKILL_SCRIPT",
         "SKILL_SCRIPT"
-      ],
-      "descriptionCompressed": "Run script bundled with installed skill."
+      ]
     },
     {
       "name": "SAVE_PLAYLIST",
@@ -3383,8 +3376,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ],
-      "descriptionCompressed": "Save current queue as playlist."
+      ]
     },
     {
       "name": "SEARCH_SHOPIFY_STORE",
@@ -3393,8 +3385,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "similes": [
         "SHOPIFY_SEARCH",
         "STORE_SEARCH"
-      ],
-      "descriptionCompressed": "Search Shopify products, orders, customers."
+      ]
     },
     {
       "name": "SEARCH_SKILLS",
@@ -3404,8 +3395,17 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "BROWSE_SKILLS",
         "LIST_SKILLS",
         "FIND_SKILLS"
-      ],
-      "descriptionCompressed": "Search skill registry by keyword/category."
+      ]
+    },
+    {
+      "name": "SEARCH_X",
+      "description": "Search X recent tweets using the v2 recent search endpoint. Parameters: query (required), maxResults (optional, default 10).",
+      "parameters": [],
+      "similes": [
+        "SEARCH_TWITTER",
+        "SEARCH_TWEETS",
+        "X_SEARCH"
+      ]
     },
     {
       "name": "SEARCH_YOUTUBE",
@@ -3418,8 +3418,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "SEARCH_MUSIC",
         "GET_YOUTUBE_LINK",
         "LOOKUP_YOUTUBE"
-      ],
-      "descriptionCompressed": "Search YouTube for song/video, return link."
+      ]
     },
     {
       "name": "SEND_BLUEBUBBLES_MESSAGE",
@@ -3431,8 +3430,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "IMESSAGE_REPLY",
         "BLUEBUBBLES_SEND",
         "APPLE_MESSAGE"
-      ],
-      "descriptionCompressed": "Send iMessage via BlueBubbles."
+      ]
     },
     {
       "name": "SEND_TO_AGENT",
@@ -3471,8 +3469,17 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ],
-      "descriptionCompressed": "Send input/keypresses to running task agent."
+      ]
+    },
+    {
+      "name": "SEND_X_POST",
+      "description": "Publish a tweet on Twitter/X with a confirmation gate. Two-stage: without `confirmed: true` this returns a preview; with `confirmed: true` the tweet is posted.",
+      "parameters": [],
+      "similes": [
+        "POST_X",
+        "TWEET_WITH_CONFIRMATION",
+        "PUBLISH_TWEET"
+      ]
     },
     {
       "name": "SETUP_CREDENTIALS",
@@ -3509,8 +3516,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ],
-      "descriptionCompressed": "Guide credential setup for third-party services, validate and store securely."
+      ]
     },
     {
       "name": "SHOW_QUEUE",
@@ -3521,8 +3527,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "LIST_QUEUE",
         "SHOW_PLAYLIST",
         "QUEUE_LIST"
-      ],
-      "descriptionCompressed": "Show current music queue."
+      ]
     },
     {
       "name": "SIGNAL_LIST_CONTACTS",
@@ -3533,8 +3538,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "SHOW_CONTACTS",
         "GET_CONTACTS",
         "SIGNAL_CONTACTS"
-      ],
-      "descriptionCompressed": "List Signal contacts."
+      ]
     },
     {
       "name": "SIGNAL_LIST_GROUPS",
@@ -3545,8 +3549,18 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "SHOW_GROUPS",
         "GET_GROUPS",
         "SIGNAL_GROUPS"
-      ],
-      "descriptionCompressed": "List Signal groups."
+      ]
+    },
+    {
+      "name": "SIGNAL_READ_RECENT_MESSAGES",
+      "description": "Read the most recent Signal messages across active conversations",
+      "parameters": [],
+      "similes": [
+        "READ_SIGNAL_MESSAGES",
+        "CHECK_SIGNAL_MESSAGES",
+        "SHOW_SIGNAL_MESSAGES",
+        "SIGNAL_INBOX"
+      ]
     },
     {
       "name": "SIGNAL_SEND_MESSAGE",
@@ -3582,8 +3596,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ],
-      "descriptionCompressed": "Send Signal message."
+      ]
     },
     {
       "name": "SIGNAL_SEND_REACTION",
@@ -3619,8 +3632,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ],
-      "descriptionCompressed": "React to Signal message."
+      ]
     },
     {
       "name": "SKIP_TRACK",
@@ -3631,8 +3643,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "NEXT_TRACK",
         "SKIP_SONG",
         "NEXT_SONG"
-      ],
-      "descriptionCompressed": "Skip to next queued song. Not via PLAY_AUDIO."
+      ]
     },
     {
       "name": "SPAWN_AGENT",
@@ -3673,8 +3684,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ],
-      "descriptionCompressed": "Spawn task agent in existing workspace for direct control."
+      ]
     },
     {
       "name": "STATUS_COMMAND",
@@ -3683,8 +3693,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "similes": [
         "/status",
         "/s"
-      ],
-      "descriptionCompressed": "Show session settings. Trigger: /status, /s."
+      ]
     },
     {
       "name": "STOP_AGENT",
@@ -3723,8 +3732,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ],
-      "descriptionCompressed": "Stop running task agent, cleanup resources."
+      ]
     },
     {
       "name": "STOP_COMMAND",
@@ -3734,8 +3742,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "/stop",
         "/abort",
         "/cancel"
-      ],
-      "descriptionCompressed": "Stop/abort running tasks. Trigger: /stop, /abort, /cancel."
+      ]
     },
     {
       "name": "STOP_MUSIC",
@@ -3748,8 +3755,17 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "TURN_OFF_MUSIC",
         "MUSIC_OFF",
         "SILENCE"
-      ],
-      "descriptionCompressed": "Stop playback, clear queue. Not via PLAY_AUDIO."
+      ]
+    },
+    {
+      "name": "SUMMARIZE_FEED",
+      "description": "Fetch the top-N X tweets and produce a concise natural-language summary using the runtime's small text model.",
+      "parameters": [],
+      "similes": [
+        "X_FEED_SUMMARY",
+        "SUMMARIZE_TWITTER",
+        "SUMMARIZE_X_FEED"
+      ]
     },
     {
       "name": "SYNC_SKILL_CATALOG",
@@ -3758,8 +3774,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "similes": [
         "REFRESH_SKILLS",
         "UPDATE_CATALOG"
-      ],
-      "descriptionCompressed": "Sync skill catalog from registry."
+      ]
     },
     {
       "name": "TASK_CONTROL",
@@ -3773,8 +3788,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "CONTINUE_TASK",
         "ARCHIVE_TASK",
         "REOPEN_TASK"
-      ],
-      "descriptionCompressed": "Pause/stop/resume/archive/reopen coordinator task thread."
+      ]
     },
     {
       "name": "TASK_HISTORY",
@@ -3786,8 +3800,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "SHOW_TASKS",
         "COUNT_TASKS",
         "TASK_STATUS_HISTORY"
-      ],
-      "descriptionCompressed": "Query task history: active work, summaries, search, thread details. No raw transcripts."
+      ]
     },
     {
       "name": "TASK_SHARE",
@@ -3799,12 +3812,11 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "VIEW_TASK_OUTPUT",
         "CAN_I_SEE_IT",
         "PULL_IT_UP"
-      ],
-      "descriptionCompressed": "Find best way to view/share task result: artifacts, URLs, paths."
+      ]
     },
     {
       "name": "TERMINAL_ACTION",
-      "description": "Execute terminal commands or manage terminal sessions.\n\n",
+      "description": "Execute terminal commands and manage lightweight terminal sessions through the computer-use service. This includes connect, execute, read, type, clear, close, and the upstream execute_command alias.\n\n",
       "parameters": [],
       "similes": [
         "RUN_COMMAND",
@@ -3812,8 +3824,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "SHELL_COMMAND",
         "TERMINAL",
         "RUN_SHELL"
-      ],
-      "descriptionCompressed": "Execute terminal commands or manage sessions."
+      ]
     },
     {
       "name": "TOGGLE_SKILL",
@@ -3826,8 +3837,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "TURN_OFF_SKILL",
         "ACTIVATE_SKILL",
         "DEACTIVATE_SKILL"
-      ],
-      "descriptionCompressed": "Enable/disable installed skill."
+      ]
     },
     {
       "name": "UNINSTALL_SKILL",
@@ -3836,12 +3846,11 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "similes": [
         "REMOVE_SKILL",
         "DELETE_SKILL"
-      ],
-      "descriptionCompressed": "Remove non-bundled skill."
+      ]
     },
     {
       "name": "USE_COMPUTER",
-      "description": "Control the computer desktop by performing mouse and keyboard actions, or capture a screenshot of the current screen. ",
+      "description": "Control the local desktop. This action can inspect the current screen, move the mouse, click, drag, type, press keys, scroll, and perform modified clicks. It is intended for real application interaction when the agent needs to operate the user's computer directly.\n\n",
       "parameters": [],
       "similes": [
         "CONTROL_COMPUTER",
@@ -3855,9 +3864,15 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "SCROLL_SCREEN",
         "MOVE_MOUSE",
         "DRAG",
-        "MOUSE_CLICK"
-      ],
-      "descriptionCompressed": "Desktop control: mouse, keyboard, screenshot. For direct app interaction."
+        "MOUSE_CLICK",
+        "TAKE_SCREENSHOT",
+        "CAPTURE_SCREEN",
+        "SCREEN_CAPTURE",
+        "GET_SCREENSHOT",
+        "SEE_SCREEN",
+        "LOOK_AT_SCREEN",
+        "VIEW_SCREEN"
+      ]
     }
   ]
 }"#;

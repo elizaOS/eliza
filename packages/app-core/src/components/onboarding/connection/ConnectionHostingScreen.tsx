@@ -1,4 +1,4 @@
-
+import { Button } from "@elizaos/ui";
 import { appNameInterpolationVars, useBranding } from "../../../config";
 import type { ConnectionEvent } from "../../../onboarding/connection-flow";
 import { useApp } from "../../../state";
@@ -8,7 +8,6 @@ import {
   onboardingChoiceCardDescriptionClassName,
   onboardingChoiceCardTitleClassName,
 } from "../onboarding-form-primitives";
-import { Button } from "@elizaos/ui";
 import {
   OnboardingSecondaryActionButton,
   OnboardingStepHeader,

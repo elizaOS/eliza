@@ -1,6 +1,6 @@
 import type http from "node:http";
-import type { ElizaConfig } from "../config/config.js";
 import { sanitizeSpeechText } from "@elizaos/shared/spoken-text";
+import type { ElizaConfig } from "../config/config.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 
 // ---------------------------------------------------------------------------

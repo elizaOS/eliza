@@ -1,13 +1,24 @@
-
-
+import {
+  Button,
+  ConfirmDelete,
+  Input,
+  PageLayout,
+  PagePanel,
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarPanel,
+  SidebarScrollRegion,
+  SkillSidebarItem,
+  StatusBadge,
+  Switch,
+} from "@elizaos/ui";
 import { RefreshCw } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-
 import type { SkillInfo } from "../../api";
 import { useApp } from "../../state";
 import { EditSkillModal, SkillsModalView } from "./skill-detail-panel";
 import { InstallModal } from "./skill-marketplace";
-import { PagePanel, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, SkillSidebarItem, Button, ConfirmDelete, Input, StatusBadge, Switch, PageLayout } from "@elizaos/ui";
 
 /* ── Main Skills View ───────────────────────────────────────────────── */
 
@@ -570,7 +581,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                         </div>
                         {skillReviewReport.findings.length > 0 && (
                           <div className="custom-scrollbar max-h-64 overflow-y-auto rounded-2xl border border-border/35 bg-card/30">
-                            {skillReviewReport.findings.map((finding, idx) => (
+                            {skillReviewReport.findings.map((finding, _idx) => (
                               <div
                                 key={`${finding.file}:${finding.line}:${finding.message}`}
                                 className={`flex items-start gap-2 px-3 py-2 text-xs-tight`}

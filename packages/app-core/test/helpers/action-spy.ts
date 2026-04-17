@@ -1,19 +1,5 @@
-/**
- * ActionSpy — test helper that records ACTION_STARTED and ACTION_COMPLETED
- * events so tests can assert on which actions the agent invoked.
- *
- * Usage:
- *   const spy = createActionSpy();
- *   spy.attach(runtime);
- *   // ... send messages ...
- *   expect(spy.wasActionCalled("BLOCK_WEBSITES")).toBe(true);
- *   spy.detach(runtime);
- */
-import type {
-  ActionEventPayload,
-  IAgentRuntime,
-  UUID,
-} from "@elizaos/core";
+/** Records action lifecycle events so tests can assert which actions ran. */
+import type { ActionEventPayload, IAgentRuntime, UUID } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
 
 export interface ActionSpyCall {
@@ -110,16 +96,12 @@ export class ActionSpy {
 
   wasActionCalled(name: string): boolean {
     const target = normalize(name);
-    return this.completed.some(
-      (c) => normalize(c.actionName) === target,
-    );
+    return this.completed.some((c) => normalize(c.actionName) === target);
   }
 
   getActionCalls(name: string): ActionSpyCall[] {
     const target = normalize(name);
-    return this.getCalls().filter(
-      (c) => normalize(c.actionName) === target,
-    );
+    return this.getCalls().filter((c) => normalize(c.actionName) === target);
   }
 }
 

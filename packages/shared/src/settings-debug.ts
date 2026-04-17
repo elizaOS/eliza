@@ -24,7 +24,8 @@ export function isElizaSettingsDebugEnabled(options?: {
 }): boolean {
   const im = options?.importMetaEnv;
   if (im) {
-    if (isTruthyEnvValue(String(im.ELIZA_SETTINGS_DEBUG ?? "").trim())) return true;
+    if (isTruthyEnvValue(String(im.ELIZA_SETTINGS_DEBUG ?? "").trim()))
+      return true;
     if (isTruthyEnvValue(String(im.VITE_ELIZA_SETTINGS_DEBUG ?? "").trim()))
       return true;
   }
@@ -56,8 +57,7 @@ export function sanitizeForSettingsDebug(
 ): unknown {
   if (depth > MAX_DEPTH) return "[max-depth]";
   if (value === null || value === undefined) return value;
-  if (typeof value === "boolean" || typeof value === "number")
-    return value;
+  if (typeof value === "boolean" || typeof value === "number") return value;
   if (typeof value === "string") {
     const t = value.trim();
     if (t.length === 0) return "";
@@ -114,8 +114,6 @@ export function settingsDebugCloudSummary(
     services: cloud.services,
     baseUrl: cloud.baseUrl,
     hasApiKey:
-      typeof apiKey === "string"
-        ? apiKey.trim().length > 0
-        : Boolean(apiKey),
+      typeof apiKey === "string" ? apiKey.trim().length > 0 : Boolean(apiKey),
   };
 }

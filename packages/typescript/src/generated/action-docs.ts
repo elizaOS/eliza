@@ -2606,20 +2606,17 @@ export const allActionsSpec = {
 				"SAVE_TO_PLAYLIST",
 				"ADD_TRACK_TO_PLAYLIST",
 			],
-			descriptionCompressed:
-				"Add track to playlist. Creates playlist if missing. Fetches track if not in library.",
 		},
 		{
 			name: "BLUEBUBBLES_SEND_REACTION",
 			description: "Add or remove a reaction on a message via BlueBubbles",
 			parameters: [],
 			similes: ["BLUEBUBBLES_REACT", "BB_REACTION", "IMESSAGE_REACT"],
-			descriptionCompressed: "React on iMessage via BlueBubbles.",
 		},
 		{
 			name: "BROWSER_ACTION",
 			description:
-				"Control a web browser to navigate websites, click elements, fill forms, read page content, ",
+				"Control a Chromium-based browser through the local runtime. This action opens or connects to a browser session, navigates pages, clicks elements, types into forms, reads DOM state, executes JavaScript, waits for conditions, and manages tabs.\n\n",
 			parameters: [],
 			similes: [
 				"CONTROL_BROWSER",
@@ -2630,8 +2627,6 @@ export const allActionsSpec = {
 				"BROWSER_CLICK",
 				"BROWSER_TYPE",
 			],
-			descriptionCompressed:
-				"Browser control: navigate, click, type, scroll, screenshot, DOM, JS exec, tabs.",
 		},
 		{
 			name: "CHECK_CLOUD_CREDITS",
@@ -2644,8 +2639,6 @@ export const allActionsSpec = {
 				"how much credit",
 				"cloud billing",
 			],
-			descriptionCompressed:
-				"Check ElizaCloud credits, container costs, remaining runtime.",
 		},
 		{
 			name: "COMMANDS_LIST",
@@ -2653,15 +2646,12 @@ export const allActionsSpec = {
 				"List all available commands with their aliases. Only activates for /commands or /cmds slash commands.",
 			parameters: [],
 			similes: ["/commands", "/cmds"],
-			descriptionCompressed:
-				"List available commands. Trigger: /commands, /cmds.",
 		},
 		{
 			name: "DELETE_MESSAGE",
 			description: "Delete a message from a Discord channel",
 			parameters: [],
 			similes: ["REMOVE_MESSAGE", "UNSEND_MESSAGE", "DELETE_DISCORD_MESSAGE"],
-			descriptionCompressed: "Delete Discord channel message.",
 		},
 		{
 			name: "DELETE_PLAYLIST",
@@ -2694,7 +2684,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Delete saved playlist.",
 		},
 		{
 			name: "DOWNLOAD_MUSIC",
@@ -2708,7 +2697,6 @@ export const allActionsSpec = {
 				"SAVE_MUSIC",
 				"GRAB_MUSIC",
 			],
-			descriptionCompressed: "Download track to library without playing.",
 		},
 		{
 			name: "EDIT_MESSAGE",
@@ -2720,12 +2708,18 @@ export const allActionsSpec = {
 				"CHANGE_MESSAGE",
 				"EDIT_DISCORD_MESSAGE",
 			],
-			descriptionCompressed: "Edit existing Discord message.",
+		},
+		{
+			name: "FETCH_FEED_TOP",
+			description:
+				"Fetch the home timeline from X and return the top-N tweets ranked by engagement (likes + retweets * 2).",
+			parameters: [],
+			similes: ["GET_X_FEED", "TOP_TWEETS", "FEED_TOP"],
 		},
 		{
 			name: "FILE_ACTION",
 			description:
-				"Perform file operations — read, write, edit, append, delete files, or list directory contents.\n\n",
+				"Perform local filesystem operations through the computer-use service. This includes read, write, edit, append, delete, exists, list, delete_directory, upload, download, and list_downloads actions.\n\n",
 			parameters: [],
 			similes: [
 				"READ_FILE",
@@ -2735,8 +2729,6 @@ export const allActionsSpec = {
 				"LIST_DIRECTORY",
 				"FILE_OPERATION",
 			],
-			descriptionCompressed:
-				"File ops: read, write, edit, append, delete, list directory.",
 		},
 		{
 			name: "FINALIZE_WORKSPACE",
@@ -2770,8 +2762,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Commit, push, opt. create PR for workspace changes.",
 		},
 		{
 			name: "FREEZE_CLOUD_AGENT",
@@ -2784,8 +2774,6 @@ export const allActionsSpec = {
 				"pause agent",
 				"stop cloud agent",
 			],
-			descriptionCompressed:
-				"Freeze cloud agent: snapshot, disconnect, stop container.",
 		},
 		{
 			name: "GET_SKILL_DETAILS",
@@ -2793,7 +2781,6 @@ export const allActionsSpec = {
 				"Get detailed information about a specific skill including version, owner, and stats.",
 			parameters: [],
 			similes: ["SKILL_INFO", "SKILL_DETAILS"],
-			descriptionCompressed: "Get skill version, owner, stats.",
 		},
 		{
 			name: "GET_SKILL_GUIDANCE",
@@ -2809,7 +2796,6 @@ export const allActionsSpec = {
 				"LEARN_SKILL",
 				"LOOKUP_SKILL",
 			],
-			descriptionCompressed: "Search/get skill instructions for capability.",
 		},
 		{
 			name: "HELP_COMMAND",
@@ -2817,15 +2803,12 @@ export const allActionsSpec = {
 				"Show available commands and their descriptions. Only activates for /help, /h, or /? slash commands.",
 			parameters: [],
 			similes: ["/help", "/h", "/?"],
-			descriptionCompressed:
-				"Show commands and descriptions. Trigger: /help, /h, /?.",
 		},
 		{
 			name: "IMESSAGE_SEND_MESSAGE",
 			description: "Send a text message via iMessage (macOS only)",
 			parameters: [],
 			similes: ["SEND_IMESSAGE", "IMESSAGE_TEXT", "TEXT_IMESSAGE", "SEND_IMSG"],
-			descriptionCompressed: "Send iMessage (macOS).",
 		},
 		{
 			name: "INSTALL_SKILL",
@@ -2833,8 +2816,6 @@ export const allActionsSpec = {
 				"Install a skill from the ClawHub registry. The skill will be security-scanned before activation. ",
 			parameters: [],
 			similes: ["DOWNLOAD_SKILL", "ADD_SKILL", "GET_SKILL"],
-			descriptionCompressed:
-				"Install skill from ClawHub registry. Security-scanned before activation.",
 		},
 		{
 			name: "LIST_AGENTS",
@@ -2851,8 +2832,6 @@ export const allActionsSpec = {
 				"LIST_SUB_AGENTS",
 				"SHOW_TASK_STATUS",
 			],
-			descriptionCompressed:
-				"List active task agents with progress for async status updates.",
 		},
 		{
 			name: "LIST_PLAYLISTS",
@@ -2886,7 +2865,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "List all saved playlists.",
 		},
 		{
 			name: "LOAD_PLAYLIST",
@@ -2920,7 +2898,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Load saved playlist, add tracks to queue.",
 		},
 		{
 			name: "MANAGE_ISSUES",
@@ -2934,15 +2911,12 @@ export const allActionsSpec = {
 				"UPDATE_ISSUE",
 				"GET_ISSUE",
 			],
-			descriptionCompressed:
-				"Manage GitHub issues: create, list, comment, close, reopen.",
 		},
 		{
 			name: "MANAGE_SHOPIFY_CUSTOMERS",
 			description: "List and search customers in a connected Shopify store.",
 			parameters: [],
 			similes: ["LIST_CUSTOMERS", "FIND_CUSTOMER", "SEARCH_CUSTOMERS"],
-			descriptionCompressed: "List/search Shopify customers.",
 		},
 		{
 			name: "MANAGE_SHOPIFY_INVENTORY",
@@ -2955,8 +2929,6 @@ export const allActionsSpec = {
 				"CHECK_STOCK",
 				"UPDATE_STOCK",
 			],
-			descriptionCompressed:
-				"Check inventory, adjust stock, list Shopify locations.",
 		},
 		{
 			name: "MANAGE_SHOPIFY_ORDERS",
@@ -2964,8 +2936,6 @@ export const allActionsSpec = {
 				"List recent orders, check specific order status, and mark orders as fulfilled in Shopify.",
 			parameters: [],
 			similes: ["LIST_ORDERS", "CHECK_ORDERS", "FULFILL_ORDER", "ORDER_STATUS"],
-			descriptionCompressed:
-				"List orders, check status, mark fulfilled in Shopify.",
 		},
 		{
 			name: "MANAGE_SHOPIFY_PRODUCTS",
@@ -2978,12 +2948,11 @@ export const allActionsSpec = {
 				"UPDATE_PRODUCT",
 				"SEARCH_PRODUCTS",
 			],
-			descriptionCompressed: "List/search/create/update Shopify products.",
 		},
 		{
 			name: "MANAGE_WINDOW",
 			description:
-				"Manage desktop windows — list all visible windows, bring a window to the front, ",
+				"Manage desktop windows through the local runtime. This includes listing visible windows, focusing or switching windows, minimizing, maximizing, restoring, closing, and parity no-op arrange/move commands.\n\n",
 			parameters: [],
 			similes: [
 				"LIST_WINDOWS",
@@ -2994,8 +2963,6 @@ export const allActionsSpec = {
 				"CLOSE_WINDOW",
 				"WINDOW_MANAGEMENT",
 			],
-			descriptionCompressed:
-				"Desktop window mgmt: list, focus, minimize, maximize, close.",
 		},
 		{
 			name: "MODELS_COMMAND",
@@ -3003,7 +2970,6 @@ export const allActionsSpec = {
 				"List available AI models and providers. Only activates for /models slash command.",
 			parameters: [],
 			similes: ["/models"],
-			descriptionCompressed: "List AI models/providers. Trigger: /models.",
 		},
 		{
 			name: "PAUSE_MUSIC",
@@ -3011,7 +2977,6 @@ export const allActionsSpec = {
 				"Pause the currently playing track (hold playback). Use whenever the user asks to pause music or audio. ",
 			parameters: [],
 			similes: ["PAUSE", "PAUSE_AUDIO", "PAUSE_SONG", "PAUSE_PLAYBACK"],
-			descriptionCompressed: "Pause current track. Not via PLAY_AUDIO.",
 		},
 		{
 			name: "PLAY_AUDIO",
@@ -3032,8 +2997,6 @@ export const allActionsSpec = {
 				"QUEUE_SONG",
 				"ADD_TO_QUEUE",
 			],
-			descriptionCompressed:
-				"Play new song by name/artist/URL. Not for pause/resume/stop/skip.",
 		},
 		{
 			name: "PLAY_MUSIC_QUERY",
@@ -3046,8 +3009,6 @@ export const allActionsSpec = {
 				"FIND_AND_PLAY",
 				"INTELLIGENT_MUSIC_SEARCH",
 			],
-			descriptionCompressed:
-				"Complex music search: artist, genre, mood, era, activity, charts, soundtracks, versions. Uses web search + databases.",
 		},
 		{
 			name: "POST_TWEET",
@@ -3060,7 +3021,6 @@ export const allActionsSpec = {
 				"POST_ON_TWITTER",
 				"SHARE_ON_TWITTER",
 			],
-			descriptionCompressed: "Post tweet.",
 		},
 		{
 			name: "PROVISION_CLOUD_AGENT",
@@ -3073,8 +3033,6 @@ export const allActionsSpec = {
 				"start remote agent",
 				"provision container",
 			],
-			descriptionCompressed:
-				"Deploy agent to ElizaCloud. Provisions container, connects bridge, starts backup.",
 		},
 		{
 			name: "PROVISION_WORKSPACE",
@@ -3107,7 +3065,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Create git workspace for coding tasks.",
 		},
 		{
 			name: "QUEUE_MUSIC",
@@ -3135,7 +3092,19 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Queue song for later.",
+		},
+		{
+			name: "READ_UNREAD_X_DMS",
+			description: "List unread Twitter/X direct messages.",
+			parameters: [],
+			similes: ["READ_X_DMS", "GET_X_UNREAD_DMS", "CHECK_X_DMS"],
+		},
+		{
+			name: "REPLY_X_DM",
+			description:
+				"Reply to a Twitter/X direct message. Two-stage: without `confirmed: true` this returns a preview and requires confirmation; with `confirmed: true` the DM is sent.",
+			parameters: [],
+			similes: ["SEND_X_DM", "REPLY_TWITTER_DM", "X_DM_REPLY"],
 		},
 		{
 			name: "RESUME_CLOUD_AGENT",
@@ -3148,7 +3117,6 @@ export const allActionsSpec = {
 				"restart cloud agent",
 				"restore agent",
 			],
-			descriptionCompressed: "Resume frozen cloud agent from snapshot.",
 		},
 		{
 			name: "RESUME_MUSIC",
@@ -3163,7 +3131,6 @@ export const allActionsSpec = {
 				"UNPAUSE_MUSIC",
 				"CONTINUE_MUSIC",
 			],
-			descriptionCompressed: "Resume paused music. Not via PLAY_AUDIO.",
 		},
 		{
 			name: "RUN_SKILL_SCRIPT",
@@ -3171,7 +3138,6 @@ export const allActionsSpec = {
 				"Execute a script bundled with an installed skill. Provide skill slug and script name.",
 			parameters: [],
 			similes: ["EXECUTE_SKILL_SCRIPT", "SKILL_SCRIPT"],
-			descriptionCompressed: "Run script bundled with installed skill.",
 		},
 		{
 			name: "SAVE_PLAYLIST",
@@ -3205,7 +3171,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Save current queue as playlist.",
 		},
 		{
 			name: "SEARCH_SHOPIFY_STORE",
@@ -3213,7 +3178,6 @@ export const allActionsSpec = {
 				"Search across products, orders, and customers in a connected Shopify store.",
 			parameters: [],
 			similes: ["SHOPIFY_SEARCH", "STORE_SEARCH"],
-			descriptionCompressed: "Search Shopify products, orders, customers.",
 		},
 		{
 			name: "SEARCH_SKILLS",
@@ -3221,7 +3185,13 @@ export const allActionsSpec = {
 				"Search the skill registry for available skills by keyword or category.",
 			parameters: [],
 			similes: ["BROWSE_SKILLS", "LIST_SKILLS", "FIND_SKILLS"],
-			descriptionCompressed: "Search skill registry by keyword/category.",
+		},
+		{
+			name: "SEARCH_X",
+			description:
+				"Search X recent tweets using the v2 recent search endpoint. Parameters: query (required), maxResults (optional, default 10).",
+			parameters: [],
+			similes: ["SEARCH_TWITTER", "SEARCH_TWEETS", "X_SEARCH"],
 		},
 		{
 			name: "SEARCH_YOUTUBE",
@@ -3236,7 +3206,6 @@ export const allActionsSpec = {
 				"GET_YOUTUBE_LINK",
 				"LOOKUP_YOUTUBE",
 			],
-			descriptionCompressed: "Search YouTube for song/video, return link.",
 		},
 		{
 			name: "SEND_BLUEBUBBLES_MESSAGE",
@@ -3249,7 +3218,6 @@ export const allActionsSpec = {
 				"BLUEBUBBLES_SEND",
 				"APPLE_MESSAGE",
 			],
-			descriptionCompressed: "Send iMessage via BlueBubbles.",
 		},
 		{
 			name: "SEND_TO_AGENT",
@@ -3286,7 +3254,13 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Send input/keypresses to running task agent.",
+		},
+		{
+			name: "SEND_X_POST",
+			description:
+				"Publish a tweet on Twitter/X with a confirmation gate. Two-stage: without `confirmed: true` this returns a preview; with `confirmed: true` the tweet is posted.",
+			parameters: [],
+			similes: ["POST_X", "TWEET_WITH_CONFIRMATION", "PUBLISH_TWEET"],
 		},
 		{
 			name: "SETUP_CREDENTIALS",
@@ -3321,15 +3295,12 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Guide credential setup for third-party services, validate and store securely.",
 		},
 		{
 			name: "SHOW_QUEUE",
 			description: "Show the current music queue",
 			parameters: [],
 			similes: ["QUEUE", "LIST_QUEUE", "SHOW_PLAYLIST", "QUEUE_LIST"],
-			descriptionCompressed: "Show current music queue.",
 		},
 		{
 			name: "SIGNAL_LIST_CONTACTS",
@@ -3341,7 +3312,6 @@ export const allActionsSpec = {
 				"GET_CONTACTS",
 				"SIGNAL_CONTACTS",
 			],
-			descriptionCompressed: "List Signal contacts.",
 		},
 		{
 			name: "SIGNAL_LIST_GROUPS",
@@ -3353,7 +3323,18 @@ export const allActionsSpec = {
 				"GET_GROUPS",
 				"SIGNAL_GROUPS",
 			],
-			descriptionCompressed: "List Signal groups.",
+		},
+		{
+			name: "SIGNAL_READ_RECENT_MESSAGES",
+			description:
+				"Read the most recent Signal messages across active conversations",
+			parameters: [],
+			similes: [
+				"READ_SIGNAL_MESSAGES",
+				"CHECK_SIGNAL_MESSAGES",
+				"SHOW_SIGNAL_MESSAGES",
+				"SIGNAL_INBOX",
+			],
 		},
 		{
 			name: "SIGNAL_SEND_MESSAGE",
@@ -3386,7 +3367,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Send Signal message.",
 		},
 		{
 			name: "SIGNAL_SEND_REACTION",
@@ -3419,7 +3399,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "React to Signal message.",
 		},
 		{
 			name: "SKIP_TRACK",
@@ -3427,7 +3406,6 @@ export const allActionsSpec = {
 				"Skip the current track and play the next queued song. Use for skip, next track, or next song. ",
 			parameters: [],
 			similes: ["SKIP", "NEXT_TRACK", "SKIP_SONG", "NEXT_SONG"],
-			descriptionCompressed: "Skip to next queued song. Not via PLAY_AUDIO.",
 		},
 		{
 			name: "SPAWN_AGENT",
@@ -3466,8 +3444,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Spawn task agent in existing workspace for direct control.",
 		},
 		{
 			name: "STATUS_COMMAND",
@@ -3475,7 +3451,6 @@ export const allActionsSpec = {
 				"Show session directive settings via /status slash command. Only activates for /status or /s prefix.",
 			parameters: [],
 			similes: ["/status", "/s"],
-			descriptionCompressed: "Show session settings. Trigger: /status, /s.",
 		},
 		{
 			name: "STOP_AGENT",
@@ -3511,7 +3486,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Stop running task agent, cleanup resources.",
 		},
 		{
 			name: "STOP_COMMAND",
@@ -3519,8 +3493,6 @@ export const allActionsSpec = {
 				"Stop current operation or abort running tasks. Triggered by /stop, /abort, or /cancel slash commands only.",
 			parameters: [],
 			similes: ["/stop", "/abort", "/cancel"],
-			descriptionCompressed:
-				"Stop/abort running tasks. Trigger: /stop, /abort, /cancel.",
 		},
 		{
 			name: "STOP_MUSIC",
@@ -3535,7 +3507,13 @@ export const allActionsSpec = {
 				"MUSIC_OFF",
 				"SILENCE",
 			],
-			descriptionCompressed: "Stop playback, clear queue. Not via PLAY_AUDIO.",
+		},
+		{
+			name: "SUMMARIZE_FEED",
+			description:
+				"Fetch the top-N X tweets and produce a concise natural-language summary using the runtime's small text model.",
+			parameters: [],
+			similes: ["X_FEED_SUMMARY", "SUMMARIZE_TWITTER", "SUMMARIZE_X_FEED"],
 		},
 		{
 			name: "SYNC_SKILL_CATALOG",
@@ -3543,7 +3521,6 @@ export const allActionsSpec = {
 				"Sync the skill catalog from the registry to discover new skills.",
 			parameters: [],
 			similes: ["REFRESH_SKILLS", "UPDATE_CATALOG"],
-			descriptionCompressed: "Sync skill catalog from registry.",
 		},
 		{
 			name: "TASK_CONTROL",
@@ -3559,8 +3536,6 @@ export const allActionsSpec = {
 				"ARCHIVE_TASK",
 				"REOPEN_TASK",
 			],
-			descriptionCompressed:
-				"Pause/stop/resume/archive/reopen coordinator task thread.",
 		},
 		{
 			name: "TASK_HISTORY",
@@ -3574,8 +3549,6 @@ export const allActionsSpec = {
 				"COUNT_TASKS",
 				"TASK_STATUS_HISTORY",
 			],
-			descriptionCompressed:
-				"Query task history: active work, summaries, search, thread details. No raw transcripts.",
 		},
 		{
 			name: "TASK_SHARE",
@@ -3589,12 +3562,11 @@ export const allActionsSpec = {
 				"CAN_I_SEE_IT",
 				"PULL_IT_UP",
 			],
-			descriptionCompressed:
-				"Find best way to view/share task result: artifacts, URLs, paths.",
 		},
 		{
 			name: "TERMINAL_ACTION",
-			description: "Execute terminal commands or manage terminal sessions.\n\n",
+			description:
+				"Execute terminal commands and manage lightweight terminal sessions through the computer-use service. This includes connect, execute, read, type, clear, close, and the upstream execute_command alias.\n\n",
 			parameters: [],
 			similes: [
 				"RUN_COMMAND",
@@ -3603,7 +3575,6 @@ export const allActionsSpec = {
 				"TERMINAL",
 				"RUN_SHELL",
 			],
-			descriptionCompressed: "Execute terminal commands or manage sessions.",
 		},
 		{
 			name: "TOGGLE_SKILL",
@@ -3618,7 +3589,6 @@ export const allActionsSpec = {
 				"ACTIVATE_SKILL",
 				"DEACTIVATE_SKILL",
 			],
-			descriptionCompressed: "Enable/disable installed skill.",
 		},
 		{
 			name: "UNINSTALL_SKILL",
@@ -3626,12 +3596,11 @@ export const allActionsSpec = {
 				"Uninstall a non-bundled skill. Bundled skills cannot be removed. ",
 			parameters: [],
 			similes: ["REMOVE_SKILL", "DELETE_SKILL"],
-			descriptionCompressed: "Remove non-bundled skill.",
 		},
 		{
 			name: "USE_COMPUTER",
 			description:
-				"Control the computer desktop by performing mouse and keyboard actions, or capture a screenshot of the current screen. ",
+				"Control the local desktop. This action can inspect the current screen, move the mouse, click, drag, type, press keys, scroll, and perform modified clicks. It is intended for real application interaction when the agent needs to operate the user's computer directly.\n\n",
 			parameters: [],
 			similes: [
 				"CONTROL_COMPUTER",
@@ -3646,9 +3615,14 @@ export const allActionsSpec = {
 				"MOVE_MOUSE",
 				"DRAG",
 				"MOUSE_CLICK",
+				"TAKE_SCREENSHOT",
+				"CAPTURE_SCREEN",
+				"SCREEN_CAPTURE",
+				"GET_SCREENSHOT",
+				"SEE_SCREEN",
+				"LOOK_AT_SCREEN",
+				"VIEW_SCREEN",
 			],
-			descriptionCompressed:
-				"Desktop control: mouse, keyboard, screenshot. For direct app interaction.",
 		},
 	],
 } as const satisfies { version: string; actions: readonly ActionDoc[] };

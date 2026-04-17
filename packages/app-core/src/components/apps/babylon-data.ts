@@ -121,7 +121,9 @@ export function extractAgentSummary(
 ): BabylonAgentSummaryEnvelope {
   const data = asRecord(value);
   return {
-    agent: asRecord(data?.agent) as unknown as BabylonAgentSummaryEnvelope["agent"],
+    agent: asRecord(
+      data?.agent,
+    ) as unknown as BabylonAgentSummaryEnvelope["agent"],
     portfolio: asRecord(
       data?.portfolio,
     ) as unknown as BabylonAgentSummaryEnvelope["portfolio"],

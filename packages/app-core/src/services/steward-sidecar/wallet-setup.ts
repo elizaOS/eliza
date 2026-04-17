@@ -3,7 +3,7 @@
  */
 
 import crypto from "node:crypto";
-import { generateApiKey, generateMasterPassword } from "./helpers";
+import { generateApiKey } from "./helpers";
 import type { StewardCredentials, StewardSidecarStatus } from "./types";
 import {
   CREDENTIALS_FILE,
@@ -76,7 +76,7 @@ async function verifyExistingWallet(
 
 async function performFirstLaunchSetup(
   apiBase: string,
-  masterPassword: string | undefined,
+  _masterPassword: string | undefined,
   dataDir: string,
   updateStatus: (partial: Partial<StewardSidecarStatus>) => void,
 ): Promise<StewardCredentials> {

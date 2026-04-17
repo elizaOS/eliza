@@ -6,10 +6,11 @@ import type {
   StartLifeOpsTelegramAuthRequest,
   StartLifeOpsTelegramAuthResponse,
   SubmitLifeOpsTelegramAuthRequest,
+  VerifyLifeOpsTelegramConnectorRequest,
+  VerifyLifeOpsTelegramConnectorResponse,
 } from "@elizaos/shared/contracts/lifeops";
 import {
   LIFEOPS_TELEGRAM_CAPABILITIES,
-  capabilitiesForSide,
 } from "@elizaos/shared/contracts/lifeops";
 import { createLifeOpsConnectorGrant } from "./repository.js";
 import {
@@ -30,6 +31,11 @@ import {
   submitTelegramAuthCode,
   submitTelegramAuthPassword,
 } from "./telegram-auth.js";
+import {
+  sendTelegramAccountMessage,
+  telegramLocalSessionAvailable,
+  verifyTelegramLocalConnector,
+} from "./telegram-local-client.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 /** @internal */
@@ -52,12 +58,12 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
       const storedToken = tokenRef
         ? readStoredTelegramToken(tokenRef)
         : null;
-      const connected = Boolean(grant && storedToken);
+      const sessionAvailable = telegramLocalSessionAvailable();
+      const connected = Boolean(grant && storedToken && sessionAvailable);
 
-      const capabilities = (grant?.capabilities ?? []).filter(
-        (candidate): candidate is LifeOpsTelegramCapability =>
-          candidate === "telegram.read" || candidate === "telegram.send",
-      );
+      const capabilities: LifeOpsTelegramCapability[] = grant
+        ? [...LIFEOPS_TELEGRAM_CAPABILITIES]
+        : [];
 
       return {
         provider: "telegram",
@@ -67,7 +73,7 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
           ? "connected"
           : pendingSession && pendingSession.state !== "error"
             ? "auth_pending"
-            : grant
+            : grant || storedToken
               ? "auth_expired"
               : "disconnected",
         identity:
@@ -223,6 +229,60 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
       };
     }
 
+    async sendTelegramMessage(request: {
+      side?: LifeOpsConnectorSide;
+      target: string;
+      message: string;
+    }): Promise<{ ok: true; messageId: string | null }> {
+      const side =
+        normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
+      const status = await this.getTelegramConnectorStatus(side);
+      if (!status.connected || !status.grant?.tokenRef) {
+        fail(409, "Telegram connector is not connected.");
+      }
+      if (!status.grantedCapabilities.includes("telegram.send")) {
+        fail(403, "Telegram connector is missing send permission.");
+      }
+
+      const result = await sendTelegramAccountMessage({
+        tokenRef: status.grant.tokenRef,
+        target: requireNonEmptyString(request.target, "target"),
+        message: requireNonEmptyString(request.message, "message"),
+      });
+
+      return {
+        ok: true,
+        messageId: result.messageId,
+      };
+    }
+
+    async verifyTelegramConnector(
+      request: VerifyLifeOpsTelegramConnectorRequest,
+    ): Promise<VerifyLifeOpsTelegramConnectorResponse> {
+      const side =
+        normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
+      const status = await this.getTelegramConnectorStatus(side);
+      if (!status.connected || !status.grant?.tokenRef) {
+        fail(409, "Telegram connector is not connected.");
+      }
+      if (!status.grantedCapabilities.includes("telegram.send")) {
+        fail(403, "Telegram connector is missing send permission.");
+      }
+
+      const result = await verifyTelegramLocalConnector({
+        tokenRef: status.grant.tokenRef,
+        recentLimit: request.recentLimit,
+        sendTarget: request.sendTarget,
+        sendMessage: request.sendMessage,
+      });
+
+      return {
+        provider: "telegram",
+        side,
+        ...result,
+      };
+    }
+
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
@@ -248,8 +308,9 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
         side,
       );
 
-      const capabilities: LifeOpsTelegramCapability[] =
-        capabilitiesForSide(LIFEOPS_TELEGRAM_CAPABILITIES, side);
+      const capabilities: LifeOpsTelegramCapability[] = [
+        ...LIFEOPS_TELEGRAM_CAPABILITIES,
+      ];
 
       const grant = existing
         ? {

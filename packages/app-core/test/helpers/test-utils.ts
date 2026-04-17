@@ -1,17 +1,6 @@
-/**
- * Shared test utility functions.
- *
- * Consolidates helpers that were duplicated across many test files:
- * - saveEnv / envSnapshot — environment variable snapshotting
- * - withTimeout — promise timeout wrapper
- * - sleep — simple delay
- * - createDeferred — externally-resolvable promise
- */
+/** Small utilities shared across test helpers. */
 
-/**
- * Save current values of environment variables and return a restore function.
- * Use in beforeEach/afterEach to prevent env leaks between tests.
- */
+/** Saves env values and returns a restore handle. */
 export function saveEnv(...keys: string[]): { restore: () => void } {
   const saved: Record<string, string | undefined> = {};
   for (const key of keys) {
@@ -30,10 +19,7 @@ export function saveEnv(...keys: string[]): { restore: () => void } {
   };
 }
 
-/**
- * Snapshot environment variables with set/clear/restore operations.
- * Alternative to saveEnv with more control.
- */
+/** Snapshots env vars with `set`, `clear`, and `restore` helpers. */
 export function envSnapshot(keys: string[]): {
   save: () => void;
   set: (key: string, value: string) => void;
@@ -70,10 +56,7 @@ export function envSnapshot(keys: string[]): {
   };
 }
 
-/**
- * Wrap a promise with a timeout. Rejects with an error if the promise
- * doesn't resolve within the given time.
- */
+/** Rejects when a promise does not settle within the given timeout. */
 export function withTimeout<T>(
   promise: Promise<T>,
   ms: number,
@@ -92,18 +75,14 @@ export function withTimeout<T>(
   });
 }
 
-/**
- * Simple delay utility.
- */
+/** Delays for the requested number of milliseconds. */
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
 }
 
-/**
- * Create a promise with externally-accessible resolve/reject functions.
- */
+/** Creates a promise with external resolve and reject functions. */
 export function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;

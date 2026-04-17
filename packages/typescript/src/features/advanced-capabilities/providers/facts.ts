@@ -41,7 +41,10 @@ function readLastReinforcedMs(memory: Memory): number | null {
 		const parsed = Date.parse(explicit);
 		if (Number.isFinite(parsed)) return parsed;
 	}
-	if (typeof memory.createdAt === "number" && Number.isFinite(memory.createdAt)) {
+	if (
+		typeof memory.createdAt === "number" &&
+		Number.isFinite(memory.createdAt)
+	) {
 		return memory.createdAt;
 	}
 	return null;

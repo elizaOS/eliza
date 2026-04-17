@@ -1,5 +1,5 @@
-import { PermissionsOnboardingSection } from "../settings/PermissionsSection";
 import { useApp } from "../../state/useApp";
+import { PermissionsOnboardingSection } from "../settings/PermissionsSection";
 import { OnboardingStepHeader } from "./onboarding-step-chrome";
 
 export function PermissionsStep() {

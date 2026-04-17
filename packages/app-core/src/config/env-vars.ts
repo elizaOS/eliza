@@ -1,7 +1,7 @@
 import {
-  CONNECTOR_ENV_MAP as upstreamConnectorEnvMap,
   collectConfigEnvVars as upstreamCollectConfigEnvVars,
   collectConnectorEnvVars as upstreamCollectConnectorEnvVars,
+  CONNECTOR_ENV_MAP as upstreamConnectorEnvMap,
 } from "@elizaos/agent/config/env-vars";
 
 const COMPAT_BLOCKED_STARTUP_ENV_KEYS = new Set([

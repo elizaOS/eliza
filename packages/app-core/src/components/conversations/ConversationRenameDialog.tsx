@@ -1,8 +1,6 @@
-
-import { useEffect, useState } from "react";
-
-import { useApp } from "../../state";
 import { ChatConversationRenameDialog } from "@elizaos/ui";
+import { useEffect, useState } from "react";
+import { useApp } from "../../state";
 
 export interface ConversationRenameDialogProps {
   open: boolean;

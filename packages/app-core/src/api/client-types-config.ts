@@ -11,10 +11,7 @@ import type {
   TriggerSummary as _TriggerSummary,
   UpdateTriggerRequest as _UpdateTriggerRequest,
 } from "@elizaos/agent/triggers/types";
-import type {
-  LifeOpsOccurrenceView,
-  LifeOpsOverview,
-} from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsOverview } from "@elizaos/shared/contracts/lifeops";
 import type { MessageExampleContent } from "@elizaos/shared/contracts/onboarding";
 import type { ConfigUiHint } from "../types";
 

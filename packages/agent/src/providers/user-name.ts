@@ -7,6 +7,7 @@
  * Discord, or other connectors.
  */
 
+import { fetchConfiguredOwnerName } from "@elizaos/app-lifeops/lifeops/owner-profile";
 import type {
   IAgentRuntime,
   Memory,
@@ -14,7 +15,6 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { fetchConfiguredOwnerName } from "@elizaos/app-lifeops/lifeops/owner-profile";
 import { hasOwnerAccess } from "../security/access.js";
 
 export function createUserNameProvider(): Provider {

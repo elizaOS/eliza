@@ -8,9 +8,9 @@
  * - Status queries
  */
 
+import type { TxService } from "@elizaos/app-steward/api/tx-service";
 import { logger } from "@elizaos/core";
 import { ethers } from "ethers";
-import type { TxService } from "@elizaos/app-steward/api/tx-service";
 
 // ── ABI ──────────────────────────────────────────────────────────────────
 // Matches ElizaAgentRegistry.sol. Babylon-compatible core interface plus

@@ -1,6 +1,6 @@
 import {
-  registerProviderOption,
   type ProviderOption,
+  registerProviderOption,
 } from "@elizaos/shared/contracts/onboarding";
 
 export const DEFAULT_ONBOARDING_PROVIDER_OPTIONS = [

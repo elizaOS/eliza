@@ -10,7 +10,9 @@ export class GmailMessageAdapter extends BaseMessageAdapter {
 	readonly source: MessageSource = "gmail";
 
 	isAvailable(runtime: IAgentRuntime): boolean {
-		return runtime.getService("gmail") !== null &&
-			runtime.getService("gmail") !== undefined;
+		return (
+			runtime.getService("gmail") !== null &&
+			runtime.getService("gmail") !== undefined
+		);
 	}
 }

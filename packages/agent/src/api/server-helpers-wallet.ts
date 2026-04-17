@@ -4,11 +4,11 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import type { FallbackParsedAction } from "./binance-skill-helpers.js";
 import type {
   WalletExportRejection,
   WalletExportRequestBody,
 } from "@elizaos/shared/contracts";
+import type { FallbackParsedAction } from "./binance-skill-helpers.js";
 
 export type { WalletExportRejection };
 

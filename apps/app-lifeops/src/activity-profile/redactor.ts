@@ -17,10 +17,10 @@ const EMAIL = /[\w.!#$%&'*+/=?^`{|}~-]+@[\w-]+(?:\.[\w-]+)+/g;
 // PAN would otherwise be partially matched by the phone regex.
 const CC_LIKE = /(?:\d[ -]?){13,19}/g;
 
-// Phone: e.164 (+ followed by 10-15 digits), or 10-digit US formats with
-// optional separators.
+// Phone: e.164 (+ followed by 7-15 digits), or 10-digit US formats with an
+// optional +1 country code and separators.
 const PHONE =
-  /\+?\d{1,3}[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\+\d{7,15}/g;
+  /(?<!\d)(?:\+\d{7,15}|(?:\+1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})(?!\d)/g;
 
 export interface RedactorConfig {
   enabled: boolean;

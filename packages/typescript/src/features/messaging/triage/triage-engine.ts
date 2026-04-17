@@ -117,7 +117,8 @@ function findUrgencyKeywords(text: string): string[] {
 }
 
 function looksLikeSpam(msg: MessageRef): boolean {
-	const haystack = `${msg.subject ?? ""} ${msg.snippet} ${msg.body ?? ""}`.toLowerCase();
+	const haystack =
+		`${msg.subject ?? ""} ${msg.snippet} ${msg.body ?? ""}`.toLowerCase();
 	let hits = 0;
 	for (const kw of SPAM_KEYWORDS) {
 		if (haystack.includes(kw)) hits++;
@@ -219,16 +220,11 @@ export async function scoreMessage(
 	}
 
 	// Thread context bump
-	if (
-		message.threadId &&
-		ctx.userRepliedThreadIds?.has(message.threadId)
-	) {
+	if (message.threadId && ctx.userRepliedThreadIds?.has(message.threadId)) {
 		priority = bumpPriority(priority);
 	}
 
-	const reasonParts: string[] = [
-		`contact weight ${contactWeight.toFixed(2)}`,
-	];
+	const reasonParts: string[] = [`contact weight ${contactWeight.toFixed(2)}`];
 	if (urgencyHits.length > 0) {
 		reasonParts.push(`urgency [${urgencyHits.join(", ")}]`);
 	}

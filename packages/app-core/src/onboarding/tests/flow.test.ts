@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { canRunLocal } from "../../platform/init";
+import { inferOnboardingResumeStep } from "../../state/onboarding-resume";
 import {
   canRevertOnboardingTo,
   getOnboardingNavMetas,
@@ -6,8 +8,6 @@ import {
   resolveOnboardingNextStep,
   resolveOnboardingPreviousStep,
 } from "../flow";
-import { canRunLocal } from "../../platform/init";
-import { inferOnboardingResumeStep } from "../../state/onboarding-resume";
 
 describe("onboarding flow", () => {
   it("uses the centered three-step onboarding order", () => {

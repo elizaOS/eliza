@@ -16,10 +16,7 @@
  *   } satisfies AppConfig;
  */
 
-import {
-  DEFAULT_BRANDING,
-  type BrandingConfig,
-} from "./branding";
+import { type BrandingConfig, DEFAULT_BRANDING } from "./branding";
 
 export interface AppDesktopConfig {
   /** Reverse-domain bundle identifier (e.g. "com.miladyai.milady") */

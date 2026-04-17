@@ -1,12 +1,16 @@
 import path from "node:path";
 import Module from "node:module";
-import * as testRenderer from "react-test-renderer";
 import { afterAll, afterEach, vi } from "vitest";
 import {
   createMemoryStorage,
   hasStorageApi,
   suppressReactTestConsoleErrors,
 } from "./helpers/browser-mocks";
+
+const requireFromHere = Module.createRequire(import.meta.url);
+const testRenderer = requireFromHere(
+  "react-test-renderer",
+) as typeof import("react-test-renderer");
 
 const REACT_RESOLVE_PATCH_MARK = Symbol.for("elizaos.test.reactResolvePatched");
 const ANCHOR_CLICK_PATCH_MARK = Symbol.for("elizaos.test.anchorClickPatched");

@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import {
-  type IAgentRuntime,
   type TriggerRunRecord as CoreTriggerRunRecord,
+  type IAgentRuntime,
   stringToUuid,
   type Task,
   type TriggerConfig,
@@ -53,7 +53,9 @@ export interface TriggerRouteContext extends RouteRequestContext {
     task: Task,
     options: TriggerExecutionOptions,
   ) => Promise<TriggerExecutionResult>;
-  getTriggerHealthSnapshot: (runtime: IAgentRuntime) => Promise<TriggerHealthSnapshot>;
+  getTriggerHealthSnapshot: (
+    runtime: IAgentRuntime,
+  ) => Promise<TriggerHealthSnapshot>;
   getTriggerLimit: (runtime: IAgentRuntime) => number;
   listTriggerTasks: (runtime: IAgentRuntime) => Promise<Task[]>;
   readTriggerConfig: (task: Task) => TriggerConfig | null;
@@ -210,16 +212,31 @@ export async function handleTriggerRoutes(
         ? trim(body.createdBy) || "api"
         : "api";
     const inputDraft: TriggerDraftInput = {
-      displayName: typeof body.displayName === "string" ? body.displayName : undefined,
-      instructions: typeof body.instructions === "string" ? body.instructions : undefined,
-      triggerType: typeof body.triggerType === "string" ? body.triggerType as TriggerType : undefined,
-      wakeMode: typeof body.wakeMode === "string" ? body.wakeMode as TriggerWakeMode : undefined,
-      enabled: body.enabled ?? true ? true : false,
+      displayName:
+        typeof body.displayName === "string" ? body.displayName : undefined,
+      instructions:
+        typeof body.instructions === "string" ? body.instructions : undefined,
+      triggerType:
+        typeof body.triggerType === "string"
+          ? (body.triggerType as TriggerType)
+          : undefined,
+      wakeMode:
+        typeof body.wakeMode === "string"
+          ? (body.wakeMode as TriggerWakeMode)
+          : undefined,
+      enabled: (body.enabled ?? true) ? true : false,
       createdBy: creator,
       timezone: typeof body.timezone === "string" ? body.timezone : undefined,
-      intervalMs: typeof body.intervalMs === "number" ? body.intervalMs : undefined,
-      scheduledAtIso: typeof body.scheduledAtIso === "string" ? body.scheduledAtIso : undefined,
-      cronExpression: typeof body.cronExpression === "string" ? body.cronExpression : undefined,
+      intervalMs:
+        typeof body.intervalMs === "number" ? body.intervalMs : undefined,
+      scheduledAtIso:
+        typeof body.scheduledAtIso === "string"
+          ? body.scheduledAtIso
+          : undefined,
+      cronExpression:
+        typeof body.cronExpression === "string"
+          ? body.cronExpression
+          : undefined,
       maxRuns: typeof body.maxRuns === "number" ? body.maxRuns : undefined,
     };
     const normalized = normalizeTriggerDraft({
@@ -232,9 +249,13 @@ export async function handleTriggerRoutes(
         instructions:
           typeof body.instructions === "string" ? trim(body.instructions) : "",
         triggerType:
-          typeof body.triggerType === "string" ? body.triggerType as TriggerType : "interval",
+          typeof body.triggerType === "string"
+            ? (body.triggerType as TriggerType)
+            : "interval",
         wakeMode:
-          typeof body.wakeMode === "string" ? body.wakeMode as TriggerWakeMode : "inject_now",
+          typeof body.wakeMode === "string"
+            ? (body.wakeMode as TriggerWakeMode)
+            : "inject_now",
         enabled: body.enabled === undefined ? true : body.enabled === true,
         createdBy: creator,
       },
@@ -419,11 +440,20 @@ export async function handleTriggerRoutes(
     if (!body) return true;
 
     const mergedInput: TriggerDraftInput = {
-      displayName: typeof body.displayName === "string" ? body.displayName : undefined,
-      instructions: typeof body.instructions === "string" ? body.instructions : undefined,
-      triggerType: typeof body.triggerType === "string" ? body.triggerType as TriggerType : undefined,
-      wakeMode: typeof body.wakeMode === "string" ? body.wakeMode as TriggerWakeMode : undefined,
-      enabled: body.enabled === undefined ? current.enabled : body.enabled === true,
+      displayName:
+        typeof body.displayName === "string" ? body.displayName : undefined,
+      instructions:
+        typeof body.instructions === "string" ? body.instructions : undefined,
+      triggerType:
+        typeof body.triggerType === "string"
+          ? (body.triggerType as TriggerType)
+          : undefined,
+      wakeMode:
+        typeof body.wakeMode === "string"
+          ? (body.wakeMode as TriggerWakeMode)
+          : undefined,
+      enabled:
+        body.enabled === undefined ? current.enabled : body.enabled === true,
       createdBy: current.createdBy,
       timezone: typeof body.timezone === "string" ? body.timezone : undefined,
       intervalMs:

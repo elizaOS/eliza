@@ -1,6 +1,4 @@
 export * from "./asset-url";
-export * from "./env";
-export * from "./format";
 export * from "./assistant-text";
 export * from "./character-message-examples";
 export * from "./clipboard";
@@ -8,6 +6,8 @@ export * from "./desktop-dialogs";
 export * from "./desktop-workspace";
 export * from "./eliza-cloud-model-route";
 export * from "./eliza-globals";
-export * from "./tts-debug";
+export * from "./env";
+export * from "./format";
 export * from "./number-parsing";
 export * from "./openExternalUrl";
+export * from "./tts-debug";

@@ -1,13 +1,11 @@
-
-
+import { GlobalEmoteOverlay } from "@elizaos/app-companion/components/companion/GlobalEmoteOverlay";
+import { Spinner, Z_SHELL_OVERLAY } from "@elizaos/ui";
 import type { ActionNotice } from "../../state/types";
 import { BugReportModal } from "./BugReportModal";
 import { CommandPalette } from "./CommandPalette";
 import { ComputerUseApprovalOverlay } from "./ComputerUseApprovalOverlay";
-import { GlobalEmoteOverlay } from "@elizaos/app-companion/components/companion/GlobalEmoteOverlay";
 import { RestartBanner } from "./RestartBanner";
 import { ShortcutsOverlay } from "./ShortcutsOverlay";
-import { Spinner, Z_SHELL_OVERLAY } from "@elizaos/ui";
 
 export function ShellOverlays({
   actionNotice,

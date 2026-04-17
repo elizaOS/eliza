@@ -9,46 +9,38 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import type { SignalService } from "../service";
-import { SIGNAL_SERVICE_NAME } from "../types";
+import {
+  getMessageText,
+  getSignalService,
+  hasSignalService,
+  hasStructuredSignalInvocation,
+  isSignalConversation,
+} from "./action-utils";
 
 export const listGroups: Action = {
   name: "SIGNAL_LIST_GROUPS",
   similes: ["LIST_SIGNAL_GROUPS", "SHOW_GROUPS", "GET_GROUPS", "SIGNAL_GROUPS"],
   description: "List Signal groups",
   descriptionCompressed: "List Signal groups.",
-    validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
-  	const __avTextRaw = typeof message?.content?.text === 'string' ? message.content.text : '';
-  	const __avText = __avTextRaw.toLowerCase();
-  	const __avKeywords = ['signal', 'list', 'groups'];
-  	const __avKeywordOk =
-  		__avKeywords.length > 0 &&
-  		__avKeywords.some((word) => word.length > 0 && __avText.includes(word));
-  	const __avRegex = new RegExp('\\b(?:signal|list|groups)\\b', 'i');
-  	const __avRegexOk = __avRegex.test(__avText);
-  	const __avSource = String(message?.content?.source ?? message?.source ?? '');
-  	const __avExpectedSource = '';
-  	const __avSourceOk = __avExpectedSource
-  		? __avSource === __avExpectedSource
-  		: Boolean(__avSource || state || runtime?.agentId || runtime?.getService || runtime?.getSetting);
-  	const __avOptions = options && typeof options === 'object' ? options : {};
-  	const __avInputOk =
-  		__avText.trim().length > 0 ||
-  		Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-  		Boolean(message?.content && typeof message.content === 'object');
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+  ): Promise<boolean> => {
+    if (!hasSignalService(runtime)) {
+      return false;
+    }
 
-  	if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-  		return false;
-  	}
+    if (isSignalConversation(message)) {
+      return true;
+    }
 
-  	const __avLegacyValidate = async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
-    return message.content.source === "signal";
-  };
-  	try {
-  		return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
-  	} catch {
-  		return false;
-  	}
+    if (hasStructuredSignalInvocation(message, "SIGNAL_LIST_GROUPS")) {
+      return true;
+    }
+
+    const text = getMessageText(message);
+    return /\bsignal\b/i.test(text) && /\b(group|groups)\b/i.test(text);
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -57,7 +49,7 @@ export const listGroups: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult | undefined> => {
-    const signalService = runtime.getService(SIGNAL_SERVICE_NAME) as SignalService;
+    const signalService = getSignalService(runtime);
 
     if (!signalService || !signalService.isServiceConnected()) {
       await callback?.({
@@ -85,7 +77,7 @@ export const listGroups: Action = {
 
     const response: Content = {
       text: `Found ${activeGroups.length} groups:\n\n${groupList.join("\n")}`,
-      source: message.content.source,
+      source: message.content.source || "signal",
     };
 
     runtime.logger.debug(

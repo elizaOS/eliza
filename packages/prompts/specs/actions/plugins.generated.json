@@ -10,23 +10,17 @@
         "PUT_IN_PLAYLIST",
         "SAVE_TO_PLAYLIST",
         "ADD_TRACK_TO_PLAYLIST"
-      ],
-      "descriptionCompressed": "Add track to playlist. Creates playlist if missing. Fetches track if not in library."
+      ]
     },
     {
       "name": "BLUEBUBBLES_SEND_REACTION",
       "description": "Add or remove a reaction on a message via BlueBubbles",
       "parameters": [],
-      "similes": [
-        "BLUEBUBBLES_REACT",
-        "BB_REACTION",
-        "IMESSAGE_REACT"
-      ],
-      "descriptionCompressed": "React on iMessage via BlueBubbles."
+      "similes": ["BLUEBUBBLES_REACT", "BB_REACTION", "IMESSAGE_REACT"]
     },
     {
       "name": "BROWSER_ACTION",
-      "description": "Control a web browser to navigate websites, click elements, fill forms, read page content, ",
+      "description": "Control a Chromium-based browser through the local runtime. This action opens or connects to a browser session, navigates pages, clicks elements, types into forms, reads DOM state, executes JavaScript, waits for conditions, and manages tabs.\n\n",
       "parameters": [],
       "similes": [
         "CONTROL_BROWSER",
@@ -36,8 +30,7 @@
         "NAVIGATE_BROWSER",
         "BROWSER_CLICK",
         "BROWSER_TYPE"
-      ],
-      "descriptionCompressed": "Browser control: navigate, click, type, scroll, screenshot, DOM, JS exec, tabs."
+      ]
     },
     {
       "name": "CHECK_CLOUD_CREDITS",
@@ -48,29 +41,19 @@
         "check balance",
         "how much credit",
         "cloud billing"
-      ],
-      "descriptionCompressed": "Check ElizaCloud credits, container costs, remaining runtime."
+      ]
     },
     {
       "name": "COMMANDS_LIST",
       "description": "List all available commands with their aliases. Only activates for /commands or /cmds slash commands.",
       "parameters": [],
-      "similes": [
-        "/commands",
-        "/cmds"
-      ],
-      "descriptionCompressed": "List available commands. Trigger: /commands, /cmds."
+      "similes": ["/commands", "/cmds"]
     },
     {
       "name": "DELETE_MESSAGE",
       "description": "Delete a message from a Discord channel",
       "parameters": [],
-      "similes": [
-        "REMOVE_MESSAGE",
-        "UNSEND_MESSAGE",
-        "DELETE_DISCORD_MESSAGE"
-      ],
-      "descriptionCompressed": "Delete Discord channel message."
+      "similes": ["REMOVE_MESSAGE", "UNSEND_MESSAGE", "DELETE_DISCORD_MESSAGE"]
     },
     {
       "name": "DELETE_PLAYLIST",
@@ -83,9 +66,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -96,17 +77,14 @@
       "exampleCalls": [
         {
           "user": "Use DELETE_PLAYLIST with the provided parameters.",
-          "actions": [
-            "DELETE_PLAYLIST"
-          ],
+          "actions": ["DELETE_PLAYLIST"],
           "params": {
             "DELETE_PLAYLIST": {
               "data": "example"
             }
           }
         }
-      ],
-      "descriptionCompressed": "Delete saved playlist."
+      ]
     },
     {
       "name": "DOWNLOAD_MUSIC",
@@ -118,8 +96,7 @@
         "DOWNLOAD_SONG",
         "SAVE_MUSIC",
         "GRAB_MUSIC"
-      ],
-      "descriptionCompressed": "Download track to library without playing."
+      ]
     },
     {
       "name": "EDIT_MESSAGE",
@@ -130,12 +107,17 @@
         "MODIFY_MESSAGE",
         "CHANGE_MESSAGE",
         "EDIT_DISCORD_MESSAGE"
-      ],
-      "descriptionCompressed": "Edit existing Discord message."
+      ]
+    },
+    {
+      "name": "FETCH_FEED_TOP",
+      "description": "Fetch the home timeline from X and return the top-N tweets ranked by engagement (likes + retweets * 2).",
+      "parameters": [],
+      "similes": ["GET_X_FEED", "TOP_TWEETS", "FEED_TOP"]
     },
     {
       "name": "FILE_ACTION",
-      "description": "Perform file operations — read, write, edit, append, delete files, or list directory contents.\n\n",
+      "description": "Perform local filesystem operations through the computer-use service. This includes read, write, edit, append, delete, exists, list, delete_directory, upload, download, and list_downloads actions.\n\n",
       "parameters": [],
       "similes": [
         "READ_FILE",
@@ -144,8 +126,7 @@
         "DELETE_FILE",
         "LIST_DIRECTORY",
         "FILE_OPERATION"
-      ],
-      "descriptionCompressed": "File ops: read, write, edit, append, delete, list directory."
+      ]
     },
     {
       "name": "FINALIZE_WORKSPACE",
@@ -158,9 +139,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -172,17 +151,14 @@
       "exampleCalls": [
         {
           "user": "Use FINALIZE_WORKSPACE with the provided parameters.",
-          "actions": [
-            "FINALIZE_WORKSPACE"
-          ],
+          "actions": ["FINALIZE_WORKSPACE"],
           "params": {
             "FINALIZE_WORKSPACE": {
               "codingWorkspace": "example"
             }
           }
         }
-      ],
-      "descriptionCompressed": "Commit, push, opt. create PR for workspace changes."
+      ]
     },
     {
       "name": "FREEZE_CLOUD_AGENT",
@@ -193,18 +169,13 @@
         "hibernate agent",
         "pause agent",
         "stop cloud agent"
-      ],
-      "descriptionCompressed": "Freeze cloud agent: snapshot, disconnect, stop container."
+      ]
     },
     {
       "name": "GET_SKILL_DETAILS",
       "description": "Get detailed information about a specific skill including version, owner, and stats.",
       "parameters": [],
-      "similes": [
-        "SKILL_INFO",
-        "SKILL_DETAILS"
-      ],
-      "descriptionCompressed": "Get skill version, owner, stats."
+      "similes": ["SKILL_INFO", "SKILL_DETAILS"]
     },
     {
       "name": "GET_SKILL_GUIDANCE",
@@ -218,19 +189,13 @@
         "GET_INSTRUCTIONS",
         "LEARN_SKILL",
         "LOOKUP_SKILL"
-      ],
-      "descriptionCompressed": "Search/get skill instructions for capability."
+      ]
     },
     {
       "name": "HELP_COMMAND",
       "description": "Show available commands and their descriptions. Only activates for /help, /h, or /? slash commands.",
       "parameters": [],
-      "similes": [
-        "/help",
-        "/h",
-        "/?"
-      ],
-      "descriptionCompressed": "Show commands and descriptions. Trigger: /help, /h, /?."
+      "similes": ["/help", "/h", "/?"]
     },
     {
       "name": "IMESSAGE_SEND_MESSAGE",
@@ -241,19 +206,13 @@
         "IMESSAGE_TEXT",
         "TEXT_IMESSAGE",
         "SEND_IMSG"
-      ],
-      "descriptionCompressed": "Send iMessage (macOS)."
+      ]
     },
     {
       "name": "INSTALL_SKILL",
       "description": "Install a skill from the ClawHub registry. The skill will be security-scanned before activation. ",
       "parameters": [],
-      "similes": [
-        "DOWNLOAD_SKILL",
-        "ADD_SKILL",
-        "GET_SKILL"
-      ],
-      "descriptionCompressed": "Install skill from ClawHub registry. Security-scanned before activation."
+      "similes": ["DOWNLOAD_SKILL", "ADD_SKILL", "GET_SKILL"]
     },
     {
       "name": "LIST_AGENTS",
@@ -268,8 +227,7 @@
         "SHOW_TASK_AGENTS",
         "LIST_SUB_AGENTS",
         "SHOW_TASK_STATUS"
-      ],
-      "descriptionCompressed": "List active task agents with progress for async status updates."
+      ]
     },
     {
       "name": "LIST_PLAYLISTS",
@@ -282,9 +240,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -296,17 +252,14 @@
       "exampleCalls": [
         {
           "user": "Use LIST_PLAYLISTS with the provided parameters.",
-          "actions": [
-            "LIST_PLAYLISTS"
-          ],
+          "actions": ["LIST_PLAYLISTS"],
           "params": {
             "LIST_PLAYLISTS": {
               "data": "example"
             }
           }
         }
-      ],
-      "descriptionCompressed": "List all saved playlists."
+      ]
     },
     {
       "name": "LOAD_PLAYLIST",
@@ -319,9 +272,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -333,17 +284,14 @@
       "exampleCalls": [
         {
           "user": "Use LOAD_PLAYLIST with the provided parameters.",
-          "actions": [
-            "LOAD_PLAYLIST"
-          ],
+          "actions": ["LOAD_PLAYLIST"],
           "params": {
             "LOAD_PLAYLIST": {
               "data": "example"
             }
           }
         }
-      ],
-      "descriptionCompressed": "Load saved playlist, add tracks to queue."
+      ]
     },
     {
       "name": "MANAGE_ISSUES",
@@ -356,19 +304,13 @@
         "COMMENT_ISSUE",
         "UPDATE_ISSUE",
         "GET_ISSUE"
-      ],
-      "descriptionCompressed": "Manage GitHub issues: create, list, comment, close, reopen."
+      ]
     },
     {
       "name": "MANAGE_SHOPIFY_CUSTOMERS",
       "description": "List and search customers in a connected Shopify store.",
       "parameters": [],
-      "similes": [
-        "LIST_CUSTOMERS",
-        "FIND_CUSTOMER",
-        "SEARCH_CUSTOMERS"
-      ],
-      "descriptionCompressed": "List/search Shopify customers."
+      "similes": ["LIST_CUSTOMERS", "FIND_CUSTOMER", "SEARCH_CUSTOMERS"]
     },
     {
       "name": "MANAGE_SHOPIFY_INVENTORY",
@@ -379,8 +321,7 @@
         "ADJUST_INVENTORY",
         "CHECK_STOCK",
         "UPDATE_STOCK"
-      ],
-      "descriptionCompressed": "Check inventory, adjust stock, list Shopify locations."
+      ]
     },
     {
       "name": "MANAGE_SHOPIFY_ORDERS",
@@ -391,8 +332,7 @@
         "CHECK_ORDERS",
         "FULFILL_ORDER",
         "ORDER_STATUS"
-      ],
-      "descriptionCompressed": "List orders, check status, mark fulfilled in Shopify."
+      ]
     },
     {
       "name": "MANAGE_SHOPIFY_PRODUCTS",
@@ -403,12 +343,11 @@
         "CREATE_PRODUCT",
         "UPDATE_PRODUCT",
         "SEARCH_PRODUCTS"
-      ],
-      "descriptionCompressed": "List/search/create/update Shopify products."
+      ]
     },
     {
       "name": "MANAGE_WINDOW",
-      "description": "Manage desktop windows — list all visible windows, bring a window to the front, ",
+      "description": "Manage desktop windows through the local runtime. This includes listing visible windows, focusing or switching windows, minimizing, maximizing, restoring, closing, and parity no-op arrange/move commands.\n\n",
       "parameters": [],
       "similes": [
         "LIST_WINDOWS",
@@ -418,29 +357,19 @@
         "MAXIMIZE_WINDOW",
         "CLOSE_WINDOW",
         "WINDOW_MANAGEMENT"
-      ],
-      "descriptionCompressed": "Desktop window mgmt: list, focus, minimize, maximize, close."
+      ]
     },
     {
       "name": "MODELS_COMMAND",
       "description": "List available AI models and providers. Only activates for /models slash command.",
       "parameters": [],
-      "similes": [
-        "/models"
-      ],
-      "descriptionCompressed": "List AI models/providers. Trigger: /models."
+      "similes": ["/models"]
     },
     {
       "name": "PAUSE_MUSIC",
       "description": "Pause the currently playing track (hold playback). Use whenever the user asks to pause music or audio. ",
       "parameters": [],
-      "similes": [
-        "PAUSE",
-        "PAUSE_AUDIO",
-        "PAUSE_SONG",
-        "PAUSE_PLAYBACK"
-      ],
-      "descriptionCompressed": "Pause current track. Not via PLAY_AUDIO."
+      "similes": ["PAUSE", "PAUSE_AUDIO", "PAUSE_SONG", "PAUSE_PLAYBACK"]
     },
     {
       "name": "PLAY_AUDIO",
@@ -459,8 +388,7 @@
         "PLAY_FROM_YOUTUBE",
         "QUEUE_SONG",
         "ADD_TO_QUEUE"
-      ],
-      "descriptionCompressed": "Play new song by name/artist/URL. Not for pause/resume/stop/skip."
+      ]
     },
     {
       "name": "PLAY_MUSIC_QUERY",
@@ -471,8 +399,7 @@
         "RESEARCH_AND_PLAY",
         "FIND_AND_PLAY",
         "INTELLIGENT_MUSIC_SEARCH"
-      ],
-      "descriptionCompressed": "Complex music search: artist, genre, mood, era, activity, charts, soundtracks, versions. Uses web search + databases."
+      ]
     },
     {
       "name": "POST_TWEET",
@@ -484,8 +411,7 @@
         "TWITTER_POST",
         "POST_ON_TWITTER",
         "SHARE_ON_TWITTER"
-      ],
-      "descriptionCompressed": "Post tweet."
+      ]
     },
     {
       "name": "PROVISION_CLOUD_AGENT",
@@ -496,8 +422,7 @@
         "launch cloud agent",
         "start remote agent",
         "provision container"
-      ],
-      "descriptionCompressed": "Deploy agent to ElizaCloud. Provisions container, connects bridge, starts backup."
+      ]
     },
     {
       "name": "PROVISION_WORKSPACE",
@@ -510,9 +435,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -524,17 +447,14 @@
       "exampleCalls": [
         {
           "user": "Use PROVISION_WORKSPACE with the provided parameters.",
-          "actions": [
-            "PROVISION_WORKSPACE"
-          ],
+          "actions": ["PROVISION_WORKSPACE"],
           "params": {
             "PROVISION_WORKSPACE": {
               "codingWorkspace": "example"
             }
           }
         }
-      ],
-      "descriptionCompressed": "Create git workspace for coding tasks."
+      ]
     },
     {
       "name": "QUEUE_MUSIC",
@@ -547,31 +467,33 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
-      "similes": [
-        "ADD_TO_QUEUE",
-        "QUEUE_SONG",
-        "QUEUE_TRACK",
-        "ADD_SONG"
-      ],
+      "similes": ["ADD_TO_QUEUE", "QUEUE_SONG", "QUEUE_TRACK", "ADD_SONG"],
       "exampleCalls": [
         {
           "user": "Use QUEUE_MUSIC with the provided parameters.",
-          "actions": [
-            "QUEUE_MUSIC"
-          ],
+          "actions": ["QUEUE_MUSIC"],
           "params": {
             "QUEUE_MUSIC": {
               "data": "example"
             }
           }
         }
-      ],
-      "descriptionCompressed": "Queue song for later."
+      ]
+    },
+    {
+      "name": "READ_UNREAD_X_DMS",
+      "description": "List unread Twitter/X direct messages.",
+      "parameters": [],
+      "similes": ["READ_X_DMS", "GET_X_UNREAD_DMS", "CHECK_X_DMS"]
+    },
+    {
+      "name": "REPLY_X_DM",
+      "description": "Reply to a Twitter/X direct message. Two-stage: without `confirmed: true` this returns a preview and requires confirmation; with `confirmed: true` the DM is sent.",
+      "parameters": [],
+      "similes": ["SEND_X_DM", "REPLY_TWITTER_DM", "X_DM_REPLY"]
     },
     {
       "name": "RESUME_CLOUD_AGENT",
@@ -582,8 +504,7 @@
         "unfreeze agent",
         "restart cloud agent",
         "restore agent"
-      ],
-      "descriptionCompressed": "Resume frozen cloud agent from snapshot."
+      ]
     },
     {
       "name": "RESUME_MUSIC",
@@ -596,18 +517,13 @@
         "UNPAUSE",
         "UNPAUSE_MUSIC",
         "CONTINUE_MUSIC"
-      ],
-      "descriptionCompressed": "Resume paused music. Not via PLAY_AUDIO."
+      ]
     },
     {
       "name": "RUN_SKILL_SCRIPT",
       "description": "Execute a script bundled with an installed skill. Provide skill slug and script name.",
       "parameters": [],
-      "similes": [
-        "EXECUTE_SKILL_SCRIPT",
-        "SKILL_SCRIPT"
-      ],
-      "descriptionCompressed": "Run script bundled with installed skill."
+      "similes": ["EXECUTE_SKILL_SCRIPT", "SKILL_SCRIPT"]
     },
     {
       "name": "SAVE_PLAYLIST",
@@ -620,9 +536,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -634,38 +548,32 @@
       "exampleCalls": [
         {
           "user": "Use SAVE_PLAYLIST with the provided parameters.",
-          "actions": [
-            "SAVE_PLAYLIST"
-          ],
+          "actions": ["SAVE_PLAYLIST"],
           "params": {
             "SAVE_PLAYLIST": {
               "data": "example"
             }
           }
         }
-      ],
-      "descriptionCompressed": "Save current queue as playlist."
+      ]
     },
     {
       "name": "SEARCH_SHOPIFY_STORE",
       "description": "Search across products, orders, and customers in a connected Shopify store.",
       "parameters": [],
-      "similes": [
-        "SHOPIFY_SEARCH",
-        "STORE_SEARCH"
-      ],
-      "descriptionCompressed": "Search Shopify products, orders, customers."
+      "similes": ["SHOPIFY_SEARCH", "STORE_SEARCH"]
     },
     {
       "name": "SEARCH_SKILLS",
       "description": "Search the skill registry for available skills by keyword or category.",
       "parameters": [],
-      "similes": [
-        "BROWSE_SKILLS",
-        "LIST_SKILLS",
-        "FIND_SKILLS"
-      ],
-      "descriptionCompressed": "Search skill registry by keyword/category."
+      "similes": ["BROWSE_SKILLS", "LIST_SKILLS", "FIND_SKILLS"]
+    },
+    {
+      "name": "SEARCH_X",
+      "description": "Search X recent tweets using the v2 recent search endpoint. Parameters: query (required), maxResults (optional, default 10).",
+      "parameters": [],
+      "similes": ["SEARCH_TWITTER", "SEARCH_TWEETS", "X_SEARCH"]
     },
     {
       "name": "SEARCH_YOUTUBE",
@@ -678,8 +586,7 @@
         "SEARCH_MUSIC",
         "GET_YOUTUBE_LINK",
         "LOOKUP_YOUTUBE"
-      ],
-      "descriptionCompressed": "Search YouTube for song/video, return link."
+      ]
     },
     {
       "name": "SEND_BLUEBUBBLES_MESSAGE",
@@ -691,8 +598,7 @@
         "IMESSAGE_REPLY",
         "BLUEBUBBLES_SEND",
         "APPLE_MESSAGE"
-      ],
-      "descriptionCompressed": "Send iMessage via BlueBubbles."
+      ]
     },
     {
       "name": "SEND_TO_AGENT",
@@ -705,9 +611,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -722,17 +626,20 @@
       "exampleCalls": [
         {
           "user": "Use SEND_TO_AGENT with the provided parameters.",
-          "actions": [
-            "SEND_TO_AGENT"
-          ],
+          "actions": ["SEND_TO_AGENT"],
           "params": {
             "SEND_TO_AGENT": {
               "codingSession": "example"
             }
           }
         }
-      ],
-      "descriptionCompressed": "Send input/keypresses to running task agent."
+      ]
+    },
+    {
+      "name": "SEND_X_POST",
+      "description": "Publish a tweet on Twitter/X with a confirmation gate. Two-stage: without `confirmed: true` this returns a preview; with `confirmed: true` the tweet is posted.",
+      "parameters": [],
+      "similes": ["POST_X", "TWEET_WITH_CONFIRMATION", "PUBLISH_TWEET"]
     },
     {
       "name": "SETUP_CREDENTIALS",
@@ -745,9 +652,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -760,29 +665,20 @@
       "exampleCalls": [
         {
           "user": "Use SETUP_CREDENTIALS with the provided parameters.",
-          "actions": [
-            "SETUP_CREDENTIALS"
-          ],
+          "actions": ["SETUP_CREDENTIALS"],
           "params": {
             "SETUP_CREDENTIALS": {
               "data": "example"
             }
           }
         }
-      ],
-      "descriptionCompressed": "Guide credential setup for third-party services, validate and store securely."
+      ]
     },
     {
       "name": "SHOW_QUEUE",
       "description": "Show the current music queue",
       "parameters": [],
-      "similes": [
-        "QUEUE",
-        "LIST_QUEUE",
-        "SHOW_PLAYLIST",
-        "QUEUE_LIST"
-      ],
-      "descriptionCompressed": "Show current music queue."
+      "similes": ["QUEUE", "LIST_QUEUE", "SHOW_PLAYLIST", "QUEUE_LIST"]
     },
     {
       "name": "SIGNAL_LIST_CONTACTS",
@@ -793,8 +689,7 @@
         "SHOW_CONTACTS",
         "GET_CONTACTS",
         "SIGNAL_CONTACTS"
-      ],
-      "descriptionCompressed": "List Signal contacts."
+      ]
     },
     {
       "name": "SIGNAL_LIST_GROUPS",
@@ -805,8 +700,18 @@
         "SHOW_GROUPS",
         "GET_GROUPS",
         "SIGNAL_GROUPS"
-      ],
-      "descriptionCompressed": "List Signal groups."
+      ]
+    },
+    {
+      "name": "SIGNAL_READ_RECENT_MESSAGES",
+      "description": "Read the most recent Signal messages across active conversations",
+      "parameters": [],
+      "similes": [
+        "READ_SIGNAL_MESSAGES",
+        "CHECK_SIGNAL_MESSAGES",
+        "SHOW_SIGNAL_MESSAGES",
+        "SIGNAL_INBOX"
+      ]
     },
     {
       "name": "SIGNAL_SEND_MESSAGE",
@@ -819,9 +724,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -833,17 +736,14 @@
       "exampleCalls": [
         {
           "user": "Use SIGNAL_SEND_MESSAGE with the provided parameters.",
-          "actions": [
-            "SIGNAL_SEND_MESSAGE"
-          ],
+          "actions": ["SIGNAL_SEND_MESSAGE"],
           "params": {
             "SIGNAL_SEND_MESSAGE": {
               "data": "example"
             }
           }
         }
-      ],
-      "descriptionCompressed": "Send Signal message."
+      ]
     },
     {
       "name": "SIGNAL_SEND_REACTION",
@@ -856,9 +756,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -870,29 +768,20 @@
       "exampleCalls": [
         {
           "user": "Use SIGNAL_SEND_REACTION with the provided parameters.",
-          "actions": [
-            "SIGNAL_SEND_REACTION"
-          ],
+          "actions": ["SIGNAL_SEND_REACTION"],
           "params": {
             "SIGNAL_SEND_REACTION": {
               "data": "example"
             }
           }
         }
-      ],
-      "descriptionCompressed": "React to Signal message."
+      ]
     },
     {
       "name": "SKIP_TRACK",
       "description": "Skip the current track and play the next queued song. Use for skip, next track, or next song. ",
       "parameters": [],
-      "similes": [
-        "SKIP",
-        "NEXT_TRACK",
-        "SKIP_SONG",
-        "NEXT_SONG"
-      ],
-      "descriptionCompressed": "Skip to next queued song. Not via PLAY_AUDIO."
+      "similes": ["SKIP", "NEXT_TRACK", "SKIP_SONG", "NEXT_SONG"]
     },
     {
       "name": "SPAWN_AGENT",
@@ -905,9 +794,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -924,27 +811,20 @@
       "exampleCalls": [
         {
           "user": "Use SPAWN_AGENT with the provided parameters.",
-          "actions": [
-            "SPAWN_AGENT"
-          ],
+          "actions": ["SPAWN_AGENT"],
           "params": {
             "SPAWN_AGENT": {
               "codingWorkspace": "example"
             }
           }
         }
-      ],
-      "descriptionCompressed": "Spawn task agent in existing workspace for direct control."
+      ]
     },
     {
       "name": "STATUS_COMMAND",
       "description": "Show session directive settings via /status slash command. Only activates for /status or /s prefix.",
       "parameters": [],
-      "similes": [
-        "/status",
-        "/s"
-      ],
-      "descriptionCompressed": "Show session settings. Trigger: /status, /s."
+      "similes": ["/status", "/s"]
     },
     {
       "name": "STOP_AGENT",
@@ -957,9 +837,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -974,28 +852,20 @@
       "exampleCalls": [
         {
           "user": "Use STOP_AGENT with the provided parameters.",
-          "actions": [
-            "STOP_AGENT"
-          ],
+          "actions": ["STOP_AGENT"],
           "params": {
             "STOP_AGENT": {
               "codingSession": "example"
             }
           }
         }
-      ],
-      "descriptionCompressed": "Stop running task agent, cleanup resources."
+      ]
     },
     {
       "name": "STOP_COMMAND",
       "description": "Stop current operation or abort running tasks. Triggered by /stop, /abort, or /cancel slash commands only.",
       "parameters": [],
-      "similes": [
-        "/stop",
-        "/abort",
-        "/cancel"
-      ],
-      "descriptionCompressed": "Stop/abort running tasks. Trigger: /stop, /abort, /cancel."
+      "similes": ["/stop", "/abort", "/cancel"]
     },
     {
       "name": "STOP_MUSIC",
@@ -1008,18 +878,19 @@
         "TURN_OFF_MUSIC",
         "MUSIC_OFF",
         "SILENCE"
-      ],
-      "descriptionCompressed": "Stop playback, clear queue. Not via PLAY_AUDIO."
+      ]
+    },
+    {
+      "name": "SUMMARIZE_FEED",
+      "description": "Fetch the top-N X tweets and produce a concise natural-language summary using the runtime's small text model.",
+      "parameters": [],
+      "similes": ["X_FEED_SUMMARY", "SUMMARIZE_TWITTER", "SUMMARIZE_X_FEED"]
     },
     {
       "name": "SYNC_SKILL_CATALOG",
       "description": "Sync the skill catalog from the registry to discover new skills.",
       "parameters": [],
-      "similes": [
-        "REFRESH_SKILLS",
-        "UPDATE_CATALOG"
-      ],
-      "descriptionCompressed": "Sync skill catalog from registry."
+      "similes": ["REFRESH_SKILLS", "UPDATE_CATALOG"]
     },
     {
       "name": "TASK_CONTROL",
@@ -1033,8 +904,7 @@
         "CONTINUE_TASK",
         "ARCHIVE_TASK",
         "REOPEN_TASK"
-      ],
-      "descriptionCompressed": "Pause/stop/resume/archive/reopen coordinator task thread."
+      ]
     },
     {
       "name": "TASK_HISTORY",
@@ -1046,8 +916,7 @@
         "SHOW_TASKS",
         "COUNT_TASKS",
         "TASK_STATUS_HISTORY"
-      ],
-      "descriptionCompressed": "Query task history: active work, summaries, search, thread details. No raw transcripts."
+      ]
     },
     {
       "name": "TASK_SHARE",
@@ -1059,12 +928,11 @@
         "VIEW_TASK_OUTPUT",
         "CAN_I_SEE_IT",
         "PULL_IT_UP"
-      ],
-      "descriptionCompressed": "Find best way to view/share task result: artifacts, URLs, paths."
+      ]
     },
     {
       "name": "TERMINAL_ACTION",
-      "description": "Execute terminal commands or manage terminal sessions.\n\n",
+      "description": "Execute terminal commands and manage lightweight terminal sessions through the computer-use service. This includes connect, execute, read, type, clear, close, and the upstream execute_command alias.\n\n",
       "parameters": [],
       "similes": [
         "RUN_COMMAND",
@@ -1072,8 +940,7 @@
         "SHELL_COMMAND",
         "TERMINAL",
         "RUN_SHELL"
-      ],
-      "descriptionCompressed": "Execute terminal commands or manage sessions."
+      ]
     },
     {
       "name": "TOGGLE_SKILL",
@@ -1086,22 +953,17 @@
         "TURN_OFF_SKILL",
         "ACTIVATE_SKILL",
         "DEACTIVATE_SKILL"
-      ],
-      "descriptionCompressed": "Enable/disable installed skill."
+      ]
     },
     {
       "name": "UNINSTALL_SKILL",
       "description": "Uninstall a non-bundled skill. Bundled skills cannot be removed. ",
       "parameters": [],
-      "similes": [
-        "REMOVE_SKILL",
-        "DELETE_SKILL"
-      ],
-      "descriptionCompressed": "Remove non-bundled skill."
+      "similes": ["REMOVE_SKILL", "DELETE_SKILL"]
     },
     {
       "name": "USE_COMPUTER",
-      "description": "Control the computer desktop by performing mouse and keyboard actions, or capture a screenshot of the current screen. ",
+      "description": "Control the local desktop. This action can inspect the current screen, move the mouse, click, drag, type, press keys, scroll, and perform modified clicks. It is intended for real application interaction when the agent needs to operate the user's computer directly.\n\n",
       "parameters": [],
       "similes": [
         "CONTROL_COMPUTER",
@@ -1115,9 +977,15 @@
         "SCROLL_SCREEN",
         "MOVE_MOUSE",
         "DRAG",
-        "MOUSE_CLICK"
-      ],
-      "descriptionCompressed": "Desktop control: mouse, keyboard, screenshot. For direct app interaction."
+        "MOUSE_CLICK",
+        "TAKE_SCREENSHOT",
+        "CAPTURE_SCREEN",
+        "SCREEN_CAPTURE",
+        "GET_SCREENSHOT",
+        "SEE_SCREEN",
+        "LOOK_AT_SCREEN",
+        "VIEW_SCREEN"
+      ]
     }
   ]
 }

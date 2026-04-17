@@ -1,8 +1,8 @@
-import { getBootConfig } from "../config/boot-config";
 import type {
   VincentStateHookArgs,
   VincentStateHookResult,
 } from "../config/boot-config";
+import { getBootConfig } from "../config/boot-config";
 
 const DEFAULT_VINCENT_STATE: VincentStateHookResult = {
   vincentConnected: false,

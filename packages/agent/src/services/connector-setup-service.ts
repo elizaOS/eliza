@@ -44,8 +44,7 @@ export class ConnectorSetupService extends Service {
   static serviceType = "connector-setup";
   capabilityDescription = "Shared connector setup utilities for plugins";
 
-  private broadcastWsFn: ((data: object) => void) | null =
-    null;
+  private broadcastWsFn: ((data: object) => void) | null = null;
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const instance = new ConnectorSetupService(runtime);

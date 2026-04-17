@@ -1,10 +1,19 @@
-import { client } from "../../api/client";
-import type {
-  TrajectoryListResult,
-  TrajectoryRecord,
-} from "../../api/client-types-cloud";
-import { useApp } from "../../state/useApp";
-
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  PageLayout,
+  PagePanel,
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarPanel,
+  SidebarScrollRegion,
+  TrajectorySidebarItem,
+} from "@elizaos/ui";
+import { Download, RefreshCw, Trash2, XCircle } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -13,15 +22,19 @@ import {
   useMemo,
   useState,
 } from "react";
-import { Download, RefreshCw, Trash2, XCircle } from "lucide-react";
-import { TrajectoryDetailView } from "./TrajectoryDetailView";
-import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
-import { PagePanel, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, TrajectorySidebarItem, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, PageLayout } from "@elizaos/ui";
+import { client } from "../../api/client";
+import type {
+  TrajectoryListResult,
+  TrajectoryRecord,
+} from "../../api/client-types-cloud";
+import { useApp } from "../../state/useApp";
 import {
   formatTrajectoryDuration,
   formatTrajectoryTimestamp,
   formatTrajectoryTokenCount,
 } from "../../utils/trajectory-format";
+import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
+import { TrajectoryDetailView } from "./TrajectoryDetailView";
 
 const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
   active: { bg: "rgba(59, 130, 246, 0.15)", fg: "rgb(59, 130, 246)" },
@@ -286,7 +299,7 @@ export function TrajectoriesView({
     } finally {
       setClearingAll(false);
     }
-  }, [onSelectTrajectory, pageSize, setActionNotice, t]);
+  }, [onSelectTrajectory, setActionNotice, t]);
 
   const trajectoriesSidebar = (
     <Sidebar

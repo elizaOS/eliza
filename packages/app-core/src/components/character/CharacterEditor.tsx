@@ -1,5 +1,3 @@
-
-
 import { getStylePresets } from "@elizaos/shared/onboarding-presets";
 import type { CharacterData } from "../../api/client";
 import { client } from "../../api/client";
@@ -84,7 +82,20 @@ const UploadIcon = ({ className }: { className?: string }) => (
   />
 );
 
-import { SidebarContent, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, PageLayout } from "@elizaos/ui";
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  PageLayout,
+  Sidebar,
+  SidebarContent,
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "@elizaos/ui";
 import {
   type ChangeEvent,
   type ReactNode,

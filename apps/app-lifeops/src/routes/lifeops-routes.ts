@@ -18,6 +18,7 @@ import type {
   CreateLifeOpsWorkflowRequest,
   CreateLifeOpsXPostRequest,
   DisconnectLifeOpsGoogleConnectorRequest,
+  GetLifeOpsIMessageMessagesRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailSearchRequest,
   GetLifeOpsGmailTriageRequest,
@@ -31,6 +32,7 @@ import type {
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
+  SendLifeOpsIMessageRequest,
   SetLifeOpsReminderPreferenceRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsGoogleConnectorRequest,
@@ -44,6 +46,7 @@ import type {
   UpsertLifeOpsXConnectorRequest,
   StartLifeOpsTelegramAuthRequest,
   SubmitLifeOpsTelegramAuthRequest,
+  VerifyLifeOpsTelegramConnectorRequest,
 } from "@elizaos/shared/contracts/lifeops";
 import { LIFEOPS_ACTIVITY_SIGNAL_STATES } from "@elizaos/shared/contracts/lifeops";
 import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
@@ -965,6 +968,77 @@ export async function handleLifeOpsRoutes(
   }
 
   // -----------------------------------------------------------------------
+  // iMessage connector
+  // -----------------------------------------------------------------------
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/imessage/status"
+  ) {
+    return runRoute(ctx, async (service) => {
+      json(res, await service.getIMessageConnectorStatus());
+    });
+  }
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/imessage/chats"
+  ) {
+    return runRoute(ctx, async (service) => {
+      const chats = await service.listIMessageChats();
+      json(res, { chats, count: chats.length });
+    });
+  }
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/imessage/messages"
+  ) {
+    return runRoute(ctx, async (service) => {
+      const query: GetLifeOpsIMessageMessagesRequest = {
+        chatId: url.searchParams.get("chatId")?.trim() || undefined,
+        since: url.searchParams.get("since")?.trim() || undefined,
+        limit:
+          parsePositiveIntegerQuery(url.searchParams.get("limit"), "limit") ??
+          undefined,
+      };
+      const messages = await service.readIMessages(query);
+      json(res, { messages, count: messages.length });
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/imessage/send"
+  ) {
+    const body = await readJsonBody<SendLifeOpsIMessageRequest>(req, res);
+    if (!body) return true;
+    const to = body.to?.trim();
+    const text = body.text?.trim();
+    if (!to) {
+      ctx.error(res, "to is required", 400);
+      return true;
+    }
+    if (!text) {
+      ctx.error(res, "text is required", 400);
+      return true;
+    }
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.sendIMessage({
+          to,
+          text,
+          attachmentPaths: Array.isArray(body.attachmentPaths)
+            ? body.attachmentPaths
+            : undefined,
+        }),
+        201,
+      );
+    });
+  }
+
+  // -----------------------------------------------------------------------
   // Telegram connector
   // -----------------------------------------------------------------------
 
@@ -1023,6 +1097,17 @@ export async function handleLifeOpsRoutes(
     const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
     return runRoute(ctx, async (service) => {
       json(res, await service.disconnectTelegram(rawSide ?? undefined));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/telegram/verify"
+  ) {
+    const body = await readJsonBody<VerifyLifeOpsTelegramConnectorRequest>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.verifyTelegramConnector(body));
     });
   }
 

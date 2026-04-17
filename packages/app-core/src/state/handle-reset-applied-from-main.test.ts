@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { parseAgentStatusFromMainMenuResetPayload } from "./parsers";
 import {
   type HandleResetAppliedFromMainDeps,
   handleResetAppliedFromMainCore,
 } from "./handle-reset-applied-from-main";
+import { parseAgentStatusFromMainMenuResetPayload } from "./parsers";
 
 /* ---------- parseAgentStatusFromMainMenuResetPayload ---------- */
 

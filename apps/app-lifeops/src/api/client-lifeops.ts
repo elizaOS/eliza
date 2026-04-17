@@ -24,6 +24,7 @@ import type {
   CreateLifeOpsGoalRequest,
   DisconnectLifeOpsGoogleConnectorRequest,
   DisconnectLifeOpsMessagingConnectorRequest,
+  GetLifeOpsIMessageMessagesRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
   LifeOpsActivitySignal,
@@ -45,6 +46,9 @@ import type {
   LifeOpsGoalRecord,
   LifeOpsGoalReview,
   LifeOpsGoogleConnectorStatus,
+  LifeOpsIMessageChat,
+  LifeOpsIMessageConnectorStatus,
+  LifeOpsIMessageMessage,
   LifeOpsNextCalendarEventContext,
   LifeOpsOccurrenceActionResult,
   LifeOpsOccurrenceExplanation,
@@ -55,6 +59,7 @@ import type {
   LifeOpsTelegramConnectorStatus,
   SelectLifeOpsGoogleConnectorPreferenceRequest,
   SendLifeOpsGmailReplyRequest,
+  SendLifeOpsIMessageRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsDiscordConnectorRequest,
   StartLifeOpsGoogleConnectorRequest,
@@ -64,6 +69,8 @@ import type {
   StartLifeOpsTelegramAuthRequest,
   StartLifeOpsTelegramAuthResponse,
   SubmitLifeOpsTelegramAuthRequest,
+  VerifyLifeOpsTelegramConnectorRequest,
+  VerifyLifeOpsTelegramConnectorResponse,
   SyncLifeOpsBrowserStateRequest,
   UpdateLifeOpsBrowserSettingsRequest,
   UpdateLifeOpsDefinitionRequest,
@@ -206,6 +213,22 @@ declare module "@elizaos/app-core/api/client-base" {
       side?: LifeOpsConnectorSide,
     ): Promise<LifeOpsGoogleConnectorStatus[]>;
 
+    // --- iMessage connector ---
+    getIMessageConnectorStatus(): Promise<LifeOpsIMessageConnectorStatus>;
+    listLifeOpsIMessageChats(): Promise<{
+      chats: LifeOpsIMessageChat[];
+      count: number;
+    }>;
+    getLifeOpsIMessageMessages(
+      options?: GetLifeOpsIMessageMessagesRequest,
+    ): Promise<{
+      messages: LifeOpsIMessageMessage[];
+      count: number;
+    }>;
+    sendLifeOpsIMessage(
+      data: SendLifeOpsIMessageRequest,
+    ): Promise<{ ok: true; messageId?: string }>;
+
     // --- Signal connector ---
     getSignalConnectorStatus(
       side?: LifeOpsConnectorSide,
@@ -248,6 +271,9 @@ declare module "@elizaos/app-core/api/client-base" {
     disconnectTelegramConnector(
       data?: DisconnectLifeOpsMessagingConnectorRequest,
     ): Promise<LifeOpsTelegramConnectorStatus>;
+    verifyTelegramConnector(
+      data?: VerifyLifeOpsTelegramConnectorRequest,
+    ): Promise<VerifyLifeOpsTelegramConnectorResponse>;
   }
 }
 
@@ -737,6 +763,50 @@ ElizaClient.prototype.getGoogleLifeOpsConnectorAccounts = async function (
 };
 
 // ---------------------------------------------------------------------------
+// iMessage connector
+// ---------------------------------------------------------------------------
+
+ElizaClient.prototype.getIMessageConnectorStatus = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/lifeops/connectors/imessage/status");
+};
+
+ElizaClient.prototype.listLifeOpsIMessageChats = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/lifeops/connectors/imessage/chats");
+};
+
+ElizaClient.prototype.getLifeOpsIMessageMessages = async function (
+  this: ElizaClient,
+  options = {},
+) {
+  const params = new URLSearchParams();
+  if (options.chatId) {
+    params.set("chatId", options.chatId);
+  }
+  if (options.since) {
+    params.set("since", options.since);
+  }
+  if (options.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return this.fetch(`/api/lifeops/connectors/imessage/messages${query}`);
+};
+
+ElizaClient.prototype.sendLifeOpsIMessage = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/connectors/imessage/send", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+// ---------------------------------------------------------------------------
 // Signal connector
 // ---------------------------------------------------------------------------
 
@@ -879,6 +949,16 @@ ElizaClient.prototype.disconnectTelegramConnector = async function (
   data = { provider: "telegram" },
 ) {
   return this.fetch("/api/lifeops/connectors/telegram/disconnect", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.verifyTelegramConnector = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  return this.fetch("/api/lifeops/connectors/telegram/verify", {
     method: "POST",
     body: JSON.stringify(data),
   });

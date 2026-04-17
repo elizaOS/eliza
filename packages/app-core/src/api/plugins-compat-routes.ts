@@ -1,10 +1,8 @@
 import fs from "node:fs";
-import http from "node:http";
+import type http from "node:http";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { type AgentRuntime, logger } from "@elizaos/core";
-import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
 import {
   applyPluginRuntimeMutation,
   type PluginRuntimeApplyResult,
@@ -13,24 +11,26 @@ import {
   findPrimaryEnvKey,
   readBundledPluginPackageMetadata,
 } from "@elizaos/agent/api/server";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
+import { type AgentRuntime, logger } from "@elizaos/core";
+import { CONNECTOR_ENV_MAP } from "../config/env-vars";
+import {
+  CONNECTOR_PLUGINS,
+  STREAMING_PLUGINS,
+} from "../config/plugin-auto-enable";
 import {
   ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,
 } from "./auth";
 import {
-  CONNECTOR_PLUGINS,
-  STREAMING_PLUGINS,
-} from "../config/plugin-auto-enable";
-import { CONNECTOR_ENV_MAP } from "../config/env-vars";
+  type CompatRuntimeState,
+  readCompatJsonBody,
+  scheduleCompatRuntimeRestart,
+} from "./compat-route-shared";
 import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
-import {
-  scheduleCompatRuntimeRestart,
-  readCompatJsonBody,
-  type CompatRuntimeState,
-} from "./compat-route-shared";
 
 const require = createRequire(import.meta.url);
 
@@ -441,7 +441,11 @@ export function analyzePluginStateDrift(
       category === "connector"
         ? readCompatSectionEnabled(
             configRecord.connectors,
-            resolveCompatConfigKey(pluginId, npmName ?? undefined, CONNECTOR_PLUGINS),
+            resolveCompatConfigKey(
+              pluginId,
+              npmName ?? undefined,
+              CONNECTOR_PLUGINS,
+            ),
           )
         : category === "streaming"
           ? readCompatSectionEnabled(
@@ -458,9 +462,7 @@ export function analyzePluginStateDrift(
         ? Boolean(configEntries[pluginId]?.enabled)
         : undefined;
     const enabledAllowList =
-      npmName == null
-        ? null
-        : allowList.has(npmName) || allowList.has(shortId);
+      npmName == null ? null : allowList.has(npmName) || allowList.has(shortId);
     const isActive = Boolean(plugin.isActive);
     const driftFlags: PluginDriftFlag[] = [];
 
@@ -502,7 +504,9 @@ export function analyzePluginStateDrift(
     };
   });
 
-  const withDrift = diagnostics.filter((plugin) => plugin.drift_flags.length > 0);
+  const withDrift = diagnostics.filter(
+    (plugin) => plugin.drift_flags.length > 0,
+  );
   const byFlag: Record<PluginDriftFlag, number> = {
     entries_vs_compat: 0,
     entries_vs_allowlist: 0,
@@ -528,8 +532,7 @@ export function analyzePluginStateDrift(
 function buildPluginDriftDiagnostics(
   runtime: AgentRuntime | null,
 ): PluginDriftDiagnosticsReport {
-  const pluginList = buildPluginListResponse(runtime)
-    .plugins;
+  const pluginList = buildPluginListResponse(runtime).plugins;
   const config = loadElizaConfig();
   const configRecord = config as Record<string, unknown>;
   const configEntries = config.plugins?.entries ?? {};
@@ -1250,9 +1253,9 @@ export function persistCompatPluginMutation(
     saveElizaConfig(config);
   }
 
-  const refreshed = (
-    buildPluginListResponse(null).plugins
-  ).find((candidate) => candidate.id === pluginId);
+  const refreshed = buildPluginListResponse(null).plugins.find(
+    (candidate) => candidate.id === pluginId,
+  );
 
   return {
     status: 200,
@@ -1331,10 +1334,9 @@ export async function handlePluginsCompatRoutes(
     const pluginId = normalizePluginId(
       decodeURIComponent(url.pathname.slice("/api/plugins/".length)),
     );
-    const plugin = (
-      buildPluginListResponse(state.current)
-        .plugins
-    ).find((candidate) => candidate.id === pluginId);
+    const plugin = buildPluginListResponse(state.current).plugins.find(
+      (candidate) => candidate.id === pluginId,
+    );
 
     if (!plugin) {
       sendJsonErrorResponse(res, 404, `Plugin "${pluginId}" not found`);
@@ -1358,10 +1360,9 @@ export async function handlePluginsCompatRoutes(
         scheduleCompatRuntimeRestart(state, runtimeApply.reason);
       }
 
-      const refreshed = (
-        buildPluginListResponse(state.current)
-          .plugins
-      ).find((candidate) => candidate.id === pluginId);
+      const refreshed = buildPluginListResponse(state.current).plugins.find(
+        (candidate) => candidate.id === pluginId,
+      );
 
       result.payload.plugin = refreshed ?? result.payload.plugin ?? plugin;
       result.payload.applied = runtimeApply.mode;

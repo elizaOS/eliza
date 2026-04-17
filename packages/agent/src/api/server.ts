@@ -31,13 +31,18 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+// Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
+import { DropService, handleDropRoutes } from "@elizaos/app-elizamaker";
 import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
+import { handleWebsiteBlockerRoutes } from "@elizaos/app-lifeops/routes/website-blocker-routes";
+import { TxService } from "@elizaos/app-steward/api/tx-service";
 import type {
   SwarmEvent,
   TaskCompletionSummary,
   TaskContext,
 } from "@elizaos/app-task-coordinator/api/coordinator-types";
 import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator/api/coordinator-wiring";
+import { routeTaskAgentTextToConnector } from "@elizaos/app-task-coordinator/api/task-agent-message-routing";
 // Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
 // import { handleWalletTradeExecuteRoute } from "./wallet-trade-routes.js";
 // import {
@@ -57,16 +62,6 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { type WebSocket, WebSocketServer } from "ws";
-import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
-import { CharacterSchema } from "../config/character-schema.js";
-import {
-  type ElizaConfig,
-  loadElizaConfig,
-  saveElizaConfig,
-} from "../config/config.js";
-import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
-import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.js";
 import {
   isNullOriginAllowed,
   resolveAllowedHosts,
@@ -78,6 +73,16 @@ import {
   setApiToken,
   stripOptionalHostPort,
 } from "@elizaos/shared/runtime-env";
+import { type WebSocket, WebSocketServer } from "ws";
+import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
+import { CharacterSchema } from "../config/character-schema.js";
+import {
+  type ElizaConfig,
+  loadElizaConfig,
+  saveElizaConfig,
+} from "../config/config.js";
+import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
+import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.js";
 import {
   ONBOARDING_CLOUD_PROVIDER_OPTIONS,
   ONBOARDING_PROVIDER_CATALOG,
@@ -186,10 +191,9 @@ import { handleConfigRoutes } from "./config-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
 import { handleConversationRoutes } from "./conversation-routes.js";
+import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
 import { handleDatabaseRoute } from "./database.js";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.js";
-// Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
-import { DropService, handleDropRoutes } from "@elizaos/app-elizamaker";
 import { handleHealthRoutes } from "./health-routes.js";
 import {
   readJsonBody as parseJsonBody,
@@ -234,14 +238,11 @@ import {
 // signal-routes: handleSignalRoute dispatch extracted to @elizaos/plugin-signal (setup-routes.ts)
 import { applySignalQrOverride } from "./signal-routes.js";
 import { discoverSkills } from "./skill-discovery-helpers.js";
-import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
-import { routeTaskAgentTextToConnector } from "@elizaos/app-task-coordinator/api/task-agent-message-routing";
 import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
 import { handleTriggerRoutes } from "./trigger-routes.js";
 import { handleTtsRoutes } from "./tts-routes.js";
-import { TxService } from "@elizaos/app-steward/api/tx-service";
 import { handleUpdateRoutes } from "./update-routes.js";
 import {
   // Balance/import/generate helpers moved to @elizaos/app-steward plugin routes.
@@ -261,7 +262,6 @@ import {
 } from "./wallet-capability.js";
 import { handleWalletRoutes } from "./wallet-routes.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
-import { handleWebsiteBlockerRoutes } from "@elizaos/app-lifeops/routes/website-blocker-routes";
 // handleWhatsAppRoute moved to @elizaos/plugin-whatsapp setup-routes.
 // applyWhatsAppQrOverride is still used by plugin-status routes.
 import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
@@ -1259,13 +1259,9 @@ const _WORKBENCH_TODO_TAG = WORKBENCH_TODO_TAG;
 
 // ── Autonomy / swarm / coding-agent helpers — extracted to server-helpers-swarm.ts ──
 
-import {
-  routeAutonomyTextToUser as _routeAutonomyTextToUser,
-} from "./server-helpers-swarm.js";
+import { routeAutonomyTextToUser as _routeAutonomyTextToUser } from "./server-helpers-swarm.js";
 
-export {
-  routeAutonomyTextToUser,
-} from "./server-helpers-swarm.js";
+export { routeAutonomyTextToUser } from "./server-helpers-swarm.js";
 
 const routeAutonomyTextToUser = _routeAutonomyTextToUser;
 
@@ -1604,9 +1600,9 @@ function resolveSessionWorkdir(
   runtime: AgentRuntime,
   sessionId: string,
 ): string | null {
-  const ptyService = runtime.getService("PTY_SERVICE") as
-    | { getSession?: (id: string) => { workdir?: string } | undefined }
-    | null;
+  const ptyService = runtime.getService("PTY_SERVICE") as {
+    getSession?: (id: string) => { workdir?: string } | undefined;
+  } | null;
   return ptyService?.getSession?.(sessionId)?.workdir ?? null;
 }
 
@@ -1662,16 +1658,16 @@ async function routeSynthesisToConnector(
   }
 }
 
-// ── Parse Action Block from Eliza's Response ─────────────────────────
-import {
-  parseActionBlock,
-  stripActionBlockFromDisplay,
-} from "./parse-action-block.js";
 import {
   chunkForDiscord,
   readLastAssistantTextFromJsonl,
 } from "../runtime/subagent-output.js";
 import { installTaskHeartbeat } from "../runtime/task-heartbeat.js";
+// ── Parse Action Block from Eliza's Response ─────────────────────────
+import {
+  parseActionBlock,
+  stripActionBlockFromDisplay,
+} from "./parse-action-block.js";
 
 // ── Coordinator Event Routing ───────────────────────────────────────────
 
@@ -5311,10 +5307,7 @@ export async function startApiServer(opts?: {
     }
   };
 
-  state.broadcastWsToClientId = (
-    clientId: string,
-    data: object,
-  ) => {
+  state.broadcastWsToClientId = (clientId: string, data: object) => {
     const message = JSON.stringify(data);
     let delivered = 0;
     for (const client of wsClients) {

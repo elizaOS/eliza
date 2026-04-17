@@ -674,9 +674,7 @@ export function shouldEmitPlannerPreamble(
 ): boolean {
 	if (!responseContent) return false;
 	const text =
-		typeof responseContent.text === "string"
-			? responseContent.text.trim()
-			: "";
+		typeof responseContent.text === "string" ? responseContent.text.trim() : "";
 	if (text.length === 0) return false;
 
 	const firstAction =
