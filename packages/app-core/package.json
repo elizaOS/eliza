@@ -204,7 +204,7 @@
     "react-test-renderer": "^19.2.4",
     "tailwindcss": "^4.1.18",
     "telegraf": "^4.16.3",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.0",
     "vite": "^8.0.8",
     "vitest": "^4.0.18"
   }
