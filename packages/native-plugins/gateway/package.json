@@ -67,7 +67,7 @@
     "@typescript-eslint/parser": "^8.22.0",
     "eslint": "^8.0.0",
     "prettier": "^3.0.0",
-    "rimraf": "^5.0.0",
+    "rimraf": "^6.0.0",
     "rollup": "^4.0.0",
     "swiftlint": "^2.0.0",
     "typescript": "^5.0.0"
