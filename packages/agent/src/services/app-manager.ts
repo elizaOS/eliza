@@ -1759,14 +1759,39 @@ async function ensureRuntimePluginRegistered(
   }
 
   const pluginNames = getRuntimePluginCandidates(appInfo);
+  logger.info(
+    `[app-manager] ensureRuntimePluginRegistered(${appInfo.name}) candidates=${JSON.stringify(pluginNames)} isLocal=${isLocal}`,
+  );
   for (const pluginPackageName of pluginNames) {
-    const plugin = await importAppPlugin(pluginPackageName);
+    let plugin: Plugin | null = null;
+    try {
+      plugin = await importAppPlugin(pluginPackageName);
+    } catch (err) {
+      logger.warn(
+        `[app-manager] importAppPlugin(${pluginPackageName}) threw: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      continue;
+    }
     if (!plugin) {
+      logger.warn(
+        `[app-manager] importAppPlugin(${pluginPackageName}) returned null`,
+      );
       continue;
     }
 
-    await runtime.registerPlugin(plugin);
-    if (isRuntimePluginReady(appInfo, runtime)) {
+    try {
+      await runtime.registerPlugin(plugin);
+    } catch (err) {
+      logger.warn(
+        `[app-manager] registerPlugin(${plugin.name}) threw: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      continue;
+    }
+    const ready = isRuntimePluginReady(appInfo, runtime);
+    logger.info(
+      `[app-manager] after registerPlugin(${plugin.name}) ready=${ready}`,
+    );
+    if (ready) {
       return true;
     }
   }
