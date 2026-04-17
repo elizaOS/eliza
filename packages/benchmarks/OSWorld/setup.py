@@ -52,7 +52,7 @@ setup(
         "pynput~=1.7.6",
         "pyautogui~=0.9.54",
         "psutil~=5.9.6",
-        "tqdm~=4.66.3",
+        "tqdm~=4.67.3",
         "pandas>=2.2,<2.3",
         "flask~=3.1.3",
         "requests-toolbelt~=1.0.0",
