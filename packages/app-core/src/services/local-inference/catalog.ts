@@ -223,9 +223,18 @@ export function findCatalogModel(id: string): CatalogModel | undefined {
   return MODEL_CATALOG.find((m) => m.id === id);
 }
 
-/** Construct the HuggingFace resolve URL for a given catalog entry. */
+/**
+ * Construct the HuggingFace resolve URL for a given catalog entry.
+ *
+ * Respects `MILADY_HF_BASE_URL` when set so self-hosted HF mirrors and the
+ * downloader e2e test suite can redirect all downloads without touching
+ * the catalog.
+ */
 export function buildHuggingFaceResolveUrl(model: CatalogModel): string {
-  return `https://huggingface.co/${model.hfRepo}/resolve/main/${encodeURIComponent(
+  const base =
+    process.env.MILADY_HF_BASE_URL?.trim().replace(/\/+$/, "") ||
+    "https://huggingface.co";
+  return `${base}/${model.hfRepo}/resolve/main/${encodeURIComponent(
     model.ggufFile,
   )}?download=true`;
 }
