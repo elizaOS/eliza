@@ -59,6 +59,7 @@ import { revokeRemoteSessionAction } from "./actions/revoke-remote-session.js";
 import { listRemoteSessionsAction } from "./actions/list-remote-sessions.js";
 import { lifeOpsComputerUseAction } from "./actions/computer-use.js";
 import { crossChannelSendAction } from "./actions/cross-channel-send.js";
+import { searchAcrossChannelsAction } from "./actions/search-across-channels.js";
 import { intentSyncAction } from "./actions/intent-sync.js";
 import { passwordManagerAction } from "./actions/password-manager.js";
 import {
@@ -88,6 +89,7 @@ import {
 // LifeOps core providers
 import { inboxTriageProvider } from "./providers/inbox-triage.js";
 import { lifeOpsProvider } from "./providers/lifeops.js";
+import { crossChannelContextProvider } from "./providers/cross-channel-context.js";
 
 // LifeOps runtime (scheduler task worker + registration)
 import {
@@ -200,6 +202,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     listRemoteSessionsAction,
     lifeOpsComputerUseAction,
     crossChannelSendAction,
+    searchAcrossChannelsAction,
     intentSyncAction,
     passwordManagerAction,
     requestFieldFillAction,
@@ -226,6 +229,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     appBlockerProvider,
     lifeOpsProvider,
     inboxTriageProvider,
+    crossChannelContextProvider,
     activityProfileProvider,
   ],
   services: [
