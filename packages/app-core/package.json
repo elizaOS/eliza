@@ -135,7 +135,7 @@
     "node-llama-cpp"
   ],
   "dependencies": {
-    "@capacitor/core": "8.0.2",
+    "@capacitor/core": "8.3.1",
     "@capacitor/haptics": "8.0.2",
     "@capacitor/keyboard": "8.0.3",
     "@capacitor/preferences": "^8.0.1",
