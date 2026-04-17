@@ -44,7 +44,7 @@
     "@storybook/react": "^8.6.0",
     "@storybook/react-vite": "^8.6.0",
     "@types/react": "^19.0.0",
-    "@types/three": "^0.182.0",
+    "@types/three": "^0.184.0",
     "storybook": "^8.6.0",
     "typescript": "^5.9.3"
   },
@@ -52,7 +52,7 @@
     "@pixiv/three-vrm": "^3.4.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "three": "^0.182.0"
+    "three": "^0.182.0 || ^0.184.0"
   },
   "elizaos": {
     "app": {
