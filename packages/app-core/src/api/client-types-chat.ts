@@ -328,3 +328,32 @@ export interface ShareIngestItem {
   suggestedPrompt: string;
   files: Array<{ name: string }>;
 }
+
+// ── n8n Workflow types ────────────────────────────────────────────────────────
+
+export type N8nMode = "cloud" | "local" | "disabled";
+export type N8nSidecarStatus = "stopped" | "starting" | "ready" | "error";
+
+export interface N8nStatusResponse {
+  mode: N8nMode;
+  host: string | null;
+  status: N8nSidecarStatus;
+  cloudConnected: boolean;
+  localEnabled: boolean;
+}
+
+export interface N8nWorkflowNode {
+  id: string;
+  name: string;
+  type: string;
+}
+
+export interface N8nWorkflow {
+  id: string;
+  name: string;
+  active: boolean;
+  description?: string;
+  nodeCount?: number;
+  nodes?: N8nWorkflowNode[];
+  lastExecutionAt?: string;
+}

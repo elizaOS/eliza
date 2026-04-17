@@ -93,6 +93,14 @@ import {
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared/contracts/onboarding";
 import {
+  getDefaultStylePreset,
+  normalizeCharacterLanguage,
+  resolveStylePresetByAvatarIndex,
+  resolveStylePresetById,
+  resolveStylePresetByName,
+} from "@elizaos/shared/onboarding-presets";
+import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
+import {
   debugLogResolvedContext,
   validateRuntimeContext,
 } from "../api/plugin-validation.js";
@@ -108,20 +116,12 @@ import {
   collectConnectorEnvVars,
 } from "../config/env-vars.js";
 import { resolveStateDir, resolveUserPath } from "../config/paths.js";
-import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
 import {
   createHookEvent,
   type LoadHooksOptions,
   loadHooks,
   triggerHook,
 } from "../hooks/index.js";
-import {
-  getDefaultStylePreset,
-  normalizeCharacterLanguage,
-  resolveStylePresetByAvatarIndex,
-  resolveStylePresetById,
-  resolveStylePresetByName,
-} from "@elizaos/shared/onboarding-presets";
 import {
   ensureAgentWorkspace,
   resolveDefaultAgentWorkspaceDir,
@@ -1518,6 +1518,64 @@ export function applyX402ConfigToEnv(config: ElizaConfig): void {
     process.env.X402_BASE_URL = x402.baseUrl;
 }
 
+/**
+ * Resolve N8N_HOST + N8N_API_KEY for @elizaos/plugin-n8n-workflow.
+ *
+ * Precedence:
+ *   1. Existing process.env values (user override) — respected as-is.
+ *   2. Eliza Cloud authenticated (cloud.apiKey present AND cloud.enabled !== false):
+ *      N8N_HOST = `${cloudBaseUrl}/api/v1/agents/${agentId}/n8n`
+ *      N8N_API_KEY = cloud.apiKey
+ *   3. Local sidecar — the sidecar lifecycle writes `config.n8n.host` and
+ *      `config.n8n.apiKey` when it reaches "ready". We pump those into
+ *      process.env here when cloud did not fire. The authoritative shape is
+ *      `N8nConfig` in types.eliza.ts.
+ *   4. Otherwise: leave unset. The plugin's init() no-ops without credentials.
+ *
+ * Called from startEliza() after applyCloudConfigToEnv so cloud settings are
+ * already reflected in process.env.
+ *
+ * @internal Exported for testing.
+ */
+export function applyN8nConfigToEnv(
+  config: ElizaConfig,
+  agentId: string,
+): void {
+  // 1. Respect existing process.env overrides.
+  if (process.env.N8N_HOST && process.env.N8N_API_KEY) return;
+
+  // Master gate — when config.n8n.enabled is false, do not pump anything.
+  if (config.n8n?.enabled === false) return;
+
+  const cloud = config.cloud;
+  const cloudAuthed = Boolean(cloud?.apiKey) && cloud?.enabled !== false;
+  if (cloudAuthed && cloud?.apiKey) {
+    const rawBase = cloud.baseUrl ?? "https://www.elizacloud.ai";
+    // Strip trailing /api/v1 (or /api/v1/) plus any trailing slashes so we can
+    // build `${siteUrl}/api/v1/agents/${agentId}/n8n` without duplication.
+    const siteUrl = rawBase
+      .replace(/\/api\/v1\/?$/, "")
+      .replace(/\/+$/, "");
+    const gateway = `${siteUrl}/api/v1/agents/${agentId}/n8n`;
+    if (!process.env.N8N_HOST) process.env.N8N_HOST = gateway;
+    if (!process.env.N8N_API_KEY) process.env.N8N_API_KEY = cloud.apiKey;
+    return;
+  }
+
+  // 2. Local sidecar path — the sidecar populates `config.n8n.host` and
+  //    `config.n8n.apiKey` (authoritative N8nConfig shape) when it reaches
+  //    "ready". Surface those to process.env for the plugin.
+  const n8n = config.n8n;
+  if (n8n?.host && n8n?.apiKey) {
+    if (!process.env.N8N_HOST) process.env.N8N_HOST = n8n.host;
+    if (!process.env.N8N_API_KEY) process.env.N8N_API_KEY = n8n.apiKey;
+    return;
+  }
+
+  // 3. Fallback — leave unset. Legacy `config.env.vars` entries (N8N_HOST /
+  //    N8N_API_KEY) still flow through the generic env-var pump in startEliza.
+}
+
 function resolveDefaultPgliteDataDir(config: ElizaConfig): string {
   const workspaceDir =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
@@ -2491,6 +2549,9 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "X402_MAX_TOTAL_USD",
     "X402_ENABLED",
     "X402_DB_PATH",
+    // n8n workflow plugin (resolved by applyN8nConfigToEnv)
+    "N8N_HOST",
+    "N8N_API_KEY",
     // GitHub access for coding agent plugin
     "GITHUB_TOKEN",
     "GITHUB_OAUTH_CLIENT_ID",
@@ -2533,11 +2594,37 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     };
   });
 
+  // Capability hints — append short descriptions of features the runtime has
+  // auto-enabled so the model knows about new actions/tools without requiring
+  // the user to hand-edit the system prompt. Kept terse (one sentence per
+  // capability) to stay out of the way of the preset's voice.
+  const capabilityHints: string[] = [];
+  const n8nMasterEnabled = config.n8n?.enabled !== false;
+  const n8nExplicitlyDisabled =
+    config.plugins?.entries?.["n8n-workflow"]?.enabled === false;
+  const n8nCloudAuthed = Boolean(
+    config.cloud?.apiKey && config.cloud?.enabled !== false,
+  );
+  const n8nLocalEnabled = config.n8n?.localEnabled !== false;
+  if (
+    n8nMasterEnabled &&
+    !n8nExplicitlyDisabled &&
+    (n8nCloudAuthed || n8nLocalEnabled)
+  ) {
+    capabilityHints.push(
+      "You can create, activate, deactivate, and delete n8n workflows via natural language using the n8n workflow actions.",
+    );
+  }
+  const effectiveSystemPrompt =
+    capabilityHints.length > 0
+      ? `${systemPrompt}\n\n${capabilityHints.join("\n")}`
+      : systemPrompt;
+
   return mergeCharacterDefaults({
     name,
     ...(agentEntry?.username ? { username: agentEntry.username } : {}),
     bio,
-    system: systemPrompt,
+    system: effectiveSystemPrompt,
     ...(topics ? { topics } : {}),
     ...(style ? { style } : {}),
     ...(adjectives ? { adjectives } : {}),
@@ -3001,6 +3088,13 @@ export async function startEliza(
 
   // 5a. If cloud is configured and no local GitHub token, try fetching from cloud
   await autoFetchCloudGithubToken(config.cloud?.agentId?.trim() || agentId);
+
+  // 5b. Pump N8N_HOST + N8N_API_KEY into process.env for
+  //     @elizaos/plugin-n8n-workflow. Must run AFTER applyCloudConfigToEnv
+  //     (2b above) and AFTER agentId is derived — the cloud gateway URL
+  //     embeds the agent id. Prefer the persisted cloud-agent id when set;
+  //     fall back to the derived local agent slug.
+  applyN8nConfigToEnv(config, config.cloud?.agentId?.trim() || agentId);
 
   const elizaPlugin = createElizaPlugin({
     workspaceDir,
@@ -3807,6 +3901,10 @@ export async function startEliza(
           applyCloudConfigToEnv(freshConfig);
           applyX402ConfigToEnv(freshConfig);
           applyDatabaseConfigToEnv(freshConfig);
+          applyN8nConfigToEnv(
+            freshConfig,
+            freshConfig.cloud?.agentId?.trim() || agentId,
+          );
           await autoFetchCloudGithubToken(
             freshConfig.cloud?.agentId?.trim() || agentId,
           );
