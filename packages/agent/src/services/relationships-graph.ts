@@ -14,10 +14,22 @@ export type RelationshipsGraphQuery = {
   offset?: number;
 };
 
+export type RelationshipsMergeCandidate = {
+  id: UUID;
+  entityA: UUID;
+  entityB: UUID;
+  confidence: number;
+  evidence: Record<string, unknown>;
+  status: "pending" | "accepted" | "rejected";
+  proposedAt: string;
+  resolvedAt?: string;
+};
+
 export type RelationshipsGraphSnapshot = {
   people: RelationshipsPersonSummary[];
   relationships: RelationshipsGraphEdge[];
   stats: RelationshipsGraphStats;
+  candidateMerges: RelationshipsMergeCandidate[];
 };
 
 export type RelationshipsGraphStats = {
@@ -134,6 +146,14 @@ export type RelationshipsGraphService = {
   getPersonDetail: (
     primaryEntityId: UUID,
   ) => Promise<RelationshipsPersonDetail | null>;
+  getCandidateMerges: () => Promise<RelationshipsMergeCandidate[]>;
+  acceptMerge: (candidateId: UUID) => Promise<void>;
+  rejectMerge: (candidateId: UUID) => Promise<void>;
+  proposeMerge: (
+    entityA: UUID,
+    entityB: UUID,
+    evidence: Record<string, unknown>,
+  ) => Promise<UUID>;
 };
 
 type RelationshipsContactLike = {
@@ -157,6 +177,14 @@ type RelationshipsServiceLike = {
     searchTerm?: string;
     privacyLevel?: string;
   }) => Promise<RelationshipsContactLike[]>;
+  getCandidateMerges?: () => Promise<RelationshipsMergeCandidate[]>;
+  acceptMerge?: (candidateId: UUID) => Promise<void>;
+  rejectMerge?: (candidateId: UUID) => Promise<void>;
+  proposeMerge?: (
+    entityA: UUID,
+    entityB: UUID,
+    evidence: Record<string, unknown>,
+  ) => Promise<UUID>;
 };
 
 type EntityContext = {
@@ -1962,6 +1990,11 @@ export function createNativeRelationshipsGraphService(
           visibleGroupIds.has(edge.targetPersonId),
       );
 
+      const candidateMerges =
+        typeof relationshipsService.getCandidateMerges === "function"
+          ? await relationshipsService.getCandidateMerges()
+          : [];
+
       return {
         people: visibleSummaries,
         relationships: visibleEdges,
@@ -1973,6 +2006,7 @@ export function createNativeRelationshipsGraphService(
             0,
           ),
         },
+        candidateMerges,
       };
     },
 
@@ -2045,6 +2079,44 @@ export function createNativeRelationshipsGraphService(
           .sort((left, right) => right.strength - left.strength),
         identityEdges,
       };
+    },
+
+    async getCandidateMerges(): Promise<RelationshipsMergeCandidate[]> {
+      if (typeof relationshipsService.getCandidateMerges !== "function") {
+        return [];
+      }
+      return relationshipsService.getCandidateMerges();
+    },
+
+    async acceptMerge(candidateId: UUID): Promise<void> {
+      if (typeof relationshipsService.acceptMerge !== "function") {
+        throw new Error(
+          "RelationshipsService does not support merge acceptance",
+        );
+      }
+      await relationshipsService.acceptMerge(candidateId);
+    },
+
+    async rejectMerge(candidateId: UUID): Promise<void> {
+      if (typeof relationshipsService.rejectMerge !== "function") {
+        throw new Error(
+          "RelationshipsService does not support merge rejection",
+        );
+      }
+      await relationshipsService.rejectMerge(candidateId);
+    },
+
+    async proposeMerge(
+      entityA: UUID,
+      entityB: UUID,
+      evidence: Record<string, unknown>,
+    ): Promise<UUID> {
+      if (typeof relationshipsService.proposeMerge !== "function") {
+        throw new Error(
+          "RelationshipsService does not support merge proposals",
+        );
+      }
+      return relationshipsService.proposeMerge(entityA, entityB, evidence);
     },
   };
 }
