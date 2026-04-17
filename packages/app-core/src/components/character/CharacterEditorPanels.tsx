@@ -525,26 +525,13 @@ export function CharacterExamplesPanel({
             <div
               // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
               key={`convo-${ci}`}
-              className="group relative flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0"
+              className="flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0"
             >
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-0 top-1.5 shrink-0 p-0 h-auto w-auto text-muted opacity-0 transition-opacity duration-150 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
-                onClick={() => {
-                  const updated = [...normalizedMessageExamples];
-                  updated.splice(ci, 1);
-                  handleFieldEdit("messageExamples", updated);
-                }}
-                aria-label={`${t("common.remove")} conversation ${ci + 1}`}
-              >
-                <CloseIconSvg />
-              </Button>
               {convo.examples.map((msg, mi) => (
                 <div
                   // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
                   key={`msg-${ci}-${mi}`}
-                  className="group/msg flex items-center gap-3"
+                  className="flex items-center gap-3"
                 >
                   <span
                     className={`w-14 shrink-0 pr-1 text-right text-[0.5rem] font-semibold uppercase tracking-[0.06em] ${msg.name === "{{user1}}" ? "text-muted" : "text-accent"}`}
@@ -567,54 +554,49 @@ export function CharacterExamplesPanel({
                     }}
                     className="h-7 flex-1 rounded-md border border-border/50 bg-white/[0.03] px-2.5 text-xs-tight leading-tight text-txt outline-none focus:border-accent"
                   />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-auto w-auto shrink-0 p-0 text-muted opacity-0 transition-opacity duration-150 hover:text-danger group-hover/msg:opacity-100 focus-visible:opacity-100"
-                    onClick={() => {
-                      const updated = [...normalizedMessageExamples];
-                      const convoClone = {
-                        examples: [...updated[ci].examples],
-                      };
-                      convoClone.examples.splice(mi, 1);
-                      if (convoClone.examples.length === 0) {
-                        updated.splice(ci, 1);
-                      } else {
-                        updated[ci] = convoClone;
-                      }
-                      handleFieldEdit("messageExamples", updated);
-                    }}
-                    aria-label={`${t("common.remove")} message ${mi + 1}`}
-                  >
-                    <CloseIconSvg />
-                  </Button>
                 </div>
               ))}
-              <button
-                type="button"
-                className="self-start ml-[4.25rem] mt-0.5 text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
-                onClick={() => {
-                  const agentName =
-                    typeof d.name === "string" && d.name.trim()
-                      ? d.name.trim()
-                      : "Agent";
-                  const updated = [...normalizedMessageExamples];
-                  const convoClone = {
-                    examples: [
-                      ...updated[ci].examples,
-                      { name: "{{user1}}", content: { text: "" } },
-                      { name: agentName, content: { text: "" } },
-                    ],
-                  };
-                  updated[ci] = convoClone;
-                  handleFieldEdit("messageExamples", updated);
-                }}
-              >
-                +{" "}
-                {t("charactereditor.AddTurn", {
-                  defaultValue: "Add turn",
-                })}
-              </button>
+              <div className="mt-0.5 ml-[4.25rem] flex items-center justify-between">
+                <button
+                  type="button"
+                  className="text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
+                  onClick={() => {
+                    const agentName =
+                      typeof d.name === "string" && d.name.trim()
+                        ? d.name.trim()
+                        : "Agent";
+                    const updated = [...normalizedMessageExamples];
+                    const convoClone = {
+                      examples: [
+                        ...updated[ci].examples,
+                        { name: "{{user1}}", content: { text: "" } },
+                        { name: agentName, content: { text: "" } },
+                      ],
+                    };
+                    updated[ci] = convoClone;
+                    handleFieldEdit("messageExamples", updated);
+                  }}
+                >
+                  +{" "}
+                  {t("charactereditor.AddTurn", {
+                    defaultValue: "turn",
+                  })}
+                </button>
+                <button
+                  type="button"
+                  className="text-3xs font-semibold text-muted hover:text-danger transition-colors"
+                  onClick={() => {
+                    const updated = [...normalizedMessageExamples];
+                    updated.splice(ci, 1);
+                    handleFieldEdit("messageExamples", updated);
+                  }}
+                  aria-label={`${t("common.remove")} conversation ${ci + 1}`}
+                >
+                  {t("charactereditor.RemoveExample", {
+                    defaultValue: "remove",
+                  })}
+                </button>
+              </div>
             </div>
           ))}
           {normalizedMessageExamples.length === 0 && (
