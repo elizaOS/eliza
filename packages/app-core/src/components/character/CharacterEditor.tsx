@@ -1445,7 +1445,6 @@ export function CharacterEditor({
           <PageLayout
             className="h-full"
             contentInnerClassName="mx-auto flex w-full max-w-8xl min-h-0 flex-1 flex-col"
-            contentHeader={standaloneContentHeader}
             footer={<WidgetHost slot="character" className="pt-4" />}
             footerClassName="lg:px-8"
             sidebar={
@@ -1459,7 +1458,7 @@ export function CharacterEditor({
                 expandButtonAriaLabel="Expand character editor"
               >
                 <SidebarScrollRegion className="!pt-0">
-                  <SidebarPanel className="!p-0 !shadow-none">
+                  <SidebarPanel className="!px-0 !pt-3 !pb-0 !shadow-none">
                     <nav
                       className="space-y-1"
                       aria-label="Character editor sections"
@@ -1538,6 +1537,9 @@ export function CharacterEditor({
                 e.target.value = "";
               }}
             />
+            {standaloneContentHeader ? (
+              <div className="mb-3 shrink-0">{standaloneContentHeader}</div>
+            ) : null}
             <div className="flex min-h-0 flex-1 min-w-0 flex-col">
               {activePage === "personality" && (
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
