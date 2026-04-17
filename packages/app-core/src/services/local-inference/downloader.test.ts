@@ -40,10 +40,13 @@ interface Upstream {
 
 async function startUpstream(
   payload: Buffer,
-  opts: { disconnectAfterBytes?: number } = {},
+  opts: {
+    /** If set, deliver the payload in `chunkBytes` chunks with `chunkDelayMs` between each. */
+    chunkBytes?: number;
+    chunkDelayMs?: number;
+  } = {},
 ): Promise<Upstream> {
   const requests: Upstream["requestsReceived"] = [];
-  let disconnectedOnce = false;
   const server = http.createServer((req, res) => {
     const range = req.headers.range as string | undefined;
     requests.push({
@@ -52,7 +55,6 @@ async function startUpstream(
       method: req.method ?? "GET",
     });
 
-    // Parse "bytes=start-"
     let start = 0;
     if (range) {
       const m = /bytes=(\d+)-/.exec(range);
@@ -60,23 +62,31 @@ async function startUpstream(
     }
     const slice = payload.subarray(start);
 
-    if (opts.disconnectAfterBytes !== undefined && !disconnectedOnce) {
-      disconnectedOnce = true;
-      res.writeHead(range ? 206 : 200, {
-        "content-length": String(slice.length),
-        "content-type": "application/octet-stream",
-      });
-      res.write(slice.subarray(0, opts.disconnectAfterBytes));
-      // Force-kill the socket mid-stream so the client sees an error.
-      res.socket?.destroy();
-      return;
-    }
-
     res.writeHead(range ? 206 : 200, {
       "content-length": String(slice.length),
       "content-type": "application/octet-stream",
     });
-    res.end(slice);
+
+    if (!opts.chunkBytes || !opts.chunkDelayMs) {
+      res.end(slice);
+      return;
+    }
+
+    // Chunked delivery so cancel tests have a window to act before the
+    // body finishes. Stops on client disconnect.
+    let offset = 0;
+    const step = (): void => {
+      if (res.destroyed) return;
+      if (offset >= slice.length) {
+        res.end();
+        return;
+      }
+      const end = Math.min(offset + (opts.chunkBytes ?? 0), slice.length);
+      res.write(slice.subarray(offset, end));
+      offset = end;
+      setTimeout(step, opts.chunkDelayMs);
+    };
+    step();
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const addr = server.address() as AddressInfo;
@@ -131,7 +141,9 @@ describe("Downloader e2e", () => {
 
       const job = await downloader.start(catalogModel.id);
       expect(job.modelId).toBe(catalogModel.id);
-      expect(job.state).toBe("queued");
+      // `start()` returns after queuing; the background run may already
+      // have transitioned to "downloading" by the time this line executes.
+      expect(["queued", "downloading"]).toContain(job.state);
 
       // Wait for the "completed" event or a failure.
       await new Promise<void>((resolve, reject) => {
