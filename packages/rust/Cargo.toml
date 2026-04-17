@@ -88,7 +88,7 @@ handlebars = "6.4"
 # Native-only dependencies
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros"], optional = true }
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"], optional = true }
-which = { version = "6.0", optional = true }
+which = { version = "8.0", optional = true }
 
 # WASM-only dependencies
 wasm-bindgen = { version = "0.2", optional = true }
