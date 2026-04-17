@@ -233,19 +233,15 @@ export function useGoogleLifeOpsConnector(
           requestedMode ?? undefined,
           side,
         );
+        const nextAccounts = await client.getGoogleLifeOpsConnectorAccounts(
+          undefined,
+          side,
+        );
         const nextSelectedMode = requestedMode ?? nextStatus.mode;
         selectedModeRef.current = nextSelectedMode;
         setSelectedMode(nextSelectedMode);
         setStatus(nextStatus);
-        try {
-          const accts = await client.getGoogleLifeOpsConnectorAccounts(
-            undefined,
-            side,
-          );
-          setAccounts(accts);
-        } catch {
-          // accounts endpoint may not be available; keep stale list
-        }
+        setAccounts(nextAccounts);
         if (nextStatus.connected) {
           setPendingAuthUrl(null);
         }
