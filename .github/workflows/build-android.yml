@@ -137,14 +137,14 @@ jobs:
 
       - name: Upload debug APK artifact
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eliza-android-debug
           path: ${{ env.APP_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload release artifacts
         if: github.event_name == 'release'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eliza-android-release
           path: |
