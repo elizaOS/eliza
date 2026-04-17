@@ -38,7 +38,7 @@ jobs:
 
       - name: Vulnerability scan (Grype)
         id: grype
-        uses: anchore/scan-action@v4
+        uses: anchore/scan-action@v7
         env:
           GRYPE_DB_VALIDATE_AGE: "false"
         with:
