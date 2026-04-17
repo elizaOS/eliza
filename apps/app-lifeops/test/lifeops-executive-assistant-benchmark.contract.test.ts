@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { appLifeOpsPlugin } from "../src/plugin.ts";
 import {
   buildExecutiveAssistantPromptBenchmarkCases,
   loadExecutiveAssistantCatalog,
@@ -75,6 +76,28 @@ describe("LifeOps executive-assistant prompt benchmark contracts", () => {
       expect(String(nullCase?.prompt).toLowerCase()).toContain(
         "do not do this yet",
       );
+    }
+  });
+
+  it("keeps the executive-assistant action surface registered on the LifeOps plugin", () => {
+    const actionNames = new Set(
+      (appLifeOpsPlugin.actions ?? []).map((action) => action.name),
+    );
+
+    for (const expectedActionName of [
+      "INBOX",
+      "SEARCH_ACROSS_CHANNELS",
+      "CALENDAR_ACTION",
+      "PROPOSE_MEETING_TIMES",
+      "UPDATE_MEETING_PREFERENCES",
+      "UPDATE_OWNER_PROFILE",
+      "DOSSIER",
+      "LIFEOPS_COMPUTER_USE",
+      "PUBLISH_DEVICE_INTENT",
+      "CALL_USER",
+      "CALL_EXTERNAL",
+    ]) {
+      expect(actionNames).toContain(expectedActionName);
     }
   });
 });

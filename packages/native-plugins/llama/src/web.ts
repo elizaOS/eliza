@@ -8,7 +8,6 @@
  * the Capacitor plugin resolution never crashes during web bundling.
  */
 
-export { capacitorLlama, registerCapacitorLlamaLoader } from "./index";
 export type {
   GenerateOptions,
   GenerateResult,
@@ -16,3 +15,4 @@ export type {
   LlamaAdapter,
   LoadOptions,
 } from "./definitions";
+export { capacitorLlama, registerCapacitorLlamaLoader } from "./index";

@@ -7888,7 +7888,7 @@ ${section_end}`;
 		});
 	}
 
-	// Deprecated entity wrapper
+	// Single-item entity wrapper
 	async updateEntity(entity: Entity): Promise<void> {
 		return await this.adapter.updateEntities([entity]);
 	}
@@ -7910,7 +7910,7 @@ ${section_end}`;
 		return await this.adapter.deleteComponents(componentIds);
 	}
 
-	// Deprecated component wrappers
+	// Single-item component wrappers
 	async createComponent(component: Component): Promise<boolean> {
 		const ids = await this.adapter.createComponents([component]);
 		return ids.length > 0;
@@ -8061,7 +8061,7 @@ ${section_end}`;
 		return await this.adapter.deleteRelationships(relationshipIds);
 	}
 
-	// Deprecated relationship wrappers
+	// Single-item relationship wrappers
 	async createRelationship(params: {
 		sourceEntityId: UUID;
 		targetEntityId: UUID;
@@ -8194,7 +8194,7 @@ ${section_end}`;
 		return await this.adapter.deleteRooms(roomIds);
 	}
 
-	// Deprecated room wrappers
+	// Single-item room wrappers
 	async updateRoom(room: Room): Promise<void> {
 		return await this.adapter.updateRooms([room]);
 	}
@@ -8373,7 +8373,7 @@ ${section_end}`;
 		return await this.adapter.deletePairingAllowlistEntries(ids);
 	}
 
-	// Deprecated pairing wrappers
+	// Single-item pairing wrappers
 	async createPairingRequest(request: PairingRequest): Promise<UUID> {
 		const ids = await this.adapter.createPairingRequests([request]);
 		return ids[0];

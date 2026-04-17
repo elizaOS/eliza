@@ -4,6 +4,9 @@
  * LLM-driven param extraction (no regex, no English-only keyword
  * matching) — feeds runUnifiedSearch() and returns a clipboard-ready
  * payload citing the source platform + room + timestamp for each hit.
+ * Use this for cross-channel brief/context requests when the owner wants
+ * one person or topic searched across Gmail, chat connectors, calendar,
+ * and memory.
  */
 
 import type {

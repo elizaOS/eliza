@@ -90,7 +90,7 @@ function summarizeOwnerProfile(profile: LifeOpsOwnerProfile): string[] {
 export const lifeOpsProvider: Provider = {
   name: "lifeops",
   description:
-    "Owner, explicitly granted users, and the agent only. Provides the current LifeOps overview, upcoming calendar event, and email triage summary. Use LIFE for habits, reminders, alarms, and goals. Use CALENDAR_ACTION for Google Calendar reads/search/create-event tasks. Use GMAIL_ACTION for Gmail triage, search, draft, and send flows. Available in private owner or granted conversations, including Discord.",
+    "Owner, explicitly granted users, and the agent only. Provides the current LifeOps overview, upcoming calendar event, and email triage summary. Use LIFE for habits, reminders, alarms, and goals. Use CALENDAR_ACTION for Google Calendar reads/search/create-event tasks. Use GMAIL_ACTION for Gmail triage, search, draft, and send flows. Use INBOX for cross-channel briefs, urgent-first inbox ranking, unread summaries, and reply workflow management. Use DOSSIER for pre-meeting prep briefs. Use PROPOSE_MEETING_TIMES when the user wants candidate slots or bundled meetings. Use UPDATE_MEETING_PREFERENCES for protected windows like sleep/no-call rules. Use UPDATE_OWNER_PROFILE to silently store stable travel or personal preferences when clearly stated. Use PUBLISH_DEVICE_INTENT for cross-device reminder ladders and device-level nudges. Use LIFEOPS_COMPUTER_USE for browser or portal tasks like uploads and form completion. Use CALL_USER or CALL_EXTERNAL for real phone-call escalation after explicit confirmation. Available in private owner or granted conversations, including Discord.",
   descriptionCompressed: "LifeOps overview, upcoming calendar, email triage. Owner/granted only.",
   dynamic: true,
   position: 12,
@@ -194,7 +194,14 @@ export const lifeOpsProvider: Provider = {
         "Use LIFE when the user wants to create, manage, complete, or query tasks, habits, goals, reminders, alarms, escalation, or routines.",
         "Use CALENDAR_ACTION for calendar questions, event search, next-event context, and creating Google Calendar events.",
         "Use GMAIL_ACTION for inbox triage, emails needing a reply, Gmail search, reply drafts, and confirmed send flows.",
+        "Use INBOX for executive-assistant inbox work: daily briefs, urgent-vs-low ranking, unread summaries across channels, missed-call follow-up, and reply workflows.",
+        "Use SEARCH_ACROSS_CHANNELS when the owner wants cross-platform context or a person/topic searched across Gmail, chat connectors, calendar, and memory.",
+        "Use DOSSIER for meeting prep briefs, dossiers, itineraries with context, and pre-event briefing requests.",
+        "Use PROPOSE_MEETING_TIMES when the request is to find options, bundle people into shared slots, or propose times without a fixed meeting already chosen.",
+        "Use UPDATE_MEETING_PREFERENCES for durable scheduling rules like sleep windows, no-call hours, blackout windows, or preferred hours.",
         "Use UPDATE_OWNER_PROFILE to silently store stable owner-only profile details when the canonical owner clearly reveals them. Do not ask just to fill blanks.",
+        "Use PUBLISH_DEVICE_INTENT for multi-device reminders, push ladders, and device-level nudges. Use LIFEOPS_COMPUTER_USE for portal uploads, browser workflows, and file-handling tasks on the owner's machine.",
+        "When the owner clearly asks for one of these LifeOps executive-assistant operations, call the best-fit action instead of staying in advice-only chat. If details are missing, let the action ask the minimum follow-up question.",
         "When the owner asks about their stable personal details for LifeOps, answer from the stored owner profile values below. If a field is not n/a, treat it as known instead of saying it is missing.",
         "Owner life-ops are private to the owner, explicitly granted users, and the agent. Agent ops are internal and should stay separated unless explicitly requested.",
         ...summarizeOwnerProfile(ownerProfile),

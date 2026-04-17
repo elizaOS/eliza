@@ -47,7 +47,10 @@ export interface HardwareInfo {
   totalRamGb: number;
   availableRamGb: number | null;
   cpuCores: number;
-  gpu: { backend: "metal" | "vulkan" | "gpu-delegate"; available: boolean } | null;
+  gpu: {
+    backend: "metal" | "vulkan" | "gpu-delegate";
+    available: boolean;
+  } | null;
   /** True when the underlying llama.cpp build has GPU support compiled in. */
   gpuSupported: boolean;
 }

@@ -12,8 +12,13 @@
  */
 
 import type http from "node:http";
+import { deviceBridge } from "../services/local-inference/device-bridge";
 import { localInferenceService } from "../services/local-inference/service";
-import type { CatalogModel } from "../services/local-inference/types";
+import type {
+  AgentModelSlot,
+  CatalogModel,
+} from "../services/local-inference/types";
+import { AGENT_MODEL_SLOTS } from "../services/local-inference/types";
 import {
   ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,
@@ -230,6 +235,97 @@ export async function handleLocalInferenceCompatRoutes(
         err instanceof Error ? err.message : "Failed to start download",
       );
     }
+    return true;
+  }
+
+  // ── GET: model-type assignments ─────────────────────────────────────
+  if (method === "GET" && pathname === "/api/local-inference/assignments") {
+    if (!ensureCompatApiAuthorized(req, res)) return true;
+    try {
+      const assignments = await localInferenceService.getAssignments();
+      sendJsonResponse(res, 200, { assignments });
+    } catch (err) {
+      sendJsonErrorResponse(
+        res,
+        500,
+        err instanceof Error ? err.message : "Failed to read assignments",
+      );
+    }
+    return true;
+  }
+
+  // ── POST: set / clear a model-type assignment ───────────────────────
+  if (method === "POST" && pathname === "/api/local-inference/assignments") {
+    if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
+    const body = await readCompatJsonBody(req, res);
+    if (!body) return true;
+    const slot = stringBody(body, "slot") as AgentModelSlot | null;
+    if (!slot || !AGENT_MODEL_SLOTS.includes(slot)) {
+      sendJsonErrorResponse(
+        res,
+        400,
+        `slot must be one of ${AGENT_MODEL_SLOTS.join(", ")}`,
+      );
+      return true;
+    }
+    // modelId can be null to clear the slot
+    const rawModelId = body.modelId;
+    const modelId =
+      rawModelId === null
+        ? null
+        : typeof rawModelId === "string" && rawModelId.trim().length > 0
+          ? rawModelId.trim()
+          : null;
+    try {
+      const assignments = await localInferenceService.setSlotAssignment(
+        slot,
+        modelId,
+      );
+      sendJsonResponse(res, 200, { assignments });
+    } catch (err) {
+      sendJsonErrorResponse(
+        res,
+        500,
+        err instanceof Error ? err.message : "Failed to write assignment",
+      );
+    }
+    return true;
+  }
+
+  // ── GET: device bridge status (paired mobile device connectivity) ───
+  if (method === "GET" && pathname === "/api/local-inference/device") {
+    if (!ensureCompatApiAuthorized(req, res)) return true;
+    sendJsonResponse(res, 200, deviceBridge.status());
+    return true;
+  }
+
+  // ── SSE: device bridge status stream ────────────────────────────────
+  if (method === "GET" && pathname === "/api/local-inference/device/stream") {
+    if (!isStreamAuthorized(req, res, url)) return true;
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+
+    writeSseEvent(res, { type: "status", status: deviceBridge.status() });
+    const unsubscribe = deviceBridge.subscribeStatus((status) => {
+      writeSseEvent(res, { type: "status", status });
+    });
+    const heartbeat = setInterval(() => {
+      res.write(": heartbeat\n\n");
+    }, 15_000);
+    if (typeof heartbeat === "object" && "unref" in heartbeat) {
+      heartbeat.unref();
+    }
+    const cleanup = () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    };
+    req.on("close", cleanup);
+    req.on("aborted", cleanup);
     return true;
   }
 

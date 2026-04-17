@@ -52,7 +52,11 @@ import {
   getTimeOnSiteAction,
 } from "./actions/activity-report.js";
 import { ActivityTrackerService } from "./activity-profile/activity-tracker-service.js";
-import { twilioCallAction } from "./actions/twilio-call.js";
+import {
+  callExternalAction,
+  callUserAction,
+  twilioCallAction,
+} from "./actions/twilio-call.js";
 import { remoteDesktopAction } from "./actions/remote-desktop.js";
 import { startRemoteSessionAction } from "./actions/start-remote-session.js";
 import { revokeRemoteSessionAction } from "./actions/revoke-remote-session.js";
@@ -61,6 +65,7 @@ import { lifeOpsComputerUseAction } from "./actions/computer-use.js";
 import { crossChannelSendAction } from "./actions/cross-channel-send.js";
 import { searchAcrossChannelsAction } from "./actions/search-across-channels.js";
 import { intentSyncAction } from "./actions/intent-sync.js";
+import { publishDeviceIntentAction } from "./actions/device-bus.js";
 import { passwordManagerAction } from "./actions/password-manager.js";
 import {
   addAutofillWhitelistAction,
@@ -196,6 +201,8 @@ const rawAppLifeOpsPlugin: Plugin = {
     getTimeOnAppAction,
     getTimeOnSiteAction,
     twilioCallAction,
+    callUserAction,
+    callExternalAction,
     remoteDesktopAction,
     startRemoteSessionAction,
     revokeRemoteSessionAction,
@@ -203,6 +210,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     lifeOpsComputerUseAction,
     crossChannelSendAction,
     searchAcrossChannelsAction,
+    publishDeviceIntentAction,
     intentSyncAction,
     passwordManagerAction,
     requestFieldFillAction,

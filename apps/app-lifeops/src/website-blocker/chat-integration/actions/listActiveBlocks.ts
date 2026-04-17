@@ -10,7 +10,7 @@ export const listActiveBlocksAction: Action = {
   name: "LIST_ACTIVE_BLOCKS",
   similes: ["LIST_BLOCK_RULES", "SHOW_ACTIVE_BLOCKS", "WEBSITE_BLOCKS_STATUS"],
   description:
-    "List all currently active website block rules, including their gate type and gate target.",
+    "List all currently active website block rules, including their gate type and gate target. Only use this for website/app blocking status. Do not use it for inbox blockers, message priority, daily briefs, or general executive-assistant triage.",
   descriptionCompressed: "List active website block rules.",
   validate: async () => true,
   handler: async (runtime: IAgentRuntime): Promise<ActionResult> => {

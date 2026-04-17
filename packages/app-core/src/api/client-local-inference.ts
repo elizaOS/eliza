@@ -5,12 +5,15 @@
  * raw `fetch` from UI code.
  */
 
+import type { DeviceBridgeStatus } from "../services/local-inference/device-bridge";
 import type {
   ActiveModelState,
+  AgentModelSlot,
   CatalogModel,
   DownloadJob,
   HardwareProbe,
   InstalledModel,
+  ModelAssignments,
   ModelBucket,
   ModelHubSnapshot,
 } from "../services/local-inference/types";
@@ -18,10 +21,13 @@ import { ElizaClient } from "./client-base";
 
 export type {
   ActiveModelState,
+  AgentModelSlot,
   CatalogModel,
+  DeviceBridgeStatus,
   DownloadJob,
   HardwareProbe,
   InstalledModel,
+  ModelAssignments,
   ModelBucket,
   ModelHubSnapshot,
 };
@@ -46,6 +52,14 @@ declare module "./client-base" {
     setLocalInferenceActive(modelId: string): Promise<ActiveModelState>;
     clearLocalInferenceActive(): Promise<ActiveModelState>;
     uninstallLocalInferenceModel(id: string): Promise<{ removed: boolean }>;
+    getLocalInferenceDeviceStatus(): Promise<DeviceBridgeStatus>;
+    getLocalInferenceAssignments(): Promise<{
+      assignments: ModelAssignments;
+    }>;
+    setLocalInferenceAssignment(
+      slot: AgentModelSlot,
+      modelId: string | null,
+    ): Promise<{ assignments: ModelAssignments }>;
   }
 }
 
@@ -139,4 +153,27 @@ ElizaClient.prototype.uninstallLocalInferenceModel = async function (
     `/api/local-inference/installed/${encodeURIComponent(id)}`,
     { method: "DELETE" },
   );
+};
+
+ElizaClient.prototype.getLocalInferenceDeviceStatus = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/local-inference/device");
+};
+
+ElizaClient.prototype.getLocalInferenceAssignments = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/local-inference/assignments");
+};
+
+ElizaClient.prototype.setLocalInferenceAssignment = async function (
+  this: ElizaClient,
+  slot: AgentModelSlot,
+  modelId: string | null,
+) {
+  return this.fetch("/api/local-inference/assignments", {
+    method: "POST",
+    body: JSON.stringify({ slot, modelId }),
+  });
 };
