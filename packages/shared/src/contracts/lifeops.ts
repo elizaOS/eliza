@@ -1601,6 +1601,41 @@ export interface LifeOpsTelegramConnectorStatus {
   grant: LifeOpsConnectorGrant | null;
 }
 
+export interface LifeOpsTelegramDialogSummary {
+  id: string;
+  title: string;
+  username: string | null;
+  lastMessageText: string | null;
+  lastMessageAt: string | null;
+  unreadCount: number;
+}
+
+export interface VerifyLifeOpsTelegramConnectorRequest {
+  side?: LifeOpsConnectorSide;
+  recentLimit?: number;
+  sendTarget?: string;
+  sendMessage?: string;
+}
+
+export interface VerifyLifeOpsTelegramConnectorResponse {
+  provider: "telegram";
+  side: LifeOpsConnectorSide;
+  verifiedAt: string;
+  read: {
+    ok: boolean;
+    error: string | null;
+    dialogCount: number;
+    dialogs: LifeOpsTelegramDialogSummary[];
+  };
+  send: {
+    ok: boolean;
+    error: string | null;
+    target: string;
+    message: string;
+    messageId: string | null;
+  };
+}
+
 export interface StartLifeOpsSignalPairingRequest {
   side?: LifeOpsConnectorSide;
 }
