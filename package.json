@@ -85,7 +85,7 @@
     "@vitejs/plugin-react": "^5.1.2",
     "@vitest/coverage-v8": "^4.0.17",
     "bun": "^1.3.5",
-    "lerna": "9.0.3",
+    "lerna": "9.0.7",
     "turbo": "^2.7.4",
     "typescript": "^5.9.3",
     "vitest": "^4.0.17"
