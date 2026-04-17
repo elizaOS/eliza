@@ -328,7 +328,7 @@ const CHANNEL_DISPATCHERS: Record<
   }),
   discord: async ({ runtime, channel, target, body }) => {
     try {
-      await dispatchViaRuntimeSendHandler(runtime, channel, target, body);
+      await dispatchViaRuntimeSendHandler(runtime, "discord", target, body);
       return buildDispatchSuccess({ channel, target, body });
     } catch (error) {
       return buildDispatchFailure({
@@ -341,7 +341,7 @@ const CHANNEL_DISPATCHERS: Record<
   },
   signal: async ({ runtime, channel, target, body }) => {
     try {
-      await dispatchViaRuntimeSendHandler(runtime, channel, target, body);
+      await dispatchViaRuntimeSendHandler(runtime, "signal", target, body);
       return buildDispatchSuccess({ channel, target, body });
     } catch (error) {
       return buildDispatchFailure({

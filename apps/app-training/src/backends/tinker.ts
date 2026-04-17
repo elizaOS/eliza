@@ -40,8 +40,10 @@ export async function runTinkerBackend(
 	const apiKey = options.apiKey ?? process.env.TINKER_API_KEY;
 	const project = options.project ?? process.env.TINKER_PROJECT;
 
-	let sdk: { createJob?: (input: unknown) => Promise<{ id?: string }> } | null =
-		null;
+	type TinkerSdk = {
+		createJob?: (input: unknown) => Promise<{ id?: string }>;
+	};
+	let sdk: TinkerSdk | null = null;
 	try {
 		// Optional dependency — load via runtime resolution. We deliberately
 		// avoid a static import so app-training builds without the SDK.
@@ -57,7 +59,7 @@ export async function runTinkerBackend(
 				? (mod as { default?: unknown }).default
 				: mod;
 		if (candidate && typeof candidate === "object") {
-			sdk = candidate as typeof sdk;
+			sdk = candidate as TinkerSdk;
 		}
 	} catch {
 		notes.push(
