@@ -200,6 +200,7 @@
     "drizzle-orm": "0.45.2",
     "ethers": "^6.16.0",
     "json5": "^2.2.3",
+    "playwright-core": "^1.58.2",
     "react-test-renderer": "^19.2.4",
     "tailwindcss": "^4.1.18",
     "telegraf": "^4.16.3",
