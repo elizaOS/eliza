@@ -13,6 +13,8 @@
  */
 
 import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import {
   type AgentRuntime,
   ChannelType,
@@ -20,6 +22,11 @@ import {
   type UUID,
 } from "@elizaos/core";
 
+import {
+  isTrajectoryCaptureEnabled,
+  RecordingHarness,
+  type TrajectoryRecord,
+} from "../helpers/trajectory-harness.ts";
 import type { ActionBenchmarkCase } from "./action-selection-cases.ts";
 
 export interface ActionBenchmarkResult {
@@ -28,6 +35,10 @@ export interface ActionBenchmarkResult {
   pass: boolean;
   latencyMs: number;
   error?: string;
+  /** Populated when trajectory capture is enabled (MILADY_DUMP_TRAJECTORIES=1). */
+  trajectory?: TrajectoryRecord;
+  /** Path to per-case trajectory JSON file when written. */
+  trajectoryPath?: string;
 }
 
 export interface ActionBenchmarkLatencyStats {
@@ -62,6 +73,14 @@ export interface ActionBenchmarkRunOptions {
    */
   concurrency?: number;
   timeoutMsPerCase?: number;
+  /**
+   * Directory to write per-case trajectory JSON files. Only used when
+   * trajectory capture is enabled (`MILADY_DUMP_TRAJECTORIES=1` or the
+   * `forceTrajectoryCapture` flag).
+   */
+  trajectoryDir?: string;
+  /** Force trajectory capture even when the env flag is not set. */
+  forceTrajectoryCapture?: boolean;
 }
 
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -102,6 +121,64 @@ interface TurnCapture {
  * captures the first action name delivered for this room, send the message,
  * wait for handling to complete (or timeout), and return the captured action.
  */
+async function runSingleCaseWithRecording(
+  runtime: AgentRuntime,
+  tc: ActionBenchmarkCase,
+  timeoutMs: number,
+  trajectoryDir: string | undefined,
+): Promise<ActionBenchmarkResult> {
+  const started = Date.now();
+  const harness = new RecordingHarness(runtime, {
+    caseId: tc.id,
+    source: "benchmark",
+    userName: "BenchmarkUser",
+    force: true,
+  });
+  let firstAction: string | null = null;
+  try {
+    await harness.setup();
+    const turn = await harness.send(tc.userMessage, { timeoutMs });
+    const completed = turn.actions.find((a) => a.phase === "completed");
+    firstAction = completed?.actionName ?? null;
+    const pass = caseMatches(
+      firstAction,
+      tc.expectedAction,
+      tc.acceptableActions,
+    );
+    harness.setMetadata("expectedAction", tc.expectedAction);
+    harness.setMetadata("actualAction", firstAction);
+    harness.setMetadata("pass", pass);
+    harness.setMetadata("tags", tc.tags);
+    const trajectory = harness.dumpTrajectory();
+    let trajectoryPath: string | undefined;
+    if (trajectoryDir) {
+      trajectoryPath = path.join(trajectoryDir, "cases", `${tc.id}.json`);
+      await harness.writeTrajectoryToFile(trajectoryPath);
+    }
+    return {
+      case: tc,
+      actualAction: firstAction,
+      pass,
+      latencyMs: Date.now() - started,
+      trajectory,
+      trajectoryPath,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const trajectory = harness.dumpTrajectory();
+    return {
+      case: tc,
+      actualAction: firstAction,
+      pass: false,
+      latencyMs: Date.now() - started,
+      error: message,
+      trajectory,
+    };
+  } finally {
+    await harness.cleanup();
+  }
+}
+
 async function runSingleCase(
   runtime: AgentRuntime,
   tc: ActionBenchmarkCase,
@@ -222,12 +299,20 @@ export async function runActionSelectionBenchmark(
 ): Promise<ActionBenchmarkReport> {
   const timeoutMs = opts.timeoutMsPerCase ?? DEFAULT_TIMEOUT_MS;
   const concurrency = Math.max(1, opts.concurrency ?? 1);
+  const captureEnabled =
+    opts.forceTrajectoryCapture === true || isTrajectoryCaptureEnabled();
+  const trajectoryDir = captureEnabled ? opts.trajectoryDir : undefined;
+
+  const runOne = (tc: ActionBenchmarkCase): Promise<ActionBenchmarkResult> =>
+    captureEnabled
+      ? runSingleCaseWithRecording(opts.runtime, tc, timeoutMs, trajectoryDir)
+      : runSingleCase(opts.runtime, tc, timeoutMs);
 
   const results: ActionBenchmarkResult[] = [];
 
   if (concurrency === 1) {
     for (const tc of opts.cases) {
-      results.push(await runSingleCase(opts.runtime, tc, timeoutMs));
+      results.push(await runOne(tc));
     }
   } else {
     let cursor = 0;
@@ -240,13 +325,17 @@ export async function runActionSelectionBenchmark(
             cursor += 1;
             const tc = opts.cases[myIdx];
             if (!tc) break;
-            const res = await runSingleCase(opts.runtime, tc, timeoutMs);
+            const res = await runOne(tc);
             results[myIdx] = res;
           }
         })(),
       );
     }
     await Promise.all(workers);
+  }
+
+  if (captureEnabled && trajectoryDir) {
+    await writeTrajectoryIndexHtml(trajectoryDir, results);
   }
 
   const passed = results.filter((r) => r.pass).length;
