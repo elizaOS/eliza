@@ -270,7 +270,11 @@ export function buildCreateRequest(
   const maxRuns = parsePositiveInteger(form.maxRuns);
   return {
     displayName: form.displayName.trim(),
-    instructions: form.instructions.trim(),
+    instructions: form.kind === "text" ? form.instructions.trim() : undefined,
+    kind: form.kind,
+    workflowId: form.kind === "workflow" ? form.workflowId : undefined,
+    workflowName:
+      form.kind === "workflow" ? form.workflowName || undefined : undefined,
     triggerType: form.triggerType,
     wakeMode: form.wakeMode,
     enabled: form.enabled,
@@ -292,6 +296,27 @@ export function buildUpdateRequest(
   return { ...buildCreateRequest(form) };
 }
 
+/**
+ * Validates the kind-specific payload fields only (no schedule validation).
+ * Returns an error message when invalid, null when valid.
+ */
+export function validateTriggerKind(
+  form: TriggerFormState,
+  t: TranslateFn,
+): string | null {
+  if (form.kind === "workflow") {
+    if (!form.workflowId) {
+      return t("triggers.workflowPlaceholder");
+    }
+    return null;
+  }
+  // kind === "text"
+  if (!form.instructions.trim()) {
+    return t("heartbeatsview.validationInstructionsRequired");
+  }
+  return null;
+}
+
 export function validateForm(
   form: TriggerFormState,
   t: TranslateFn,
@@ -299,9 +324,8 @@ export function validateForm(
   if (!form.displayName.trim()) {
     return t("heartbeatsview.validationDisplayNameRequired");
   }
-  if (!form.instructions.trim()) {
-    return t("heartbeatsview.validationInstructionsRequired");
-  }
+  const kindError = validateTriggerKind(form, t);
+  if (kindError) return kindError;
   if (form.triggerType === "interval") {
     const value = Number(form.durationValue);
     if (!Number.isFinite(value) || value <= 0) {
