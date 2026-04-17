@@ -110,10 +110,22 @@ export interface RelationshipsGraphStats {
   totalIdentities: number;
 }
 
+export interface RelationshipsMergeCandidate {
+  id: string;
+  entityA: string;
+  entityB: string;
+  confidence: number;
+  evidence: Record<string, unknown>;
+  status: "pending" | "accepted" | "rejected";
+  proposedAt: string;
+  resolvedAt?: string;
+}
+
 export interface RelationshipsGraphSnapshot {
   people: RelationshipsPersonSummary[];
   relationships: RelationshipsGraphEdge[];
   stats: RelationshipsGraphStats;
+  candidateMerges: RelationshipsMergeCandidate[];
 }
 
 export interface RelationshipsActivityItem {

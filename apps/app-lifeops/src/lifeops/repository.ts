@@ -1806,6 +1806,22 @@ export class LifeOpsRepository {
         updated_at TEXT NOT NULL
       )`,
     );
+
+    // T8d — Activity tracker events (append-only). Plan §6.12.
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_activity_events (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        event_kind TEXT NOT NULL,
+        bundle_id TEXT NOT NULL,
+        app_name TEXT NOT NULL,
+        window_title TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL
+      )`,
+    );
   }
 
   async createDefinition(definition: LifeOpsTaskDefinition): Promise<void> {

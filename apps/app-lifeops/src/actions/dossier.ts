@@ -89,11 +89,9 @@ export const dossierAction: Action = {
       };
     }
 
-    const service = runtime.getService<LifeOpsService>(
-      "lifeops" as unknown as never,
-    ) as LifeOpsService | null;
+    const service = new LifeOpsService(runtime);
 
-    if (!service || typeof service.generateDossier !== "function") {
+    if (typeof (service as unknown as { generateDossier?: unknown }).generateDossier !== "function") {
       return {
         text: "LifeOps service is unavailable; cannot generate dossier.",
         success: false,

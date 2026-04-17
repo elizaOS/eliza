@@ -22,6 +22,9 @@
     "paths": {
       "@elizaos/core": ["../typescript/src/index.node.ts"],
       "@elizaos/core/*": ["../typescript/src/*"],
+      "@elizaos/native-activity-tracker": [
+        "../native-plugins/activity-tracker/src/index.ts"
+      ],
       "@elizaos/app-lifeops": ["../../apps/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["../../apps/app-lifeops/src/*"],
       "@elizaos/app-elizamaker": ["../../apps/app-elizamaker/src/index.ts"],

@@ -12,7 +12,7 @@
 import crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   type AppLaunchDiagnostic,
@@ -1759,9 +1759,6 @@ async function ensureRuntimePluginRegistered(
   }
 
   const pluginNames = getRuntimePluginCandidates(appInfo);
-  logger.info(
-    `[app-manager] ensureRuntimePluginRegistered(${appInfo.name}) candidates=${JSON.stringify(pluginNames)} isLocal=${isLocal}`,
-  );
   for (const pluginPackageName of pluginNames) {
     let plugin: Plugin | null = null;
     try {
@@ -1773,9 +1770,6 @@ async function ensureRuntimePluginRegistered(
       continue;
     }
     if (!plugin) {
-      logger.warn(
-        `[app-manager] importAppPlugin(${pluginPackageName}) returned null`,
-      );
       continue;
     }
 
@@ -1787,11 +1781,7 @@ async function ensureRuntimePluginRegistered(
       );
       continue;
     }
-    const ready = isRuntimePluginReady(appInfo, runtime);
-    logger.info(
-      `[app-manager] after registerPlugin(${plugin.name}) ready=${ready}`,
-    );
-    if (ready) {
+    if (isRuntimePluginReady(appInfo, runtime)) {
       return true;
     }
   }
@@ -2538,16 +2528,43 @@ export class AppManager {
       );
     } else if (!alreadyInstalled) {
       if (isAutoInstallable(appInfo)) {
-        if (!_runtime) {
-          throw new Error(
-            `Launching "${name}" requires a running agent runtime because plugin "${pluginName}" is not installed.`,
-          );
-        }
         logger.info(`[app-manager] Installing plugin for app: ${pluginName}`);
-        const result = await pluginManager.installPlugin(
-          pluginName,
-          onProgress,
-        );
+        let result = await pluginManager
+          .installPlugin(pluginName, onProgress)
+          .catch((err: unknown) => ({
+            success: false as const,
+            pluginName,
+            version: "",
+            installPath: "",
+            requiresRestart: false,
+            error: err instanceof Error ? err.message : String(err),
+          }));
+        if (
+          !result.success &&
+          (result.error?.includes("requires a running agent runtime") ||
+            !_runtime)
+        ) {
+          // Runtime plugin manager unavailable — fall back to the app-core
+          // installer which writes to ~/.eliza/plugins/installed and can be
+          // picked up by the app-package-modules resolver without restart.
+          const { installPlugin: installPluginDirect } = (await import(
+            /* webpackIgnore: true */ "@elizaos/app-core/services/plugin-installer"
+          )) as {
+            installPlugin: (
+              name: string,
+              onProgress?: (progress: InstallProgressLike) => void,
+              version?: string,
+            ) => Promise<{
+              success: boolean;
+              pluginName: string;
+              version: string;
+              installPath: string;
+              requiresRestart: boolean;
+              error?: string;
+            }>;
+          };
+          result = await installPluginDirect(pluginName, onProgress);
+        }
         if (!result.success) {
           throw new Error(
             `Failed to install plugin "${pluginName}": ${result.error}`,
@@ -2618,14 +2635,53 @@ export class AppManager {
       pluginInstalled = true;
     }
     const viewer = await buildViewerConfig(appInfo, launchUrl, _runtime);
-    await ensureRuntimeReady(appInfo, viewer, launchUrl, _runtime ?? null);
+    const runtimeReadyDiagnostics: AppLaunchDiagnostic[] = [];
+    try {
+      await ensureRuntimeReady(appInfo, viewer, launchUrl, _runtime ?? null);
+    } catch (readyError) {
+      const message =
+        readyError instanceof Error
+          ? readyError.message
+          : String(readyError);
+      logger.warn(
+        `[app-manager] ensureRuntimeReady(${appInfo.name}) failed: ${message}`,
+      );
+      runtimeReadyDiagnostics.push({
+        code: "runtime-service-unavailable",
+        severity: "warning",
+        message: `${appInfo.displayName ?? appInfo.name} runtime service could not initialize: ${message}. The viewer will open but live agent control may be unavailable until the underlying service is reachable.`,
+      });
+    }
 
     // Build viewer config from registry app metadata
-    const session = viewer
-      ? await resolveLaunchSession(appInfo, viewer, launchUrl, _runtime ?? null)
-      : buildAppSession(appInfo, undefined, _runtime);
+    let session: AppSessionState | null;
+    try {
+      session = viewer
+        ? await resolveLaunchSession(
+            appInfo,
+            viewer,
+            launchUrl,
+            _runtime ?? null,
+          )
+        : buildAppSession(appInfo, undefined, _runtime);
+    } catch (sessionError) {
+      const message =
+        sessionError instanceof Error
+          ? sessionError.message
+          : String(sessionError);
+      logger.warn(
+        `[app-manager] resolveLaunchSession(${appInfo.name}) failed: ${message}`,
+      );
+      runtimeReadyDiagnostics.push({
+        code: "session-resolve-failed",
+        severity: "warning",
+        message: `Could not resolve launch session for ${appInfo.displayName ?? appInfo.name}: ${message}.`,
+      });
+      session = buildAppSession(appInfo, undefined, _runtime);
+    }
     const diagnostics = [
       ...launchPreparationDiagnostics,
+      ...runtimeReadyDiagnostics,
       ...(await collectLaunchDiagnostics(
         appInfo,
         viewer,

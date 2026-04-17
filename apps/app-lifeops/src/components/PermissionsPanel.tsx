@@ -137,7 +137,7 @@ function statusBadge(status: PermissionStatus) {
 function PermissionRow({ entry }: { entry: PermissionEntry }) {
   const handleGrant = () => {
     if (typeof window !== "undefined") {
-      const win = window as Record<string, unknown>;
+      const win = window as unknown as Record<string, unknown>;
       if (typeof win.openSystemPreferences === "function") {
         (win.openSystemPreferences as (id: string) => void)(entry.id);
       }

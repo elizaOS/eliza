@@ -1,6 +1,14 @@
 
 
-import { ExternalLink, Plus, RefreshCw, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  MessageSquare,
+  Plus,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import {
   type JSX,
   useCallback,
@@ -294,6 +302,7 @@ export function BrowserWorkspaceView(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [chatSidebarCollapsed, setChatSidebarCollapsed] = useState(false);
   const initialBrowseUrlRef = useRef<string | null | undefined>(undefined);
   const initialBrowseHandledRef = useRef(false);
   const iframeRefs = useRef(new Map<string, HTMLIFrameElement | null>());
@@ -1147,79 +1156,115 @@ export function BrowserWorkspaceView(): JSX.Element {
         </Button>
       </div>
 
-      {/* Content area */}
-      <div className="relative flex-1 min-h-0 overflow-hidden bg-white">
-        {loadError ? (
-          <div className="absolute left-1/2 top-6 z-20 -translate-x-1/2 rounded-md border border-danger/50 bg-danger/15 px-3 py-1.5 text-xs text-danger">
-            {loadError}
-          </div>
-        ) : null}
+      {/* Content row: iframe area on the left, chat sidebar on the right */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Iframe area */}
+        <div className="relative flex-1 min-h-0 overflow-hidden bg-white">
+          {loadError ? (
+            <div className="absolute left-1/2 top-6 z-20 -translate-x-1/2 rounded-md border border-danger/50 bg-danger/15 px-3 py-1.5 text-xs text-danger">
+              {loadError}
+            </div>
+          ) : null}
 
-        {workspace.tabs.length === 0 ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="flex max-w-sm flex-col items-center gap-2 text-center">
-              <div className="text-sm font-semibold text-txt">
-                {t("browserworkspace.EmptyTitle", {
-                  defaultValue: "No browser tabs yet",
-                })}
-              </div>
-              <div className="text-xs text-muted">
-                {t("browserworkspace.EmptyDescription", {
-                  defaultValue:
-                    "Open a page here, or let the agent create tabs through the browser workspace plugin.",
-                })}
-              </div>
-              {loading ? (
-                <div className="text-[11px] text-muted/70">
-                  {t("browserworkspace.Loading", {
-                    defaultValue: "Loading browser workspace",
+          {workspace.tabs.length === 0 ? (
+            <div className="flex h-full items-center justify-center">
+              <div className="flex max-w-sm flex-col items-center gap-2 text-center">
+                <div className="text-sm font-semibold text-txt">
+                  {t("browserworkspace.EmptyTitle", {
+                    defaultValue: "No browser tabs yet",
                   })}
                 </div>
-              ) : null}
+                <div className="text-xs text-muted">
+                  {t("browserworkspace.EmptyDescription", {
+                    defaultValue:
+                      "Open a page here, or let the agent create tabs through the browser workspace plugin.",
+                  })}
+                </div>
+                {loading ? (
+                  <div className="text-[11px] text-muted/70">
+                    {t("browserworkspace.Loading", {
+                      defaultValue: "Loading browser workspace",
+                    })}
+                  </div>
+                ) : null}
+              </div>
             </div>
-          </div>
-        ) : (
-          workspace.tabs.map((tab) => {
-            const active = tab.id === selectedTabId;
-            return (
-              <iframe
-                key={tab.id}
-                ref={(iframe) =>
-                  registerBrowserWorkspaceIframe(tab.id, iframe)
-                }
-                title={getBrowserWorkspaceTabLabel(tab)}
-                src={tab.url}
-                loading="eager"
-                sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
-                allow="clipboard-read; clipboard-write"
-                referrerPolicy="strict-origin-when-cross-origin"
-                className={`absolute inset-0 h-full w-full border-0 bg-white transition-opacity ${
-                  active
-                    ? "pointer-events-auto opacity-100"
-                    : "pointer-events-none opacity-0"
-                }`}
-                onLoad={() => {
-                  postBrowserWalletReady(tab, browserWalletStateRef.current);
-                }}
-              />
-            );
-          })
-        )}
-
-        {/* Chat overlay — bubbles + input float directly over the browser.
-            Container is pointer-events-none so the iframe stays interactive;
-            ChatView's own bubbles and composer opt back in. Each element
-            (textarea + each button) gets its own glass background via
-            arbitrary child selectors, so nothing sits on top of a big
-            shared scrim. */}
-        <div
-          className="pointer-events-none absolute inset-0 z-10 flex flex-col px-4
-            [&_textarea]:rounded-3xl [&_textarea]:border [&_textarea]:border-white/15 [&_textarea]:bg-white/10 [&_textarea]:text-white [&_textarea]:placeholder:text-white/60 [&_textarea]:shadow-lg [&_textarea]:backdrop-blur-md
-            [&_button]:border [&_button]:border-white/15 [&_button]:bg-white/10 [&_button]:text-white [&_button]:shadow-lg [&_button]:backdrop-blur-md"
-          data-testid="browser-workspace-chat-overlay"
-        >
-          <ChatView variant="game-modal" hideTerminalPanel />
+          ) : (
+            workspace.tabs.map((tab) => {
+              const active = tab.id === selectedTabId;
+              return (
+                <iframe
+                  key={tab.id}
+                  ref={(iframe) =>
+                    registerBrowserWorkspaceIframe(tab.id, iframe)
+                  }
+                  title={getBrowserWorkspaceTabLabel(tab)}
+                  src={tab.url}
+                  loading="eager"
+                  sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
+                  allow="clipboard-read; clipboard-write"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  className={`absolute inset-0 h-full w-full border-0 bg-white transition-opacity ${
+                    active
+                      ? "pointer-events-auto opacity-100"
+                      : "pointer-events-none opacity-0"
+                  }`}
+                  onLoad={() => {
+                    postBrowserWalletReady(tab, browserWalletStateRef.current);
+                  }}
+                />
+              );
+            })
+          )}
         </div>
+
+        {/* Chat sidebar */}
+        <aside
+          className={`relative flex shrink-0 flex-col border-l border-border/30 bg-bg transition-[width] duration-200 ${
+            chatSidebarCollapsed ? "w-10" : "w-[24rem]"
+          }`}
+          data-testid="browser-workspace-chat-sidebar"
+        >
+          <div className="flex items-center justify-between border-b border-border/30 px-2 py-1.5">
+            {chatSidebarCollapsed ? (
+              <button
+                type="button"
+                className="mx-auto flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-card/60 hover:text-txt"
+                aria-label={t("browserworkspace.ExpandChat", {
+                  defaultValue: "Expand chat",
+                })}
+                onClick={() => setChatSidebarCollapsed(false)}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+            ) : (
+              <>
+                <div className="flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  {t("browserworkspace.ChatSidebar", {
+                    defaultValue: "Chat",
+                  })}
+                </div>
+                <button
+                  type="button"
+                  className="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-card/60 hover:text-txt"
+                  aria-label={t("browserworkspace.CollapseChat", {
+                    defaultValue: "Collapse chat",
+                  })}
+                  onClick={() => setChatSidebarCollapsed(true)}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </>
+            )}
+          </div>
+
+          {chatSidebarCollapsed ? null : (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <ChatView variant="default" hideTerminalPanel />
+            </div>
+          )}
+        </aside>
       </div>
     </div>
   );

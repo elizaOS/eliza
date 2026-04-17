@@ -41,18 +41,9 @@ export const LIFEOPS_X_FEED_TYPES = [
 
 export type LifeOpsXFeedType = (typeof LIFEOPS_X_FEED_TYPES)[number];
 
-// ── Negotiation states ───────────────────────────────────────────────────────
-
-export const LIFEOPS_NEGOTIATION_STATES = [
-  "initiated",
-  "proposals_sent",
-  "awaiting_response",
-  "confirmed",
-  "cancelled",
-] as const;
-
-export type LifeOpsNegotiationState =
-  (typeof LIFEOPS_NEGOTIATION_STATES)[number];
+// Note: `LIFEOPS_NEGOTIATION_STATES`, `LifeOpsNegotiationState`,
+// `LifeOpsSchedulingNegotiation`, and `LifeOpsSchedulingProposal` are
+// declared in the canonical `./lifeops.ts` contracts file, not here.
 
 // ── Relationship ─────────────────────────────────────────────────────────────
 
@@ -187,35 +178,8 @@ export interface LifeOpsScreenTimeDaily {
   updatedAt: string;
 }
 
-// ── Scheduling ───────────────────────────────────────────────────────────────
-
-export interface LifeOpsSchedulingNegotiation {
-  id: string;
-  agentId: string;
-  relationshipId: string | null;
-  subject: string;
-  state: LifeOpsNegotiationState;
-  durationMinutes: number;
-  timezone: string;
-  metadata: Record<string, unknown>;
-  startedAt: string;
-  finalizedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface LifeOpsSchedulingProposal {
-  id: string;
-  agentId: string;
-  negotiationId: string;
-  startAt: string;
-  endAt: string;
-  status: "proposed" | "accepted" | "declined" | "expired";
-  proposedBy: "agent" | "owner" | "counterparty";
-  metadata: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-}
+// Scheduling interfaces live in `./lifeops.ts` — see LifeOpsSchedulingNegotiation,
+// LifeOpsSchedulingProposal, LIFEOPS_PROPOSAL_STATUSES, LIFEOPS_PROPOSAL_PROPOSERS.
 
 // ── Dossier ──────────────────────────────────────────────────────────────────
 

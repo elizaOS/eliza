@@ -17,6 +17,7 @@ import { CodingAgentSettingsSection } from "@elizaos/app-task-coordinator";
 import { MediaSettingsSection } from "../settings/MediaSettingsSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
+import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
 import { CloudDashboard } from "./ElizaCloudDashboard";
 import { ReleaseCenterView } from "./ReleaseCenterView";
@@ -63,6 +64,23 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "settings.keyword.provider",
       "settings.keyword.apiKey",
       "settings.keyword.inference",
+    ],
+  },
+  {
+    id: "local-models",
+    label: "settings.sections.localModels.label",
+    description: "settings.sections.localModels.desc",
+    keywords: [
+      "local",
+      "llama",
+      "llama.cpp",
+      "gguf",
+      "model",
+      "download",
+      "inference",
+      "offline",
+      "gpu",
+      "vram",
     ],
   },
   {
@@ -979,6 +997,22 @@ export function SettingsView({
           ref={registerContentItem("ai-model")}
         >
           <ProviderSwitcher />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("local-models") && (
+        <SettingsSection
+          id="local-models"
+          title={t("settings.sections.localModels.label", {
+            defaultValue: "Local models",
+          })}
+          description={t("settings.sections.localModels.desc", {
+            defaultValue:
+              "Run llama.cpp models on this machine. Browse the curated catalog, download, and switch between local models.",
+          })}
+          ref={registerContentItem("local-models")}
+        >
+          <LocalInferencePanel />
         </SettingsSection>
       )}
 

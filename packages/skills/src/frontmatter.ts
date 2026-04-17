@@ -161,7 +161,7 @@ export function resolveSkillProvenance(
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return undefined;
   }
-  const record = raw as Record<string, unknown>;
+  const record = raw as unknown as Record<string, unknown>;
   const source = record.source;
   if (
     source !== "human" &&

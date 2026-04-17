@@ -784,7 +784,7 @@ ElizaClient.prototype.stopSignalPairing = async function (
 
 ElizaClient.prototype.disconnectSignalConnector = async function (
   this: ElizaClient,
-  data = {},
+  data = { provider: "signal" },
 ) {
   return this.fetch("/api/lifeops/connectors/signal/disconnect", {
     method: "POST",
@@ -820,7 +820,7 @@ ElizaClient.prototype.startDiscordConnector = async function (
 
 ElizaClient.prototype.disconnectDiscordConnector = async function (
   this: ElizaClient,
-  data = {},
+  data = { provider: "discord" },
 ) {
   return this.fetch("/api/lifeops/connectors/discord/disconnect", {
     method: "POST",
@@ -866,7 +866,7 @@ ElizaClient.prototype.submitTelegramAuth = async function (
 
 ElizaClient.prototype.cancelTelegramAuth = async function (
   this: ElizaClient,
-  data = {},
+  data = { provider: "telegram" },
 ) {
   return this.fetch("/api/lifeops/connectors/telegram/cancel", {
     method: "POST",
@@ -876,7 +876,7 @@ ElizaClient.prototype.cancelTelegramAuth = async function (
 
 ElizaClient.prototype.disconnectTelegramConnector = async function (
   this: ElizaClient,
-  data = {},
+  data = { provider: "telegram" },
 ) {
   return this.fetch("/api/lifeops/connectors/telegram/disconnect", {
     method: "POST",

@@ -50,6 +50,7 @@ import type {
   RelationshipsGraphQuery,
   RelationshipsGraphSnapshot,
   RelationshipsGraphStats,
+  RelationshipsMergeCandidate,
   RelationshipsPersonDetail,
   RelationshipsPersonSummary,
   RuntimeDebugSnapshot,
@@ -371,6 +372,18 @@ declare module "./client-base" {
     getRelationshipsActivity(
       limit?: number,
     ): Promise<RelationshipsActivityResponse>;
+    getRelationshipsCandidates(): Promise<RelationshipsMergeCandidate[]>;
+    acceptRelationshipsCandidate(
+      candidateId: string,
+    ): Promise<{ id: string; status: string }>;
+    rejectRelationshipsCandidate(
+      candidateId: string,
+    ): Promise<{ id: string; status: string }>;
+    proposeRelationshipsLink(
+      sourceEntityId: string,
+      targetEntityId: string,
+      evidence?: Record<string, unknown>,
+    ): Promise<{ id: string; status: string }>;
     getRolodexGraph(query?: RolodexGraphQuery): Promise<RolodexGraphSnapshot>;
     getRolodexPeople(query?: RolodexGraphQuery): Promise<{
       people: RolodexPersonSummary[];
@@ -1522,6 +1535,57 @@ ElizaClient.prototype.getRelationshipsActivity = async function (
   if (typeof limit === "number") params.set("limit", String(limit));
   const qs = params.toString();
   return this.fetch(`/api/relationships/activity${qs ? `?${qs}` : ""}`);
+};
+
+ElizaClient.prototype.getRelationshipsCandidates = async function (
+  this: ElizaClient,
+) {
+  const response = await this.fetch<{ data: RelationshipsMergeCandidate[] }>(
+    "/api/relationships/candidates",
+  );
+  return response.data;
+};
+
+ElizaClient.prototype.acceptRelationshipsCandidate = async function (
+  this: ElizaClient,
+  candidateId,
+) {
+  const response = await this.fetch<{ data: { id: string; status: string } }>(
+    `/api/relationships/candidates/${encodeURIComponent(candidateId)}/accept`,
+    { method: "POST" },
+  );
+  return response.data;
+};
+
+ElizaClient.prototype.rejectRelationshipsCandidate = async function (
+  this: ElizaClient,
+  candidateId,
+) {
+  const response = await this.fetch<{ data: { id: string; status: string } }>(
+    `/api/relationships/candidates/${encodeURIComponent(candidateId)}/reject`,
+    { method: "POST" },
+  );
+  return response.data;
+};
+
+ElizaClient.prototype.proposeRelationshipsLink = async function (
+  this: ElizaClient,
+  sourceEntityId,
+  targetEntityId,
+  evidence,
+) {
+  const response = await this.fetch<{ data: { id: string; status: string } }>(
+    `/api/relationships/people/${encodeURIComponent(sourceEntityId)}/link`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        targetEntityId,
+        evidence: evidence ?? {},
+      }),
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+  return response.data;
 };
 
 ElizaClient.prototype.getRolodexGraph = async function (

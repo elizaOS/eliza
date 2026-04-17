@@ -1,0 +1,52 @@
+{
+  "name": "@elizaos/macosalarm",
+  "version": "0.1.0",
+  "description": "macOS native alarm helper plugin. Schedules UNUserNotificationCenter calendar-trigger alarms via a self-contained Swift CLI invoked from the Eliza runtime.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "swift-helper/",
+    "scripts/",
+    "bin/"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/build-helper.mjs",
+    "build:ts": "tsc -p tsconfig.json",
+    "build:helper": "node scripts/build-helper.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "clean": "rm -rf dist bin"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "author": "elizaOS",
+  "license": "MIT",
+  "milady": {
+    "platforms": [
+      "darwin"
+    ],
+    "runtime": "node",
+    "autoEnable": "darwin",
+    "platformDetails": {
+      "darwin": "Swift CLI helper using UNUserNotificationCenter. Non-darwin platforms receive macos-only failures."
+    }
+  }
+}

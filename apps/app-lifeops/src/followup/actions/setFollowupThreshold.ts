@@ -6,6 +6,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { asUUID, logger } from "@elizaos/core";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import {
   type ContactInfo,
   getRelationshipsServiceLike,
@@ -39,7 +40,7 @@ export const setFollowupThresholdAction: Action = {
   description:
     "Set the follow-up threshold (in days) for a specific contact. " +
     "Requires a positive integer threshold and either contactId or an unambiguous contactName.",
-  validate: async () => true,
+  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,
     _message,

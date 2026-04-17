@@ -27,7 +27,6 @@ export type { ExtendedRuntime } from "./coreExtensions.ts";
 export {
 	applyRuntimeExtensions,
 	extendRuntimeWithComponentUnregistration,
-	extendRuntimeWithEventUnregistration,
 } from "./coreExtensions.ts";
 // Providers
 export { pluginConfigurationStatusProvider } from "./providers/pluginConfigurationStatus.ts";

@@ -1124,6 +1124,21 @@ export class DatabaseTrajectoryLogger extends Service {
     return trajectoryId;
   }
 
+  async annotateStep(params: {
+    stepId: string;
+    kind?: TrajectoryStepKind;
+    script?: string;
+    childSteps?: string[];
+    appendChildSteps?: string[];
+    usedSkills?: string[];
+  }): Promise<void> {
+    if (!this.enabled) return;
+    await annotateTrajectoryStep({
+      runtime: this.runtime,
+      ...params,
+    });
+  }
+
   async endTrajectory(
     stepIdOrTrajectoryId: string,
     status: TrajectoryStatus = "completed",
