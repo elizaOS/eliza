@@ -3,9 +3,6 @@ declare module "*.svg" {
   export default src;
 }
 
-/** Pulled in when typechecking agent sources that lazy-load this plugin. */
-declare module "@elizaos/plugin-pi-ai";
-
 declare module "@elizaos/signal-native" {
   export function linkDevice(
     authDir: string,
