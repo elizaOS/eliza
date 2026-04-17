@@ -590,9 +590,9 @@ export function CharacterExamplesPanel({
                   </Button>
                 </div>
               ))}
-              <Button
-                variant="ghost"
-                className="self-start text-3xs font-semibold text-accent p-0 h-auto py-0.5 pl-[4.25rem] hover:underline"
+              <button
+                type="button"
+                className="self-start ml-[4.25rem] mt-0.5 text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
                 onClick={() => {
                   const agentName =
                     typeof d.name === "string" && d.name.trim()
@@ -614,7 +614,7 @@ export function CharacterExamplesPanel({
                 {t("charactereditor.AddTurn", {
                   defaultValue: "Add turn",
                 })}
-              </Button>
+              </button>
             </div>
           ))}
           {normalizedMessageExamples.length === 0 && (
@@ -625,9 +625,9 @@ export function CharacterExamplesPanel({
             </div>
           )}
         </div>
-        <Button
-          variant="ghost"
-          className="self-start text-3xs font-semibold text-accent p-0 h-auto py-1 hover:underline"
+        <button
+          type="button"
+          className="self-start mt-1 text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
           onClick={() => {
             const agentName =
               typeof d.name === "string" && d.name.trim()
@@ -649,7 +649,7 @@ export function CharacterExamplesPanel({
           {t("charactereditor.AddConversation", {
             defaultValue: "Add conversation",
           })}
-        </Button>
+        </button>
       </section>
 
       {/* Post Examples */}
@@ -717,9 +717,9 @@ export function CharacterExamplesPanel({
               })}
             </div>
           )}
-          <Button
-            variant="ghost"
-            className="text-3xs font-semibold text-accent p-0 h-auto py-1 text-left hover:underline"
+          <button
+            type="button"
+            className="self-start mt-1 text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
             onClick={() => {
               const updated = [...(d.postExamples ?? []), ""];
               handleFieldEdit("postExamples", updated);
@@ -729,7 +729,7 @@ export function CharacterExamplesPanel({
             {t("charactereditor.AddPost", {
               defaultValue: "Add Post",
             })}
-          </Button>
+          </button>
         </div>
       </section>
     </>
