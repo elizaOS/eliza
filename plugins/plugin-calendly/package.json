@@ -30,7 +30,7 @@
   "devDependencies": {
     "@types/node": "22.10.9",
     "tsup": "8.4.0",
-    "typescript": "5.7.3",
+    "typescript": "5.9.3",
     "vitest": "3.0.5"
   },
   "publishConfig": {
