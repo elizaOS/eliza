@@ -12,6 +12,7 @@ import type {
   TriggerWakeMode,
   UpdateTriggerRequest,
 } from "../../api/client";
+import type { TriggerKind } from "@elizaos/agent/triggers/types";
 import { formatDurationMs } from "../../utils/format";
 
 // ── Translation helper type ────────────────────────────────────────
@@ -73,6 +74,9 @@ export function durationUnitLabel(unit: DurationUnit, t: TranslateFn): string {
 export interface TriggerFormState {
   displayName: string;
   instructions: string;
+  kind: TriggerKind;
+  workflowId: string;
+  workflowName: string;
   triggerType: TriggerType;
   wakeMode: TriggerWakeMode;
   scheduledAtIso: string;
@@ -86,6 +90,9 @@ export interface TriggerFormState {
 export const emptyForm: TriggerFormState = {
   displayName: "",
   instructions: "",
+  kind: "text",
+  workflowId: "",
+  workflowName: "",
   triggerType: "interval",
   wakeMode: "inject_now",
   scheduledAtIso: "",
@@ -95,6 +102,11 @@ export const emptyForm: TriggerFormState = {
   durationValue: "1",
   durationUnit: "hours",
 };
+
+/** @deprecated Use emptyForm directly. Kept for callers that use the function form. */
+export function emptyTriggerForm(): TriggerFormState {
+  return { ...emptyForm };
+}
 
 // ── Template types & storage ───────────────────────────────────────
 
@@ -238,6 +250,9 @@ export function formFromTrigger(trigger: TriggerSummary): TriggerFormState {
   return {
     displayName: trigger.displayName,
     instructions: trigger.instructions,
+    kind: trigger.kind ?? "text",
+    workflowId: trigger.workflowId ?? "",
+    workflowName: trigger.workflowName ?? "",
     triggerType: trigger.triggerType,
     wakeMode: trigger.wakeMode,
     scheduledAtIso: trigger.scheduledAtIso ?? "",
