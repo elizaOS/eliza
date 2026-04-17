@@ -29,11 +29,13 @@ import {
 	entityMergeCandidateSchema,
 	factCandidateSchema,
 } from "./entity-identity.ts";
+
 export type {
 	EntityMergeCandidateStatus,
 	FactCandidateKind,
 	FactCandidateStatus,
 } from "./entity-identity.ts";
+
 import { logSchema } from "./log.ts";
 import { memorySchema } from "./memory.ts";
 import { messageSchema } from "./message.ts";

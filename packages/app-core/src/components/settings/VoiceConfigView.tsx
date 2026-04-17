@@ -1,5 +1,15 @@
-
-
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+  SaveFooter,
+  Switch,
+  useTimeout,
+} from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   client,
@@ -13,7 +23,6 @@ import {
   type SwabbleConfig,
 } from "../../bridge/native-plugins";
 import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../../events";
-import { useTimeout } from "@elizaos/ui";
 import { useApp } from "../../state";
 import type { DesktopClickAuditItem } from "../../utils";
 import {
@@ -22,7 +31,6 @@ import {
   sanitizeApiKey,
   VOICE_PROVIDERS,
 } from "../../voice";
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, SaveFooter, Switch } from "@elizaos/ui";
 import {
   CloudConnectionStatus,
   CloudSourceModeToggle,
@@ -143,7 +151,7 @@ export function DesktopTalkModePanel() {
     } finally {
       setLoading(false);
     }
-  }, [desktopRuntime]);
+  }, [desktopRuntime, t]);
 
   useEffect(() => {
     void refresh();
@@ -177,7 +185,7 @@ export function DesktopTalkModePanel() {
         setBusyAction(null);
       }
     },
-    [refresh],
+    [refresh, t],
   );
 
   if (!desktopRuntime) {
@@ -813,7 +821,7 @@ export function VoiceConfigView() {
       );
     }
     setSaving(false);
-  }, [currentMode, swabbleServerConfig, voiceConfig, setTimeout]);
+  }, [currentMode, swabbleServerConfig, voiceConfig, setTimeout, t]);
 
   if (loading) {
     return (

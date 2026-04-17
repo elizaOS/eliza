@@ -23,19 +23,19 @@ import { join } from "node:path";
  *  end-turn reader and the activity scanner so both agree on what a parsed
  *  assistant line looks like. */
 interface JsonlAssistantLine {
-	message?: {
-		role?: string;
-		stop_reason?: string;
-		content?: Array<{ type?: string; text?: string; name?: string }>;
-	};
+  message?: {
+    role?: string;
+    stop_reason?: string;
+    content?: Array<{ type?: string; text?: string; name?: string }>;
+  };
 }
 
 function parseJsonlLine(line: string): JsonlAssistantLine | null {
-	try {
-		return JSON.parse(line) as JsonlAssistantLine;
-	} catch {
-		return null;
-	}
+  try {
+    return JSON.parse(line) as JsonlAssistantLine;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -44,10 +44,10 @@ function parseJsonlLine(line: string): JsonlAssistantLine | null {
  * exists yet (still running, crashed before responding, or wrong workdir).
  */
 export async function readLastAssistantTextFromJsonl(
-	workdir: string,
+  workdir: string,
 ): Promise<string | null> {
-	const content = await readJsonl(workdir);
-	return content === null ? null : findLatestEndTurnText(content);
+  const content = await readJsonl(workdir);
+  return content === null ? null : findLatestEndTurnText(content);
 }
 
 /**
@@ -55,34 +55,34 @@ export async function readLastAssistantTextFromJsonl(
  * the given workdir.
  */
 export async function findLatestJsonl(workdir: string): Promise<string | null> {
-	const projectKey = workdir.replace(/[/.]/g, "-");
-	const projectDir = join(homedir(), ".claude", "projects", projectKey);
-	let entries: string[];
-	try {
-		entries = await fs.readdir(projectDir);
-	} catch {
-		return null;
-	}
-	const jsonls = entries.filter((f) => f.endsWith(".jsonl"));
-	if (jsonls.length === 0) return null;
-	const withMtime = await Promise.all(
-		jsonls.map(async (f) => {
-			const s = await fs.stat(join(projectDir, f));
-			return { f, mtime: s.mtimeMs };
-		}),
-	);
-	withMtime.sort((a, b) => b.mtime - a.mtime);
-	return join(projectDir, withMtime[0].f);
+  const projectKey = workdir.replace(/[/.]/g, "-");
+  const projectDir = join(homedir(), ".claude", "projects", projectKey);
+  let entries: string[];
+  try {
+    entries = await fs.readdir(projectDir);
+  } catch {
+    return null;
+  }
+  const jsonls = entries.filter((f) => f.endsWith(".jsonl"));
+  if (jsonls.length === 0) return null;
+  const withMtime = await Promise.all(
+    jsonls.map(async (f) => {
+      const s = await fs.stat(join(projectDir, f));
+      return { f, mtime: s.mtimeMs };
+    }),
+  );
+  withMtime.sort((a, b) => b.mtime - a.mtime);
+  return join(projectDir, withMtime[0].f);
 }
 
 async function readJsonl(workdir: string): Promise<string | null> {
-	const jsonlPath = await findLatestJsonl(workdir);
-	if (!jsonlPath) return null;
-	try {
-		return await fs.readFile(jsonlPath, "utf-8");
-	} catch {
-		return null;
-	}
+  const jsonlPath = await findLatestJsonl(workdir);
+  if (!jsonlPath) return null;
+  try {
+    return await fs.readFile(jsonlPath, "utf-8");
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -91,24 +91,24 @@ async function readJsonl(workdir: string): Promise<string | null> {
  * assistant line is still in a tool_use turn or no assistant line exists.
  */
 export function findLatestEndTurnText(content: string): string | null {
-	const lines = content.split("\n");
-	for (let i = lines.length - 1; i >= 0; i--) {
-		const line = lines[i].trim();
-		if (!line) continue;
-		const parsed = parseJsonlLine(line);
-		if (!parsed) continue;
-		const msg = parsed.message;
-		if (!msg || msg.role !== "assistant") continue;
-		if (msg.stop_reason !== "end_turn") return null;
-		const textParts: string[] = [];
-		for (const c of msg.content ?? []) {
-			if (c.type === "text" && typeof c.text === "string" && c.text.trim()) {
-				textParts.push(c.text.trim());
-			}
-		}
-		return textParts.length > 0 ? textParts.join("\n\n") : null;
-	}
-	return null;
+  const lines = content.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const parsed = parseJsonlLine(line);
+    if (!parsed) continue;
+    const msg = parsed.message;
+    if (!msg || msg.role !== "assistant") continue;
+    if (msg.stop_reason !== "end_turn") return null;
+    const textParts: string[] = [];
+    for (const c of msg.content ?? []) {
+      if (c.type === "text" && typeof c.text === "string" && c.text.trim()) {
+        textParts.push(c.text.trim());
+      }
+    }
+    return textParts.length > 0 ? textParts.join("\n\n") : null;
+  }
+  return null;
 }
 
 /**
@@ -118,29 +118,29 @@ export function findLatestEndTurnText(content: string): string | null {
  * null if the jsonl has no assistant/tool activity yet.
  */
 export async function readCurrentActivityFromJsonl(
-	workdir: string,
+  workdir: string,
 ): Promise<string | null> {
-	const content = await readJsonl(workdir);
-	if (content === null) return null;
-	const lines = content.split("\n");
-	for (let i = lines.length - 1; i >= 0; i--) {
-		const line = lines[i].trim();
-		if (!line) continue;
-		const parsed = parseJsonlLine(line);
-		if (!parsed) continue;
-		const msg = parsed.message;
-		if (!msg || msg.role !== "assistant") continue;
-		for (const c of msg.content ?? []) {
-			if (c.type === "tool_use" && typeof c.name === "string") return c.name;
-		}
-		for (const c of msg.content ?? []) {
-			if (c.type === "text" && typeof c.text === "string" && c.text.trim()) {
-				const first = c.text.trim().split("\n")[0] ?? "";
-				return first.length > 80 ? `${first.slice(0, 77)}…` : first;
-			}
-		}
-	}
-	return null;
+  const content = await readJsonl(workdir);
+  if (content === null) return null;
+  const lines = content.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const parsed = parseJsonlLine(line);
+    if (!parsed) continue;
+    const msg = parsed.message;
+    if (!msg || msg.role !== "assistant") continue;
+    for (const c of msg.content ?? []) {
+      if (c.type === "tool_use" && typeof c.name === "string") return c.name;
+    }
+    for (const c of msg.content ?? []) {
+      if (c.type === "text" && typeof c.text === "string" && c.text.trim()) {
+        const first = c.text.trim().split("\n")[0] ?? "";
+        return first.length > 80 ? `${first.slice(0, 77)}…` : first;
+      }
+    }
+  }
+  return null;
 }
 
 /**
@@ -149,18 +149,18 @@ export async function readCurrentActivityFromJsonl(
  * pass 1900 to leave headroom under Discord's 2000-char per-message limit.
  */
 export function chunkForDiscord(text: string, max: number): string[] {
-	if (text.length <= max) return [text];
-	const out: string[] = [];
-	let remaining = text;
-	while (remaining.length > max) {
-		const half = Math.floor(max / 2);
-		let cut = remaining.lastIndexOf("\n\n", max);
-		if (cut < half) cut = remaining.lastIndexOf("\n", max);
-		if (cut < half) cut = remaining.lastIndexOf(" ", max);
-		if (cut < half) cut = max;
-		out.push(remaining.slice(0, cut).trimEnd());
-		remaining = remaining.slice(cut).trimStart();
-	}
-	if (remaining) out.push(remaining);
-	return out;
+  if (text.length <= max) return [text];
+  const out: string[] = [];
+  let remaining = text;
+  while (remaining.length > max) {
+    const half = Math.floor(max / 2);
+    let cut = remaining.lastIndexOf("\n\n", max);
+    if (cut < half) cut = remaining.lastIndexOf("\n", max);
+    if (cut < half) cut = remaining.lastIndexOf(" ", max);
+    if (cut < half) cut = max;
+    out.push(remaining.slice(0, cut).trimEnd());
+    remaining = remaining.slice(cut).trimStart();
+  }
+  if (remaining) out.push(remaining);
+  return out;
 }

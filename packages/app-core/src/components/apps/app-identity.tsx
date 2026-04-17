@@ -1,14 +1,14 @@
-import type { CSSProperties } from "react";
 import {
   Bot,
   Briefcase,
   Gamepad2,
   Globe2,
+  type LucideIcon,
   Sparkles,
   Wallet,
   Wrench,
-  type LucideIcon,
 } from "lucide-react";
+import type { CSSProperties } from "react";
 
 export interface AppIdentitySource {
   name: string;

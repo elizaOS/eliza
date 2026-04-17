@@ -370,7 +370,9 @@ export function loadSkills(options: LoadSkillsOptions = {}): LoadSkillsResult {
       addSkills(loadSkillsFromDirInternal(resolvedBundledDir, "bundled", true));
     }
     addSkills(loadSkillsFromDirInternal(resolvedManagedDir, "managed", true));
-    addSkills(loadSkillsFromDirInternal(getCuratedActiveDir(), "curated", true));
+    addSkills(
+      loadSkillsFromDirInternal(getCuratedActiveDir(), "curated", true),
+    );
     addSkills(loadSkillsFromDirInternal(projectSkillsDir, "project", true));
   }
 

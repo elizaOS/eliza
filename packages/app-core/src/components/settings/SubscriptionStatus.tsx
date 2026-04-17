@@ -1,19 +1,16 @@
-
-
+import { Button, Input, Label, useTimeout } from "@elizaos/ui";
 import { useCallback, useRef, useState } from "react";
 import { client } from "../../api";
-import { useTimeout } from "@elizaos/ui";
 import {
   getStoredSubscriptionProvider,
   type SubscriptionProviderSelectionId,
 } from "../../providers";
 import { useApp } from "../../state";
+import { openExternalUrl } from "../../utils";
 import {
   formatSubscriptionRequestError,
   normalizeOpenAICallbackInput,
 } from "../../utils/subscription-auth";
-import { openExternalUrl } from "../../utils";
-import { Button, Input, Label } from "@elizaos/ui";
 
 export interface SubscriptionStatusProps {
   resolvedSelectedId: string | null;

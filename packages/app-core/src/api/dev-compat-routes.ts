@@ -1,5 +1,9 @@
-import http from "node:http";
+import type http from "node:http";
 import { ensureCompatApiAuthorized } from "./auth";
+import {
+  type CompatRuntimeState,
+  isLoopbackRemoteAddress,
+} from "./compat-route-shared";
 import {
   isAllowedDevConsoleLogPath,
   readDevConsoleLogTail,
@@ -9,10 +13,6 @@ import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
-import {
-  isLoopbackRemoteAddress,
-  type CompatRuntimeState,
-} from "./compat-route-shared";
 
 /**
  * Dev observability routes (loopback where noted).

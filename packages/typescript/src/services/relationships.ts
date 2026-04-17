@@ -1383,8 +1383,7 @@ export class RelationshipsService extends Service {
 			throw new Error("Interaction platform is required");
 		}
 
-		const occurredAt =
-			input.occurredAt ?? new Date().toISOString();
+		const occurredAt = input.occurredAt ?? new Date().toISOString();
 
 		const interaction: ContactInteraction = {
 			id: stringToUuid(
@@ -1434,10 +1433,7 @@ export class RelationshipsService extends Service {
 	): Promise<ContactInfo | null> {
 		const normalizedPlatform = platform.trim().toLowerCase();
 		const normalizedIdentifier = identifier.trim().toLowerCase();
-		if (
-			normalizedPlatform.length === 0 ||
-			normalizedIdentifier.length === 0
-		) {
+		if (normalizedPlatform.length === 0 || normalizedIdentifier.length === 0) {
 			return null;
 		}
 
@@ -1654,9 +1650,7 @@ export class RelationshipsService extends Service {
 			}
 		}
 
-		results.sort(
-			(a, b) => b.daysSinceInteraction - a.daysSinceInteraction,
-		);
+		results.sort((a, b) => b.daysSinceInteraction - a.daysSinceInteraction);
 		return results;
 	}
 
@@ -1841,10 +1835,7 @@ export class RelationshipsService extends Service {
 			confidence >= AUTO_MERGE_CONFIDENCE_THRESHOLD &&
 			dedupedEvidence.length >= AUTO_MERGE_MIN_EVIDENCE
 		) {
-			const collisions = await this.findEntitiesByIdentity(
-				platform,
-				handle,
-			);
+			const collisions = await this.findEntitiesByIdentity(platform, handle);
 			for (const otherEntityId of collisions) {
 				if (otherEntityId === entityId) continue;
 				const candidate = await this.proposeMerge(entityId, otherEntityId, {

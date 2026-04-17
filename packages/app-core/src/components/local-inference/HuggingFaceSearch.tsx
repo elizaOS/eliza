@@ -117,18 +117,23 @@ export function HuggingFaceSearch({
       </div>
 
       {loading && (
-        <div className="text-sm text-muted-foreground">Searching HuggingFace…</div>
+        <div className="text-sm text-muted-foreground">
+          Searching HuggingFace…
+        </div>
       )}
       {error && (
         <div className="rounded-md border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-500">
           {error}
         </div>
       )}
-      {!loading && !error && query.trim().length >= 2 && results.length === 0 && (
-        <div className="text-sm text-muted-foreground">
-          No GGUF repos matched. Try a different keyword.
-        </div>
-      )}
+      {!loading &&
+        !error &&
+        query.trim().length >= 2 &&
+        results.length === 0 && (
+          <div className="text-sm text-muted-foreground">
+            No GGUF repos matched. Try a different keyword.
+          </div>
+        )}
 
       {results.length > 0 && (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">

@@ -78,8 +78,7 @@ export function resolveElizaCloudTopology(
   const resolvedServices = {
     inference: Boolean(
       routing?.llmText?.transport === "cloud-proxy" &&
-        normalizeOnboardingProviderId(routing.llmText.backend) ===
-          "elizacloud",
+        normalizeOnboardingProviderId(routing.llmText.backend) === "elizacloud",
     ),
     tts: Boolean(
       routing?.tts?.transport === "cloud-proxy" &&
@@ -109,8 +108,7 @@ export function resolveElizaCloudTopology(
     runtime,
     services: resolvedServices,
     shouldLoadPlugin:
-      cloudDeploymentSelected ||
-      Object.values(resolvedServices).some(Boolean),
+      cloudDeploymentSelected || Object.values(resolvedServices).some(Boolean),
   };
 }
 

@@ -1,9 +1,9 @@
 import { useBootConfig } from "../../config";
-import { getBootConfig } from "../../config/boot-config";
 import type {
   CompanionInferenceNotice,
   ResolveCompanionInferenceNoticeArgs,
 } from "../../config/boot-config";
+import { getBootConfig } from "../../config/boot-config";
 
 export function resolveCompanionInferenceNotice(
   args: ResolveCompanionInferenceNoticeArgs,
@@ -18,8 +18,9 @@ export function CompanionInferenceAlertButton({
   notice: CompanionInferenceNotice;
   onClick: () => void;
 }) {
-  const { companionInferenceAlertButton: CompanionInferenceAlertButtonComponent } =
-    useBootConfig();
+  const {
+    companionInferenceAlertButton: CompanionInferenceAlertButtonComponent,
+  } = useBootConfig();
   return CompanionInferenceAlertButtonComponent ? (
     <CompanionInferenceAlertButtonComponent notice={notice} onClick={onClick} />
   ) : null;
@@ -28,5 +29,7 @@ export function CompanionInferenceAlertButton({
 export function CompanionGlobalOverlay() {
   const { companionGlobalOverlay: CompanionGlobalOverlayComponent } =
     useBootConfig();
-  return CompanionGlobalOverlayComponent ? <CompanionGlobalOverlayComponent /> : null;
+  return CompanionGlobalOverlayComponent ? (
+    <CompanionGlobalOverlayComponent />
+  ) : null;
 }

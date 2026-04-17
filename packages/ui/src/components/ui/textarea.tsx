@@ -32,7 +32,8 @@ const _textareaVariants = cva(
   },
 );
 
-const textareaVariants: (props?: TextareaVariantProps) => string = _textareaVariants as (props?: TextareaVariantProps) => string;
+const textareaVariants: (props?: TextareaVariantProps) => string =
+  _textareaVariants as (props?: TextareaVariantProps) => string;
 
 export interface TextareaProps
   extends React.TextareaHTMLAttributes<HTMLTextAreaElement>,

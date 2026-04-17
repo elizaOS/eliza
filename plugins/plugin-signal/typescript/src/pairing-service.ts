@@ -20,6 +20,10 @@ const DEFAULT_SIGNAL_CLI_NAME = "signal-cli";
 const DEFAULT_SIGNAL_DEVICE_NAME = "Eliza Mac";
 const DEFAULT_SIGNAL_CLI_WAIT_TIMEOUT_MS = 30_000;
 const BREW_OPENJDK_HOME = "/opt/homebrew/opt/openjdk";
+const COMMON_SIGNAL_CLI_PATHS = [
+  "/opt/homebrew/bin/signal-cli",
+  "/usr/local/bin/signal-cli",
+];
 
 /** Validate accountId to prevent path traversal. */
 export function sanitizeAccountId(raw: string): string {
@@ -131,6 +135,16 @@ async function resolveExecutablePath(binary: string): Promise<string | null> {
     const resolved = stdout.trim();
     return resolved.length > 0 ? resolved : null;
   } catch {
+    if (trimmed !== DEFAULT_SIGNAL_CLI_NAME) {
+      return null;
+    }
+
+    for (const candidate of COMMON_SIGNAL_CLI_PATHS) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
     return null;
   }
 }

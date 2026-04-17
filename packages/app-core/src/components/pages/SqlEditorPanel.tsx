@@ -1,9 +1,7 @@
-
-
+import { Button, PagePanel, Textarea } from "@elizaos/ui";
 import type { QueryResult } from "../../api";
 import { useApp } from "../../state";
 import { ResultsGrid } from "./database-utils";
-import { PagePanel, Button, Textarea } from "@elizaos/ui";
 
 export function SqlEditorPanel({
   queryText,

@@ -1,11 +1,10 @@
-import { client } from "../../api/client";
-import type {
-  TrajectoryDetailResult,
-  TrajectoryLlmCall,
-} from "../../api/client-types-cloud";
-import { useApp } from "../../state/useApp";
-
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  PagePanel,
+  type PipelineNode,
+  type PipelineStageId,
+  TrajectoryLlmCallCard,
+  TrajectoryPipelineGraph,
+} from "@elizaos/ui";
 import {
   Brain,
   CheckCircle,
@@ -14,12 +13,18 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { client } from "../../api/client";
+import type {
+  TrajectoryDetailResult,
+  TrajectoryLlmCall,
+} from "../../api/client-types-cloud";
+import { useApp } from "../../state/useApp";
 import {
   formatTrajectoryDuration,
   formatTrajectoryTokenCount,
 } from "../../utils/trajectory-format";
 import { estimateTokenCost } from "../conversations/conversation-utils";
-import { PagePanel, TrajectoryLlmCallCard, TrajectoryPipelineGraph, type PipelineNode, type PipelineStageId } from "@elizaos/ui";
 
 // ---------------------------------------------------------------------------
 // Pipeline stage mapping
@@ -198,7 +203,7 @@ export function TrajectoryDetailView({
       ? (orchestrator as Record<string, unknown>)
       : null;
 
-  const summaryCards = [
+  const _summaryCards = [
     {
       label: t("trajectorydetailview.Source"),
       value: trajectory.source,

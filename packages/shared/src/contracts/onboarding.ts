@@ -95,7 +95,11 @@ export type OnboardingProviderAuthMode =
   | "subscription"
   | (string & {});
 
-export type OnboardingProviderGroup = "cloud" | "local" | "subscription" | (string & {});
+export type OnboardingProviderGroup =
+  | "cloud"
+  | "local"
+  | "subscription"
+  | (string & {});
 
 export interface ProviderOption {
   id: OnboardingProviderId;
@@ -938,7 +942,10 @@ function resolveLegacyServiceRoutingInConfig(
   const models = asConfigRecord(config?.models);
 
   if (!next.llmText) {
-    if (deploymentTarget.runtime === "remote" && deploymentTarget.remoteApiBase) {
+    if (
+      deploymentTarget.runtime === "remote" &&
+      deploymentTarget.remoteApiBase
+    ) {
       const remotePrimaryModel = readPrimaryModelFromConfig(config);
       next.llmText = {
         backend: "remote",
@@ -1124,7 +1131,10 @@ export function resolveServiceRoutingInConfig(
   const deploymentTarget = resolveDeploymentTargetInConfig(config);
 
   if (!next.llmText) {
-    if (deploymentTarget.runtime === "remote" && deploymentTarget.remoteApiBase) {
+    if (
+      deploymentTarget.runtime === "remote" &&
+      deploymentTarget.remoteApiBase
+    ) {
       const remotePrimaryModel = readPrimaryModelFromConfig(config);
       next.llmText = {
         backend: "remote",

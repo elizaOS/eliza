@@ -3,9 +3,15 @@
  */
 
 import { Keyboard } from "@capacitor/keyboard";
-
-import { subscribeDesktopBridgeEvent } from "./bridge/electrobun-rpc";
-import { isIOS, isNative } from "./platform/init";
+import { FineTuningView } from "@elizaos/app-training/ui/FineTuningView";
+import {
+  Button,
+  DrawerSheet,
+  DrawerSheetContent,
+  DrawerSheetHeader,
+  DrawerSheetTitle,
+  ErrorBoundary,
+} from "@elizaos/ui";
 import {
   type ReactNode,
   useCallback,
@@ -13,45 +19,42 @@ import {
   useMemo,
   useState,
 } from "react";
-import { AppsPageView } from "./components/pages/AppsPageView";
-import { BrowserWorkspaceView } from "./components/pages/BrowserWorkspaceView";
-import { BugReportModal } from "./components/shell/BugReportModal";
+import { subscribeDesktopBridgeEvent } from "./bridge/electrobun-rpc";
+import { GameViewOverlay } from "./components/apps/GameViewOverlay";
+import { getOverlayApp } from "./components/apps/overlay-app-registry";
 import { CharacterEditor } from "./components/character/CharacterEditor";
-import { ChatView } from "./components/pages/ChatView";
-import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
-import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
+import { SaveCommandModal } from "./components/chat/SaveCommandModal";
+import { TasksEventsPanel } from "./components/chat/TasksEventsPanel";
+import { DeferredSetupChecklist } from "./components/cloud/FlaminaGuide";
 import { ConversationsSidebar } from "./components/conversations/ConversationsSidebar";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
-import { DatabasePageView } from "./components/pages/DatabasePageView";
-import { ConnectorsPageView } from "./components/pages/ConnectorsPageView";
-import { DesktopWorkspaceSection } from "./components/settings/DesktopWorkspaceSection";
-import { FineTuningView } from "@elizaos/app-training/ui/FineTuningView";
-import { GameViewOverlay } from "./components/apps/GameViewOverlay";
-import { Header } from "./components/shell/Header";
+import { MusicPlayerGlobal } from "./components/music/MusicPlayerGlobal";
+import { AppsPageView } from "./components/pages/AppsPageView";
 import { AutomationsView } from "./components/pages/AutomationsView";
-import { HeartbeatsDesktopShell } from "./components/pages/HeartbeatsView";
-import { HeartbeatsView } from "./components/pages/HeartbeatsView";
+import { BrowserWorkspaceView } from "./components/pages/BrowserWorkspaceView";
+import { ChatView } from "./components/pages/ChatView";
+import { ConnectorsPageView } from "./components/pages/ConnectorsPageView";
+import { DatabasePageView } from "./components/pages/DatabasePageView";
 import { InventoryView } from "./components/pages/InventoryView";
 import { LogsPageView } from "./components/pages/LogsPageView";
 import { MemoryViewerView } from "./components/pages/MemoryViewerView";
 import { PluginsPageView } from "./components/pages/PluginsPageView";
 import { RelationshipsView } from "./components/pages/RelationshipsView";
 import { RuntimeView } from "./components/pages/RuntimeView";
-import { SaveCommandModal } from "./components/chat/SaveCommandModal";
 import { SettingsView } from "./components/pages/SettingsView";
-import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { SkillsView } from "./components/pages/SkillsView";
-import { StartupShell } from "./components/shell/StartupShell";
 import { StreamView } from "./components/pages/StreamView";
-import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
-import { TasksPageView } from "./components/pages/TasksPageView";
 import { TrajectoriesView } from "./components/pages/TrajectoriesView";
-import { getOverlayApp } from "./components/apps/overlay-app-registry";
-import { TasksEventsPanel } from "./components/chat/TasksEventsPanel";
-import { DeferredSetupChecklist } from "./components/cloud/FlaminaGuide";
+import { DesktopWorkspaceSection } from "./components/settings/DesktopWorkspaceSection";
+import { BugReportModal } from "./components/shell/BugReportModal";
+import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
+import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
+import { Header } from "./components/shell/Header";
+import { ShellOverlays } from "./components/shell/ShellOverlays";
+import { StartupShell } from "./components/shell/StartupShell";
+import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
 import { useBootConfig } from "./config";
-import { MusicPlayerGlobal } from "./components/music/MusicPlayerGlobal";
 import {
   BugReportProvider,
   useBugReportState,
@@ -60,9 +63,9 @@ import {
 } from "./hooks";
 import { useActivityEvents } from "./hooks/useActivityEvents";
 import { APPS_ENABLED, isAppsToolTab } from "./navigation";
+import { isIOS, isNative } from "./platform/init";
 import { useApp } from "./state";
 import type { FlaminaGuideTopic } from "./state/types";
-import { Button, DrawerSheet, DrawerSheetContent, DrawerSheetHeader, DrawerSheetTitle, ErrorBoundary } from "@elizaos/ui";
 
 const CHAT_MOBILE_BREAKPOINT_PX = 820;
 const CHAT_DESKTOP_COMPOSER_UNDERLAY_CLASS =
@@ -775,7 +778,6 @@ export function App() {
       actionNotice,
       isChat,
       isChatWorkspace,
-      isConnectors,
       isCharacterPage,
       isHeartbeats,
       isSettingsPage,
@@ -791,7 +793,6 @@ export function App() {
       activityEvents,
       clearActivityEvents,
       customActionsPanelOpen,
-      setCharacterHeaderActions,
       settingsInitialSection,
       t,
     ],

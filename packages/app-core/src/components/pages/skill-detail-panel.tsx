@@ -4,13 +4,22 @@
  * Extracted from SkillsView.tsx to keep individual files under ~500 LOC.
  */
 
+import {
+  AdminCodeEditor,
+  AdminDialogContent,
+  AdminDialogHeader,
+  AdminMonoMeta,
+  Button,
+  Dialog,
+  DialogDescription,
+  DialogTitle,
+  Input,
+} from "@elizaos/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SkillInfo } from "../../api";
 import { client } from "../../api";
 import { useApp } from "../../state";
-
-import { useCallback, useEffect, useMemo, useState } from "react";
 import { InstallModal } from "./skill-marketplace";
-import { AdminCodeEditor, AdminDialogContent, AdminDialogHeader, AdminMonoMeta, Button, Dialog, DialogDescription, DialogTitle, Input } from "@elizaos/ui";
 
 const BINANCE_SKILL_IDS = new Set([
   "binance-crypto-market-rank",

@@ -5,15 +5,24 @@
  * "ready" phase (WebSocket bindings, nav listener).
  */
 
+import { prefetchVrmToCache } from "@elizaos/app-companion/components/avatar/VrmEngine";
+import type { AgentStatus, WalletAddresses } from "../api";
 import {
   type CodingAgentSession,
   type Conversation,
   type ConversationMessage,
-  type StreamEventEnvelope,
   client,
+  type StreamEventEnvelope,
 } from "../api";
 import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
 import { type AppEmoteEventDetail, dispatchAppEmoteEvent } from "../events";
+import {
+  COMPANION_ENABLED,
+  isRouteRootPath,
+  type Tab,
+  tabFromPath,
+} from "../navigation";
+import { resolveApiUrl } from "../utils";
 import {
   loadAvatarIndex,
   normalizeAvatarIndex,
@@ -21,19 +30,10 @@ import {
   parseProactiveMessageEvent,
   parseStreamEventEnvelopeEvent,
 } from "./internal";
-import {
-  COMPANION_ENABLED,
-  isRouteRootPath,
-  tabFromPath,
-  type Tab,
-} from "../navigation";
 import { shouldStartAtCharacterSelectOnLaunch } from "./shell-routing";
-import { resolveApiUrl } from "../utils";
 import type { StartupEvent } from "./startup-coordinator";
-import type { AgentStatus, WalletAddresses } from "../api";
 import type { OnboardingMode } from "./types";
-import { getVrmUrl, getVrmCount, VRM_COUNT } from "./vrm";
-import { prefetchVrmToCache } from "@elizaos/app-companion/components/avatar/VrmEngine";
+import { getVrmCount, getVrmUrl, VRM_COUNT } from "./vrm";
 
 export interface HydratingDeps {
   setStartupError: (v: null) => void;

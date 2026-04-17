@@ -5,7 +5,6 @@ import type {
   WalletSource,
 } from "@elizaos/shared/contracts/wallet";
 import type { Dispatch, SetStateAction } from "react";
-import type { AgentProfile } from "./agent-profile-types";
 import type {
   AgentStatus,
   AppRunSummary,
@@ -76,6 +75,7 @@ import type {
 import type { UiLanguage } from "../i18n";
 import type { Tab } from "../navigation";
 import type { OnboardingServerTarget } from "../onboarding/server-target";
+import type { AgentProfile } from "./agent-profile-types";
 import type { UiShellMode, UiTheme } from "./ui-preferences";
 
 export type { UiShellMode } from "./ui-preferences";
@@ -160,6 +160,7 @@ export const ONBOARDING_PERMISSION_LABELS: Record<SystemPermissionId, string> =
   };
 
 import type { ActionNotice } from "./action-notice";
+
 export type { ActionNotice };
 
 export type LifecycleAction = "start" | "stop" | "restart" | "reset";

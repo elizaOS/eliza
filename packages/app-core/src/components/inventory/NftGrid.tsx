@@ -1,5 +1,5 @@
-import type { createTranslator } from "../../i18n";
 import { useState } from "react";
+import type { createTranslator } from "../../i18n";
 import { chainIcon, type NftItem } from "./constants";
 import { normalizeInventoryImageUrl } from "./media-url";
 

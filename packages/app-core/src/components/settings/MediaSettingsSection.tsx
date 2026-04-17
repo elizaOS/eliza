@@ -1,5 +1,10 @@
-
-
+import {
+  Button,
+  SaveFooter,
+  SettingsControls,
+  Switch,
+  useTimeout,
+} from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
 import {
   type AudioGenProvider,
@@ -10,7 +15,6 @@ import {
   type VideoProvider,
   type VisionProvider,
 } from "../../api";
-import { useTimeout } from "@elizaos/ui";
 import { COMPANION_ENABLED } from "../../navigation";
 import { useApp } from "../../state";
 import {
@@ -31,7 +35,6 @@ import {
   setNestedValue,
 } from "./media-settings-types";
 import { VoiceConfigView } from "./VoiceConfigView";
-import { Button, SaveFooter, SettingsControls, Switch } from "@elizaos/ui";
 
 // ── Re-exports (public API) ──────────────────────────────────────────
 
@@ -273,7 +276,9 @@ export function MediaSettingsSection() {
               <Switch
                 className="shrink-0"
                 checked={companionAnimateWhenHidden}
-                onCheckedChange={(v: boolean) => setCompanionAnimateWhenHidden(v)}
+                onCheckedChange={(v: boolean) =>
+                  setCompanionAnimateWhenHidden(v)
+                }
                 aria-label={t("settings.companionAnimateWhenHidden.title")}
               />
             </div>

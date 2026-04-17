@@ -27,8 +27,9 @@ const _cardVariants = cva(
   },
 );
 
-const cardVariants: (props?: CardVariantsProps) => string =
-  _cardVariants as (props?: CardVariantsProps) => string;
+const cardVariants: (props?: CardVariantsProps) => string = _cardVariants as (
+  props?: CardVariantsProps,
+) => string;
 
 export interface CardProps
   extends React.HTMLAttributes<HTMLDivElement>,

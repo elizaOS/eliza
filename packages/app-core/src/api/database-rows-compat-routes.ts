@@ -1,17 +1,17 @@
-import http from "node:http";
+import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
-import { ensureCompatApiAuthorized } from "./auth";
-import { DATABASE_UNAVAILABLE_MESSAGE } from "./compat-route-shared";
-import {
-  sendJsonError as sendJsonErrorResponse,
-  sendJson as sendJsonResponse,
-} from "./response";
 import {
   executeRawSql,
   quoteIdent,
   sanitizeIdentifier,
   sqlLiteral,
 } from "../utils/sql-compat";
+import { ensureCompatApiAuthorized } from "./auth";
+import { DATABASE_UNAVAILABLE_MESSAGE } from "./compat-route-shared";
+import {
+  sendJsonError as sendJsonErrorResponse,
+  sendJson as sendJsonResponse,
+} from "./response";
 
 export async function handleDatabaseRowsCompatRoute(
   req: http.IncomingMessage,

@@ -30,12 +30,7 @@ import { ModelType } from "../../../types/index.ts";
 import { MemoryType } from "../../../types/memory.ts";
 import { asUUID } from "../../../types/primitives.ts";
 
-type RefinementAction =
-	| "add"
-	| "strengthen"
-	| "decay"
-	| "merge"
-	| "contradict";
+type RefinementAction = "add" | "strengthen" | "decay" | "merge" | "contradict";
 
 interface RefinementProposal {
 	action: RefinementAction;
@@ -69,9 +64,7 @@ async function summarizationTriggered(
 			shortTermSummarizationThreshold?: number;
 			shortTermSummarizationInterval?: number;
 		};
-		getCurrentSessionSummary?: (
-			roomId: UUID,
-		) => Promise<{
+		getCurrentSessionSummary?: (roomId: UUID) => Promise<{
 			lastMessageOffset?: number;
 		} | null>;
 	};
@@ -132,10 +125,7 @@ function asUuidOrNull(value: unknown): UUID | null {
 	return asUUID(value);
 }
 
-function buildRefinementPrompt(
-	summaryText: string,
-	facts: Memory[],
-): string {
+function buildRefinementPrompt(summaryText: string, facts: Memory[]): string {
 	const factLines = facts
 		.map((fact, index) => {
 			const id = fact.id ?? `idx_${index}`;
@@ -193,11 +183,9 @@ function parseRefinementResponse(raw: string): RefinementProposal[] {
 		}
 		proposals.push({
 			action,
-			factId:
-				typeof record.factId === "string" ? record.factId : undefined,
+			factId: typeof record.factId === "string" ? record.factId : undefined,
 			text: typeof record.text === "string" ? record.text : undefined,
-			reason:
-				typeof record.reason === "string" ? record.reason : undefined,
+			reason: typeof record.reason === "string" ? record.reason : undefined,
 		});
 	}
 	return proposals;
@@ -234,10 +222,7 @@ async function applyStrengthen(
 	});
 }
 
-async function applyDecay(
-	runtime: IAgentRuntime,
-	fact: Memory,
-): Promise<void> {
+async function applyDecay(runtime: IAgentRuntime, fact: Memory): Promise<void> {
 	const meta = readFactMetadata(fact);
 	const nextConfidence = clamp01(pickFactConfidence(fact) - DECAY_DELTA);
 	if (nextConfidence < FACT_DECAY_FLOOR) {
@@ -355,11 +340,7 @@ export const factRefinementEvaluator: Evaluator = {
 	name: "FACT_REFINEMENT",
 	description:
 		"Honcho-style dialectic refinement: classify each existing fact against the latest summary and apply add/strengthen/decay automatically; queue contradict/merge for review.",
-	similes: [
-		"FACT_DIALECTIC",
-		"FACT_REFRESHER",
-		"FACT_PRUNER",
-	],
+	similes: ["FACT_DIALECTIC", "FACT_REFRESHER", "FACT_PRUNER"],
 	alwaysRun: false,
 	examples: [],
 
@@ -427,8 +408,8 @@ export const factRefinementEvaluator: Evaluator = {
 		const proposals = parseRefinementResponse(response);
 		if (proposals.length === 0) {
 			logger.debug(
-				"[FactRefinementEvaluator] No refinements produced for room "
-					+ message.roomId,
+				"[FactRefinementEvaluator] No refinements produced for room " +
+					message.roomId,
 			);
 			return undefined;
 		}
@@ -472,7 +453,6 @@ export const factRefinementEvaluator: Evaluator = {
 					evidenceMessageId: asUuidOrNull(message.id) ?? undefined,
 				});
 				queued += 1;
-				continue;
 			}
 		}
 

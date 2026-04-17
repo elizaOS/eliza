@@ -1,11 +1,19 @@
-
-
+import {
+  Button,
+  Input,
+  MetaPill,
+  PageLayout,
+  PagePanel,
+  Sidebar,
+  SidebarContent,
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "@elizaos/ui";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client, type QueryResult } from "../../api";
 import { useApp } from "../../state";
 import { resolveAppAssetUrl } from "../../utils";
-import { PagePanel, MetaPill, SidebarContent, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, PageLayout } from "@elizaos/ui";
 
 type MediaType = "all" | "image" | "video" | "audio";
 

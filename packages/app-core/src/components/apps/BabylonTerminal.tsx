@@ -1,5 +1,4 @@
-
-
+import { Button, Input, useIntervalWhenDocumentVisible } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
@@ -12,15 +11,13 @@ import type {
   BabylonTeamAgent,
   BabylonWallet,
 } from "../../api/client-types-babylon";
-import { useIntervalWhenDocumentVisible } from "@elizaos/ui";
 import { useBabylonSSE } from "../../hooks/useBabylonSSE";
 import { formatTime } from "../../utils/format";
-import { Button, Input } from "@elizaos/ui";
 import {
   type BabylonAgentSummaryEnvelope,
   type BabylonTeamConversation,
-  type BabylonTeamSummary,
   type BabylonTeamDashboard,
+  type BabylonTeamSummary,
   extractAgentSummary,
   extractChatMessages,
   extractTeamConversations,
@@ -148,10 +145,7 @@ function ActivityFeed({
         const icon = ACTIVITY_ICON[item.type] ?? "\u{2022}";
         const key = item.id ?? `${item.timestamp}-${index}`;
         return (
-          <div
-            key={key}
-            className="px-3 py-2 hover:bg-card/60"
-          >
+          <div key={key} className="px-3 py-2 hover:bg-card/60">
             <div className="flex items-start gap-2">
               <span className="text-xs">{icon}</span>
               <div className="min-w-0 flex-1">

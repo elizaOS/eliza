@@ -173,10 +173,7 @@ export async function handleRelationshipsRoutes(
     return true;
   }
 
-  if (
-    method === "GET" &&
-    pathname === "/api/relationships/candidates"
-  ) {
+  if (method === "GET" && pathname === "/api/relationships/candidates") {
     const candidates = await relationshipsGraph.getCandidateMerges();
     json(res, { data: candidates }, 200);
     return true;

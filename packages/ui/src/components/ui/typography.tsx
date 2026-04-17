@@ -23,7 +23,9 @@ const _textVariants = cva("text-txt", {
   },
 });
 
-const textVariants: (props?: TextVariantProps) => string = _textVariants as (props?: TextVariantProps) => string;
+const textVariants: (props?: TextVariantProps) => string = _textVariants as (
+  props?: TextVariantProps,
+) => string;
 
 export interface TextProps
   extends React.HTMLAttributes<HTMLParagraphElement>,
@@ -65,7 +67,8 @@ const _headingVariants = cva("text-txt font-semibold tracking-tight", {
   },
 });
 
-const headingVariants: (props?: HeadingVariantProps) => string = _headingVariants as (props?: HeadingVariantProps) => string;
+const headingVariants: (props?: HeadingVariantProps) => string =
+  _headingVariants as (props?: HeadingVariantProps) => string;
 
 export interface HeadingProps
   extends React.HTMLAttributes<HTMLHeadingElement>,

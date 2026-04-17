@@ -7,8 +7,8 @@ export { getBundledContentPacks } from "./bundled-packs";
 export {
   ContentPackLoadError,
   loadBundledContentPack,
-  loadContentPackFromUrl,
   loadContentPackFromFiles,
+  loadContentPackFromUrl,
   releaseLoadedContentPack,
   resolveContentPackFromManifest,
 } from "./load-pack";

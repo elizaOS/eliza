@@ -5,8 +5,8 @@
  * query the registry to discover and launch overlay apps.
  */
 
-import type { OverlayApp } from "./overlay-app-api";
 import type { RegistryAppInfo } from "../../api";
+import type { OverlayApp } from "./overlay-app-api";
 
 const registry = new Map<string, OverlayApp>();
 

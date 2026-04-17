@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import http from "node:http";
+import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
 import {
   ensureCompatApiAuthorized,
@@ -7,14 +7,14 @@ import {
   tokenMatches,
 } from "./auth";
 import {
+  type CompatRuntimeState,
+  hasCompatPersistedOnboardingState,
+  readCompatJsonBody,
+} from "./compat-route-shared";
+import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
-import {
-  hasCompatPersistedOnboardingState,
-  readCompatJsonBody,
-  type CompatRuntimeState,
-} from "./compat-route-shared";
 import { isCloudProvisioned as _isCloudProvisioned } from "./server-onboarding-compat";
 
 // ---------------------------------------------------------------------------

@@ -10,12 +10,12 @@
  *   node scripts/generate-keywords.mjs
  */
 export {
-	VALIDATION_KEYWORD_DOCS,
-	normalizeKeywordMatchText,
-	splitKeywordDoc,
-	textIncludesKeywordTerm,
-	collectKeywordTermMatches,
-	findKeywordTermMatch,
-	getValidationKeywordTerms,
-	getValidationKeywordLocaleTerms,
+  collectKeywordTermMatches,
+  findKeywordTermMatch,
+  getValidationKeywordLocaleTerms,
+  getValidationKeywordTerms,
+  normalizeKeywordMatchText,
+  splitKeywordDoc,
+  textIncludesKeywordTerm,
+  VALIDATION_KEYWORD_DOCS,
 } from "./keyword-matching.js";

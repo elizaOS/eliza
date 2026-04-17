@@ -7,6 +7,7 @@ const {
   clientMock,
   dispatchLifeOpsGoogleConnectorRefreshMock,
   openExternalUrlMock,
+  reactModuleUrl,
   useAppMock,
 } = vi.hoisted(() => {
   const makeReadyApp = () => ({
@@ -32,6 +33,7 @@ const {
     clientMock: {
       getBaseUrl: vi.fn(() => "http://127.0.0.1:31337"),
       getGoogleLifeOpsConnectorStatus: vi.fn(async () => disconnectedStatus),
+      getGoogleLifeOpsConnectorAccounts: vi.fn(async () => []),
       startGoogleLifeOpsConnector: vi.fn(async () => ({
         authUrl: "https://accounts.google.com/o/oauth2/auth?test=1",
       })),
@@ -43,6 +45,7 @@ const {
     dispatchLifeOpsGoogleConnectorRefreshMock: vi.fn(),
     openExternalUrlMock: vi.fn(async () => undefined),
     useAppMock: vi.fn(makeReadyApp),
+    reactModuleUrl: `${process.cwd()}/node_modules/react/index.js`,
   };
 });
 
@@ -51,6 +54,7 @@ vi.mock("@elizaos/app-core/state", () => ({ useApp: useAppMock }));
 vi.mock("@elizaos/app-core/utils", () => ({
   openExternalUrl: openExternalUrlMock,
 }));
+vi.mock("react", async () => import(reactModuleUrl));
 vi.mock("@elizaos/app-core/events", () => ({
   APP_RESUME_EVENT: "app-resume",
 }));
@@ -67,6 +71,7 @@ describe("useGoogleLifeOpsConnector - pendingAuthUrl state", () => {
     clientMock.getGoogleLifeOpsConnectorStatus.mockResolvedValue(
       clientMock.disconnectedStatus,
     );
+    clientMock.getGoogleLifeOpsConnectorAccounts.mockResolvedValue([]);
     openExternalUrlMock.mockResolvedValue(undefined);
   });
 

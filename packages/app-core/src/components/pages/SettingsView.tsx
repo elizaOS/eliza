@@ -1,5 +1,30 @@
-
-
+import { CodingAgentSettingsSection } from "@elizaos/app-task-coordinator";
+import {
+  Button,
+  Checkbox,
+  cn,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  PageLayout,
+  PagePanel,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarPanel,
+  SidebarScrollRegion,
+  Spinner,
+  Switch,
+  useLinkedSidebarSelection,
+} from "@elizaos/ui";
 import { AlertTriangle, Download, Upload } from "lucide-react";
 import {
   type ComponentPropsWithoutRef,
@@ -10,18 +35,16 @@ import {
   useRef,
   useState,
 } from "react";
-import { client, type ComputerUseApprovalMode } from "../../api/client";
+import { type ComputerUseApprovalMode, client } from "../../api/client";
 import { useApp } from "../../state";
 import { WidgetHost } from "../../widgets";
-import { CodingAgentSettingsSection } from "@elizaos/app-task-coordinator";
+import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
+import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
 import { MediaSettingsSection } from "../settings/MediaSettingsSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
-import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
-import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
 import { CloudDashboard } from "./ElizaCloudDashboard";
 import { ReleaseCenterView } from "./ReleaseCenterView";
-import { PagePanel, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Checkbox, Dialog, DialogContent, DialogHeader, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner, Switch, useLinkedSidebarSelection, PageLayout, cn } from "@elizaos/ui";
 
 interface SettingsSectionDef {
   id: string;
@@ -361,7 +384,9 @@ function CapabilitiesSection() {
         </div>
         <Switch
           checked={walletEnabled}
-          onCheckedChange={(checked: boolean | "indeterminate") => setState("walletEnabled", !!checked)}
+          onCheckedChange={(checked: boolean | "indeterminate") =>
+            setState("walletEnabled", !!checked)
+          }
           aria-label={t("settings.sections.capabilities.walletLabel", {
             defaultValue: "Enable Wallet",
           })}
@@ -383,7 +408,9 @@ function CapabilitiesSection() {
         </div>
         <Switch
           checked={browserEnabled}
-          onCheckedChange={(checked: boolean | "indeterminate") => setState("browserEnabled", !!checked)}
+          onCheckedChange={(checked: boolean | "indeterminate") =>
+            setState("browserEnabled", !!checked)
+          }
           aria-label={t("settings.sections.capabilities.browserLabel", {
             defaultValue: "Enable Browser",
           })}
@@ -405,7 +432,9 @@ function CapabilitiesSection() {
         </div>
         <Switch
           checked={computerUseEnabled}
-          onCheckedChange={(checked: boolean | "indeterminate") => setState("computerUseEnabled", !!checked)}
+          onCheckedChange={(checked: boolean | "indeterminate") =>
+            setState("computerUseEnabled", !!checked)
+          }
           aria-label={t("settings.sections.capabilities.computerUseLabel", {
             defaultValue: "Enable Computer Use",
           })}
@@ -440,9 +469,12 @@ function CapabilitiesSection() {
             >
               <SelectTrigger className="max-w-xs">
                 <SelectValue
-                  placeholder={t("settings.sections.capabilities.computerUseModeLabel", {
-                    defaultValue: "Approval Mode",
-                  })}
+                  placeholder={t(
+                    "settings.sections.capabilities.computerUseModeLabel",
+                    {
+                      defaultValue: "Approval Mode",
+                    },
+                  )}
                 />
               </SelectTrigger>
               <SelectContent>

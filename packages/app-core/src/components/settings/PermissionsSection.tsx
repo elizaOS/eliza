@@ -1,4 +1,4 @@
-
+import { Button } from "@elizaos/ui";
 import { Check } from "lucide-react";
 import { useCallback, useState } from "react";
 import type { SystemPermissionId } from "../../api";
@@ -20,7 +20,6 @@ import {
   PermissionRow,
   useDesktopPermissionsState,
 } from "./permission-controls";
-import { Button } from "@elizaos/ui";
 import {
   CAPABILITIES,
   getPermissionAction,

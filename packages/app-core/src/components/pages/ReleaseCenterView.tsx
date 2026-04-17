@@ -1,5 +1,3 @@
-
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   invokeDesktopBridgeRequest,
@@ -572,5 +570,5 @@ export function ReleaseCenterView() {
   );
 }
 
-import { useBranding } from "../../config/branding";
 import { Button, Input } from "@elizaos/ui";
+import { useBranding } from "../../config/branding";

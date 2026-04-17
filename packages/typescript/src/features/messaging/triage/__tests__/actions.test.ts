@@ -6,22 +6,22 @@ import type {
 	UUID,
 } from "../../../../types/index.ts";
 import { asUUID } from "../../../../types/index.ts";
-import { BaseMessageAdapter } from "../adapters/base.ts";
 import { draftFollowupAction } from "../actions/draftFollowup.ts";
 import { draftReplyAction } from "../actions/draftReply.ts";
 import { listUnifiedInboxAction } from "../actions/listUnifiedInbox.ts";
 import { sendDraftAction } from "../actions/sendDraft.ts";
 import { triageMessagesAction } from "../actions/triageMessages.ts";
+import { BaseMessageAdapter } from "../adapters/base.ts";
 import {
 	__resetDefaultTriageServiceForTests,
 	getDefaultTriageService,
-	TriageService,
+	type TriageService,
 } from "../triage-service.ts";
-import {
-	type DraftRequest,
-	type ListOptions,
-	type MessageRef,
-	type MessageSource,
+import type {
+	DraftRequest,
+	ListOptions,
+	MessageRef,
+	MessageSource,
 } from "../types.ts";
 import { createFakeRuntime } from "./fake-runtime.ts";
 

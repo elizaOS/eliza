@@ -1,5 +1,4 @@
 import type http from "node:http";
-import { type AgentRuntime, logger } from "@elizaos/core";
 import {
   type CloudRouteState as AutonomousCloudRouteState,
   handleCloudRoute as handleAutonomousCloudRoute,
@@ -10,11 +9,12 @@ import type { CloudManager } from "@elizaos/agent/cloud/cloud-manager";
 import { validateCloudBaseUrl } from "@elizaos/agent/cloud/validate-url";
 import type { ElizaConfig } from "@elizaos/agent/config/config";
 import { saveElizaConfig } from "@elizaos/agent/config/config";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+import { type AgentRuntime, logger } from "@elizaos/core";
 import {
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
 } from "@elizaos/shared/contracts/onboarding";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
 import { isTimeoutError } from "../utils/errors";
 import {
   disconnectUnifiedCloudConnection,

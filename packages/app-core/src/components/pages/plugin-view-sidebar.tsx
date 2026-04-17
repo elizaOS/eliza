@@ -1,15 +1,25 @@
-
-
+import {
+  Button,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+  SettingsControls,
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "@elizaos/ui";
 import { ChevronRight } from "lucide-react";
 import type { ReactNode, RefCallback } from "react";
 import type { PluginInfo } from "../../api";
-import { SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Select, SelectContent, SelectItem, SelectValue, SettingsControls } from "@elizaos/ui";
-import { connectorDisplayName } from "./plugin-list-utils";
 import type {
   PluginsViewMode,
   SubgroupTag,
   TranslateFn,
 } from "./plugin-list-utils";
+import { connectorDisplayName } from "./plugin-list-utils";
 
 type RenderResolvedIconOptions = {
   className?: string;
@@ -180,7 +190,8 @@ export function ConnectorSidebar({
                       className="mt-0 h-8 w-8 shrink-0 p-1.5"
                     >
                       {renderResolvedIcon(plugin, {
-                        className: "h-4 w-4 shrink-0 rounded-[var(--radius-sm)] object-contain",
+                        className:
+                          "h-4 w-4 shrink-0 rounded-[var(--radius-sm)] object-contain",
                         emojiClassName: "text-sm",
                       })}
                     </SidebarContent.ItemIcon>

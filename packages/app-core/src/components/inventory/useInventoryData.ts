@@ -5,19 +5,14 @@ import type {
   WalletConfigStatus,
   WalletNftsResponse,
 } from "@elizaos/shared/contracts/wallet";
-import type { InventoryChainFilters } from "../../state/types";
 import { useMemo } from "react";
+import type { InventoryChainFilters } from "../../state/types";
 import {
   CHAIN_CONFIGS,
+  type ChainKey,
   PRIMARY_CHAIN_KEYS,
   resolveChainKey,
-  type ChainKey,
 } from "./chainConfig";
-import {
-  computeSingleChainFocus,
-  matchesInventoryChainFilter,
-  type PrimaryInventoryChainKey,
-} from "./inventory-chain-filters";
 import {
   isBscChainName,
   type NftItem,
@@ -26,6 +21,11 @@ import {
   type TrackedToken,
   toNormalizedAddress,
 } from "./constants";
+import {
+  computeSingleChainFocus,
+  matchesInventoryChainFilter,
+  type PrimaryInventoryChainKey,
+} from "./inventory-chain-filters";
 
 export interface InventoryDataInput {
   walletBalances: WalletBalancesResponse | null;

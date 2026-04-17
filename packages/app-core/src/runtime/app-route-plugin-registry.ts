@@ -17,9 +17,10 @@ const APP_ROUTE_PLUGIN_REGISTRY_KEY = Symbol.for(
 
 function getRegistryStore(): AppRoutePluginRegistryStore {
   const globalObject = globalThis as Record<PropertyKey, unknown>;
-  const existing = globalObject[
-    APP_ROUTE_PLUGIN_REGISTRY_KEY
-  ] as AppRoutePluginRegistryStore | null | undefined;
+  const existing = globalObject[APP_ROUTE_PLUGIN_REGISTRY_KEY] as
+    | AppRoutePluginRegistryStore
+    | null
+    | undefined;
   if (existing) {
     return existing;
   }

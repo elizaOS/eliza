@@ -19,6 +19,12 @@ import {
   type Media,
   type UUID,
 } from "@elizaos/core";
+import {
+  normalizeCharacterLanguage,
+  resolveStylePresetByAvatarIndex,
+  resolveStylePresetById,
+  resolveStylePresetByName,
+} from "@elizaos/shared/onboarding-presets";
 import type { ElizaConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import {
@@ -26,12 +32,6 @@ import {
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
 } from "../contracts/onboarding.js";
-import {
-  normalizeCharacterLanguage,
-  resolveStylePresetByAvatarIndex,
-  resolveStylePresetById,
-  resolveStylePresetByName,
-} from "@elizaos/shared/onboarding-presets";
 import {
   type AgentEventServiceLike,
   getAgentEventService,

@@ -101,10 +101,7 @@ export interface MiscRouteContext {
     agentName: string;
     shellEnabled: boolean | undefined;
     broadcastWs?: ((data: object) => void) | null;
-    broadcastWsToClientId?: (
-      clientId: string,
-      data: object,
-    ) => void;
+    broadcastWsToClientId?: (clientId: string, data: object) => void;
     nextEventId: number;
     eventBuffer: StreamEventEnvelope[];
     shareIngestQueue: Array<{

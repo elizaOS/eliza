@@ -463,6 +463,28 @@ function collectProtectedRepoTestPids(repoRoot) {
   return protectedPids;
 }
 
+function hasAncestorManagedLock(lockDir, currentLockPath) {
+  for (const lockPath of listLockFiles(lockDir)) {
+    if (lockPath === currentLockPath) {
+      continue;
+    }
+
+    const existing = readLock(lockPath);
+    if (!existing) {
+      continue;
+    }
+
+    for (const candidatePid of [existing.ownerPid, existing.childPid]) {
+      const pid = parseLockPid(candidatePid);
+      if (pid && isPidAlive(pid) && isAncestorPid(pid)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 async function cleanupOrphanedRepoTestProcesses(repoRoot) {
   const candidates = listRepoTestProcesses(repoRoot);
   const protectedPids = collectProtectedRepoTestPids(repoRoot);
@@ -498,8 +520,11 @@ export async function runManagedTestCommand({
     "test-runner",
     `${lockName}.json`,
   );
-  await cleanupOtherLockFiles(path.dirname(lockPath), lockPath);
-  await cleanupOrphanedRepoTestProcesses(repoRoot);
+  const lockDir = path.dirname(lockPath);
+  await cleanupOtherLockFiles(lockDir, lockPath);
+  if (!hasAncestorManagedLock(lockDir, lockPath)) {
+    await cleanupOrphanedRepoTestProcesses(repoRoot);
+  }
   await cleanupStaleLock(lockPath);
 
   const initialState = {

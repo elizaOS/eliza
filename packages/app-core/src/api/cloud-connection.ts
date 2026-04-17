@@ -1,15 +1,15 @@
+import { applyCanonicalOnboardingConfig } from "@elizaos/agent/api/provider-switch-config";
+import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "@elizaos/agent/cloud/base-url";
+import { validateCloudBaseUrl } from "@elizaos/agent/cloud/validate-url";
+import type { ElizaConfig } from "@elizaos/agent/config/types";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { applyCanonicalOnboardingConfig } from "@elizaos/agent/api/provider-switch-config";
 import {
   isElizaSettingsDebugEnabled,
   migrateLegacyRuntimeConfig,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
 import { isCloudInferenceSelectedInConfig } from "@elizaos/shared/contracts/onboarding";
-import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "@elizaos/agent/cloud/base-url";
-import { validateCloudBaseUrl } from "@elizaos/agent/cloud/validate-url";
-import type { ElizaConfig } from "@elizaos/agent/config/types";
 import { normalizeEnvValue } from "../utils/env";
 import {
   clearCloudSecrets,
@@ -227,7 +227,7 @@ export function resolveCloudConnectionSnapshot(
   runtime: AgentRuntime | null,
 ): CloudConnectionSnapshot {
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
-  const cloudRecord =
+  const _cloudRecord =
     config.cloud && typeof config.cloud === "object"
       ? (config.cloud as Record<string, unknown>)
       : undefined;

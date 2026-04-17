@@ -2,23 +2,13 @@
  * Types, constants, and utility functions for media settings.
  */
 
-import type {
-  AudioGenProvider,
-  ImageProvider,
-  MediaMode,
-  VideoProvider,
-  VisionProvider,
-} from "../../api";
 import {
   COMPANION_HALF_FRAMERATE_OPTIONS,
   COMPANION_VRM_POWER_OPTIONS,
 } from "@elizaos/app-companion/types/render-modes";
 import type { DesktopClickAuditItem } from "../../utils";
 
-export {
-  COMPANION_HALF_FRAMERATE_OPTIONS,
-  COMPANION_VRM_POWER_OPTIONS,
-};
+export { COMPANION_HALF_FRAMERATE_OPTIONS, COMPANION_VRM_POWER_OPTIONS };
 
 // ── Types ─────────────────────────────────────────────────────────────
 

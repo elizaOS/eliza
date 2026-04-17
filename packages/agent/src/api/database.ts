@@ -18,8 +18,8 @@ import type http from "node:http";
 import net from "node:net";
 import { promisify } from "node:util";
 import { type AgentRuntime, logger } from "@elizaos/core";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import { resolveApiBindHost } from "@elizaos/shared/runtime-env";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import type {
   DatabaseConfig,
   DatabaseProviderType,

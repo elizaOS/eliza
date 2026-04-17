@@ -1,6 +1,6 @@
 import type { CharacterLanguage } from "@elizaos/shared/contracts/onboarding";
-import { getValidationKeywordTerms } from "@elizaos/shared/validation-keywords";
 import { normalizeCharacterLanguage } from "@elizaos/shared/onboarding-presets";
+import { getValidationKeywordTerms } from "@elizaos/shared/validation-keywords";
 
 export type ContextSignalKey =
   | "affirmative"

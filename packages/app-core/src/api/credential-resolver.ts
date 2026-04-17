@@ -11,7 +11,7 @@
  * The OAuth token from Claude Code is an "anthropic-subscription" credential
  * that goes through applySubscriptionCredentials(), not a direct API key.
  */
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

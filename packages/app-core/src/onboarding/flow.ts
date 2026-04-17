@@ -15,14 +15,13 @@
  * Tests: tests/flow.test.ts
  */
 
+import { canRunLocal } from "../platform/init";
 import type {
   FlaminaGuideTopic,
   OnboardingStep,
   OnboardingStepMeta,
 } from "../state/types";
 import { ONBOARDING_STEPS } from "../state/types";
-import { isElectrobunRuntime } from "../bridge";
-import { canRunLocal } from "../platform/init";
 
 /** Linear step ids for the unified onboarding flow. */
 export function getStepOrder(): OnboardingStep[] {

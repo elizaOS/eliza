@@ -30,8 +30,9 @@ const _gridVariants = cva("grid", {
   },
 });
 
-const gridVariants: (props?: GridVariantsProps) => string =
-  _gridVariants as (props?: GridVariantsProps) => string;
+const gridVariants: (props?: GridVariantsProps) => string = _gridVariants as (
+  props?: GridVariantsProps,
+) => string;
 
 export interface GridProps
   extends React.HTMLAttributes<HTMLDivElement>,

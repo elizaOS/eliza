@@ -1,8 +1,6 @@
-
-
+import { Button, Z_SYSTEM_BANNER } from "@elizaos/ui";
 import { useEffect, useRef } from "react";
 import { useApp } from "../../state";
-import { Button, Z_SYSTEM_BANNER } from "@elizaos/ui";
 
 const AUTO_DISMISS_MS = 20_000;
 
