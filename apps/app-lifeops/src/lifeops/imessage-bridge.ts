@@ -738,3 +738,173 @@ export async function listIMessageChats(
   }
   return listChatsViaBlueBubbles(config ?? {});
 }
+
+// ---------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------
+
+export interface IMessageSearchOptions {
+  query: string;
+  chatId?: string;
+  limit?: number;
+}
+
+/**
+ * Search iMessages using the platform's native search API.
+ *
+ * - `imsg` backend: passes `--search <query>` to the CLI. The CLI queries
+ *   the local Messages SQLite database and returns matching records as JSON.
+ * - `bluebubbles` backend: POSTs to `/api/v1/message/query` with a `search`
+ *   field, which maps to the BlueBubbles full-text search index.
+ *
+ * No client-side filtering is applied.
+ */
+export async function searchIMessages(
+  opts: IMessageSearchOptions,
+  config?: IMessageBridgeConfig,
+): Promise<IMessageRecord[]> {
+  const backend = await resolveActiveBackend(config);
+  if (backend === "imsg") {
+    return searchViaImsg(opts, config);
+  }
+  return searchViaBlueBubbles(opts, config ?? {});
+}
+
+async function searchViaImsg(
+  opts: IMessageSearchOptions,
+  config?: IMessageBridgeConfig,
+): Promise<IMessageRecord[]> {
+  const binary = resolveImsgBinary(config);
+  const args = ["search", "--query", opts.query, "--json"];
+  if (opts.chatId) args.push("--chat", opts.chatId);
+  if (opts.limit !== undefined) args.push("--limit", String(opts.limit));
+
+  const stdout = await runImsg(binary, args);
+  const parsed = parseImsgJson<ImsgMessageJson[]>(stdout, "search");
+  if (!Array.isArray(parsed)) {
+    throw new IMessageBridgeError("imsg search expected JSON array", "imsg");
+  }
+  return parsed.map(normalizeImsgMessage);
+}
+
+async function searchViaBlueBubbles(
+  opts: IMessageSearchOptions,
+  config: IMessageBridgeConfig,
+): Promise<IMessageRecord[]> {
+  const body: Record<string, unknown> = { search: opts.query };
+  if (opts.chatId) body.chatGuid = opts.chatId;
+  if (opts.limit !== undefined) body.limit = opts.limit;
+
+  const data = await bluebubblesRequest<BlueBubblesMessage[]>(
+    config,
+    "/api/v1/message/query",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!Array.isArray(data)) {
+    throw new IMessageBridgeError(
+      "BlueBubbles message search was not an array",
+      "bluebubbles",
+    );
+  }
+  return data.map(normalizeBlueBubblesMessage);
+}
+
+// ---------------------------------------------------------------------------
+// Read receipts / delivery status
+// ---------------------------------------------------------------------------
+
+export type IMessageDeliveryStatus =
+  | "delivered_read"
+  | "delivered"
+  | "sent"
+  | "failed"
+  | "unknown";
+
+export interface IMessageDeliveryResult {
+  messageId: string;
+  status: IMessageDeliveryStatus;
+  isRead: boolean | null;
+  isDelivered: boolean | null;
+  errorDescription: string | null;
+}
+
+interface BlueBubblesMessageDetail {
+  guid: string;
+  isRead?: boolean;
+  isDelivered?: boolean;
+  error?: number | null;
+  errorDescription?: string | null;
+}
+
+/**
+ * Fetch delivery/read-receipt status for sent iMessages.
+ *
+ * Only the BlueBubbles backend exposes per-message delivery metadata via
+ * `/api/v1/message/:guid`. The imsg CLI has no delivery status command, so
+ * that backend returns `"unknown"` for all message IDs.
+ */
+export async function getIMessageDeliveryStatus(
+  messageIds: string[],
+  config?: IMessageBridgeConfig,
+): Promise<IMessageDeliveryResult[]> {
+  const ids = messageIds.filter((id) => id.trim().length > 0);
+  if (ids.length === 0) return [];
+
+  const backend = await detectIMessageBackend(config);
+  if (backend !== "bluebubbles") {
+    return ids.map((id) => ({
+      messageId: id,
+      status: "unknown" as IMessageDeliveryStatus,
+      isRead: null,
+      isDelivered: null,
+      errorDescription: null,
+    }));
+  }
+
+  const results: IMessageDeliveryResult[] = [];
+  for (const id of ids) {
+    try {
+      const detail = await bluebubblesRequest<BlueBubblesMessageDetail>(
+        config ?? {},
+        `/api/v1/message/${encodeURIComponent(id)}`,
+        { method: "GET" },
+      );
+      const isRead = typeof detail.isRead === "boolean" ? detail.isRead : null;
+      const isDelivered =
+        typeof detail.isDelivered === "boolean" ? detail.isDelivered : null;
+      let status: IMessageDeliveryStatus;
+      if (detail.error) {
+        status = "failed";
+      } else if (isRead) {
+        status = "delivered_read";
+      } else if (isDelivered) {
+        status = "delivered";
+      } else {
+        status = "sent";
+      }
+      results.push({
+        messageId: id,
+        status,
+        isRead,
+        isDelivered,
+        errorDescription:
+          typeof detail.errorDescription === "string"
+            ? detail.errorDescription
+            : null,
+      });
+    } catch {
+      results.push({
+        messageId: id,
+        status: "unknown",
+        isRead: null,
+        isDelivered: null,
+        errorDescription: null,
+      });
+    }
+  }
+  return results;
+}
