@@ -16,6 +16,7 @@
 
 import type {
   Action,
+  ActionExample,
   ActionResult,
   HandlerOptions,
   IAgentRuntime,
@@ -531,7 +532,8 @@ export const updateMeetingPreferencesAction: Action = {
   description:
     "Persist the owner's meeting scheduling preferences: preferred start/end " +
     "of day (24h HH:MM local), blackout windows, default meeting duration, " +
-    "and travel buffer. These drive PROPOSE_MEETING_TIMES.",
+    "and travel buffer. These drive PROPOSE_MEETING_TIMES. Use this for durable " +
+    "sleep windows, no-call hours, and other recurring scheduling rules.",
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (runtime, message, _state, options, callback) => {
     if (await denyIfNoAccess(runtime, message)) {
@@ -610,6 +612,36 @@ export const updateMeetingPreferencesAction: Action = {
       schema: { type: "array" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "No calls between 11pm and 8am unless I explicitly say it's okay.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Updated your meeting preferences to block calls from 11:00 PM to 8:00 AM unless you override it.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Keep my mornings protected for deep work and don't schedule meetings before 10am.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Stored your meeting preferences so mornings stay protected and meetings start at 10:00 AM or later.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 // ── Multi-turn scheduling negotiation action ─────────────────────────────

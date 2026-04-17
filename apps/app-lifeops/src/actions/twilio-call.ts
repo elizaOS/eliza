@@ -310,7 +310,7 @@ export const callUserAction: Action = {
   name: "CALL_USER",
   similes: ["PHONE_USER", "CALL_OWNER", "DIAL_OWNER"],
   description:
-    "Place an outbound phone call to the agent owner via Twilio. Use this when the assistant is blocked and needs real-time help from the owner, or when the owner explicitly asks to be called. Requires explicit confirmation (`confirmed: true`). Without confirmation the action returns a confirmation request instead of dialing.",
+    "Place an outbound phone call to the agent owner via Twilio. Use this when the assistant is blocked and needs real-time help from the owner, or when the owner explicitly asks to be called. This action can be selected on a standing escalation policy or first-turn draft; without confirmation it returns a confirmation request instead of dialing.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     return hasOwnerAccess(runtime, message);
@@ -391,13 +391,41 @@ export const callUserAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "If you get stuck in the browser or on my computer, call me and let me jump in to unblock it.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Understood. If I get stuck in the browser or on your computer, I'll draft a call to you so you can jump in and unblock it.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Call me if the remote workflow jams again." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I can call you if that workflow jams again. I'll ask for confirmation before dialing.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 export const callExternalAction: Action = {
   name: "CALL_EXTERNAL",
   similes: ["PHONE_EXTERNAL", "DIAL_EXTERNAL", "CALL_THIRD_PARTY"],
   description:
-    "Place an outbound phone call to a third party via Twilio. Use this for approved booking/reschedule/escalation calls to vendors or counterparties. Requires `confirmed: true` AND the recipient must appear in the configured allow-list.",
+    "Place an outbound phone call to a third party via Twilio. Use this for approved booking/reschedule/escalation calls to vendors or counterparties. This action can draft the call, ask which saved contact to use, and then require confirmation before dialing. The recipient must appear in the configured allow-list before the actual call is placed.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     return hasOwnerAccess(runtime, message);
@@ -420,7 +448,7 @@ export const callExternalAction: Action = {
     const to = params.to?.trim();
     if (!to) {
       return {
-        text: "",
+        text: "Who should I call, or which saved contact/phone number should I use?",
         success: false,
         values: { success: false, error: "MISSING_RECIPIENT" },
         data: { actionName: "CALL_EXTERNAL", error: "MISSING_RECIPIENT" },
@@ -500,6 +528,36 @@ export const callExternalAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "If needed, call the airline and help rebook the other thing.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I can draft that external call. Tell me which saved contact or number to use, and I'll ask for confirmation before dialing.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Yes, go ahead and call the hotel and lock it in.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll prepare the hotel call. I still need the saved contact or phone number before I can place it.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 // Exposed for tests.

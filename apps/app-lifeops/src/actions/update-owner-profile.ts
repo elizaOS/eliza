@@ -1,4 +1,4 @@
-import type { Action, HandlerOptions } from "@elizaos/core";
+import type { Action, ActionExample, HandlerOptions } from "@elizaos/core";
 import {
   normalizeLifeOpsOwnerProfilePatch,
   persistConfiguredOwnerName,
@@ -14,6 +14,7 @@ type OwnerProfileParameters = {
   gender?: string;
   age?: string;
   location?: string;
+  travelBookingPreferences?: string;
 };
 
 export const updateOwnerProfileAction: Action = {
@@ -27,7 +28,7 @@ export const updateOwnerProfileAction: Action = {
   description:
     "Silently persist stable, owner-only LifeOps profile details when the canonical owner clearly states or confirms them. " +
     "Use only for the owner, never for other contacts, and do not ask follow-up questions just to fill these fields. " +
-    "This includes durable travel-booking preferences like airline preference, seat class, hotel chain, or room-type preferences when the owner clearly states them.",
+    "This includes durable travel-booking preferences or a reusable travel-preference checklist when the owner wants those preferences remembered for future bookings.",
   descriptionCompressed: "Persist stable owner profile details when stated/confirmed. Owner only.",
 
   validate: async (runtime, message) => {
@@ -136,5 +137,42 @@ export const updateOwnerProfileAction: Action = {
 
       schema: { type: "string" as const },
     },
+    {
+      name: "travelBookingPreferences",
+      description:
+        "Reusable flight and hotel preference checklist or summary to remember for future bookings.",
+
+      schema: { type: "string" as const },
+    },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Set up a list of my flight and hotel preferences so you don't have to ask every time.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll store a reusable travel-preference checklist on your owner profile covering flight class, seat, luggage, hotel budget, distance tolerance, and trip-extension preference so future booking flows can reuse it.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Remember that I prefer aisle seats, carry-on only, moderate hotels close to the venue, and I'm open to staying an extra night if it makes the trip easier.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Stored your travel-booking preferences on the owner profile for future flight and hotel bookings.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

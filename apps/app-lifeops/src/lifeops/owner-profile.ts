@@ -19,6 +19,7 @@ export const LIFEOPS_OWNER_PROFILE_FIELDS = [
   "gender",
   "age",
   "location",
+  "travelBookingPreferences",
   // T9f — Morning/night check-in engine (plan §6.23). HH:MM strings in the
   // owner's local timezone; consumed by the check-in schedule resolver.
   "morningCheckinTime",
@@ -44,6 +45,7 @@ const DEFAULT_OWNER_PROFILE: LifeOpsOwnerProfile = {
   gender: "n/a",
   age: "n/a",
   location: "n/a",
+  travelBookingPreferences: "n/a",
   morningCheckinTime: "",
   nightCheckinTime: "",
   updatedAt: null,

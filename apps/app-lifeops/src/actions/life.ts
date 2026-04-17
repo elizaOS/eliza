@@ -2440,6 +2440,7 @@ export const lifeAction: Action & {
     "DO NOT use this action for daily briefs, unread summaries, drafts awaiting sign-off, or cross-channel inbox review — use INBOX, GMAIL_ACTION, or SEARCH_ACROSS_CHANNELS instead. " +
     "DO NOT use this action for calendar lookups, scheduling meetings, searching events, or travel itineraries — use CALENDAR_ACTION instead. " +
     "DO NOT use this action for multi-device push ladders or device-wide reminder delivery — use PUBLISH_DEVICE_INTENT instead. " +
+    "DO NOT use this action for pre-event asset checklists, document-signing workflows, collecting updated ID copies, or cancellation-fee warning/escalation policies — use INBOX, PUBLISH_DEVICE_INTENT, CALENDAR_ACTION, or LIFEOPS_COMPUTER_USE instead. " +
     "DO NOT use this action for browser/portal/file workflows on the owner's machine — use LIFEOPS_COMPUTER_USE instead. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action or fall back to advice-only chat when the user wants real LifeOps follow-through.",
   descriptionCompressed: "LifeOps: manage habits, goals, reminders, alarms, escalation. Create/edit/complete/snooze items. Query active status.",

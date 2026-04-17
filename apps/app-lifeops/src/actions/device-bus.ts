@@ -1,6 +1,7 @@
 import {
   logger,
   type Action,
+  type ActionExample,
   type ActionResult,
   type HandlerOptions,
   type IAgentRuntime,
@@ -66,7 +67,7 @@ export const publishDeviceIntentAction: Action = {
     "NOTIFY_ALL_DEVICES",
   ],
   description:
-    "Publish a cross-device intent (alarm, reminder, block, or custom) to the device bus so all paired devices can realize it. Use this for desktop+phone reminder ladders, multi-device meeting nudges, and urgent device-level escalation where the owner wants the same intent realized across paired devices.",
+    "Publish a cross-device intent (alarm, reminder, block, or custom) to the device bus so all paired devices can realize it. Use this for desktop+phone reminder ladders, multi-device meeting nudges, document-signing reminders, and urgent device-level escalation where the owner wants the same intent realized across paired devices. Standing 'if/when this happens, warn or remind me on my devices' policies should still use this action on the first turn.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     return hasOwnerAccess(runtime, message);
@@ -209,6 +210,50 @@ export const publishDeviceIntentAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "The clinic sent docs for me to sign before the appointment. Keep me on top of that.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll publish a reminder intent so your paired devices keep nudging you to sign the clinic documents before the appointment.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "For important meetings, remind me an hour before, ten minutes before, and right when they start on both my Mac and my phone.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll publish a multi-device reminder ladder for important meetings across your Mac and phone.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "If missing this could trigger a cancellation fee, warn me clearly and offer to handle it now.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll publish a device-level warning so you get a clear escalation before the cancellation-fee window closes.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 // Exposed for tests.

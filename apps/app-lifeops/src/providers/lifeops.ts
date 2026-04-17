@@ -83,7 +83,7 @@ function summarizeGmailTriage(summary: LifeOpsGmailTriageSummary): string[] {
 
 function summarizeOwnerProfile(profile: LifeOpsOwnerProfile): string[] {
   return [
-    `Owner profile: name=${profile.name} | relationship=${profile.relationshipStatus} | partner=${profile.partnerName} | orientation=${profile.orientation} | gender=${profile.gender} | age=${profile.age} | location=${profile.location}`,
+    `Owner profile: name=${profile.name} | relationship=${profile.relationshipStatus} | partner=${profile.partnerName} | orientation=${profile.orientation} | gender=${profile.gender} | age=${profile.age} | location=${profile.location} | travelPrefs=${profile.travelBookingPreferences}`,
   ];
 }
 
@@ -199,9 +199,12 @@ export const lifeOpsProvider: Provider = {
         "Use DOSSIER for meeting prep briefs, dossiers, itineraries with context, and pre-event briefing requests.",
         "Use PROPOSE_MEETING_TIMES when the request is to find options, bundle people into shared slots, or propose times without a fixed meeting already chosen.",
         "Use UPDATE_MEETING_PREFERENCES for durable scheduling rules like sleep windows, no-call hours, blackout windows, or preferred hours.",
-        "Use UPDATE_OWNER_PROFILE to silently store stable owner-only profile details when the canonical owner clearly reveals them. Do not ask just to fill blanks.",
-        "Use PUBLISH_DEVICE_INTENT for multi-device reminders, push ladders, and device-level nudges. Use LIFEOPS_COMPUTER_USE for portal uploads, browser workflows, and file-handling tasks on the owner's machine.",
+        "Use UPDATE_OWNER_PROFILE to silently store stable owner-only profile details when the canonical owner clearly reveals them. This includes reusable travel-preference checklists for future bookings. Do not ask just to fill blanks.",
+        "Use PUBLISH_DEVICE_INTENT for multi-device reminders, push ladders, document-signing nudges, and device-level warnings. Use LIFEOPS_COMPUTER_USE for portal uploads, browser workflows, and file-handling tasks on the owner's machine.",
+        "Use CALL_USER or CALL_EXTERNAL for phone-call escalation or booking calls. These actions can draft or request confirmation first; they do not require the dial to happen on the first turn.",
+        "Treat owner instructions phrased as standing policies, triggers, or conditionals like 'if this happens, do x' or 'when that arrives, handle it' as executable requests, not hypotheticals.",
         "When the owner clearly asks for one of these LifeOps executive-assistant operations, call the best-fit action instead of staying in advice-only chat. If details are missing, let the action ask the minimum follow-up question.",
+        "Route examples: sleep/no-call windows -> UPDATE_MEETING_PREFERENCES; daily brief additions, missed-call repair, or group-chat handoff -> INBOX; travel preference memory -> UPDATE_OWNER_PROFILE; clinic-doc reminders or multi-device meeting ladders -> PUBLISH_DEVICE_INTENT; portal upload or browser filing -> LIFEOPS_COMPUTER_USE; if the agent gets stuck and should phone the owner -> CALL_USER.",
         "When the owner asks about their stable personal details for LifeOps, answer from the stored owner profile values below. If a field is not n/a, treat it as known instead of saying it is missing.",
         "Owner life-ops are private to the owner, explicitly granted users, and the agent. Agent ops are internal and should stay separated unless explicitly requested.",
         ...summarizeOwnerProfile(ownerProfile),

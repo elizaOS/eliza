@@ -311,6 +311,17 @@ function extractScenarioSelectedActions(scenario: ScenarioLike): string[] {
 }
 
 function deriveSelfCareExpectation(scenario: ScenarioLike): BenchmarkExpectation {
+  if (scenario.id === "brush-teeth-smalltalk-preference") {
+    return {
+      expectedAction: null,
+      acceptableActions: ["REPLY"],
+      forbiddenActions: ["LIFE"],
+      expectedOperation: null,
+      notes:
+        "First-turn self-care smalltalk is a subtle non-request. Reply conversationally and wait until the user explicitly asks to create or save the routine.",
+    };
+  }
+
   const isGoalScenario = (scenario.finalChecks ?? []).some(
     (check) => String(check.type ?? "") === "goalCountDelta",
   );
@@ -389,14 +400,20 @@ function buildPromptBenchmarkCasesForScenario(args: {
       variantId: variant.id,
       variantLabel: variant.label,
       axes: [...variant.axes],
-      riskClass: variant.riskClass,
-      benchmarkWeight: variant.benchmarkWeight,
+      riskClass:
+        positiveCase && expectation.expectedAction === null
+          ? "null"
+          : variant.riskClass,
+      benchmarkWeight:
+        positiveCase && expectation.expectedAction === null
+          ? Math.max(variant.benchmarkWeight, 2)
+          : variant.benchmarkWeight,
       expectedAction: positiveCase ? expectation.expectedAction : null,
       acceptableActions: positiveCase
         ? [...(expectation.acceptableActions ?? [])]
         : ["REPLY"],
       forbiddenActions: positiveCase
-        ? []
+        ? [...(expectation.forbiddenActions ?? [])]
         : uniqueStrings([
             expectation.expectedAction,
             ...(expectation.acceptableActions ?? []),

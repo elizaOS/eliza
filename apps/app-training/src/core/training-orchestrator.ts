@@ -118,6 +118,11 @@ export interface BackendDispatchInput {
   datasetPath: string;
   runId: string;
   outputDir: string;
+  /**
+   * Runtime forwarded to backends that need an LLM (currently only `native`).
+   * Other backends ignore it.
+   */
+  runtime: RuntimeLike;
 }
 
 export interface BackendDispatchResult {
@@ -223,15 +228,51 @@ async function defaultDispatcher(
       };
     }
     case "native": {
-      // Phase 5 wires the native local-inference backend. Until then, this
-      // is a deliberate no-op so the rest of the pipeline runs and surfaces
-      // the dataset for inspection.
+      const { runNativeBackend } = await import("../backends/native.js");
+      const useModelHandler = extractUseModel(input.runtime);
+      if (!useModelHandler) {
+        return {
+          invoked: false,
+          notes: [
+            "native backend requires a runtime exposing useModel; skipped",
+          ],
+        };
+      }
+      const baselinePrompt = await loadBaselineForTask(input.task);
+      const result = await runNativeBackend({
+        datasetPath: input.datasetPath,
+        task: input.task,
+        optimizer: "instruction-search",
+        baselinePrompt,
+        runtime: { useModel: useModelHandler },
+      });
+      const notes = [...result.notes];
+      let artifactPath: string | undefined;
+      if (result.invoked) {
+        const writePath = await persistOptimizedPromptArtifact(
+          input.runtime,
+          {
+            task: input.task,
+            optimizer: result.optimizer,
+            baseline: baselinePrompt,
+            prompt: result.result.optimizedPrompt,
+            score: result.score,
+            baselineScore: result.baselineScore,
+            datasetId: input.datasetPath,
+            datasetSize: result.datasetSize,
+            generatedAt: new Date().toISOString(),
+            lineage: result.result.lineage,
+            fewShotExamples: result.result.fewShotExamples,
+          },
+        );
+        artifactPath = writePath ?? undefined;
+        if (writePath) notes.push(`artifact written to ${writePath}`);
+        else notes.push("OptimizedPromptService unavailable; artifact not persisted");
+      }
       return {
-        invoked: false,
-        notes: [
-          "native backend not yet implemented (Phase 5); dataset staged at " +
-            input.datasetPath,
-        ],
+        invoked: result.invoked,
+        artifactPath,
+        notes,
       };
     }
   }
@@ -444,6 +485,7 @@ export async function triggerTraining(
     datasetPath,
     runId,
     outputDir,
+    runtime,
   });
 
   const finishedAt = nowIso();

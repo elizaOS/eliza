@@ -2289,7 +2289,7 @@ export const calendarAction: Action & {
     "Interact with Google Calendar through LifeOps. " +
     "USE this action for: viewing today's or this week's schedule; checking the next upcoming event; " +
     "searching events by title, attendee, location, or date range; creating new calendar events; " +
-    "querying travel itineraries, flights, hotel stays, and trip windows. " +
+    "querying travel itineraries, flights, hotel stays, trip windows, reserving time blocks, and rebooking or moving calendar-backed commitments. " +
     "DO NOT use this action for email inbox work, drafting or sending emails — use GMAIL_ACTION instead. " +
     "DO NOT use this action for personal habits, goals, routines, or reminders — use LIFE instead. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",
@@ -3261,6 +3261,34 @@ export const calendarAction: Action & {
         name: "{{agentName}}",
         content: {
           text: 'Created calendar event "Dentist appointment" for tomorrow at 3:00 PM.',
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Need to book 1 hour per day for time with Jill. Any time is fine, ideally before sleep.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll create a recurring daily one-hour block with Jill, placed before your sleep window when possible.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Flag the conflict before my flight later and, if needed, help rebook the other thing.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll check the flight against your calendar, flag the conflict, and help move the other commitment if it collides.",
         },
       },
     ],
