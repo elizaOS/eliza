@@ -14,8 +14,14 @@ interface CapturedCall {
 	body: string | null;
 }
 
+interface MockResponse {
+	status: number;
+	body?: unknown;
+	text?: string;
+}
+
 function mockFetch(
-	response: { status: number; body: unknown; text?: string },
+	response: MockResponse,
 	capture: CapturedCall[],
 ): (input: string, init?: RequestInit) => Promise<Response> {
 	return async (input, init) => {
@@ -138,7 +144,7 @@ describe("CalendlyClient", () => {
 		const capture: CapturedCall[] = [];
 		const client = new CalendlyClient({
 			accessToken: "tok",
-			fetchImpl: mockFetch({ status: 204, body: {} }, capture),
+			fetchImpl: mockFetch({ status: 200, body: {} }, capture),
 		});
 		await client.cancelScheduledEvent("abc-uuid", "traveling");
 		expect(capture).toHaveLength(1);

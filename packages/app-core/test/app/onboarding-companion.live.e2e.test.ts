@@ -161,17 +161,15 @@ async function proxyUiRequest(args: {
   if (!filePath && !isAssetRequest) {
     filePath = path.join(APP_DIST_DIR, "index.html");
   }
-
-  let body: Buffer;
-  try {
-    body = await readFile(filePath ?? path.join(APP_DIST_DIR, "index.html"));
-  } catch {
-    body = await readFile(path.join(APP_DIST_DIR, "index.html"));
-    filePath = path.join(APP_DIST_DIR, "index.html");
+  if (!filePath) {
+    throw new Error(
+      `Missing built UI asset for ${requestUrl.pathname} in ${APP_DIST_DIR}`,
+    );
   }
+  const body = await readFile(filePath);
 
   args.response.writeHead(200, {
-    "Content-Type": contentTypeFor(filePath ?? path.join(APP_DIST_DIR, "index.html")),
+    "Content-Type": contentTypeFor(filePath),
   });
   args.response.end(body);
 }
@@ -816,11 +814,9 @@ describeLive("real onboarding handoff to companion mode", () => {
           waitUntil: "domcontentloaded",
         });
 
-        await page
-          .waitForURL(/\/apps\/companion(?:$|[?#/])/, {
-            timeout: READY_TIMEOUT_MS,
-          })
-          .catch(() => {});
+        await page.waitForURL(/\/apps\/companion(?:$|[?#/])/, {
+          timeout: READY_TIMEOUT_MS,
+        });
         await companionRoot.waitFor({
           state: "visible",
           timeout: READY_TIMEOUT_MS,

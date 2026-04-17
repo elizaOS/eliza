@@ -314,6 +314,33 @@ async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
   }
 }
 
+/**
+ * Register the nightly Track C training crons (trajectory export + skill
+ * scoring) against the live runtime. The @elizaos/app-training package is
+ * optional — if it is not installed, the dynamic import fails and we skip
+ * silently. Each underlying registration also no-ops when the CRON service
+ * is missing, so installs without plugin-cron are safe.
+ */
+async function registerTrackCTrainingCrons(
+  runtime: AgentRuntime,
+): Promise<void> {
+  try {
+    const [exportMod, scoringMod] = await Promise.all([
+      import("@elizaos/app-training/core/trajectory-export-cron"),
+      import("@elizaos/app-training/core/skill-scoring-cron"),
+    ]);
+    await exportMod.registerTrajectoryExportCron(runtime);
+    await scoringMod.registerSkillScoringCron(runtime);
+    logger.info(
+      "[eliza] Registered Track C training crons (trajectory export + skill scoring)",
+    );
+  } catch (err) {
+    logger.warn(
+      `[eliza] Skipped Track C training crons: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
 async function repairRuntimeAfterBoot(
   runtime: AgentRuntime,
 ): Promise<AgentRuntime> {
@@ -327,6 +354,12 @@ async function repairRuntimeAfterBoot(
   // are proper plugins with rawPath routes served via the runtime plugin
   // route system.
   await registerAppRoutePlugins(runtime);
+
+  // ── Register Track C training crons (trajectory export + skill scoring) ─
+  // Optional: only runs when @elizaos/app-training is installed. Both cron
+  // registrations internally no-op when the CRON service is unavailable, so
+  // installs without plugin-cron are also safe.
+  await registerTrackCTrainingCrons(runtime);
 
   if (!runtime.getService("AUTONOMY")) {
     try {
