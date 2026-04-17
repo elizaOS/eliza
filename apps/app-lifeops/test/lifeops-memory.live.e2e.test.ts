@@ -79,15 +79,6 @@ async function loadPlugin(name: string): Promise<Plugin | null> {
   }
 }
 
-function seedGroqModelDefaults(): void {
-  if (!process.env.GROQ_SMALL_MODEL?.trim()) {
-    process.env.GROQ_SMALL_MODEL = "llama-3.1-8b-instant";
-  }
-  if (!process.env.GROQ_LARGE_MODEL?.trim()) {
-    process.env.GROQ_LARGE_MODEL = "qwen/qwen3-32b";
-  }
-}
-
 function normalizeText(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
 }
@@ -231,7 +222,8 @@ function findDefinitionByTitle(
   );
 }
 
-const selectedLiveProvider = await selectLiveProvider();
+const selectedLiveProvider = await selectLifeOpsLiveProvider();
+const selectedProviderEnv = getSelectedLiveProviderEnv(selectedLiveProvider);
 const MEMORY_SUITE_PROVIDER_NAMES = new Set([
   "openai",
   "openrouter",
@@ -248,10 +240,7 @@ const LIVE_SUITE_ENABLED =
 
 if (!LIVE_SUITE_ENABLED) {
   const warnings = [
-    !LIVE_TESTS_ENABLED ? "set ELIZA_LIVE_TEST=1 or ELIZA_LIVE_TEST=1" : null,
-    !selectedLiveProvider
-      ? "provide a live provider key for OpenAI, Groq, OpenRouter, Google, or Anthropic"
-      : null,
+    ...getLifeOpsLiveSetupWarnings(selectedLiveProvider),
     selectedLiveProvider && !MEMORY_SUITE_PROVIDER_SUPPORTED
       ? `selected provider "${selectedLiveProvider.name}" does not support the reflection/fact-extraction live suite; use OpenAI, OpenRouter, Google, or Anthropic`
       : null,
@@ -283,17 +272,13 @@ describeIf(LIVE_SUITE_ENABLED)(
       path.join(os.tmpdir(), "eliza-lifeops-live-pglite-"),
     );
     const envKeys = [
-      ...PROVIDER_ENV_KEYS,
+      ...LIVE_PROVIDER_ENV_KEYS,
       "PGLITE_DATA_DIR",
       "LOCAL_EMBEDDING_DIMENSIONS",
       "EMBEDDING_DIMENSION",
       "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
-      "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
-      "ELIZA_STATE_DIR",
       "ELIZA_STATE_DIR",
       "ELIZA_CONFIG_PATH",
-      "ELIZA_CONFIG_PATH",
-      "ELIZA_PERSIST_CONFIG_PATH",
       "ELIZA_PERSIST_CONFIG_PATH",
     ];
 
@@ -307,14 +292,7 @@ describeIf(LIVE_SUITE_ENABLED)(
       delete process.env.ELIZA_CONFIG_PATH;
       delete process.env.ELIZA_PERSIST_CONFIG_PATH;
       process.env.LOG_LEVEL = process.env.ELIZA_E2E_LOG_LEVEL ?? "error";
-      if (!process.env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
-        process.env.LOCAL_EMBEDDING_DIMENSIONS = "384";
-      }
-      if (!process.env.EMBEDDING_DIMENSION?.trim()) {
-        process.env.EMBEDDING_DIMENSION = "384";
-      }
-      delete process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS;
-      delete process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS;
+      applyLocalEmbeddingDefaults(process.env);
       cloudEnvBackup = Object.fromEntries(
         Object.entries(process.env).filter(
           ([key, value]) =>
@@ -328,37 +306,12 @@ describeIf(LIVE_SUITE_ENABLED)(
         }
       }
 
-      for (const key of PROVIDER_ENV_KEYS) {
+      for (const key of LIVE_PROVIDER_ENV_KEYS) {
         delete process.env[key];
       }
-      for (const [key, value] of Object.entries(
-        selectedLiveProvider?.env ?? {},
-      )) {
-        if (value.trim().length > 0) {
-          process.env[key] = value;
-        }
-      }
-      if (selectedLiveProvider?.name === "groq") {
-        seedGroqModelDefaults();
-      }
+      Object.assign(process.env, selectedProviderEnv);
 
       const character = buildCharacterFromConfig({});
-      const providerSecrets: Record<string, string> = {};
-      for (const [key, value] of Object.entries(
-        selectedLiveProvider?.env ?? {},
-      )) {
-        if (value.trim().length > 0) {
-          providerSecrets[key] = value;
-        }
-      }
-      if (selectedLiveProvider?.name === "groq") {
-        if (process.env.GROQ_SMALL_MODEL?.trim()) {
-          providerSecrets.GROQ_SMALL_MODEL = process.env.GROQ_SMALL_MODEL;
-        }
-        if (process.env.GROQ_LARGE_MODEL?.trim()) {
-          providerSecrets.GROQ_LARGE_MODEL = process.env.GROQ_LARGE_MODEL;
-        }
-      }
       character.settings = {
         ...(character.settings ?? {}),
         ELIZA_ADMIN_ENTITY_ID: ownerId,
@@ -370,7 +323,7 @@ describeIf(LIVE_SUITE_ENABLED)(
         MEMORY_EXTRACTION_INTERVAL: 1,
       };
       character.secrets = {
-        ...providerSecrets,
+        ...selectedProviderEnv,
       };
 
       const sqlPlugin = await loadPlugin("@elizaos/plugin-sql");

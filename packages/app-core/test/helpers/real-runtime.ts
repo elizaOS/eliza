@@ -131,10 +131,6 @@ function applyRuntimeSettings(
   }
 }
 
-type TrajectoryWriteService = {
-  writeQueues?: Map<string, Promise<void>>;
-};
-
 async function flushPendingTrajectoryWrites(
   runtime: AgentRuntime,
 ): Promise<void> {
