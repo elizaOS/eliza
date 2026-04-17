@@ -1,9 +1,6 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  N8nSidecar,
-  N8nSidecarState,
-} from "../services/n8n-sidecar";
+import type { N8nSidecar, N8nSidecarState } from "../services/n8n-sidecar";
 import {
   handleN8nStatusRoutes,
   type N8nStatusConfigLike,

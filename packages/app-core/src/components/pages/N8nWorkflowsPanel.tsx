@@ -402,7 +402,9 @@ function AutomationsChatPane({
       >
         {visibleMsgs.length === 0 && !sending ? (
           <div className="flex-1 flex items-center justify-center text-center px-4 py-5">
-            <p className="text-sm text-muted">{t("automations.chat.placeholder")}</p>
+            <p className="text-sm text-muted">
+              {t("automations.chat.placeholder")}
+            </p>
           </div>
         ) : (
           <div className="w-full space-y-1">
@@ -468,7 +470,9 @@ function AutomationsChatPane({
             aria-label={t("automations.chat.send")}
           >
             <Send className="w-4 h-4" />
-            <span className="hidden sm:inline">{t("automations.chat.send")}</span>
+            <span className="hidden sm:inline">
+              {t("automations.chat.send")}
+            </span>
           </Button>
         )}
       </div>
@@ -597,9 +601,7 @@ function WorkflowDetailPane({
                 withDot
               />
             </div>
-            <h2 className="text-2xl font-semibold text-txt">
-              {workflow.name}
-            </h2>
+            <h2 className="text-2xl font-semibold text-txt">{workflow.name}</h2>
             {workflow.description && (
               <p className="text-sm text-muted mt-1">{workflow.description}</p>
             )}
@@ -646,11 +648,16 @@ function WorkflowDetailPane({
                     </span>
                   </div>
                 ))
-              : Array.from({ length: nodeCount }, (_, i) => (
-                  <div key={i} className="text-sm text-muted py-1">
-                    Node {i + 1}
-                  </div>
-                ))}
+              : Array.from({ length: nodeCount }, (_, index) => index + 1).map(
+                  (nodeNumber) => (
+                    <div
+                      key={`workflow-node-${nodeNumber}`}
+                      className="text-sm text-muted py-1"
+                    >
+                      Node {nodeNumber}
+                    </div>
+                  ),
+                )}
           </div>
         </div>
       )}
@@ -688,9 +695,7 @@ export interface N8nWorkflowsPanelProps {
   onFocusComposer: (seed?: string) => void;
 }
 
-export function N8nWorkflowsPanel({
-  composerRef,
-}: N8nWorkflowsPanelProps) {
+export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
   const { t } = useApp();
 
   // ── Status + workflow state ─────────────────────────────────────────────
@@ -704,8 +709,7 @@ export function N8nWorkflowsPanel({
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const didAutoStart = useRef(false);
 
-  const selectedWorkflow =
-    workflows.find((wf) => wf.id === selectedId) ?? null;
+  const selectedWorkflow = workflows.find((wf) => wf.id === selectedId) ?? null;
 
   const loadStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -914,9 +918,7 @@ export function N8nWorkflowsPanel({
       {/* Two-pane: sidebar list + detail */}
       <div className="flex flex-1 min-h-0 gap-4">
         {/* Left: workflow list (fills sidebar scroll region from parent) */}
-        <div className="w-56 shrink-0 overflow-y-auto">
-          {workflowSidebar}
-        </div>
+        <div className="w-56 shrink-0 overflow-y-auto">{workflowSidebar}</div>
 
         {/* Right: detail pane */}
         <div className="flex-1 min-w-0 overflow-y-auto">

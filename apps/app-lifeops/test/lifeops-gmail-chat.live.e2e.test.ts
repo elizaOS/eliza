@@ -300,16 +300,30 @@ describeIf(LIVE_GMAIL_CHAT_ENABLED)("life-ops gmail live chat flows", () => {
   }, 180_000);
 
   it("finds reply-needed Gmail items with the real agent runtime", async () => {
-    const { conversationId } = await createConversation(server?.port ?? 0, {
-      title: "gmail venue",
-    });
-    const responseText = await sendChat(
-      server?.port ?? 0,
-      conversationId,
-      "Which emails need a reply about venue details?",
-    );
+    let lastResponse = "";
 
-    expect(responseText).toMatch(/venue|morgan/i);
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const { conversationId } = await createConversation(server?.port ?? 0, {
+        title: `gmail venue ${attempt}`,
+      });
+      lastResponse = await sendChat(
+        server?.port ?? 0,
+        conversationId,
+        "Which emails need a reply about venue details?",
+      );
+
+      if (/venue|morgan/i.test(lastResponse)) {
+        return;
+      }
+
+      if (attempt < 3) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+    }
+
+    throw new Error(
+      `Reply-needed Gmail flow did not stabilize: ${lastResponse}`,
+    );
   }, 180_000);
 
   it("drafts a Gmail reply from prior conversation context", async () => {

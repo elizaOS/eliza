@@ -263,11 +263,8 @@ export function desktopMouseMove(x: number, y: number): void {
     if (commandExists("cliclick")) {
       runCommand("cliclick", [`m:${sx},${sy}`], 5000);
     } else {
-      // AppleScript doesn't have a native mouse-move; use cliclick if available
-      runCommand(
-        "osascript",
-        ["-e", `do shell script "cliclick m:${sx},${sy}" & `],
-        5000,
+      throw new Error(
+        "mouse_move requires cliclick on macOS. Install it with `brew install cliclick` and retry.",
       );
     }
   } else if (os === "linux") {

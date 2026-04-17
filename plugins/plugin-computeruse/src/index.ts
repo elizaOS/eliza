@@ -11,7 +11,7 @@
  *   - Env: COMPUTER_USE_ENABLED=1
  *
  * Platform requirements:
- *   macOS  — screencapture (built-in), cliclick (brew install cliclick) or AppleScript
+ *   macOS  — screencapture (built-in), cliclick (brew install cliclick), AppleScript
  *   Linux  — xdotool (sudo apt install xdotool), ImageMagick/scrot for screenshots
  *   Windows — PowerShell (built-in)
  *   Browser — puppeteer-core + Chrome/Edge/Brave installed

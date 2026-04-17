@@ -247,6 +247,7 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
   }, 120_000);
 
   it("can save a routine after a preview or direct create path", async () => {
+    const previewFlowTitle = "Evening mobility preview flow";
     const definitionsBefore = (await service.listDefinitions()).length;
 
     const previewResult = await lifeAction.handler?.(
@@ -254,7 +255,7 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
       {
         entityId: runtime.agentId,
         content: {
-          text: "Please make that into a routine named Brush teeth with reminders around 8am and 9pm. Just preview the plan for now and do not save it yet.",
+          text: `Please make that into a routine named ${previewFlowTitle} with reminders around 8am and 9pm. Just preview the plan for now and do not save it yet.`,
           source: "discord",
         },
       } as never,
@@ -262,8 +263,8 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
       {
         parameters: {
           action: "create",
-          intent:
-            "Please make that into a routine named Brush teeth with reminders around 8am and 9pm. Just preview the plan for now and do not save it yet.",
+          intent: `Please make that into a routine named ${previewFlowTitle} with reminders around 8am and 9pm. Just preview the plan for now and do not save it yet.`,
+          title: previewFlowTitle,
         },
       } as never,
     );
@@ -273,7 +274,7 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
       const definitionsAfter = await service.listDefinitions();
       expect(definitionsAfter.length).toBe(definitionsBefore + 1);
       const created = definitionsAfter.find(
-        (entry) => entry.definition.title === "Brush teeth",
+        (entry) => entry.definition.title === previewFlowTitle,
       );
       expect(created).toBeTruthy();
       return;
@@ -284,7 +285,7 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
       {
         entityId: runtime.agentId,
         content: {
-          text: "That looks right. Save the Brush teeth routine.",
+          text: `That looks right. Save the ${previewFlowTitle} routine.`,
           source: "discord",
         },
       } as never,
@@ -296,8 +297,8 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
       {
         parameters: {
           action: "create",
-          intent: "That looks right. Save the Brush teeth routine.",
-          title: "Brush teeth",
+          intent: `That looks right. Save the ${previewFlowTitle} routine.`,
+          title: previewFlowTitle,
         },
       } as never,
     );
@@ -307,7 +308,7 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
     const definitionsAfter = await service.listDefinitions();
     expect(definitionsAfter.length).toBe(definitionsBefore + 1);
     const created = definitionsAfter.find(
-      (entry) => entry.definition.title === "Brush teeth",
+      (entry) => entry.definition.title === previewFlowTitle,
     );
     expect(created).toBeTruthy();
   }, 120_000);

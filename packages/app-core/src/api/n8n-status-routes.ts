@@ -15,12 +15,12 @@
  * mirroring how steward-sidecar is consumed in develop.
  */
 
-import type { AgentRuntime } from "@elizaos/core";
 import type { RouteHelpers, RouteRequestMeta } from "@elizaos/agent/api";
+import type { AgentRuntime } from "@elizaos/core";
 import {
+  getN8nSidecar,
   type N8nSidecar,
   type N8nSidecarStatus,
-  getN8nSidecar,
   peekN8nSidecar,
 } from "../services/n8n-sidecar";
 
@@ -109,7 +109,8 @@ export async function handleN8nStatusRoutes(
     return false;
   }
 
-  const sidecar = ctx.n8nSidecar === undefined ? peekN8nSidecar() : ctx.n8nSidecar;
+  const sidecar =
+    ctx.n8nSidecar === undefined ? peekN8nSidecar() : ctx.n8nSidecar;
 
   const cloudConnected = isCloudConnected(config, runtime);
   const localEnabled = config.n8n?.localEnabled ?? true;
