@@ -13,6 +13,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { config as loadDotenv } from "dotenv";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
 import { req } from "../../../../../test/helpers/http.ts";
@@ -29,6 +30,8 @@ const REPO_ROOT = path.resolve(
   "..",
   "..",
 );
+loadDotenv({ path: path.join(REPO_ROOT, ".env") });
+
 const CONNECTOR_CASES = [
   {
     name: "discord",
@@ -46,11 +49,6 @@ const CONFIGURED_CONNECTORS = CONNECTOR_CASES.filter((connector) =>
 );
 const LIVE_CONNECTOR_SUITE_ENABLED =
   LIVE && CONFIGURED_CONNECTORS.length > 0;
-
-try {
-  const { config } = await import("dotenv");
-  config({ path: path.join(REPO_ROOT, ".env") });
-} catch { /* dotenv optional */ }
 
 if (!LIVE_CONNECTOR_SUITE_ENABLED) {
   const warnings = [

@@ -21,9 +21,9 @@ import { join } from "node:path";
 import { scoreSkill, type ScoreableTrajectory } from "./replay-validator.js";
 
 interface MinimalLogger {
-  info: (...args: unknown[]) => void;
-  warn: (...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
+  info: (message: string) => void;
+  warn: (message: string) => void;
+  error: (message: string) => void;
 }
 
 interface CronServiceLike {
@@ -54,7 +54,10 @@ interface CronServiceJobInput {
 interface RuntimeLike {
   getService: (name: string) => unknown;
   logger?: MinimalLogger;
-  registerEvent?: (name: string, handler: (...args: unknown[]) => unknown) => void;
+  registerEvent?: (
+    name: string,
+    handler: (payload: unknown) => Promise<void>,
+  ) => void;
 }
 
 interface TrajectoryServiceLike {

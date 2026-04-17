@@ -15,23 +15,31 @@ import {
 	type ICalendlyService,
 } from "../types.js";
 
+/**
+ * Vitest `vi.fn()` returns an untyped `Mock`, which will not structurally
+ * match `ICalendlyService` method signatures. Using `vi.fn<Signature>()`
+ * binds each mock to its call/return signature so the resulting stub is
+ * directly assignable to `ICalendlyService`.
+ */
 interface StubService extends ICalendlyService {
-	listEventTypes: ReturnType<typeof vi.fn>;
-	getBookingUrl: ReturnType<typeof vi.fn>;
-	getScheduledEvent: ReturnType<typeof vi.fn>;
-	getInvitee: ReturnType<typeof vi.fn>;
-	cancelBooking: ReturnType<typeof vi.fn>;
-	isConnected: ReturnType<typeof vi.fn>;
+	isConnected: ReturnType<typeof vi.fn<() => boolean>>;
+	listEventTypes: ReturnType<typeof vi.fn<ICalendlyService["listEventTypes"]>>;
+	getBookingUrl: ReturnType<typeof vi.fn<ICalendlyService["getBookingUrl"]>>;
+	getScheduledEvent: ReturnType<
+		typeof vi.fn<ICalendlyService["getScheduledEvent"]>
+	>;
+	getInvitee: ReturnType<typeof vi.fn<ICalendlyService["getInvitee"]>>;
+	cancelBooking: ReturnType<typeof vi.fn<ICalendlyService["cancelBooking"]>>;
 }
 
 function buildStub(connected: boolean): StubService {
 	return {
-		isConnected: vi.fn(() => connected),
-		listEventTypes: vi.fn(),
-		getBookingUrl: vi.fn(),
-		getScheduledEvent: vi.fn(),
-		getInvitee: vi.fn(),
-		cancelBooking: vi.fn(),
+		isConnected: vi.fn<() => boolean>(() => connected),
+		listEventTypes: vi.fn<ICalendlyService["listEventTypes"]>(),
+		getBookingUrl: vi.fn<ICalendlyService["getBookingUrl"]>(),
+		getScheduledEvent: vi.fn<ICalendlyService["getScheduledEvent"]>(),
+		getInvitee: vi.fn<ICalendlyService["getInvitee"]>(),
+		cancelBooking: vi.fn<ICalendlyService["cancelBooking"]>(),
 	};
 }
 
@@ -123,6 +131,41 @@ describe("BOOK_CALENDLY_SLOT", () => {
 		expect(stub.getBookingUrl).toHaveBeenCalledWith({
 			durationMinutes: 30,
 			slug: undefined,
+		});
+	});
+
+	it("passes durationMinutes from options through when text has no hint", async () => {
+		const stub = buildStub(true);
+		stub.getBookingUrl.mockResolvedValue("https://calendly.com/me/15min");
+		const runtime = buildRuntime(stub);
+		const result = (await runHandler(
+			bookSlotAction,
+			runtime,
+			buildMessage("book me"),
+			{ durationMinutes: 15 },
+		)) as { success: true; data: { bookingUrl: string } };
+		expect(result.success).toBe(true);
+		expect(result.data.bookingUrl).toBe("https://calendly.com/me/15min");
+		expect(stub.getBookingUrl).toHaveBeenCalledWith({
+			durationMinutes: 15,
+			slug: undefined,
+		});
+	});
+
+	it("passes slug option through to the service", async () => {
+		const stub = buildStub(true);
+		stub.getBookingUrl.mockResolvedValue("https://calendly.com/me/30min");
+		const runtime = buildRuntime(stub);
+		const result = (await runHandler(
+			bookSlotAction,
+			runtime,
+			buildMessage("book me"),
+			{ slug: "30min" },
+		)) as { success: true; data: { bookingUrl: string } };
+		expect(result.success).toBe(true);
+		expect(stub.getBookingUrl).toHaveBeenCalledWith({
+			durationMinutes: undefined,
+			slug: "30min",
 		});
 	});
 

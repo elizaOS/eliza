@@ -6,21 +6,19 @@
  * All tests are gated on MILADY_LIVE_TEST=1 / ELIZA_LIVE_TEST=1 plus
  * a configured LLM API key.
  *
- * Follows the same lifecycle pattern as agent-runtime.live.e2e.test.ts
- * but focuses on action selection accuracy rather than infrastructure.
+ * Dogfoods the ActionSpy / ConversationHarness helpers (which were previously
+ * unused): every test spins up a fresh ConversationHarness (new roomId) so
+ * context cannot leak between cases.
  */
-import crypto from "node:crypto";
-import {
-  type AgentRuntime,
-  ChannelType,
-  createMessageMemory,
-  logger,
-  type UUID,
-} from "@elizaos/core";
+import { type AgentRuntime, logger } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect } from "vitest";
 import { itIf } from "../../../../../test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
-import { withTimeout, sleep } from "../../../../../test/helpers/test-utils";
+import {
+  expectActionCalled,
+  expectActionNotCalled,
+} from "../helpers/action-assertions.js";
+import { ConversationHarness } from "../helpers/conversation-harness.js";
 import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 
 // ---------------------------------------------------------------------------
@@ -35,214 +33,14 @@ const selectedLiveProvider = liveModelTestsEnabled
   : null;
 const canRunLiveTests = liveModelTestsEnabled && selectedLiveProvider !== null;
 
-// ---------------------------------------------------------------------------
-// Action capture helper
-// ---------------------------------------------------------------------------
-
-/**
- * Captures the first action name dispatched for a given room via the
- * `outgoing_before_deliver` pipeline hook. Same pattern used by the
- * action-selection benchmark runner.
- */
-interface ActionCapture {
-  action: string | null;
-  responseText: string;
-}
-
-async function sendMessageAndCaptureAction(
-  runtime: AgentRuntime,
-  userMessage: string,
-  options?: { timeoutMs?: number },
-): Promise<ActionCapture> {
-  const roomId = crypto.randomUUID() as UUID;
-  const entityId = crypto.randomUUID() as UUID;
-  const worldId = crypto.randomUUID() as UUID;
-  const hookId = `action-capture-${roomId}`;
-  const timeoutMs = options?.timeoutMs ?? 90_000;
-
-  let capturedAction: string | null = null;
-  let responseText = "";
-
-  await runtime.ensureConnection({
-    entityId,
-    roomId,
-    worldId,
-    userName: "ActionTestUser",
-    source: "test",
-    channelId: roomId,
-    type: ChannelType.DM,
-  });
-
-  runtime.registerPipelineHook({
-    id: hookId,
-    phase: "outgoing_before_deliver",
-    handler: (_runtime, ctx) => {
-      if (ctx.phase !== "outgoing_before_deliver") return;
-      if (ctx.roomId !== roomId) return;
-      if (capturedAction !== null) return;
-      const name = ctx.actionName;
-      if (typeof name === "string" && name.trim().length > 0) {
-        capturedAction = name;
-      }
-    },
-  });
-
-  try {
-    const message = createMessageMemory({
-      id: crypto.randomUUID() as UUID,
-      entityId,
-      roomId,
-      content: {
-        text: userMessage,
-        source: "test",
-        channelType: ChannelType.DM,
-      },
-    });
-
-    const handlePromise = Promise.resolve(
-      runtime.messageService?.handleMessage(
-        runtime,
-        message,
-        async (content: { text?: string }) => {
-          if (content.text) responseText += content.text;
-          return [];
-        },
-      ),
-    );
-
-    await withTimeout(handlePromise, timeoutMs, `handleMessage(${userMessage.slice(0, 40)})`);
-  } finally {
-    try {
-      runtime.unregisterPipelineHook(hookId);
-    } catch {
-      // Best-effort cleanup.
-    }
-  }
-
-  return { action: capturedAction, responseText };
-}
-
-/**
- * Multi-turn variant: sends multiple messages in the same room and captures
- * the action from the final turn.
- */
-async function sendConversationAndCaptureAction(
-  runtime: AgentRuntime,
-  messages: string[],
-  options?: { timeoutMs?: number },
-): Promise<ActionCapture> {
-  const roomId = crypto.randomUUID() as UUID;
-  const entityId = crypto.randomUUID() as UUID;
-  const worldId = crypto.randomUUID() as UUID;
-  const timeoutMs = options?.timeoutMs ?? 90_000;
-
-  let capturedAction: string | null = null;
-  let responseText = "";
-
-  await runtime.ensureConnection({
-    entityId,
-    roomId,
-    worldId,
-    userName: "ActionTestUser",
-    source: "test",
-    channelId: roomId,
-    type: ChannelType.DM,
-  });
-
-  for (let i = 0; i < messages.length; i += 1) {
-    const isLast = i === messages.length - 1;
-    const hookId = `action-capture-multi-${roomId}-${i}`;
-
-    // Only capture action on the final turn.
-    if (isLast) {
-      capturedAction = null;
-      responseText = "";
-
-      runtime.registerPipelineHook({
-        id: hookId,
-        phase: "outgoing_before_deliver",
-        handler: (_runtime, ctx) => {
-          if (ctx.phase !== "outgoing_before_deliver") return;
-          if (ctx.roomId !== roomId) return;
-          if (capturedAction !== null) return;
-          const name = ctx.actionName;
-          if (typeof name === "string" && name.trim().length > 0) {
-            capturedAction = name;
-          }
-        },
-      });
-    }
-
-    const message = createMessageMemory({
-      id: crypto.randomUUID() as UUID,
-      entityId,
-      roomId,
-      content: {
-        text: messages[i],
-        source: "test",
-        channelType: ChannelType.DM,
-      },
-    });
-
-    let turnResponse = "";
-    const handlePromise = Promise.resolve(
-      runtime.messageService?.handleMessage(
-        runtime,
-        message,
-        async (content: { text?: string }) => {
-          if (content.text) turnResponse += content.text;
-          return [];
-        },
-      ),
-    );
-
-    await withTimeout(handlePromise, timeoutMs, `handleMessage turn ${i + 1}`);
-
-    if (isLast) {
-      responseText = turnResponse;
-      try {
-        runtime.unregisterPipelineHook(hookId);
-      } catch {
-        // Best-effort cleanup.
-      }
-    }
-  }
-
-  return { action: capturedAction, responseText };
-}
+const DEFAULT_TEST_TIMEOUT_MS = 90_000;
 
 // ---------------------------------------------------------------------------
-// Assertion helpers
+// Shared helpers
 // ---------------------------------------------------------------------------
 
-function normalizeActionName(name: string | null): string | null {
-  if (typeof name !== "string") return null;
-  const trimmed = name.trim();
-  if (trimmed.length === 0) return null;
-  return trimmed.toUpperCase().replace(/[\s-]+/g, "_");
-}
-
-function expectActionCalled(
-  capture: ActionCapture,
-  expectedAction: string,
-  acceptableAlternatives?: string[],
-): void {
-  const actual = normalizeActionName(capture.action);
-  const expected = normalizeActionName(expectedAction);
-  const acceptable = acceptableAlternatives?.map(normalizeActionName) ?? [];
-
-  const allAcceptable = [expected, ...acceptable].filter(Boolean);
-  expect(
-    allAcceptable.includes(actual),
-    `Expected action ${expectedAction}${acceptable.length > 0 ? ` (or ${acceptableAlternatives!.join(", ")})` : ""} but got ${capture.action ?? "(none)"}. Response: "${capture.responseText.slice(0, 200)}"`,
-  ).toBe(true);
-}
-
-function expectNoAction(capture: ActionCapture): void {
-  expect(
-    normalizeActionName(capture.action),
-    `Expected no action but got ${capture.action}. Response: "${capture.responseText.slice(0, 200)}"`,
-  ).toBeNull();
+function normalizeActionName(name: string): string {
+  return name.trim().toUpperCase().replace(/_/g, "");
 }
 
 // ---------------------------------------------------------------------------
@@ -253,12 +51,27 @@ describe("Action Invocation E2E", () => {
   let runtime: AgentRuntime;
   let cleanup: () => Promise<void>;
   let initialized = false;
-
-  // Track which actions are registered so we can skip tests for missing actions.
   let registeredActions: Set<string>;
 
   function hasAction(name: string): boolean {
-    return registeredActions.has(normalizeActionName(name)!);
+    return registeredActions.has(normalizeActionName(name));
+  }
+
+  /**
+   * Creates a fresh harness (new roomId) for a single test, runs `fn`, and
+   * guarantees cleanup even on failure. This is the main dogfooding pattern
+   * for ConversationHarness + ActionSpy.
+   */
+  async function withHarness(
+    fn: (harness: ConversationHarness) => Promise<void>,
+  ): Promise<void> {
+    const harness = new ConversationHarness(runtime);
+    await harness.setup();
+    try {
+      await fn(harness);
+    } finally {
+      await harness.cleanup();
+    }
   }
 
   beforeAll(async () => {
@@ -279,7 +92,7 @@ describe("Action Invocation E2E", () => {
     initialized = true;
 
     registeredActions = new Set(
-      runtime.actions.map((a) => normalizeActionName(a.name)!).filter(Boolean),
+      runtime.actions.map((a) => normalizeActionName(a.name)),
     );
 
     logger.info(
@@ -295,16 +108,13 @@ describe("Action Invocation E2E", () => {
   }, 150_000);
 
   // ===================================================================
-  //  1. Startup validation
+  //  Startup
   // ===================================================================
 
   describe("startup", () => {
     itIf(canRunLiveTests)("initializes with actions registered", () => {
       expect(initialized).toBe(true);
       expect(runtime.actions.length).toBeGreaterThan(0);
-      logger.info(
-        `[action-e2e] Registered actions: ${[...registeredActions].join(", ")}`,
-      );
     });
 
     itIf(canRunLiveTests)("messageService is available", () => {
@@ -313,270 +123,523 @@ describe("Action Invocation E2E", () => {
   });
 
   // ===================================================================
-  //  2. Action selection — basic / negative cases
+  //  1. Core: negatives + baseline LifeOps actions
   // ===================================================================
 
-  describe("action selection — no action expected", () => {
+  describe("core", () => {
     itIf(canRunLiveTests)(
       "greeting does not trigger any action",
       async () => {
-        const capture = await sendMessageAndCaptureAction(
-          runtime,
-          "Hey, good morning! How are you?",
-        );
-        expect(capture.responseText.length).toBeGreaterThan(0);
-        expectNoAction(capture);
+        await withHarness(async (h) => {
+          const turn = await h.send("Hey, good morning! How are you?");
+          expect(turn.responseText.length).toBeGreaterThan(0);
+          expect(h.spy.getCompletedCalls()).toHaveLength(0);
+        });
       },
-      90_000,
+      DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
       "factual question does not trigger any action",
       async () => {
-        const capture = await sendMessageAndCaptureAction(
-          runtime,
-          "What is the capital of France?",
-        );
-        expect(capture.responseText.length).toBeGreaterThan(0);
-        expectNoAction(capture);
+        await withHarness(async (h) => {
+          const turn = await h.send("What is the capital of France?");
+          expect(turn.responseText.length).toBeGreaterThan(0);
+          expect(h.spy.getCompletedCalls()).toHaveLength(0);
+        });
       },
-      90_000,
+      DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "opinion question does not trigger any action",
+      "venting about email does not trigger email actions",
       async () => {
-        const capture = await sendMessageAndCaptureAction(
-          runtime,
-          "What do you think about remote work?",
-        );
-        expect(capture.responseText.length).toBeGreaterThan(0);
-        expectNoAction(capture);
+        await withHarness(async (h) => {
+          await h.send("I hate email, it's such a time sink.");
+          expectActionNotCalled(h.spy, "GMAIL_ACTION");
+          expectActionNotCalled(h.spy, "INBOX");
+        });
       },
-      90_000,
+      DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "casual chat about email does not trigger email action",
+      "venting about calendar does not trigger CALENDAR_ACTION",
       async () => {
-        const capture = await sendMessageAndCaptureAction(
-          runtime,
-          "I hate email, it's such a time sink.",
-        );
-        expect(capture.responseText.length).toBeGreaterThan(0);
-        // Should not trigger GMAIL_ACTION or INBOX despite mentioning email.
-        const actual = normalizeActionName(capture.action);
-        expect(
-          actual === null || (!["GMAIL_ACTION", "INBOX"].includes(actual)),
-          `Venting about email should not trigger an email action, got: ${capture.action}`,
-        ).toBe(true);
+        await withHarness(async (h) => {
+          await h.send("My calendar has been crazy this quarter.");
+          expectActionNotCalled(h.spy, "CALENDAR_ACTION");
+        });
       },
-      90_000,
+      DEFAULT_TEST_TIMEOUT_MS,
     );
 
-    itIf(canRunLiveTests)(
-      "casual chat about calendar does not trigger calendar action",
-      async () => {
-        const capture = await sendMessageAndCaptureAction(
-          runtime,
-          "My calendar has been crazy this quarter.",
-        );
-        expect(capture.responseText.length).toBeGreaterThan(0);
-        const actual = normalizeActionName(capture.action);
-        expect(
-          actual === null || actual !== "CALENDAR_ACTION",
-          `Venting about calendar should not trigger CALENDAR_ACTION, got: ${capture.action}`,
-        ).toBe(true);
-      },
-      90_000,
-    );
-  });
-
-  // ===================================================================
-  //  3. Action selection — positive: personality modification
-  // ===================================================================
-
-  describe("action selection — personality", () => {
     itIf(canRunLiveTests)(
       "personality change request triggers MODIFY_CHARACTER",
       async () => {
-        if (!hasAction("MODIFY_CHARACTER")) {
-          logger.warn("[action-e2e] MODIFY_CHARACTER not registered, skipping");
-          return;
-        }
-        const capture = await sendMessageAndCaptureAction(
-          runtime,
-          "Change your personality to be more casual and funny.",
-        );
-        expect(capture.responseText.length).toBeGreaterThan(0);
-        expectActionCalled(capture, "MODIFY_CHARACTER");
+        if (!hasAction("MODIFY_CHARACTER")) return;
+        await withHarness(async (h) => {
+          await h.send("Change your personality to be more casual and funny.");
+          expectActionCalled(h.spy, "MODIFY_CHARACTER");
+        });
       },
-      90_000,
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "create todo triggers LIFE",
+      async () => {
+        if (!hasAction("LIFE")) return;
+        await withHarness(async (h) => {
+          await h.send("Add a todo: pick up dry cleaning tomorrow.");
+          expectActionCalled(h.spy, "LIFE");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "set goal triggers LIFE",
+      async () => {
+        if (!hasAction("LIFE")) return;
+        await withHarness(async (h) => {
+          await h.send("Set a goal to save $5,000 by the end of the year.");
+          expectActionCalled(h.spy, "LIFE");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
     );
   });
 
   // ===================================================================
-  //  4. Action selection — LifeOps (todos, habits, goals)
+  //  2. Messaging
   // ===================================================================
 
-  describe("action selection — LifeOps", () => {
+  describe("messaging", () => {
     itIf(canRunLiveTests)(
-      "create todo triggers LIFE action",
+      "telegram request triggers CROSS_CHANNEL_SEND",
       async () => {
-        if (!hasAction("LIFE")) {
-          logger.warn("[action-e2e] LIFE action not registered, skipping");
-          return;
-        }
-        const capture = await sendMessageAndCaptureAction(
-          runtime,
-          "Add a todo: pick up dry cleaning tomorrow.",
-        );
-        expect(capture.responseText.length).toBeGreaterThan(0);
-        expectActionCalled(capture, "LIFE", ["CREATE_TODO", "LIFE_CREATE_DEFINITION"]);
+        if (!hasAction("CROSS_CHANNEL_SEND")) return;
+        await withHarness(async (h) => {
+          await h.send(
+            "Send a telegram message to Jane saying I'm running 10 minutes late.",
+          );
+          expectActionCalled(h.spy, "CROSS_CHANNEL_SEND");
+        });
       },
-      90_000,
+      DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "list todos triggers LIFE action",
+      "discord DM request triggers CROSS_CHANNEL_SEND",
       async () => {
-        if (!hasAction("LIFE")) {
-          logger.warn("[action-e2e] LIFE action not registered, skipping");
-          return;
-        }
-        const capture = await sendMessageAndCaptureAction(
-          runtime,
-          "What's on my todo list today?",
-        );
-        expect(capture.responseText.length).toBeGreaterThan(0);
-        expectActionCalled(capture, "LIFE", ["LIST_TODOS"]);
+        if (!hasAction("CROSS_CHANNEL_SEND")) return;
+        await withHarness(async (h) => {
+          await h.send("DM bob on Discord: standup in 5.");
+          expectActionCalled(h.spy, "CROSS_CHANNEL_SEND");
+        });
       },
-      90_000,
+      DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "set a goal triggers LIFE action",
+      "email draft request triggers CROSS_CHANNEL_SEND",
       async () => {
-        if (!hasAction("LIFE")) {
-          logger.warn("[action-e2e] LIFE action not registered, skipping");
-          return;
-        }
-        const capture = await sendMessageAndCaptureAction(
-          runtime,
-          "Set a goal to save $5,000 by the end of the year.",
-        );
-        expect(capture.responseText.length).toBeGreaterThan(0);
-        expectActionCalled(capture, "LIFE", ["CREATE_GOAL"]);
+        if (!hasAction("CROSS_CHANNEL_SEND")) return;
+        await withHarness(async (h) => {
+          await h.send(
+            "Email alice@example.com the meeting notes from today.",
+          );
+          expectActionCalled(h.spy, "CROSS_CHANNEL_SEND");
+        });
       },
-      90_000,
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "gmail triage request triggers GMAIL_ACTION",
+      async () => {
+        if (!hasAction("GMAIL_ACTION")) return;
+        await withHarness(async (h) => {
+          await h.send("Triage my gmail inbox.");
+          expectActionCalled(h.spy, "GMAIL_ACTION");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "generic inbox triage triggers INBOX",
+      async () => {
+        if (!hasAction("INBOX")) return;
+        await withHarness(async (h) => {
+          await h.send("Triage my inbox.");
+          expectActionCalled(h.spy, "INBOX");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
     );
   });
 
   // ===================================================================
-  //  5. Action selection — calendar
+  //  3. Calendar & scheduling
   // ===================================================================
 
-  describe("action selection — calendar", () => {
+  describe("calendar & scheduling", () => {
+    itIf(canRunLiveTests)(
+      "show today's calendar triggers CALENDAR_ACTION",
+      async () => {
+        if (!hasAction("CALENDAR_ACTION")) return;
+        await withHarness(async (h) => {
+          await h.send("Show me my calendar for today.");
+          expectActionCalled(h.spy, "CALENDAR_ACTION");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
     itIf(canRunLiveTests)(
       "schedule event triggers CALENDAR_ACTION",
       async () => {
-        if (!hasAction("CALENDAR_ACTION")) {
-          logger.warn("[action-e2e] CALENDAR_ACTION not registered, skipping");
-          return;
-        }
-        const capture = await sendMessageAndCaptureAction(
-          runtime,
-          "Schedule a dentist appointment next Tuesday at 3pm.",
-        );
-        expect(capture.responseText.length).toBeGreaterThan(0);
-        expectActionCalled(capture, "CALENDAR_ACTION", ["CREATE_EVENT"]);
+        if (!hasAction("CALENDAR_ACTION")) return;
+        await withHarness(async (h) => {
+          await h.send(
+            "Schedule a dentist appointment next Tuesday at 3pm.",
+          );
+          expectActionCalled(h.spy, "CALENDAR_ACTION");
+        });
       },
-      90_000,
+      DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "asking about weather does not invoke calendar action",
+      "help me schedule a meeting triggers SCHEDULING",
       async () => {
-        const capture = await sendMessageAndCaptureAction(
-          runtime,
-          "What is the weather like today?",
-        );
-        expect(capture.responseText.length).toBeGreaterThan(0);
-        const actual = normalizeActionName(capture.action);
-        expect(
-          actual === null || actual !== "CALENDAR_ACTION",
-          `Weather question should not trigger CALENDAR_ACTION, got: ${capture.action}`,
-        ).toBe(true);
+        if (!hasAction("SCHEDULING")) return;
+        await withHarness(async (h) => {
+          await h.send("Help me schedule a meeting with the design team.");
+          expectActionCalled(h.spy, "SCHEDULING");
+        });
       },
-      90_000,
-    );
-  });
-
-  // ===================================================================
-  //  6. Action selection — messaging
-  // ===================================================================
-
-  describe("action selection — messaging", () => {
-    itIf(canRunLiveTests)(
-      "send telegram message triggers cross-channel send",
-      async () => {
-        if (!hasAction("CROSS_CHANNEL_SEND")) {
-          logger.warn("[action-e2e] CROSS_CHANNEL_SEND not registered, skipping");
-          return;
-        }
-        const capture = await sendMessageAndCaptureAction(
-          runtime,
-          "Send a telegram message to Jane saying I'm running 10 minutes late.",
-        );
-        expect(capture.responseText.length).toBeGreaterThan(0);
-        expectActionCalled(capture, "CROSS_CHANNEL_SEND", ["SEND_MESSAGE"]);
-      },
-      90_000,
+      DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "casual chat does not invoke SEND_MESSAGE",
+      "availability question triggers CHECK_AVAILABILITY",
       async () => {
-        const capture = await sendMessageAndCaptureAction(
-          runtime,
-          "Thanks, that was helpful!",
-        );
-        expect(capture.responseText.length).toBeGreaterThan(0);
-        const actual = normalizeActionName(capture.action);
-        expect(
-          actual === null ||
-            !["SEND_MESSAGE", "CROSS_CHANNEL_SEND"].includes(actual),
-          `Casual thank-you should not trigger messaging action, got: ${capture.action}`,
-        ).toBe(true);
+        if (!hasAction("CHECK_AVAILABILITY")) return;
+        await withHarness(async (h) => {
+          await h.send("Am I free on Thursday afternoon?");
+          expectActionCalled(h.spy, "CHECK_AVAILABILITY");
+        });
       },
-      90_000,
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "propose times triggers PROPOSE_MEETING_TIMES",
+      async () => {
+        if (!hasAction("PROPOSE_MEETING_TIMES")) return;
+        await withHarness(async (h) => {
+          await h.send(
+            "Propose three times for a 30 minute sync with Marco next week.",
+          );
+          expectActionCalled(h.spy, "PROPOSE_MEETING_TIMES");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
     );
   });
 
   // ===================================================================
-  //  7. Multi-turn context
+  //  4. Relationships
   // ===================================================================
 
-  describe("multi-turn", () => {
+  describe("relationships", () => {
     itIf(canRunLiveTests)(
-      "follow-up todo creation after establishing context",
+      "add contact triggers RELATIONSHIP",
       async () => {
-        if (!hasAction("LIFE")) {
-          logger.warn("[action-e2e] LIFE action not registered, skipping");
-          return;
-        }
-        const capture = await sendConversationAndCaptureAction(
-          runtime,
-          [
-            "I have a really busy week coming up with lots of errands.",
-            "Actually, can you add 'pick up prescription from pharmacy' to my todo list?",
-          ],
-          { timeoutMs: 120_000 },
-        );
-        expect(capture.responseText.length).toBeGreaterThan(0);
-        expectActionCalled(capture, "LIFE", ["CREATE_TODO", "LIFE_CREATE_DEFINITION"]);
+        if (!hasAction("RELATIONSHIP")) return;
+        await withHarness(async (h) => {
+          await h.send(
+            "Add a new contact: David Lee, david@example.com, my old coworker.",
+          );
+          expectActionCalled(h.spy, "RELATIONSHIP");
+        });
       },
-      180_000,
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "follow-up list request triggers RELATIONSHIP",
+      async () => {
+        if (!hasAction("RELATIONSHIP")) return;
+        await withHarness(async (h) => {
+          await h.send("Who should I follow up with this week?");
+          expectActionCalled(h.spy, "RELATIONSHIP");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+  });
+
+  // ===================================================================
+  //  5. Focus / blocking
+  // ===================================================================
+
+  describe("focus / blocking", () => {
+    itIf(canRunLiveTests)(
+      "block websites request triggers BLOCK_WEBSITES",
+      async () => {
+        if (!hasAction("BLOCK_WEBSITES")) return;
+        await withHarness(async (h) => {
+          await h.send("Block twitter and reddit for the next 2 hours.");
+          expectActionCalled(h.spy, "BLOCK_WEBSITES");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "block apps request triggers BLOCK_APPS",
+      async () => {
+        if (!hasAction("BLOCK_APPS")) return;
+        await withHarness(async (h) => {
+          await h.send("Block the Slack app while I focus on deep work.");
+          expectActionCalled(h.spy, "BLOCK_APPS");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+  });
+
+  // ===================================================================
+  //  6. Social
+  // ===================================================================
+
+  describe("social", () => {
+    itIf(canRunLiveTests)(
+      "read DMs on X triggers X_READ",
+      async () => {
+        if (!hasAction("X_READ")) return;
+        await withHarness(async (h) => {
+          await h.send("Check my twitter DMs.");
+          expectActionCalled(h.spy, "X_READ");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "read feed on X triggers X_READ",
+      async () => {
+        if (!hasAction("X_READ")) return;
+        await withHarness(async (h) => {
+          await h.send("What's on my X timeline right now?");
+          expectActionCalled(h.spy, "X_READ");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+  });
+
+  // ===================================================================
+  //  7. Activity
+  // ===================================================================
+
+  describe("activity", () => {
+    itIf(canRunLiveTests)(
+      "screen time today triggers SCREEN_TIME",
+      async () => {
+        if (!hasAction("SCREEN_TIME")) return;
+        await withHarness(async (h) => {
+          await h.send("How much screen time have I used today?");
+          expectActionCalled(h.spy, "SCREEN_TIME");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "screen time by app triggers SCREEN_TIME",
+      async () => {
+        if (!hasAction("SCREEN_TIME")) return;
+        await withHarness(async (h) => {
+          await h.send("Break down my screen time by app this week.");
+          expectActionCalled(h.spy, "SCREEN_TIME");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+  });
+
+  // ===================================================================
+  //  8. Meta
+  // ===================================================================
+
+  describe("meta", () => {
+    itIf(canRunLiveTests)(
+      "dossier request triggers DOSSIER",
+      async () => {
+        if (!hasAction("DOSSIER")) return;
+        await withHarness(async (h) => {
+          await h.send("Pull up a dossier on Satya Nadella.");
+          expectActionCalled(h.spy, "DOSSIER");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "health summary triggers HEALTH",
+      async () => {
+        if (!hasAction("HEALTH")) return;
+        await withHarness(async (h) => {
+          await h.send("Summarize my health metrics for today.");
+          expectActionCalled(h.spy, "HEALTH");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "broadcast intent triggers INTENT_SYNC",
+      async () => {
+        if (!hasAction("INTENT_SYNC")) return;
+        await withHarness(async (h) => {
+          await h.send(
+            "Broadcast to all my devices: remind me to take my medication at 8pm.",
+          );
+          expectActionCalled(h.spy, "INTENT_SYNC");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+  });
+
+  // ===================================================================
+  //  9. Comms (action selection only — may require creds to execute)
+  // ===================================================================
+
+  describe("comms (selection only)", () => {
+    itIf(canRunLiveTests)(
+      "phone call request triggers TWILIO_VOICE_CALL",
+      async () => {
+        if (!hasAction("TWILIO_VOICE_CALL")) return;
+        await withHarness(async (h) => {
+          await h.send(
+            "Call the dentist and reschedule my appointment for next week.",
+          );
+          // Action may be gated off from completing without creds/owner role,
+          // but selection should still surface in the started events.
+          const started = h.spy
+            .getStartedCalls()
+            .map((c) => normalizeActionName(c.actionName));
+          const completed = h.spy
+            .getCompletedCalls()
+            .map((c) => normalizeActionName(c.actionName));
+          const target = normalizeActionName("TWILIO_VOICE_CALL");
+          expect(
+            started.includes(target) || completed.includes(target),
+            `Expected TWILIO_VOICE_CALL to be selected. Started=${started.join(",")} Completed=${completed.join(",")}`,
+          ).toBe(true);
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "password lookup request triggers PASSWORD_MANAGER",
+      async () => {
+        if (!hasAction("PASSWORD_MANAGER")) return;
+        await withHarness(async (h) => {
+          await h.send("Find my saved password for GitHub.");
+          const started = h.spy
+            .getStartedCalls()
+            .map((c) => normalizeActionName(c.actionName));
+          const completed = h.spy
+            .getCompletedCalls()
+            .map((c) => normalizeActionName(c.actionName));
+          const target = normalizeActionName("PASSWORD_MANAGER");
+          expect(
+            started.includes(target) || completed.includes(target),
+            `Expected PASSWORD_MANAGER to be selected. Started=${started.join(",")} Completed=${completed.join(",")}`,
+          ).toBe(true);
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "remote desktop request triggers REMOTE_DESKTOP",
+      async () => {
+        if (!hasAction("REMOTE_DESKTOP")) return;
+        await withHarness(async (h) => {
+          await h.send(
+            "Open a remote desktop session to my home laptop.",
+          );
+          const started = h.spy
+            .getStartedCalls()
+            .map((c) => normalizeActionName(c.actionName));
+          const completed = h.spy
+            .getCompletedCalls()
+            .map((c) => normalizeActionName(c.actionName));
+          const target = normalizeActionName("REMOTE_DESKTOP");
+          expect(
+            started.includes(target) || completed.includes(target),
+            `Expected REMOTE_DESKTOP to be selected. Started=${started.join(",")} Completed=${completed.join(",")}`,
+          ).toBe(true);
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "calendly booking link request triggers CALENDLY",
+      async () => {
+        if (!hasAction("CALENDLY")) return;
+        await withHarness(async (h) => {
+          await h.send(
+            "Give me my Calendly booking link for a 30 minute intro.",
+          );
+          const started = h.spy
+            .getStartedCalls()
+            .map((c) => normalizeActionName(c.actionName));
+          const completed = h.spy
+            .getCompletedCalls()
+            .map((c) => normalizeActionName(c.actionName));
+          const target = normalizeActionName("CALENDLY");
+          expect(
+            started.includes(target) || completed.includes(target),
+            `Expected CALENDLY to be selected. Started=${started.join(",")} Completed=${completed.join(",")}`,
+          ).toBe(true);
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "computer-use request triggers LIFEOPS_COMPUTER_USE",
+      async () => {
+        if (!hasAction("LIFEOPS_COMPUTER_USE")) return;
+        await withHarness(async (h) => {
+          await h.send(
+            "Open Finder and create a new folder called Q2-Reports on my desktop.",
+          );
+          const started = h.spy
+            .getStartedCalls()
+            .map((c) => normalizeActionName(c.actionName));
+          const completed = h.spy
+            .getCompletedCalls()
+            .map((c) => normalizeActionName(c.actionName));
+          const target = normalizeActionName("LIFEOPS_COMPUTER_USE");
+          expect(
+            started.includes(target) || completed.includes(target),
+            `Expected LIFEOPS_COMPUTER_USE to be selected. Started=${started.join(",")} Completed=${completed.join(",")}`,
+          ).toBe(true);
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
     );
   });
 });

@@ -15,6 +15,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { config as loadDotenv } from "dotenv";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../../../test/helpers/live-provider.ts";
@@ -36,17 +37,14 @@ const REPO_ROOT = path.resolve(
   "..",
   "..",
 );
+loadDotenv({ path: path.join(REPO_ROOT, ".env") });
+
 const LIVE_PROVIDER = selectLiveProvider();
 const LIVE_PROVIDER_PLUGIN_ID = LIVE_PROVIDER?.pluginPackage
   .split("/")
   .at(-1)
   ?.replace(/^plugin-/, "");
 const LIVE_DB_CODEWORD = `db-live-codeword-${Date.now()}`;
-
-try {
-  const { config } = await import("dotenv");
-  config({ path: path.join(REPO_ROOT, ".env") });
-} catch { /* dotenv optional */ }
 
 async function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {

@@ -75,11 +75,16 @@ export const calendlyWebhookRoute: Route = {
 			{ event: parsed.event, createdAt: parsed.created_at },
 			"[Calendly:webhook] received",
 		);
-		await runtime.emitEvent("CALENDLY_WEBHOOK", {
+		// `emitEvent` is generic over `EventPayloadMap` but falls through to a
+		// string-keyed overload for plugin-defined events. Payload must satisfy
+		// the base `EventPayload` shape (runtime, optional source). Consumers
+		// read the typed envelope from the `data` carrier.
+		const calendlyPayload = {
 			runtime,
 			source: "calendly",
-			event: parsed,
-		});
+			data: parsed,
+		};
+		await runtime.emitEvent("CALENDLY_WEBHOOK", calendlyPayload);
 		res.status(200).json({ ok: true });
 	},
 };

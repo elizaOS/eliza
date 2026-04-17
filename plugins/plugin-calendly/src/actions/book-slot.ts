@@ -31,11 +31,17 @@ import {
 	type CalendlyActionResult,
 } from "../types.js";
 
+type BookSource = "third-party" | "own-event";
+
+/**
+ * Result shape returned by the handler. The `[key: string]: string` index
+ * signature is required by `ActionResult.data: ProviderDataRecord`, which is
+ * itself an indexed record. Both real fields are strings.
+ */
 interface BookResult {
-	/** The Calendly URL the caller should open or forward. */
 	bookingUrl: string;
-	/** Indicates which resolution path produced the URL. */
-	source: "third-party" | "own-event";
+	source: BookSource;
+	[key: string]: string;
 }
 
 const CALENDLY_URL_RE = /https?:\/\/(?:www\.)?calendly\.com\/[\w\-./]+/i;

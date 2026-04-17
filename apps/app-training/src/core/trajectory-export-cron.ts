@@ -26,9 +26,9 @@ const EXPORT_EVENT_NAME = "TRACK_C_TRAJECTORY_EXPORT";
 const DEFAULT_TRAJECTORY_LIMIT = 500;
 
 interface MinimalLogger {
-	info: (...args: unknown[]) => void;
-	warn: (...args: unknown[]) => void;
-	error: (...args: unknown[]) => void;
+	info: (message: string) => void;
+	warn: (message: string) => void;
+	error: (message: string) => void;
 }
 
 interface RuntimeLike {
@@ -36,7 +36,7 @@ interface RuntimeLike {
 	logger?: MinimalLogger;
 	registerEvent?: (
 		name: string,
-		handler: (...args: unknown[]) => unknown,
+		handler: (payload: unknown) => Promise<void>,
 	) => void;
 }
 
