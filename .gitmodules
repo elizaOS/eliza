@@ -121,7 +121,8 @@
 	branch = alpha
 [submodule "plugins/plugin-wechat"]
 	path = plugins/plugin-wechat
-	url = https://github.com/milady-ai/plugin-wechat.git
+	url = https://github.com/elizaos-plugins/plugin-wechat.git
+	branch = alpha
 [submodule "plugins/plugin-agent-orchestrator"]
 	path = plugins/plugin-agent-orchestrator
 	url = https://github.com/elizaos-plugins/plugin-agent-orchestrator.git
