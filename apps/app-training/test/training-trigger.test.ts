@@ -14,6 +14,7 @@ import {
   triggerTraining,
 } from "../src/core/training-orchestrator.js";
 import {
+  bootstrapOptimizationFromAccumulatedTrajectories,
   registerTrainingTriggerService,
   TRAINING_TRIGGER_SERVICE,
   TrainingTriggerService,
@@ -182,6 +183,17 @@ describe("triggerTraining orchestrator", () => {
     const record = await triggerTraining(runtime, {
       source: "manual",
       task: "should_respond",
+      // Test runtime has no useModel handler; the native dispatcher will
+      // refuse to run. We pass an explicit empty backend list to assert the
+      // "no backend configured" path against the orchestrator code, since
+      // the new default-on backend list (`['native']`) would otherwise
+      // resolve to native and report "backend declined to invoke" instead.
+      config: {
+        autoTrain: true,
+        triggerThreshold: 100,
+        triggerCooldownHours: 12,
+        backends: [],
+      },
     });
     expect(record.status).toBe("skipped");
     expect(record.reason).toMatch(/no backend configured/);
@@ -396,5 +408,169 @@ describe("TrainingTriggerService", () => {
       | { instance: TrainingTriggerService }
       | undefined;
     expect(entry?.instance).toBe(service);
+  });
+});
+
+describe("bootstrapOptimizationFromAccumulatedTrajectories", () => {
+  function makeServiceWithCounter(
+    runtime: ReturnType<typeof makeRuntime>["runtime"],
+    counter: number,
+    threshold: number,
+  ): TrainingTriggerService {
+    const service = new TrainingTriggerService(runtime, {
+      configLoader: () => ({
+        autoTrain: true,
+        triggerThreshold: threshold,
+        triggerCooldownHours: 0,
+        backends: ["native"],
+      }),
+    });
+    // Hand-set the counter so we don't have to feed real trajectories.
+    for (let i = 0; i < counter; i += 1) {
+      // Hot-patch the persisted state via the service's getStatus snapshot so
+      // we can pretend N completions happened without invoking the trigger.
+      // We reach into the private field via a cast — tests own the contract.
+      (
+        service as unknown as {
+          state: { counters: Record<string, number> };
+        }
+      ).state.counters.should_respond = counter;
+    }
+    return service;
+  }
+
+  it("fires when counter >= threshold and no optimized prompt exists", async () => {
+    const { runtime } = makeRuntime([]);
+    const service = makeServiceWithCounter(runtime, 100, 100);
+    const fired: string[] = [];
+    const result = await bootstrapOptimizationFromAccumulatedTrajectories(
+      runtime,
+      service,
+      {
+        configLoader: () => ({
+          autoTrain: true,
+          triggerThreshold: 100,
+          triggerCooldownHours: 0,
+          backends: ["native"],
+        }),
+        triggerOverride: async (input) => {
+          fired.push(input.task);
+          return {
+            runId: "test",
+            status: "succeeded",
+            task: input.task,
+            backend: input.backend,
+            source: "manual",
+            datasetSize: 0,
+            startedAt: new Date().toISOString(),
+            finishedAt: new Date().toISOString(),
+            pulledTrajectories: 0,
+            filteredTrajectories: 0,
+            redactionCount: 0,
+            anonymizationCount: 0,
+            dryRun: false,
+          };
+        },
+      },
+    );
+    expect(result).toContain("should_respond");
+    expect(fired).toContain("should_respond");
+  });
+
+  it("does nothing when MILADY_DISABLE_AUTO_BOOTSTRAP=1", async () => {
+    const { runtime } = makeRuntime([]);
+    const service = makeServiceWithCounter(runtime, 100, 100);
+    const original = process.env.MILADY_DISABLE_AUTO_BOOTSTRAP;
+    process.env.MILADY_DISABLE_AUTO_BOOTSTRAP = "1";
+    try {
+      const result = await bootstrapOptimizationFromAccumulatedTrajectories(
+        runtime,
+        service,
+      );
+      expect(result).toEqual([]);
+    } finally {
+      if (original === undefined) {
+        delete process.env.MILADY_DISABLE_AUTO_BOOTSTRAP;
+      } else {
+        process.env.MILADY_DISABLE_AUTO_BOOTSTRAP = original;
+      }
+    }
+  });
+
+  it("skips tasks with an existing optimized prompt", async () => {
+    const trajectories: FakeTrajectory[] = [];
+    const services = new Map<string, unknown[]>();
+    const optimizedStub = { hasOptimized: () => true };
+    const runtime = {
+      services,
+      getService: (name: string) => {
+        if (name === "trajectories") {
+          return {
+            listTrajectories: async () => ({
+              trajectories: trajectories.map((t) => ({ id: t.trajectoryId })),
+            }),
+            getTrajectoryDetail: async () => null,
+          };
+        }
+        if (name === "optimized_prompt") return optimizedStub;
+        return null;
+      },
+      logger: { info() {}, warn() {}, error() {} },
+    };
+    const service = makeServiceWithCounter(runtime, 100, 100);
+    const fired: string[] = [];
+    const result = await bootstrapOptimizationFromAccumulatedTrajectories(
+      runtime,
+      service,
+      {
+        configLoader: () => ({
+          autoTrain: true,
+          triggerThreshold: 100,
+          triggerCooldownHours: 0,
+          backends: ["native"],
+        }),
+        triggerOverride: async (input) => {
+          fired.push(input.task);
+          return {
+            runId: "test",
+            status: "succeeded",
+            task: input.task,
+            backend: input.backend,
+            source: "manual",
+            datasetSize: 0,
+            startedAt: new Date().toISOString(),
+            finishedAt: new Date().toISOString(),
+            pulledTrajectories: 0,
+            filteredTrajectories: 0,
+            redactionCount: 0,
+            anonymizationCount: 0,
+            dryRun: false,
+          };
+        },
+      },
+    );
+    expect(result).toEqual([]);
+    expect(fired).toEqual([]);
+  });
+
+  it("skips when counter < threshold", async () => {
+    const { runtime } = makeRuntime([]);
+    const service = makeServiceWithCounter(runtime, 50, 100);
+    const result = await bootstrapOptimizationFromAccumulatedTrajectories(
+      runtime,
+      service,
+      {
+        configLoader: () => ({
+          autoTrain: true,
+          triggerThreshold: 100,
+          triggerCooldownHours: 0,
+          backends: ["native"],
+        }),
+        triggerOverride: async () => {
+          throw new Error("should not fire");
+        },
+      },
+    );
+    expect(result).toEqual([]);
   });
 });
