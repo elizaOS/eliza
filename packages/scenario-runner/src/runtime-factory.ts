@@ -126,6 +126,56 @@ export async function createScenarioRuntime(
   }
   await runtime.registerPlugin(providerPlugin);
 
+  // Default-load @elizaos/plugin-agent-skills so scenarios that declare it in
+  // `requires.plugins` resolve without ad-hoc wiring. Graceful-degrade when the
+  // package cannot be resolved (fresh checkout, not yet installed).
+  try {
+    const agentSkillsModule = (await import(
+      "@elizaos/plugin-agent-skills"
+    )) as Record<string, unknown>;
+    const agentSkillsPlugin = extractPlugin(agentSkillsModule, [
+      "default",
+      "agentSkillsPlugin",
+    ]);
+    if (agentSkillsPlugin) {
+      await runtime.registerPlugin(agentSkillsPlugin);
+    } else {
+      logger.warn(
+        "[scenario-runner] @elizaos/plugin-agent-skills did not export a Plugin; skipping",
+      );
+    }
+  } catch (err) {
+    logger.warn(
+      `[scenario-runner] @elizaos/plugin-agent-skills unavailable: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  // Default-load @elizaos/app-lifeops after agent-skills (LifeOps action
+  // routing depends on agent-skills). Graceful-degrade on resolution failure.
+  // Env prerequisites (Gmail OAuth, Twilio, etc.) are NOT required for the
+  // plugin to load — they only gate individual action execution at call time.
+  try {
+    const lifeOpsModule = (await import("@elizaos/app-lifeops/plugin")) as Record<
+      string,
+      unknown
+    >;
+    const lifeOpsPlugin = extractPlugin(lifeOpsModule, [
+      "default",
+      "appLifeOpsPlugin",
+    ]);
+    if (lifeOpsPlugin) {
+      await runtime.registerPlugin(lifeOpsPlugin);
+    } else {
+      logger.warn(
+        "[scenario-runner] @elizaos/app-lifeops did not export a Plugin; skipping",
+      );
+    }
+  } catch (err) {
+    logger.warn(
+      `[scenario-runner] @elizaos/app-lifeops unavailable: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   for (const extra of options?.extraPlugins ?? []) {
     await runtime.registerPlugin(extra);
   }
