@@ -150,11 +150,12 @@ export const lifeOpsProvider: Provider = {
               await service.getNextCalendarEventContext(INTERNAL_URL);
             calendarLines.push(...summarizeNextEvent(nextEventContext));
           } catch (cause) {
-            // Degrading gracefully: calendar fetch failure must not block the
-            // provider, but we need visibility to diagnose recurring failures.
             logger.warn(
               { err: cause },
               "[LifeOpsProvider] calendar fetch failed — omitting calendar context",
+            );
+            calendarLines.push(
+              `Calendar connector degraded: ${cause instanceof Error ? cause.message : String(cause)}`,
             );
           }
         }
@@ -171,14 +172,19 @@ export const lifeOpsProvider: Provider = {
               { err: cause },
               "[LifeOpsProvider] gmail triage fetch failed — omitting email context",
             );
+            emailLines.push(
+              `Gmail connector degraded: ${cause instanceof Error ? cause.message : String(cause)}`,
+            );
           }
         }
       }
     } catch (cause) {
-      // Expected when Google isn't configured; debug-level to avoid per-message noise.
       logger.debug(
         { err: cause },
         "[LifeOpsProvider] Google connector unavailable — skipping calendar/email context",
+      );
+      accountLines.push(
+        `Google connector status unavailable: ${cause instanceof Error ? cause.message : String(cause)}`,
       );
     }
 
