@@ -67,7 +67,12 @@ function TelegramIcon({ className }: { className?: string }) {
 export function SignalConnectorCard() {
   const signal = useSignalConnector();
   const isConnected = signal.status?.connected === true;
-  const isPairing = signal.pairingStatus != null;
+  const pairingState = signal.pairingStatus?.state ?? null;
+  const isPairing =
+    !isConnected &&
+    (pairingState === "generating_qr" ||
+      pairingState === "waiting_for_scan" ||
+      pairingState === "linking");
   const busy = signal.actionPending || signal.loading;
 
   return (
