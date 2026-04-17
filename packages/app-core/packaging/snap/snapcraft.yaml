@@ -263,9 +263,13 @@ parts:
         )
       fi
 
+      # Fresh snap builds also need generated i18n keyword data; the
+      # production build imports the generated TypeScript module directly.
+      node eliza/packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
       # Run only the safe postinstall steps (patch deps, link browser server)
-      node scripts/patch-deps.mjs || true
-      node scripts/link-browser-server.mjs || true
+      node eliza/packages/app-core/scripts/patch-deps.mjs || true
+      node eliza/packages/app-core/scripts/link-browser-server.mjs || true
 
       # Build the project
       bun run build
