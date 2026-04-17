@@ -33,7 +33,7 @@ dependencies = [
     "fabric",
     "gymnasium~=0.28.1",
     "requests~=2.33.1",
-    "pytz~=2024.1",
+    "pytz~=2026.1.post1",
     "transformers~=5.0.0rc3",
     "torch~=2.8.0",
     "accelerate",
