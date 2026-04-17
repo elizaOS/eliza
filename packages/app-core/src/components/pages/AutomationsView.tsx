@@ -1498,10 +1498,7 @@ function AutomationsLayout() {
         ) : null}
 
         {filter === "workflows" ? (
-          <N8nWorkflowsPanel
-            composerRef={workflowComposerRef}
-            onFocusComposer={focusWorkflowComposer}
-          />
+          <N8nWorkflowsPanel composerRef={workflowComposerRef} />
         ) : editorOpen || editingId || editingTaskId ? (
           editorMode === "task" || editingTaskId ? (
             <TaskForm />
