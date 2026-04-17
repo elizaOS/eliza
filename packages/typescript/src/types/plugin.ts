@@ -257,6 +257,17 @@ export interface PluginAppBridge {
 	refreshRunSession?: (
 		ctx: PluginAppBridgeRunContext,
 	) => Promise<PluginAppSessionState | null>;
+	/**
+	 * Called when a specific app run is stopped (via the Stop button or
+	 * `POST /api/apps/runs/:runId/stop`). Plugins should tear down any
+	 * runId-scoped resources here: open WebSocket connections, game-loop
+	 * timers, bot sessions, child processes, embedded servers, etc.
+	 *
+	 * Implementations should be idempotent — if the resource is already
+	 * gone the hook should return quietly. Errors are logged but do not
+	 * block the run removal from the app-manager registry.
+	 */
+	stopRun?: (ctx: PluginAppBridgeRunContext) => Promise<void>;
 }
 
 export interface PluginApp {

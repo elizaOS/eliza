@@ -58,6 +58,10 @@ export interface RelationshipsPersonFact {
   scope?: string;
   confidence?: number;
   updatedAt?: string;
+  /** ISO8601 timestamp from FactRefinementEvaluator metadata. */
+  lastReinforced?: string;
+  /** Message IDs that contributed evidence to this fact. */
+  evidenceMessageIds?: string[];
 }
 
 export interface RelationshipsConversationMessage {

@@ -9,12 +9,15 @@
  */
 
 import {
+  bigint,
   boolean,
   integer,
+  jsonb,
   pgTable,
   real,
   text,
   unique,
+  uuid,
 } from "drizzle-orm/pg-core";
 
 // ---------------------------------------------------------------------------
@@ -215,6 +218,27 @@ export const lifeDossiers = pgTable("life_dossiers", {
   updatedAt: text("updated_at").notNull(),
 });
 
+// T7g — Website blocker chat integration (plan §6.8).
+// Stores block rules whose lifecycle is driven by todo completion, fixed
+// duration, or an explicit ISO target. The reconciler releases rules when
+// their gate is fulfilled; harsh_no_bypass rules can only be released by the
+// reconciler on gate fulfillment (never by the user).
+export const lifeBlockRules = pgTable("life_block_rules", {
+  id: uuid("id").primaryKey(),
+  agentId: uuid("agent_id").notNull(),
+  profile: text("profile").notNull(),
+  websites: jsonb("websites").notNull(),
+  gateType: text("gate_type").notNull(),
+  gateTodoId: text("gate_todo_id"),
+  gateUntilMs: bigint("gate_until_ms", { mode: "number" }),
+  fixedDurationMs: bigint("fixed_duration_ms", { mode: "number" }),
+  unlockDurationMs: bigint("unlock_duration_ms", { mode: "number" }),
+  active: boolean("active").default(true),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  releasedAt: bigint("released_at", { mode: "number" }),
+  releasedReason: text("released_reason"),
+});
+
 // ---------------------------------------------------------------------------
 // Aggregate export for plugin schema property
 // ---------------------------------------------------------------------------
@@ -232,4 +256,5 @@ export const lifeOpsSchema = {
   lifeSchedulingNegotiations,
   lifeSchedulingProposals,
   lifeDossiers,
+  lifeBlockRules,
 } as const;

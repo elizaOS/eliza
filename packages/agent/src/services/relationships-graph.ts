@@ -107,6 +107,10 @@ export type RelationshipsPersonFact = {
   scope?: string;
   confidence?: number;
   updatedAt?: string;
+  /** ISO8601 timestamp from the FactRefinementEvaluator metadata. */
+  lastReinforced?: string;
+  /** Message IDs that contributed evidence for this fact. */
+  evidenceMessageIds?: string[];
 };
 
 export type RelationshipsConversationMessage = {
@@ -1706,6 +1710,14 @@ async function buildFacts(
     });
     for (const memory of memories) {
       const metadata = asRecord(memory.metadata);
+      const lastReinforced = asString(metadata?.lastReinforced) ?? undefined;
+      const evidenceRaw = metadata?.evidenceMessageIds;
+      const evidenceMessageIds = Array.isArray(evidenceRaw)
+        ? evidenceRaw.filter(
+            (entry): entry is string =>
+              typeof entry === "string" && entry.length > 0,
+          )
+        : undefined;
       facts.push({
         id: memory.id ?? `${entityId}:fact:${facts.length}`,
         sourceType: "memory",
@@ -1715,6 +1727,8 @@ async function buildFacts(
           undefined,
         confidence: asNumber(metadata?.confidence) ?? undefined,
         updatedAt: isoFromTimestamp(memory.createdAt),
+        lastReinforced,
+        evidenceMessageIds,
       });
     }
   }

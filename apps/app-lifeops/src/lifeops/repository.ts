@@ -1822,6 +1822,30 @@ export class LifeOpsRepository {
         created_at TEXT NOT NULL
       )`,
     );
+
+    // T7g — Website blocker chat integration block rules. Plan §6.8.
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_block_rules (
+        id UUID PRIMARY KEY,
+        agent_id UUID NOT NULL,
+        profile TEXT NOT NULL,
+        websites JSONB NOT NULL,
+        gate_type TEXT NOT NULL,
+        gate_todo_id TEXT,
+        gate_until_ms BIGINT,
+        fixed_duration_ms BIGINT,
+        unlock_duration_ms BIGINT,
+        active BOOLEAN DEFAULT TRUE,
+        created_at BIGINT NOT NULL,
+        released_at BIGINT,
+        released_reason TEXT
+      )`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE INDEX IF NOT EXISTS idx_block_rules_active_gate ON life_block_rules(active, gate_type) WHERE active = TRUE`,
+    );
   }
 
   async createDefinition(definition: LifeOpsTaskDefinition): Promise<void> {
