@@ -291,24 +291,38 @@ function FactsPanel({ person }: { person: RelationshipsPersonDetail }) {
         </p>
       ) : (
         <div className="mt-4 space-y-3">
-          {person.facts.map((fact) => (
-            <div
-              key={fact.id}
-              className="rounded-2xl border border-border/24 bg-card/32 px-3.5 py-3"
-            >
-              <div className="flex flex-wrap items-center gap-2 text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-                <span>{fact.sourceType}</span>
-                {fact.field ? <span>{fact.field}</span> : null}
-                {typeof fact.confidence === "number" ? (
-                  <span>{Math.round(fact.confidence * 100)}%</span>
-                ) : null}
+          {person.facts.map((fact) => {
+            const evidenceCount = fact.evidenceMessageIds?.length ?? 0;
+            return (
+              <div
+                key={fact.id}
+                className="rounded-2xl border border-border/24 bg-card/32 px-3.5 py-3"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <MetaPill compact>{fact.sourceType}</MetaPill>
+                  {fact.field ? <MetaPill compact>{fact.field}</MetaPill> : null}
+                  {typeof fact.confidence === "number" ? (
+                    <MetaPill compact>
+                      {Math.round(fact.confidence * 100)}% confidence
+                    </MetaPill>
+                  ) : null}
+                  {evidenceCount > 0 ? (
+                    <MetaPill compact>{evidenceCount} evidence</MetaPill>
+                  ) : null}
+                </div>
+                <div className="mt-2 text-sm leading-6 text-txt">
+                  {fact.text}
+                </div>
+                <div className="mt-2 text-xs text-muted">
+                  {fact.lastReinforced
+                    ? `Reinforced ${formatDateTime(fact.lastReinforced, { fallback: "n/a" })}`
+                    : formatDateTime(fact.updatedAt, {
+                        fallback: "No timestamp",
+                      })}
+                </div>
               </div>
-              <div className="mt-2 text-sm leading-6 text-txt">{fact.text}</div>
-              <div className="mt-2 text-xs text-muted">
-                {formatDateTime(fact.updatedAt, { fallback: "No timestamp" })}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </PagePanel>
