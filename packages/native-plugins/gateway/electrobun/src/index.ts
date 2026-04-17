@@ -28,7 +28,10 @@ import type {
   JsonObject,
   JsonValue,
 } from "../../src/definitions";
-import type { EventCallback, ListenerEntry as BaseListenerEntry } from "../../../shared-types.js";
+import type {
+  EventCallback,
+  ListenerEntry as BaseListenerEntry,
+} from "../../../shared-types.js";
 
 type GatewayEventData =
   | GatewayEvent

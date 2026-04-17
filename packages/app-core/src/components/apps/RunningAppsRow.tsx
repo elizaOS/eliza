@@ -1,4 +1,4 @@
-import type { KeyboardEvent, MouseEvent } from "react";
+import type { MouseEvent } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";
 import { AppIdentityTile } from "./app-identity";
 import { getRunAttentionReasons } from "./run-attention";
@@ -43,15 +43,6 @@ export function RunningAppsRow({
     catalogApps.map((app) => [app.name, app] as const),
   );
 
-  const openFromKeyboard = (
-    event: KeyboardEvent<HTMLDivElement>,
-    run: AppRunSummary,
-  ) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    onOpenRun(run);
-  };
-
   return (
     <section data-testid="running-apps-row" className="space-y-3">
       <div className="flex items-center gap-3">
@@ -76,38 +67,42 @@ export function RunningAppsRow({
           return (
             <div
               key={run.runId}
-              role="button"
-              tabIndex={0}
               data-testid={`running-app-card-${run.runId}`}
-              aria-label={`Open ${run.displayName}`}
-              aria-busy={isBusy || undefined}
-              className="group flex flex-col rounded-2xl border border-accent/25 bg-card/72 p-4 text-left transition-all hover:border-accent/45 hover:bg-bg-hover/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35"
-              onClick={() => onOpenRun(run)}
-              onKeyDown={(event) => openFromKeyboard(event, run)}
+              className="group rounded-2xl border border-accent/25 bg-card/72 transition-all hover:border-accent/45 hover:bg-bg-hover/70 focus-within:ring-2 focus-within:ring-accent/35"
             >
-              <div className="flex items-start gap-3">
-                <AppIdentityTile app={app} active size="sm" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate text-sm font-semibold text-txt">
-                      {run.displayName}
-                    </span>
-                    <HealthBadge run={run} />
-                  </div>
-                  <div className="mt-1 line-clamp-1 text-xs-tight text-muted-strong">
-                    {run.status}
+              <button
+                type="button"
+                aria-label={`Open ${run.displayName}`}
+                aria-busy={isBusy || undefined}
+                className="flex w-full flex-col p-4 text-left focus-visible:outline-none"
+                onClick={() => onOpenRun(run)}
+              >
+                <div className="flex items-start gap-3">
+                  <AppIdentityTile app={app} active size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="truncate text-sm font-semibold text-txt">
+                        {run.displayName}
+                      </span>
+                      <HealthBadge run={run} />
+                    </div>
+                    <div className="mt-1 line-clamp-1 text-xs-tight text-muted-strong">
+                      {run.status}
+                    </div>
                   </div>
                 </div>
-              </div>
+              </button>
               {needsAttention ? (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  <span className="inline-flex items-center rounded-full border border-warn/30 bg-warn/10 px-2 py-0.5 text-2xs font-medium uppercase tracking-[0.12em] text-warn">
-                    Needs attention
-                  </span>
+                <div className="px-4 pb-3">
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className="inline-flex items-center rounded-full border border-warn/30 bg-warn/10 px-2 py-0.5 text-2xs font-medium uppercase tracking-[0.12em] text-warn">
+                      Needs attention
+                    </span>
+                  </div>
                 </div>
               ) : null}
               {onStopRun ? (
-                <div className="mt-3 flex justify-end">
+                <div className="flex justify-end px-4 pb-4">
                   <button
                     type="button"
                     data-testid={`running-app-stop-${run.runId}`}

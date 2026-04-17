@@ -1,15 +1,16 @@
-import type {
-  ConversationMessage,
-  ImageAttachment,
-} from "../../api/client-types-chat";
-import { client } from "../../api/client";
-import { isRoutineCodingAgentMessage } from "../../chat";
-import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
-import { useChatComposer } from "../../state/ChatComposerContext";
-import { usePtySessions } from "../../state/PtySessionsContext";
-import { useApp } from "../../state/useApp";
-import { getVrmPreviewUrl } from "../../state/vrm";
-
+import {
+  CodingAgentControlChip,
+  PtyConsoleDrawer,
+} from "@elizaos/app-task-coordinator";
+import {
+  ChatAttachmentStrip,
+  ChatComposer,
+  ChatComposerShell,
+  ChatSourceIcon,
+  ChatThreadLayout,
+  ChatTranscript,
+  TypingIndicator,
+} from "@elizaos/ui";
 import {
   type ChangeEvent,
   type DragEvent,
@@ -21,11 +22,19 @@ import {
   useRef,
   useState,
 } from "react";
+import { client } from "../../api/client";
+import type {
+  ConversationMessage,
+  ImageAttachment,
+} from "../../api/client-types-chat";
+import { isRoutineCodingAgentMessage } from "../../chat";
+import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
+import { useChatComposer } from "../../state/ChatComposerContext";
+import { usePtySessions } from "../../state/PtySessionsContext";
+import { useApp } from "../../state/useApp";
+import { getVrmPreviewUrl } from "../../state/vrm";
 import { AgentActivityBox } from "../chat/AgentActivityBox";
 import { MessageContent } from "../chat/MessageContent";
-import { CodingAgentControlChip } from "@elizaos/app-task-coordinator";
-import { PtyConsoleDrawer } from "@elizaos/app-task-coordinator";
-import { ChatAttachmentStrip, ChatComposer, ChatComposerShell, ChatSourceIcon, ChatThreadLayout, ChatTranscript, TypingIndicator } from "@elizaos/ui";
 import {
   useChatVoiceController,
   useGameModalMessages,
@@ -99,10 +108,7 @@ export function ChatView({
   onPtySessionClick,
   hideTerminalPanel = false,
 }: ChatViewProps) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  if (!app) {
-    return null;
-  }
+  const app = useApp();
   const isGameModal = variant === "game-modal";
   const showComposerVoiceToggle = false;
   const {
@@ -856,10 +862,7 @@ function InboxChatPanel({
   );
 
   return (
-    <div
-      className="flex flex-1 min-h-0 min-w-0 flex-col"
-      aria-label={t("inboxview.Title", { defaultValue: "Inbox" })}
-    >
+    <div className="flex flex-1 min-h-0 min-w-0 flex-col">
       <div className="flex items-center justify-between px-5 py-3">
         <div className="min-w-0">
           <div className="text-sm font-bold text-txt truncate">

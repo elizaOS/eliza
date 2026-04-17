@@ -1,11 +1,16 @@
+import {
+  InferenceCloudAlertButton,
+  resolveCompanionInferenceNotice,
+} from "@elizaos/app-companion/ui";
 import { CloudStatusBadge } from "@elizaos/app-core/components/cloud/CloudStatusBadge";
 import { LanguageDropdown } from "@elizaos/app-core/components/shared/LanguageDropdown";
 import { ThemeToggle } from "@elizaos/app-core/components/shared/ThemeToggle";
 import { getTabGroups, type TabGroup } from "@elizaos/app-core/navigation";
 import { useApp } from "@elizaos/app-core/state";
-import {
-  Button,
-} from "../ui/button";
+import { ListTodo, Menu, X } from "lucide-react";
+import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Button } from "../ui/button";
 import {
   Dialog,
   DialogContent,
@@ -13,13 +18,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
-import { ListTodo, Menu, X } from "lucide-react";
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  InferenceCloudAlertButton,
-  resolveCompanionInferenceNotice,
-} from "@elizaos/app-companion/ui";
 import {
   HEADER_BUTTON_STYLE,
   HEADER_ICON_BUTTON_CLASSNAME,
@@ -138,7 +136,6 @@ export function Header({
   // Outside the companion overlay the shell is always in desktop/native mode.
   // The mode-selector pill only appears inside the companion overlay header.
   const activeShellView = "desktop" as const;
-  const isDesktopShell = true;
   const showNavigationMenu = true;
   const showCloudStatus = !hideCloudCredits;
   const headerFrameClassName = "";
@@ -213,11 +210,6 @@ export function Header({
   useEffect(() => {
     setState("chatMode", "power");
   }, [setState]);
-
-  useEffect(() => {
-    if (showNavigationMenu) return;
-    setMobileMenuOpen(false);
-  }, [showNavigationMenu]);
 
   return (
     <>

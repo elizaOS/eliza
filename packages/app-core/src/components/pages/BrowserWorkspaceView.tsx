@@ -1,5 +1,12 @@
-
-
+import {
+  BROWSER_WALLET_READY_TYPE,
+  BROWSER_WALLET_RESPONSE_TYPE,
+  type BrowserWorkspaceWalletResponse,
+  type BrowserWorkspaceWalletState,
+  buildBrowserWorkspaceWalletState,
+  isBrowserWorkspaceWalletRequest,
+} from "@elizaos/app-steward/browser-workspace-wallet";
+import { Button, Input } from "@elizaos/ui";
 import {
   ChevronLeft,
   ChevronRight,
@@ -22,17 +29,8 @@ import {
   type BrowserWorkspaceTab,
   client,
 } from "../../api";
-import {
-  BROWSER_WALLET_READY_TYPE,
-  BROWSER_WALLET_RESPONSE_TYPE,
-  type BrowserWorkspaceWalletResponse,
-  type BrowserWorkspaceWalletState,
-  buildBrowserWorkspaceWalletState,
-  isBrowserWorkspaceWalletRequest,
-} from "@elizaos/app-steward/browser-workspace-wallet";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
-import { Button, Input } from "@elizaos/ui";
 import { ChatView } from "./ChatView.js";
 
 const POLL_INTERVAL_MS = 2_500;
@@ -101,7 +99,7 @@ function getBrowserWorkspaceRailMonogram(label: string): string {
   return (alphanumeric[0] ?? "B").toUpperCase();
 }
 
-function formatBrowserWorkspaceTimestamp(value: string | null): string {
+function _formatBrowserWorkspaceTimestamp(value: string | null): string {
   if (!value) {
     return "Idle";
   }
@@ -115,7 +113,7 @@ function formatBrowserWorkspaceTimestamp(value: string | null): string {
   }
 }
 
-function formatBrowserWorkspaceWalletAddress(address: string): string {
+function _formatBrowserWorkspaceWalletAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
@@ -333,7 +331,7 @@ export function BrowserWorkspaceView(): JSX.Element {
     () => workspace.tabs.find((tab) => tab.id === selectedTabId) ?? null,
     [selectedTabId, workspace.tabs],
   );
-  const walletStateRefreshKey = useMemo(
+  const _walletStateRefreshKey = useMemo(
     () =>
       [
         walletAddresses?.evmAddress ?? "",
@@ -518,7 +516,7 @@ export function BrowserWorkspaceView(): JSX.Element {
     [loadWorkspace, openNewBrowserWorkspaceTab, selectedTabId],
   );
 
-  const closeSelectedBrowserWorkspaceTab = useCallback(async () => {
+  const _closeSelectedBrowserWorkspaceTab = useCallback(async () => {
     if (!selectedTabId) {
       return;
     }
@@ -568,7 +566,7 @@ export function BrowserWorkspaceView(): JSX.Element {
 
   useEffect(() => {
     void loadBrowserWalletState();
-  }, [loadBrowserWalletState, walletStateRefreshKey]);
+  }, [loadBrowserWalletState]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1008,17 +1006,21 @@ export function BrowserWorkspaceView(): JSX.Element {
       data-testid="browser-workspace-view"
     >
       {/* Tab strip */}
-      <div className="flex items-end gap-1 overflow-x-auto border-b border-border/30 bg-card/30 px-2 pt-2">
+      <div
+        className="flex items-end gap-1 overflow-x-auto border-b border-border/30 bg-card/30 px-2 pt-2"
+        role="tablist"
+      >
         {workspace.tabs.map((tab) => {
           const active = tab.id === selectedTabId;
           const label = getBrowserWorkspaceTabLabel(tab);
           return (
-            <button
+            <div
               key={tab.id}
-              type="button"
               title={`${label}\n${tab.url}`}
               aria-label={`${label} ${tab.url}`}
+              role="tab"
               aria-selected={active}
+              tabIndex={active ? 0 : -1}
               onClick={() =>
                 void runBrowserWorkspaceAction(
                   `show:${tab.id}:tabstrip`,
@@ -1032,23 +1034,35 @@ export function BrowserWorkspaceView(): JSX.Element {
                   ? "border-border/40 bg-bg text-txt"
                   : "border-transparent bg-card/30 text-muted hover:bg-card/60 hover:text-txt"
               }`}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  void runBrowserWorkspaceAction(
+                    `show:${tab.id}:tabstrip`,
+                    async () => {
+                      await activateBrowserWorkspaceTab(tab.id);
+                    },
+                  );
+                }
+              }}
             >
               {tab.visible ? (
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full bg-accent shadow-[0_0_6px_var(--accent)]"
-                  aria-label={t("browserworkspace.AgentActive", {
-                    defaultValue: "Agent is on this tab",
-                  })}
-                />
+                <>
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-accent shadow-[0_0_6px_var(--accent)]" />
+                  <span className="sr-only">
+                    {t("browserworkspace.AgentActive", {
+                      defaultValue: "Agent is on this tab",
+                    })}
+                  </span>
+                </>
               ) : (
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-black/10 text-[10px] font-semibold text-muted">
                   {getBrowserWorkspaceRailMonogram(label)}
                 </span>
               )}
               <span className="flex-1 truncate text-left">{label}</span>
-              <span
-                role="button"
-                tabIndex={0}
+              <button
+                type="button"
                 aria-label={t("browserworkspace.CloseTab", {
                   defaultValue: "Close tab",
                 })}
@@ -1061,8 +1075,9 @@ export function BrowserWorkspaceView(): JSX.Element {
                       await client.closeBrowserWorkspaceTab(tab.id);
                       const snapshot = await client.getBrowserWorkspace();
                       const nextId =
-                        snapshot.tabs.find((t) => t.id === selectedTabId)
-                          ?.id ?? snapshot.tabs[0]?.id ?? null;
+                        snapshot.tabs.find((t) => t.id === selectedTabId)?.id ??
+                        snapshot.tabs[0]?.id ??
+                        null;
                       if (nextId && nextId !== selectedTabId) {
                         await client.showBrowserWorkspaceTab(nextId);
                       }
@@ -1082,8 +1097,8 @@ export function BrowserWorkspaceView(): JSX.Element {
                 }}
               >
                 <X className="h-3 w-3" />
-              </span>
-            </button>
+              </button>
+            </div>
           );
         })}
         <button
@@ -1124,12 +1139,9 @@ export function BrowserWorkspaceView(): JSX.Element {
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.preventDefault();
-              void runBrowserWorkspaceAction(
-                "navigate:enter",
-                async () => {
-                  await navigateSelectedBrowserWorkspaceTab(locationInput);
-                },
-              );
+              void runBrowserWorkspaceAction("navigate:enter", async () => {
+                await navigateSelectedBrowserWorkspaceTab(locationInput);
+              });
             }
           }}
           placeholder={t("browserworkspace.AddressPlaceholder", {
