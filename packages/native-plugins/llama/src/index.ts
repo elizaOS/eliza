@@ -79,6 +79,8 @@ function detectPlatform(): "ios" | "android" | "web" {
 
 class CapacitorLlamaAdapter implements LlamaAdapter {
   private plugin: LlamaCppPluginLike | null = null;
+  /** Cached loader promise so concurrent `load()` calls don't race to register duplicate listeners. */
+  private pluginLoadPromise: Promise<LlamaCppPluginLike> | null = null;
   private loadedPath: string | null = null;
   private tokenIndex = 0;
   private tokenListeners = new Set<(token: string, index: number) => void>();
@@ -86,47 +88,60 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
 
   private async loadPlugin(): Promise<LlamaCppPluginLike> {
     if (this.plugin) return this.plugin;
-    const mod = (await import("llama-cpp-capacitor")) as unknown as
-      | LlamaCppCapacitorModule
-      | { LlamaCpp: LlamaCppPluginLike };
-    const plugin =
-      "default" in mod
-        ? (mod as LlamaCppCapacitorModule).default
-        : (mod as { LlamaCpp: LlamaCppPluginLike }).LlamaCpp;
-    if (!plugin || typeof plugin.initContext !== "function") {
-      throw new Error(
-        "llama-cpp-capacitor did not expose an initContext method",
-      );
-    }
-    // Set up the token listener once; it fans out to registered listeners.
-    this.pluginListenerHandle = await plugin.addListener(
-      "@LlamaCpp_onToken",
-      (data) => {
-        this.tokenIndex += 1;
-        for (const listener of this.tokenListeners) {
-          try {
-            listener(data.token, this.tokenIndex);
-          } catch {
-            this.tokenListeners.delete(listener);
+    if (this.pluginLoadPromise) return this.pluginLoadPromise;
+    this.pluginLoadPromise = (async () => {
+      const mod = (await import("llama-cpp-capacitor")) as unknown as
+        | LlamaCppCapacitorModule
+        | { LlamaCpp: LlamaCppPluginLike };
+      const plugin =
+        "default" in mod
+          ? (mod as LlamaCppCapacitorModule).default
+          : (mod as { LlamaCpp: LlamaCppPluginLike }).LlamaCpp;
+      if (!plugin || typeof plugin.initContext !== "function") {
+        throw new Error(
+          "llama-cpp-capacitor did not expose an initContext method",
+        );
+      }
+      // Set up the token listener once; it fans out to registered listeners.
+      this.pluginListenerHandle = await plugin.addListener(
+        "@LlamaCpp_onToken",
+        (data) => {
+          this.tokenIndex += 1;
+          for (const listener of this.tokenListeners) {
+            try {
+              listener(data.token, this.tokenIndex);
+            } catch {
+              this.tokenListeners.delete(listener);
+            }
           }
-        }
-      },
-    );
-    this.plugin = plugin;
-    return plugin;
+        },
+      );
+      this.plugin = plugin;
+      return plugin;
+    })();
+    try {
+      return await this.pluginLoadPromise;
+    } catch (err) {
+      // Failed loads must not poison the cache — let the next call retry.
+      this.pluginLoadPromise = null;
+      throw err;
+    }
   }
 
   async getHardwareInfo(): Promise<HardwareInfo> {
     const platform = detectPlatform();
-    // llama-cpp-capacitor doesn't expose a standalone hardware probe, so we
-    // return a light snapshot suitable for the UI. The app-core hardware
-    // service already handles richer server-side probing.
+    // `navigator` is undefined on Node/Bun; this adapter may be imported
+    // (never instantiated) from server-side code that transitively pulls
+    // in @elizaos/app-core. Read through `globalThis` so the lookup is
+    // safe on every platform.
+    const nav = (globalThis as { navigator?: { hardwareConcurrency?: number } })
+      .navigator;
     return {
       platform,
       deviceModel: platform,
       totalRamGb: 0,
       availableRamGb: null,
-      cpuCores: navigator?.hardwareConcurrency ?? 0,
+      cpuCores: nav?.hardwareConcurrency ?? 0,
       gpu: null,
       gpuSupported: platform !== "web",
     };
@@ -232,6 +247,8 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
       this.pluginListenerHandle = null;
     }
     await this.unload();
+    this.plugin = null;
+    this.pluginLoadPromise = null;
   }
 }
 
