@@ -278,6 +278,105 @@ async function defaultDispatcher(
   }
 }
 
+interface UseModelLike {
+  (input: {
+    prompt: string;
+    temperature?: number;
+    maxTokens?: number;
+  }): Promise<string | object | undefined>;
+}
+
+interface UseModelRuntime {
+  useModel?: (
+    modelType: string,
+    input: { prompt: string; temperature?: number; maxTokens?: number },
+  ) => Promise<string | object | undefined>;
+}
+
+function extractUseModel(runtime: RuntimeLike): UseModelLike | null {
+  const candidate = runtime as RuntimeLike & UseModelRuntime;
+  if (typeof candidate.useModel !== "function") return null;
+  return async (input) => {
+    // We always route native calls through TEXT_LARGE because the optimizers
+    // need high-quality rewrites. The hardcoding mirrors how trajectory
+    // teachers resolve the model — the operator can pin a different provider
+    // by overriding the runtime's TEXT_LARGE handler.
+    return await candidate.useModel?.("TEXT_LARGE", input);
+  };
+}
+
+interface OptimizedPromptArtifactInput {
+  task: TrajectoryTrainingTask;
+  optimizer: "instruction-search" | "prompt-evolution" | "bootstrap-fewshot";
+  baseline: string;
+  prompt: string;
+  score: number;
+  baselineScore: number;
+  datasetId: string;
+  datasetSize: number;
+  generatedAt: string;
+  lineage: Array<{ round: number; variant: number; score: number; notes?: string }>;
+  fewShotExamples?: Array<{
+    id?: string;
+    input: { user: string; system?: string };
+    expectedOutput: string;
+    reward?: number;
+    metadata?: Record<string, unknown>;
+  }>;
+}
+
+interface OptimizedPromptServiceLike {
+  setPrompt: (
+    task: TrajectoryTrainingTask,
+    artifact: OptimizedPromptArtifactInput,
+  ) => Promise<string>;
+}
+
+async function persistOptimizedPromptArtifact(
+  runtime: RuntimeLike,
+  artifact: OptimizedPromptArtifactInput,
+): Promise<string | null> {
+  const service = runtime.getService("optimized_prompt") as
+    | OptimizedPromptServiceLike
+    | null;
+  if (!service || typeof service.setPrompt !== "function") return null;
+  return await service.setPrompt(artifact.task, artifact);
+}
+
+/**
+ * Pull the live runtime template for the task. Falls back to a generic
+ * placeholder when the runtime cannot expose its template (e.g. cron tests
+ * that pass a stub runtime).
+ */
+async function loadBaselineForTask(
+  task: TrajectoryTrainingTask,
+): Promise<string> {
+  const prompts = await import("@elizaos/core").catch(() => null);
+  if (!prompts) {
+    return `# baseline placeholder for ${task}`;
+  }
+  const promptModule = prompts as Record<string, unknown>;
+  switch (task) {
+    case "should_respond":
+    case "context_routing":
+      return typeof promptModule.shouldRespondTemplate === "string"
+        ? promptModule.shouldRespondTemplate
+        : `# baseline placeholder for ${task}`;
+    case "response":
+      return typeof promptModule.messageHandlerTemplate === "string"
+        ? promptModule.messageHandlerTemplate
+        : `# baseline placeholder for ${task}`;
+    case "action_planner":
+      return typeof promptModule.multiStepDecisionTemplate === "string"
+        ? promptModule.multiStepDecisionTemplate
+        : `# baseline placeholder for ${task}`;
+    case "media_description":
+      return typeof promptModule.imageDescriptionTemplate === "string"
+        ? promptModule.imageDescriptionTemplate
+        : `# baseline placeholder for ${task}`;
+  }
+}
+
 export async function recordRun(record: TrainingRunRecord): Promise<string> {
   const dir = runsDir();
   await mkdir(dir, { recursive: true });

@@ -20,6 +20,7 @@ export type ContextSignalKey =
   | "lifeops_skip"
   | "lifeops_snooze"
   | "lifeops_update"
+  | "link_entity"
   | "negative"
   | "read_channel"
   | "read_messages"
@@ -166,6 +167,12 @@ const CONTEXT_SIGNAL_SPECS: Record<ContextSignalKey, ContextSignalSpec> = {
     contextLimit: 12,
     keywordKeys: {
       strong: "contextSignal.lifeops_update.strong",
+    },
+  },
+  link_entity: {
+    contextLimit: 8,
+    keywordKeys: {
+      strong: "contextSignal.link_entity.strong",
     },
   },
   calendar: {

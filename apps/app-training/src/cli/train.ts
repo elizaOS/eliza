@@ -203,7 +203,9 @@ export async function runTrainCli(argv: string[]): Promise<number> {
 		}
 		case "native": {
 			const optimizer = parsed.optimizer ?? "instruction-search";
-			const task: TrajectoryTrainingTask = parsed.task ?? "should_respond";
+			const task: TrajectoryTrainingTask = normalizeTaskForNative(
+				parsed.task,
+			);
 			const baselinePrompt = await loadBaselinePrompt(parsed);
 			// CLI invocation runs without a registered runtime/useModel, so we
 			// fall back to the deterministic stub adapter that returns the
@@ -237,6 +239,27 @@ export async function runTrainCli(argv: string[]): Promise<number> {
 			// Unreachable thanks to the ALLOWED_BACKENDS guard above.
 			throw new Error(`Unknown backend: ${parsed.backend}`);
 		}
+	}
+}
+
+function normalizeTaskForNative(
+	slot: VertexTuningSlot | undefined,
+): TrajectoryTrainingTask {
+	switch (slot) {
+		case "should_respond":
+		case "action_planner":
+		case "response":
+		case "media_description":
+			return slot;
+		case "response_handler":
+			// Legacy vertex alias for the response task — keep the dataset wired
+			// to the right artifact slot.
+			return "response";
+		case "planner":
+			// Legacy vertex alias for the action planner task.
+			return "action_planner";
+		default:
+			return "should_respond";
 	}
 }
 

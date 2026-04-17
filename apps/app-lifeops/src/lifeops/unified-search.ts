@@ -241,7 +241,9 @@ async function searchGmail(
   degraded: UnifiedSearchDegraded[];
 }> {
   const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
-  const lifeOps = runtime.getService("lifeops") as GmailSearchService | null;
+  const lifeOps = runtime.getService("lifeops") as unknown as
+    | GmailSearchService
+    | null;
   if (!lifeOps || typeof lifeOps.getGmailSearch !== "function") {
     return {
       hits: [],
@@ -420,7 +422,7 @@ async function resolvePerson(
 
   const service = runtime.getService(
     "relationshipsGraph",
-  ) as RelationshipsGraphServiceWithCluster | null;
+  ) as unknown as RelationshipsGraphServiceWithCluster | null;
   if (!service) {
     return {
       service: null,

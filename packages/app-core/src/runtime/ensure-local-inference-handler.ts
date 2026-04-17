@@ -239,7 +239,9 @@ export async function ensureLocalInferenceHandler(
     return;
   }
 
-  const slots: Array<[(typeof ModelType)[keyof typeof ModelType], AgentModelSlot]> = [
+  const slots: Array<
+    [(typeof ModelType)[keyof typeof ModelType], AgentModelSlot]
+  > = [
     [ModelType.TEXT_SMALL, "TEXT_SMALL"],
     [ModelType.TEXT_LARGE, "TEXT_LARGE"],
   ];

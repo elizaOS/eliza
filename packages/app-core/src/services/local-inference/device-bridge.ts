@@ -31,7 +31,7 @@
 
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
-import type { IncomingMessage, Server as HttpServer } from "node:http";
+import type { Server as HttpServer, IncomingMessage } from "node:http";
 import path from "node:path";
 import type { Duplex } from "node:stream";
 import type { AgentRuntime } from "@elizaos/core";
@@ -676,11 +676,7 @@ export class DeviceBridge {
               this.pendingUnloads.delete(correlationId);
               reject(new Error("DEVICE_TIMEOUT: unload exceeded deadline"));
             }, DEFAULT_CALL_TIMEOUT_MS);
-            if (
-              typeof timeout === "object" &&
-              timeout &&
-              "unref" in timeout
-            ) {
+            if (typeof timeout === "object" && timeout && "unref" in timeout) {
               (timeout as { unref(): void }).unref();
             }
             this.pendingUnloads.set(correlationId, {
@@ -793,13 +789,13 @@ export class DeviceBridge {
   private async persistPendingGenerates(): Promise<void> {
     try {
       await fs.mkdir(localInferenceRoot(), { recursive: true });
-      const payload: PersistedGenerateRequest[] = [...this.pendingGenerates.values()].map(
-        (p) => ({
-          correlationId: p.correlationId,
-          request: p.request,
-          submittedAt: p.submittedAt,
-        }),
-      );
+      const payload: PersistedGenerateRequest[] = [
+        ...this.pendingGenerates.values(),
+      ].map((p) => ({
+        correlationId: p.correlationId,
+        request: p.request,
+        submittedAt: p.submittedAt,
+      }));
       const tmp = `${this.pendingLogPath()}.tmp`;
       await fs.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
       await fs.rename(tmp, this.pendingLogPath());
@@ -837,7 +833,11 @@ export class DeviceBridge {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
     let restored = 0;
     for (const item of items) {
-      if (!item.correlationId || !item.request || item.request.type !== "generate") {
+      if (
+        !item.correlationId ||
+        !item.request ||
+        item.request.type !== "generate"
+      ) {
         continue;
       }
       const submittedAt = Date.parse(item.submittedAt);

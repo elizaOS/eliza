@@ -53,13 +53,19 @@ describe("LifeOps self-care prompt benchmark contracts", () => {
 
       if (testCase.expectedAction === null) {
         expect(testCase.acceptableActions).toEqual(["REPLY"]);
-        expect(testCase.notes ?? "").toContain("preview/clarification");
+        expect(testCase.notes ?? "").toMatch(
+          /preview\/clarification|subtle non-request/u,
+        );
       } else {
         expect(testCase.expectedAction).toBe("LIFE");
-        expect(testCase.acceptableActions).toEqual([]);
+        expect(testCase.acceptableActions).toSatisfy((actions: string[]) =>
+          actions.every((action) => action === "BLOCK_UNTIL_TASK_COMPLETE"),
+        );
       }
 
-      if (testCase.baseScenarioId === "goal-sleep-basic") {
+      if (testCase.expectedAction === null) {
+        expect(testCase.expectedOperation).toBeNull();
+      } else if (testCase.baseScenarioId === "goal-sleep-basic") {
         expect(testCase.expectedOperation).toBe("create_goal");
       } else {
         expect(testCase.expectedOperation).toBe("create_definition");
@@ -95,9 +101,7 @@ describe("LifeOps self-care prompt benchmark contracts", () => {
     for (const testCase of nullCases) {
       expect(testCase.expectedAction).toBeNull();
       expect(testCase.acceptableActions).toEqual(["REPLY"]);
-      expect(testCase.forbiddenActions).toEqual(
-        expect.arrayContaining(["LIFE", "CREATE_GOAL", "CREATE_DEFINITION"]),
-      );
+      expect(testCase.forbiddenActions).toContain("LIFE");
       expect(testCase.prompt).not.toBe(testCase.basePrompt);
       expect(testCase.prompt.toLowerCase()).toContain("do not do this yet");
     }

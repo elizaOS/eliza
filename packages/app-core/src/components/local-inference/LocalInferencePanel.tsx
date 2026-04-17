@@ -15,11 +15,13 @@ import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
 import { ActiveModelBar } from "./ActiveModelBar";
 import { DeviceBridgeStatusBar } from "./DeviceBridgeStatus";
+import { DevicesPanel } from "./DevicesPanel";
 import { DownloadQueue } from "./DownloadQueue";
 import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
 import { HuggingFaceSearch } from "./HuggingFaceSearch";
 import { ModelHubView } from "./ModelHubView";
+import { SlotAssignments } from "./SlotAssignments";
 
 /**
  * Settings page entry for local inference. Owns the hub snapshot state,
@@ -200,6 +202,56 @@ export function LocalInferencePanel() {
     [refresh, setActionNotice, withBusy],
   );
 
+  const handleVerify = useCallback(
+    (modelId: string) => {
+      void withBusy(async () => {
+        const result = await client.verifyLocalInferenceModel(modelId);
+        const tone =
+          result.state === "ok"
+            ? "success"
+            : result.state === "unknown"
+              ? "success"
+              : "error";
+        const message =
+          result.state === "ok"
+            ? "Model verified"
+            : result.state === "unknown"
+              ? "Baseline hash recorded — future verifies will compare against it"
+              : result.state === "missing"
+                ? "Model file is missing from disk"
+                : result.state === "truncated"
+                  ? "Model file is corrupt (not a valid GGUF)"
+                  : "Model hash doesn't match the installed copy — re-download recommended";
+        setActionNotice(message, tone, 4000);
+        await refresh();
+      });
+    },
+    [refresh, setActionNotice, withBusy],
+  );
+
+  const handleRedownload = useCallback(
+    (modelId: string) => {
+      void withBusy(async () => {
+        // Uninstall + re-queue a fresh download. Safe for curated catalog
+        // ids only; HF-search ad-hoc entries keep their install.
+        await client.uninstallLocalInferenceModel(modelId);
+        await client.startLocalInferenceDownload(modelId);
+        setActionNotice("Redownload started", "success", 2000);
+        await refresh();
+      });
+    },
+    [refresh, setActionNotice, withBusy],
+  );
+
+  const handleAssignmentsChange = useCallback(
+    (next: { [slot: string]: string | undefined }) => {
+      setHub((prev) =>
+        prev ? { ...prev, assignments: next as typeof prev.assignments } : prev,
+      );
+    },
+    [],
+  );
+
   if (error && !hub) {
     return (
       <div className="flex items-center justify-between gap-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
@@ -297,6 +349,8 @@ export function LocalInferencePanel() {
           onCancel={handleCancel}
           onActivate={handleActivate}
           onUninstall={handleUninstall}
+          onVerify={handleVerify}
+          onRedownload={handleRedownload}
           busy={busy}
         />
       )}
@@ -329,6 +383,12 @@ export function LocalInferencePanel() {
         />
       )}
 
+      <SlotAssignments
+        installed={hub.installed}
+        assignments={hub.assignments}
+        onChange={handleAssignmentsChange}
+      />
+      <DevicesPanel />
       <ExternalInstalledSummary
         installed={hub.installed}
         onActivate={handleActivate}

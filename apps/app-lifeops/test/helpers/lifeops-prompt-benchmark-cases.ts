@@ -413,7 +413,9 @@ function buildPromptBenchmarkCasesForScenario(args: {
         ? [...(expectation.acceptableActions ?? [])]
         : ["REPLY"],
       forbiddenActions: positiveCase
-        ? [...(expectation.forbiddenActions ?? [])]
+        ? expectation.expectedAction === null
+          ? [...(expectation.forbiddenActions ?? [])]
+          : []
         : uniqueStrings([
             expectation.expectedAction,
             ...(expectation.acceptableActions ?? []),
