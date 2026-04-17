@@ -79,7 +79,7 @@ export interface ScriptContext {
   searchMemories: (params: {
     tableName: string;
     embedding: number[];
-    count?: number;
+    limit?: number;
     match_threshold?: number;
   }) => Promise<unknown[]>;
 }
