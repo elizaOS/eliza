@@ -1,5 +1,20 @@
+/**
+ * SubscriptionStatus — Anthropic + OpenAI subscription provider cards.
+ *
+ * Both providers share an OAuth flow (start → exchange code → connected).
+ * Anthropic also supports a setup-token tab. The shared
+ * `<SubscriptionProviderPanel>` renders the common header / status / OAuth
+ * shell; provider-specific bits (token tab, callback hint) are slots.
+ */
+
 import { Button, Input, Label, useTimeout } from "@elizaos/ui";
-import { useCallback, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { client } from "../../api";
 import {
   getStoredSubscriptionProvider,
@@ -31,6 +46,174 @@ export interface SubscriptionStatusProps {
   loadSubscriptionStatus: () => Promise<void>;
 }
 
+interface SubscriptionProviderPanelProps {
+  providerId: SubscriptionProviderSelectionId;
+  connected: boolean;
+  configuredButInvalid: boolean;
+  titleConnected: string;
+  titleDisconnected: string;
+  loginLabel: string;
+  loginHint: string;
+  /** Provider-specific paragraph shown when connected (replaces the OAuth body). */
+  connectedSummary: string;
+  /** Provider-specific message shown when configured but token is invalid. */
+  invalidWarning: string;
+  noteWhenConnected?: ReactNode;
+  warningBanner?: ReactNode;
+  /** Slot to render content above the OAuth shell (e.g. tab switcher). */
+  preOauthSlot?: ReactNode;
+  /** Slot for provider-specific instructions inside the in-progress OAuth state. */
+  oauthInstructions: ReactNode;
+  oauthInputPlaceholder: string;
+  oauthInputType?: "text" | "password";
+  oauthCode: string;
+  setOauthCode: (v: string) => void;
+  oauthStarted: boolean;
+  oauthError: string;
+  oauthExchangeBusy: boolean;
+  exchangeButtonLabel: string;
+  exchangeBusyLabel: string;
+  disconnecting: boolean;
+  onStartOauth: () => void;
+  onExchange: () => void;
+  onResetFlow: () => void;
+  onDisconnect: () => void;
+  /** Optional content rendered in place of the OAuth shell (used by Anthropic's token tab). */
+  bodyOverride?: ReactNode;
+}
+
+function StatusDot({ connected }: { connected: boolean }) {
+  return (
+    <span
+      className={`inline-block h-2 w-2 rounded-full ${connected ? "bg-ok" : "bg-warn"}`}
+    />
+  );
+}
+
+function SubscriptionProviderPanel({
+  connected,
+  configuredButInvalid,
+  titleConnected,
+  titleDisconnected,
+  loginLabel,
+  loginHint,
+  connectedSummary,
+  invalidWarning,
+  noteWhenConnected,
+  warningBanner,
+  preOauthSlot,
+  oauthInstructions,
+  oauthInputPlaceholder,
+  oauthInputType = "text",
+  oauthCode,
+  setOauthCode,
+  oauthStarted,
+  oauthError,
+  oauthExchangeBusy,
+  exchangeButtonLabel,
+  exchangeBusyLabel,
+  disconnecting,
+  onStartOauth,
+  onExchange,
+  onResetFlow,
+  onDisconnect,
+  bodyOverride,
+}: SubscriptionProviderPanelProps) {
+  const { t } = useApp();
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <StatusDot connected={connected} />
+          <span className="text-xs font-semibold">
+            {connected ? titleConnected : titleDisconnected}
+          </span>
+        </div>
+        {connected && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="!mt-0 h-8 rounded-lg"
+            onClick={onDisconnect}
+            disabled={disconnecting}
+          >
+            {disconnecting
+              ? t("providerswitcher.disconnecting")
+              : t("providerswitcher.disconnect")}
+          </Button>
+        )}
+      </div>
+
+      {warningBanner}
+
+      {configuredButInvalid && (
+        <div className="text-xs text-warn">{invalidWarning}</div>
+      )}
+
+      {noteWhenConnected && connected && noteWhenConnected}
+
+      {preOauthSlot}
+
+      {bodyOverride ?? (
+        <>
+          {connected ? (
+            <p className="text-xs text-muted">{connectedSummary}</p>
+          ) : !oauthStarted ? (
+            <div className="space-y-1.5">
+              <Button
+                variant="default"
+                size="sm"
+                className="!mt-0 h-9 rounded-lg font-semibold"
+                onClick={onStartOauth}
+              >
+                {loginLabel}
+              </Button>
+              <p className="text-xs-tight text-muted">{loginHint}</p>
+              {oauthError && (
+                <p className="text-xs-tight text-danger">{oauthError}</p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {oauthInstructions}
+              <Input
+                type={oauthInputType}
+                className="h-9 rounded-lg bg-card text-xs"
+                placeholder={oauthInputPlaceholder}
+                value={oauthCode}
+                onChange={(e) => setOauthCode(e.target.value)}
+              />
+              {oauthError && (
+                <p className="text-xs-tight text-danger">{oauthError}</p>
+              )}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="!mt-0 h-9 rounded-lg font-semibold"
+                  disabled={oauthExchangeBusy || !oauthCode.trim()}
+                  onClick={onExchange}
+                >
+                  {oauthExchangeBusy ? exchangeBusyLabel : exchangeButtonLabel}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="!mt-0 h-9 rounded-lg"
+                  onClick={onResetFlow}
+                >
+                  {t("onboarding.startOver")}
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function SubscriptionStatus({
   resolvedSelectedId,
   subscriptionStatus,
@@ -42,37 +225,34 @@ export function SubscriptionStatus({
   loadSubscriptionStatus,
 }: SubscriptionStatusProps) {
   const { setTimeout } = useTimeout();
-
   const { t } = useApp();
+
+  /* ── Anthropic ─────────────────────────────────────────────────── */
   const [subscriptionTab, setSubscriptionTab] = useState<"token" | "oauth">(
     "token",
   );
   const [setupTokenValue, setSetupTokenValue] = useState("");
   const [setupTokenSaving, setSetupTokenSaving] = useState(false);
-  const setupTokenRef = useRef(setupTokenValue);
-  setupTokenRef.current = setupTokenValue;
-  const savingRef = useRef(setupTokenSaving);
-  savingRef.current = setupTokenSaving;
   const [setupTokenSuccess, setSetupTokenSuccess] = useState(false);
   const [anthropicOAuthStarted, setAnthropicOAuthStarted] = useState(false);
   const [anthropicCode, setAnthropicCode] = useState("");
-  const anthropicCodeRef = useRef(anthropicCode);
-  anthropicCodeRef.current = anthropicCode;
   const [anthropicError, setAnthropicError] = useState("");
   const [anthropicExchangeBusy, setAnthropicExchangeBusy] = useState(false);
-  const anthropicExchangeBusyRef = useRef(false);
+
+  /* ── OpenAI ────────────────────────────────────────────────────── */
   const [openaiOAuthStarted, setOpenaiOAuthStarted] = useState(false);
   const [openaiCallbackUrl, setOpenaiCallbackUrl] = useState("");
-  const openaiCallbackRef = useRef(openaiCallbackUrl);
-  openaiCallbackRef.current = openaiCallbackUrl;
   const [openaiError, setOpenaiError] = useState("");
   const [openaiExchangeBusy, setOpenaiExchangeBusy] = useState(false);
-  const openaiExchangeBusyRef = useRef(false);
+
+  /* ── Shared disconnect lock ────────────────────────────────────── */
   const [subscriptionDisconnecting, setSubscriptionDisconnecting] = useState<
     string | null
   >(null);
   const disconnectingRef = useRef(subscriptionDisconnecting);
-  disconnectingRef.current = subscriptionDisconnecting;
+  useEffect(() => {
+    disconnectingRef.current = subscriptionDisconnecting;
+  }, [subscriptionDisconnecting]);
 
   const anthropicStatus = subscriptionStatus.find(
     (s) => s.provider === "anthropic-subscription",
@@ -82,36 +262,7 @@ export function SubscriptionStatus({
       s.provider === "openai-subscription" || s.provider === "openai-codex",
   );
 
-  const handleSaveSetupToken = useCallback(async () => {
-    if (!setupTokenRef.current.trim() || savingRef.current) return;
-    setSetupTokenSaving(true);
-    setSetupTokenSuccess(false);
-    setAnthropicError("");
-    try {
-      const result = await client.submitAnthropicSetupToken(
-        setupTokenRef.current.trim(),
-      );
-      if (!result.success) {
-        setAnthropicError(t("subscriptionstatus.FailedToSaveSetupToken"));
-        return;
-      }
-      setSetupTokenSuccess(true);
-      setSetupTokenValue("");
-      await handleSelectSubscription("anthropic-subscription");
-      await loadSubscriptionStatus();
-      await client.restartAgent();
-      setTimeout(() => setSetupTokenSuccess(false), 2000);
-    } catch (err) {
-      setAnthropicError(
-        t("subscriptionstatus.FailedToSaveTokenError", {
-          message: formatSubscriptionRequestError(err),
-        }),
-      );
-    } finally {
-      setSetupTokenSaving(false);
-    }
-  }, [handleSelectSubscription, loadSubscriptionStatus, setTimeout, t]);
-
+  /* ── Shared disconnect ─────────────────────────────────────────── */
   const handleDisconnectSubscription = useCallback(
     async (providerId: SubscriptionProviderSelectionId) => {
       if (disconnectingRef.current) return;
@@ -147,6 +298,43 @@ export function SubscriptionStatus({
     [loadSubscriptionStatus, setAnthropicConnected, setOpenaiConnected, t],
   );
 
+  /* ── Anthropic handlers ────────────────────────────────────────── */
+  const handleSaveSetupToken = useCallback(async () => {
+    const code = setupTokenValue.trim();
+    if (!code || setupTokenSaving) return;
+    setSetupTokenSaving(true);
+    setSetupTokenSuccess(false);
+    setAnthropicError("");
+    try {
+      const result = await client.submitAnthropicSetupToken(code);
+      if (!result.success) {
+        setAnthropicError(t("subscriptionstatus.FailedToSaveSetupToken"));
+        return;
+      }
+      setSetupTokenSuccess(true);
+      setSetupTokenValue("");
+      await handleSelectSubscription("anthropic-subscription");
+      await loadSubscriptionStatus();
+      await client.restartAgent();
+      setTimeout(() => setSetupTokenSuccess(false), 2000);
+    } catch (err) {
+      setAnthropicError(
+        t("subscriptionstatus.FailedToSaveTokenError", {
+          message: formatSubscriptionRequestError(err),
+        }),
+      );
+    } finally {
+      setSetupTokenSaving(false);
+    }
+  }, [
+    handleSelectSubscription,
+    loadSubscriptionStatus,
+    setTimeout,
+    setupTokenSaving,
+    setupTokenValue,
+    t,
+  ]);
+
   const handleAnthropicStart = useCallback(async () => {
     setAnthropicError("");
     try {
@@ -167,9 +355,8 @@ export function SubscriptionStatus({
   }, [t]);
 
   const handleAnthropicExchange = useCallback(async () => {
-    const code = anthropicCodeRef.current.trim();
-    if (!code || anthropicExchangeBusyRef.current) return;
-    anthropicExchangeBusyRef.current = true;
+    const code = anthropicCode.trim();
+    if (!code || anthropicExchangeBusy) return;
     setAnthropicExchangeBusy(true);
     setAnthropicError("");
     try {
@@ -191,16 +378,18 @@ export function SubscriptionStatus({
         }),
       );
     } finally {
-      anthropicExchangeBusyRef.current = false;
       setAnthropicExchangeBusy(false);
     }
   }, [
+    anthropicCode,
+    anthropicExchangeBusy,
     handleSelectSubscription,
     loadSubscriptionStatus,
     setAnthropicConnected,
     t,
   ]);
 
+  /* ── OpenAI handlers ───────────────────────────────────────────── */
   const handleOpenAIStart = useCallback(async () => {
     setOpenaiError("");
     try {
@@ -221,14 +410,13 @@ export function SubscriptionStatus({
   }, [t]);
 
   const handleOpenAIExchange = useCallback(async () => {
-    if (openaiExchangeBusyRef.current) return;
-    const normalized = normalizeOpenAICallbackInput(openaiCallbackRef.current);
+    if (openaiExchangeBusy) return;
+    const normalized = normalizeOpenAICallbackInput(openaiCallbackUrl);
     if (normalized.ok === false) {
       setOpenaiError(t(normalized.error));
       return;
     }
 
-    openaiExchangeBusyRef.current = true;
     setOpenaiExchangeBusy(true);
     setOpenaiError("");
     try {
@@ -255,331 +443,219 @@ export function SubscriptionStatus({
         }),
       );
     } finally {
-      openaiExchangeBusyRef.current = false;
       setOpenaiExchangeBusy(false);
     }
-  }, [handleSelectSubscription, loadSubscriptionStatus, setOpenaiConnected, t]);
+  }, [
+    handleSelectSubscription,
+    loadSubscriptionStatus,
+    openaiCallbackUrl,
+    openaiExchangeBusy,
+    setOpenaiConnected,
+    t,
+  ]);
 
-  return (
-    <div className="mt-4 pt-4">
-      {resolvedSelectedId === "anthropic-subscription" && (
-        <div>
-          <div className="flex justify-between items-center mb-3">
-            <div className="flex items-center gap-2">
-              <span
-                className={`inline-block w-2 h-2 rounded-full ${anthropicConnected ? "bg-ok" : "bg-warn"}`}
-              />
-              <span className="text-xs font-semibold">
-                {anthropicConnected
-                  ? t("subscriptionstatus.ConnectedToClaudeSubscription")
-                  : t("subscriptionstatus.ClaudeSubscriptionTitle")}
-              </span>
-            </div>
-            {anthropicConnected && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="!mt-0"
-                onClick={() =>
-                  void handleDisconnectSubscription("anthropic-subscription")
-                }
-                disabled={
-                  subscriptionDisconnecting === "anthropic-subscription"
-                }
-              >
-                {subscriptionDisconnecting === "anthropic-subscription"
-                  ? t("providerswitcher.disconnecting")
-                  : t("providerswitcher.disconnect")}
-              </Button>
-            )}
-          </div>
-
-          {/* TOS restriction warning — Claude subscription tokens can only
-              be used through the Claude Code CLI, not for direct API calls. */}
-          <div className="text-xs leading-relaxed p-2.5 mb-3 border border-warn/30 bg-warn/5 rounded">
-            <span className="font-semibold">
-              {t("subscriptionstatus.ClaudeTosWarningShort")}
+  /* ── Anthropic token tab body ──────────────────────────────────── */
+  const tokenTabBody = (
+    <div className="space-y-2">
+      <Label
+        htmlFor="subscription-setup-token-input"
+        className="text-xs font-semibold"
+      >
+        {t("onboarding.setupToken")}
+      </Label>
+      <Input
+        id="subscription-setup-token-input"
+        type="password"
+        placeholder={t("subscriptionstatus.skAntOat01")}
+        value={setupTokenValue}
+        onChange={(e) => {
+          setSetupTokenValue(e.target.value);
+          setSetupTokenSuccess(false);
+          setAnthropicError("");
+        }}
+        className="h-9 rounded-lg bg-card font-mono text-xs"
+      />
+      <p className="whitespace-pre-line text-xs-tight text-muted">
+        {t("onboarding.setupTokenInstructions")}
+      </p>
+      {anthropicError && (
+        <p className="text-xs-tight text-danger">{anthropicError}</p>
+      )}
+      <div className="flex items-center justify-between">
+        <Button
+          variant="default"
+          size="sm"
+          className="!mt-0 h-9 rounded-lg font-semibold"
+          disabled={setupTokenSaving || !setupTokenValue.trim()}
+          onClick={() => void handleSaveSetupToken()}
+        >
+          {setupTokenSaving
+            ? t("apikeyconfig.saving")
+            : t("subscriptionstatus.SaveToken")}
+        </Button>
+        <div className="flex items-center gap-2">
+          {setupTokenSaving && (
+            <span className="text-xs-tight text-muted">
+              {t("subscriptionstatus.SavingAmpRestart")}
             </span>
-          </div>
-
-          {anthropicStatus?.configured && !anthropicStatus.valid && (
-            <div className="text-xs text-warn mb-3">
-              {t("subscriptionstatus.ClaudeSubscription")}
-            </div>
           )}
-
-          <div className="flex items-center gap-4 mb-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              type="button"
-              className={`text-xs pb-2 border-b-2 rounded-none ${
-                subscriptionTab === "token"
-                  ? "border-accent text-accent"
-                  : "border-transparent text-muted hover:text-txt"
-              }`}
-              onClick={() => setSubscriptionTab("token")}
-            >
-              {t("onboarding.setupToken")}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              type="button"
-              className={`text-xs pb-2 border-b-2 rounded-none ${
-                subscriptionTab === "oauth"
-                  ? "border-accent text-accent"
-                  : "border-transparent text-muted hover:text-txt"
-              }`}
-              onClick={() => setSubscriptionTab("oauth")}
-            >
-              {t("onboarding.oauthLogin")}
-            </Button>
-          </div>
-
-          {subscriptionTab === "token" ? (
-            <div>
-              <Label
-                htmlFor="subscription-setup-token-input"
-                className="text-xs font-semibold mb-1.5 block"
-              >
-                {t("onboarding.setupToken")}
-              </Label>
-              <Input
-                id="subscription-setup-token-input"
-                type="password"
-                placeholder={t("subscriptionstatus.skAntOat01")}
-                value={setupTokenValue}
-                onChange={(e) => {
-                  setSetupTokenValue(e.target.value);
-                  setSetupTokenSuccess(false);
-                  setAnthropicError("");
-                }}
-                className="bg-card text-xs font-mono"
-              />
-              <div className="text-xs-tight text-muted mt-2 whitespace-pre-line">
-                {t("onboarding.setupTokenInstructions")}
-              </div>
-              {anthropicError && (
-                <div className="text-xs-tight text-danger mt-2">
-                  {anthropicError}
-                </div>
-              )}
-              <div className="flex items-center justify-between mt-3">
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="!mt-0"
-                  disabled={setupTokenSaving || !setupTokenValue.trim()}
-                  onClick={() => void handleSaveSetupToken()}
-                >
-                  {setupTokenSaving
-                    ? t("apikeyconfig.saving")
-                    : t("subscriptionstatus.SaveToken")}
-                </Button>
-                <div className="flex items-center gap-2">
-                  {setupTokenSaving && (
-                    <span className="text-xs-tight text-muted">
-                      {t("subscriptionstatus.SavingAmpRestart")}
-                    </span>
-                  )}
-                  {setupTokenSuccess && (
-                    <span className="text-xs-tight text-ok">
-                      {t("apikeyconfig.saved")}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : anthropicConnected ? (
-            <div className="text-xs text-muted">
-              {t("subscriptionstatus.YourClaudeSubscrip")}
-            </div>
-          ) : !anthropicOAuthStarted ? (
-            <div>
-              <Button
-                variant="default"
-                size="sm"
-                className="!mt-0"
-                onClick={() => void handleAnthropicStart()}
-              >
-                {t("onboarding.loginWithAnthropic")}
-              </Button>
-              <div className="text-xs-tight text-muted mt-1.5">
-                {t("subscriptionstatus.RequiresClaudePro")}
-              </div>
-              {anthropicError && (
-                <div className="text-xs-tight text-danger mt-2">
-                  {anthropicError}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div>
-              <div className="text-xs text-muted mb-2">
-                {t("subscriptionstatus.AfterLoggingInCo")}
-              </div>
-              <Input
-                type="text"
-                placeholder={t("subscriptionstatus.PasteTheAuthorizat")}
-                value={anthropicCode}
-                onChange={(e) => {
-                  setAnthropicCode(e.target.value);
-                  setAnthropicError("");
-                }}
-                className="bg-card text-xs"
-              />
-              {anthropicError && (
-                <div className="text-xs-tight text-danger mt-2">
-                  {anthropicError}
-                </div>
-              )}
-              <div className="flex items-center gap-2 mt-2">
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="!mt-0"
-                  disabled={anthropicExchangeBusy || !anthropicCode.trim()}
-                  onClick={() => void handleAnthropicExchange()}
-                >
-                  {anthropicExchangeBusy
-                    ? t("onboarding.connecting")
-                    : t("onboarding.connect")}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="!mt-0"
-                  onClick={() => {
-                    setAnthropicOAuthStarted(false);
-                    setAnthropicCode("");
-                    setAnthropicError("");
-                  }}
-                >
-                  {t("onboarding.startOver")}
-                </Button>
-              </div>
-            </div>
+          {setupTokenSuccess && (
+            <span className="text-xs-tight text-ok">
+              {t("apikeyconfig.saved")}
+            </span>
           )}
         </div>
+      </div>
+    </div>
+  );
+
+  /* ── Anthropic tab switcher (only when not connected) ──────────── */
+  const anthropicTabs = !anthropicConnected ? (
+    <div className="flex items-center gap-4 border-b border-border/40">
+      {(
+        [
+          ["token", t("onboarding.setupToken")],
+          ["oauth", t("onboarding.oauthLogin")],
+        ] as const
+      ).map(([id, label]) => {
+        const active = subscriptionTab === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setSubscriptionTab(id)}
+            className={`-mb-px border-b-2 px-1 pb-2 text-xs font-medium transition-colors ${
+              active
+                ? "border-accent text-txt"
+                : "border-transparent text-muted hover:text-txt"
+            }`}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  ) : undefined;
+
+  /* ── OpenAI callback instructions ──────────────────────────────── */
+  const openaiInstructions = (
+    <div className="rounded-lg border border-border/40 bg-bg/40 px-3 py-2 text-xs-tight leading-relaxed text-muted">
+      {t("subscriptionstatus.AfterLoggingInYo")}{" "}
+      <code className="rounded border border-border bg-card px-1 text-2xs">
+        {t("subscriptionstatus.localhost1455")}
+      </code>
+      {t("subscriptionstatus.CopyTheEntireU")}
+    </div>
+  );
+
+  return (
+    <div className="border-t border-border/40 pt-4">
+      {resolvedSelectedId === "anthropic-subscription" && (
+        <SubscriptionProviderPanel
+          providerId="anthropic-subscription"
+          connected={anthropicConnected}
+          configuredButInvalid={Boolean(
+            anthropicStatus?.configured && !anthropicStatus.valid,
+          )}
+          titleConnected={t(
+            "subscriptionstatus.ConnectedToClaudeSubscription",
+          )}
+          titleDisconnected={t("subscriptionstatus.ClaudeSubscriptionTitle")}
+          loginLabel={t("onboarding.loginWithAnthropic")}
+          loginHint={t("subscriptionstatus.RequiresClaudePro")}
+          connectedSummary={t("subscriptionstatus.YourClaudeSubscrip")}
+          invalidWarning={t("subscriptionstatus.ClaudeSubscription")}
+          warningBanner={
+            <div className="rounded-lg border border-warn/30 bg-warn/5 px-2.5 py-2 text-xs leading-relaxed">
+              <span className="font-semibold">
+                {t("subscriptionstatus.ClaudeTosWarningShort")}
+              </span>
+            </div>
+          }
+          preOauthSlot={anthropicTabs}
+          oauthInstructions={
+            <p className="text-xs text-muted">
+              {t("subscriptionstatus.AfterLoggingInCo")}
+            </p>
+          }
+          oauthInputPlaceholder={t(
+            "subscriptionstatus.PasteTheAuthorizat",
+          )}
+          oauthCode={anthropicCode}
+          setOauthCode={(v) => {
+            setAnthropicCode(v);
+            setAnthropicError("");
+          }}
+          oauthStarted={anthropicOAuthStarted}
+          oauthError={anthropicError}
+          oauthExchangeBusy={anthropicExchangeBusy}
+          exchangeButtonLabel={t("onboarding.connect")}
+          exchangeBusyLabel={t("onboarding.connecting")}
+          disconnecting={
+            subscriptionDisconnecting === "anthropic-subscription"
+          }
+          onStartOauth={() => void handleAnthropicStart()}
+          onExchange={() => void handleAnthropicExchange()}
+          onResetFlow={() => {
+            setAnthropicOAuthStarted(false);
+            setAnthropicCode("");
+            setAnthropicError("");
+          }}
+          onDisconnect={() =>
+            void handleDisconnectSubscription("anthropic-subscription")
+          }
+          bodyOverride={
+            !anthropicConnected && subscriptionTab === "token"
+              ? tokenTabBody
+              : undefined
+          }
+        />
       )}
 
       {resolvedSelectedId === "openai-subscription" && (
-        <div>
-          <div className="flex justify-between items-center mb-3">
-            <div className="flex items-center gap-2">
-              <span
-                className={`inline-block w-2 h-2 rounded-full ${openaiConnected ? "bg-ok" : "bg-warn"}`}
-              />
-              <span className="text-xs font-semibold">
-                {openaiConnected
-                  ? t("subscriptionstatus.ConnectedToChatGPTSubscription")
-                  : t("subscriptionstatus.ChatGPTSubscriptionTitle")}
-              </span>
-            </div>
-            {openaiConnected && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="!mt-0"
-                onClick={() =>
-                  void handleDisconnectSubscription("openai-subscription")
-                }
-                disabled={subscriptionDisconnecting === "openai-subscription"}
-              >
-                {subscriptionDisconnecting === "openai-subscription"
-                  ? t("providerswitcher.disconnecting")
-                  : t("providerswitcher.disconnect")}
-              </Button>
-            )}
-          </div>
-
-          {openaiConnected && (
-            <div className="text-xs leading-relaxed p-2.5 mb-3 border border-ok/30 bg-ok/5 rounded">
+        <SubscriptionProviderPanel
+          providerId="openai-subscription"
+          connected={openaiConnected}
+          configuredButInvalid={Boolean(
+            openaiStatus?.configured && !openaiStatus.valid,
+          )}
+          titleConnected={t(
+            "subscriptionstatus.ConnectedToChatGPTSubscription",
+          )}
+          titleDisconnected={t("subscriptionstatus.ChatGPTSubscriptionTitle")}
+          loginLabel={t("onboarding.loginWithOpenAI")}
+          loginHint={t("subscriptionstatus.RequiresChatGPTPlu")}
+          connectedSummary={t("subscriptionstatus.YourChatGPTSubscri")}
+          invalidWarning={t("subscriptionstatus.ChatGPTSubscription")}
+          noteWhenConnected={
+            <div className="rounded-lg border border-ok/30 bg-ok/5 px-2.5 py-2 text-xs leading-relaxed">
               {t("subscriptionstatus.CodexAllAccess")}
             </div>
-          )}
-
-          {openaiStatus?.configured && !openaiStatus.valid && (
-            <div className="text-xs text-warn mb-3">
-              {t("subscriptionstatus.ChatGPTSubscription")}
-            </div>
-          )}
-
-          {openaiConnected ? (
-            <div className="text-xs text-muted">
-              {t("subscriptionstatus.YourChatGPTSubscri")}
-            </div>
-          ) : !openaiOAuthStarted ? (
-            <div>
-              <Button
-                variant="default"
-                size="sm"
-                className="!mt-0"
-                onClick={() => void handleOpenAIStart()}
-              >
-                {t("onboarding.loginWithOpenAI")}
-              </Button>
-              <div className="text-xs-tight text-muted mt-1.5">
-                {t("subscriptionstatus.RequiresChatGPTPlu")}
-              </div>
-            </div>
-          ) : (
-            <div>
-              <div className="p-2.5 border border-border bg-bg text-xs-tight text-muted leading-relaxed">
-                {t("subscriptionstatus.AfterLoggingInYo")}{" "}
-                <code className="text-2xs px-1 border border-border bg-card">
-                  {t("subscriptionstatus.localhost1455")}
-                </code>
-                {t("subscriptionstatus.CopyTheEntireU")}
-              </div>
-              <Input
-                type="text"
-                className="mt-2 bg-card text-xs"
-                placeholder={t("subscriptionstatus.httpLocalhost145")}
-                value={openaiCallbackUrl}
-                onChange={(e) => {
-                  setOpenaiCallbackUrl(e.target.value);
-                  setOpenaiError("");
-                }}
-              />
-              {openaiError && (
-                <div className="text-xs-tight text-danger mt-2">
-                  {openaiError}
-                </div>
-              )}
-              <div className="flex items-center gap-2 mt-2">
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="!mt-0"
-                  disabled={openaiExchangeBusy || !openaiCallbackUrl.trim()}
-                  onClick={() => void handleOpenAIExchange()}
-                >
-                  {openaiExchangeBusy
-                    ? t("subscriptionstatus.Completing")
-                    : t("onboarding.completeLogin")}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="!mt-0"
-                  onClick={() => {
-                    setOpenaiOAuthStarted(false);
-                    setOpenaiCallbackUrl("");
-                    setOpenaiError("");
-                  }}
-                >
-                  {t("onboarding.startOver")}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {openaiError && !openaiOAuthStarted && (
-            <div className="text-xs-tight text-danger mt-2">{openaiError}</div>
-          )}
-        </div>
+          }
+          oauthInstructions={openaiInstructions}
+          oauthInputPlaceholder={t("subscriptionstatus.httpLocalhost145")}
+          oauthCode={openaiCallbackUrl}
+          setOauthCode={(v) => {
+            setOpenaiCallbackUrl(v);
+            setOpenaiError("");
+          }}
+          oauthStarted={openaiOAuthStarted}
+          oauthError={openaiError}
+          oauthExchangeBusy={openaiExchangeBusy}
+          exchangeButtonLabel={t("onboarding.completeLogin")}
+          exchangeBusyLabel={t("subscriptionstatus.Completing")}
+          disconnecting={subscriptionDisconnecting === "openai-subscription"}
+          onStartOauth={() => void handleOpenAIStart()}
+          onExchange={() => void handleOpenAIExchange()}
+          onResetFlow={() => {
+            setOpenaiOAuthStarted(false);
+            setOpenaiCallbackUrl("");
+            setOpenaiError("");
+          }}
+          onDisconnect={() =>
+            void handleDisconnectSubscription("openai-subscription")
+          }
+        />
       )}
     </div>
   );

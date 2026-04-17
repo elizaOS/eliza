@@ -346,43 +346,6 @@ function buildGmailReplyOnlyFallback(subaction: GmailSubaction | null): string {
   }
 }
 
-function looksLikeReplyDraftRewriteFollowup(text: string): boolean {
-  const normalized = normalizeText(text);
-  if (!normalized) {
-    return false;
-  }
-  if (
-    /\b(search|find|look for|read|open|show me|check (?:my )?inbox|who emailed)\b/.test(
-      normalized,
-    )
-  ) {
-    return false;
-  }
-  return (
-    /\b(rewrite|edit|revise|change|update|adjust|redo|rework)\b/.test(
-      normalized,
-    ) ||
-    /\b(make it|have it|say that|say i'm|say im|say i am|say he's|say hes|mention|instead|actually|we need to)\b/.test(
-      normalized,
-    ) ||
-    /\b(let (?:him|her|them) know|tell (?:him|her|them))\b/.test(normalized)
-  );
-}
-
-function looksLikeSendReplyFollowup(text: string): boolean {
-  const normalized = normalizeText(text);
-  if (!normalized) {
-    return false;
-  }
-  return (
-    /\b(send (?:it|that|the reply|the draft|that reply|that draft))\b/.test(
-      normalized,
-    ) ||
-    /\bemail (?:it|that|them back now)\b/.test(normalized) ||
-    /^\s*send now\b/.test(normalized)
-  );
-}
-
 function buildGmailServiceErrorFallback(error: LifeOpsServiceError): string {
   const normalized = normalizeText(error.message);
   if (error.status === 429 || normalized.includes("rate limit")) {
@@ -1430,8 +1393,6 @@ export const gmailAction: Action & {
     );
     let subaction: GmailSubaction | null =
       explicitSubaction ?? llmPlan.subaction;
-    const currentMessageText = messageText(message).trim();
-
     const composeRecipients =
       normalizeStringArray(details?.to) ??
       resolvedComposeDraft.to ??
@@ -1449,22 +1410,6 @@ export const gmailAction: Action & {
     );
     if (!explicitSubaction && composeRecoveryActivated) {
       subaction = "send_message";
-    }
-    if (
-      !explicitSubaction &&
-      !subaction &&
-      latestReplyDraft &&
-      looksLikeReplyDraftRewriteFollowup(currentMessageText)
-    ) {
-      subaction = "draft_reply";
-    }
-    if (
-      !explicitSubaction &&
-      !subaction &&
-      latestReplyDraft &&
-      looksLikeSendReplyFollowup(currentMessageText)
-    ) {
-      subaction = "send_reply";
     }
     if (
       !subaction &&

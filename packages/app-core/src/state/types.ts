@@ -498,7 +498,7 @@ export interface AppState {
   elizaCloudUserId: string | null;
   /** Last `reason` from GET /api/cloud/status (e.g. API-key-only vs OAuth). */
   elizaCloudStatusReason: string | null;
-  cloudDashboardView: "billing" | "agents";
+  cloudDashboardView: "overview" | "billing";
   elizaCloudLoginBusy: boolean;
   elizaCloudLoginError: string | null;
   elizaCloudDisconnecting: boolean;

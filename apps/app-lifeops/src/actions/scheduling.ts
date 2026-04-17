@@ -20,6 +20,12 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  State,
+} from "@elizaos/core";
+import {
+  ModelType,
+  parseJSONObjectFromText,
+  parseKeyValueXml,
 } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
 import { hasAdminAccess } from "@elizaos/agent/security/access";
@@ -37,6 +43,7 @@ import {
   type LifeOpsMeetingPreferencesPatch,
 } from "../lifeops/owner-profile.js";
 import { getZonedDateParts } from "../lifeops/time.js";
+import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 
 const MS_PER_MINUTE = 60_000;
 const MAX_DAYS_LOOKAHEAD = 60;
@@ -84,20 +91,12 @@ function formatLocalForDisplay(iso: string, timeZone: string): string {
 }
 
 function dayOfWeekInTz(date: Date, timeZone: string): number {
-  const weekday = new Intl.DateTimeFormat("en-US", {
-    weekday: "short",
-    timeZone,
-  }).format(date);
-  const map: Record<string, number> = {
-    Sun: 0,
-    Mon: 1,
-    Tue: 2,
-    Wed: 3,
-    Thu: 4,
-    Fri: 5,
-    Sat: 6,
-  };
-  return map[weekday] ?? 0;
+  // Compute the local Y/M/D in the target IANA zone, then derive day-of-week
+  // from a UTC anchor. Avoids any reliance on locale-specific weekday strings.
+  const parts = getZonedDateParts(date, timeZone);
+  return new Date(
+    Date.UTC(parts.year, Math.max(0, parts.month - 1), parts.day, 12, 0, 0),
+  ).getUTCDay();
 }
 
 function buildBusyIntervals(
@@ -641,23 +640,139 @@ type SchedulingActionParameters = {
   reason?: string;
 };
 
-function inferSchedulingSubaction(
-  params: SchedulingActionParameters,
-  text: string,
-): SchedulingSubaction {
-  if (params.subaction) return params.subaction;
-  const lower = text.toLowerCase();
-  if (params.proposalId && params.response) return "respond";
-  if (params.confirmed && params.proposalId) return "finalize";
-  if (/\bcancel\b/.test(lower)) return "cancel";
-  if (/\bfinalize|confirm\b/.test(lower) && params.proposalId) return "finalize";
-  if (params.startAt && params.endAt && params.negotiationId) return "propose";
-  if (/\blist\s+proposals\b/.test(lower) && params.negotiationId)
-    return "list_proposals";
-  if (/\blist\b/.test(lower) && !params.negotiationId) return "list_active";
-  if (params.subject || /\bstart|begin|negotiate|schedule\b/.test(lower))
-    return "start";
-  return "list_active";
+type SchedulingLlmPlan = {
+  subaction: SchedulingSubaction | null;
+  shouldAct?: boolean | null;
+  response?: string;
+};
+
+function normalizeSchedulingSubaction(
+  value: unknown,
+): SchedulingSubaction | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  switch (normalized) {
+    case "start":
+    case "propose":
+    case "respond":
+    case "finalize":
+    case "cancel":
+    case "list_active":
+    case "list_proposals":
+      return normalized;
+    default:
+      return null;
+  }
+}
+
+function normalizeShouldAct(value: unknown): boolean | null {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") {
+      return true;
+    }
+    if (normalized === "false") {
+      return false;
+    }
+  }
+  return null;
+}
+
+function normalizePlannerResponse(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+async function resolveSchedulingPlanWithLlm(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+  intent: string;
+  params: SchedulingActionParameters;
+}): Promise<SchedulingLlmPlan> {
+  const recentConversation = (
+    await collectRecentConversationTexts({
+      runtime: args.runtime,
+      message: args.message,
+      state: args.state,
+      limit: 8,
+    })
+  ).join("\n");
+  const currentMessage =
+    typeof args.message.content?.text === "string" ? args.message.content.text : "";
+  const prompt = [
+    "Plan the scheduling negotiation action for this request.",
+    "The user may speak in any language.",
+    "Use the current request, the structured parameters, and recent conversation context.",
+    "Return a JSON object with exactly these fields:",
+    "  subaction: one of start, propose, respond, finalize, cancel, list_active, list_proposals, or null",
+    "  shouldAct: boolean",
+    "  response: short natural-language reply when shouldAct is false or clarification is needed",
+    "",
+    "Use start when beginning a new negotiation.",
+    "Use propose when submitting a concrete proposed slot for an existing negotiation.",
+    "Use respond when recording accepted, declined, or expired against a proposal.",
+    "Use finalize when confirming the winning proposal.",
+    "Use cancel when stopping an active negotiation.",
+    "Use list_active for listing negotiations.",
+    "Use list_proposals for listing proposals in one negotiation.",
+    "Set shouldAct=false when the user is vague or only asks for general scheduling help.",
+    "",
+    "Examples:",
+    '  "start scheduling lunch with Jill" -> {"subaction":"start","shouldAct":true,"response":null}',
+    '  "propose Tuesday at 3" with negotiationId/startAt/endAt params -> {"subaction":"propose","shouldAct":true,"response":null}',
+    '  "mark that proposal accepted" with proposalId/response params -> {"subaction":"respond","shouldAct":true,"response":null}',
+    '  "confirm that slot" with proposalId/confirmed params -> {"subaction":"finalize","shouldAct":true,"response":null}',
+    '  "list my scheduling negotiations" -> {"subaction":"list_active","shouldAct":true,"response":null}',
+    '  "help me schedule something" -> {"subaction":null,"shouldAct":false,"response":"Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?"}',
+    "",
+    "Return ONLY valid JSON.",
+    `Current request: ${JSON.stringify(currentMessage)}`,
+    `Resolved intent: ${JSON.stringify(args.intent)}`,
+    `Structured parameters: ${JSON.stringify(args.params)}`,
+    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+  ].join("\n");
+
+  try {
+    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+    });
+    const rawResponse = typeof result === "string" ? result : "";
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
+      parseJSONObjectFromText(rawResponse);
+    if (!parsed) {
+      return {
+        subaction: null,
+        shouldAct: null,
+      };
+    }
+    return {
+      subaction: normalizeSchedulingSubaction(parsed.subaction),
+      shouldAct: normalizeShouldAct(parsed.shouldAct),
+      response: normalizePlannerResponse(parsed.response),
+    };
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:scheduling",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Scheduling planning model call failed",
+    );
+    return {
+      subaction: null,
+      shouldAct: null,
+    };
+  }
 }
 
 function formatNegotiationSummary(
@@ -692,7 +807,7 @@ export const schedulingAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state,
+    state,
     options,
     callback,
   ): Promise<ActionResult> => {
@@ -708,7 +823,32 @@ export const schedulingAction: Action = {
         | undefined) ?? {};
     const messageBody =
       typeof message.content?.text === "string" ? message.content.text : "";
-    const subaction = inferSchedulingSubaction(params, messageBody);
+    const intent = (params.intent ?? messageBody).trim();
+    const explicitSubaction = normalizeSchedulingSubaction(params.subaction);
+    const llmPlan = await resolveSchedulingPlanWithLlm({
+      runtime,
+      message,
+      state,
+      intent,
+      params,
+    });
+    const subaction = explicitSubaction ?? llmPlan.subaction;
+
+    if (llmPlan.shouldAct === false && !explicitSubaction) {
+      const text =
+        llmPlan.response ??
+        "Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?";
+      await callback?.({ text });
+      return { text, success: true, data: { noop: true } };
+    }
+
+    if (!subaction) {
+      const text =
+        llmPlan.response ??
+        "Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?";
+      await callback?.({ text });
+      return { text, success: false, data: { error: "MISSING_SUBACTION" } };
+    }
 
     const service = new LifeOpsService(runtime);
     try {

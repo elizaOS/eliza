@@ -11,6 +11,12 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  State,
+} from "@elizaos/core";
+import {
+  ModelType,
+  parseJSONObjectFromText,
+  parseKeyValueXml,
 } from "@elizaos/core";
 import type {
   LifeOpsFollowUpStatus,
@@ -19,6 +25,7 @@ import type {
 import { LIFEOPS_MESSAGE_CHANNELS } from "@elizaos/shared/contracts/lifeops";
 import { LifeOpsService } from "../lifeops/service.js";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
+import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 
 type Subaction =
   | "list_contacts"
@@ -55,36 +62,120 @@ function getParams(
 }
 
 function messageText(message: Memory): string {
-  return (message?.content?.text ?? "").toString().toLowerCase();
+  return (message?.content?.text ?? "").toString();
 }
 
-function inferSubaction(
-  intent: string | undefined,
-  messageBody: string,
-): Subaction {
-  const text = `${intent ?? ""} ${messageBody}`.toLowerCase();
-  if (/list\s+(contacts|people|rolodex)|show\s+contacts|who\s+do\s+i\s+know/.test(text)) {
-    return "list_contacts";
+const RELATIONSHIP_SUBACTIONS: readonly Subaction[] = [
+  "list_contacts",
+  "add_contact",
+  "log_interaction",
+  "add_follow_up",
+  "complete_follow_up",
+  "follow_up_list",
+  "days_since",
+];
+
+function normalizeRelationshipSubaction(value: unknown): Subaction | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return (RELATIONSHIP_SUBACTIONS as readonly string[]).includes(normalized)
+    ? (normalized as Subaction)
+    : null;
+}
+
+function normalizeShouldAct(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
   }
-  if (/add\s+(contact|person|to\s+rolodex)|new\s+contact|remember\s+\w+/.test(text)) {
-    return "add_contact";
+  return null;
+}
+
+function normalizePlannerResponse(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+type RelationshipLlmPlan = {
+  subaction: Subaction | null;
+  shouldAct: boolean | null;
+  response?: string;
+};
+
+async function resolveRelationshipPlanWithLlm(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+  intent: string;
+  params: RelationshipParameters;
+}): Promise<RelationshipLlmPlan> {
+  if (typeof args.runtime.useModel !== "function") {
+    return { subaction: null, shouldAct: null };
   }
-  if (/log\s+(interaction|call|message|meeting)|(spoke|talked|called|emailed|messaged)\s+with/.test(text)) {
-    return "log_interaction";
+
+  const recentConversation = (
+    await collectRecentConversationTexts({
+      runtime: args.runtime,
+      message: args.message,
+      state: args.state,
+      limit: 6,
+    })
+  ).join("\n");
+  const currentMessage =
+    typeof args.message.content?.text === "string"
+      ? args.message.content.text
+      : "";
+  const prompt = [
+    "Plan the RELATIONSHIP (Rolodex) subaction for this request.",
+    "The user may speak in any language.",
+    "Return ONLY valid JSON with exactly these fields:",
+    '{"subaction":"list_contacts"|"add_contact"|"log_interaction"|"add_follow_up"|"complete_follow_up"|"follow_up_list"|"days_since"|null,"shouldAct":true|false,"response":"string|null"}',
+    "",
+    "Choose list_contacts when the user wants to see, browse, list, or recall who is in the Rolodex.",
+    "Choose add_contact when the user wants to remember a new person, store a handle, or add them to the contact list.",
+    "Choose log_interaction when the user reports a past conversation, call, meeting, or message they had with a known contact.",
+    "Choose add_follow_up when the user wants to schedule a future reminder to reach out to a contact.",
+    "Choose complete_follow_up when the user marks an existing follow-up as done or finished.",
+    "Choose follow_up_list when the user asks what follow-ups are pending or due.",
+    "Choose days_since when the user asks how long it has been since they last talked to or contacted a person.",
+    "Set shouldAct=false only when the request is too vague to safely choose any of the seven subactions.",
+    "When shouldAct=false, response must be a short clarifying question in the user's language.",
+    "",
+    `Current request: ${JSON.stringify(currentMessage)}`,
+    `Resolved intent: ${JSON.stringify(args.intent)}`,
+    `Structured parameters: ${JSON.stringify(args.params)}`,
+    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+  ].join("\n");
+
+  try {
+    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+    });
+    const rawResponse = typeof result === "string" ? result : "";
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
+      parseJSONObjectFromText(rawResponse);
+    if (!parsed) {
+      return { subaction: null, shouldAct: null };
+    }
+    return {
+      subaction: normalizeRelationshipSubaction(parsed.subaction),
+      shouldAct: normalizeShouldAct(parsed.shouldAct),
+      response: normalizePlannerResponse(parsed.response),
+    };
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:relationships",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Relationship planning model call failed",
+    );
+    return { subaction: null, shouldAct: null };
   }
-  if (/complete\s+follow[- ]?up|mark.*follow[- ]?up.*done|finish.*follow[- ]?up/.test(text)) {
-    return "complete_follow_up";
-  }
-  if (/(list|show|my)\s+follow[- ]?ups|what.*follow[- ]?ups/.test(text)) {
-    return "follow_up_list";
-  }
-  if (/add\s+follow[- ]?up|remind.*to\s+(call|contact|reach\s+out)|follow\s+up\s+with/.test(text)) {
-    return "add_follow_up";
-  }
-  if (/days?\s+since|haven'?t\s+(talked|heard|spoken)|last\s+(contacted|talked)/.test(text)) {
-    return "days_since";
-  }
-  return "list_contacts";
 }
 
 function formatRelationshipLine(rel: {
@@ -114,7 +205,7 @@ export const relationshipAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state,
+    state,
     options,
     callback,
   ): Promise<ActionResult> => {
@@ -127,7 +218,33 @@ export const relationshipAction: Action = {
 
     const params = getParams(options);
     const body = messageText(message);
-    const subaction = params.subaction ?? inferSubaction(params.intent, body);
+    const explicitSubaction = normalizeRelationshipSubaction(params.subaction);
+    let subaction: Subaction | null = explicitSubaction;
+    if (!subaction) {
+      const intent = (params.intent ?? body).trim();
+      const plan = await resolveRelationshipPlanWithLlm({
+        runtime,
+        message,
+        state,
+        intent,
+        params,
+      });
+      subaction = plan.subaction;
+      if (plan.shouldAct === false || !subaction) {
+        const text =
+          plan.response ??
+          "Tell me whether you want to list contacts, add a contact, log an interaction, schedule a follow-up, complete a follow-up, list follow-ups, or check days since last contact.";
+        await callback?.({ text });
+        return {
+          text,
+          success: true,
+          data: {
+            noop: true,
+            suggestedSubaction: subaction,
+          },
+        };
+      }
+    }
     const service = new LifeOpsService(runtime);
 
     if (subaction === "list_contacts") {

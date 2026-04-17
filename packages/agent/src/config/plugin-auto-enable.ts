@@ -17,6 +17,14 @@ export interface ApplyPluginAutoEnableParams {
    * conditions no longer need entries in the central map.
    */
   loadedPlugins?: Plugin[];
+  /**
+   * True when the runtime is hosted inside a Capacitor native shell
+   * (iOS / Android). Mobile cannot spawn a local n8n sidecar via
+   * `node:child_process`, so the n8n plugin is only auto-enabled when the
+   * Eliza Cloud gateway is authenticated. Desktop / server / web leave this
+   * undefined.
+   */
+  isNativePlatform?: boolean;
 }
 
 export const CONNECTOR_PLUGINS: Record<string, string> = {
@@ -624,6 +632,10 @@ export function applyPluginAutoEnable(
   // types.eliza.ts); the sidecar lifecycle writes `config.n8n.host` and
   // `config.n8n.apiKey` once ready. The plugin's init() refuses to activate
   // when neither is resolved, so this is safe to auto-enable eagerly.
+  //
+  // On mobile (iOS / Android), the local sidecar cannot spawn a child
+  // process, so auto-enable is gated on `cloudAuthed` alone regardless of
+  // `localEnabled`.
   {
     const n8nPluginName = "@elizaos/plugin-n8n-workflow";
     const n8nPluginId = "n8n-workflow";
@@ -632,8 +644,10 @@ export function applyPluginAutoEnable(
     const cloudAuthed = Boolean(
       updatedConfig.cloud?.apiKey && updatedConfig.cloud?.enabled !== false,
     );
-    // Default is "local sidecar allowed" — only disable if explicitly set to false.
-    const localN8nEnabled = n8nConfig?.localEnabled !== false;
+    // Default is "local sidecar allowed" — only disable if explicitly set to
+    // false. Mobile forces this to false regardless of user setting.
+    const localN8nEnabled =
+      params.isNativePlatform === true ? false : n8nConfig?.localEnabled !== false;
     const n8nExplicitlyDisabled =
       pluginsConfig.entries[n8nPluginId]?.enabled === false;
     if (

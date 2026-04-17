@@ -201,9 +201,14 @@ export function LocalInferencePanel() {
 
   if (error && !hub) {
     return (
-      <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm">
-        {error}{" "}
-        <Button size="sm" variant="outline" onClick={refresh}>
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+        <span>{error}</span>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 rounded-lg"
+          onClick={refresh}
+        >
           Retry
         </Button>
       </div>
@@ -211,9 +216,7 @@ export function LocalInferencePanel() {
   }
 
   if (!hub) {
-    return (
-      <div className="text-sm text-muted-foreground">Loading local models…</div>
-    );
+    return <p className="text-sm text-muted">Loading local models…</p>;
   }
 
   // On mobile (Capacitor iOS / Android) users can only realistically run
@@ -233,7 +236,7 @@ export function LocalInferencePanel() {
     <div className="flex flex-col gap-4">
       <HardwareBadge hardware={hub.hardware} />
       {mobile && (
-        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
+        <div className="rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
           On-device inference on mobile requires the Milady native runtime
           plugin (follow-up). Until then, select a small model and Milady will
           run inference via the companion desktop or cloud server.
@@ -252,7 +255,7 @@ export function LocalInferencePanel() {
         onUnload={handleUnload}
         busy={busy}
       />
-      <nav className="flex gap-2 border-b border-border">
+      <nav className="flex gap-4 border-b border-border/40">
         {(
           [
             ["curated", "Curated"],
@@ -262,20 +265,23 @@ export function LocalInferencePanel() {
               `Downloads${hub.downloads.length > 0 ? ` (${hub.downloads.length})` : ""}`,
             ],
           ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            className={`px-3 py-2 text-sm border-b-2 transition-colors ${
-              tab === id
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+        ).map(([id, label]) => {
+          const active = tab === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTab(id)}
+              className={`-mb-px border-b-2 px-1 pb-2 text-sm font-medium transition-colors ${
+                active
+                  ? "border-accent text-txt"
+                  : "border-transparent text-muted hover:text-txt"
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
       </nav>
 
       {tab === "curated" && (
@@ -307,10 +313,10 @@ export function LocalInferencePanel() {
         />
       )}
       {tab === "search" && mobile && (
-        <div className="text-sm text-muted-foreground">
+        <p className="text-sm text-muted">
           HuggingFace search is desktop-only for now — most results would be too
           large for a phone.
-        </div>
+        </p>
       )}
 
       {tab === "downloads" && (
@@ -348,35 +354,45 @@ function ExternalInstalledSummary({
   if (external.length === 0) return null;
 
   return (
-    <section className="flex flex-col gap-3">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-        Discovered from other tools
-      </h3>
-      <p className="text-xs text-muted-foreground">
-        Milady can load these models without re-downloading. We never modify
-        files owned by another tool.
-      </p>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+    <section className="space-y-2 border-t border-border/40 pt-4">
+      <header className="space-y-0.5">
+        <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
+          Discovered from other tools
+        </h3>
+        <p className="text-xs-tight text-muted">
+          Milady can load these models without re-downloading. We never modify
+          files owned by another tool.
+        </p>
+      </header>
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
         {external.map((m) => {
           const isActive = active.modelId === m.id && active.status !== "error";
           return (
             <div
               key={m.id}
-              className="rounded-xl border border-border bg-card p-3 flex items-center justify-between gap-3"
+              className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card/60 px-3 py-2"
             >
               <div className="min-w-0">
-                <div className="truncate font-medium">{m.displayName}</div>
-                <div className="text-xs text-muted-foreground truncate">
+                <div className="truncate text-sm font-medium text-txt">
+                  {m.displayName}
+                </div>
+                <div className="truncate text-xs-tight text-muted">
                   {m.externalOrigin} · {formatSize(m.sizeBytes)}
                 </div>
               </div>
               {isActive ? (
-                <Button size="sm" variant="outline" disabled>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 rounded-lg"
+                  disabled
+                >
                   Active
                 </Button>
               ) : (
                 <Button
                   size="sm"
+                  className="h-8 rounded-lg"
                   onClick={() => onActivate(m.id)}
                   disabled={busy}
                 >

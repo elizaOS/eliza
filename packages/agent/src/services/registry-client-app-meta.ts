@@ -239,6 +239,7 @@ export function resolveAppOverride(
     launchType: override.launchType ?? "url",
     launchUrl: override.launchUrl ?? null,
     icon: null,
+    heroImage: null,
     capabilities: override.capabilities ?? [],
     minPlayers: null,
     maxPlayers: null,

@@ -209,6 +209,7 @@ function flattenAppInfo<T extends RegistryPluginInfo>(appInfo: T): T {
     launchUrl:
       substituteTemplateVars(meta.launchUrl ?? appInfo.launchUrl ?? "") || null,
     icon: meta.icon ?? appInfo.icon,
+    heroImage: meta.heroImage ?? appInfo.heroImage ?? null,
     category: meta.category ?? appInfo.category,
     capabilities: meta.capabilities ?? appInfo.capabilities,
     uiExtension: meta.uiExtension ?? appInfo.uiExtension,
@@ -472,6 +473,7 @@ function deriveAppMetaFromPluginInfo(
     appInfo.launchType !== undefined ||
     appInfo.launchUrl !== undefined ||
     appInfo.icon !== undefined ||
+    appInfo.heroImage !== undefined ||
     appInfo.capabilities !== undefined ||
     appInfo.runtimePlugin !== undefined ||
     appInfo.uiExtension !== undefined ||
@@ -489,6 +491,7 @@ function deriveAppMetaFromPluginInfo(
     launchType: appInfo.launchType ?? "url",
     launchUrl: appInfo.launchUrl ?? null,
     icon: appInfo.icon ?? null,
+    heroImage: appInfo.heroImage ?? null,
     capabilities: appInfo.capabilities ?? [],
     minPlayers: null,
     maxPlayers: null,

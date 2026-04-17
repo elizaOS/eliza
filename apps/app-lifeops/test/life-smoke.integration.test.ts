@@ -7,7 +7,7 @@
  * with various parameter combinations:
  *
  *   1. LLM provides `action` param (primary path, reliable)
- *   2. LLM omits `action` but provides `intent` (classifier path)
+ *   2. LLM omits `action` but provides `intent` (extractor path)
  *   3. LLM provides both (action wins)
  *   4. LLM provides malformed/missing params (error paths)
  *
@@ -20,7 +20,7 @@ import { join } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../../test/helpers/real-runtime";
-import { classifyIntent, lifeAction } from "../src/actions/life.js";
+import { lifeAction } from "../src/actions/life.js";
 import { appLifeOpsPlugin } from "../src/plugin.js";
 
 let runtime: AgentRuntime;
@@ -140,12 +140,6 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
     expect((result as { text: string }).text).toContain("Brush teeth");
   }, 60_000);
 
-  it("AC-1 classifier: routes brushing request to create_definition", () => {
-    expect(classifyIntent("I need help brushing my teeth twice a day")).toBe(
-      "create_definition",
-    );
-  });
-
   // -- AC-2: Snooze a brushing reminder for 30 minutes --
   // Requires an existing occurrence in the DB. We create a definition first,
   // then get the overview to materialize occurrences, then snooze one.
@@ -232,10 +226,6 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
     expect(text.length).toBeGreaterThan(0);
   }, 60_000);
 
-  it("AC-4 classifier: explicit goal phrasing routes to goal creation", () => {
-    expect(classifyIntent("my goal is to stay healthy")).toBe("create_goal");
-  });
-
   // -- AC-5: Calendar query --
   // Calendar depends on Google connector which we don't have in test.
   // The handler should gracefully report "not connected".
@@ -263,11 +253,6 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
     expect(result).toMatchObject({ success: false });
   }, 60_000);
 
-  it("AC-7 classifier: routes email query", () => {
-    expect(
-      classifyIntent("Do I have anything important I need to respond to?"),
-    ).toBe("query_email");
-  });
 });
 
 describe("LIFE action -- robustness scenarios", () => {

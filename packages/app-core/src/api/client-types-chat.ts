@@ -340,6 +340,10 @@ export interface N8nStatusResponse {
   status: N8nSidecarStatus;
   cloudConnected: boolean;
   localEnabled: boolean;
+  /** Track B: populated by /api/n8n/status once backend lands. */
+  platform?: "desktop" | "mobile";
+  /** Track C: populated by /api/n8n/status once backend lands. */
+  cloudHealth?: "ok" | "degraded" | "unknown";
 }
 
 export interface N8nWorkflowNode {

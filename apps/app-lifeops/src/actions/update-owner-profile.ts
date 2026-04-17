@@ -16,37 +16,6 @@ type OwnerProfileParameters = {
   location?: string;
 };
 
-function extractOwnerProfilePatchFromText(
-  text: string | undefined,
-): OwnerProfileParameters {
-  if (!text) {
-    return {};
-  }
-
-  const patch: OwnerProfileParameters = {};
-  const readMatch = (pattern: RegExp): string | undefined => {
-    const match = text.match(pattern);
-    return match?.[1]?.trim();
-  };
-
-  patch.name = readMatch(/\bname\s*[:=]\s*([^,.;\n]+)/i);
-  patch.relationshipStatus = readMatch(
-    /\brelationship(?:\s+status)?\s*[:=]\s*([^,.;\n]+)/i,
-  );
-  patch.partnerName = readMatch(/\bpartner(?:\s+name)?\s*[:=]\s*([^,.;\n]+)/i);
-  patch.orientation = readMatch(/\borientation\s*[:=]\s*([^,.;\n]+)/i);
-  patch.gender = readMatch(/\bgender\s*[:=]\s*([^,.;\n]+)/i);
-  patch.age =
-    readMatch(/\bage\s*[:=]\s*(\d{1,3})\b/i) ??
-    readMatch(/\bi(?: am|'m)\s+(\d{1,3})\s+years?\s+old\b/i) ??
-    readMatch(/\bmy age is\s+(\d{1,3})\b/i);
-  patch.location =
-    readMatch(/\blocation\s*[:=]\s*([^,.;\n]+)/i) ??
-    readMatch(/\bi live in\s+([^,.;\n]+)/i);
-
-  return patch;
-}
-
 export const updateOwnerProfileAction: Action = {
   name: "UPDATE_OWNER_PROFILE",
   similes: [
@@ -76,14 +45,7 @@ export const updateOwnerProfileAction: Action = {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | OwnerProfileParameters
       | undefined;
-    const content = message.content as Record<string, unknown> | undefined;
-    const extractedFromText = extractOwnerProfilePatchFromText(
-      typeof content?.text === "string" ? content.text : undefined,
-    );
-    const patch = normalizeLifeOpsOwnerProfilePatch({
-      ...extractedFromText,
-      ...(params ?? {}),
-    });
+    const patch = normalizeLifeOpsOwnerProfilePatch(params ?? {});
 
     if (Object.keys(patch).length === 0) {
       return {

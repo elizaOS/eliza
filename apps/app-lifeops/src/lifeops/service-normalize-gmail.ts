@@ -375,12 +375,23 @@ export function filterGmailMessagesBySearch(args: {
   const replyNeededOnly = args.replyNeededOnly === true;
   return filtered
     .filter((message) => !replyNeededOnly || message.likelyReplyNeeded)
-    .sort((left, right) => {
-      if (right.triageScore !== left.triageScore) {
-        return right.triageScore - left.triageScore;
-      }
-      return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
-    });
+    .sort(compareGmailMessagePriority);
+}
+
+export function compareGmailMessagePriority(
+  left: LifeOpsGmailMessageSummary,
+  right: LifeOpsGmailMessageSummary,
+): number {
+  if (left.isImportant !== right.isImportant) {
+    return right.isImportant ? 1 : -1;
+  }
+  if (left.likelyReplyNeeded !== right.likelyReplyNeeded) {
+    return right.likelyReplyNeeded ? 1 : -1;
+  }
+  if (left.isUnread !== right.isUnread) {
+    return right.isUnread ? 1 : -1;
+  }
+  return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
 }
 
 export function normalizeGmailDraftTone(value: unknown): "brief" | "neutral" | "warm" {
@@ -513,7 +524,7 @@ export function findLinkedMailForCalendarEvent(
       if (receivedDelta !== 0) {
         return receivedDelta;
       }
-      return right.triageScore - left.triageScore;
+      return compareGmailMessagePriority(left, right);
     })
     .slice(0, 3);
 }

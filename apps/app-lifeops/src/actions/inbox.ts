@@ -8,20 +8,15 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
-import { textIncludesKeywordTerm } from "@elizaos/shared/validation-keywords";
+import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
 import { loadInboxTriageConfig } from "../inbox/config.js";
 import { fetchAllMessages } from "../inbox/message-fetcher.js";
 import {
-  looksLikeInboxConfirmation,
   reflectOnAutoReply,
   reflectOnSendConfirmation,
 } from "../inbox/reflection.js";
 import { InboxTriageRepository } from "../inbox/repository.js";
-import {
-  applyTriageRules,
-  classifyMessages,
-} from "../inbox/triage-classifier.js";
+import { classifyMessages } from "../inbox/triage-classifier.js";
 import type {
   DeferredInboxDraft,
   InboundMessage,
@@ -53,116 +48,170 @@ type InboxActionParams = {
 };
 
 // ---------------------------------------------------------------------------
-// Subaction inference
+// Subaction planning
 // ---------------------------------------------------------------------------
 
-const TRIAGE_TERMS = [
-  "triage",
-  "check",
-  "scan",
-  "new messages",
-  "check inbox",
-  "检查",
-  "新消息",
-  "查看收件箱",
-  "확인",
-  "새 메시지",
-  "받은편지함",
-  "revisar",
-  "nuevos mensajes",
-  "bandeja de entrada",
-  "verificar",
-  "novas mensagens",
-  "caixa de entrada",
-  "kiểm tra",
-  "tin nhắn mới",
-  "hộp thư đến",
-  "tingnan",
-  "bagong mensahe",
-] as const;
+type InboxSubactionPlan = {
+  subaction: InboxSubaction | null;
+  shouldAct: boolean | null;
+  response?: string | null;
+  target?: string | null;
+  entryId?: string | null;
+  confirmed?: boolean | null;
+};
 
-const DIGEST_TERMS = [
-  "digest",
-  "summary",
-  "briefing",
-  "daily",
-  "overview",
-  "recap",
-  "report",
-  "摘要",
-  "简报",
-  "概览",
-  "总结",
-  "요약",
-  "브리핑",
-  "개요",
-  "resumen",
-  "informe",
-  "resúmen",
-  "resumo",
-  "relatório",
-  "relatorio",
-  "tóm tắt",
-  "báo cáo",
-  "tổng quan",
-  "buod",
-  "ulat",
-] as const;
+function inboxRecentConversation(state: State | undefined, limit = 10): string[] {
+  if (!state || typeof state !== "object") {
+    return [];
+  }
 
-const RESPOND_TERMS = [
-  "respond",
-  "reply",
-  "send",
-  "confirm",
-  "approve",
-  "回复",
-  "发送",
-  "确认",
-  "批准",
-  "답장",
-  "보내기",
-  "확인",
-  "승인",
-  "responder",
-  "enviar",
-  "confirmar",
-  "aprobar",
-  "responder",
-  "enviar",
-  "confirmar",
-  "aprovar",
-  "trả lời",
-  "gửi",
-  "xác nhận",
-  "phê duyệt",
-  "sumagot",
-  "ipadala",
-  "kumpirmahin",
-  "aprubahan",
-] as const;
+  const stateRecord = state as Record<string, unknown>;
+  const recentMessagesData =
+    stateRecord.recentMessagesData ?? stateRecord.recentMessages;
+  if (!Array.isArray(recentMessagesData)) {
+    return [];
+  }
 
-function resolveSubaction(
+  const texts: string[] = [];
+  for (const item of recentMessagesData) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const content =
+      (item as Record<string, unknown>).content &&
+      typeof (item as Record<string, unknown>).content === "object"
+        ? ((item as Record<string, unknown>).content as Record<string, unknown>)
+        : null;
+    const text = typeof content?.text === "string" ? content.text.trim() : "";
+    if (text) {
+      texts.push(text);
+    }
+  }
+  return texts.slice(-limit);
+}
+
+function stringifyInboxDraftContext(draft: DeferredInboxDraft | null): string {
+  if (!draft) {
+    return "null";
+  }
+  return JSON.stringify({
+    senderName: draft.senderName,
+    channelName: draft.channelName,
+    source: draft.source,
+    draftText: draft.draftText,
+    deepLink: draft.deepLink,
+  });
+}
+
+async function resolveSubactionPlan(
+  runtime: IAgentRuntime,
   params: InboxActionParams,
   messageText: string,
   state: State | undefined,
-): InboxSubaction {
-  // 1. Explicit subaction param
-  if (params.subaction) return params.subaction;
+): Promise<InboxSubactionPlan> {
+  if (params.subaction) {
+    return {
+      subaction: params.subaction,
+      shouldAct: true,
+      target: params.target ?? null,
+      entryId: params.entryId ?? null,
+      confirmed: params.confirmed ?? null,
+    };
+  }
 
-  // 2. Infer from intent or message text
-  const text = params.intent ?? messageText;
-  if (TRIAGE_TERMS.some((t) => textIncludesKeywordTerm(text, t)))
-    return "triage";
-  if (DIGEST_TERMS.some((t) => textIncludesKeywordTerm(text, t)))
-    return "digest";
-  if (RESPOND_TERMS.some((t) => textIncludesKeywordTerm(text, t)))
-    return "respond";
+  if (params.confirmed || params.entryId || params.target || params.messageText) {
+    return {
+      subaction: "respond",
+      shouldAct: true,
+      target: params.target ?? null,
+      entryId: params.entryId ?? null,
+      confirmed: params.confirmed ?? null,
+    };
+  }
 
-  // 3. If there's a pending draft in state, assume respond
-  if (latestPendingDraft(state)) return "respond";
+  if (typeof runtime.useModel !== "function") {
+    return {
+      subaction: null,
+      shouldAct: false,
+      response:
+        "Inbox action planning is unavailable right now. Tell me explicitly whether to triage, show a digest, or respond.",
+    };
+  }
 
-  // 4. Default: triage
-  return "triage";
+  const intent = params.intent ?? messageText;
+  const pendingDraft = latestPendingDraft(state);
+  const prompt = [
+    "Plan the INBOX action for this request.",
+    "The user may speak in any language.",
+    "Use the current request plus recent conversation context.",
+    "Return ONLY valid JSON with exactly these fields:",
+    '{"subaction":"triage"|"digest"|"respond"|null,"shouldAct":true|false,"response":"string|null","target":"string|null","entryId":"string|null","confirmed":true|false|null}',
+    "",
+    "Choose triage for requests to scan new messages, unread items, or the current inbox.",
+    "Choose digest for requests to summarize, brief, recap, or review inbox activity.",
+    "Choose respond for requests to reply, draft, edit, approve, confirm, or send a reply to a message or person.",
+    "If a pending draft exists and the current request clearly refers to sending, revising, or confirming it, choose respond even if the user does not restate the recipient.",
+    "Set confirmed=true only when the user clearly approves sending the current pending draft right now.",
+    "Set confirmed=false when the user is editing, hesitating, declining, or asking for more changes to the current draft.",
+    "Set confirmed=null when there is no pending draft approval decision in the request.",
+    "Set shouldAct=false only when the request is too vague to choose triage, digest, or respond safely.",
+    "When shouldAct=false, response must ask the minimum clarifying question in the user's language.",
+    "Extract target when the user identifies a person, channel, or inbox item to respond to.",
+    "",
+    `Current request: ${JSON.stringify(intent)}`,
+    `Pending draft: ${stringifyInboxDraftContext(pendingDraft)}`,
+    `Recent conversation: ${JSON.stringify(inboxRecentConversation(state).join("\n"))}`,
+  ].join("\n");
+
+  try {
+    const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
+    const raw = typeof result === "string" ? result : "";
+    const parsed = parseJSONObjectFromText(raw) as
+      | Record<string, unknown>
+      | null;
+    if (!parsed) {
+      return {
+        subaction: null,
+        shouldAct: false,
+        response:
+          "I couldn't determine whether you want triage, a digest, or a response. Tell me which inbox action you want.",
+      };
+    }
+
+    const subaction =
+      typeof parsed.subaction === "string" &&
+      ["triage", "digest", "respond"].includes(parsed.subaction)
+        ? (parsed.subaction as InboxSubaction)
+        : null;
+    const shouldAct =
+      typeof parsed.shouldAct === "boolean" ? parsed.shouldAct : null;
+    return {
+      subaction,
+      shouldAct,
+      response:
+        typeof parsed.response === "string" && parsed.response.trim().length > 0
+          ? parsed.response.trim()
+          : null,
+      target:
+        typeof parsed.target === "string" && parsed.target.trim().length > 0
+          ? parsed.target.trim()
+          : null,
+      entryId:
+        typeof parsed.entryId === "string" && parsed.entryId.trim().length > 0
+          ? parsed.entryId.trim()
+          : null,
+      confirmed:
+        typeof parsed.confirmed === "boolean" ? parsed.confirmed : null,
+    };
+  } catch (error) {
+    logger.warn("[INBOX] Failed to plan inbox subaction:", String(error));
+    return {
+      subaction: null,
+      shouldAct: false,
+      response:
+        "Inbox action planning failed right now. Tell me explicitly whether to triage, show a digest, or respond.",
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -213,15 +262,40 @@ export const inboxAction: Action = {
     const params = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as InboxActionParams;
     const userText = extractText(message);
-    const subaction = resolveSubaction(params, userText, state);
+    const subactionPlan = await resolveSubactionPlan(
+      runtime,
+      params,
+      userText,
+      state,
+    );
+    if (!subactionPlan.subaction || subactionPlan.shouldAct !== true) {
+      return {
+        text:
+          subactionPlan.response ??
+          "Tell me whether you want me to triage the inbox, show a digest, or respond to someone.",
+        success: true,
+        values: { success: true, noop: true },
+        data: {
+          actionName: ACTION_NAME,
+          noop: true,
+          suggestedSubaction: subactionPlan.subaction,
+        },
+      };
+    }
+    const resolvedParams: InboxActionParams = {
+      ...params,
+      target: params.target ?? subactionPlan.target ?? undefined,
+      entryId: params.entryId ?? subactionPlan.entryId ?? undefined,
+      confirmed: params.confirmed ?? subactionPlan.confirmed ?? undefined,
+    };
 
-    switch (subaction) {
+    switch (subactionPlan.subaction) {
       case "triage":
-        return handleTriage(runtime, message, state, params);
+        return handleTriage(runtime, message, state, resolvedParams);
       case "digest":
-        return handleDigest(runtime, message, state, params);
+        return handleDigest(runtime, message, state, resolvedParams);
       case "respond":
-        return handleRespond(runtime, message, state, params);
+        return handleRespond(runtime, message, state, resolvedParams);
     }
   },
 
@@ -370,50 +444,44 @@ async function handleTriage(
     };
   }
 
-  // 4. Apply rule-based pre-classification
-  const needsLlm: InboundMessage[] = [];
-  const ruleResults = new Map<string, TriageResult>();
-
-  for (const msg of newMessages) {
-    const ruleClassification = applyTriageRules(
-      msg,
-      config.triageRules,
+  let llmResults: TriageResult[];
+  try {
+    const examples = await repo.getExamples(5);
+    llmResults = await classifyMessages(runtime, newMessages, {
       config,
-    );
-    if (ruleClassification) {
-      ruleResults.set(msg.id, {
-        classification: ruleClassification,
-        urgency:
-          ruleClassification === "urgent"
-            ? "high"
-            : ruleClassification === "ignore"
-              ? "low"
-              : "medium",
-        confidence: 0.95,
-        reasoning: `Rule-based classification: ${ruleClassification}`,
-      });
-    } else {
-      needsLlm.push(msg);
-    }
+      examples,
+    });
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Inbox classification failed.";
+    return {
+      text:
+        `Inbox triage paused because message classification failed: ${errorMessage} ` +
+        `No messages were auto-classified or auto-replied.`,
+      success: false,
+      values: {
+        success: false,
+        triaged: 0,
+        error: "TRIAGE_CLASSIFICATION_FAILED",
+      },
+      data: {
+        actionName: ACTION_NAME,
+        subaction: "triage",
+        interventionRequired: true,
+      },
+    };
   }
-
-  // 5. LLM classification for remaining messages
-  const examples = await repo.getExamples(5);
-  const llmResults = await classifyMessages(runtime, needsLlm, {
-    config,
-    examples,
-  });
 
   // Build a Map for O(1) lookup instead of O(n) indexOf per message.
   const llmResultMap = new Map<string, TriageResult>();
-  for (let i = 0; i < needsLlm.length; i++) {
+  for (let i = 0; i < newMessages.length; i++) {
     const result = llmResults[i];
     if (result) {
-      llmResultMap.set(needsLlm[i].id, result);
+      llmResultMap.set(newMessages[i].id, result);
     }
   }
 
-  // 6. Merge results and store
+  // 5. Store results
   let countUrgent = 0;
   let countNeedsReply = 0;
   let countAutoReplied = 0;
@@ -421,7 +489,7 @@ async function handleTriage(
   let countStored = 0;
 
   for (const msg of newMessages) {
-    const result = ruleResults.get(msg.id) ?? llmResultMap.get(msg.id) ?? null;
+    const result = llmResultMap.get(msg.id) ?? null;
     if (!result) continue;
 
     if (result.classification === "ignore") {
@@ -453,7 +521,7 @@ async function handleTriage(
     if (result.classification === "urgent") countUrgent++;
     if (result.classification === "needs_reply") countNeedsReply++;
 
-    // 7. Escalate urgent items
+    // 6. Escalate urgent items
     if (result.classification === "urgent") {
       try {
         const { EscalationService } = await import("@elizaos/agent/services/escalation");
@@ -468,7 +536,7 @@ async function handleTriage(
       }
     }
 
-    // 8. Auto-reply check
+    // 7. Auto-reply check
     if (
       result.classification === "needs_reply" &&
       result.suggestedResponse &&
@@ -486,7 +554,7 @@ async function handleTriage(
     }
   }
 
-  // 9. Cleanup old resolved entries
+  // 8. Cleanup old resolved entries
   if (config.retentionDays) {
     const cutoff = new Date(
       Date.now() - config.retentionDays * 24 * 60 * 60 * 1000,
@@ -670,7 +738,7 @@ async function handleRespond(
   const pendingDraft = latestPendingDraft(state);
   if (
     pendingDraft &&
-    (params.confirmed || looksLikeInboxConfirmation(userText))
+    params.confirmed === true
   ) {
     return handleConfirmation(runtime, message, pendingDraft, userText, repo);
   }

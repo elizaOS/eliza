@@ -68,8 +68,6 @@ import { useApp } from "./state";
 import type { FlaminaGuideTopic } from "./state/types";
 
 const CHAT_MOBILE_BREAKPOINT_PX = 820;
-const CHAT_DESKTOP_COMPOSER_UNDERLAY_CLASS =
-  "pointer-events-none absolute inset-x-0 bottom-0 h-[5.75rem]";
 
 /** Check if we're in pop-out mode (StreamView only, no chrome). */
 function useIsPopout(): boolean {
@@ -568,7 +566,7 @@ export function App() {
           <div className="flex flex-1 min-h-0 relative">
             {!isChatMobileLayout && isChat ? (
               <div
-                className={CHAT_DESKTOP_COMPOSER_UNDERLAY_CLASS}
+                className="pointer-events-none absolute inset-x-0 bottom-0 h-[5.75rem]"
                 data-chat-shell-composer-underlay
               />
             ) : null}

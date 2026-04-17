@@ -203,6 +203,10 @@ export interface LifeOpsIMessageConnectorStatus {
   connected: boolean;
   bridgeType: "imsg" | "bluebubbles" | "none";
   accountHandle: string | null;
+  sendMode: "cli" | "private-api" | "apple-script" | "none";
+  helperConnected: boolean | null;
+  privateApiEnabled: boolean | null;
+  diagnostics: string[];
   lastSyncAt: string | null;
   lastCheckedAt: string | null;
   error: string | null;

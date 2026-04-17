@@ -28,14 +28,25 @@
 import type { RouteHelpers, RouteRequestMeta } from "@elizaos/agent/api";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import {
-  getN8nSidecar,
-  type N8nSidecar,
-  type N8nSidecarStatus,
-  peekN8nSidecar,
-} from "../services/n8n-sidecar";
+import { isNativeServerPlatform } from "../platform/is-native-server";
+import type { N8nSidecar, N8nSidecarStatus } from "../services/n8n-sidecar";
 
 export type N8nMode = "cloud" | "local" | "disabled";
+
+/**
+ * Host platform for the n8n status surface. On mobile (iOS / Android) the
+ * local n8n sidecar cannot run because `node:child_process` is unavailable
+ * inside the Capacitor runtime. The status surface still reports state so
+ * the UI can render a cloud-only view.
+ */
+export type N8nHostPlatform = "desktop" | "mobile";
+
+/**
+ * Result of the cloud-gateway health probe. Reflects reachability of
+ * `${cloudBaseUrl}/api/v1/health` — `unknown` means we did not probe
+ * (mode !== "cloud" or probe failed before HTTP resolved).
+ */
+export type N8nCloudHealth = "ok" | "degraded" | "unknown";
 
 export interface N8nStatusResponse {
   mode: N8nMode;
@@ -43,6 +54,12 @@ export interface N8nStatusResponse {
   status: N8nSidecarStatus;
   cloudConnected: boolean;
   localEnabled: boolean;
+  platform: N8nHostPlatform;
+  /**
+   * Cloud gateway health. Present whenever mode === "cloud"; otherwise
+   * "unknown". Cached for 30s to avoid hammering the cloud on status polls.
+   */
+  cloudHealth: N8nCloudHealth;
 }
 
 export interface N8nWorkflowNodeLike {
@@ -106,6 +123,93 @@ export interface N8nRouteContext
    * or character id. Used in the cloud-mode proxy URL.
    */
   agentId?: string;
+  /**
+   * Override for native-platform detection. When absent, the handler
+   * calls `isNativeServerPlatform()`. Tests inject a deterministic value.
+   * On mobile the sidecar lifecycle is disabled — the route reports cloud
+   * mode or the `"disabled"` mode without importing the sidecar module.
+   */
+  isNativePlatform?: boolean;
+  /**
+   * Override for the cached cloud-health probe. When present, the handler
+   * uses this instead of running the live fetch (used by tests to assert
+   * degraded / ok / unknown paths deterministically).
+   */
+  cloudHealthOverride?: N8nCloudHealth;
+}
+
+// ── Cloud health probe ──────────────────────────────────────────────────────
+//
+// Probes `${cloudBaseUrl}/api/v1/health` with a 2s timeout and caches the
+// result for 30s. Any non-2xx or network failure maps to "degraded"; a 2xx
+// maps to "ok". Before the first probe completes we report "unknown".
+
+const CLOUD_HEALTH_CACHE_TTL_MS = 30_000;
+const CLOUD_HEALTH_PROBE_TIMEOUT_MS = 2_000;
+
+interface CloudHealthCacheEntry {
+  health: N8nCloudHealth;
+  expiresAt: number;
+}
+
+const cloudHealthCache = new Map<string, CloudHealthCacheEntry>();
+
+/** Exported for tests; wipes the health-probe cache between cases. */
+export function __resetCloudHealthCacheForTests(): void {
+  cloudHealthCache.clear();
+}
+
+async function probeCloudHealth(
+  baseUrl: string,
+  fetchImpl: typeof fetch,
+): Promise<N8nCloudHealth> {
+  const url = `${normalizeBaseUrl(baseUrl)}/api/v1/health`;
+  try {
+    const res = await fetchImpl(url, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(CLOUD_HEALTH_PROBE_TIMEOUT_MS),
+    });
+    return res.ok ? "ok" : "degraded";
+  } catch (err) {
+    logger.debug(
+      `[n8n-routes] cloud health probe failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return "degraded";
+  }
+}
+
+async function getCloudHealth(
+  baseUrl: string,
+  fetchImpl: typeof fetch,
+): Promise<N8nCloudHealth> {
+  const key = normalizeBaseUrl(baseUrl);
+  const now = Date.now();
+  const cached = cloudHealthCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.health;
+  }
+  const health = await probeCloudHealth(key, fetchImpl);
+  cloudHealthCache.set(key, {
+    health,
+    expiresAt: now + CLOUD_HEALTH_CACHE_TTL_MS,
+  });
+  return health;
+}
+
+/**
+ * Dynamically import the sidecar module. Keeps `node:child_process` out of
+ * the module graph for mobile bundles — `isNativeServerPlatform()` is true
+ * on Capacitor-hosted iOS / Android, in which case the sidecar code path
+ * is never reached.
+ */
+async function loadSidecarModule(): Promise<
+  typeof import("../services/n8n-sidecar") | null
+> {
+  if (isNativeServerPlatform()) return null;
+  return await import("../services/n8n-sidecar");
 }
 
 interface CloudAuthLike {
@@ -203,10 +307,17 @@ interface ProxyTarget {
 /**
  * Resolve the backend target for a workflow-CRUD call. Returns null target
  * if the n8n backend is not currently available; caller emits a 503.
+ *
+ * `sidecar` is passed in so the caller can either skip the sidecar module
+ * import on mobile (where it is unsupported) or inject a test stub. When
+ * `sidecar` is undefined, the handler treats that as "no sidecar singleton
+ * yet" — identical to the old `peekN8nSidecar()` → `null` case.
  */
 function resolveProxyTarget(
   ctx: N8nRouteContext,
   subpath: string,
+  sidecar: N8nSidecar | null,
+  native: boolean,
 ): {
   target: ProxyTarget | null;
   reason?: {
@@ -237,7 +348,10 @@ function resolveProxyTarget(
     };
   }
 
-  const localEnabled = ctx.config.n8n?.localEnabled ?? true;
+  // Mobile has no local sidecar path — treat as disabled when cloud is not
+  // authenticated so the UI gets a 503 with a clear reason rather than
+  // probing a sidecar that does not exist.
+  const localEnabled = native ? false : (ctx.config.n8n?.localEnabled ?? true);
   if (!localEnabled) {
     return {
       target: null,
@@ -245,8 +359,6 @@ function resolveProxyTarget(
     };
   }
 
-  const sidecar =
-    ctx.n8nSidecar === undefined ? peekN8nSidecar() : ctx.n8nSidecar;
   const sidecarState = sidecar?.getState();
   const status: N8nSidecarStatus = sidecarState?.status ?? "stopped";
 
@@ -388,23 +500,55 @@ function parseWorkflowPath(
   return null;
 }
 
+/**
+ * Resolve the sidecar singleton for this request. On mobile the sidecar
+ * module is never imported; callers receive `null` and the downstream
+ * resolver treats that as "no local backend available". Tests inject a
+ * concrete stub via `ctx.n8nSidecar`.
+ */
+async function resolveSidecarForRequest(
+  ctx: N8nRouteContext,
+  native: boolean,
+): Promise<N8nSidecar | null> {
+  if (ctx.n8nSidecar !== undefined) return ctx.n8nSidecar;
+  if (native) return null;
+  const mod = await loadSidecarModule();
+  return mod?.peekN8nSidecar() ?? null;
+}
+
 export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
   const { method, pathname, config } = ctx;
+  const native = ctx.isNativePlatform ?? isNativeServerPlatform();
 
   // --- Status ---------------------------------------------------------------
   if (method === "GET" && pathname === "/api/n8n/status") {
-    return handleStatus(ctx);
+    const sidecar = await resolveSidecarForRequest(ctx, native);
+    return handleStatus(ctx, sidecar, native);
   }
 
   // --- Sidecar start (fire-and-forget) --------------------------------------
   if (method === "POST" && pathname === "/api/n8n/sidecar/start") {
+    if (native) {
+      sendJson(ctx, 409, {
+        error: "Local n8n not supported on mobile. Use Eliza Cloud.",
+        platform: "mobile" satisfies N8nHostPlatform,
+      });
+      return true;
+    }
+    const mod = await loadSidecarModule();
     const sidecar =
       ctx.n8nSidecar ??
-      getN8nSidecar({
+      mod?.getN8nSidecar({
         enabled: config.n8n?.localEnabled ?? true,
         ...(config.n8n?.version ? { version: config.n8n.version } : {}),
         ...(config.n8n?.startPort ? { startPort: config.n8n.startPort } : {}),
       });
+    if (!sidecar) {
+      // Desktop path with no sidecar module reachable — treat as a hard
+      // failure rather than pretending the boot succeeded.
+      sendJson(ctx, 500, { error: "n8n sidecar module unavailable" });
+      return true;
+    }
     void sidecar.start();
     sendJson(ctx, 202, { ok: true });
     return true;
@@ -412,20 +556,24 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
 
   // --- Workflows list -------------------------------------------------------
   if (method === "GET" && pathname === "/api/n8n/workflows") {
-    return handleListWorkflows(ctx);
+    const sidecar = await resolveSidecarForRequest(ctx, native);
+    return handleListWorkflows(ctx, sidecar, native);
   }
 
   // --- Workflow CRUD --------------------------------------------------------
   const parsed = parseWorkflowPath(pathname);
   if (parsed) {
     if (method === "POST" && parsed.action === "activate") {
-      return handleToggleWorkflow(ctx, parsed.id, true);
+      const sidecar = await resolveSidecarForRequest(ctx, native);
+      return handleToggleWorkflow(ctx, parsed.id, true, sidecar, native);
     }
     if (method === "POST" && parsed.action === "deactivate") {
-      return handleToggleWorkflow(ctx, parsed.id, false);
+      const sidecar = await resolveSidecarForRequest(ctx, native);
+      return handleToggleWorkflow(ctx, parsed.id, false, sidecar, native);
     }
     if (method === "DELETE" && parsed.action === "get") {
-      return handleDeleteWorkflow(ctx, parsed.id);
+      const sidecar = await resolveSidecarForRequest(ctx, native);
+      return handleDeleteWorkflow(ctx, parsed.id, sidecar, native);
     }
   }
 
@@ -436,13 +584,18 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
 // out-of-tree caller that imports it. Prefer `handleN8nRoutes` in new code.
 export const handleN8nStatusRoutes = handleN8nRoutes;
 
-async function handleStatus(ctx: N8nRouteContext): Promise<boolean> {
+async function handleStatus(
+  ctx: N8nRouteContext,
+  sidecar: N8nSidecar | null,
+  native: boolean,
+): Promise<boolean> {
   const { config, runtime } = ctx;
-  const sidecar =
-    ctx.n8nSidecar === undefined ? peekN8nSidecar() : ctx.n8nSidecar;
 
   const cloudConnected = isCloudConnected(config, runtime);
-  const localEnabled = config.n8n?.localEnabled ?? true;
+  // Mobile forces localEnabled=false regardless of user setting — no local
+  // sidecar can run inside Capacitor. The stored config is untouched; this
+  // is a read-time override.
+  const localEnabled = native ? false : (config.n8n?.localEnabled ?? true);
   const sidecarState = sidecar?.getState();
   const status: N8nSidecarStatus = sidecarState?.status ?? "stopped";
 
@@ -458,12 +611,29 @@ async function handleStatus(ctx: N8nRouteContext): Promise<boolean> {
   const host =
     mode === "local" ? (sidecarState?.host ?? config.n8n?.host ?? null) : null;
 
+  // Cloud health — only probed when we are actually in cloud mode. The
+  // probe is cached for 30s (see getCloudHealth) so rapid status polls
+  // don't hammer the gateway. Tests inject cloudHealthOverride to bypass.
+  let cloudHealth: N8nCloudHealth = "unknown";
+  if (mode === "cloud") {
+    if (ctx.cloudHealthOverride !== undefined) {
+      cloudHealth = ctx.cloudHealthOverride;
+    } else {
+      cloudHealth = await getCloudHealth(
+        config.cloud?.baseUrl ?? DEFAULT_CLOUD_API_BASE_URL,
+        ctx.fetchImpl ?? fetch,
+      );
+    }
+  }
+
   const payload: N8nStatusResponse = {
     mode,
     host,
     status,
     cloudConnected,
     localEnabled,
+    platform: native ? "mobile" : "desktop",
+    cloudHealth,
   };
 
   // Match previous behavior: 200 via ctx.json.
@@ -471,8 +641,12 @@ async function handleStatus(ctx: N8nRouteContext): Promise<boolean> {
   return true;
 }
 
-async function handleListWorkflows(ctx: N8nRouteContext): Promise<boolean> {
-  const resolved = resolveProxyTarget(ctx, "");
+async function handleListWorkflows(
+  ctx: N8nRouteContext,
+  sidecar: N8nSidecar | null,
+  native: boolean,
+): Promise<boolean> {
+  const resolved = resolveProxyTarget(ctx, "", sidecar, native);
   if (!resolved.target) {
     sendJson(ctx, 503, {
       error: resolved.reason?.message ?? "n8n not ready",
@@ -502,6 +676,8 @@ async function handleToggleWorkflow(
   ctx: N8nRouteContext,
   id: string,
   activate: boolean,
+  sidecar: N8nSidecar | null,
+  native: boolean,
 ): Promise<boolean> {
   if (!id) {
     sendJson(ctx, 400, { error: "workflow id required" });
@@ -509,7 +685,7 @@ async function handleToggleWorkflow(
   }
 
   const subpath = `/${encodeURIComponent(id)}/${activate ? "activate" : "deactivate"}`;
-  const resolved = resolveProxyTarget(ctx, subpath);
+  const resolved = resolveProxyTarget(ctx, subpath, sidecar, native);
   if (!resolved.target) {
     sendJson(ctx, 503, {
       error: resolved.reason?.message ?? "n8n not ready",
@@ -548,13 +724,20 @@ async function handleToggleWorkflow(
 async function handleDeleteWorkflow(
   ctx: N8nRouteContext,
   id: string,
+  sidecar: N8nSidecar | null,
+  native: boolean,
 ): Promise<boolean> {
   if (!id) {
     sendJson(ctx, 400, { error: "workflow id required" });
     return true;
   }
 
-  const resolved = resolveProxyTarget(ctx, `/${encodeURIComponent(id)}`);
+  const resolved = resolveProxyTarget(
+    ctx,
+    `/${encodeURIComponent(id)}`,
+    sidecar,
+    native,
+  );
   if (!resolved.target) {
     sendJson(ctx, 503, {
       error: resolved.reason?.message ?? "n8n not ready",

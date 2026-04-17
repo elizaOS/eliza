@@ -456,11 +456,43 @@ export function TelegramConnectorCard() {
   );
 }
 
+function formatIMessageSendMode(
+  sendMode: "cli" | "private-api" | "apple-script" | "none",
+): string {
+  switch (sendMode) {
+    case "cli":
+      return "imsg CLI";
+    case "private-api":
+      return "BlueBubbles Private API";
+    case "apple-script":
+      return "BlueBubbles AppleScript fallback";
+    default:
+      return "Unavailable";
+  }
+}
+
+function formatIMessageDiagnostic(code: string): string {
+  switch (code) {
+    case "bluebubbles_private_api_disabled":
+      return "BlueBubbles Private API is disabled, so sends rely on AppleScript.";
+    case "bluebubbles_helper_disconnected":
+      return "BlueBubbles helper is disconnected, which usually means the Mac-side send path is degraded.";
+    case "no_backend_available":
+      return "No local iMessage backend is available.";
+    default:
+      return code;
+  }
+}
+
 export function IMessageConnectorCard() {
   const imessage = useIMessageConnector();
   const status = imessage.status;
   const busy = imessage.loading;
   const isConnected = status?.connected === true;
+  const isDegraded =
+    isConnected &&
+    status?.bridgeType === "bluebubbles" &&
+    (status.sendMode === "apple-script" || status.helperConnected === false);
   const bridgeLabel =
     status?.bridgeType === "bluebubbles"
       ? "BlueBubbles"
@@ -471,12 +503,14 @@ export function IMessageConnectorCard() {
     busy && !status
       ? "Checking..."
       : isConnected
-        ? bridgeLabel
-          ? `Connected via ${bridgeLabel}`
-          : "Connected"
+        ? bridgeLabel === "BlueBubbles" && status?.sendMode === "apple-script"
+          ? "Connected via BlueBubbles (AppleScript send)"
+          : bridgeLabel
+            ? `Connected via ${bridgeLabel}`
+            : "Connected"
         : "Not connected";
   const statusVariant: "ok" | "muted" | "warning" =
-    isConnected ? "ok" : busy && !status ? "warning" : "muted";
+    isDegraded ? "warning" : isConnected ? "ok" : busy && !status ? "warning" : "muted";
 
   return (
     <ConnectorCardShell
@@ -489,7 +523,9 @@ export function IMessageConnectorCard() {
         <div className="text-xs text-muted">
           {isConnected
             ? bridgeLabel === "BlueBubbles"
-              ? "LifeOps is using the local BlueBubbles bridge for iMessage access."
+              ? status?.sendMode === "private-api"
+                ? "LifeOps is using the local BlueBubbles bridge with Private API enabled."
+                : "LifeOps is using the local BlueBubbles bridge. Sends are currently using the AppleScript fallback."
               : "LifeOps is using the local imsg bridge for iMessage access."
             : "LifeOps could not detect an iMessage bridge. Configure BlueBubbles or the imsg CLI in Milady settings."}
         </div>
@@ -497,6 +533,17 @@ export function IMessageConnectorCard() {
           <div className="flex items-center gap-1.5 text-xs text-muted">
             <Phone className="h-3.5 w-3.5" />
             {status.accountHandle}
+          </div>
+        ) : null}
+        {isConnected ? (
+          <div className="rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
+            <div>Send path: {formatIMessageSendMode(status?.sendMode ?? "none")}</div>
+            {status?.privateApiEnabled !== null ? (
+              <div>Private API: {status.privateApiEnabled ? "enabled" : "disabled"}</div>
+            ) : null}
+            {status?.helperConnected !== null ? (
+              <div>Helper: {status.helperConnected ? "connected" : "disconnected"}</div>
+            ) : null}
           </div>
         ) : null}
         <div className="flex items-center gap-2">
@@ -525,6 +572,14 @@ export function IMessageConnectorCard() {
         {status?.error ? (
           <div className="text-xs text-danger">{status.error}</div>
         ) : null}
+        {status?.diagnostics.map((diagnostic) => (
+          <div
+            key={diagnostic}
+            className="rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted"
+          >
+            {formatIMessageDiagnostic(diagnostic)}
+          </div>
+        ))}
         {imessage.error ? (
           <div className="text-xs text-danger">{imessage.error}</div>
         ) : null}
