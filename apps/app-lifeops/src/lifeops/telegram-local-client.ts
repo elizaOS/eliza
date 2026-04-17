@@ -21,6 +21,23 @@ export interface TelegramLocalClientLike {
     entity: unknown,
     args: { message: string },
   ): Promise<{ id?: unknown } | null | undefined>;
+  getMessages(
+    entity: unknown,
+    args: { search: string; limit: number },
+  ): Promise<ReadonlyArray<TelegramMessageLike>>;
+}
+
+export interface TelegramMessageLike {
+  id?: unknown;
+  message?: string;
+  date?: Date | number | string;
+  out?: boolean;
+  fromId?: { userId?: unknown } | null;
+  peerId?: { userId?: unknown; chatId?: unknown; channelId?: unknown } | null;
+  /** Read receipt flag: for outbound messages, indicates the other side has read it */
+  mentioned?: boolean;
+  /** Number of reads (for group messages via `getMessageReadParticipants`) */
+  readCount?: number | null;
 }
 
 export interface TelegramDialogLike {

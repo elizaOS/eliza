@@ -9,7 +9,10 @@ import {
   StatusDot,
   Textarea,
 } from "@elizaos/ui";
-import type { TriggerSummary } from "../../api/client";
+import { Zap } from "lucide-react";
+import { useEffect, useState } from "react";
+import { client } from "../../api";
+import type { N8nWorkflow, TriggerSummary } from "../../api/client";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import {
   DURATION_UNITS,
@@ -178,17 +181,21 @@ export function HeartbeatForm({
             />
           </div>
 
-          <div>
-            <FieldLabel variant="form">
-              {t("triggersview.Instructions")}
-            </FieldLabel>
-            <Textarea
-              variant="form"
-              value={form.instructions}
-              onChange={(event) => setField("instructions", event.target.value)}
-              placeholder={t("triggersview.WhatShouldTheAgen")}
-            />
-          </div>
+          <TriggerKindSection
+            form={form}
+            setField={setField}
+            t={t}
+            onGoToWorkflows={() => {
+              // Navigate to Automations > Workflows filter.
+              // Caller controls navigation; we close the editor and signal intent
+              // via a custom event that AutomationsView can listen to.
+              window.dispatchEvent(
+                new CustomEvent("milady:automations:setFilter", {
+                  detail: { filter: "workflows" },
+                }),
+              );
+            }}
+          />
 
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <div>
@@ -353,7 +360,10 @@ export function HeartbeatForm({
               variant="default"
               size="sm"
               className="h-10 px-6 text-sm text-white shadow-sm hover:text-white dark:text-white dark:hover:text-white"
-              disabled={triggersSaving}
+              disabled={
+                triggersSaving ||
+                (form.kind === "workflow" && !form.workflowId)
+              }
               onClick={() => void onSubmit()}
             >
               {triggersSaving
