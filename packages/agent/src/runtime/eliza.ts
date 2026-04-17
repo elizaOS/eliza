@@ -1553,9 +1553,7 @@ export function applyN8nConfigToEnv(
     const rawBase = cloud.baseUrl ?? "https://www.elizacloud.ai";
     // Strip trailing /api/v1 (or /api/v1/) plus any trailing slashes so we can
     // build `${siteUrl}/api/v1/agents/${agentId}/n8n` without duplication.
-    const siteUrl = rawBase
-      .replace(/\/api\/v1\/?$/, "")
-      .replace(/\/+$/, "");
+    const siteUrl = rawBase.replace(/\/api\/v1\/?$/, "").replace(/\/+$/, "");
     const gateway = `${siteUrl}/api/v1/agents/${agentId}/n8n`;
     if (!process.env.N8N_HOST) process.env.N8N_HOST = gateway;
     if (!process.env.N8N_API_KEY) process.env.N8N_API_KEY = cloud.apiKey;

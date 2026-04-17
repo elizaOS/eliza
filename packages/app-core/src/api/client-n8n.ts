@@ -47,9 +47,12 @@ ElizaClient.prototype.activateN8nWorkflow = async function (
   this: ElizaClient,
   id: string,
 ): Promise<N8nWorkflow> {
-  return this.fetch<N8nWorkflow>(`/api/n8n/workflows/${encodeURIComponent(id)}/activate`, {
-    method: "POST",
-  });
+  return this.fetch<N8nWorkflow>(
+    `/api/n8n/workflows/${encodeURIComponent(id)}/activate`,
+    {
+      method: "POST",
+    },
+  );
 };
 
 ElizaClient.prototype.deactivateN8nWorkflow = async function (

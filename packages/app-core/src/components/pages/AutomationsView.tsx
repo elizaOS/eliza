@@ -62,7 +62,12 @@ import { N8nWorkflowsPanel } from "./N8nWorkflowsPanel";
 
 // ── Filter types ──────────────────────────────────────────────────
 
-type AutomationFilter = "all" | "my-tasks" | "scheduled" | "system" | "workflows";
+type AutomationFilter =
+  | "all"
+  | "my-tasks"
+  | "scheduled"
+  | "system"
+  | "workflows";
 
 // ── System task detection ─────────────────────────────────────────
 
@@ -1325,7 +1330,9 @@ function AutomationsLayout() {
               }
             >
               <Plus className="h-3.5 w-3.5" />
-              {filter === "workflows" ? t("automations.n8n.newWorkflow") : "New"}
+              {filter === "workflows"
+                ? t("automations.n8n.newWorkflow")
+                : "New"}
             </Button>
           </div>
 
@@ -1342,7 +1349,9 @@ function AutomationsLayout() {
             </SidebarContent.Notice>
           )}
 
-          {filter !== "workflows" && normalizedSearchQuery && visibleItems.length === 0 ? (
+          {filter !== "workflows" &&
+          normalizedSearchQuery &&
+          visibleItems.length === 0 ? (
             <SidebarContent.EmptyState className="px-4 py-6">
               No matching items
             </SidebarContent.EmptyState>

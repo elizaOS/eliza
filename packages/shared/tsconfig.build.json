@@ -1,13 +1,18 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "allowImportingTsExtensions": false,
     "allowJs": true,
+    "baseUrl": "../..",
     "noEmit": false,
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "dist",
-    "rootDir": "./src"
+    "rootDir": "./src",
+    "paths": {
+      "@elizaos/core": ["packages/typescript/dist/index.node.d.ts"]
+    }
   },
   "include": [
     "src"
