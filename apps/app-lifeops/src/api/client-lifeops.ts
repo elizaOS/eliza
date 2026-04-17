@@ -23,6 +23,7 @@ import type {
   CreateLifeOpsGmailReplyDraftRequest,
   CreateLifeOpsGoalRequest,
   DisconnectLifeOpsGoogleConnectorRequest,
+  DisconnectLifeOpsMessagingConnectorRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
   LifeOpsActivitySignal,
@@ -38,6 +39,7 @@ import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsDefinitionRecord,
+  LifeOpsDiscordConnectorStatus,
   LifeOpsGmailReplyDraft,
   LifeOpsGmailTriageFeed,
   LifeOpsGoalRecord,
@@ -48,11 +50,21 @@ import type {
   LifeOpsOccurrenceExplanation,
   LifeOpsOverview,
   LifeOpsReminderInspection,
+  LifeOpsSignalConnectorStatus,
+  LifeOpsSignalPairingStatus,
+  LifeOpsTelegramConnectorStatus,
   SelectLifeOpsGoogleConnectorPreferenceRequest,
   SendLifeOpsGmailReplyRequest,
   SnoozeLifeOpsOccurrenceRequest,
+  StartLifeOpsDiscordConnectorRequest,
+  StartLifeOpsDiscordConnectorResponse,
   StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsGoogleConnectorResponse,
+  StartLifeOpsSignalPairingRequest,
+  StartLifeOpsSignalPairingResponse,
+  StartLifeOpsTelegramAuthRequest,
+  StartLifeOpsTelegramAuthResponse,
+  SubmitLifeOpsTelegramAuthRequest,
   SyncLifeOpsBrowserStateRequest,
   UpdateLifeOpsBrowserSettingsRequest,
   UpdateLifeOpsDefinitionRequest,
@@ -194,6 +206,49 @@ declare module "@elizaos/app-core/api/client-base" {
       mode?: LifeOpsConnectorMode,
       side?: LifeOpsConnectorSide,
     ): Promise<LifeOpsGoogleConnectorStatus[]>;
+
+    // --- Signal connector ---
+    getSignalConnectorStatus(
+      side?: LifeOpsConnectorSide,
+    ): Promise<LifeOpsSignalConnectorStatus>;
+    startSignalPairing(
+      data?: StartLifeOpsSignalPairingRequest,
+    ): Promise<StartLifeOpsSignalPairingResponse>;
+    getSignalPairingStatus(
+      sessionId: string,
+    ): Promise<LifeOpsSignalPairingStatus>;
+    stopSignalPairing(sessionId: string): Promise<void>;
+    disconnectSignalConnector(
+      data?: DisconnectLifeOpsMessagingConnectorRequest,
+    ): Promise<LifeOpsSignalConnectorStatus>;
+
+    // --- Discord connector ---
+    getDiscordConnectorStatus(
+      side?: LifeOpsConnectorSide,
+    ): Promise<LifeOpsDiscordConnectorStatus>;
+    startDiscordConnector(
+      data?: StartLifeOpsDiscordConnectorRequest,
+    ): Promise<StartLifeOpsDiscordConnectorResponse>;
+    disconnectDiscordConnector(
+      data?: DisconnectLifeOpsMessagingConnectorRequest,
+    ): Promise<LifeOpsDiscordConnectorStatus>;
+
+    // --- Telegram connector ---
+    getTelegramConnectorStatus(
+      side?: LifeOpsConnectorSide,
+    ): Promise<LifeOpsTelegramConnectorStatus>;
+    startTelegramAuth(
+      data: StartLifeOpsTelegramAuthRequest,
+    ): Promise<StartLifeOpsTelegramAuthResponse>;
+    submitTelegramAuth(
+      data: SubmitLifeOpsTelegramAuthRequest,
+    ): Promise<StartLifeOpsTelegramAuthResponse>;
+    cancelTelegramAuth(
+      data?: DisconnectLifeOpsMessagingConnectorRequest,
+    ): Promise<void>;
+    disconnectTelegramConnector(
+      data?: DisconnectLifeOpsMessagingConnectorRequest,
+    ): Promise<LifeOpsTelegramConnectorStatus>;
   }
 }
 
@@ -680,4 +735,152 @@ ElizaClient.prototype.getGoogleLifeOpsConnectorAccounts = async function (
   }
   const query = params.size > 0 ? `?${params.toString()}` : "";
   return this.fetch(`/api/lifeops/connectors/google/accounts${query}`);
+};
+
+// ---------------------------------------------------------------------------
+// Signal connector
+// ---------------------------------------------------------------------------
+
+ElizaClient.prototype.getSignalConnectorStatus = async function (
+  this: ElizaClient,
+  side,
+) {
+  const params = new URLSearchParams();
+  if (side) {
+    params.set("side", side);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return this.fetch(`/api/lifeops/connectors/signal/status${query}`);
+};
+
+ElizaClient.prototype.startSignalPairing = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  return this.fetch("/api/lifeops/connectors/signal/pair", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.getSignalPairingStatus = async function (
+  this: ElizaClient,
+  sessionId,
+) {
+  const params = new URLSearchParams({ sessionId });
+  return this.fetch(
+    `/api/lifeops/connectors/signal/pairing-status?${params.toString()}`,
+  );
+};
+
+ElizaClient.prototype.stopSignalPairing = async function (
+  this: ElizaClient,
+  sessionId,
+) {
+  return this.fetch("/api/lifeops/connectors/signal/stop", {
+    method: "POST",
+    body: JSON.stringify({ sessionId }),
+  });
+};
+
+ElizaClient.prototype.disconnectSignalConnector = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  return this.fetch("/api/lifeops/connectors/signal/disconnect", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+// ---------------------------------------------------------------------------
+// Discord connector
+// ---------------------------------------------------------------------------
+
+ElizaClient.prototype.getDiscordConnectorStatus = async function (
+  this: ElizaClient,
+  side,
+) {
+  const params = new URLSearchParams();
+  if (side) {
+    params.set("side", side);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return this.fetch(`/api/lifeops/connectors/discord/status${query}`);
+};
+
+ElizaClient.prototype.startDiscordConnector = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  return this.fetch("/api/lifeops/connectors/discord/connect", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.disconnectDiscordConnector = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  return this.fetch("/api/lifeops/connectors/discord/disconnect", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+// ---------------------------------------------------------------------------
+// Telegram connector
+// ---------------------------------------------------------------------------
+
+ElizaClient.prototype.getTelegramConnectorStatus = async function (
+  this: ElizaClient,
+  side,
+) {
+  const params = new URLSearchParams();
+  if (side) {
+    params.set("side", side);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return this.fetch(`/api/lifeops/connectors/telegram/status${query}`);
+};
+
+ElizaClient.prototype.startTelegramAuth = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/connectors/telegram/start", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.submitTelegramAuth = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/connectors/telegram/submit", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.cancelTelegramAuth = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  return this.fetch("/api/lifeops/connectors/telegram/cancel", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.disconnectTelegramConnector = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  return this.fetch("/api/lifeops/connectors/telegram/disconnect", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 };
