@@ -155,16 +155,27 @@ export function DiscordConnectorCard() {
   const busy = discord.actionPending || discord.loading;
   const username = discord.status?.identity?.username;
   const available = discord.status?.available !== false;
+  const dmInboxVisible = discord.status?.dmInbox.visible === true;
+  const visibleDmCount = discord.status?.dmInbox.count ?? 0;
+  const visibleDmLabels =
+    discord.status?.dmInbox.previews
+      ?.map((preview) => preview.label)
+      .filter((label, index, labels) => labels.indexOf(label) === index)
+      .slice(0, 3) ?? [];
   const pairing = discord.status?.reason === "pairing";
   const statusLabel = !available
     ? "Open in Milady desktop"
     : isConnected
-      ? "Connected"
+      ? dmInboxVisible
+        ? `Connected • ${visibleDmCount} DM${visibleDmCount === 1 ? "" : "s"} visible`
+        : "Connected, waiting for DM inbox"
       : pairing
         ? "Sign in to Discord in the opened tab…"
         : "Not connected";
   const statusVariant: "ok" | "muted" | "warning" = isConnected
-    ? "ok"
+    ? dmInboxVisible
+      ? "ok"
+      : "warning"
     : pairing
       ? "warning"
       : "muted";
@@ -195,6 +206,18 @@ export function DiscordConnectorCard() {
               {String(username)}
             </div>
           ) : null}
+          {dmInboxVisible ? (
+            <div className="text-xs text-muted">
+              LifeOps can currently see your Discord DM list.
+              {visibleDmLabels.length > 0
+                ? ` Visible now: ${visibleDmLabels.join(", ")}.`
+                : ""}
+            </div>
+          ) : (
+            <div className="text-xs text-muted">
+              Discord is logged in, but LifeOps does not yet see the DM inbox in that tab.
+            </div>
+          )}
           <Button
             size="sm"
             variant="outline"

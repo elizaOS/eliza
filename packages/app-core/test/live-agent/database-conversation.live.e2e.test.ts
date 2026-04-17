@@ -26,9 +26,6 @@ import {
 } from "../../../../../test/helpers/http.ts";
 import { createLiveRuntimeChildEnv } from "../../../../../test/helpers/live-child-env.ts";
 
-const LIVE =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(
   import.meta.dirname,
   "..",
@@ -39,6 +36,9 @@ const REPO_ROOT = path.resolve(
 );
 loadDotenv({ path: path.join(REPO_ROOT, ".env") });
 
+const LIVE =
+  process.env.MILADY_LIVE_TEST === "1" ||
+  process.env.ELIZA_LIVE_TEST === "1";
 const LIVE_PROVIDER = selectLiveProvider();
 const LIVE_PROVIDER_PLUGIN_ID = LIVE_PROVIDER?.pluginPackage
   .split("/")
