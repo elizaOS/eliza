@@ -1524,6 +1524,22 @@ export interface LifeOpsSignalConnectorStatus {
   grant: LifeOpsConnectorGrant | null;
 }
 
+export interface LifeOpsDiscordDmPreview {
+  channelId: string | null;
+  href: string | null;
+  label: string;
+  selected: boolean;
+  unread: boolean;
+  snippet: string | null;
+}
+
+export interface LifeOpsDiscordDmInboxStatus {
+  visible: boolean;
+  count: number;
+  selectedChannelId: string | null;
+  previews: LifeOpsDiscordDmPreview[];
+}
+
 export interface LifeOpsDiscordConnectorStatus {
   provider: "discord";
   side: LifeOpsConnectorSide;
@@ -1538,6 +1554,8 @@ export interface LifeOpsDiscordConnectorStatus {
     discriminator?: string;
     email?: string;
   } | null;
+  /** Whether the owner's DM inbox is visible inside the Discord tab right now. */
+  dmInbox: LifeOpsDiscordDmInboxStatus;
   grantedCapabilities: LifeOpsDiscordCapability[];
   lastError: string | null;
   /** Browser Workspace tab hosting Discord, when one exists. */

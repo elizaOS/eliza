@@ -11,6 +11,7 @@ import type { LifeOpsConnectorSide } from "@elizaos/shared/contracts/lifeops";
 
 const DISCORD_APP_URL = "https://discord.com/channels/@me";
 const DISCORD_APP_TITLE = "Discord";
+const DISCORD_DM_PREVIEW_LIMIT = 5;
 
 export interface DiscordTabIdentity {
   id: string | null;
@@ -18,11 +19,249 @@ export interface DiscordTabIdentity {
   discriminator: string | null;
 }
 
+export interface DiscordVisibleDmPreview {
+  channelId: string | null;
+  href: string | null;
+  label: string;
+  selected: boolean;
+  unread: boolean;
+  snippet: string | null;
+}
+
+export interface DiscordDmInboxProbe {
+  visible: boolean;
+  count: number;
+  selectedChannelId: string | null;
+  previews: DiscordVisibleDmPreview[];
+}
+
 export interface DiscordTabProbe {
   loggedIn: boolean;
   url: string | null;
   identity: DiscordTabIdentity;
   rawSnippet: string | null;
+  dmInbox: DiscordDmInboxProbe;
+}
+
+function normalizeDiscordText(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function selectedDiscordDmChannelId(value: string | null | undefined): string | null {
+  const normalized = normalizeDiscordText(value);
+  if (!normalized) return null;
+  const match = normalized.match(/\/channels\/@me\/([^/?#]+)/);
+  return match?.[1] ?? null;
+}
+
+function discordAnchorTextParts(anchor: Element): string[] {
+  const values = new Set<string>();
+
+  const push = (value: string | null) => {
+    if (!value) return;
+    if (/^\d+$/.test(value)) return;
+    values.add(value);
+  };
+
+  for (const node of anchor.querySelectorAll("span, div")) {
+    push(normalizeDiscordText(node.textContent));
+  }
+
+  push(normalizeDiscordText(anchor.getAttribute("aria-label")));
+  if (values.size === 0) {
+    push(normalizeDiscordText(anchor.textContent));
+  }
+
+  return [...values];
+}
+
+function discordAnchorLabel(anchor: Element): string | null {
+  const ariaLabel = normalizeDiscordText(anchor.getAttribute("aria-label"));
+  if (ariaLabel) {
+    return ariaLabel
+      .split(",")
+      .map((part) => normalizeDiscordText(part))
+      .find((part) => part !== null && !/\bunread\b/i.test(part)) ?? ariaLabel;
+  }
+
+  const parts = discordAnchorTextParts(anchor);
+  return (
+    parts.find(
+      (part) =>
+        !/\bunread\b/i.test(part) &&
+        !/^(active now|voice connected|mutual friends?)$/i.test(part),
+    ) ?? null
+  );
+}
+
+function discordAnchorSnippet(anchor: Element, label: string | null): string | null {
+  const parts = discordAnchorTextParts(anchor);
+  return (
+    parts.find(
+      (part) =>
+        part !== label &&
+        !/\bunread\b/i.test(part) &&
+        !/^(active now|voice connected|mutual friends?)$/i.test(part),
+    ) ?? null
+  );
+}
+
+function extractDiscordDmPreviews(
+  document: Document,
+  selectedChannelId: string | null,
+): DiscordVisibleDmPreview[] {
+  const previews: DiscordVisibleDmPreview[] = [];
+  const seen = new Set<string>();
+
+  for (const anchor of document.querySelectorAll('a[href^="/channels/@me/"]')) {
+    const href = normalizeDiscordText(anchor.getAttribute("href"));
+    if (!href || href === "/channels/@me") continue;
+
+    const channelId = selectedDiscordDmChannelId(href);
+    const dedupeKey = channelId ?? href;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    const label = discordAnchorLabel(anchor) ?? channelId ?? "Direct message";
+    const unreadSignal = [
+      normalizeDiscordText(anchor.getAttribute("aria-label")),
+      normalizeDiscordText(anchor.textContent),
+    ]
+      .filter((value): value is string => value !== null)
+      .join(" ");
+
+    previews.push({
+      channelId,
+      href,
+      label,
+      selected:
+        (channelId !== null && channelId === selectedChannelId) ||
+        anchor.getAttribute("aria-current") === "page" ||
+        anchor.getAttribute("aria-selected") === "true",
+      unread:
+        /\bunread\b|\bnew messages?\b/i.test(unreadSignal) ||
+        Boolean(
+          anchor.querySelector('[aria-label*="unread" i], [class*="unread"]'),
+        ),
+      snippet: discordAnchorSnippet(anchor, label),
+    });
+  }
+
+  return previews;
+}
+
+export function emptyDiscordDmInboxProbe(): DiscordDmInboxProbe {
+  return {
+    visible: false,
+    count: 0,
+    selectedChannelId: null,
+    previews: [],
+  };
+}
+
+function emptyDiscordTabProbe(url: string | null = null): DiscordTabProbe {
+  return {
+    loggedIn: false,
+    url,
+    identity: {
+      id: null,
+      username: null,
+      discriminator: null,
+    },
+    rawSnippet: null,
+    dmInbox: emptyDiscordDmInboxProbe(),
+  };
+}
+
+export function probeDiscordDocumentState(
+  document: Document,
+  url: string | null,
+): DiscordTabProbe {
+  try {
+    const safeUrl = normalizeDiscordText(url);
+    const atLogin =
+      (safeUrl?.includes("/login") ?? false) ||
+      (safeUrl?.includes("/register") ?? false) ||
+      !!document.querySelector('input[name="email"], input[type="email"]');
+    if (atLogin) {
+      return emptyDiscordTabProbe(safeUrl ?? null);
+    }
+
+    const guildsNav = document.querySelector('[data-list-id="guildsnav"]');
+    const sidebar =
+      guildsNav ||
+      document.querySelector('nav[aria-label*="Servers" i]') ||
+      document.querySelector('[class*="guilds-"]') ||
+      document.querySelector('a[href^="/channels/@me/"]');
+    if (!sidebar) {
+      return emptyDiscordTabProbe(safeUrl ?? null);
+    }
+
+    const panel =
+      document.querySelector('section[aria-label*="User area" i]') ||
+      document.querySelector('[class*="panelTitleContainer"]') ||
+      document.querySelector('[class*="nameTag"]')?.parentElement ||
+      null;
+    const nameEl =
+      panel?.querySelector('[class*="nameTag"] [class*="name-"]') ||
+      panel?.querySelector('[class*="name-"]') ||
+      document.querySelector('[class*="nameTag"] [class*="name-"]') ||
+      document.querySelector('[class*="nameTag"]');
+    const tagEl =
+      panel?.querySelector('[class*="nameTag"] [class*="discrim"]') ||
+      document.querySelector('[class*="nameTag"] [class*="discrim"]');
+    const username = normalizeDiscordText(nameEl?.textContent ?? null);
+    const discriminator = normalizeDiscordText(tagEl?.textContent ?? null)?.replace(
+      /^#/,
+      "",
+    ) ?? null;
+    const snippet = normalizeDiscordText(panel?.textContent ?? null)?.slice(
+      0,
+      160,
+    ) ?? null;
+    const selectedChannelId = selectedDiscordDmChannelId(safeUrl ?? null);
+    const previews = extractDiscordDmPreviews(document, selectedChannelId);
+
+    return {
+      loggedIn: true,
+      url: safeUrl ?? null,
+      identity: {
+        id: null,
+        username,
+        discriminator,
+      },
+      rawSnippet: snippet,
+      dmInbox: {
+        visible: previews.length > 0 || selectedChannelId !== null,
+        count: previews.length,
+        selectedChannelId,
+        previews: previews.slice(0, DISCORD_DM_PREVIEW_LIMIT),
+      },
+    };
+  } catch (error) {
+    return {
+      ...emptyDiscordTabProbe(null),
+      rawSnippet: String(error),
+    };
+  }
+}
+
+function buildDiscordProbeScript(): string {
+  return `(() => {
+    const DISCORD_DM_PREVIEW_LIMIT = ${DISCORD_DM_PREVIEW_LIMIT};
+    const normalizeDiscordText = ${normalizeDiscordText.toString()};
+    const selectedDiscordDmChannelId = ${selectedDiscordDmChannelId.toString()};
+    const discordAnchorTextParts = ${discordAnchorTextParts.toString()};
+    const discordAnchorLabel = ${discordAnchorLabel.toString()};
+    const discordAnchorSnippet = ${discordAnchorSnippet.toString()};
+    const extractDiscordDmPreviews = ${extractDiscordDmPreviews.toString()};
+    const emptyDiscordDmInboxProbe = ${emptyDiscordDmInboxProbe.toString()};
+    const emptyDiscordTabProbe = ${emptyDiscordTabProbe.toString()};
+    const probeDiscordDocumentState = ${probeDiscordDocumentState.toString()};
+    return probeDiscordDocumentState(document, window.location.href || null);
+  })();`;
 }
 
 export function discordBrowserWorkspaceAvailable(
@@ -122,63 +361,21 @@ export async function probeDiscordTab(
   tabId: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<DiscordTabProbe> {
-  const script = `(() => {
-    try {
-      const url = window.location.href || "";
-      const atLogin =
-        url.includes("/login") ||
-        url.includes("/register") ||
-        !!document.querySelector('input[name="email"], input[type="email"]');
-      if (atLogin) {
-        return { loggedIn: false, url, identity: { id: null, username: null, discriminator: null }, rawSnippet: null };
-      }
-      const guildsNav = document.querySelector('[data-list-id="guildsnav"]');
-      const sidebar =
-        guildsNav ||
-        document.querySelector('nav[aria-label*="Servers" i]') ||
-        document.querySelector('[class*="guilds-"]');
-      if (!sidebar) {
-        return { loggedIn: false, url, identity: { id: null, username: null, discriminator: null }, rawSnippet: null };
-      }
-      const panel =
-        document.querySelector('section[aria-label*="User area" i]') ||
-        document.querySelector('[class*="panelTitleContainer"]') ||
-        document.querySelector('[class*="nameTag"]')?.parentElement ||
-        null;
-      const nameEl =
-        panel?.querySelector('[class*="nameTag"] [class*="name-"]') ||
-        panel?.querySelector('[class*="name-"]') ||
-        document.querySelector('[class*="nameTag"] [class*="name-"]') ||
-        document.querySelector('[class*="nameTag"]');
-      const tagEl =
-        panel?.querySelector('[class*="nameTag"] [class*="discrim"]') ||
-        document.querySelector('[class*="nameTag"] [class*="discrim"]');
-      const username = nameEl && nameEl.textContent ? nameEl.textContent.trim() : null;
-      const discriminator = tagEl && tagEl.textContent ? tagEl.textContent.trim().replace(/^#/, "") : null;
-      const snippet = panel?.textContent?.slice(0, 160) ?? null;
-      return {
-        loggedIn: true,
-        url,
-        identity: { id: null, username, discriminator },
-        rawSnippet: snippet,
-      };
-    } catch (err) {
-      return { loggedIn: false, url: null, identity: { id: null, username: null, discriminator: null }, rawSnippet: String(err) };
-    }
-  })();`;
-
   const result = (await evaluateBrowserWorkspaceTab(
-    { id: tabId, script },
+    { id: tabId, script: buildDiscordProbeScript() },
     env,
   )) as DiscordTabProbe | null | undefined;
 
   if (!result || typeof result !== "object") {
-    return {
-      loggedIn: false,
-      url: null,
-      identity: { id: null, username: null, discriminator: null },
-      rawSnippet: null,
-    };
+    return emptyDiscordTabProbe(null);
   }
-  return result;
+  return {
+    ...emptyDiscordTabProbe(null),
+    ...result,
+    identity: {
+      ...emptyDiscordTabProbe(null).identity,
+      ...(result.identity ?? {}),
+    },
+    dmInbox: result.dmInbox ?? emptyDiscordDmInboxProbe(),
+  };
 }

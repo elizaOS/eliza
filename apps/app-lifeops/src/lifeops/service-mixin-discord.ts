@@ -16,6 +16,7 @@ import {
   closeDiscordTab,
   type DiscordTabProbe,
   discordBrowserWorkspaceAvailable,
+  emptyDiscordDmInboxProbe,
   ensureDiscordTab,
   probeDiscordTab,
 } from "./discord-browser-scraper.js";
@@ -110,6 +111,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
           hasTab: Boolean(tabId),
         }),
         identity: identityFromProbe(probe, grant?.identity ?? null),
+        dmInbox: probe?.dmInbox ?? emptyDiscordDmInboxProbe(),
         grantedCapabilities: capabilities,
         lastError: null,
         tabId,
@@ -235,6 +237,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         connected: false,
         reason: "disconnected",
         identity: null,
+        dmInbox: emptyDiscordDmInboxProbe(),
         grantedCapabilities: [],
         lastError: null,
         tabId: null,
