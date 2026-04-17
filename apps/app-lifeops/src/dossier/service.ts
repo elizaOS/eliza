@@ -67,6 +67,13 @@ export interface DossierPayload {
     relationships: boolean;
     gmail: boolean;
     memories: boolean;
+    /**
+     * True when we tried to resolve cross-platform identity clusters for
+     * attendees but the service was unavailable or threw. Consumers can
+     * surface "identity dedup not applied — list may include duplicates
+     * of the same person across platforms".
+     */
+    identityCluster: boolean;
   };
   generatedAt: string;
 }

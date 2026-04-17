@@ -11,6 +11,12 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { loadLifeOpsAppState } from "../lifeops/app-state.js";
+import {
+  BackgroundPlannerError,
+  planJob,
+  type BackgroundJobContext,
+} from "../lifeops/background-planner.js";
+import { enqueueIfSensitive } from "../lifeops/background-planner-dispatch.js";
 
 /**
  * Follow-up tracker (T7c).
@@ -279,6 +285,39 @@ export async function reconcileFollowupsOnce(
     defaultThresholdDays,
   );
   await writeOverdueDigestMemory(runtime, digest);
+
+  // WS5: route each overdue contact through the shared LLM planner.
+  // Sensitive actions (nudges, calls, emails) are enqueued into the WS6
+  // approval queue — the tracker itself never auto-sends.
+  for (const entry of digest.overdue) {
+    const plannerContext: BackgroundJobContext = {
+      jobKind: "followup_watchdog",
+      subjectUserId: String(entry.entityId),
+      snapshot: {
+        entityId: String(entry.entityId),
+        displayName: entry.displayName,
+        lastContactedAt: entry.lastContactedAt,
+        daysOverdue: entry.daysOverdue,
+        thresholdDays: entry.thresholdDays,
+        generatedAt: digest.generatedAt,
+      },
+      availableChannels: ["telegram", "imessage", "sms", "email", "internal"],
+      trigger: `followup_watchdog:${entry.daysOverdue}d_overdue`,
+    };
+    try {
+      const plan = await planJob(runtime, plannerContext);
+      await enqueueIfSensitive(runtime, plannerContext, plan);
+    } catch (error) {
+      if (error instanceof BackgroundPlannerError) {
+        logger.warn(
+          `[FollowupTracker] background planner unavailable — ${error.message}`,
+        );
+        break;
+      }
+      throw error;
+    }
+  }
+
   return digest;
 }
 

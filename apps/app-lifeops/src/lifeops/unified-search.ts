@@ -324,7 +324,7 @@ async function searchAgentMemory(
     embedding,
     tableName: "messages",
     match_threshold: MEMORY_MATCH_THRESHOLD,
-    count: limit + 10,
+    limit: limit + 10,
     worldId: query.worldId,
   };
 

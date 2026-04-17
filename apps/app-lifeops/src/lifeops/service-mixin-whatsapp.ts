@@ -22,6 +22,7 @@ export function withWhatsApp<TBase extends Constructor<LifeOpsServiceBase>>(
       return {
         provider: "whatsapp",
         connected: creds !== null,
+        inbound: true,
         ...(creds?.phoneNumberId ? { phoneNumberId: creds.phoneNumberId } : {}),
         lastCheckedAt: new Date().toISOString(),
       };
@@ -53,8 +54,28 @@ export function withWhatsApp<TBase extends Constructor<LifeOpsServiceBase>>(
     async ingestWhatsAppWebhook(
       payload: unknown,
     ): Promise<{ ingested: number; messages: WhatsAppMessage[] }> {
-      const messages = parseWhatsAppWebhookMessages(payload);
+      // Buffer messages for periodic drain via syncWhatsAppInbound.
+      const messages = parseAndBufferWhatsAppWebhookMessages(payload);
       return { ingested: messages.length, messages };
+    }
+
+    /**
+     * Drain buffered inbound WhatsApp messages.
+     *
+     * WhatsApp Business Cloud API has no "list messages" endpoint — all inbound
+     * messages arrive via webhook push. This method drains the in-process buffer
+     * that {@link ingestWhatsAppWebhook} populates, giving callers periodic-pull
+     * semantics on top of the push-only transport.
+     *
+     * Deduplication is performed by message ID inside the buffer, so calling
+     * this method multiple times within one webhook cycle will not double-ingest.
+     *
+     * Returns the drained messages. Callers are responsible for writing them to
+     * memory or any downstream store.
+     */
+    syncWhatsAppInbound(): { drained: number; messages: WhatsAppMessage[] } {
+      const messages = drainWhatsAppInboundBuffer();
+      return { drained: messages.length, messages };
     }
   }
 

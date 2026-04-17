@@ -16,14 +16,17 @@ import {
   LIFEOPS_DISCORD_CAPABILITIES,
 } from "@elizaos/shared/contracts/lifeops";
 import {
+  captureDiscordDeliveryStatus,
   closeDiscordTab,
   DISCORD_APP_URL,
+  type DiscordMessageSearchResult,
   type DiscordTabProbe,
   discordBrowserWorkspaceAvailable,
   emptyDiscordDmInboxProbe,
   ensureDiscordTab,
   probeDiscordCapturedPage,
   probeDiscordTab,
+  searchDiscordMessages,
 } from "./discord-browser-scraper.js";
 import { createLifeOpsConnectorGrant } from "./repository.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
@@ -694,6 +697,78 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       );
 
       return this.getDiscordConnectorStatus(normalizedSide);
+    }
+
+    /**
+     * Search messages in Discord via browser-DOM eval. Requires a connected
+     * browser companion or workspace tab. Uses Discord's native search — no
+     * client-side filtering.
+     *
+     * Capability descriptor: `search: true`, `deliveryStatus: 'partial'`.
+     */
+    async searchDiscordMessages(request: {
+      side?: LifeOpsConnectorSide;
+      query: string;
+      channelId?: string;
+    }): Promise<DiscordMessageSearchResult[]> {
+      const normalizedSide =
+        normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
+      const grant = await this.repository.getConnectorGrant(
+        this.agentId(),
+        "discord",
+        "local",
+        normalizedSide,
+      );
+
+      const tabId = tabIdFromGrant(grant);
+      if (!tabId && !discordBrowserWorkspaceAvailable()) {
+        fail(
+          409,
+          "Discord search requires a connected browser tab. Authorize the Discord connector first.",
+        );
+      }
+      if (!tabId) {
+        fail(
+          409,
+          "Discord search requires a connected workspace tab. Authorize the Discord connector first.",
+        );
+      }
+
+      return searchDiscordMessages({
+        tabId,
+        query: request.query,
+        channelId: request.channelId,
+      });
+    }
+
+    /**
+     * Capture delivery status for recently sent Discord messages visible in
+     * the current channel. Partial coverage — only messages rendered in the
+     * active Discord tab can be inspected.
+     *
+     * Capability descriptor: `deliveryStatus: 'partial'`.
+     */
+    async captureDiscordDeliveryStatus(
+      side?: LifeOpsConnectorSide,
+    ): Promise<DiscordMessageSearchResult[]> {
+      const normalizedSide =
+        normalizeOptionalConnectorSide(side, "side") ?? "owner";
+      const grant = await this.repository.getConnectorGrant(
+        this.agentId(),
+        "discord",
+        "local",
+        normalizedSide,
+      );
+
+      const tabId = tabIdFromGrant(grant);
+      if (!tabId) {
+        fail(
+          409,
+          "Discord delivery status capture requires a connected workspace tab.",
+        );
+      }
+
+      return captureDiscordDeliveryStatus({ tabId });
     }
 
     async disconnectDiscord(

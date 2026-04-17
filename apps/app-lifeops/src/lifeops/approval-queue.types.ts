@@ -1,10 +1,8 @@
 /**
- * Approval queue types for LifeOps executive-assistant capability closure (WS6).
- *
- * The approval queue is the single canonical pipeline for any agent action that
- * requires human-in-the-loop confirmation before execution. It is shared by:
- *  - WS5 (UI surface that lists and resolves pending requests)
- *  - WS8 (action runners that enqueue requests and consume their resolution)
+ * WS6 — Approval queue as first-class state. Type-only stub published by WS5
+ * so background-job code can compile against the interface WS6 will
+ * implement. NO runtime behavior lives in this file: WS6 owns the
+ * implementation, persistence, state machine, and UI.
  *
  * State machine (strict — no fallback transitions, no implicit re-entry):
  *
@@ -15,13 +13,9 @@
  *      └──reject──▶ rejected                                │
  *      │                                                    │
  *      └──markExpired/purgeExpired──▶ expired               │
- *                                                           │
- *                            (executing may also fail; surface as a
- *                             dedicated error path — never silently
- *                             revert to pending)
  *
- * Invalid transitions throw a typed `ApprovalStateTransitionError`. Callers
- * MUST handle that explicitly — there is no defensive fallback.
+ * Invalid transitions throw `ApprovalStateTransitionError`. Callers MUST
+ * handle it — there is no defensive fallback.
  */
 
 /** Lifecycle states an approval request can occupy. */
@@ -33,13 +27,7 @@ export type ApprovalRequestState =
   | "rejected"
   | "expired";
 
-/**
- * Closed enum of action kinds that can be queued for approval.
- *
- * Keep this list small and explicit. Adding a new kind is a deliberate
- * cross-cutting change: the action runner (WS8), the UI (WS5), and the
- * test matrix all need to be updated together.
- */
+/** Closed enum of action kinds that can be queued for approval. */
 export type ApprovalAction =
   | "send_message"
   | "send_email"
@@ -64,13 +52,7 @@ export type ApprovalChannel =
   | "phone"
   | "internal";
 
-/**
- * Action-specific payload. Discriminated by `ApprovalAction`.
- *
- * The shape is intentionally constrained per action so consumers can
- * exhaustively switch on `action` and get a fully-typed payload without
- * casts.
- */
+/** Action-specific payload. Discriminated by `ApprovalAction`. */
 export type ApprovalPayload =
   | {
       action: "send_message";
@@ -143,23 +125,13 @@ export type ApprovalPayload =
       memo: string;
     };
 
-/**
- * Persisted approval request.
- *
- * Field nullability reflects real domain semantics (Commandment 8):
- *  - `resolvedAt`, `resolvedBy`, `resolutionReason` are `null` until
- *    the request leaves `pending`, then non-null forever after.
- *  - `expiresAt` is non-null: every request has an expiry.
- *  - `reason` is non-null: the agent must always justify the request.
- */
+/** Persisted approval request. */
 export interface ApprovalRequest {
   readonly id: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
   readonly state: ApprovalRequestState;
-  /** Agent or service that enqueued the request. */
   readonly requestedBy: string;
-  /** Owner whose approval is required. */
   readonly subjectUserId: string;
   readonly action: ApprovalAction;
   readonly payload: ApprovalPayload;
@@ -196,13 +168,7 @@ export interface ApprovalResolution {
   readonly resolutionReason: string;
 }
 
-/**
- * Thrown when a state transition is invalid.
- *
- * This is the only error type the queue raises for transition logic.
- * Callers MUST handle it explicitly — the queue does not silently coerce
- * or retry.
- */
+/** Thrown when a state transition is invalid. */
 export class ApprovalStateTransitionError extends Error {
   public readonly requestId: string;
   public readonly from: ApprovalRequestState;
@@ -235,12 +201,15 @@ export class ApprovalNotFoundError extends Error {
 }
 
 /**
- * Queue interface. Implementations MUST:
+ * Queue interface. WS6 implementations MUST:
  *  - Reject invalid state transitions by throwing `ApprovalStateTransitionError`.
  *  - Reject unknown ids by throwing `ApprovalNotFoundError`.
  *  - Use the structured logger only (no `console.*`).
- *  - Treat `purgeExpired` as idempotent: it transitions any `pending` rows
- *    whose `expiresAt <= now` to `expired` and returns the affected ids.
+ *  - Treat `purgeExpired` as idempotent.
+ *
+ * WS5 callers use `enqueue` only. Convenience overload: `enqueue(req)` may
+ * also be invoked as the minimal `Promise<id>` form called out in the task
+ * spec — the `id` is read from the returned `ApprovalRequest`.
  */
 export interface ApprovalQueue {
   enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest>;

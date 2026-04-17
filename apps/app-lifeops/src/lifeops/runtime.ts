@@ -1,6 +1,12 @@
 import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
 import { logger, runPluginMigrations, stringToUuid } from "@elizaos/core";
 import { loadLifeOpsAppState } from "./app-state.js";
+import {
+  BackgroundPlannerError,
+  planJob,
+  type BackgroundJobContext,
+} from "./background-planner.js";
+import { enqueueIfSensitive } from "./background-planner-dispatch.js";
 import { LifeOpsService } from "./service.js";
 import { readTwilioCredentialsFromEnv } from "./twilio.js";
 
@@ -133,10 +139,34 @@ export async function executeLifeOpsSchedulerTask(
 ): Promise<{
   nextInterval: number;
 }> {
+  // WS5: route this scheduler tick through the shared LLM planner so
+  // reminder / workflow dispatch decisions are LLM-extracted, not hardcoded.
+  const now = typeof options.now === "string" ? options.now : undefined;
+  const plannerContext: BackgroundJobContext = {
+    jobKind: "meeting_reminder",
+    subjectUserId: runtime.agentId,
+    snapshot: {
+      now: now ?? new Date().toISOString(),
+      scheduler: "LIFEOPS_SCHEDULER",
+    },
+    availableChannels: ["sms", "phone", "internal"],
+    trigger: "lifeops_scheduler_tick",
+  };
+  try {
+    const plan = await planJob(runtime, plannerContext);
+    await enqueueIfSensitive(runtime, plannerContext, plan);
+  } catch (error) {
+    if (error instanceof BackgroundPlannerError) {
+      logger.warn(
+        `[lifeops] background planner unavailable — ${error.message}`,
+      );
+    } else {
+      throw error;
+    }
+  }
+
   const service = new LifeOpsService(runtime);
-  await service.processScheduledWork({
-    now: typeof options.now === "string" ? options.now : undefined,
-  });
+  await service.processScheduledWork({ now });
   return {
     nextInterval: resolveLifeOpsTaskIntervalMs(runtime.agentId),
   };
