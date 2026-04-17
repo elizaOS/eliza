@@ -89,6 +89,18 @@ export function findDownload(
   return downloads.find((d) => d.modelId === modelId);
 }
 
+/**
+ * Client-side lookup of a catalog entry by id. Accepts the catalog as an
+ * argument so the hub UI can mix curated + HF-search results without
+ * importing the server-side singleton.
+ */
+export function findCatalogModel(
+  id: string,
+  catalog: CatalogModel[],
+): CatalogModel | undefined {
+  return catalog.find((m) => m.id === id);
+}
+
 export function groupByBucket(
   models: CatalogModel[],
 ): Map<ModelBucket, CatalogModel[]> {

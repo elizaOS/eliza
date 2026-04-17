@@ -32,7 +32,13 @@ declare module "./client-base" {
     getLocalInferenceHardware(): Promise<HardwareProbe>;
     getLocalInferenceCatalog(): Promise<{ models: CatalogModel[] }>;
     getLocalInferenceInstalled(): Promise<{ models: InstalledModel[] }>;
-    startLocalInferenceDownload(modelId: string): Promise<{ job: DownloadJob }>;
+    startLocalInferenceDownload(
+      modelIdOrSpec: string | CatalogModel,
+    ): Promise<{ job: DownloadJob }>;
+    searchHuggingFaceGguf(
+      query: string,
+      limit?: number,
+    ): Promise<{ models: CatalogModel[] }>;
     cancelLocalInferenceDownload(
       modelId: string,
     ): Promise<{ cancelled: boolean }>;
@@ -69,12 +75,26 @@ ElizaClient.prototype.getLocalInferenceInstalled = async function (
 
 ElizaClient.prototype.startLocalInferenceDownload = async function (
   this: ElizaClient,
-  modelId: string,
+  modelIdOrSpec: string | CatalogModel,
 ) {
+  const body =
+    typeof modelIdOrSpec === "string"
+      ? { modelId: modelIdOrSpec }
+      : { spec: modelIdOrSpec };
   return this.fetch("/api/local-inference/downloads", {
     method: "POST",
-    body: JSON.stringify({ modelId }),
+    body: JSON.stringify(body),
   });
+};
+
+ElizaClient.prototype.searchHuggingFaceGguf = async function (
+  this: ElizaClient,
+  query: string,
+  limit?: number,
+) {
+  const params = new URLSearchParams({ q: query });
+  if (limit != null) params.set("limit", String(limit));
+  return this.fetch(`/api/local-inference/hf-search?${params.toString()}`);
 };
 
 ElizaClient.prototype.cancelLocalInferenceDownload = async function (

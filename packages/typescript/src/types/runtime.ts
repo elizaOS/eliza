@@ -393,6 +393,16 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	// In-memory task definition methods
 	registerTaskWorker(taskHandler: TaskWorker): void;
 	getTaskWorker(name: string): TaskWorker | undefined;
+	/**
+	 * Remove a previously registered task worker by name. Returns true if
+	 * a worker was removed, false if no worker with that name existed.
+	 *
+	 * Use this from plugin.dispose() to tear down task workers when the
+	 * plugin is unloaded. Note: this only removes the in-memory worker
+	 * function — any persisted `Task` rows in the adapter that reference
+	 * this worker name must be deleted separately via `deleteTask()`.
+	 */
+	unregisterTaskWorker(name: string): boolean;
 
 	/**
 	 * Dynamic prompt execution with state injection, schema-based parsing, and validation-aware streaming.

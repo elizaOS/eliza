@@ -494,6 +494,18 @@ export async function resolveLaunchSession(
  * sessionId has expired server-side (e.g. container restart), we fall
  * back to a fresh /connect via resolveLaunchSession.
  */
+/**
+ * Called by the host app-manager when the user stops the ClawVille run.
+ * ClawVille is a thin proxy to the external ClawVille API — session state
+ * is stored in runtime settings (non-volatile) and the game server is
+ * managed externally. No local resources to tear down. Iframe unmount is
+ * sufficient. This hook is present so the app-manager lifecycle path
+ * stays uniform across all game apps.
+ */
+export async function stopRun(): Promise<void> {
+  // Intentional no-op — no server-side state to clean up.
+}
+
 export async function refreshRunSession(
   ctx: AppRunSessionContext,
 ): Promise<AppLaunchResult["session"]> {

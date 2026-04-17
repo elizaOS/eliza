@@ -12,9 +12,11 @@ import { ActiveModelCoordinator } from "./active-model";
 import { MODEL_CATALOG } from "./catalog";
 import { Downloader } from "./downloader";
 import { probeHardware } from "./hardware";
+import { searchHuggingFaceGguf } from "./hf-search";
 import { listInstalledModels, removeMiladyModel } from "./registry";
 import type {
   ActiveModelState,
+  CatalogModel,
   DownloadEvent,
   DownloadJob,
   HardwareProbe,
@@ -59,8 +61,17 @@ export class LocalInferenceService {
     };
   }
 
-  async startDownload(modelId: string): Promise<DownloadJob> {
-    return this.downloader.start(modelId);
+  async startDownload(
+    modelIdOrSpec: string | CatalogModel,
+  ): Promise<DownloadJob> {
+    return this.downloader.start(modelIdOrSpec);
+  }
+
+  async searchHuggingFace(
+    query: string,
+    limit?: number,
+  ): Promise<CatalogModel[]> {
+    return searchHuggingFaceGguf(query, limit);
   }
 
   cancelDownload(modelId: string): boolean {

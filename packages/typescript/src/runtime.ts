@@ -7072,6 +7072,10 @@ ${section_end}`;
 		return this.taskWorkers.get(name);
 	}
 
+	unregisterTaskWorker(name: string): boolean {
+		return this.taskWorkers.delete(name);
+	}
+
 	get db(): object {
 		return this.adapter.db;
 	}

@@ -14,8 +14,10 @@ import { useApp } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
 import { ActiveModelBar } from "./ActiveModelBar";
+import { DownloadQueue } from "./DownloadQueue";
 import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
+import { HuggingFaceSearch } from "./HuggingFaceSearch";
 import { ModelHubView } from "./ModelHubView";
 
 /**
@@ -23,11 +25,14 @@ import { ModelHubView } from "./ModelHubView";
  * subscribes to the download SSE stream, and dispatches mutations back
  * through the typed client helpers.
  */
+type HubTab = "curated" | "search" | "downloads";
+
 export function LocalInferencePanel() {
   const { setActionNotice } = useApp();
   const [hub, setHub] = useState<ModelHubSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<HubTab>("curated");
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const refresh = useCallback(async () => {
@@ -142,6 +147,16 @@ export function LocalInferencePanel() {
     [setActionNotice, withBusy],
   );
 
+  const handleDownloadSpec = useCallback(
+    (spec: CatalogModel) => {
+      void withBusy(async () => {
+        await client.startLocalInferenceDownload(spec);
+        setActionNotice(`Downloading ${spec.displayName}`, "success", 2000);
+      });
+    },
+    [setActionNotice, withBusy],
+  );
+
   const handleCancel = useCallback(
     (modelId: string) => {
       void withBusy(async () => {
@@ -237,18 +252,72 @@ export function LocalInferencePanel() {
         onUnload={handleUnload}
         busy={busy}
       />
-      <ModelHubView
-        catalog={catalog}
-        installed={hub.installed}
-        downloads={hub.downloads}
-        active={hub.active}
-        hardware={hub.hardware}
-        onDownload={handleDownload}
-        onCancel={handleCancel}
-        onActivate={handleActivate}
-        onUninstall={handleUninstall}
-        busy={busy}
-      />
+      <nav className="flex gap-2 border-b border-border">
+        {(
+          [
+            ["curated", "Curated"],
+            ["search", "Search HuggingFace"],
+            ["downloads", `Downloads${hub.downloads.length > 0 ? ` (${hub.downloads.length})` : ""}`],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            className={`px-3 py-2 text-sm border-b-2 transition-colors ${
+              tab === id
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {tab === "curated" && (
+        <ModelHubView
+          catalog={catalog}
+          installed={hub.installed}
+          downloads={hub.downloads}
+          active={hub.active}
+          hardware={hub.hardware}
+          onDownload={handleDownload}
+          onCancel={handleCancel}
+          onActivate={handleActivate}
+          onUninstall={handleUninstall}
+          busy={busy}
+        />
+      )}
+
+      {tab === "search" && !mobile && (
+        <HuggingFaceSearch
+          installed={hub.installed}
+          downloads={hub.downloads}
+          active={hub.active}
+          hardware={hub.hardware}
+          onDownload={handleDownloadSpec}
+          onCancel={handleCancel}
+          onActivate={handleActivate}
+          onUninstall={handleUninstall}
+          busy={busy}
+        />
+      )}
+      {tab === "search" && mobile && (
+        <div className="text-sm text-muted-foreground">
+          HuggingFace search is desktop-only for now — most results would be too
+          large for a phone.
+        </div>
+      )}
+
+      {tab === "downloads" && (
+        <DownloadQueue
+          downloads={hub.downloads}
+          catalog={hub.catalog}
+          onCancel={handleCancel}
+        />
+      )}
+
       <ExternalInstalledSummary
         installed={hub.installed}
         onActivate={handleActivate}

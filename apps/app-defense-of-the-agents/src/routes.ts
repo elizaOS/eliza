@@ -2011,6 +2011,27 @@ export async function refreshRunSession(
   }
 }
 
+/**
+ * Called by the host app-manager when the user stops the Defense of the
+ * Agents run. Stops the auto-play game loop and the review-timer interval
+ * so the game actually stops server-side instead of just unmounting the
+ * viewer iframe.
+ *
+ * Idempotent: if auto-play isn't running this is a no-op.
+ */
+export async function stopRun(ctx: {
+  runtime: unknown | null;
+}): Promise<void> {
+  try {
+    stopGameLoop(ctx.runtime as IAgentRuntime | null);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[app-defense-of-the-agents] stopRun: stopGameLoop failed: ${msg}`,
+    );
+  }
+}
+
 export async function collectLaunchDiagnostics(ctx: {
   runtime: IAgentRuntime | null;
   session: AppSessionState | null;

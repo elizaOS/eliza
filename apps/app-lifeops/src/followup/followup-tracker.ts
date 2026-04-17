@@ -10,6 +10,7 @@ import {
   logger,
   stringToUuid,
 } from "@elizaos/core";
+import { loadLifeOpsAppState } from "../lifeops/app-state.js";
 
 /**
  * Follow-up tracker (T7c).
@@ -291,7 +292,16 @@ export function registerFollowupTrackerWorker(runtime: IAgentRuntime): void {
   }
   runtime.registerTaskWorker({
     name: FOLLOWUP_TRACKER_TASK_NAME,
-    shouldRun: async () => true,
+    // Skip execution when LifeOps is disabled via the UI. Cycles become
+    // cheap no-ops; re-enabling requires no restart.
+    shouldRun: async (rt) => {
+      try {
+        const state = await loadLifeOpsAppState(rt as IAgentRuntime);
+        return state.enabled;
+      } catch {
+        return true;
+      }
+    },
     execute: async (rt) => {
       await reconcileFollowupsOnce(rt);
       return undefined;

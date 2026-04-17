@@ -92,6 +92,7 @@ import { lifeOpsProvider } from "./providers/lifeops.js";
 // LifeOps runtime (scheduler task worker + registration)
 import {
   ensureLifeOpsSchedulerTask,
+  LIFEOPS_TASK_NAME,
   registerLifeOpsTaskWorker,
 } from "./lifeops/runtime.js";
 
@@ -99,11 +100,13 @@ import {
 import { activityProfileProvider } from "./providers/activity-profile.js";
 import {
   ensureProactiveAgentTask,
+  PROACTIVE_TASK_NAME,
   registerProactiveTaskWorker,
 } from "./activity-profile/proactive-worker.js";
 
 // Follow-up tracker (T7c — plan §6.4)
 import {
+  FOLLOWUP_TRACKER_TASK_NAME,
   listOverdueFollowupsAction,
   markFollowupDoneAction,
   setFollowupThresholdAction,
@@ -289,6 +292,62 @@ const rawAppLifeOpsPlugin: Plugin = {
         }
       }
     })();
+  },
+  /**
+   * Tear down everything `init` registered so `runtime.unloadPlugin(...)`
+   * produces an actually-stopped LifeOps:
+   *   - Unregister task workers (proactive, follow-up, scheduler)
+   *   - Delete the persisted task rows that reference those workers
+   *
+   * Routes, services, actions, providers, and event listeners are cleaned
+   * up automatically by the runtime's plugin-lifecycle teardown — no need
+   * to touch those here.
+   */
+  dispose: async (runtime: IAgentRuntime) => {
+    const taskNames: readonly string[] = [
+      PROACTIVE_TASK_NAME,
+      LIFEOPS_TASK_NAME,
+      FOLLOWUP_TRACKER_TASK_NAME,
+    ];
+
+    // Delete persisted Task rows so the scheduler doesn't try to run them
+    // on restart (the worker function will be gone).
+    for (const name of taskNames) {
+      try {
+        const tasks = await runtime.getTasks({
+          agentIds: [runtime.agentId],
+        });
+        for (const task of tasks) {
+          if (task.name === name && task.id) {
+            try {
+              await runtime.deleteTask(task.id);
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              runtime.logger?.warn?.(
+                `[lifeops:dispose] Failed to delete task ${name} (${task.id}): ${msg}`,
+              );
+            }
+          }
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        runtime.logger?.warn?.(
+          `[lifeops:dispose] Failed to list tasks for "${name}": ${msg}`,
+        );
+      }
+    }
+
+    // Unregister the in-memory worker functions.
+    for (const name of taskNames) {
+      try {
+        runtime.unregisterTaskWorker?.(name);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        runtime.logger?.warn?.(
+          `[lifeops:dispose] Failed to unregister task worker "${name}": ${msg}`,
+        );
+      }
+    }
   },
 };
 
