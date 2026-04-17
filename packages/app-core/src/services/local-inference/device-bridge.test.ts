@@ -60,13 +60,12 @@ function fakeSocket(): FakeSocket {
 // Private `handleConnection` access — we attach a helper to the bridge
 // via a subclass so the test stays inside the module boundary.
 class TestBridge extends DeviceBridge {
-  connect(socket: FakeSocket, url = "http://a/api/local-inference/device-bridge"): void {
+  connect(
+    socket: FakeSocket,
+    url = "http://a/api/local-inference/device-bridge",
+  ): void {
     // @ts-expect-error — intentionally calling the private method.
-    this.handleConnection(
-      socket,
-      { OPEN: 1, CLOSED: 3 },
-      new URL(url),
-    );
+    this.handleConnection(socket, { OPEN: 1, CLOSED: 3 }, new URL(url));
   }
 }
 
@@ -285,7 +284,8 @@ describe("DeviceBridge", () => {
       );
       const rerouted = phoneSent.find(
         (f) =>
-          f.type === "generate" && f.correlationId === macFirstFrame.correlationId,
+          f.type === "generate" &&
+          f.correlationId === macFirstFrame.correlationId,
       );
       expect(rerouted).toBeDefined();
 

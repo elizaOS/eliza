@@ -52,16 +52,18 @@ describe("scanExternalModels", () => {
     const blobs = path.join(ollamaRoot, "blobs");
     await fs.mkdir(manifests, { recursive: true });
     await fs.mkdir(blobs, { recursive: true });
-    const digest =
-      "sha256:" +
-      "b".repeat(64); // JSON-style
+    const digest = "sha256:" + "b".repeat(64); // JSON-style
     const blobFile = path.join(blobs, digest.replace("sha256:", "sha256-"));
     await fs.writeFile(blobFile, Buffer.alloc(256));
     await fs.writeFile(
       path.join(manifests, "3b"),
       JSON.stringify({
         layers: [
-          { mediaType: "application/vnd.ollama.image.model", digest, size: 256 },
+          {
+            mediaType: "application/vnd.ollama.image.model",
+            digest,
+            size: 256,
+          },
         ],
       }),
     );
