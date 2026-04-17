@@ -63,6 +63,9 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
     installSkillFromMarketplace,
     uninstallMarketplaceSkill,
     installSkillFromGithubUrl,
+    enableMarketplaceSkill,
+    disableMarketplaceSkill,
+    copyMarketplaceSkillSource,
     setState,
     t,
   } = useApp();
@@ -683,6 +686,13 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
           installSkillFromMarketplace={installSkillFromMarketplace}
           uninstallMarketplaceSkill={uninstallMarketplaceSkill}
           installSkillFromGithubUrl={installSkillFromGithubUrl}
+          enableSkill={enableMarketplaceSkill}
+          disableSkill={disableMarketplaceSkill}
+          copySkillSource={copyMarketplaceSkillSource}
+          showSkillDetails={(skillId) => {
+            setSelectedId(skillId);
+            setInstallModalOpen(false);
+          }}
           setState={setState}
           onClose={() => setInstallModalOpen(false)}
         />
