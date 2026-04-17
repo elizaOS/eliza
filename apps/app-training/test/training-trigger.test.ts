@@ -9,14 +9,14 @@ import {
   trainingConfigPath,
 } from "../src/core/training-config.js";
 import {
-  triggerTraining,
   type BackendDispatcher,
   type TrainingRunRecord,
+  triggerTraining,
 } from "../src/core/training-orchestrator.js";
 import {
-  TrainingTriggerService,
   registerTrainingTriggerService,
   TRAINING_TRIGGER_SERVICE,
+  TrainingTriggerService,
 } from "../src/services/training-trigger.js";
 
 let stateDir: string;
@@ -269,7 +269,10 @@ describe("TrainingTriggerService", () => {
     const { runtime } = makeRuntime(trajectories);
     const fired: string[] = [];
     const service = new TrainingTriggerService(runtime, {
-      triggerImpl: (async (_runtime: unknown, opts: { task?: string; source: string }) => {
+      triggerImpl: (async (
+        _runtime: unknown,
+        opts: { task?: string; source: string },
+      ) => {
         fired.push(`${opts.source}:${opts.task ?? "any"}`);
         return {
           runId: `r-${fired.length}`,
@@ -386,7 +389,9 @@ describe("TrainingTriggerService", () => {
     const entries = services.get(TRAINING_TRIGGER_SERVICE);
     expect(entries).toBeDefined();
     expect(Array.isArray(entries)).toBe(true);
-    const entry = entries?.[0] as { instance: TrainingTriggerService } | undefined;
+    const entry = entries?.[0] as
+      | { instance: TrainingTriggerService }
+      | undefined;
     expect(entry?.instance).toBe(service);
   });
 });

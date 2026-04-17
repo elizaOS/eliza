@@ -128,10 +128,7 @@ export function normalizeTrainingConfig(input: unknown): TrainingConfig {
   if (!isStringRecord(input)) return base;
 
   if (typeof input.autoTrain === "boolean") base.autoTrain = input.autoTrain;
-  if (
-    isFiniteNumber(input.triggerThreshold) &&
-    input.triggerThreshold > 0
-  ) {
+  if (isFiniteNumber(input.triggerThreshold) && input.triggerThreshold > 0) {
     base.triggerThreshold = Math.floor(input.triggerThreshold);
   }
   if (

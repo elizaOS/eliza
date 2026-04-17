@@ -126,9 +126,9 @@ export function TrainingSettingsPanel() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [savingConfig, setSavingConfig] = useState(false);
-  const [triggeringTask, setTriggeringTask] = useState<TrainingTask | "any" | null>(
-    null,
-  );
+  const [triggeringTask, setTriggeringTask] = useState<
+    TrainingTask | "any" | null
+  >(null);
 
   // Local-edit state for the config inputs so the user can type freely without
   // every keystroke firing a save.
@@ -292,8 +292,8 @@ export function TrainingSettingsPanel() {
 
         {status && status.serviceRegistered === false ? (
           <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 px-3 py-2.5 text-xs-tight leading-5 text-amber-200">
-            The TrainingTriggerService is not registered on the runtime. Counters
-            will not advance until the agent registers it on startup.
+            The TrainingTriggerService is not registered on the runtime.
+            Counters will not advance until the agent registers it on startup.
           </div>
         ) : null}
 
@@ -354,7 +354,10 @@ export function TrainingSettingsPanel() {
                 </div>
               </div>
               <div className="text-2xs text-muted">
-                Backends: {config.backends.length === 0 ? "none configured (threshold firings will skip)" : config.backends.join(", ")}
+                Backends:{" "}
+                {config.backends.length === 0
+                  ? "none configured (threshold firings will skip)"
+                  : config.backends.join(", ")}
               </div>
             </section>
 
@@ -369,7 +372,9 @@ export function TrainingSettingsPanel() {
                   disabled={triggeringTask !== null}
                   onClick={() => void triggerNow("any")}
                 >
-                  {triggeringTask === "any" ? "Triggering…" : "Train any task now"}
+                  {triggeringTask === "any"
+                    ? "Triggering…"
+                    : "Train any task now"}
                 </Button>
               </div>
               <ul className="flex flex-col gap-2">
@@ -433,9 +438,9 @@ export function TrainingSettingsPanel() {
                         </div>
                       </div>
                       <div className="text-2xs text-muted">
-                        task: {run.task ?? "—"} · backend: {run.backend ?? "—"} ·
-                        source: {run.source} · datasetSize: {run.datasetSize} ·
-                        finished: {formatDate(run.finishedAt)}
+                        task: {run.task ?? "—"} · backend: {run.backend ?? "—"}{" "}
+                        · source: {run.source} · datasetSize: {run.datasetSize}{" "}
+                        · finished: {formatDate(run.finishedAt)}
                       </div>
                       {run.reason ? (
                         <div className="text-2xs text-muted">
@@ -444,7 +449,8 @@ export function TrainingSettingsPanel() {
                       ) : null}
                       {run.artifactPath ? (
                         <div className="text-2xs text-muted">
-                          artifact: <span className="font-mono">{run.artifactPath}</span>
+                          artifact:{" "}
+                          <span className="font-mono">{run.artifactPath}</span>
                         </div>
                       ) : null}
                     </li>
