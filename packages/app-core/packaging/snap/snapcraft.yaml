@@ -141,6 +141,9 @@ parts:
         const path = require("path");
         const repoRoot = process.cwd();
         const packageJsonPaths = [path.join(repoRoot, "package.json")];
+        const rootPkg = JSON.parse(
+          fs.readFileSync(path.join(repoRoot, "package.json"), "utf8")
+        );
         const availableWorkspaceNames = new Set();
         const dependencySections = [
           "dependencies",
@@ -166,8 +169,19 @@ parts:
           }
         }
 
-        for (const dir of ["apps", "packages", "deploy"]) {
-          walk(path.join(repoRoot, dir));
+        const workspaceRoots = new Set();
+        for (const entry of Array.isArray(rootPkg.workspaces) ? rootPkg.workspaces : []) {
+          let scanRoot = path.join(repoRoot, String(entry).split("*")[0]);
+          while (scanRoot !== repoRoot && !fs.existsSync(scanRoot)) {
+            scanRoot = path.dirname(scanRoot);
+          }
+          if (fs.existsSync(scanRoot)) {
+            workspaceRoots.add(scanRoot);
+          }
+        }
+
+        for (const dir of workspaceRoots) {
+          walk(dir);
         }
 
         for (const pkgPath of packageJsonPaths) {
