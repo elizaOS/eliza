@@ -9,7 +9,7 @@ torch~=2.8.0
 accelerate
 opencv-python-headless~=4.13.0.92
 matplotlib~=3.7.4
-pynput~=1.7.6
+pynput~=1.8.1
 pyautogui~=0.9.54
 psutil~=5.9.6
 tqdm~=4.66.3
