@@ -94,14 +94,14 @@
     "react": "19.2.5",
     "react-dom": "19.2.5",
     "@types/react": "19.2.14",
-    "@types/node": "25.4.0",
+    "@types/node": "25.6.0",
     "typedoc-plugin-markdown": "4.2.10",
     "typedoc": "0.27.9",
     "zod": "^4.3.6",
     "drizzle-orm": "^0.45.1"
   },
   "overrides": {
-    "@types/node": "25.4.0",
+    "@types/node": "25.6.0",
     "@nrwl/devkit": "19.8.4",
     "@nrwl/tao": "19.8.4",
     "color-convert": "2.0.1",
