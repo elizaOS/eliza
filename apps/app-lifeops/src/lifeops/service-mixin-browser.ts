@@ -25,6 +25,7 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
+import { recordBrowserFocusWindow } from "./browser-extension-store.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 // ---------------------------------------------------------------------------
@@ -161,6 +162,8 @@ function selectRememberedBrowserTabs(
   });
   return sorted.slice(0, maxRememberedTabs);
 }
+
+const MAX_BROWSER_FOCUS_WINDOW_MS = 2 * 60 * 1000;
 
 function browserUrlAllowedBySettings(
   url: string,
@@ -602,8 +605,30 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
         };
       }
 
-      const nowIso = new Date().toISOString();
+      const nowIso =
+        normalizeOptionalIsoString(
+          companionInput.lastSeenAt,
+          "companion.lastSeenAt",
+        ) ?? new Date().toISOString();
       const existingTabs = await this.repository.listBrowserTabs(this.agentId());
+      const currentSyncMs = Date.parse(nowIso);
+      const previouslyFocusedTab =
+        existingTabs.find((tab) => tab.focusedActive) ?? null;
+      if (previouslyFocusedTab && Number.isFinite(currentSyncMs)) {
+        const previousSeenMs = Date.parse(previouslyFocusedTab.lastSeenAt);
+        if (Number.isFinite(previousSeenMs) && currentSyncMs > previousSeenMs) {
+          const cappedStartMs = Math.max(
+            previousSeenMs,
+            currentSyncMs - MAX_BROWSER_FOCUS_WINDOW_MS,
+          );
+          await recordBrowserFocusWindow(this.runtime, {
+            deviceId: companion.id,
+            url: previouslyFocusedTab.url,
+            windowStart: new Date(cappedStartMs).toISOString(),
+            windowEnd: nowIso,
+          });
+        }
+      }
       const existingTabsByKey = new Map(
         existingTabs.map((tab) => [browserTabIdentityKey(tab), tab]),
       );
