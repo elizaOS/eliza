@@ -27,7 +27,7 @@ serde_json = "1.0"
 uuid = { version = "1.0", features = ["v4"] }
 
 # System info
-sysinfo = "0.33"
+sysinfo = "0.38"
 
 # Error handling
 anyhow = "1.0"
