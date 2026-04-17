@@ -47,6 +47,12 @@ interface LlamaChatSession {
       customStopTriggers?: string[];
     },
   ): Promise<string>;
+  /**
+   * Reset the accumulated chat history. Agent model handlers are stateless
+   * per-call; without this, `LlamaChatSession.prompt()` would thread prior
+   * turns into each new generation and gradually derail outputs.
+   */
+  resetChatHistory?(): void | Promise<void>;
   dispose?(): void | Promise<void>;
 }
 
@@ -168,6 +174,10 @@ export class LocalInferenceEngine {
     }
     const session = this.loadedSession;
     const run = async (): Promise<string> => {
+      // Agent model handlers are stateless per call. Drop any prior chat
+      // history so sequential prompts don't thread through accumulated
+      // context and drift output quality.
+      await session.resetChatHistory?.();
       return session.prompt(args.prompt, {
         maxTokens: args.maxTokens ?? 2048,
         temperature: args.temperature ?? 0.7,

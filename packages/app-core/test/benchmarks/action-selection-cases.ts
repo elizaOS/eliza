@@ -439,4 +439,74 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     tags: ["chat", "negative"],
     notes: "Observation, not a screen_time request",
   },
+
+  // ─── Password manager ─────────────────────────────────────────────────
+  {
+    id: "password-manager-lookup",
+    userMessage: "look up my GitHub password",
+    expectedAction: "PASSWORD_MANAGER",
+    tags: ["password", "credentials", "standard"],
+  },
+  {
+    id: "password-manager-list-logins",
+    userMessage: "show me my saved logins for github.com",
+    expectedAction: "PASSWORD_MANAGER",
+    tags: ["password", "credentials", "standard"],
+  },
+
+  // ─── Remote desktop ───────────────────────────────────────────────────
+  {
+    id: "remote-desktop-start-session",
+    userMessage: "start a remote desktop session",
+    expectedAction: "REMOTE_DESKTOP",
+    tags: ["remote-desktop", "standard"],
+  },
+  {
+    id: "remote-desktop-connect-from-phone",
+    userMessage: "let me connect to this machine from my phone",
+    expectedAction: "REMOTE_DESKTOP",
+    tags: ["remote-desktop", "standard"],
+  },
+
+  // ─── Intent sync (cross-device broadcast) ─────────────────────────────
+  {
+    id: "intent-sync-broadcast-reminder",
+    userMessage: "broadcast a reminder to all my devices",
+    expectedAction: "INTENT_SYNC",
+    tags: ["intent-sync", "standard"],
+  },
+  {
+    id: "intent-sync-send-to-mobile",
+    userMessage: "send this to my mobile",
+    expectedAction: "INTENT_SYNC",
+    tags: ["intent-sync", "standard"],
+  },
+
+  // ─── Calendly ─────────────────────────────────────────────────────────
+  {
+    id: "calendly-list-slots",
+    userMessage: "what slots are available on my Calendly next week",
+    expectedAction: "CALENDLY",
+    tags: ["calendly", "scheduling", "standard"],
+  },
+  {
+    id: "calendly-create-single-use-link",
+    userMessage: "create a single-use Calendly booking link",
+    expectedAction: "CALENDLY",
+    tags: ["calendly", "scheduling", "standard"],
+  },
+
+  // ─── Health ───────────────────────────────────────────────────────────
+  {
+    id: "health-sleep-last-night",
+    userMessage: "how did I sleep last night",
+    expectedAction: "HEALTH",
+    tags: ["health", "standard"],
+  },
+  {
+    id: "health-step-count-today",
+    userMessage: "show my step count today",
+    expectedAction: "HEALTH",
+    tags: ["health", "standard"],
+  },
 ];
