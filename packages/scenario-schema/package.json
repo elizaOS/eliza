@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/scenario-schema",
-  "version": "2.0.0-alpha.183",
+  "version": "2.0.0-alpha.184",
   "type": "module",
   "exports": {
     ".": "./index.js"
