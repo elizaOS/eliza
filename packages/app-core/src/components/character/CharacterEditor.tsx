@@ -125,6 +125,32 @@ const CHARACTER_EDITOR_PAGES = [
   "knowledge",
 ] as const;
 
+/**
+ * Cheap structural check — returns true when value already has the
+ * { examples: { name, content: { text } }[] }[] shape the UI expects.
+ * Used to skip `normalizeCharacterMessageExamples`, which strips empty
+ * turns that the user is actively composing.
+ */
+function hasValidMessageExamplesShape(value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  return value.every((convo) => {
+    if (!convo || typeof convo !== "object") return false;
+    const examples = (convo as { examples?: unknown }).examples;
+    if (!Array.isArray(examples)) return false;
+    return examples.every((msg) => {
+      if (!msg || typeof msg !== "object") return false;
+      const name = (msg as { name?: unknown }).name;
+      const content = (msg as { content?: unknown }).content;
+      return (
+        typeof name === "string" &&
+        !!content &&
+        typeof content === "object" &&
+        typeof (content as { text?: unknown }).text === "string"
+      );
+    });
+  });
+}
+
 /* ── Component ─────────────────────────────────────────────────────── */
 
 export function CharacterEditor({
@@ -389,10 +415,14 @@ export function CharacterEditor({
     (typeof characterData?.name === "string" && characterData.name.trim()) ||
     "Agent";
   const normalizedMessageExamples = Array.isArray(d.messageExamples)
-    ? normalizeCharacterMessageExamples(
-        d.messageExamples,
-        fallbackCharacterName,
-      )
+    ? hasValidMessageExamplesShape(d.messageExamples)
+      ? (d.messageExamples as ReturnType<
+          typeof normalizeCharacterMessageExamples
+        >)
+      : normalizeCharacterMessageExamples(
+          d.messageExamples,
+          fallbackCharacterName,
+        )
     : [];
   const bioText =
     typeof d.bio === "string"
@@ -457,23 +487,7 @@ export function CharacterEditor({
     // Skip normalization when the draft already has the expected shape —
     // otherwise empty turns the user just added (blank text) get stripped
     // out before they can type into them.
-    const hasExpectedShape = d.messageExamples.every((convo) => {
-      if (!convo || typeof convo !== "object") return false;
-      const examples = (convo as { examples?: unknown }).examples;
-      if (!Array.isArray(examples)) return false;
-      return examples.every((msg) => {
-        if (!msg || typeof msg !== "object") return false;
-        const name = (msg as { name?: unknown }).name;
-        const content = (msg as { content?: unknown }).content;
-        return (
-          typeof name === "string" &&
-          !!content &&
-          typeof content === "object" &&
-          typeof (content as { text?: unknown }).text === "string"
-        );
-      });
-    });
-    if (hasExpectedShape) return;
+    if (hasValidMessageExamplesShape(d.messageExamples)) return;
 
     const normalized = normalizeCharacterMessageExamples(
       d.messageExamples,
