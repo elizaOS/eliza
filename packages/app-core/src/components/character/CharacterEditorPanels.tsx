@@ -37,19 +37,38 @@ const SparklesIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-/* ── Inline close icon used by multiple panels ───────────────────── */
-const CloseIconSvg = () => (
+/* ── Small plus icon used for inline "add" actions ───────────────── */
+const PlusIconSvg = ({ className }: { className?: string }) => (
   <svg
     width="10"
     height="10"
     viewBox="0 0 10 10"
     fill="none"
     stroke="currentColor"
-    strokeWidth="1.5"
+    strokeWidth="1.75"
     strokeLinecap="round"
     aria-hidden="true"
+    className={className}
   >
-    <path d="M2 2l6 6M8 2l-6 6" />
+    <path d="M5 1.25v7.5M1.25 5h7.5" />
+  </svg>
+);
+
+/* ── Small trash icon used for inline "remove" actions ───────────── */
+const TrashIconSvg = ({ className }: { className?: string }) => (
+  <svg
+    width="11"
+    height="11"
+    viewBox="0 0 11 11"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.25"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    className={className}
+  >
+    <path d="M1.75 2.75h7.5M4 2.75V1.75h3v1M2.75 2.75l.4 6.75h4.7l.4-6.75" />
   </svg>
 );
 
@@ -249,7 +268,8 @@ export function CharacterIdentityPanel({
         </div>
       </section>
 
-      {/* Bio / About Me */}
+      {/* Bio / About Me + System Prompt — stacked on narrow, side-by-side on wide */}
+      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-2 lg:gap-5 lg:flex-1 lg:min-h-0">
       <section className="flex flex-1 min-h-[15rem] flex-col gap-3">
         <div className="flex items-center justify-between">
           <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
@@ -331,6 +351,7 @@ export function CharacterIdentityPanel({
           className="flex-1 min-h-12 resize-none overflow-y-auto rounded-lg border-border bg-white/[0.04] px-3 py-2 font-mono text-xs leading-relaxed text-txt h-full min-h-[14rem] max-h-none"
         />
       </section>
+      </div>
     </div>
   );
 }
@@ -417,7 +438,7 @@ export function CharacterStylePanel({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="mt-0.5 h-auto w-auto shrink-0 p-0 text-muted opacity-0 transition-[opacity,color,box-shadow] duration-150 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-danger/40"
+                        className="mt-0.5 h-auto w-auto shrink-0 p-0 text-muted opacity-0 transition-[opacity,color] duration-150 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
                         onClick={() => handleRemoveStyleEntry(key, index)}
                         title={t("common.remove")}
                         aria-label={`${t("common.remove")} ${t(
@@ -427,7 +448,7 @@ export function CharacterStylePanel({
                           },
                         )} ${index + 1}`}
                       >
-                        <CloseIconSvg />
+                        <TrashIconSvg />
                       </Button>
                     </div>
                   ))
@@ -458,17 +479,20 @@ export function CharacterStylePanel({
                   }}
                   className="min-w-0 text-xs h-7 flex-1 rounded-md border border-border bg-white/[0.03] px-2 font-mono text-xs-tight text-txt outline-none focus:border-accent"
                 />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-2xs font-bold text-accent"
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 h-7 px-2 text-3xs font-semibold text-accent/80 hover:text-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   onClick={() => handleAddStyleEntry(key)}
                   disabled={!pendingStyleEntries[key].trim()}
-                >
-                  {t("charactereditor.AddInline", {
-                    defaultValue: "+ add",
+                  title={t("charactereditor.AddStyleRule", {
+                    defaultValue: "Add style rule",
                   })}
-                </Button>
+                >
+                  <PlusIconSvg />
+                  {t("charactereditor.AddInline", {
+                    defaultValue: "add",
+                  })}
+                </button>
               </div>
             </div>
           );
@@ -557,7 +581,7 @@ export function CharacterExamplesPanel({
               <div className="mt-0.5 ml-[4.25rem] flex items-center justify-between">
                 <button
                   type="button"
-                  className="text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
+                  className="inline-flex items-center gap-1 text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
                   onClick={() => {
                     const agentName =
                       typeof d.name === "string" && d.name.trim()
@@ -574,25 +598,29 @@ export function CharacterExamplesPanel({
                     updated[ci] = convoClone;
                     handleFieldEdit("messageExamples", updated);
                   }}
+                  title={t("charactereditor.AddTurn", {
+                    defaultValue: "Add turn",
+                  })}
                 >
-                  +{" "}
-                  {t("charactereditor.AddTurn", {
+                  <PlusIconSvg />
+                  {t("charactereditor.TurnLabel", {
                     defaultValue: "turn",
                   })}
                 </button>
                 <button
                   type="button"
-                  className="text-3xs font-semibold text-muted hover:text-danger transition-colors"
+                  className="inline-flex items-center text-muted hover:text-danger transition-colors"
                   onClick={() => {
                     const updated = [...normalizedMessageExamples];
                     updated.splice(ci, 1);
                     handleFieldEdit("messageExamples", updated);
                   }}
                   aria-label={`${t("common.remove")} conversation ${ci + 1}`}
-                >
-                  {t("charactereditor.RemoveExample", {
-                    defaultValue: "remove",
+                  title={t("charactereditor.RemoveConversation", {
+                    defaultValue: "Remove conversation",
                   })}
+                >
+                  <TrashIconSvg />
                 </button>
               </div>
             </div>
@@ -607,7 +635,7 @@ export function CharacterExamplesPanel({
         </div>
         <button
           type="button"
-          className="self-start mt-1 text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
+          className="inline-flex items-center gap-1 self-start mt-1 text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
           onClick={() => {
             const agentName =
               typeof d.name === "string" && d.name.trim()
@@ -624,10 +652,13 @@ export function CharacterExamplesPanel({
             ];
             handleFieldEdit("messageExamples", updated);
           }}
-        >
-          +{" "}
-          {t("charactereditor.AddConversation", {
+          title={t("charactereditor.AddConversation", {
             defaultValue: "Add conversation",
+          })}
+        >
+          <PlusIconSvg />
+          {t("charactereditor.ConversationLabel", {
+            defaultValue: "conversation",
           })}
         </button>
       </section>
@@ -679,14 +710,18 @@ export function CharacterExamplesPanel({
               <Button
                 variant="ghost"
                 size="icon"
-                className="mt-0.5 h-auto w-auto shrink-0 p-0 text-muted opacity-0 transition-[opacity,color,box-shadow] duration-150 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-danger/40"
+                className="h-auto w-auto shrink-0 p-0 text-muted opacity-0 transition-[opacity,color] duration-150 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
                 onClick={() => {
                   const updated = [...(d.postExamples ?? [])];
                   updated.splice(pi, 1);
                   handleFieldEdit("postExamples", updated);
                 }}
+                aria-label={`${t("common.remove")} post ${pi + 1}`}
+                title={t("charactereditor.RemovePost", {
+                  defaultValue: "Remove post",
+                })}
               >
-                <CloseIconSvg />
+                <TrashIconSvg />
               </Button>
             </div>
           ))}
@@ -699,15 +734,18 @@ export function CharacterExamplesPanel({
           )}
           <button
             type="button"
-            className="self-start mt-1 text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
+            className="inline-flex items-center gap-1 self-start mt-1 text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
             onClick={() => {
               const updated = [...(d.postExamples ?? []), ""];
               handleFieldEdit("postExamples", updated);
             }}
-          >
-            +{" "}
-            {t("charactereditor.AddPost", {
+            title={t("charactereditor.AddPost", {
               defaultValue: "Add Post",
+            })}
+          >
+            <PlusIconSvg />
+            {t("charactereditor.PostLabel", {
+              defaultValue: "post",
             })}
           </button>
         </div>
