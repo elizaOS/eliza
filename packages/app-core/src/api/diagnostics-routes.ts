@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { getLifeOpsBrowserCompanionPackageStatus } from "@elizaos/agent/api/lifeops-browser-packaging";
+import { getLifeOpsBrowserCompanionPackageStatus } from "@elizaos/app-lifeops/routes/lifeops-browser-packaging";
 import {
   AUDIT_EVENT_TYPES,
   AUDIT_SEVERITIES,
