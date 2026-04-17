@@ -219,20 +219,22 @@ describe("RelationshipsService identity surface", () => {
 		);
 
 		// Now observe the same identity for entity B at >= 0.85 with >= 2 evidence.
+		// The newly-upserted entity (B) is the surviving side of the auto-merge:
+		// upsertIdentity sees the existing pin on A and folds A into B.
 		await fx.service.upsertIdentity(
 			entityB,
 			{ platform: "twitter", handle: "eve", confidence: 0.9 },
 			[asUUID(stringToUuid("evd-3")), asUUID(stringToUuid("evd-4"))],
 		);
 
-		// Auto-merge should have folded B into A. B's identities should be empty.
-		const aIdentities = await fx.service.getEntityIdentities(entityA);
-		expect(aIdentities).toHaveLength(1);
-		expect(aIdentities[0].platform).toBe("twitter");
-		expect(aIdentities[0].handle).toBe("eve");
-
+		// Auto-merge should have folded A into B. A's identities should be empty.
 		const bIdentities = await fx.service.getEntityIdentities(entityB);
-		expect(bIdentities).toHaveLength(0);
+		expect(bIdentities).toHaveLength(1);
+		expect(bIdentities[0].platform).toBe("twitter");
+		expect(bIdentities[0].handle).toBe("eve");
+
+		const aIdentities = await fx.service.getEntityIdentities(entityA);
+		expect(aIdentities).toHaveLength(0);
 
 		// The auto-accepted candidate should not show up as pending.
 		const pending = await fx.service.getCandidateMerges();
