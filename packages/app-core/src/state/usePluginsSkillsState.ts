@@ -584,6 +584,69 @@ export function usePluginsSkillsState({
     [refreshSkills, setActionNotice],
   );
 
+  const enableMarketplaceSkill = useCallback(
+    async (skillId: string, name: string) => {
+      setSkillsMarketplaceAction(`enable:${skillId}`);
+      try {
+        await client.enableSkill(skillId);
+        await refreshSkills();
+        setActionNotice(`${name} enabled.`, "success");
+      } catch (err) {
+        setActionNotice(
+          `Failed to enable ${name}: ${err instanceof Error ? err.message : "unknown error"}`,
+          "error",
+          4200,
+        );
+      } finally {
+        setSkillsMarketplaceAction("");
+      }
+    },
+    [refreshSkills, setActionNotice],
+  );
+
+  const disableMarketplaceSkill = useCallback(
+    async (skillId: string, name: string) => {
+      setSkillsMarketplaceAction(`disable:${skillId}`);
+      try {
+        await client.disableSkill(skillId);
+        await refreshSkills();
+        setActionNotice(`${name} disabled.`, "success");
+      } catch (err) {
+        setActionNotice(
+          `Failed to disable ${name}: ${err instanceof Error ? err.message : "unknown error"}`,
+          "error",
+          4200,
+        );
+      } finally {
+        setSkillsMarketplaceAction("");
+      }
+    },
+    [refreshSkills, setActionNotice],
+  );
+
+  const copyMarketplaceSkillSource = useCallback(
+    async (skillId: string, name: string) => {
+      setSkillsMarketplaceAction(`copy:${skillId}`);
+      try {
+        const { content } = await client.getSkillSource(skillId);
+        if (typeof navigator === "undefined" || !navigator.clipboard) {
+          throw new Error("Clipboard API unavailable in this environment");
+        }
+        await navigator.clipboard.writeText(content);
+        setActionNotice(`Copied ${name} SKILL.md to clipboard.`, "success");
+      } catch (err) {
+        setActionNotice(
+          `Failed to copy ${name}: ${err instanceof Error ? err.message : "unknown error"}`,
+          "error",
+          4200,
+        );
+      } finally {
+        setSkillsMarketplaceAction("");
+      }
+    },
+    [setActionNotice],
+  );
+
   // ── Return ──────────────────────────────────────────────────────────
 
   return {
