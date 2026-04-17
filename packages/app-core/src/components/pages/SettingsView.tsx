@@ -40,6 +40,7 @@ import { useApp } from "../../state";
 import { WidgetHost } from "../../widgets";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
+import { LearnedSkillsPanel } from "../settings/LearnedSkills";
 import { MediaSettingsSection } from "../settings/MediaSettingsSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
@@ -198,6 +199,22 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "file access",
     ],
     keywordKeys: ["settings.keyword.permissions", "settings.keyword.security"],
+  },
+  {
+    id: "learned-skills",
+    label: "settings.sections.learnedSkills.label",
+    description: "settings.sections.learnedSkills.desc",
+    keywords: [
+      "learned",
+      "skills",
+      "curated",
+      "trajectory",
+      "training",
+      "agent",
+      "promote",
+      "disable",
+    ],
+    keywordKeys: ["settings.keyword.skills", "settings.keyword.training"],
   },
   {
     id: "updates",
@@ -1108,6 +1125,17 @@ export function SettingsView({
           ref={registerContentItem("permissions")}
         >
           <PermissionsSection />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("learned-skills") && (
+        <SettingsSection
+          id="learned-skills"
+          title={t("settings.sections.learnedSkills.label")}
+          description={t("settings.sections.learnedSkills.desc")}
+          ref={registerContentItem("learned-skills")}
+        >
+          <LearnedSkillsPanel />
         </SettingsSection>
       )}
 

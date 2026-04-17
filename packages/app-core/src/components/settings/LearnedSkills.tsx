@@ -13,7 +13,14 @@
  *   DELETE /api/skills/curated/:name                      → remove
  */
 
-import { Button } from "@elizaos/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
 
@@ -105,78 +112,89 @@ export function LearnedSkillsPanel() {
     [refresh],
   );
 
+  const isEmpty =
+    !loading &&
+    grouped.proposed.length === 0 &&
+    grouped.active.length === 0 &&
+    grouped.disabled.length === 0;
+
   return (
-    <section className="space-y-3 rounded-lg border border-default bg-bg p-4">
-      <header className="space-y-1">
-        <h2 className="text-sm font-semibold text-txt">Learned Skills</h2>
-        <p className="text-xs text-muted">
-          Skills the agent has drafted or refined from real trajectories.
-          Promote a proposal to start using it, disable to keep it on disk but
-          inactive, or delete to remove.
-        </p>
-      </header>
-
-      {errorMessage ? (
-        <div className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800">
-          {errorMessage}
+    <Card
+      className="border-border/60 bg-card/92 shadow-sm"
+      data-testid="settings-learned-skills-panel"
+    >
+      <CardHeader className="px-4 py-4 pb-0">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle className="text-sm">Learned Skills</CardTitle>
+            <CardDescription className="mt-1 text-xs-tight leading-5">
+              Skills the agent has drafted or refined from real trajectories.
+              Promote a proposal to start using it, disable to keep it on disk
+              but inactive, or delete to remove.
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
+            onClick={() => {
+              void refresh();
+            }}
+            disabled={loading}
+          >
+            Refresh
+          </Button>
         </div>
-      ) : null}
+      </CardHeader>
 
-      <div className="flex items-center justify-between">
-        <div className="text-xs text-muted">
+      <CardContent className="flex flex-col gap-4 px-4 pb-4">
+        {errorMessage ? (
+          <div className="rounded-xl border border-danger/40 bg-danger/10 px-3 py-2.5 text-xs-tight leading-5 text-danger">
+            {errorMessage}
+          </div>
+        ) : null}
+
+        <div className="text-2xs text-muted">
           {loading
             ? "Loading…"
             : `${grouped.proposed.length} proposed · ${grouped.active.length} active · ${grouped.disabled.length} disabled`}
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            void refresh();
-          }}
-          disabled={loading}
-        >
-          Refresh
-        </Button>
-      </div>
 
-      {grouped.proposed.length > 0 ? (
-        <SkillSection
-          title="Pending proposals"
-          skills={grouped.proposed}
-          busyName={busyName}
-          onPromote={(name) => performAction(name, "POST", "promote")}
-          onDelete={(name) => performAction(name, "DELETE", "delete")}
-        />
-      ) : null}
-      {grouped.active.length > 0 ? (
-        <SkillSection
-          title="Active learned skills"
-          skills={grouped.active}
-          busyName={busyName}
-          onDisable={(name) => performAction(name, "POST", "disable")}
-          onDelete={(name) => performAction(name, "DELETE", "delete")}
-        />
-      ) : null}
-      {grouped.disabled.length > 0 ? (
-        <SkillSection
-          title="Disabled"
-          skills={grouped.disabled}
-          busyName={busyName}
-          onDelete={(name) => performAction(name, "DELETE", "delete")}
-        />
-      ) : null}
+        {grouped.proposed.length > 0 ? (
+          <SkillSection
+            title="Pending proposals"
+            skills={grouped.proposed}
+            busyName={busyName}
+            onPromote={(name) => performAction(name, "POST", "promote")}
+            onDelete={(name) => performAction(name, "DELETE", "delete")}
+          />
+        ) : null}
+        {grouped.active.length > 0 ? (
+          <SkillSection
+            title="Active learned skills"
+            skills={grouped.active}
+            busyName={busyName}
+            onDisable={(name) => performAction(name, "POST", "disable")}
+            onDelete={(name) => performAction(name, "DELETE", "delete")}
+          />
+        ) : null}
+        {grouped.disabled.length > 0 ? (
+          <SkillSection
+            title="Disabled"
+            skills={grouped.disabled}
+            busyName={busyName}
+            onDelete={(name) => performAction(name, "DELETE", "delete")}
+          />
+        ) : null}
 
-      {!loading &&
-      grouped.proposed.length === 0 &&
-      grouped.active.length === 0 &&
-      grouped.disabled.length === 0 ? (
-        <div className="rounded-md border border-dashed border-default p-3 text-xs text-muted">
-          No learned skills yet. The agent stages new proposals here after
-          successful trajectories.
-        </div>
-      ) : null}
-    </section>
+        {isEmpty ? (
+          <div className="rounded-xl border border-dashed border-border/60 bg-bg-hover/40 px-3 py-3 text-xs-tight leading-5 text-muted">
+            No learned skills yet. The agent stages new proposals here after
+            successful trajectories.
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -198,70 +216,74 @@ function SkillSection({
   onDelete,
 }: SkillSectionProps) {
   return (
-    <div className="space-y-2">
-      <div className="text-xs font-semibold uppercase tracking-wide text-muted">
+    <div className="flex flex-col gap-2">
+      <div className="text-2xs font-semibold uppercase tracking-wide text-muted">
         {title}
       </div>
-      <ul className="space-y-2">
+      <ul className="flex flex-col gap-2">
         {skills.map((skill) => (
-          <li
-            key={skill.name}
-            className="rounded-md border border-default bg-bg p-3 space-y-1"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1">
-                <div className="font-mono text-sm font-semibold text-txt">
-                  {skill.name}
-                </div>
-                <div className="text-xs text-muted">{skill.description}</div>
-                <div className="text-[10px] uppercase tracking-wide text-muted">
-                  source: {skill.source} · refinedCount: {skill.refinedCount} ·
-                  score: {formatScore(skill.lastEvalScore)} · created:{" "}
-                  {formatDate(skill.createdAt)}
-                </div>
-                {skill.derivedFromTrajectory ? (
-                  <div className="text-[10px] text-muted">
-                    Derived from trajectory:{" "}
-                    <a
-                      href={`/trajectories/${skill.derivedFromTrajectory}`}
-                      className="underline"
-                    >
-                      {skill.derivedFromTrajectory.slice(0, 8)}…
-                    </a>
+          <li key={skill.name}>
+            <Card className="border-border/50 bg-bg-hover/60 shadow-none">
+              <CardContent className="flex flex-col gap-2 px-3 py-3 text-xs-tight">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col gap-1">
+                    <div className="font-mono text-sm font-semibold text-txt">
+                      {skill.name}
+                    </div>
+                    <div className="text-xs-tight text-muted">
+                      {skill.description}
+                    </div>
+                    <div className="text-2xs uppercase tracking-wide text-muted">
+                      source: {skill.source} · refinedCount:{" "}
+                      {skill.refinedCount} · score:{" "}
+                      {formatScore(skill.lastEvalScore)} · created:{" "}
+                      {formatDate(skill.createdAt)}
+                    </div>
+                    {skill.derivedFromTrajectory ? (
+                      <div className="text-2xs text-muted">
+                        Derived from trajectory:{" "}
+                        <a
+                          href={`/trajectories/${skill.derivedFromTrajectory}`}
+                          className="underline"
+                        >
+                          {skill.derivedFromTrajectory.slice(0, 8)}…
+                        </a>
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
-              <div className="flex shrink-0 flex-col gap-1">
-                {onPromote ? (
-                  <Button
-                    size="sm"
-                    variant="default"
-                    disabled={busyName === skill.name}
-                    onClick={() => onPromote(skill.name)}
-                  >
-                    Promote
-                  </Button>
-                ) : null}
-                {onDisable ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busyName === skill.name}
-                    onClick={() => onDisable(skill.name)}
-                  >
-                    Disable
-                  </Button>
-                ) : null}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={busyName === skill.name}
-                  onClick={() => onDelete(skill.name)}
-                >
-                  Delete
-                </Button>
-              </div>
-            </div>
+                  <div className="flex shrink-0 flex-col gap-1">
+                    {onPromote ? (
+                      <Button
+                        size="sm"
+                        variant="default"
+                        disabled={busyName === skill.name}
+                        onClick={() => onPromote(skill.name)}
+                      >
+                        Promote
+                      </Button>
+                    ) : null}
+                    {onDisable ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busyName === skill.name}
+                        onClick={() => onDisable(skill.name)}
+                      >
+                        Disable
+                      </Button>
+                    ) : null}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busyName === skill.name}
+                      onClick={() => onDelete(skill.name)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </li>
         ))}
       </ul>
