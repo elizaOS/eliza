@@ -33,7 +33,7 @@
     "@elizaos/core": "workspace:*",
     "@types/node": "^25.2.3",
     "typescript": "^5.9.3",
-    "vitest": "3.2.4"
+    "vitest": "4.1.4"
   },
   "dependencies": {
     "puppeteer-core": "^24.9.0"
