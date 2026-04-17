@@ -44,7 +44,7 @@ prost = "0.13"
 prost-types = "0.13"
 
 # Hashing (for deterministic UUIDs that match TypeScript's stringToUuid)
-sha1 = "0.10"
+sha1 = "0.11"
 sha2 = "0.10"
 
 # Secret encryption/decryption compatibility (matches TS AES-256-CBC helpers)
