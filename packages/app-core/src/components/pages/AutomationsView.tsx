@@ -5,10 +5,30 @@
  * single /automations route with filter tabs.
  */
 
-import { CheckCircle2, Circle, Clock3, ListTodo, Plus, Settings, Trash2 } from "lucide-react";
+import {
+  Button,
+  FieldLabel,
+  Input,
+  PageLayout,
+  PagePanel,
+  Sidebar,
+  SidebarCollapsedActionButton,
+  SidebarContent,
+  SidebarPanel,
+  SidebarScrollRegion,
+  StatusBadge,
+  Textarea,
+} from "@elizaos/ui";
+import {
+  CheckCircle2,
+  Circle,
+  Clock3,
+  ListTodo,
+  Plus,
+  Settings,
+} from "lucide-react";
 import {
   createContext,
-  type ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -16,30 +36,13 @@ import {
   useRef,
   useState,
 } from "react";
-import type { TriggerSummary, WorkbenchTask } from "../../api/client";
 import { client } from "../../api";
+import type { TriggerSummary, WorkbenchTask } from "../../api/client";
 import { useApp } from "../../state";
-import { WidgetHost } from "../../widgets";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
+import { WidgetHost } from "../../widgets";
 import { HeartbeatForm } from "./HeartbeatForm";
-import {
-  PagePanel,
-  SidebarCollapsedActionButton,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  Sidebar,
-  SidebarScrollRegion,
-  Button,
-  FieldLabel,
-  NewActionButton,
-  StatusBadge,
-  StatusDot,
-  PageLayout,
-  Input,
-  Textarea,
-} from "@elizaos/ui";
 import {
   buildCreateRequest,
   buildUpdateRequest,
@@ -51,15 +54,15 @@ import {
   railMonogram,
   saveUserTemplates,
   scheduleLabel,
-  toneForLastStatus,
-  type TranslateFn,
   type TriggerFormState,
+  toneForLastStatus,
   validateForm,
 } from "./heartbeat-utils";
+import { N8nWorkflowsPanel } from "./N8nWorkflowsPanel";
 
 // ── Filter types ──────────────────────────────────────────────────
 
-type AutomationFilter = "all" | "my-tasks" | "scheduled" | "system";
+type AutomationFilter = "all" | "my-tasks" | "scheduled" | "system" | "workflows";
 
 // ── System task detection ─────────────────────────────────────────
 
@@ -142,7 +145,7 @@ function useAutomationsViewController() {
   // ── Workbench tasks state ───────────────────────────────────────
   const [workbenchTasks, setWorkbenchTasks] = useState<WorkbenchTask[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
-  const [tasksLoaded, setTasksLoaded] = useState(false);
+  const [_tasksLoaded, setTasksLoaded] = useState(false);
   const [taskError, setTaskError] = useState<string | null>(null);
   const [taskSaving, setTaskSaving] = useState(false);
 
@@ -188,7 +191,11 @@ function useAutomationsViewController() {
   const updateWorkbenchTask = useCallback(
     async (
       id: string,
-      data: Partial<{ name: string; description: string; isCompleted: boolean }>,
+      data: Partial<{
+        name: string;
+        description: string;
+        isCompleted: boolean;
+      }>,
     ): Promise<WorkbenchTask | null> => {
       setTaskSaving(true);
       try {
@@ -211,22 +218,25 @@ function useAutomationsViewController() {
     [],
   );
 
-  const deleteWorkbenchTask = useCallback(async (id: string): Promise<boolean> => {
-    setTaskSaving(true);
-    try {
-      await client.deleteWorkbenchTask(id);
-      setWorkbenchTasks((prev) => prev.filter((item) => item.id !== id));
-      setTaskError(null);
-      return true;
-    } catch (err) {
-      setTaskError(
-        err instanceof Error ? err.message : "Failed to delete task",
-      );
-      return false;
-    } finally {
-      setTaskSaving(false);
-    }
-  }, []);
+  const deleteWorkbenchTask = useCallback(
+    async (id: string): Promise<boolean> => {
+      setTaskSaving(true);
+      try {
+        await client.deleteWorkbenchTask(id);
+        setWorkbenchTasks((prev) => prev.filter((item) => item.id !== id));
+        setTaskError(null);
+        return true;
+      } catch (err) {
+        setTaskError(
+          err instanceof Error ? err.message : "Failed to delete task",
+        );
+        return false;
+      } finally {
+        setTaskSaving(false);
+      }
+    },
+    [],
+  );
 
   // ── Trigger form state (reused from HeartbeatsView) ─────────────
   const [form, setForm] = useState<TriggerFormState>(emptyForm);
@@ -339,14 +349,11 @@ function useAutomationsViewController() {
       case "scheduled":
         return allItems.filter((item) => item.kind === "trigger");
       case "my-tasks":
-        return allItems.filter(
-          (item) => item.kind === "task" && !item.system,
-        );
+        return allItems.filter((item) => item.kind === "task" && !item.system);
       case "system":
         return allItems.filter(
           (item) =>
-            (item.kind === "task" && item.system) ||
-            item.kind === "trigger",
+            (item.kind === "task" && item.system) || item.kind === "trigger",
         );
       default:
         return allItems;
@@ -370,14 +377,20 @@ function useAutomationsViewController() {
 
   // Auto-select first item
   useEffect(() => {
-    if (editorOpen || editingId || editingTaskId || selectedItemId || allItems.length === 0)
+    if (
+      editorOpen ||
+      editingId ||
+      editingTaskId ||
+      selectedItemId ||
+      allItems.length === 0
+    )
       return;
 
     const preferred = lastSelectedIdRef.current;
     const next =
       preferred && allItems.some((item) => item.id === preferred)
         ? preferred
-        : allItems[0]?.id ?? null;
+        : (allItems[0]?.id ?? null);
 
     if (next) {
       const item = allItems.find((i) => i.id === next);
@@ -594,8 +607,7 @@ function useAutomationsViewController() {
     editorMode === "trigger"
       ? editingId
         ? t("heartbeatsview.editTitle", {
-            name:
-              form.displayName.trim() || "Task",
+            name: form.displayName.trim() || "Task",
             defaultValue: "Edit {{name}}",
           })
         : "New Task"
@@ -691,10 +703,13 @@ function useAutomationsViewController() {
   };
 }
 
-type AutomationsViewController = ReturnType<typeof useAutomationsViewController>;
+type AutomationsViewController = ReturnType<
+  typeof useAutomationsViewController
+>;
 
-const AutomationsViewContext =
-  createContext<AutomationsViewController | null>(null);
+const AutomationsViewContext = createContext<AutomationsViewController | null>(
+  null,
+);
 
 function useAutomationsViewContext(): AutomationsViewController {
   const context = useContext(AutomationsViewContext);
@@ -707,21 +722,20 @@ function useAutomationsViewContext(): AutomationsViewController {
 // ── Filter tabs ───────────────────────────────────────────────────
 
 function FilterTabs() {
-  const { filter, setFilter, allItems } =
-    useAutomationsViewContext();
+  const { filter, setFilter, allItems } = useAutomationsViewContext();
 
   const triggerCount = allItems.filter((i) => i.kind === "trigger").length;
-  const userTaskCount = allItems.filter(
+  const _userTaskCount = allItems.filter(
     (i) => i.kind === "task" && !i.system,
   ).length;
-  const systemCount =
-    allItems.filter((i) => i.kind === "task" && i.system).length +
-    triggerCount;
+  const _systemCount =
+    allItems.filter((i) => i.kind === "task" && i.system).length + triggerCount;
 
   const filters: { key: AutomationFilter; label: string }[] = [
     { key: "all", label: "All" },
     { key: "scheduled", label: "Scheduled" },
     { key: "system", label: "System" },
+    { key: "workflows", label: "Workflows" },
   ];
 
   return (
@@ -805,7 +819,9 @@ function TaskForm() {
           disabled={taskSaving || !taskFormName.trim()}
           onClick={() => void onSubmitTask()}
         >
-          {editingTaskId ? t("triggersview.Save", { defaultValue: "Save" }) : "Create Task"}
+          {editingTaskId
+            ? t("triggersview.Save", { defaultValue: "Save" })
+            : "Create Task"}
         </Button>
         {editingTaskId && (
           <Button
@@ -1049,13 +1065,15 @@ function TriggerDetailPane({ trigger }: { trigger: TriggerSummary }) {
 
 // ── Task detail pane ──────────────────────────────────────────────
 
-function TaskDetailPane({ task, system }: { task: WorkbenchTask; system: boolean }) {
-  const {
-    openEditTask,
-    onDeleteTask,
-    onToggleTaskCompleted,
-    t,
-  } = useAutomationsViewContext();
+function TaskDetailPane({
+  task,
+  system,
+}: {
+  task: WorkbenchTask;
+  system: boolean;
+}) {
+  const { openEditTask, onDeleteTask, onToggleTaskCompleted, t } =
+    useAutomationsViewContext();
 
   return (
     <div className="w-full">
@@ -1064,14 +1082,24 @@ function TaskDetailPane({ task, system }: { task: WorkbenchTask; system: boolean
           <div className="flex flex-wrap items-center gap-2">
             <FieldLabel variant="kicker">
               {system ? (
-                <><Settings className="mr-1.5 inline h-3.5 w-3.5" />System Automation</>
+                <>
+                  <Settings className="mr-1.5 inline h-3.5 w-3.5" />
+                  System Automation
+                </>
               ) : (
-                <><ListTodo className="mr-1.5 inline h-3.5 w-3.5" />Task</>
+                <>
+                  <ListTodo className="mr-1.5 inline h-3.5 w-3.5" />
+                  Task
+                </>
               )}
             </FieldLabel>
             <StatusBadge
-              label={system ? "System" : task.isCompleted ? "Completed" : "Active"}
-              variant={system ? "muted" : task.isCompleted ? "muted" : "success"}
+              label={
+                system ? "System" : task.isCompleted ? "Completed" : "Active"
+              }
+              variant={
+                system ? "muted" : task.isCompleted ? "muted" : "success"
+              }
               withDot
             />
           </div>
@@ -1102,7 +1130,9 @@ function TaskDetailPane({ task, system }: { task: WorkbenchTask; system: boolean
               variant="outline"
               size="sm"
               className={`h-8 px-3 text-xs ${task.isCompleted ? "border-ok/30 text-ok hover:bg-ok/10" : "border-accent/30 text-accent hover:bg-accent/10"}`}
-              onClick={() => void onToggleTaskCompleted(task.id, task.isCompleted)}
+              onClick={() =>
+                void onToggleTaskCompleted(task.id, task.isCompleted)
+              }
             >
               {task.isCompleted ? "Reopen" : "Complete"}
             </Button>
@@ -1181,6 +1211,26 @@ function AutomationsLayout() {
     filter,
   } = ctx;
 
+  // Ref forwarded to the n8n scoped chat composer so "New workflow" can focus it.
+  const workflowComposerRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const focusWorkflowComposer = useCallback(
+    (seed = "Create a new workflow that ") => {
+      const ta = workflowComposerRef.current;
+      if (!ta) return;
+      ta.focus();
+      if (!ta.value.startsWith(seed)) {
+        const nativeSetter = Object.getOwnPropertyDescriptor(
+          window.HTMLTextAreaElement.prototype,
+          "value",
+        )?.set;
+        nativeSetter?.call(ta, seed);
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    },
+    [],
+  );
+
   const [searchQuery, setSearchQuery] = useState("");
   const searchLabel = "Search tasks";
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
@@ -1252,31 +1302,37 @@ function AutomationsLayout() {
         <SidebarPanel>
           {/* New + Search on same row */}
           <div className="mb-3 flex items-center gap-2">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={searchLabel}
-              aria-label={searchLabel}
-              autoComplete="off"
-              spellCheck={false}
-              className="min-w-0 flex-1 rounded-lg border border-border/30 bg-bg/30 px-3 py-1.5 text-sm text-txt placeholder:text-muted/50 focus:border-accent/40 focus:outline-none"
-            />
+            {filter !== "workflows" && (
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={searchLabel}
+                aria-label={searchLabel}
+                autoComplete="off"
+                spellCheck={false}
+                className="min-w-0 flex-1 rounded-lg border border-border/30 bg-bg/30 px-3 py-1.5 text-sm text-txt placeholder:text-muted/50 focus:border-accent/40 focus:outline-none"
+              />
+            )}
             <Button
               variant="outline"
               size="sm"
               className="h-8 shrink-0 gap-1 px-3 text-xs font-medium"
-              onClick={openCreateTrigger}
+              onClick={
+                filter === "workflows"
+                  ? () => focusWorkflowComposer()
+                  : openCreateTrigger
+              }
             >
               <Plus className="h-3.5 w-3.5" />
-              New
+              {filter === "workflows" ? t("automations.n8n.newWorkflow") : "New"}
             </Button>
           </div>
 
           {/* Filter tabs */}
           <FilterTabs />
 
-          {(triggersLoading || tasksLoading) && (
+          {filter !== "workflows" && (triggersLoading || tasksLoading) && (
             <SidebarContent.Notice
               icon={
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted/30 border-t-muted/80" />
@@ -1286,11 +1342,11 @@ function AutomationsLayout() {
             </SidebarContent.Notice>
           )}
 
-          {normalizedSearchQuery && visibleItems.length === 0 ? (
+          {filter !== "workflows" && normalizedSearchQuery && visibleItems.length === 0 ? (
             <SidebarContent.EmptyState className="px-4 py-6">
               No matching items
             </SidebarContent.EmptyState>
-          ) : (
+          ) : filter !== "workflows" ? (
             visibleItems.map((item) => {
               const isActive = selectedItemId === item.id;
 
@@ -1351,7 +1407,9 @@ function AutomationsLayout() {
                 <SidebarContent.Item
                   key={item.id}
                   onClick={() => selectItem(item)}
-                  onDoubleClick={isSys ? undefined : () => ctx.openEditTask(task)}
+                  onDoubleClick={
+                    isSys ? undefined : () => ctx.openEditTask(task)
+                  }
                   active={isActive}
                   className={`h-auto ${isSys ? "opacity-60" : ""}`}
                 >
@@ -1372,8 +1430,20 @@ function AutomationsLayout() {
                         </span>
                       </div>
                       <StatusBadge
-                        label={isSys ? "System" : task.isCompleted ? "Done" : "Active"}
-                        variant={isSys ? "muted" : task.isCompleted ? "muted" : "success"}
+                        label={
+                          isSys
+                            ? "System"
+                            : task.isCompleted
+                              ? "Done"
+                              : "Active"
+                        }
+                        variant={
+                          isSys
+                            ? "muted"
+                            : task.isCompleted
+                              ? "muted"
+                              : "success"
+                        }
                         withDot
                       />
                     </div>
@@ -1386,8 +1456,7 @@ function AutomationsLayout() {
                 </SidebarContent.Item>
               );
             })
-          )}
-
+          ) : null}
         </SidebarPanel>
       </SidebarScrollRegion>
     </Sidebar>
@@ -1419,7 +1488,12 @@ function AutomationsLayout() {
           </button>
         ) : null}
 
-        {editorOpen || editingId || editingTaskId ? (
+        {filter === "workflows" ? (
+          <N8nWorkflowsPanel
+            composerRef={workflowComposerRef}
+            onFocusComposer={focusWorkflowComposer}
+          />
+        ) : editorOpen || editingId || editingTaskId ? (
           editorMode === "task" || editingTaskId ? (
             <TaskForm />
           ) : (
@@ -1451,7 +1525,10 @@ function AutomationsLayout() {
           resolvedSelectedItem.kind === "trigger" ? (
             <TriggerDetailPane trigger={resolvedSelectedItem.trigger} />
           ) : (
-            <TaskDetailPane task={resolvedSelectedItem.task} system={resolvedSelectedItem.system} />
+            <TaskDetailPane
+              task={resolvedSelectedItem.task}
+              system={resolvedSelectedItem.system}
+            />
           )
         ) : (
           <div className="flex min-h-0 flex-1 items-center justify-center px-8 py-10 text-center">

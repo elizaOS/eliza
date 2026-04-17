@@ -36,6 +36,29 @@ import type {
 } from "@elizaos/agent/contracts/permissions";
 import type { VerificationResult } from "@elizaos/agent/contracts/verification";
 import type {
+  BrowserWorkspaceSnapshot,
+  BrowserWorkspaceTab,
+} from "@elizaos/agent/services/browser-workspace";
+import type {
+  StewardApprovalActionResponse,
+  StewardApprovalInfo,
+  StewardBalanceResponse,
+  StewardHistoryResponse,
+  StewardPendingApproval,
+  StewardPendingResponse,
+  StewardPolicyResult,
+  StewardSignRequest,
+  StewardSignResponse,
+  StewardStatusResponse,
+  StewardTokenBalancesResponse,
+  StewardTxRecord,
+  StewardTxStatus,
+  StewardWalletAddressesResponse,
+  StewardWebhookEvent,
+  StewardWebhookEventsResponse,
+  StewardWebhookEventType,
+} from "@elizaos/app-steward/types";
+import type {
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
   BscTradePreflightResponse,
@@ -68,29 +91,6 @@ import {
   WALLET_RPC_PROVIDER_OPTIONS,
 } from "@elizaos/shared/contracts";
 import type {
-  StewardApprovalActionResponse,
-  StewardApprovalInfo,
-  StewardBalanceResponse,
-  StewardHistoryResponse,
-  StewardPendingApproval,
-  StewardPendingResponse,
-  StewardPolicyResult,
-  StewardSignRequest,
-  StewardSignResponse,
-  StewardStatusResponse,
-  StewardTokenBalancesResponse,
-  StewardTxRecord,
-  StewardTxStatus,
-  StewardWalletAddressesResponse,
-  StewardWebhookEvent,
-  StewardWebhookEventsResponse,
-  StewardWebhookEventType,
-} from "@elizaos/app-steward/types";
-import type {
-  BrowserWorkspaceSnapshot,
-  BrowserWorkspaceTab,
-} from "@elizaos/agent/services/browser-workspace";
-import type {
   CloudProviderOption,
   OnboardingConnectorConfig as ConnectorConfig,
   InventoryProviderOption,
@@ -110,6 +110,20 @@ import type {
 
 // Re-export the class from client-base (no circular dependency issues)
 export { ElizaClient } from "./client-base";
+export type {
+  ComputerUseApprovalMode,
+  ComputerUseApprovalResolution,
+  ComputerUseApprovalSnapshot,
+  ComputerUsePendingApproval,
+} from "./client-computeruse";
+export type {
+  ActiveModelState,
+  CatalogModel,
+  DownloadJob,
+  HardwareProbe,
+  InstalledModel,
+  ModelHubSnapshot,
+} from "./client-local-inference";
 export * from "./client-types";
 export type {
   AllPermissionsState,
@@ -193,20 +207,6 @@ export type {
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
 };
-export type {
-  ComputerUseApprovalMode,
-  ComputerUseApprovalResolution,
-  ComputerUseApprovalSnapshot,
-  ComputerUsePendingApproval,
-} from "./client-computeruse";
-export type {
-  ActiveModelState,
-  CatalogModel,
-  DownloadJob,
-  HardwareProbe,
-  InstalledModel,
-  ModelHubSnapshot,
-} from "./client-local-inference";
 export {
   DEFAULT_WALLET_RPC_SELECTIONS,
   normalizeWalletRpcProviderId,
@@ -222,6 +222,7 @@ export {
 import "./client-agent";
 import "./client-browser-workspace";
 import "./client-chat";
+import "./client-n8n";
 import "./client-wallet";
 import "./client-cloud";
 import "./client-skills";
