@@ -1,74 +1,37 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import type {
+  LifeOpsConnectorGrant,
   LifeOpsConnectorSide,
   LifeOpsDiscordCapability,
   LifeOpsDiscordConnectorStatus,
+  LifeOpsMessagingConnectorReason,
 } from "@elizaos/shared/contracts/lifeops";
-import { LIFEOPS_DISCORD_CAPABILITIES, capabilitiesForSide } from "@elizaos/shared/contracts/lifeops";
-import { createLifeOpsConnectorGrant } from "./repository.js";
-import { fail } from "./service-normalize.js";
 import {
-  normalizeOptionalConnectorSide,
-} from "./service-normalize-connector.js";
+  LIFEOPS_DISCORD_CAPABILITIES,
+  capabilitiesForSide,
+} from "@elizaos/shared/contracts/lifeops";
+import { logger } from "@elizaos/core";
+import { createLifeOpsConnectorGrant } from "./repository.js";
+import {
+  closeDiscordTab,
+  discordBrowserWorkspaceAvailable,
+  ensureDiscordTab,
+  probeDiscordTab,
+  type DiscordTabProbe,
+} from "./discord-browser-scraper.js";
+import { fail } from "./service-normalize.js";
+import { normalizeOptionalConnectorSide } from "./service-normalize-connector.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
-const DISCORD_LOCAL_SERVICE_NAME = "discord-local";
-
-export interface DiscordLocalUser {
-  id?: string;
-  username?: string;
-  discriminator?: string;
-  global_name?: string;
-  email?: string;
-}
-
-export interface DiscordLocalStatus {
-  available?: boolean;
-  connected?: boolean;
-  authenticated?: boolean;
-  currentUser?: DiscordLocalUser | null;
-  subscribedChannelIds?: string[];
-  configuredChannelIds?: string[];
-  scopes?: string[];
-  lastError?: string | null;
-  ipcPath?: string | null;
-}
-
-export interface DiscordLocalGuild {
-  id: string;
-  name?: string;
-}
-
-export interface DiscordLocalChannel {
-  id: string;
-  name?: string;
-  type?: number;
-  recipients?: Array<{
-    id: string;
-    username?: string;
-    global_name?: string;
-  }>;
-}
-
-export interface DiscordLocalServiceLike {
-  getStatus(): DiscordLocalStatus;
-  authorize(): Promise<DiscordLocalStatus>;
-  disconnectSession(): Promise<void>;
-  listGuilds(): Promise<DiscordLocalGuild[]>;
-  listChannels(guildId: string): Promise<DiscordLocalChannel[]>;
-  subscribeChannelMessages(channelIds: string[]): Promise<string[]>;
-}
-
-function toDiscordIdentity(
-  currentUser: DiscordLocalUser | null | undefined,
+function identityFromProbe(
+  probe: DiscordTabProbe | null,
   fallback: Record<string, unknown> | null,
 ): LifeOpsDiscordConnectorStatus["identity"] {
-  if (currentUser) {
+  if (probe?.loggedIn && probe.identity.username) {
     return {
-      id: currentUser.id,
-      username: currentUser.global_name ?? currentUser.username,
-      discriminator: currentUser.discriminator,
-      email: currentUser.email,
+      id: probe.identity.id ?? undefined,
+      username: probe.identity.username,
+      discriminator: probe.identity.discriminator ?? undefined,
     };
   }
   if (fallback && Object.keys(fallback).length > 0) {
@@ -77,19 +40,157 @@ function toDiscordIdentity(
   return null;
 }
 
+function reasonFor(args: {
+  available: boolean;
+  loggedIn: boolean;
+  hasGrant: boolean;
+  hasTab: boolean;
+}): LifeOpsMessagingConnectorReason {
+  if (!args.available) return "disconnected";
+  if (args.loggedIn) return "connected";
+  if (args.hasTab || args.hasGrant) return "pairing";
+  return "disconnected";
+}
+
+function tabIdFromGrant(grant: LifeOpsConnectorGrant | null): string | null {
+  if (!grant) return null;
+  const raw = (grant.metadata as Record<string, unknown> | undefined)?.tabId;
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
+}
+
 /** @internal */
 export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {
   class LifeOpsDiscordServiceMixin extends Base {
-    resolveDiscordLocalService(): DiscordLocalServiceLike | null {
-      return (this.runtime.getService(DISCORD_LOCAL_SERVICE_NAME) as
-        | DiscordLocalServiceLike
-        | null
-        | undefined) ?? null;
+    private async probeTab(
+      tabId: string | null,
+    ): Promise<DiscordTabProbe | null> {
+      if (!tabId) return null;
+      try {
+        return await probeDiscordTab(tabId);
+      } catch (error) {
+        logger.debug(
+          `[lifeops-discord] probe failed for tab ${tabId}: ${String(error)}`,
+        );
+        return null;
+      }
     }
 
     async getDiscordConnectorStatus(
+      side?: LifeOpsConnectorSide,
+    ): Promise<LifeOpsDiscordConnectorStatus> {
+      const normalizedSide =
+        normalizeOptionalConnectorSide(side, "side") ?? "owner";
+      const available = discordBrowserWorkspaceAvailable();
+      const grant = await this.repository.getConnectorGrant(
+        this.agentId(),
+        "discord",
+        "local",
+        normalizedSide,
+      );
+      const tabId = tabIdFromGrant(grant);
+      const probe = available ? await this.probeTab(tabId) : null;
+      const loggedIn = probe?.loggedIn === true;
+      const capabilities = (grant?.capabilities ?? []).filter(
+        (candidate): candidate is LifeOpsDiscordCapability =>
+          candidate === "discord.read" || candidate === "discord.send",
+      );
+
+      return {
+        provider: "discord",
+        side: normalizedSide,
+        available,
+        connected: loggedIn,
+        reason: reasonFor({
+          available,
+          loggedIn,
+          hasGrant: Boolean(grant),
+          hasTab: Boolean(tabId),
+        }),
+        identity: identityFromProbe(probe, grant?.identity ?? null),
+        grantedCapabilities: capabilities,
+        lastError: null,
+        tabId,
+        grant,
+      };
+    }
+
+    /**
+     * Open (or focus) a Milady browser tab pointed at discord.com so the
+     * user can log in. Persists the tab id on the connector grant so
+     * subsequent status calls can re-probe it.
+     */
+    async authorizeDiscordConnector(
+      side?: LifeOpsConnectorSide,
+    ): Promise<LifeOpsDiscordConnectorStatus> {
+      const normalizedSide =
+        normalizeOptionalConnectorSide(side, "side") ?? "owner";
+      if (!discordBrowserWorkspaceAvailable()) {
+        fail(
+          503,
+          "Discord connector requires the Milady desktop app. Open Milady and try again.",
+        );
+      }
+
+      const existing = await this.repository.getConnectorGrant(
+        this.agentId(),
+        "discord",
+        "local",
+        normalizedSide,
+      );
+
+      const { tabId } = await ensureDiscordTab({
+        agentId: this.agentId(),
+        side: normalizedSide,
+        existingTabId: tabIdFromGrant(existing),
+        show: true,
+      });
+
+      const probe = await this.probeTab(tabId);
+      const loggedIn = probe?.loggedIn === true;
+      const capabilities = loggedIn
+        ? capabilitiesForSide(LIFEOPS_DISCORD_CAPABILITIES, normalizedSide)
+        : existing?.capabilities ?? [];
+      const identity =
+        identityFromProbe(probe, existing?.identity ?? null) ?? {};
+
+      const grant = existing
+        ? {
+            ...existing,
+            identity,
+            capabilities,
+            metadata: {
+              ...existing.metadata,
+              tabId,
+            },
+            updatedAt: new Date().toISOString(),
+          }
+        : createLifeOpsConnectorGrant({
+            agentId: this.agentId(),
+            provider: "discord",
+            identity,
+            grantedScopes: [],
+            capabilities,
+            tokenRef: null,
+            mode: "local",
+            side: normalizedSide,
+            metadata: { tabId },
+            lastRefreshAt: new Date().toISOString(),
+          });
+
+      await this.repository.upsertConnectorGrant(grant);
+      await this.recordConnectorAudit(
+        `discord:${normalizedSide}`,
+        "discord browser connector authorized",
+        { side: normalizedSide },
+        { tabId, loggedIn },
+      );
+
+      return this.getDiscordConnectorStatus(normalizedSide);
+    }
+
+    async disconnectDiscord(
       side?: LifeOpsConnectorSide,
     ): Promise<LifeOpsDiscordConnectorStatus> {
       const normalizedSide =
@@ -100,225 +201,16 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         "local",
         normalizedSide,
       );
-      const service = this.resolveDiscordLocalService();
-      const serviceStatus = service?.getStatus() ?? null;
-      const capabilities = (grant?.capabilities ?? []).filter(
-        (candidate): candidate is LifeOpsDiscordCapability =>
-          candidate === "discord.read" || candidate === "discord.send",
-      );
-      const connected = Boolean(serviceStatus?.authenticated);
+      const tabId = tabIdFromGrant(grant);
 
-      return {
-        provider: "discord",
-        side: normalizedSide,
-        available: Boolean(serviceStatus?.available),
-        connected,
-        authenticated: Boolean(serviceStatus?.authenticated),
-        reason: connected
-          ? "connected"
-          : grant
-            ? "session_revoked"
-            : "disconnected",
-        identity: toDiscordIdentity(
-          serviceStatus?.currentUser ?? null,
-          grant?.identity ?? null,
-        ),
-        grantedCapabilities: capabilities,
-        grantedScopes: serviceStatus?.scopes ?? grant?.grantedScopes ?? [],
-        configuredChannelIds:
-          serviceStatus?.configuredChannelIds ?? [],
-        subscribedChannelIds:
-          serviceStatus?.subscribedChannelIds ?? [],
-        expiresAt: null,
-        hasRefreshToken: false,
-        lastError: serviceStatus?.lastError ?? null,
-        ipcPath: serviceStatus?.ipcPath ?? null,
-        grant,
-      };
-    }
-
-    async authorizeDiscordConnector(
-      side?: LifeOpsConnectorSide,
-    ): Promise<LifeOpsDiscordConnectorStatus> {
-      const normalizedSide =
-        normalizeOptionalConnectorSide(side, "side") ?? "owner";
-      const service = this.resolveDiscordLocalService();
-      if (!service) {
-        fail(503, "Discord desktop integration is not available.");
-      }
-
-      const status = await service.authorize();
-      const currentUser = status.currentUser ?? null;
-      const identity = toDiscordIdentity(currentUser, null) ?? {};
-      const grantedScopes = status.scopes ?? [];
-      const capabilities: LifeOpsDiscordCapability[] =
-        status.authenticated === true
-          ? capabilitiesForSide(LIFEOPS_DISCORD_CAPABILITIES, normalizedSide)
-          : [];
-      const existing = await this.repository.getConnectorGrant(
-        this.agentId(),
-        "discord",
-        "local",
-        normalizedSide,
-      );
-
-      const grant = existing
-        ? {
-            ...existing,
-            identity,
-            grantedScopes,
-            capabilities,
-            metadata: {
-              ...existing.metadata,
-              subscribedChannelIds: status.subscribedChannelIds ?? [],
-              configuredChannelIds: status.configuredChannelIds ?? [],
-            },
-            updatedAt: new Date().toISOString(),
-          }
-        : createLifeOpsConnectorGrant({
-            agentId: this.agentId(),
-            provider: "discord",
-            identity,
-            grantedScopes,
-            capabilities,
-            tokenRef: null,
-            mode: "local",
-            side: normalizedSide,
-            metadata: {
-              subscribedChannelIds: status.subscribedChannelIds ?? [],
-              configuredChannelIds: status.configuredChannelIds ?? [],
-            },
-            lastRefreshAt: new Date().toISOString(),
-          });
-
-      await this.repository.upsertConnectorGrant(grant);
-      await this.recordConnectorAudit(
-        `discord:${normalizedSide}`,
-        "discord desktop connector authorized",
-        { side: normalizedSide },
-        {
-          grantedScopes,
-          configuredChannelIds: status.configuredChannelIds ?? [],
-        },
-      );
-
-      return this.getDiscordConnectorStatus(normalizedSide);
-    }
-
-    async listDiscordGuilds(
-      side?: LifeOpsConnectorSide,
-    ): Promise<{ guilds: DiscordLocalGuild[] }> {
-      const normalizedSide =
-        normalizeOptionalConnectorSide(side, "side") ?? "owner";
-      const service = this.resolveDiscordLocalService();
-      if (!service) {
-        fail(503, "Discord desktop integration is not available.");
-      }
-      const status = await this.getDiscordConnectorStatus(normalizedSide);
-      if (!status.authenticated) {
-        fail(409, "Connect Discord before listing guilds.");
-      }
-      return {
-        guilds: await service.listGuilds(),
-      };
-    }
-
-    async listDiscordChannels(
-      guildId: string,
-      side?: LifeOpsConnectorSide,
-    ): Promise<{ channels: DiscordLocalChannel[] }> {
-      const normalizedSide =
-        normalizeOptionalConnectorSide(side, "side") ?? "owner";
-      const service = this.resolveDiscordLocalService();
-      if (!service) {
-        fail(503, "Discord desktop integration is not available.");
-      }
-      if (!guildId.trim()) {
-        fail(400, "guildId is required");
-      }
-      const status = await this.getDiscordConnectorStatus(normalizedSide);
-      if (!status.authenticated) {
-        fail(409, "Connect Discord before listing channels.");
-      }
-      return {
-        channels: await service.listChannels(guildId.trim()),
-      };
-    }
-
-    async saveDiscordSubscriptions(
-      channelIds: string[],
-      side?: LifeOpsConnectorSide,
-    ): Promise<{ subscribedChannelIds: string[] }> {
-      const normalizedSide =
-        normalizeOptionalConnectorSide(side, "side") ?? "owner";
-      const service = this.resolveDiscordLocalService();
-      if (!service) {
-        fail(503, "Discord desktop integration is not available.");
-      }
-      const subscribedChannelIds =
-        await service.subscribeChannelMessages(channelIds);
-      const status = service.getStatus();
-      const existing = await this.repository.getConnectorGrant(
-        this.agentId(),
-        "discord",
-        "local",
-        normalizedSide,
-      );
-      const identity =
-        toDiscordIdentity(status.currentUser ?? null, existing?.identity ?? null) ??
-        {};
-
-      const grant = existing
-        ? {
-            ...existing,
-            identity,
-            grantedScopes: status.scopes ?? existing.grantedScopes,
-            capabilities:
-              status.authenticated === true
-                ? capabilitiesForSide(LIFEOPS_DISCORD_CAPABILITIES, normalizedSide)
-                : [],
-            metadata: {
-              ...existing.metadata,
-              subscribedChannelIds,
-              configuredChannelIds: status.configuredChannelIds ?? [],
-            },
-            updatedAt: new Date().toISOString(),
-          }
-        : createLifeOpsConnectorGrant({
-            agentId: this.agentId(),
-            provider: "discord",
-            identity,
-            grantedScopes: status.scopes ?? [],
-            capabilities:
-              status.authenticated === true
-                ? capabilitiesForSide(LIFEOPS_DISCORD_CAPABILITIES, normalizedSide)
-                : [],
-            tokenRef: null,
-            mode: "local",
-            side: normalizedSide,
-            metadata: {
-              subscribedChannelIds,
-              configuredChannelIds: status.configuredChannelIds ?? [],
-            },
-            lastRefreshAt: new Date().toISOString(),
-          });
-
-      await this.repository.upsertConnectorGrant(grant);
-
-      return {
-        subscribedChannelIds,
-      };
-    }
-
-    async disconnectDiscord(
-      side?: LifeOpsConnectorSide,
-    ): Promise<LifeOpsDiscordConnectorStatus> {
-      const normalizedSide =
-        normalizeOptionalConnectorSide(side, "side") ?? "owner";
-      const service = this.resolveDiscordLocalService();
-
-      if (service) {
-        await service.disconnectSession();
+      if (tabId && discordBrowserWorkspaceAvailable()) {
+        try {
+          await closeDiscordTab(tabId);
+        } catch (error) {
+          logger.debug(
+            `[lifeops-discord] failed to close tab ${tabId}: ${String(error)}`,
+          );
+        }
       }
 
       await this.repository.deleteConnectorGrant(
@@ -330,7 +222,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
 
       await this.recordConnectorAudit(
         `discord:${normalizedSide}`,
-        "discord desktop connector disconnected",
+        "discord browser connector disconnected",
         { side: normalizedSide },
         {},
       );
@@ -338,19 +230,13 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       return {
         provider: "discord",
         side: normalizedSide,
-        available: Boolean(service?.getStatus().available),
+        available: discordBrowserWorkspaceAvailable(),
         connected: false,
-        authenticated: false,
         reason: "disconnected",
         identity: null,
         grantedCapabilities: [],
-        grantedScopes: [],
-        configuredChannelIds: [],
-        subscribedChannelIds: [],
-        expiresAt: null,
-        hasRefreshToken: false,
         lastError: null,
-        ipcPath: service?.getStatus().ipcPath ?? null,
+        tabId: null,
         grant: null,
       };
     }

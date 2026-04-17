@@ -57,7 +57,6 @@ import type {
   SendLifeOpsGmailReplyRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsDiscordConnectorRequest,
-  StartLifeOpsDiscordConnectorResponse,
   StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsGoogleConnectorResponse,
   StartLifeOpsSignalPairingRequest,
@@ -228,7 +227,7 @@ declare module "@elizaos/app-core/api/client-base" {
     ): Promise<LifeOpsDiscordConnectorStatus>;
     startDiscordConnector(
       data?: StartLifeOpsDiscordConnectorRequest,
-    ): Promise<StartLifeOpsDiscordConnectorResponse>;
+    ): Promise<LifeOpsDiscordConnectorStatus>;
     disconnectDiscordConnector(
       data?: DisconnectLifeOpsMessagingConnectorRequest,
     ): Promise<LifeOpsDiscordConnectorStatus>;

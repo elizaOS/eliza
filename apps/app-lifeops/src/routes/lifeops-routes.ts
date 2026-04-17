@@ -1108,44 +1108,6 @@ export async function handleLifeOpsRoutes(
   }
 
   if (
-    method === "GET" &&
-    pathname === "/api/lifeops/connectors/discord/guilds"
-  ) {
-    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
-    return runRoute(ctx, async (service) => {
-      json(res, await service.listDiscordGuilds(rawSide ?? undefined));
-    });
-  }
-
-  if (
-    method === "GET" &&
-    pathname === "/api/lifeops/connectors/discord/channels"
-  ) {
-    const guildId = url.searchParams.get("guildId");
-    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
-    if (!guildId) {
-      throw new LifeOpsServiceError(400, "guildId is required");
-    }
-    return runRoute(ctx, async (service) => {
-      json(res, await service.listDiscordChannels(guildId, rawSide ?? undefined));
-    });
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/connectors/discord/subscriptions"
-  ) {
-    const body = await readJsonBody<{ channelIds: string[]; side?: LifeOpsConnectorSide }>(req, res);
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(res, await service.saveDiscordSubscriptions(
-        body.channelIds ?? [],
-        body.side ?? undefined,
-      ));
-    });
-  }
-
-  if (
     method === "POST" &&
     pathname === "/api/lifeops/connectors/discord/disconnect"
   ) {
