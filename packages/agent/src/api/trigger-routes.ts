@@ -5,6 +5,7 @@ import {
   stringToUuid,
   type Task,
   type TriggerConfig,
+  type TriggerKind,
   type TriggerType,
   type TriggerWakeMode,
   type UUID,
@@ -35,6 +36,9 @@ interface TriggerDraftInput {
   scheduledAtIso?: string;
   cronExpression?: string;
   maxRuns?: number;
+  kind?: TriggerKind;
+  workflowId?: string;
+  workflowName?: string;
 }
 
 interface NormalizeTriggerDraftFallback {
@@ -83,6 +87,28 @@ export interface TriggerRouteContext extends RouteRequestContext {
 
 function trim(value: string): string {
   return value.trim().replace(/\s+/g, " ");
+}
+
+function parseTriggerKind(value: unknown): TriggerKind | undefined {
+  if (value === "text" || value === "workflow") return value;
+  return undefined;
+}
+
+type ParsedTriggerKind =
+  | { ok: true; kind: TriggerKind }
+  | { ok: false; error: string };
+
+function parseTriggerKindStrict(value: unknown): ParsedTriggerKind | undefined {
+  if (value === undefined) return undefined;
+  if (value === "text" || value === "workflow")
+    return { ok: true, kind: value };
+  return { ok: false, error: "kind must be 'text' or 'workflow'" };
+}
+
+function parseNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function normalizeTriggerPath(pathname: string): {
@@ -211,6 +237,23 @@ export async function handleTriggerRoutes(
       typeof body.createdBy === "string"
         ? trim(body.createdBy) || "api"
         : "api";
+    const kindParsed = parseTriggerKindStrict(body.kind);
+    if (kindParsed !== undefined && kindParsed.ok === false) {
+      error(res, kindParsed.error, 400);
+      return true;
+    }
+    const kind: TriggerKind | undefined =
+      kindParsed !== undefined && kindParsed.ok ? kindParsed.kind : undefined;
+    const workflowId = parseNonEmptyString(body.workflowId);
+    const workflowName = parseNonEmptyString(body.workflowName);
+    if (kind === "workflow" && !workflowId) {
+      error(
+        res,
+        "workflowId is required when kind is 'workflow'",
+        400,
+      );
+      return true;
+    }
     const inputDraft: TriggerDraftInput = {
       displayName:
         typeof body.displayName === "string" ? body.displayName : undefined,
@@ -238,6 +281,9 @@ export async function handleTriggerRoutes(
           ? body.cronExpression
           : undefined,
       maxRuns: typeof body.maxRuns === "number" ? body.maxRuns : undefined,
+      kind,
+      workflowId,
+      workflowName,
     };
     const normalized = normalizeTriggerDraft({
       input: inputDraft,
@@ -439,6 +485,28 @@ export async function handleTriggerRoutes(
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
 
+    const kindParsed = parseTriggerKindStrict(body.kind);
+    if (kindParsed !== undefined && kindParsed.ok === false) {
+      error(res, kindParsed.error, 400);
+      return true;
+    }
+    const parsedKind: TriggerKind | undefined =
+      kindParsed !== undefined && kindParsed.ok ? kindParsed.kind : undefined;
+    const nextKind: TriggerKind | undefined =
+      parsedKind ?? parseTriggerKind(current.kind);
+    const nextWorkflowId =
+      parseNonEmptyString(body.workflowId) ?? current.workflowId;
+    const nextWorkflowName =
+      parseNonEmptyString(body.workflowName) ?? current.workflowName;
+    if (nextKind === "workflow" && !nextWorkflowId) {
+      error(
+        res,
+        "workflowId is required when kind is 'workflow'",
+        400,
+      );
+      return true;
+    }
+
     const mergedInput: TriggerDraftInput = {
       displayName:
         typeof body.displayName === "string" ? body.displayName : undefined,
@@ -470,6 +538,9 @@ export async function handleTriggerRoutes(
           : current.cronExpression,
       maxRuns:
         typeof body.maxRuns === "number" ? body.maxRuns : current.maxRuns,
+      kind: nextKind,
+      workflowId: nextWorkflowId,
+      workflowName: nextWorkflowName,
     };
     const normalized = normalizeTriggerDraft({
       input: mergedInput,

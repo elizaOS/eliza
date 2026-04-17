@@ -55,7 +55,11 @@ import {
   mergeAppMeta as mergeRegistryAppMeta,
   resolveAppOverride,
 } from "./registry-client-app-meta.js";
-import { scoreEntries, toSearchResults } from "./registry-client-queries.js";
+import {
+  resolveAppHeroImage,
+  scoreEntries,
+  toSearchResults,
+} from "./registry-client-queries.js";
 
 const LOCAL_PLUGINS_DIR = "plugins";
 
@@ -98,6 +102,15 @@ const SAFE_APP_TEMPLATE_ENV_KEYS = new Set([
 ]);
 const RUN_REFRESH_MIN_INTERVAL_MS = 5_000;
 const MAX_RUN_EVENTS = 20;
+/**
+ * How long a run can go without a heartbeat (UI ping or session refresh)
+ * before the sweeper considers it abandoned and stops it. Tuned to comfortably
+ * tolerate the 3s session-refresh poll + a few missed ticks on a slow tab,
+ * while still reaping a closed/crashed browser within ~1.5 minutes.
+ */
+const RUN_HEARTBEAT_TIMEOUT_MS = 90_000;
+/** How often the sweeper wakes to look for stale runs. */
+const RUN_HEARTBEAT_SWEEP_INTERVAL_MS = 30_000;
 
 function isProductionRuntime(): boolean {
   return process.env.NODE_ENV === "production";
@@ -136,6 +149,19 @@ interface ActiveAppSession {
 
 interface AppManagerOptions {
   stateDir?: string;
+  /**
+   * How long a run can go without a heartbeat before the sweeper reaps it.
+   * Defaults to {@link RUN_HEARTBEAT_TIMEOUT_MS}. Tests override to a small
+   * value to exercise the sweeper deterministically.
+   */
+  heartbeatTimeoutMs?: number;
+  /**
+   * How often the sweeper wakes. Defaults to
+   * {@link RUN_HEARTBEAT_SWEEP_INTERVAL_MS}. Tests can use a small value or
+   * call {@link AppManager.reapStaleRuns} directly instead of starting the
+   * sweeper interval.
+   */
+  heartbeatSweepIntervalMs?: number;
 }
 
 function isAppRegistryPlugin(
@@ -209,7 +235,7 @@ function flattenAppInfo<T extends RegistryPluginInfo>(appInfo: T): T {
     launchUrl:
       substituteTemplateVars(meta.launchUrl ?? appInfo.launchUrl ?? "") || null,
     icon: meta.icon ?? appInfo.icon,
-    heroImage: meta.heroImage ?? appInfo.heroImage ?? null,
+    heroImage: resolveAppHeroImage(appInfo.name, meta.heroImage ?? null),
     category: meta.category ?? appInfo.category,
     capabilities: meta.capabilities ?? appInfo.capabilities,
     uiExtension: meta.uiExtension ?? appInfo.uiExtension,
@@ -2195,13 +2221,120 @@ export class AppManager {
     Promise<AppRunSummary>
   >();
   private readonly stateDir?: string;
+  private readonly heartbeatTimeoutMs: number;
+  private readonly heartbeatSweepIntervalMs: number;
   private appRuns = new Map<string, AppRunSummary>();
+  private sweeperTimer: ReturnType<typeof setInterval> | null = null;
+  private sweeperRuntimeFn: (() => IAgentRuntime | null) | null = null;
+  private sweeperReapInFlight = false;
 
   constructor(options: AppManagerOptions = {}) {
     this.stateDir = options.stateDir;
+    this.heartbeatTimeoutMs =
+      options.heartbeatTimeoutMs ?? RUN_HEARTBEAT_TIMEOUT_MS;
+    this.heartbeatSweepIntervalMs =
+      options.heartbeatSweepIntervalMs ?? RUN_HEARTBEAT_SWEEP_INTERVAL_MS;
     for (const run of readAppRunStore(this.stateDir)) {
       this.appRuns.set(run.runId, run);
       this.knownAppNames.add(run.appName);
+    }
+  }
+
+  /**
+   * Bump a run's `lastHeartbeatAt` to "now" without invoking any plugin
+   * routes. Returns the updated run, or `null` if the runId is unknown.
+   *
+   * The UI calls this on a short interval while the GameView is mounted so
+   * the sweeper knows the tab is still alive. When the tab goes away the
+   * heartbeat stops and {@link reapStaleRuns} reclaims the run after
+   * `heartbeatTimeoutMs`.
+   */
+  recordHeartbeat(runId: string): AppRunSummary | null {
+    const run = this.appRuns.get(runId);
+    if (!run) return null;
+    const now = new Date().toISOString();
+    const next: AppRunSummary = {
+      ...run,
+      lastHeartbeatAt: now,
+    };
+    this.appRuns.set(runId, next);
+    this.persistRuns();
+    return next;
+  }
+
+  /**
+   * Stop and remove every run whose last heartbeat is older than
+   * `heartbeatTimeoutMs`. Runs that never received a heartbeat (no UI ever
+   * attached) are reaped only once they are also older than the timeout to
+   * avoid racing with the launch -> first-poll window.
+   *
+   * For each reaped run the route module's `stopRun` hook is invoked the
+   * same way the explicit Stop button does — so plugins get a single,
+   * uniform shutdown path regardless of why a run is going away.
+   */
+  async reapStaleRuns(
+    runtime: IAgentRuntime | null,
+    nowMs: number = Date.now(),
+  ): Promise<AppRunSummary[]> {
+    const reaped: AppRunSummary[] = [];
+    for (const run of [...this.appRuns.values()]) {
+      const heartbeat = run.lastHeartbeatAt
+        ? Date.parse(run.lastHeartbeatAt)
+        : null;
+      const startedAt = Date.parse(run.startedAt);
+      const reference = heartbeat ?? startedAt;
+      if (!Number.isFinite(reference)) continue;
+      if (nowMs - reference < this.heartbeatTimeoutMs) continue;
+      const removed = this.removeRun(run.runId);
+      if (!removed) continue;
+      reaped.push(removed);
+      await invokeAppStopRunHook(removed, runtime);
+      logger.info(
+        `[app-manager] Reaped stale app run "${removed.runId}" (${removed.appName}); ` +
+          `last heartbeat ${run.lastHeartbeatAt ?? "never"}`,
+      );
+    }
+    return reaped;
+  }
+
+  /**
+   * Start the periodic stale-run sweeper. Idempotent — calling twice does
+   * not start two timers. The runtime is resolved lazily via `getRuntime`
+   * so the sweeper picks up runtime changes (e.g. agent restart) without
+   * needing to be re-wired.
+   *
+   * The interval is wrapped in `unref()` so a stuck sweeper never keeps a
+   * Node process alive on shutdown.
+   */
+  startStaleRunSweeper(getRuntime: () => IAgentRuntime | null): void {
+    this.sweeperRuntimeFn = getRuntime;
+    if (this.sweeperTimer) return;
+    this.sweeperTimer = setInterval(() => {
+      void this.runSweeperTick();
+    }, this.heartbeatSweepIntervalMs);
+    if (typeof this.sweeperTimer.unref === "function") {
+      this.sweeperTimer.unref();
+    }
+  }
+
+  /** Stop the periodic stale-run sweeper. Safe to call multiple times. */
+  stopStaleRunSweeper(): void {
+    if (!this.sweeperTimer) return;
+    clearInterval(this.sweeperTimer);
+    this.sweeperTimer = null;
+  }
+
+  private async runSweeperTick(): Promise<void> {
+    if (this.sweeperReapInFlight) return;
+    this.sweeperReapInFlight = true;
+    try {
+      const runtime = this.sweeperRuntimeFn?.() ?? null;
+      await this.reapStaleRuns(runtime);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(`[app-manager] Stale-run sweeper failed: ${message}`);
+    } finally {
+      this.sweeperReapInFlight = false;
     }
   }
 
