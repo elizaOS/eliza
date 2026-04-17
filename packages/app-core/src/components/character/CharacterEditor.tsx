@@ -1630,7 +1630,7 @@ export function CharacterEditor({
                 </div>
               )}
               {activePage === "examples" && (
-                <div className="flex flex-col gap-5">
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8 lg:items-start">
                   <CharacterExamplesPanel
                     d={d}
                     normalizedMessageExamples={normalizedMessageExamples}
