@@ -23,8 +23,11 @@ import { join } from "node:path";
  *  end-turn reader and the activity scanner so both agree on what a parsed
  *  assistant line looks like. */
 interface JsonlAssistantLine {
+  subtype?: string;
+  isApiErrorMessage?: boolean;
   message?: {
     role?: string;
+    model?: string;
     stop_reason?: string;
     content?: Array<{ type?: string; text?: string; name?: string }>;
   };
@@ -87,8 +90,12 @@ async function readJsonl(workdir: string): Promise<string | null> {
 
 /**
  * Scan jsonl text tail-first for the latest assistant message with
- * `stop_reason: end_turn` and return its text. Returns null if the latest
- * assistant line is still in a tool_use turn or no assistant line exists.
+ * `stop_reason: end_turn` and return its text. Walks past any trailing
+ * `tool_use` turns (the coordinator's "respond" follow-up can trigger
+ * another tool round after the real answer, leaving a tool_use line
+ * as the tail). Skips synthetic retry shims and Anthropic api_error
+ * frames (529/overload) so transient retries never surface as the
+ * agent's answer.
  */
 export function findLatestEndTurnText(content: string): string | null {
   const lines = content.split("\n");
@@ -97,16 +104,18 @@ export function findLatestEndTurnText(content: string): string | null {
     if (!line) continue;
     const parsed = parseJsonlLine(line);
     if (!parsed) continue;
+    if (parsed.subtype === "api_error" || parsed.isApiErrorMessage) continue;
     const msg = parsed.message;
     if (!msg || msg.role !== "assistant") continue;
-    if (msg.stop_reason !== "end_turn") return null;
+    if (msg.model === "<synthetic>") continue;
+    if (msg.stop_reason !== "end_turn") continue;
     const textParts: string[] = [];
     for (const c of msg.content ?? []) {
       if (c.type === "text" && typeof c.text === "string" && c.text.trim()) {
         textParts.push(c.text.trim());
       }
     }
-    return textParts.length > 0 ? textParts.join("\n\n") : null;
+    if (textParts.length > 0) return textParts.join("\n\n");
   }
   return null;
 }
@@ -128,8 +137,10 @@ export async function readCurrentActivityFromJsonl(
     if (!line) continue;
     const parsed = parseJsonlLine(line);
     if (!parsed) continue;
+    if (parsed.subtype === "api_error" || parsed.isApiErrorMessage) continue;
     const msg = parsed.message;
     if (!msg || msg.role !== "assistant") continue;
+    if (msg.model === "<synthetic>") continue;
     for (const c of msg.content ?? []) {
       if (c.type === "tool_use" && typeof c.name === "string") return c.name;
     }
