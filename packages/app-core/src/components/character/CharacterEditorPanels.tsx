@@ -520,17 +520,17 @@ export function CharacterExamplesPanel({
             )}
           </Button>
         </div>
-        <div className="flex flex-col overflow-y-auto min-h-0 divide-y divide-border/30">
+        <div className="flex flex-col divide-y divide-border/30">
           {normalizedMessageExamples.map((convo, ci) => (
             <div
               // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
               key={`convo-${ci}`}
-              className="group relative flex flex-col gap-1 py-2 first:pt-0 last:pb-0"
+              className="group relative flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0"
             >
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute right-0 top-1 shrink-0 p-0 h-auto w-auto text-muted opacity-0 transition-opacity duration-150 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
+                className="absolute right-0 top-1.5 shrink-0 p-0 h-auto w-auto text-muted opacity-0 transition-opacity duration-150 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
                 onClick={() => {
                   const updated = [...normalizedMessageExamples];
                   updated.splice(ci, 1);
@@ -544,10 +544,10 @@ export function CharacterExamplesPanel({
                 <div
                   // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
                   key={`msg-${ci}-${mi}`}
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-3"
                 >
                   <span
-                    className={`w-10 shrink-0 text-right text-3xs font-bold uppercase tracking-[0.1em] ${msg.name === "{{user1}}" ? "text-muted" : "text-accent"}`}
+                    className={`w-14 shrink-0 pr-1 text-right text-3xs font-bold uppercase tracking-[0.08em] ${msg.name === "{{user1}}" ? "text-muted" : "text-accent"}`}
                   >
                     {msg.name === "{{user1}}" ? "user" : "agent"}
                   </span>
@@ -565,7 +565,7 @@ export function CharacterExamplesPanel({
                       updated[ci] = convoClone;
                       handleFieldEdit("messageExamples", updated);
                     }}
-                    className="h-7 flex-1 rounded-md border border-border/50 bg-white/[0.03] px-2 text-xs-tight leading-tight text-txt outline-none focus:border-accent"
+                    className="h-7 flex-1 rounded-md border border-border/50 bg-white/[0.03] px-2.5 text-xs-tight leading-tight text-txt outline-none focus:border-accent"
                   />
                 </div>
               ))}
@@ -609,12 +609,12 @@ export function CharacterExamplesPanel({
             )}
           </Button>
         </div>
-        <div className="flex flex-col gap-1.5 overflow-y-auto min-h-0">
+        <div className="flex flex-col gap-1.5">
           {(d.postExamples ?? []).map((post, pi) => (
             <div
               // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
               key={`post-${pi}`}
-              className="flex items-center gap-1.5"
+              className="group flex items-center gap-1.5"
             >
               <Input
                 value={post}
@@ -623,7 +623,7 @@ export function CharacterExamplesPanel({
                   updated[pi] = e.target.value;
                   handleFieldEdit("postExamples", updated);
                 }}
-                className="h-7 flex-1 rounded-md border border-border bg-white/[0.03] px-2 font-mono text-xs-tight text-txt outline-none focus:border-accent"
+                className="h-7 flex-1 rounded-md border border-border/50 bg-white/[0.03] px-2.5 text-xs-tight leading-tight text-txt outline-none focus:border-accent"
               />
               <Button
                 variant="ghost"
