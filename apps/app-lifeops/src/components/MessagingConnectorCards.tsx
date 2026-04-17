@@ -18,27 +18,25 @@ function ConnectorCardShell({
   statusVariant: "ok" | "muted" | "warning";
   children: React.ReactNode;
 }) {
-  const statusColorClass =
+  const dotColor =
     statusVariant === "ok"
-      ? "text-ok"
+      ? "bg-emerald-500"
       : statusVariant === "warning"
-        ? "text-warning"
-        : "text-muted";
+        ? "bg-amber-500"
+        : "bg-muted/40";
 
   return (
-    <section className="space-y-3 rounded-3xl border border-border/16 bg-card/18 px-4 py-4">
+    <div className="space-y-2 py-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           {icon}
-          <span className="text-sm font-semibold text-txt">{platform}</span>
+          <span className="text-sm font-medium text-txt">{platform}</span>
+          <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`} />
+          <span className="text-xs text-muted">{status}</span>
         </div>
-        <Badge variant="outline" className="text-2xs">
-          {status}
-        </Badge>
       </div>
-      <div className={`text-xs ${statusColorClass}`}>{status}</div>
       {children}
-    </section>
+    </div>
   );
 }
 
@@ -385,11 +383,11 @@ export function IMessageConnectorCard() {
 
 export function MessagingConnectorGrid() {
   return (
-    <div className="space-y-3">
-      <div className="text-xs font-semibold uppercase tracking-wide text-muted">
+    <div className="space-y-1">
+      <div className="pb-1 text-xs font-semibold uppercase tracking-wide text-muted">
         Messaging
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="divide-y divide-border/12">
         <SignalConnectorCard />
         <DiscordConnectorCard />
         <TelegramConnectorCard />
