@@ -289,11 +289,13 @@ export const blockWebsitesAction: Action = {
     const parsed = parseSelfControlBlockRequest({
       parameters: {
         websites:
-          explicitWebsites.length > 0 ? explicitWebsites : llmPlan?.websites,
+          explicitWebsites.length > 0
+            ? explicitWebsites
+            : (llmPlan?.websites ?? null),
         durationMinutes:
           explicitDurationMinutes !== undefined
             ? explicitDurationMinutes
-            : llmPlan?.durationMinutes,
+            : (llmPlan?.durationMinutes ?? null),
       },
     });
     if (!parsed.request) {

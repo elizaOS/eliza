@@ -462,6 +462,90 @@ export function registerTrainingTriggerService(
   return service;
 }
 
+const BOOTSTRAP_TASKS: readonly TrajectoryTrainingTask[] = [
+  "should_respond",
+  "action_planner",
+] as const;
+
+interface OptimizedPromptServiceLike {
+  hasOptimized: (task: TrajectoryTrainingTask) => boolean;
+}
+
+interface UserNotifier {
+  notify: (message: string) => void;
+}
+
+export interface BootstrapOptimizationOptions {
+  configLoader?: () => TrainingConfig;
+  notifier?: UserNotifier;
+  /**
+   * Override the service used to trigger the run. Tests pass a stub; in
+   * production the registered TrainingTriggerService is looked up from
+   * runtime.services.
+   */
+  triggerOverride?: (input: {
+    task: TrajectoryTrainingTask;
+    backend: TrainingBackend;
+  }) => Promise<TrainingRunRecord>;
+}
+
+/**
+ * One-shot bootstrap pass for default-on Hermes parity.
+ *
+ * Called immediately after `registerTrainingTriggerService` during runtime
+ * boot. For each high-leverage task (should_respond + action_planner):
+ *   - If `MILADY_DISABLE_AUTO_BOOTSTRAP=1`, do nothing.
+ *   - If the OptimizedPromptService already has an artifact for the task,
+ *     do nothing (the operator's previous run wins).
+ *   - If the per-task trajectory counter is below the threshold, do nothing
+ *     (we don't want to optimize against a thin dataset).
+ *   - Otherwise, fire `triggerTraining({ source: 'bootstrap', backend: 'native' })`
+ *     and notify the user that progress can be tracked in
+ *     Settings → Auto-Training.
+ *
+ * This is fire-and-forget on purpose: the runtime boot must not block on
+ * an LLM-driven optimization round. Errors propagate so the boot logger
+ * surfaces them rather than swallowing them silently.
+ */
+export async function bootstrapOptimizationFromAccumulatedTrajectories(
+  runtime: RuntimeLike,
+  service: TrainingTriggerService,
+  options: BootstrapOptimizationOptions = {},
+): Promise<TrajectoryTrainingTask[]> {
+  if (process.env.MILADY_DISABLE_AUTO_BOOTSTRAP === "1") {
+    return [];
+  }
+  const config = (options.configLoader ?? loadTrainingConfig)();
+  if (!config.autoTrain) return [];
+  if (!config.backends.includes("native")) return [];
+
+  const optimizedPromptService = runtime.getService(
+    "optimized_prompt",
+  ) as OptimizedPromptServiceLike | null;
+
+  const status = service.getStatus();
+  const fired: TrajectoryTrainingTask[] = [];
+  for (const task of BOOTSTRAP_TASKS) {
+    const threshold = status.perTaskThresholds[task] ?? Number.POSITIVE_INFINITY;
+    const count = status.counters[task] ?? 0;
+    if (count < threshold) continue;
+    if (optimizedPromptService?.hasOptimized(task) === true) continue;
+    const trigger =
+      options.triggerOverride ??
+      (async (input) =>
+        service.runManually({ task: input.task, backend: input.backend }));
+    await trigger({ task, backend: "native" });
+    fired.push(task);
+  }
+
+  if (fired.length > 0) {
+    const message = `Bootstrapping prompt optimization from accumulated trajectories (${fired.join(", ")}). Track progress in Settings → Auto-Training.`;
+    options.notifier?.notify(message);
+    runtime.logger?.info(`[TrainingTriggerService] ${message}`);
+  }
+  return fired;
+}
+
 export interface RegisteredTrainingTriggerEntry {
   notifyTrajectoryCompleted: (trajectoryId: string) => Promise<void>;
   getStatus: () => TriggerStatusSnapshot;

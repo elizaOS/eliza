@@ -58,7 +58,11 @@ export const DEFAULT_TRAINING_CONFIG: TrainingConfig = Object.freeze({
   autoTrain: true,
   triggerThreshold: 100,
   triggerCooldownHours: 12,
-  backends: [],
+  // Native is the default-on backend. It runs in-process against the
+  // configured runtime model and writes optimized prompts into the
+  // OptimizedPromptService store. Operators can prepend other backends
+  // (vertex/atropos/tinker) when they want hosted training instead.
+  backends: ["native"],
 }) as TrainingConfig;
 
 function resolveStateDir(): string {
