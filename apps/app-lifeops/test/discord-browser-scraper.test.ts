@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
+import { JSDOM } from "jsdom";
 import {
   closeDiscordTab,
   discordBrowserWorkspaceAvailable,
   discordPartitionFor,
   ensureDiscordTab,
+  probeDiscordDocumentState,
   probeDiscordTab,
 } from "../src/lifeops/discord-browser-scraper.js";
 
@@ -244,6 +246,12 @@ describe("discord browser scraper (end-to-end vs fake bridge)", () => {
       username: null,
       discriminator: null,
     });
+    expect(probe.dmInbox).toEqual({
+      visible: false,
+      count: 0,
+      selectedChannelId: null,
+      previews: [],
+    });
   });
 
   test("probeDiscordTab surfaces identity returned by DOM probe", async () => {
@@ -261,12 +269,42 @@ describe("discord browser scraper (end-to-end vs fake bridge)", () => {
         discriminator: "0001",
       },
       rawSnippet: "shaw | @shaw",
+      dmInbox: {
+        visible: true,
+        count: 2,
+        selectedChannelId: "222",
+        previews: [
+          {
+            channelId: "111",
+            href: "/channels/@me/111",
+            label: "Alice",
+            selected: false,
+            unread: true,
+            snippet: "Are we meeting tomorrow?",
+          },
+          {
+            channelId: "222",
+            href: "/channels/@me/222",
+            label: "Bob",
+            selected: true,
+            unread: false,
+            snippet: "Sent you the file",
+          },
+        ],
+      },
     };
 
     const probe = await probeDiscordTab(tab.tabId);
     expect(probe.loggedIn).toBe(true);
     expect(probe.identity.username).toBe("shaw");
     expect(probe.identity.discriminator).toBe("0001");
+    expect(probe.dmInbox.visible).toBe(true);
+    expect(probe.dmInbox.count).toBe(2);
+    expect(probe.dmInbox.selectedChannelId).toBe("222");
+    expect(probe.dmInbox.previews[0]).toMatchObject({
+      label: "Alice",
+      unread: true,
+    });
 
     const evalRequest = bridge.requests.find((r) =>
       r.pathname.endsWith("/eval"),
@@ -275,6 +313,62 @@ describe("discord browser scraper (end-to-end vs fake bridge)", () => {
     expect(typeof (evalRequest?.body as { script?: string })?.script).toBe(
       "string",
     );
+  });
+
+  test("probeDiscordDocumentState detects visible DMs from Discord DOM", () => {
+    const dom = new JSDOM(
+      `
+        <body>
+          <nav data-list-id="guildsnav"></nav>
+          <section aria-label="User area">
+            <div class="nameTag">
+              <span class="name-">shaw</span>
+              <span class="discrim">#0001</span>
+            </div>
+          </section>
+          <a href="/channels/@me/111" aria-label="Alice, unread messages">
+            <div>Alice</div>
+            <div>Are we meeting tomorrow?</div>
+            <div class="unread-indicator"></div>
+          </a>
+          <a href="/channels/@me/222" aria-current="page">
+            <div>Bob</div>
+            <div>Sent you the file</div>
+          </a>
+        </body>
+      `,
+      { url: "https://discord.com/channels/@me/222" },
+    );
+
+    const probe = probeDiscordDocumentState(
+      dom.window.document,
+      dom.window.location.href,
+    );
+
+    expect(probe.loggedIn).toBe(true);
+    expect(probe.identity).toEqual({
+      id: null,
+      username: "shaw",
+      discriminator: "0001",
+    });
+    expect(probe.dmInbox.visible).toBe(true);
+    expect(probe.dmInbox.count).toBe(2);
+    expect(probe.dmInbox.selectedChannelId).toBe("222");
+    expect(probe.dmInbox.previews).toMatchObject([
+      {
+        channelId: "111",
+        label: "Alice",
+        unread: true,
+        snippet: "Are we meeting tomorrow?",
+      },
+      {
+        channelId: "222",
+        label: "Bob",
+        selected: true,
+        unread: false,
+        snippet: "Sent you the file",
+      },
+    ]);
   });
 
   test("closeDiscordTab removes the tab from the bridge", async () => {

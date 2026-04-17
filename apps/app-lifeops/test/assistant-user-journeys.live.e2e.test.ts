@@ -15,7 +15,6 @@ import {
 import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider as selectSharedLiveProvider } from "../../../../test/helpers/live-provider";
 import { saveEnv, sleep, withTimeout } from "../../../../test/helpers/test-utils";
 import { resolveOAuthDir } from "@elizaos/agent/config/paths";
 import {
@@ -23,6 +22,13 @@ import {
   buildUtcDateFromLocalParts,
   getZonedDateParts,
 } from "../src/lifeops/time.js";
+import {
+  LIVE_PROVIDER_ENV_KEYS,
+  LIVE_TESTS_ENABLED,
+  getLifeOpsLiveSetupWarnings,
+  getSelectedLiveProviderEnv,
+  selectLifeOpsLiveProvider,
+} from "./helpers/lifeops-live-harness.ts";
 import {
   createLifeOpsCalendarSyncState,
   createLifeOpsConnectorGrant,
@@ -43,216 +49,10 @@ const packageRoot = path.resolve(testDir, "..");
 dotenv.config({ path: path.resolve(packageRoot, ".env") });
 dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
-const LIVE_TESTS_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
 const TEST_TIME_ZONE = "America/Los_Angeles";
 const GOOGLE_CLIENT_ID = "assistant-user-journeys-google-client";
-const PROVIDER_ENV_KEYS = [
-  "OPENAI_API_KEY",
-  "OPENAI_BASE_URL",
-  "OPENAI_SMALL_MODEL",
-  "OPENAI_LARGE_MODEL",
-  "GROQ_API_KEY",
-  "GROQ_SMALL_MODEL",
-  "GROQ_LARGE_MODEL",
-  "OPENROUTER_API_KEY",
-  "OPENROUTER_SMALL_MODEL",
-  "OPENROUTER_LARGE_MODEL",
-  "GOOGLE_API_KEY",
-  "GOOGLE_GENERATIVE_AI_API_KEY",
-  "GOOGLE_SMALL_MODEL",
-  "GOOGLE_LARGE_MODEL",
-  "ANTHROPIC_API_KEY",
-  "ANTHROPIC_SMALL_MODEL",
-  "ANTHROPIC_LARGE_MODEL",
-] as const;
-
-const LIVE_PROVIDER_CANDIDATES = [
-  {
-    name: "groq",
-    plugin: "@elizaos/plugin-groq",
-    keys: ["GROQ_API_KEY"],
-    predicate: () =>
-      /groq/i.test(process.env.OPENAI_BASE_URL ?? "") ||
-      !process.env.OPENAI_API_KEY?.trim(),
-  },
-  {
-    name: "openai",
-    plugin: "@elizaos/plugin-openai",
-    keys: ["OPENAI_API_KEY"],
-    predicate: () => true,
-  },
-  {
-    name: "groq",
-    plugin: "@elizaos/plugin-groq",
-    keys: ["GROQ_API_KEY"],
-    predicate: () => true,
-  },
-  {
-    name: "openrouter",
-    plugin: "@elizaos/plugin-openrouter",
-    keys: ["OPENROUTER_API_KEY"],
-    predicate: () => true,
-  },
-  {
-    name: "google",
-    plugin: "@elizaos/plugin-google-genai",
-    keys: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
-    predicate: () => true,
-  },
-  {
-    name: "anthropic",
-    plugin: "@elizaos/plugin-anthropic",
-    keys: ["ANTHROPIC_API_KEY"],
-    predicate: () => true,
-  },
-] as const;
-
-const LIVE_PROVIDER_CHEAP_MODELS = {
-  anthropic: {
-    smallKey: "ANTHROPIC_SMALL_MODEL",
-    smallModel: "claude-haiku-4-5-20251001",
-    largeKey: "ANTHROPIC_LARGE_MODEL",
-    largeModel: "claude-haiku-4-5-20251001",
-  },
-  google: {
-    smallKey: "GOOGLE_SMALL_MODEL",
-    smallModel: "gemini-2.0-flash-001",
-    largeKey: "GOOGLE_LARGE_MODEL",
-    largeModel: "gemini-2.0-flash-001",
-  },
-  groq: {
-    smallKey: "GROQ_SMALL_MODEL",
-    smallModel: "llama-3.1-8b-instant",
-    largeKey: "GROQ_LARGE_MODEL",
-    largeModel: "llama-3.1-8b-instant",
-  },
-  openai: {
-    smallKey: "OPENAI_SMALL_MODEL",
-    smallModel: "gpt-5.4-mini",
-    largeKey: "OPENAI_LARGE_MODEL",
-    largeModel: "gpt-5.4-mini",
-  },
-  openrouter: {
-    smallKey: "OPENROUTER_SMALL_MODEL",
-    smallModel: "google/gemini-2.0-flash-001",
-    largeKey: "OPENROUTER_LARGE_MODEL",
-    largeModel: "google/gemini-2.0-flash-001",
-  },
-} as const;
-
-type SelectedLiveProvider = {
-  name: keyof typeof LIVE_PROVIDER_CHEAP_MODELS;
-  env: Record<string, string>;
-  plugin: string;
-};
-
 function normalizeText(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
-}
-
-function resolveLiveProviderModelEnv(
-  providerName: keyof typeof LIVE_PROVIDER_CHEAP_MODELS,
-): Record<string, string> {
-  const defaults = LIVE_PROVIDER_CHEAP_MODELS[providerName];
-  const smallModel =
-    process.env[defaults.smallKey]?.trim() || defaults.smallModel;
-  const largeModel =
-    process.env[defaults.largeKey]?.trim() ||
-    process.env[defaults.smallKey]?.trim() ||
-    defaults.largeModel;
-
-  return {
-    [defaults.smallKey]: smallModel,
-    [defaults.largeKey]: largeModel,
-    SMALL_MODEL: process.env.SMALL_MODEL?.trim() || smallModel,
-    LARGE_MODEL: process.env.LARGE_MODEL?.trim() || largeModel,
-  };
-}
-
-async function canImportPlugin(pluginName: string): Promise<boolean> {
-  try {
-    await import(pluginName);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function selectLiveProvider(): Promise<SelectedLiveProvider | null> {
-  const preferredProvider = (
-    process.env.ELIZA_LIVE_PROVIDER?.trim() ||
-    process.env.ELIZA_LIVE_PROVIDER?.trim() ||
-    ""
-  ).toLowerCase();
-  const candidates =
-    preferredProvider.length > 0
-      ? [
-          ...LIVE_PROVIDER_CANDIDATES.filter(
-            (candidate) => candidate.name === preferredProvider,
-          ),
-          ...LIVE_PROVIDER_CANDIDATES.filter(
-            (candidate) => candidate.name !== preferredProvider,
-          ),
-        ]
-      : LIVE_PROVIDER_CANDIDATES;
-
-  for (const candidate of candidates) {
-    if (!candidate.predicate()) {
-      continue;
-    }
-
-    const env: Record<string, string> = {};
-    for (const key of candidate.keys) {
-      const value = process.env[key]?.trim();
-      if (value) {
-        env[key] = value;
-      }
-    }
-    if (Object.keys(env).length === 0) {
-      continue;
-    }
-    if (!(await canImportPlugin(candidate.plugin))) {
-      continue;
-    }
-
-    Object.assign(
-      env,
-      resolveLiveProviderModelEnv(
-        candidate.name as keyof typeof LIVE_PROVIDER_CHEAP_MODELS,
-      ),
-    );
-    if (candidate.name === "openai") {
-      env.OPENAI_BASE_URL = "";
-    }
-
-    return {
-      name: candidate.name as keyof typeof LIVE_PROVIDER_CHEAP_MODELS,
-      env,
-      plugin: candidate.plugin,
-    };
-  }
-
-  const sharedProvider = selectSharedLiveProvider(
-    preferredProvider.length > 0
-      ? (preferredProvider as
-          | "anthropic"
-          | "google"
-          | "groq"
-          | "openai"
-          | "openrouter")
-      : undefined,
-  );
-  if (sharedProvider && (await canImportPlugin(sharedProvider.pluginPackage))) {
-    return {
-      name: sharedProvider.name,
-      env: sharedProvider.env,
-      plugin: sharedProvider.pluginPackage,
-    };
-  }
-
-  return null;
 }
 
 async function loadPlugin(name: string): Promise<Plugin | null> {
@@ -995,7 +795,10 @@ function containsAllFragments(text: string, fragments: string[]): boolean {
   );
 }
 
-const selectedLiveProvider = await selectLiveProvider();
+const selectedLiveProvider = await selectLifeOpsLiveProvider();
+const selectedProviderEnv = getSelectedLiveProviderEnv(selectedLiveProvider, {
+  omitOpenAiBaseUrl: true,
+});
 const SUPPORTED_PROVIDER_NAMES = new Set(["openai", "openrouter", "google"]);
 const LIVE_SUITE_ENABLED =
   LIVE_TESTS_ENABLED &&
@@ -1004,10 +807,7 @@ const LIVE_SUITE_ENABLED =
 
 if (!LIVE_SUITE_ENABLED) {
   const warnings = [
-    !LIVE_TESTS_ENABLED ? "set ELIZA_LIVE_TEST=1 or ELIZA_LIVE_TEST=1" : null,
-    !selectedLiveProvider
-      ? "provide a live provider key for OpenAI, OpenRouter, or Google"
-      : null,
+    ...getLifeOpsLiveSetupWarnings(selectedLiveProvider),
     selectedLiveProvider &&
     !SUPPORTED_PROVIDER_NAMES.has(selectedLiveProvider.name)
       ? `selected provider "${selectedLiveProvider.name}" does not support this suite; use OpenAI, OpenRouter, or Google`
@@ -1038,57 +838,35 @@ describeIf(LIVE_SUITE_ENABLED)(
 
     beforeAll(async () => {
       envBackup = saveEnv(
-        ...PROVIDER_ENV_KEYS,
+        ...LIVE_PROVIDER_ENV_KEYS,
         "PGLITE_DATA_DIR",
-        "ELIZA_STATE_DIR",
         "ELIZA_STATE_DIR",
         "ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID",
         "ENABLE_TRAJECTORIES",
         "ELIZA_TRAJECTORY_LOGGING",
-        "ELIZA_TRAJECTORY_LOGGING",
       );
       process.env.PGLITE_DATA_DIR = pgliteDir;
-      process.env.ELIZA_STATE_DIR = stateDir;
       process.env.ELIZA_STATE_DIR = stateDir;
       process.env.ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID = GOOGLE_CLIENT_ID;
       process.env.ENABLE_TRAJECTORIES = "false";
       process.env.ELIZA_TRAJECTORY_LOGGING = "false";
-      process.env.ELIZA_TRAJECTORY_LOGGING = "false";
       process.env.LOG_LEVEL = process.env.ELIZA_E2E_LOG_LEVEL ?? "error";
 
-      for (const key of PROVIDER_ENV_KEYS) {
+      for (const key of LIVE_PROVIDER_ENV_KEYS) {
         delete process.env[key];
       }
-      for (const [key, value] of Object.entries(
-        selectedLiveProvider?.env ?? {},
-      )) {
-        if (value.trim().length > 0) {
-          process.env[key] = value;
-        }
-      }
-      if (selectedLiveProvider?.name === "openai") {
-        delete process.env.OPENAI_BASE_URL;
-      }
+      Object.assign(process.env, selectedProviderEnv);
 
       ownerId = crypto.randomUUID() as UUID;
       dmRoomId = crypto.randomUUID() as UUID;
       const dmWorldId = crypto.randomUUID() as UUID;
 
       const character = buildCharacterFromConfig({});
-      process.env.ENABLE_TRAJECTORIES = "false";
-      process.env.ELIZA_TRAJECTORY_LOGGING = "false";
-      process.env.ELIZA_TRAJECTORY_LOGGING = "false";
-      const providerSecrets = {
-        ...(selectedLiveProvider?.env ?? {}),
-      };
-      if (selectedLiveProvider?.name === "openai") {
-        delete providerSecrets.OPENAI_BASE_URL;
-      }
       character.settings = {
         ...(character.settings ?? {}),
         ELIZA_ADMIN_ENTITY_ID: ownerId,
       };
-      character.secrets = providerSecrets;
+      character.secrets = selectedProviderEnv;
 
       const sqlPlugin = await loadPlugin("@elizaos/plugin-sql");
       const localEmbeddingPlugin = await loadPlugin(

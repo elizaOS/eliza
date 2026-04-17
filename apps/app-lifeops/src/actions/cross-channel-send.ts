@@ -6,9 +6,11 @@
  *   - email         → LifeOpsService.sendGmailMessage
  *   - sms           → sendTwilioSms
  *   - twilio_voice  → sendTwilioVoiceCall
- *   - telegram / discord / signal / imessage / whatsapp → service send method
- *     if a matching mixin is present, otherwise reports "not yet implemented"
- *   - x_dm          → not yet implemented
+ *   - telegram      → LifeOpsService.sendTelegramMessage
+ *   - discord       → runtime send handler registered for "discord"
+ *   - signal        → runtime send handler registered for "signal"
+ *   - imessage      → LifeOpsService.sendIMessage
+ *   - whatsapp      → LifeOpsService.sendWhatsAppMessage
  */
 
 import type {
@@ -39,7 +41,6 @@ export const CROSS_CHANNEL_SEND_CHANNELS = [
   "twilio_voice",
   "imessage",
   "whatsapp",
-  "x_dm",
 ] as const;
 export type CrossChannelSendChannel = (typeof CROSS_CHANNEL_SEND_CHANNELS)[number];
 
@@ -67,15 +68,6 @@ function isCrossChannelSendChannel(
   value: string,
 ): value is CrossChannelSendChannel {
   return (CROSS_CHANNEL_SEND_CHANNELS as readonly string[]).includes(value);
-}
-
-function notImplemented(channel: string): ActionResult {
-  return {
-    text: `Sending on channel "${channel}" is not yet implemented.`,
-    success: false,
-    values: { success: false, error: "CHANNEL_NOT_IMPLEMENTED", channel },
-    data: { actionName: ACTION_NAME, channel },
-  };
 }
 
 function twilioResultToActionResult(args: {
@@ -127,6 +119,24 @@ function twilioResultToActionResult(args: {
   };
 }
 
+async function dispatchViaRuntimeSendHandler(
+  runtime: IAgentRuntime,
+  channel: "discord" | "signal",
+  target: string,
+  message: string,
+): Promise<void> {
+  await runtime.sendMessageToTarget(
+    {
+      source: channel,
+      channelId: target,
+    } as Parameters<typeof runtime.sendMessageToTarget>[0],
+    {
+      text: message,
+      source: channel,
+    },
+  );
+}
+
 export const crossChannelSendAction: Action = {
   name: ACTION_NAME,
   similes: [
@@ -137,7 +147,7 @@ export const crossChannelSendAction: Action = {
   ],
   description:
     "Draft or send a message across any connected channel (email, telegram, " +
-    "discord, signal, sms, twilio_voice, imessage, whatsapp, x_dm). Always " +
+    "discord, signal, sms, twilio_voice, imessage, whatsapp). Always " +
     "drafts first; caller must re-invoke with confirmed: true to dispatch.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
@@ -370,8 +380,6 @@ export const crossChannelSendAction: Action = {
       }
 
       case "telegram":
-      case "discord":
-      case "signal":
       case "imessage":
       case "whatsapp": {
         // Each mixin exposes a slightly different request shape. Centralize the
@@ -382,14 +390,6 @@ export const crossChannelSendAction: Action = {
         > = {
           telegram: {
             method: "sendTelegramMessage",
-            build: () => ({ target, message: body }),
-          },
-          discord: {
-            method: "sendDiscordMessage",
-            build: () => ({ target, message: body }),
-          },
-          signal: {
-            method: "sendSignalMessage",
             build: () => ({ target, message: body }),
           },
           imessage: {
@@ -408,7 +408,16 @@ export const crossChannelSendAction: Action = {
         >;
         const method = serviceUnknown[methodName];
         if (typeof method !== "function") {
-          return notImplemented(channel);
+          return {
+            text: `${channel} send is unavailable because the required LifeOps connector method is not loaded.`,
+            success: false,
+            values: {
+              success: false,
+              error: "CHANNEL_UNAVAILABLE",
+              channel,
+            },
+            data: { actionName: ACTION_NAME, channel },
+          };
         }
         try {
           const result = await method.call(service, build());
@@ -436,8 +445,27 @@ export const crossChannelSendAction: Action = {
         }
       }
 
-      case "x_dm":
-        return notImplemented("x_dm");
+      case "discord":
+      case "signal": {
+        try {
+          await dispatchViaRuntimeSendHandler(runtime, channel, target, body);
+          return {
+            text: `Sent ${channel} to ${target}.`,
+            success: true,
+            values: { success: true, channel, target },
+            data: { actionName: ACTION_NAME, channel, target, message: body },
+          };
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          return {
+            text: `${channel} dispatch to ${target} failed: ${errorMessage}.`,
+            success: false,
+            values: { success: false, channel, target, error: errorMessage },
+            data: { actionName: ACTION_NAME, channel, target, message: body },
+          };
+        }
+      }
     }
   },
 };

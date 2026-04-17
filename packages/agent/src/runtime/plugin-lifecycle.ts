@@ -215,7 +215,11 @@ function applyEffectiveActionContexts(
 
   return {
     ...inherited,
-    contexts: [...resolveActionContexts(inherited)],
+    contexts: [
+      ...resolveActionContexts(
+        inherited as unknown as Parameters<typeof resolveActionContexts>[0],
+      ),
+    ],
   };
 }
 
@@ -230,7 +234,11 @@ function applyEffectiveProviderContexts(
 
   return {
     ...inherited,
-    contexts: [...resolveProviderContexts(inherited)],
+    contexts: [
+      ...resolveProviderContexts(
+        inherited as unknown as Parameters<typeof resolveProviderContexts>[0],
+      ),
+    ],
   };
 }
 
