@@ -90,7 +90,7 @@
 		"@types/markdown-it": "^14.1.2",
 		"@types/node": "^25.0.3",
 		"@vitest/coverage-v8": "^4.0.0",
-		"esbuild": "^0.25.0",
+		"esbuild": "^0.28.0",
 		"sharp": "^0.34.5",
 		"typescript": "^5.9.3",
 		"vitest": "^4.0.0"
