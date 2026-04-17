@@ -149,7 +149,7 @@ function twilioResultToActionResult(args: {
 
 async function dispatchViaRuntimeSendHandler(
   runtime: IAgentRuntime,
-  channel: "discord" | "signal",
+  channel: CrossChannelSendChannel,
   target: string,
   message: string,
 ): Promise<void> {

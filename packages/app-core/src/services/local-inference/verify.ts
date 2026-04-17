@@ -24,7 +24,12 @@ import fsp from "node:fs/promises";
 import { registryPath } from "./paths";
 import type { InstalledModel } from "./types";
 
-export type VerifyState = "unknown" | "ok" | "mismatch" | "missing" | "truncated";
+export type VerifyState =
+  | "unknown"
+  | "ok"
+  | "mismatch"
+  | "missing"
+  | "truncated";
 
 export interface VerifyResult {
   state: VerifyState;

@@ -43,9 +43,9 @@ export function DevicesPanel() {
         Connected bridge devices
       </h3>
       <p className="text-xs text-muted-foreground">
-        Requests route to the highest-scoring device available. Scoring
-        favours desktops over phones, more RAM, and an available GPU. The
-        primary device is the one ranked first.
+        Requests route to the highest-scoring device available. Scoring favours
+        desktops over phones, more RAM, and an available GPU. The primary device
+        is the one ranked first.
       </p>
       <div className="flex flex-col gap-2">
         {status.devices.map((device) => (
@@ -88,7 +88,8 @@ export function DevicesPanel() {
             </div>
             <div className="text-xs text-muted-foreground">
               score {Math.round(device.score)}
-              {device.activeRequests > 0 && ` · ${device.activeRequests} active`}
+              {device.activeRequests > 0 &&
+                ` · ${device.activeRequests} active`}
             </div>
           </div>
         ))}

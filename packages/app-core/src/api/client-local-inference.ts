@@ -6,7 +6,6 @@
  */
 
 import type { DeviceBridgeStatus } from "../services/local-inference/device-bridge";
-import type { VerifyResult } from "../services/local-inference/verify";
 import type {
   ActiveModelState,
   AgentModelSlot,
@@ -18,6 +17,7 @@ import type {
   ModelBucket,
   ModelHubSnapshot,
 } from "../services/local-inference/types";
+import type { VerifyResult } from "../services/local-inference/verify";
 import { ElizaClient } from "./client-base";
 
 export type {

@@ -72,4 +72,34 @@ describe("parseTrainArgs", () => {
       ]),
     ).toThrow(/epochs/);
   });
+
+  it("accepts --backend native + --optimizer", () => {
+    const parsed = parseTrainArgs([
+      "--backend",
+      "native",
+      "--dataset",
+      "/tmp/x.jsonl",
+      "--task",
+      "should_respond",
+      "--optimizer",
+      "prompt-evolution",
+    ]);
+    expect(parsed).not.toBe("help");
+    if (parsed === "help") return;
+    expect(parsed.backend).toBe("native");
+    expect(parsed.optimizer).toBe("prompt-evolution");
+  });
+
+  it("rejects unknown optimizers", () => {
+    expect(() =>
+      parseTrainArgs([
+        "--backend",
+        "native",
+        "--dataset",
+        "x",
+        "--optimizer",
+        "rocket-search",
+      ]),
+    ).toThrow(/optimizer/);
+  });
 });

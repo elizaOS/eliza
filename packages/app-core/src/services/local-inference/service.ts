@@ -19,7 +19,6 @@ import {
   removeMiladyModel,
   upsertMiladyModel,
 } from "./registry";
-import { type VerifyResult, verifyInstalledModel } from "./verify";
 import type {
   ActiveModelState,
   AgentModelSlot,
@@ -30,6 +29,7 @@ import type {
   ModelAssignments,
   ModelHubSnapshot,
 } from "./types";
+import { type VerifyResult, verifyInstalledModel } from "./verify";
 
 export class LocalInferenceService {
   private readonly downloader = new Downloader();

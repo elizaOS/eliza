@@ -35,6 +35,9 @@
     "./cli/train": "./src/cli/train.ts",
     "./backends/atropos": "./src/backends/atropos.ts",
     "./backends/tinker": "./src/backends/tinker.ts",
+    "./backends/native": "./src/backends/native.ts",
+    "./optimizers": "./src/optimizers/index.ts",
+    "./optimizers/*": "./src/optimizers/*.ts",
     "./package.json": "./package.json"
   },
   "scripts": {

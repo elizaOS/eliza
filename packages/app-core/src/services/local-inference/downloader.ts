@@ -25,7 +25,6 @@ import { pipeline } from "node:stream/promises";
 import { buildHuggingFaceResolveUrl, findCatalogModel } from "./catalog";
 import { downloadsStagingDir, miladyModelsDir } from "./paths";
 import { upsertMiladyModel } from "./registry";
-import { hashFile } from "./verify";
 import type {
   CatalogModel,
   DownloadEvent,
@@ -33,6 +32,7 @@ import type {
   DownloadState,
   InstalledModel,
 } from "./types";
+import { hashFile } from "./verify";
 
 interface ActiveJob {
   job: DownloadJob;

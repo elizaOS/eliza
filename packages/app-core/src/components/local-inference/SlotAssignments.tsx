@@ -12,7 +12,11 @@ interface SlotAssignmentsProps {
   onChange: (assignments: ModelAssignments) => void;
 }
 
-const SLOTS: Array<{ slot: AgentModelSlot; label: string; description: string }> = [
+const SLOTS: Array<{
+  slot: AgentModelSlot;
+  label: string;
+  description: string;
+}> = [
   {
     slot: "TEXT_SMALL",
     label: "Small model (TEXT_SMALL)",
@@ -85,9 +89,9 @@ export function SlotAssignments({
         Agent model assignments
       </h3>
       <p className="text-xs text-muted-foreground">
-        Route each of the agent's model calls to a specific local model.
-        Changes apply on the next request — the runtime lazy-loads the
-        assigned model on demand and swaps when needed.
+        Route each of the agent's model calls to a specific local model. Changes
+        apply on the next request — the runtime lazy-loads the assigned model on
+        demand and swaps when needed.
       </p>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {SLOTS.map(({ slot, label, description }) => {

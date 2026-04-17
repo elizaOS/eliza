@@ -80,6 +80,8 @@ export function ModelHubView({
                   onCancel={onCancel}
                   onActivate={onActivate}
                   onUninstall={onUninstall}
+                  onVerify={onVerify}
+                  onRedownload={onRedownload}
                   busy={busy}
                 />
               ))}
