@@ -581,7 +581,10 @@ export class TrajectoriesService extends Service {
 			case "other":
 				return value;
 			default:
-				return "other";
+				throw new Error(
+					`[TrajectoriesService] Unknown trajectory purpose: ${JSON.stringify(value)}. ` +
+						`Expected one of: action, reasoning, evaluation, response, should_respond, compose_state, other.`,
+				);
 		}
 	}
 
