@@ -81,6 +81,42 @@ const stubMemoryBrowseResponse = {
   offset: 0,
 };
 
+const emptyComputerUseApprovalSnapshot = {
+  mode: "full_control",
+  pendingCount: 0,
+  pendingApprovals: [],
+};
+
+const emptySkillsResponse = {
+  skills: [],
+};
+
+const emptyLocalInferenceActive = {
+  modelId: null,
+  loadedAt: null,
+  status: "idle",
+};
+
+const emptyLocalInferenceHardware = {
+  totalRamGb: 16,
+  freeRamGb: 8,
+  gpu: null,
+  cpuCores: 8,
+  platform: process.platform,
+  arch: process.arch,
+  appleSilicon: process.platform === "darwin" && process.arch === "arm64",
+  recommendedBucket: "small",
+  source: "os-fallback",
+};
+
+const emptyLocalInferenceHub = {
+  catalog: [],
+  installed: [],
+  active: emptyLocalInferenceActive,
+  downloads: [],
+  hardware: emptyLocalInferenceHardware,
+};
+
 function parsePositiveInt(value, fallback) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -302,6 +338,20 @@ function sendEmpty(req, res, status) {
   res.end();
 }
 
+function sendSseHeaders(req, res) {
+  applyCors(req, res);
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+}
+
+function writeSseEvent(res, payload) {
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
 async function readJsonBody(req) {
   const chunks = [];
   for await (const chunk of req) {
@@ -376,6 +426,25 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/onboarding/options") {
+    sendJson(req, res, 200, {
+      names: [],
+      styles: [],
+      providers: [],
+      cloudProviders: [],
+      models: {
+        nano: [],
+        small: [],
+        medium: [],
+        large: [],
+        mega: [],
+      },
+      inventoryProviders: [],
+      sharedStyleRules: "",
+    });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/auth/status") {
     sendJson(req, res, 200, {
       required: false,
@@ -418,6 +487,11 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/conversations") {
     sendJson(req, res, 200, { conversations: [] });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/agents") {
+    sendJson(req, res, 200, { agents: [] });
     return;
   }
 
@@ -633,6 +707,51 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/computer-use/approvals/stream"
+  ) {
+    sendSseHeaders(req, res);
+    writeSseEvent(res, {
+      type: "snapshot",
+      snapshot: emptyComputerUseApprovalSnapshot,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/computer-use/approvals") {
+    sendJson(req, res, 200, emptyComputerUseApprovalSnapshot);
+    return;
+  }
+
+  if (
+    req.method === "POST" &&
+    url.pathname === "/api/computer-use/approval-mode"
+  ) {
+    sendJson(req, res, 200, {
+      mode: emptyComputerUseApprovalSnapshot.mode,
+    });
+    return;
+  }
+
+  const computerUseApprovalMatch =
+    /^\/api\/computer-use\/approvals\/([^/]+)$/.exec(url.pathname);
+  if (req.method === "POST" && computerUseApprovalMatch) {
+    const approvalId = decodeURIComponent(computerUseApprovalMatch[1]);
+    const body = (await readJsonBody(req)) || {};
+    sendJson(req, res, 200, {
+      id: approvalId,
+      command: "computer-use-command",
+      approved: body.approved === true,
+      cancelled: body.approved !== true,
+      mode: emptyComputerUseApprovalSnapshot.mode,
+      requestedAt: nowIso(),
+      resolvedAt: nowIso(),
+      ...(typeof body.reason === "string" ? { reason: body.reason } : {}),
+    });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/drop/status") {
     sendJson(req, res, 200, {
       dropEnabled: false,
@@ -654,6 +773,127 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/registry/status") {
     sendJson(req, res, 200, { connected: false, online: false });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/local-inference/downloads/stream"
+  ) {
+    sendSseHeaders(req, res);
+    writeSseEvent(res, {
+      type: "snapshot",
+      downloads: emptyLocalInferenceHub.downloads,
+      active: emptyLocalInferenceHub.active,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/local-inference/hub") {
+    sendJson(req, res, 200, emptyLocalInferenceHub);
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/local-inference/hardware"
+  ) {
+    sendJson(req, res, 200, emptyLocalInferenceHardware);
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/local-inference/catalog"
+  ) {
+    sendJson(req, res, 200, { models: [] });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/local-inference/installed"
+  ) {
+    sendJson(req, res, 200, { models: [] });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/local-inference/hf-search"
+  ) {
+    sendJson(req, res, 200, { models: [] });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/local-inference/active") {
+    sendJson(req, res, 200, emptyLocalInferenceActive);
+    return;
+  }
+
+  if (
+    req.method === "POST" &&
+    url.pathname === "/api/local-inference/downloads"
+  ) {
+    const body = (await readJsonBody(req)) || {};
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim().length > 0
+        ? body.modelId.trim()
+        : typeof body.spec?.id === "string" && body.spec.id.trim().length > 0
+          ? body.spec.id.trim()
+          : "local-inference-model";
+    sendJson(req, res, 200, {
+      job: {
+        jobId: `job-${modelId}`,
+        modelId,
+        state: "queued",
+        received: 0,
+        total: 0,
+        bytesPerSec: 0,
+        etaMs: null,
+        startedAt: nowIso(),
+        updatedAt: nowIso(),
+      },
+    });
+    return;
+  }
+
+  const localInferenceDownloadMatch =
+    /^\/api\/local-inference\/downloads\/([^/]+)$/.exec(url.pathname);
+  if (req.method === "DELETE" && localInferenceDownloadMatch) {
+    sendJson(req, res, 200, { cancelled: true });
+    return;
+  }
+
+  if (
+    req.method === "POST" &&
+    url.pathname === "/api/local-inference/active"
+  ) {
+    const body = (await readJsonBody(req)) || {};
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim().length > 0
+        ? body.modelId.trim()
+        : null;
+    sendJson(req, res, 200, {
+      modelId,
+      loadedAt: modelId ? nowIso() : null,
+      status: modelId ? "ready" : "idle",
+    });
+    return;
+  }
+
+  if (
+    req.method === "DELETE" &&
+    url.pathname === "/api/local-inference/active"
+  ) {
+    sendJson(req, res, 200, emptyLocalInferenceActive);
+    return;
+  }
+
+  const localInferenceInstalledMatch =
+    /^\/api\/local-inference\/installed\/([^/]+)$/.exec(url.pathname);
+  if (req.method === "DELETE" && localInferenceInstalledMatch) {
+    sendJson(req, res, 200, { removed: true });
     return;
   }
 
@@ -726,6 +966,49 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/apps") {
     sendJson(req, res, 200, []);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/skills") {
+    sendJson(req, res, 200, emptySkillsResponse);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/skills/refresh") {
+    sendJson(req, res, 200, { ok: true, ...emptySkillsResponse });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/skills/marketplace/search"
+  ) {
+    sendJson(req, res, 200, { results: [] });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/skills/marketplace/config"
+  ) {
+    sendJson(req, res, 200, { keySet: false });
+    return;
+  }
+
+  if (
+    req.method === "PUT" &&
+    url.pathname === "/api/skills/marketplace/config"
+  ) {
+    sendJson(req, res, 200, { keySet: true });
+    return;
+  }
+
+  if (
+    req.method === "POST" &&
+    (url.pathname === "/api/skills/marketplace/install" ||
+      url.pathname === "/api/skills/marketplace/uninstall")
+  ) {
+    sendJson(req, res, 200, { ok: true });
     return;
   }
 
