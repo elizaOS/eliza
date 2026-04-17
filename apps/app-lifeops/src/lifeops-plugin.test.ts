@@ -4,6 +4,8 @@
  * Validates that `lifeopsPlugin` is correctly shaped and all routes are
  * properly defined, without invoking the underlying handlers.
  */
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
 // Stub the heavy handler modules and their dependencies
@@ -22,13 +24,31 @@ vi.mock("@elizaos/agent/api/server-helpers", () => ({
   decodePathComponent: vi.fn((s: string) => s),
 }));
 
+function routeKey(type: string, path: string): string {
+  return `${type} ${path}`;
+}
+
+function readExactLifeOpsRouteKeys(): Set<string> {
+  const sourcePath = fileURLToPath(new URL("./routes/lifeops-routes.ts", import.meta.url));
+  const source = fs.readFileSync(sourcePath, "utf8");
+  const matches = source.matchAll(
+    /method === "([A-Z]+)"[\s\S]{0,160}?pathname === "([^"]+)"/g,
+  );
+  const keys = new Set<string>();
+  for (const [, type, path] of matches) {
+    if (path.startsWith("/api/lifeops/")) {
+      keys.add(routeKey(type, path));
+    }
+  }
+  return keys;
+}
+
 describe("lifeopsPlugin shape", () => {
   it("exports a valid Plugin with routes", async () => {
     const { lifeopsPlugin } = await import("./routes/plugin");
     expect(lifeopsPlugin.name).toBe("@elizaos/app-lifeops-routes");
     expect(lifeopsPlugin.routes).toBeDefined();
-    // 50 static + 22 dynamic + 5 website-blocker = 77
-    expect(lifeopsPlugin.routes!.length).toBeGreaterThanOrEqual(70);
+    expect(lifeopsPlugin.routes!.length).toBeGreaterThanOrEqual(80);
   });
 
   it("all routes have rawPath: true", async () => {
@@ -61,6 +81,9 @@ describe("lifeopsPlugin shape", () => {
     expect(paths).toContain("/api/lifeops/workflows");
     expect(paths).toContain("/api/lifeops/overview");
     expect(paths).toContain("/api/lifeops/browser/sessions");
+    expect(paths).toContain("/api/lifeops/gmail/batch-reply-drafts");
+    expect(paths).toContain("/api/lifeops/browser/companions/pair");
+    expect(paths).toContain("/api/lifeops/browser/companions/sync");
   });
 
   it("includes expected dynamic LifeOps routes", async () => {
@@ -115,5 +138,19 @@ describe("lifeopsPlugin shape", () => {
     await route!.handler(req, res, null);
 
     expect(handleLifeOpsRoutes).toHaveBeenCalled();
+  });
+
+  it("registers every exact-path LifeOps handler route", async () => {
+    const { lifeopsPlugin } = await import("./routes/plugin");
+    const registered = new Set(
+      lifeopsPlugin.routes!
+        .filter((route) => route.path.startsWith("/api/lifeops/"))
+        .map((route) => routeKey(route.type, route.path)),
+    );
+    const missing = [...readExactLifeOpsRouteKeys()]
+      .filter((key) => !registered.has(key))
+      .sort();
+
+    expect(missing).toEqual([]);
   });
 });

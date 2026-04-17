@@ -54,6 +54,7 @@ import {
   windowPolicyMatchesDefaults,
 } from "./defaults.js";
 import { materializeDefinitionOccurrences } from "./engine.js";
+import { computeDefinitionPerformance } from "./service-helpers-occurrence.js";
 import {
   createLifeOpsActivitySignal,
   createLifeOpsChannelPolicy,
@@ -868,16 +869,6 @@ function isWebsiteAccessGrantActive(
     return Date.parse(grant.expiresAt) > now.getTime();
   }
   return true;
-}
-
-// Imported from service.ts for computeDefinitionPerformance stub
-function computeDefinitionPerformance(
-  _definition: LifeOpsTaskDefinition,
-  _occurrences: LifeOpsOccurrence[],
-  _now: Date,
-): Record<string, unknown> {
-  // This is a type stub — the real implementation is in the service.
-  return {};
 }
 
 // ---------------------------------------------------------------------------
