@@ -128,6 +128,7 @@ export interface AppManagerLike {
     runId?: string,
     runtime?: IAgentRuntime | null,
   ) => Promise<unknown>;
+  recordHeartbeat: (runId: string) => unknown;
   getInfo: (pluginManager: PluginManagerLike, name: string) => Promise<unknown>;
 }
 
@@ -692,6 +693,25 @@ export async function handleAppsRoutes(
         ctx.runtime as IAgentRuntime | null,
       );
       json(res, result as object);
+      return true;
+    }
+
+    if (subroute === "heartbeat") {
+      // Cheap liveness ping from the UI — does not invoke any plugin route
+      // or talk to the upstream game API. The stale-run sweeper relies on
+      // this so the moment a tab closes the heartbeat dries up and the
+      // run gets reaped via the same `stopRun` hook the Stop button uses.
+      //
+      // Returns 200 + the refreshed run so the client can also use this as
+      // a low-cost confirmation that the run still exists; returns 404 if
+      // the run has already been stopped (so the UI can detect a Stop
+      // initiated from another window or by the sweeper).
+      const refreshed = appManager.recordHeartbeat(runId);
+      if (!refreshed) {
+        error(res, `App run "${runId}" not found`, 404);
+        return true;
+      }
+      json(res, { ok: true, run: refreshed } as object);
       return true;
     }
   }

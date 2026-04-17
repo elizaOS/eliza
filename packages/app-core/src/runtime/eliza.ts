@@ -435,12 +435,37 @@ async function repairRuntimeAfterBoot(
   // out proactively re-spawns it (when localEnabled and not mobile).
   await ensureN8nAuthBridge(runtime);
 
+  // Kick the local n8n sidecar off at boot so the first Workflows-tab open
+  // (or a scheduled job dispatch) doesn't pay the ~10-20s `bunx n8n` cold
+  // start. Runs after the auth bridge so the bridge owns dispose-on-signin.
+  await ensureN8nAutoStart(runtime);
+
+  // Register the N8N_DISPATCH service so trigger dispatchers carrying
+  // `kind: "workflow"` can call runtime.getService("N8N_DISPATCH").execute(id).
+  // Mode selection (cloud / local / disabled) is deferred to each dispatch
+  // call via resolveN8nMode, so this does not depend on autostart readiness.
+  await ensureN8nDispatchService(runtime);
+
   return runtime;
 }
 
 // Module-level handle for the n8n auth bridge, reset across hot-reloads so
 // the previous poller does not race the fresh runtime's CLOUD_AUTH service.
 let _n8nAuthBridge: { stop: () => void } | null = null;
+
+// Module-level handle for the boot-time n8n autostart. Like the auth
+// bridge this is reset across hot-reloads so we never leave two timers
+// racing the singleton.
+let _n8nAutoStart: {
+  stop: () => Promise<void>;
+  poke: () => Promise<void>;
+} | null = null;
+
+// Module-level handle for the N8N_DISPATCH service instance. Kept across
+// hot-reloads so we can clear the runtime.services slot on shutdown without
+// leaking closures that hold a stale runtime reference.
+let _n8nDispatch: { execute: (workflowId: string) => Promise<unknown> } | null =
+  null;
 
 async function ensureN8nAuthBridge(runtime: AgentRuntime): Promise<void> {
   if (_n8nAuthBridge) {
@@ -463,6 +488,76 @@ async function ensureN8nAuthBridge(runtime: AgentRuntime): Promise<void> {
   } catch (err) {
     logger.warn(
       `[eliza] Failed to start n8n auth bridge: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
+async function ensureN8nAutoStart(runtime: AgentRuntime): Promise<void> {
+  if (_n8nAutoStart) {
+    try {
+      await _n8nAutoStart.stop();
+    } catch {
+      /* ignore */
+    }
+    _n8nAutoStart = null;
+  }
+  try {
+    const [{ startN8nAutoStart }, config] = await Promise.all([
+      import("../services/n8n-autostart.js"),
+      Promise.resolve(loadElizaConfig()),
+    ]);
+    _n8nAutoStart = startN8nAutoStart(runtime, config, {
+      getConfig: () => loadElizaConfig(),
+    });
+    logger.info("[eliza] n8n autostart armed");
+  } catch (err) {
+    logger.warn(
+      `[eliza] Failed to start n8n autostart: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
+async function ensureN8nDispatchService(runtime: AgentRuntime): Promise<void> {
+  // Clear any prior instance so a hot-reloaded runtime never holds a stale
+  // closure binding to a discarded AgentRuntime.
+  if (_n8nDispatch) {
+    try {
+      runtime.services.delete("N8N_DISPATCH" as never);
+    } catch {
+      /* ignore */
+    }
+    _n8nDispatch = null;
+  }
+  try {
+    const { createN8nDispatchService } = await import(
+      "../services/n8n-dispatch.js"
+    );
+    const dispatchInstance = createN8nDispatchService({
+      runtime,
+      getConfig: () => loadElizaConfig(),
+    });
+    _n8nDispatch = dispatchInstance;
+    // Register directly into the runtime services map. `registerService`
+    // expects a Service class with a static `start()`, which is a poor fit
+    // for a pre-constructed function-based service. The map-set pattern
+    // mirrors `runtime/plugin-lifecycle.ts` and `test/scripts/*.ts`.
+    const serviceEntry = {
+      execute: dispatchInstance.execute,
+      // Minimum Service surface so downstream code that does instanceof or
+      // reads `.stop()` does not throw. Dispatch has no external state to
+      // tear down; stop is a no-op.
+      stop: async () => {},
+      capabilityDescription: "Executes n8n workflows by id.",
+    };
+    runtime.services.set("N8N_DISPATCH" as never, [serviceEntry as never]);
+    logger.info("[eliza] n8n dispatch service registered");
+  } catch (err) {
+    logger.warn(
+      `[eliza] Failed to register n8n dispatch service: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
@@ -1145,7 +1240,23 @@ export async function startEliza(
         if (currentRuntime) {
           await upstreamShutdownRuntime(currentRuntime, "server-only shutdown");
         }
-        // Stop the n8n auth bridge first so the poller does not try to
+        // Clear the n8n dispatch service slot. The service owns no external
+        // state (no timers, no sockets), so just drop the reference so a
+        // subsequent boot registers a fresh closure on the new runtime.
+        if (_n8nDispatch) {
+          _n8nDispatch = null;
+        }
+        // Stop the boot-time autostart first so its pending evaluate()
+        // cannot construct a new sidecar while we tear down.
+        if (_n8nAutoStart) {
+          try {
+            await _n8nAutoStart.stop();
+          } catch {
+            /* ignore */
+          }
+          _n8nAutoStart = null;
+        }
+        // Stop the n8n auth bridge next so the poller does not try to
         // spawn a fresh sidecar while we are tearing down.
         if (_n8nAuthBridge) {
           try {

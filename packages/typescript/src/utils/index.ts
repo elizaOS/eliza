@@ -107,3 +107,4 @@ export {
 	wordOverlapSimilarity,
 } from "./text-similarity.js";
 export { formatRelativeTime, formatTimestamp } from "./time-format.js";
+export { UnionFind } from "./union-find.js";

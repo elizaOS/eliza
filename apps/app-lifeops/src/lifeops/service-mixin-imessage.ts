@@ -3,12 +3,15 @@ import { loadElizaConfig } from "@elizaos/agent/config/config";
 import type { LifeOpsIMessageConnectorStatus } from "@elizaos/shared/contracts/lifeops";
 import {
   getIMessageBackendStatus,
+  getIMessageDeliveryStatus,
   listIMessageChats as listIMessageChatsBridge,
   readIMessages as readIMessagesBridge,
+  searchIMessages as searchIMessagesBridge,
   sendIMessage as sendIMessageBridge,
   type IMessageBackend,
   type IMessageBridgeConfig,
   type IMessageChat,
+  type IMessageDeliveryResult,
   type IMessageRecord,
   type IMessageSendRequest,
 } from "./imessage-bridge.js";
@@ -135,6 +138,23 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
 
     async listIMessageChats(): Promise<IMessageChat[]> {
       return listIMessageChatsBridge(resolveLifeOpsIMessageBridgeConfig());
+    }
+
+    async searchIMessages(opts: {
+      query: string;
+      chatId?: string;
+      limit?: number;
+    }): Promise<IMessageRecord[]> {
+      return searchIMessagesBridge(opts, resolveLifeOpsIMessageBridgeConfig());
+    }
+
+    async getIMessageDeliveryStatus(
+      messageIds: string[],
+    ): Promise<IMessageDeliveryResult[]> {
+      return getIMessageDeliveryStatus(
+        messageIds,
+        resolveLifeOpsIMessageBridgeConfig(),
+      );
     }
   }
 

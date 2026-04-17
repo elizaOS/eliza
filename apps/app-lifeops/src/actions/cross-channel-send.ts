@@ -11,6 +11,9 @@
  *   - signal        → runtime send handler registered for "signal"
  *   - imessage      → LifeOpsService.sendIMessage
  *   - whatsapp      → LifeOpsService.sendWhatsAppMessage
+ *   - notifications → ntfy push (NTFY_BASE_URL)
+ *   - calendly      → createCalendlySingleUseLink (target = event-type URI)
+ *   - x_dm          → X (Twitter) DM via X API v2 (requires x.write capability)
  */
 
 import type {
@@ -22,6 +25,10 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { hasAdminAccess } from "@elizaos/agent/security/access";
+import {
+  createCalendlySingleUseLink,
+  readCalendlyCredentialsFromEnv,
+} from "../lifeops/calendly-client.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
   readTwilioCredentialsFromEnv,
@@ -29,6 +36,14 @@ import {
   sendTwilioVoiceCall,
   type TwilioDeliveryResult,
 } from "../lifeops/twilio.js";
+import {
+  readNtfyConfigFromEnv,
+  sendPush,
+  NtfyConfigError,
+} from "../lifeops/notifications-push.js";
+import {
+  readXPosterCredentialsFromEnv,
+} from "../lifeops/x-poster.js";
 
 const ACTION_NAME = "CROSS_CHANNEL_SEND";
 
@@ -41,6 +56,9 @@ export const CROSS_CHANNEL_SEND_CHANNELS = [
   "twilio_voice",
   "imessage",
   "whatsapp",
+  "notifications",
+  "calendly",
+  "x_dm",
 ] as const;
 export type CrossChannelSendChannel = (typeof CROSS_CHANNEL_SEND_CHANNELS)[number];
 
@@ -333,6 +351,180 @@ const CHANNEL_DISPATCHERS: Record<
       });
     }
   },
+  notifications: async ({ channel, target, body, subject }) => {
+    try {
+      const config = readNtfyConfigFromEnv();
+      const result = await sendPush(
+        {
+          topic: target || undefined,
+          title: subject || "Notification",
+          message: body,
+        },
+        config,
+      );
+      return buildDispatchSuccess({ channel, target, body, subject, result });
+    } catch (error) {
+      if (error instanceof NtfyConfigError) {
+        return {
+          text: `Push notifications are not configured. Set NTFY_BASE_URL (and optionally NTFY_DEFAULT_TOPIC).`,
+          success: false,
+          values: { success: false, error: "NTFY_NOT_CONFIGURED", channel },
+          data: { actionName: ACTION_NAME, channel },
+        };
+      }
+      return buildDispatchFailure({
+        channel,
+        target,
+        body,
+        subject,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  },
+  // target = Calendly event-type URI (e.g. the URI from the event type list).
+  // body is ignored — this generates a single-use booking link.
+  calendly: async ({ channel, target, body, subject }) => {
+    const credentials = readCalendlyCredentialsFromEnv();
+    if (!credentials) {
+      return {
+        text: "Calendly is not configured. Set CALENDLY_API_KEY.",
+        success: false,
+        values: { success: false, error: "CALENDLY_NOT_CONFIGURED", channel },
+        data: { actionName: ACTION_NAME, channel },
+      };
+    }
+    if (!target) {
+      return {
+        text: "Calendly send requires a target event-type URI.",
+        success: false,
+        values: { success: false, error: "MISSING_TARGET", channel },
+        data: { actionName: ACTION_NAME, channel },
+      };
+    }
+    try {
+      const result = await createCalendlySingleUseLink(credentials, target);
+      return {
+        text: `Calendly single-use booking link created: ${result.bookingUrl} (expires ${result.expiresAt})`,
+        success: true,
+        values: { success: true, channel, target, bookingUrl: result.bookingUrl },
+        data: {
+          actionName: ACTION_NAME,
+          channel,
+          target,
+          message: body,
+          subject: subject ?? null,
+          result,
+        },
+      };
+    } catch (error) {
+      return buildDispatchFailure({
+        channel,
+        target,
+        body,
+        subject,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  },
+  // target = recipient Twitter/X user ID or @handle.
+  // Requires X API v2 credentials with dm.write scope.
+  x_dm: async ({ channel, target, body }) => {
+    const credentials = readXPosterCredentialsFromEnv();
+    if (!credentials) {
+      return {
+        text: "X (Twitter) is not configured. Set X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, and X_ACCESS_SECRET.",
+        success: false,
+        values: { success: false, error: "X_NOT_CONFIGURED", channel },
+        data: { actionName: ACTION_NAME, channel },
+      };
+    }
+    // X API v2 DM send: POST /2/dm_conversations/with/:participant_id/messages
+    // Requires dm.write OAuth 1.0a scope on the access token.
+    const participantId = target.replace(/^@/, "").trim();
+    if (!participantId) {
+      return {
+        text: "X DM requires a target user ID or @handle.",
+        success: false,
+        values: { success: false, error: "MISSING_TARGET", channel },
+        data: { actionName: ACTION_NAME, channel },
+      };
+    }
+    try {
+      // OAuth 1.0a signing for X API v2 DM endpoint.
+      const url = `https://api.twitter.com/2/dm_conversations/with/${encodeURIComponent(participantId)}/messages`;
+      // Build OAuth 1.0a Authorization header inline (no external dependency).
+      const oauthTimestamp = String(Math.floor(Date.now() / 1000));
+      const oauthNonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+      const bodyPayload = JSON.stringify({ text: body });
+
+      // The Authorization header for OAuth 1.0a requires HMAC-SHA1 signing.
+      // We import the `crypto` module at call time to avoid a top-level dep.
+      const { createHmac } = await import("node:crypto");
+      const params: Record<string, string> = {
+        oauth_consumer_key: credentials.apiKey,
+        oauth_nonce: oauthNonce,
+        oauth_signature_method: "HMAC-SHA1",
+        oauth_timestamp: oauthTimestamp,
+        oauth_token: credentials.accessToken,
+        oauth_version: "1.0",
+      };
+      const paramString = Object.entries(params)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join("&");
+      const signatureBase = [
+        "POST",
+        encodeURIComponent(url),
+        encodeURIComponent(paramString),
+      ].join("&");
+      const signingKey = `${encodeURIComponent(credentials.apiSecret)}&${encodeURIComponent(credentials.accessSecret)}`;
+      const signature = createHmac("sha1", signingKey)
+        .update(signatureBase)
+        .digest("base64");
+      const authHeader =
+        "OAuth " +
+        Object.entries({ ...params, oauth_signature: signature })
+          .map(([k, v]) => `${encodeURIComponent(k)}="${encodeURIComponent(v)}"`)
+          .join(", ");
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          "Content-Type": "application/json",
+        },
+        body: bodyPayload,
+        signal: AbortSignal.timeout(15_000),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => "");
+        return buildDispatchFailure({
+          channel,
+          target,
+          body,
+          error: `X API returned HTTP ${response.status}: ${errorBody}`,
+        });
+      }
+
+      const responseJson = (await response.json().catch(() => null)) as {
+        data?: { dm_conversation_id?: string; dm_event_id?: string };
+      } | null;
+      return buildDispatchSuccess({
+        channel,
+        target,
+        body,
+        result: responseJson?.data ?? null,
+      });
+    } catch (error) {
+      return buildDispatchFailure({
+        channel,
+        target,
+        body,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  },
 };
 
 export const crossChannelSendAction: Action = {
@@ -345,7 +537,7 @@ export const crossChannelSendAction: Action = {
   ],
   description:
     "Draft or send a message across any connected channel (email, telegram, " +
-    "discord, signal, sms, twilio_voice, imessage, whatsapp). Always " +
+    "discord, signal, sms, twilio_voice, imessage, whatsapp, notifications). Always " +
     "drafts first; caller must re-invoke with confirmed: true to dispatch.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
@@ -364,7 +556,7 @@ export const crossChannelSendAction: Action = {
     {
       name: "target",
       description:
-        "Recipient identifier. Email address for email, E.164 phone for sms/twilio_voice, handle/user ID for chat channels.",
+        "Recipient identifier. Email address for email, E.164 phone for sms/twilio_voice, handle/user ID for chat channels, Ntfy topic name for notifications.",
       required: true,
       schema: { type: "string" as const },
     },

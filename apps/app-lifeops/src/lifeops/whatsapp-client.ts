@@ -115,6 +115,73 @@ function mapMessageType(raw: unknown): WhatsAppMessage["type"] {
   return "unknown";
 }
 
+// ---------------------------------------------------------------------------
+// Inbound message buffer
+// ---------------------------------------------------------------------------
+// WhatsApp Business Cloud API provides no "list messages" endpoint — inbound
+// messages arrive exclusively via webhook push. This buffer holds the last
+// MAX_BUFFER_SIZE messages received via webhook so that the service mixin can
+// expose a periodic sync / drain call without re-ingesting duplicates.
+
+const MAX_BUFFER_SIZE = 500;
+const inboundBuffer = new Map<string, WhatsAppMessage>();
+
+/**
+ * Add messages to the module-level inbound buffer, deduplicating by message id.
+ * Oldest entries are evicted when the buffer exceeds {@link MAX_BUFFER_SIZE}.
+ *
+ * @internal Called automatically by {@link parseAndBufferWhatsAppWebhookMessages}.
+ */
+function bufferInboundMessages(messages: WhatsAppMessage[]): void {
+  for (const message of messages) {
+    inboundBuffer.set(message.id, message);
+  }
+  // Evict oldest entries when over capacity.
+  if (inboundBuffer.size > MAX_BUFFER_SIZE) {
+    const toDelete = inboundBuffer.size - MAX_BUFFER_SIZE;
+    let deleted = 0;
+    for (const key of inboundBuffer.keys()) {
+      inboundBuffer.delete(key);
+      deleted++;
+      if (deleted >= toDelete) break;
+    }
+  }
+}
+
+/**
+ * Parse a raw WhatsApp webhook payload, buffer the resulting messages for
+ * periodic drain by {@link drainWhatsAppInboundBuffer}, and return the parsed
+ * messages.
+ */
+export function parseAndBufferWhatsAppWebhookMessages(
+  payload: unknown,
+): WhatsAppMessage[] {
+  const messages = parseWhatsAppWebhookMessages(payload);
+  if (messages.length > 0) {
+    bufferInboundMessages(messages);
+  }
+  return messages;
+}
+
+/**
+ * Drain all buffered inbound messages and clear the buffer.
+ * Used by {@link syncWhatsAppInbound} in the service mixin to implement
+ * periodic pull semantics on top of the webhook-only inbound path.
+ */
+export function drainWhatsAppInboundBuffer(): WhatsAppMessage[] {
+  const messages = [...inboundBuffer.values()];
+  inboundBuffer.clear();
+  return messages;
+}
+
+/**
+ * Peek at buffered messages without clearing the buffer.
+ * Useful for status checks.
+ */
+export function peekWhatsAppInboundBuffer(): WhatsAppMessage[] {
+  return [...inboundBuffer.values()];
+}
+
 export function parseWhatsAppWebhookMessages(payload: unknown): WhatsAppMessage[] {
   if (!payload || typeof payload !== "object") {
     return [];

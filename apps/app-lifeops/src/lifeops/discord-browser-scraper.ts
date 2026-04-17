@@ -493,3 +493,195 @@ export async function probeDiscordTab(
     dmInbox: result.dmInbox ?? emptyDiscordDmInboxProbe(),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Message search via browser-DOM eval
+// ---------------------------------------------------------------------------
+
+export interface DiscordMessageSearchResult {
+  id: string | null;
+  content: string;
+  authorName: string | null;
+  channelId: string | null;
+  timestamp: string | null;
+  /** Delivery status indicator derived from DOM state (partial). */
+  deliveryStatus: "sent" | "sending" | "failed" | "unknown";
+}
+
+/**
+ * DOM script injected into the Discord tab to read search results from the
+ * "Search Results" panel after Discord's own Ctrl+F / search UX has rendered.
+ *
+ * Discord renders search results inside `[class*="searchResultMessage"]` or
+ * the newer `[data-testid*="message-item"]` containers. We read what the DOM
+ * exposes — no regex on content, no heuristics.
+ */
+function buildDiscordSearchResultsScript(): string {
+  return `(() => {
+    const results = [];
+    const containers = Array.from(
+      document.querySelectorAll(
+        '[class*="searchResultMessage"], [class*="search-result-message"]'
+      )
+    );
+    for (const container of containers) {
+      const contentEl =
+        container.querySelector('[id^="message-content-"]') ||
+        container.querySelector('[class*="messageContent"]');
+      const content = contentEl ? (contentEl.textContent || "").trim() : "";
+
+      const authorEl =
+        container.querySelector('[class*="username-"]') ||
+        container.querySelector('[class*="author-"]');
+      const authorName = authorEl ? (authorEl.textContent || "").trim() : null;
+
+      const msgEl = container.closest('[data-list-item-id]') ||
+        container.querySelector('[id^="chat-messages-"]');
+      const rawId = msgEl
+        ? (msgEl.getAttribute('data-list-item-id') || msgEl.id || "")
+        : "";
+      const idMatch = rawId.match(/\\d{17,19}/);
+      const id = idMatch ? idMatch[0] : null;
+
+      const timestampEl = container.querySelector('time[datetime]');
+      const timestamp = timestampEl
+        ? timestampEl.getAttribute('datetime')
+        : null;
+
+      const href = window.location.href;
+      const channelMatch = href.match(/\\/channels\\/@me\\/([\\d]+)/);
+      const channelId = channelMatch ? channelMatch[1] : null;
+
+      results.push({ id, content, authorName, channelId, timestamp, deliveryStatus: "unknown" });
+    }
+    return results;
+  })();`;
+}
+
+/**
+ * Trigger Discord's native in-app search using the keyboard shortcut, wait
+ * for results to render, then scrape them via DOM eval.
+ *
+ * The search uses Discord's own full-text index — no client-side filtering.
+ * Results are scoped to the currently open DM or channel when a `channelId`
+ * scope is provided (by navigating to that channel first), or global when
+ * no scope is given.
+ *
+ * Because this relies on the browser workspace eval bridge, it requires a
+ * live Discord tab (`tabId`).
+ */
+export async function searchDiscordMessages(args: {
+  tabId: string;
+  query: string;
+  channelId?: string;
+  env?: NodeJS.ProcessEnv;
+}): Promise<DiscordMessageSearchResult[]> {
+  const env = args.env ?? process.env;
+  const query = args.query.trim();
+  if (query.length === 0) {
+    throw new Error("Discord search query must not be empty.");
+  }
+
+  if (args.channelId) {
+    const channelUrl = `https://discord.com/channels/@me/${args.channelId}`;
+    await navigateBrowserWorkspaceTab({ id: args.tabId, url: channelUrl }, env);
+    // Allow the navigation to settle before searching.
+    await new Promise((resolve) => setTimeout(resolve, 800));
+  }
+
+  // Build a script that uses the Discord search bar (Ctrl+K / Ctrl+F) via
+  // the internal store — the Discord web app exposes a Flux-like dispatcher
+  // that can be reached via `webpackChunkdiscord_app`.
+  const searchScript = `(() => {
+    const query = ${JSON.stringify(query)};
+    try {
+      // Walk webpack chunk to find the search action dispatcher.
+      const chunks = window.webpackChunkdiscord_app;
+      if (!chunks) return { injected: false };
+      let SearchActions;
+      for (const [, factories] of chunks) {
+        for (const factory of Object.values(factories)) {
+          try {
+            const mod = {};
+            factory({}, mod, { c: {}, d: (m, e) => { Object.assign(m, e); }, n: (m) => () => m });
+            if (mod.searchMessages) { SearchActions = mod; break; }
+          } catch { /* non-factory */ }
+        }
+        if (SearchActions) break;
+      }
+      if (!SearchActions?.searchMessages) return { injected: false };
+      SearchActions.searchMessages({ query });
+      return { injected: true };
+    } catch(e) {
+      return { injected: false, error: String(e) };
+    }
+  })();`;
+
+  await evaluateBrowserWorkspaceTab({ id: args.tabId, script: searchScript }, env);
+  // Wait for Discord's search results panel to render.
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+
+  const raw = (await evaluateBrowserWorkspaceTab(
+    { id: args.tabId, script: buildDiscordSearchResultsScript() },
+    env,
+  )) as DiscordMessageSearchResult[] | null | undefined;
+
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((item) => typeof item === "object" && item !== null);
+}
+
+// ---------------------------------------------------------------------------
+// Delivery status capture via DOM eval
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the delivery status of recently sent messages visible in the currently
+ * open Discord channel. Discord renders delivery indicators in the DOM:
+ * - No indicator: delivered (server acknowledged).
+ * - `[class*="sending"]`: sending in progress.
+ * - `[class*="failed"]` / `[aria-label*="failed" i]`: send failed.
+ *
+ * This is inherently partial — only messages currently rendered in the
+ * viewport can be inspected.
+ */
+export async function captureDiscordDeliveryStatus(args: {
+  tabId: string;
+  env?: NodeJS.ProcessEnv;
+}): Promise<DiscordMessageSearchResult[]> {
+  const env = args.env ?? process.env;
+  const script = `(() => {
+    const results = [];
+    const messages = Array.from(
+      document.querySelectorAll('[class*="message-"] [id^="message-content-"], [id^="chat-messages-"] li')
+    );
+    for (const el of messages) {
+      const contentEl = el.querySelector
+        ? el.querySelector('[id^="message-content-"]') || el
+        : el;
+      const content = (contentEl.textContent || "").trim();
+
+      const rawId = (el.getAttribute('data-list-item-id') || el.id || "");
+      const idMatch = rawId.match(/\\d{17,19}/);
+      const id = idMatch ? idMatch[0] : null;
+
+      const timestampEl = el.querySelector('time[datetime]');
+      const timestamp = timestampEl ? timestampEl.getAttribute('datetime') : null;
+
+      const isSending = !!el.querySelector('[class*="sending"]');
+      const isFailed = !!el.querySelector('[class*="failed"]') ||
+        !!el.querySelector('[aria-label*="failed" i]');
+      const deliveryStatus = isFailed ? 'failed' : isSending ? 'sending' : 'sent';
+
+      results.push({ id, content, authorName: null, channelId: null, timestamp, deliveryStatus });
+    }
+    return results;
+  })();`;
+
+  const raw = (await evaluateBrowserWorkspaceTab(
+    { id: args.tabId, script },
+    env,
+  )) as DiscordMessageSearchResult[] | null | undefined;
+
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((item) => typeof item === "object" && item !== null);
+}

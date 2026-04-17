@@ -227,6 +227,22 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
     ): Promise<LifeOpsXFeedItem[]> {
       return this.repository.listXFeedItems(this.agentId(), feedType, opts);
     }
+
+    /**
+     * Pull and return only inbound X DMs (messages the authenticated user received,
+     * not sent). Performs a live sync against the X API, persists the results, and
+     * then returns the inbound subset from the local store.
+     *
+     * Callers that want the full conversation including outbound messages should
+     * call `syncXDms()` followed by `getXDms()` directly.
+     */
+    async readXInboundDms(
+      opts: { limit?: number } = {},
+    ): Promise<LifeOpsXDm[]> {
+      await this.syncXDms(opts);
+      const all = await this.repository.listXDms(this.agentId(), opts);
+      return all.filter((dm) => dm.isInbound);
+    }
   }
 
   return LifeOpsXReadServiceMixin;
