@@ -193,8 +193,11 @@ function formatActionExampleSummary(action: Action): string | null {
 
 		const userMessage = example[0]?.content?.text?.trim();
 		const actionHints = getExampleActionHints(example);
-		if (!userMessage || actionHints.length === 0) {
+		if (!userMessage) {
 			continue;
+		}
+		if (actionHints.length === 0) {
+			return `User: ${JSON.stringify(userMessage)} -> actions: ${action.name}`;
 		}
 
 		return `User: ${JSON.stringify(userMessage)} -> actions: ${actionHints.join(", ")}`;

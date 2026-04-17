@@ -62,7 +62,9 @@ function isLikelyLifeOpsTab(tab: ExtensionTab): boolean {
   );
 }
 
-function candidateApiBaseUrlsFromTabs(tabs: readonly ExtensionTab[]): string[] {
+export function candidateApiBaseUrlsFromTabs(
+  tabs: readonly ExtensionTab[],
+): string[] {
   const likely = new Set<string>();
   const loopback = new Set<string>();
 
@@ -133,13 +135,14 @@ async function isReachableLifeOpsApiBaseUrl(baseUrl: string): Promise<boolean> {
   }
 }
 
-export async function discoverLifeOpsApiBaseUrl(): Promise<string | null> {
+export async function discoverReachableLifeOpsApiBaseUrls(): Promise<string[]> {
   const tabs = await queryTabs({});
   const candidates = [
     ...candidateApiBaseUrlsFromTabs(tabs),
     ...LOOPBACK_DISCOVERY_CANDIDATES,
   ];
   const seen = new Set<string>();
+  const reachable: string[] = [];
 
   for (const candidate of candidates) {
     const normalized = normalizeOriginCandidate(candidate);
@@ -148,11 +151,16 @@ export async function discoverLifeOpsApiBaseUrl(): Promise<string | null> {
     }
     seen.add(normalized);
     if (await isReachableLifeOpsApiBaseUrl(normalized)) {
-      return normalized;
+      reachable.push(normalized);
     }
   }
 
-  return null;
+  return reachable;
+}
+
+export async function discoverLifeOpsApiBaseUrl(): Promise<string | null> {
+  const reachable = await discoverReachableLifeOpsApiBaseUrls();
+  return reachable[0] ?? null;
 }
 
 export function normalizeCompanionConfig(

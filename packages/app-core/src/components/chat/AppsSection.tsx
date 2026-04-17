@@ -168,11 +168,11 @@ export function AppsSection() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 gap-1 px-2 text-2xs"
           onClick={() => setState("tab", "apps")}
+          aria-label={t("chatsidebar.OpenView", { defaultValue: "Open View" })}
+          className="h-6 w-6 p-0"
         >
-          <SquareArrowOutUpRight className="h-3 w-3" />
-          {t("chatsidebar.OpenView", { defaultValue: "Open View" })}
+          <SquareArrowOutUpRight className="h-3.5 w-3.5" />
         </Button>
       }
       testId="chat-widget-apps-section"

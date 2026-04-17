@@ -817,9 +817,6 @@ function ReminderSection({
         <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
           Reminders
         </span>
-        <Badge variant="secondary" className="text-[10px]">
-          {reminders.length}
-        </Badge>
       </div>
       {reminders.slice(0, MAX_SECTION_REMINDERS).map((reminder) => (
         <ReminderRow
@@ -1251,15 +1248,6 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
               onReviewGoal={onReviewGoal}
             />
           ) : null}
-          <div className="rounded-lg border border-border/50 bg-bg-accent/30 px-3 py-2 text-xs text-muted">
-            <div className="flex items-center gap-2">
-              <BellRing className="h-3.5 w-3.5" />
-              <span>
-                Reminders are driven from LifeOps and scheduled by the queue
-                worker.
-              </span>
-            </div>
-          </div>
         </div>
       )}
       {error ? (

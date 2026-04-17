@@ -24,6 +24,41 @@ import {
 const BENCHMARK_REPORT_PATH = "action-benchmark-report.md";
 const BENCHMARK_TRAJECTORY_DIR = "action-benchmark-report";
 
+const USE_MOCKED_APIS = process.env.MILADY_BENCHMARK_USE_MOCKS === "1";
+
+async function createBenchmarkRuntime(): Promise<{
+  runtime: Awaited<ReturnType<typeof createRealTestRuntime>>["runtime"];
+  cleanup: () => Promise<void>;
+}> {
+  // Load the LifeOps plugin so its 30+ actions are registered. Without this,
+  // the action planner sees only the 4 generic core actions
+  // (REPLY, IGNORE, NONE, UPDATE_ENTITY) and can't possibly route to LIFE,
+  // CALENDAR_ACTION, X_READ etc. — making the benchmark meaningless.
+  const { appLifeOpsPlugin } = await import(
+    // @ts-ignore — workspace package resolved at runtime
+    "@elizaos/app-lifeops/plugin"
+  );
+
+  if (USE_MOCKED_APIS) {
+    // Lazy import — mock-runtime.ts lives outside the app-core test tree and
+    // depends on Mockoon CLI being available at test time.
+    const { createMockedTestRuntime } = await import(
+      // @ts-ignore — path is outside the package, resolved relative to repo root
+      "../../../../../test/mocks/helpers/mock-runtime.ts"
+    );
+    const mocked = await createMockedTestRuntime({
+      withLLM: true,
+      plugins: [appLifeOpsPlugin],
+    });
+    return { runtime: mocked.runtime, cleanup: mocked.cleanup };
+  }
+  const real = await createRealTestRuntime({
+    withLLM: true,
+    plugins: [appLifeOpsPlugin],
+  });
+  return { runtime: real.runtime, cleanup: real.cleanup };
+}
+
 describe("action selection benchmark", () => {
   it(
     "runs the full benchmark suite",
@@ -34,9 +69,7 @@ describe("action selection benchmark", () => {
         return;
       }
 
-      const { runtime, cleanup } = await createRealTestRuntime({
-        withLLM: true,
-      });
+      const { runtime, cleanup } = await createBenchmarkRuntime();
 
       try {
         const report = await runActionSelectionBenchmark({

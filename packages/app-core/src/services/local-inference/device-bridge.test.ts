@@ -42,11 +42,15 @@ async function startHarness(): Promise<Harness> {
     server,
     wsUrl,
     dispose: () =>
-      new Promise<void>((resolve) =>
+      new Promise<void>((resolve) => {
+        // Force-close any lingering WS/HTTP connections — without this,
+        // sockets the agent closed with code 4003 (supersede) can keep
+        // `server.close()` waiting forever on the OS close handshake.
+        server.closeAllConnections?.();
         server.close(() => {
           resolve();
-        }),
-      ),
+        });
+      }),
   };
 }
 
@@ -336,6 +340,16 @@ describe("DeviceBridge e2e", () => {
       platform: "desktop",
       totalRamGb: 16,
     });
+    // Wait for `a` to actually land in the bridge registry — otherwise `b`
+    // can race ahead and supersede nothing.
+    await waitFor(() =>
+      harness.bridge
+        .status()
+        .devices.some(
+          (d) => d.deviceId === "mac" && d.capabilities.totalRamGb === 16,
+        ),
+    );
+
     const closeA = new Promise<void>((resolve) =>
       a.socket.once("close", () => resolve()),
     );

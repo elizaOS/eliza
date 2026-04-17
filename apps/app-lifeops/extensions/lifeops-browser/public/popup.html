@@ -11,12 +11,20 @@
       <header class="panel-header">
         <p class="eyebrow">LifeOps Browser</p>
         <h1>Personal Browser Relay</h1>
-        <p class="lede">Pair this browser profile with Milady and keep your active tab context available to LifeOps.</p>
+        <p class="lede">This browser should pair itself with Milady or Eliza automatically when the app is open here. Manual tokens are only the fallback.</p>
       </header>
 
       <section class="status-card">
         <p id="status" class="status">Loading extension state…</p>
         <p id="meta" class="meta"></p>
+      </section>
+
+      <section class="auto-card">
+        <div class="import-copy">
+          <h2>Automatic Pairing</h2>
+          <p>Open Milady, LifeOps, or the Eliza app in this same browser profile. If you are using a cloud app, make sure you are logged in there first.</p>
+        </div>
+        <button id="autoPair" class="primary" type="button">Auto Pair This Browser</button>
       </section>
 
       <section class="form-grid">
@@ -55,8 +63,8 @@
 
       <section class="import-card">
         <div class="import-copy">
-          <h2>Pairing JSON</h2>
-          <p>Paste the JSON copied from LifeOps, then import it to fill and save this browser profile.</p>
+          <h2>Manual Pairing JSON</h2>
+          <p>Only use this if automatic pairing cannot reach your LifeOps app. Paste the JSON copied from LifeOps, then import it here.</p>
         </div>
         <textarea
           id="pairingJson"
@@ -67,7 +75,7 @@
       </section>
 
       <footer class="actions">
-        <button id="save" class="primary" type="button">Save Pairing</button>
+        <button id="save" class="primary" type="button">Save Manual Pairing</button>
         <button id="sync" type="button">Sync Now</button>
         <button id="clear" class="danger" type="button">Clear</button>
       </footer>

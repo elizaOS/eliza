@@ -187,8 +187,13 @@ describe("Downloader e2e", () => {
   }, 30_000);
 
   it("cancels an in-flight download cleanly", async () => {
-    const payload = makeGgufPayload(10 * 1024 * 1024); // 10 MB — enough to cancel mid-stream
-    const upstream = await startUpstream(payload);
+    const payload = makeGgufPayload(10 * 1024 * 1024); // 10 MB
+    // Slow stream — 16 KB chunks with 20ms between gives us a long enough
+    // window to cancel before the download completes.
+    const upstream = await startUpstream(payload, {
+      chunkBytes: 16 * 1024,
+      chunkDelayMs: 20,
+    });
     process.env.MILADY_HF_BASE_URL = upstream.baseUrl;
 
     try {

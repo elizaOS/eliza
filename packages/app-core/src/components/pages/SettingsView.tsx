@@ -70,6 +70,10 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     keywordKeys: ["settings.keyword.cloud", "settings.keyword.billing"],
   },
   {
+    // One section for every model source — cloud providers, local llama.cpp
+    // engine, and paired-device bridge all live here. Multiple can be
+    // enabled simultaneously; the runtime dispatches each ModelType to the
+    // highest-priority handler that claimed it.
     id: "ai-model",
     label: "settings.sections.aimodel.label",
     description: "settings.sections.aimodel.desc",
@@ -83,29 +87,22 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "api key",
       "inference",
       "llm",
+      "local",
+      "llama",
+      "llama.cpp",
+      "gguf",
+      "download",
+      "offline",
+      "gpu",
+      "vram",
+      "device",
+      "phone",
     ],
     keywordKeys: [
       "settings.keyword.model",
       "settings.keyword.provider",
       "settings.keyword.apiKey",
       "settings.keyword.inference",
-    ],
-  },
-  {
-    id: "local-models",
-    label: "settings.sections.localModels.label",
-    description: "settings.sections.localModels.desc",
-    keywords: [
-      "local",
-      "llama",
-      "llama.cpp",
-      "gguf",
-      "model",
-      "download",
-      "inference",
-      "offline",
-      "gpu",
-      "vram",
     ],
   },
   {
@@ -1067,23 +1064,22 @@ export function SettingsView({
           description={t("settings.sections.aimodel.desc")}
           ref={registerContentItem("ai-model")}
         >
+          {/*
+            Cloud providers + subscriptions (Eliza Cloud, Anthropic, OpenAI,
+            Grok, Claude/ChatGPT subscriptions). Sets API keys and small /
+            large tier defaults.
+          */}
           <ProviderSwitcher />
-        </SettingsSection>
-      )}
 
-      {visibleSectionIds.has("local-models") && (
-        <SettingsSection
-          id="local-models"
-          title={t("settings.sections.localModels.label", {
-            defaultValue: "Local models",
-          })}
-          description={t("settings.sections.localModels.desc", {
-            defaultValue:
-              "Run llama.cpp models on this machine. Browse the curated catalog, download, and switch between local models.",
-          })}
-          ref={registerContentItem("local-models")}
-        >
-          <LocalInferencePanel />
+          {/*
+            Local llama.cpp engine + paired-device bridge. Lives in the same
+            section because "what's running inference?" is one mental
+            question — multiple providers can coexist and the runtime
+            dispatches each ModelType to the highest-priority handler.
+          */}
+          <div className="mt-8 border-t border-border/40 pt-6">
+            <LocalInferencePanel />
+          </div>
         </SettingsSection>
       )}
 

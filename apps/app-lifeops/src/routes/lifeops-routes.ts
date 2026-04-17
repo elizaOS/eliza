@@ -8,6 +8,7 @@ import type {
   CompleteLifeOpsBrowserSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
   ConfirmLifeOpsBrowserSessionRequest,
+  CreateLifeOpsBrowserCompanionAutoPairRequest,
   CreateLifeOpsBrowserCompanionPairingRequest,
   CreateLifeOpsBrowserSessionRequest,
   CreateLifeOpsCalendarEventRequest,
@@ -122,6 +123,23 @@ function getBrowserCompanionAuth(
     companionId,
     pairingToken,
   };
+}
+
+function browserAutoPairOriginAllowed(ctx: LifeOpsRouteContext): boolean {
+  const originHeader =
+    typeof ctx.req.headers.origin === "string"
+      ? ctx.req.headers.origin.trim()
+      : "";
+  if (!originHeader) {
+    return true;
+  }
+  if (originHeader === ctx.url.origin) {
+    return true;
+  }
+  return (
+    originHeader.startsWith("chrome-extension://") ||
+    originHeader.startsWith("safari-web-extension://")
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1397,6 +1415,33 @@ export async function handleLifeOpsRoutes(
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       json(res, await service.createBrowserCompanionPairing(body), 201);
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/browser/companions/auto-pair"
+  ) {
+    if (!browserAutoPairOriginAllowed(ctx)) {
+      ctx.error(
+        res,
+        "browser auto-pair must come from the LifeOps app or a browser extension",
+        403,
+      );
+      return true;
+    }
+    const body =
+      await readJsonBody<CreateLifeOpsBrowserCompanionAutoPairRequest>(
+        req,
+        res,
+      );
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.autoPairBrowserCompanion(body, ctx.url.origin),
+        201,
+      );
     });
   }
 

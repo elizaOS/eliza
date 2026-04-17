@@ -243,7 +243,7 @@ function installButtonLabel(
   if (target?.installKind === "local_download") {
     return `Download ${browser === "chrome" ? "Chrome" : "Safari"} Package`;
   }
-  return `Install ${browser === "chrome" ? "Chrome" : "Safari"}`;
+  return `Install ${browser === "chrome" ? "Chrome" : "Safari"} Extension`;
 }
 
 function trackingModeLabel(mode: LifeOpsBrowserTrackingMode): string {
@@ -376,7 +376,7 @@ function BrowserCompanionRow({
           disabled={busy}
           onClick={() => void onCreatePairing(browser)}
         >
-          Pair
+          Manual Pairing
         </Button>
         {pairing ? (
           <Button
@@ -598,7 +598,7 @@ export function LifeOpsBrowserSetupPanel() {
       }));
       if (!options?.silent) {
         setStatusMessage(
-          `Created a ${browser} pairing payload. Import it into the companion popup.`,
+          `Created a manual ${browser} pairing payload. Use it only if the extension cannot auto-pair itself.`,
         );
       }
       await refresh();
@@ -618,7 +618,9 @@ export function LifeOpsBrowserSetupPanel() {
         return;
       }
       await copyTextToClipboard(payload);
-      setStatusMessage(`Copied ${browser} pairing JSON to the clipboard.`);
+      setStatusMessage(
+        `Copied manual ${browser} pairing JSON to the clipboard.`,
+      );
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -678,19 +680,15 @@ export function LifeOpsBrowserSetupPanel() {
         browser,
         packageStatus?.releaseManifest,
       );
-      const response = await createPairing(browser, { silent: true });
-      await copyTextToClipboard(
-        JSON.stringify(pairingPayload(response), null, 2),
-      );
 
       if (releaseTarget?.installUrl) {
         await openExternalUrl(releaseTarget.installUrl);
         setStatusMessage(
           releaseTarget.installKind === "chrome_web_store"
-            ? "Chrome install is prepared. We copied the pairing JSON and opened the Chrome Web Store listing. Install the release build, then import the copied pairing JSON in the extension popup."
+            ? "Chrome install is prepared. We opened the Chrome Web Store listing. After install, open the extension popup in the same browser profile and it should auto-pair itself."
             : releaseTarget.installKind === "apple_app_store"
-              ? "Safari install is prepared. We copied the pairing JSON and opened the App Store listing. Install the release app, enable the Safari extension, then import the copied pairing JSON."
-              : `${browser === "chrome" ? "Chrome" : "Safari"} install is prepared. We copied the pairing JSON and opened the release download. Install the release build, then import the copied pairing JSON in the extension popup.`,
+              ? "Safari install is prepared. We opened the App Store listing. Install the app, enable the Safari extension, then open its popup once so it can auto-pair."
+              : `${browser === "chrome" ? "Chrome" : "Safari"} install is prepared. We opened the release download. After install, open the extension popup in the same browser profile and it should auto-pair itself.`,
         );
         return;
       }
@@ -720,7 +718,7 @@ export function LifeOpsBrowserSetupPanel() {
         }
         await openExternalUrl(CHROME_EXTENSIONS_URL);
         setStatusMessage(
-          "Chrome install is prepared. We copied the pairing JSON and opened the extension manager. In Chrome, click Load unpacked and select the built LifeOps Browser folder.",
+          "Chrome install is prepared. We opened the extension manager. In Chrome, click Load unpacked and select the built LifeOps Browser folder, then open the popup once to auto-pair.",
         );
       } else {
         if (isElectrobunRuntime()) {
@@ -733,7 +731,7 @@ export function LifeOpsBrowserSetupPanel() {
           await downloadPackage(browser, { silent: true });
         }
         setStatusMessage(
-          "Safari install is prepared. We copied the pairing JSON and opened the LifeOps Browser app or package. Run the app once, then enable the extension in Safari Settings.",
+          "Safari install is prepared. We opened the LifeOps Browser app or package. Run the app once, enable the extension in Safari Settings, then open the popup once to auto-pair.",
         );
       }
     } catch (cause) {
@@ -1012,6 +1010,11 @@ export function LifeOpsBrowserSetupPanel() {
                   value={payload}
                   className="font-mono text-xs"
                 />
+                <div className="text-[11px] text-muted">
+                  Manual fallback only. Automatic pairing should work as soon as
+                  the extension popup can see this app in the same browser
+                  profile.
+                </div>
               </div>
             );
           })}

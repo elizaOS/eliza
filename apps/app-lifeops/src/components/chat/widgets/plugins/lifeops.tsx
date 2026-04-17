@@ -8,14 +8,13 @@ import type {
   LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
 } from "@elizaos/shared/contracts/lifeops";
-import { CalendarDays, Mail, Plug2 } from "lucide-react";
+import { CalendarDays, Mail } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@elizaos/ui";
 import { client } from "@elizaos/app-core/api";
 import { useGoogleLifeOpsConnector } from "../../../../hooks/useGoogleLifeOpsConnector.js";
 import { useLifeOpsAppState } from "../../../../hooks/useLifeOpsAppState.js";
-import { WidgetSection } from "@elizaos/app-core/components/chat/widgets/shared";
 import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
@@ -146,9 +145,7 @@ function CalendarRow({
           {event.title}
         </span>
         {timeLabel ? (
-          <Badge variant="secondary" className="text-3xs">
-            {timeLabel}
-          </Badge>
+          <span className="text-3xs text-muted">{timeLabel}</span>
         ) : null}
       </div>
       {event.location.trim().length > 0 ? (
@@ -177,11 +174,6 @@ function GmailRow({ message }: { message: LifeOpsGmailMessageSummary }) {
       <div className="mt-1 truncate text-xs-tight text-muted">
         {message.from}
       </div>
-      {message.snippet.trim().length > 0 ? (
-        <div className="mt-1 line-clamp-2 text-xs-tight leading-5 text-muted">
-          {message.snippet}
-        </div>
-      ) : null}
       {receivedLabel ? (
         <div className="mt-2 text-2xs uppercase tracking-[0.08em] text-muted/80">
           {receivedLabel}
@@ -224,17 +216,13 @@ function GoogleAccountCard({
           {identityLabel.secondary}
         </div>
       ) : null}
-      <div className="mt-2 flex flex-wrap gap-1.5">
+      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-muted">
         {(capabilities.has("google.calendar.read") ||
           capabilities.has("google.calendar.write")) && (
-          <Badge variant="secondary" className="text-3xs">
-            Calendar
-          </Badge>
+          <CalendarDays className="h-3.5 w-3.5" aria-label="Calendar" />
         )}
         {capabilities.has("google.gmail.triage") ? (
-          <Badge variant="secondary" className="text-3xs">
-            Gmail
-          </Badge>
+          <Mail className="h-3.5 w-3.5" aria-label="Gmail" />
         ) : null}
         {status.reason === "needs_reauth" ? (
           <Badge variant="outline" className="text-3xs">
@@ -364,71 +352,65 @@ export function GoogleSidebarWidget(_props: ChatSidebarWidgetProps) {
   }
 
   return (
-    <WidgetSection
-      title="Google"
-      icon={<Plug2 className="h-4 w-4" />}
-      testId="chat-widget-google"
-    >
-      <div className="flex flex-col gap-4">
-        {connectedConnectors.map((connector) =>
-          connector.status ? (
-            <GoogleAccountCard
-              key={connector.status.side}
-              side={connector.status.side}
-              status={connector.status}
-            />
-          ) : null,
-        )}
+    <section data-testid="chat-widget-google" className="flex flex-col gap-4">
+      {connectedConnectors.map((connector) =>
+        connector.status ? (
+          <GoogleAccountCard
+            key={connector.status.side}
+            side={connector.status.side}
+            status={connector.status}
+          />
+        ) : null,
+      )}
 
-        {showCalendar ? (
-          <div className="flex flex-col gap-2">
-            <SectionHeading
-              icon={<CalendarDays className="h-3.5 w-3.5" />}
-              title={`Calendar (${sideLabel(dataStatus?.side ?? "owner")})`}
-            />
-            {connectorError ? null : calendarEvents.length === 0 ? (
-              <div className="px-0.5 text-xs-tight text-muted">
-                No upcoming events
-              </div>
-            ) : (
-              calendarEvents
-                .slice(0, GOOGLE_WIDGET_EVENT_LIMIT)
-                .map((event) => (
-                  <CalendarRow
-                    key={event.id}
-                    event={event}
-                    timeZone={timeZone}
-                  />
-                ))
-            )}
-          </div>
-        ) : null}
+      {showCalendar ? (
+        <div className="flex flex-col gap-2">
+          <SectionHeading
+            icon={<CalendarDays className="h-3.5 w-3.5" />}
+            title="Calendar"
+          />
+          {connectorError ? null : calendarEvents.length === 0 ? (
+            <div className="px-0.5 text-xs-tight text-muted">
+              No upcoming events
+            </div>
+          ) : (
+            calendarEvents
+              .slice(0, GOOGLE_WIDGET_EVENT_LIMIT)
+              .map((event) => (
+                <CalendarRow
+                  key={event.id}
+                  event={event}
+                  timeZone={timeZone}
+                />
+              ))
+          )}
+        </div>
+      ) : null}
 
-        {showInbox ? (
-          <div className="flex flex-col gap-2">
-            <SectionHeading
-              icon={<Mail className="h-3.5 w-3.5" />}
-              title={`Inbox (${sideLabel(dataStatus?.side ?? "owner")})`}
-            />
-            {connectorError ? null : gmailMessages.length === 0 ? (
-              <div className="px-0.5 text-xs-tight text-muted">
-                No priority mail
-              </div>
-            ) : (
-              gmailMessages
-                .slice(0, GOOGLE_WIDGET_MESSAGE_LIMIT)
-                .map((message) => (
-                  <GmailRow key={message.id} message={message} />
-                ))
-            )}
-          </div>
-        ) : null}
+      {showInbox ? (
+        <div className="flex flex-col gap-2">
+          <SectionHeading
+            icon={<Mail className="h-3.5 w-3.5" />}
+            title="Inbox"
+          />
+          {connectorError ? null : gmailMessages.length === 0 ? (
+            <div className="px-0.5 text-xs-tight text-muted">
+              No priority mail
+            </div>
+          ) : (
+            gmailMessages
+              .slice(0, GOOGLE_WIDGET_MESSAGE_LIMIT)
+              .map((message) => (
+                <GmailRow key={message.id} message={message} />
+              ))
+          )}
+        </div>
+      ) : null}
 
-        {connectorError ? (
-          <div className="text-xs-tight text-danger">{connectorError}</div>
-        ) : null}
-      </div>
-    </WidgetSection>
+      {connectorError ? (
+        <div className="text-xs-tight text-danger">{connectorError}</div>
+      ) : null}
+    </section>
   );
 }
 

@@ -16,7 +16,7 @@
  * const hash = await createHashAsync('sha256', 'data');
  * ```
  */
-import { cbc, gcm } from "@noble/ciphers/aes";
+import { cbc, gcm } from "@noble/ciphers/aes.js";
 import { md5, sha1 } from "@noble/hashes/legacy";
 import { ripemd160 } from "@noble/hashes/ripemd160";
 import { sha224, sha256, sha384, sha512 } from "@noble/hashes/sha2";

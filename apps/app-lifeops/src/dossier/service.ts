@@ -253,6 +253,25 @@ export class DossierService {
       { timeMin, timeMax },
       now,
     );
+    const normalizedQuery = eventIdOrTitleFuzzy.toLowerCase().trim();
+    if (
+      normalizedQuery === "next" ||
+      normalizedQuery === "next meeting" ||
+      normalizedQuery === "next event" ||
+      normalizedQuery === "my next meeting" ||
+      normalizedQuery === "my next event"
+    ) {
+      const nextEvent = [...feed.events]
+        .filter((event) => event.status !== "cancelled")
+        .filter((event) => {
+          const endAt = Date.parse(event.endAt);
+          return Number.isFinite(endAt) && endAt >= now.getTime();
+        })
+        .sort(
+          (left, right) => Date.parse(left.startAt) - Date.parse(right.startAt),
+        )[0];
+      if (nextEvent) return nextEvent;
+    }
     const exact = feed.events.find(
       (e) => e.id === eventIdOrTitleFuzzy || e.externalId === eventIdOrTitleFuzzy,
     );

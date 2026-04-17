@@ -16,6 +16,7 @@ import type {
   CompleteLifeOpsBrowserSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
   ConfirmLifeOpsBrowserSessionRequest,
+  CreateLifeOpsBrowserCompanionAutoPairRequest,
   CreateLifeOpsBrowserCompanionPairingRequest,
   CreateLifeOpsBrowserSessionRequest,
   CreateLifeOpsCalendarEventRequest,
@@ -29,6 +30,7 @@ import type {
   GetLifeOpsGmailTriageRequest,
   LifeOpsActivitySignal,
   LifeOpsBrowserCompanionPackageStatus,
+  LifeOpsBrowserCompanionAutoPairResponse,
   LifeOpsBrowserCompanionPairingResponse,
   LifeOpsBrowserCompanionStatus,
   LifeOpsBrowserKind,
@@ -95,6 +97,9 @@ declare module "@elizaos/app-core/api/client-base" {
     getLifeOpsBrowserPackageStatus(): Promise<{
       status: LifeOpsBrowserCompanionPackageStatus;
     }>;
+    autoPairLifeOpsBrowserCompanion(
+      data: CreateLifeOpsBrowserCompanionAutoPairRequest,
+    ): Promise<LifeOpsBrowserCompanionAutoPairResponse>;
     createLifeOpsBrowserCompanionPairing(
       data: CreateLifeOpsBrowserCompanionPairingRequest,
     ): Promise<LifeOpsBrowserCompanionPairingResponse>;
@@ -321,6 +326,16 @@ ElizaClient.prototype.getLifeOpsBrowserPackageStatus = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/lifeops/browser/packages");
+};
+
+ElizaClient.prototype.autoPairLifeOpsBrowserCompanion = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/browser/companions/auto-pair", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 };
 
 ElizaClient.prototype.createLifeOpsBrowserCompanionPairing = async function (

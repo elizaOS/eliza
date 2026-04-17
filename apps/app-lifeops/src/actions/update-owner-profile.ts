@@ -30,6 +30,14 @@ export const updateOwnerProfileAction: Action & {
     "TRAVEL_PROFILE",
     "BOOKING_PREFERENCES",
   ],
+  tags: [
+    "always-include",
+    "travel preferences",
+    "flight preferences",
+    "hotel preferences",
+    "booking preferences",
+    "owner profile",
+  ],
   description:
     "Silently persist stable, owner-only LifeOps profile details when the canonical owner clearly states or confirms them. " +
     "Use only for the owner, never for other contacts, and do not ask follow-up questions just to fill these fields. " +
@@ -57,7 +65,7 @@ export const updateOwnerProfileAction: Action & {
 
     if (Object.keys(patch).length === 0) {
       return {
-        text: "",
+        text: "Tell me the reusable flight and hotel preferences you want saved, such as seat, class, luggage, hotel budget, venue distance, and whether an extra night is okay.",
         success: false,
         data: { error: "NO_FIELDS" },
       };

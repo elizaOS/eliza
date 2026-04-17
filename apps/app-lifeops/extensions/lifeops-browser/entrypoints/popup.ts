@@ -12,6 +12,7 @@ import { sendRuntimeMessage } from "../src/webextension";
 
 type FormRefs = {
   apiBaseUrl: HTMLInputElement;
+  autoPairButton: HTMLButtonElement;
   browser: HTMLSelectElement;
   companionId: HTMLInputElement;
   pairingToken: HTMLInputElement;
@@ -38,6 +39,7 @@ function requireElement<T extends HTMLElement>(selector: string): T {
 function getFormRefs(): FormRefs {
   return {
     apiBaseUrl: requireElement<HTMLInputElement>("#apiBaseUrl"),
+    autoPairButton: requireElement<HTMLButtonElement>("#autoPair"),
     browser: requireElement<HTMLSelectElement>("#browser"),
     companionId: requireElement<HTMLInputElement>("#companionId"),
     pairingToken: requireElement<HTMLInputElement>("#pairingToken"),
@@ -53,6 +55,8 @@ function getFormRefs(): FormRefs {
     clearButton: requireElement<HTMLButtonElement>("#clear"),
   };
 }
+
+let autoPairAttempted = false;
 
 function renderState(refs: FormRefs, state: BackgroundState): void {
   const config = state.config;
@@ -152,12 +156,41 @@ async function refresh(refs: FormRefs): Promise<void> {
   }
   renderState(refs, response.state);
   await applyDiscoveredApiBaseUrl(refs, response.state);
+  if (!response.state.config && !autoPairAttempted) {
+    autoPairAttempted = true;
+    refs.status.textContent = "Looking for a LifeOps app to auto-pair…";
+    const autoPairResponse = await sendMessage({
+      type: "lifeops-browser:auto-pair",
+    });
+    if (autoPairResponse.ok && autoPairResponse.state) {
+      renderState(refs, autoPairResponse.state);
+      await applyDiscoveredApiBaseUrl(refs, autoPairResponse.state);
+      return;
+    }
+    if (!autoPairResponse.ok) {
+      refs.status.textContent = autoPairResponse.error;
+    }
+  }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   const refs = getFormRefs();
 
   void refresh(refs);
+
+  refs.autoPairButton.addEventListener("click", async () => {
+    refs.status.textContent = "Trying to auto-pair this browser…";
+    autoPairAttempted = true;
+    const response = await sendMessage({
+      type: "lifeops-browser:auto-pair",
+    });
+    if (!response.ok || !response.state) {
+      refs.status.textContent = response.error;
+      return;
+    }
+    renderState(refs, response.state);
+    await applyDiscoveredApiBaseUrl(refs, response.state);
+  });
 
   refs.saveButton.addEventListener("click", async () => {
     refs.status.textContent = "Saving companion pairing...";
@@ -169,6 +202,7 @@ document.addEventListener("DOMContentLoaded", () => {
       refs.status.textContent = response.error;
       return;
     }
+    autoPairAttempted = true;
     renderState(refs, response.state);
     await applyDiscoveredApiBaseUrl(refs, response.state);
   });
@@ -192,6 +226,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     refs.pairingJson.value = "";
+    autoPairAttempted = true;
     renderState(refs, response.state);
     await applyDiscoveredApiBaseUrl(refs, response.state);
   });
@@ -215,6 +250,7 @@ document.addEventListener("DOMContentLoaded", () => {
       refs.status.textContent = response.error;
       return;
     }
+    autoPairAttempted = false;
     renderState(refs, response.state);
     await applyDiscoveredApiBaseUrl(refs, response.state);
   });

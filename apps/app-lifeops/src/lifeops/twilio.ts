@@ -40,6 +40,9 @@ export function readTwilioCredentialsFromEnv(
   };
 }
 
+const TWILIO_BASE_URL =
+  process.env.MILADY_MOCK_TWILIO_BASE ?? "https://api.twilio.com";
+
 /** Maximum number of retries for transient (5xx / network) failures. */
 const MAX_RETRIES = 2;
 /** Base delay in ms for exponential backoff between retries. */
@@ -61,7 +64,7 @@ async function sendTwilioRequest(args: {
   payload: URLSearchParams;
 }): Promise<TwilioDeliveryResult> {
   const { credentials, path, payload } = args;
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(credentials.accountSid)}${path}`;
+  const url = `${TWILIO_BASE_URL}/2010-04-01/Accounts/${encodeURIComponent(credentials.accountSid)}${path}`;
   const operation = twilioOperation(path);
 
   let lastResult: TwilioDeliveryResult | null = null;

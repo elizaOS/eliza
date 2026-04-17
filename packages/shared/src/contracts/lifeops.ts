@@ -844,6 +844,30 @@ export interface LifeOpsBrowserCompanionPairingResponse {
   pairingToken: string;
 }
 
+export interface LifeOpsBrowserCompanionConfig {
+  apiBaseUrl: string;
+  companionId: string;
+  pairingToken: string;
+  browser: LifeOpsBrowserKind;
+  profileId: string;
+  profileLabel: string;
+  label: string;
+}
+
+export interface CreateLifeOpsBrowserCompanionAutoPairRequest {
+  browser: LifeOpsBrowserKind;
+  profileId?: string | null;
+  profileLabel?: string | null;
+  label?: string | null;
+  extensionVersion?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface LifeOpsBrowserCompanionAutoPairResponse {
+  companion: LifeOpsBrowserCompanionStatus;
+  config: LifeOpsBrowserCompanionConfig;
+}
+
 export interface UpdateLifeOpsBrowserSessionProgressRequest {
   currentActionIndex?: number;
   result?: Record<string, unknown>;

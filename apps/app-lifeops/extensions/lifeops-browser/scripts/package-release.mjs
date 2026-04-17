@@ -58,6 +58,9 @@ await run("bun", [path.join(scriptDir, "package-chrome.mjs")], {
 await run("bun", [path.join(scriptDir, "package-safari.mjs")], {
   cwd: extensionRoot,
 });
+await run("bun", [path.join(scriptDir, "package-store-assets.mjs")], {
+  cwd: extensionRoot,
+});
 
 await fs.mkdir(artifactsDir, { recursive: true });
 

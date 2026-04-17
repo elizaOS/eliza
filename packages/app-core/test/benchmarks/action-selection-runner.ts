@@ -288,6 +288,7 @@ async function runSingleCase(
   runtime: AgentRuntime,
   tc: ActionBenchmarkCase,
   timeoutMs: number,
+  registeredActions: string[],
 ): Promise<ActionBenchmarkResult> {
   const started = Date.now();
   const roomId = crypto.randomUUID() as UUID;
@@ -366,11 +367,23 @@ async function runSingleCase(
       tc.acceptableActions,
     );
 
+    const filteredActions = await computeFilteredActions(runtime, message);
+    const failureMode = determineFailureMode({
+      pass,
+      expected: tc.expectedAction,
+      actual: capture.firstAction,
+      filtered: filteredActions,
+      hadError: false,
+    });
+
     return {
       case: tc,
       actualAction: capture.firstAction,
       pass,
       latencyMs: Date.now() - started,
+      failureMode,
+      filteredActions,
+      registeredActions,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -380,6 +393,8 @@ async function runSingleCase(
       pass: false,
       latencyMs: Date.now() - started,
       error: message,
+      failureMode: "error",
+      registeredActions,
     };
   } finally {
     try {
@@ -408,10 +423,18 @@ export async function runActionSelectionBenchmark(
     opts.forceTrajectoryCapture === true || isTrajectoryCaptureEnabled();
   const trajectoryDir = captureEnabled ? opts.trajectoryDir : undefined;
 
+  const registeredActions = opts.runtime.actions.map((a) => a.name);
+
   const runOne = (tc: ActionBenchmarkCase): Promise<ActionBenchmarkResult> =>
     captureEnabled
-      ? runSingleCaseWithRecording(opts.runtime, tc, timeoutMs, trajectoryDir)
-      : runSingleCase(opts.runtime, tc, timeoutMs);
+      ? runSingleCaseWithRecording(
+          opts.runtime,
+          tc,
+          timeoutMs,
+          trajectoryDir,
+          registeredActions,
+        )
+      : runSingleCase(opts.runtime, tc, timeoutMs, registeredActions);
 
   const results: ActionBenchmarkResult[] = [];
 
@@ -563,17 +586,49 @@ export function formatBenchmarkReportMarkdown(
   }
   lines.push("");
 
+  const modeCounts: Record<ActionFailureMode, number> = {
+    passed: 0,
+    validate_filtered: 0,
+    llm_chose_reply: 0,
+    llm_chose_other_action: 0,
+    no_response: 0,
+    error: 0,
+  };
+  for (const r of report.results) {
+    const mode: ActionFailureMode = r.failureMode ?? (r.pass ? "passed" : "error");
+    modeCounts[mode] += 1;
+  }
+
+  lines.push("## By failure mode");
+  lines.push("");
+  lines.push("| Mode | Count |");
+  lines.push("| --- | ---: |");
+  for (const mode of [
+    "passed",
+    "validate_filtered",
+    "llm_chose_reply",
+    "llm_chose_other_action",
+    "no_response",
+    "error",
+  ] as ActionFailureMode[]) {
+    lines.push(`| ${mode} | ${modeCounts[mode]} |`);
+  }
+  lines.push("");
+
   if (report.failures.length > 0) {
     lines.push(`## Failures (${report.failures.length})`);
     lines.push("");
-    lines.push("| Case | Expected | Actual | Error |");
-    lines.push("| --- | --- | --- | --- |");
+    lines.push("| Case | Expected | Actual | Failure Mode | Error |");
+    lines.push("| --- | --- | --- | --- | --- |");
     for (const f of report.failures) {
       const expected =
         f.case.expectedAction === null ? "(no action)" : f.case.expectedAction;
       const actual = f.actualAction ?? "(none)";
+      const mode = f.failureMode ?? "error";
       const err = f.error ? f.error.replace(/\|/g, "\\|") : "";
-      lines.push(`| ${f.case.id} | ${expected} | ${actual} | ${err} |`);
+      lines.push(
+        `| ${f.case.id} | ${expected} | ${actual} | ${mode} | ${err} |`,
+      );
     }
     lines.push("");
   }

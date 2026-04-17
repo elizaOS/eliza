@@ -41,7 +41,9 @@ function coerceHandles(value: unknown): string[] {
   return [];
 }
 
-export const dossierAction: Action = {
+export const dossierAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: ACTION_NAME,
   similes: [
     "GENERATE_DOSSIER",
@@ -50,10 +52,19 @@ export const dossierAction: Action = {
     "PREPARE_FOR_MEETING",
     "BRIEF_ME",
   ],
+  tags: [
+    "always-include",
+    "dossier",
+    "briefing",
+    "next meeting",
+    "next event",
+    "meeting prep",
+  ],
   description:
-    "Generate a pre-meeting briefing dossier with context about attendees, recent interactions, and upcoming event details.",
+    "Generate a pre-meeting briefing dossier with context about attendees, recent interactions, and upcoming event details. Use this for 'give me the dossier for my next meeting or event' style prep requests.",
   descriptionCompressed:
     "Pre-meeting briefing dossier with attendees, recent context, and event details. Admin only.",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => hasAdminAccess(runtime, message),
 
@@ -100,26 +111,41 @@ export const dossierAction: Action = {
       };
     }
 
-    const dossier = await service.generateDossier({
-      subject,
-      calendarEventId: params.calendarEventId ?? null,
-      attendeeHandles: coerceHandles(params.attendeeHandles),
-      generatedForAt: params.generatedForAt,
-    });
+    try {
+      const dossier = await service.generateDossier({
+        subject,
+        calendarEventId: params.calendarEventId ?? null,
+        attendeeHandles: coerceHandles(params.attendeeHandles),
+        generatedForAt: params.generatedForAt,
+      });
 
-    return {
-      text: dossier.contentMd || `Dossier generated for "${subject}".`,
-      success: true,
-      values: {
+      return {
+        text: dossier.contentMd || `Dossier generated for "${subject}".`,
         success: true,
-        dossierId: dossier.id,
-        subject: dossier.subject,
-      },
-      data: {
-        actionName: ACTION_NAME,
-        dossier,
-      },
-    };
+        values: {
+          success: true,
+          dossierId: dossier.id,
+          subject: dossier.subject,
+        },
+        data: {
+          actionName: ACTION_NAME,
+          dossier,
+        },
+      };
+    } catch (error) {
+      return {
+        text:
+          error instanceof Error && /\bno calendar event matched\b/i.test(error.message)
+            ? "I couldn't resolve which meeting or event you mean from that wording. Ask for your next meeting/event explicitly or name the meeting."
+            : "I couldn't generate that dossier right now.",
+        success: false,
+        values: {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        data: { actionName: ACTION_NAME },
+      };
+    }
   },
 
   parameters: [
@@ -197,6 +223,18 @@ export const dossierAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "# Product Review Briefing\n\n## Summary\n...\n## Suggested Talking Points\n...",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Give me the dossier for my next meeting or event." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "# Meeting Briefing\n\n## Summary\nHere's the dossier for your next meeting or event, including the people, logistics, and recent context.",
         },
       },
     ],

@@ -571,21 +571,12 @@ export class TrajectoriesService extends Service {
 	// ─────────────────────────────────────────────────────────────────────────
 
 	private normalizePurpose(value: string): LLMCall["purpose"] {
-		switch (value) {
-			case "action":
-			case "reasoning":
-			case "evaluation":
-			case "response":
-			case "should_respond":
-			case "compose_state":
-			case "other":
-				return value;
-			default:
-				throw new Error(
-					`[TrajectoriesService] Unknown trajectory purpose: ${JSON.stringify(value)}. ` +
-						`Expected one of: action, reasoning, evaluation, response, should_respond, compose_state, other.`,
-				);
+		if (typeof value !== "string" || value.trim() === "") {
+			throw new Error(
+				`[TrajectoriesService] trajectory purpose must be a non-empty string; got ${JSON.stringify(value)}`,
+			);
 		}
+		return value.trim();
 	}
 
 	private defaultEnvironmentState(timestamp = Date.now()): EnvironmentState {

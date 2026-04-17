@@ -71,6 +71,15 @@ export const publishDeviceIntentAction: Action & {
     "MEETING_REMINDER_LADDER",
     "DEVICE_WARNING",
   ],
+  tags: [
+    "always-include",
+    "device reminder",
+    "meeting reminder ladder",
+    "signature reminder",
+    "cancellation fee warning",
+    "workflow escalation",
+    "updated id copy",
+  ],
   description:
     "Publish a cross-device intent (alarm, reminder, block, or custom) to the device bus so all paired devices can realize it. Use this for desktop+phone reminder ladders, multi-device meeting nudges, document-signing reminders, and urgent device-level escalation where the owner wants the same intent realized across paired devices. Standing 'if/when this happens, warn or remind me on my devices' policies should still use this action on the first turn.",
   suppressPostActionContinuation: true,
@@ -97,15 +106,7 @@ export const publishDeviceIntentAction: Action & {
         | PublishDeviceIntentParameters
         | undefined) ?? {};
 
-    const kind = normalizeKind(params.kind);
-    if (!kind) {
-      return {
-        text: "",
-        success: false,
-        values: { success: false, error: "MISSING_KIND" },
-        data: { actionName: "PUBLISH_DEVICE_INTENT", error: "MISSING_KIND" },
-      };
-    }
+    const kind = normalizeKind(params.kind) ?? "reminder";
 
     const payload =
       params.payload && typeof params.payload === "object"
@@ -256,6 +257,20 @@ export const publishDeviceIntentAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "I'll publish a device-level warning so you get a clear escalation before the cancellation-fee window closes.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "If the only ID on file is expired, ask me for an updated copy so the workflow can continue.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll publish a reminder and intervention nudge so you get asked for an updated ID copy when the workflow is blocked by an expired one.",
         },
       },
     ],

@@ -6,6 +6,19 @@ const BASE_DELAY_MS = 1_000;
 const TIMEOUT_MS = 10_000;
 
 /**
+ * Rewrite Google API hostnames to a mock base when MILADY_MOCK_GOOGLE_BASE is set.
+ * Used in tests to point all Google API traffic at a Mockoon environment.
+ */
+export function rewriteGoogleUrlForMock(url: string): string {
+  const mockBase = process.env.MILADY_MOCK_GOOGLE_BASE;
+  if (!mockBase) return url;
+  return url.replace(
+    /^https:\/\/(?:gmail|www|oauth2|openidconnect|sheets|docs|fitness)\.googleapis\.com|^https:\/\/accounts\.google\.com/,
+    mockBase.replace(/\/+$/, ""),
+  );
+}
+
+/**
  * Returns `true` for HTTP statuses that are worth retrying (5xx, 429).
  * 4xx errors (other than 429) are permanent — auth failures, bad requests, etc.
  */
@@ -28,6 +41,7 @@ export async function googleApiFetch(
   init?: RequestInit,
 ): Promise<Response> {
   const method = init?.method ?? "GET";
+  const targetUrl = rewriteGoogleUrlForMock(url);
   let lastError: GoogleApiError | null = null;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -47,7 +61,7 @@ export async function googleApiFetch(
     }
 
     try {
-      const response = await fetch(url, {
+      const response = await fetch(targetUrl, {
         ...init,
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });

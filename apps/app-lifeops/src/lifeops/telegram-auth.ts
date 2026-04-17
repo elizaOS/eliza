@@ -34,6 +34,11 @@ export type TelegramAuthState =
   | "connected"
   | "error";
 
+export type RetryableTelegramAuthState = Extract<
+  TelegramAuthState,
+  "waiting_for_provisioning_code" | "waiting_for_code" | "waiting_for_password"
+>;
+
 export interface PendingTelegramAuthSession {
   sessionId: string;
   agentId: string;
@@ -317,6 +322,90 @@ function mapSnapshotStatus(snapshot: TelegramAccountAuthSnapshot): TelegramAuthS
   }
 }
 
+function pluginStatusForRetryState(
+  state: RetryableTelegramAuthState,
+): TelegramAccountAuthSnapshot["status"] {
+  switch (state) {
+    case "waiting_for_provisioning_code":
+      return "waiting_for_provisioning_code";
+    case "waiting_for_code":
+      return "waiting_for_telegram_code";
+    case "waiting_for_password":
+      return "waiting_for_password";
+  }
+}
+
+export function inferRetryableTelegramAuthState(args: {
+  state: TelegramAuthState;
+  error: string | null;
+}): RetryableTelegramAuthState | null {
+  if (
+    args.state === "waiting_for_provisioning_code" ||
+    args.state === "waiting_for_code" ||
+    args.state === "waiting_for_password"
+  ) {
+    return args.state;
+  }
+  if (args.state !== "error") {
+    return null;
+  }
+
+  const message = (args.error ?? "").trim().toUpperCase();
+  if (!message) {
+    return null;
+  }
+  if (
+    message.includes("PASSWORD_HASH_INVALID") ||
+    message.includes("AUTH.CHECKPASSWORD") ||
+    message.includes("TWO-FACTOR PASSWORD")
+  ) {
+    return "waiting_for_password";
+  }
+  if (
+    message.includes("PHONE_CODE_INVALID") ||
+    message.includes("PHONE_CODE_EXPIRED") ||
+    message.includes("LOGIN CODE")
+  ) {
+    return "waiting_for_code";
+  }
+  if (message.includes("PROVISIONING CODE")) {
+    return "waiting_for_provisioning_code";
+  }
+  return null;
+}
+
+function persistRetryableTelegramAuthState(
+  session: PendingTelegramAuthSession,
+  nextState: RetryableTelegramAuthState,
+  error: string | null,
+): void {
+  session.state = nextState;
+  session.error = error;
+
+  const authSessionInternal = session.authSession as TelegramAccountAuthSessionLike & {
+    snapshot?: TelegramAccountAuthSnapshot;
+    persistAuthState?: () => void;
+  };
+  if (authSessionInternal.snapshot) {
+    authSessionInternal.snapshot.status = pluginStatusForRetryState(nextState);
+    authSessionInternal.snapshot.error = error;
+  }
+  authSessionInternal.persistAuthState?.();
+}
+
+function recoverRetryableTelegramAuthSession(
+  session: PendingTelegramAuthSession,
+): PendingTelegramAuthSession {
+  const retryableState = inferRetryableTelegramAuthState({
+    state: session.state,
+    error: session.error,
+  });
+  if (retryableState && session.state !== retryableState) {
+    persistRetryableTelegramAuthState(session, retryableState, session.error);
+  }
+  return session;
+}
+
 function mapSnapshotIdentity(
   snapshot: TelegramAccountAuthSnapshot,
 ): PendingTelegramAuthSession["identity"] {
@@ -357,7 +446,7 @@ function restorePendingTelegramAuthSession(
     authSession,
   };
   pendingTelegramAuthSessions.set(session.sessionId, session);
-  return session;
+  return recoverRetryableTelegramAuthSession(session);
 }
 
 // ---------------------------------------------------------------------------
@@ -448,6 +537,18 @@ export async function submitTelegramAuthCode(
     };
   }
 
+  const retryableState = inferRetryableTelegramAuthState({
+    state: session.state,
+    error: session.error,
+  });
+  if (retryableState && retryableState !== "waiting_for_password") {
+    persistRetryableTelegramAuthState(session, retryableState, session.error);
+  }
+  const expectedRetryState =
+    session.state === "waiting_for_provisioning_code"
+      ? "waiting_for_provisioning_code"
+      : "waiting_for_code";
+
   try {
     // Determine which type of code to submit based on current state.
     const submitInput =
@@ -465,9 +566,11 @@ export async function submitTelegramAuthCode(
       persistTelegramToken(session);
     }
   } catch (error) {
-    session.state = "error";
-    session.error =
-      error instanceof Error ? error.message : String(error);
+    persistRetryableTelegramAuthState(
+      session,
+      expectedRetryState,
+      error instanceof Error ? error.message : String(error),
+    );
   }
 
   return session;
@@ -501,6 +604,14 @@ export async function submitTelegramAuthPassword(
     };
   }
 
+  const retryableState = inferRetryableTelegramAuthState({
+    state: session.state,
+    error: session.error,
+  });
+  if (retryableState === "waiting_for_password") {
+    persistRetryableTelegramAuthState(session, retryableState, session.error);
+  }
+
   if (session.state !== "waiting_for_password") {
     session.state = "error";
     session.error = `Cannot submit password in state "${session.state}"`;
@@ -517,9 +628,11 @@ export async function submitTelegramAuthPassword(
       persistTelegramToken(session);
     }
   } catch (error) {
-    session.state = "error";
-    session.error =
-      error instanceof Error ? error.message : String(error);
+    persistRetryableTelegramAuthState(
+      session,
+      "waiting_for_password",
+      error instanceof Error ? error.message : String(error),
+    );
   }
 
   return session;
@@ -592,7 +705,7 @@ export function findPendingTelegramAuthSession(
   cleanupExpiredSessions();
   for (const session of pendingTelegramAuthSessions.values()) {
     if (session.agentId === agentId && session.side === side) {
-      return session;
+      return recoverRetryableTelegramAuthSession(session);
     }
   }
   const stored = listPendingTelegramSessions().find(

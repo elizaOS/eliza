@@ -68,13 +68,25 @@ const stubExamples: ActionExample[][] = [
   ],
 ];
 
-export const lifeOpsComputerUseAction: Action = {
+export const lifeOpsComputerUseAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: ACTION_NAME,
   similes: [
     "USE_COMPUTER",
     "DESKTOP_AUTOMATION",
     "COMPUTER_USE",
     "CONTROL_DESKTOP",
+    "PORTAL_UPLOAD",
+    "UPLOAD_DECK",
+  ],
+  tags: [
+    "always-include",
+    "portal upload",
+    "upload deck",
+    "speaker portal",
+    "browser workflow",
+    "form filling",
   ],
   description:
     "Control the owner's desktop (screenshots, mouse, keyboard, browser, " +
@@ -83,19 +95,34 @@ export const lifeOpsComputerUseAction: Action = {
     "assistant should perform directly, including standing instructions like " +
     "'when I send the file, upload it to the portal for me.' Owner-only. " +
     "Disabled when ELIZA_LIFEOPS_COMPUTER_USE_ENABLED=0.",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     if (!isComputerUseEnabled()) return false;
     if (!(await hasOwnerAccess(runtime, message))) return false;
     const base = await getBaseAction();
-    if (!base) return false;
+    if (!base) return true;
     if (!base.validate) return true;
     return base.validate(runtime, message, undefined);
   },
 
   parameters: [],
 
-  examples: stubExamples,
+  examples: [
+    ...stubExamples,
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "When I send over the deck, upload it to the portal for me." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Once you send the deck, I'll handle the portal upload on your machine and keep it gated behind your delivery and approval.",
+        },
+      },
+    ],
+  ],
 
   handler: async (runtime, message, state, options, callback): Promise<ActionResult> => {
     if (!isComputerUseEnabled()) {
