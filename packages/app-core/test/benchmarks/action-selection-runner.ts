@@ -378,6 +378,56 @@ export async function runActionSelectionBenchmark(
   };
 }
 
+async function writeTrajectoryIndexHtml(
+  trajectoryDir: string,
+  results: ActionBenchmarkResult[],
+): Promise<void> {
+  const indexPath = path.join(trajectoryDir, "index.html");
+  await fs.mkdir(trajectoryDir, { recursive: true });
+  const rows = results
+    .map((r) => {
+      const status = r.pass ? "PASS" : "FAIL";
+      const expected = r.case.expectedAction ?? "(none)";
+      const actual = r.actualAction ?? "(none)";
+      const link = `cases/${r.case.id}.json`;
+      const colour = r.pass ? "#0a7" : "#c33";
+      return `<tr>
+  <td><a href="${link}">${escapeHtml(r.case.id)}</a></td>
+  <td style="color:${colour};font-weight:600">${status}</td>
+  <td>${escapeHtml(expected)}</td>
+  <td>${escapeHtml(actual)}</td>
+  <td>${Math.round(r.latencyMs)}ms</td>
+  <td>${escapeHtml(r.case.tags.join(", "))}</td>
+</tr>`;
+    })
+    .join("\n");
+  const html = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Action Benchmark Trajectories</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 2rem; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 6px 12px; border-bottom: 1px solid #eee; text-align: left; }
+  th { background: #f5f5f7; }
+</style></head><body>
+<h1>Action Benchmark Trajectories</h1>
+<p>${results.filter((r) => r.pass).length} / ${results.length} passed.</p>
+<table>
+<thead><tr><th>Case</th><th>Result</th><th>Expected</th><th>Actual</th><th>Latency</th><th>Tags</th></tr></thead>
+<tbody>
+${rows}
+</tbody></table>
+</body></html>`;
+  await fs.writeFile(indexPath, html, "utf8");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 export function formatBenchmarkReportMarkdown(
   report: ActionBenchmarkReport,
 ): string {
