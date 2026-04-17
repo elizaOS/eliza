@@ -1,10 +1,10 @@
+import type {
+  RouteHelpers,
+  RouteRequestContext,
+} from "@elizaos/agent/api/route-helpers";
+import { parsePositiveInteger } from "@elizaos/agent/utils/number-parsing";
 import type { AgentRuntime } from "@elizaos/core";
 import type { RoleplayExecutionReport } from "../core/roleplay-executor.js";
-import type { TrajectoryTaskDatasetExport } from "../core/trajectory-task-datasets.js";
-import { parsePositiveInteger } from "@elizaos/agent/utils/number-parsing";
-import type { RouteHelpers, RouteRequestContext } from "@elizaos/agent/api/route-helpers";
-import { detectAvailableBackends } from "../services/training-backend-check.js";
-import type { TrainingServiceLike } from "../services/training-service-like.js";
 import {
   ALL_TRAINING_BACKENDS,
   ALL_TRAINING_TASKS,
@@ -18,10 +18,15 @@ import {
   loadRun,
   triggerTraining,
 } from "../core/training-orchestrator.js";
-import type { TrajectoryTrainingTask } from "../core/trajectory-task-datasets.js";
+import type {
+  TrajectoryTaskDatasetExport,
+  TrajectoryTrainingTask,
+} from "../core/trajectory-task-datasets.js";
+import { detectAvailableBackends } from "../services/training-backend-check.js";
+import type { TrainingServiceLike } from "../services/training-service-like.js";
 import {
-  TRAINING_TRIGGER_SERVICE,
   type RegisteredTrainingTriggerEntry,
+  TRAINING_TRIGGER_SERVICE,
 } from "../services/training-trigger.js";
 
 export type TrainingRouteHelpers = RouteHelpers;
@@ -50,9 +55,11 @@ function getTriggerEntry(
   runtime: AgentRuntime | null,
 ): RegisteredTrainingTriggerEntry | null {
   if (!runtime) return null;
-  const services = (runtime as unknown as {
-    services?: Map<string, unknown[]>;
-  }).services;
+  const services = (
+    runtime as unknown as {
+      services?: Map<string, unknown[]>;
+    }
+  ).services;
   if (!services) return null;
   const entries = services.get(TRAINING_TRIGGER_SERVICE);
   if (!Array.isArray(entries) || entries.length === 0) return null;
@@ -576,9 +583,7 @@ export async function handleTrainingRoutes(
         filterDecisions: body.filterDecisions as any,
       });
 
-      const { validateDataset } = await import(
-        "../core/replay-validator.js"
-      );
+      const { validateDataset } = await import("../core/replay-validator.js");
       const report = validateDataset(samples);
 
       const paths = await exportToGeminiJSONL(samples, outputDir);

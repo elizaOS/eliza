@@ -20,27 +20,27 @@
  *   5. Persist a run record at `<state>/training/runs/<runId>.json`.
  */
 
-import { mkdir, writeFile, readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  applyPrivacyFilter,
   type AnonymizerLookup,
+  applyPrivacyFilter,
   type FilterableTrajectory,
 } from "./privacy-filter.js";
+import {
+  ALL_TRAINING_TASKS,
+  loadTrainingConfig,
+  resolveTaskPolicy,
+  type TrainingBackend,
+  type TrainingConfig,
+  trainingStateRoot,
+} from "./training-config.js";
 import {
   exportTrajectoryTaskDatasets,
   type TrajectoryTaskDatasetExport,
   type TrajectoryTrainingTask,
 } from "./trajectory-task-datasets.js";
-import {
-  ALL_TRAINING_TASKS,
-  loadTrainingConfig,
-  resolveTaskPolicy,
-  trainingStateRoot,
-  type TrainingBackend,
-  type TrainingConfig,
-} from "./training-config.js";
 
 interface MinimalLogger {
   info: (message: string) => void;
@@ -254,9 +254,7 @@ export async function loadRun(
   return JSON.parse(raw) as TrainingRunRecord;
 }
 
-export async function listRuns(
-  limit = 20,
-): Promise<TrainingRunRecord[]> {
+export async function listRuns(limit = 20): Promise<TrainingRunRecord[]> {
   const dir = runsDir();
   if (!existsSync(dir)) return [];
   const entries = await readdir(dir);
@@ -294,9 +292,9 @@ export async function triggerTraining(
   };
   const config = options.config ?? loadTrainingConfig();
 
-  const trajectoryService = runtime.getService("trajectories") as
-    | TrajectoryServiceLike
-    | null;
+  const trajectoryService = runtime.getService(
+    "trajectories",
+  ) as TrajectoryServiceLike | null;
   if (
     !trajectoryService ||
     typeof trajectoryService.listTrajectories !== "function" ||

@@ -18,23 +18,23 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import {
-  ALL_TRAINING_TASKS,
-  loadTrainingConfig,
-  resolveTaskPolicy,
-  trainingStateRoot,
-  type TrainingBackend,
-  type TrainingConfig,
-} from "../core/training-config.js";
-import {
-  triggerTraining,
-  type TrainingRunRecord,
-} from "../core/training-orchestrator.js";
-import type { TrajectoryTrainingTask } from "../core/trajectory-task-datasets.js";
 import type {
   AnonymizerLookup,
   FilterableTrajectory,
 } from "../core/privacy-filter.js";
+import {
+  ALL_TRAINING_TASKS,
+  loadTrainingConfig,
+  resolveTaskPolicy,
+  type TrainingBackend,
+  type TrainingConfig,
+  trainingStateRoot,
+} from "../core/training-config.js";
+import {
+  type TrainingRunRecord,
+  triggerTraining,
+} from "../core/training-orchestrator.js";
+import type { TrajectoryTrainingTask } from "../core/trajectory-task-datasets.js";
 
 export const TRAINING_TRIGGER_SERVICE = "TRAINING_TRIGGER_SERVICE";
 
@@ -211,7 +211,10 @@ function tasksForTrajectory(
       ) {
         tasks.add("response");
       }
-      if (typeof call.response === "string" && /context_routing/i.test(call.response)) {
+      if (
+        typeof call.response === "string" &&
+        /context_routing/i.test(call.response)
+      ) {
         tasks.add("context_routing");
       }
     }
@@ -255,7 +258,10 @@ export class TrainingTriggerService {
   private readonly inflight = new Set<TrajectoryTrainingTask>();
   private state: PersistedTriggerState;
 
-  constructor(runtime: RuntimeLike, options: TrainingTriggerServiceOptions = {}) {
+  constructor(
+    runtime: RuntimeLike,
+    options: TrainingTriggerServiceOptions = {},
+  ) {
     this.runtime = runtime;
     this.statePath =
       options.statePath ?? join(trainingStateRoot(), "trigger-state.json");
@@ -318,10 +324,13 @@ export class TrainingTriggerService {
     const config = this.configLoader();
     if (!config.autoTrain) return;
 
-    const trajectoryService = this.runtime.getService("trajectories") as
-      | TrajectoryServiceLike
-      | null;
-    if (!trajectoryService || typeof trajectoryService.getTrajectoryDetail !== "function") {
+    const trajectoryService = this.runtime.getService(
+      "trajectories",
+    ) as TrajectoryServiceLike | null;
+    if (
+      !trajectoryService ||
+      typeof trajectoryService.getTrajectoryDetail !== "function"
+    ) {
       return;
     }
     const detail = await trajectoryService.getTrajectoryDetail(trajectoryId);
