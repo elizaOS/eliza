@@ -13,6 +13,14 @@ import type {
   LifeOpsChannelPolicy,
   LifeOpsConnectorGrant,
   LifeOpsConnectorSide,
+  LifeOpsCrossChannelDraft,
+  LifeOpsDossier,
+  LifeOpsFollowUp,
+  LifeOpsMessageChannel,
+  LifeOpsRelationship,
+  LifeOpsRelationshipInteraction,
+  LifeOpsScreenTimeDaily,
+  LifeOpsScreenTimeSession,
   LifeOpsGmailMessageSummary,
   LifeOpsGoalDefinition,
   LifeOpsGoalLink,
@@ -24,12 +32,18 @@ import type {
   LifeOpsTaskDefinition,
   LifeOpsWorkflowDefinition,
   LifeOpsWorkflowRun,
+  LifeOpsXDm,
+  LifeOpsXFeedItem,
+  LifeOpsXFeedType,
+  LifeOpsXSyncState,
+  LifeOpsSchedulingNegotiation,
+  LifeOpsSchedulingProposal,
+  LifeOpsNegotiationState,
+  LifeOpsProposalStatus,
+  LifeOpsProposalProposer,
 } from "@elizaos/shared/contracts/lifeops";
 import {
   executeRawSql,
-  getRuntimeDbCacheKey,
-  isRetryableLifeOpsStorageError,
-  listTableColumns,
   parseJsonArray,
   parseJsonRecord,
   sqlBoolean,
@@ -48,10 +62,6 @@ type BrowserCompanionCredential = {
   pendingPairingTokenHashes: string[];
 };
 
-const schemaReady = new WeakSet<object>();
-const schemaInitializing = new WeakMap<object, Promise<void>>();
-const LIFEOPS_SCHEMA_RETRY_DELAY_MS = 150;
-
 function normalizeConnectorIdentityEmail(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase();
@@ -66,22 +76,6 @@ function deriveConnectorIdentityEmail(
     normalizeConnectorIdentityEmail(identity.emailAddress) ??
     normalizeConnectorIdentityEmail(identity.primaryEmail)
   );
-}
-
-async function hasLifeOpsSchema(runtime: IAgentRuntime): Promise<boolean> {
-  try {
-    const rows = await executeRawSql(
-      runtime,
-      `SELECT 1
-         FROM information_schema.tables
-        WHERE table_schema = current_schema()
-          AND table_name = 'life_task_definitions'
-        LIMIT 1`,
-    );
-    return rows.length > 0;
-  } catch {
-    return false;
-  }
 }
 
 export interface LifeOpsWebsiteAccessGrant {
@@ -100,34 +94,6 @@ export interface LifeOpsWebsiteAccessGrant {
   metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
-}
-
-async function runMigrationWithSavepoint(
-  runtime: IAgentRuntime,
-  name: string,
-  migration: () => Promise<void>,
-): Promise<void> {
-  const safeName = name.replace(/[^a-zA-Z0-9_]/g, "_");
-  // Postgres / PGlite: SAVEPOINT only works inside a transaction. Each raw
-  // execute is typically autocommit, so open an explicit outer transaction.
-  // SQLite: BEGIN + SAVEPOINT is also valid.
-  await executeRawSql(runtime, "BEGIN");
-  try {
-    await executeRawSql(runtime, `SAVEPOINT ${safeName}`);
-    try {
-      await migration();
-      await executeRawSql(runtime, `RELEASE SAVEPOINT ${safeName}`);
-    } catch (error) {
-      await executeRawSql(runtime, `ROLLBACK TO SAVEPOINT ${safeName}`).catch(
-        () => {},
-      );
-      throw error;
-    }
-    await executeRawSql(runtime, "COMMIT");
-  } catch (error) {
-    await executeRawSql(runtime, "ROLLBACK").catch(() => {});
-    throw error;
-  }
 }
 
 function isoNow(): string {
@@ -329,6 +295,60 @@ function parseChannelPolicy(
     requireConfirmationForActions: toBoolean(
       row.require_confirmation_for_actions,
     ),
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
+
+function parseRelationship(row: Record<string, unknown>): LifeOpsRelationship {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    name: toText(row.name),
+    primaryChannel: toText(row.primary_channel) as LifeOpsMessageChannel,
+    primaryHandle: toText(row.primary_handle),
+    email: row.email ? toText(row.email) : null,
+    phone: row.phone ? toText(row.phone) : null,
+    notes: toText(row.notes, ""),
+    tags: parseJsonArray(row.tags_json) as string[],
+    relationshipType: toText(row.relationship_type),
+    lastContactedAt: row.last_contacted_at ? toText(row.last_contacted_at) : null,
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
+
+function parseRelationshipInteraction(
+  row: Record<string, unknown>,
+): LifeOpsRelationshipInteraction {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    relationshipId: toText(row.relationship_id),
+    channel: toText(row.channel) as LifeOpsMessageChannel,
+    direction: toText(row.direction) as "inbound" | "outbound",
+    summary: toText(row.summary),
+    occurredAt: toText(row.occurred_at),
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+  };
+}
+
+function parseFollowUp(row: Record<string, unknown>): LifeOpsFollowUp {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    relationshipId: toText(row.relationship_id),
+    dueAt: toText(row.due_at),
+    reason: toText(row.reason),
+    status: toText(row.status) as LifeOpsFollowUp["status"],
+    priority: toNumber(row.priority, 3),
+    draft: row.draft_json
+      ? (parseJsonRecord(row.draft_json) as unknown as LifeOpsCrossChannelDraft)
+      : null,
+    completedAt: row.completed_at ? toText(row.completed_at) : null,
     metadata: parseJsonRecord(row.metadata_json),
     createdAt: toText(row.created_at),
     updatedAt: toText(row.updated_at),
@@ -938,613 +958,171 @@ function parseEscalationStateRow(
   };
 }
 
-export async function ensureLifeOpsTables(
-  runtime: IAgentRuntime,
-): Promise<void> {
-  // Cache schema readiness per underlying DB connection rather than per
-  // runtime or per Drizzle wrapper. Multiple runtimes/adapters can share the
-  // same PGlite connection manager, and keying on the wrapper lets concurrent
-  // lifeops bootstraps race the same DDL.
-  const key = getRuntimeDbCacheKey(runtime);
-  if (schemaReady.has(key)) {
-    if (await hasLifeOpsSchema(runtime)) return;
-    schemaReady.delete(key);
-  }
 
-  // Prevent concurrent migration runs — PGlite cannot handle concurrent DDL.
-  // The first caller creates the migration promise; concurrent callers await it.
-  const pending = schemaInitializing.get(key);
-  if (pending) return pending;
-
-  const migrationPromise = runLifeOpsSchemaSetupWithRetry(runtime, key);
-  schemaInitializing.set(key, migrationPromise);
-  try {
-    await migrationPromise;
-  } finally {
-    schemaInitializing.delete(key);
-  }
+function parseXDm(row: Record<string, unknown>): LifeOpsXDm {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    externalDmId: toText(row.external_dm_id),
+    conversationId: toText(row.conversation_id),
+    senderHandle: toText(row.sender_handle),
+    senderId: toText(row.sender_id),
+    isInbound: toBoolean(row.is_inbound),
+    text: toText(row.text),
+    receivedAt: toText(row.received_at),
+    readAt: row.read_at ? toText(row.read_at) : null,
+    repliedAt: row.replied_at ? toText(row.replied_at) : null,
+    metadata: parseJsonRecord(row.metadata_json),
+    syncedAt: toText(row.synced_at),
+    updatedAt: toText(row.updated_at),
+  };
 }
 
-async function runLifeOpsSchemaSetup(
-  runtime: IAgentRuntime,
-  key: object,
-): Promise<void> {
-  const statements = [
-    `CREATE TABLE IF NOT EXISTS life_task_definitions (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      domain TEXT NOT NULL,
-      subject_type TEXT NOT NULL,
-      subject_id TEXT NOT NULL,
-      visibility_scope TEXT NOT NULL,
-      context_policy TEXT NOT NULL,
-      kind TEXT NOT NULL,
-      title TEXT NOT NULL,
-      description TEXT NOT NULL DEFAULT '',
-      original_intent TEXT NOT NULL DEFAULT '',
-      timezone TEXT NOT NULL,
-      status TEXT NOT NULL,
-      priority INTEGER NOT NULL DEFAULT 3,
-      cadence_json TEXT NOT NULL,
-      window_policy_json TEXT NOT NULL,
-      progression_rule_json TEXT NOT NULL,
-      website_access_json TEXT,
-      reminder_plan_id TEXT,
-      goal_id TEXT,
-      source TEXT NOT NULL DEFAULT 'manual',
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_task_occurrences (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      domain TEXT NOT NULL,
-      subject_type TEXT NOT NULL,
-      subject_id TEXT NOT NULL,
-      visibility_scope TEXT NOT NULL,
-      context_policy TEXT NOT NULL,
-      definition_id TEXT NOT NULL,
-      occurrence_key TEXT NOT NULL,
-      scheduled_at TEXT,
-      due_at TEXT,
-      relevance_start_at TEXT NOT NULL,
-      relevance_end_at TEXT NOT NULL,
-      window_name TEXT,
-      state TEXT NOT NULL,
-      snoozed_until TEXT,
-      completion_payload_json TEXT,
-      derived_target_json TEXT,
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      UNIQUE(agent_id, definition_id, occurrence_key)
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_goal_definitions (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      domain TEXT NOT NULL,
-      subject_type TEXT NOT NULL,
-      subject_id TEXT NOT NULL,
-      visibility_scope TEXT NOT NULL,
-      context_policy TEXT NOT NULL,
-      title TEXT NOT NULL,
-      description TEXT NOT NULL DEFAULT '',
-      cadence_json TEXT,
-      support_strategy_json TEXT NOT NULL DEFAULT '{}',
-      success_criteria_json TEXT NOT NULL DEFAULT '{}',
-      status TEXT NOT NULL,
-      review_state TEXT NOT NULL,
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_goal_links (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      goal_id TEXT NOT NULL,
-      linked_type TEXT NOT NULL,
-      linked_id TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      UNIQUE(agent_id, goal_id, linked_type, linked_id)
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_workflow_definitions (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      domain TEXT NOT NULL,
-      subject_type TEXT NOT NULL,
-      subject_id TEXT NOT NULL,
-      visibility_scope TEXT NOT NULL,
-      context_policy TEXT NOT NULL,
-      title TEXT NOT NULL,
-      trigger_type TEXT NOT NULL,
-      schedule_json TEXT NOT NULL,
-      action_plan_json TEXT NOT NULL,
-      permission_policy_json TEXT NOT NULL,
-      status TEXT NOT NULL,
-      created_by TEXT NOT NULL,
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_workflow_runs (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      workflow_id TEXT NOT NULL,
-      started_at TEXT NOT NULL,
-      finished_at TEXT,
-      status TEXT NOT NULL,
-      result_json TEXT NOT NULL DEFAULT '{}',
-      audit_ref TEXT
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_browser_sessions (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      domain TEXT NOT NULL,
-      subject_type TEXT NOT NULL,
-      subject_id TEXT NOT NULL,
-      visibility_scope TEXT NOT NULL,
-      context_policy TEXT NOT NULL,
-      workflow_id TEXT,
-      browser TEXT,
-      companion_id TEXT,
-      profile_id TEXT,
-      window_id TEXT,
-      tab_id TEXT,
-      title TEXT NOT NULL,
-      status TEXT NOT NULL,
-      actions_json TEXT NOT NULL DEFAULT '[]',
-      current_action_index INTEGER NOT NULL DEFAULT 0,
-      awaiting_confirmation_for_action_id TEXT,
-      result_json TEXT NOT NULL DEFAULT '{}',
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      finished_at TEXT
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_browser_settings (
-      agent_id TEXT PRIMARY KEY,
-      enabled BOOLEAN NOT NULL DEFAULT FALSE,
-      tracking_mode TEXT NOT NULL DEFAULT 'current_tab',
-      allow_browser_control BOOLEAN NOT NULL DEFAULT FALSE,
-      require_confirmation_for_account_affecting BOOLEAN NOT NULL DEFAULT TRUE,
-      incognito_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-      site_access_mode TEXT NOT NULL DEFAULT 'current_site_only',
-      granted_origins_json TEXT NOT NULL DEFAULT '[]',
-      blocked_origins_json TEXT NOT NULL DEFAULT '[]',
-      max_remembered_tabs INTEGER NOT NULL DEFAULT 10,
-      pause_until TEXT,
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_browser_companions (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      browser TEXT NOT NULL,
-      profile_id TEXT NOT NULL,
-      profile_label TEXT NOT NULL DEFAULT '',
-      label TEXT NOT NULL,
-      extension_version TEXT,
-      connection_state TEXT NOT NULL DEFAULT 'disconnected',
-      permissions_json TEXT NOT NULL DEFAULT '{}',
-      last_seen_at TEXT,
-      paired_at TEXT,
-      pairing_token_hash TEXT,
-      pending_pairing_token_hashes_json TEXT NOT NULL DEFAULT '[]',
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      UNIQUE(agent_id, browser, profile_id)
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_browser_tabs (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      companion_id TEXT,
-      browser TEXT NOT NULL,
-      profile_id TEXT NOT NULL,
-      window_id TEXT NOT NULL,
-      tab_id TEXT NOT NULL,
-      url TEXT NOT NULL,
-      title TEXT NOT NULL,
-      active_in_window BOOLEAN NOT NULL DEFAULT FALSE,
-      focused_window BOOLEAN NOT NULL DEFAULT FALSE,
-      focused_active BOOLEAN NOT NULL DEFAULT FALSE,
-      incognito BOOLEAN NOT NULL DEFAULT FALSE,
-      favicon_url TEXT,
-      last_seen_at TEXT NOT NULL,
-      last_focused_at TEXT,
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      UNIQUE(agent_id, browser, profile_id, window_id, tab_id)
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_browser_page_contexts (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      browser TEXT NOT NULL,
-      profile_id TEXT NOT NULL,
-      window_id TEXT NOT NULL,
-      tab_id TEXT NOT NULL,
-      url TEXT NOT NULL,
-      title TEXT NOT NULL,
-      selection_text TEXT,
-      main_text TEXT,
-      headings_json TEXT NOT NULL DEFAULT '[]',
-      links_json TEXT NOT NULL DEFAULT '[]',
-      forms_json TEXT NOT NULL DEFAULT '[]',
-      captured_at TEXT NOT NULL,
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      UNIQUE(agent_id, browser, profile_id, window_id, tab_id)
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_reminder_plans (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      owner_type TEXT NOT NULL,
-      owner_id TEXT NOT NULL,
-      steps_json TEXT NOT NULL,
-      mute_policy_json TEXT NOT NULL DEFAULT '{}',
-      quiet_hours_json TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_reminder_attempts (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      plan_id TEXT NOT NULL,
-      owner_type TEXT NOT NULL,
-      owner_id TEXT NOT NULL,
-      occurrence_id TEXT,
-      channel TEXT NOT NULL,
-      step_index INTEGER NOT NULL,
-      scheduled_for TEXT NOT NULL,
-      attempted_at TEXT,
-      outcome TEXT NOT NULL,
-      connector_ref TEXT,
-      delivery_metadata_json TEXT NOT NULL DEFAULT '{}'
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_connector_grants (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      provider TEXT NOT NULL,
-      side TEXT NOT NULL DEFAULT 'owner',
-      identity_json TEXT NOT NULL DEFAULT '{}',
-      granted_scopes_json TEXT NOT NULL DEFAULT '[]',
-      capabilities_json TEXT NOT NULL DEFAULT '[]',
-      token_ref TEXT,
-      mode TEXT NOT NULL,
-      execution_target TEXT NOT NULL DEFAULT 'local',
-      source_of_truth TEXT NOT NULL DEFAULT 'local_storage',
-      preferred_by_agent BOOLEAN NOT NULL DEFAULT FALSE,
-      cloud_connection_id TEXT,
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      last_refresh_at TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      UNIQUE(agent_id, provider, side, mode)
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_calendar_events (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      provider TEXT NOT NULL,
-      side TEXT NOT NULL DEFAULT 'owner',
-      calendar_id TEXT NOT NULL,
-      external_event_id TEXT NOT NULL,
-      title TEXT NOT NULL,
-      description TEXT NOT NULL DEFAULT '',
-      location TEXT NOT NULL DEFAULT '',
-      status TEXT NOT NULL,
-      start_at TEXT NOT NULL,
-      end_at TEXT NOT NULL,
-      is_all_day BOOLEAN NOT NULL,
-      timezone TEXT,
-      html_link TEXT,
-      conference_link TEXT,
-      organizer_json TEXT,
-      attendees_json TEXT NOT NULL DEFAULT '[]',
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      synced_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      UNIQUE(agent_id, provider, side, calendar_id, external_event_id)
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_calendar_sync_states (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      provider TEXT NOT NULL,
-      side TEXT NOT NULL DEFAULT 'owner',
-      calendar_id TEXT NOT NULL,
-      window_start_at TEXT NOT NULL,
-      window_end_at TEXT NOT NULL,
-      synced_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      UNIQUE(agent_id, provider, side, calendar_id)
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_gmail_messages (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      provider TEXT NOT NULL,
-      side TEXT NOT NULL DEFAULT 'owner',
-      external_message_id TEXT NOT NULL,
-      thread_id TEXT NOT NULL,
-      subject TEXT NOT NULL DEFAULT '',
-      from_display TEXT NOT NULL DEFAULT '',
-      from_email TEXT,
-      reply_to TEXT,
-      to_json TEXT NOT NULL DEFAULT '[]',
-      cc_json TEXT NOT NULL DEFAULT '[]',
-      snippet TEXT NOT NULL DEFAULT '',
-      received_at TEXT NOT NULL,
-      is_unread BOOLEAN NOT NULL DEFAULT FALSE,
-      is_important BOOLEAN NOT NULL DEFAULT FALSE,
-      likely_reply_needed BOOLEAN NOT NULL DEFAULT FALSE,
-      triage_score INTEGER NOT NULL DEFAULT 0,
-      triage_reason TEXT NOT NULL DEFAULT '',
-      label_ids_json TEXT NOT NULL DEFAULT '[]',
-      html_link TEXT,
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      synced_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      UNIQUE(agent_id, provider, side, external_message_id)
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_gmail_sync_states (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      provider TEXT NOT NULL,
-      side TEXT NOT NULL DEFAULT 'owner',
-      mailbox TEXT NOT NULL,
-      max_results INTEGER NOT NULL DEFAULT 0,
-      synced_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      UNIQUE(agent_id, provider, side, mailbox)
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_channel_policies (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      channel_type TEXT NOT NULL,
-      channel_ref TEXT NOT NULL,
-      privacy_class TEXT NOT NULL,
-      allow_reminders BOOLEAN NOT NULL,
-      allow_escalation BOOLEAN NOT NULL,
-      allow_posts BOOLEAN NOT NULL,
-      require_confirmation_for_actions BOOLEAN NOT NULL,
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      UNIQUE(agent_id, channel_type, channel_ref)
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_website_access_grants (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      group_key TEXT NOT NULL,
-      definition_id TEXT NOT NULL,
-      occurrence_id TEXT,
-      websites_json TEXT NOT NULL DEFAULT '[]',
-      unlock_mode TEXT NOT NULL,
-      unlock_duration_minutes INTEGER,
-      callback_key TEXT,
-      unlocked_at TEXT NOT NULL,
-      expires_at TEXT,
-      revoked_at TEXT,
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_audit_events (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      event_type TEXT NOT NULL,
-      owner_type TEXT NOT NULL,
-      owner_id TEXT NOT NULL,
-      reason TEXT NOT NULL,
-      inputs_json TEXT NOT NULL DEFAULT '{}',
-      decision_json TEXT NOT NULL DEFAULT '{}',
-      actor TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_activity_signals (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      source TEXT NOT NULL,
-      platform TEXT NOT NULL,
-      state TEXT NOT NULL,
-      observed_at TEXT NOT NULL,
-      idle_state TEXT,
-      idle_time_seconds INTEGER,
-      on_battery BOOLEAN,
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL
-    )`,
-    `CREATE TABLE IF NOT EXISTS life_escalation_states (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      reason TEXT NOT NULL,
-      text TEXT NOT NULL,
-      current_step INTEGER NOT NULL DEFAULT 0,
-      channels_sent_json TEXT NOT NULL DEFAULT '[]',
-      started_at TEXT NOT NULL,
-      last_sent_at TEXT NOT NULL,
-      resolved BOOLEAN NOT NULL DEFAULT FALSE,
-      resolved_at TEXT,
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )`,
-  ];
+function parseXFeedItem(row: Record<string, unknown>): LifeOpsXFeedItem {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    externalTweetId: toText(row.external_tweet_id),
+    authorHandle: toText(row.author_handle),
+    authorId: toText(row.author_id),
+    text: toText(row.text),
+    createdAtSource: toText(row.created_at_source),
+    feedType: toText(row.feed_type) as LifeOpsXFeedType,
+    metadata: parseJsonRecord(row.metadata_json),
+    syncedAt: toText(row.synced_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
 
-  /** Applied after legacy ownership columns are added — old DBs may lack domain/subject_* until ALTERs below. */
-  const coreIndexStatements = [
-    `CREATE INDEX IF NOT EXISTS idx_life_task_definitions_agent_status
-      ON life_task_definitions(agent_id, status)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_task_definitions_subject
-      ON life_task_definitions(agent_id, domain, subject_type, subject_id, status)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_task_occurrences_agent_state_start
-      ON life_task_occurrences(agent_id, state, relevance_start_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_task_occurrences_subject
-      ON life_task_occurrences(agent_id, domain, subject_type, subject_id, state, relevance_start_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_task_occurrences_definition
-      ON life_task_occurrences(definition_id, relevance_start_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_goal_definitions_agent_status
-      ON life_goal_definitions(agent_id, status)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_goal_definitions_subject
-      ON life_goal_definitions(agent_id, domain, subject_type, subject_id, status)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_reminder_plans_owner
-      ON life_reminder_plans(agent_id, owner_type, owner_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_audit_events_owner
-      ON life_audit_events(agent_id, owner_type, owner_id, created_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_activity_signals_agent
-      ON life_activity_signals(agent_id, observed_at DESC)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_workflow_definitions_agent
-      ON life_workflow_definitions(agent_id, status, updated_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_workflow_definitions_subject
-      ON life_workflow_definitions(agent_id, domain, subject_type, subject_id, status, updated_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_workflow_runs_workflow
-      ON life_workflow_runs(agent_id, workflow_id, started_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_browser_sessions_agent
-      ON life_browser_sessions(agent_id, status, updated_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_browser_sessions_subject
-      ON life_browser_sessions(agent_id, domain, subject_type, subject_id, status, updated_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_browser_companions_agent
-      ON life_browser_companions(agent_id, browser, updated_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_browser_tabs_agent
-      ON life_browser_tabs(agent_id, focused_active, active_in_window, last_seen_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_browser_page_contexts_agent
-      ON life_browser_page_contexts(agent_id, captured_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_goal_links_goal
-      ON life_goal_links(goal_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_goal_links_linked
-      ON life_goal_links(linked_type, linked_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_reminder_attempts_plan
-      ON life_reminder_attempts(plan_id, owner_type, owner_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_channel_policies_agent
-      ON life_channel_policies(agent_id, channel_type)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_website_access_grants_group
-      ON life_website_access_grants(agent_id, group_key, revoked_at, expires_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_escalation_states_agent_resolved
-      ON life_escalation_states(agent_id, resolved)`,
-  ] as const;
+function parseXSyncState(row: Record<string, unknown>): LifeOpsXSyncState {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    feedType: toText(row.feed_type) as LifeOpsXFeedType,
+    lastCursor: row.last_cursor ? toText(row.last_cursor) : null,
+    syncedAt: toText(row.synced_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
 
-  for (const statement of statements) {
-    await executeRawSql(runtime, statement);
-  }
+function parseScreenTimeSession(
+  row: Record<string, unknown>,
+): LifeOpsScreenTimeSession {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    source: toText(row.source) as "app" | "website",
+    identifier: toText(row.identifier),
+    displayName: toText(row.display_name, toText(row.identifier)),
+    startAt: toText(row.start_at),
+    endAt: row.end_at ? toText(row.end_at) : null,
+    durationSeconds: toNumber(row.duration_seconds, 0),
+    isActive: toBoolean(row.is_active),
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
 
-  const ownershipTables = [
-    "life_task_definitions",
-    "life_task_occurrences",
-    "life_goal_definitions",
-    "life_workflow_definitions",
-    "life_browser_sessions",
-  ] as const;
-  const ownershipColumns = [
-    {
-      name: "domain",
-      definition: "TEXT NOT NULL DEFAULT 'user_lifeops'",
-    },
-    {
-      name: "subject_type",
-      definition: "TEXT NOT NULL DEFAULT 'owner'",
-    },
-    {
-      name: "subject_id",
-      definition: "TEXT NOT NULL DEFAULT ''",
-    },
-    {
-      name: "visibility_scope",
-      definition: "TEXT NOT NULL DEFAULT 'owner_agent_admin'",
-    },
-    {
-      name: "context_policy",
-      definition: "TEXT NOT NULL DEFAULT 'explicit_only'",
-    },
-  ] as const;
+function parseScreenTimeDaily(
+  row: Record<string, unknown>,
+): LifeOpsScreenTimeDaily {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    source: toText(row.source) as "app" | "website",
+    identifier: toText(row.identifier),
+    date: toText(row.date),
+    totalSeconds: toNumber(row.total_seconds, 0),
+    sessionCount: toNumber(row.session_count, 0),
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
 
-  for (const tableName of ownershipTables) {
-    const existingColumns = new Set(await listTableColumns(runtime, tableName));
-    for (const column of ownershipColumns) {
-      if (existingColumns.has(column.name)) continue;
-      await executeRawSql(
-        runtime,
-        `ALTER TABLE ${tableName} ADD COLUMN ${column.name} ${column.definition}`,
-      );
-    }
+function parseSchedulingNegotiation(
+  row: Record<string, unknown>,
+): LifeOpsSchedulingNegotiation {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    subject: toText(row.subject),
+    relationshipId: row.relationship_id ? toText(row.relationship_id) : null,
+    durationMinutes: toNumber(row.duration_minutes, 0),
+    timezone: toText(row.timezone, "UTC"),
+    state: toText(row.state, "initiated") as LifeOpsNegotiationState,
+    acceptedProposalId: row.accepted_proposal_id
+      ? toText(row.accepted_proposal_id)
+      : null,
+    startedAt: toText(row.started_at),
+    finalizedAt: row.finalized_at ? toText(row.finalized_at) : null,
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
+
+function parseSchedulingProposal(
+  row: Record<string, unknown>,
+): LifeOpsSchedulingProposal {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    negotiationId: toText(row.negotiation_id),
+    startAt: toText(row.start_at),
+    endAt: toText(row.end_at),
+    proposedBy: toText(row.proposed_by, "agent") as LifeOpsProposalProposer,
+    status: toText(row.status, "pending") as LifeOpsProposalStatus,
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
+
+function parseDossier(row: Record<string, unknown>): LifeOpsDossier {
+  const rawSources = parseJsonArray(row.sources_json) as unknown[];
+  const sources = rawSources
+    .filter((s): s is Record<string, unknown> => !!s && typeof s === "object")
+    .map((s) => ({
+      kind: toText(s.kind),
+      ref: toText(s.ref),
+      ...(typeof s.snippet === "string" && s.snippet.length > 0
+        ? { snippet: s.snippet }
+        : {}),
+    }));
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    calendarEventId: row.calendar_event_id
+      ? toText(row.calendar_event_id)
+      : null,
+    subject: toText(row.subject),
+    generatedForAt: toText(row.generated_for_at),
+    contentMd: toText(row.content_md, ""),
+    sources,
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
+
+export class LifeOpsRepository {
+  constructor(private readonly runtime: IAgentRuntime) {}
+
+  /**
+   * Create all LifeOps tables if they do not already exist.
+   * Must be called once during plugin init before any queries run.
+   */
+  static async bootstrapSchema(runtime: IAgentRuntime): Promise<void> {
+    // Each statement is idempotent (CREATE TABLE IF NOT EXISTS).
+    // We run them sequentially so tables referenced by foreign-key-like
+    // patterns exist before dependent tables, but there are no actual FK
+    // constraints — ordering is just for clarity.
+
     await executeRawSql(
       runtime,
-      `UPDATE ${tableName}
-          SET subject_id = agent_id
-        WHERE subject_id = '' OR subject_id IS NULL`,
-    );
-  }
-
-  const browserSessionColumns = [
-    { name: "browser", definition: "TEXT" },
-    { name: "companion_id", definition: "TEXT" },
-    { name: "profile_id", definition: "TEXT" },
-    { name: "window_id", definition: "TEXT" },
-    { name: "tab_id", definition: "TEXT" },
-  ] as const;
-  const existingBrowserSessionColumns = new Set(
-    await listTableColumns(runtime, "life_browser_sessions"),
-  );
-  for (const column of browserSessionColumns) {
-    if (existingBrowserSessionColumns.has(column.name)) continue;
-    await executeRawSql(
-      runtime,
-      `ALTER TABLE life_browser_sessions ADD COLUMN ${column.name} ${column.definition}`,
-    );
-  }
-
-  const browserCompanionColumns = [
-    { name: "pairing_token_hash", definition: "TEXT" },
-    {
-      name: "pending_pairing_token_hashes_json",
-      definition: "TEXT NOT NULL DEFAULT '[]'",
-    },
-  ] as const;
-  const existingBrowserCompanionColumns = new Set(
-    await listTableColumns(runtime, "life_browser_companions"),
-  );
-  for (const column of browserCompanionColumns) {
-    if (existingBrowserCompanionColumns.has(column.name)) continue;
-    await executeRawSql(
-      runtime,
-      `ALTER TABLE life_browser_companions ADD COLUMN ${column.name} ${column.definition}`,
-    );
-  }
-
-  const existingDefinitionColumns = new Set(
-    await listTableColumns(runtime, "life_task_definitions"),
-  );
-  if (!existingDefinitionColumns.has("website_access_json")) {
-    await executeRawSql(
-      runtime,
-      "ALTER TABLE life_task_definitions ADD COLUMN website_access_json TEXT",
-    );
-  }
-
-  // Indexes reference ownership columns (see coreIndexStatements doc). Running
-  // this loop before the ALTERs above used to break legacy DBs that lacked
-  // domain / subject_* until migration — PGlite would fail CREATE INDEX.
-  for (const statement of coreIndexStatements) {
-    await executeRawSql(runtime, statement);
-  }
-
-  const existingConnectorGrantColumns = new Set(
-    await listTableColumns(runtime, "life_connector_grants"),
-  );
-  if (
-    existingConnectorGrantColumns.size > 0 &&
-    !existingConnectorGrantColumns.has("side")
-  ) {
-    await runMigrationWithSavepoint(
-      runtime,
-      "migrate_connector_grants",
-      async () => {
-        await executeRawSql(
-          runtime,
-          `DROP TABLE IF EXISTS life_connector_grants_next`,
-        );
-        await executeRawSql(
-          runtime,
-          `CREATE TABLE life_connector_grants_next (
+      `CREATE TABLE IF NOT EXISTS life_connector_grants (
         id TEXT PRIMARY KEY,
         agent_id TEXT NOT NULL,
         provider TEXT NOT NULL,
@@ -1554,7 +1132,7 @@ async function runLifeOpsSchemaSetup(
         granted_scopes_json TEXT NOT NULL DEFAULT '[]',
         capabilities_json TEXT NOT NULL DEFAULT '[]',
         token_ref TEXT,
-        mode TEXT NOT NULL,
+        mode TEXT NOT NULL DEFAULT 'oauth',
         execution_target TEXT NOT NULL DEFAULT 'local',
         source_of_truth TEXT NOT NULL DEFAULT 'local_storage',
         preferred_by_agent BOOLEAN NOT NULL DEFAULT FALSE,
@@ -1563,116 +1141,228 @@ async function runLifeOpsSchemaSetup(
         last_refresh_at TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        UNIQUE(agent_id, provider, side, mode)
+        UNIQUE(agent_id, provider, side, mode, identity_email)
       )`,
-        );
-        await executeRawSql(
-          runtime,
-          `INSERT INTO life_connector_grants_next (
-        id, agent_id, provider, side, identity_json, identity_email, granted_scopes_json,
-        capabilities_json, token_ref, mode, execution_target, source_of_truth,
-        preferred_by_agent, cloud_connection_id, metadata_json,
-        last_refresh_at, created_at, updated_at
-      )
-      SELECT
-        id,
-        agent_id,
-        provider,
-        'owner',
-        identity_json,
-        NULL,
-        granted_scopes_json,
-        capabilities_json,
-        token_ref,
-        mode,
-        'local',
-        'local_storage',
-        FALSE,
-        NULL,
-        COALESCE(metadata_json, '{}'),
-        last_refresh_at,
-        created_at,
-        updated_at
-      FROM life_connector_grants`,
-        );
-        await executeRawSql(runtime, `DROP TABLE life_connector_grants`);
-        await executeRawSql(
-          runtime,
-          `ALTER TABLE life_connector_grants_next RENAME TO life_connector_grants`,
-        );
-      },
     );
-  }
 
-  const connectorGrantColumns = [
-    {
-      name: "side",
-      definition: "TEXT NOT NULL DEFAULT 'owner'",
-    },
-    {
-      name: "identity_email",
-      definition: "TEXT",
-    },
-    {
-      name: "execution_target",
-      definition: "TEXT NOT NULL DEFAULT 'local'",
-    },
-    {
-      name: "source_of_truth",
-      definition: "TEXT NOT NULL DEFAULT 'local_storage'",
-    },
-    {
-      name: "preferred_by_agent",
-      definition: "BOOLEAN NOT NULL DEFAULT FALSE",
-    },
-    {
-      name: "cloud_connection_id",
-      definition: "TEXT",
-    },
-  ] as const;
-
-  const refreshedConnectorGrantColumns = new Set(
-    await listTableColumns(runtime, "life_connector_grants"),
-  );
-  for (const column of connectorGrantColumns) {
-    if (refreshedConnectorGrantColumns.has(column.name)) continue;
     await executeRawSql(
       runtime,
-      `ALTER TABLE life_connector_grants ADD COLUMN ${column.name} ${column.definition}`,
-    );
-  }
-
-  const existingCalendarEventColumns = new Set(
-    await listTableColumns(runtime, "life_calendar_events"),
-  );
-  if (
-    existingCalendarEventColumns.size > 0 &&
-    !existingCalendarEventColumns.has("side")
-  ) {
-    await runMigrationWithSavepoint(
-      runtime,
-      "migrate_calendar_events",
-      async () => {
-        await executeRawSql(
-          runtime,
-          `DROP TABLE IF EXISTS life_calendar_events_next`,
-        );
-        await executeRawSql(
-          runtime,
-          `CREATE TABLE life_calendar_events_next (
+      `CREATE TABLE IF NOT EXISTS life_task_definitions (
         id TEXT PRIMARY KEY,
         agent_id TEXT NOT NULL,
-        provider TEXT NOT NULL,
+        domain TEXT NOT NULL DEFAULT 'user_lifeops',
+        subject_type TEXT NOT NULL DEFAULT 'owner',
+        subject_id TEXT NOT NULL,
+        visibility_scope TEXT NOT NULL DEFAULT 'owner_agent_admin',
+        context_policy TEXT NOT NULL DEFAULT 'explicit_only',
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        original_intent TEXT NOT NULL DEFAULT '',
+        timezone TEXT NOT NULL DEFAULT 'UTC',
+        status TEXT NOT NULL DEFAULT 'active',
+        priority INTEGER NOT NULL DEFAULT 3,
+        cadence_json TEXT NOT NULL DEFAULT '{}',
+        window_policy_json TEXT NOT NULL DEFAULT '{}',
+        progression_rule_json TEXT NOT NULL DEFAULT '{}',
+        website_access_json TEXT,
+        reminder_plan_id TEXT,
+        goal_id TEXT,
+        source TEXT NOT NULL DEFAULT 'manual',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_task_occurrences (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        domain TEXT NOT NULL DEFAULT 'user_lifeops',
+        subject_type TEXT NOT NULL DEFAULT 'owner',
+        subject_id TEXT NOT NULL,
+        visibility_scope TEXT NOT NULL DEFAULT 'owner_agent_admin',
+        context_policy TEXT NOT NULL DEFAULT 'explicit_only',
+        definition_id TEXT NOT NULL,
+        occurrence_key TEXT NOT NULL,
+        scheduled_at TEXT,
+        due_at TEXT,
+        relevance_start_at TEXT NOT NULL,
+        relevance_end_at TEXT NOT NULL,
+        window_name TEXT,
+        state TEXT NOT NULL DEFAULT 'pending',
+        snoozed_until TEXT,
+        completion_payload_json TEXT,
+        derived_target_json TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(agent_id, definition_id, occurrence_key)
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_goal_definitions (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        domain TEXT NOT NULL DEFAULT 'user_lifeops',
+        subject_type TEXT NOT NULL DEFAULT 'owner',
+        subject_id TEXT NOT NULL,
+        visibility_scope TEXT NOT NULL DEFAULT 'owner_agent_admin',
+        context_policy TEXT NOT NULL DEFAULT 'explicit_only',
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        cadence_json TEXT,
+        support_strategy_json TEXT NOT NULL DEFAULT '{}',
+        success_criteria_json TEXT NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL DEFAULT 'active',
+        review_state TEXT NOT NULL DEFAULT 'pending',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_goal_links (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        goal_id TEXT NOT NULL,
+        linked_type TEXT NOT NULL,
+        linked_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(agent_id, goal_id, linked_type, linked_id)
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_reminder_plans (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        owner_type TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        steps_json TEXT NOT NULL DEFAULT '[]',
+        mute_policy_json TEXT NOT NULL DEFAULT '{}',
+        quiet_hours_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_reminder_attempts (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        plan_id TEXT NOT NULL,
+        owner_type TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        occurrence_id TEXT,
+        channel TEXT NOT NULL,
+        step_index INTEGER NOT NULL DEFAULT 0,
+        scheduled_for TEXT NOT NULL,
+        attempted_at TEXT,
+        outcome TEXT NOT NULL DEFAULT 'pending',
+        connector_ref TEXT,
+        delivery_metadata_json TEXT NOT NULL DEFAULT '{}'
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_audit_events (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        owner_type TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        reason TEXT NOT NULL DEFAULT '',
+        inputs_json TEXT NOT NULL DEFAULT '{}',
+        decision_json TEXT NOT NULL DEFAULT '{}',
+        actor TEXT NOT NULL DEFAULT 'agent',
+        created_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_activity_signals (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        source TEXT NOT NULL,
+        platform TEXT NOT NULL DEFAULT '',
+        state TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        idle_state TEXT,
+        idle_time_seconds INTEGER,
+        on_battery BOOLEAN,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_channel_policies (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        channel_type TEXT NOT NULL,
+        channel_ref TEXT NOT NULL,
+        privacy_class TEXT NOT NULL DEFAULT 'private',
+        allow_reminders BOOLEAN NOT NULL DEFAULT TRUE,
+        allow_escalation BOOLEAN NOT NULL DEFAULT FALSE,
+        allow_posts BOOLEAN NOT NULL DEFAULT FALSE,
+        require_confirmation_for_actions BOOLEAN NOT NULL DEFAULT TRUE,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(agent_id, channel_type, channel_ref)
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_website_access_grants (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        group_key TEXT NOT NULL,
+        definition_id TEXT NOT NULL,
+        occurrence_id TEXT,
+        websites_json TEXT NOT NULL DEFAULT '[]',
+        unlock_mode TEXT NOT NULL DEFAULT 'fixed_duration',
+        unlock_duration_minutes INTEGER,
+        callback_key TEXT,
+        unlocked_at TEXT NOT NULL,
+        expires_at TEXT,
+        revoked_at TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_calendar_events (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'google',
         side TEXT NOT NULL DEFAULT 'owner',
         calendar_id TEXT NOT NULL,
         external_event_id TEXT NOT NULL,
-        title TEXT NOT NULL,
+        grant_id TEXT,
+        title TEXT NOT NULL DEFAULT '',
         description TEXT NOT NULL DEFAULT '',
         location TEXT NOT NULL DEFAULT '',
-        status TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT '',
         start_at TEXT NOT NULL,
         end_at TEXT NOT NULL,
-        is_all_day BOOLEAN NOT NULL,
+        is_all_day BOOLEAN NOT NULL DEFAULT FALSE,
         timezone TEXT,
         html_link TEXT,
         conference_link TEXT,
@@ -1683,105 +1373,35 @@ async function runLifeOpsSchemaSetup(
         updated_at TEXT NOT NULL,
         UNIQUE(agent_id, provider, side, calendar_id, external_event_id)
       )`,
-        );
-        await executeRawSql(
-          runtime,
-          `INSERT INTO life_calendar_events_next (
-        id, agent_id, provider, side, calendar_id, external_event_id, title,
-        description, location, status, start_at, end_at, is_all_day, timezone,
-        html_link, conference_link, organizer_json, attendees_json,
-        metadata_json, synced_at, updated_at
-      )
-      SELECT
-        id, agent_id, provider, 'owner', calendar_id, external_event_id, title,
-        description, location, status, start_at, end_at, is_all_day, timezone,
-        html_link, conference_link, organizer_json, attendees_json,
-        COALESCE(metadata_json, '{}'), synced_at, updated_at
-      FROM life_calendar_events`,
-        );
-        await executeRawSql(runtime, `DROP TABLE life_calendar_events`);
-        await executeRawSql(
-          runtime,
-          `ALTER TABLE life_calendar_events_next RENAME TO life_calendar_events`,
-        );
-      },
     );
-  }
 
-  const existingCalendarSyncStateColumns = new Set(
-    await listTableColumns(runtime, "life_calendar_sync_states"),
-  );
-  if (
-    existingCalendarSyncStateColumns.size > 0 &&
-    !existingCalendarSyncStateColumns.has("side")
-  ) {
-    await runMigrationWithSavepoint(
+    await executeRawSql(
       runtime,
-      "migrate_calendar_sync_states",
-      async () => {
-        await executeRawSql(
-          runtime,
-          `DROP TABLE IF EXISTS life_calendar_sync_states_next`,
-        );
-        await executeRawSql(
-          runtime,
-          `CREATE TABLE life_calendar_sync_states_next (
+      `CREATE TABLE IF NOT EXISTS life_calendar_sync_states (
         id TEXT PRIMARY KEY,
         agent_id TEXT NOT NULL,
-        provider TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'google',
         side TEXT NOT NULL DEFAULT 'owner',
         calendar_id TEXT NOT NULL,
+        grant_id TEXT,
         window_start_at TEXT NOT NULL,
         window_end_at TEXT NOT NULL,
         synced_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         UNIQUE(agent_id, provider, side, calendar_id)
       )`,
-        );
-        await executeRawSql(
-          runtime,
-          `INSERT INTO life_calendar_sync_states_next (
-        id, agent_id, provider, side, calendar_id, window_start_at,
-        window_end_at, synced_at, updated_at
-      )
-      SELECT
-        id, agent_id, provider, 'owner', calendar_id, window_start_at,
-        window_end_at, synced_at, updated_at
-      FROM life_calendar_sync_states`,
-        );
-        await executeRawSql(runtime, `DROP TABLE life_calendar_sync_states`);
-        await executeRawSql(
-          runtime,
-          `ALTER TABLE life_calendar_sync_states_next RENAME TO life_calendar_sync_states`,
-        );
-      },
     );
-  }
 
-  const existingGmailMessageColumns = new Set(
-    await listTableColumns(runtime, "life_gmail_messages"),
-  );
-  if (
-    existingGmailMessageColumns.size > 0 &&
-    !existingGmailMessageColumns.has("side")
-  ) {
-    await runMigrationWithSavepoint(
+    await executeRawSql(
       runtime,
-      "migrate_gmail_messages",
-      async () => {
-        await executeRawSql(
-          runtime,
-          `DROP TABLE IF EXISTS life_gmail_messages_next`,
-        );
-        await executeRawSql(
-          runtime,
-          `CREATE TABLE life_gmail_messages_next (
+      `CREATE TABLE IF NOT EXISTS life_gmail_messages (
         id TEXT PRIMARY KEY,
         agent_id TEXT NOT NULL,
-        provider TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'google',
         side TEXT NOT NULL DEFAULT 'owner',
         external_message_id TEXT NOT NULL,
-        thread_id TEXT NOT NULL,
+        grant_id TEXT,
+        thread_id TEXT NOT NULL DEFAULT '',
         subject TEXT NOT NULL DEFAULT '',
         from_display TEXT NOT NULL DEFAULT '',
         from_email TEXT,
@@ -1790,7 +1410,7 @@ async function runLifeOpsSchemaSetup(
         cc_json TEXT NOT NULL DEFAULT '[]',
         snippet TEXT NOT NULL DEFAULT '',
         received_at TEXT NOT NULL,
-        is_unread BOOLEAN NOT NULL DEFAULT FALSE,
+        is_unread BOOLEAN NOT NULL DEFAULT TRUE,
         is_important BOOLEAN NOT NULL DEFAULT FALSE,
         likely_reply_needed BOOLEAN NOT NULL DEFAULT FALSE,
         triage_score INTEGER NOT NULL DEFAULT 0,
@@ -1802,171 +1422,394 @@ async function runLifeOpsSchemaSetup(
         updated_at TEXT NOT NULL,
         UNIQUE(agent_id, provider, side, external_message_id)
       )`,
-        );
-        await executeRawSql(
-          runtime,
-          `INSERT INTO life_gmail_messages_next (
-        id, agent_id, provider, side, external_message_id, thread_id, subject,
-        from_display, from_email, reply_to, to_json, cc_json, snippet,
-        received_at, is_unread, is_important, likely_reply_needed,
-        triage_score, triage_reason, label_ids_json, html_link, metadata_json,
-        synced_at, updated_at
-      )
-      SELECT
-        id, agent_id, provider, 'owner', external_message_id, thread_id,
-        subject, from_display, from_email, reply_to, to_json, cc_json,
-        snippet, received_at, is_unread, is_important, likely_reply_needed,
-        triage_score, triage_reason, label_ids_json, html_link,
-        COALESCE(metadata_json, '{}'), synced_at, updated_at
-      FROM life_gmail_messages`,
-        );
-        await executeRawSql(runtime, `DROP TABLE life_gmail_messages`);
-        await executeRawSql(
-          runtime,
-          `ALTER TABLE life_gmail_messages_next RENAME TO life_gmail_messages`,
-        );
-      },
     );
-  }
 
-  const existingGmailSyncStateColumns = new Set(
-    await listTableColumns(runtime, "life_gmail_sync_states"),
-  );
-  if (
-    existingGmailSyncStateColumns.size > 0 &&
-    !existingGmailSyncStateColumns.has("side")
-  ) {
-    await runMigrationWithSavepoint(
+    await executeRawSql(
       runtime,
-      "migrate_gmail_sync_states",
-      async () => {
-        await executeRawSql(
-          runtime,
-          `DROP TABLE IF EXISTS life_gmail_sync_states_next`,
-        );
-        await executeRawSql(
-          runtime,
-          `CREATE TABLE life_gmail_sync_states_next (
+      `CREATE TABLE IF NOT EXISTS life_gmail_sync_states (
         id TEXT PRIMARY KEY,
         agent_id TEXT NOT NULL,
-        provider TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'google',
         side TEXT NOT NULL DEFAULT 'owner',
         mailbox TEXT NOT NULL,
+        grant_id TEXT,
         max_results INTEGER NOT NULL DEFAULT 0,
         synced_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         UNIQUE(agent_id, provider, side, mailbox)
       )`,
-        );
-        await executeRawSql(
-          runtime,
-          `INSERT INTO life_gmail_sync_states_next (
-        id, agent_id, provider, side, mailbox, max_results, synced_at, updated_at
-      )
-      SELECT
-        id, agent_id, provider, 'owner', mailbox, max_results, synced_at,
-        updated_at
-      FROM life_gmail_sync_states`,
-        );
-        await executeRawSql(runtime, `DROP TABLE life_gmail_sync_states`);
-        await executeRawSql(
-          runtime,
-          `ALTER TABLE life_gmail_sync_states_next RENAME TO life_gmail_sync_states`,
-        );
-      },
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_workflow_definitions (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        domain TEXT NOT NULL DEFAULT 'user_lifeops',
+        subject_type TEXT NOT NULL DEFAULT 'owner',
+        subject_id TEXT NOT NULL,
+        visibility_scope TEXT NOT NULL DEFAULT 'owner_agent_admin',
+        context_policy TEXT NOT NULL DEFAULT 'explicit_only',
+        title TEXT NOT NULL,
+        trigger_type TEXT NOT NULL,
+        schedule_json TEXT NOT NULL DEFAULT '{}',
+        action_plan_json TEXT NOT NULL DEFAULT '{}',
+        permission_policy_json TEXT NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL DEFAULT 'active',
+        created_by TEXT NOT NULL DEFAULT 'agent',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_workflow_runs (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        workflow_id TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        status TEXT NOT NULL DEFAULT 'running',
+        result_json TEXT NOT NULL DEFAULT '{}',
+        audit_ref TEXT
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_browser_companions (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        browser TEXT NOT NULL,
+        profile_id TEXT NOT NULL,
+        profile_label TEXT NOT NULL DEFAULT '',
+        label TEXT NOT NULL DEFAULT '',
+        extension_version TEXT,
+        connection_state TEXT NOT NULL DEFAULT 'disconnected',
+        permissions_json TEXT NOT NULL DEFAULT '{}',
+        pairing_token_hash TEXT,
+        pending_pairing_token_hashes_json TEXT NOT NULL DEFAULT '[]',
+        last_seen_at TEXT,
+        paired_at TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(agent_id, browser, profile_id)
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_browser_settings (
+        agent_id TEXT PRIMARY KEY,
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        tracking_mode TEXT NOT NULL DEFAULT 'current_tab',
+        allow_browser_control BOOLEAN NOT NULL DEFAULT FALSE,
+        require_confirmation_for_account_affecting BOOLEAN NOT NULL DEFAULT TRUE,
+        incognito_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        site_access_mode TEXT NOT NULL DEFAULT 'current_site_only',
+        granted_origins_json TEXT NOT NULL DEFAULT '[]',
+        blocked_origins_json TEXT NOT NULL DEFAULT '[]',
+        max_remembered_tabs INTEGER NOT NULL DEFAULT 10,
+        pause_until TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_browser_sessions (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        domain TEXT NOT NULL DEFAULT 'user_lifeops',
+        subject_type TEXT NOT NULL DEFAULT 'owner',
+        subject_id TEXT NOT NULL,
+        visibility_scope TEXT NOT NULL DEFAULT 'owner_agent_admin',
+        context_policy TEXT NOT NULL DEFAULT 'explicit_only',
+        workflow_id TEXT,
+        browser TEXT,
+        companion_id TEXT,
+        profile_id TEXT,
+        window_id TEXT,
+        tab_id TEXT,
+        title TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'pending',
+        actions_json TEXT NOT NULL DEFAULT '[]',
+        current_action_index INTEGER NOT NULL DEFAULT 0,
+        awaiting_confirmation_for_action_id TEXT,
+        result_json TEXT NOT NULL DEFAULT '{}',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        finished_at TEXT
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_browser_tabs (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        companion_id TEXT,
+        browser TEXT NOT NULL,
+        profile_id TEXT NOT NULL,
+        window_id TEXT NOT NULL,
+        tab_id TEXT NOT NULL,
+        url TEXT NOT NULL DEFAULT '',
+        title TEXT NOT NULL DEFAULT '',
+        active_in_window BOOLEAN NOT NULL DEFAULT FALSE,
+        focused_window BOOLEAN NOT NULL DEFAULT FALSE,
+        focused_active BOOLEAN NOT NULL DEFAULT FALSE,
+        incognito BOOLEAN NOT NULL DEFAULT FALSE,
+        favicon_url TEXT,
+        last_seen_at TEXT NOT NULL,
+        last_focused_at TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(agent_id, browser, profile_id, window_id, tab_id)
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_browser_page_contexts (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        browser TEXT NOT NULL,
+        profile_id TEXT NOT NULL,
+        window_id TEXT NOT NULL,
+        tab_id TEXT NOT NULL,
+        url TEXT NOT NULL DEFAULT '',
+        title TEXT NOT NULL DEFAULT '',
+        selection_text TEXT,
+        main_text TEXT,
+        headings_json TEXT NOT NULL DEFAULT '[]',
+        links_json TEXT NOT NULL DEFAULT '[]',
+        forms_json TEXT NOT NULL DEFAULT '[]',
+        captured_at TEXT NOT NULL,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        UNIQUE(agent_id, browser, profile_id, window_id, tab_id)
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_escalation_states (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        reason TEXT NOT NULL DEFAULT '',
+        text TEXT NOT NULL DEFAULT '',
+        current_step INTEGER NOT NULL DEFAULT 0,
+        channels_sent_json TEXT NOT NULL DEFAULT '[]',
+        started_at TEXT NOT NULL,
+        last_sent_at TEXT NOT NULL,
+        resolved BOOLEAN NOT NULL DEFAULT FALSE,
+        resolved_at TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_relationships (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        primary_channel TEXT NOT NULL,
+        primary_handle TEXT NOT NULL,
+        email TEXT,
+        phone TEXT,
+        notes TEXT NOT NULL DEFAULT '',
+        tags_json TEXT NOT NULL DEFAULT '[]',
+        relationship_type TEXT NOT NULL DEFAULT '',
+        last_contacted_at TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_relationship_interactions (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        relationship_id TEXT NOT NULL,
+        channel TEXT NOT NULL,
+        direction TEXT NOT NULL,
+        summary TEXT NOT NULL DEFAULT '',
+        occurred_at TEXT NOT NULL,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_follow_ups (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        relationship_id TEXT NOT NULL,
+        due_at TEXT NOT NULL,
+        reason TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'pending',
+        priority INTEGER NOT NULL DEFAULT 3,
+        draft_json TEXT,
+        completed_at TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_x_dms (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        external_dm_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL DEFAULT '',
+        sender_handle TEXT NOT NULL DEFAULT '',
+        sender_id TEXT NOT NULL DEFAULT '',
+        is_inbound BOOLEAN NOT NULL DEFAULT TRUE,
+        text TEXT NOT NULL DEFAULT '',
+        received_at TEXT NOT NULL,
+        read_at TEXT,
+        replied_at TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        synced_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(agent_id, external_dm_id)
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_x_feed_items (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        external_tweet_id TEXT NOT NULL,
+        author_handle TEXT NOT NULL DEFAULT '',
+        author_id TEXT NOT NULL DEFAULT '',
+        text TEXT NOT NULL DEFAULT '',
+        created_at_source TEXT NOT NULL,
+        feed_type TEXT NOT NULL,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        synced_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(agent_id, external_tweet_id, feed_type)
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_x_sync_states (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        feed_type TEXT NOT NULL,
+        last_cursor TEXT,
+        synced_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(agent_id, feed_type)
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_screen_time_sessions (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        source TEXT NOT NULL,
+        identifier TEXT NOT NULL,
+        display_name TEXT NOT NULL DEFAULT '',
+        start_at TEXT NOT NULL,
+        end_at TEXT,
+        duration_seconds INTEGER NOT NULL DEFAULT 0,
+        is_active BOOLEAN NOT NULL DEFAULT FALSE,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_screen_time_daily (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        source TEXT NOT NULL,
+        identifier TEXT NOT NULL,
+        date TEXT NOT NULL,
+        total_seconds INTEGER NOT NULL DEFAULT 0,
+        session_count INTEGER NOT NULL DEFAULT 0,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(agent_id, source, identifier, date)
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_scheduling_negotiations (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        subject TEXT NOT NULL DEFAULT '',
+        relationship_id TEXT,
+        duration_minutes INTEGER NOT NULL DEFAULT 0,
+        timezone TEXT NOT NULL DEFAULT 'UTC',
+        state TEXT NOT NULL DEFAULT 'initiated',
+        accepted_proposal_id TEXT,
+        started_at TEXT NOT NULL,
+        finalized_at TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_scheduling_proposals (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        negotiation_id TEXT NOT NULL,
+        start_at TEXT NOT NULL,
+        end_at TEXT NOT NULL,
+        proposed_by TEXT NOT NULL DEFAULT 'agent',
+        status TEXT NOT NULL DEFAULT 'pending',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_dossiers (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        calendar_event_id TEXT,
+        subject TEXT NOT NULL DEFAULT '',
+        generated_for_at TEXT NOT NULL,
+        content_md TEXT NOT NULL DEFAULT '',
+        sources_json TEXT NOT NULL DEFAULT '[]',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
     );
   }
 
-  const postMigrationIndexStatements = [
-    `CREATE INDEX IF NOT EXISTS idx_life_task_definitions_agent_status
-      ON life_task_definitions(agent_id, status)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_task_definitions_subject
-      ON life_task_definitions(agent_id, domain, subject_type, subject_id, status)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_task_occurrences_agent_state_start
-      ON life_task_occurrences(agent_id, state, relevance_start_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_task_occurrences_subject
-      ON life_task_occurrences(agent_id, domain, subject_type, subject_id, state, relevance_start_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_task_occurrences_definition
-      ON life_task_occurrences(definition_id, relevance_start_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_goal_definitions_agent_status
-      ON life_goal_definitions(agent_id, status)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_goal_definitions_subject
-      ON life_goal_definitions(agent_id, domain, subject_type, subject_id, status)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_reminder_plans_owner
-      ON life_reminder_plans(agent_id, owner_type, owner_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_audit_events_owner
-      ON life_audit_events(agent_id, owner_type, owner_id, created_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_activity_signals_agent
-      ON life_activity_signals(agent_id, observed_at DESC)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_workflow_definitions_agent
-      ON life_workflow_definitions(agent_id, status, updated_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_workflow_definitions_subject
-      ON life_workflow_definitions(agent_id, domain, subject_type, subject_id, status, updated_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_workflow_runs_workflow
-      ON life_workflow_runs(agent_id, workflow_id, started_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_browser_sessions_agent
-      ON life_browser_sessions(agent_id, status, updated_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_browser_sessions_subject
-      ON life_browser_sessions(agent_id, domain, subject_type, subject_id, status, updated_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_goal_links_goal
-      ON life_goal_links(goal_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_goal_links_linked
-      ON life_goal_links(linked_type, linked_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_reminder_attempts_plan
-      ON life_reminder_attempts(plan_id, owner_type, owner_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_channel_policies_agent
-      ON life_channel_policies(agent_id, channel_type)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_website_access_grants_group
-      ON life_website_access_grants(agent_id, group_key, revoked_at, expires_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_calendar_events_agent
-      ON life_calendar_events(agent_id, provider, side)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_calendar_events_window
-      ON life_calendar_events(agent_id, provider, side, start_at, end_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_calendar_sync_states_agent
-      ON life_calendar_sync_states(agent_id, provider, side, calendar_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_gmail_messages_agent
-      ON life_gmail_messages(agent_id, provider, side, triage_score DESC)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_gmail_messages_priority
-      ON life_gmail_messages(agent_id, provider, side, triage_score, received_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_life_gmail_sync_states_agent
-      ON life_gmail_sync_states(agent_id, provider, side, mailbox)`,
-  ] as const;
-
-  for (const statement of postMigrationIndexStatements) {
-    await executeRawSql(runtime, statement);
-  }
-
-  schemaReady.add(key);
-}
-
-async function runLifeOpsSchemaSetupWithRetry(
-  runtime: IAgentRuntime,
-  key: object,
-): Promise<void> {
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
-    try {
-      await runLifeOpsSchemaSetup(runtime, key);
-      return;
-    } catch (error) {
-      if (attempt >= 2 || !isRetryableLifeOpsStorageError(error)) {
-        throw error;
-      }
-      await new Promise((resolve) =>
-        setTimeout(resolve, LIFEOPS_SCHEMA_RETRY_DELAY_MS),
-      );
-    }
-  }
-}
-
-export class LifeOpsRepository {
-  constructor(private readonly runtime: IAgentRuntime) {}
-
-  async ensureReady(): Promise<void> {
-    await ensureLifeOpsTables(this.runtime);
-  }
-
   async createDefinition(definition: LifeOpsTaskDefinition): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_task_definitions (
@@ -2009,7 +1852,7 @@ export class LifeOpsRepository {
   }
 
   async updateDefinition(definition: LifeOpsTaskDefinition): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `UPDATE life_task_definitions
@@ -2046,7 +1889,7 @@ export class LifeOpsRepository {
     agentId: string,
     definitionId: string,
   ): Promise<LifeOpsTaskDefinition | null> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -2060,7 +1903,7 @@ export class LifeOpsRepository {
   }
 
   async listDefinitions(agentId: string): Promise<LifeOpsTaskDefinition[]> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -2074,7 +1917,7 @@ export class LifeOpsRepository {
   async listActiveDefinitions(
     agentId: string,
   ): Promise<LifeOpsTaskDefinition[]> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -2087,7 +1930,7 @@ export class LifeOpsRepository {
   }
 
   async deleteDefinition(agentId: string, definitionId: string): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `DELETE FROM life_reminder_plans
@@ -2117,7 +1960,7 @@ export class LifeOpsRepository {
   }
 
   async upsertOccurrence(occurrence: LifeOpsOccurrence): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_task_occurrences (
@@ -2173,7 +2016,7 @@ export class LifeOpsRepository {
     agentId: string,
     definitionId: string,
   ): Promise<LifeOpsOccurrence[]> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -2189,7 +2032,7 @@ export class LifeOpsRepository {
     agentId: string,
     definitionIds: string[],
   ): Promise<LifeOpsOccurrence[]> {
-    await this.ensureReady();
+
     if (definitionIds.length === 0) {
       return [];
     }
@@ -2211,7 +2054,7 @@ export class LifeOpsRepository {
     agentId: string,
     occurrenceId: string,
   ): Promise<LifeOpsOccurrence | null> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -2228,7 +2071,7 @@ export class LifeOpsRepository {
     agentId: string,
     occurrenceId: string,
   ): Promise<LifeOpsOccurrenceView | null> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT occurrence.*,
@@ -2257,7 +2100,7 @@ export class LifeOpsRepository {
     agentId: string,
     horizonIso: string,
   ): Promise<LifeOpsOccurrenceView[]> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT occurrence.*,
@@ -2289,7 +2132,7 @@ export class LifeOpsRepository {
   }
 
   async updateOccurrence(occurrence: LifeOpsOccurrence): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `UPDATE life_task_occurrences
@@ -2319,7 +2162,7 @@ export class LifeOpsRepository {
     definitionId: string,
     keepOccurrenceKeys: string[],
   ): Promise<void> {
-    await this.ensureReady();
+
     const keepClause =
       keepOccurrenceKeys.length > 0
         ? `AND occurrence_key NOT IN (${keepOccurrenceKeys
@@ -2337,7 +2180,7 @@ export class LifeOpsRepository {
   }
 
   async createGoal(goal: LifeOpsGoalDefinition): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_goal_definitions (
@@ -2368,7 +2211,7 @@ export class LifeOpsRepository {
   }
 
   async updateGoal(goal: LifeOpsGoalDefinition): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `UPDATE life_goal_definitions
@@ -2395,7 +2238,7 @@ export class LifeOpsRepository {
     agentId: string,
     goalId: string,
   ): Promise<LifeOpsGoalDefinition | null> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -2409,7 +2252,7 @@ export class LifeOpsRepository {
   }
 
   async listGoals(agentId: string): Promise<LifeOpsGoalDefinition[]> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -2421,7 +2264,7 @@ export class LifeOpsRepository {
   }
 
   async deleteGoal(agentId: string, goalId: string): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `DELETE FROM life_goal_links
@@ -2444,7 +2287,7 @@ export class LifeOpsRepository {
   }
 
   async upsertGoalLink(link: LifeOpsGoalLink): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_goal_links (
@@ -2466,7 +2309,7 @@ export class LifeOpsRepository {
     linkedType: LifeOpsGoalLink["linkedType"],
     linkedId: string,
   ): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `DELETE FROM life_goal_links
@@ -2480,7 +2323,7 @@ export class LifeOpsRepository {
     agentId: string,
     goalId: string,
   ): Promise<LifeOpsGoalLink[]> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -2493,7 +2336,7 @@ export class LifeOpsRepository {
   }
 
   async createReminderPlan(plan: LifeOpsReminderPlan): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_reminder_plans (
@@ -2514,7 +2357,7 @@ export class LifeOpsRepository {
   }
 
   async updateReminderPlan(plan: LifeOpsReminderPlan): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `UPDATE life_reminder_plans
@@ -2528,7 +2371,7 @@ export class LifeOpsRepository {
   }
 
   async deleteReminderPlan(agentId: string, planId: string): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `DELETE FROM life_reminder_plans
@@ -2541,7 +2384,7 @@ export class LifeOpsRepository {
     agentId: string,
     planId: string,
   ): Promise<LifeOpsReminderPlan | null> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -2559,7 +2402,7 @@ export class LifeOpsRepository {
     ownerType: string,
     ownerIds: string[],
   ): Promise<LifeOpsReminderPlan[]> {
-    await this.ensureReady();
+
     if (ownerIds.length === 0) return [];
     const ownerList = ownerIds.map((ownerId) => sqlQuote(ownerId)).join(", ");
     const rows = await executeRawSql(
@@ -2574,7 +2417,7 @@ export class LifeOpsRepository {
   }
 
   async createAuditEvent(event: LifeOpsAuditEvent): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_audit_events (
@@ -2600,7 +2443,7 @@ export class LifeOpsRepository {
     ownerType: string,
     ownerId: string,
   ): Promise<LifeOpsAuditEvent[]> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -2614,7 +2457,7 @@ export class LifeOpsRepository {
   }
 
   async createActivitySignal(signal: LifeOpsActivitySignal): Promise<void> {
-    await this.ensureReady();
+
     const metadata =
       signal.health !== null && signal.health !== undefined
         ? { ...signal.metadata, health: signal.health }
@@ -2648,7 +2491,7 @@ export class LifeOpsRepository {
       states?: LifeOpsActivitySignal["state"][] | null;
     } = {},
   ): Promise<LifeOpsActivitySignal[]> {
-    await this.ensureReady();
+
     const clauses = [`agent_id = ${sqlQuote(agentId)}`];
     if (args.sinceAt) {
       clauses.push(`observed_at >= ${sqlQuote(args.sinceAt)}`);
@@ -2673,7 +2516,7 @@ export class LifeOpsRepository {
   }
 
   async upsertChannelPolicy(policy: LifeOpsChannelPolicy): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_channel_policies (
@@ -2706,7 +2549,7 @@ export class LifeOpsRepository {
   }
 
   async listChannelPolicies(agentId: string): Promise<LifeOpsChannelPolicy[]> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -2722,7 +2565,7 @@ export class LifeOpsRepository {
     channelType: LifeOpsChannelPolicy["channelType"],
     channelRef: string,
   ): Promise<LifeOpsChannelPolicy | null> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -2739,7 +2582,7 @@ export class LifeOpsRepository {
   async upsertWebsiteAccessGrant(
     grant: LifeOpsWebsiteAccessGrant,
   ): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_website_access_grants (
@@ -2769,7 +2612,7 @@ export class LifeOpsRepository {
   async listWebsiteAccessGrants(
     agentId: string,
   ): Promise<LifeOpsWebsiteAccessGrant[]> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -2788,7 +2631,7 @@ export class LifeOpsRepository {
       revokedAt: string;
     },
   ): Promise<void> {
-    await this.ensureReady();
+
     const clauses = [`agent_id = ${sqlQuote(agentId)}`, "revoked_at IS NULL"];
     if (args.groupKey) {
       clauses.push(`group_key = ${sqlQuote(args.groupKey)}`);
@@ -2806,7 +2649,7 @@ export class LifeOpsRepository {
   }
 
   async upsertConnectorGrant(grant: LifeOpsConnectorGrant): Promise<void> {
-    await this.ensureReady();
+
     const identityEmail = deriveConnectorIdentityEmail(grant.identity);
     await executeRawSql(
       this.runtime,
@@ -2836,7 +2679,7 @@ export class LifeOpsRepository {
         ${sqlQuote(grant.createdAt)},
         ${sqlQuote(grant.updatedAt)}
       )
-      ON CONFLICT(agent_id, provider, side, mode) DO UPDATE SET
+      ON CONFLICT(agent_id, provider, side, mode, identity_email) DO UPDATE SET
         identity_json = excluded.identity_json,
         identity_email = excluded.identity_email,
         granted_scopes_json = excluded.granted_scopes_json,
@@ -2853,7 +2696,7 @@ export class LifeOpsRepository {
   }
 
   async listConnectorGrants(agentId: string): Promise<LifeOpsConnectorGrant[]> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -2870,7 +2713,7 @@ export class LifeOpsRepository {
     mode: LifeOpsConnectorGrant["mode"],
     side: LifeOpsConnectorSide = "owner",
   ): Promise<LifeOpsConnectorGrant | null> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -2891,7 +2734,7 @@ export class LifeOpsRepository {
     mode?: LifeOpsConnectorGrant["mode"],
     side?: LifeOpsConnectorSide,
   ): Promise<void> {
-    await this.ensureReady();
+
     const modeClause = mode ? `AND mode = ${sqlQuote(mode)}` : "";
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
     await executeRawSql(
@@ -2908,7 +2751,7 @@ export class LifeOpsRepository {
     event: LifeOpsCalendarEvent,
     side: LifeOpsConnectorSide = event.side,
   ): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_calendar_events (
@@ -2964,7 +2807,7 @@ export class LifeOpsRepository {
     calendarId?: string,
     side?: LifeOpsConnectorSide,
   ): Promise<void> {
-    await this.ensureReady();
+
     const calendarClause = calendarId
       ? `AND calendar_id = ${sqlQuote(calendarId)}`
       : "";
@@ -2986,7 +2829,7 @@ export class LifeOpsRepository {
     externalEventId: string,
     side?: LifeOpsConnectorSide,
   ): Promise<void> {
-    await this.ensureReady();
+
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
     await executeRawSql(
       this.runtime,
@@ -3008,7 +2851,7 @@ export class LifeOpsRepository {
     keepExternalIds: readonly string[],
     side: LifeOpsConnectorSide = "owner",
   ): Promise<void> {
-    await this.ensureReady();
+
     const keepClause =
       keepExternalIds.length > 0
         ? `AND external_event_id NOT IN (${keepExternalIds
@@ -3035,7 +2878,7 @@ export class LifeOpsRepository {
     timeMax?: string,
     side?: LifeOpsConnectorSide,
   ): Promise<LifeOpsCalendarEvent[]> {
-    await this.ensureReady();
+
     const timeMinClause = timeMin ? `AND end_at > ${sqlQuote(timeMin)}` : "";
     const timeMaxClause = timeMax ? `AND start_at < ${sqlQuote(timeMax)}` : "";
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
@@ -3056,7 +2899,7 @@ export class LifeOpsRepository {
   async upsertCalendarSyncState(
     state: LifeOpsCalendarSyncState,
   ): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_calendar_sync_states (
@@ -3087,7 +2930,7 @@ export class LifeOpsRepository {
     calendarId: string,
     side?: LifeOpsConnectorSide,
   ): Promise<LifeOpsCalendarSyncState | null> {
-    await this.ensureReady();
+
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
     const rows = await executeRawSql(
       this.runtime,
@@ -3109,7 +2952,7 @@ export class LifeOpsRepository {
     calendarId?: string,
     side?: LifeOpsConnectorSide,
   ): Promise<void> {
-    await this.ensureReady();
+
     const calendarClause = calendarId
       ? `AND calendar_id = ${sqlQuote(calendarId)}`
       : "";
@@ -3128,7 +2971,7 @@ export class LifeOpsRepository {
     message: LifeOpsGmailMessageSummary,
     side: LifeOpsConnectorSide = message.side,
   ): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_gmail_messages (
@@ -3192,7 +3035,7 @@ export class LifeOpsRepository {
     keepExternalIds: readonly string[],
     side?: LifeOpsConnectorSide,
   ): Promise<void> {
-    await this.ensureReady();
+
     const keepClause =
       keepExternalIds.length > 0
         ? `AND external_message_id NOT IN (${keepExternalIds
@@ -3220,7 +3063,7 @@ export class LifeOpsRepository {
     },
     side?: LifeOpsConnectorSide,
   ): Promise<LifeOpsGmailMessageSummary[]> {
-    await this.ensureReady();
+
     const DEFAULT_GMAIL_LIST_LIMIT = 200;
     const limit =
       options?.maxResults !== undefined && Number.isFinite(options.maxResults)
@@ -3255,7 +3098,7 @@ export class LifeOpsRepository {
     messageId: string,
     side?: LifeOpsConnectorSide,
   ): Promise<LifeOpsGmailMessageSummary | null> {
-    await this.ensureReady();
+
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
     const rows = await executeRawSql(
       this.runtime,
@@ -3276,7 +3119,7 @@ export class LifeOpsRepository {
     provider: LifeOpsConnectorGrant["provider"],
     side?: LifeOpsConnectorSide,
   ): Promise<void> {
-    await this.ensureReady();
+
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
     await executeRawSql(
       this.runtime,
@@ -3288,7 +3131,7 @@ export class LifeOpsRepository {
   }
 
   async upsertGmailSyncState(state: LifeOpsGmailSyncState): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_gmail_sync_states (
@@ -3316,7 +3159,7 @@ export class LifeOpsRepository {
     mailbox: string,
     side?: LifeOpsConnectorSide,
   ): Promise<LifeOpsGmailSyncState | null> {
-    await this.ensureReady();
+
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
     const rows = await executeRawSql(
       this.runtime,
@@ -3338,7 +3181,7 @@ export class LifeOpsRepository {
     mailbox?: string,
     side?: LifeOpsConnectorSide,
   ): Promise<void> {
-    await this.ensureReady();
+
     const mailboxClause = mailbox ? `AND mailbox = ${sqlQuote(mailbox)}` : "";
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
     await executeRawSql(
@@ -3352,7 +3195,7 @@ export class LifeOpsRepository {
   }
 
   async createWorkflow(definition: LifeOpsWorkflowDefinition): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_workflow_definitions (
@@ -3383,7 +3226,7 @@ export class LifeOpsRepository {
   }
 
   async updateWorkflow(definition: LifeOpsWorkflowDefinition): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `UPDATE life_workflow_definitions
@@ -3406,7 +3249,7 @@ export class LifeOpsRepository {
   }
 
   async listWorkflows(agentId: string): Promise<LifeOpsWorkflowDefinition[]> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -3418,7 +3261,7 @@ export class LifeOpsRepository {
   }
 
   async deleteWorkflow(agentId: string, workflowId: string): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `DELETE FROM life_workflow_runs
@@ -3444,7 +3287,7 @@ export class LifeOpsRepository {
     agentId: string,
     workflowId: string,
   ): Promise<LifeOpsWorkflowDefinition | null> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -3458,7 +3301,7 @@ export class LifeOpsRepository {
   }
 
   async createWorkflowRun(run: LifeOpsWorkflowRun): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_workflow_runs (
@@ -3481,7 +3324,7 @@ export class LifeOpsRepository {
     agentId: string,
     workflowId: string,
   ): Promise<LifeOpsWorkflowRun[]> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -3494,7 +3337,7 @@ export class LifeOpsRepository {
   }
 
   async createReminderAttempt(attempt: LifeOpsReminderAttempt): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_reminder_attempts (
@@ -3527,7 +3370,7 @@ export class LifeOpsRepository {
       planId?: string;
     },
   ): Promise<LifeOpsReminderAttempt[]> {
-    await this.ensureReady();
+
     const ownerTypeClause = options?.ownerType
       ? `AND owner_type = ${sqlQuote(options.ownerType)}`
       : "";
@@ -3555,7 +3398,7 @@ export class LifeOpsRepository {
     outcome: string,
     metadata?: Record<string, unknown>,
   ): Promise<void> {
-    await this.ensureReady();
+
     if (metadata && Object.keys(metadata).length > 0) {
       await executeRawSql(
         this.runtime,
@@ -3575,7 +3418,7 @@ export class LifeOpsRepository {
   }
 
   async createBrowserSession(session: LifeOpsBrowserSession): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_browser_sessions (
@@ -3613,7 +3456,7 @@ export class LifeOpsRepository {
   }
 
   async updateBrowserSession(session: LifeOpsBrowserSession): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `UPDATE life_browser_sessions
@@ -3646,7 +3489,7 @@ export class LifeOpsRepository {
     agentId: string,
     sessionId: string,
   ): Promise<LifeOpsBrowserSession | null> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -3660,7 +3503,7 @@ export class LifeOpsRepository {
   }
 
   async listBrowserSessions(agentId: string): Promise<LifeOpsBrowserSession[]> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -3674,7 +3517,7 @@ export class LifeOpsRepository {
   async getBrowserSettings(
     agentId: string,
   ): Promise<LifeOpsBrowserSettings | null> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -3690,7 +3533,7 @@ export class LifeOpsRepository {
     agentId: string,
     settings: LifeOpsBrowserSettings,
   ): Promise<void> {
-    await this.ensureReady();
+
     const createdAt = settings.updatedAt ?? isoNow();
     await executeRawSql(
       this.runtime,
@@ -3736,7 +3579,7 @@ export class LifeOpsRepository {
     browser: LifeOpsBrowserCompanionStatus["browser"],
     profileId: string,
   ): Promise<LifeOpsBrowserCompanionStatus | null> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -3754,7 +3597,7 @@ export class LifeOpsRepository {
     agentId: string,
     companionId: string,
   ): Promise<BrowserCompanionCredential | null> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -3770,7 +3613,7 @@ export class LifeOpsRepository {
   async upsertBrowserCompanion(
     companion: LifeOpsBrowserCompanionStatus,
   ): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_browser_companions (
@@ -3813,7 +3656,7 @@ export class LifeOpsRepository {
     pairedAt: string,
     updatedAt: string,
   ): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `UPDATE life_browser_companions
@@ -3832,7 +3675,7 @@ export class LifeOpsRepository {
     pendingPairingTokenHashes: string[],
     updatedAt: string,
   ): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `UPDATE life_browser_companions
@@ -3851,7 +3694,7 @@ export class LifeOpsRepository {
     pairedAt: string,
     updatedAt: string,
   ): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `UPDATE life_browser_companions
@@ -3867,7 +3710,7 @@ export class LifeOpsRepository {
   async listBrowserCompanions(
     agentId: string,
   ): Promise<LifeOpsBrowserCompanionStatus[]> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -3879,7 +3722,7 @@ export class LifeOpsRepository {
   }
 
   async upsertBrowserTab(tab: LifeOpsBrowserTabSummary): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_browser_tabs (
@@ -3925,7 +3768,7 @@ export class LifeOpsRepository {
   }
 
   async listBrowserTabs(agentId: string): Promise<LifeOpsBrowserTabSummary[]> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -3940,7 +3783,7 @@ export class LifeOpsRepository {
   }
 
   async deleteBrowserTabsByIds(agentId: string, ids: string[]): Promise<void> {
-    await this.ensureReady();
+
     if (ids.length === 0) return;
     const values = ids.map((id) => sqlQuote(id)).join(", ");
     await executeRawSql(
@@ -3952,7 +3795,7 @@ export class LifeOpsRepository {
   }
 
   async deleteAllBrowserTabs(agentId: string): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `DELETE FROM life_browser_tabs
@@ -3963,7 +3806,7 @@ export class LifeOpsRepository {
   async upsertBrowserPageContext(
     context: LifeOpsBrowserPageContext,
   ): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_browser_page_contexts (
@@ -4003,7 +3846,7 @@ export class LifeOpsRepository {
   async listBrowserPageContexts(
     agentId: string,
   ): Promise<LifeOpsBrowserPageContext[]> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -4018,7 +3861,7 @@ export class LifeOpsRepository {
     agentId: string,
     ids: string[],
   ): Promise<void> {
-    await this.ensureReady();
+
     if (ids.length === 0) return;
     const values = ids.map((id) => sqlQuote(id)).join(", ");
     await executeRawSql(
@@ -4030,7 +3873,7 @@ export class LifeOpsRepository {
   }
 
   async deleteAllBrowserPageContexts(agentId: string): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `DELETE FROM life_browser_page_contexts
@@ -4042,7 +3885,7 @@ export class LifeOpsRepository {
     agentId: string,
     sessionId: string,
   ): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `DELETE FROM life_browser_sessions
@@ -4068,7 +3911,7 @@ export class LifeOpsRepository {
     resolvedAt?: string | null;
     metadata?: Record<string, unknown>;
   }): Promise<void> {
-    await this.ensureReady();
+
     const now = isoNow();
     await executeRawSql(
       this.runtime,
@@ -4108,7 +3951,7 @@ export class LifeOpsRepository {
   async getActiveEscalationState(
     agentId: string,
   ): Promise<LifeOpsEscalationStateRow | null> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -4123,7 +3966,7 @@ export class LifeOpsRepository {
   }
 
   async resolveEscalationState(id: string, resolvedAt: string): Promise<void> {
-    await this.ensureReady();
+
     const now = isoNow();
     await executeRawSql(
       this.runtime,
@@ -4139,7 +3982,7 @@ export class LifeOpsRepository {
     agentId: string,
     limit = 10,
   ): Promise<LifeOpsEscalationStateRow[]> {
-    await this.ensureReady();
+
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -4152,12 +3995,880 @@ export class LifeOpsRepository {
   }
 
   async deleteAllEscalationStates(agentId: string): Promise<void> {
-    await this.ensureReady();
+
     await executeRawSql(
       this.runtime,
       `DELETE FROM life_escalation_states
         WHERE agent_id = ${sqlQuote(agentId)}`,
     );
+  }
+
+  // -----------------------------------------------------------------------
+  // Relationships, interactions & follow-ups
+  // -----------------------------------------------------------------------
+
+  async upsertRelationship(rel: LifeOpsRelationship): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_relationships (
+         id, agent_id, name, primary_channel, primary_handle, email, phone,
+         notes, tags_json, relationship_type, last_contacted_at, metadata_json,
+         created_at, updated_at
+       ) VALUES (
+         ${sqlQuote(rel.id)},
+         ${sqlQuote(rel.agentId)},
+         ${sqlQuote(rel.name)},
+         ${sqlQuote(rel.primaryChannel)},
+         ${sqlQuote(rel.primaryHandle)},
+         ${sqlText(rel.email)},
+         ${sqlText(rel.phone)},
+         ${sqlQuote(rel.notes)},
+         ${sqlJson(rel.tags)},
+         ${sqlQuote(rel.relationshipType)},
+         ${sqlText(rel.lastContactedAt)},
+         ${sqlJson(rel.metadata)},
+         ${sqlQuote(rel.createdAt)},
+         ${sqlQuote(rel.updatedAt)}
+       )
+       ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name,
+         primary_channel = EXCLUDED.primary_channel,
+         primary_handle = EXCLUDED.primary_handle,
+         email = EXCLUDED.email,
+         phone = EXCLUDED.phone,
+         notes = EXCLUDED.notes,
+         tags_json = EXCLUDED.tags_json,
+         relationship_type = EXCLUDED.relationship_type,
+         last_contacted_at = EXCLUDED.last_contacted_at,
+         metadata_json = EXCLUDED.metadata_json,
+         updated_at = EXCLUDED.updated_at`,
+    );
+  }
+
+  async getRelationship(
+    agentId: string,
+    id: string,
+  ): Promise<LifeOpsRelationship | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_relationships
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(id)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseRelationship(row) : null;
+  }
+
+  async listRelationships(
+    agentId: string,
+    opts?: { primaryChannel?: string; limit?: number },
+  ): Promise<LifeOpsRelationship[]> {
+    const clauses = [`agent_id = ${sqlQuote(agentId)}`];
+    if (opts?.primaryChannel) {
+      clauses.push(`primary_channel = ${sqlQuote(opts.primaryChannel)}`);
+    }
+    const limitClause =
+      typeof opts?.limit === "number"
+        ? `LIMIT ${sqlInteger(opts.limit)}`
+        : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_relationships
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY name ASC
+        ${limitClause}`,
+    );
+    return rows.map(parseRelationship);
+  }
+
+  async logRelationshipInteraction(
+    interaction: LifeOpsRelationshipInteraction,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_relationship_interactions (
+         id, agent_id, relationship_id, channel, direction, summary,
+         occurred_at, metadata_json, created_at
+       ) VALUES (
+         ${sqlQuote(interaction.id)},
+         ${sqlQuote(interaction.agentId)},
+         ${sqlQuote(interaction.relationshipId)},
+         ${sqlQuote(interaction.channel)},
+         ${sqlQuote(interaction.direction)},
+         ${sqlQuote(interaction.summary)},
+         ${sqlQuote(interaction.occurredAt)},
+         ${sqlJson(interaction.metadata)},
+         ${sqlQuote(interaction.createdAt)}
+       )`,
+    );
+  }
+
+  async listInteractions(
+    agentId: string,
+    relationshipId: string,
+    opts?: { limit?: number },
+  ): Promise<LifeOpsRelationshipInteraction[]> {
+    const limitClause =
+      typeof opts?.limit === "number"
+        ? `LIMIT ${sqlInteger(opts.limit)}`
+        : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_relationship_interactions
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND relationship_id = ${sqlQuote(relationshipId)}
+        ORDER BY occurred_at DESC
+        ${limitClause}`,
+    );
+    return rows.map(parseRelationshipInteraction);
+  }
+
+  async updateRelationshipLastContactedAt(
+    agentId: string,
+    relationshipId: string,
+    timestamp: string,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `UPDATE life_relationships
+          SET last_contacted_at = ${sqlQuote(timestamp)},
+              updated_at = ${sqlQuote(timestamp)}
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(relationshipId)}
+          AND (last_contacted_at IS NULL OR last_contacted_at < ${sqlQuote(timestamp)})`,
+    );
+  }
+
+  async upsertFollowUp(fu: LifeOpsFollowUp): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_follow_ups (
+         id, agent_id, relationship_id, due_at, reason, status, priority,
+         draft_json, completed_at, metadata_json, created_at, updated_at
+       ) VALUES (
+         ${sqlQuote(fu.id)},
+         ${sqlQuote(fu.agentId)},
+         ${sqlQuote(fu.relationshipId)},
+         ${sqlQuote(fu.dueAt)},
+         ${sqlQuote(fu.reason)},
+         ${sqlQuote(fu.status)},
+         ${sqlInteger(fu.priority)},
+         ${fu.draft ? sqlJson(fu.draft) : "NULL"},
+         ${sqlText(fu.completedAt)},
+         ${sqlJson(fu.metadata)},
+         ${sqlQuote(fu.createdAt)},
+         ${sqlQuote(fu.updatedAt)}
+       )
+       ON CONFLICT (id) DO UPDATE SET
+         relationship_id = EXCLUDED.relationship_id,
+         due_at = EXCLUDED.due_at,
+         reason = EXCLUDED.reason,
+         status = EXCLUDED.status,
+         priority = EXCLUDED.priority,
+         draft_json = EXCLUDED.draft_json,
+         completed_at = EXCLUDED.completed_at,
+         metadata_json = EXCLUDED.metadata_json,
+         updated_at = EXCLUDED.updated_at`,
+    );
+  }
+
+  async getFollowUp(
+    agentId: string,
+    id: string,
+  ): Promise<LifeOpsFollowUp | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_follow_ups
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(id)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseFollowUp(row) : null;
+  }
+
+  async listFollowUps(
+    agentId: string,
+    opts?: { status?: string; dueOnOrBefore?: string; limit?: number },
+  ): Promise<LifeOpsFollowUp[]> {
+    const clauses = [`agent_id = ${sqlQuote(agentId)}`];
+    if (opts?.status) {
+      clauses.push(`status = ${sqlQuote(opts.status)}`);
+    }
+    if (opts?.dueOnOrBefore) {
+      clauses.push(`due_at <= ${sqlQuote(opts.dueOnOrBefore)}`);
+    }
+    const limitClause =
+      typeof opts?.limit === "number"
+        ? `LIMIT ${sqlInteger(opts.limit)}`
+        : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_follow_ups
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY due_at ASC
+        ${limitClause}`,
+    );
+    return rows.map(parseFollowUp);
+  }
+
+  async updateFollowUpStatus(
+    agentId: string,
+    id: string,
+    status: string,
+    completedAt?: string,
+  ): Promise<void> {
+    const now = isoNow();
+    const completedClause = completedAt
+      ? `, completed_at = ${sqlQuote(completedAt)}`
+      : "";
+    await executeRawSql(
+      this.runtime,
+      `UPDATE life_follow_ups
+          SET status = ${sqlQuote(status)},
+              updated_at = ${sqlQuote(now)}
+              ${completedClause}
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(id)}`,
+    );
+  }
+
+  async updateFollowUpDueAt(
+    agentId: string,
+    id: string,
+    dueAt: string,
+  ): Promise<void> {
+    const now = isoNow();
+    await executeRawSql(
+      this.runtime,
+      `UPDATE life_follow_ups
+          SET due_at = ${sqlQuote(dueAt)},
+              updated_at = ${sqlQuote(now)}
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(id)}`,
+    );
+  }
+
+  // -----------------------------------------------------------------------
+  // X (Twitter) DMs, feed items, and sync state
+  // -----------------------------------------------------------------------
+
+  async upsertXDm(dm: LifeOpsXDm): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_x_dms (
+        id, agent_id, external_dm_id, conversation_id, sender_handle, sender_id,
+        is_inbound, text, received_at, read_at, replied_at, metadata_json,
+        synced_at, updated_at
+      ) VALUES (
+        ${sqlQuote(dm.id)},
+        ${sqlQuote(dm.agentId)},
+        ${sqlQuote(dm.externalDmId)},
+        ${sqlQuote(dm.conversationId)},
+        ${sqlQuote(dm.senderHandle)},
+        ${sqlQuote(dm.senderId)},
+        ${sqlBoolean(dm.isInbound)},
+        ${sqlQuote(dm.text)},
+        ${sqlQuote(dm.receivedAt)},
+        ${sqlText(dm.readAt)},
+        ${sqlText(dm.repliedAt)},
+        ${sqlJson(dm.metadata)},
+        ${sqlQuote(dm.syncedAt)},
+        ${sqlQuote(dm.updatedAt)}
+      )
+      ON CONFLICT(agent_id, external_dm_id) DO UPDATE SET
+        conversation_id = excluded.conversation_id,
+        sender_handle = excluded.sender_handle,
+        sender_id = excluded.sender_id,
+        is_inbound = excluded.is_inbound,
+        text = excluded.text,
+        received_at = excluded.received_at,
+        read_at = excluded.read_at,
+        replied_at = excluded.replied_at,
+        metadata_json = excluded.metadata_json,
+        synced_at = excluded.synced_at,
+        updated_at = excluded.updated_at`,
+    );
+  }
+
+  async listXDms(
+    agentId: string,
+    opts: { conversationId?: string; limit?: number } = {},
+  ): Promise<LifeOpsXDm[]> {
+    const DEFAULT_LIMIT = 100;
+    const limit =
+      opts.limit !== undefined && Number.isFinite(opts.limit)
+        ? opts.limit
+        : DEFAULT_LIMIT;
+    const conversationClause = opts.conversationId
+      ? `AND conversation_id = ${sqlQuote(opts.conversationId)}`
+      : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_x_dms
+        WHERE agent_id = ${sqlQuote(agentId)}
+          ${conversationClause}
+        ORDER BY received_at DESC
+        LIMIT ${sqlInteger(limit)}`,
+    );
+    return rows.map(parseXDm);
+  }
+
+  async upsertXFeedItem(item: LifeOpsXFeedItem): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_x_feed_items (
+        id, agent_id, external_tweet_id, author_handle, author_id, text,
+        created_at_source, feed_type, metadata_json, synced_at, updated_at
+      ) VALUES (
+        ${sqlQuote(item.id)},
+        ${sqlQuote(item.agentId)},
+        ${sqlQuote(item.externalTweetId)},
+        ${sqlQuote(item.authorHandle)},
+        ${sqlQuote(item.authorId)},
+        ${sqlQuote(item.text)},
+        ${sqlQuote(item.createdAtSource)},
+        ${sqlQuote(item.feedType)},
+        ${sqlJson(item.metadata)},
+        ${sqlQuote(item.syncedAt)},
+        ${sqlQuote(item.updatedAt)}
+      )
+      ON CONFLICT(agent_id, external_tweet_id, feed_type) DO UPDATE SET
+        author_handle = excluded.author_handle,
+        author_id = excluded.author_id,
+        text = excluded.text,
+        created_at_source = excluded.created_at_source,
+        metadata_json = excluded.metadata_json,
+        synced_at = excluded.synced_at,
+        updated_at = excluded.updated_at`,
+    );
+  }
+
+  async listXFeedItems(
+    agentId: string,
+    feedType: LifeOpsXFeedType,
+    opts: { limit?: number } = {},
+  ): Promise<LifeOpsXFeedItem[]> {
+    const DEFAULT_LIMIT = 100;
+    const limit =
+      opts.limit !== undefined && Number.isFinite(opts.limit)
+        ? opts.limit
+        : DEFAULT_LIMIT;
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_x_feed_items
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND feed_type = ${sqlQuote(feedType)}
+        ORDER BY created_at_source DESC
+        LIMIT ${sqlInteger(limit)}`,
+    );
+    return rows.map(parseXFeedItem);
+  }
+
+  async upsertXSyncState(state: LifeOpsXSyncState): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_x_sync_states (
+        id, agent_id, feed_type, last_cursor, synced_at, updated_at
+      ) VALUES (
+        ${sqlQuote(state.id)},
+        ${sqlQuote(state.agentId)},
+        ${sqlQuote(state.feedType)},
+        ${sqlText(state.lastCursor)},
+        ${sqlQuote(state.syncedAt)},
+        ${sqlQuote(state.updatedAt)}
+      )
+      ON CONFLICT(agent_id, feed_type) DO UPDATE SET
+        last_cursor = excluded.last_cursor,
+        synced_at = excluded.synced_at,
+        updated_at = excluded.updated_at`,
+    );
+  }
+
+  async getXSyncState(
+    agentId: string,
+    feedType: LifeOpsXFeedType,
+  ): Promise<LifeOpsXSyncState | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_x_sync_states
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND feed_type = ${sqlQuote(feedType)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseXSyncState(row) : null;
+  }
+
+  // -----------------------------------------------------------------------
+  // Screen time — per-app and per-website dwell sessions + daily rollups
+  // -----------------------------------------------------------------------
+
+  async upsertScreenTimeSession(
+    session: LifeOpsScreenTimeSession,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_screen_time_sessions (
+         id, agent_id, source, identifier, display_name, start_at, end_at,
+         duration_seconds, is_active, metadata_json, created_at, updated_at
+       ) VALUES (
+         ${sqlQuote(session.id)},
+         ${sqlQuote(session.agentId)},
+         ${sqlQuote(session.source)},
+         ${sqlQuote(session.identifier)},
+         ${sqlQuote(session.displayName)},
+         ${sqlQuote(session.startAt)},
+         ${sqlText(session.endAt)},
+         ${sqlInteger(session.durationSeconds)},
+         ${sqlBoolean(session.isActive)},
+         ${sqlJson(session.metadata)},
+         ${sqlQuote(session.createdAt)},
+         ${sqlQuote(session.updatedAt)}
+       )
+       ON CONFLICT (id) DO UPDATE SET
+         source = EXCLUDED.source,
+         identifier = EXCLUDED.identifier,
+         display_name = EXCLUDED.display_name,
+         start_at = EXCLUDED.start_at,
+         end_at = EXCLUDED.end_at,
+         duration_seconds = EXCLUDED.duration_seconds,
+         is_active = EXCLUDED.is_active,
+         metadata_json = EXCLUDED.metadata_json,
+         updated_at = EXCLUDED.updated_at`,
+    );
+  }
+
+  async getScreenTimeSession(
+    agentId: string,
+    id: string,
+  ): Promise<LifeOpsScreenTimeSession | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_screen_time_sessions
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(id)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseScreenTimeSession(row) : null;
+  }
+
+  async finishScreenTimeSession(
+    agentId: string,
+    id: string,
+    endAt: string,
+    durationSeconds: number,
+  ): Promise<void> {
+    const now = isoNow();
+    await executeRawSql(
+      this.runtime,
+      `UPDATE life_screen_time_sessions
+          SET end_at = ${sqlQuote(endAt)},
+              duration_seconds = ${sqlInteger(durationSeconds)},
+              is_active = ${sqlBoolean(false)},
+              updated_at = ${sqlQuote(now)}
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(id)}`,
+    );
+  }
+
+  async listScreenTimeSessionsBetween(
+    agentId: string,
+    start: string,
+    end: string,
+    opts?: { source?: string; limit?: number },
+  ): Promise<LifeOpsScreenTimeSession[]> {
+    const clauses = [
+      `agent_id = ${sqlQuote(agentId)}`,
+      `start_at >= ${sqlQuote(start)}`,
+      `start_at < ${sqlQuote(end)}`,
+    ];
+    if (opts?.source) {
+      clauses.push(`source = ${sqlQuote(opts.source)}`);
+    }
+    const limitClause =
+      typeof opts?.limit === "number"
+        ? `LIMIT ${sqlInteger(opts.limit)}`
+        : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_screen_time_sessions
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY start_at ASC
+        ${limitClause}`,
+    );
+    return rows.map(parseScreenTimeSession);
+  }
+
+  async upsertScreenTimeDaily(row: LifeOpsScreenTimeDaily): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_screen_time_daily (
+         id, agent_id, source, identifier, date, total_seconds, session_count,
+         metadata_json, created_at, updated_at
+       ) VALUES (
+         ${sqlQuote(row.id)},
+         ${sqlQuote(row.agentId)},
+         ${sqlQuote(row.source)},
+         ${sqlQuote(row.identifier)},
+         ${sqlQuote(row.date)},
+         ${sqlInteger(row.totalSeconds)},
+         ${sqlInteger(row.sessionCount)},
+         ${sqlJson(row.metadata)},
+         ${sqlQuote(row.createdAt)},
+         ${sqlQuote(row.updatedAt)}
+       )
+       ON CONFLICT (agent_id, source, identifier, date) DO UPDATE SET
+         total_seconds = EXCLUDED.total_seconds,
+         session_count = EXCLUDED.session_count,
+         metadata_json = EXCLUDED.metadata_json,
+         updated_at = EXCLUDED.updated_at`,
+    );
+  }
+
+  async listScreenTimeDaily(
+    agentId: string,
+    date: string,
+    opts?: { source?: string; limit?: number },
+  ): Promise<LifeOpsScreenTimeDaily[]> {
+    const clauses = [
+      `agent_id = ${sqlQuote(agentId)}`,
+      `date = ${sqlQuote(date)}`,
+    ];
+    if (opts?.source) {
+      clauses.push(`source = ${sqlQuote(opts.source)}`);
+    }
+    const limitClause =
+      typeof opts?.limit === "number"
+        ? `LIMIT ${sqlInteger(opts.limit)}`
+        : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_screen_time_daily
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY total_seconds DESC
+        ${limitClause}`,
+    );
+    return rows.map(parseScreenTimeDaily);
+  }
+
+  async aggregateScreenTimeDailyForDate(
+    agentId: string,
+    date: string,
+  ): Promise<{ updated: number }> {
+    // Sessions counted when their start_at falls within the UTC day window.
+    const dayStart = `${date}T00:00:00.000Z`;
+    const dayEnd = `${date}T23:59:59.999Z`;
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT source,
+              identifier,
+              MAX(display_name) AS display_name,
+              SUM(duration_seconds) AS total_seconds,
+              COUNT(*) AS session_count
+         FROM life_screen_time_sessions
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND start_at >= ${sqlQuote(dayStart)}
+          AND start_at <= ${sqlQuote(dayEnd)}
+        GROUP BY source, identifier`,
+    );
+    const now = isoNow();
+    let updated = 0;
+    for (const row of rows) {
+      const rollup: LifeOpsScreenTimeDaily = {
+        id: crypto.randomUUID(),
+        agentId,
+        source: toText(row.source) as "app" | "website",
+        identifier: toText(row.identifier),
+        date,
+        totalSeconds: toNumber(row.total_seconds, 0),
+        sessionCount: toNumber(row.session_count, 0),
+        metadata: {
+          displayName: toText(row.display_name, toText(row.identifier)),
+        },
+        createdAt: now,
+        updatedAt: now,
+      };
+      await this.upsertScreenTimeDaily(rollup);
+      updated += 1;
+    }
+    return { updated };
+  }
+
+  // -----------------------------------------------------------------------
+  // Scheduling negotiations + proposals
+  // -----------------------------------------------------------------------
+
+  async upsertSchedulingNegotiation(
+    neg: LifeOpsSchedulingNegotiation,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_scheduling_negotiations (
+         id, agent_id, subject, relationship_id, duration_minutes, timezone,
+         state, accepted_proposal_id, started_at, finalized_at, metadata_json,
+         created_at, updated_at
+       ) VALUES (
+         ${sqlQuote(neg.id)},
+         ${sqlQuote(neg.agentId)},
+         ${sqlQuote(neg.subject)},
+         ${sqlText(neg.relationshipId)},
+         ${sqlInteger(neg.durationMinutes)},
+         ${sqlQuote(neg.timezone)},
+         ${sqlQuote(neg.state)},
+         ${sqlText(neg.acceptedProposalId)},
+         ${sqlQuote(neg.startedAt)},
+         ${sqlText(neg.finalizedAt)},
+         ${sqlJson(neg.metadata)},
+         ${sqlQuote(neg.createdAt)},
+         ${sqlQuote(neg.updatedAt)}
+       )
+       ON CONFLICT (id) DO UPDATE SET
+         subject = EXCLUDED.subject,
+         relationship_id = EXCLUDED.relationship_id,
+         duration_minutes = EXCLUDED.duration_minutes,
+         timezone = EXCLUDED.timezone,
+         state = EXCLUDED.state,
+         accepted_proposal_id = EXCLUDED.accepted_proposal_id,
+         finalized_at = EXCLUDED.finalized_at,
+         metadata_json = EXCLUDED.metadata_json,
+         updated_at = EXCLUDED.updated_at`,
+    );
+  }
+
+  async getSchedulingNegotiation(
+    agentId: string,
+    id: string,
+  ): Promise<LifeOpsSchedulingNegotiation | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_scheduling_negotiations
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(id)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseSchedulingNegotiation(row) : null;
+  }
+
+  async listSchedulingNegotiations(
+    agentId: string,
+    opts?: { state?: string; limit?: number },
+  ): Promise<LifeOpsSchedulingNegotiation[]> {
+    const clauses = [`agent_id = ${sqlQuote(agentId)}`];
+    if (opts?.state) {
+      clauses.push(`state = ${sqlQuote(opts.state)}`);
+    }
+    const limitClause =
+      typeof opts?.limit === "number"
+        ? `LIMIT ${sqlInteger(opts.limit)}`
+        : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_scheduling_negotiations
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY updated_at DESC
+        ${limitClause}`,
+    );
+    return rows.map(parseSchedulingNegotiation);
+  }
+
+  async updateSchedulingNegotiationState(
+    agentId: string,
+    id: string,
+    state: string,
+    finalizedAt?: string | null,
+  ): Promise<void> {
+    const now = isoNow();
+    const finalizedClause =
+      finalizedAt === undefined
+        ? ""
+        : `, finalized_at = ${sqlText(finalizedAt)}`;
+    await executeRawSql(
+      this.runtime,
+      `UPDATE life_scheduling_negotiations
+          SET state = ${sqlQuote(state)},
+              updated_at = ${sqlQuote(now)}${finalizedClause}
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(id)}`,
+    );
+  }
+
+  async upsertSchedulingProposal(
+    p: LifeOpsSchedulingProposal,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_scheduling_proposals (
+         id, agent_id, negotiation_id, start_at, end_at, proposed_by, status,
+         metadata_json, created_at, updated_at
+       ) VALUES (
+         ${sqlQuote(p.id)},
+         ${sqlQuote(p.agentId)},
+         ${sqlQuote(p.negotiationId)},
+         ${sqlQuote(p.startAt)},
+         ${sqlQuote(p.endAt)},
+         ${sqlQuote(p.proposedBy)},
+         ${sqlQuote(p.status)},
+         ${sqlJson(p.metadata)},
+         ${sqlQuote(p.createdAt)},
+         ${sqlQuote(p.updatedAt)}
+       )
+       ON CONFLICT (id) DO UPDATE SET
+         start_at = EXCLUDED.start_at,
+         end_at = EXCLUDED.end_at,
+         proposed_by = EXCLUDED.proposed_by,
+         status = EXCLUDED.status,
+         metadata_json = EXCLUDED.metadata_json,
+         updated_at = EXCLUDED.updated_at`,
+    );
+  }
+
+  async getSchedulingProposal(
+    agentId: string,
+    id: string,
+  ): Promise<LifeOpsSchedulingProposal | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_scheduling_proposals
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(id)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseSchedulingProposal(row) : null;
+  }
+
+  async listSchedulingProposals(
+    agentId: string,
+    negotiationId: string,
+  ): Promise<LifeOpsSchedulingProposal[]> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_scheduling_proposals
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND negotiation_id = ${sqlQuote(negotiationId)}
+        ORDER BY created_at ASC`,
+    );
+    return rows.map(parseSchedulingProposal);
+  }
+
+  async updateSchedulingProposalStatus(
+    agentId: string,
+    id: string,
+    status: string,
+  ): Promise<void> {
+    const now = isoNow();
+    await executeRawSql(
+      this.runtime,
+      `UPDATE life_scheduling_proposals
+          SET status = ${sqlQuote(status)},
+              updated_at = ${sqlQuote(now)}
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(id)}`,
+    );
+  }
+
+  // -----------------------------------------------------------------------
+  // Dossiers
+  // -----------------------------------------------------------------------
+
+  async upsertDossier(d: LifeOpsDossier): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_dossiers (
+         id, agent_id, calendar_event_id, subject, generated_for_at,
+         content_md, sources_json, metadata_json, created_at, updated_at
+       ) VALUES (
+         ${sqlQuote(d.id)},
+         ${sqlQuote(d.agentId)},
+         ${sqlText(d.calendarEventId)},
+         ${sqlQuote(d.subject)},
+         ${sqlQuote(d.generatedForAt)},
+         ${sqlQuote(d.contentMd)},
+         ${sqlJson(d.sources)},
+         ${sqlJson(d.metadata)},
+         ${sqlQuote(d.createdAt)},
+         ${sqlQuote(d.updatedAt)}
+       )
+       ON CONFLICT (id) DO UPDATE SET
+         calendar_event_id = EXCLUDED.calendar_event_id,
+         subject = EXCLUDED.subject,
+         generated_for_at = EXCLUDED.generated_for_at,
+         content_md = EXCLUDED.content_md,
+         sources_json = EXCLUDED.sources_json,
+         metadata_json = EXCLUDED.metadata_json,
+         updated_at = EXCLUDED.updated_at`,
+    );
+  }
+
+  async getDossier(
+    agentId: string,
+    id: string,
+  ): Promise<LifeOpsDossier | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_dossiers
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(id)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseDossier(row) : null;
+  }
+
+  async getDossierByCalendarEvent(
+    agentId: string,
+    calendarEventId: string,
+  ): Promise<LifeOpsDossier | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_dossiers
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND calendar_event_id = ${sqlQuote(calendarEventId)}
+        ORDER BY generated_for_at DESC
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseDossier(row) : null;
+  }
+
+  async listDossiers(
+    agentId: string,
+    opts?: { limit?: number },
+  ): Promise<LifeOpsDossier[]> {
+    const limitClause =
+      typeof opts?.limit === "number"
+        ? `LIMIT ${sqlInteger(opts.limit)}`
+        : "LIMIT 50";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_dossiers
+        WHERE agent_id = ${sqlQuote(agentId)}
+        ORDER BY generated_for_at DESC
+        ${limitClause}`,
+    );
+    return rows.map(parseDossier);
   }
 }
 

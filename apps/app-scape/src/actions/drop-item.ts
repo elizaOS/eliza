@@ -30,6 +30,7 @@ export const dropItem: Action = {
   name: "DROP_ITEM",
   description:
     "Drop an item from an inventory slot onto the ground at your feet. Useful when inventory is full or you don't need an item.",
+  descriptionCompressed: "Drop inventory item.",
   similes: ["DISCARD", "THROW_AWAY", "DUMP"],
   examples: [],
   validate: async (

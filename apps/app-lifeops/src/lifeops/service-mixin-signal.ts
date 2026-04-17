@@ -7,6 +7,7 @@ import type {
 } from "@elizaos/shared/contracts/lifeops";
 import {
   LIFEOPS_SIGNAL_CAPABILITIES,
+  capabilitiesForSide,
 } from "@elizaos/shared/contracts/lifeops";
 import { createLifeOpsConnectorGrant } from "./repository.js";
 import {
@@ -93,7 +94,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
         provider: "signal",
         identity: {},
         grantedScopes: [],
-        capabilities: [...LIFEOPS_SIGNAL_CAPABILITIES],
+        capabilities: capabilitiesForSide(LIFEOPS_SIGNAL_CAPABILITIES, resolvedSide),
         tokenRef: session.authDir,
         mode: "local",
         side: resolvedSide,

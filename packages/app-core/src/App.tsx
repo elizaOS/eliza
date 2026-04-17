@@ -56,7 +56,6 @@ import {
   BugReportProvider,
   useBugReportState,
   useContextMenu,
-  useLifeOpsActivitySignals,
   useStreamPopoutNavigation,
 } from "./hooks";
 import { useActivityEvents } from "./hooks/useActivityEvents";
@@ -292,14 +291,9 @@ export function App() {
     overlayAppActive && activeOverlayApp
       ? getOverlayApp(activeOverlayApp)
       : undefined;
-  const lifeOpsSignalsEnabled =
-    startupCoordinator.phase === "ready" &&
-    agentStatus?.state === "running" &&
-    backendConnection?.state === "connected";
   const contextMenu = useContextMenu();
 
   useStreamPopoutNavigation(setTab);
-  useLifeOpsActivitySignals(lifeOpsSignalsEnabled);
 
   useEffect(() => {
     if (startupCoordinator.phase !== "ready") return;

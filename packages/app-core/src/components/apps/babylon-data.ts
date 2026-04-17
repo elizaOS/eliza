@@ -3,7 +3,7 @@ import type {
   BabylonAgentStatus,
   BabylonChatMessage,
   BabylonTeamAgent,
-} from "../../api";
+} from "../../api/client-types-babylon";
 
 export interface BabylonTeamSummaryTotals {
   walletBalance: number;

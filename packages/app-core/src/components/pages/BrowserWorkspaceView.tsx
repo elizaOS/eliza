@@ -21,7 +21,7 @@ import {
   type BrowserWorkspaceWalletState,
   buildBrowserWorkspaceWalletState,
   isBrowserWorkspaceWalletRequest,
-} from "../../browser-workspace-wallet";
+} from "@elizaos/app-steward/browser-workspace-wallet";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { WidgetHost } from "../../widgets";

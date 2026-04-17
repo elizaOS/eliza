@@ -3264,6 +3264,7 @@ export const calendarAction: Action & {
     "DO NOT use this action for email inbox work, drafting or sending emails — use GMAIL_ACTION instead. " +
     "DO NOT use this action for personal habits, goals, routines, or reminders — use LIFE instead. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",
+  descriptionCompressed: "Google Calendar via LifeOps: view schedule, search events, create events, query travel. Not for email or habits.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message, state) => {
     if (!(await hasLifeOpsAccess(runtime, message))) {

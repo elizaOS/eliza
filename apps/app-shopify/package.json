@@ -6,6 +6,7 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./plugin": "./src/plugin.ts",
     "./register": "./src/register.ts",
     "./*": "./src/*"
   },

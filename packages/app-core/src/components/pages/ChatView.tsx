@@ -172,6 +172,16 @@ export function ChatView({
     null,
   );
 
+  // Auto-expand terminal when a session hits error or blocked status
+  useEffect(() => {
+    const problemSession = ptySessions.find(
+      (s) => s.status === "error" || s.status === "blocked",
+    );
+    if (problemSession && ptyDrawerSessionId !== problemSession.sessionId) {
+      setPtyDrawerSessionId(problemSession.sessionId);
+    }
+  }, [ptySessions, ptyDrawerSessionId]);
+
   // ── Coding agent preflight ──────────────────────────────────────
   const [codingAgentsAvailable, setCodingAgentsAvailable] = useState(false);
   useEffect(() => {
@@ -481,32 +491,31 @@ export function ChatView({
       />
     );
 
-  const activityNode = isGameModal ? (
+  const handleNewShellSession = useCallback(async () => {
+    try {
+      const { sessionId } = await client.spawnShellSession();
+      setPtyDrawerSessionId(sessionId);
+    } catch (err) {
+      console.error("[ChatView] Failed to spawn shell session:", err);
+    }
+  }, []);
+
+  const drawerProps = {
+    activeSessionId: ptyDrawerSessionId,
+    sessions: ptySessions,
+    onSessionClick: (id: string) =>
+      setPtyDrawerSessionId((prev) => (prev === id ? null : id)),
+    onNewSession: handleNewShellSession,
+    onClose: () => setPtyDrawerSessionId(null),
+  };
+
+  const terminalPanelNode = isGameModal ? (
     <div className="pointer-events-auto">
-      <AgentActivityBox
-        sessions={ptySessions}
-        onSessionClick={(id) =>
-          setPtyDrawerSessionId((prev) => (prev === id ? null : id))
-        }
-      />
+      <PtyConsoleDrawer {...drawerProps} />
     </div>
   ) : (
-    <AgentActivityBox
-      sessions={ptySessions}
-      onSessionClick={(id) =>
-        setPtyDrawerSessionId((prev) => (prev === id ? null : id))
-      }
-    />
+    <PtyConsoleDrawer {...drawerProps} />
   );
-
-  const drawerNode =
-    ptyDrawerSessionId && ptySessions.length > 0 ? (
-      <PtyConsoleDrawer
-        activeSessionId={ptyDrawerSessionId}
-        sessions={ptySessions}
-        onClose={() => setPtyDrawerSessionId(null)}
-      />
-    ) : null;
 
   const auxiliaryNode = (
     <>
@@ -679,9 +688,8 @@ export function ChatView({
       messagesRef={messagesRef}
       footerStack={
         <>
-          {activityNode}
-          {drawerNode}
           {auxiliaryNode}
+          {terminalPanelNode}
         </>
       }
       composer={composerNode}

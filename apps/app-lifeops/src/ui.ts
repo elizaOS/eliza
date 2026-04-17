@@ -1,3 +1,5 @@
+// Side-effect: register LifeOps + app-blocker methods on ElizaClient.
+import "./api/client-lifeops.ts";
 import "./client.ts";
 
 export type {

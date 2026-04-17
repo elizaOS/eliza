@@ -61,6 +61,7 @@ const examples: ActionExample[][] = [
 export const sendMessageAction: Action = {
 	name: "SEND_BLUEBUBBLES_MESSAGE",
 	description: "Send a message via iMessage through BlueBubbles",
+	descriptionCompressed: "Send iMessage via BlueBubbles.",
 	similes: [
 		"SEND_IMESSAGE",
 		"TEXT_MESSAGE",

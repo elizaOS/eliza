@@ -12,6 +12,7 @@ export const websiteBlockerProvider: Provider = {
   name: "websiteBlocker",
   description:
     "Admin-only provider for the local hosts-file website blocker integration",
+  descriptionCompressed: "Admin: hosts-file website blocker.",
   dynamic: true,
   get: async (
     runtime: IAgentRuntime,

@@ -8,7 +8,8 @@
   "exports": {
     "./package.json": "./package.json",
     ".": "./src/index.ts",
-    "./routes": "./src/routes.ts"
+    "./routes": "./src/routes.ts",
+    "./ui": "./src/ui/index.ts"
   },
   "keywords": [
     "game",
@@ -19,8 +20,10 @@
   ],
   "dependencies": {
     "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*",
     "@toon-format/toon": "2.1.0"
   },
   "agentConfig": {

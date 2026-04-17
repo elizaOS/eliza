@@ -275,6 +275,7 @@ export const blockWebsitesAction: Action = {
     "Admin-only. Start a local website block by editing the system hosts file. " +
     "Use recent conversation context to block public websites like x.com for a fixed duration or until manually unblocked. " +
     "If the user confirms a block in a follow-up message without repeating the hostnames, reuse the recent conversation context.",
+  descriptionCompressed: "Admin: block websites via hosts file for set duration.",
   validate: async (runtime, message) => {
     const access = await getSelfControlAccess(runtime, message);
     return (
@@ -432,6 +433,7 @@ export const getWebsiteBlockStatusAction: Action = {
   ],
   description:
     "Admin-only. Check whether a local hosts-file website block is currently active and when it ends.",
+  descriptionCompressed: "Admin: check website block status.",
   validate: async (runtime, message) => {
     const access = await getSelfControlAccess(runtime, message);
     return access.allowed;
@@ -489,6 +491,7 @@ export const requestWebsiteBlockingPermissionAction: Action = {
   ],
   description:
     "Admin-only. Prepare local website blocking by requesting administrator/root approval when the machine supports it, or explain the manual change needed when it does not.",
+  descriptionCompressed: "Admin: request website blocking permission.",
   validate: async (runtime, message) => {
     const access = await getSelfControlAccess(runtime, message);
     return access.allowed;
@@ -551,6 +554,7 @@ export const unblockWebsitesAction: Action = {
   ],
   description:
     "Admin-only. Remove the current local website block by restoring the system hosts file entries Eliza added.",
+  descriptionCompressed: "Admin: remove website block.",
   validate: async (runtime, message) => {
     const access = await getSelfControlAccess(runtime, message);
     return access.allowed;

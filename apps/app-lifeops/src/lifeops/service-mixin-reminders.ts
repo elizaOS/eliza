@@ -34,7 +34,7 @@ import {
   startSelfControlBlock,
   stopSelfControlBlock,
 } from "../website-blocker/engine.js";
-import { readProfileFromMetadata } from "@elizaos/agent/activity-profile/service";
+import { readProfileFromMetadata } from "../activity-profile/service.js";
 import {
   loadOwnerContactRoutingHints,
   loadOwnerContactsConfig,
@@ -75,6 +75,94 @@ import {
   sendTwilioSms,
   sendTwilioVoiceCall,
 } from "./twilio.js";
+import {
+  DEFAULT_MORNING_WINDOW,
+  DEFAULT_NIGHT_WINDOW,
+  getCurrentEnforcementWindow,
+  minutesPastWindowStart,
+  type EnforcementWindow,
+} from "./enforcement-windows.js";
+
+/**
+ * State computed once per reminder dispatch cycle describing whether
+ * the owner is inside a morning/night routine enforcement window and
+ * how far past the window start we are. Used to shorten escalation
+ * gaps and force alarm-level channels for routine occurrences.
+ */
+export interface ReminderEnforcementState {
+  window: EnforcementWindow;
+  minutesPastStart: number;
+  /** True if the definition represents a morning/night routine. */
+  definitionIsRoutine: boolean;
+  /** True if Twilio voice credentials are available for alarm escalation. */
+  twilioVoiceAvailable: boolean;
+}
+
+/**
+ * Given a "normal" delay in minutes between reminder steps and the
+ * current enforcement state, return the effective delay. Inside an
+ * active enforcement window for a routine definition, once more than
+ * 10 minutes have elapsed past the window start, the gap is halved.
+ */
+export function applyEnforcementOverrides(
+  normalDelayMinutes: number,
+  state: ReminderEnforcementState | null,
+): { delayMinutes: number; forceVoice: boolean } {
+  if (!state || state.window.kind === "none" || !state.definitionIsRoutine) {
+    return { delayMinutes: normalDelayMinutes, forceVoice: false };
+  }
+  let delay = normalDelayMinutes;
+  if (state.minutesPastStart > 10) {
+    delay = Math.max(1, Math.floor(normalDelayMinutes / 2));
+  }
+  const forceVoice =
+    state.twilioVoiceAvailable && state.minutesPastStart > 20;
+  return { delayMinutes: delay, forceVoice };
+}
+
+/**
+ * Determine whether a task/routine definition should trigger enforcement
+ * overrides inside a morning/night window.
+ */
+export function definitionTriggersEnforcement(
+  definition: Pick<LifeOpsTaskDefinition, "kind" | "metadata"> | null | undefined,
+): boolean {
+  if (!definition) return false;
+  if (definition.kind === "morning_routine" || definition.kind === "night_routine") {
+    return true;
+  }
+  const metadata = definition.metadata as
+    | Record<string, unknown>
+    | null
+    | undefined;
+  if (metadata && metadata.enforceRoutineWindow === true) return true;
+  return false;
+}
+
+/**
+ * Build the enforcement state for a dispatch. Callers pass the relevant
+ * definition (may be null for calendar events) and the owner's timezone.
+ */
+export function buildReminderEnforcementState(
+  now: Date,
+  timezone: string,
+  definition: Pick<LifeOpsTaskDefinition, "kind" | "metadata"> | null | undefined,
+  twilioVoiceAvailable: boolean,
+  windows?: EnforcementWindow[],
+): ReminderEnforcementState {
+  const window = getCurrentEnforcementWindow(
+    now,
+    timezone,
+    windows ?? [DEFAULT_MORNING_WINDOW, DEFAULT_NIGHT_WINDOW],
+  );
+  const minutesPast = minutesPastWindowStart(now, timezone, window);
+  return {
+    window,
+    minutesPastStart: minutesPast,
+    definitionIsRoutine: definitionTriggersEnforcement(definition),
+    twilioVoiceAvailable,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Local types
@@ -2097,6 +2185,12 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       if (delayMinutes === null) {
         return null;
       }
+      // TODO: wire enforcement overrides here — call
+      // buildReminderEnforcementState(now, timezone, definition, twilioVoiceAvailable)
+      // and applyEnforcementOverrides(delayMinutes, state) to shorten the gap
+      // for morning/night routine occurrences, and force a voice channel
+      // when state.forceVoice is true. Pipe the timezone + definition in via
+      // dispatchReminderAttempt args before enabling this path.
       const scheduledFor = addMinutes(
         new Date(previousAttempt.attemptedAt ?? previousAttempt.scheduledFor),
         delayMinutes,

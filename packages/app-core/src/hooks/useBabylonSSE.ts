@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BabylonActivityItem } from "../api/client-types";
+import type { BabylonActivityItem } from "../api/client-types-babylon";
 
 const MAX_ACTIVITY_ITEMS = 100;
 const RECONNECT_BASE_MS = 2_000;

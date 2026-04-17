@@ -11,10 +11,6 @@
  *
  * This module exports a boot hook that should be called early in the runtime
  * initialization, before plugins are loaded.
- *
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/services/steward-evm-bridge`.
- * New development should target the app-steward package.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";

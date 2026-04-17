@@ -7,6 +7,7 @@ export const worldKnowledgeProvider: Provider = {
   name: "RS_SDK_WORLD_KNOWLEDGE",
   description:
     "Game world knowledge: nearest bank, skill training recommendations, and important warnings.",
+  descriptionCompressed: "Nearest bank, skill training tips, warnings.",
 
   async get(
     runtime: IAgentRuntime,

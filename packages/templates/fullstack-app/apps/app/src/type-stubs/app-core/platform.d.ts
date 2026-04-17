@@ -1,8 +1,5 @@
 export function applyForceFreshOnboardingReset(): void;
 export function applyLaunchConnectionFromUrl(): Promise<boolean>;
-export function dispatchQueuedLifeOpsGithubCallbackFromUrl(
-  url?: string,
-): Promise<void>;
 export function installDesktopPermissionsClientPatch(client: unknown): void;
 export function installForceFreshOnboardingClientPatch(client: unknown): void;
 export function installLocalProviderCloudPreferencePatch(client: unknown): void;

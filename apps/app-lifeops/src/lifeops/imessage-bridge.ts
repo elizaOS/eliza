@@ -1,0 +1,602 @@
+/**
+ * iMessage bridge — dual-backend (`imsg` CLI or BlueBubbles HTTP API).
+ *
+ * Backend detection is lazy and cached per-config key. No network or
+ * subprocess work happens at import time.
+ */
+
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export type IMessageBackend = "imsg" | "bluebubbles" | "none";
+
+export interface IMessageBridgeConfig {
+  preferredBackend?: IMessageBackend;
+  bluebubblesUrl?: string;
+  bluebubblesPassword?: string;
+  imsgPath?: string;
+}
+
+export interface IMessageSendRequest {
+  to: string;
+  text: string;
+  attachmentPaths?: string[];
+}
+
+export interface IMessageRecord {
+  id: string;
+  fromHandle: string;
+  toHandles: string[];
+  text: string;
+  isFromMe: boolean;
+  sentAt: string;
+  chatId?: string;
+  attachments?: Array<{ name: string; mimeType?: string; path?: string }>;
+}
+
+export interface IMessageChat {
+  id: string;
+  name: string;
+  participants: string[];
+  lastMessageAt?: string;
+}
+
+export class IMessageBridgeError extends Error {
+  readonly backend: IMessageBackend;
+  readonly cause?: unknown;
+
+  constructor(message: string, backend: IMessageBackend, cause?: unknown) {
+    super(message);
+    this.name = "IMessageBridgeError";
+    this.backend = backend;
+    this.cause = cause;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Detection cache
+// ---------------------------------------------------------------------------
+
+const detectionCache = new Map<string, IMessageBackend>();
+
+function cacheKey(config?: IMessageBridgeConfig): string {
+  const c = config ?? {};
+  return [
+    c.preferredBackend ?? "",
+    c.bluebubblesUrl ?? "",
+    c.imsgPath ?? "",
+  ].join("|");
+}
+
+function resolveImsgBinary(config?: IMessageBridgeConfig): string {
+  return config?.imsgPath?.trim() || "imsg";
+}
+
+async function probeImsg(binary: string): Promise<boolean> {
+  try {
+    await execFileAsync(binary, ["--version"], { timeout: 3_000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function probeBlueBubbles(
+  url: string,
+  password?: string,
+): Promise<boolean> {
+  try {
+    const target = new URL("/api/v1/server/info", url);
+    if (password) target.searchParams.set("password", password);
+    const response = await fetch(target.toString(), {
+      method: "GET",
+      signal: AbortSignal.timeout(3_000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function detectIMessageBackend(
+  config?: IMessageBridgeConfig,
+): Promise<IMessageBackend> {
+  const key = cacheKey(config);
+  const cached = detectionCache.get(key);
+  if (cached !== undefined) return cached;
+
+  const preferred = config?.preferredBackend;
+  if (preferred === "none") {
+    detectionCache.set(key, "none");
+    return "none";
+  }
+
+  if (preferred === "imsg") {
+    const ok = await probeImsg(resolveImsgBinary(config));
+    const result: IMessageBackend = ok ? "imsg" : "none";
+    detectionCache.set(key, result);
+    return result;
+  }
+
+  if (preferred === "bluebubbles") {
+    if (!config?.bluebubblesUrl) {
+      detectionCache.set(key, "none");
+      return "none";
+    }
+    const ok = await probeBlueBubbles(
+      config.bluebubblesUrl,
+      config.bluebubblesPassword,
+    );
+    const result: IMessageBackend = ok ? "bluebubbles" : "none";
+    detectionCache.set(key, result);
+    return result;
+  }
+
+  // Auto-detect: try imsg first, then BlueBubbles.
+  if (await probeImsg(resolveImsgBinary(config))) {
+    detectionCache.set(key, "imsg");
+    return "imsg";
+  }
+
+  if (
+    config?.bluebubblesUrl &&
+    (await probeBlueBubbles(config.bluebubblesUrl, config.bluebubblesPassword))
+  ) {
+    detectionCache.set(key, "bluebubbles");
+    return "bluebubbles";
+  }
+
+  detectionCache.set(key, "none");
+  return "none";
+}
+
+/** Clear the backend detection cache. Mostly useful for tests. */
+export function clearIMessageBackendCache(): void {
+  detectionCache.clear();
+}
+
+// ---------------------------------------------------------------------------
+// imsg CLI backend
+// ---------------------------------------------------------------------------
+
+interface ImsgChatJson {
+  id?: string;
+  guid?: string;
+  name?: string;
+  displayName?: string;
+  participants?: string[];
+  lastMessageAt?: string;
+}
+
+interface ImsgMessageJson {
+  id?: string;
+  guid?: string;
+  from?: string;
+  fromHandle?: string;
+  to?: string[];
+  toHandles?: string[];
+  text?: string;
+  body?: string;
+  isFromMe?: boolean;
+  sentAt?: string;
+  date?: string;
+  chatId?: string;
+  chatGuid?: string;
+  attachments?: Array<{ name?: string; mimeType?: string; path?: string }>;
+}
+
+async function runImsg(
+  binary: string,
+  args: string[],
+): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync(binary, args, {
+      timeout: 15_000,
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    return stdout;
+  } catch (error) {
+    throw new IMessageBridgeError(
+      `imsg ${args[0] ?? ""} failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      "imsg",
+      error,
+    );
+  }
+}
+
+function parseImsgJson<T>(stdout: string, op: string): T {
+  const trimmed = stdout.trim();
+  if (!trimmed) {
+    throw new IMessageBridgeError(
+      `imsg ${op} produced empty output`,
+      "imsg",
+    );
+  }
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch (error) {
+    throw new IMessageBridgeError(
+      `imsg ${op} produced invalid JSON`,
+      "imsg",
+      error,
+    );
+  }
+}
+
+function normalizeImsgChat(raw: ImsgChatJson): IMessageChat {
+  const id = raw.id ?? raw.guid ?? "";
+  if (!id) {
+    throw new IMessageBridgeError(
+      "imsg chat missing id/guid",
+      "imsg",
+    );
+  }
+  return {
+    id,
+    name: raw.name ?? raw.displayName ?? id,
+    participants: Array.isArray(raw.participants) ? raw.participants : [],
+    lastMessageAt: raw.lastMessageAt,
+  };
+}
+
+function normalizeImsgMessage(raw: ImsgMessageJson): IMessageRecord {
+  const id = raw.id ?? raw.guid ?? "";
+  if (!id) {
+    throw new IMessageBridgeError(
+      "imsg message missing id/guid",
+      "imsg",
+    );
+  }
+  const sentAt = raw.sentAt ?? raw.date ?? new Date().toISOString();
+  return {
+    id,
+    fromHandle: raw.fromHandle ?? raw.from ?? "",
+    toHandles: raw.toHandles ?? raw.to ?? [],
+    text: raw.text ?? raw.body ?? "",
+    isFromMe: Boolean(raw.isFromMe),
+    sentAt,
+    chatId: raw.chatId ?? raw.chatGuid,
+    attachments: raw.attachments?.map((a) => ({
+      name: a.name ?? "",
+      mimeType: a.mimeType,
+      path: a.path,
+    })),
+  };
+}
+
+async function sendViaImsg(
+  req: IMessageSendRequest,
+  config?: IMessageBridgeConfig,
+): Promise<{ ok: true; messageId?: string }> {
+  const binary = resolveImsgBinary(config);
+  const args = ["send", req.to, req.text];
+  for (const path of req.attachmentPaths ?? []) {
+    args.push("--attachment", path);
+  }
+  args.push("--json");
+
+  const stdout = await runImsg(binary, args);
+  const trimmed = stdout.trim();
+  if (!trimmed) {
+    return { ok: true };
+  }
+  const parsed = parseImsgJson<{ id?: string; messageId?: string }>(
+    trimmed,
+    "send",
+  );
+  return { ok: true, messageId: parsed.messageId ?? parsed.id };
+}
+
+async function readViaImsg(
+  opts: { chatId?: string; since?: string; limit?: number },
+  config?: IMessageBridgeConfig,
+): Promise<IMessageRecord[]> {
+  const binary = resolveImsgBinary(config);
+  const args = ["read", "--json"];
+  if (opts.chatId) args.push("--chat", opts.chatId);
+  if (opts.since) args.push("--since", opts.since);
+  if (opts.limit !== undefined) args.push("--limit", String(opts.limit));
+
+  const stdout = await runImsg(binary, args);
+  const parsed = parseImsgJson<ImsgMessageJson[]>(stdout, "read");
+  if (!Array.isArray(parsed)) {
+    throw new IMessageBridgeError(
+      "imsg read expected JSON array",
+      "imsg",
+    );
+  }
+  return parsed.map(normalizeImsgMessage);
+}
+
+async function listChatsViaImsg(
+  config?: IMessageBridgeConfig,
+): Promise<IMessageChat[]> {
+  const binary = resolveImsgBinary(config);
+  const stdout = await runImsg(binary, ["chats", "--json"]);
+  const parsed = parseImsgJson<ImsgChatJson[]>(stdout, "chats");
+  if (!Array.isArray(parsed)) {
+    throw new IMessageBridgeError(
+      "imsg chats expected JSON array",
+      "imsg",
+    );
+  }
+  return parsed.map(normalizeImsgChat);
+}
+
+// ---------------------------------------------------------------------------
+// BlueBubbles HTTP API backend
+// ---------------------------------------------------------------------------
+
+interface BlueBubblesResponse<T> {
+  status: number;
+  message?: string;
+  data?: T;
+}
+
+interface BlueBubblesChat {
+  guid: string;
+  displayName?: string | null;
+  chatIdentifier?: string;
+  participants?: Array<{ address?: string; handle?: string }>;
+  lastMessage?: { dateCreated?: number };
+  lastMessageAt?: number;
+}
+
+interface BlueBubblesAttachment {
+  guid?: string;
+  transferName?: string;
+  mimeType?: string;
+  originalROI?: string;
+}
+
+interface BlueBubblesMessage {
+  guid: string;
+  text?: string | null;
+  handle?: { address?: string } | null;
+  chatGuid?: string;
+  chats?: Array<{ guid: string }>;
+  isFromMe?: boolean;
+  dateCreated?: number;
+  attachments?: BlueBubblesAttachment[];
+}
+
+function buildBlueBubblesUrl(
+  config: IMessageBridgeConfig,
+  pathname: string,
+  search?: Record<string, string>,
+): URL {
+  if (!config.bluebubblesUrl) {
+    throw new IMessageBridgeError(
+      "BlueBubbles URL not configured",
+      "bluebubbles",
+    );
+  }
+  const url = new URL(pathname, config.bluebubblesUrl);
+  if (config.bluebubblesPassword) {
+    url.searchParams.set("password", config.bluebubblesPassword);
+  }
+  if (search) {
+    for (const [k, v] of Object.entries(search)) {
+      url.searchParams.set(k, v);
+    }
+  }
+  return url;
+}
+
+async function bluebubblesRequest<T>(
+  config: IMessageBridgeConfig,
+  pathname: string,
+  init: RequestInit & { search?: Record<string, string> } = {},
+): Promise<T> {
+  const { search, ...requestInit } = init;
+  const url = buildBlueBubblesUrl(config, pathname, search);
+
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), {
+      ...requestInit,
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (error) {
+    throw new IMessageBridgeError(
+      `BlueBubbles request to ${pathname} failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      "bluebubbles",
+      error,
+    );
+  }
+
+  if (!response.ok) {
+    throw new IMessageBridgeError(
+      `BlueBubbles ${pathname} returned HTTP ${response.status}`,
+      "bluebubbles",
+    );
+  }
+
+  const body = (await response.json().catch(() => null)) as
+    | BlueBubblesResponse<T>
+    | null;
+  if (!body || typeof body !== "object") {
+    throw new IMessageBridgeError(
+      `BlueBubbles ${pathname} returned non-JSON body`,
+      "bluebubbles",
+    );
+  }
+  if (body.data === undefined) {
+    throw new IMessageBridgeError(
+      body.message ?? `BlueBubbles ${pathname} missing data`,
+      "bluebubbles",
+    );
+  }
+  return body.data;
+}
+
+function normalizeBlueBubblesChat(raw: BlueBubblesChat): IMessageChat {
+  return {
+    id: raw.guid,
+    name: raw.displayName ?? raw.chatIdentifier ?? raw.guid,
+    participants:
+      raw.participants
+        ?.map((p) => p.address ?? p.handle ?? "")
+        .filter((v) => v.length > 0) ?? [],
+    lastMessageAt:
+      typeof raw.lastMessageAt === "number"
+        ? new Date(raw.lastMessageAt).toISOString()
+        : typeof raw.lastMessage?.dateCreated === "number"
+          ? new Date(raw.lastMessage.dateCreated).toISOString()
+          : undefined,
+  };
+}
+
+function normalizeBlueBubblesMessage(raw: BlueBubblesMessage): IMessageRecord {
+  const chatId =
+    raw.chatGuid ??
+    (raw.chats && raw.chats.length > 0 ? raw.chats[0].guid : undefined);
+  return {
+    id: raw.guid,
+    fromHandle: raw.handle?.address ?? "",
+    toHandles: [],
+    text: raw.text ?? "",
+    isFromMe: Boolean(raw.isFromMe),
+    sentAt:
+      typeof raw.dateCreated === "number"
+        ? new Date(raw.dateCreated).toISOString()
+        : new Date().toISOString(),
+    chatId,
+    attachments: raw.attachments?.map((a) => ({
+      name: a.transferName ?? a.guid ?? "",
+      mimeType: a.mimeType ?? undefined,
+    })),
+  };
+}
+
+async function sendViaBlueBubbles(
+  req: IMessageSendRequest,
+  config: IMessageBridgeConfig,
+): Promise<{ ok: true; messageId?: string }> {
+  const result = await bluebubblesRequest<BlueBubblesMessage>(
+    config,
+    "/api/v1/message/text",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chatGuid: req.to,
+        message: req.text,
+        method: "apple-script",
+      }),
+    },
+  );
+  return { ok: true, messageId: result.guid };
+}
+
+async function readViaBlueBubbles(
+  opts: { chatId?: string; since?: string; limit?: number },
+  config: IMessageBridgeConfig,
+): Promise<IMessageRecord[]> {
+  const search: Record<string, string> = {};
+  if (opts.limit !== undefined) search.limit = String(opts.limit);
+  if (opts.since) {
+    const parsed = Date.parse(opts.since);
+    if (!Number.isFinite(parsed)) {
+      throw new IMessageBridgeError(
+        `Invalid "since" timestamp: ${opts.since}`,
+        "bluebubbles",
+      );
+    }
+    search.after = String(parsed);
+  }
+
+  const pathname = opts.chatId
+    ? `/api/v1/chat/${encodeURIComponent(opts.chatId)}/message`
+    : "/api/v1/message/query";
+
+  const data = await bluebubblesRequest<BlueBubblesMessage[]>(
+    config,
+    pathname,
+    { method: "GET", search },
+  );
+
+  if (!Array.isArray(data)) {
+    throw new IMessageBridgeError(
+      "BlueBubbles message list was not an array",
+      "bluebubbles",
+    );
+  }
+  return data.map(normalizeBlueBubblesMessage);
+}
+
+async function listChatsViaBlueBubbles(
+  config: IMessageBridgeConfig,
+): Promise<IMessageChat[]> {
+  const data = await bluebubblesRequest<BlueBubblesChat[]>(
+    config,
+    "/api/v1/chat/query",
+    { method: "GET" },
+  );
+  if (!Array.isArray(data)) {
+    throw new IMessageBridgeError(
+      "BlueBubbles chat list was not an array",
+      "bluebubbles",
+    );
+  }
+  return data.map(normalizeBlueBubblesChat);
+}
+
+// ---------------------------------------------------------------------------
+// Public dispatch
+// ---------------------------------------------------------------------------
+
+async function resolveActiveBackend(
+  config?: IMessageBridgeConfig,
+): Promise<IMessageBackend> {
+  const backend = await detectIMessageBackend(config);
+  if (backend === "none") {
+    throw new IMessageBridgeError(
+      "No iMessage backend available (imsg binary missing and BlueBubbles unreachable)",
+      "none",
+    );
+  }
+  return backend;
+}
+
+export async function sendIMessage(
+  req: IMessageSendRequest,
+  config?: IMessageBridgeConfig,
+): Promise<{ ok: true; messageId?: string }> {
+  const backend = await resolveActiveBackend(config);
+  if (backend === "imsg") {
+    return sendViaImsg(req, config);
+  }
+  return sendViaBlueBubbles(req, config ?? {});
+}
+
+export async function readIMessages(
+  opts: { chatId?: string; since?: string; limit?: number },
+  config?: IMessageBridgeConfig,
+): Promise<IMessageRecord[]> {
+  const backend = await resolveActiveBackend(config);
+  if (backend === "imsg") {
+    return readViaImsg(opts, config);
+  }
+  return readViaBlueBubbles(opts, config ?? {});
+}
+
+export async function listIMessageChats(
+  config?: IMessageBridgeConfig,
+): Promise<IMessageChat[]> {
+  const backend = await resolveActiveBackend(config);
+  if (backend === "imsg") {
+    return listChatsViaImsg(config);
+  }
+  return listChatsViaBlueBubbles(config ?? {});
+}

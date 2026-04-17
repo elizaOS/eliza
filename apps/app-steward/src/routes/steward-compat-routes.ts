@@ -1,13 +1,15 @@
 import type http from "node:http";
 import {
-  ensureCompatApiAuthorized,
-  type CompatRuntimeState,
   getConfiguredCompatAgentName,
   isLoopbackRemoteAddress,
   readCompatJsonBody,
+  type CompatRuntimeState,
+} from "@elizaos/app-core/api/compat-route-shared";
+import { ensureCompatApiAuthorized } from "@elizaos/app-core/api/auth";
+import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/api/response";
 import { logger } from "@elizaos/core";
 import { getWalletAddresses } from "../api/wallet";
 import {

@@ -73,6 +73,7 @@ import type { FormContextState } from "../types";
 export const formContextProvider: Provider = {
   name: "FORM_CONTEXT",
   description: "Provides context about active form sessions",
+  descriptionCompressed: "Active form session context.",
 
   /**
    * Get form context for the current message.

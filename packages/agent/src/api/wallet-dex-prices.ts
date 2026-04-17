@@ -3,10 +3,6 @@
  *
  * Fetches USD token prices from on-chain DEX aggregators.
  * Used by the wallet balance modules to annotate token rows with USD values.
- *
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/api/wallet-dex-prices`.
- * New development should target the app-steward package.
  */
 import { logger } from "@elizaos/core";
 

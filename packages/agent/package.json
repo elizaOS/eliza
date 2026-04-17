@@ -69,8 +69,6 @@
     "./diagnostics/*": "./src/diagnostics/*.ts",
     "./hooks": "./src/hooks/index.ts",
     "./hooks/*": "./src/hooks/*.ts",
-    "./lifeops": "./src/lifeops/index.ts",
-    "./lifeops/*": "./src/lifeops/*.ts",
     "./onboarding-presets": "./src/onboarding-presets.ts",
     "./plugins/custom-rtmp": "./src/plugins/custom-rtmp/index.ts",
     "./plugins/*": "./src/plugins/*/index.ts",
@@ -121,7 +119,6 @@
     "./actions/restart": "./src/actions/restart.ts",
     "./actions/send-message": "./src/actions/send-message.ts",
     "./runtime/release-plugin-policy": "./src/runtime/release-plugin-policy.ts",
-    "./activity-profile/*": "./src/activity-profile/*.ts",
     "./types/*": "./src/types/*.ts",
     "./test-utils/*": "./src/test-utils/*.ts",
     "./evals/*": "./src/evals/*.ts"
@@ -133,6 +130,7 @@
   "dependencies": {
     "@clack/prompts": "^1.0.0",
     "@elizaos/app-companion": "workspace:*",
+    "@elizaos/app-elizamaker": "workspace:*",
     "@elizaos/app-knowledge": "workspace:*",
     "@elizaos/app-lifeops": "workspace:*",
     "@elizaos/app-steward": "workspace:*",

@@ -30,6 +30,7 @@ export const remember: Action = {
   name: "REMEMBER",
   description:
     "Write a note to the Scape Journal. Use for lessons, landmarks, and things you want to remember next step.",
+  descriptionCompressed: "Write note to Scape Journal for future reference.",
   similes: ["NOTE", "LOG", "JOURNAL", "RECORD"],
   examples: [],
   validate: async (

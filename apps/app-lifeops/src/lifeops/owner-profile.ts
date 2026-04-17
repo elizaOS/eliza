@@ -19,6 +19,10 @@ export const LIFEOPS_OWNER_PROFILE_FIELDS = [
   "gender",
   "age",
   "location",
+  // T9f — Morning/night check-in engine (plan §6.23). HH:MM strings in the
+  // owner's local timezone; consumed by the check-in schedule resolver.
+  "morningCheckinTime",
+  "nightCheckinTime",
 ] as const;
 
 export type LifeOpsOwnerProfileField =
@@ -40,6 +44,8 @@ const DEFAULT_OWNER_PROFILE: LifeOpsOwnerProfile = {
   gender: "n/a",
   age: "n/a",
   location: "n/a",
+  morningCheckinTime: "",
+  nightCheckinTime: "",
   updatedAt: null,
 };
 
@@ -220,6 +226,160 @@ export async function readLifeOpsOwnerProfile(
   ]);
   const metadata = isRecord(task?.metadata) ? task.metadata : null;
   return resolveLifeOpsOwnerProfile(metadata, configuredName);
+}
+
+/**
+ * Meeting preferences — stored alongside the owner profile in the LifeOps
+ * scheduler task's metadata. Consumed by scheduling-with-others actions to
+ * propose candidate slots that respect the owner's working hours, blackout
+ * windows (e.g. lunch, focus blocks), and travel buffer.
+ */
+export interface LifeOpsMeetingPreferencesBlackout {
+  label: string;
+  /** Local time-of-day in "HH:MM" 24h format (inclusive). */
+  startLocal: string;
+  /** Local time-of-day in "HH:MM" 24h format (exclusive). */
+  endLocal: string;
+  /** 0=Sun..6=Sat. Omit for every day. */
+  daysOfWeek?: number[];
+}
+
+export interface LifeOpsMeetingPreferences {
+  timeZone: string;
+  preferredStartLocal: string;
+  preferredEndLocal: string;
+  defaultDurationMinutes: number;
+  travelBufferMinutes: number;
+  blackoutWindows: LifeOpsMeetingPreferencesBlackout[];
+  updatedAt: string | null;
+}
+
+export type LifeOpsMeetingPreferencesPatch = Partial<
+  Omit<LifeOpsMeetingPreferences, "updatedAt">
+>;
+
+const DEFAULT_MEETING_PREFERENCES: LifeOpsMeetingPreferences = {
+  timeZone: "America/Los_Angeles",
+  preferredStartLocal: "09:00",
+  preferredEndLocal: "17:00",
+  defaultDurationMinutes: 30,
+  travelBufferMinutes: 0,
+  blackoutWindows: [],
+  updatedAt: null,
+};
+
+const TIME_OF_DAY_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function normalizeTimeOfDay(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return TIME_OF_DAY_PATTERN.test(trimmed) ? trimmed : null;
+}
+
+function normalizeBlackoutWindow(
+  value: unknown,
+): LifeOpsMeetingPreferencesBlackout | null {
+  if (!isRecord(value)) return null;
+  const label = normalizeProfileValue(value.label, 60);
+  const startLocal = normalizeTimeOfDay(value.startLocal);
+  const endLocal = normalizeTimeOfDay(value.endLocal);
+  if (!label || !startLocal || !endLocal || startLocal >= endLocal) return null;
+  let daysOfWeek: number[] | undefined;
+  if (Array.isArray(value.daysOfWeek)) {
+    const filtered = value.daysOfWeek.filter(
+      (d): d is number => typeof d === "number" && d >= 0 && d <= 6,
+    );
+    if (filtered.length > 0) daysOfWeek = filtered;
+  }
+  return { label, startLocal, endLocal, ...(daysOfWeek ? { daysOfWeek } : {}) };
+}
+
+export function normalizeLifeOpsMeetingPreferencesPatch(
+  patch:
+    | Record<string, unknown>
+    | LifeOpsMeetingPreferencesPatch
+    | null
+    | undefined,
+): LifeOpsMeetingPreferencesPatch {
+  if (!patch || !isRecord(patch)) return {};
+  const out: LifeOpsMeetingPreferencesPatch = {};
+  if (typeof patch.timeZone === "string") {
+    const tz = patch.timeZone.trim();
+    if (tz.length > 0 && tz.length <= 64) out.timeZone = tz;
+  }
+  const s = normalizeTimeOfDay(patch.preferredStartLocal);
+  if (s) out.preferredStartLocal = s;
+  const e = normalizeTimeOfDay(patch.preferredEndLocal);
+  if (e) out.preferredEndLocal = e;
+  if (
+    typeof patch.defaultDurationMinutes === "number" &&
+    patch.defaultDurationMinutes >= 5 &&
+    patch.defaultDurationMinutes <= 480
+  ) {
+    out.defaultDurationMinutes = Math.floor(patch.defaultDurationMinutes);
+  }
+  if (
+    typeof patch.travelBufferMinutes === "number" &&
+    patch.travelBufferMinutes >= 0 &&
+    patch.travelBufferMinutes <= 240
+  ) {
+    out.travelBufferMinutes = Math.floor(patch.travelBufferMinutes);
+  }
+  if (Array.isArray(patch.blackoutWindows)) {
+    out.blackoutWindows = patch.blackoutWindows
+      .map(normalizeBlackoutWindow)
+      .filter(
+        (w): w is LifeOpsMeetingPreferencesBlackout => w !== null,
+      );
+  }
+  return out;
+}
+
+function resolveMeetingPreferences(
+  metadata: Record<string, unknown> | null | undefined,
+): LifeOpsMeetingPreferences {
+  const stored = isRecord(metadata?.meetingPreferences)
+    ? metadata.meetingPreferences
+    : null;
+  const normalized = normalizeLifeOpsMeetingPreferencesPatch(stored);
+  const updatedAt =
+    stored && typeof stored.updatedAt === "string"
+      ? normalizeProfileValue(stored.updatedAt, 64)
+      : null;
+  return { ...DEFAULT_MEETING_PREFERENCES, ...normalized, updatedAt };
+}
+
+export async function readLifeOpsMeetingPreferences(
+  runtime: IAgentRuntime,
+): Promise<LifeOpsMeetingPreferences> {
+  const task = await readLifeOpsSchedulerTask(runtime).catch(() => null);
+  const metadata = isRecord(task?.metadata) ? task.metadata : null;
+  return resolveMeetingPreferences(metadata);
+}
+
+export async function updateLifeOpsMeetingPreferences(
+  runtime: IAgentRuntime,
+  patch: LifeOpsMeetingPreferencesPatch | Record<string, unknown>,
+): Promise<LifeOpsMeetingPreferences | null> {
+  const normalizedPatch = normalizeLifeOpsMeetingPreferencesPatch(patch);
+  if (Object.keys(normalizedPatch).length === 0) return null;
+
+  const taskId = await ensureLifeOpsSchedulerTask(runtime);
+  const task = await readLifeOpsSchedulerTask(runtime).catch(() => null);
+  const metadata =
+    isRecord(task?.metadata) && task.id === taskId
+      ? task.metadata
+      : buildFallbackSchedulerMetadata(runtime.agentId);
+
+  const next: LifeOpsMeetingPreferences = {
+    ...resolveMeetingPreferences(metadata),
+    ...normalizedPatch,
+    updatedAt: new Date().toISOString(),
+  };
+  await runtime.updateTask(taskId, {
+    metadata: { ...(metadata ?? {}), meetingPreferences: next },
+  });
+  return next;
 }
 
 export async function updateLifeOpsOwnerProfile(

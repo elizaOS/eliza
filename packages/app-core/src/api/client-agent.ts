@@ -511,6 +511,7 @@ declare module "./client-base" {
       sessionId: string,
       name?: string,
     ): Promise<CodingAgentScratchWorkspace | null>;
+    spawnShellSession(workdir?: string): Promise<{ sessionId: string }>;
     subscribePtyOutput(sessionId: string): void;
     unsubscribePtyOutput(sessionId: string): void;
     sendPtyInput(sessionId: string, data: string): void;
@@ -1918,6 +1919,23 @@ ElizaClient.prototype.promoteCodingAgentScratchWorkspace = async function (
   } catch {
     return null;
   }
+};
+
+ElizaClient.prototype.spawnShellSession = async function (
+  this: ElizaClient,
+  workdir?: string,
+) {
+  const res = await this.fetch<{ session: { id: string } }>(
+    "/api/coding-agents/spawn",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        agentType: "shell",
+        ...(workdir ? { workdir } : {}),
+      }),
+    },
+  );
+  return { sessionId: res.session.id };
 };
 
 ElizaClient.prototype.subscribePtyOutput = function (
