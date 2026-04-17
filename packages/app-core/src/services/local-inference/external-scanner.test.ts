@@ -1,30 +1,31 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scanExternalModels } from "./external-scanner";
 
 /**
- * Point the scanner at a synthetic home directory so we exercise the real
- * directory walk without depending on the developer's actual LM Studio /
- * Jan / Ollama state.
+ * Redirects the scanner by overriding `$HOME` — `os.homedir()` honours
+ * that env on POSIX systems. Real filesystem, real walk, real manifest
+ * parsing — no mocks.
  */
-function withHomedir(tmpHome: string): () => void {
-  const spy = vi.spyOn(os, "homedir").mockReturnValue(tmpHome);
-  return () => spy.mockRestore();
-}
 
 describe("scanExternalModels", () => {
   let tmpHome: string;
-  let restore: () => void;
+  let origHome: string | undefined;
 
   beforeEach(async () => {
     tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "milady-scan-home-"));
-    restore = withHomedir(tmpHome);
+    origHome = process.env.HOME;
+    process.env.HOME = tmpHome;
   });
 
   afterEach(async () => {
-    restore();
+    if (origHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = origHome;
+    }
     await fs.rm(tmpHome, { recursive: true, force: true });
   });
 
