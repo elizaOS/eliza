@@ -175,7 +175,7 @@
     "drizzle-orm": "0.45.2",
     "ethers": "^6.16.0",
     "json5": "^2.2.3",
-    "lucide-react": "^0.575.0",
+    "lucide-react": "^0.577.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.6.0",
     "telegraf": "^4.16.3",
