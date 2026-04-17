@@ -22,6 +22,7 @@ import {
 } from "./action-selection-runner.ts";
 
 const BENCHMARK_REPORT_PATH = "action-benchmark-report.md";
+const BENCHMARK_TRAJECTORY_DIR = "action-benchmark-report";
 
 describe("action selection benchmark", () => {
   it(
@@ -41,6 +42,7 @@ describe("action selection benchmark", () => {
         const report = await runActionSelectionBenchmark({
           runtime,
           cases: ACTION_BENCHMARK_CASES,
+          trajectoryDir: BENCHMARK_TRAJECTORY_DIR,
         });
         const md = formatBenchmarkReportMarkdown(report);
         // Log to stdout so CI log aggregators pick it up.
