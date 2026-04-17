@@ -98,6 +98,7 @@ export {
 	unregisterTaskSchedulerRuntime,
 } from "./services/task-scheduler";
 export * from "./services/tool-policy";
+export * from "./services/optimized-prompt";
 export * from "./services/trajectories";
 // Export sessions utilities
 export * from "./sessions";
