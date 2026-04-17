@@ -268,6 +268,23 @@ parts:
       # trying to build the (now-removed) plugin-agent-orchestrator from source.
       bun install --ignore-scripts
 
+      # Inject tailwindcss into eliza/packages/app-core/node_modules so the
+      # Vite CSS pipeline can resolve @import "tailwindcss" from the app-core
+      # source tree during the snap production build.
+      mkdir -p eliza/packages/app-core/node_modules
+      if [ ! -d "eliza/packages/app-core/node_modules/tailwindcss" ]; then
+        TAILWIND_URL=$(npm view tailwindcss dist.tarball 2>/dev/null || true)
+        if [ -z "$TAILWIND_URL" ]; then
+          echo "Failed to resolve tailwindcss tarball URL" >&2
+          exit 1
+        fi
+        rm -rf /tmp/tw_extract
+        mkdir -p /tmp/tw_extract
+        curl -fsSL "$TAILWIND_URL" | tar xz -C /tmp/tw_extract
+        rm -rf eliza/packages/app-core/node_modules/tailwindcss
+        mv /tmp/tw_extract/package eliza/packages/app-core/node_modules/tailwindcss
+      fi
+
       # Fresh CI checkouts do not track generated protobuf JS output.
       if [ -d eliza/packages/schemas ] && [ -f eliza/packages/schemas/buf.gen.yaml ] && [ ! -f eliza/packages/typescript/src/types/generated/eliza/v1/agent_pb.js ]; then
         (
