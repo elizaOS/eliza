@@ -362,7 +362,7 @@ async function registerTrackCTrainingCrons(
     ]);
     await exportMod.registerTrajectoryExportCron(runtime);
     await scoringMod.registerSkillScoringCron(runtime);
-    triggerMod.registerTrainingTriggerService(
+    const triggerService = triggerMod.registerTrainingTriggerService(
       runtime as unknown as Parameters<
         typeof triggerMod.registerTrainingTriggerService
       >[0],
@@ -370,6 +370,23 @@ async function registerTrackCTrainingCrons(
     logger.info(
       "[eliza] Registered Track C training crons + auto-train trigger service",
     );
+    // Phase 5.5 — Hermes-parity default-on bootstrap. Fire-and-forget so
+    // runtime boot stays fast; the bootstrap helper short-circuits when
+    // counters are below threshold or an artifact already exists.
+    void triggerMod
+      .bootstrapOptimizationFromAccumulatedTrajectories(
+        runtime as unknown as Parameters<
+          typeof triggerMod.bootstrapOptimizationFromAccumulatedTrajectories
+        >[0],
+        triggerService,
+      )
+      .then((fired) => {
+        if (fired.length > 0) {
+          logger.info(
+            `[eliza] Bootstrapped prompt optimization for ${fired.join(", ")}`,
+          );
+        }
+      });
   } catch (err) {
     logger.warn(
       `[eliza] Skipped Track C training crons: ${err instanceof Error ? err.message : String(err)}`,

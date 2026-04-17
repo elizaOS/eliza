@@ -58,6 +58,7 @@ describe("assessFit", () => {
 
   it("on CPU-only x86, effective memory is half of RAM", () => {
     // 16 GB RAM, no GPU, non-Apple → effective 8 GB.
+    // Thresholds: 70% = 5.6, 90% = 7.2.
     const probe = makeProbe({
       totalRamGb: 16,
       appleSilicon: false,
@@ -65,7 +66,8 @@ describe("assessFit", () => {
       platform: "linux",
       gpu: null,
     });
-    expect(assessFit(probe, 5, 8)).toBe("tight");
+    expect(assessFit(probe, 5, 8)).toBe("fits"); // 5 < 5.6
+    expect(assessFit(probe, 6, 8)).toBe("tight"); // 5.6 < 6 < 7.2
     expect(assessFit(probe, 8, 8)).toBe("wontfit");
   });
 });
