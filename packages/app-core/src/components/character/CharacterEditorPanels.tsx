@@ -72,6 +72,12 @@ const TrashIconSvg = ({ className }: { className?: string }) => (
   </svg>
 );
 
+/* ── Shared styles for inline plus/trash buttons ─────────────────── */
+const inlineAddBtn =
+  "inline-flex items-center gap-1 text-3xs font-semibold text-accent/80 hover:text-accent hover:bg-accent/10 rounded px-1.5 py-1 -mx-1.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent";
+const inlineRemoveBtn =
+  "inline-flex items-center text-muted hover:text-danger hover:bg-danger/10 rounded p-1 -m-1 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-danger/50";
+
 /* ── Style section constants ─────────────────────────────────────── */
 const STYLE_SECTION_KEYS = ["all"] as const;
 const STYLE_SECTION_PLACEHOLDERS: Record<
@@ -376,6 +382,11 @@ export function CharacterStylePanel({
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
+        <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+          {t("charactereditor.StyleRulesHeader", {
+            defaultValue: "Style Rules",
+          })}
+        </span>
         <Button
           variant="ghost"
           size="icon"
@@ -453,7 +464,7 @@ export function CharacterStylePanel({
                     </div>
                   ))
                 ) : (
-                  <div className="px-0 py-1 text-xs-tight text-muted">
+                  <div className="rounded-md border border-dashed border-border/40 px-3 py-4 text-center text-xs-tight text-muted">
                     {t(STYLE_SECTION_EMPTY_STATES[key].key, {
                       defaultValue:
                         STYLE_SECTION_EMPTY_STATES[key].defaultValue,
@@ -481,7 +492,7 @@ export function CharacterStylePanel({
                 />
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 h-7 px-2 text-3xs font-semibold text-accent/80 hover:text-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className={inlineAddBtn}
                   onClick={() => handleAddStyleEntry(key)}
                   disabled={!pendingStyleEntries[key].trim()}
                   title={t("charactereditor.AddStyleRule", {
@@ -562,6 +573,7 @@ export function CharacterExamplesPanel({
                   </span>
                   <Input
                     value={msg.content?.text ?? ""}
+                    aria-label={`${msg.name === "{{user1}}" ? "User" : "Agent"} message, conversation ${ci + 1}, turn ${mi + 1}`}
                     onChange={(e) => {
                       const updated = [...normalizedMessageExamples];
                       const convoClone = {
@@ -581,7 +593,7 @@ export function CharacterExamplesPanel({
               <div className="mt-0.5 ml-[4.25rem] flex items-center justify-between">
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
+                  className={inlineAddBtn}
                   onClick={() => {
                     const agentName =
                       typeof d.name === "string" && d.name.trim()
@@ -609,7 +621,7 @@ export function CharacterExamplesPanel({
                 </button>
                 <button
                   type="button"
-                  className="inline-flex items-center text-muted hover:text-danger transition-colors"
+                  className={inlineRemoveBtn}
                   onClick={() => {
                     const updated = [...normalizedMessageExamples];
                     updated.splice(ci, 1);
@@ -626,7 +638,7 @@ export function CharacterExamplesPanel({
             </div>
           ))}
           {normalizedMessageExamples.length === 0 && (
-            <div className="px-0 py-1 text-xs-tight text-muted">
+            <div className="rounded-md border border-dashed border-border/40 px-3 py-4 text-center text-xs-tight text-muted">
               {t("charactereditor.NoChatExamples", {
                 defaultValue: "No chat examples yet.",
               })}
@@ -635,7 +647,7 @@ export function CharacterExamplesPanel({
         </div>
         <button
           type="button"
-          className="inline-flex items-center gap-1 self-start mt-1 text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
+          className={`${inlineAddBtn} self-start mt-1`}
           onClick={() => {
             const agentName =
               typeof d.name === "string" && d.name.trim()
@@ -700,6 +712,7 @@ export function CharacterExamplesPanel({
             >
               <Input
                 value={post}
+                aria-label={`Post example ${pi + 1}`}
                 onChange={(e) => {
                   const updated = [...(d.postExamples ?? [])];
                   updated[pi] = e.target.value;
@@ -726,7 +739,7 @@ export function CharacterExamplesPanel({
             </div>
           ))}
           {(d.postExamples ?? []).length === 0 && (
-            <div className="px-0 py-1 text-xs-tight text-muted">
+            <div className="rounded-md border border-dashed border-border/40 px-3 py-4 text-center text-xs-tight text-muted">
               {t("charactereditor.NoPostExamples", {
                 defaultValue: "No post examples yet.",
               })}
@@ -734,7 +747,7 @@ export function CharacterExamplesPanel({
           )}
           <button
             type="button"
-            className="inline-flex items-center gap-1 self-start mt-1 text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
+            className={`${inlineAddBtn} self-start mt-1`}
             onClick={() => {
               const updated = [...(d.postExamples ?? []), ""];
               handleFieldEdit("postExamples", updated);
