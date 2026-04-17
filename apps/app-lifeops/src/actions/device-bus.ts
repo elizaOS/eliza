@@ -59,15 +59,21 @@ function normalizeKind(kind: string | undefined): KnownKind | string | null {
   return lower;
 }
 
-export const publishDeviceIntentAction: Action = {
+export const publishDeviceIntentAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "PUBLISH_DEVICE_INTENT",
   similes: [
     "BROADCAST_DEVICE_INTENT",
     "FIRE_DEVICE_INTENT",
     "NOTIFY_ALL_DEVICES",
+    "SIGNATURE_REMINDER",
+    "MEETING_REMINDER_LADDER",
+    "DEVICE_WARNING",
   ],
   description:
     "Publish a cross-device intent (alarm, reminder, block, or custom) to the device bus so all paired devices can realize it. Use this for desktop+phone reminder ladders, multi-device meeting nudges, document-signing reminders, and urgent device-level escalation where the owner wants the same intent realized across paired devices. Standing 'if/when this happens, warn or remind me on my devices' policies should still use this action on the first turn.",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     return hasOwnerAccess(runtime, message);

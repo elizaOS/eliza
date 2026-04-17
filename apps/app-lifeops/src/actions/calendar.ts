@@ -2284,6 +2284,9 @@ export const calendarAction: Action & {
     "ITINERARY",
     "TRAVEL_SCHEDULE",
     "CHECK_SCHEDULE",
+    "BOOK_TIME_BLOCK",
+    "RECURRING_TIME_BLOCK",
+    "REBOOK_TRAVEL",
   ],
   description:
     "Interact with Google Calendar through LifeOps. " +

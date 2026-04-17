@@ -2431,7 +2431,7 @@ export const lifeAction: Action & {
     "USE this action for: creating, editing, or deleting tasks, habits, routines, and goals; " +
     "setting one-off alarms or wake-up reminders like 'set an alarm for 7am' or 'wake me up at 7'; " +
     "helping the user actually set up follow-through when they say things like 'help me brush my teeth every day', 'i keep forgetting x', or 'help me actually do it'; " +
-    "using LifeOps defaults for common routines when the user gives a natural window instead of an exact clock, like water reminders, stretch breaks, weekday-after-lunch Invisalign checks, or brushing when they wake up and before bed; " +
+    "using LifeOps defaults for common routines when the user gives a natural window instead of an exact clock, like water reminders, stretch breaks, weekday-after-lunch Invisalign checks, twice-weekly shave reminders, or brushing when they wake up and before bed; " +
     "marking items as complete, skipping, or snoozing them; reviewing goal progress; " +
     "setting up phone/SMS escalation channels; adjusting reminder frequency or intensity; " +
     "querying an overview of active LifeOps items. " +
@@ -4014,6 +4014,21 @@ export const lifeAction: Action & {
         name: "{{agentName}}",
         content: {
           text: 'I can set up a habit named "Brush teeth" for 8 am and 9 pm daily. Confirm and I\'ll save it.',
+          actions: ["LIFE"],
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Please remind me to shave twice a week.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'I can set up a "Shave" habit with a twice-weekly default cadence. Confirm and I\'ll save it.',
           actions: ["LIFE"],
         },
       },
