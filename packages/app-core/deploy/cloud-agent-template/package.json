@@ -8,7 +8,7 @@
   "dependencies": {
     "@elizaos/core": "2.0.0-alpha.139",
     "@elizaos/plugin-sql": "2.0.0-alpha.18",
-    "@elizaos/plugin-elizacloud": "2.0.0-alpha.7",
+    "@elizaos/plugin-elizacloud": "2.0.0-alpha.8",
     "tsx": "4.21.0"
   }
 }
