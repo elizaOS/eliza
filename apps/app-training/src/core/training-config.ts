@@ -36,7 +36,7 @@ export interface PerTaskOverride {
 }
 
 export interface TrainingConfig {
-  /** Auto-train enabled by default (Hermes-style default-on). */
+  /** Auto-train enabled by default. */
   autoTrain: boolean;
   /** Trajectory count per task that triggers a run. */
   triggerThreshold: number;

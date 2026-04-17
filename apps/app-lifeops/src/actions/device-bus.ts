@@ -66,7 +66,7 @@ export const publishDeviceIntentAction: Action = {
     "NOTIFY_ALL_DEVICES",
   ],
   description:
-    "Publish a cross-device intent (alarm, reminder, block, or custom) to the device bus so all paired devices can realize it.",
+    "Publish a cross-device intent (alarm, reminder, block, or custom) to the device bus so all paired devices can realize it. Use this for desktop+phone reminder ladders, multi-device meeting nudges, and urgent device-level escalation where the owner wants the same intent realized across paired devices.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     return hasOwnerAccess(runtime, message);

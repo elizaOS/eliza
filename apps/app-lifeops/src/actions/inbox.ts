@@ -148,8 +148,8 @@ async function resolveSubactionPlan(
     '{"subaction":"triage"|"digest"|"respond"|null,"shouldAct":true|false,"response":"string|null","target":"string|null","entryId":"string|null","confirmed":true|false|null}',
     "",
     "Choose triage for requests to scan new messages, unread items, or the current inbox.",
-    "Choose digest for requests to summarize, brief, recap, or review inbox activity.",
-    "Choose respond for requests to reply, draft, edit, approve, confirm, or send a reply to a message or person.",
+    "Choose digest for requests to summarize, brief, recap, review inbox activity, give a daily brief, rank urgent-vs-low items, or surface drafts awaiting sign-off.",
+    "Choose respond for requests to reply, draft, edit, approve, confirm, send a reply to a message or person, repair a missed call by drafting follow-up, or set up a group-chat handoff.",
     "If a pending draft exists and the current request clearly refers to sending, revising, or confirming it, choose respond even if the user does not restate the recipient.",
     "Set confirmed=true only when the user clearly approves sending the current pending draft right now.",
     "Set confirmed=false when the user is editing, hesitating, declining, or asking for more changes to the current draft.",
@@ -238,7 +238,10 @@ export const inboxAction: Action = {
   description:
     "Unified inbox management: triage new messages across all channels, " +
     "generate a daily digest summary, or draft/send a response to a triaged " +
-    "item. Subactions: triage, digest, respond. Admin/owner only.",
+    "item. Use this for executive-assistant daily briefs, urgent-vs-low " +
+    "priority inbox ranking, unread summaries, drafts awaiting sign-off, " +
+    "missed-call repair follow-up, and group-chat handoff coordination. " +
+    "Subactions: triage, digest, respond. Admin/owner only.",
   descriptionCompressed:
     "Unified inbox: triage messages, daily digest, draft/send responses. Admin only.",
 

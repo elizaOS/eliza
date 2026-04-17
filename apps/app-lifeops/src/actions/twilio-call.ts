@@ -310,7 +310,7 @@ export const callUserAction: Action = {
   name: "CALL_USER",
   similes: ["PHONE_USER", "CALL_OWNER", "DIAL_OWNER"],
   description:
-    "Place an outbound phone call to the agent owner via Twilio. Requires explicit confirmation (`confirmed: true`). Without confirmation the action returns a confirmation request instead of dialing.",
+    "Place an outbound phone call to the agent owner via Twilio. Use this when the assistant is blocked and needs real-time help from the owner, or when the owner explicitly asks to be called. Requires explicit confirmation (`confirmed: true`). Without confirmation the action returns a confirmation request instead of dialing.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     return hasOwnerAccess(runtime, message);
@@ -397,7 +397,7 @@ export const callExternalAction: Action = {
   name: "CALL_EXTERNAL",
   similes: ["PHONE_EXTERNAL", "DIAL_EXTERNAL", "CALL_THIRD_PARTY"],
   description:
-    "Place an outbound phone call to a third party via Twilio. Requires `confirmed: true` AND the recipient must appear in the configured allow-list.",
+    "Place an outbound phone call to a third party via Twilio. Use this for approved booking/reschedule/escalation calls to vendors or counterparties. Requires `confirmed: true` AND the recipient must appear in the configured allow-list.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     return hasOwnerAccess(runtime, message);

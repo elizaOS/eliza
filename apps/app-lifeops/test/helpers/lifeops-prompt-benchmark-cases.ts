@@ -325,18 +325,18 @@ function deriveSelfCareExpectation(scenario: ScenarioLike): BenchmarkExpectation
       );
 
   if (requiresConfirmation) {
+    const supportsBlockRule = /block\s+x|instagram|hacker news/iu.test(
+      firstMessageTurnText(scenario),
+    );
     return {
-      expectedAction: null,
-      acceptableActions: ["REPLY"],
-      forbiddenActions: [
-        "LIFE",
-        "CREATE_GOAL",
-        "CREATE_DEFINITION",
-        "BLOCK_UNTIL_TASK_COMPLETE",
-      ],
+      expectedAction: "LIFE",
+      acceptableActions: supportsBlockRule
+        ? ["BLOCK_UNTIL_TASK_COMPLETE"]
+        : [],
+      forbiddenActions: [],
       expectedOperation: isGoalScenario ? "create_goal" : "create_definition",
       notes:
-        "First-turn self-care request is a preview/clarification step. The assistant should reply or ask a follow-up question, not execute before confirmation.",
+        "First-turn self-care request should route through LIFE while staying in preview/clarification mode until the user explicitly confirms.",
     };
   }
 

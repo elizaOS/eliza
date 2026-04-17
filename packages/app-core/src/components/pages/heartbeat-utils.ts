@@ -103,11 +103,6 @@ export const emptyForm: TriggerFormState = {
   durationUnit: "hours",
 };
 
-/** @deprecated Use emptyForm directly. Kept for callers that use the function form. */
-export function emptyTriggerForm(): TriggerFormState {
-  return { ...emptyForm };
-}
-
 // ── Template types & storage ───────────────────────────────────────
 
 export interface HeartbeatTemplate {

@@ -14,6 +14,7 @@ import { useApp } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
 import { ActiveModelBar } from "./ActiveModelBar";
+import { DeviceBridgeStatusBar } from "./DeviceBridgeStatus";
 import { DownloadQueue } from "./DownloadQueue";
 import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
@@ -235,6 +236,7 @@ export function LocalInferencePanel() {
   return (
     <div className="flex flex-col gap-4">
       <HardwareBadge hardware={hub.hardware} />
+      <DeviceBridgeStatusBar />
       {mobile && (
         <div className="rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
           On-device inference on mobile requires the Milady native runtime

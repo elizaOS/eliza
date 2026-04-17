@@ -1,11 +1,6 @@
 /**
  * Provenance of a skill — distinguishes human-authored from agent-derived
  * skills, and tracks self-improvement signal across the closed learning loop.
- *
- * Track C of the Hermes-parity initiative seeds and refines skills from
- * successful trajectories. The provenance block carries the audit trail back
- * to the trajectory that produced or reinforced the skill, plus the most
- * recent eval score from the nightly skill-scoring cron.
  */
 export interface SkillProvenance {
   /** Whether the skill was authored by a human or derived by the agent. */

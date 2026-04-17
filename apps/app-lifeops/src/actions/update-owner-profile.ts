@@ -26,7 +26,8 @@ export const updateOwnerProfileAction: Action = {
   ],
   description:
     "Silently persist stable, owner-only LifeOps profile details when the canonical owner clearly states or confirms them. " +
-    "Use only for the owner, never for other contacts, and do not ask follow-up questions just to fill these fields.",
+    "Use only for the owner, never for other contacts, and do not ask follow-up questions just to fill these fields. " +
+    "This includes durable travel-booking preferences like airline preference, seat class, hotel chain, or room-type preferences when the owner clearly states them.",
   descriptionCompressed: "Persist stable owner profile details when stated/confirmed. Owner only.",
 
   validate: async (runtime, message) => {

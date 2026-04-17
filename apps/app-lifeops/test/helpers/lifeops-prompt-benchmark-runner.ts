@@ -5,10 +5,9 @@ import { flushTrajectoryWrites } from "../../../../packages/agent/src/runtime/tr
 import { ConversationHarness } from "../../../../packages/app-core/test/helpers/conversation-harness.ts";
 import { type LiveProviderName, selectLiveProvider } from "../../../../packages/app-core/test/helpers/live-provider.ts";
 import {
-  createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../../packages/app-core/test/helpers/real-runtime.ts";
-import { appLifeOpsPlugin } from "../../src/plugin.ts";
+import { createLifeOpsTestRuntime } from "./runtime.ts";
 import type {
   PromptBenchmarkCase,
   PromptBenchmarkRiskClass,
@@ -261,15 +260,15 @@ function selectPrimaryAction(actions: string[]): string | null {
   const normalized = uniqueStrings(actions).map((actionName) =>
     normalizeActionName(actionName),
   );
-  const firstNonPassive =
-    normalized.find(
-      (actionName) =>
-        actionName !== null && !PASSIVE_ACTIONS.has(actionName),
-    ) ?? null;
-  if (firstNonPassive) {
-    return firstNonPassive;
+  const nonPassive = normalized.filter(
+    (actionName): actionName is string =>
+      actionName !== null && !PASSIVE_ACTIONS.has(actionName),
+  );
+  const lastNonPassive = nonPassive[nonPassive.length - 1] ?? null;
+  if (lastNonPassive) {
+    return lastNonPassive;
   }
-  return normalized.find((actionName) => actionName !== null) ?? null;
+  return normalized[normalized.length - 1] ?? null;
 }
 
 function casePasses(result: PromptBenchmarkResult): boolean {
@@ -553,10 +552,9 @@ export async function createLifeOpsPromptBenchmarkRuntime(args?: {
     throw new Error("No live provider is configured for prompt benchmarking.");
   }
 
-  const runtimeResult = await createRealTestRuntime({
+  const runtimeResult = await createLifeOpsTestRuntime({
     withLLM: true,
     preferredProvider: provider.name,
-    plugins: [appLifeOpsPlugin],
   });
   if (!runtimeResult.providerName) {
     await runtimeResult.cleanup();

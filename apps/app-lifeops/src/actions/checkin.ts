@@ -29,7 +29,7 @@ export const runMorningCheckinAction: Action = {
     "MORNING_ROUTINE_CHECKIN",
   ],
   description:
-    "Run the morning check-in: assemble overdue todos, today's meetings, and yesterday's wins for the owner.",
+    "Run the morning check-in: assemble overdue todos, today's meetings, and yesterday's wins for the owner. Use this for a dedicated morning self-review/check-in, not for inbox daily briefs, unread cross-channel summaries, or reply workflows.",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message) => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -57,7 +57,7 @@ export const runNightCheckinAction: Action = {
   name: "RUN_NIGHT_CHECKIN",
   similes: ["NIGHT_CHECKIN", "START_NIGHT_CHECKIN", "EVENING_CHECKIN"],
   description:
-    "Run the night check-in: review today's meetings, completed wins, and any overdue todos for the owner.",
+    "Run the night check-in: review today's meetings, completed wins, and any overdue todos for the owner. Use this for a dedicated evening wrap-up, not for inbox daily briefs, unread cross-channel summaries, or reply workflows.",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message) => {
     if (!(await hasOwnerAccess(runtime, message))) {

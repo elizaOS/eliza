@@ -21,6 +21,11 @@ import type {
 } from "./definitions";
 
 export * from "./definitions";
+export {
+  DeviceBridgeClient,
+  type DeviceBridgeClientConfig,
+  startDeviceBridgeClient,
+} from "./device-bridge-client";
 
 // Dynamically imported so the adapter can be bundled into a desktop build
 // without pulling in native-only module resolution noise.
@@ -54,7 +59,10 @@ interface LlamaCppPluginLike {
   stopCompletion: (options: { contextId: number }) => Promise<void>;
   addListener: (
     event: string,
-    listener: (data: { token: string; completion_probabilities?: unknown[] }) => void,
+    listener: (data: {
+      token: string;
+      completion_probabilities?: unknown[];
+    }) => void,
   ) => Promise<PluginListenerHandle>;
 }
 
