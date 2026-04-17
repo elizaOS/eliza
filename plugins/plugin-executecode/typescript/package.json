@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-executecode",
-  "version": "2.0.0-alpha.0",
+  "version": "2.0.0-alpha.176",
   "description": "Run a JS/TS-style script that calls multiple agent actions sequentially through an in-process tools proxy.",
   "type": "module",
   "main": "dist/index.js",
