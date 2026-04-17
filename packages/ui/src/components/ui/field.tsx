@@ -1,3 +1,4 @@
+import * as LabelPrimitive from "@radix-ui/react-label";
 import * as React from "react";
 
 import { cn } from "../../lib/utils";
@@ -12,8 +13,8 @@ const Field = React.forwardRef<
 Field.displayName = "Field";
 
 const FieldLabel = React.forwardRef<
-  React.ElementRef<typeof Label>,
-  React.ComponentPropsWithoutRef<typeof Label> & {
+  React.ElementRef<typeof LabelPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root> & {
     variant?: "default" | "form" | "kicker";
   }
 >(({ className, variant = "default", ...props }, ref) => (
