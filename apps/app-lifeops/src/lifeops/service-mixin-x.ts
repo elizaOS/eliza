@@ -64,6 +64,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase
         identity:
           grant && Object.keys(grant.identity).length > 0 ? grant.identity : null,
         hasCredentials: Boolean(readXPosterCredentialsFromEnv()),
+        dmInbound: capabilities.includes("x.read"),
         grant,
       };
     }
