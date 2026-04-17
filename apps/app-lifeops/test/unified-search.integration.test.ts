@@ -101,6 +101,7 @@ async function seedMessage(input: SeedMessageInput): Promise<{
     channelId: `${input.platform}-channel`,
   });
 
+<<<<<<< HEAD
   const memory = {
     id: stringToUuid(`ws1-${input.platform}-${input.text}-${input.ageMs}`),
     agentId: runtime.agentId,
@@ -118,12 +119,30 @@ async function seedMessage(input: SeedMessageInput): Promise<{
   // distance rather than text scan.
   const embedded = await runtime.addEmbeddingToMemory(memory as never);
   await runtime.createMemory(embedded as never, "messages");
+=======
+  await runtime.createMemory(
+    {
+      id: stringToUuid(`ws1-${input.platform}-${input.text}-${input.ageMs}`),
+      agentId: runtime.agentId,
+      roomId,
+      entityId,
+      content: {
+        text: input.text,
+        source: input.platform,
+        name: input.speakerName,
+      },
+      createdAt: Date.now() - input.ageMs,
+    } as never,
+    "messages",
+  );
+>>>>>>> bdf15df89ab4932449d675342ccdac6c07c74560
 
   return { roomId, entityId };
 }
 
 beforeAll(async () => {
   setIsolatedEnv();
+<<<<<<< HEAD
   // withLLM registers the local embedding plugin so TEXT_EMBEDDING is
   // available even without an LLM API key. We don't need a provider for
   // the action path in this test — direct `query` param bypasses
@@ -131,6 +150,10 @@ beforeAll(async () => {
   const result = await createRealTestRuntime({
     plugins: [appLifeOpsPlugin],
     withLLM: true,
+=======
+  const result = await createRealTestRuntime({
+    plugins: [appLifeOpsPlugin],
+>>>>>>> bdf15df89ab4932449d675342ccdac6c07c74560
   });
   runtime = result.runtime;
   cleanup = result.cleanup;

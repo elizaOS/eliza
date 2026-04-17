@@ -721,6 +721,9 @@ export function usePluginsSkillsState({
     installSkillFromMarketplace,
     installSkillFromGithubUrl,
     uninstallMarketplaceSkill,
+    enableMarketplaceSkill,
+    disableMarketplaceSkill,
+    copyMarketplaceSkillSource,
 
     // Store state
     storePlugins,

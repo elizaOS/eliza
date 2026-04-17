@@ -43,7 +43,10 @@ import {
 } from "../lifeops/notifications-push.js";
 import {
   readXPosterCredentialsFromEnv,
+<<<<<<< HEAD
   sendXDm,
+=======
+>>>>>>> bdf15df89ab4932449d675342ccdac6c07c74560
 } from "../lifeops/x-poster.js";
 
 const ACTION_NAME = "CROSS_CHANNEL_SEND";
@@ -427,33 +430,123 @@ const CHANNEL_DISPATCHERS: Record<
       });
     }
   },
+<<<<<<< HEAD
   // target = recipient Twitter/X numeric user ID (not a @handle).
   // Requires X API v2 credentials with dm.write OAuth scope.
+=======
+  // target = recipient Twitter/X user ID or @handle.
+  // Requires X API v2 credentials with dm.write scope.
+>>>>>>> bdf15df89ab4932449d675342ccdac6c07c74560
   x_dm: async ({ channel, target, body }) => {
     const credentials = readXPosterCredentialsFromEnv();
     if (!credentials) {
       return {
+<<<<<<< HEAD
         text: "X (Twitter) is not configured. Set TWITTER_API_KEY, TWITTER_API_SECRET_KEY, TWITTER_ACCESS_TOKEN, and TWITTER_ACCESS_TOKEN_SECRET.",
+=======
+        text: "X (Twitter) is not configured. Set X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, and X_ACCESS_SECRET.",
+>>>>>>> bdf15df89ab4932449d675342ccdac6c07c74560
         success: false,
         values: { success: false, error: "X_NOT_CONFIGURED", channel },
         data: { actionName: ACTION_NAME, channel },
       };
     }
+<<<<<<< HEAD
     const participantId = target.replace(/^@/, "").trim();
     if (!participantId) {
       return {
         text: "X DM requires a target numeric user ID.",
+=======
+    // X API v2 DM send: POST /2/dm_conversations/with/:participant_id/messages
+    // Requires dm.write OAuth 1.0a scope on the access token.
+    const participantId = target.replace(/^@/, "").trim();
+    if (!participantId) {
+      return {
+        text: "X DM requires a target user ID or @handle.",
+>>>>>>> bdf15df89ab4932449d675342ccdac6c07c74560
         success: false,
         values: { success: false, error: "MISSING_TARGET", channel },
         data: { actionName: ACTION_NAME, channel },
       };
     }
+<<<<<<< HEAD
     const result = await sendXDm({ participantId, text: body, credentials });
     if (!result.ok) {
+=======
+    try {
+      // OAuth 1.0a signing for X API v2 DM endpoint.
+      const url = `https://api.twitter.com/2/dm_conversations/with/${encodeURIComponent(participantId)}/messages`;
+      // Build OAuth 1.0a Authorization header inline (no external dependency).
+      const oauthTimestamp = String(Math.floor(Date.now() / 1000));
+      const oauthNonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+      const bodyPayload = JSON.stringify({ text: body });
+
+      // The Authorization header for OAuth 1.0a requires HMAC-SHA1 signing.
+      // We import the `crypto` module at call time to avoid a top-level dep.
+      const { createHmac } = await import("node:crypto");
+      const params: Record<string, string> = {
+        oauth_consumer_key: credentials.apiKey,
+        oauth_nonce: oauthNonce,
+        oauth_signature_method: "HMAC-SHA1",
+        oauth_timestamp: oauthTimestamp,
+        oauth_token: credentials.accessToken,
+        oauth_version: "1.0",
+      };
+      const paramString = Object.entries(params)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join("&");
+      const signatureBase = [
+        "POST",
+        encodeURIComponent(url),
+        encodeURIComponent(paramString),
+      ].join("&");
+      const signingKey = `${encodeURIComponent(credentials.apiSecret)}&${encodeURIComponent(credentials.accessSecret)}`;
+      const signature = createHmac("sha1", signingKey)
+        .update(signatureBase)
+        .digest("base64");
+      const authHeader =
+        "OAuth " +
+        Object.entries({ ...params, oauth_signature: signature })
+          .map(([k, v]) => `${encodeURIComponent(k)}="${encodeURIComponent(v)}"`)
+          .join(", ");
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          "Content-Type": "application/json",
+        },
+        body: bodyPayload,
+        signal: AbortSignal.timeout(15_000),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => "");
+        return buildDispatchFailure({
+          channel,
+          target,
+          body,
+          error: `X API returned HTTP ${response.status}: ${errorBody}`,
+        });
+      }
+
+      const responseJson = (await response.json().catch(() => null)) as {
+        data?: { dm_conversation_id?: string; dm_event_id?: string };
+      } | null;
+      return buildDispatchSuccess({
+        channel,
+        target,
+        body,
+        result: responseJson?.data ?? null,
+      });
+    } catch (error) {
+>>>>>>> bdf15df89ab4932449d675342ccdac6c07c74560
       return buildDispatchFailure({
         channel,
         target,
         body,
+<<<<<<< HEAD
         error: result.error ?? "X DM dispatch failed",
       });
     }
@@ -466,6 +559,11 @@ const CHANNEL_DISPATCHERS: Record<
         dmEventId: result.dmEventId ?? null,
       },
     });
+=======
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+>>>>>>> bdf15df89ab4932449d675342ccdac6c07c74560
   },
 };
 
