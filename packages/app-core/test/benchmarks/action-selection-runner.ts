@@ -19,6 +19,7 @@ import {
   type AgentRuntime,
   ChannelType,
   createMessageMemory,
+  type Memory,
   type UUID,
 } from "@elizaos/core";
 
@@ -28,6 +29,14 @@ import {
   type TrajectoryRecord,
 } from "../helpers/trajectory-harness.ts";
 import type { ActionBenchmarkCase } from "./action-selection-cases.ts";
+
+export type ActionFailureMode =
+  | "passed"
+  | "validate_filtered"
+  | "llm_chose_reply"
+  | "llm_chose_other_action"
+  | "no_response"
+  | "error";
 
 export interface ActionBenchmarkResult {
   case: ActionBenchmarkCase;
@@ -39,6 +48,17 @@ export interface ActionBenchmarkResult {
   trajectory?: TrajectoryRecord;
   /** Path to per-case trajectory JSON file when written. */
   trajectoryPath?: string;
+  /**
+   * Categorized failure mode (or "passed"). Distinguishes the three real
+   * failure modes the team needs to debug action selection regressions.
+   */
+  failureMode?: ActionFailureMode;
+  /** Action names whose `validate()` returned false for this case's message. */
+  filteredActions?: string[];
+  /** Snapshot of the runtime's registered action names at benchmark start. */
+  registeredActions?: string[];
+  /** First ~200 chars of the agent reply, when available. */
+  responseText?: string;
 }
 
 export interface ActionBenchmarkLatencyStats {
@@ -117,6 +137,58 @@ interface TurnCapture {
 }
 
 /**
+ * After the runtime has handled a message, ask each registered action's
+ * `validate()` whether it would have accepted that message. Returns the names
+ * of actions that returned false (i.e. were filtered out before the LLM saw
+ * them). This is what distinguishes "action exists but was hidden" from "LLM
+ * picked wrong action".
+ */
+async function computeFilteredActions(
+  runtime: AgentRuntime,
+  message: Memory,
+): Promise<string[]> {
+  const filtered: string[] = [];
+  for (const action of runtime.actions) {
+    let ok = false;
+    try {
+      ok = await action.validate(runtime, message);
+    } catch {
+      // A throwing validator is effectively "filtered out" from the planner's
+      // perspective — count it the same way.
+      ok = false;
+    }
+    if (!ok) filtered.push(action.name);
+  }
+  return filtered;
+}
+
+function determineFailureMode(args: {
+  pass: boolean;
+  expected: string | null;
+  actual: string | null;
+  filtered: string[];
+  hadError: boolean;
+}): ActionFailureMode {
+  if (args.hadError) return "error";
+  if (args.pass) return "passed";
+  const actualNorm = normalizeActionName(args.actual);
+  const expectedNorm = normalizeActionName(args.expected);
+  if (actualNorm !== null && expectedNorm !== null && actualNorm === expectedNorm) {
+    return "passed";
+  }
+  if (actualNorm === null) {
+    if (
+      expectedNorm !== null &&
+      args.filtered.some((n) => normalizeActionName(n) === expectedNorm)
+    ) {
+      return "validate_filtered";
+    }
+    return "llm_chose_reply";
+  }
+  return "llm_chose_other_action";
+}
+
+/**
  * Run a single case against the runtime: register a one-shot hook that
  * captures the first action name delivered for this room, send the message,
  * wait for handling to complete (or timeout), and return the captured action.
@@ -126,6 +198,7 @@ async function runSingleCaseWithRecording(
   tc: ActionBenchmarkCase,
   timeoutMs: number,
   trajectoryDir: string | undefined,
+  registeredActions: string[],
 ): Promise<ActionBenchmarkResult> {
   const started = Date.now();
   const harness = new RecordingHarness(runtime, {
@@ -135,20 +208,45 @@ async function runSingleCaseWithRecording(
     force: true,
   });
   let firstAction: string | null = null;
+  let responseText: string | undefined;
   try {
     await harness.setup();
     const turn = await harness.send(tc.userMessage, { timeoutMs });
     const completed = turn.actions.find((a) => a.phase === "completed");
     firstAction = completed?.actionName ?? null;
+    responseText =
+      typeof turn.responseText === "string"
+        ? turn.responseText.slice(0, 200)
+        : undefined;
     const pass = caseMatches(
       firstAction,
       tc.expectedAction,
       tc.acceptableActions,
     );
+    const probeMessage = createMessageMemory({
+      id: crypto.randomUUID() as UUID,
+      entityId: crypto.randomUUID() as UUID,
+      roomId: crypto.randomUUID() as UUID,
+      content: {
+        text: tc.userMessage,
+        source: "benchmark",
+        channelType: ChannelType.DM,
+      },
+    });
+    const filteredActions = await computeFilteredActions(runtime, probeMessage);
+    const failureMode = determineFailureMode({
+      pass,
+      expected: tc.expectedAction,
+      actual: firstAction,
+      filtered: filteredActions,
+      hadError: false,
+    });
     harness.setMetadata("expectedAction", tc.expectedAction);
     harness.setMetadata("actualAction", firstAction);
     harness.setMetadata("pass", pass);
     harness.setMetadata("tags", tc.tags);
+    harness.setMetadata("failureMode", failureMode);
+    harness.setMetadata("filteredActions", filteredActions);
     const trajectory = harness.dumpTrajectory();
     let trajectoryPath: string | undefined;
     if (trajectoryDir) {
@@ -162,6 +260,10 @@ async function runSingleCaseWithRecording(
       latencyMs: Date.now() - started,
       trajectory,
       trajectoryPath,
+      failureMode,
+      filteredActions,
+      registeredActions,
+      responseText,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -173,6 +275,9 @@ async function runSingleCaseWithRecording(
       latencyMs: Date.now() - started,
       error: message,
       trajectory,
+      failureMode: "error",
+      registeredActions,
+      responseText,
     };
   } finally {
     await harness.cleanup();
