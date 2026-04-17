@@ -36,6 +36,7 @@ export interface ServiceTypeRegistry {
 	HOOKS: "hooks";
 	PAIRING: "pairing";
 	AGENT_EVENT: "agent_event";
+	OPTIMIZED_PROMPT: "optimized_prompt";
 	UNKNOWN: "unknown";
 }
 
@@ -125,6 +126,7 @@ export const ServiceType = {
 	PAIRING: "pairing",
 	AGENT_EVENT: "agent_event",
 	VOICE_CACHE: "voice_cache",
+	OPTIMIZED_PROMPT: "optimized_prompt",
 	UNKNOWN: "unknown",
 } as const;
 

@@ -17,6 +17,11 @@ import {
 } from "../prompts";
 import { isExplicitSelfModificationRequest } from "../should-respond";
 import {
+	OPTIMIZED_PROMPT_SERVICE,
+	type OptimizedPromptService,
+} from "./optimized-prompt";
+import { resolveOptimizedPrompt } from "./optimized-prompt-resolver";
+import {
 	getModelStreamChunkDeliveryDepth,
 	runWithStreamingContext,
 } from "../streaming-context";
@@ -2690,11 +2695,21 @@ export class DefaultMessageService implements IMessageService {
 			};
 			const shouldRespondState = prepareShouldRespondState(workingState);
 
+			const optimizedPromptService = runtime.getService<OptimizedPromptService>(
+				OPTIMIZED_PROMPT_SERVICE,
+			);
+			const baselineShouldRespond =
+				runtime.character.templates?.shouldRespondTemplate ||
+				shouldRespondTemplate;
+			const resolvedShouldRespondTemplate = resolveOptimizedPrompt(
+				optimizedPromptService,
+				"should_respond",
+				baselineShouldRespond,
+			);
+
 			const _shouldRespondPrompt = composePromptFromState({
 				state: shouldRespondState,
-				template:
-					runtime.character.templates?.shouldRespondTemplate ||
-					shouldRespondTemplate,
+				template: resolvedShouldRespondTemplate,
 			});
 
 			runtime.logger.debug(
@@ -2711,9 +2726,7 @@ export class DefaultMessageService implements IMessageService {
 			const responseObject = await runtime.dynamicPromptExecFromState({
 				state: shouldRespondState,
 				params: {
-					prompt:
-						runtime.character.templates?.shouldRespondTemplate ||
-						shouldRespondTemplate,
+					prompt: resolvedShouldRespondTemplate,
 					...(promptAttachments ? { attachments: promptAttachments } : {}),
 				},
 				schema: [
@@ -3042,8 +3055,15 @@ export class DefaultMessageService implements IMessageService {
 						imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
 					}
 
+					const optimizedMediaService =
+						runtime.getService<OptimizedPromptService>(OPTIMIZED_PROMPT_SERVICE);
+					const resolvedImagePrompt = resolveOptimizedPrompt(
+						optimizedMediaService,
+						"media_description",
+						imageDescriptionTemplate,
+					);
 					const response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
-						prompt: imageDescriptionTemplate,
+						prompt: resolvedImagePrompt,
 						imageUrl,
 					});
 
@@ -3713,10 +3733,18 @@ export class DefaultMessageService implements IMessageService {
 
 		// Resolve the template prompt once so it's available for both the primary
 		// call and any follow-up repair prompts (e.g. parameter repair).
-		const prompt =
-			overrides?.prompt ||
+		const optimizedResponseService =
+			runtime.getService<OptimizedPromptService>(OPTIMIZED_PROMPT_SERVICE);
+		const baselineResponseTemplate =
 			runtime.character.templates?.messageHandlerTemplate ||
 			messageHandlerTemplate;
+		const prompt =
+			overrides?.prompt ||
+			resolveOptimizedPrompt(
+				optimizedResponseService,
+				"response",
+				baselineResponseTemplate,
+			);
 
 		// Use dynamicPromptExecFromState for structured output with validation
 		setTrajectoryPurpose("response");
@@ -4226,12 +4254,20 @@ Output ONLY the continuation, starting immediately after the last character abov
 			accumulatedState.data.actionResults = traceActionResult;
 
 			// Use dynamicPromptExecFromState for structured decision output
+			const optimizedPlannerService =
+				runtime.getService<OptimizedPromptService>(OPTIMIZED_PROMPT_SERVICE);
+			const baselinePlannerTemplate =
+				runtime.character.templates?.multiStepDecisionTemplate ||
+				multiStepDecisionTemplate;
+			const resolvedPlannerTemplate = resolveOptimizedPrompt(
+				optimizedPlannerService,
+				"action_planner",
+				baselinePlannerTemplate,
+			);
 			const parsedStep = await runtime.dynamicPromptExecFromState({
 				state: accumulatedState,
 				params: {
-					prompt:
-						runtime.character.templates?.multiStepDecisionTemplate ||
-						multiStepDecisionTemplate,
+					prompt: resolvedPlannerTemplate,
 					...(promptAttachments ? { attachments: promptAttachments } : {}),
 				},
 				schema: [
