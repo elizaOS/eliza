@@ -19,12 +19,15 @@ export const repoSetupSteps = [
   "ensure-type-package-aliases.mjs",
   "scripts/setup-upstreams.mjs",
   "ensure-bundled-workspaces.mjs",
+  "ensure-shared-i18n-data.mjs",
   "ensure-skills.mjs",
   "scripts/sync-workspace-default-skills.mjs",
   "ensure-avatars.mjs",
   "link-browser-server.mjs",
   "link-external-plugins.mjs",
   "ensure-vision-deps.mjs",
+  "patch-deps.mjs",
+  "ensure-type-package-aliases.mjs",
 ];
 
 function resolveRepoSetupStepPath(repoRoot, step) {

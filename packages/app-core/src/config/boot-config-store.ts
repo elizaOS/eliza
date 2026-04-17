@@ -12,7 +12,7 @@ import type { ComponentType, ReactNode } from "react";
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/types";
 import type { CodingAgentSession } from "../api/client-types-cloud";
 import type {
   StewardApprovalActionResponse,
@@ -111,10 +111,8 @@ export interface CodingAgentTasksPanelProps {
 }
 
 export interface PtyConsoleDrawerProps {
-  activeSessionId: string | null;
+  activeSessionId: string;
   sessions: CodingAgentSession[];
-  onSessionClick: (sessionId: string) => void;
-  onNewSession: () => void;
   onClose: () => void;
 }
 
