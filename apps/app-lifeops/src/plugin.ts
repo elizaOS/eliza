@@ -113,6 +113,37 @@ import {
   registerFollowupTrackerWorker,
 } from "./followup/index.js";
 
+async function ensureTaskWithRetries(args: {
+  runtime: IAgentRuntime;
+  prefix: string;
+  label: string;
+  ensure: () => Promise<unknown>;
+  delays?: readonly number[];
+}): Promise<void> {
+  const delays = args.delays ?? [2_000, 5_000, 10_000];
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    try {
+      await args.ensure();
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (attempt < delays.length) {
+        args.runtime.logger?.warn?.(
+          `${args.prefix} ${args.label} init failed (attempt ${attempt + 1}/${delays.length + 1}), retrying in ${delays[attempt]}ms: ${message}`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+        continue;
+      }
+      args.runtime.logger?.error?.(
+        `${args.prefix} ${args.label} init failed after ${delays.length + 1} attempts: ${message}`,
+      );
+      throw error instanceof Error
+        ? error
+        : new Error(`${args.label} init failed: ${message}`);
+    }
+  }
+}
+
 const rawAppLifeOpsPlugin: Plugin = {
   name: "@elizaos/app-lifeops",
   description:
@@ -194,8 +225,9 @@ const rawAppLifeOpsPlugin: Plugin = {
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error(
-        `[lifeops] CRITICAL: Failed to bootstrap database schema — LifeOps queries will fail: ${msg}`,
+        `[lifeops] Failed to bootstrap database schema: ${msg}`,
       );
+      throw error instanceof Error ? error : new Error(msg);
     }
 
     setSelfControlPluginConfig(pluginConfig as SelfControlPluginConfig);
@@ -232,34 +264,18 @@ const rawAppLifeOpsPlugin: Plugin = {
     })();
     if (!proactiveAgentDisabled) {
       registerProactiveTaskWorker(runtime);
+      await ensureTaskWithRetries({
+        runtime,
+        prefix: "[proactive]",
+        label: "task",
+        ensure: async () => {
+          await ensureProactiveAgentTask(runtime);
+        },
+      });
     } else {
       runtime.logger?.info(
         "[proactive] Proactive agent task skipped — ELIZA_DISABLE_PROACTIVE_AGENT=1",
       );
-    }
-    if (!proactiveAgentDisabled) {
-      void (async () => {
-        const PROACTIVE_DELAYS = [2_000, 5_000, 10_000];
-        for (let attempt = 0; attempt <= PROACTIVE_DELAYS.length; attempt++) {
-          try {
-            await ensureProactiveAgentTask(runtime);
-            return;
-          } catch (error) {
-            const msg =
-              error instanceof Error ? error.message : String(error);
-            if (attempt < PROACTIVE_DELAYS.length) {
-              runtime.logger?.warn?.(
-                `[proactive] Task init failed (attempt ${attempt + 1}/${PROACTIVE_DELAYS.length + 1}), retrying in ${PROACTIVE_DELAYS[attempt]}ms: ${msg}`,
-              );
-              await new Promise((r) => setTimeout(r, PROACTIVE_DELAYS[attempt]));
-            } else {
-              runtime.logger?.error?.(
-                `[proactive] Task init failed after ${PROACTIVE_DELAYS.length + 1} attempts — proactive agent is NOT running: ${msg}`,
-              );
-            }
-          }
-        }
-      })();
     }
 
     // Register the follow-up tracker worker (T7c). computeOverdueFollowups
@@ -271,27 +287,14 @@ const rawAppLifeOpsPlugin: Plugin = {
 
     // Register the LifeOps scheduler task worker and ensure the scheduler task exists
     registerLifeOpsTaskWorker(runtime);
-    void (async () => {
-      const DELAYS = [2_000, 5_000, 10_000];
-      for (let attempt = 0; attempt <= DELAYS.length; attempt++) {
-        try {
-          await ensureLifeOpsSchedulerTask(runtime);
-          return;
-        } catch (error) {
-          const msg = error instanceof Error ? error.message : String(error);
-          if (attempt < DELAYS.length) {
-            runtime.logger?.warn?.(
-              `[lifeops] Scheduler task init failed (attempt ${attempt + 1}/${DELAYS.length + 1}), retrying in ${DELAYS[attempt]}ms: ${msg}`,
-            );
-            await new Promise((r) => setTimeout(r, DELAYS[attempt]));
-          } else {
-            runtime.logger?.error?.(
-              `[lifeops] Scheduler task init failed after ${DELAYS.length + 1} attempts — LifeOps scheduler is NOT running: ${msg}`,
-            );
-          }
-        }
-      }
-    })();
+    await ensureTaskWithRetries({
+      runtime,
+      prefix: "[lifeops]",
+      label: "scheduler task",
+      ensure: async () => {
+        await ensureLifeOpsSchedulerTask(runtime);
+      },
+    });
   },
   /**
    * Tear down everything `init` registered so `runtime.unloadPlugin(...)`

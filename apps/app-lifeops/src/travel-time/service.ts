@@ -131,7 +131,7 @@ export class TravelTimeService {
     const fetchImpl = this.deps.fetchImpl ?? globalFetch;
 
     const response = await safeFetch(fetchImpl, url);
-    if (!response.ok) {
+    if (response.ok === false) {
       return this.fallback(
         originAddress,
         destinationAddress,
@@ -139,7 +139,7 @@ export class TravelTimeService {
       );
     }
     const parsed = parseDistanceMatrix(response.body);
-    if (!parsed.ok) {
+    if (parsed.ok === false) {
       return this.fallback(originAddress, destinationAddress, parsed.reason);
     }
     return {

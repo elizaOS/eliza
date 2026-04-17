@@ -207,3 +207,33 @@ export interface LifeOpsIMessageConnectorStatus {
   lastCheckedAt: string | null;
   error: string | null;
 }
+
+export interface LifeOpsIMessageChat {
+  id: string;
+  name: string;
+  participants: string[];
+  lastMessageAt?: string;
+}
+
+export interface LifeOpsIMessageMessage {
+  id: string;
+  fromHandle: string;
+  toHandles: string[];
+  text: string;
+  isFromMe: boolean;
+  sentAt: string;
+  chatId?: string;
+  attachments?: Array<{ name: string; mimeType?: string; path?: string }>;
+}
+
+export interface GetLifeOpsIMessageMessagesRequest {
+  chatId?: string;
+  since?: string;
+  limit?: number;
+}
+
+export interface SendLifeOpsIMessageRequest {
+  to: string;
+  text: string;
+  attachmentPaths?: string[];
+}

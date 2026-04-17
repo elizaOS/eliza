@@ -1524,6 +1524,22 @@ export interface LifeOpsSignalConnectorStatus {
   grant: LifeOpsConnectorGrant | null;
 }
 
+export interface LifeOpsDiscordDmPreview {
+  channelId: string | null;
+  href: string | null;
+  label: string;
+  selected: boolean;
+  unread: boolean;
+  snippet: string | null;
+}
+
+export interface LifeOpsDiscordDmInboxStatus {
+  visible: boolean;
+  count: number;
+  selectedChannelId: string | null;
+  previews: LifeOpsDiscordDmPreview[];
+}
+
 export interface LifeOpsDiscordConnectorStatus {
   provider: "discord";
   side: LifeOpsConnectorSide;
@@ -1538,6 +1554,8 @@ export interface LifeOpsDiscordConnectorStatus {
     discriminator?: string;
     email?: string;
   } | null;
+  /** Whether the owner's DM inbox is visible inside the Discord tab right now. */
+  dmInbox: LifeOpsDiscordDmInboxStatus;
   grantedCapabilities: LifeOpsDiscordCapability[];
   lastError: string | null;
   /** Browser Workspace tab hosting Discord, when one exists. */
@@ -1581,6 +1599,41 @@ export interface LifeOpsTelegramConnectorStatus {
   managedCredentialsAvailable: boolean;
   storedCredentialsAvailable: boolean;
   grant: LifeOpsConnectorGrant | null;
+}
+
+export interface LifeOpsTelegramDialogSummary {
+  id: string;
+  title: string;
+  username: string | null;
+  lastMessageText: string | null;
+  lastMessageAt: string | null;
+  unreadCount: number;
+}
+
+export interface VerifyLifeOpsTelegramConnectorRequest {
+  side?: LifeOpsConnectorSide;
+  recentLimit?: number;
+  sendTarget?: string;
+  sendMessage?: string;
+}
+
+export interface VerifyLifeOpsTelegramConnectorResponse {
+  provider: "telegram";
+  side: LifeOpsConnectorSide;
+  verifiedAt: string;
+  read: {
+    ok: boolean;
+    error: string | null;
+    dialogCount: number;
+    dialogs: LifeOpsTelegramDialogSummary[];
+  };
+  send: {
+    ok: boolean;
+    error: string | null;
+    target: string;
+    message: string;
+    messageId: string | null;
+  };
 }
 
 export interface StartLifeOpsSignalPairingRequest {
