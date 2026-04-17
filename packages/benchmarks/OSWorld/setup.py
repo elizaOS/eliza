@@ -51,7 +51,7 @@ setup(
         "matplotlib~=3.7.4",
         "pynput~=1.7.6",
         "pyautogui~=0.9.54",
-        "psutil~=5.9.6",
+        "psutil~=7.2.2",
         "tqdm~=4.66.3",
         "pandas>=2.2,<2.3",
         "flask~=3.1.3",
