@@ -6,10 +6,6 @@
  *
  * DEX price oracle logic lives in ./wallet-dex-prices.ts
  * EVM balance + NFT fetching lives in ./wallet-evm-balance.ts
- *
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/api/wallet`.
- * New development should target the app-steward package.
  */
 import crypto from "node:crypto";
 import fs from "node:fs";

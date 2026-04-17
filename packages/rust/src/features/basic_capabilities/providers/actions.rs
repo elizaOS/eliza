@@ -13,6 +13,7 @@ use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 
+use super::prompt_compression::{compress_prompt_description, is_prompt_compression_enabled};
 use super::Provider;
 
 static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
@@ -27,6 +28,8 @@ struct ActionDocsRoot {
 struct ActionDoc {
     name: String,
     description: String,
+    #[serde(default, rename = "descriptionCompressed")]
+    description_compressed: Option<String>,
     #[serde(default)]
     similes: Vec<String>,
     #[serde(default)]
@@ -40,6 +43,8 @@ struct ActionDoc {
 struct ActionParameterDoc {
     name: String,
     description: String,
+    #[serde(default, rename = "descriptionCompressed")]
+    description_compressed: Option<String>,
     #[serde(default)]
     required: bool,
     schema: serde_json::Value,
@@ -140,6 +145,48 @@ fn format_action_parameters(params: &[ActionParameterDoc]) -> String {
     lines.join("; ")
 }
 
+fn format_action_parameters_compressed(params: &[ActionParameterDoc]) -> String {
+    if params.is_empty() {
+        return String::new();
+    }
+    let mut lines: Vec<String> = Vec::new();
+    for p in params {
+        let desc = p
+            .description_compressed
+            .as_deref()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| compress_prompt_description(&p.description));
+        let schema_str = format_schema(&p.schema);
+        let examples_str = if p.examples.is_empty() {
+            None
+        } else {
+            Some(format!(
+                "examples={}",
+                p.examples
+                    .iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<String>>()
+                    .join("|")
+            ))
+        };
+        let modifiers = examples_str.into_iter().collect::<Vec<String>>().join("; ");
+        let suffix = if modifiers.is_empty() {
+            String::new()
+        } else {
+            format!(" [{}]", modifiers)
+        };
+        lines.push(format!(
+            "{}{}:{}{} - {}",
+            p.name,
+            if p.required { "" } else { "?" },
+            schema_str,
+            suffix,
+            desc
+        ));
+    }
+    lines.join("; ")
+}
+
 /// Provider for available actions.
 pub struct ActionsProvider;
 
@@ -215,16 +262,31 @@ impl Provider for ActionsProvider {
             "actions",
         );
 
+        let use_compression = is_prompt_compression_enabled(runtime);
+
         for a in shuffled_descriptions.iter() {
             let doc = docs_by_name.get(&a.name);
-            let mut line = if let Some(d) = doc {
-                format!("- {}: {}", a.name, d.description)
+            let prompt_desc = if use_compression {
+                if let Some(d) = doc {
+                    d.description_compressed
+                        .clone()
+                        .unwrap_or_else(|| compress_prompt_description(&d.description))
+                } else {
+                    compress_prompt_description(&a.description)
+                }
+            } else if let Some(d) = doc {
+                d.description.clone()
             } else {
-                format!("- {}: {}", a.name, a.description)
+                a.description.clone()
             };
+            let mut line = format!("- {}: {}", a.name, prompt_desc);
             if let Some(d) = doc {
                 if !d.parameters.is_empty() {
-                    let params_text = format_action_parameters(&d.parameters);
+                    let params_text = if use_compression {
+                        format_action_parameters_compressed(&d.parameters)
+                    } else {
+                        format_action_parameters(&d.parameters)
+                    };
                     if !params_text.is_empty() {
                         line.push_str(&format!("\n  params[{}]: ", d.parameters.len()));
                         line.push_str(&params_text);

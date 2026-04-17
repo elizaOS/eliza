@@ -13,11 +13,15 @@
  */
 
 import {
+  canonicalKeyName,
   commandExists,
   currentPlatform,
   escapeAppleScript,
   runCommand,
   safeXdotoolKey,
+  toCliclickKeyName,
+  toWindowsSendKey,
+  toXdotoolKeyName,
   validateInt,
   validateKeypress,
   validateText,
@@ -456,7 +460,7 @@ export function desktopKeyPress(key: string): void {
 
   if (os === "darwin") {
     if (commandExists("cliclick")) {
-      runCommand("cliclick", [`kp:${safeKey}`], 5000);
+      runCommand("cliclick", [`kp:${toCliclickKeyName(safeKey)}`], 5000);
     } else {
       // Map common key names to macOS key codes
       const keyCodes: Record<string, number> = {
@@ -468,7 +472,7 @@ export function desktopKeyPress(key: string): void {
         f1: 122, f2: 120, f3: 99, f4: 118, f5: 96, f6: 97,
         f7: 98, f8: 100, f9: 101, f10: 109, f11: 103, f12: 111,
       };
-      const normalized = safeKey.trim().toLowerCase();
+      const normalized = canonicalKeyName(safeKey);
       const code = keyCodes[normalized];
       if (code !== undefined) {
         runCommand(
@@ -486,10 +490,10 @@ export function desktopKeyPress(key: string): void {
     }
   } else if (os === "linux") {
     requireXdotool();
-    const xKey = safeXdotoolKey(safeKey);
+    const xKey = safeXdotoolKey(toXdotoolKeyName(safeKey));
     runCommand("xdotool", ["key", xKey], 5000);
   } else if (os === "win32") {
-    const escaped = safeKey.replace(/'/g, "''");
+    const escaped = toWindowsSendKey(safeKey).replace(/'/g, "''");
     runCommand(
       "powershell",
       [

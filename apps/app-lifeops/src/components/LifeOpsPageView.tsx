@@ -1,18 +1,18 @@
 import { Button, PagePanel } from "@elizaos/app-core";
 import { client, type CloudOAuthConnection } from "@elizaos/app-core";
+import { isWebPlatform } from "@elizaos/app-core";
+import { useApp } from "@elizaos/app-core";
+import { openExternalUrl } from "@elizaos/app-core";
 import {
   LIFEOPS_GITHUB_CALLBACK_EVENT,
   type LifeOpsGithubCallbackDetail,
-} from "@elizaos/app-core";
+} from "../events/index.js";
 import {
   consumeQueuedLifeOpsGithubCallback,
   dispatchLifeOpsGithubCallbackFromWindowMessage,
   drainLifeOpsGithubCallbacks,
-  isWebPlatform,
-} from "@elizaos/app-core";
-import { useLifeOpsAppState } from "@elizaos/app-core";
-import { useApp } from "@elizaos/app-core";
-import { openExternalUrl } from "@elizaos/app-core";
+} from "../platform/lifeops-github.js";
+import { useLifeOpsAppState } from "../hooks/useLifeOpsAppState.js";
 import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";

@@ -58,6 +58,7 @@ export const updateOwnerProfileAction: Action = {
   description:
     "Silently persist stable, owner-only LifeOps profile details when the canonical owner clearly states or confirms them. " +
     "Use only for the owner, never for other contacts, and do not ask follow-up questions just to fill these fields.",
+  descriptionCompressed: "Persist stable owner profile details when stated/confirmed. Owner only.",
 
   validate: async (runtime, message) => {
     return hasOwnerAccess(runtime, message);
@@ -132,37 +133,44 @@ export const updateOwnerProfileAction: Action = {
     {
       name: "name",
       description: "The owner's preferred name.",
+
       schema: { type: "string" as const },
     },
     {
       name: "relationshipStatus",
       description:
         "Relationship status such as single, partnered, married, or n/a.",
+
       schema: { type: "string" as const },
     },
     {
       name: "partnerName",
       description: "Partner's name when known, otherwise omit or use n/a.",
+
       schema: { type: "string" as const },
     },
     {
       name: "orientation",
       description: "Owner orientation when clearly stated.",
+
       schema: { type: "string" as const },
     },
     {
       name: "gender",
       description: "Owner gender when clearly stated.",
+
       schema: { type: "string" as const },
     },
     {
       name: "age",
       description: "Owner age or stable age descriptor when clearly stated.",
+
       schema: { type: "string" as const },
     },
     {
       name: "location",
       description: "Owner location when clearly stated.",
+
       schema: { type: "string" as const },
     },
   ],

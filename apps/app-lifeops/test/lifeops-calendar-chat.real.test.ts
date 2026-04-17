@@ -18,9 +18,9 @@ import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  createRealTestRuntime,
+  createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../../test/helpers/real-runtime";
+} from "./helpers/runtime.js";
 import { saveEnv } from "../../../../test/helpers/test-utils";
 import { resolveOAuthDir } from "@elizaos/agent/config/paths";
 import {
@@ -253,7 +253,7 @@ describe("life-ops calendar data layer (real PGLite)", () => {
     process.env.ELIZA_STATE_DIR = stateDir;
     process.env.ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID = "test-client";
 
-    testResult = await createRealTestRuntime({ characterName: AGENT_ID });
+    testResult = await createLifeOpsTestRuntime({ characterName: AGENT_ID });
     runtime = testResult.runtime;
     repository = new LifeOpsRepository(runtime);
 

@@ -19,9 +19,9 @@ import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { selectLiveProvider } from "../../../../test/helpers/live-provider";
 import {
-  createRealTestRuntime,
+  createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../../test/helpers/real-runtime";
+} from "./helpers/runtime.js";
 import { lifeAction } from "../src/actions/life.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
 
@@ -56,7 +56,7 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
   let service: LifeOpsService;
 
   beforeAll(async () => {
-    testResult = await createRealTestRuntime({ withLLM: true });
+    testResult = await createLifeOpsTestRuntime({ withLLM: true });
     runtime = testResult.runtime;
     service = new LifeOpsService(runtime);
   }, 180_000);

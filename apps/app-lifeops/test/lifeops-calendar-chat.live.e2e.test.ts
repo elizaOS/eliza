@@ -16,9 +16,9 @@ import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  createRealTestRuntime,
+  createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../../test/helpers/real-runtime";
+} from "./helpers/runtime.js";
 import { selectLiveProvider } from "../../../../test/helpers/live-provider";
 import { saveEnv } from "../../../../test/helpers/test-utils";
 import { calendarAction } from "../src/actions/calendar.js";
@@ -384,7 +384,7 @@ describeWithLLM("life-ops calendar chat (real LLM)", () => {
     process.env.ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID =
       "lifeops-calendar-chat-client";
 
-    testResult = await createRealTestRuntime({
+    testResult = await createLifeOpsTestRuntime({
       withLLM: true,
       characterName: AGENT_ID,
     });
@@ -409,8 +409,6 @@ describeWithLLM("life-ops calendar chat (real LLM)", () => {
       runtime,
       "can you tell me whats on my schedule tomorrow",
     );
-
-    console.log("[CAL-DEBUG] result:", JSON.stringify(result, null, 2));
 
     expect(result).toBeTruthy();
     expect(result?.success).toBe(true);

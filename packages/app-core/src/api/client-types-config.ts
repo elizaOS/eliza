@@ -447,9 +447,7 @@ export interface WorkbenchOverview {
   };
 }
 
-export interface LifeOpsOccurrenceActionResult {
-  occurrence: LifeOpsOccurrenceView;
-}
+export type { LifeOpsOccurrenceActionResult } from "@elizaos/shared/contracts/lifeops";
 
 // Voice / TTS config
 export type VoiceProvider = "elevenlabs" | "simple-voice" | "edge";

@@ -14,7 +14,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { fetchConfiguredOwnerName } from "../lifeops/owner-profile.js";
+import { fetchConfiguredOwnerName } from "@elizaos/app-lifeops/lifeops/owner-profile";
 import { hasOwnerAccess } from "../security/access.js";
 
 export function createUserNameProvider(): Provider {

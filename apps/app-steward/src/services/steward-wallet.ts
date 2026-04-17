@@ -7,7 +7,7 @@ import type {
   StewardSignRequest,
   StewardSignResponse,
   StewardStatusResponse,
-} from "@elizaos/shared/contracts/wallet";
+} from "../types/steward";
 import { getWalletAddresses } from "../api/wallet";
 
 const DEFAULT_TIMEOUT_MS = 12_000;

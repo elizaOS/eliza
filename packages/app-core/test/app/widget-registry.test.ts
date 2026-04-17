@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+// Side-effect import registers lifeops widgets into the app-core registry.
+import "@elizaos/app-lifeops/widgets";
 import { resolveWidgetsForSlot } from "../../src/widgets/registry";
 import type { PluginWidgetDeclaration } from "../../src/widgets/types";
 

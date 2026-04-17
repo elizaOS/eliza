@@ -4,7 +4,7 @@ import type {
   LifeOpsDiscordCapability,
   LifeOpsDiscordConnectorStatus,
 } from "@elizaos/shared/contracts/lifeops";
-import { LIFEOPS_DISCORD_CAPABILITIES } from "@elizaos/shared/contracts/lifeops";
+import { LIFEOPS_DISCORD_CAPABILITIES, capabilitiesForSide } from "@elizaos/shared/contracts/lifeops";
 import { createLifeOpsConnectorGrant } from "./repository.js";
 import { fail } from "./service-normalize.js";
 import {
@@ -153,7 +153,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       const grantedScopes = status.scopes ?? [];
       const capabilities: LifeOpsDiscordCapability[] =
         status.authenticated === true
-          ? [...LIFEOPS_DISCORD_CAPABILITIES]
+          ? capabilitiesForSide(LIFEOPS_DISCORD_CAPABILITIES, normalizedSide)
           : [];
       const existing = await this.repository.getConnectorGrant(
         this.agentId(),
@@ -275,7 +275,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
             grantedScopes: status.scopes ?? existing.grantedScopes,
             capabilities:
               status.authenticated === true
-                ? [...LIFEOPS_DISCORD_CAPABILITIES]
+                ? capabilitiesForSide(LIFEOPS_DISCORD_CAPABILITIES, normalizedSide)
                 : [],
             metadata: {
               ...existing.metadata,
@@ -291,7 +291,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
             grantedScopes: status.scopes ?? [],
             capabilities:
               status.authenticated === true
-                ? [...LIFEOPS_DISCORD_CAPABILITIES]
+                ? capabilitiesForSide(LIFEOPS_DISCORD_CAPABILITIES, normalizedSide)
                 : [],
             tokenRef: null,
             mode: "local",
@@ -325,6 +325,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         this.agentId(),
         "discord",
         "local",
+        normalizedSide,
       );
 
       await this.recordConnectorAudit(

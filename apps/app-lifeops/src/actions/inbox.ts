@@ -190,6 +190,8 @@ export const inboxAction: Action = {
     "Unified inbox management: triage new messages across all channels, " +
     "generate a daily digest summary, or draft/send a response to a triaged " +
     "item. Subactions: triage, digest, respond. Admin/owner only.",
+  descriptionCompressed:
+    "Unified inbox: triage messages, daily digest, draft/send responses. Admin only.",
 
   validate: async (runtime, message) => hasAdminAccess(runtime, message),
 

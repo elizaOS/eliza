@@ -17,8 +17,8 @@ import {
   Textarea,
   client,
   useApp,
-  useGoogleLifeOpsConnector,
 } from "@elizaos/app-core";
+import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 type CalendarWindow = "today" | "week";

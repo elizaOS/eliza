@@ -38,6 +38,7 @@ export const sendMessage: Action = {
   name: "SIGNAL_SEND_MESSAGE",
   similes: ["SEND_SIGNAL_MESSAGE", "TEXT_SIGNAL", "MESSAGE_SIGNAL", "SIGNAL_TEXT"],
   description: "Send a message to a Signal contact or group",
+  descriptionCompressed: "Send Signal message.",
     validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
   	const __avTextRaw = typeof message?.content?.text === 'string' ? message.content.text : '';
   	const __avText = __avTextRaw.toLowerCase();

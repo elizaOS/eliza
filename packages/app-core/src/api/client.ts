@@ -49,18 +49,6 @@ import type {
   EvmTokenBalance,
   SolanaNft,
   SolanaTokenBalance,
-  StewardApprovalActionResponse,
-  StewardApprovalInfo,
-  StewardBalanceResponse,
-  StewardHistoryResponse,
-  StewardPendingResponse,
-  StewardPolicyResult,
-  StewardStatusResponse,
-  StewardTokenBalancesResponse,
-  StewardWalletAddressesResponse,
-  StewardWebhookEvent,
-  StewardWebhookEventsResponse,
-  StewardWebhookEventType,
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
@@ -72,13 +60,32 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/agent/contracts/wallet";
+} from "@elizaos/shared/contracts";
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
   normalizeWalletRpcProviderId,
   normalizeWalletRpcSelections,
   WALLET_RPC_PROVIDER_OPTIONS,
-} from "@elizaos/agent/contracts/wallet";
+} from "@elizaos/shared/contracts";
+import type {
+  StewardApprovalActionResponse,
+  StewardApprovalInfo,
+  StewardBalanceResponse,
+  StewardHistoryResponse,
+  StewardPendingApproval,
+  StewardPendingResponse,
+  StewardPolicyResult,
+  StewardSignRequest,
+  StewardSignResponse,
+  StewardStatusResponse,
+  StewardTokenBalancesResponse,
+  StewardTxRecord,
+  StewardTxStatus,
+  StewardWalletAddressesResponse,
+  StewardWebhookEvent,
+  StewardWebhookEventsResponse,
+  StewardWebhookEventType,
+} from "@elizaos/app-steward/types";
 import type {
   BrowserWorkspaceSnapshot,
   BrowserWorkspaceTab,
@@ -100,13 +107,6 @@ import type {
   SubscriptionProviderStatus,
   SubscriptionStatusResponse,
 } from "@elizaos/shared/contracts/onboarding";
-import type {
-  StewardPendingApproval,
-  StewardSignRequest,
-  StewardSignResponse,
-  StewardTxRecord,
-  StewardTxStatus,
-} from "@elizaos/shared/contracts/wallet";
 
 // Re-export the class from client-base (no circular dependency issues)
 export { ElizaClient } from "./client-base";

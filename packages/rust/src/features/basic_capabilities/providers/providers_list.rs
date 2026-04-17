@@ -8,6 +8,7 @@ use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 
+use super::prompt_compression::{compress_prompt_description, is_prompt_compression_enabled};
 use super::Provider;
 
 static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
@@ -64,9 +65,17 @@ impl Provider for ProvidersListProvider {
             })
             .collect();
 
+        let use_compression = is_prompt_compression_enabled(runtime);
         let formatted: Vec<String> = providers
             .iter()
-            .map(|p| format!("- {}: {}", p.name(), p.description()))
+            .map(|p| {
+                let desc = if use_compression {
+                    compress_prompt_description(p.description())
+                } else {
+                    p.description().to_string()
+                };
+                format!("- {}: {}", p.name(), desc)
+            })
             .collect();
 
         let text = format!(

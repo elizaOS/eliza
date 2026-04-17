@@ -199,10 +199,6 @@ export const SUBSCRIPTION_PROVIDER_SELECTIONS = [
   labelKey: string;
 }>;
 
-// TODO: These hardcoded provider entries should eventually be populated by
-// plugins at runtime via a registry pattern. Each LLM plugin would call
-// registerProviderOption() during initialization to add itself to the catalog.
-// The hardcoded entries below serve as defaults until all plugins are migrated.
 export const ONBOARDING_PROVIDER_CATALOG = [
   {
     id: "elizacloud",

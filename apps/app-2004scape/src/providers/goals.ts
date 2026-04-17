@@ -145,6 +145,7 @@ export const goalsProvider: Provider = {
   name: "RS_SDK_GOALS",
   description:
     "Strategic goals for the 2004scape bot, computed from current game state analysis.",
+  descriptionCompressed: "Strategic goals from game state analysis.",
 
   async get(
     runtime: IAgentRuntime,

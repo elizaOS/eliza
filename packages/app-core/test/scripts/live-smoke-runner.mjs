@@ -157,14 +157,8 @@ const runs = [
     label: "ui-storybook-e2e",
     command: bunCmd,
     args: ["run", "test:e2e"],
-    cwd: path.join(repoRoot, "packages", "ui"),
+    cwd: path.join(repoRoot, "eliza", "apps", "app-companion"),
     scriptName: "test:e2e",
-    getSkipReason() {
-      const e2eDir = path.join(repoRoot, "packages", "ui", "e2e");
-      const hasTests = fs.existsSync(e2eDir) &&
-        fs.readdirSync(e2eDir).some((f) => f.endsWith(".test.ts") || f.endsWith(".spec.ts"));
-      return hasTests ? null : "no e2e test files in packages/ui/e2e";
-    },
   },
   {
     lockName: "live-plugins",

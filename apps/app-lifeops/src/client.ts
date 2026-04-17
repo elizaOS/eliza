@@ -1,3 +1,5 @@
+// Side-effect: register LifeOps methods on ElizaClient.
+import "./api/client-lifeops.js";
 import { ElizaClient } from "@elizaos/app-core/api/client-base";
 import {
   getAppBlockerPlugin,

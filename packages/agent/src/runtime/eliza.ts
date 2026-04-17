@@ -2909,7 +2909,7 @@ export async function startEliza(
 
   // 2d-iii. OG tracking code initialization
   try {
-    const { initializeOGCode } = await import("../api/og-tracker.js");
+    const { initializeOGCode } = await import("@elizaos/app-elizamaker");
     initializeOGCode();
   } catch {
     // Silent — OG tracking is non-critical

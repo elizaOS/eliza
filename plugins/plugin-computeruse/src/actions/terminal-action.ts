@@ -22,6 +22,7 @@ export const terminalAction: Action = {
   description:
     "Execute terminal commands and manage lightweight terminal sessions through the computer-use service. This includes connect, execute, read, type, clear, close, and the upstream execute_command alias.\n\n" +
     "Why this exists: it gives the agent shell access through the same safety and approval layer as the other computer-use tools.",
+  descriptionCompressed: "Execute terminal commands or manage sessions.",
   parameters: [
     {
       name: "action",

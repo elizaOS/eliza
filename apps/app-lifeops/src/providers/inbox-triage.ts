@@ -23,6 +23,7 @@ export const inboxTriageProvider: Provider = {
     "items needing reply, and recent auto-replies across all channels including email. " +
     "Use INBOX_RESPOND to draft and send replies. Use INBOX_TRIAGE to scan for new messages. " +
     "Use INBOX_DIGEST for a daily summary.",
+  descriptionCompressed: "Pending inbox triage items across all channels incl email.",
   dynamic: true,
   position: 14, // after lifeops (12), before escalation (15)
 

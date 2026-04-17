@@ -4,7 +4,8 @@ import { extractParam } from "./param-parser.js";
 
 export const dropItem: Action = {
   name: "DROP_ITEM",
-  description: "Drop an item from inventory by name",
+  description: "Drop an item from inventory by name"
+  descriptionCompressed: "Drop inventory item.",
   similes: ["DISCARD_ITEM", "THROW_AWAY"],
   examples: [],
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {

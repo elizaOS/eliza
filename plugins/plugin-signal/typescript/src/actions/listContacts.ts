@@ -16,6 +16,7 @@ export const listContacts: Action = {
   name: "SIGNAL_LIST_CONTACTS",
   similes: ["LIST_SIGNAL_CONTACTS", "SHOW_CONTACTS", "GET_CONTACTS", "SIGNAL_CONTACTS"],
   description: "List Signal contacts",
+  descriptionCompressed: "List Signal contacts.",
     validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
   	const __avTextRaw = typeof message?.content?.text === 'string' ? message.content.text : '';
   	const __avText = __avTextRaw.toLowerCase();

@@ -29,6 +29,7 @@ export const setGoal: Action = {
   name: "SET_GOAL",
   description:
     "Declare a new goal you want to pursue. Write a short title and optional notes; the goal goes into the Scape Journal and drives future steps until it's completed or abandoned.",
+  descriptionCompressed: "Declare new goal to pursue.",
   similes: ["DECLARE_GOAL", "NEW_GOAL", "PLAN"],
   examples: [],
   validate: async (

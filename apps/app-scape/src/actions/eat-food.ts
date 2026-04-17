@@ -31,6 +31,7 @@ export const eatFood: Action = {
   name: "EAT_FOOD",
   description:
     "Eat a food item from an inventory slot to restore hitpoints. Prioritize this when HP is low.",
+  descriptionCompressed: "Eat food from inventory.",
   similes: ["CONSUME_FOOD", "HEAL", "EAT"],
   examples: [],
   validate: async (

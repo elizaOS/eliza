@@ -55,7 +55,6 @@ describe("computer-use live parity", () => {
   it("exports the full public action surface", () => {
     expect(computerUsePlugin.actions?.map((action) => action.name)).toEqual([
       "USE_COMPUTER",
-      "TAKE_SCREENSHOT",
       "BROWSER_ACTION",
       "MANAGE_WINDOW",
       "FILE_ACTION",

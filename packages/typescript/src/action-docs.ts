@@ -21,6 +21,7 @@ function toActionParameter(
 	return {
 		name: param.name,
 		description: param.description,
+		descriptionCompressed: param.descriptionCompressed,
 		required: param.required,
 		schema: {
 			...param.schema,
@@ -50,6 +51,8 @@ export function withCanonicalActionDocs(action: Action): Action {
 	return {
 		...action,
 		description: action.description || doc.description,
+		descriptionCompressed:
+			action.descriptionCompressed || doc.descriptionCompressed,
 		similes:
 			action.similes && action.similes.length > 0
 				? action.similes

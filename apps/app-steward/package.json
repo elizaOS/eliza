@@ -22,6 +22,7 @@
     "@noble/curves": "^2.0.1",
     "@stwd/sdk": "^0.3.0",
     "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "ethers": "^6.16.0",
     "lucide-react": "^0.575.0",
