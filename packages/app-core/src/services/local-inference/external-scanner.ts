@@ -35,7 +35,11 @@ function candidateRoots(): ScanRoot[] {
 
   // ── LM Studio ──────────────────────────────────────────────────────
   roots.push(
-    { origin: "lm-studio", dir: path.join(home, ".lmstudio", "models"), kind: "flat" },
+    {
+      origin: "lm-studio",
+      dir: path.join(home, ".lmstudio", "models"),
+      kind: "flat",
+    },
     {
       origin: "lm-studio",
       dir: path.join(home, ".cache", "lm-studio", "models"),
@@ -47,11 +51,19 @@ function candidateRoots(): ScanRoot[] {
   if (platform === "darwin") {
     roots.push({
       origin: "jan",
-      dir: path.join(home, "Library", "Application Support", "Jan", "data", "models"),
+      dir: path.join(
+        home,
+        "Library",
+        "Application Support",
+        "Jan",
+        "data",
+        "models",
+      ),
       kind: "flat",
     });
   } else if (platform === "win32") {
-    const appdata = process.env.APPDATA ?? path.join(home, "AppData", "Roaming");
+    const appdata =
+      process.env.APPDATA ?? path.join(home, "AppData", "Roaming");
     roots.push({
       origin: "jan",
       dir: path.join(appdata, "Jan", "data", "models"),
@@ -66,18 +78,34 @@ function candidateRoots(): ScanRoot[] {
     });
   }
   // Legacy Jan path, still seen on older installs.
-  roots.push({ origin: "jan", dir: path.join(home, "jan", "models"), kind: "flat" });
+  roots.push({
+    origin: "jan",
+    dir: path.join(home, "jan", "models"),
+    kind: "flat",
+  });
 
   // ── Ollama ──────────────────────────────────────────────────────────
   const ollamaOverride = process.env.OLLAMA_MODELS?.trim();
   if (ollamaOverride) {
     roots.push({ origin: "ollama", dir: ollamaOverride, kind: "ollama" });
   }
-  roots.push({ origin: "ollama", dir: path.join(home, ".ollama", "models"), kind: "ollama" });
+  roots.push({
+    origin: "ollama",
+    dir: path.join(home, ".ollama", "models"),
+    kind: "ollama",
+  });
   if (platform === "linux") {
     roots.push(
-      { origin: "ollama", dir: "/usr/share/ollama/.ollama/models", kind: "ollama" },
-      { origin: "ollama", dir: "/var/lib/ollama/.ollama/models", kind: "ollama" },
+      {
+        origin: "ollama",
+        dir: "/usr/share/ollama/.ollama/models",
+        kind: "ollama",
+      },
+      {
+        origin: "ollama",
+        dir: "/var/lib/ollama/.ollama/models",
+        kind: "ollama",
+      },
     );
   }
 
@@ -123,8 +151,15 @@ async function dirExists(dir: string): Promise<boolean> {
 async function* walkForGgufs(
   root: string,
   maxDepth = 6,
-): AsyncGenerator<{ absPath: string; realPath: string; size: number; mtimeMs: number }> {
-  const stack: Array<{ dir: string; depth: number }> = [{ dir: root, depth: 0 }];
+): AsyncGenerator<{
+  absPath: string;
+  realPath: string;
+  size: number;
+  mtimeMs: number;
+}> {
+  const stack: Array<{ dir: string; depth: number }> = [
+    { dir: root, depth: 0 },
+  ];
   while (stack.length > 0) {
     const frame = stack.pop();
     if (!frame) break;

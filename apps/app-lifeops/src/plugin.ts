@@ -23,6 +23,13 @@ import {
   setSelfControlPluginConfig,
 } from "./website-blocker/engine.js";
 import { WebsiteBlockerService } from "./website-blocker/service.js";
+// T7g — Website blocker chat integration (plan §6.8).
+import {
+  blockUntilTaskCompleteAction,
+  listActiveBlocksAction,
+  registerBlockRuleReconcilerWorker,
+  releaseBlockAction,
+} from "./website-blocker/chat-integration/index.js";
 
 // LifeOps core actions (calendar, gmail, life/tasks, goals, inbox, owner profile)
 import { calendarAction } from "./actions/calendar.js";
@@ -67,6 +74,10 @@ import {
   updateMeetingPreferencesAction,
 } from "./actions/scheduling.js";
 import { dossierAction } from "./actions/dossier.js";
+// T7f — meeting dossier (plan §6.7).
+import { generateDossierAction } from "./dossier/action.js";
+// T8a — travel-time awareness (plan §6.9).
+import { computeTravelBufferAction } from "./travel-time/action.js";
 import { healthAction } from "./actions/health.js";
 // T8e — browser extension bridge actions (plan §6.13).
 import {
@@ -110,6 +121,9 @@ const rawAppLifeOpsPlugin: Plugin = {
     getWebsiteBlockStatusAction,
     requestWebsiteBlockingPermissionAction,
     unblockWebsitesAction,
+    blockUntilTaskCompleteAction,
+    listActiveBlocksAction,
+    releaseBlockAction,
     blockAppsAction,
     unblockAppsAction,
     getAppBlockStatusAction,
@@ -147,6 +161,8 @@ const rawAppLifeOpsPlugin: Plugin = {
     markFollowupDoneAction,
     setFollowupThresholdAction,
     dossierAction,
+    generateDossierAction,
+    computeTravelBufferAction,
     healthAction,
     registerBrowserSessionAction,
     fetchBrowserActivityAction,
@@ -246,6 +262,9 @@ const rawAppLifeOpsPlugin: Plugin = {
     // Register the follow-up tracker worker (T7c). computeOverdueFollowups
     // degrades gracefully when RelationshipsService isn't registered.
     registerFollowupTrackerWorker(runtime);
+
+    // T7g — Register the website blocker chat integration reconciler.
+    registerBlockRuleReconcilerWorker(runtime);
 
     // Register the LifeOps scheduler task worker and ensure the scheduler task exists
     registerLifeOpsTaskWorker(runtime);

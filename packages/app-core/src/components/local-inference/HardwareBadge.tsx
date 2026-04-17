@@ -23,7 +23,8 @@ export function HardwareBadge({ hardware }: HardwareBadgeProps) {
           Your device
         </div>
         <div className="font-medium">
-          {hardware.totalRamGb.toFixed(0)} GB RAM · {hardware.cpuCores} cores · {chipLabel}
+          {hardware.totalRamGb.toFixed(0)} GB RAM · {hardware.cpuCores} cores ·{" "}
+          {chipLabel}
         </div>
       </div>
       <div className="h-8 w-px bg-border" aria-hidden />

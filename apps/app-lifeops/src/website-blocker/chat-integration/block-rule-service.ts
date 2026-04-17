@@ -177,20 +177,17 @@ export class BlockRuleWriter {
     if (result && typeof result === "object" && "success" in result) {
       const typedResult = result as { success: unknown; text?: unknown };
       if (typedResult.success === false) {
-        await executeRawSql(
-          this.runtime,
-          `UPDATE ${BLOCK_RULES_TABLE}
-              SET active = FALSE,
-                  released_at = ${sqlBigint(nowMs())},
-                  released_reason = ${sqlQuote("selfcontrol_activation_failed")}
-            WHERE id = ${sqlQuote(id)}`,
-        );
+        // The rule is the source of truth. SelfControl activation failures
+        // (missing admin permission, unsupported platform, no helper binary)
+        // are logged but do not tear down the rule — the reconciler keeps
+        // the lifecycle and a retry on rule creation will re-attempt
+        // activation.
         const reason =
           typeof typedResult.text === "string"
             ? typedResult.text
-            : "SelfControl activation failed";
-        throw new Error(
-          `[BlockRuleWriter] SelfControl activation failed: ${reason}`,
+            : "SelfControl activation returned success=false";
+        logger.warn(
+          `[BlockRuleWriter] SelfControl activation did not complete for rule ${id}: ${reason}`,
         );
       }
     }

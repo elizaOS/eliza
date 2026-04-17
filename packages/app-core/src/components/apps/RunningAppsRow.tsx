@@ -106,6 +106,28 @@ export function RunningAppsRow({
                   </span>
                 </div>
               ) : null}
+              {onStopRun ? (
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    data-testid={`running-app-stop-${run.runId}`}
+                    aria-label={`Stop ${run.displayName}`}
+                    disabled={stoppingRunId === run.runId}
+                    className="inline-flex items-center rounded-full border border-danger/30 bg-danger/10 px-3 py-1 text-2xs font-semibold uppercase tracking-[0.14em] text-danger transition-all hover:border-danger/60 hover:bg-danger/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                      event.stopPropagation();
+                      onStopRun(run);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.stopPropagation();
+                      }
+                    }}
+                  >
+                    {stoppingRunId === run.runId ? "Stopping…" : "Stop"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           );
         })}

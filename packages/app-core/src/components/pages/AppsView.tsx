@@ -42,6 +42,7 @@ export function AppsView() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [busyRunId, setBusyRunId] = useState<string | null>(null);
+  const [stoppingRunId, setStoppingRunId] = useState<string | null>(null);
   const slugAutoLaunchDone = useRef(false);
 
   const activeAppNames = useMemo(
@@ -424,6 +425,46 @@ export function AppsView() {
     [favoriteApps, setState],
   );
 
+  const handleStopRun = useCallback(
+    async (run: AppRunSummary) => {
+      if (stoppingRunId === run.runId) return;
+      setStoppingRunId(run.runId);
+      try {
+        await client.stopAppRun(run.runId);
+        // Remove the run from local state so the UI updates immediately.
+        const nextRuns = appRuns.filter((r) => r.runId !== run.runId);
+        setState("appRuns", nextRuns);
+        if (activeGameRunId === run.runId) {
+          setState("activeGameRunId", "");
+        }
+        setActionNotice(
+          t("appsview.Stopped", { defaultValue: `${run.displayName} stopped.` }),
+          "success",
+          2600,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setActionNotice(
+          t("appsview.StopFailed", {
+            defaultValue: `Could not stop ${run.displayName}: ${message}`,
+          }),
+          "error",
+          4000,
+        );
+      } finally {
+        setStoppingRunId(null);
+      }
+    },
+    [
+      activeGameRunId,
+      appRuns,
+      setActionNotice,
+      setState,
+      stoppingRunId,
+      t,
+    ],
+  );
+
   return (
     <div className="device-layout mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 lg:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -446,6 +487,8 @@ export function AppsView() {
         catalogApps={apps}
         busyRunId={busyRunId}
         onOpenRun={(run) => void handleOpenRun(run)}
+        onStopRun={(run) => void handleStopRun(run)}
+        stoppingRunId={stoppingRunId}
       />
 
       <AppsCatalogGrid

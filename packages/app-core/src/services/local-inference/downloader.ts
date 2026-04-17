@@ -113,7 +113,10 @@ export class Downloader {
     }
 
     await ensureDirs();
-    const stagingPath = path.join(downloadsStagingDir(), stagingFilename(modelId));
+    const stagingPath = path.join(
+      downloadsStagingDir(),
+      stagingFilename(modelId),
+    );
     const finalPath = path.join(miladyModelsDir(), finalFilename(catalogEntry));
 
     const job: DownloadJob = {

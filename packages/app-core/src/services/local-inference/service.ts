@@ -8,11 +8,11 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
+import { ActiveModelCoordinator } from "./active-model";
 import { MODEL_CATALOG } from "./catalog";
 import { Downloader } from "./downloader";
 import { probeHardware } from "./hardware";
 import { listInstalledModels, removeMiladyModel } from "./registry";
-import { ActiveModelCoordinator } from "./active-model";
 import type {
   ActiveModelState,
   DownloadEvent,
@@ -71,9 +71,7 @@ export class LocalInferenceService {
     return this.downloader.subscribe(listener);
   }
 
-  subscribeActive(
-    listener: (state: ActiveModelState) => void,
-  ): () => void {
+  subscribeActive(listener: (state: ActiveModelState) => void): () => void {
     return this.activeModel.subscribe(listener);
   }
 

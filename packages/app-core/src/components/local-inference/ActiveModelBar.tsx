@@ -29,7 +29,10 @@ export function ActiveModelBar({
 
   return (
     <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 flex items-center gap-3 text-sm">
-      <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
+      <span
+        className="inline-flex h-2 w-2 rounded-full bg-emerald-500"
+        aria-hidden
+      />
       <div className="flex-1 min-w-0">
         <span className="font-medium">{label}</span>
         <span className="ml-2 text-xs text-muted-foreground">
