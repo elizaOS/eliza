@@ -137,7 +137,7 @@
   "dependencies": {
     "@capacitor/core": "8.0.2",
     "@capacitor/haptics": "8.0.0",
-    "@capacitor/keyboard": "8.0.0",
+    "@capacitor/keyboard": "8.0.3",
     "@capacitor/preferences": "^8.0.1",
     "@clack/prompts": "^1.0.0",
     "@elizaos/agent": "workspace:*",
