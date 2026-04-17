@@ -109,8 +109,8 @@
 	branch = dev
 [submodule "steward-fi"]
 	path = steward-fi
-	url = https://github.com/Dexploarer/steward.git
-	branch = develop
+	url = https://github.com/steward-fi/steward.git
+	branch = cleanup/silent-catches-20260417
 [submodule "plugins/plugin-elizacloud"]
 	path = plugins/plugin-elizacloud
 	url = https://github.com/elizaos-plugins/plugin-elizacloud.git
