@@ -11,6 +11,9 @@
  *   - signal        → runtime send handler registered for "signal"
  *   - imessage      → LifeOpsService.sendIMessage
  *   - whatsapp      → LifeOpsService.sendWhatsAppMessage
+ *   - notifications → ntfy push (NTFY_BASE_URL)
+ *   - calendly      → createCalendlySingleUseLink (target = event-type URI)
+ *   - x_dm          → X (Twitter) DM via X API v2 (requires x.write capability)
  */
 
 import type {
@@ -22,6 +25,10 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { hasAdminAccess } from "@elizaos/agent/security/access";
+import {
+  createCalendlySingleUseLink,
+  readCalendlyCredentialsFromEnv,
+} from "../lifeops/calendly-client.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
   readTwilioCredentialsFromEnv,
@@ -34,6 +41,9 @@ import {
   sendPush,
   NtfyConfigError,
 } from "../lifeops/notifications-push.js";
+import {
+  readXPosterCredentialsFromEnv,
+} from "../lifeops/x-poster.js";
 
 const ACTION_NAME = "CROSS_CHANNEL_SEND";
 
@@ -47,6 +57,8 @@ export const CROSS_CHANNEL_SEND_CHANNELS = [
   "imessage",
   "whatsapp",
   "notifications",
+  "calendly",
+  "x_dm",
 ] as const;
 export type CrossChannelSendChannel = (typeof CROSS_CHANNEL_SEND_CHANNELS)[number];
 
