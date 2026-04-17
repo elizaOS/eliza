@@ -11,6 +11,28 @@ import { asUUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 import { stringToUuid } from "../utils";
+import { UnionFind } from "../utils/union-find";
+
+/**
+ * Handles on these platforms are enrichment (phone/email/website) — they
+ * identify *contact methods* a person has shared with us, not a separate
+ * identity we'd confuse with another person. Keep in sync with the runtime-
+ * level CONTACT_PLATFORM_SET in agent/src/services/relationships-graph.ts.
+ */
+const CONTACT_HANDLE_PLATFORMS = new Set(["email", "phone", "website"]);
+
+function isConfirmedIdentityLinkLike(relationship: Relationship): boolean {
+	const tags = relationship.tags;
+	if (!Array.isArray(tags) || !tags.includes("identity_link")) {
+		return false;
+	}
+	const metadata = relationship.metadata;
+	if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+		return false;
+	}
+	const status = (metadata as Record<string, unknown>).status;
+	return typeof status === "string" && status === "confirmed";
+}
 
 // Extended Relationship interface with new fields
 interface ExtendedRelationship extends Relationship {
@@ -2024,6 +2046,183 @@ export class RelationshipsService extends Service {
 				AND agent_id = ${sqlQuote(this.runtime.agentId)}`,
 		);
 		logger.info(`[RelationshipsService] Rejected merge ${candidateId}`);
+	}
+
+	/**
+	 * Return every entity that belongs to the same identity cluster as
+	 * `primaryEntityId`. An identity cluster is the connected component
+	 * formed by:
+	 *   - confirmed identity-link relationships (tag `identity_link`,
+	 *     metadata.status === "confirmed"), and
+	 *   - shared entity_identities rows (same (platform, handle) on two
+	 *     different entities).
+	 *
+	 * The returned array always includes `primaryEntityId` itself.
+	 * Semantics match the runtime-level clusterer in
+	 * `@elizaos/agent/src/services/relationships-graph.ts` (buildClusters),
+	 * including contact-platform suppression (email/phone/website handles
+	 * are *not* treated as cluster-forming — they're enrichment, not
+	 * identity evidence).
+	 */
+	async getMemberEntityIds(primaryEntityId: UUID): Promise<UUID[]> {
+		const uf = await this.buildIdentityUnionFind(primaryEntityId);
+		const members = uf.componentOf(primaryEntityId);
+		if (members.length === 0) {
+			return [primaryEntityId];
+		}
+		return members;
+	}
+
+	/**
+	 * Resolve an entity to its cluster's primary entity.
+	 *
+	 * The primary is the member with a contact_info component if one
+	 * exists; otherwise the lexicographically-smallest UUID. This matches
+	 * the runtime-level clusterer's tiebreaker semantics when no scoring
+	 * data (EntityContext) is available at the service layer.
+	 *
+	 * If the entity is not part of a multi-member cluster, returns the
+	 * entity id itself.
+	 */
+	async resolvePrimaryEntityId(entityId: UUID): Promise<UUID> {
+		const members = await this.getMemberEntityIds(entityId);
+		if (members.length <= 1) {
+			return entityId;
+		}
+		const contactEntries = await Promise.all(
+			members.map(async (memberId) => {
+				const contact = await this.getContact(memberId);
+				return contact ? memberId : null;
+			}),
+		);
+		for (const candidate of contactEntries) {
+			if (candidate) {
+				return candidate;
+			}
+		}
+		const sorted = [...members].sort();
+		return sorted[0];
+	}
+
+	/**
+	 * Build a UnionFind keyed by UUID containing every entity reachable
+	 * from `seedEntityId` via confirmed identity-link relationships or
+	 * shared entity_identities rows.
+	 *
+	 * We expand iteratively so we don't have to materialise the full
+	 * graph: at each step, we query relationships/identities for the
+	 * newly-discovered frontier and union in any new neighbours.
+	 */
+	private async buildIdentityUnionFind(
+		seedEntityId: UUID,
+	): Promise<UnionFind<UUID>> {
+		const uf = new UnionFind<UUID>([seedEntityId]);
+		const visited = new Set<UUID>();
+		let frontier: UUID[] = [seedEntityId];
+
+		while (frontier.length > 0) {
+			const nextFrontier = new Set<UUID>();
+			const pending = frontier.filter((id) => !visited.has(id));
+			for (const id of pending) {
+				visited.add(id);
+			}
+			if (pending.length === 0) {
+				break;
+			}
+
+			const relationships = await this.runtime.getRelationships({
+				entityIds: pending,
+			});
+			for (const relationship of relationships) {
+				if (!isConfirmedIdentityLinkLike(relationship)) continue;
+				uf.union(
+					relationship.sourceEntityId,
+					relationship.targetEntityId,
+				);
+				if (!visited.has(relationship.sourceEntityId)) {
+					nextFrontier.add(relationship.sourceEntityId);
+				}
+				if (!visited.has(relationship.targetEntityId)) {
+					nextFrontier.add(relationship.targetEntityId);
+				}
+			}
+
+			const identityRows = await this.getIdentityRowsForEntities(pending);
+			const entitiesByHandleKey = new Map<string, Set<UUID>>();
+			for (const row of identityRows) {
+				if (CONTACT_HANDLE_PLATFORMS.has(row.platform.toLowerCase())) {
+					continue;
+				}
+				const key = `${row.platform.toLowerCase()}:${row.handle.toLowerCase()}`;
+				const bucket = entitiesByHandleKey.get(key) ?? new Set<UUID>();
+				bucket.add(row.entityId);
+				entitiesByHandleKey.set(key, bucket);
+			}
+			for (const key of entitiesByHandleKey.keys()) {
+				const matches = await this.findEntitiesSharingHandleKey(key);
+				const combined = entitiesByHandleKey.get(key) ?? new Set<UUID>();
+				for (const m of matches) combined.add(m);
+				if (combined.size < 2) continue;
+				const members = Array.from(combined);
+				const anchor = members[0];
+				for (const other of members.slice(1)) {
+					uf.union(anchor, other);
+					if (!visited.has(other)) {
+						nextFrontier.add(other);
+					}
+				}
+			}
+
+			frontier = Array.from(nextFrontier);
+		}
+
+		return uf;
+	}
+
+	private async getIdentityRowsForEntities(
+		entityIds: UUID[],
+	): Promise<Array<{ entityId: UUID; platform: string; handle: string }>> {
+		if (entityIds.length === 0) return [];
+		const quoted = entityIds.map(sqlQuote).join(", ");
+		const result = await this.execSql(
+			`SELECT entity_id, platform, handle
+			 FROM entity_identities
+			 WHERE agent_id = ${sqlQuote(this.runtime.agentId)}
+				AND entity_id IN (${quoted})`,
+		);
+		const rows: Array<{ entityId: UUID; platform: string; handle: string }> = [];
+		for (const row of result.rows) {
+			const e = row.entity_id;
+			const p = row.platform;
+			const h = row.handle;
+			if (typeof e !== "string" || typeof p !== "string" || typeof h !== "string") {
+				continue;
+			}
+			rows.push({ entityId: asUUID(e), platform: p, handle: h });
+		}
+		return rows;
+	}
+
+	private async findEntitiesSharingHandleKey(
+		handleKey: string,
+	): Promise<UUID[]> {
+		const [platform, handle] = handleKey.split(":", 2);
+		if (!platform || handle === undefined) return [];
+		const result = await this.execSql(
+			`SELECT DISTINCT entity_id
+			 FROM entity_identities
+			 WHERE agent_id = ${sqlQuote(this.runtime.agentId)}
+				AND LOWER(platform) = ${sqlQuote(platform)}
+				AND LOWER(handle) = ${sqlQuote(handle)}`,
+		);
+		const ids: UUID[] = [];
+		for (const row of result.rows) {
+			const e = row.entity_id;
+			if (typeof e === "string" && e.length > 0) {
+				ids.push(asUUID(e));
+			}
+		}
+		return ids;
 	}
 }
 

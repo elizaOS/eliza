@@ -13,6 +13,12 @@ import { loadLifeOpsAppState } from "../lifeops/app-state.js";
 import { ensureRuntimeAgentRecord } from "../lifeops/runtime.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import {
+  BackgroundPlannerError,
+  planJob,
+  type BackgroundJobContext,
+} from "../lifeops/background-planner.js";
+import { enqueueIfSensitive } from "../lifeops/background-planner-dispatch.js";
 import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
 import { resolveEffectiveDayKey } from "./analyzer.js";
 import {
@@ -250,6 +256,34 @@ export async function executeProactiveTask(
     const ownerEntityId = await resolveOwnerEntityId(runtime);
     if (!ownerEntityId) {
       return { nextInterval: PROACTIVE_TASK_INTERVAL_MS };
+    }
+
+    // WS5: Route this tick through the shared LLM planner. The planner
+    // decides whether any action is warranted and whether it requires
+    // human approval. We invoke it up-front so every proactive tick is
+    // observable via `planJob` and so sensitive actions are always
+    // enqueued into the WS6 approval queue.
+    const plannerContext: BackgroundJobContext = {
+      jobKind: "daily_brief",
+      subjectUserId: ownerEntityId,
+      snapshot: {
+        now: now.toISOString(),
+        timezone,
+      },
+      availableChannels: ["internal"],
+      trigger: "proactive_tick",
+    };
+    try {
+      const plan = await planJob(runtime, plannerContext);
+      await enqueueIfSensitive(runtime, plannerContext, plan);
+    } catch (error) {
+      if (error instanceof BackgroundPlannerError) {
+        logger.warn(
+          `[proactive] background planner unavailable — ${error.message}`,
+        );
+      } else {
+        throw error;
+      }
     }
 
     const tasks = await runtime.getTasks({

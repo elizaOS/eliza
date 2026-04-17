@@ -26,6 +26,7 @@ import {
   ListTodo,
   Plus,
   Settings,
+  Zap,
 } from "lucide-react";
 import {
   createContext,
@@ -300,6 +301,22 @@ function useAutomationsViewController() {
     void ensureTriggersLoaded();
     void loadWorkbenchTasks();
   }, [ensureTriggersLoaded, loadTriggerHealth, loadWorkbenchTasks]);
+
+  // ── Cross-component filter navigation ─────────────────────────
+  // HeartbeatForm dispatches this event when the user clicks "Go to Workflows"
+  // from the workflow-unavailable state inside the kind section.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ filter: AutomationFilter }>)
+        .detail;
+      if (detail?.filter) {
+        setFilter(detail.filter);
+      }
+    };
+    window.addEventListener("milady:automations:setFilter", handler);
+    return () =>
+      window.removeEventListener("milady:automations:setFilter", handler);
+  }, []);
 
   // ── Build unified items list ────────────────────────────────────
   const allItems: AutomationItem[] = useMemo(() => {
@@ -859,6 +876,7 @@ function TriggerDetailPane({ trigger }: { trigger: TriggerSummary }) {
     setEditingId,
     setSelectedItemId,
     setSelectedItemKind,
+    setFilter,
   } = useAutomationsViewContext();
 
   const selectedRuns = triggerRunsById[trigger.id] ?? [];
@@ -902,9 +920,32 @@ function TriggerDetailPane({ trigger }: { trigger: TriggerSummary }) {
           <h2 className="text-2xl font-semibold text-txt sm:text-[2rem]">
             {trigger.displayName}
           </h2>
-          <p className="text-sm leading-relaxed text-muted sm:text-sm">
-            {trigger.instructions}
-          </p>
+          {trigger.kind === "workflow" ? (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 text-sm text-txt">
+                <Zap className="h-4 w-4 shrink-0 text-accent" />
+                <span>
+                  {t("automations.runsWorkflow", {
+                    name: trigger.workflowName ?? trigger.workflowId ?? "",
+                  })}
+                </span>
+              </div>
+              {/* TODO: wire direct workflow selection into N8nWorkflowsPanel
+                  when that panel exposes a selectedWorkflowId prop or shared store.
+                  For now we just switch the filter tab. */}
+              <button
+                type="button"
+                className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+                onClick={() => setFilter("workflows")}
+              >
+                {t("automations.openInWorkflowsTab")}
+              </button>
+            </div>
+          ) : (
+            <p className="text-sm leading-relaxed text-muted sm:text-sm">
+              {trigger.instructions}
+            </p>
+          )}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
           <Button

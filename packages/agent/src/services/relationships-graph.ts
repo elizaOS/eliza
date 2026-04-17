@@ -1,6 +1,7 @@
 import type {
   Entity,
   IAgentRuntime,
+  Memory,
   Relationship,
   Room,
   UUID,
@@ -2133,4 +2134,130 @@ export function createNativeRelationshipsGraphService(
       return relationshipsService.proposeMerge(entityA, entityB, evidence);
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Cluster-aware memory helpers
+// ---------------------------------------------------------------------------
+//
+// Consumers like the LifeOps dossier service and cross-channel follow-ups
+// need to fan a memory lookup out across every entity in a person's
+// identity cluster (Jill-on-Discord, Jill-on-Telegram, jill@example.com)
+// instead of a single entityId. These helpers resolve the cluster via the
+// RelationshipsService (authoritative for cluster membership) and then
+// dispatch getMemories / searchMemories once per member, merging and
+// deduplicating the results.
+
+export type ClusterMemoriesQuery = {
+  tableName: string;
+  roomId?: UUID;
+  worldId?: UUID;
+  count?: number;
+  limit?: number;
+  offset?: number;
+  unique?: boolean;
+  start?: number;
+  end?: number;
+  metadata?: Record<string, unknown>;
+  orderBy?: "createdAt";
+  orderDirection?: "asc" | "desc";
+};
+
+export type ClusterSearchQuery = {
+  tableName: string;
+  embedding: number[];
+  match_threshold?: number;
+  limit?: number;
+  unique?: boolean;
+  query?: string;
+  roomId?: UUID;
+  worldId?: UUID;
+};
+
+type ClusterResolver = {
+  getMemberEntityIds: (primaryEntityId: UUID) => Promise<UUID[]>;
+};
+
+function getClusterResolver(runtime: IAgentRuntime): ClusterResolver | null {
+  const service = runtime.getService("relationships");
+  if (!service) return null;
+  const candidate = service as unknown as Partial<ClusterResolver>;
+  if (typeof candidate.getMemberEntityIds !== "function") {
+    return null;
+  }
+  return candidate as ClusterResolver;
+}
+
+function dedupeMemoriesById(memories: Memory[]): Memory[] {
+  const seen = new Set<string>();
+  const unique: Memory[] = [];
+  for (const memory of memories) {
+    const id = memory.id as string | undefined;
+    if (!id) {
+      unique.push(memory);
+      continue;
+    }
+    if (seen.has(id)) continue;
+    seen.add(id);
+    unique.push(memory);
+  }
+  return unique;
+}
+
+/**
+ * Return memories authored by any member of the identity cluster rooted at
+ * `primaryEntityId`. If the RelationshipsService cannot be resolved (no
+ * cluster lookup available) we fall through to the single-entity query so
+ * callers still get results — the caller is responsible for surfacing the
+ * degradation via its own `degraded` flag.
+ */
+export async function getMemoriesForCluster(
+  runtime: IAgentRuntime,
+  primaryEntityId: UUID,
+  params: ClusterMemoriesQuery,
+): Promise<Memory[]> {
+  const resolver = getClusterResolver(runtime);
+  const memberIds = resolver
+    ? await resolver.getMemberEntityIds(primaryEntityId)
+    : [primaryEntityId];
+  const ids = memberIds.length > 0 ? memberIds : [primaryEntityId];
+
+  const results = await Promise.all(
+    ids.map((entityId) =>
+      runtime.getMemories({
+        ...params,
+        entityId,
+      }),
+    ),
+  );
+  const flat = results.flat();
+  return dedupeMemoriesById(flat);
+}
+
+/**
+ * Semantic-search variant of {@link getMemoriesForCluster}. Runs one
+ * `searchMemories` per cluster member with the same embedding/query
+ * parameters and deduplicates the union on memory id.
+ */
+export async function searchMemoriesForCluster(
+  runtime: IAgentRuntime,
+  primaryEntityId: UUID,
+  params: ClusterSearchQuery,
+): Promise<Memory[]> {
+  const resolver = getClusterResolver(runtime);
+  const memberIds = resolver
+    ? await resolver.getMemberEntityIds(primaryEntityId)
+    : [primaryEntityId];
+  const ids = memberIds.length > 0 ? memberIds : [primaryEntityId];
+
+  const results = await Promise.all(
+    ids.map((entityId) =>
+      runtime.searchMemories({
+        ...params,
+        entityId,
+      }),
+    ),
+  );
+  const flat = results.flat();
+  return dedupeMemoriesById(flat);
 }

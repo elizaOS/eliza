@@ -29,9 +29,10 @@ import type { RouteHelpers, RouteRequestMeta } from "@elizaos/agent/api";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { isNativeServerPlatform } from "../platform/is-native-server";
+import { type N8nMode, resolveN8nMode } from "../services/n8n-mode";
 import type { N8nSidecar, N8nSidecarStatus } from "../services/n8n-sidecar";
 
-export type N8nMode = "cloud" | "local" | "disabled";
+export type { N8nMode } from "../services/n8n-mode";
 
 /**
  * Host platform for the n8n status surface. On mobile (iOS / Android) the
@@ -212,10 +213,6 @@ async function loadSidecarModule(): Promise<
   return await import("../services/n8n-sidecar");
 }
 
-interface CloudAuthLike {
-  isAuthenticated: () => boolean;
-}
-
 // Cloud base URL default — mirrors `resolveCloudApiBaseUrl()` without
 // pulling the validator in (avoids an async-validation dep on a hot path).
 const DEFAULT_CLOUD_API_BASE_URL = "https://api.eliza.how";
@@ -224,19 +221,6 @@ function normalizeBaseUrl(raw: string | undefined | null): string {
   const trimmed = (raw ?? "").trim();
   const base = trimmed.length > 0 ? trimmed : DEFAULT_CLOUD_API_BASE_URL;
   return base.replace(/\/+$/, "");
-}
-
-function isCloudConnected(
-  config: N8nRoutesConfigLike,
-  runtime: AgentRuntime | null,
-): boolean {
-  if (!config.cloud?.enabled) return false;
-  const auth = runtime
-    ? (runtime.getService("CLOUD_AUTH") as unknown as CloudAuthLike | null)
-    : null;
-  if (auth?.isAuthenticated?.()) return true;
-  // API-key fallback — matches cloud-status-routes semantics.
-  return Boolean(config.cloud.apiKey?.trim());
 }
 
 function resolveAgentId(ctx: N8nRouteContext): string {
@@ -325,7 +309,11 @@ function resolveProxyTarget(
     status: N8nSidecarStatus;
   };
 } {
-  const cloudConnected = isCloudConnected(ctx.config, ctx.runtime);
+  const { cloudConnected, localEnabled } = resolveN8nMode({
+    config: ctx.config,
+    runtime: ctx.runtime,
+    native,
+  });
   if (cloudConnected) {
     const apiKey = ctx.config.cloud?.apiKey?.trim();
     if (!apiKey) {
@@ -350,8 +338,8 @@ function resolveProxyTarget(
 
   // Mobile has no local sidecar path — treat as disabled when cloud is not
   // authenticated so the UI gets a 503 with a clear reason rather than
-  // probing a sidecar that does not exist.
-  const localEnabled = native ? false : (ctx.config.n8n?.localEnabled ?? true);
+  // probing a sidecar that does not exist. resolveN8nMode already applied
+  // the mobile override above.
   if (!localEnabled) {
     return {
       target: null,
@@ -591,22 +579,13 @@ async function handleStatus(
 ): Promise<boolean> {
   const { config, runtime } = ctx;
 
-  const cloudConnected = isCloudConnected(config, runtime);
-  // Mobile forces localEnabled=false regardless of user setting — no local
-  // sidecar can run inside Capacitor. The stored config is untouched; this
-  // is a read-time override.
-  const localEnabled = native ? false : (config.n8n?.localEnabled ?? true);
+  const { mode, localEnabled, cloudConnected } = resolveN8nMode({
+    config,
+    runtime,
+    native,
+  });
   const sidecarState = sidecar?.getState();
   const status: N8nSidecarStatus = sidecarState?.status ?? "stopped";
-
-  let mode: N8nMode;
-  if (cloudConnected) {
-    mode = "cloud";
-  } else if (localEnabled) {
-    mode = "local";
-  } else {
-    mode = "disabled";
-  }
 
   const host =
     mode === "local" ? (sidecarState?.host ?? config.n8n?.host ?? null) : null;

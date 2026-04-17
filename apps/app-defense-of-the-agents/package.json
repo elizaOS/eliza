@@ -16,6 +16,9 @@
     "type": "git",
     "url": "https://github.com/elizaos/eliza.git"
   },
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts"
+  },
   "keywords": [
     "game",
     "moba",

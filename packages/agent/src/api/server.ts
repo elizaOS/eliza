@@ -4415,6 +4415,14 @@ export async function startApiServer(opts?: {
     // AppManager doesn't need a runtime reference — it just installs plugins
   }
 
+  // Start the periodic stale-run sweeper that stops app runs whose UI
+  // heartbeat has gone silent (e.g. the user closed the tab without
+  // pressing Stop). Without this, plugins that own a setInterval — like
+  // the Defense-of-the-Agents game loop — would tick forever after the
+  // browser disappeared. The sweeper invokes the same `stopRun` route
+  // hook the Stop button uses so plugins have one shutdown path.
+  state.appManager.startStaleRunSweeper(() => state.runtime);
+
   const addLog = (
     level: string,
     message: string,

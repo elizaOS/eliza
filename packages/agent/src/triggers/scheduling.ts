@@ -3,6 +3,7 @@ import {
   type NormalizedTriggerDraft,
   TRIGGER_SCHEMA_VERSION,
   type TriggerConfig,
+  type TriggerKind,
   type TriggerTaskMetadata,
   type TriggerType,
   type TriggerWakeMode,
@@ -56,6 +57,9 @@ interface DraftInput {
   scheduledAtIso?: string;
   cronExpression?: string;
   maxRuns?: number;
+  kind?: TriggerKind;
+  workflowId?: string;
+  workflowName?: string;
 }
 
 function parseInteger(raw: string): number | null {
@@ -303,15 +307,22 @@ export function buildTriggerDedupeKey(parts: {
   scheduledAtIso?: string;
   cronExpression?: string;
   wakeMode: TriggerWakeMode;
+  kind?: TriggerKind;
+  workflowId?: string;
 }): string {
-  const normalized = [
+  const effectiveKind: TriggerKind = parts.kind ?? "text";
+  const normalizedParts = [
     parts.triggerType,
     normalizeText(parts.instructions).toLowerCase(),
     String(parts.intervalMs ?? ""),
     parts.scheduledAtIso ?? "",
     parts.cronExpression ?? "",
     parts.wakeMode,
-  ].join("|");
+  ];
+  if (effectiveKind === "workflow") {
+    normalizedParts.push(effectiveKind, parts.workflowId ?? "");
+  }
+  const normalized = normalizedParts.join("|");
   let hash = 5381;
   for (const char of normalized) {
     hash = (hash * 33) ^ char.charCodeAt(0);
@@ -356,11 +367,16 @@ export function buildTriggerConfig(params: {
       scheduledAtIso: params.draft.scheduledAtIso,
       cronExpression: params.draft.cronExpression,
       wakeMode: params.draft.wakeMode,
+      kind: params.draft.kind,
+      workflowId: params.draft.workflowId,
     }),
     nextRunAtMs: previous?.nextRunAtMs,
     lastRunAtIso: previous?.lastRunAtIso,
     lastStatus: previous?.lastStatus,
     lastError: previous?.lastError,
+    kind: params.draft.kind,
+    workflowId: params.draft.workflowId,
+    workflowName: params.draft.workflowName,
   };
 }
 
@@ -375,12 +391,32 @@ export function normalizeTriggerDraft(params: {
     createdBy: string;
   };
 }): { draft?: NormalizedTriggerDraft; error?: string } {
+  const kind: TriggerKind | undefined = params.input.kind;
+  const workflowId = params.input.workflowId?.trim();
+  const workflowName = params.input.workflowName?.trim();
+
   const displayName =
     normalizeText(params.input.displayName ?? "") ||
     normalizeText(params.fallback.displayName);
-  const instructions =
-    normalizeText(params.input.instructions ?? "") ||
-    normalizeText(params.fallback.instructions);
+
+  // Workflow-kind triggers don't require user-provided instructions; we
+  // synthesize them so display/dedupe logic downstream keeps working.
+  let instructions: string;
+  if (kind === "workflow") {
+    if (!workflowId) {
+      return { error: "workflowId is required for workflow triggers" };
+    }
+    const synthesized = `Run workflow ${workflowName ?? workflowId}`;
+    instructions =
+      normalizeText(params.input.instructions ?? "") ||
+      normalizeText(params.fallback.instructions) ||
+      normalizeText(synthesized);
+  } else {
+    instructions =
+      normalizeText(params.input.instructions ?? "") ||
+      normalizeText(params.fallback.instructions);
+  }
+
   if (!displayName) {
     return { error: "displayName is required" };
   }
@@ -429,6 +465,9 @@ export function normalizeTriggerDraft(params: {
         timezone,
         intervalMs,
         maxRuns,
+        kind,
+        workflowId,
+        workflowName,
       },
     };
   }
@@ -448,6 +487,9 @@ export function normalizeTriggerDraft(params: {
         timezone,
         scheduledAtIso,
         maxRuns,
+        kind,
+        workflowId,
+        workflowName,
       },
     };
   }
@@ -467,6 +509,9 @@ export function normalizeTriggerDraft(params: {
       timezone,
       cronExpression,
       maxRuns,
+      kind,
+      workflowId,
+      workflowName,
     },
   };
 }

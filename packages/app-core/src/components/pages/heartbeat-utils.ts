@@ -12,6 +12,7 @@ import type {
   TriggerWakeMode,
   UpdateTriggerRequest,
 } from "../../api/client";
+import type { TriggerKind } from "@elizaos/agent/triggers/types";
 import { formatDurationMs } from "../../utils/format";
 
 // ── Translation helper type ────────────────────────────────────────
@@ -73,6 +74,9 @@ export function durationUnitLabel(unit: DurationUnit, t: TranslateFn): string {
 export interface TriggerFormState {
   displayName: string;
   instructions: string;
+  kind: TriggerKind;
+  workflowId: string;
+  workflowName: string;
   triggerType: TriggerType;
   wakeMode: TriggerWakeMode;
   scheduledAtIso: string;
@@ -86,6 +90,9 @@ export interface TriggerFormState {
 export const emptyForm: TriggerFormState = {
   displayName: "",
   instructions: "",
+  kind: "text",
+  workflowId: "",
+  workflowName: "",
   triggerType: "interval",
   wakeMode: "inject_now",
   scheduledAtIso: "",
@@ -95,6 +102,11 @@ export const emptyForm: TriggerFormState = {
   durationValue: "1",
   durationUnit: "hours",
 };
+
+/** @deprecated Use emptyForm directly. Kept for callers that use the function form. */
+export function emptyTriggerForm(): TriggerFormState {
+  return { ...emptyForm };
+}
 
 // ── Template types & storage ───────────────────────────────────────
 
@@ -238,6 +250,9 @@ export function formFromTrigger(trigger: TriggerSummary): TriggerFormState {
   return {
     displayName: trigger.displayName,
     instructions: trigger.instructions,
+    kind: trigger.kind ?? "text",
+    workflowId: trigger.workflowId ?? "",
+    workflowName: trigger.workflowName ?? "",
     triggerType: trigger.triggerType,
     wakeMode: trigger.wakeMode,
     scheduledAtIso: trigger.scheduledAtIso ?? "",
@@ -255,7 +270,11 @@ export function buildCreateRequest(
   const maxRuns = parsePositiveInteger(form.maxRuns);
   return {
     displayName: form.displayName.trim(),
-    instructions: form.instructions.trim(),
+    instructions: form.kind === "text" ? form.instructions.trim() : undefined,
+    kind: form.kind,
+    workflowId: form.kind === "workflow" ? form.workflowId : undefined,
+    workflowName:
+      form.kind === "workflow" ? form.workflowName || undefined : undefined,
     triggerType: form.triggerType,
     wakeMode: form.wakeMode,
     enabled: form.enabled,
@@ -277,6 +296,27 @@ export function buildUpdateRequest(
   return { ...buildCreateRequest(form) };
 }
 
+/**
+ * Validates the kind-specific payload fields only (no schedule validation).
+ * Returns an error message when invalid, null when valid.
+ */
+export function validateTriggerKind(
+  form: TriggerFormState,
+  t: TranslateFn,
+): string | null {
+  if (form.kind === "workflow") {
+    if (!form.workflowId) {
+      return t("triggers.workflowPlaceholder");
+    }
+    return null;
+  }
+  // kind === "text"
+  if (!form.instructions.trim()) {
+    return t("heartbeatsview.validationInstructionsRequired");
+  }
+  return null;
+}
+
 export function validateForm(
   form: TriggerFormState,
   t: TranslateFn,
@@ -284,9 +324,8 @@ export function validateForm(
   if (!form.displayName.trim()) {
     return t("heartbeatsview.validationDisplayNameRequired");
   }
-  if (!form.instructions.trim()) {
-    return t("heartbeatsview.validationInstructionsRequired");
-  }
+  const kindError = validateTriggerKind(form, t);
+  if (kindError) return kindError;
   if (form.triggerType === "interval") {
     const value = Number(form.durationValue);
     if (!Number.isFinite(value) || value <= 0) {

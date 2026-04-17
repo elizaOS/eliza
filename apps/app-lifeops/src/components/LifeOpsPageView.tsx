@@ -279,7 +279,7 @@ export function LifeOpsPageView() {
   );
 
   const openCloudAgents = useCallback(() => {
-    setState("cloudDashboardView", "agents");
+    setState("cloudDashboardView", "overview");
     setTab("settings");
   }, [setState, setTab]);
 

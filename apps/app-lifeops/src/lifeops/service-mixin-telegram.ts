@@ -32,9 +32,14 @@ import {
   submitTelegramAuthPassword,
 } from "./telegram-auth.js";
 import {
+  getTelegramReadReceipts,
+  searchTelegramMessages,
   sendTelegramAccountMessage,
   telegramLocalSessionAvailable,
   verifyTelegramLocalConnector,
+  type TelegramDeliveryStatus,
+  type TelegramMessageSearchResult,
+  type TelegramReadReceiptResult,
 } from "./telegram-local-client.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
@@ -281,6 +286,50 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
         side,
         ...result,
       };
+    }
+
+    async searchTelegramMessages(request: {
+      side?: LifeOpsConnectorSide;
+      query: string;
+      scope?: string;
+      limit?: number;
+    }): Promise<TelegramMessageSearchResult[]> {
+      const side =
+        normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
+      const status = await this.getTelegramConnectorStatus(side);
+      if (!status.connected || !status.grant?.tokenRef) {
+        fail(409, "Telegram connector is not connected.");
+      }
+      if (!status.grantedCapabilities.includes("telegram.read")) {
+        fail(403, "Telegram connector is missing read permission.");
+      }
+      return searchTelegramMessages({
+        tokenRef: status.grant.tokenRef,
+        query: request.query,
+        scope: request.scope,
+        limit: request.limit,
+      });
+    }
+
+    async getTelegramDeliveryStatus(request: {
+      side?: LifeOpsConnectorSide;
+      target: string;
+      messageIds: string[];
+    }): Promise<TelegramReadReceiptResult[]> {
+      const side =
+        normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
+      const status = await this.getTelegramConnectorStatus(side);
+      if (!status.connected || !status.grant?.tokenRef) {
+        fail(409, "Telegram connector is not connected.");
+      }
+      if (!status.grantedCapabilities.includes("telegram.read")) {
+        fail(403, "Telegram connector is missing read permission.");
+      }
+      return getTelegramReadReceipts({
+        tokenRef: status.grant.tokenRef,
+        target: requireNonEmptyString(request.target, "target"),
+        messageIds: request.messageIds,
+      });
     }
 
     // -----------------------------------------------------------------------

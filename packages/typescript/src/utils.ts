@@ -1392,3 +1392,7 @@ export const getContentTypeFromMimeType = (
 
 export { getLocalServerUrl } from "./utils/node";
 export { extractFirstSentence, hasFirstSentence } from "./utils/text-splitting";
+// Re-exported so `export * from "./utils"` in index.node.ts surfaces this helper.
+// Node/Bun resolves that barrel to utils.ts (this file) instead of utils/index.ts,
+// so symbols only exposed by utils/index.ts need to be explicitly re-forwarded here.
+export { extractAndParseJSONObjectFromText } from "./utils/json-llm";

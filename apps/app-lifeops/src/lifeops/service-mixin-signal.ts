@@ -3,6 +3,7 @@ import type { Plugin } from "@elizaos/core";
 import type {
   LifeOpsConnectorSide,
   LifeOpsSignalConnectorStatus,
+  LifeOpsSignalInboundMessage,
   LifeOpsSignalPairingStatus,
   StartLifeOpsSignalPairingResponse,
 } from "@elizaos/shared/contracts/lifeops";
@@ -362,9 +363,62 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
         reason: "disconnected",
         identity: null,
         grantedCapabilities: [],
+        inbound: true,
         pairing: null,
         grant: null,
       };
+    }
+
+    /**
+     * Read recent inbound Signal messages via the Signal service's memory store.
+     * Returns an empty array when the Signal service is absent or disconnected.
+     * Does not throw — callers should check connector status separately.
+     */
+    async readSignalInbound(
+      limit = 25,
+    ): Promise<LifeOpsSignalInboundMessage[]> {
+      type SignalServiceLike = {
+        isServiceConnected?: () => boolean;
+        getRecentMessages?: (
+          limit?: number,
+        ) => Promise<
+          Array<{
+            id: string;
+            roomId: string;
+            channelId: string;
+            roomName: string;
+            speakerName: string;
+            text: string;
+            createdAt: number;
+            isFromAgent: boolean;
+            isGroup: boolean;
+          }>
+        >;
+      };
+      const signalService = this.runtime.getService("signal") as SignalServiceLike | null;
+
+      if (!signalService?.isServiceConnected?.()) {
+        return [];
+      }
+
+      const clampedLimit = Math.min(Math.max(1, Math.floor(limit)), 100);
+      const raw = await signalService.getRecentMessages?.(clampedLimit);
+      if (!raw || raw.length === 0) {
+        return [];
+      }
+
+      return raw.map(
+        (entry): LifeOpsSignalInboundMessage => ({
+          id: entry.id,
+          roomId: entry.roomId,
+          channelId: entry.channelId,
+          speakerName: entry.speakerName,
+          text: entry.text,
+          createdAt: entry.createdAt,
+          isInbound: !entry.isFromAgent,
+          isGroup: entry.isGroup,
+        }),
+      );
     }
   }
 

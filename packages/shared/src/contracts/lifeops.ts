@@ -1494,6 +1494,12 @@ export interface LifeOpsXConnectorStatus {
   grantedScopes: string[];
   identity: Record<string, unknown> | null;
   hasCredentials: boolean;
+  /**
+   * DM inbound read is supported when `x.read` capability is granted.
+   * Use `syncXDms()` to pull and persist, then `getXDms()` or
+   * `readXInboundDms()` to retrieve.
+   */
+  dmInbound: boolean;
   grant: LifeOpsConnectorGrant | null;
 }
 
@@ -1576,6 +1582,11 @@ export type LifeOpsTelegramAuthState =
 export interface LifeOpsWhatsAppConnectorStatus {
   provider: "whatsapp";
   connected: boolean;
+  /**
+   * Inbound is always true for WhatsApp. Messages arrive via webhook push and
+   * are buffered for periodic drain via `syncWhatsAppInbound()`.
+   */
+  inbound: true;
   phoneNumberId?: string;
   lastCheckedAt: string;
 }

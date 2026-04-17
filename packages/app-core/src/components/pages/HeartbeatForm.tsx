@@ -9,7 +9,9 @@ import {
   StatusDot,
   Textarea,
 } from "@elizaos/ui";
-import type { TriggerSummary } from "../../api/client";
+import { useEffect, useState } from "react";
+import { client } from "../../api";
+import type { N8nWorkflow, TriggerSummary } from "../../api/client";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import {
   DURATION_UNITS,
@@ -178,17 +180,20 @@ export function HeartbeatForm({
             />
           </div>
 
-          <div>
-            <FieldLabel variant="form">
-              {t("triggersview.Instructions")}
-            </FieldLabel>
-            <Textarea
-              variant="form"
-              value={form.instructions}
-              onChange={(event) => setField("instructions", event.target.value)}
-              placeholder={t("triggersview.WhatShouldTheAgen")}
-            />
-          </div>
+          <TriggerKindSection
+            form={form}
+            setField={setField}
+            t={t}
+            onGoToWorkflows={() => {
+              // Switch the Automations view to the Workflows filter tab.
+              // AutomationsLayout listens for this event via a useEffect to call setFilter("workflows").
+              window.dispatchEvent(
+                new CustomEvent("milady:automations:setFilter", {
+                  detail: { filter: "workflows" },
+                }),
+              );
+            }}
+          />
 
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <div>
@@ -353,7 +358,10 @@ export function HeartbeatForm({
               variant="default"
               size="sm"
               className="h-10 px-6 text-sm text-white shadow-sm hover:text-white dark:text-white dark:hover:text-white"
-              disabled={triggersSaving}
+              disabled={
+                triggersSaving ||
+                (form.kind === "workflow" && !form.workflowId)
+              }
               onClick={() => void onSubmit()}
             >
               {triggersSaving
@@ -396,6 +404,158 @@ export function HeartbeatForm({
           />
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Trigger kind section (what to run) ────────────────────────────
+
+function TriggerKindSection({
+  form,
+  setField,
+  t,
+  onGoToWorkflows,
+}: {
+  form: TriggerFormState;
+  setField: <K extends keyof TriggerFormState>(
+    key: K,
+    value: TriggerFormState[K],
+  ) => void;
+  t: TranslateFn;
+  onGoToWorkflows: () => void;
+}) {
+  const [workflows, setWorkflows] = useState<N8nWorkflow[]>([]);
+  const [workflowsError, setWorkflowsError] = useState<"unavailable" | null>(
+    null,
+  );
+  const [workflowsLoading, setWorkflowsLoading] = useState(false);
+
+  useEffect(() => {
+    if (form.kind !== "workflow") return;
+    let cancelled = false;
+    setWorkflowsLoading(true);
+    setWorkflowsError(null);
+    client
+      .listN8nWorkflows()
+      .then((list) => {
+        if (cancelled) return;
+        setWorkflows([...list].sort((a, b) => a.name.localeCompare(b.name)));
+        setWorkflowsError(null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setWorkflowsError("unavailable");
+      })
+      .finally(() => {
+        if (!cancelled) setWorkflowsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.kind]);
+
+  const toggleLabelId = "trigger-kind-toggle-label";
+
+  return (
+    <div>
+      {/* Kind toggle */}
+      <FieldLabel variant="form" id={toggleLabelId}>
+        {t("triggers.whatToRun")}
+      </FieldLabel>
+      <div
+        role="radiogroup"
+        aria-labelledby={toggleLabelId}
+        className="mt-1.5 flex gap-2"
+      >
+        <button
+          type="button"
+          role="radio"
+          aria-checked={form.kind === "text"}
+          onClick={() => setField("kind", "text")}
+          className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+            form.kind === "text"
+              ? "border-accent bg-accent/10 text-accent"
+              : "border-border/40 text-muted hover:border-border hover:text-txt"
+          }`}
+        >
+          {t("triggers.kindText")}
+        </button>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={form.kind === "workflow"}
+          onClick={() => setField("kind", "workflow")}
+          className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+            form.kind === "workflow"
+              ? "border-accent bg-accent/10 text-accent"
+              : "border-border/40 text-muted hover:border-border hover:text-txt"
+          }`}
+        >
+          {t("triggers.kindWorkflow")}
+        </button>
+      </div>
+
+      {/* Text prompt */}
+      {form.kind === "text" && (
+        <div className="mt-4">
+          <FieldLabel variant="form">
+            {t("triggersview.Instructions")}
+          </FieldLabel>
+          <Textarea
+            variant="form"
+            value={form.instructions}
+            onChange={(event) => setField("instructions", event.target.value)}
+            placeholder={t("triggersview.WhatShouldTheAgen")}
+          />
+        </div>
+      )}
+
+      {/* Workflow picker */}
+      {form.kind === "workflow" && (
+        <div className="mt-4">
+          {workflowsError === "unavailable" ||
+          (!workflowsLoading && workflows.length === 0) ? (
+            <div
+              role="status"
+              className="rounded-lg border border-border/30 bg-bg/30 px-4 py-3 text-sm text-muted"
+            >
+              <p>{t("triggers.workflowUnavailable")}</p>
+              <button
+                type="button"
+                className="mt-2 text-xs font-medium text-accent underline-offset-2 hover:underline"
+                onClick={onGoToWorkflows}
+              >
+                {t("triggers.goToWorkflows")}
+              </button>
+            </div>
+          ) : (
+            <>
+              <FieldLabel variant="form" htmlFor="trigger-workflow-select">
+                {t("triggers.workflowLabel")}
+              </FieldLabel>
+              <FormSelect
+                value={form.workflowId}
+                onValueChange={(value: string) => {
+                  const wf = workflows.find((w) => w.id === value);
+                  setField("workflowId", value);
+                  setField("workflowName", wf?.name ?? "");
+                }}
+                placeholder={
+                  workflowsLoading
+                    ? t("databaseview.Loading")
+                    : t("triggers.workflowPlaceholder")
+                }
+              >
+                {workflows.map((wf) => (
+                  <FormSelectItem key={wf.id} value={wf.id}>
+                    {wf.name}
+                  </FormSelectItem>
+                ))}
+              </FormSelect>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
