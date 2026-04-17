@@ -454,6 +454,67 @@ export const skillRefinementEvaluator: Evaluator = {
 					"Auto-applied skill refinement",
 				);
 			} else {
+				// Gradient mode — the LLM-diff auto-budget is exhausted, so we
+				// switch to the native `prompt-evolution` optimizer. It pulls
+				// trajectories tagged with this skill and rewrites the SKILL.md
+				// body via the optimizer instead of by single-shot LLM diff.
+				//
+				// We dynamic-import the optimizer module so @elizaos/core does
+				// not gain a hard dependency on @elizaos/app-training; the
+				// import resolves only when the training package is installed
+				// (which is the case in this monorepo). When the import fails,
+				// we fall back to the previous "stage for human review"
+				// behaviour so the closed loop never silently drops a refinement.
+				const gradientResult = await tryGradientRefinement({
+					runtime,
+					trajectoryService: service,
+					skillName,
+					skillBody: parsed.body,
+				});
+				if (gradientResult) {
+					const lineage = Array.isArray(provenance.optimizationLineage)
+						? [
+								...(provenance.optimizationLineage as Array<{
+									optimizer: string;
+									score: number;
+									datasetSize: number;
+									generatedAt: string;
+								}>),
+							]
+						: [];
+					lineage.push({
+						optimizer: gradientResult.optimizer,
+						score: gradientResult.score,
+						datasetSize: gradientResult.datasetSize,
+						generatedAt: nowIso,
+					});
+					provenance.source = "agent-refined";
+					provenance.derivedFromTrajectory = trajectory.trajectoryId;
+					provenance.createdAt = nowIso;
+					provenance.optimizationLineage = lineage;
+					const newFrontmatter = {
+						...parsed.frontmatter,
+						provenance,
+					};
+					writeFileSync(
+						activePath,
+						serializeSkillFile(newFrontmatter, gradientResult.optimizedBody),
+						"utf-8",
+					);
+					refinedNames.push(skillName);
+					logger.info(
+						{
+							src: "plugin:advanced-capabilities:evaluator:skill_refinement",
+							agentId: runtime.agentId,
+							skillName,
+							optimizer: gradientResult.optimizer,
+							score: gradientResult.score,
+							datasetSize: gradientResult.datasetSize,
+						},
+						"Gradient-mode skill refinement applied via native optimizer",
+					);
+					continue;
+				}
 				const proposedDir = join(getProposedSkillsDir(), skillName);
 				if (existsSync(proposedDir)) {
 					logger.debug(

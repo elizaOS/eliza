@@ -13,6 +13,19 @@ export interface SkillProvenance {
   refinedCount: number;
   /** Most recent eval score from the scoring cron, in [0, 1]. */
   lastEvalScore?: number;
+  /**
+   * Audit trail for native-optimizer-driven skill refinements.
+   *
+   * Populated by the gradient-mode branch of `skillRefinementEvaluator` —
+   * after the LLM-diff auto-budget is exhausted, the evaluator switches to
+   * the native `prompt-evolution` optimizer and appends one entry per run.
+   */
+  optimizationLineage?: Array<{
+    optimizer: "instruction-search" | "prompt-evolution" | "bootstrap-fewshot";
+    score: number;
+    datasetSize: number;
+    generatedAt: string;
+  }>;
 }
 
 /**
