@@ -111,6 +111,9 @@ export interface RelationshipsServiceLike {
     daysSinceInteraction: number | null;
     targetCadenceDays: number | null;
   } | null>;
+  /** WS3: cross-platform identity-cluster lookup. Optional: older runtimes
+   * may not expose it. When absent, dedup degrades to email-only. */
+  resolvePrimaryEntityId?(entityId: UUID): Promise<UUID>;
 }
 
 /** Structural shape for a calendar feed provider. */
@@ -179,16 +182,22 @@ export class DossierService {
       relationships: !this.deps.relationships,
       gmail: !this.deps.gmail,
       memories: false,
+      identityCluster: false,
     };
 
-    const attendees: DossierAttendeeSummary[] = [];
+    const rawAttendees: DossierAttendeeSummary[] = [];
     for (const attendee of event.attendees) {
       const summary = await this.buildAttendeeSummary(
         attendee,
         effectiveWindowDays,
       );
-      attendees.push(summary);
+      rawAttendees.push(summary);
     }
+
+    const attendees = await this.dedupeByIdentityCluster(
+      rawAttendees,
+      degraded,
+    );
 
     const priorDossierIds = new Set<UUID>();
     try {
@@ -304,6 +313,68 @@ export class DossierService {
     }
 
     return summary;
+  }
+
+  /**
+   * Collapse attendees that belong to the same cross-platform identity
+   * cluster. Two attendees with different emails may actually be the same
+   * person (jill@work.com and jill.personal@gmail.com linked via discord
+   * handle). Without this dedup, the dossier double-counts history and
+   * presents the same person twice.
+   *
+   * Only attendees with a resolved contactId participate — unknown
+   * attendees stay as-is.
+   *
+   * If the relationships service does not expose resolvePrimaryEntityId
+   * we leave the list unchanged and flag degraded.identityCluster so the
+   * consumer can tell the dedup was skipped.
+   */
+  private async dedupeByIdentityCluster(
+    attendees: DossierAttendeeSummary[],
+    degraded: DossierPayload["degraded"],
+  ): Promise<DossierAttendeeSummary[]> {
+    const relService = this.deps.relationships;
+    if (!relService || typeof relService.resolvePrimaryEntityId !== "function") {
+      if (attendees.some((a) => a.contactId !== null)) {
+        degraded.identityCluster = true;
+      }
+      return attendees;
+    }
+
+    const primaryByContact = new Map<UUID, UUID>();
+    for (const attendee of attendees) {
+      if (!attendee.contactId) continue;
+      try {
+        const primary = await relService.resolvePrimaryEntityId(attendee.contactId);
+        primaryByContact.set(attendee.contactId, primary);
+      } catch (err) {
+        degraded.identityCluster = true;
+        logger.warn(
+          `[DossierService] resolvePrimaryEntityId failed for ${attendee.contactId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return attendees;
+      }
+    }
+
+    const seenPrimaries = new Set<UUID>();
+    const deduped: DossierAttendeeSummary[] = [];
+    for (const attendee of attendees) {
+      if (!attendee.contactId) {
+        deduped.push(attendee);
+        continue;
+      }
+      const primary = primaryByContact.get(attendee.contactId);
+      if (!primary) {
+        deduped.push(attendee);
+        continue;
+      }
+      if (seenPrimaries.has(primary)) {
+        continue;
+      }
+      seenPrimaries.add(primary);
+      deduped.push(attendee);
+    }
+    return deduped;
   }
 
   private async findPriorDossierMemoryIds(
