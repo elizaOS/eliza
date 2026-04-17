@@ -13,6 +13,7 @@ import { useApp } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
 import { ActiveModelBar } from "./ActiveModelBar";
+import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
 import { ModelHubView } from "./ModelHubView";
 
@@ -192,6 +193,13 @@ export function LocalInferencePanel() {
   return (
     <div className="flex flex-col gap-4">
       <HardwareBadge hardware={hub.hardware} />
+      <FirstRunOffer
+        catalog={hub.catalog}
+        installed={hub.installed}
+        hardware={hub.hardware}
+        onDownload={handleDownload}
+        busy={busy}
+      />
       <ActiveModelBar
         active={hub.active}
         installed={hub.installed}
