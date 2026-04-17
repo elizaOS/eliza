@@ -2,9 +2,8 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsDiscordConnectorStatus,
 } from "@elizaos/shared/contracts/lifeops";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "@elizaos/app-core/api";
-import { openExternalUrl } from "@elizaos/app-core/utils";
 
 function formatError(cause: unknown, fallback: string): string {
   if (cause instanceof Error && cause.message.trim().length > 0) {
@@ -17,6 +16,8 @@ export interface UseDiscordConnectorOptions {
   side?: LifeOpsConnectorSide;
 }
 
+const LOGIN_POLL_INTERVAL_MS = 3_000;
+
 export function useDiscordConnector(options: UseDiscordConnectorOptions = {}) {
   const side = options.side ?? "owner";
   const [status, setStatus] = useState<LifeOpsDiscordConnectorStatus | null>(
@@ -25,6 +26,14 @@ export function useDiscordConnector(options: UseDiscordConnectorOptions = {}) {
   const [loading, setLoading] = useState(true);
   const [actionPending, setActionPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearPoll = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -62,24 +71,40 @@ export function useDiscordConnector(options: UseDiscordConnectorOptions = {}) {
     };
   }, [side]);
 
-  const connect = useCallback(
-    async (redirectUrl?: string) => {
-      try {
-        setActionPending(true);
-        setError(null);
-        const result = await client.startDiscordConnector({
-          side,
-          redirectUrl,
-        });
-        await openExternalUrl(result.authUrl);
-      } catch (cause) {
-        setError(formatError(cause, "Discord connector failed to start."));
-      } finally {
-        setActionPending(false);
-      }
-    },
-    [side],
-  );
+  useEffect(() => () => clearPoll(), [clearPoll]);
+
+  useEffect(() => {
+    if (status?.reason === "pairing" && !pollRef.current) {
+      pollRef.current = setInterval(() => {
+        void (async () => {
+          try {
+            const next = await client.getDiscordConnectorStatus(side);
+            setStatus(next);
+            if (next.reason !== "pairing") {
+              clearPoll();
+            }
+          } catch {
+            // Keep polling; transient errors shouldn't stop the loop.
+          }
+        })();
+      }, LOGIN_POLL_INTERVAL_MS);
+    } else if (status?.reason !== "pairing") {
+      clearPoll();
+    }
+  }, [status?.reason, side, clearPoll]);
+
+  const connect = useCallback(async () => {
+    try {
+      setActionPending(true);
+      setError(null);
+      const nextStatus = await client.startDiscordConnector({ side });
+      setStatus(nextStatus);
+    } catch (cause) {
+      setError(formatError(cause, "Discord connector failed to start."));
+    } finally {
+      setActionPending(false);
+    }
+  }, [side]);
 
   const disconnect = useCallback(async () => {
     try {

@@ -1527,9 +1527,10 @@ export interface LifeOpsSignalConnectorStatus {
 export interface LifeOpsDiscordConnectorStatus {
   provider: "discord";
   side: LifeOpsConnectorSide;
+  /** Browser Workspace desktop bridge is available (Discord lives inside a Milady browser tab). */
   available: boolean;
+  /** Logged-in Discord DOM was detected in the browser tab. */
   connected: boolean;
-  authenticated: boolean;
   reason: LifeOpsMessagingConnectorReason;
   identity: {
     id?: string;
@@ -1538,13 +1539,9 @@ export interface LifeOpsDiscordConnectorStatus {
     email?: string;
   } | null;
   grantedCapabilities: LifeOpsDiscordCapability[];
-  grantedScopes: string[];
-  configuredChannelIds: string[];
-  subscribedChannelIds: string[];
-  expiresAt: string | null;
-  hasRefreshToken: boolean;
   lastError: string | null;
-  ipcPath: string | null;
+  /** Browser Workspace tab hosting Discord, when one exists. */
+  tabId: string | null;
   grant: LifeOpsConnectorGrant | null;
 }
 
@@ -1611,29 +1608,6 @@ export interface LifeOpsSignalPairingStatus {
 
 export interface StartLifeOpsDiscordConnectorRequest {
   side?: LifeOpsConnectorSide;
-  redirectUrl?: string;
-}
-
-export interface StartLifeOpsDiscordConnectorResponse {
-  provider: "discord";
-  side: LifeOpsConnectorSide;
-  authUrl: string;
-}
-
-export interface LifeOpsDiscordGuild {
-  id: string;
-  name?: string;
-}
-
-export interface LifeOpsDiscordChannel {
-  id: string;
-  name?: string;
-  type?: number;
-  recipients?: Array<{
-    id: string;
-    username?: string;
-    global_name?: string;
-  }>;
 }
 
 export interface StartLifeOpsTelegramAuthRequest {

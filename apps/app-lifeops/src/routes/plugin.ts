@@ -133,9 +133,6 @@ const LIFEOPS_STATIC_ROUTES: Array<{ type: string; path: string; public?: boolea
   // Discord
   { type: "GET", path: "/api/lifeops/connectors/discord/status" },
   { type: "POST", path: "/api/lifeops/connectors/discord/connect" },
-  { type: "GET", path: "/api/lifeops/connectors/discord/guilds" },
-  { type: "GET", path: "/api/lifeops/connectors/discord/channels" },
-  { type: "POST", path: "/api/lifeops/connectors/discord/subscriptions" },
   { type: "POST", path: "/api/lifeops/connectors/discord/disconnect" },
   { type: "GET", path: "/api/lifeops/channel-policies" },
   { type: "POST", path: "/api/lifeops/channel-policies" },
