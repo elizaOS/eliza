@@ -1,4 +1,4 @@
-numpy~=1.24.4
+numpy~=1.26.4
 Pillow~=12.2.0
 fabric
 gymnasium~=0.28.1
