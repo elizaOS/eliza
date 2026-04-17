@@ -1,11 +1,7 @@
 {
   "name": "@elizaos/prompts",
   "private": false,
-<<<<<<< HEAD
-  "version": "2.0.0-alpha.0",
-=======
   "version": "2.0.0-alpha.176",
->>>>>>> bd5be71a4878b7229ea402ccdf7ad0a343de7020
   "description": "Shared prompt templates for elizaOS across TypeScript, Python, and Rust",
   "type": "module",
   "main": "./dist/typescript/index.ts",
