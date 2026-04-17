@@ -37,7 +37,7 @@
   },
   "devDependencies": {
     "@capacitor/core": "^8.0.0",
-    "rimraf": "^5.0.0",
+    "rimraf": "^6.0.0",
     "rollup": "^4.59.0",
     "typescript": "^6.0.0"
   },
