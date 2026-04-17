@@ -19,6 +19,8 @@ import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
 import { LifeOpsBrowserSetupPanel } from "./LifeOpsBrowserSetupPanel";
 import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
 import { LifeOpsWorkspaceView } from "./LifeOpsWorkspaceView";
+import { MessagingConnectorGrid } from "./MessagingConnectorCards";
+import { PermissionsPanel } from "./PermissionsPanel";
 
 const LIFEOPS_GITHUB_COMPLETE_PATH = "/api/v1/milady/lifeops/github-complete";
 const LIFEOPS_GITHUB_RETURN_URL = "elizaos://lifeops";
@@ -626,13 +628,20 @@ export function LifeOpsPageView() {
             </button>
 
             {setupOpen ? (
-              <div className="space-y-4 border-t border-border/12 px-4 pb-4 pt-4">
-                <LifeOpsSettingsSection />
+              <div className="space-y-6 border-t border-border/12 px-4 pb-4 pt-4">
+                <LifeOpsSettingsSection
+                  ownerGithub={ownerGithubSetup}
+                  agentGithub={agentGithubSetup}
+                  githubError={githubError}
+                />
+                <MessagingConnectorGrid />
               </div>
             ) : null}
           </section>
 
           <LifeOpsWorkspaceView />
+
+          <PermissionsPanel />
         </>
       ) : null}
 
