@@ -32,6 +32,7 @@ export const walkTo: Action = {
   name: "WALK_TO",
   description:
     "Walk the agent toward a specific world tile (x, z). Use this to move to banks, NPCs, resource nodes, or just to explore.",
+  descriptionCompressed: "Walk to coordinate or named destination.",
   similes: ["MOVE_TO", "GO_TO", "TRAVEL_TO", "HEAD_TO"],
   examples: [],
   validate: async (

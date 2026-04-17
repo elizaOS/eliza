@@ -189,8 +189,7 @@ import { handleConversationRoutes } from "./conversation-routes.js";
 import { handleDatabaseRoute } from "./database.js";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.js";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
-import { handleDropRoutes } from "./drop-routes.js";
-import { DropService } from "./drop-service.js";
+import { DropService, handleDropRoutes } from "@elizaos/app-elizamaker";
 import { handleHealthRoutes } from "./health-routes.js";
 import {
   readJsonBody as parseJsonBody,
@@ -241,7 +240,7 @@ import { routeTaskAgentTextToConnector } from "@elizaos/app-task-coordinator/api
 import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
 import { handleTriggerRoutes } from "./trigger-routes.js";
 import { handleTtsRoutes } from "./tts-routes.js";
-import { TxService } from "./tx-service.js";
+import { TxService } from "@elizaos/app-steward/api/tx-service";
 import { handleUpdateRoutes } from "./update-routes.js";
 import {
   // Balance/import/generate helpers moved to @elizaos/app-steward plugin routes.

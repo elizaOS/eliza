@@ -25,6 +25,7 @@ export const nearbyProvider: Provider = {
   name: "SCAPE_NEARBY",
   description:
     "NPCs, players, ground items, and scenery objects within perception radius.",
+  descriptionCompressed: "NPCs, players, items, scenery in range.",
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,

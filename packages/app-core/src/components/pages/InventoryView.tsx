@@ -1,4 +1,4 @@
-import type { StewardStatusResponse } from "@elizaos/shared/contracts/wallet";
+import type { StewardStatusResponse } from "@elizaos/app-steward/types/steward";
 import { useApp } from "../../state/useApp";
 import { WidgetHost } from "../../widgets";
 

@@ -28,6 +28,13 @@ export const useComputerAction: Action = {
     "MOVE_MOUSE",
     "DRAG",
     "MOUSE_CLICK",
+    "TAKE_SCREENSHOT",
+    "CAPTURE_SCREEN",
+    "SCREEN_CAPTURE",
+    "GET_SCREENSHOT",
+    "SEE_SCREEN",
+    "LOOK_AT_SCREEN",
+    "VIEW_SCREEN",
   ],
   description:
     "Control the local desktop. This action can inspect the current screen, move the mouse, click, drag, type, press keys, scroll, and perform modified clicks. It is intended for real application interaction when the agent needs to operate the user's computer directly.\n\n" +
@@ -45,6 +52,7 @@ export const useComputerAction: Action = {
     "- drag: drag from startCoordinate to coordinate.\n" +
     "- detect_elements / ocr: parity stubs preserved from upstream; they return an explicit local-runtime not-available error.\n\n" +
     "Why this exists: it lets the agent operate arbitrary desktop software, not just browser pages or the terminal. Start with a screenshot when visual context is needed, then act using exact coordinates and follow-up screenshots.",
+  descriptionCompressed: "Desktop control: mouse, keyboard, screenshot, scroll, drag. For direct app interaction.",
   parameters: [
     {
       name: "action",

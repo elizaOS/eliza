@@ -520,63 +520,55 @@ export function CharacterExamplesPanel({
             )}
           </Button>
         </div>
-        <div className="flex flex-col gap-1.5 overflow-y-auto min-h-0">
+        <div className="flex flex-col overflow-y-auto min-h-0 divide-y divide-border/30">
           {normalizedMessageExamples.map((convo, ci) => (
             <div
               // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
               key={`convo-${ci}`}
-              className="group py-2"
+              className="group relative flex flex-col gap-1 py-2 first:pt-0 last:pb-0"
             >
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-3xs font-bold uppercase tracking-[0.12em] text-muted">
-                  {t("charactereditor.ConversationN", {
-                    defaultValue: `Conversation ${ci + 1}`,
-                  }).replace("{n}", String(ci + 1))}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="mt-0.5 shrink-0 text-muted opacity-0 transition-opacity duration-150 p-0 h-auto w-auto hover:text-danger group-hover:opacity-100"
-                  onClick={() => {
-                    const updated = [...normalizedMessageExamples];
-                    updated.splice(ci, 1);
-                    handleFieldEdit("messageExamples", updated);
-                  }}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-0 top-1 shrink-0 p-0 h-auto w-auto text-muted opacity-0 transition-opacity duration-150 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
+                onClick={() => {
+                  const updated = [...normalizedMessageExamples];
+                  updated.splice(ci, 1);
+                  handleFieldEdit("messageExamples", updated);
+                }}
+                aria-label={`${t("common.remove")} conversation ${ci + 1}`}
+              >
+                <CloseIconSvg />
+              </Button>
+              {convo.examples.map((msg, mi) => (
+                <div
+                  // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
+                  key={`msg-${ci}-${mi}`}
+                  className="flex items-center gap-2"
                 >
-                  <CloseIconSvg />
-                </Button>
-              </div>
-              <div className="flex flex-col gap-1">
-                {convo.examples.map((msg, mi) => (
-                  <div
-                    // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
-                    key={`msg-${ci}-${mi}`}
-                    className="flex items-center gap-2"
+                  <span
+                    className={`w-10 shrink-0 text-right text-3xs font-bold uppercase tracking-[0.1em] ${msg.name === "{{user1}}" ? "text-muted" : "text-accent"}`}
                   >
-                    <span
-                      className={`w-10 shrink-0 text-right text-3xs font-bold uppercase tracking-[0.1em] text-muted${msg.name === "{{user1}}" ? "" : " text-accent"}`}
-                    >
-                      {msg.name === "{{user1}}" ? "user" : "agent"}
-                    </span>
-                    <Input
-                      value={msg.content?.text ?? ""}
-                      onChange={(e) => {
-                        const updated = [...normalizedMessageExamples];
-                        const convoClone = {
-                          examples: [...updated[ci].examples],
-                        };
-                        convoClone.examples[mi] = {
-                          ...convoClone.examples[mi],
-                          content: { text: e.target.value },
-                        };
-                        updated[ci] = convoClone;
-                        handleFieldEdit("messageExamples", updated);
-                      }}
-                      className="h-7 flex-1 rounded-md border border-border bg-white/[0.03] px-2 font-mono text-xs-tight text-txt outline-none focus:border-accent"
-                    />
-                  </div>
-                ))}
-              </div>
+                    {msg.name === "{{user1}}" ? "user" : "agent"}
+                  </span>
+                  <Input
+                    value={msg.content?.text ?? ""}
+                    onChange={(e) => {
+                      const updated = [...normalizedMessageExamples];
+                      const convoClone = {
+                        examples: [...updated[ci].examples],
+                      };
+                      convoClone.examples[mi] = {
+                        ...convoClone.examples[mi],
+                        content: { text: e.target.value },
+                      };
+                      updated[ci] = convoClone;
+                      handleFieldEdit("messageExamples", updated);
+                    }}
+                    className="h-7 flex-1 rounded-md border border-border/50 bg-white/[0.03] px-2 text-xs-tight leading-tight text-txt outline-none focus:border-accent"
+                  />
+                </div>
+              ))}
             </div>
           ))}
           {normalizedMessageExamples.length === 0 && (

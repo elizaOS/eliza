@@ -16,6 +16,7 @@ export const listGroups: Action = {
   name: "SIGNAL_LIST_GROUPS",
   similes: ["LIST_SIGNAL_GROUPS", "SHOW_GROUPS", "GET_GROUPS", "SIGNAL_GROUPS"],
   description: "List Signal groups",
+  descriptionCompressed: "List Signal groups.",
     validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
   	const __avTextRaw = typeof message?.content?.text === 'string' ? message.content.text : '';
   	const __avText = __avTextRaw.toLowerCase();

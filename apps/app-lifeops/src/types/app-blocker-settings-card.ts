@@ -1,5 +1,4 @@
-export type AppBlockerSettingsMode = "desktop" | "mobile" | "web";
-
-export interface AppBlockerSettingsCardProps {
-  mode: AppBlockerSettingsMode;
-}
+export type {
+  AppBlockerSettingsCardProps,
+  AppBlockerSettingsMode,
+} from "@elizaos/shared/contracts/lifeops";

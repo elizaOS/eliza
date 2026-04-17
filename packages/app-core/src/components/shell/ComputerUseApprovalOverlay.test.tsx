@@ -50,7 +50,7 @@ describe("ComputerUseApprovalOverlay", () => {
       expect(getComputerUseApprovalsMock).toHaveBeenCalled();
     });
 
-    expect(screen.queryByText("Allow this computer action?")).toBeNull();
+    expect(screen.queryByText("Review queued computer actions")).toBeNull();
   });
 
   it("renders the pending command and resolves approval from the overlay", async () => {
@@ -92,7 +92,9 @@ describe("ComputerUseApprovalOverlay", () => {
 
     render(<ComputerUseApprovalOverlay />);
 
-    expect(await screen.findByText("Allow this computer action?")).toBeTruthy();
+    expect(
+      await screen.findByText("Review queued computer actions"),
+    ).toBeTruthy();
     expect(screen.getByText("browser_navigate")).toBeTruthy();
     expect(screen.getByText(/example\.com/i)).toBeTruthy();
 
@@ -102,6 +104,7 @@ describe("ComputerUseApprovalOverlay", () => {
       expect(respondToComputerUseApprovalMock).toHaveBeenCalledWith(
         "approval_1",
         true,
+        undefined,
       );
     });
 

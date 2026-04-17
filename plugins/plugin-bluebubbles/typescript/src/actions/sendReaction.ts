@@ -51,6 +51,7 @@ export const sendReactionAction: Action = {
 	name: "BLUEBUBBLES_SEND_REACTION",
 	similes: ["BLUEBUBBLES_REACT", "BB_REACTION", "IMESSAGE_REACT"],
 	description: "Add or remove a reaction on a message via BlueBubbles",
+	descriptionCompressed: "React on iMessage via BlueBubbles.",
 	validate: async (
 		_runtime: IAgentRuntime,
 		message: Memory,

@@ -145,6 +145,7 @@ export { formContextProvider } from "./providers/context";
 export const formPlugin: Plugin = {
   name: "form",
   description: "Agent-native conversational forms for data collection",
+  descriptionCompressed: "Conversational forms for structured data collection.",
 
   // Service for form management
   services: [
@@ -162,6 +163,7 @@ export const formPlugin: Plugin = {
     {
       name: "FORM_CONTEXT",
       description: "Provides context about active form sessions",
+      descriptionCompressed: "Active form session context.",
       get: async (runtime, message, state) => {
         const { formContextProvider } = await import("./providers/context");
         return formContextProvider.get(runtime, message, state);
@@ -174,6 +176,7 @@ export const formPlugin: Plugin = {
     {
       name: "form_evaluator",
       description: "Extracts form fields and handles form intents",
+      descriptionCompressed: "Extract form fields and handle form intents.",
       similes: ["FORM_EXTRACTION", "FORM_HANDLER"],
       examples: [],
       validate: async (runtime, message, state) => {
@@ -193,6 +196,7 @@ export const formPlugin: Plugin = {
       name: "FORM_RESTORE",
       similes: ["RESUME_FORM", "CONTINUE_FORM"],
       description: "Restore a previously stashed form session",
+      descriptionCompressed: "Restore stashed form session.",
       validate: async (runtime, message, state) => {
         const { formRestoreAction } = await import("./actions/restore");
         return formRestoreAction.validate(runtime, message, state);

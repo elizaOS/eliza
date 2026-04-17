@@ -58,6 +58,15 @@ function fileMtime(p) {
   }
 }
 
+function maxMtimeAcrossDirs(dirs) {
+  let max = 0;
+  for (const dir of dirs) {
+    if (!fs.existsSync(dir)) continue;
+    max = Math.max(max, maxMtimeUnder(dir));
+  }
+  return max;
+}
+
 /**
  * @param {string} appDir absolute path to apps/app
  * @param {string} repoRoot absolute path to repo root
@@ -91,13 +100,19 @@ export function viteRendererBuildNeeded(appDir, repoRoot) {
     return true;
   }
 
-  const uiSrc = path.join(repoRoot, "packages", "ui", "src");
-  if (fs.existsSync(uiSrc) && maxMtimeUnder(uiSrc) > distMtime) {
+  const uiSrcCandidates = [
+    path.join(repoRoot, "packages", "ui", "src"),
+    path.join(repoRoot, "eliza", "packages", "ui", "src"),
+  ];
+  if (maxMtimeAcrossDirs(uiSrcCandidates) > distMtime) {
     return true;
   }
 
-  const appCoreSrc = path.join(repoRoot, "packages", "app-core", "src");
-  if (fs.existsSync(appCoreSrc) && maxMtimeUnder(appCoreSrc) > distMtime) {
+  const appCoreSrcCandidates = [
+    path.join(repoRoot, "packages", "app-core", "src"),
+    path.join(repoRoot, "eliza", "packages", "app-core", "src"),
+  ];
+  if (maxMtimeAcrossDirs(appCoreSrcCandidates) > distMtime) {
     return true;
   }
 

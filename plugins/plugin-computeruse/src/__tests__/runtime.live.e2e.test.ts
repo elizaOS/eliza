@@ -177,7 +177,6 @@ describe("computer-use runtime registration (live e2e)", () => {
     expect(actionNames).toEqual(
       expect.arrayContaining([
         "USE_COMPUTER",
-        "TAKE_SCREENSHOT",
         "BROWSER_ACTION",
         "MANAGE_WINDOW",
         "FILE_ACTION",

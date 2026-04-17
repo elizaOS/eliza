@@ -58,6 +58,5 @@ export {
   type ShareTargetPayload,
   setupPlatformStyles,
 } from "./init";
-export * from "./lifeops-github";
 export * from "./onboarding-reset";
 export * from "./window-shell";

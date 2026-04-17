@@ -41,6 +41,7 @@ export const browserAction: Action = {
     "- wait: wait for a selector, text, or timeout.\n" +
     "- list_tabs / open_tab / close_tab / switch_tab: manage tabs.\n\n" +
     "Why this exists: it gives the agent structured browser control without requiring raw desktop coordinates for every web interaction.",
+  descriptionCompressed: "Browser control: navigate, click, type, scroll, screenshot, DOM, JS exec, tabs.",
   parameters: [
     {
       name: "action",

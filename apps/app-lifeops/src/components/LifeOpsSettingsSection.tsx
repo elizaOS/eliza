@@ -3,12 +3,8 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
 } from "@elizaos/shared/contracts/lifeops";
-import {
-  Badge,
-  Button,
-  SegmentedControl,
-  useGoogleLifeOpsConnector,
-} from "@elizaos/app-core";
+import { Badge, Button, SegmentedControl } from "@elizaos/app-core";
+import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
 import { Copy, ExternalLink, Github } from "lucide-react";
 import { useCallback, useState } from "react";
 

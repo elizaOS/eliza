@@ -24,6 +24,7 @@ export const manageWindowAction: Action = {
   description:
     "Manage desktop windows through the local runtime. This includes listing visible windows, focusing or switching windows, minimizing, maximizing, restoring, closing, and parity no-op arrange/move commands.\n\n" +
     "Why this exists: it lets the agent coordinate multiple local apps while staying inside the same approval and capability model as the rest of computer use.",
+  descriptionCompressed: "Desktop window mgmt: list, focus, minimize, maximize, close.",
   parameters: [
     {
       name: "action",

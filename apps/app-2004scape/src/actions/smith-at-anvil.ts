@@ -4,7 +4,8 @@ import { extractParam } from "./param-parser.js";
 
 export const smithAtAnvil: Action = {
   name: "SMITH_AT_ANVIL",
-  description: "Smith a metal bar at a nearby anvil, optionally specifying what to make",
+  description: "Smith a metal bar at a nearby anvil, optionally specifying what to make"
+  descriptionCompressed: "Smith bar at nearby anvil.",
   similes: ["SMITHING", "USE_ANVIL"],
   examples: [],
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {

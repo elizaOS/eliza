@@ -3,7 +3,7 @@ import type {
   LifeOpsTimeWindowDefinition,
   LifeOpsWindowPolicy,
 } from "@elizaos/shared/contracts/lifeops";
-import type { ActivityProfile } from "@elizaos/agent/activity-profile/types";
+import type { ActivityProfile } from "../activity-profile/types.js";
 
 export const DEFAULT_TIME_WINDOWS: LifeOpsTimeWindowDefinition[] = [
   {

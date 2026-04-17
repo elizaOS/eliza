@@ -8,7 +8,6 @@ export * from "./desktop-dialogs";
 export * from "./desktop-workspace";
 export * from "./eliza-cloud-model-route";
 export * from "./eliza-globals";
-export * from "./lifeops-url";
 export * from "./tts-debug";
 export * from "./number-parsing";
 export * from "./openExternalUrl";

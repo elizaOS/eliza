@@ -17,7 +17,8 @@ import {
   loadElizaConfig,
   saveElizaConfig,
 } from "@elizaos/agent/config/config";
-import { readCompatJsonBody, sendJson, sendJsonError } from "@elizaos/app-core";
+import { readCompatJsonBody } from "@elizaos/app-core/api/compat-route-shared";
+import { sendJson, sendJsonError } from "@elizaos/app-core/api/response";
 import {
   DEFAULT_WALLET_ROUTE_DEPENDENCIES,
   handleWalletRoutes,

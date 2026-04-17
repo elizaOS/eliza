@@ -14,6 +14,20 @@ import type {
   AppSessionControlAction,
   AppSessionState,
   AppStopResult,
+  CatalogSearchResult,
+  CatalogSkill,
+  InstalledAppInfo,
+  InstalledPlugin,
+  PluginInstallResult,
+  PluginMutationResult,
+  RegistryAppInfo,
+  RegistryPlugin,
+  RegistryPluginItem,
+  SkillInfo,
+  SkillMarketplaceResult,
+  SkillScanReportSummary,
+} from "./client-types";
+import type {
   BabylonActivityFeed,
   BabylonAgentGoal,
   BabylonAgentStats,
@@ -38,19 +52,7 @@ import type {
   BabylonToggleResponse,
   BabylonTradeResult,
   BabylonWallet,
-  CatalogSearchResult,
-  CatalogSkill,
-  InstalledAppInfo,
-  InstalledPlugin,
-  PluginInstallResult,
-  PluginMutationResult,
-  RegistryAppInfo,
-  RegistryPlugin,
-  RegistryPluginItem,
-  SkillInfo,
-  SkillMarketplaceResult,
-  SkillScanReportSummary,
-} from "./client-types";
+} from "./client-types-babylon";
 
 export type AppRunSteeringDisposition =
   | "accepted"

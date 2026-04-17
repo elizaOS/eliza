@@ -31,11 +31,8 @@ import {
   invokeDesktopBridgeRequest,
   isElectrobunRuntime,
 } from "@elizaos/app-core";
-import {
-  copyTextToClipboard,
-  openExternalUrl,
-  resolveLifeOpsBrowserApiBaseUrl,
-} from "@elizaos/app-core";
+import { copyTextToClipboard, openExternalUrl } from "@elizaos/app-core";
+import { resolveLifeOpsBrowserApiBaseUrl } from "../utils/lifeops-url.js";
 
 type SettingsDraft = {
   enabled: boolean;

@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "description": "LifeOps app plugin: routines, goals, Google Workspace, Apple Reminders, Twilio, browser companion control, hosts-file blocking (self-control), and related agent surfaces.",
+  "sideEffects": [
+    "./src/widgets/index.ts",
+    "./src/api/client-lifeops.ts"
+  ],
   "main": "./src/index.ts",
   "exports": {
     "./package.json": "./package.json",
@@ -24,7 +28,18 @@
     "./inbox/*": "./src/inbox/*.ts",
     "./actions/*": "./src/actions/*.ts",
     "./providers/*": "./src/providers/*.ts",
-    "./routes/*": "./src/routes/*.ts"
+    "./routes/*": "./src/routes/*.ts",
+    "./activity-profile/*": "./src/activity-profile/*.ts",
+    "./api/client-lifeops": "./src/api/client-lifeops.ts",
+    "./hooks": "./src/hooks/index.ts",
+    "./hooks/*": "./src/hooks/*.ts",
+    "./events": "./src/events/index.ts",
+    "./platform": "./src/platform/index.ts",
+    "./platform/*": "./src/platform/*.ts",
+    "./utils": "./src/utils/index.ts",
+    "./utils/*": "./src/utils/*.ts",
+    "./widgets": "./src/widgets/index.ts",
+    "./components/*": "./src/components/*"
   },
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
@@ -32,12 +47,18 @@
     "test:integration": "cd ../../.. && vitest run --config test/vitest/integration.config.ts eliza/apps/app-lifeops/test/life-smoke.integration.test.ts"
   },
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-telegram": "workspace:*",
     "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "lucide-react": "^0.575.0",
     "sharp": "^0.34.5"
+  },
+  "peerDependencies": {
+    "react": "*"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

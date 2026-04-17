@@ -75,6 +75,7 @@ export const formRestoreAction: Action = {
   name: "FORM_RESTORE",
   similes: ["RESUME_FORM", "CONTINUE_FORM"],
   description: "Restore a previously stashed form session",
+  descriptionCompressed: "Restore stashed form session.",
 
   /**
    * Validate: Only trigger for restore intent with stashed sessions.
@@ -169,9 +170,8 @@ export const formRestoreAction: Action = {
         return { success: false };
       }
 
-      // Restore the most recent stashed session
-      // WHY most recent: User likely wants what they just stashed
-      // TODO: Let user choose if multiple
+      // Restore the most recent stashed session — the user likely wants what
+      // they just stashed.
       const sessionToRestore = stashed.sort((a, b) => b.updatedAt - a.updatedAt)[0];
       const session = await formService.restore(sessionToRestore.id, entityId);
 

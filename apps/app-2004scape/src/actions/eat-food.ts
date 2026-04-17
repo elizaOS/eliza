@@ -2,7 +2,8 @@ import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from "@eli
 
 export const eatFood: Action = {
   name: "EAT_FOOD",
-  description: "Eat the first food item found in inventory",
+  description: "Eat the first food item found in inventory"
+  descriptionCompressed: "Eat food from inventory.",
   similes: ["CONSUME_FOOD", "HEAL"],
   examples: [],
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {

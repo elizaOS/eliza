@@ -15,8 +15,6 @@ import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
 // -- Bundled widget component imports ----------------------------------------
 
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/plugins/agent-orchestrator";
-import { LIFEOPS_WIDGETS } from "../components/chat/widgets/plugins/lifeops";
-import { LIFEOPS_OVERVIEW_WIDGETS } from "../components/chat/widgets/plugins/lifeops-overview";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/plugins/todo";
 import type { ChatSidebarWidgetDefinition } from "../components/chat/widgets/types";
 
@@ -63,10 +61,38 @@ function seedLegacyWidgets(
   }
 }
 
-seedLegacyWidgets(LIFEOPS_OVERVIEW_WIDGETS);
-seedLegacyWidgets(LIFEOPS_WIDGETS);
 seedLegacyWidgets(AGENT_ORCHESTRATOR_PLUGIN_WIDGETS);
 seedLegacyWidgets(TODO_PLUGIN_WIDGETS);
+
+/**
+ * Public API for plugins outside app-core to seed their own widget components.
+ * Call this when your plugin loads (e.g. via side-effect import of a widgets
+ * module). Each definition must be a `ChatSidebarWidgetDefinition`.
+ */
+export function registerBuiltinWidgets(
+  definitions: ReadonlyArray<ChatSidebarWidgetDefinition>,
+): void {
+  seedLegacyWidgets(definitions);
+}
+
+/**
+ * Public API for plugins outside app-core to append widget declarations to the
+ * built-in fallback list. Declarations appear in the sidebar when the runtime
+ * plugin snapshot isn't available or when the plugin is in the fallback set.
+ */
+export function registerBuiltinWidgetDeclarations(
+  declarations: ReadonlyArray<PluginWidgetDeclaration>,
+  options?: { fallbackPluginIds?: ReadonlyArray<string> },
+): void {
+  for (const decl of declarations) {
+    BUILTIN_WIDGET_DECLARATIONS.push(decl);
+  }
+  if (options?.fallbackPluginIds) {
+    for (const id of options.fallbackPluginIds) {
+      BUILTIN_WIDGET_FALLBACK_PLUGIN_IDS.add(id);
+    }
+  }
+}
 
 // -- Built-in widget declarations --------------------------------------------
 // These are the widget declarations for bundled plugins. They mirror what
@@ -74,26 +100,6 @@ seedLegacyWidgets(TODO_PLUGIN_WIDGETS);
 // available client-side for zero-config rendering.
 
 export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
-  // LifeOps overview
-  {
-    id: "lifeops.overview",
-    pluginId: "lifeops",
-    slot: "chat-sidebar",
-    label: "LifeOps Overview",
-    icon: "Sparkles",
-    order: 90,
-    defaultEnabled: true,
-  },
-  // LifeOps Google (calendar + gmail)
-  {
-    id: "lifeops.google",
-    pluginId: "lifeops",
-    slot: "chat-sidebar",
-    label: "Google Services",
-    icon: "Plug2",
-    order: 150,
-    defaultEnabled: true,
-  },
   // Agent Orchestrator — app runs
   {
     id: "agent-orchestrator.apps",
@@ -138,10 +144,7 @@ export type WidgetPluginState = Pick<PluginInfo, "id" | "enabled" | "isActive">;
  * ship a runtime todo plugin, and leaving the fallback enabled crowds out the
  * LifeOps-first sidebar with a stale generic tasks panel.
  */
-const BUILTIN_WIDGET_FALLBACK_PLUGIN_IDS = new Set([
-  "lifeops",
-  "agent-orchestrator",
-]);
+const BUILTIN_WIDGET_FALLBACK_PLUGIN_IDS = new Set(["agent-orchestrator"]);
 
 interface ResolvedWidget {
   declaration: PluginWidgetDeclaration;

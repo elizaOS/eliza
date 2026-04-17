@@ -1305,6 +1305,7 @@ export const gmailAction: Action & {
     "DO NOT use this action for calendar events, meetings, or scheduling — use CALENDAR_ACTION instead. " +
     "DO NOT use this action for personal habits, goals, routines, or reminders — use LIFE instead. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",
+  descriptionCompressed: "Gmail via LifeOps: inbox triage, search, read, draft/send replies. Not for calendar or habits.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message, state) => {
     if (!(await hasLifeOpsAccess(runtime, message))) return false;

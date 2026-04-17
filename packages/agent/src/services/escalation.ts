@@ -15,7 +15,7 @@ import type {
 import {
   type LifeOpsEscalationStateRow,
   LifeOpsRepository,
-} from "../lifeops/repository.js";
+} from "@elizaos/app-lifeops/lifeops/repository";
 import { resolveOwnerEntityId } from "../runtime/owner-entity.js";
 import {
   hasRuntimeSendHandler,

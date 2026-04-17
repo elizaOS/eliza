@@ -8,7 +8,8 @@
   "exports": {
     "./package.json": "./package.json",
     ".": "./src/index.ts",
-    "./routes": "./src/routes.ts"
+    "./routes": "./src/routes.ts",
+    "./ui": "./src/ui/index.ts"
   },
   "homepage": "https://www.defenseoftheagents.com/",
   "repository": {
@@ -22,8 +23,10 @@
     "strategy"
   ],
   "dependencies": {
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*"
   },
   "elizaos": {
     "kind": "app",

@@ -283,13 +283,17 @@ async function ensureAutonomyBootstrapContext(
 // ---------------------------------------------------------------------------
 
 async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
-  const { vincentPlugin } = await import("@elizaos/app-vincent/plugin");
-  const { shopifyPlugin } = await import("@elizaos/app-shopify/plugin");
-  const { stewardPlugin } = await import("@elizaos/app-steward/plugin");
-  const { lifeopsPlugin } = await import("@elizaos/app-lifeops/routes/plugin");
+  const pluginLoaders: Array<() => Promise<Plugin>> = [
+    async () => (await import("@elizaos/app-vincent/plugin")).vincentPlugin,
+    async () => (await import("@elizaos/app-shopify/plugin")).shopifyPlugin,
+    async () => (await import("@elizaos/app-steward/plugin")).stewardPlugin,
+    async () =>
+      (await import("@elizaos/app-lifeops/routes/plugin")).lifeopsPlugin,
+  ];
 
-  for (const plugin of [vincentPlugin, shopifyPlugin, stewardPlugin, lifeopsPlugin]) {
+  for (const loadPlugin of pluginLoaders) {
     try {
+      const plugin = await loadPlugin();
       // Push rawPath routes directly onto runtime.routes to avoid the core's
       // registerPlugin() path mangling (which prepends /<pluginName>/ to every
       // route path). The rawPath flag means these routes already have their
@@ -303,7 +307,7 @@ async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
       logger.info(`[eliza] Registered app route plugin: ${plugin.name} (${plugin.routes?.length ?? 0} routes)`);
     } catch (err) {
       logger.warn(
-        `[eliza] Failed to register app route plugin ${plugin.name}: ${err instanceof Error ? err.message : String(err)}`,
+        `[eliza] Failed to register app route plugin: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }

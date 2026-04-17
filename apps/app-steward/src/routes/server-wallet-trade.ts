@@ -4,11 +4,11 @@
  */
 import type http from "node:http";
 import { resolveWalletExportRejection as upstreamResolveWalletExportRejection } from "@elizaos/agent/api/server-auth";
+import { mirrorCompatHeaders } from "@elizaos/app-core/api/server-cloud-tts";
 import {
-  mirrorCompatHeaders,
   syncAppEnvToEliza,
   syncElizaEnvAliases,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/utils/env";
 import {
   type WalletExportRejection as CompatWalletExportRejection,
   createHardenedExportGuard,
