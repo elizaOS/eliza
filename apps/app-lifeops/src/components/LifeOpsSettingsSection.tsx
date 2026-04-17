@@ -200,7 +200,7 @@ function GithubRow({
   github: GithubSetupState;
 }) {
   return (
-    <div className="space-y-2 border-t border-border/12 pt-3">
+    <div className="space-y-2 pt-2">
       <div className="flex flex-wrap items-center gap-2">
         <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
           <Github className="h-4 w-4 shrink-0" />
@@ -279,7 +279,7 @@ function GoogleConnectorSideCard({
   const preferredGrantId = status?.grant?.id ?? null;
 
   return (
-    <section className="space-y-3 rounded-3xl border border-border/16 bg-card/18 px-4 py-4">
+    <section className="space-y-3 space-y-3 px-4 py-4">
       <div className="flex items-center justify-between gap-3">
         <div className="text-sm font-semibold text-txt">{sideTitle(side)}</div>
         <Badge variant="outline" className="text-2xs">
@@ -312,7 +312,7 @@ function GoogleConnectorSideCard({
             label: modeLabel(mode),
             disabled: controlDisabled,
           }))}
-          className="border-border/28 bg-card/24 p-0.5"
+          className="bg-bg/40 p-0.5"
           buttonClassName="min-h-8 px-3 py-1.5 text-xs"
         />
         {!status?.connected ? (

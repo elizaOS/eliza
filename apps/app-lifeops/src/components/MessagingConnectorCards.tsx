@@ -250,7 +250,7 @@ export function TelegramConnectorCard() {
             placeholder="+1 234 567 8900"
             value={phoneInput}
             onChange={(e) => setPhoneInput(e.target.value)}
-            className="h-8 flex-1 rounded-xl border border-border/28 bg-card/24 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+            className="h-8 flex-1 rounded-lg bg-bg/40 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 handleSendCode();
@@ -275,7 +275,7 @@ export function TelegramConnectorCard() {
             placeholder="Verification code"
             value={codeInput}
             onChange={(e) => setCodeInput(e.target.value)}
-            className="h-8 flex-1 rounded-xl border border-border/28 bg-card/24 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+            className="h-8 flex-1 rounded-lg bg-bg/40 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
             autoComplete="one-time-code"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -301,7 +301,7 @@ export function TelegramConnectorCard() {
             placeholder="2FA password"
             value={passwordInput}
             onChange={(e) => setPasswordInput(e.target.value)}
-            className="h-8 flex-1 rounded-xl border border-border/28 bg-card/24 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+            className="h-8 flex-1 rounded-lg bg-bg/40 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 handleSubmitPassword();
@@ -387,7 +387,7 @@ export function MessagingConnectorGrid() {
       <div className="pb-1 text-xs font-semibold uppercase tracking-wide text-muted">
         Messaging
       </div>
-      <div className="divide-y divide-border/12">
+      <div className="space-y-1">
         <SignalConnectorCard />
         <DiscordConnectorCard />
         <TelegramConnectorCard />
