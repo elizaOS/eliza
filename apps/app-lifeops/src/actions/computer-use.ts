@@ -27,7 +27,7 @@ async function loadBaseAction(): Promise<Action | null> {
   try {
     // Dynamic import so a missing peer dependency does not break plugin load.
     const mod = (await import(
-      /* @vite-ignore */ "@elizaos/plugin-computeruse"
+      /* @vite-ignore */ "@elizaos/plugin-computeruse" as unknown as string
     )) as {
       useComputerAction?: Action;
       default?: { actions?: readonly Action[] };

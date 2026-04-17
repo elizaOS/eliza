@@ -51,6 +51,8 @@
       "@elizaos/app-companion/*": ["./apps/app-companion/src/*"],
       "@elizaos/shared": ["./packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["./packages/shared/src/*"],
+      "@elizaos/skills": ["./packages/skills/src/index.ts"],
+      "@elizaos/skills/*": ["./packages/skills/src/*"],
       "@elizaos/core": ["./packages/typescript/src/index.ts"],
       "@elizaos/core/*": ["./packages/typescript/src/*"],
       "@elizaos/native-activity-tracker": [
