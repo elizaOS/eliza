@@ -157,24 +157,45 @@ describe("DeviceBridge", () => {
       expect(status.devices[0]?.isPrimary).toBe(true);
     });
 
-    it("prefers a desktop over a phone even when the phone has more RAM", async () => {
-      // Desktop: 16 GB, no GPU. Phone: 64 GB (absurd but shows base matters).
+    it("prefers a desktop over a phone with realistic RAM numbers", async () => {
+      // Phone: 8 GB iOS (ios base 10 + 8*2 = 26). Mac: 32 GB desktop
+      // (desktop base 100 + 32*2 = 164). Desktop wins comfortably.
       const phone = fakeSocket();
       await register(bridge, phone, {
         deviceId: "phone",
         platform: "ios",
-        totalRamGb: 64,
+        totalRamGb: 8,
       });
       const desktop = fakeSocket();
       await register(bridge, desktop, {
         deviceId: "mac",
         platform: "desktop",
-        totalRamGb: 16,
+        totalRamGb: 32,
       });
 
       const status = bridge.status();
       expect(status.primaryDeviceId).toBe("mac");
       expect(status.devices[0]?.deviceId).toBe("mac");
+    });
+
+    it("lets an absurdly RAM-rich phone outscore a small desktop", async () => {
+      // This is the deliberate flip: scoring treats RAM linearly, so if
+      // somehow a phone has vastly more RAM than a desktop (hypothetical
+      // future hardware) it takes precedence. The rule isn't "desktop
+      // always wins" — it's "biggest effective compute pool wins".
+      const phone = fakeSocket();
+      await register(bridge, phone, {
+        deviceId: "beast-phone",
+        platform: "ios",
+        totalRamGb: 128,
+      });
+      const desktop = fakeSocket();
+      await register(bridge, desktop, {
+        deviceId: "small-mac",
+        platform: "desktop",
+        totalRamGb: 8,
+      });
+      expect(bridge.status().primaryDeviceId).toBe("beast-phone");
     });
 
     it("GPU VRAM boosts score significantly", async () => {
