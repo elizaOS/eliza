@@ -43,7 +43,7 @@ setup(
         "fabric",
         "gymnasium~=1.2.3",
         "requests~=2.33.0",
-        "pytz~=2024.1",
+        "pytz~=2026.1.post1",
         "transformers~=5.0.0rc3",
         "torch~=2.8.0",
         "accelerate",
