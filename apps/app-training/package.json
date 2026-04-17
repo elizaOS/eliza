@@ -27,7 +27,15 @@
     "./core/trajectory-task-datasets": "./src/core/trajectory-task-datasets.ts",
     "./core/vertex-tuning": "./src/core/vertex-tuning.ts",
     "./core/cli": "./src/core/cli.ts",
+    "./core/privacy-filter": "./src/core/privacy-filter.ts",
+    "./core/skill-scoring-cron": "./src/core/skill-scoring-cron.ts",
+    "./cli/train": "./src/cli/train.ts",
+    "./backends/atropos": "./src/backends/atropos.ts",
+    "./backends/tinker": "./src/backends/tinker.ts",
     "./package.json": "./package.json"
+  },
+  "scripts": {
+    "train": "bun run src/cli/train.ts"
   },
   "dependencies": {
     "@elizaos/ui": "workspace:*",
