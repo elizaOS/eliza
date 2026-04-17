@@ -1900,8 +1900,9 @@ export class RelationshipsService extends Service {
 				"[RelationshipsService] proposeMerge requires two distinct entities",
 			);
 		}
-		const [orderedA, orderedB] =
-			entityA < entityB ? [entityA, entityB] : [entityB, entityA];
+		// entity_a is the *surviving* entity. Order is intentional and not
+		// normalized — the caller picks the canonical side, and acceptMerge
+		// folds entity_b into entity_a.
 		const evidenceLiteral = sqlJsonbLiteral(evidence);
 		const confidence = clampConfidence(
 			typeof evidence.confidence === "number" ? evidence.confidence : 1,
@@ -1911,8 +1912,8 @@ export class RelationshipsService extends Service {
 				agent_id, entity_a, entity_b, confidence, evidence, status
 			) VALUES (
 				${sqlQuote(this.runtime.agentId)},
-				${sqlQuote(orderedA)},
-				${sqlQuote(orderedB)},
+				${sqlQuote(entityA)},
+				${sqlQuote(entityB)},
 				${confidence},
 				${evidenceLiteral},
 				'pending'
@@ -1926,7 +1927,7 @@ export class RelationshipsService extends Service {
 			);
 		}
 		logger.info(
-			`[RelationshipsService] Proposed merge candidate ${id} (${orderedA} <-> ${orderedB})`,
+			`[RelationshipsService] Proposed merge candidate ${id} (${entityA} <-> ${entityB})`,
 		);
 		return asUUID(id);
 	}
