@@ -29,6 +29,11 @@ import {
   sendTwilioVoiceCall,
   type TwilioDeliveryResult,
 } from "../lifeops/twilio.js";
+import {
+  readNtfyConfigFromEnv,
+  sendPush,
+  NtfyConfigError,
+} from "../lifeops/notifications-push.js";
 
 const ACTION_NAME = "CROSS_CHANNEL_SEND";
 
@@ -41,6 +46,7 @@ export const CROSS_CHANNEL_SEND_CHANNELS = [
   "twilio_voice",
   "imessage",
   "whatsapp",
+  "notifications",
 ] as const;
 export type CrossChannelSendChannel = (typeof CROSS_CHANNEL_SEND_CHANNELS)[number];
 
@@ -333,6 +339,36 @@ const CHANNEL_DISPATCHERS: Record<
       });
     }
   },
+  notifications: async ({ channel, target, body, subject }) => {
+    try {
+      const config = readNtfyConfigFromEnv();
+      const result = await sendPush(
+        {
+          topic: target || undefined,
+          title: subject || "Notification",
+          message: body,
+        },
+        config,
+      );
+      return buildDispatchSuccess({ channel, target, body, subject, result });
+    } catch (error) {
+      if (error instanceof NtfyConfigError) {
+        return {
+          text: `Push notifications are not configured. Set NTFY_BASE_URL (and optionally NTFY_DEFAULT_TOPIC).`,
+          success: false,
+          values: { success: false, error: "NTFY_NOT_CONFIGURED", channel },
+          data: { actionName: ACTION_NAME, channel },
+        };
+      }
+      return buildDispatchFailure({
+        channel,
+        target,
+        body,
+        subject,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  },
 };
 
 export const crossChannelSendAction: Action = {
@@ -345,7 +381,7 @@ export const crossChannelSendAction: Action = {
   ],
   description:
     "Draft or send a message across any connected channel (email, telegram, " +
-    "discord, signal, sms, twilio_voice, imessage, whatsapp). Always " +
+    "discord, signal, sms, twilio_voice, imessage, whatsapp, notifications). Always " +
     "drafts first; caller must re-invoke with confirmed: true to dispatch.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
@@ -364,7 +400,7 @@ export const crossChannelSendAction: Action = {
     {
       name: "target",
       description:
-        "Recipient identifier. Email address for email, E.164 phone for sms/twilio_voice, handle/user ID for chat channels.",
+        "Recipient identifier. Email address for email, E.164 phone for sms/twilio_voice, handle/user ID for chat channels, Ntfy topic name for notifications.",
       required: true,
       schema: { type: "string" as const },
     },
