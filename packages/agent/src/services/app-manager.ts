@@ -1353,6 +1353,39 @@ async function resolveLaunchSession(
   return buildAppSession(appInfo, viewer?.authMessage, runtime);
 }
 
+/**
+ * Invoke the plugin's `stopRun` bridge hook (if defined) when an app run is
+ * removed. Plugins use this to tear down per-run resources (WebSocket
+ * connections, game-loop timers, bot sessions, embedded servers).
+ *
+ * Errors are logged but never re-thrown — removal from the app-manager
+ * registry is authoritative.
+ */
+async function invokeAppStopRunHook(
+  run: AppRunSummary,
+  runtime: IAgentRuntime | null,
+): Promise<void> {
+  try {
+    const routeModule = await importAppRouteModule(run.appName);
+    if (typeof routeModule?.stopRun !== "function") {
+      return;
+    }
+    await routeModule.stopRun({
+      appName: run.appName,
+      launchUrl: run.launchUrl,
+      runtime,
+      viewer: run.viewer,
+      runId: run.runId,
+      session: run.session,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn(
+      `[app-manager] stopRun hook for "${run.appName}" (runId=${run.runId}) failed: ${message}`,
+    );
+  }
+}
+
 function persistHyperscapeCredential(
   runtime: IAgentRuntime | null,
   key: "HYPERSCAPE_AUTH_TOKEN" | "HYPERSCAPE_CHARACTER_ID",
@@ -2756,6 +2789,7 @@ export class AppManager {
     pluginManager: PluginManagerLike,
     name: string,
     runId?: string,
+    runtime?: IAgentRuntime | null,
   ): Promise<AppStopResult> {
     const stoppedAt = new Date().toISOString();
 
@@ -2773,6 +2807,8 @@ export class AppManager {
           message: `App run "${runId}" was not found.`,
         };
       }
+
+      await invokeAppStopRunHook(removedRun, runtime ?? null);
 
       return {
         success: true,
@@ -2814,6 +2850,7 @@ export class AppManager {
 
     for (const run of runsForApp) {
       this.removeRun(run.runId);
+      await invokeAppStopRunHook(run, runtime ?? null);
     }
 
     return {

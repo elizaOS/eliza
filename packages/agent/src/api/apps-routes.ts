@@ -45,6 +45,7 @@ export interface AppManagerLike {
     pluginManager: PluginManagerLike,
     name: string,
     runId?: string,
+    runtime?: IAgentRuntime | null,
   ) => Promise<unknown>;
   getInfo: (pluginManager: PluginManagerLike, name: string) => Promise<unknown>;
 }
@@ -585,7 +586,12 @@ export async function handleAppsRoutes(
 
     if (subroute === "stop") {
       const pluginManager = getPluginManager();
-      const result = await appManager.stop(pluginManager, "", runId);
+      const result = await appManager.stop(
+        pluginManager,
+        "",
+        runId,
+        ctx.runtime as IAgentRuntime | null,
+      );
       json(res, result as object);
       return true;
     }
@@ -704,7 +710,12 @@ export async function handleAppsRoutes(
     const appName = body.name?.trim() ?? "";
     const runId = body.runId?.trim();
     const pluginManager = getPluginManager();
-    const result = await appManager.stop(pluginManager, appName, runId);
+    const result = await appManager.stop(
+      pluginManager,
+      appName,
+      runId,
+      ctx.runtime as IAgentRuntime | null,
+    );
     json(res, result as object);
     return true;
   }
