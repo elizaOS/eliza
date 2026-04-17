@@ -97,8 +97,13 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
             pairingSessionIdRef.current = null;
             void refresh();
           }
-        } catch {
-          // transient poll failure — keep polling
+        } catch (cause) {
+          // Keep polling across transient failures; log so a broken backend
+          // surfaces in the browser console instead of a silent stall.
+          console.warn(
+            "[useSignalConnector] pairing status poll failed",
+            cause,
+          );
         }
       }, PAIRING_POLL_INTERVAL_MS);
     },

@@ -74,21 +74,31 @@ export function useDiscordConnector(options: UseDiscordConnectorOptions = {}) {
   useEffect(() => () => clearPoll(), [clearPoll]);
 
   useEffect(() => {
-    if (status?.reason === "pairing" && !pollRef.current) {
+    const shouldPoll =
+      status?.reason === "pairing" || status?.reason === "auth_pending";
+    if (shouldPoll && !pollRef.current) {
       pollRef.current = setInterval(() => {
         void (async () => {
           try {
             const next = await client.getDiscordConnectorStatus(side);
             setStatus(next);
-            if (next.reason !== "pairing") {
+            if (
+              next.reason !== "pairing" &&
+              next.reason !== "auth_pending"
+            ) {
               clearPoll();
             }
-          } catch {
-            // Keep polling; transient errors shouldn't stop the loop.
+          } catch (cause) {
+            // Keep polling across transient errors; log so a persistently
+            // broken backend is discoverable in the browser console.
+            console.warn(
+              "[useDiscordConnector] status poll failed",
+              cause,
+            );
           }
         })();
       }, LOGIN_POLL_INTERVAL_MS);
-    } else if (status?.reason !== "pairing") {
+    } else if (!shouldPoll) {
       clearPoll();
     }
   }, [status?.reason, side, clearPoll]);
