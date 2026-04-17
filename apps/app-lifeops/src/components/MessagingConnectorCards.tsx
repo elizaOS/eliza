@@ -68,25 +68,28 @@ function TelegramIcon({ className }: { className?: string }) {
 
 export function SignalConnectorCard() {
   const signal = useSignalConnector();
+  const isConnected = signal.status?.connected === true;
+  const isPairing = signal.pairingStatus != null;
+  const busy = signal.actionPending || signal.loading;
 
   return (
     <ConnectorCardShell
       icon={<SignalIcon className="h-5 w-5 shrink-0 text-muted" />}
       platform="Signal"
       status={
-        signal.status === "connected"
+        isConnected
           ? "Connected"
-          : signal.status === "pairing"
+          : isPairing
             ? "Pairing..."
             : "Not connected"
       }
-      statusVariant={signal.status === "connected" ? "ok" : "muted"}
+      statusVariant={isConnected ? "ok" : "muted"}
     >
-      {signal.status === "disconnected" ? (
+      {!isConnected && !isPairing ? (
         <Button
           size="sm"
           className="h-8 rounded-xl px-3 text-xs font-semibold"
-          disabled={signal.busy}
+          disabled={busy}
           onClick={() => void signal.startPairing()}
         >
           <QrCode className="mr-1.5 h-3.5 w-3.5" />
@@ -94,7 +97,7 @@ export function SignalConnectorCard() {
         </Button>
       ) : null}
 
-      {signal.status === "pairing" ? (
+      {isPairing ? (
         <div className="space-y-3">
           {signal.pairingStatus?.qrDataUrl ? (
             <div className="flex justify-center rounded-2xl bg-white p-3">
@@ -114,26 +117,26 @@ export function SignalConnectorCard() {
             size="sm"
             variant="outline"
             className="h-8 rounded-xl px-3 text-xs font-semibold"
-            onClick={() => void signal.cancelPairing()}
+            onClick={() => void signal.stopPairing()}
           >
             Cancel
           </Button>
         </div>
       ) : null}
 
-      {signal.status === "connected" ? (
+      {isConnected ? (
         <div className="space-y-2">
-          {signal.phoneNumber ? (
+          {signal.status?.identity?.phoneNumber ? (
             <div className="flex items-center gap-1.5 text-xs text-muted">
               <Phone className="h-3.5 w-3.5" />
-              {signal.phoneNumber}
+              {signal.status.identity.phoneNumber}
             </div>
           ) : null}
           <Button
             size="sm"
             variant="outline"
             className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={signal.busy}
+            disabled={busy}
             onClick={() => void signal.disconnect()}
           >
             Disconnect
@@ -150,38 +153,41 @@ export function SignalConnectorCard() {
 
 export function DiscordConnectorCard() {
   const discord = useDiscordConnector();
+  const isConnected = discord.status?.connected === true;
+  const busy = discord.actionPending || discord.loading;
+  const username = discord.status?.identity?.username;
 
   return (
     <ConnectorCardShell
       icon={<DiscordIcon className="h-5 w-5 shrink-0 text-muted" />}
       platform="Discord"
-      status={discord.connected ? "Connected" : "Not connected"}
-      statusVariant={discord.connected ? "ok" : "muted"}
+      status={isConnected ? "Connected" : "Not connected"}
+      statusVariant={isConnected ? "ok" : "muted"}
     >
-      {!discord.connected ? (
+      {!isConnected ? (
         <Button
           size="sm"
           className="h-8 rounded-xl px-3 text-xs font-semibold"
-          disabled={discord.busy}
+          disabled={busy}
           onClick={() => void discord.connect()}
         >
           Connect Discord
         </Button>
       ) : null}
 
-      {discord.connected ? (
+      {isConnected ? (
         <div className="space-y-2">
-          {discord.username ? (
+          {username ? (
             <div className="flex items-center gap-1.5 text-xs text-muted">
               <MessageCircle className="h-3.5 w-3.5" />
-              {discord.username}
+              {String(username)}
             </div>
           ) : null}
           <Button
             size="sm"
             variant="outline"
             className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={discord.busy}
+            disabled={busy}
             onClick={() => void discord.disconnect()}
           >
             Disconnect
@@ -202,15 +208,19 @@ export function TelegramConnectorCard() {
   const [codeInput, setCodeInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
 
+  const isConnected = telegram.status?.connected === true;
+  const authState = telegram.authState ?? "idle";
+  const busy = telegram.actionPending || telegram.loading;
+
   const handleSendCode = useCallback(() => {
     if (phoneInput.trim().length > 0) {
-      void telegram.sendCode(phoneInput.trim());
+      void telegram.startAuth(phoneInput.trim());
     }
   }, [phoneInput, telegram]);
 
   const handleVerifyCode = useCallback(() => {
     if (codeInput.trim().length > 0) {
-      void telegram.verifyCode(codeInput.trim());
+      void telegram.submitCode(codeInput.trim());
     }
   }, [codeInput, telegram]);
 
@@ -220,23 +230,22 @@ export function TelegramConnectorCard() {
     }
   }, [passwordInput, telegram]);
 
-  const statusLabel =
-    telegram.status === "connected"
-      ? "Connected"
-      : telegram.status === "awaiting_code"
-        ? "Enter verification code"
-        : telegram.status === "awaiting_password"
-          ? "2FA password required"
-          : "Not connected";
+  const statusLabel = isConnected
+    ? "Connected"
+    : authState === "waiting_for_code"
+      ? "Enter verification code"
+      : authState === "waiting_for_password"
+        ? "2FA password required"
+        : "Not connected";
 
   return (
     <ConnectorCardShell
       icon={<TelegramIcon className="h-5 w-5 shrink-0 text-muted" />}
       platform="Telegram"
       status={statusLabel}
-      statusVariant={telegram.status === "connected" ? "ok" : "muted"}
+      statusVariant={isConnected ? "ok" : "muted"}
     >
-      {telegram.status === "disconnected" ? (
+      {!isConnected && authState === "idle" ? (
         <div className="flex items-center gap-2">
           <input
             type="tel"
@@ -253,7 +262,7 @@ export function TelegramConnectorCard() {
           <Button
             size="sm"
             className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={telegram.busy || phoneInput.trim().length === 0}
+            disabled={busy || phoneInput.trim().length === 0}
             onClick={handleSendCode}
           >
             Send Code
@@ -261,7 +270,7 @@ export function TelegramConnectorCard() {
         </div>
       ) : null}
 
-      {telegram.status === "awaiting_code" ? (
+      {authState === "waiting_for_code" ? (
         <div className="flex items-center gap-2">
           <input
             type="text"
@@ -279,7 +288,7 @@ export function TelegramConnectorCard() {
           <Button
             size="sm"
             className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={telegram.busy || codeInput.trim().length === 0}
+            disabled={busy || codeInput.trim().length === 0}
             onClick={handleVerifyCode}
           >
             Verify
@@ -287,7 +296,7 @@ export function TelegramConnectorCard() {
         </div>
       ) : null}
 
-      {telegram.status === "awaiting_password" ? (
+      {authState === "waiting_for_password" ? (
         <div className="flex items-center gap-2">
           <input
             type="password"
@@ -304,7 +313,7 @@ export function TelegramConnectorCard() {
           <Button
             size="sm"
             className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={telegram.busy || passwordInput.length === 0}
+            disabled={busy || passwordInput.length === 0}
             onClick={handleSubmitPassword}
           >
             Submit
@@ -312,19 +321,19 @@ export function TelegramConnectorCard() {
         </div>
       ) : null}
 
-      {telegram.status === "connected" ? (
+      {isConnected ? (
         <div className="space-y-2">
-          {telegram.identity ? (
+          {telegram.status?.identity ? (
             <div className="flex items-center gap-1.5 text-xs text-muted">
               <Phone className="h-3.5 w-3.5" />
-              {telegram.identity}
+              {String(telegram.status.identity.username || telegram.status.identity.phone || "")}
             </div>
           ) : null}
           <Button
             size="sm"
             variant="outline"
             className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={telegram.busy}
+            disabled={busy}
             onClick={() => void telegram.disconnect()}
           >
             Disconnect
