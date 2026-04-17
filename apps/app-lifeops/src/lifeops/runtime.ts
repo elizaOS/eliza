@@ -98,9 +98,10 @@ export function registerLifeOpsTaskWorker(runtime: IAgentRuntime): void {
  */
 async function waitForDbReady(
   runtime: IAgentRuntime,
-  maxAttempts = 3,
+  maxAttempts = 12,
   delayMs = 500,
 ): Promise<void> {
+  let lastError: unknown = null;
   for (let i = 0; i < maxAttempts; i++) {
     try {
       // Light-weight probe: fetch tasks with a filter that should match nothing.
@@ -109,14 +110,16 @@ async function waitForDbReady(
         tags: ["__db_ready_probe__"],
       });
       return;
-    } catch {
+    } catch (error) {
+      lastError = error;
       if (i < maxAttempts - 1) {
         await new Promise((r) => setTimeout(r, delayMs));
       }
     }
   }
-  // If still failing, let the caller proceed — the original retry logic in
-  // plugin-sql will handle it, we just reduced the likelihood of hitting it.
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("[lifeops] database adapter did not become ready");
 }
 
 let credentialStatusLogged = false;
