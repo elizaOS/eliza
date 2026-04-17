@@ -127,7 +127,7 @@ import { handleComputerUseCompatRoutes } from "./computer-use-compat-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleLocalInferenceCompatRoutes } from "./local-inference-compat-routes";
-import { handleN8nStatusRoutes } from "./n8n-status-routes";
+import { handleN8nRoutes } from "./n8n-routes";
 import { handleOnboardingCompatRoute } from "./onboarding-compat-routes";
 import { handlePluginsCompatRoutes } from "./plugins-compat-routes";
 import { getCorsAllowedPorts, isAllowedLocalOrigin } from "./server-cors";
@@ -737,12 +737,13 @@ async function handleCompatRoute(
   if (await handleComputerUseCompatRoutes(req, res, state)) return true;
   if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
 
-  // n8n local sidecar status route — diagnostics-shaped, no mutations.
-  // Reads the sidecar singleton from services/n8n-sidecar via peekN8nSidecar(),
-  // so no construction happens just from a status probe.
-  if (url.pathname === "/api/n8n/status") {
+  // n8n routes — status surface (read-only), sidecar start (fire-and-forget),
+  // and workflow CRUD proxy. Auth sits in front of every n8n route. The
+  // handler reads the sidecar singleton from services/n8n-sidecar via
+  // peekN8nSidecar(), so no construction happens just from a status probe.
+  if (url.pathname.startsWith("/api/n8n/")) {
     if (!ensureCompatApiAuthorized(req, res)) return true;
-    return handleN8nStatusRoutes({
+    return handleN8nRoutes({
       req,
       res,
       method,
