@@ -339,8 +339,10 @@ export function buildScriptContext({
         tableName: params.tableName,
         embedding: params.embedding,
         roomId,
-        count: params.count,
-        match_threshold: params.match_threshold,
+        ...(params.limit !== undefined ? { limit: params.limit } : {}),
+        ...(params.match_threshold !== undefined
+          ? { match_threshold: params.match_threshold }
+          : {}),
       });
       return sanitizeForScript(memories) as unknown[];
     },
