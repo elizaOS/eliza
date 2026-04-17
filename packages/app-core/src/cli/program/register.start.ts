@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import type { Command } from "commander";
 import {
   isLoopbackBindHost,
   resolveApiBindHost,
@@ -8,6 +7,7 @@ import {
   resolveServerOnlyPort,
   setApiToken,
 } from "@elizaos/shared/runtime-env";
+import type { Command } from "commander";
 import { formatDocsLink } from "../../terminal/links";
 import { theme } from "../../terminal/theme";
 import { runCommandWithRuntime } from "../cli-utils";

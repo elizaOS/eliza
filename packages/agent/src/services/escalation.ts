@@ -1,3 +1,7 @@
+import {
+  type LifeOpsEscalationStateRow,
+  LifeOpsRepository,
+} from "@elizaos/app-lifeops/lifeops/repository";
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
@@ -12,10 +16,6 @@ import type {
   OwnerContactEntry,
   OwnerContactsConfig,
 } from "../config/types.agent-defaults.js";
-import {
-  type LifeOpsEscalationStateRow,
-  LifeOpsRepository,
-} from "@elizaos/app-lifeops/lifeops/repository";
 import { resolveOwnerEntityId } from "../runtime/owner-entity.js";
 import {
   hasRuntimeSendHandler,

@@ -1,5 +1,3 @@
-export * from "./awareness.js";
-export * from "./config.js";
 export * from "@elizaos/shared/contracts/apps";
 export * from "@elizaos/shared/contracts/drop";
 export * from "@elizaos/shared/contracts/lifeops";
@@ -8,3 +6,5 @@ export * from "@elizaos/shared/contracts/permissions";
 export * from "@elizaos/shared/contracts/service-routing";
 export * from "@elizaos/shared/contracts/verification";
 export * from "@elizaos/shared/contracts/wallet";
+export * from "./awareness.js";
+export * from "./config.js";

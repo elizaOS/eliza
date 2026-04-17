@@ -1,5 +1,13 @@
-
-
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  ContentLayout,
+  Textarea,
+} from "@elizaos/ui";
 import { Monitor, RefreshCw } from "lucide-react";
 import {
   type ReactNode,
@@ -10,9 +18,8 @@ import {
 } from "react";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import { useApp } from "../../state";
-import { copyTextToClipboard } from "../../utils/clipboard";
 import { resolveApiUrl } from "../../utils/asset-url";
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Textarea, ContentLayout } from "@elizaos/ui";
+import { copyTextToClipboard } from "../../utils/clipboard";
 import {
   DESKTOP_WORKSPACE_SURFACES,
   type DesktopClickAuditItem,

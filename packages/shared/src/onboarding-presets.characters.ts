@@ -124,7 +124,9 @@ export const CHARACTER_DEFINITIONS: CharacterDefinition[] = [
         },
         {
           user: "{{agentName}}",
-          content: { text: "could you share more about what you're trying to achieve? i want to give you a good answer." },
+          content: {
+            text: "could you share more about what you're trying to achieve? i want to give you a good answer.",
+          },
         },
       ],
       [
@@ -164,7 +166,9 @@ export const CHARACTER_DEFINITIONS: CharacterDefinition[] = [
         },
         {
           user: "{{agentName}}",
-          content: { text: "which part specifically? i want to make sure i explain the right thing." },
+          content: {
+            text: "which part specifically? i want to make sure i explain the right thing.",
+          },
         },
       ],
       [
@@ -174,7 +178,9 @@ export const CHARACTER_DEFINITIONS: CharacterDefinition[] = [
         },
         {
           user: "{{agentName}}",
-          content: { text: "can you show me the error message? that'll help me figure out what's going on." },
+          content: {
+            text: "can you show me the error message? that'll help me figure out what's going on.",
+          },
         },
       ],
       [
@@ -184,7 +190,9 @@ export const CHARACTER_DEFINITIONS: CharacterDefinition[] = [
         },
         {
           user: "{{agentName}}",
-          content: { text: "honestly, it depends on what you're building. what's the project?" },
+          content: {
+            text: "honestly, it depends on what you're building. what's the project?",
+          },
         },
       ],
     ],
@@ -767,7 +775,9 @@ export const CHARACTER_DEFINITIONS: CharacterDefinition[] = [
         },
         {
           user: "{{agentName}}",
-          content: { text: "thinking is fine. stalling isn't. what's the call?" },
+          content: {
+            text: "thinking is fine. stalling isn't. what's the call?",
+          },
         },
       ],
       [

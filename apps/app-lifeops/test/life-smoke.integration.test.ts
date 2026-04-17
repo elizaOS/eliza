@@ -14,6 +14,9 @@
  * Run: bunx vitest run eliza/apps/app-lifeops/test/life-smoke.integration.test.ts
  */
 
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../../test/helpers/real-runtime";
@@ -22,6 +25,55 @@ import { appLifeOpsPlugin } from "../src/plugin.js";
 
 let runtime: AgentRuntime;
 let cleanup: () => Promise<void>;
+let isolatedStateDir: string;
+let isolatedConfigPath: string;
+
+const isolatedEnvKeys = [
+  "MILADY_STATE_DIR",
+  "ELIZA_STATE_DIR",
+  "MILADY_CONFIG_PATH",
+  "ELIZA_CONFIG_PATH",
+  "MILADY_PERSIST_CONFIG_PATH",
+  "ELIZA_PERSIST_CONFIG_PATH",
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_BASE_URL",
+] as const;
+
+const previousEnv = new Map<string, string | undefined>();
+
+function setIsolatedLifeSmokeEnv(): void {
+  isolatedStateDir = mkdtempSync(join(tmpdir(), "life-smoke-state-"));
+  isolatedConfigPath = join(isolatedStateDir, "milady.json");
+  writeFileSync(
+    isolatedConfigPath,
+    JSON.stringify({ logging: { level: "error" } }),
+    "utf8",
+  );
+
+  for (const key of isolatedEnvKeys) {
+    previousEnv.set(key, process.env[key]);
+  }
+
+  process.env.MILADY_STATE_DIR = isolatedStateDir;
+  process.env.MILADY_CONFIG_PATH = isolatedConfigPath;
+  process.env.MILADY_PERSIST_CONFIG_PATH = isolatedConfigPath;
+  delete process.env.ELIZA_STATE_DIR;
+  delete process.env.ELIZA_CONFIG_PATH;
+  delete process.env.ELIZA_PERSIST_CONFIG_PATH;
+  delete process.env.ELIZAOS_CLOUD_API_KEY;
+  delete process.env.ELIZAOS_CLOUD_BASE_URL;
+}
+
+function restoreIsolatedLifeSmokeEnv(): void {
+  for (const key of isolatedEnvKeys) {
+    const value = previousEnv.get(key);
+    if (value === undefined) {
+      delete process.env[key];
+      continue;
+    }
+    process.env[key] = value;
+  }
+}
 
 function send(params: Record<string, unknown>, messageText?: string) {
   return lifeAction.handler?.(
@@ -39,6 +91,7 @@ function send(params: Record<string, unknown>, messageText?: string) {
 }
 
 beforeAll(async () => {
+  setIsolatedLifeSmokeEnv();
   const result = await createRealTestRuntime({
     plugins: [appLifeOpsPlugin],
   });
@@ -48,6 +101,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await cleanup();
+  restoreIsolatedLifeSmokeEnv();
+  rmSync(isolatedStateDir, { recursive: true, force: true });
 });
 
 describe("LIFE action smoke tests -- BRD acceptance criteria", () => {

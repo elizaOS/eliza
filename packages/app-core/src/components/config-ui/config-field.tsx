@@ -1,16 +1,25 @@
-
-
+import {
+  Button,
+  Checkbox,
+  SELECT_FLOATING_LAYER_NAME,
+  SELECT_FLOATING_LAYER_Z_INDEX,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Switch,
+} from "@elizaos/ui";
 import { ChevronDown, X } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useApp } from "../../state";
-import type { DynamicValue } from "../../types";
 import type {
   FieldRenderer,
   FieldRenderProps,
 } from "../../config/config-catalog";
 import { resolveDynamic } from "../../config/config-catalog";
-import { Button, Checkbox, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch, SELECT_FLOATING_LAYER_NAME, SELECT_FLOATING_LAYER_Z_INDEX } from "@elizaos/ui";
+import { useApp } from "../../state";
+import type { DynamicValue } from "../../types";
 import {
   getConfigInputClassName,
   getConfigTextareaClassName,
@@ -1786,10 +1795,7 @@ function TableFieldInner(props: FieldRenderProps) {
           </thead>
           <tbody>
             {rows.map((row, ri) => (
-              <tr
-                key={JSON.stringify(row)}
-                className=""
-              >
+              <tr key={JSON.stringify(row)} className="">
                 {columns.map((col) => (
                   <td key={col.key} className="px-1 py-0.5">
                     <input

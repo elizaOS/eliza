@@ -1,12 +1,18 @@
-
-
+import {
+  Banner,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  StatusBadge,
+} from "@elizaos/ui";
 import { useState } from "react";
 import { client } from "../../api";
 import { useBranding } from "../../config/branding";
 import { type BugReportDraft, useOptionalBugReport } from "../../hooks";
 import type { StartupErrorState } from "../../state";
 import { useApp } from "../../state";
-import { Banner, Button, Card, CardContent, CardDescription, CardHeader, StatusBadge } from "@elizaos/ui";
 
 function startupReasonLabel(
   t: ReturnType<typeof useApp>["t"],

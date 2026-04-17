@@ -8,12 +8,11 @@
  * cross-cutting integrations outside this unit's scope.
  */
 
-import type { IAgentRuntime } from "../../../../types/index.ts";
 import type {
 	ContactInfo,
 	RelationshipsService,
 } from "../../../../services/relationships.ts";
-import type { UUID } from "../../../../types/index.ts";
+import type { IAgentRuntime, UUID } from "../../../../types/index.ts";
 
 export interface FakeRuntimeOptions {
 	contactsByHandle?: Map<string, ContactInfo>;
@@ -26,10 +25,7 @@ function key(platform: string, identifier: string): string {
 	return `${platform.toLowerCase()}|${identifier.toLowerCase()}`;
 }
 
-export function fakeContact(
-	entityId: UUID,
-	categories: string[],
-): ContactInfo {
+export function fakeContact(entityId: UUID, categories: string[]): ContactInfo {
 	return {
 		entityId,
 		categories,

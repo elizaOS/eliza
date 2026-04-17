@@ -1,14 +1,13 @@
-import { client } from "../../api/client";
 import type { CustomActionDef } from "@elizaos/agent/contracts/config";
+import { Button, Input, Switch } from "@elizaos/ui";
+import { useCallback, useEffect, useState } from "react";
+import { client } from "../../api/client";
 import { useApp } from "../../state/useApp";
 import {
   alertDesktopMessage,
   confirmDesktopAction,
 } from "../../utils/desktop-dialogs";
-
-import { useCallback, useEffect, useState } from "react";
 import { CustomActionEditor } from "./CustomActionEditor";
-import { Button, Input, Switch } from "@elizaos/ui";
 
 const CUSTOM_ACTIONS_SHELL_CLASS =
   "flex h-full min-h-0 flex-col gap-4 rounded-2xl border border-border/60 bg-card/70 p-4 shadow-sm ring-1 ring-border/15 backdrop-blur-sm";

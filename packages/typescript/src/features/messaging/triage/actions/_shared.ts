@@ -8,10 +8,7 @@
  */
 
 import type { HandlerOptions } from "../../../../types/index.ts";
-import {
-	ALL_MESSAGE_SOURCES,
-	type MessageSource,
-} from "../types.ts";
+import { ALL_MESSAGE_SOURCES, type MessageSource } from "../types.ts";
 
 function getParams(
 	options: HandlerOptions | undefined,
@@ -107,7 +104,9 @@ export function parseDraftReplyParams(
 	options: HandlerOptions | undefined,
 ): DraftReplyParams | { error: string } {
 	const params = getParams(options);
-	const messageId = asString(params.messageId ?? params.inReplyToId ?? params.id);
+	const messageId = asString(
+		params.messageId ?? params.inReplyToId ?? params.id,
+	);
 	const body = asString(params.body ?? params.text ?? params.message);
 	if (!messageId) return { error: "messageId is required" };
 	if (!body) return { error: "body is required" };

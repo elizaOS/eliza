@@ -1,10 +1,5 @@
 import crypto from "node:crypto";
-import type {
-  Content,
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "@elizaos/core";
+import type { Content, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import type { TaskExecutor, TaskResult, TaskSpec } from "./task-executor.js";
 
 const CODING_PATTERNS =
@@ -95,10 +90,7 @@ export class CodingTaskExecutor implements TaskExecutor {
     const memory = buildSyntheticTaskMemory(runtime, spec);
     const callbackLines: string[] = [];
     const callback = async (content: Content): Promise<Memory[]> => {
-      if (
-        typeof content.text === "string" &&
-        content.text.trim().length > 0
-      ) {
+      if (typeof content.text === "string" && content.text.trim().length > 0) {
         callbackLines.push(content.text);
       }
       return [];

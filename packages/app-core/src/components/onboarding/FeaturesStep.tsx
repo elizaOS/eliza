@@ -1,12 +1,8 @@
-
 import { Button, cn } from "@elizaos/app-core";
 import { useCallback, useMemo } from "react";
 import { useApp } from "../../state";
-import {
-  onboardingHelperTextClassName,
-  onboardingReadableTextMutedClassName,
-} from "./onboarding-form-primitives";
 import { FeatureCard, type FeatureStatus } from "./features/FeatureCard";
+import { onboardingReadableTextMutedClassName } from "./onboarding-form-primitives";
 import {
   OnboardingSecondaryActionButton,
   OnboardingStepHeader,
@@ -196,9 +192,12 @@ export function FeaturesStep() {
       {/* Header */}
       <OnboardingStepHeader
         eyebrow={t("onboarding.features.eyebrow", { defaultValue: "Features" })}
-        title={t("onboarding.features.title", { defaultValue: "Enable features" })}
+        title={t("onboarding.features.title", {
+          defaultValue: "Enable features",
+        })}
         description={t("onboarding.features.subtitle", {
-          defaultValue: "Connect platforms and capabilities. You can always change these later in Settings.",
+          defaultValue:
+            "Connect platforms and capabilities. You can always change these later in Settings.",
         })}
       />
 
@@ -207,7 +206,10 @@ export function FeaturesStep() {
         {hasCloud && (
           <p
             style={{ fontFamily: MONO_FONT }}
-            className={cn("text-3xs uppercase mt-1", onboardingReadableTextMutedClassName)}
+            className={cn(
+              "text-3xs uppercase mt-1",
+              onboardingReadableTextMutedClassName,
+            )}
           >
             {t("onboarding.features.managedSection", {
               defaultValue: "Managed connectors",
@@ -235,7 +237,10 @@ export function FeaturesStep() {
 
         <p
           style={{ fontFamily: MONO_FONT }}
-          className={cn("text-3xs uppercase mt-2", onboardingReadableTextMutedClassName)}
+          className={cn(
+            "text-3xs uppercase mt-2",
+            onboardingReadableTextMutedClassName,
+          )}
         >
           {t("onboarding.features.optionalSection", {
             defaultValue: "Optional capabilities",

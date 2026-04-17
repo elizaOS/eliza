@@ -99,9 +99,7 @@ export class Downloader {
    * a full `CatalogModel` spec for ad-hoc HF-search results. Idempotent —
    * returns the existing job if one is already running for the same id.
    */
-  async start(
-    modelIdOrSpec: string | CatalogModel,
-  ): Promise<DownloadJob> {
+  async start(modelIdOrSpec: string | CatalogModel): Promise<DownloadJob> {
     const catalogEntry =
       typeof modelIdOrSpec === "string"
         ? findCatalogModel(modelIdOrSpec)

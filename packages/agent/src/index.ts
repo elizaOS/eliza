@@ -1,3 +1,4 @@
+export * from "@elizaos/shared/spoken-text";
 export * from "./api/index.js";
 export {
   findPrimaryEnvKey,
@@ -42,4 +43,3 @@ export * from "./triggers/runtime.js";
 export * from "./triggers/scheduling.js";
 export * from "./triggers/types.js";
 export * from "./utils/number-parsing.js";
-export * from "@elizaos/shared/spoken-text";

@@ -1,5 +1,5 @@
 import { ONBOARDING_PROVIDER_CATALOG } from "@elizaos/shared/contracts/onboarding";
-
+import { Button, Input } from "@elizaos/ui";
 import type { ChangeEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { OpenRouterModelOption, ProviderOption } from "../../../api";
@@ -15,11 +15,11 @@ import {
   requiresAdditionalRuntimeProvider,
 } from "../../../providers";
 import { useApp } from "../../../state";
+import { openExternalUrl } from "../../../utils";
 import {
   formatSubscriptionRequestError,
   normalizeOpenAICallbackInput,
 } from "../../../utils/subscription-auth";
-import { openExternalUrl } from "../../../utils";
 import { OnboardingTabs } from "../OnboardingTabs";
 import {
   getOnboardingChoiceCardClassName,
@@ -45,7 +45,6 @@ import {
   spawnOnboardingRipple,
 } from "../onboarding-step-chrome";
 import { useAdvanceOnboardingWhenElizaCloudOAuthConnected } from "./useAdvanceOnboardingWhenElizaCloudOAuthConnected";
-import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@elizaos/ui";
 
 const providerOverrides: Record<
   string,

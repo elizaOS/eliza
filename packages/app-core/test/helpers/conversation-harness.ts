@@ -1,18 +1,11 @@
-/**
- * ConversationHarness — wraps an AgentRuntime + ActionSpy to let tests send
- * messages and inspect what actions the agent invoked in response.
- */
+/** Sends messages through a runtime and captures responses plus action calls. */
 import crypto from "node:crypto";
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+import { ChannelType, createMessageMemory, stringToUuid } from "@elizaos/core";
 import {
-  ChannelType,
-  createMessageMemory,
-  stringToUuid,
-} from "@elizaos/core";
-import {
-  ActionSpy,
-  createActionSpy,
+  type ActionSpy,
   type ActionSpyCall,
+  createActionSpy,
 } from "./action-spy.js";
 
 export interface ConversationTurn {
@@ -158,7 +151,7 @@ export class ConversationHarness {
       }
     }
 
-    // Allow a brief settle so ACTION_COMPLETED events and memory writes land.
+    // Let completed-action events and memory writes catch up.
     await new Promise((r) => setTimeout(r, 500));
 
     const allCalls = this.spy.getCalls();

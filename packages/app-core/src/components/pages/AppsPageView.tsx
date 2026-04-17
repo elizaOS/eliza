@@ -5,8 +5,8 @@
 import type React from "react";
 import { useEffect } from "react";
 import { useApp } from "../../state";
-import { getAppSlug } from "../apps/helpers";
 import { GameView } from "../apps/GameView";
+import { getAppSlug } from "../apps/helpers";
 import { AppsView } from "./AppsView";
 
 type AppsPageViewRenderer = () => React.ReactElement;

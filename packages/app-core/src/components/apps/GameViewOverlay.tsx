@@ -1,7 +1,6 @@
-
+import { Button } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../../state";
-import { Button } from "@elizaos/ui";
 import {
   buildViewerSessionKey,
   resolveEmbeddedViewerUrl,

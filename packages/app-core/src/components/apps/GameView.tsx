@@ -9,7 +9,13 @@
  */
 
 import { packageNameToAppRouteSlug } from "@elizaos/shared/contracts/apps";
-
+import {
+  Button,
+  Input,
+  useDocumentVisibility,
+  useIntervalWhenDocumentVisible,
+  useTimeout,
+} from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type AppRunSummary,
@@ -20,21 +26,12 @@ import {
 } from "../../api";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import { useBranding } from "../../config/branding";
-import {
-  useMediaQuery,
-} from "../../hooks";
+import { useMediaQuery } from "../../hooks";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import type { DesktopClickAuditItem } from "../../utils/desktop-workspace";
 import { formatTime } from "../../utils/format";
 import { getAppOperatorSurface } from "./surfaces/registry";
-import {
-  Button,
-  Input,
-  useDocumentVisibility,
-  useIntervalWhenDocumentVisible,
-  useTimeout,
-} from "@elizaos/ui";
 import {
   buildViewerSessionKey,
   resolveEmbeddedViewerUrl,
@@ -1301,9 +1298,7 @@ export function GameView() {
   const renderLogsPanel = (layout: "sidebar" | "standalone" = "sidebar") => (
     <div
       className={`flex min-h-0 flex-col bg-card ${
-        layout === "sidebar"
-          ? "w-80"
-          : "h-full"
+        layout === "sidebar" ? "w-80" : "h-full"
       }`}
     >
       <div className="flex items-center gap-2 px-3 py-2">
@@ -1612,10 +1607,7 @@ export function GameView() {
             .sort((a, b) => Number(b.timestamp ?? 0) - Number(a.timestamp ?? 0))
             .slice(0, 30)
             .map((entry) => (
-              <div
-                key={entry.id}
-                className="py-1 flex flex-col gap-0.5"
-              >
+              <div key={entry.id} className="py-1 flex flex-col gap-0.5">
                 <div className="flex items-center gap-1">
                   <span className="text-muted text-2xs">
                     {formatTime(entry.timestamp ?? 0, { fallback: "—" })}

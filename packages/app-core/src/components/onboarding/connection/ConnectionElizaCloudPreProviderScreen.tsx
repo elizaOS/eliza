@@ -1,5 +1,4 @@
-
-
+import { Button, Input } from "@elizaos/ui";
 import type { ChangeEvent } from "react";
 import { useBranding } from "../../../config";
 import type { ConnectionEvent } from "../../../onboarding/connection-flow";
@@ -13,7 +12,6 @@ import {
   onboardingDetailStackClassName,
   onboardingHelperTextClassName,
   onboardingInputClassName,
-  onboardingSubtleTextClassName,
 } from "../onboarding-form-primitives";
 import {
   OnboardingLinkActionButton,
@@ -25,7 +23,6 @@ import {
   spawnOnboardingRipple,
 } from "../onboarding-step-chrome";
 import { useAdvanceOnboardingWhenElizaCloudOAuthConnected } from "./useAdvanceOnboardingWhenElizaCloudOAuthConnected";
-import { Button, Input } from "@elizaos/ui";
 
 export function ConnectionElizaCloudPreProviderScreen({
   dispatch,

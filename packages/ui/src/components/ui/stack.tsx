@@ -41,7 +41,9 @@ const _stackVariants = cva("flex", {
   },
 });
 
-const stackVariants: (props?: StackVariantProps) => string = _stackVariants as (props?: StackVariantProps) => string;
+const stackVariants: (props?: StackVariantProps) => string = _stackVariants as (
+  props?: StackVariantProps,
+) => string;
 
 export interface StackProps
   extends React.HTMLAttributes<HTMLDivElement>,

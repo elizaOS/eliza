@@ -83,8 +83,7 @@ export const LIFEOPS_PROPOSAL_STATUSES = [
   "declined",
   "expired",
 ] as const;
-export type LifeOpsProposalStatus =
-  (typeof LIFEOPS_PROPOSAL_STATUSES)[number];
+export type LifeOpsProposalStatus = (typeof LIFEOPS_PROPOSAL_STATUSES)[number];
 
 export const LIFEOPS_PROPOSAL_PROPOSERS = [
   "agent",
@@ -1543,9 +1542,9 @@ export interface LifeOpsDiscordDmInboxStatus {
 export interface LifeOpsDiscordConnectorStatus {
   provider: "discord";
   side: LifeOpsConnectorSide;
-  /** Browser Workspace desktop bridge is available (Discord lives inside a Milady browser tab). */
+  /** A LifeOps browser path is available via the browser companion or the desktop browser workspace. */
   available: boolean;
-  /** Logged-in Discord DOM was detected in the browser tab. */
+  /** A logged-in Discord session was detected from the active browser path. */
   connected: boolean;
   reason: LifeOpsMessagingConnectorReason;
   identity: {
@@ -1558,7 +1557,7 @@ export interface LifeOpsDiscordConnectorStatus {
   dmInbox: LifeOpsDiscordDmInboxStatus;
   grantedCapabilities: LifeOpsDiscordCapability[];
   lastError: string | null;
-  /** Browser Workspace tab hosting Discord, when one exists. */
+  /** Browser Workspace tab hosting Discord, when that desktop path is in use. */
   tabId: string | null;
   grant: LifeOpsConnectorGrant | null;
 }

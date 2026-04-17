@@ -60,7 +60,9 @@ export const draftReplyAction: Action = {
 		);
 
 		const text = `Drafted reply on ${record.source}. Preview: ${record.preview}`;
-		logger.info(`[DraftReply] draftId=${record.draftId} source=${record.source}`);
+		logger.info(
+			`[DraftReply] draftId=${record.draftId} source=${record.source}`,
+		);
 		if (callback) {
 			await callback({ text, action: "DRAFT_REPLY" });
 		}

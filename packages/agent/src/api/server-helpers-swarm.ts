@@ -4,6 +4,12 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
+import type {
+  SwarmEvent,
+  TaskCompletionSummary,
+  TaskContext,
+} from "@elizaos/app-task-coordinator/api/coordinator-types";
+import { routeTaskAgentTextToConnector } from "@elizaos/app-task-coordinator/api/task-agent-message-routing";
 import {
   type AgentRuntime,
   ChannelType,
@@ -12,11 +18,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import type {
-  SwarmEvent,
-  TaskCompletionSummary,
-  TaskContext,
-} from "@elizaos/app-task-coordinator/api/coordinator-types";
+import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.js";
 import type {
   CoordinationLLMResponse,
   PTYService,
@@ -25,8 +27,6 @@ import {
   parseActionBlock,
   stripActionBlockFromDisplay,
 } from "./parse-action-block.js";
-import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.js";
-import { routeTaskAgentTextToConnector } from "@elizaos/app-task-coordinator/api/task-agent-message-routing";
 import { resolveAppUserName } from "./server-helpers.js";
 import type { ConversationMeta, ServerState } from "./server-types.js";
 

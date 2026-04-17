@@ -1,13 +1,12 @@
+import { PagePanel } from "@elizaos/ui";
+import { useEffect, useState } from "react";
+import { client } from "../../api/client";
 import type {
   KnowledgeDocument,
   KnowledgeFragment,
 } from "../../api/client-types-chat";
-import { client } from "../../api/client";
 import { useApp } from "../../state/useApp";
-
 import { formatByteSize } from "../../utils/format";
-import { useEffect, useState } from "react";
-import { PagePanel } from "@elizaos/ui";
 
 export function getKnowledgeTypeLabel(contentType?: string): string {
   return contentType?.split("/").pop()?.toUpperCase() || "DOC";
@@ -168,10 +167,7 @@ export function DocumentViewer({ documentId }: { documentId: string | null }) {
               </div>
               <div className="space-y-3">
                 {fragments.map((fragment) => (
-                  <div
-                    key={fragment.id}
-                    className="py-3"
-                  >
+                  <div key={fragment.id} className="py-3">
                     <p className="whitespace-pre-wrap text-sm leading-relaxed text-txt/90">
                       {fragment.text}
                     </p>

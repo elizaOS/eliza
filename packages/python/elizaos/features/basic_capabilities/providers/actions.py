@@ -52,9 +52,7 @@ def _format_action_parameters(
         schema = _get_param_schema(param)
         desc = get_prompt_parameter_description(action_name, param, runtime)
         if schema is None:
-            lines.append(
-                f"{param.name}{'' if param.required else '?'}:unknown - {desc}"
-            )
+            lines.append(f"{param.name}{'' if param.required else '?'}:unknown - {desc}")
             continue
         type_str = _format_parameter_type(schema)
         default_val = getattr(schema, "default", None) or getattr(schema, "default_value", None)
@@ -68,9 +66,7 @@ def _format_action_parameters(
         )
         modifiers = "; ".join(part for part in [enum_str, default_str, examples_str] if part)
         suffix = f" [{modifiers}]" if modifiers else ""
-        lines.append(
-            f"{param.name}{'' if param.required else '?'}:{type_str}{suffix} - {desc}"
-        )
+        lines.append(f"{param.name}{'' if param.required else '?'}:{type_str}{suffix} - {desc}")
     return "; ".join(lines)
 
 

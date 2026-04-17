@@ -2673,9 +2673,7 @@ export class AppManager {
       await ensureRuntimeReady(appInfo, viewer, launchUrl, _runtime ?? null);
     } catch (readyError) {
       const message =
-        readyError instanceof Error
-          ? readyError.message
-          : String(readyError);
+        readyError instanceof Error ? readyError.message : String(readyError);
       logger.warn(
         `[app-manager] ensureRuntimeReady(${appInfo.name}) failed: ${message}`,
       );

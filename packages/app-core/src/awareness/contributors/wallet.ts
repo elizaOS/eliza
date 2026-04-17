@@ -2,15 +2,16 @@
  * Wallet contributor — reports real wallet addresses, chain readiness,
  * signer mode, and trade permissions. Never exposes private keys.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+
 import { getWalletAddresses } from "@elizaos/agent/api/wallet";
 import { resolveWalletRpcReadiness } from "@elizaos/agent/api/wallet-rpc";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
 import type { AwarenessContributor } from "@elizaos/agent/contracts";
 import {
   canUseLocalTradeExecution,
   resolveTradePermissionMode,
 } from "@elizaos/app-steward/routes/server-wallet-trade";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
+import type { IAgentRuntime } from "@elizaos/core";
 
 function shorten(address: string | null): string | null {
   if (!address) return null;

@@ -216,9 +216,7 @@ export function SidebarItemIcon({
       data-sidebar-item-icon
       className={cn(
         "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-sm p-2",
-        active
-          ? "bg-accent/18 text-txt-strong"
-          : "bg-bg-accent/80 text-muted",
+        active ? "bg-accent/18 text-txt-strong" : "bg-bg-accent/80 text-muted",
         className,
       )}
       {...props}
@@ -351,9 +349,7 @@ export const SidebarRailItem = React.forwardRef<
         <span
           className={cn(
             "absolute right-1.5 top-1.5 h-2 w-2 rounded-full",
-            indicatorTone === "accent"
-              ? "bg-accent"
-              : "bg-muted/70",
+            indicatorTone === "accent" ? "bg-accent" : "bg-muted/70",
           )}
         />
       ) : null}

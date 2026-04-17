@@ -10,6 +10,7 @@ import {
   resolveOwnerContactWithFallback,
 } from "@elizaos/agent/config/owner-contacts";
 import { loadLifeOpsAppState } from "../lifeops/app-state.js";
+import { ensureRuntimeAgentRecord } from "../lifeops/runtime.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
@@ -748,6 +749,7 @@ type AutonomyServiceLike = {
 export async function ensureProactiveAgentTask(
   runtime: IAgentRuntime,
 ): Promise<UUID> {
+  await ensureRuntimeAgentRecord(runtime);
   const tasks = await runtime.getTasks({
     agentIds: [runtime.agentId],
     tags: [...PROACTIVE_TASK_TAGS],

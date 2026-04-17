@@ -20,15 +20,15 @@ import {
 } from "../api";
 import { type Tab, tabFromPath } from "../navigation";
 import { isTtsDebugEnabled } from "../utils/tts-debug";
+import {
+  isConversationRecord,
+  normalizeConversationList,
+} from "./chat-conversation-guards";
 import type { AppState, LifecycleAction, UiShellMode } from "./internal";
 import {
   type LoadConversationMessagesResult,
   loadActiveConversationId,
 } from "./internal";
-import {
-  isConversationRecord,
-  normalizeConversationList,
-} from "./chat-conversation-guards";
 import type { OnboardingMode, OnboardingStep } from "./types";
 
 import { useChatLifecycle } from "./useChatLifecycle";

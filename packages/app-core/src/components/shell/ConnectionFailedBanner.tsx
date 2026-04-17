@@ -1,7 +1,5 @@
-
-
-import { useApp } from "../../state";
 import { Button, Spinner, Z_SYSTEM_CRITICAL } from "@elizaos/ui";
+import { useApp } from "../../state";
 
 /**
  * Banner shown during WebSocket reconnection attempts.

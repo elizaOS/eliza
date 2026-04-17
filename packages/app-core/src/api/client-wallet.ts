@@ -6,6 +6,11 @@
 import type { DropStatus, MintResult } from "@elizaos/agent/contracts/drop";
 import type { VerificationResult } from "@elizaos/agent/contracts/verification";
 import type {
+  BrowserWorkspaceSolanaMessageSignatureResult,
+  BrowserWorkspaceWalletMessageSignatureResult,
+  BrowserWorkspaceWalletTransactionResult,
+} from "@elizaos/app-steward/browser-workspace-wallet";
+import type {
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
   BscTradePreflightResponse,
@@ -36,11 +41,6 @@ import type {
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
 } from "@elizaos/shared/contracts";
-import type {
-  BrowserWorkspaceSolanaMessageSignatureResult,
-  BrowserWorkspaceWalletMessageSignatureResult,
-  BrowserWorkspaceWalletTransactionResult,
-} from "@elizaos/app-steward/browser-workspace-wallet";
 import { ElizaClient } from "./client-base";
 import type {
   ApplyProductionWalletDefaultsResponse,

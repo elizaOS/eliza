@@ -1,9 +1,9 @@
-import { LanguageDropdown } from "../shared/LanguageDropdown";
-import type { UiLanguage } from "../../i18n/messages";
+import { useEffect } from "react";
 import { normalizeLanguage } from "../../i18n";
+import type { UiLanguage } from "../../i18n/messages";
 import { applyUiTheme } from "../../state/persistence";
 import { useApp } from "../../state/useApp";
-import { useEffect } from "react";
+import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ConnectionStep } from "./ConnectionStep";
 import { DeploymentStep } from "./DeploymentStep";
 import { FeaturesStep } from "./FeaturesStep";

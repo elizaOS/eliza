@@ -51,6 +51,7 @@ import {
   type SignalGroup,
   type SignalMessage,
   type SignalMessageSendOptions,
+  type SignalRecentMessage,
   type SignalQuote,
   type SignalReactionInfo,
   type SignalSettings,
@@ -62,6 +63,10 @@ const DEFAULT_SIGNAL_HTTP_PORT = 8080;
 const DEFAULT_SIGNAL_DAEMON_STARTUP_TIMEOUT_MS = 30_000;
 const DEFAULT_SIGNAL_CLI_PATH = "signal-cli";
 const BREW_OPENJDK_HOME = "/opt/homebrew/opt/openjdk";
+const COMMON_SIGNAL_CLI_PATHS = [
+  "/opt/homebrew/bin/signal-cli",
+  "/usr/local/bin/signal-cli",
+];
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -86,6 +91,16 @@ async function resolveSignalCliPath(cliPath: string): Promise<string | null> {
     const resolved = stdout.trim();
     return resolved.length > 0 ? resolved : null;
   } catch {
+    if (trimmed !== DEFAULT_SIGNAL_CLI_PATH) {
+      return null;
+    }
+
+    for (const candidate of COMMON_SIGNAL_CLI_PATHS) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
     return null;
   }
 }
@@ -992,6 +1007,78 @@ export class SignalService extends Service implements ISignalService {
     }
 
     return groups;
+  }
+
+  async getRecentMessages(limit: number = 20): Promise<SignalRecentMessage[]> {
+    if (
+      typeof this.runtime.getRoomsForParticipant !== "function" ||
+      typeof this.runtime.getMemoriesByRoomIds !== "function"
+    ) {
+      return [];
+    }
+
+    const requestedLimit = Number.isFinite(limit)
+      ? Math.max(1, Math.min(limit, 100))
+      : 20;
+    const participantRoomIds = await this.runtime.getRoomsForParticipant(
+      this.runtime.agentId,
+    );
+
+    const signalRooms: Room[] = [];
+    for (const roomId of participantRoomIds) {
+      const room = await this.runtime.getRoom(roomId);
+      if (room?.source === "signal") {
+        signalRooms.push(room);
+      }
+    }
+
+    if (signalRooms.length === 0) {
+      return [];
+    }
+
+    const roomIds = signalRooms.map((room) => room.id);
+    const roomsById = new Map(signalRooms.map((room) => [room.id, room]));
+    const memories = await this.runtime.getMemoriesByRoomIds({
+      tableName: "messages",
+      roomIds,
+      limit: requestedLimit * 4,
+    });
+
+    return memories
+      .filter((memory) => memory.content?.source === "signal")
+      .filter(
+        (memory) =>
+          typeof memory.content?.text === "string" &&
+          memory.content.text.trim().length > 0,
+      )
+      .sort((left, right) => Number(right.createdAt ?? 0) - Number(left.createdAt ?? 0))
+      .slice(0, requestedLimit)
+      .map((memory) => {
+        const room = roomsById.get(memory.roomId);
+        const isGroup =
+          room?.type === ChannelType.GROUP ||
+          Boolean((room?.metadata as Record<string, unknown> | undefined)?.isGroup);
+        const text = String(memory.content.text ?? "").trim();
+        const speakerName =
+          memory.entityId === this.runtime.agentId
+            ? this.character?.name || "Agent"
+            : typeof memory.content.name === "string" &&
+                memory.content.name.trim().length > 0
+              ? memory.content.name.trim()
+              : room?.name || room?.channelId || "Unknown";
+
+        return {
+          id: String(memory.id),
+          roomId: String(memory.roomId),
+          channelId: String(room?.channelId ?? ""),
+          roomName: room?.name || room?.channelId || "Signal",
+          speakerName,
+          text,
+          createdAt: Number(memory.createdAt ?? Date.now()),
+          isFromAgent: memory.entityId === this.runtime.agentId,
+          isGroup,
+        } satisfies SignalRecentMessage;
+      });
   }
 
   async getGroup(groupId: string): Promise<SignalGroup | null> {

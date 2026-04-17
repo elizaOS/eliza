@@ -1,5 +1,5 @@
-import type { OnboardingStep } from "../../state/types";
 import { type ReactNode, useEffect, useRef } from "react";
+import type { OnboardingStep } from "../../state/types";
 
 interface OnboardingPanelProps {
   step: OnboardingStep;

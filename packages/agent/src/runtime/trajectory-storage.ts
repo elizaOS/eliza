@@ -11,7 +11,6 @@ import {
   type IAgentRuntime,
   Service,
 } from "@elizaos/core";
-
 import type {
   Trajectory,
   TrajectoryExportOptions,
@@ -20,13 +19,13 @@ import type {
   TrajectoryListOptions,
   TrajectoryListResult,
   TrajectoryStatus,
+  TrajectoryStepKind,
 } from "../types/trajectory.js";
-
 import {
   asRecord,
   type BufferedExchange,
-  capScriptForPersistence,
   type CompleteStepOptions,
+  capScriptForPersistence,
   computeBySource,
   createBaseTrajectory,
   enqueueStepWrite,
@@ -69,7 +68,6 @@ import {
   warnRuntime,
   writeCompressedJsonlRows,
 } from "./trajectory-internals.js";
-import type { TrajectoryStepKind } from "../types/trajectory.js";
 
 // Re-export types needed by consumers
 export type {

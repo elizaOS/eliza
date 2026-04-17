@@ -1,22 +1,4 @@
-/**
- * Shared PGLite runtime helper for tests.
- *
- * Creates a real AgentRuntime backed by an in-process PGLite database.
- * Use this instead of mocking the database — PGLite needs no API keys
- * and runs entirely in-process.
- *
- * Usage:
- *   let runtime: AgentRuntime;
- *   let cleanup: () => Promise<void>;
- *
- *   beforeAll(async () => {
- *     ({ runtime, cleanup } = await createTestRuntime());
- *   }, 180_000);
- *
- *   afterAll(async () => {
- *     await cleanup();
- *   });
- */
+/** Builds a real AgentRuntime backed by an in-process PGLite database. */
 
 import fs from "node:fs";
 import os from "node:os";
@@ -73,7 +55,7 @@ async function flushPendingTrajectoryWrites(
     );
     await flushTrajectoryWrites(runtime);
   } catch {
-    // Best effort only. Some test runtimes do not register this helper.
+    // Some test runtimes do not register this helper.
   }
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -88,15 +70,7 @@ async function flushPendingTrajectoryWrites(
   }
 }
 
-/**
- * Create a real AgentRuntime with a PGLite database in a temp directory.
- *
- * The runtime is fully initialized and ready for use. Call `cleanup()` in
- * afterAll to stop the runtime and remove the temp directory.
- *
- * Callers should use a generous timeout (e.g. `beforeAll(async () => { ... }, 180_000)`)
- * since PGLite initialization can take a few seconds.
- */
+/** Creates a fully initialized PGLite-backed runtime for integration tests. */
 export async function createTestRuntime(
   options?: TestRuntimeOptions,
 ): Promise<TestRuntimeResult> {

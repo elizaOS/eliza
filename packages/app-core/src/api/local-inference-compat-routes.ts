@@ -13,6 +13,7 @@
 
 import type http from "node:http";
 import { localInferenceService } from "../services/local-inference/service";
+import type { CatalogModel } from "../services/local-inference/types";
 import {
   ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,
@@ -28,7 +29,6 @@ import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
-import type { CatalogModel } from "../services/local-inference/types";
 
 function isStreamAuthorized(
   req: http.IncomingMessage,

@@ -833,42 +833,30 @@ ElizaClient.prototype.exchangeOpenAICode = async function (
 };
 
 ElizaClient.prototype.startAgent = async function (this: ElizaClient) {
-  const res = await this.fetch<{ status: AgentStatus }>(
-    "/api/agent/start",
-    {
-      method: "POST",
-    },
-  );
+  const res = await this.fetch<{ status: AgentStatus }>("/api/agent/start", {
+    method: "POST",
+  });
   return res.status;
 };
 
 ElizaClient.prototype.stopAgent = async function (this: ElizaClient) {
-  const res = await this.fetch<{ status: AgentStatus }>(
-    "/api/agent/stop",
-    {
-      method: "POST",
-    },
-  );
+  const res = await this.fetch<{ status: AgentStatus }>("/api/agent/stop", {
+    method: "POST",
+  });
   return res.status;
 };
 
 ElizaClient.prototype.pauseAgent = async function (this: ElizaClient) {
-  const res = await this.fetch<{ status: AgentStatus }>(
-    "/api/agent/pause",
-    {
-      method: "POST",
-    },
-  );
+  const res = await this.fetch<{ status: AgentStatus }>("/api/agent/pause", {
+    method: "POST",
+  });
   return res.status;
 };
 
 ElizaClient.prototype.resumeAgent = async function (this: ElizaClient) {
-  const res = await this.fetch<{ status: AgentStatus }>(
-    "/api/agent/resume",
-    {
-      method: "POST",
-    },
-  );
+  const res = await this.fetch<{ status: AgentStatus }>("/api/agent/resume", {
+    method: "POST",
+  });
   return res.status;
 };
 
@@ -890,9 +878,7 @@ ElizaClient.prototype.restartAndWait = async function (
   });
   try {
     await this.restartAgent();
-    console.info(
-      "[eliza][reset][client] restartAndWait: restart accepted",
-    );
+    console.info("[eliza][reset][client] restartAndWait: restart accepted");
   } catch (e) {
     console.info(
       "[eliza][reset][client] restartAndWait: initial restart call failed (often 409 while restarting)",

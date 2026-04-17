@@ -1,12 +1,12 @@
 import {
   APP_EMOTE_EVENT,
-  STOP_EMOTE_EVENT,
-  resolveAppAssetUrl,
-  useRenderGuard,
   type AppEmoteEventDetail,
   type CompanionHalfFramerateMode,
   type CompanionVrmPowerMode,
+  resolveAppAssetUrl,
+  STOP_EMOTE_EVENT,
   type TranslateFn,
+  useRenderGuard,
 } from "@elizaos/app-core";
 import {
   memo,

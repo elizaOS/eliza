@@ -1,6 +1,7 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import listContacts from "./actions/listContacts";
 import listGroups from "./actions/listGroups";
+import readRecentMessages from "./actions/readRecentMessages";
 // Actions
 import sendMessage from "./actions/sendMessage";
 import sendReaction from "./actions/sendReaction";
@@ -21,7 +22,7 @@ const signalPlugin: Plugin = {
   name: "signal",
   description: "Signal messaging integration plugin for ElizaOS with end-to-end encryption",
   services: [SignalService],
-  actions: [sendMessage, sendReaction, listContacts, listGroups],
+  actions: [sendMessage, sendReaction, listContacts, listGroups, readRecentMessages],
   providers: [conversationStateProvider],
   routes: signalSetupRoutes,
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
@@ -103,6 +104,7 @@ export {
 } from "./accounts";
 export { listContacts } from "./actions/listContacts";
 export { listGroups } from "./actions/listGroups";
+export { readRecentMessages } from "./actions/readRecentMessages";
 // Export actions
 export { sendMessage } from "./actions/sendMessage";
 export { sendReaction } from "./actions/sendReaction";
@@ -163,6 +165,7 @@ export type {
   SignalMessageReceivedPayload,
   SignalMessageSendOptions,
   SignalMessageSentPayload,
+  SignalRecentMessage,
   SignalQuote,
   SignalReactionInfo,
   SignalReactionPayload,

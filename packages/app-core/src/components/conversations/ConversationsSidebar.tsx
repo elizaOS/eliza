@@ -1,20 +1,51 @@
-
-
-import { Globe, MessagesSquare, Plus, Search, Settings2, X } from "lucide-react";
+import {
+  Button,
+  ChatConversationItem,
+  ChatSourceIcon,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  NewActionButton,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Sidebar,
+  SidebarCollapsedActionButton,
+  SidebarContent,
+  SidebarPanel,
+  SidebarScrollRegion,
+  TooltipProvider,
+} from "@elizaos/ui";
+import {
+  Globe,
+  MessagesSquare,
+  Plus,
+  Search,
+  Settings2,
+  X,
+} from "lucide-react";
 import type React from "react";
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { client } from "../../api";
 import { useApp } from "../../state";
-import { ConversationRenameDialog } from "./ConversationRenameDialog";
 import {
   ALWAYS_ON_PLUGIN_IDS,
-  VISIBLE_CONNECTOR_IDS,
   connectorDisplayName,
   iconImageSource,
   resolveIcon,
+  VISIBLE_CONNECTOR_IDS,
 } from "../pages/plugin-list-utils";
-import { ChatConversationItem, ChatSourceIcon, SidebarCollapsedActionButton, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, NewActionButton, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TooltipProvider } from "@elizaos/ui";
+import { ConversationRenameDialog } from "./ConversationRenameDialog";
 import {
   ALL_CONNECTORS_SOURCE_SCOPE,
   ALL_WORLDS_SCOPE,
@@ -295,7 +326,9 @@ export function ConversationsSidebar({
     () =>
       plugins.filter(
         (p) =>
-          p.category === "connector" && !ALWAYS_ON_PLUGIN_IDS.has(p.id) && VISIBLE_CONNECTOR_IDS.has(p.id),
+          p.category === "connector" &&
+          !ALWAYS_ON_PLUGIN_IDS.has(p.id) &&
+          VISIBLE_CONNECTOR_IDS.has(p.id),
       ),
     [plugins],
   );
@@ -319,30 +352,27 @@ export function ConversationsSidebar({
     [handlePluginToggle],
   );
 
-  const renderConnectorIcon = useCallback(
-    (plugin: (typeof plugins)[0]) => {
-      const icon = resolveIcon(plugin);
-      if (!icon) return <span className="text-sm">🧩</span>;
-      if (typeof icon === "string") {
-        const src = iconImageSource(icon);
-        return src ? (
-          <img
-            src={src}
-            alt=""
-            className="h-4 w-4 shrink-0 rounded-[var(--radius-sm)] object-contain"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = "none";
-            }}
-          />
-        ) : (
-          <span className="text-sm">{icon}</span>
-        );
-      }
-      const IconComponent = icon;
-      return <IconComponent className="h-4 w-4" />;
-    },
-    [],
-  );
+  const renderConnectorIcon = useCallback((plugin: (typeof plugins)[0]) => {
+    const icon = resolveIcon(plugin);
+    if (!icon) return <span className="text-sm">🧩</span>;
+    if (typeof icon === "string") {
+      const src = iconImageSource(icon);
+      return src ? (
+        <img
+          src={src}
+          alt=""
+          className="h-4 w-4 shrink-0 rounded-[var(--radius-sm)] object-contain"
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = "none";
+          }}
+        />
+      ) : (
+        <span className="text-sm">{icon}</span>
+      );
+    }
+    const IconComponent = icon;
+    return <IconComponent className="h-4 w-4" />;
+  }, []);
 
   const showNewChatAction =
     tab === "chat" && sidebarModel.sourceScope === ELIZA_SOURCE_SCOPE;
@@ -408,7 +438,9 @@ export function ConversationsSidebar({
             className="w-40"
             onCloseAutoFocus={(event: Event) => event.preventDefault()}
             onClick={(event: React.MouseEvent) => event.stopPropagation()}
-            onPointerDown={(event: React.PointerEvent) => event.stopPropagation()}
+            onPointerDown={(event: React.PointerEvent) =>
+              event.stopPropagation()
+            }
             onPointerDownOutside={() => setMenuConversation(null)}
             onInteractOutside={() => setMenuConversation(null)}
             avoidCollisions
@@ -498,8 +530,12 @@ export function ConversationsSidebar({
                   <div className="flex items-center justify-between gap-2">
                     <span className="px-1 text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
                       {isManageConnectionsActive
-                        ? t("conversations.connectors", { defaultValue: "Connectors" })
-                        : t("conversations.filterScope", { defaultValue: "Source" })}
+                        ? t("conversations.connectors", {
+                            defaultValue: "Connectors",
+                          })
+                        : t("conversations.filterScope", {
+                            defaultValue: "Source",
+                          })}
                     </span>
                     <Button
                       type="button"
@@ -525,7 +561,8 @@ export function ConversationsSidebar({
                   {!isManageConnectionsActive ? (
                     <div className="flex flex-wrap gap-2">
                       {sidebarModel.sourceOptions.map((option) => {
-                        if (option.value === ALL_CONNECTORS_SOURCE_SCOPE) return null;
+                        if (option.value === ALL_CONNECTORS_SOURCE_SCOPE)
+                          return null;
                         const isActive =
                           sidebarModel.sourceScope === option.value;
                         return (
@@ -574,14 +611,18 @@ export function ConversationsSidebar({
                           type="button"
                           onClick={() => setSearchQuery("")}
                           className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-txt"
-                          aria-label={t("common.clear", { defaultValue: "Clear" })}
+                          aria-label={t("common.clear", {
+                            defaultValue: "Clear",
+                          })}
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
                       ) : null}
                     </div>
                   ) : null}
-                  {!isManageConnectionsActive && showNewChatAction ? (<div>{newChatAction}</div>) : null}
+                  {!isManageConnectionsActive && showNewChatAction ? (
+                    <div>{newChatAction}</div>
+                  ) : null}
                 </div>
 
                 {!isManageConnectionsActive && sidebarModel.showWorldFilter ? (
@@ -624,7 +665,8 @@ export function ConversationsSidebar({
                   connectorPlugins.map((plugin) => {
                     const isToggleBusy = togglingPlugins.has(plugin.id);
                     const toggleDisabled =
-                      isToggleBusy || (togglingPlugins.size > 0 && !isToggleBusy);
+                      isToggleBusy ||
+                      (togglingPlugins.size > 0 && !isToggleBusy);
                     return (
                       <SidebarContent.Item
                         key={plugin.id}

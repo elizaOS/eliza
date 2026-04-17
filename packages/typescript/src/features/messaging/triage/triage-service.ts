@@ -9,9 +9,16 @@
 
 import { logger } from "../../../logger.ts";
 import type { IAgentRuntime } from "../../../types/index.ts";
+import { DiscordMessageAdapter } from "./adapters/discord-adapter.ts";
+import { GmailMessageAdapter } from "./adapters/gmail-adapter.ts";
+import { IMessageMessageAdapter } from "./adapters/imessage-adapter.ts";
+import { SignalMessageAdapter } from "./adapters/signal-adapter.ts";
+import { TelegramMessageAdapter } from "./adapters/telegram-adapter.ts";
+import { TwitterMessageAdapter } from "./adapters/twitter-adapter.ts";
+import { WhatsappMessageAdapter } from "./adapters/whatsapp-adapter.ts";
 import {
-	MessageRefStore,
 	getDefaultMessageRefStore,
+	type MessageRefStore,
 } from "./message-ref-store.ts";
 import { rankScored, scoreMessages } from "./triage-engine.ts";
 import {
@@ -22,13 +29,6 @@ import {
 	type MessageSource,
 	NotYetImplementedError,
 } from "./types.ts";
-import { DiscordMessageAdapter } from "./adapters/discord-adapter.ts";
-import { GmailMessageAdapter } from "./adapters/gmail-adapter.ts";
-import { IMessageMessageAdapter } from "./adapters/imessage-adapter.ts";
-import { SignalMessageAdapter } from "./adapters/signal-adapter.ts";
-import { TelegramMessageAdapter } from "./adapters/telegram-adapter.ts";
-import { TwitterMessageAdapter } from "./adapters/twitter-adapter.ts";
-import { WhatsappMessageAdapter } from "./adapters/whatsapp-adapter.ts";
 
 export interface TriageOptions {
 	sources?: MessageSource[];
@@ -101,9 +101,7 @@ export class TriageService {
 		}
 		const adapter = this.adapters.get(original.source);
 		if (!adapter) {
-			throw new Error(
-				`No adapter registered for source "${original.source}"`,
-			);
+			throw new Error(`No adapter registered for source "${original.source}"`);
 		}
 		const draftRequest: DraftRequest = {
 			source: original.source,
@@ -149,9 +147,7 @@ export class TriageService {
 	): Promise<DraftRecord> {
 		const adapter = this.adapters.get(params.source);
 		if (!adapter) {
-			throw new Error(
-				`No adapter registered for source "${params.source}"`,
-			);
+			throw new Error(`No adapter registered for source "${params.source}"`);
 		}
 		const { draftId, preview } = await adapter.createDraft(runtime, {
 			source: params.source,

@@ -1,4 +1,5 @@
 import { CodingAgentSettingsSection } from "@elizaos/app-task-coordinator";
+import type { JSX } from "react";
 import { ConversationsSidebar } from "../components/conversations/ConversationsSidebar";
 import { BrowserWorkspaceView } from "../components/pages/BrowserWorkspaceView";
 import { ChatView } from "../components/pages/ChatView";
@@ -15,12 +16,11 @@ import { ProviderSwitcher } from "../components/settings/ProviderSwitcher";
 import { VoiceConfigView } from "../components/settings/VoiceConfigView";
 import { PairingView } from "../components/shell/PairingView";
 import { StartupFailureView } from "../components/shell/StartupFailureView";
-import { useApp } from "../state/useApp";
-import type { JSX } from "react";
 import {
   resolveDetachedShellTarget,
   type WindowShellRoute,
 } from "../platform/window-shell";
+import { useApp } from "../state/useApp";
 
 interface DetachedShellRootProps {
   route: Exclude<WindowShellRoute, { mode: "main" }>;

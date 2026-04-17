@@ -1,3 +1,22 @@
+import {
+  Button,
+  MetaPill,
+  PageLayout,
+  PagePanel,
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "@elizaos/ui";
+import {
+  type ReactNode,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { client } from "../../api/client";
 import type {
   RelationshipsActivityItem,
@@ -7,20 +26,10 @@ import type {
   RelationshipsPersonDetail,
   RelationshipsPersonSummary,
 } from "../../api/client-types-relationships";
-
-import {
-  type ReactNode,
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
 import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";
 import { RelationshipsGraphPanel } from "./RelationshipsGraphPanel";
 import { RelationshipsIdentityCluster } from "./RelationshipsIdentityCluster";
-import { PagePanel, MetaPill, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, PageLayout } from "@elizaos/ui";
 
 const TOOLBAR_BUTTON_BASE =
   "h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_20px_-18px_rgba(15,23,42,0.14)] backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(15,23,42,0.16)] active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong";
@@ -300,7 +309,9 @@ function FactsPanel({ person }: { person: RelationshipsPersonDetail }) {
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <MetaPill compact>{fact.sourceType}</MetaPill>
-                  {fact.field ? <MetaPill compact>{fact.field}</MetaPill> : null}
+                  {fact.field ? (
+                    <MetaPill compact>{fact.field}</MetaPill>
+                  ) : null}
                   {typeof fact.confidence === "number" ? (
                     <MetaPill compact>
                       {Math.round(fact.confidence * 100)}% confidence

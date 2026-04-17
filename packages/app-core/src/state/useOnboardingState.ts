@@ -9,11 +9,11 @@
 import { getDefaultStylePreset } from "@elizaos/shared/onboarding-presets";
 import { useCallback, useReducer, useRef } from "react";
 import type { OnboardingOptions } from "../api";
+import { isElectrobunRuntime } from "../bridge";
 import {
   activeServerKindToOnboardingServerTarget,
   type OnboardingServerTarget,
 } from "../onboarding/server-target";
-import { isElectrobunRuntime } from "../bridge";
 import { canRunLocal } from "../platform/init";
 import {
   loadPersistedActiveServer,
@@ -196,7 +196,7 @@ function createInitialState(cloudOnly?: boolean): OnboardingState {
     : initialServer.serverTarget;
 
   const persistedStep = loadPersistedOnboardingStep();
-  const isDesktop = isElectrobunRuntime();
+  const _isDesktop = isElectrobunRuntime();
   const skipDeployment = canRunLocal();
 
   // Desktop / dev mode defaults to local agent, bypassing the deployment chooser step.
@@ -206,7 +206,8 @@ function createInitialState(cloudOnly?: boolean): OnboardingState {
   }
 
   const serverTarget =
-    initialServerTarget || (skipDeployment && step === "providers" ? "local" : "");
+    initialServerTarget ||
+    (skipDeployment && step === "providers" ? "local" : "");
 
   return {
     step,

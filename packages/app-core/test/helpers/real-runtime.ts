@@ -1,22 +1,4 @@
-/**
- * Real runtime helper for integration tests.
- *
- * Same PGLite bootstrap pattern as `eliza/packages/typescript/test/helpers/pglite-runtime.ts`,
- * plus optional real LLM and connector plugins.
- * This is the primary helper for converting mocked tests to real integration tests.
- *
- * Usage:
- *   import { createRealTestRuntime } from "../../../../../test/helpers/real-runtime";
- *
- *   let runtime: AgentRuntime;
- *   let cleanup: () => Promise<void>;
- *
- *   beforeAll(async () => {
- *     ({ runtime, cleanup } = await createRealTestRuntime({ withLLM: true }));
- *   }, 180_000);
- *
- *   afterAll(async () => { await cleanup(); });
- */
+/** Builds a real AgentRuntime backed by PGLite and optional live plugins. */
 
 import fs from "node:fs";
 import os from "node:os";
@@ -25,9 +7,9 @@ import type { Plugin } from "@elizaos/core";
 import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
 import { configureLocalEmbeddingPlugin } from "../../../agent/src/runtime/eliza";
 import {
-  selectLiveProvider,
   type LiveProviderConfig,
   type LiveProviderName,
+  selectLiveProvider,
 } from "./live-provider";
 
 export interface RealTestRuntimeOptions {
@@ -111,7 +93,7 @@ function suppressWindowDuringNodeRuntime(): () => void {
   }
 
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
-  if (!descriptor || !descriptor.configurable) {
+  if (!descriptor?.configurable) {
     return () => {};
   }
 
@@ -127,7 +109,11 @@ function applyRuntimeSettings(
   settings: Record<string, string>,
 ): void {
   for (const [key, value] of Object.entries(settings)) {
-    runtime.setSetting(key, value, /(API_KEY|TOKEN|SECRET|PASSWORD)/i.test(key));
+    runtime.setSetting(
+      key,
+      value,
+      /(API_KEY|TOKEN|SECRET|PASSWORD)/i.test(key),
+    );
   }
 }
 
@@ -140,7 +126,7 @@ async function flushPendingTrajectoryWrites(
     );
     await flushTrajectoryWrites(runtime);
   } catch {
-    // Best effort only. Some test runtimes do not register this helper.
+    // Some test runtimes do not register this helper.
   }
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -155,13 +141,7 @@ async function flushPendingTrajectoryWrites(
   }
 }
 
-/**
- * Create a real AgentRuntime with PGLite database and optional real LLM/connectors.
- *
- * This is the go-to helper for integration tests. It creates a fully initialized
- * runtime backed by a real in-process PGLite database, with optional real LLM
- * inference and connector plugins.
- */
+/** Creates a fully initialized runtime for integration tests. */
 export async function createRealTestRuntime(
   options?: RealTestRuntimeOptions,
 ): Promise<RealTestRuntimeResult> {
@@ -231,7 +211,10 @@ export async function createRealTestRuntime(
         applyRuntimeSettings(runtime, providerConfig.env);
         try {
           const pluginModule = await import(providerConfig.pluginPackage);
-          const plugin = extractPlugin(pluginModule, ["default", "elizaPlugin"]);
+          const plugin = extractPlugin(pluginModule, [
+            "default",
+            "elizaPlugin",
+          ]);
           if (plugin) {
             await runtime.registerPlugin(plugin);
             logger.info(
@@ -251,7 +234,9 @@ export async function createRealTestRuntime(
     // Register Discord plugin if requested and token available
     if (options?.withDiscord && process.env.DISCORD_BOT_TOKEN?.trim()) {
       try {
-        const { default: discordPlugin } = await import("@elizaos/plugin-discord");
+        const { default: discordPlugin } = await import(
+          "@elizaos/plugin-discord"
+        );
         await runtime.registerPlugin(discordPlugin);
         logger.info("[real-runtime] Registered Discord plugin");
       } catch (err) {
@@ -268,7 +253,9 @@ export async function createRealTestRuntime(
         await runtime.registerPlugin(telegramPlugin);
         logger.info("[real-runtime] Registered Telegram plugin");
       } catch (err) {
-        logger.warn(`[real-runtime] Failed to register Telegram plugin: ${err}`);
+        logger.warn(
+          `[real-runtime] Failed to register Telegram plugin: ${err}`,
+        );
       }
     }
 
