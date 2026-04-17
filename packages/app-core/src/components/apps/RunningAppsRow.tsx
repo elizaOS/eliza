@@ -1,4 +1,4 @@
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent, MouseEvent } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";
 import { AppIdentityTile } from "./app-identity";
 import { getRunAttentionReasons } from "./run-attention";
@@ -8,6 +8,8 @@ interface RunningAppsRowProps {
   catalogApps: RegistryAppInfo[];
   busyRunId: string | null;
   onOpenRun: (run: AppRunSummary) => void;
+  onStopRun?: (run: AppRunSummary) => void;
+  stoppingRunId?: string | null;
 }
 
 function HealthBadge({ run }: { run: AppRunSummary }) {
@@ -32,6 +34,8 @@ export function RunningAppsRow({
   catalogApps,
   busyRunId,
   onOpenRun,
+  onStopRun,
+  stoppingRunId,
 }: RunningAppsRowProps) {
   if (runs.length === 0) return null;
 
