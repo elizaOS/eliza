@@ -136,9 +136,24 @@ export interface AppConfig {
  * Merges app-specific overrides with the framework defaults.
  */
 export function resolveAppBranding(appConfig: AppConfig): BrandingConfig {
-  const { DEFAULT_BRANDING } = require("./branding");
+  // NOTE: Inlined defaults mirror DEFAULT_BRANDING in ./branding.ts.
+  // Requiring branding at call time was leaking into the browser bundle and
+  // causing a runtime `require is not defined` failure.
+  const defaults: BrandingConfig = {
+    appName: "Eliza",
+    orgName: "elizaos",
+    repoName: "eliza",
+    docsUrl: "https://docs.elizaos.ai",
+    appUrl: "https://app.elizaos.ai",
+    bugReportUrl:
+      "https://github.com/elizaos/eliza/issues/new?template=bug_report.yml",
+    hashtag: "#ElizaAgent",
+    fileExtension: ".eliza-agent",
+    packageScope: "elizaos",
+  };
+
   return {
-    ...DEFAULT_BRANDING,
+    ...defaults,
     appName: appConfig.appName,
     orgName: appConfig.orgName,
     repoName: appConfig.repoName,
