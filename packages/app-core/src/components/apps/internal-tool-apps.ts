@@ -102,6 +102,7 @@ export function getInternalToolApps(): RegistryAppInfo[] {
     launchType: "local",
     launchUrl: null,
     icon: null,
+    heroImage: null,
     capabilities: app.capabilities,
     stars: 0,
     repository: "",
