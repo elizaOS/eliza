@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "lucide-react": "^0.575.0"
+    "lucide-react": "^1.0.0"
   },
   "elizaos": {
     "app": {

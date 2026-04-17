@@ -25,7 +25,7 @@
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "ethers": "^6.16.0",
-    "lucide-react": "^0.575.0",
+    "lucide-react": "^1.0.0",
     "viem": "^2.21.0"
   }
 }
