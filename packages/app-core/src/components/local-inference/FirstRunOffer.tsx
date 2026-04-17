@@ -102,7 +102,10 @@ function pickRecommended(
   for (const alt of fallbackOrder) {
     if (alt === bucket) continue;
     const candidate = catalog.find(
-      (m) => m.bucket === alt && !findInstalled(m, installed) && m.category === "chat",
+      (m) =>
+        m.bucket === alt &&
+        !findInstalled(m, installed) &&
+        m.category === "chat",
     );
     if (candidate) return candidate;
   }

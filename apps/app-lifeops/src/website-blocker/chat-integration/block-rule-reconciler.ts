@@ -102,10 +102,8 @@ async function scheduleAutoReLock(
   nowMs: number,
 ): Promise<void> {
   if (rule.unlockDurationMs === null || rule.unlockDurationMs <= 0) return;
-  const followUpRuleId = `${rule.id}-relock-${nowMs}`;
   const reLockAtMs = nowMs + rule.unlockDurationMs;
-  await writer.createBlockRule({
-    id: followUpRuleId,
+  const followUpRuleId = await writer.createBlockRule({
     profile: rule.profile,
     websites: rule.websites,
     gateType: "until_iso",

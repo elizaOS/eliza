@@ -15,15 +15,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { scanExternalModels } from "./external-scanner";
-import { registryPath, localInferenceRoot, isWithinMiladyRoot } from "./paths";
+import { isWithinMiladyRoot, localInferenceRoot, registryPath } from "./paths";
 import type { InstalledModel } from "./types";
 
 interface RegistryFile {
   version: 1;
   models: InstalledModel[];
 }
-
-const EMPTY_REGISTRY: RegistryFile = { version: 1, models: [] };
 
 async function ensureRootDir(): Promise<void> {
   await fs.mkdir(localInferenceRoot(), { recursive: true });

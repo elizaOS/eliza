@@ -75,9 +75,10 @@ export function findInstalled(
   if (byId) return byId;
   // Fallback: external entries whose basename matches the catalog gguf.
   const target = model.ggufFile.toLowerCase();
-  return installed.find((m) =>
-    m.path.toLowerCase().endsWith(`/${target}`) ||
-    m.path.toLowerCase().endsWith(`\\${target}`),
+  return installed.find(
+    (m) =>
+      m.path.toLowerCase().endsWith(`/${target}`) ||
+      m.path.toLowerCase().endsWith(`\\${target}`),
   );
 }
 
@@ -88,7 +89,9 @@ export function findDownload(
   return downloads.find((d) => d.modelId === modelId);
 }
 
-export function groupByBucket(models: CatalogModel[]): Map<ModelBucket, CatalogModel[]> {
+export function groupByBucket(
+  models: CatalogModel[],
+): Map<ModelBucket, CatalogModel[]> {
   const groups = new Map<ModelBucket, CatalogModel[]>();
   for (const bucket of ["small", "mid", "large", "xl"] as const) {
     groups.set(bucket, []);

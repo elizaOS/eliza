@@ -11,7 +11,8 @@
  *     `isStreamAuthorized`.
  */
 
-import http from "node:http";
+import type http from "node:http";
+import { localInferenceService } from "../services/local-inference/service";
 import {
   ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,
@@ -24,10 +25,9 @@ import {
   readCompatJsonBody,
 } from "./compat-route-shared";
 import {
-  sendJson as sendJsonResponse,
   sendJsonError as sendJsonErrorResponse,
+  sendJson as sendJsonResponse,
 } from "./response";
-import { localInferenceService } from "../services/local-inference/service";
 
 function isStreamAuthorized(
   req: http.IncomingMessage,

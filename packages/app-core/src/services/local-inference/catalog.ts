@@ -78,8 +78,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 10,
     category: "chat",
     bucket: "mid",
-    blurb:
-      "Battle-tested general chat; the default 8GB-VRAM daily driver.",
+    blurb: "Battle-tested general chat; the default 8GB-VRAM daily driver.",
   },
   {
     id: "qwen2.5-7b",
@@ -132,8 +131,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 10,
     category: "tools",
     bucket: "mid",
-    blurb:
-      "Nous Hermes 3. Function calling, JSON mode, agentic tool use.",
+    blurb: "Nous Hermes 3. Function calling, JSON mode, agentic tool use.",
   },
 
   // ─── large (8-20 GB) ────────────────────────────────────────────────
@@ -148,8 +146,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 20,
     category: "code",
     bucket: "large",
-    blurb:
-      "MoE coder. Near-32B coding quality with ~2.4B active params.",
+    blurb: "MoE coder. Near-32B coding quality with ~2.4B active params.",
   },
   {
     id: "qwen2.5-coder-14b",
@@ -175,8 +172,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 28,
     category: "chat",
     bucket: "large",
-    blurb:
-      "Mistral's 2025 flagship small. Strong reasoning, creative writing.",
+    blurb: "Mistral's 2025 flagship small. Strong reasoning, creative writing.",
   },
   {
     id: "gemma-2-27b",

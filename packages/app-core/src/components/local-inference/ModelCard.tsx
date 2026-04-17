@@ -8,11 +8,11 @@ import type {
 } from "../../api/client-local-inference";
 import { DownloadProgress } from "./DownloadProgress";
 import {
-  type FitLevel,
   computeFit,
-  fitLabel,
+  type FitLevel,
   findDownload,
   findInstalled,
+  fitLabel,
   formatBytes,
 } from "./hub-utils";
 
@@ -87,7 +87,9 @@ export function ModelCard({
 
       {download && downloading && <DownloadProgress job={download} />}
       {failed && download?.error && (
-        <div className="text-xs text-rose-500">Download failed: {download.error}</div>
+        <div className="text-xs text-rose-500">
+          Download failed: {download.error}
+        </div>
       )}
 
       <div className="flex flex-wrap gap-2">

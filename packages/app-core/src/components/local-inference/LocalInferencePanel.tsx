@@ -56,14 +56,25 @@ export function LocalInferencePanel() {
     es.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data) as
-          | { type: "snapshot"; downloads: DownloadJob[]; active: ActiveModelState }
-          | { type: "progress" | "completed" | "failed" | "cancelled"; job: DownloadJob }
+          | {
+              type: "snapshot";
+              downloads: DownloadJob[];
+              active: ActiveModelState;
+            }
+          | {
+              type: "progress" | "completed" | "failed" | "cancelled";
+              job: DownloadJob;
+            }
           | { type: "active"; active: ActiveModelState };
 
         if (payload.type === "snapshot") {
           setHub((prev) =>
             prev
-              ? { ...prev, downloads: payload.downloads, active: payload.active }
+              ? {
+                  ...prev,
+                  downloads: payload.downloads,
+                  active: payload.active,
+                }
               : prev,
           );
         } else if (payload.type === "active") {
@@ -76,8 +87,7 @@ export function LocalInferencePanel() {
               (d) => d.modelId !== payload.job.modelId,
             );
             const downloads =
-              payload.type === "completed" ||
-              payload.type === "cancelled"
+              payload.type === "completed" || payload.type === "cancelled"
                 ? others
                 : [...others, payload.job];
             return { ...prev, downloads };
@@ -198,7 +208,9 @@ export function LocalInferencePanel() {
   const mobile = isIOS || isAndroid;
   const catalog = mobile
     ? hub.catalog.filter(
-        (m) => m.bucket === "small" && (m.params === "1B" || m.params === "1.7B" || m.params === "3B"),
+        (m) =>
+          m.bucket === "small" &&
+          (m.params === "1B" || m.params === "1.7B" || m.params === "3B"),
       )
     : hub.catalog;
 
@@ -208,8 +220,8 @@ export function LocalInferencePanel() {
       {mobile && (
         <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
           On-device inference on mobile requires the Milady native runtime
-          plugin (follow-up). Until then, select a small model and Milady
-          will run inference via the companion desktop or cloud server.
+          plugin (follow-up). Until then, select a small model and Milady will
+          run inference via the companion desktop or cloud server.
         </div>
       )}
       <FirstRunOffer
@@ -251,7 +263,6 @@ export function LocalInferencePanel() {
 function ExternalInstalledSummary({
   installed,
   onActivate,
-  onUninstall,
   active,
   busy,
 }: {
@@ -310,7 +321,9 @@ function ExternalInstalledSummary({
 
 function formatSize(bytes: number): string {
   const gb = bytes / 1024 ** 3;
-  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`;
+  return gb >= 1
+    ? `${gb.toFixed(1)} GB`
+    : `${Math.round(bytes / 1024 ** 2)} MB`;
 }
 
 function appendTokenParam(url: string): string {

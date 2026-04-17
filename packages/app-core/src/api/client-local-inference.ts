@@ -5,7 +5,6 @@
  * raw `fetch` from UI code.
  */
 
-import { ElizaClient } from "./client-base";
 import type {
   ActiveModelState,
   CatalogModel,
@@ -15,6 +14,7 @@ import type {
   ModelBucket,
   ModelHubSnapshot,
 } from "../services/local-inference/types";
+import { ElizaClient } from "./client-base";
 
 export type {
   ActiveModelState,
@@ -43,7 +43,9 @@ declare module "./client-base" {
   }
 }
 
-ElizaClient.prototype.getLocalInferenceHub = async function (this: ElizaClient) {
+ElizaClient.prototype.getLocalInferenceHub = async function (
+  this: ElizaClient,
+) {
   return this.fetch("/api/local-inference/hub");
 };
 

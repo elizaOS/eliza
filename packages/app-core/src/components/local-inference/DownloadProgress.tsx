@@ -8,8 +8,7 @@ interface DownloadProgressProps {
 export function DownloadProgress({ job }: DownloadProgressProps) {
   const pct = progressPercent(job);
   const eta = formatEta(job.etaMs);
-  const speed =
-    job.bytesPerSec > 0 ? `${formatBytes(job.bytesPerSec)}/s` : "";
+  const speed = job.bytesPerSec > 0 ? `${formatBytes(job.bytesPerSec)}/s` : "";
 
   return (
     <div className="w-full">

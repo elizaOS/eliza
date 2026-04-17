@@ -7,8 +7,8 @@ import type {
   InstalledModel,
   ModelBucket,
 } from "../../api/client-local-inference";
-import { ModelCard } from "./ModelCard";
 import { bucketLabel, groupByBucket } from "./hub-utils";
+import { ModelCard } from "./ModelCard";
 
 interface ModelHubViewProps {
   catalog: CatalogModel[];
