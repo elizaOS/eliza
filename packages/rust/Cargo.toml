@@ -76,7 +76,7 @@ regex = "1.0"
 lazy_static = "1.4"
 
 # MIME type detection
-infer = "0.16"
+infer = "0.19"
 url = "2.5"
 
 # URL encoding (for stringToUuid compatibility with TypeScript)
