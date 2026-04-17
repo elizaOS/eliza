@@ -36,13 +36,21 @@ export {
   parseFrontmatter,
   resolveSkillInvocationPolicy,
   resolveSkillMetadata,
+  resolveSkillProvenance,
+  serializeSkillFile,
   stripFrontmatter,
 } from "./frontmatter.js";
 
 // Skill loading
 export { loadSkillEntries, loadSkills, loadSkillsFromDir } from "./loader.js";
 // Path resolution
-export { clearSkillsDirCache, getSkillsDir } from "./resolver.js";
+export {
+  clearSkillsDirCache,
+  getCuratedActiveDir,
+  getProposedSkillsDir,
+  getSkillsDir,
+  promoteSkill,
+} from "./resolver.js";
 // Types
 export type {
   LoadSkillsFromDirOptions,
@@ -56,6 +64,7 @@ export type {
   SkillFrontmatter,
   SkillInvocationPolicy,
   SkillMetadata,
+  SkillProvenance,
   SkillProviderDefinition,
   SkillToolDefinition,
 } from "./types.js";
