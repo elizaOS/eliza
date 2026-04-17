@@ -195,7 +195,7 @@ jobs:
 
       - name: Upload WASM to release
         if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release' && github.event.inputs.dry_run != 'true'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             packages/rust/artifacts/elizaos-wasm-web.tar.gz
@@ -356,7 +356,7 @@ jobs:
 
       - name: Upload WASM to release
         if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release' && github.event.inputs.dry_run != 'true'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             plugins/plugin-sql/rust/artifacts/elizaos-plugin-sql-wasm-web.tar.gz
