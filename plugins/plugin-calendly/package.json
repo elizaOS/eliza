@@ -28,9 +28,9 @@
     "@elizaos/core": "2.0.0-alpha.173"
   },
   "devDependencies": {
-    "@types/node": "22.19.17",
-    "tsup": "8.4.0",
-    "typescript": "5.9.3",
+    "@types/node": "22.10.9",
+    "tsup": "8.5.1",
+    "typescript": "5.7.3",
     "vitest": "3.0.5"
   },
   "publishConfig": {
