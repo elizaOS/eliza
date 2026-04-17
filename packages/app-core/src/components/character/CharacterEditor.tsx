@@ -454,6 +454,27 @@ export function CharacterEditor({
       return;
     }
 
+    // Skip normalization when the draft already has the expected shape —
+    // otherwise empty turns the user just added (blank text) get stripped
+    // out before they can type into them.
+    const hasExpectedShape = d.messageExamples.every((convo) => {
+      if (!convo || typeof convo !== "object") return false;
+      const examples = (convo as { examples?: unknown }).examples;
+      if (!Array.isArray(examples)) return false;
+      return examples.every((msg) => {
+        if (!msg || typeof msg !== "object") return false;
+        const name = (msg as { name?: unknown }).name;
+        const content = (msg as { content?: unknown }).content;
+        return (
+          typeof name === "string" &&
+          !!content &&
+          typeof content === "object" &&
+          typeof (content as { text?: unknown }).text === "string"
+        );
+      });
+    });
+    if (hasExpectedShape) return;
+
     const normalized = normalizeCharacterMessageExamples(
       d.messageExamples,
       fallbackCharacterName,

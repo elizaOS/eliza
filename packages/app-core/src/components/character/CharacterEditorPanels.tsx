@@ -547,7 +547,7 @@ export function CharacterExamplesPanel({
                   className="group/msg flex items-center gap-3"
                 >
                   <span
-                    className={`w-14 shrink-0 pr-1 text-right text-3xs font-bold uppercase tracking-[0.08em] ${msg.name === "{{user1}}" ? "text-muted" : "text-accent"}`}
+                    className={`w-14 shrink-0 pr-1 text-right text-[0.5rem] font-semibold uppercase tracking-[0.06em] ${msg.name === "{{user1}}" ? "text-muted" : "text-accent"}`}
                   >
                     {msg.name === "{{user1}}" ? "user" : "agent"}
                   </span>
@@ -592,7 +592,7 @@ export function CharacterExamplesPanel({
               ))}
               <Button
                 variant="ghost"
-                className="self-start text-2xs font-bold text-accent p-0 h-auto py-0.5 pl-[4.25rem] hover:underline"
+                className="self-start text-3xs font-semibold text-accent p-0 h-auto py-0.5 pl-[4.25rem] hover:underline"
                 onClick={() => {
                   const agentName =
                     typeof d.name === "string" && d.name.trim()
@@ -627,7 +627,7 @@ export function CharacterExamplesPanel({
         </div>
         <Button
           variant="ghost"
-          className="self-start text-2xs font-bold text-accent p-0 h-auto py-1 hover:underline"
+          className="self-start text-3xs font-semibold text-accent p-0 h-auto py-1 hover:underline"
           onClick={() => {
             const agentName =
               typeof d.name === "string" && d.name.trim()
@@ -719,7 +719,7 @@ export function CharacterExamplesPanel({
           )}
           <Button
             variant="ghost"
-            className="text-2xs font-bold text-accent p-0 h-auto py-1 text-left hover:underline"
+            className="text-3xs font-semibold text-accent p-0 h-auto py-1 text-left hover:underline"
             onClick={() => {
               const updated = [...(d.postExamples ?? []), ""];
               handleFieldEdit("postExamples", updated);
