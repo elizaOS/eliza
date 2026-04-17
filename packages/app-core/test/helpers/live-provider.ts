@@ -9,8 +9,8 @@
  *   import { selectLiveProvider, requireLiveProvider } from "../../../../../test/helpers/live-provider";
  *
  *   const provider = selectLiveProvider();            // null if none available
- *   const provider = requireLiveProvider();           // skips test if none
- *   const provider = requireLiveProvider("openai");   // skips if openai key missing
+ *   const provider = requireLiveProvider();           // skips test and returns null if none
+ *   const provider = requireLiveProvider("openai");   // same, but for a specific provider
  */
 
 import fs from "node:fs";
