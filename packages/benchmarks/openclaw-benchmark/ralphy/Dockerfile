@@ -1,5 +1,5 @@
 # Isolierte Testumgebung für Ralphy CLI mit OpenCode
-FROM node:20-slim
+FROM node:24-slim
 
 # Labels für eindeutige Identifikation
 LABEL project="benchmark" \
