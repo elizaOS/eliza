@@ -46,7 +46,7 @@
     "@types/react": "^19.0.0",
     "@types/three": "^0.184.0",
     "storybook": "^8.6.0",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.0"
   },
   "peerDependencies": {
     "@pixiv/three-vrm": "^3.4.5",

@@ -32,8 +32,8 @@
   "devDependencies": {
     "@elizaos/core": "workspace:*",
     "@types/node": "^25.2.3",
-    "typescript": "^5.9.3",
-    "vitest": "4.1.4"
+    "typescript": "^6.0.0",
+    "vitest": "3.2.4"
   },
   "dependencies": {
     "puppeteer-core": "^24.9.0"
