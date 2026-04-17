@@ -6967,6 +6967,28 @@ ${section_end}`;
 		}
 	}
 
+	unregisterEvent<T extends keyof EventPayloadMap>(
+		event: T,
+		handler: EventHandler<T>,
+	): void;
+	unregisterEvent<P extends EventPayload = EventPayload>(
+		event: string,
+		handler: (params: P) => Promise<void>,
+	): void;
+	unregisterEvent(
+		event: string,
+		handler: (params: EventPayload) => Promise<void>,
+	): void {
+		const handlers = this.events?.[event];
+		if (!handlers) return;
+		const filtered = handlers.filter((h) => h !== handler);
+		if (filtered.length > 0) {
+			this.events[event] = filtered;
+		} else {
+			delete this.events[event];
+		}
+	}
+
 	getEvent(
 		event: string,
 	):
@@ -7048,6 +7070,10 @@ ${section_end}`;
 
 	getTaskWorker(name: string): TaskWorker | undefined {
 		return this.taskWorkers.get(name);
+	}
+
+	unregisterTaskWorker(name: string): boolean {
+		return this.taskWorkers.delete(name);
 	}
 
 	get db(): object {

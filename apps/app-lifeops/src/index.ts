@@ -1,3 +1,14 @@
+import "./client.ts";
+
+export type {
+  AppBlockerSettingsCardProps,
+  AppBlockerSettingsMode,
+} from "./types/index.ts";
+export type {
+  WebsiteBlockerSettingsCardProps,
+  WebsiteBlockerSettingsMode,
+} from "./types/index.ts";
+
 // Re-export the full plugin from plugin.ts
 export {
   appLifeOpsPlugin,
@@ -11,6 +22,9 @@ export {
   lifeAction,
   lifeOpsProvider,
   updateOwnerProfileAction,
+  proposeMeetingTimesAction,
+  checkAvailabilityAction,
+  updateMeetingPreferencesAction,
   inboxTriageProvider,
   handleLifeOpsRoutes,
   handleWebsiteBlockerRoutes,
@@ -28,14 +42,15 @@ export type { WebsiteBlockerRouteContext } from "./plugin.ts";
 
 export { lifeopsPlugin } from "./routes/plugin.ts";
 
-export * from "./selfcontrol/index.ts";
+export * from "./website-blocker/public.ts";
 
 // UI page views
-export * from "./LifeOpsBrowserSetupPanel.tsx";
-export * from "./LifeOpsPageView.tsx";
-export * from "./LifeOpsPageSections.tsx";
-export * from "./LifeOpsSettingsSection.tsx";
-export * from "./LifeOpsWorkspaceView.tsx";
-export * from "./WebsiteBlockerSettingsCard.tsx";
+export * from "./components/LifeOpsBrowserSetupPanel.tsx";
+export * from "./components/LifeOpsPageView.tsx";
+export * from "./components/LifeOpsPageSections.tsx";
+export * from "./components/LifeOpsSettingsSection.tsx";
+export * from "./components/LifeOpsWorkspaceView.tsx";
+export * from "./components/WebsiteBlockerSettingsCard.tsx";
+export * from "./components/AppBlockerSettingsCard.tsx";
 
 export { appLifeOpsPlugin as default } from "./plugin.ts";

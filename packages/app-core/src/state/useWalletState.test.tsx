@@ -22,8 +22,10 @@ const { clientMock, confirmDesktopActionMock, persistenceMock } = vi.hoisted(
     confirmDesktopActionMock: vi.fn(),
     persistenceMock: {
       loadBrowserEnabled: vi.fn(() => false),
+      loadComputerUseEnabled: vi.fn(() => false),
       loadWalletEnabled: vi.fn(() => true),
       saveBrowserEnabled: vi.fn(),
+      saveComputerUseEnabled: vi.fn(),
       saveWalletEnabled: vi.fn(),
     },
   }),

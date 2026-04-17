@@ -12,7 +12,7 @@
 import crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   type AppLaunchDiagnostic,
@@ -1353,6 +1353,39 @@ async function resolveLaunchSession(
   return buildAppSession(appInfo, viewer?.authMessage, runtime);
 }
 
+/**
+ * Invoke the plugin's `stopRun` bridge hook (if defined) when an app run is
+ * removed. Plugins use this to tear down per-run resources (WebSocket
+ * connections, game-loop timers, bot sessions, embedded servers).
+ *
+ * Errors are logged but never re-thrown — removal from the app-manager
+ * registry is authoritative.
+ */
+async function invokeAppStopRunHook(
+  run: AppRunSummary,
+  runtime: IAgentRuntime | null,
+): Promise<void> {
+  try {
+    const routeModule = await importAppRouteModule(run.appName);
+    if (typeof routeModule?.stopRun !== "function") {
+      return;
+    }
+    await routeModule.stopRun({
+      appName: run.appName,
+      launchUrl: run.launchUrl,
+      runtime,
+      viewer: run.viewer,
+      runId: run.runId,
+      session: run.session,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn(
+      `[app-manager] stopRun hook for "${run.appName}" (runId=${run.runId}) failed: ${message}`,
+    );
+  }
+}
+
 function persistHyperscapeCredential(
   runtime: IAgentRuntime | null,
   key: "HYPERSCAPE_AUTH_TOKEN" | "HYPERSCAPE_CHARACTER_ID",
@@ -1625,13 +1658,9 @@ function isRuntimePluginReady(
     return false;
   }
   if (isHyperscapeAppName(appInfo.name)) {
-    const rt = runtime as unknown as {
-      hasService?: (name: string) => boolean;
-      getService?: (name: string) => unknown;
-    };
     return Boolean(
-      rt.hasService?.("hyperscapeService") ||
-        rt.getService?.("hyperscapeService"),
+      runtime?.hasService?.("hyperscapeService") ||
+        runtime?.getService?.("hyperscapeService"),
     );
   }
   return true;
@@ -1764,12 +1793,27 @@ async function ensureRuntimePluginRegistered(
 
   const pluginNames = getRuntimePluginCandidates(appInfo);
   for (const pluginPackageName of pluginNames) {
-    const plugin = await importAppPlugin(pluginPackageName);
+    let plugin: Plugin | null = null;
+    try {
+      plugin = await importAppPlugin(pluginPackageName);
+    } catch (err) {
+      logger.warn(
+        `[app-manager] importAppPlugin(${pluginPackageName}) threw: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      continue;
+    }
     if (!plugin) {
       continue;
     }
 
-    await runtime.registerPlugin(plugin);
+    try {
+      await runtime.registerPlugin(plugin);
+    } catch (err) {
+      logger.warn(
+        `[app-manager] registerPlugin(${plugin.name}) threw: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      continue;
+    }
     if (isRuntimePluginReady(appInfo, runtime)) {
       return true;
     }
@@ -2517,16 +2561,43 @@ export class AppManager {
       );
     } else if (!alreadyInstalled) {
       if (isAutoInstallable(appInfo)) {
-        if (!_runtime) {
-          throw new Error(
-            `Launching "${name}" requires a running agent runtime because plugin "${pluginName}" is not installed.`,
-          );
-        }
         logger.info(`[app-manager] Installing plugin for app: ${pluginName}`);
-        const result = await pluginManager.installPlugin(
-          pluginName,
-          onProgress,
-        );
+        let result = await pluginManager
+          .installPlugin(pluginName, onProgress)
+          .catch((err: unknown) => ({
+            success: false as const,
+            pluginName,
+            version: "",
+            installPath: "",
+            requiresRestart: false,
+            error: err instanceof Error ? err.message : String(err),
+          }));
+        if (
+          !result.success &&
+          (result.error?.includes("requires a running agent runtime") ||
+            !_runtime)
+        ) {
+          // Runtime plugin manager unavailable — fall back to the app-core
+          // installer which writes to ~/.eliza/plugins/installed and can be
+          // picked up by the app-package-modules resolver without restart.
+          const { installPlugin: installPluginDirect } = (await import(
+            /* webpackIgnore: true */ "@elizaos/app-core/services/plugin-installer"
+          )) as {
+            installPlugin: (
+              name: string,
+              onProgress?: (progress: InstallProgressLike) => void,
+              version?: string,
+            ) => Promise<{
+              success: boolean;
+              pluginName: string;
+              version: string;
+              installPath: string;
+              requiresRestart: boolean;
+              error?: string;
+            }>;
+          };
+          result = await installPluginDirect(pluginName, onProgress);
+        }
         if (!result.success) {
           throw new Error(
             `Failed to install plugin "${pluginName}": ${result.error}`,
@@ -2597,14 +2668,53 @@ export class AppManager {
       pluginInstalled = true;
     }
     const viewer = await buildViewerConfig(appInfo, launchUrl, _runtime);
-    await ensureRuntimeReady(appInfo, viewer, launchUrl, _runtime ?? null);
+    const runtimeReadyDiagnostics: AppLaunchDiagnostic[] = [];
+    try {
+      await ensureRuntimeReady(appInfo, viewer, launchUrl, _runtime ?? null);
+    } catch (readyError) {
+      const message =
+        readyError instanceof Error
+          ? readyError.message
+          : String(readyError);
+      logger.warn(
+        `[app-manager] ensureRuntimeReady(${appInfo.name}) failed: ${message}`,
+      );
+      runtimeReadyDiagnostics.push({
+        code: "runtime-service-unavailable",
+        severity: "warning",
+        message: `${appInfo.displayName ?? appInfo.name} runtime service could not initialize: ${message}. The viewer will open but live agent control may be unavailable until the underlying service is reachable.`,
+      });
+    }
 
     // Build viewer config from registry app metadata
-    const session = viewer
-      ? await resolveLaunchSession(appInfo, viewer, launchUrl, _runtime ?? null)
-      : buildAppSession(appInfo, undefined, _runtime);
+    let session: AppSessionState | null;
+    try {
+      session = viewer
+        ? await resolveLaunchSession(
+            appInfo,
+            viewer,
+            launchUrl,
+            _runtime ?? null,
+          )
+        : buildAppSession(appInfo, undefined, _runtime);
+    } catch (sessionError) {
+      const message =
+        sessionError instanceof Error
+          ? sessionError.message
+          : String(sessionError);
+      logger.warn(
+        `[app-manager] resolveLaunchSession(${appInfo.name}) failed: ${message}`,
+      );
+      runtimeReadyDiagnostics.push({
+        code: "session-resolve-failed",
+        severity: "warning",
+        message: `Could not resolve launch session for ${appInfo.displayName ?? appInfo.name}: ${message}.`,
+      });
+      session = buildAppSession(appInfo, undefined, _runtime);
+    }
     const diagnostics = [
       ...launchPreparationDiagnostics,
+      ...runtimeReadyDiagnostics,
       ...(await collectLaunchDiagnostics(
         appInfo,
         viewer,
@@ -2679,6 +2789,7 @@ export class AppManager {
     pluginManager: PluginManagerLike,
     name: string,
     runId?: string,
+    runtime?: IAgentRuntime | null,
   ): Promise<AppStopResult> {
     const stoppedAt = new Date().toISOString();
 
@@ -2696,6 +2807,8 @@ export class AppManager {
           message: `App run "${runId}" was not found.`,
         };
       }
+
+      await invokeAppStopRunHook(removedRun, runtime ?? null);
 
       return {
         success: true,
@@ -2737,6 +2850,7 @@ export class AppManager {
 
     for (const run of runsForApp) {
       this.removeRun(run.runId);
+      await invokeAppStopRunHook(run, runtime ?? null);
     }
 
     return {

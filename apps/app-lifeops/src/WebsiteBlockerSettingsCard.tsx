@@ -6,7 +6,7 @@ import type { PermissionState } from "@elizaos/shared/contracts/permissions";
 import type {
   WebsiteBlockerSettingsCardProps,
   WebsiteBlockerSettingsMode,
-} from "@elizaos/app-core";
+} from "./types";
 import {
   getPermissionAction,
   translateWithFallback,

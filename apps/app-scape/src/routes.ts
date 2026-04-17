@@ -3,6 +3,8 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type {
   AppLaunchDiagnostic,
   AppLaunchResult,
+  AppLaunchSessionContext,
+  AppRunSessionContext,
   AppSessionActivityItem,
   AppSessionJsonValue,
   AppSessionState,
@@ -97,23 +99,6 @@ const VIEWER_FRAME_ANCESTORS_DIRECTIVE =
   "http://[::1]:* http://[0:0:0:0:0:0:0:1]:* https://localhost:* " +
   "https://127.0.0.1:* https://[::1]:* https://[0:0:0:0:0:0:0:1]:* " +
   "electrobun: capacitor: capacitor-electron: app: tauri: file:";
-
-// ---------------------------------------------------------------------------
-// Context types (inlined from packages/agent to keep this plugin
-// free of circular deps — same pattern babylon and defense use)
-// ---------------------------------------------------------------------------
-
-interface AppLaunchSessionContext {
-  appName: string;
-  launchUrl: string | null;
-  runtime: IAgentRuntime | null;
-  viewer: AppLaunchResult["viewer"] | null;
-}
-
-interface AppRunSessionContext extends AppLaunchSessionContext {
-  runId: string;
-  session: AppSessionState | null;
-}
 
 // ---------------------------------------------------------------------------
 // Settings resolution
@@ -845,6 +830,32 @@ export async function refreshRunSession(
   // so this always returns the same sessionId for the same agent,
   // no matter how many refresh cycles the app-manager runs.
   return buildScapeSessionState(ctx.runtime);
+}
+
+/**
+ * Called by the host app-manager when the user stops the Scape run.
+ * Tears down the bot-SDK WebSocket connection and the autonomous-loop
+ * timer so the game actually stops doing work server-side instead of
+ * just unmounting the viewer iframe.
+ *
+ * Idempotent: if the service isn't running this is a no-op.
+ */
+export async function stopRun(ctx: {
+  runtime: unknown | null;
+}): Promise<void> {
+  const service = getScapeService(ctx.runtime as IAgentRuntime | null);
+  if (!service) {
+    return;
+  }
+  try {
+    await service.stop();
+  } catch (err) {
+    // Swallow — app-manager logs a warning and the run is still removed.
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[app-scape] stopRun: game service stop failed: ${message}`,
+    );
+  }
 }
 
 export async function collectLaunchDiagnostics(_ctx: {

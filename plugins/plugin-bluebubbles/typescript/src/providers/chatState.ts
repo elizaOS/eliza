@@ -21,6 +21,7 @@ export const chatStateProvider: Provider = {
 	name: "BLUEBUBBLES_CHAT_STATE",
 	description:
 		"Provides information about the current BlueBubbles/iMessage chat context",
+	descriptionCompressed: "BlueBubbles/iMessage chat state.",
 
 	dynamic: true,
 	get: async (

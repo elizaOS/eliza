@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { client } from "../../api";
-import { useTimeout } from "../../hooks";
+import { useTimeout } from "@elizaos/ui";
 import {
   getStoredSubscriptionProvider,
   type SubscriptionProviderSelectionId,

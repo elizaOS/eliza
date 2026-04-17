@@ -3,7 +3,7 @@ import { loadElizaConfig } from "@elizaos/agent/config/config";
 import type {
   StewardSignRequest,
   StewardSignResponse,
-} from "@elizaos/shared/contracts/wallet";
+} from "../types/steward";
 import {
   type PolicyResult,
   type PolicyRule,

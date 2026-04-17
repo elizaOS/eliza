@@ -467,11 +467,13 @@ function extractXmlChildren(
 }
 
 function toActionParameterValue(value: unknown): ActionParameters[string] {
+	if (value === null || value === undefined) {
+		return null;
+	}
 	if (
 		typeof value === "string" ||
 		typeof value === "number" ||
-		typeof value === "boolean" ||
-		value === null
+		typeof value === "boolean"
 	) {
 		return value as ActionParameterValue;
 	}

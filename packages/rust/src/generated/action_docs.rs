@@ -84,7 +84,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Reply with generated msg. Default when responding with no other action. Use first as ack, last as final response."
     },
     {
       "name": "IGNORE",
@@ -199,7 +200,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Ignore user. Use when aggressive, creepy, conversation ended, or both sides said goodbye. Don't use if user engaged directly or needs error info."
     },
     {
       "name": "NONE",
@@ -287,7 +289,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Respond without additional action. Default when speaking only."
     },
     {
       "name": "SEND_MESSAGE",
@@ -315,7 +318,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           "examples": [
             "user",
             "room"
-          ]
+          ],
+          "descriptionCompressed": "user or room target."
         },
         {
           "name": "source",
@@ -327,7 +331,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           "examples": [
             "telegram",
             "discord"
-          ]
+          ],
+          "descriptionCompressed": "Platform (telegram, discord, x)."
         },
         {
           "name": "target",
@@ -339,7 +344,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           "examples": [
             "dev_guru",
             "announcements"
-          ]
+          ],
+          "descriptionCompressed": "Target name/handle/id."
         },
         {
           "name": "text",
@@ -351,7 +357,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           "examples": [
             "Hello!",
             "Important announcement!"
-          ]
+          ],
+          "descriptionCompressed": "Message content."
         }
       ],
       "examples": [
@@ -423,7 +430,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ]
+      ],
+      "descriptionCompressed": "Send msg to another user or room (not current)."
     },
     {
       "name": "ADD_CONTACT",
@@ -457,7 +465,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           "examples": [
             "Sarah Chen",
             "John Smith"
-          ]
+          ],
+          "descriptionCompressed": "Contact name."
         },
         {
           "name": "notes",
@@ -468,7 +477,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "Met at the AI meetup; interested in agents"
-          ]
+          ],
+          "descriptionCompressed": "Optional notes/context."
         }
       ],
       "examples": [
@@ -514,7 +524,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Add contact to relationships with category/preferences."
     },
     {
       "name": "UPDATE_CONTACT",
@@ -534,7 +545,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "Sarah Chen"
-          ]
+          ],
+          "descriptionCompressed": "Contact name (must match existing)."
         },
         {
           "name": "updates",
@@ -545,7 +557,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "{\"notes\":\"prefers email\",\"tags\":[\"friend\"]}"
-          ]
+          ],
+          "descriptionCompressed": "Fields to update (JSON)."
         }
       ],
       "examples": [
@@ -563,7 +576,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Update existing contact details."
     },
     {
       "name": "REMOVE_CONTACT",
@@ -585,7 +599,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "Sarah Chen"
-          ]
+          ],
+          "descriptionCompressed": "Contact name."
         }
       ],
       "examples": [
@@ -615,7 +630,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Remove contact from relationships."
     },
     {
       "name": "SEARCH_CONTACTS",
@@ -642,7 +658,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           "examples": [
             "sarah",
             "AI meetup"
-          ]
+          ],
+          "descriptionCompressed": "Search query (name/handle/free-text)."
         }
       ],
       "examples": [
@@ -660,7 +677,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Search/list contacts by name or query."
     },
     {
       "name": "SCHEDULE_FOLLOW_UP",
@@ -687,7 +705,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "Sarah Chen"
-          ]
+          ],
+          "descriptionCompressed": "Contact name."
         },
         {
           "name": "when",
@@ -698,7 +717,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "2026-02-01T09:00:00Z"
-          ]
+          ],
+          "descriptionCompressed": "ISO-8601 datetime."
         },
         {
           "name": "reason",
@@ -709,7 +729,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "Check in about the agent framework demo"
-          ]
+          ],
+          "descriptionCompressed": "Optional reason/context."
         }
       ],
       "examples": [
@@ -727,7 +748,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Schedule follow-up reminder for contact."
     },
     {
       "name": "CHOOSE_OPTION",
@@ -751,7 +773,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "c0a8012e"
-          ]
+          ],
+          "descriptionCompressed": "Pending task id."
         },
         {
           "name": "option",
@@ -763,7 +786,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           "examples": [
             "APPROVE",
             "ABORT"
-          ]
+          ],
+          "descriptionCompressed": "Option name exactly as listed."
         }
       ],
       "examples": [
@@ -784,7 +808,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Select option for pending multi-choice task."
     },
     {
       "name": "FOLLOW_ROOM",
@@ -809,7 +834,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "00000000-0000-0000-0000-000000000000"
-          ]
+          ],
+          "descriptionCompressed": "Room id to follow."
         }
       ],
       "examples": [
@@ -847,7 +873,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Start following channel, chiming in without @mention. Only when explicitly asked."
     },
     {
       "name": "UNFOLLOW_ROOM",
@@ -872,7 +899,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "00000000-0000-0000-0000-000000000000"
-          ]
+          ],
+          "descriptionCompressed": "Room id to unfollow."
         }
       ],
       "examples": [
@@ -893,7 +921,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Stop following room, cease updates."
     },
     {
       "name": "MUTE_ROOM",
@@ -918,7 +947,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "00000000-0000-0000-0000-000000000000"
-          ]
+          ],
+          "descriptionCompressed": "Room id to mute."
         }
       ],
       "examples": [
@@ -956,7 +986,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Mute room, ignore msgs unless @mentioned. Only when asked or annoying."
     },
     {
       "name": "UNMUTE_ROOM",
@@ -981,7 +1012,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "00000000-0000-0000-0000-000000000000"
-          ]
+          ],
+          "descriptionCompressed": "Room id to unmute."
         }
       ],
       "examples": [
@@ -1002,7 +1034,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Unmute room, resume responding."
     },
     {
       "name": "UPDATE_SETTINGS",
@@ -1028,7 +1061,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "[{\"key\":\"model\",\"value\":\"gpt-5\"}]"
-          ]
+          ],
+          "descriptionCompressed": "JSON array of {key, value} updates."
         }
       ],
       "examples": [
@@ -1049,7 +1083,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Update agent settings via key/value pairs."
     },
     {
       "name": "UPDATE_ROLE",
@@ -1073,7 +1108,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "00000000-0000-0000-0000-000000000000"
-          ]
+          ],
+          "descriptionCompressed": "Entity id."
         },
         {
           "name": "role",
@@ -1085,7 +1121,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           "examples": [
             "admin",
             "member"
-          ]
+          ],
+          "descriptionCompressed": "Role to assign."
         }
       ],
       "examples": [
@@ -1106,7 +1143,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Assign role (Admin/Owner/None) to user(s) in channel."
     },
     {
       "name": "UPDATE_ENTITY",
@@ -1128,7 +1166,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "00000000-0000-0000-0000-000000000000"
-          ]
+          ],
+          "descriptionCompressed": "Entity id."
         },
         {
           "name": "updates",
@@ -1139,7 +1178,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "[{\"name\":\"bio\",\"value\":\"Loves Rust\"}]"
-          ]
+          ],
+          "descriptionCompressed": "JSON array of {name, value} updates."
         }
       ],
       "examples": [
@@ -1160,7 +1200,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Edit contact details for person in conversation."
     },
     {
       "name": "THINK",
@@ -1245,7 +1286,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Deep reasoning for complex/ambiguous questions. Re-processes full context through larger model. Use when careful reasoning needed, not for simple lookups."
     },
     {
       "name": "GENERATE_IMAGE",
@@ -1269,7 +1311,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "A futuristic cityscape at sunset, cinematic lighting"
-          ]
+          ],
+          "descriptionCompressed": "Image prompt."
         }
       ],
       "examples": [
@@ -1324,7 +1367,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Generate image from conversation context. Use to visualize or illustrate."
     }
   ]
 }"#;
@@ -1411,7 +1455,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Reply with generated msg. Default when responding with no other action. Use first as ack, last as final response."
     },
     {
       "name": "IGNORE",
@@ -1526,7 +1571,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Ignore user. Use when aggressive, creepy, conversation ended, or both sides said goodbye. Don't use if user engaged directly or needs error info."
     },
     {
       "name": "NONE",
@@ -1614,7 +1660,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Respond without additional action. Default when speaking only."
     },
     {
       "name": "SEND_MESSAGE",
@@ -1642,7 +1689,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           "examples": [
             "user",
             "room"
-          ]
+          ],
+          "descriptionCompressed": "user or room target."
         },
         {
           "name": "source",
@@ -1654,7 +1702,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           "examples": [
             "telegram",
             "discord"
-          ]
+          ],
+          "descriptionCompressed": "Platform (telegram, discord, x)."
         },
         {
           "name": "target",
@@ -1666,7 +1715,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           "examples": [
             "dev_guru",
             "announcements"
-          ]
+          ],
+          "descriptionCompressed": "Target name/handle/id."
         },
         {
           "name": "text",
@@ -1678,7 +1728,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           "examples": [
             "Hello!",
             "Important announcement!"
-          ]
+          ],
+          "descriptionCompressed": "Message content."
         }
       ],
       "examples": [
@@ -1750,7 +1801,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ]
+      ],
+      "descriptionCompressed": "Send msg to another user or room (not current)."
     },
     {
       "name": "ADD_CONTACT",
@@ -1784,7 +1836,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           "examples": [
             "Sarah Chen",
             "John Smith"
-          ]
+          ],
+          "descriptionCompressed": "Contact name."
         },
         {
           "name": "notes",
@@ -1795,7 +1848,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "Met at the AI meetup; interested in agents"
-          ]
+          ],
+          "descriptionCompressed": "Optional notes/context."
         }
       ],
       "examples": [
@@ -1841,7 +1895,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Add contact to relationships with category/preferences."
     },
     {
       "name": "UPDATE_CONTACT",
@@ -1861,7 +1916,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "Sarah Chen"
-          ]
+          ],
+          "descriptionCompressed": "Contact name (must match existing)."
         },
         {
           "name": "updates",
@@ -1872,7 +1928,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "{\"notes\":\"prefers email\",\"tags\":[\"friend\"]}"
-          ]
+          ],
+          "descriptionCompressed": "Fields to update (JSON)."
         }
       ],
       "examples": [
@@ -1890,7 +1947,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Update existing contact details."
     },
     {
       "name": "REMOVE_CONTACT",
@@ -1912,7 +1970,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "Sarah Chen"
-          ]
+          ],
+          "descriptionCompressed": "Contact name."
         }
       ],
       "examples": [
@@ -1942,7 +2001,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Remove contact from relationships."
     },
     {
       "name": "SEARCH_CONTACTS",
@@ -1969,7 +2029,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           "examples": [
             "sarah",
             "AI meetup"
-          ]
+          ],
+          "descriptionCompressed": "Search query (name/handle/free-text)."
         }
       ],
       "examples": [
@@ -1987,7 +2048,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Search/list contacts by name or query."
     },
     {
       "name": "SCHEDULE_FOLLOW_UP",
@@ -2014,7 +2076,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "Sarah Chen"
-          ]
+          ],
+          "descriptionCompressed": "Contact name."
         },
         {
           "name": "when",
@@ -2025,7 +2088,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "2026-02-01T09:00:00Z"
-          ]
+          ],
+          "descriptionCompressed": "ISO-8601 datetime."
         },
         {
           "name": "reason",
@@ -2036,7 +2100,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "Check in about the agent framework demo"
-          ]
+          ],
+          "descriptionCompressed": "Optional reason/context."
         }
       ],
       "examples": [
@@ -2054,7 +2119,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Schedule follow-up reminder for contact."
     },
     {
       "name": "CHOOSE_OPTION",
@@ -2078,7 +2144,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "c0a8012e"
-          ]
+          ],
+          "descriptionCompressed": "Pending task id."
         },
         {
           "name": "option",
@@ -2090,7 +2157,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           "examples": [
             "APPROVE",
             "ABORT"
-          ]
+          ],
+          "descriptionCompressed": "Option name exactly as listed."
         }
       ],
       "examples": [
@@ -2111,7 +2179,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Select option for pending multi-choice task."
     },
     {
       "name": "FOLLOW_ROOM",
@@ -2136,7 +2205,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "00000000-0000-0000-0000-000000000000"
-          ]
+          ],
+          "descriptionCompressed": "Room id to follow."
         }
       ],
       "examples": [
@@ -2174,7 +2244,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Start following channel, chiming in without @mention. Only when explicitly asked."
     },
     {
       "name": "UNFOLLOW_ROOM",
@@ -2199,7 +2270,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "00000000-0000-0000-0000-000000000000"
-          ]
+          ],
+          "descriptionCompressed": "Room id to unfollow."
         }
       ],
       "examples": [
@@ -2220,7 +2292,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Stop following room, cease updates."
     },
     {
       "name": "MUTE_ROOM",
@@ -2245,7 +2318,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "00000000-0000-0000-0000-000000000000"
-          ]
+          ],
+          "descriptionCompressed": "Room id to mute."
         }
       ],
       "examples": [
@@ -2283,7 +2357,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Mute room, ignore msgs unless @mentioned. Only when asked or annoying."
     },
     {
       "name": "UNMUTE_ROOM",
@@ -2308,7 +2383,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "00000000-0000-0000-0000-000000000000"
-          ]
+          ],
+          "descriptionCompressed": "Room id to unmute."
         }
       ],
       "examples": [
@@ -2329,7 +2405,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Unmute room, resume responding."
     },
     {
       "name": "UPDATE_SETTINGS",
@@ -2355,7 +2432,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "[{\"key\":\"model\",\"value\":\"gpt-5\"}]"
-          ]
+          ],
+          "descriptionCompressed": "JSON array of {key, value} updates."
         }
       ],
       "examples": [
@@ -2376,7 +2454,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Update agent settings via key/value pairs."
     },
     {
       "name": "UPDATE_ROLE",
@@ -2400,7 +2479,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "00000000-0000-0000-0000-000000000000"
-          ]
+          ],
+          "descriptionCompressed": "Entity id."
         },
         {
           "name": "role",
@@ -2412,7 +2492,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           "examples": [
             "admin",
             "member"
-          ]
+          ],
+          "descriptionCompressed": "Role to assign."
         }
       ],
       "examples": [
@@ -2433,7 +2514,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Assign role (Admin/Owner/None) to user(s) in channel."
     },
     {
       "name": "UPDATE_ENTITY",
@@ -2455,7 +2537,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "00000000-0000-0000-0000-000000000000"
-          ]
+          ],
+          "descriptionCompressed": "Entity id."
         },
         {
           "name": "updates",
@@ -2466,7 +2549,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "[{\"name\":\"bio\",\"value\":\"Loves Rust\"}]"
-          ]
+          ],
+          "descriptionCompressed": "JSON array of {name, value} updates."
         }
       ],
       "examples": [
@@ -2487,7 +2571,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Edit contact details for person in conversation."
     },
     {
       "name": "THINK",
@@ -2572,7 +2657,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Deep reasoning for complex/ambiguous questions. Re-processes full context through larger model. Use when careful reasoning needed, not for simple lookups."
     },
     {
       "name": "GENERATE_IMAGE",
@@ -2596,7 +2682,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           },
           "examples": [
             "A futuristic cityscape at sunset, cinematic lighting"
-          ]
+          ],
+          "descriptionCompressed": "Image prompt."
         }
       ],
       "examples": [
@@ -2651,7 +2738,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Generate image from conversation context. Use to visualize or illustrate."
     },
     {
       "name": "ADD_TO_PLAYLIST",
@@ -2662,7 +2750,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "PUT_IN_PLAYLIST",
         "SAVE_TO_PLAYLIST",
         "ADD_TRACK_TO_PLAYLIST"
-      ]
+      ],
+      "descriptionCompressed": "Add track to playlist. Creates playlist if missing. Fetches track if not in library."
     },
     {
       "name": "BLUEBUBBLES_SEND_REACTION",
@@ -2672,7 +2761,23 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "BLUEBUBBLES_REACT",
         "BB_REACTION",
         "IMESSAGE_REACT"
-      ]
+      ],
+      "descriptionCompressed": "React on iMessage via BlueBubbles."
+    },
+    {
+      "name": "BROWSER_ACTION",
+      "description": "Control a web browser to navigate websites, click elements, fill forms, read page content, ",
+      "parameters": [],
+      "similes": [
+        "CONTROL_BROWSER",
+        "WEB_BROWSER",
+        "OPEN_BROWSER",
+        "BROWSE_WEB",
+        "NAVIGATE_BROWSER",
+        "BROWSER_CLICK",
+        "BROWSER_TYPE"
+      ],
+      "descriptionCompressed": "Browser control: navigate, click, type, scroll, screenshot, DOM, JS exec, tabs."
     },
     {
       "name": "CHECK_CLOUD_CREDITS",
@@ -2683,7 +2788,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "check balance",
         "how much credit",
         "cloud billing"
-      ]
+      ],
+      "descriptionCompressed": "Check ElizaCloud credits, container costs, remaining runtime."
     },
     {
       "name": "COMMANDS_LIST",
@@ -2692,7 +2798,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "similes": [
         "/commands",
         "/cmds"
-      ]
+      ],
+      "descriptionCompressed": "List available commands. Trigger: /commands, /cmds."
     },
     {
       "name": "DELETE_MESSAGE",
@@ -2702,7 +2809,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "REMOVE_MESSAGE",
         "UNSEND_MESSAGE",
         "DELETE_DISCORD_MESSAGE"
-      ]
+      ],
+      "descriptionCompressed": "Delete Discord channel message."
     },
     {
       "name": "DELETE_PLAYLIST",
@@ -2737,7 +2845,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ]
+      ],
+      "descriptionCompressed": "Delete saved playlist."
     },
     {
       "name": "DOWNLOAD_MUSIC",
@@ -2749,7 +2858,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "DOWNLOAD_SONG",
         "SAVE_MUSIC",
         "GRAB_MUSIC"
-      ]
+      ],
+      "descriptionCompressed": "Download track to library without playing."
     },
     {
       "name": "EDIT_MESSAGE",
@@ -2760,7 +2870,59 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "MODIFY_MESSAGE",
         "CHANGE_MESSAGE",
         "EDIT_DISCORD_MESSAGE"
-      ]
+      ],
+      "descriptionCompressed": "Edit existing Discord message."
+    },
+    {
+      "name": "FILE_ACTION",
+      "description": "Perform file operations — read, write, edit, append, delete files, or list directory contents.\n\n",
+      "parameters": [],
+      "similes": [
+        "READ_FILE",
+        "WRITE_FILE",
+        "EDIT_FILE",
+        "DELETE_FILE",
+        "LIST_DIRECTORY",
+        "FILE_OPERATION"
+      ],
+      "descriptionCompressed": "File ops: read, write, edit, append, delete, list directory."
+    },
+    {
+      "name": "FINALIZE_WORKSPACE",
+      "description": "Finalize workspace changes by committing, pushing, and optionally creating a pull request. ",
+      "parameters": [
+        {
+          "name": "codingWorkspace",
+          "description": "The coding workspace to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "COMMIT_AND_PR",
+        "CREATE_PR",
+        "SUBMIT_CHANGES",
+        "FINISH_WORKSPACE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use FINALIZE_WORKSPACE with the provided parameters.",
+          "actions": [
+            "FINALIZE_WORKSPACE"
+          ],
+          "params": {
+            "FINALIZE_WORKSPACE": {
+              "codingWorkspace": "example"
+            }
+          }
+        }
+      ],
+      "descriptionCompressed": "Commit, push, opt. create PR for workspace changes."
     },
     {
       "name": "FREEZE_CLOUD_AGENT",
@@ -2771,7 +2933,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "hibernate agent",
         "pause agent",
         "stop cloud agent"
-      ]
+      ],
+      "descriptionCompressed": "Freeze cloud agent: snapshot, disconnect, stop container."
     },
     {
       "name": "GET_SKILL_DETAILS",
@@ -2780,7 +2943,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "similes": [
         "SKILL_INFO",
         "SKILL_DETAILS"
-      ]
+      ],
+      "descriptionCompressed": "Get skill version, owner, stats."
     },
     {
       "name": "GET_SKILL_GUIDANCE",
@@ -2794,7 +2958,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "GET_INSTRUCTIONS",
         "LEARN_SKILL",
         "LOOKUP_SKILL"
-      ]
+      ],
+      "descriptionCompressed": "Search/get skill instructions for capability."
     },
     {
       "name": "HELP_COMMAND",
@@ -2804,7 +2969,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "/help",
         "/h",
         "/?"
-      ]
+      ],
+      "descriptionCompressed": "Show commands and descriptions. Trigger: /help, /h, /?."
     },
     {
       "name": "IMESSAGE_SEND_MESSAGE",
@@ -2815,7 +2981,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "IMESSAGE_TEXT",
         "TEXT_IMESSAGE",
         "SEND_IMSG"
-      ]
+      ],
+      "descriptionCompressed": "Send iMessage (macOS)."
     },
     {
       "name": "INSTALL_SKILL",
@@ -2825,7 +2992,24 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "DOWNLOAD_SKILL",
         "ADD_SKILL",
         "GET_SKILL"
-      ]
+      ],
+      "descriptionCompressed": "Install skill from ClawHub registry. Security-scanned before activation."
+    },
+    {
+      "name": "LIST_AGENTS",
+      "description": "List active task agents together with current task progress so the main agent can keep the user updated while work continues asynchronously.",
+      "parameters": [],
+      "similes": [
+        "LIST_CODING_AGENTS",
+        "SHOW_CODING_AGENTS",
+        "GET_ACTIVE_AGENTS",
+        "LIST_SESSIONS",
+        "SHOW_CODING_SESSIONS",
+        "SHOW_TASK_AGENTS",
+        "LIST_SUB_AGENTS",
+        "SHOW_TASK_STATUS"
+      ],
+      "descriptionCompressed": "List active task agents with progress for async status updates."
     },
     {
       "name": "LIST_PLAYLISTS",
@@ -2861,7 +3045,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ]
+      ],
+      "descriptionCompressed": "List all saved playlists."
     },
     {
       "name": "LOAD_PLAYLIST",
@@ -2897,7 +3082,22 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ]
+      ],
+      "descriptionCompressed": "Load saved playlist, add tracks to queue."
+    },
+    {
+      "name": "MANAGE_ISSUES",
+      "description": "Manage GitHub issues for a repository. ",
+      "parameters": [],
+      "similes": [
+        "CREATE_ISSUE",
+        "LIST_ISSUES",
+        "CLOSE_ISSUE",
+        "COMMENT_ISSUE",
+        "UPDATE_ISSUE",
+        "GET_ISSUE"
+      ],
+      "descriptionCompressed": "Manage GitHub issues: create, list, comment, close, reopen."
     },
     {
       "name": "MANAGE_SHOPIFY_CUSTOMERS",
@@ -2907,7 +3107,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "LIST_CUSTOMERS",
         "FIND_CUSTOMER",
         "SEARCH_CUSTOMERS"
-      ]
+      ],
+      "descriptionCompressed": "List/search Shopify customers."
     },
     {
       "name": "MANAGE_SHOPIFY_INVENTORY",
@@ -2918,7 +3119,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "ADJUST_INVENTORY",
         "CHECK_STOCK",
         "UPDATE_STOCK"
-      ]
+      ],
+      "descriptionCompressed": "Check inventory, adjust stock, list Shopify locations."
     },
     {
       "name": "MANAGE_SHOPIFY_ORDERS",
@@ -2929,7 +3131,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "CHECK_ORDERS",
         "FULFILL_ORDER",
         "ORDER_STATUS"
-      ]
+      ],
+      "descriptionCompressed": "List orders, check status, mark fulfilled in Shopify."
     },
     {
       "name": "MANAGE_SHOPIFY_PRODUCTS",
@@ -2940,7 +3143,23 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "CREATE_PRODUCT",
         "UPDATE_PRODUCT",
         "SEARCH_PRODUCTS"
-      ]
+      ],
+      "descriptionCompressed": "List/search/create/update Shopify products."
+    },
+    {
+      "name": "MANAGE_WINDOW",
+      "description": "Manage desktop windows — list all visible windows, bring a window to the front, ",
+      "parameters": [],
+      "similes": [
+        "LIST_WINDOWS",
+        "FOCUS_WINDOW",
+        "SWITCH_WINDOW",
+        "MINIMIZE_WINDOW",
+        "MAXIMIZE_WINDOW",
+        "CLOSE_WINDOW",
+        "WINDOW_MANAGEMENT"
+      ],
+      "descriptionCompressed": "Desktop window mgmt: list, focus, minimize, maximize, close."
     },
     {
       "name": "MODELS_COMMAND",
@@ -2948,7 +3167,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "parameters": [],
       "similes": [
         "/models"
-      ]
+      ],
+      "descriptionCompressed": "List AI models/providers. Trigger: /models."
     },
     {
       "name": "PAUSE_MUSIC",
@@ -2959,7 +3179,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "PAUSE_AUDIO",
         "PAUSE_SONG",
         "PAUSE_PLAYBACK"
-      ]
+      ],
+      "descriptionCompressed": "Pause current track. Not via PLAY_AUDIO."
     },
     {
       "name": "PLAY_AUDIO",
@@ -2978,7 +3199,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "PLAY_FROM_YOUTUBE",
         "QUEUE_SONG",
         "ADD_TO_QUEUE"
-      ]
+      ],
+      "descriptionCompressed": "Play new song by name/artist/URL. Not for pause/resume/stop/skip."
     },
     {
       "name": "PLAY_MUSIC_QUERY",
@@ -2989,7 +3211,21 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "RESEARCH_AND_PLAY",
         "FIND_AND_PLAY",
         "INTELLIGENT_MUSIC_SEARCH"
-      ]
+      ],
+      "descriptionCompressed": "Complex music search: artist, genre, mood, era, activity, charts, soundtracks, versions. Uses web search + databases."
+    },
+    {
+      "name": "POST_TWEET",
+      "description": "Post a tweet on Twitter",
+      "parameters": [],
+      "similes": [
+        "TWEET",
+        "SEND_TWEET",
+        "TWITTER_POST",
+        "POST_ON_TWITTER",
+        "SHARE_ON_TWITTER"
+      ],
+      "descriptionCompressed": "Post tweet."
     },
     {
       "name": "PROVISION_CLOUD_AGENT",
@@ -3000,7 +3236,45 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "launch cloud agent",
         "start remote agent",
         "provision container"
-      ]
+      ],
+      "descriptionCompressed": "Deploy agent to ElizaCloud. Provisions container, connects bridge, starts backup."
+    },
+    {
+      "name": "PROVISION_WORKSPACE",
+      "description": "Create a git workspace for coding tasks. ",
+      "parameters": [
+        {
+          "name": "codingWorkspace",
+          "description": "The coding workspace to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "CREATE_WORKSPACE",
+        "CLONE_REPO",
+        "SETUP_WORKSPACE",
+        "PREPARE_WORKSPACE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use PROVISION_WORKSPACE with the provided parameters.",
+          "actions": [
+            "PROVISION_WORKSPACE"
+          ],
+          "params": {
+            "PROVISION_WORKSPACE": {
+              "codingWorkspace": "example"
+            }
+          }
+        }
+      ],
+      "descriptionCompressed": "Create git workspace for coding tasks."
     },
     {
       "name": "QUEUE_MUSIC",
@@ -3036,7 +3310,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ]
+      ],
+      "descriptionCompressed": "Queue song for later."
     },
     {
       "name": "RESUME_CLOUD_AGENT",
@@ -3047,7 +3322,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "unfreeze agent",
         "restart cloud agent",
         "restore agent"
-      ]
+      ],
+      "descriptionCompressed": "Resume frozen cloud agent from snapshot."
     },
     {
       "name": "RESUME_MUSIC",
@@ -3060,7 +3336,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "UNPAUSE",
         "UNPAUSE_MUSIC",
         "CONTINUE_MUSIC"
-      ]
+      ],
+      "descriptionCompressed": "Resume paused music. Not via PLAY_AUDIO."
     },
     {
       "name": "RUN_SKILL_SCRIPT",
@@ -3069,7 +3346,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "similes": [
         "EXECUTE_SKILL_SCRIPT",
         "SKILL_SCRIPT"
-      ]
+      ],
+      "descriptionCompressed": "Run script bundled with installed skill."
     },
     {
       "name": "SAVE_PLAYLIST",
@@ -3105,7 +3383,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ]
+      ],
+      "descriptionCompressed": "Save current queue as playlist."
     },
     {
       "name": "SEARCH_SHOPIFY_STORE",
@@ -3114,7 +3393,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "similes": [
         "SHOPIFY_SEARCH",
         "STORE_SEARCH"
-      ]
+      ],
+      "descriptionCompressed": "Search Shopify products, orders, customers."
     },
     {
       "name": "SEARCH_SKILLS",
@@ -3124,7 +3404,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "BROWSE_SKILLS",
         "LIST_SKILLS",
         "FIND_SKILLS"
-      ]
+      ],
+      "descriptionCompressed": "Search skill registry by keyword/category."
     },
     {
       "name": "SEARCH_YOUTUBE",
@@ -3137,7 +3418,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "SEARCH_MUSIC",
         "GET_YOUTUBE_LINK",
         "LOOKUP_YOUTUBE"
-      ]
+      ],
+      "descriptionCompressed": "Search YouTube for song/video, return link."
     },
     {
       "name": "SEND_BLUEBUBBLES_MESSAGE",
@@ -3149,7 +3431,48 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "IMESSAGE_REPLY",
         "BLUEBUBBLES_SEND",
         "APPLE_MESSAGE"
-      ]
+      ],
+      "descriptionCompressed": "Send iMessage via BlueBubbles."
+    },
+    {
+      "name": "SEND_TO_AGENT",
+      "description": "Send text input or key presses to a running task-agent session. ",
+      "parameters": [
+        {
+          "name": "codingSession",
+          "description": "The coding session to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "SEND_TO_CODING_AGENT",
+        "MESSAGE_CODING_AGENT",
+        "INPUT_TO_AGENT",
+        "RESPOND_TO_AGENT",
+        "TELL_CODING_AGENT",
+        "MESSAGE_AGENT",
+        "TELL_TASK_AGENT"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SEND_TO_AGENT with the provided parameters.",
+          "actions": [
+            "SEND_TO_AGENT"
+          ],
+          "params": {
+            "SEND_TO_AGENT": {
+              "codingSession": "example"
+            }
+          }
+        }
+      ],
+      "descriptionCompressed": "Send input/keypresses to running task agent."
     },
     {
       "name": "SETUP_CREDENTIALS",
@@ -3186,7 +3509,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ]
+      ],
+      "descriptionCompressed": "Guide credential setup for third-party services, validate and store securely."
     },
     {
       "name": "SHOW_QUEUE",
@@ -3197,7 +3521,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "LIST_QUEUE",
         "SHOW_PLAYLIST",
         "QUEUE_LIST"
-      ]
+      ],
+      "descriptionCompressed": "Show current music queue."
     },
     {
       "name": "SIGNAL_LIST_CONTACTS",
@@ -3208,7 +3533,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "SHOW_CONTACTS",
         "GET_CONTACTS",
         "SIGNAL_CONTACTS"
-      ]
+      ],
+      "descriptionCompressed": "List Signal contacts."
     },
     {
       "name": "SIGNAL_LIST_GROUPS",
@@ -3219,7 +3545,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "SHOW_GROUPS",
         "GET_GROUPS",
         "SIGNAL_GROUPS"
-      ]
+      ],
+      "descriptionCompressed": "List Signal groups."
     },
     {
       "name": "SIGNAL_SEND_MESSAGE",
@@ -3255,7 +3582,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ]
+      ],
+      "descriptionCompressed": "Send Signal message."
     },
     {
       "name": "SIGNAL_SEND_REACTION",
@@ -3291,7 +3619,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ]
+      ],
+      "descriptionCompressed": "React to Signal message."
     },
     {
       "name": "SKIP_TRACK",
@@ -3302,7 +3631,50 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "NEXT_TRACK",
         "SKIP_SONG",
         "NEXT_SONG"
-      ]
+      ],
+      "descriptionCompressed": "Skip to next queued song. Not via PLAY_AUDIO."
+    },
+    {
+      "name": "SPAWN_AGENT",
+      "description": "Spawn a specific task agent inside an existing workspace when you need direct control. ",
+      "parameters": [
+        {
+          "name": "codingWorkspace",
+          "description": "The coding workspace to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "SPAWN_CODING_AGENT",
+        "START_CODING_AGENT",
+        "LAUNCH_CODING_AGENT",
+        "CREATE_CODING_AGENT",
+        "SPAWN_CODER",
+        "RUN_CODING_AGENT",
+        "SPAWN_SUB_AGENT",
+        "START_TASK_AGENT",
+        "CREATE_AGENT"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SPAWN_AGENT with the provided parameters.",
+          "actions": [
+            "SPAWN_AGENT"
+          ],
+          "params": {
+            "SPAWN_AGENT": {
+              "codingWorkspace": "example"
+            }
+          }
+        }
+      ],
+      "descriptionCompressed": "Spawn task agent in existing workspace for direct control."
     },
     {
       "name": "STATUS_COMMAND",
@@ -3311,7 +3683,48 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "similes": [
         "/status",
         "/s"
-      ]
+      ],
+      "descriptionCompressed": "Show session settings. Trigger: /status, /s."
+    },
+    {
+      "name": "STOP_AGENT",
+      "description": "Stop a running task-agent session. ",
+      "parameters": [
+        {
+          "name": "codingSession",
+          "description": "The coding session to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "STOP_CODING_AGENT",
+        "KILL_CODING_AGENT",
+        "TERMINATE_AGENT",
+        "END_CODING_SESSION",
+        "CANCEL_AGENT",
+        "CANCEL_TASK_AGENT",
+        "STOP_SUB_AGENT"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use STOP_AGENT with the provided parameters.",
+          "actions": [
+            "STOP_AGENT"
+          ],
+          "params": {
+            "STOP_AGENT": {
+              "codingSession": "example"
+            }
+          }
+        }
+      ],
+      "descriptionCompressed": "Stop running task agent, cleanup resources."
     },
     {
       "name": "STOP_COMMAND",
@@ -3321,7 +3734,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "/stop",
         "/abort",
         "/cancel"
-      ]
+      ],
+      "descriptionCompressed": "Stop/abort running tasks. Trigger: /stop, /abort, /cancel."
     },
     {
       "name": "STOP_MUSIC",
@@ -3334,7 +3748,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "TURN_OFF_MUSIC",
         "MUSIC_OFF",
         "SILENCE"
-      ]
+      ],
+      "descriptionCompressed": "Stop playback, clear queue. Not via PLAY_AUDIO."
     },
     {
       "name": "SYNC_SKILL_CATALOG",
@@ -3343,7 +3758,62 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "similes": [
         "REFRESH_SKILLS",
         "UPDATE_CATALOG"
-      ]
+      ],
+      "descriptionCompressed": "Sync skill catalog from registry."
+    },
+    {
+      "name": "TASK_CONTROL",
+      "description": "Pause, stop, resume, continue, archive, or reopen a coordinator task thread while preserving the durable thread history.",
+      "parameters": [],
+      "similes": [
+        "CONTROL_TASK",
+        "PAUSE_TASK",
+        "RESUME_TASK",
+        "STOP_TASK",
+        "CONTINUE_TASK",
+        "ARCHIVE_TASK",
+        "REOPEN_TASK"
+      ],
+      "descriptionCompressed": "Pause/stop/resume/archive/reopen coordinator task thread."
+    },
+    {
+      "name": "TASK_HISTORY",
+      "description": "Query coordinator task history without stuffing raw transcripts into model context. Use this for active work, yesterday/last-week summaries, topic search, counts, and thread detail lookup.",
+      "parameters": [],
+      "similes": [
+        "LIST_TASK_HISTORY",
+        "GET_TASK_HISTORY",
+        "SHOW_TASKS",
+        "COUNT_TASKS",
+        "TASK_STATUS_HISTORY"
+      ],
+      "descriptionCompressed": "Query task history: active work, summaries, search, thread details. No raw transcripts."
+    },
+    {
+      "name": "TASK_SHARE",
+      "description": "Discover the best available way to view or share a task result, including artifacts, live preview URLs, workspace paths, and environment share capabilities.",
+      "parameters": [],
+      "similes": [
+        "SHARE_TASK_RESULT",
+        "SHOW_TASK_ARTIFACT",
+        "VIEW_TASK_OUTPUT",
+        "CAN_I_SEE_IT",
+        "PULL_IT_UP"
+      ],
+      "descriptionCompressed": "Find best way to view/share task result: artifacts, URLs, paths."
+    },
+    {
+      "name": "TERMINAL_ACTION",
+      "description": "Execute terminal commands or manage terminal sessions.\n\n",
+      "parameters": [],
+      "similes": [
+        "RUN_COMMAND",
+        "EXECUTE_COMMAND",
+        "SHELL_COMMAND",
+        "TERMINAL",
+        "RUN_SHELL"
+      ],
+      "descriptionCompressed": "Execute terminal commands or manage sessions."
     },
     {
       "name": "TOGGLE_SKILL",
@@ -3356,7 +3826,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "TURN_OFF_SKILL",
         "ACTIVATE_SKILL",
         "DEACTIVATE_SKILL"
-      ]
+      ],
+      "descriptionCompressed": "Enable/disable installed skill."
     },
     {
       "name": "UNINSTALL_SKILL",
@@ -3365,7 +3836,28 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "similes": [
         "REMOVE_SKILL",
         "DELETE_SKILL"
-      ]
+      ],
+      "descriptionCompressed": "Remove non-bundled skill."
+    },
+    {
+      "name": "USE_COMPUTER",
+      "description": "Control the computer desktop by performing mouse and keyboard actions, or capture a screenshot of the current screen. ",
+      "parameters": [],
+      "similes": [
+        "CONTROL_COMPUTER",
+        "COMPUTER_ACTION",
+        "DESKTOP_ACTION",
+        "CLICK",
+        "CLICK_SCREEN",
+        "TYPE_TEXT",
+        "PRESS_KEY",
+        "KEY_COMBO",
+        "SCROLL_SCREEN",
+        "MOVE_MOUSE",
+        "DRAG",
+        "MOUSE_CLICK"
+      ],
+      "descriptionCompressed": "Desktop control: mouse, keyboard, screenshot. For direct app interaction."
     }
   ]
 }"#;
@@ -3376,126 +3868,150 @@ pub const CORE_PROVIDER_DOCS_JSON: &str = r#"{
       "name": "ACTIONS",
       "description": "Possible response actions",
       "position": -1,
-      "dynamic": false
+      "dynamic": false,
+      "descriptionCompressed": "Available response actions."
     },
     {
       "name": "CHARACTER",
       "description": "Provides the agent's character definition and personality information including bio, topics, adjectives, style directions, and example conversations",
-      "dynamic": false
+      "dynamic": false,
+      "descriptionCompressed": "Agent character: bio, topics, adjectives, style, example conversations."
     },
     {
       "name": "RECENT_MESSAGES",
       "description": "Provides recent message history from the current conversation including formatted messages, posts, action results, and recent interactions",
       "position": 100,
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Recent conversation messages, posts, action results."
     },
     {
       "name": "ACTION_STATE",
       "description": "Provides information about the current action state and available actions",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Current action state and available actions."
     },
     {
       "name": "ATTACHMENTS",
       "description": "Media attachments in the current message",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Media attachments in current message."
     },
     {
       "name": "CAPABILITIES",
       "description": "Agent capabilities including models, services, and features",
-      "dynamic": false
+      "dynamic": false,
+      "descriptionCompressed": "Agent capabilities: models, services, features."
     },
     {
       "name": "CHOICE",
       "description": "Available choice options for selection when there are pending tasks or decisions",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Pending choice options for multi-option tasks."
     },
     {
       "name": "CONTACTS",
       "description": "Provides contact information from the relationships including categories and preferences",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Contact info from relationships with categories."
     },
     {
       "name": "CONTEXT_BENCH",
       "description": "Benchmark/task context injected by a benchmark harness",
       "position": 5,
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Benchmark/task context from harness."
     },
     {
       "name": "ENTITIES",
       "description": "Provides information about entities in the current context including users, agents, and participants",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Entities in context: users, agents, participants."
     },
     {
       "name": "EVALUATORS",
       "description": "Available evaluators for assessing agent behavior",
-      "dynamic": false
+      "dynamic": false,
+      "descriptionCompressed": "Available evaluators for agent behavior."
     },
     {
       "name": "FACTS",
       "description": "Provides known facts about entities learned through conversation",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Known facts about entities from conversation."
     },
     {
       "name": "FOLLOW_UPS",
       "description": "Provides information about upcoming follow-ups and reminders scheduled for contacts",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Upcoming follow-ups/reminders for contacts."
     },
     {
       "name": "KNOWLEDGE",
       "description": "Provides relevant knowledge from the agent's knowledge base based on semantic similarity",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Relevant knowledge from KB via semantic search."
     },
     {
       "name": "PROVIDERS",
       "description": "Available context providers",
-      "dynamic": false
+      "dynamic": false,
+      "descriptionCompressed": "Available context providers."
     },
     {
       "name": "RELATIONSHIPS",
       "description": "Relationships between entities observed by the agent including tags and metadata",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Entity relationships with tags/metadata."
     },
     {
       "name": "ROLES",
       "description": "Roles assigned to entities in the current context (Admin, Owner, Member, None)",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Entity roles in context (Admin/Owner/Member/None)."
     },
     {
       "name": "SETTINGS",
       "description": "Current settings for the agent/server (filtered for security, excludes sensitive keys)",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Agent/server settings (security-filtered)."
     },
     {
       "name": "TIME",
       "description": "Provides the current date and time in UTC for time-based operations or responses",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Current UTC date/time."
     },
     {
       "name": "WORLD",
       "description": "Provides information about the current world context including settings and members",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "World context: settings and members."
     },
     {
       "name": "LONG_TERM_MEMORY",
       "description": "Persistent facts and preferences about the user learned and remembered across conversations",
       "position": 50,
-      "dynamic": false
+      "dynamic": false,
+      "descriptionCompressed": "Persistent user facts/preferences across conversations."
     },
     {
       "name": "SUMMARIZED_CONTEXT",
       "description": "Provides summarized context from previous conversations for optimized context usage",
       "position": 96,
-      "dynamic": false
+      "dynamic": false,
+      "descriptionCompressed": "Summarized context from prior conversations."
     },
     {
       "name": "AGENT_SETTINGS",
       "description": "Provides the agent's current configuration settings (filtered for security)",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Agent config settings (security-filtered)."
     },
     {
       "name": "CURRENT_TIME",
       "description": "Provides current time and date information in various formats",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Current time/date in various formats."
     }
   ]
 }"#;
@@ -3506,126 +4022,150 @@ pub const ALL_PROVIDER_DOCS_JSON: &str = r#"{
       "name": "ACTIONS",
       "description": "Possible response actions",
       "position": -1,
-      "dynamic": false
+      "dynamic": false,
+      "descriptionCompressed": "Available response actions."
     },
     {
       "name": "CHARACTER",
       "description": "Provides the agent's character definition and personality information including bio, topics, adjectives, style directions, and example conversations",
-      "dynamic": false
+      "dynamic": false,
+      "descriptionCompressed": "Agent character: bio, topics, adjectives, style, example conversations."
     },
     {
       "name": "RECENT_MESSAGES",
       "description": "Provides recent message history from the current conversation including formatted messages, posts, action results, and recent interactions",
       "position": 100,
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Recent conversation messages, posts, action results."
     },
     {
       "name": "ACTION_STATE",
       "description": "Provides information about the current action state and available actions",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Current action state and available actions."
     },
     {
       "name": "ATTACHMENTS",
       "description": "Media attachments in the current message",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Media attachments in current message."
     },
     {
       "name": "CAPABILITIES",
       "description": "Agent capabilities including models, services, and features",
-      "dynamic": false
+      "dynamic": false,
+      "descriptionCompressed": "Agent capabilities: models, services, features."
     },
     {
       "name": "CHOICE",
       "description": "Available choice options for selection when there are pending tasks or decisions",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Pending choice options for multi-option tasks."
     },
     {
       "name": "CONTACTS",
       "description": "Provides contact information from the relationships including categories and preferences",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Contact info from relationships with categories."
     },
     {
       "name": "CONTEXT_BENCH",
       "description": "Benchmark/task context injected by a benchmark harness",
       "position": 5,
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Benchmark/task context from harness."
     },
     {
       "name": "ENTITIES",
       "description": "Provides information about entities in the current context including users, agents, and participants",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Entities in context: users, agents, participants."
     },
     {
       "name": "EVALUATORS",
       "description": "Available evaluators for assessing agent behavior",
-      "dynamic": false
+      "dynamic": false,
+      "descriptionCompressed": "Available evaluators for agent behavior."
     },
     {
       "name": "FACTS",
       "description": "Provides known facts about entities learned through conversation",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Known facts about entities from conversation."
     },
     {
       "name": "FOLLOW_UPS",
       "description": "Provides information about upcoming follow-ups and reminders scheduled for contacts",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Upcoming follow-ups/reminders for contacts."
     },
     {
       "name": "KNOWLEDGE",
       "description": "Provides relevant knowledge from the agent's knowledge base based on semantic similarity",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Relevant knowledge from KB via semantic search."
     },
     {
       "name": "PROVIDERS",
       "description": "Available context providers",
-      "dynamic": false
+      "dynamic": false,
+      "descriptionCompressed": "Available context providers."
     },
     {
       "name": "RELATIONSHIPS",
       "description": "Relationships between entities observed by the agent including tags and metadata",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Entity relationships with tags/metadata."
     },
     {
       "name": "ROLES",
       "description": "Roles assigned to entities in the current context (Admin, Owner, Member, None)",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Entity roles in context (Admin/Owner/Member/None)."
     },
     {
       "name": "SETTINGS",
       "description": "Current settings for the agent/server (filtered for security, excludes sensitive keys)",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Agent/server settings (security-filtered)."
     },
     {
       "name": "TIME",
       "description": "Provides the current date and time in UTC for time-based operations or responses",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Current UTC date/time."
     },
     {
       "name": "WORLD",
       "description": "Provides information about the current world context including settings and members",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "World context: settings and members."
     },
     {
       "name": "LONG_TERM_MEMORY",
       "description": "Persistent facts and preferences about the user learned and remembered across conversations",
       "position": 50,
-      "dynamic": false
+      "dynamic": false,
+      "descriptionCompressed": "Persistent user facts/preferences across conversations."
     },
     {
       "name": "SUMMARIZED_CONTEXT",
       "description": "Provides summarized context from previous conversations for optimized context usage",
       "position": 96,
-      "dynamic": false
+      "dynamic": false,
+      "descriptionCompressed": "Summarized context from prior conversations."
     },
     {
       "name": "AGENT_SETTINGS",
       "description": "Provides the agent's current configuration settings (filtered for security)",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Agent config settings (security-filtered)."
     },
     {
       "name": "CURRENT_TIME",
       "description": "Provides current time and date information in various formats",
-      "dynamic": true
+      "dynamic": true,
+      "descriptionCompressed": "Current time/date in various formats."
     }
   ]
 }"#;

@@ -1,4 +1,26 @@
 /**
+ * Provenance of a skill — distinguishes human-authored from agent-derived
+ * skills, and tracks self-improvement signal across the closed learning loop.
+ *
+ * Track C of the Hermes-parity initiative seeds and refines skills from
+ * successful trajectories. The provenance block carries the audit trail back
+ * to the trajectory that produced or reinforced the skill, plus the most
+ * recent eval score from the nightly skill-scoring cron.
+ */
+export interface SkillProvenance {
+  /** Whether the skill was authored by a human or derived by the agent. */
+  source: "human" | "agent-generated" | "agent-refined";
+  /** Trajectory that produced or last refined the skill, if any. */
+  derivedFromTrajectory?: string;
+  /** ISO8601 timestamp when this provenance entry was recorded. */
+  createdAt: string;
+  /** Number of times the agent has automatically refined this skill. */
+  refinedCount: number;
+  /** Most recent eval score from the scoring cron, in [0, 1]. */
+  lastEvalScore?: number;
+}
+
+/**
  * Skill frontmatter parsed from SKILL.md YAML header
  */
 export interface SkillFrontmatter {
@@ -28,6 +50,8 @@ export interface SkillFrontmatter {
   "command-arg-mode"?: string;
   /** Whether skill can be invoked by users via commands */
   "user-invocable"?: boolean;
+  /** Provenance metadata — present on agent-derived/curated skills. */
+  provenance?: SkillProvenance;
   /** Additional arbitrary metadata */
   [key: string]: unknown;
 }
@@ -47,10 +71,16 @@ export interface Skill {
   filePath?: string;
   /** Absolute path to the skill's base directory (optional for inline skills) */
   baseDir?: string;
-  /** Source identifier (e.g., "bundled", "workspace", "managed", "inline") */
+  /** Source identifier (e.g., "bundled", "workspace", "managed", "inline", "curated") */
   source?: string;
   /** If true, skill won't be included in model prompts */
   disableModelInvocation?: boolean;
+  /**
+   * Provenance metadata when the skill was derived from a trajectory or
+   * user-authored as a "curated" skill. Optional for backward compatibility:
+   * existing on-disk skills with no provenance block are treated as `human`.
+   */
+  provenance?: SkillProvenance;
 
   // Runtime definition fields (for inline/programmatic skills)
   /** Unique slug identifier for the skill */

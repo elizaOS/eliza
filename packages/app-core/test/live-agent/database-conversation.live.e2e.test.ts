@@ -15,6 +15,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { config as loadDotenv } from "dotenv";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../../../test/helpers/live-provider.ts";
@@ -25,9 +26,6 @@ import {
 } from "../../../../../test/helpers/http.ts";
 import { createLiveRuntimeChildEnv } from "../../../../../test/helpers/live-child-env.ts";
 
-const LIVE =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(
   import.meta.dirname,
   "..",
@@ -36,17 +34,17 @@ const REPO_ROOT = path.resolve(
   "..",
   "..",
 );
+loadDotenv({ path: path.join(REPO_ROOT, ".env") });
+
+const LIVE =
+  process.env.MILADY_LIVE_TEST === "1" ||
+  process.env.ELIZA_LIVE_TEST === "1";
 const LIVE_PROVIDER = selectLiveProvider();
 const LIVE_PROVIDER_PLUGIN_ID = LIVE_PROVIDER?.pluginPackage
   .split("/")
   .at(-1)
   ?.replace(/^plugin-/, "");
 const LIVE_DB_CODEWORD = `db-live-codeword-${Date.now()}`;
-
-try {
-  const { config } = await import("dotenv");
-  config({ path: path.join(REPO_ROOT, ".env") });
-} catch { /* dotenv optional */ }
 
 async function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -96,7 +94,7 @@ async function postLiveMessage(
   return { status: lastStatus, text: lastText };
 }
 
-type Runtime = { port: number; close: () => Promise<void>; logs: () => string };
+import type { RuntimeHarness as Runtime } from "./helpers/runtime-harness";
 
 async function startRuntime(): Promise<Runtime> {
   const tmp = await mkdtemp(path.join(os.tmpdir(), "eliza-db-live-"));

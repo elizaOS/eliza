@@ -18,9 +18,9 @@ import {
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  createRealTestRuntime,
+  createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../../test/helpers/real-runtime";
+} from "./helpers/runtime.js";
 import { selectLiveProvider } from "../../../../test/helpers/live-provider";
 import { extractCalendarPlanWithLlm } from "../src/actions/calendar.js";
 import { extractGmailPlanWithLlm } from "../src/actions/gmail.js";
@@ -80,7 +80,7 @@ describeIfLive("LLM plan extraction (live)", () => {
   let runtime: IAgentRuntime;
 
   beforeAll(async () => {
-    runtimeResult = await createRealTestRuntime({
+    runtimeResult = await createLifeOpsTestRuntime({
       characterName: "LifeOpsExtractorLive",
       preferredProvider: provider?.name,
       withLLM: true,

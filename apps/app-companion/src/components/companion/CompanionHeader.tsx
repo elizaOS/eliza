@@ -1,8 +1,10 @@
-import { LanguageDropdown } from "@elizaos/app-core/components/shared/LanguageDropdown";
-import { ThemeToggle } from "@elizaos/app-core/components/shared/ThemeToggle";
-import { useMediaQuery } from "@elizaos/app-core/hooks/useMediaQuery";
-import type { UiLanguage } from "@elizaos/app-core/i18n/messages";
-import type { UiTheme } from "@elizaos/app-core/state/ui-preferences";
+import {
+  LanguageDropdown,
+  ThemeToggle,
+  useMediaQuery,
+  type UiLanguage,
+  type UiTheme,
+} from "@elizaos/app-core";
 import { Button } from "@elizaos/ui/components/ui/button";
 import {
   MessageCirclePlus,

@@ -15,6 +15,13 @@ export interface TrajectoryContext {
 	messageId?: string;
 	/** Pipeline stage purpose for trajectory logging (e.g. "should_respond", "response", "action", "evaluation"). */
 	purpose?: string;
+	/**
+	 * Step ID of the parent trajectory step, when the current step was
+	 * dispatched from inside another (e.g. an action invoked through
+	 * `executeCode`). Persistence layers use this to attach child step IDs
+	 * to the parent's `childSteps` array.
+	 */
+	parentStepId?: string;
 }
 
 export interface ITrajectoryContextManager {

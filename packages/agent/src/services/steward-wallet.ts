@@ -1,9 +1,3 @@
-/**
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/services/steward-wallet`.
- * New development should target the app-steward package.
- */
-
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -13,7 +7,7 @@ import type {
   StewardSignRequest,
   StewardSignResponse,
   StewardStatusResponse,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/app-steward/types/steward";
 import { getWalletAddresses } from "../api/wallet.js";
 
 const DEFAULT_TIMEOUT_MS = 12_000;

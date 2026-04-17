@@ -28,7 +28,10 @@ import type {
   JsonObject,
   JsonValue,
 } from "../../src/definitions";
-import type { EventCallback } from "../../../shared-types.js";
+import type {
+  EventCallback,
+  ListenerEntry as BaseListenerEntry,
+} from "../../../shared-types.js";
 
 type GatewayEventData =
   | GatewayEvent
@@ -37,10 +40,7 @@ type GatewayEventData =
   | GatewayDiscoveryEvent;
 type GatewayEventName = "gatewayEvent" | "stateChange" | "error" | "discovery";
 
-interface ListenerEntry {
-  eventName: GatewayEventName;
-  callback: EventCallback<GatewayEventData>;
-}
+type ListenerEntry = BaseListenerEntry<GatewayEventName, GatewayEventData>;
 
 interface PendingRequest {
   resolve: (value: GatewaySendResult) => void;

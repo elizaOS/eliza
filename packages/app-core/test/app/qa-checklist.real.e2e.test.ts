@@ -11,6 +11,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { config as loadDotenv } from "dotenv";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
@@ -25,12 +26,7 @@ const envPath = path.resolve(
   "..",
   ".env",
 );
-try {
-  const { config } = await import("dotenv");
-  config({ path: envPath });
-} catch {
-  // Keys may already be present in process.env.
-}
+loadDotenv({ path: envPath });
 
 const DEFAULT_UI_URL = stripTrailingSlash(
   process.env.ELIZA_LIVE_UI_URL ??
@@ -853,14 +849,12 @@ async function proxyUiRequest(args: {
   if (!filePath && !isAssetRequest) {
     filePath = path.join(APP_DIST_DIR, "index.html");
   }
-
-  let body: Buffer;
-  try {
-    body = await fs.readFile(filePath ?? path.join(APP_DIST_DIR, "index.html"));
-  } catch {
-    body = await fs.readFile(path.join(APP_DIST_DIR, "index.html"));
-    filePath = path.join(APP_DIST_DIR, "index.html");
+  if (!filePath) {
+    throw new Error(
+      `Missing built UI asset for ${requestUrl.pathname} in ${APP_DIST_DIR}`,
+    );
   }
+  let body = await fs.readFile(filePath);
 
   if (
     path.basename(filePath ?? path.join(APP_DIST_DIR, "index.html")) ===
@@ -2204,9 +2198,9 @@ async function completeLocalProviderOnboarding(page: Page) {
 }
 
 async function enterCompanionMode(page: Page) {
-  try {
+  if (await isSelectorVisible(page, '[data-testid="ui-shell-toggle-companion"]')) {
     await clickSelector(page, '[data-testid="ui-shell-toggle-companion"]');
-  } catch {
+  } else {
     await navigate(page, `${UI_URL}/apps/companion`);
   }
   await page.waitForFunction(
@@ -2587,11 +2581,15 @@ async function saveFailureArtifacts(
 
   try {
     url = page.url();
-  } catch {}
+  } catch (pageError) {
+    url = `Unavailable: ${pageError instanceof Error ? pageError.message : String(pageError)}`;
+  }
 
   try {
     title = await page.title();
-  } catch {}
+  } catch (pageError) {
+    title = `Unavailable: ${pageError instanceof Error ? pageError.message : String(pageError)}`;
+  }
 
   try {
     bodyText = await page.evaluate(() =>

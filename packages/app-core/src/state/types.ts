@@ -419,6 +419,7 @@ export interface AppState {
 
   // Capabilities (feature toggles)
   browserEnabled: boolean;
+  computerUseEnabled: boolean;
 
   // Wallet / Inventory
   walletEnabled: boolean;
@@ -615,6 +616,7 @@ export interface AppState {
   onboardingFeaturePhone: boolean;
   onboardingFeatureCrypto: boolean;
   onboardingFeatureBrowser: boolean;
+  onboardingFeatureComputerUse: boolean;
   /** Which feature is currently mid-OAuth flow, or null. */
   onboardingFeatureOAuthPending: string | null;
 

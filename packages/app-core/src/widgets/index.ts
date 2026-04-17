@@ -3,6 +3,8 @@ export type { WidgetPluginState } from "./registry";
 export {
   BUILTIN_WIDGET_DECLARATIONS,
   getWidgetComponent,
+  registerBuiltinWidgetDeclarations,
+  registerBuiltinWidgets,
   registerWidgetComponent,
   resolveChatSidebarWidgets,
   resolveWidgetsForSlot,

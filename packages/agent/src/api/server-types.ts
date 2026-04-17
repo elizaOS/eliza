@@ -11,7 +11,7 @@ import type { AppManager } from "../services/app-manager.js";
 import type { SandboxManager } from "../services/sandbox-manager.js";
 import type { CloudRouteState } from "./cloud-routes.js";
 import type { ConnectorHealthMonitor } from "./connector-health.js";
-import type { DropService } from "./drop-service.js";
+import type { DropService } from "@elizaos/app-elizamaker";
 // PluginEntry and PluginParamDef are defined here to avoid a circular dependency
 // with plugin-discovery-helpers.ts (which imports from server-helpers.ts).
 import type { RegistryService } from "./registry-service.js";
@@ -105,6 +105,45 @@ export type TradePermissionMode =
   import("./trade-safety.js").TradePermissionMode;
 
 export interface TrainingServiceLike {
+  getStatus(): Record<string, unknown>;
+  listTrajectories(options: {
+    limit?: number;
+    offset?: number;
+  }): Promise<Record<string, unknown>>;
+  getTrajectoryById(
+    trajectoryId: string,
+  ): Promise<Record<string, unknown> | null>;
+  listDatasets(): Record<string, unknown>[];
+  buildDataset(options: {
+    limit?: number;
+    minLlmCallsPerTrajectory?: number;
+  }): Promise<Record<string, unknown>>;
+  listJobs(): Record<string, unknown>[];
+  startTrainingJob(options: {
+    datasetId?: string;
+    maxTrajectories?: number;
+    backend?: "mlx" | "cuda" | "cpu";
+    model?: string;
+    iterations?: number;
+    batchSize?: number;
+    learningRate?: number;
+  }): Promise<Record<string, unknown>>;
+  getJob(jobId: string): Record<string, unknown> | null;
+  cancelJob(jobId: string): Promise<Record<string, unknown>>;
+  listModels(): Record<string, unknown>[];
+  importModelToOllama(
+    modelId: string,
+    body: {
+      modelName?: string;
+      baseModel?: string;
+      ollamaUrl?: string;
+    },
+  ): Promise<Record<string, unknown>>;
+  activateModel(
+    modelId: string,
+    providerModel?: string,
+  ): Promise<Record<string, unknown>>;
+  benchmarkModel(modelId: string): Promise<Record<string, unknown>>;
   subscribe(listener: (event: unknown) => void): () => void;
   initialize(): Promise<void>;
 }
@@ -230,10 +269,10 @@ export interface ServerState {
   /** Broadcast current agent status to all WebSocket clients. Set by startApiServer. */
   broadcastStatus: (() => void) | null;
   /** Broadcast an arbitrary JSON message to all WebSocket clients. Set by startApiServer. */
-  broadcastWs: ((data: Record<string, unknown>) => void) | null;
+  broadcastWs: ((data: object) => void) | null;
   /** Broadcast a JSON payload to WebSocket clients bound to a specific client id. */
   broadcastWsToClientId:
-    | ((clientId: string, data: Record<string, unknown>) => number)
+    | ((clientId: string, data: object) => number)
     | null;
   /** Currently active conversation ID from the frontend (sent via WS). */
   activeConversationId: string | null;
@@ -258,6 +297,25 @@ export interface ServerState {
   connectorRouteHandlers: ConnectorRouteHandler[];
   /** Connector health monitor for detecting dead connectors. */
   connectorHealthMonitor: ConnectorHealthMonitor | null;
+  /** Active WhatsApp pairing sessions (QR code flow). */
+  whatsappPairingSessions?: Map<
+    string,
+    import("../services/whatsapp-pairing.js").WhatsAppPairingSession
+  >;
+  /** Active Signal pairing sessions (device linking flow). */
+  signalPairingSessions?: Map<
+    string,
+    import("../services/signal-pairing.js").SignalPairingSession
+  >;
+  /** Last known Signal pairing snapshots, including terminal failures. */
+  signalPairingSnapshots?: Map<
+    string,
+    import("../services/signal-pairing.js").SignalPairingSnapshot
+  >;
+  /** Active Telegram account auth session (user-account login flow). */
+  telegramAccountAuthSession?:
+    | import("../services/telegram-account-auth.js").TelegramAccountAuthSessionLike
+    | null;
 }
 
 /**

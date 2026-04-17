@@ -18,6 +18,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../../test/helpers/real-runtime";
 import { classifyIntent, lifeAction } from "../src/actions/life.js";
+import { appLifeOpsPlugin } from "../src/plugin.js";
 
 let runtime: AgentRuntime;
 let cleanup: () => Promise<void>;
@@ -38,7 +39,9 @@ function send(params: Record<string, unknown>, messageText?: string) {
 }
 
 beforeAll(async () => {
-  const result = await createRealTestRuntime();
+  const result = await createRealTestRuntime({
+    plugins: [appLifeOpsPlugin],
+  });
   runtime = result.runtime;
   cleanup = result.cleanup;
 }, 180_000);

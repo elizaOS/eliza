@@ -8,6 +8,7 @@ import { getSignalContactDisplayName, ServiceType } from "../types";
 export const conversationStateProvider: Provider = {
   name: "signalConversationState",
   description: "Provides information about the current Signal conversation context",
+  descriptionCompressed: "Current Signal conversation context.",
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     const room = state.data?.room ?? (await runtime.getRoom(message.roomId));
     if (!room) {

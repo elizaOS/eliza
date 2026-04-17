@@ -4,7 +4,8 @@ import { extractParam } from "./param-parser.js";
 
 export const cookFood: Action = {
   name: "COOK_FOOD",
-  description: "Cook raw food on a nearby fire or range, optionally specifying the food name",
+  description: "Cook raw food on a nearby fire or range, optionally specifying the food name"
+  descriptionCompressed: "Cook raw food on fire/range.",
   similes: ["COOK", "COOK_RAW_FOOD"],
   examples: [],
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {

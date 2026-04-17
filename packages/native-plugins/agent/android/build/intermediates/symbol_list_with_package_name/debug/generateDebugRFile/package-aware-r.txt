@@ -1,1 +1,1 @@
-ai.milady.plugins.agent
+ai.eliza.plugins.agent

@@ -12,6 +12,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { config as loadDotenv } from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import {
@@ -25,8 +26,6 @@ import {
   listLocalWorkspacePlugins,
 } from "./helpers/local-plugin-inventory.ts";
 
-const LIVE =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(
   import.meta.dirname,
   "..",
@@ -35,6 +34,10 @@ const REPO_ROOT = path.resolve(
   "..",
   "..",
 );
+loadDotenv({ path: path.join(REPO_ROOT, ".env") });
+
+const LIVE =
+  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const FILTER_TOKENS = (process.env.ELIZA_PLUGIN_LIFECYCLE_FILTER ?? "")
   .split(",")
   .map((value) => value.trim())
@@ -148,13 +151,6 @@ if (FILTER_SET && LOCAL_WORKSPACE_PLUGINS.length === 0) {
   );
 }
 
-try {
-  const { config } = await import("dotenv");
-  config({ path: path.join(REPO_ROOT, ".env") });
-} catch {
-  /* dotenv optional */
-}
-
 const HAS_LIVE_MODEL_PROVIDER = Boolean(
   process.env.OPENAI_API_KEY ||
     process.env.ANTHROPIC_API_KEY ||
@@ -194,7 +190,7 @@ async function getFreePort(): Promise<number> {
   });
 }
 
-type Runtime = { port: number; close: () => Promise<void>; logs: () => string };
+import type { RuntimeHarness as Runtime } from "./helpers/runtime-harness";
 
 async function startRuntimeWithPlugins(
   allowPlugins: string[],

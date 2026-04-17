@@ -1,15 +1,12 @@
-
-
-import type { KeyboardEvent, MouseEvent } from "react";
+import { Button, Input } from "@elizaos/ui";
 import type { RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
+import { AppIdentityTile } from "./app-identity";
 import {
   getAppCatalogSectionLabel,
   getAppShortName,
   groupAppsForCatalog,
 } from "./helpers";
-import { AppIdentityTile } from "./app-identity";
-import { Button, Input } from "@elizaos/ui";
 
 interface AppsCatalogGridProps {
   activeAppNames: Set<string>;
@@ -17,12 +14,10 @@ interface AppsCatalogGridProps {
   favoriteAppNames: Set<string>;
   loading: boolean;
   searchQuery: string;
-  showActiveOnly: boolean;
   visibleApps: RegistryAppInfo[];
   onLaunch: (app: RegistryAppInfo) => void;
   onRefresh: () => void;
   onSearchQueryChange: (value: string) => void;
-  onToggleActiveOnly: () => void;
   onToggleFavorite: (appName: string) => void;
 }
 
@@ -32,27 +27,14 @@ export function AppsCatalogGrid({
   favoriteAppNames,
   loading,
   searchQuery,
-  showActiveOnly,
   visibleApps,
   onLaunch,
   onRefresh,
   onSearchQueryChange,
-  onToggleActiveOnly,
   onToggleFavorite,
 }: AppsCatalogGridProps) {
   const { t } = useApp();
   const sections = groupAppsForCatalog(visibleApps, favoriteAppNames);
-  const launchFromKeyboard = (
-    event: KeyboardEvent<HTMLDivElement>,
-    app: RegistryAppInfo,
-  ) => {
-    if (event.key !== "Enter" && event.key !== " ") {
-      return;
-    }
-    event.preventDefault();
-    onLaunch(app);
-  };
-
   return (
     <div data-testid="apps-catalog-grid">
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -71,22 +53,6 @@ export function AppsCatalogGrid({
           onClick={onRefresh}
         >
           {t("common.refresh")}
-        </Button>
-        <Button
-          variant={showActiveOnly ? "default" : "outline"}
-          size="sm"
-          className="rounded-xl px-3 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={onToggleActiveOnly}
-          disabled={activeAppNames.size === 0}
-          title={
-            activeAppNames.size === 0
-              ? t("appsview.NoActiveAppsForFilter", {
-                  defaultValue: "No active apps are available to filter.",
-                })
-              : undefined
-          }
-        >
-          {t("appsview.ActiveOnly", { defaultValue: "Active Only" })}
         </Button>
       </div>
 
@@ -132,66 +98,67 @@ export function AppsCatalogGrid({
                   return (
                     <div
                       key={app.name}
-                      role="button"
-                      tabIndex={0}
-                      data-testid={`app-card-${app.name.replace(/[^a-z0-9]+/gi, "-")}`}
-                      title={displayName}
-                      aria-label={displayName}
-                      className="group flex flex-col rounded-2xl border border-border/35 bg-card/72 p-4 text-left transition-all hover:border-accent/25 hover:bg-bg-hover/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35"
-                      onClick={() => onLaunch(app)}
-                      onKeyDown={(event) => launchFromKeyboard(event, app)}
+                      className="group relative rounded-2xl border border-border/35 bg-card/72 transition-all hover:border-accent/25 hover:bg-bg-hover/70 focus-within:ring-2 focus-within:ring-accent/35"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <AppIdentityTile
-                            app={app}
-                            active={isActive}
-                            size="sm"
-                          />
-                          <div>
-                            <div className="text-sm font-semibold text-txt">
-                              {displayName}
-                            </div>
-                            <div className="text-xs-tight text-muted-strong">
-                              {getAppCatalogSectionLabel(app)}
+                      <button
+                        type="button"
+                        data-testid={`app-card-${app.name.replace(/[^a-z0-9]+/gi, "-")}`}
+                        title={displayName}
+                        aria-label={displayName}
+                        className="flex w-full flex-col p-4 text-left focus-visible:outline-none"
+                        onClick={() => onLaunch(app)}
+                      >
+                        <div className="flex items-start justify-between gap-3 pe-8">
+                          <div className="flex items-center gap-3">
+                            <AppIdentityTile
+                              app={app}
+                              active={isActive}
+                              size="sm"
+                            />
+                            <div>
+                              <div className="text-sm font-semibold text-txt">
+                                {displayName}
+                              </div>
+                              <div className="text-xs-tight text-muted-strong">
+                                {getAppCatalogSectionLabel(app)}
+                              </div>
                             </div>
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          aria-label={
-                            isFavorite
-                              ? "Remove from favorites"
-                              : "Add to favorites"
-                          }
-                          className={`shrink-0 p-1 transition-colors ${
-                            isFavorite
-                              ? "text-warn"
-                              : "text-muted/40 opacity-0 group-hover:opacity-100 hover:text-warn"
-                          }`}
-                          onClick={(e: MouseEvent<HTMLButtonElement>) => {
-                            e.stopPropagation();
-                            onToggleFavorite(app.name);
-                          }}
+                        <p className="mt-3 line-clamp-2 text-xs leading-5 text-muted-strong">
+                          {app.description ||
+                            "Launch and manage this agent experience."}
+                        </p>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={
+                          isFavorite
+                            ? "Remove from favorites"
+                            : "Add to favorites"
+                        }
+                        className={`absolute right-4 top-4 shrink-0 p-1 transition-colors ${
+                          isFavorite
+                            ? "text-warn"
+                            : "text-muted/40 opacity-0 group-hover:opacity-100 hover:text-warn"
+                        }`}
+                        onClick={() => onToggleFavorite(app.name)}
+                      >
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill={isFavorite ? "currentColor" : "none"}
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
                         >
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill={isFavorite ? "currentColor" : "none"}
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                          </svg>
-                        </button>
-                      </div>
-                      <p className="mt-3 line-clamp-2 text-xs leading-5 text-muted-strong">
-                        {app.description ||
-                          "Launch and manage this agent experience."}
-                      </p>
+                          <title>Favorite</title>
+                          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                        </svg>
+                      </button>
                     </div>
                   );
                 })}

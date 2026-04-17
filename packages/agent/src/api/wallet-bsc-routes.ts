@@ -3,10 +3,6 @@
  * transfer/execute, and production-defaults.
  *
  * Extracted from server.ts to reduce file size.
- *
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/api/wallet-bsc-routes`.
- * New development should target the app-steward package.
  */
 
 import type http from "node:http";

@@ -57,7 +57,7 @@ export function createEnvSandbox(keys: readonly string[]) {
   return { clear, restore };
 }
 
-export type PluginModuleShape = {
+export type TestPluginModule = {
   [key: string]: unknown;
   default?: unknown;
   plugin?: unknown;
@@ -73,7 +73,7 @@ export function looksLikePlugin(value: unknown): value is { name: string } {
 }
 
 /** Extract a plugin-like object from a dynamic module export shape. */
-export function extractPlugin(mod: PluginModuleShape): { name: string } | null {
+export function extractPlugin(mod: TestPluginModule): { name: string } | null {
   if (looksLikePlugin(mod.default)) return mod.default;
   if (looksLikePlugin(mod.plugin)) return mod.plugin;
   if (looksLikePlugin(mod)) return mod;

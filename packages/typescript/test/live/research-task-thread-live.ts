@@ -4,8 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
-import { createTestRuntime } from "../helpers/pglite-runtime.ts";
 import { SwarmCoordinator } from "@elizaos/plugin-agent-orchestrator";
+import { createTestRuntime } from "../helpers/pglite-runtime.ts";
 
 type CodexEvent =
 	| {
@@ -160,7 +160,10 @@ async function main(): Promise<void> {
 	});
 
 	reportDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-research-thread-"));
-	const transcriptPath = path.join(reportDir, "codex-research-transcript.jsonl");
+	const transcriptPath = path.join(
+		reportDir,
+		"codex-research-transcript.jsonl",
+	);
 	const finalMessagePath = path.join(reportDir, "codex-final-message.md");
 	const reportPath = path.join(reportDir, "deep-research-report.md");
 	const sessionId = `research-codex-${Date.now()}`;
@@ -238,7 +241,10 @@ async function main(): Promise<void> {
 	);
 
 	const finalMessage = fs.readFileSync(finalMessagePath, "utf8").trim();
-	assert.ok(finalMessage.length > 0, "Expected Codex research run to return a non-empty report");
+	assert.ok(
+		finalMessage.length > 0,
+		"Expected Codex research run to return a non-empty report",
+	);
 
 	const events = parseCodexEvents(commandResult.stdout);
 	const searchEvents = events.filter(
@@ -326,7 +332,10 @@ async function main(): Promise<void> {
 		completionSummary: finalMessage.slice(0, 240),
 		lastActivityAt: Date.now(),
 	});
-	await coordinator.taskRegistry.updateThreadSummary(thread.id, finalMessage.slice(0, 400));
+	await coordinator.taskRegistry.updateThreadSummary(
+		thread.id,
+		finalMessage.slice(0, 400),
+	);
 	await coordinator.taskRegistry.appendEvent({
 		threadId: thread.id,
 		sessionId,
@@ -344,7 +353,8 @@ async function main(): Promise<void> {
 	assert.equal(detail.kind, "research");
 	assert.ok(
 		detail.sessions.some(
-			(session) => session.sessionId === sessionId && session.status === "completed",
+			(session) =>
+				session.sessionId === sessionId && session.status === "completed",
 		),
 		"Expected the research run to persist as a completed session",
 	);

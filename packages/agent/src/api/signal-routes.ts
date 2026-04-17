@@ -21,7 +21,7 @@ export interface SignalPairingSessionLike {
 export interface SignalRouteState {
   signalPairingSessions: Map<string, SignalPairingSessionLike>;
   signalPairingSnapshots?: Map<string, SignalPairingSnapshot>;
-  broadcastWs?: (data: Record<string, unknown>) => void;
+  broadcastWs?: (data: object) => void;
   config: {
     connectors?: Record<string, unknown>;
   };
@@ -149,7 +149,7 @@ export async function handleSignalRoute(
       accountId,
       cliPath: configuredCliPath,
       onEvent: (event) => {
-        state.broadcastWs?.(event as unknown as Record<string, unknown>);
+        state.broadcastWs?.(event);
         signalPairingSnapshots.set(accountId, session.getSnapshot());
 
         if (event.status === "connected") {
@@ -158,8 +158,7 @@ export async function handleSignalRoute(
             (state.config.connectors.signal as
               | Record<string, unknown>
               | undefined) ?? {};
-          const phoneNumber = (event as unknown as Record<string, unknown>)
-            .phoneNumber as string | undefined;
+          const phoneNumber = event.phoneNumber;
           state.config.connectors.signal = {
             ...previousConfig,
             authDir,

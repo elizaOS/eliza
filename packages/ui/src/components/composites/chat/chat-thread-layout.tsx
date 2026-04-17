@@ -94,8 +94,8 @@ export const ChatThreadLayout = React.forwardRef<
       >
         {children}
       </div>
-      {footerStack}
       {composer}
+      {footerStack}
     </section>
   );
 });

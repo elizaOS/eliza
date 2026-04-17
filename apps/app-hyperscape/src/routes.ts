@@ -1,26 +1,12 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {
+  AppLaunchSessionContext,
+  AppRunSessionContext,
   AppSessionJsonValue,
   AppSessionState,
   AppLaunchResult,
 } from "@elizaos/shared/contracts/apps";
-
-// ---------------------------------------------------------------------------
-// Inline context types (previously from @elizaos/agent app-package-modules)
-// ---------------------------------------------------------------------------
-
-interface AppLaunchSessionContext {
-  appName: string;
-  launchUrl: string | null;
-  runtime: IAgentRuntime | null;
-  viewer: AppLaunchResult["viewer"] | null;
-}
-
-interface AppRunSessionContext extends AppLaunchSessionContext {
-  runId?: string;
-  session: AppSessionState | null;
-}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -304,6 +290,17 @@ export async function resolveLaunchSession(
     );
     return null;
   }
+}
+
+/**
+ * Called by the host app-manager when the user stops the Hyperscape run.
+ * Hyperscape is a stateless session resolver against an external API —
+ * there are no local resources (WebSockets, timers, processes) to tear
+ * down. Iframe unmount is sufficient. This hook is present so the
+ * app-manager lifecycle path stays uniform across all game apps.
+ */
+export async function stopRun(): Promise<void> {
+  // Intentional no-op — no server-side state to clean up.
 }
 
 export async function refreshRunSession(

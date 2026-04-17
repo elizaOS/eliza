@@ -3,7 +3,7 @@ import type {
   BabylonAgentStatus,
   BabylonChatMessage,
   BabylonTeamAgent,
-} from "../../api";
+} from "../../api/client-types-babylon";
 
 export interface BabylonTeamSummaryTotals {
   walletBalance: number;
@@ -121,12 +121,13 @@ export function extractAgentSummary(
 ): BabylonAgentSummaryEnvelope {
   const data = asRecord(value);
   return {
-    agent: (asRecord(data?.agent) ??
-      null) as unknown as BabylonAgentSummaryEnvelope["agent"],
-    portfolio: (asRecord(data?.portfolio) ??
-      null) as unknown as BabylonAgentSummaryEnvelope["portfolio"],
-    positions: (asRecord(data?.positions) ??
-      null) as unknown as BabylonAgentSummaryEnvelope["positions"],
+    agent: asRecord(data?.agent) as unknown as BabylonAgentSummaryEnvelope["agent"],
+    portfolio: asRecord(
+      data?.portfolio,
+    ) as unknown as BabylonAgentSummaryEnvelope["portfolio"],
+    positions: asRecord(
+      data?.positions,
+    ) as BabylonAgentSummaryEnvelope["positions"],
   };
 }
 

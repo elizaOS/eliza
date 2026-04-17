@@ -5,7 +5,7 @@ import { startTransition, useEffect, useMemo, useState } from "react";
 import { client } from "../../../../api";
 import type { ActivityEvent } from "../../../../hooks/useActivityEvents";
 import { useApp } from "../../../../state";
-import { getRunAttentionReasons } from "../../../apps/RunningAppsPanel";
+import { getRunAttentionReasons } from "../../../apps/run-attention";
 import { EmptyWidgetState, WidgetSection } from "../shared";
 import { Badge, Button } from "@elizaos/ui";
 import type {

@@ -40,8 +40,10 @@ import {
 import { confirmDesktopAction } from "../utils";
 import {
   loadBrowserEnabled,
+  loadComputerUseEnabled,
   loadWalletEnabled,
   saveBrowserEnabled,
+  saveComputerUseEnabled,
   saveWalletEnabled,
 } from "./persistence";
 import type { InventoryChainFilters } from "./types";
@@ -84,6 +86,12 @@ export function useWalletState({
   const setBrowserEnabled = useCallback((v: boolean) => {
     setBrowserEnabledRaw(v);
     saveBrowserEnabled(v);
+  }, []);
+
+  const [computerUseEnabled, setComputerUseEnabledRaw] = useState(loadComputerUseEnabled);
+  const setComputerUseEnabled = useCallback((v: boolean) => {
+    setComputerUseEnabledRaw(v);
+    saveComputerUseEnabled(v);
   }, []);
 
   // ── Wallet / Inventory ─────────────────────────────────────────────
@@ -562,6 +570,7 @@ export function useWalletState({
   return {
     state: {
       browserEnabled,
+      computerUseEnabled,
       walletEnabled,
       walletAddresses,
       walletConfig,
@@ -597,6 +606,7 @@ export function useWalletState({
     },
     // Raw setters needed by AppContext for UI binding
     setBrowserEnabled,
+    setComputerUseEnabled,
     setWalletEnabled,
     setWalletAddresses,
     setInventoryView,

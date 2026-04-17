@@ -1,15 +1,9 @@
 import type { Action, IAgentRuntime } from "@elizaos/core";
+import { isPluginManagerLike, type PluginManagerLike } from "../services/plugin-manager-types.js";
 
-interface EjectedPluginInfo {
-  name: string;
-  path: string;
-  upstream?: { branch?: string };
-}
-
-function getPluginManager(runtime: IAgentRuntime) {
-  return runtime.getService("plugin_manager") as unknown as {
-    listEjectedPlugins(): Promise<EjectedPluginInfo[]>;
-  } | null;
+function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
+  const svc = runtime.getService("plugin_manager");
+  return isPluginManagerLike(svc) ? svc : null;
 }
 
 export const listEjectedAction: Action = {
@@ -40,8 +34,8 @@ export const listEjectedAction: Action = {
     }
 
     const lines = plugins.map((p) => {
-      const branch = p.upstream?.branch ? `@${p.upstream.branch}` : "";
-      return `- ${p.name}${branch} (${p.path})`;
+      const ver = p.version ? `@${p.version}` : "";
+      return `- ${p.name}${ver}`;
     });
     return {
       text: [`Ejected plugins (${plugins.length}):`, ...lines].join("\n"),

@@ -5,9 +5,3 @@ export * from "./hooks";
 export * from "./layouts";
 export * from "./lib/floating-layers";
 export * from "./lib/utils";
-
-// Product-specific: onboarding
-export * from "./components/onboarding/FeatureCard";
-export * from "./components/onboarding/OnboardingStepNav";
-export * from "./components/onboarding/onboarding-form-primitives";
-export * from "./components/onboarding/onboarding-step-chrome";

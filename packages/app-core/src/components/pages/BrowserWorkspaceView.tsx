@@ -1,6 +1,21 @@
-
-
-import { ExternalLink, Plus, RefreshCw, X } from "lucide-react";
+import {
+  BROWSER_WALLET_READY_TYPE,
+  BROWSER_WALLET_RESPONSE_TYPE,
+  type BrowserWorkspaceWalletResponse,
+  type BrowserWorkspaceWalletState,
+  buildBrowserWorkspaceWalletState,
+  isBrowserWorkspaceWalletRequest,
+} from "@elizaos/app-steward/browser-workspace-wallet";
+import { Button, Input } from "@elizaos/ui";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  MessageSquare,
+  Plus,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import {
   type JSX,
   useCallback,
@@ -14,18 +29,9 @@ import {
   type BrowserWorkspaceTab,
   client,
 } from "../../api";
-import {
-  BROWSER_WALLET_READY_TYPE,
-  BROWSER_WALLET_RESPONSE_TYPE,
-  type BrowserWorkspaceWalletResponse,
-  type BrowserWorkspaceWalletState,
-  buildBrowserWorkspaceWalletState,
-  isBrowserWorkspaceWalletRequest,
-} from "../../browser-workspace-wallet";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
-import { WidgetHost } from "../../widgets";
-import { PagePanel, MetaPill, SidebarCollapsedActionButton, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, PageLayout } from "@elizaos/ui";
+import { ChatView } from "./ChatView.js";
 
 const POLL_INTERVAL_MS = 2_500;
 const DEFAULT_BROWSER_WALLET_CHAIN_ID = 1;
@@ -93,7 +99,7 @@ function getBrowserWorkspaceRailMonogram(label: string): string {
   return (alphanumeric[0] ?? "B").toUpperCase();
 }
 
-function formatBrowserWorkspaceTimestamp(value: string | null): string {
+function _formatBrowserWorkspaceTimestamp(value: string | null): string {
   if (!value) {
     return "Idle";
   }
@@ -107,7 +113,7 @@ function formatBrowserWorkspaceTimestamp(value: string | null): string {
   }
 }
 
-function formatBrowserWorkspaceWalletAddress(address: string): string {
+function _formatBrowserWorkspaceWalletAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
@@ -294,6 +300,7 @@ export function BrowserWorkspaceView(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [chatSidebarCollapsed, setChatSidebarCollapsed] = useState(false);
   const initialBrowseUrlRef = useRef<string | null | undefined>(undefined);
   const initialBrowseHandledRef = useRef(false);
   const iframeRefs = useRef(new Map<string, HTMLIFrameElement | null>());
@@ -324,7 +331,7 @@ export function BrowserWorkspaceView(): JSX.Element {
     () => workspace.tabs.find((tab) => tab.id === selectedTabId) ?? null,
     [selectedTabId, workspace.tabs],
   );
-  const walletStateRefreshKey = useMemo(
+  const _walletStateRefreshKey = useMemo(
     () =>
       [
         walletAddresses?.evmAddress ?? "",
@@ -509,7 +516,7 @@ export function BrowserWorkspaceView(): JSX.Element {
     [loadWorkspace, openNewBrowserWorkspaceTab, selectedTabId],
   );
 
-  const closeSelectedBrowserWorkspaceTab = useCallback(async () => {
+  const _closeSelectedBrowserWorkspaceTab = useCallback(async () => {
     if (!selectedTabId) {
       return;
     }
@@ -559,7 +566,7 @@ export function BrowserWorkspaceView(): JSX.Element {
 
   useEffect(() => {
     void loadBrowserWalletState();
-  }, [loadBrowserWalletState, walletStateRefreshKey]);
+  }, [loadBrowserWalletState]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -985,349 +992,292 @@ export function BrowserWorkspaceView(): JSX.Element {
     };
   }, [loadBrowserWalletState, postBrowserWalletReady]);
 
-  const browserSidebar = (
-    <Sidebar
-      testId="browser-workspace-sidebar"
-      collapsible
-      contentIdentity={`browser-workspace:${workspace.mode}`}
-      collapseButtonTestId="browser-workspace-sidebar-collapse-toggle"
-      expandButtonTestId="browser-workspace-sidebar-expand-toggle"
-      collapseButtonAriaLabel="Collapse browser workspace"
-      expandButtonAriaLabel="Expand browser workspace"
-      header={
-        <SidebarHeader>
-          <div className="space-y-1">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted/70">
-              {t("browserworkspace.SidebarLabel", {
-                defaultValue: "Browser workspace",
-              })}
+  const reloadSelectedBrowserWorkspaceTab = useCallback(() => {
+    if (!selectedTab) return;
+    const iframe = iframeRefs.current.get(selectedTab.id);
+    if (iframe) {
+      iframe.src = selectedTab.url;
+    }
+  }, [selectedTab]);
+
+  return (
+    <div
+      className="relative flex h-full w-full min-h-0 flex-col bg-bg"
+      data-testid="browser-workspace-view"
+    >
+      {/* Tab strip */}
+      <div
+        className="flex items-end gap-1 overflow-x-auto border-b border-border/30 bg-card/30 px-2 pt-2"
+        role="tablist"
+      >
+        {workspace.tabs.map((tab) => {
+          const active = tab.id === selectedTabId;
+          const label = getBrowserWorkspaceTabLabel(tab);
+          return (
+            <div
+              key={tab.id}
+              title={`${label}\n${tab.url}`}
+              aria-label={`${label} ${tab.url}`}
+              role="tab"
+              aria-selected={active}
+              tabIndex={active ? 0 : -1}
+              onClick={() =>
+                void runBrowserWorkspaceAction(
+                  `show:${tab.id}:tabstrip`,
+                  async () => {
+                    await activateBrowserWorkspaceTab(tab.id);
+                  },
+                )
+              }
+              className={`group relative flex h-9 min-w-[8rem] max-w-[14rem] shrink-0 items-center gap-2 rounded-t-lg border border-b-0 px-3 text-xs transition-colors ${
+                active
+                  ? "border-border/40 bg-bg text-txt"
+                  : "border-transparent bg-card/30 text-muted hover:bg-card/60 hover:text-txt"
+              }`}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  void runBrowserWorkspaceAction(
+                    `show:${tab.id}:tabstrip`,
+                    async () => {
+                      await activateBrowserWorkspaceTab(tab.id);
+                    },
+                  );
+                }
+              }}
+            >
+              {tab.visible ? (
+                <>
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-accent shadow-[0_0_6px_var(--accent)]" />
+                  <span className="sr-only">
+                    {t("browserworkspace.AgentActive", {
+                      defaultValue: "Agent is on this tab",
+                    })}
+                  </span>
+                </>
+              ) : (
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-black/10 text-[10px] font-semibold text-muted">
+                  {getBrowserWorkspaceRailMonogram(label)}
+                </span>
+              )}
+              <span className="flex-1 truncate text-left">{label}</span>
+              <button
+                type="button"
+                aria-label={t("browserworkspace.CloseTab", {
+                  defaultValue: "Close tab",
+                })}
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted hover:bg-black/10 hover:text-txt"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void runBrowserWorkspaceAction(
+                    `close:${tab.id}`,
+                    async () => {
+                      await client.closeBrowserWorkspaceTab(tab.id);
+                      const snapshot = await client.getBrowserWorkspace();
+                      const nextId =
+                        snapshot.tabs.find((t) => t.id === selectedTabId)?.id ??
+                        snapshot.tabs[0]?.id ??
+                        null;
+                      if (nextId && nextId !== selectedTabId) {
+                        await client.showBrowserWorkspaceTab(nextId);
+                      }
+                      await loadWorkspace({
+                        preferTabId: nextId,
+                        silent: true,
+                      });
+                    },
+                  );
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    (event.target as HTMLElement).click();
+                  }
+                }}
+              >
+                <X className="h-3 w-3" />
+              </button>
             </div>
-            <div className="text-lg font-semibold text-txt">
-              {workspace.mode === "desktop"
-                ? t("browserworkspace.DesktopBridge", {
-                    defaultValue: "Desktop bridge",
-                  })
-                : t("browserworkspace.WebWorkspace", {
-                    defaultValue: "Web iframe workspace",
-                  })}
-            </div>
-          </div>
-        </SidebarHeader>
-      }
-      collapsedRailAction={
-        <SidebarCollapsedActionButton
+          );
+        })}
+        <button
+          type="button"
+          className="ml-1 mb-[1px] flex h-8 w-8 shrink-0 items-center justify-center rounded text-muted hover:bg-card/60 hover:text-txt"
           aria-label={t("browserworkspace.NewTab", {
             defaultValue: "New tab",
           })}
+          disabled={busyAction !== null}
           onClick={() =>
-            void runBrowserWorkspaceAction("open:new-rail", async () => {
+            void runBrowserWorkspaceAction("open:new-plus", async () => {
               await openNewBrowserWorkspaceTab(locationInput || "about:blank");
             })
           }
         >
           <Plus className="h-4 w-4" />
-        </SidebarCollapsedActionButton>
-      }
-      collapsedRailItems={workspace.tabs.map((tab) => {
-        const label = getBrowserWorkspaceTabLabel(tab);
-        return (
-          <SidebarContent.RailItem
-            key={tab.id}
-            aria-label={label}
-            title={label}
-            active={tab.id === selectedTabId}
-            indicatorTone={tab.visible ? "accent" : undefined}
-            onClick={() =>
-              void runBrowserWorkspaceAction(
-                `show:${tab.id}:rail`,
-                async () => {
-                  await activateBrowserWorkspaceTab(tab.id);
-                },
-              )
-            }
-          >
-            {getBrowserWorkspaceRailMonogram(label)}
-          </SidebarContent.RailItem>
-        );
-      })}
-      footer={
+        </button>
+      </div>
+
+      {/* URL bar */}
+      <div className="flex items-center gap-2 border-b border-border/30 bg-card/20 px-3 py-2">
         <Button
-          variant="outline"
-          size="sm"
-          className="h-10 w-full justify-start rounded-xl px-4 text-xs font-semibold"
-          onClick={() =>
-            void runBrowserWorkspaceAction("refresh:list", async () => {
-              await loadWorkspace({
-                preferTabId: selectedTabId,
-                silent: true,
-              });
-            })
-          }
-          disabled={busyAction !== null}
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          aria-label={t("common.refresh", { defaultValue: "Refresh" })}
+          disabled={!selectedTab || busyAction !== null}
+          onClick={reloadSelectedBrowserWorkspaceTab}
         >
           <RefreshCw className="h-4 w-4" />
-          {t("common.refresh")}
         </Button>
-      }
-    >
-      <SidebarScrollRegion>
-        <SidebarPanel>
-          {/* URL controls */}
-          <div className="space-y-2 mb-4">
-            <Input
-              value={locationInput}
-              onChange={(event) => {
-                setLocationInput(event.target.value);
-                setLocationDirty(true);
-              }}
-              placeholder={t("browserworkspace.AddressPlaceholder", {
-                defaultValue: "Enter a URL",
-              })}
-              className="w-full h-10 rounded-full border-border/35 bg-card/70 px-4 text-sm text-txt shadow-sm transition-colors focus-visible:border-accent/40"
-            />
-            <div className="flex gap-1.5">
-              <Button
-                variant="default"
-                size="sm"
-                className="h-9 flex-1 rounded-xl px-3 text-xs font-semibold"
-                onClick={() =>
-                  void runBrowserWorkspaceAction(
-                    "navigate:selected",
-                    async () => {
-                      await navigateSelectedBrowserWorkspaceTab(locationInput);
-                    },
-                  )
-                }
-                disabled={busyAction !== null}
-              >
-                {selectedTab
-                  ? t("browserworkspace.Go", { defaultValue: "Go" })
-                  : t("browserworkspace.Open", { defaultValue: "Open" })}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 flex-1 rounded-xl px-3 text-xs font-semibold"
-                onClick={() =>
-                  void runBrowserWorkspaceAction(
-                    "open:new-address",
-                    async () => {
-                      await openNewBrowserWorkspaceTab(
-                        locationInput || "about:blank",
-                      );
-                    },
-                  )
-                }
-                disabled={busyAction !== null}
-              >
-                <Plus className="mr-1 h-3.5 w-3.5" />
-                {t("browserworkspace.NewTab", { defaultValue: "New tab" })}
-              </Button>
-            </div>
-            <div className="flex gap-1.5">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 flex-1 rounded-xl px-3 text-xs font-semibold"
-                onClick={() =>
-                  void runBrowserWorkspaceAction("open:external", async () => {
-                    if (!selectedTab) return;
-                    await openExternalUrl(selectedTab.url);
-                  })
-                }
-                disabled={!selectedTab || busyAction !== null}
-              >
-                <ExternalLink className="mr-1 h-3.5 w-3.5" />
-                {t("browserworkspace.OpenExternal", {
-                  defaultValue: "Open external",
-                })}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 flex-1 rounded-xl px-3 text-xs font-semibold"
-                onClick={() =>
-                  void runBrowserWorkspaceAction("close:selected", async () => {
-                    await closeSelectedBrowserWorkspaceTab();
-                  })
-                }
-                disabled={!selectedTab || busyAction !== null}
-              >
-                <X className="mr-1 h-3.5 w-3.5" />
-                {t("browserworkspace.Close", { defaultValue: "Close" })}
-              </Button>
-            </div>
-          </div>
-
-          <PagePanel.SummaryCard compact className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-xs-tight uppercase tracking-[0.16em] text-muted/70">
-                {t("browserworkspace.OpenTabs", {
-                  defaultValue: "Open tabs",
-                })}
-              </span>
-              <MetaPill compact>{workspace.tabs.length}</MetaPill>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-xs-tight uppercase tracking-[0.16em] text-muted/70">
-                {t("browserworkspace.Active", {
-                  defaultValue: "Active",
-                })}
-              </span>
-              <MetaPill compact>
-                {workspace.tabs.filter((tab) => tab.visible).length}
-              </MetaPill>
-            </div>
-          </PagePanel.SummaryCard>
-
-          {workspace.tabs.length > 0 ? (
-            <>
-              <SidebarContent.SectionLabel className="mt-4">
-                {t("browserworkspace.Tabs", {
-                  defaultValue: "Tabs",
-                })}
-              </SidebarContent.SectionLabel>
-              <div className="mt-2 space-y-1">
-                {workspace.tabs.map((tab) => {
-                  const active = tab.id === selectedTabId;
-                  const label = getBrowserWorkspaceTabLabel(tab);
-                  return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-2 text-left transition-colors ${
-                        active
-                          ? "border-accent/30 bg-accent/12 text-txt"
-                          : "border-border/30 bg-card/50 text-muted hover:border-border/55 hover:text-txt"
-                      }`}
-                      onClick={() =>
-                        void runBrowserWorkspaceAction(
-                          `show:${tab.id}:sidebar`,
-                          async () => {
-                            await activateBrowserWorkspaceTab(tab.id);
-                          },
-                        )
-                      }
-                    >
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/30 bg-black/10 text-xs font-semibold">
-                        {getBrowserWorkspaceRailMonogram(label)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium text-current">
-                          {label}
-                        </div>
-                        <div className="truncate text-xs-tight text-muted">
-                          {tab.url}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          ) : null}
-        </SidebarPanel>
-      </SidebarScrollRegion>
-    </Sidebar>
-  );
-
-  return (
-    <PageLayout
-      sidebar={browserSidebar}
-      contentInnerClassName="mx-auto flex h-full w-full max-w-[110rem] flex-1"
-      data-testid="browser-workspace-view"
-      footer={<WidgetHost slot="browser" className="py-3" />}
-    >
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
-        {loadError ? (
-          <PagePanel.Notice tone="danger">{loadError}</PagePanel.Notice>
-        ) : null}
-
-        {loading && workspace.tabs.length === 0 ? (
-          <PagePanel.Loading
-            variant="workspace"
-            heading={t("browserworkspace.Loading", {
-              defaultValue: "Loading browser workspace",
-            })}
-          />
-        ) : workspace.tabs.length === 0 ? (
-          <PagePanel.Empty
-            variant="panel"
-            title={t("browserworkspace.EmptyTitle", {
-              defaultValue: "No browser tabs yet",
-            })}
-            description={t("browserworkspace.EmptyDescription", {
-              defaultValue:
-                "Open a page here, or let the agent create tabs through the browser workspace plugin.",
-            })}
-            className="min-h-[28rem]"
-          />
-        ) : (
-          <PagePanel
-            variant="workspace"
-            className="flex min-h-[34rem] flex-1 overflow-hidden p-0"
-          >
-            <div className="relative flex-1 overflow-hidden rounded-[calc(var(--radius-xl,1.5rem)-0.25rem)] bg-black/5">
-              {workspace.tabs.map((tab) => {
-                const active = tab.id === selectedTabId;
-                return (
-                  <iframe
-                    key={tab.id}
-                    ref={(iframe) =>
-                      registerBrowserWorkspaceIframe(tab.id, iframe)
-                    }
-                    title={getBrowserWorkspaceTabLabel(tab)}
-                    src={tab.url}
-                    loading="eager"
-                    sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
-                    allow="clipboard-read; clipboard-write"
-                    referrerPolicy="strict-origin-when-cross-origin"
-                    className={`absolute inset-0 h-full w-full border-0 bg-white transition-opacity ${
-                      active
-                        ? "pointer-events-auto opacity-100"
-                        : "pointer-events-none opacity-0"
-                    }`}
-                    onLoad={() => {
-                      postBrowserWalletReady(
-                        tab,
-                        browserWalletStateRef.current,
-                      );
-                    }}
-                  />
-                );
-              })}
-            </div>
-          </PagePanel>
-        )}
-
-        {selectedTab ? (
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-            <MetaPill compact>
-              {getBrowserWorkspaceTabLabel(selectedTab)}
-            </MetaPill>
-            <span>{selectedTab.url}</span>
-            <span>•</span>
-            <span>
-              {t("browserworkspace.LastSeen", {
-                defaultValue: "Last seen {{time}}",
-                time: formatBrowserWorkspaceTimestamp(
-                  selectedTab.lastFocusedAt ?? selectedTab.updatedAt,
-                ),
-              })}
-            </span>
-            <span>•</span>
-            <span>
-              {selectedTab.visible
-                ? t("browserworkspace.Visible", {
-                    defaultValue: "Visible",
-                  })
-                : t("browserworkspace.Background", {
-                    defaultValue: "Background",
-                  })}
-            </span>
-          </div>
-        ) : null}
+        <Input
+          value={locationInput}
+          onChange={(event) => {
+            setLocationInput(event.target.value);
+            setLocationDirty(true);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void runBrowserWorkspaceAction("navigate:enter", async () => {
+                await navigateSelectedBrowserWorkspaceTab(locationInput);
+              });
+            }
+          }}
+          placeholder={t("browserworkspace.AddressPlaceholder", {
+            defaultValue: "Enter a URL",
+          })}
+          className="h-8 flex-1 rounded-full border-border/35 bg-card/70 px-4 text-sm text-txt"
+        />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          aria-label={t("browserworkspace.OpenExternal", {
+            defaultValue: "Open external",
+          })}
+          disabled={!selectedTab || busyAction !== null}
+          onClick={() =>
+            void runBrowserWorkspaceAction("open:external", async () => {
+              if (!selectedTab) return;
+              await openExternalUrl(selectedTab.url);
+            })
+          }
+        >
+          <ExternalLink className="h-4 w-4" />
+        </Button>
       </div>
-    </PageLayout>
+
+      {/* Content row: iframe area on the left, chat sidebar on the right */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Iframe area */}
+        <div className="relative flex-1 min-h-0 overflow-hidden bg-white">
+          {loadError ? (
+            <div className="absolute left-1/2 top-6 z-20 -translate-x-1/2 rounded-md border border-danger/50 bg-danger/15 px-3 py-1.5 text-xs text-danger">
+              {loadError}
+            </div>
+          ) : null}
+
+          {workspace.tabs.length === 0 ? (
+            <div className="flex h-full items-center justify-center">
+              <div className="flex max-w-sm flex-col items-center gap-2 text-center">
+                <div className="text-sm font-semibold text-txt">
+                  {t("browserworkspace.EmptyTitle", {
+                    defaultValue: "No browser tabs yet",
+                  })}
+                </div>
+                <div className="text-xs text-muted">
+                  {t("browserworkspace.EmptyDescription", {
+                    defaultValue:
+                      "Open a page here, or let the agent create tabs through the browser workspace plugin.",
+                  })}
+                </div>
+                {loading ? (
+                  <div className="text-[11px] text-muted/70">
+                    {t("browserworkspace.Loading", {
+                      defaultValue: "Loading browser workspace",
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            workspace.tabs.map((tab) => {
+              const active = tab.id === selectedTabId;
+              return (
+                <iframe
+                  key={tab.id}
+                  ref={(iframe) =>
+                    registerBrowserWorkspaceIframe(tab.id, iframe)
+                  }
+                  title={getBrowserWorkspaceTabLabel(tab)}
+                  src={tab.url}
+                  loading="eager"
+                  sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
+                  allow="clipboard-read; clipboard-write"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  className={`absolute inset-0 h-full w-full border-0 bg-white transition-opacity ${
+                    active
+                      ? "pointer-events-auto opacity-100"
+                      : "pointer-events-none opacity-0"
+                  }`}
+                  onLoad={() => {
+                    postBrowserWalletReady(tab, browserWalletStateRef.current);
+                  }}
+                />
+              );
+            })
+          )}
+        </div>
+
+        {/* Chat sidebar */}
+        <aside
+          className={`relative flex shrink-0 flex-col border-l border-border/30 bg-bg transition-[width] duration-200 ${
+            chatSidebarCollapsed ? "w-10" : "w-[24rem]"
+          }`}
+          data-testid="browser-workspace-chat-sidebar"
+        >
+          <div className="flex items-center justify-between border-b border-border/30 px-2 py-1.5">
+            {chatSidebarCollapsed ? (
+              <button
+                type="button"
+                className="mx-auto flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-card/60 hover:text-txt"
+                aria-label={t("browserworkspace.ExpandChat", {
+                  defaultValue: "Expand chat",
+                })}
+                onClick={() => setChatSidebarCollapsed(false)}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+            ) : (
+              <>
+                <div className="flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  {t("browserworkspace.ChatSidebar", {
+                    defaultValue: "Chat",
+                  })}
+                </div>
+                <button
+                  type="button"
+                  className="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-card/60 hover:text-txt"
+                  aria-label={t("browserworkspace.CollapseChat", {
+                    defaultValue: "Collapse chat",
+                  })}
+                  onClick={() => setChatSidebarCollapsed(true)}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </>
+            )}
+          </div>
+
+          {chatSidebarCollapsed ? null : (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <ChatView variant="default" hideTerminalPanel />
+            </div>
+          )}
+        </aside>
+      </div>
+    </div>
   );
 }

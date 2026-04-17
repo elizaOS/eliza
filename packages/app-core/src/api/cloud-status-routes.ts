@@ -3,7 +3,7 @@ import type {
   CloudStatusRouteContext,
 } from "@elizaos/agent/api/cloud-status-routes";
 import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared/contracts";
-import type { ElizaConfig } from "../config/config";
+import type { ElizaConfig } from "@elizaos/agent/config/types";
 import {
   CLOUD_BILLING_URL,
   fetchUnifiedCloudCredits,

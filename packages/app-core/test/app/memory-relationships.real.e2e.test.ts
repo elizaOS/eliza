@@ -581,17 +581,15 @@ async function proxyUiRequest(args: {
   if (!filePath && !isAssetRequest) {
     filePath = path.join(APP_DIST_DIR, "index.html");
   }
-
-  let body: Buffer;
-  try {
-    body = await fs.readFile(filePath ?? path.join(APP_DIST_DIR, "index.html"));
-  } catch {
-    body = await fs.readFile(path.join(APP_DIST_DIR, "index.html"));
-    filePath = path.join(APP_DIST_DIR, "index.html");
+  if (!filePath) {
+    throw new Error(
+      `Missing built UI asset for ${requestUrl.pathname} in ${APP_DIST_DIR}`,
+    );
   }
+  const body = await fs.readFile(filePath);
 
   args.response.writeHead(200, {
-    "Content-Type": contentTypeFor(filePath ?? path.join(APP_DIST_DIR, "index.html")),
+    "Content-Type": contentTypeFor(filePath),
   });
   args.response.end(body);
 }

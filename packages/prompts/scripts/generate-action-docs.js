@@ -526,6 +526,7 @@ export type ActionDocParameterSchema = {
 export type ActionDocParameter = {
   name: string;
   description: string;
+  descriptionCompressed?: string;
   required?: boolean;
   schema: ActionDocParameterSchema;
   examples?: readonly ActionDocParameterExampleValue[];
@@ -548,6 +549,7 @@ export type ActionDocExampleMessage = {
 export type ActionDoc = {
   name: string;
   description: string;
+  descriptionCompressed?: string;
   similes?: readonly string[];
   parameters?: readonly ActionDocParameter[];
   examples?: readonly (readonly ActionDocExampleMessage[])[];
@@ -557,6 +559,7 @@ export type ActionDoc = {
 export type ProviderDoc = {
   name: string;
   description: string;
+  descriptionCompressed?: string;
   position?: number;
   dynamic?: boolean;
 };
@@ -712,6 +715,7 @@ class ActionDocParameterSchema(TypedDict, total=False):
 class ActionDocParameter(TypedDict, total=False):
     name: str
     description: str
+    descriptionCompressed: str
     required: bool
     schema: ActionDocParameterSchema
     examples: list[ActionDocParameterExampleValue]
@@ -731,6 +735,7 @@ class ActionDocExampleMessage(TypedDict, total=False):
 class ActionDoc(TypedDict, total=False):
     name: str
     description: str
+    descriptionCompressed: str
     similes: list[str]
     parameters: list[ActionDocParameter]
     examples: list[list[ActionDocExampleMessage]]
@@ -740,6 +745,7 @@ class ActionDoc(TypedDict, total=False):
 class ProviderDoc(TypedDict, total=False):
     name: str
     description: str
+    descriptionCompressed: str
     position: int
     dynamic: bool
 

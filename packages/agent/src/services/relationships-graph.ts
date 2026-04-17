@@ -14,10 +14,22 @@ export type RelationshipsGraphQuery = {
   offset?: number;
 };
 
+export type RelationshipsMergeCandidate = {
+  id: UUID;
+  entityA: UUID;
+  entityB: UUID;
+  confidence: number;
+  evidence: Record<string, unknown>;
+  status: "pending" | "accepted" | "rejected";
+  proposedAt: string;
+  resolvedAt?: string;
+};
+
 export type RelationshipsGraphSnapshot = {
   people: RelationshipsPersonSummary[];
   relationships: RelationshipsGraphEdge[];
   stats: RelationshipsGraphStats;
+  candidateMerges: RelationshipsMergeCandidate[];
 };
 
 export type RelationshipsGraphStats = {
@@ -95,6 +107,10 @@ export type RelationshipsPersonFact = {
   scope?: string;
   confidence?: number;
   updatedAt?: string;
+  /** ISO8601 timestamp from the FactRefinementEvaluator metadata. */
+  lastReinforced?: string;
+  /** Message IDs that contributed evidence for this fact. */
+  evidenceMessageIds?: string[];
 };
 
 export type RelationshipsConversationMessage = {
@@ -134,6 +150,14 @@ export type RelationshipsGraphService = {
   getPersonDetail: (
     primaryEntityId: UUID,
   ) => Promise<RelationshipsPersonDetail | null>;
+  getCandidateMerges: () => Promise<RelationshipsMergeCandidate[]>;
+  acceptMerge: (candidateId: UUID) => Promise<void>;
+  rejectMerge: (candidateId: UUID) => Promise<void>;
+  proposeMerge: (
+    entityA: UUID,
+    entityB: UUID,
+    evidence: Record<string, unknown>,
+  ) => Promise<UUID>;
 };
 
 type RelationshipsContactLike = {
@@ -157,6 +181,14 @@ type RelationshipsServiceLike = {
     searchTerm?: string;
     privacyLevel?: string;
   }) => Promise<RelationshipsContactLike[]>;
+  getCandidateMerges?: () => Promise<RelationshipsMergeCandidate[]>;
+  acceptMerge?: (candidateId: UUID) => Promise<void>;
+  rejectMerge?: (candidateId: UUID) => Promise<void>;
+  proposeMerge?: (
+    entityA: UUID,
+    entityB: UUID,
+    evidence: Record<string, unknown>,
+  ) => Promise<UUID>;
 };
 
 type EntityContext = {
@@ -1678,6 +1710,14 @@ async function buildFacts(
     });
     for (const memory of memories) {
       const metadata = asRecord(memory.metadata);
+      const lastReinforced = asString(metadata?.lastReinforced) ?? undefined;
+      const evidenceRaw = metadata?.evidenceMessageIds;
+      const evidenceMessageIds = Array.isArray(evidenceRaw)
+        ? evidenceRaw.filter(
+            (entry): entry is string =>
+              typeof entry === "string" && entry.length > 0,
+          )
+        : undefined;
       facts.push({
         id: memory.id ?? `${entityId}:fact:${facts.length}`,
         sourceType: "memory",
@@ -1687,6 +1727,8 @@ async function buildFacts(
           undefined,
         confidence: asNumber(metadata?.confidence) ?? undefined,
         updatedAt: isoFromTimestamp(memory.createdAt),
+        lastReinforced,
+        evidenceMessageIds,
       });
     }
   }
@@ -1962,6 +2004,11 @@ export function createNativeRelationshipsGraphService(
           visibleGroupIds.has(edge.targetPersonId),
       );
 
+      const candidateMerges =
+        typeof relationshipsService.getCandidateMerges === "function"
+          ? await relationshipsService.getCandidateMerges()
+          : [];
+
       return {
         people: visibleSummaries,
         relationships: visibleEdges,
@@ -1973,6 +2020,7 @@ export function createNativeRelationshipsGraphService(
             0,
           ),
         },
+        candidateMerges,
       };
     },
 
@@ -2045,6 +2093,44 @@ export function createNativeRelationshipsGraphService(
           .sort((left, right) => right.strength - left.strength),
         identityEdges,
       };
+    },
+
+    async getCandidateMerges(): Promise<RelationshipsMergeCandidate[]> {
+      if (typeof relationshipsService.getCandidateMerges !== "function") {
+        return [];
+      }
+      return relationshipsService.getCandidateMerges();
+    },
+
+    async acceptMerge(candidateId: UUID): Promise<void> {
+      if (typeof relationshipsService.acceptMerge !== "function") {
+        throw new Error(
+          "RelationshipsService does not support merge acceptance",
+        );
+      }
+      await relationshipsService.acceptMerge(candidateId);
+    },
+
+    async rejectMerge(candidateId: UUID): Promise<void> {
+      if (typeof relationshipsService.rejectMerge !== "function") {
+        throw new Error(
+          "RelationshipsService does not support merge rejection",
+        );
+      }
+      await relationshipsService.rejectMerge(candidateId);
+    },
+
+    async proposeMerge(
+      entityA: UUID,
+      entityB: UUID,
+      evidence: Record<string, unknown>,
+    ): Promise<UUID> {
+      if (typeof relationshipsService.proposeMerge !== "function") {
+        throw new Error(
+          "RelationshipsService does not support merge proposals",
+        );
+      }
+      return relationshipsService.proposeMerge(entityA, entityB, evidence);
     },
   };
 }

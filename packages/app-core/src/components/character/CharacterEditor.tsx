@@ -1,6 +1,7 @@
 
 
 import { getStylePresets } from "@elizaos/shared/onboarding-presets";
+import type { CharacterData } from "../../api/client";
 import { client } from "../../api/client";
 import {
   APP_EMOTE_EVENT,
@@ -124,6 +125,32 @@ const CHARACTER_EDITOR_PAGES = [
   "knowledge",
 ] as const;
 
+/**
+ * Cheap structural check — returns true when value already has the
+ * { examples: { name, content: { text } }[] }[] shape the UI expects.
+ * Used to skip `normalizeCharacterMessageExamples`, which strips empty
+ * turns that the user is actively composing.
+ */
+function hasValidMessageExamplesShape(value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  return value.every((convo) => {
+    if (!convo || typeof convo !== "object") return false;
+    const examples = (convo as { examples?: unknown }).examples;
+    if (!Array.isArray(examples)) return false;
+    return examples.every((msg) => {
+      if (!msg || typeof msg !== "object") return false;
+      const name = (msg as { name?: unknown }).name;
+      const content = (msg as { content?: unknown }).content;
+      return (
+        typeof name === "string" &&
+        !!content &&
+        typeof content === "object" &&
+        typeof (content as { text?: unknown }).text === "string"
+      );
+    });
+  });
+}
+
 /* ── Component ─────────────────────────────────────────────────────── */
 
 export function CharacterEditor({
@@ -194,17 +221,18 @@ export function CharacterEditor({
   const handleFieldEdit = useCallback(
     (field: string, value: unknown) => {
       if (!suppressDirtyRef.current) setFieldsEdited(true);
-      // biome-ignore lint/suspicious/noExplicitAny: typed field key interop
-      handleCharacterFieldInput(field as any, value as any);
+      handleCharacterFieldInput(
+        field as keyof CharacterData,
+        value as CharacterData[keyof CharacterData],
+      );
     },
     [handleCharacterFieldInput],
   );
 
   const handleStyleEdit = useCallback(
-    (key: string, value: string) => {
+    (key: "all" | "chat" | "post", value: string) => {
       if (!suppressDirtyRef.current) setFieldsEdited(true);
-      // biome-ignore lint/suspicious/noExplicitAny: typed field key interop
-      handleCharacterStyleInput(key as any, value);
+      handleCharacterStyleInput(key, value);
     },
     [handleCharacterStyleInput],
   );
@@ -286,8 +314,7 @@ export function CharacterEditor({
     cloudConnected: useElevenLabs,
     interruptOnSpeech: false,
     lang: "en-US",
-    // biome-ignore lint/suspicious/noExplicitAny: complex type
-    voiceConfig: voiceConfig as any,
+    voiceConfig,
     onTranscript: () => {},
   });
 
@@ -326,15 +353,11 @@ export function CharacterEditor({
         return {
           ...serverPreset,
           id: localMeta?.id ?? serverPreset.id,
-          name:
-            localMeta?.name ??
-            ("name" in serverPreset
-              ? (serverPreset as unknown as { name: string }).name
-              : undefined),
+          name: localMeta?.name ?? serverPreset.name,
           avatarIndex: localMeta?.avatarIndex,
           voicePresetId: localMeta?.voicePresetId,
           greetingAnimation: localMeta?.greetingAnimation,
-        } as unknown as OnboardingPreset;
+        } as OnboardingPreset;
       });
       setRosterStyles(merged);
     } else {
@@ -392,10 +415,14 @@ export function CharacterEditor({
     (typeof characterData?.name === "string" && characterData.name.trim()) ||
     "Agent";
   const normalizedMessageExamples = Array.isArray(d.messageExamples)
-    ? normalizeCharacterMessageExamples(
-        d.messageExamples,
-        fallbackCharacterName,
-      )
+    ? hasValidMessageExamplesShape(d.messageExamples)
+      ? (d.messageExamples as ReturnType<
+          typeof normalizeCharacterMessageExamples
+        >)
+      : normalizeCharacterMessageExamples(
+          d.messageExamples,
+          fallbackCharacterName,
+        )
     : [];
   const bioText =
     typeof d.bio === "string"
@@ -456,6 +483,11 @@ export function CharacterEditor({
     if (!Array.isArray(d.messageExamples) || d.messageExamples.length === 0) {
       return;
     }
+
+    // Skip normalization when the draft already has the expected shape —
+    // otherwise empty turns the user just added (blank text) get stripped
+    // out before they can type into them.
+    if (hasValidMessageExamplesShape(d.messageExamples)) return;
 
     const normalized = normalizeCharacterMessageExamples(
       d.messageExamples,
@@ -1167,7 +1199,7 @@ export function CharacterEditor({
       const nextItems = [...(d.style?.[key as "all" | "chat" | "post"] ?? [])];
       if (!nextItems.includes(value)) {
         nextItems.push(value);
-        handleStyleEdit(key, nextItems.join("\n"));
+        handleStyleEdit(key as "all" | "chat" | "post", nextItems.join("\n"));
       }
       setPendingStyleEntries((prev) => ({ ...prev, [key]: "" }));
     },
@@ -1178,7 +1210,7 @@ export function CharacterEditor({
     (key: string, index: number) => {
       const nextItems = [...(d.style?.[key as "all" | "chat" | "post"] ?? [])];
       nextItems.splice(index, 1);
-      handleStyleEdit(key, nextItems.join("\n"));
+      handleStyleEdit(key as "all" | "chat" | "post", nextItems.join("\n"));
     },
     [d.style, handleStyleEdit],
   );
@@ -1203,7 +1235,7 @@ export function CharacterEditor({
       } else {
         nextItems[index] = nextValue;
       }
-      handleStyleEdit(key, nextItems.join("\n"));
+      handleStyleEdit(key as "all" | "chat" | "post", nextItems.join("\n"));
     },
     [d.style, handleStyleEdit, styleEntryDrafts],
   );
@@ -1448,7 +1480,6 @@ export function CharacterEditor({
           <PageLayout
             className="h-full"
             contentInnerClassName="mx-auto flex w-full max-w-8xl min-h-0 flex-1 flex-col"
-            contentHeader={standaloneContentHeader}
             footer={<WidgetHost slot="character" className="pt-4" />}
             footerClassName="lg:px-8"
             sidebar={
@@ -1461,8 +1492,8 @@ export function CharacterEditor({
                 collapseButtonAriaLabel="Collapse character editor"
                 expandButtonAriaLabel="Expand character editor"
               >
-                <SidebarScrollRegion>
-                  <SidebarPanel className="space-y-6">
+                <SidebarScrollRegion className="!pt-0">
+                  <SidebarPanel className="!px-0 !pt-3 !pb-0 !shadow-none">
                     <nav
                       className="space-y-1"
                       aria-label="Character editor sections"
@@ -1541,6 +1572,9 @@ export function CharacterEditor({
                 e.target.value = "";
               }}
             />
+            {standaloneContentHeader ? (
+              <div className="mb-3 shrink-0">{standaloneContentHeader}</div>
+            ) : null}
             <div className="flex min-h-0 flex-1 min-w-0 flex-col">
               {activePage === "personality" && (
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from elizaos.prompt_compression import get_prompt_provider_description
 from elizaos.types import Provider, ProviderResult
 
 if TYPE_CHECKING:
@@ -26,7 +27,7 @@ async def get_providers_list(
         provider_info.append(
             {
                 "name": provider.name,
-                "description": getattr(provider, "description", "No description"),
+                "description": get_prompt_provider_description(provider, runtime),
                 "dynamic": getattr(provider, "dynamic", True),
             }
         )

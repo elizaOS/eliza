@@ -5,7 +5,7 @@
 import type {
   StewardTxRecord,
   StewardTxStatus,
-} from "@elizaos/shared/contracts/wallet";
+} from "./types/steward";
 import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Spinner } from "@elizaos/ui/components/ui/spinner";

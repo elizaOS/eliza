@@ -4,6 +4,7 @@
  * These tests exercise the real authenticated flow end-to-end:
  * auth -> onboarding -> agent start -> chat -> wallet operations -> agent stop.
  */
+import { config as loadDotenv } from "dotenv";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
@@ -21,12 +22,7 @@ import {
 import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
 
 const envPath = path.resolve(import.meta.dirname, "..", "..", "..", ".env");
-try {
-  const { config } = await import("dotenv");
-  config({ path: envPath });
-} catch {
-  // dotenv may not be available; keys must already be in process.env.
-}
+loadDotenv({ path: envPath });
 
 const LIVE_PROVIDER = selectLiveProvider("openai") ?? selectLiveProvider();
 const CAN_RUN = isLiveTestEnabled() && Boolean(LIVE_PROVIDER);

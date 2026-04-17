@@ -26,7 +26,7 @@ import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPan
 import { DatabasePageView } from "./components/pages/DatabasePageView";
 import { ConnectorsPageView } from "./components/pages/ConnectorsPageView";
 import { DesktopWorkspaceSection } from "./components/settings/DesktopWorkspaceSection";
-import { FineTuningView } from "./components/settings/FineTuningView";
+import { FineTuningView } from "@elizaos/app-training/ui/FineTuningView";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { Header } from "./components/shell/Header";
 import { AutomationsView } from "./components/pages/AutomationsView";
@@ -56,7 +56,6 @@ import {
   BugReportProvider,
   useBugReportState,
   useContextMenu,
-  useLifeOpsActivitySignals,
   useStreamPopoutNavigation,
 } from "./hooks";
 import { useActivityEvents } from "./hooks/useActivityEvents";
@@ -292,14 +291,9 @@ export function App() {
     overlayAppActive && activeOverlayApp
       ? getOverlayApp(activeOverlayApp)
       : undefined;
-  const lifeOpsSignalsEnabled =
-    startupCoordinator.phase === "ready" &&
-    agentStatus?.state === "running" &&
-    backendConnection?.state === "connected";
   const contextMenu = useContextMenu();
 
   useStreamPopoutNavigation(setTab);
-  useLifeOpsActivitySignals(lifeOpsSignalsEnabled);
 
   useEffect(() => {
     if (startupCoordinator.phase !== "ready") return;
@@ -762,7 +756,11 @@ export function App() {
           <Header
             pageRightExtras={isCharacterPage ? characterHeaderActions : null}
           />
-          <main className="flex flex-1 min-h-0 min-w-0 overflow-hidden px-3 xl:px-5 py-4 xl:py-6">
+          <main
+            className={`flex flex-1 min-h-0 min-w-0 overflow-hidden ${
+              tab === "browser" ? "" : "px-3 xl:px-5 py-4 xl:py-6"
+            }`}
+          >
             <ViewRouter
               onCharacterHeaderActionsChange={setCharacterHeaderActions}
             />

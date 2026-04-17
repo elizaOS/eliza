@@ -100,6 +100,17 @@ const FEATURES: FeatureDef[] = [
     managed: false,
     cloudOnly: false,
   },
+  {
+    id: "computeruse",
+    icon: "\uD83D\uDDA5\uFE0F",
+    nameKey: "onboarding.features.computeruse.name",
+    nameDefault: "Computer Use",
+    descKey: "onboarding.features.computeruse.desc",
+    descDefault:
+      "Let your agent control mouse, keyboard, take screenshots, and automate browsers. Requires Accessibility and Screen Recording permissions.",
+    managed: false,
+    cloudOnly: false,
+  },
 ];
 
 const FEATURE_STATE_KEYS: Record<string, string> = {
@@ -107,6 +118,7 @@ const FEATURE_STATE_KEYS: Record<string, string> = {
   discord: "onboardingFeatureDiscord",
   crypto: "onboardingFeatureCrypto",
   browser: "onboardingFeatureBrowser",
+  computeruse: "onboardingFeatureComputerUse",
 };
 
 export function FeaturesStep() {
@@ -117,6 +129,7 @@ export function FeaturesStep() {
     onboardingFeatureDiscord,
     onboardingFeatureCrypto,
     onboardingFeatureBrowser,
+    onboardingFeatureComputerUse,
     onboardingFeatureOAuthPending,
     setState,
     handleOnboardingNext,
@@ -133,12 +146,14 @@ export function FeaturesStep() {
       discord: onboardingFeatureDiscord,
       crypto: onboardingFeatureCrypto,
       browser: onboardingFeatureBrowser,
+      computeruse: onboardingFeatureComputerUse,
     }),
     [
       onboardingFeatureTelegram,
       onboardingFeatureDiscord,
       onboardingFeatureCrypto,
       onboardingFeatureBrowser,
+      onboardingFeatureComputerUse,
     ],
   );
 
@@ -161,9 +176,6 @@ export function FeaturesStep() {
       const key = FEATURE_STATE_KEYS[id];
       // Safe cast — keys are known onboarding state fields
       if (key) setState(key as "onboardingFeatureTelegram", enabled);
-      // TODO: For managed connectors, initiate OAuth flow when enabling.
-      // For now, just toggle the state. The OAuth plumbing will be connected
-      // when the cloud backend managed services are wired in (Phase 5).
     },
     [setState],
   );

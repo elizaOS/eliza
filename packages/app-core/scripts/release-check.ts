@@ -4,6 +4,10 @@ import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  findLocalPackHotspots,
+  shouldSkipExactPackDryRun,
+} from "./lib/release-check-pack-dry-run";
 import { validateStaticAssetManifest } from "./lib/static-asset-manifest.mjs";
 
 type PackFile = { path: string };
@@ -257,13 +261,6 @@ const requiredElectrobunConfigSnippets = [
   "[repoPluginsJsonPath]: `${runtimeDistDir}/plugins.json`",
   "[repoPackageJsonPath]: `${runtimeDistDir}/package.json`",
 ];
-const localPackHotspotPaths = [
-  "dist",
-  "dist/node_modules",
-  "apps/app/dist",
-  "apps/app/dist/vrms",
-  "apps/app/dist/animations",
-];
 const electrobunDirCandidates = [
   resolve("eliza", "packages", "app-core", "platforms", "electrobun"),
   resolve("apps", "app", "electrobun"),
@@ -490,28 +487,6 @@ function runPackDry(): PackResult[] {
       return runBunPackDry();
     }
   });
-}
-
-export function findLocalPackHotspots(
-  candidates = localPackHotspotPaths,
-  pathExists: (candidate: string) => boolean = existsSync,
-): string[] {
-  return candidates.filter((candidate) => pathExists(candidate));
-}
-
-export function shouldSkipExactPackDryRun(
-  hotspots: string[],
-  env = process.env,
-): boolean {
-  if (hotspots.length === 0) {
-    return false;
-  }
-
-  if (env.ELIZA_FORCE_PACK_DRY_RUN === "1") {
-    return false;
-  }
-
-  return true;
 }
 
 export function isPackPathCoveredByFilesList(

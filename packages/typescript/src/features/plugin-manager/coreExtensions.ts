@@ -1,4 +1,3 @@
-import type { EventPayload, EventPayloadMap } from "../../types/events.ts";
 import type { IAgentRuntime } from "../../types/runtime.ts";
 import type { ServiceTypeName } from "../../types/service.ts";
 
@@ -6,55 +5,19 @@ import type { ServiceTypeName } from "../../types/service.ts";
  * Core Runtime Extensions
  *
  * This module provides extensions to the core runtime for plugin management.
- * Since we cannot modify the core runtime directly, we extend it with additional
- * methods needed for proper plugin lifecycle management.
+ * `unregisterEvent` is now a first-class method on `AgentRuntime` / `IAgentRuntime`,
+ * so this file only retains component unregistration helpers (action/provider/
+ * evaluator/service) that are not yet part of the runtime contract.
  */
 
 /**
- * Extended runtime interface with plugin management methods.
- * Only adds optional unregistration helpers that don't conflict with IAgentRuntime.
+ * Extended runtime interface with optional component unregistration helpers.
  */
 export interface ExtendedRuntime extends IAgentRuntime {
-	unregisterEvent?: (
-		event: string,
-		handler: (
-			params: EventPayloadMap[keyof EventPayloadMap] | EventPayload,
-		) => Promise<void>,
-	) => void;
 	unregisterAction?: (actionName: string) => void;
 	unregisterProvider?: (providerName: string) => void;
 	unregisterEvaluator?: (evaluatorName: string) => void;
 	unregisterService?: (serviceType: string) => Promise<void>;
-}
-
-/**
- * Extends the runtime with an unregisterEvent method
- * This allows plugins to remove their event handlers when unloaded
- */
-export function extendRuntimeWithEventUnregistration(
-	runtime: IAgentRuntime,
-): void {
-	const extendedRuntime = runtime as ExtendedRuntime;
-
-	// Add unregisterEvent method if it doesn't exist
-	if (!extendedRuntime.unregisterEvent) {
-		extendedRuntime.unregisterEvent = function (
-			event: string,
-			handler: (
-				params: EventPayloadMap[keyof EventPayloadMap] | EventPayload,
-			) => Promise<void>,
-		) {
-			const handlers = this.events?.[event];
-			if (handlers) {
-				const filteredHandlers = handlers.filter((h) => h !== handler);
-				if (filteredHandlers.length > 0) {
-					this.events[event] = filteredHandlers;
-				} else {
-					delete this.events[event];
-				}
-			}
-		};
-	}
 }
 
 /**
@@ -116,6 +79,5 @@ export function extendRuntimeWithComponentUnregistration(
  * Apply all runtime extensions
  */
 export function applyRuntimeExtensions(runtime: IAgentRuntime): void {
-	extendRuntimeWithEventUnregistration(runtime);
 	extendRuntimeWithComponentUnregistration(runtime);
 }

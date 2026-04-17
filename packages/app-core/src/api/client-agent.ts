@@ -50,6 +50,7 @@ import type {
   RelationshipsGraphQuery,
   RelationshipsGraphSnapshot,
   RelationshipsGraphStats,
+  RelationshipsMergeCandidate,
   RelationshipsPersonDetail,
   RelationshipsPersonSummary,
   RuntimeDebugSnapshot,
@@ -371,6 +372,18 @@ declare module "./client-base" {
     getRelationshipsActivity(
       limit?: number,
     ): Promise<RelationshipsActivityResponse>;
+    getRelationshipsCandidates(): Promise<RelationshipsMergeCandidate[]>;
+    acceptRelationshipsCandidate(
+      candidateId: string,
+    ): Promise<{ id: string; status: string }>;
+    rejectRelationshipsCandidate(
+      candidateId: string,
+    ): Promise<{ id: string; status: string }>;
+    proposeRelationshipsLink(
+      sourceEntityId: string,
+      targetEntityId: string,
+      evidence?: Record<string, unknown>,
+    ): Promise<{ id: string; status: string }>;
     getRolodexGraph(query?: RolodexGraphQuery): Promise<RolodexGraphSnapshot>;
     getRolodexPeople(query?: RolodexGraphQuery): Promise<{
       people: RolodexPersonSummary[];
@@ -511,6 +524,7 @@ declare module "./client-base" {
       sessionId: string,
       name?: string,
     ): Promise<CodingAgentScratchWorkspace | null>;
+    spawnShellSession(workdir?: string): Promise<{ sessionId: string }>;
     subscribePtyOutput(sessionId: string): void;
     unsubscribePtyOutput(sessionId: string): void;
     sendPtyInput(sessionId: string, data: string): void;
@@ -604,7 +618,7 @@ ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
 };
 
 ElizaClient.prototype.getAgentSelfStatus = async function (this: ElizaClient) {
-  return this.fetch("/api@elizaos/agent/self-status");
+  return this.fetch("/api/agent/self-status");
 };
 
 ElizaClient.prototype.getRuntimeSnapshot = async function (
@@ -820,7 +834,7 @@ ElizaClient.prototype.exchangeOpenAICode = async function (
 
 ElizaClient.prototype.startAgent = async function (this: ElizaClient) {
   const res = await this.fetch<{ status: AgentStatus }>(
-    "/api@elizaos/agent/start",
+    "/api/agent/start",
     {
       method: "POST",
     },
@@ -830,7 +844,7 @@ ElizaClient.prototype.startAgent = async function (this: ElizaClient) {
 
 ElizaClient.prototype.stopAgent = async function (this: ElizaClient) {
   const res = await this.fetch<{ status: AgentStatus }>(
-    "/api@elizaos/agent/stop",
+    "/api/agent/stop",
     {
       method: "POST",
     },
@@ -840,7 +854,7 @@ ElizaClient.prototype.stopAgent = async function (this: ElizaClient) {
 
 ElizaClient.prototype.pauseAgent = async function (this: ElizaClient) {
   const res = await this.fetch<{ status: AgentStatus }>(
-    "/api@elizaos/agent/pause",
+    "/api/agent/pause",
     {
       method: "POST",
     },
@@ -850,7 +864,7 @@ ElizaClient.prototype.pauseAgent = async function (this: ElizaClient) {
 
 ElizaClient.prototype.resumeAgent = async function (this: ElizaClient) {
   const res = await this.fetch<{ status: AgentStatus }>(
-    "/api@elizaos/agent/resume",
+    "/api/agent/resume",
     {
       method: "POST",
     },
@@ -859,21 +873,10 @@ ElizaClient.prototype.resumeAgent = async function (this: ElizaClient) {
 };
 
 ElizaClient.prototype.restartAgent = async function (this: ElizaClient) {
-  try {
-    const res = await this.fetch<{ status: AgentStatus }>("/api/agent/restart", {
-      method: "POST",
-    });
-    return res.status;
-  } catch {
-    // Back-compat for older runtimes that still expose the legacy restart path.
-    const legacy = await this.fetch<{ status: AgentStatus }>(
-      "/api@elizaos/agent/restart",
-      {
-        method: "POST",
-      },
-    );
-    return legacy.status;
-  }
+  const res = await this.fetch<{ status: AgentStatus }>("/api/agent/restart", {
+    method: "POST",
+  });
+  return res.status;
 };
 
 ElizaClient.prototype.restartAndWait = async function (
@@ -1534,6 +1537,57 @@ ElizaClient.prototype.getRelationshipsActivity = async function (
   return this.fetch(`/api/relationships/activity${qs ? `?${qs}` : ""}`);
 };
 
+ElizaClient.prototype.getRelationshipsCandidates = async function (
+  this: ElizaClient,
+) {
+  const response = await this.fetch<{ data: RelationshipsMergeCandidate[] }>(
+    "/api/relationships/candidates",
+  );
+  return response.data;
+};
+
+ElizaClient.prototype.acceptRelationshipsCandidate = async function (
+  this: ElizaClient,
+  candidateId,
+) {
+  const response = await this.fetch<{ data: { id: string; status: string } }>(
+    `/api/relationships/candidates/${encodeURIComponent(candidateId)}/accept`,
+    { method: "POST" },
+  );
+  return response.data;
+};
+
+ElizaClient.prototype.rejectRelationshipsCandidate = async function (
+  this: ElizaClient,
+  candidateId,
+) {
+  const response = await this.fetch<{ data: { id: string; status: string } }>(
+    `/api/relationships/candidates/${encodeURIComponent(candidateId)}/reject`,
+    { method: "POST" },
+  );
+  return response.data;
+};
+
+ElizaClient.prototype.proposeRelationshipsLink = async function (
+  this: ElizaClient,
+  sourceEntityId,
+  targetEntityId,
+  evidence,
+) {
+  const response = await this.fetch<{ data: { id: string; status: string } }>(
+    `/api/relationships/people/${encodeURIComponent(sourceEntityId)}/link`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        targetEntityId,
+        evidence: evidence ?? {},
+      }),
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+  return response.data;
+};
+
 ElizaClient.prototype.getRolodexGraph = async function (
   this: ElizaClient,
   query,
@@ -1929,6 +1983,23 @@ ElizaClient.prototype.promoteCodingAgentScratchWorkspace = async function (
   } catch {
     return null;
   }
+};
+
+ElizaClient.prototype.spawnShellSession = async function (
+  this: ElizaClient,
+  workdir?: string,
+) {
+  const res = await this.fetch<{ session: { id: string } }>(
+    "/api/coding-agents/spawn",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        agentType: "shell",
+        ...(workdir ? { workdir } : {}),
+      }),
+    },
+  );
+  return { sessionId: res.session.id };
 };
 
 ElizaClient.prototype.subscribePtyOutput = function (

@@ -3,9 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  readAppIdentityFromConfig,
+  resolvePlatformTemplateRoot,
   shouldRunIosPodInstall,
-  syncIosAppIdentity,
   syncPlatformTemplateFiles,
 } from "./run-mobile-build.mjs";
 
@@ -33,34 +32,6 @@ describe("run-mobile-build", () => {
     const repoRoot = makeTempDir();
     const appDir = path.join(repoRoot, "apps", "app");
 
-    writeFile(
-      path.join(
-        repoRoot,
-        "eliza",
-        "packages",
-        "app-core",
-        "platforms",
-        "ios",
-        "App",
-        "App",
-        "App.entitlements",
-      ),
-      "app-entitlements\n",
-    );
-    writeFile(
-      path.join(
-        repoRoot,
-        "eliza",
-        "packages",
-        "app-core",
-        "platforms",
-        "ios",
-        "App",
-        "App",
-        "Info.plist",
-      ),
-      "app-plist\n",
-    );
     writeFile(
       path.join(
         repoRoot,
@@ -173,8 +144,6 @@ describe("run-mobile-build", () => {
     expect(iosCopied).toEqual([
       path.join("App", "Podfile"),
       path.join("App", "App.xcodeproj", "project.pbxproj"),
-      path.join("App", "App", "App.entitlements"),
-      path.join("App", "App", "Info.plist"),
       path.join(
         "App",
         "App",
@@ -191,18 +160,6 @@ describe("run-mobile-build", () => {
     ]);
     expect(androidCopied).toContain("build.gradle");
     expect(androidCopied).toContain(path.join("app", "capacitor.build.gradle"));
-    expect(
-      fs.readFileSync(
-        path.join(appDir, "ios", "App", "App", "App.entitlements"),
-        "utf8",
-      ),
-    ).toBe("app-entitlements\n");
-    expect(
-      fs.readFileSync(
-        path.join(appDir, "ios", "App", "App", "Info.plist"),
-        "utf8",
-      ),
-    ).toBe("app-plist\n");
     expect(
       fs.readFileSync(path.join(appDir, "ios", "App", "Podfile"), "utf8"),
     ).toBe("ios-podfile\n");
@@ -264,14 +221,20 @@ describe("run-mobile-build", () => {
 
   it("keeps shipped platform templates on app-local capacitor packages", () => {
     const repoRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+    const iosTemplateRoot = resolvePlatformTemplateRoot("ios", {
+      repoRootValue: repoRoot,
+    });
+    const androidTemplateRoot = resolvePlatformTemplateRoot("android", {
+      repoRootValue: repoRoot,
+    });
+
+    if (!iosTemplateRoot || !androidTemplateRoot) {
+      throw new Error("Expected platform templates to exist for iOS and Android.");
+    }
+
     const iosPodfile = fs.readFileSync(
       path.join(
-        repoRoot,
-        "eliza",
-        "packages",
-        "app-core",
-        "platforms",
-        "ios",
+        iosTemplateRoot,
         "App",
         "Podfile",
       ),
@@ -279,24 +242,14 @@ describe("run-mobile-build", () => {
     );
     const androidSettings = fs.readFileSync(
       path.join(
-        repoRoot,
-        "eliza",
-        "packages",
-        "app-core",
-        "platforms",
-        "android",
+        androidTemplateRoot,
         "capacitor.settings.gradle",
       ),
       "utf8",
     );
     const androidBuild = fs.readFileSync(
       path.join(
-        repoRoot,
-        "eliza",
-        "packages",
-        "app-core",
-        "platforms",
-        "android",
+        androidTemplateRoot,
         "app",
         "capacitor.build.gradle",
       ),
@@ -319,133 +272,5 @@ describe("run-mobile-build", () => {
   it("forces CocoaPods refreshes when the synced files include the iOS Podfile", () => {
     expect(shouldRunIosPodInstall([path.join("App", "Podfile")])).toBe(true);
     expect(shouldRunIosPodInstall(["build.gradle"])).toBe(false);
-  });
-
-  it("reads app identity from apps/app/app.config.ts", () => {
-    const repoRoot = makeTempDir();
-    const appConfigPath = path.join(repoRoot, "apps", "app", "app.config.ts");
-
-    writeFile(
-      appConfigPath,
-      `
-const config = {
-  appName: "Milady",
-  appId: "com.miladyai.milady",
-  branding: { appName: "Milady Brand" },
-};
-export default config;
-`,
-    );
-
-    expect(readAppIdentityFromConfig(appConfigPath)).toEqual({
-      appId: "com.miladyai.milady",
-      appName: "Milady",
-      appGroupId: "group.com.miladyai.milady",
-    });
-  });
-
-  it("rewrites generated ios files to the configured app identity", () => {
-    const appDir = path.join(makeTempDir(), "apps", "app");
-
-    writeFile(
-      path.join(appDir, "ios", "App", "App.xcodeproj", "project.pbxproj"),
-      `
-PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app;
-PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.WebsiteBlockerContentExtension;
-`,
-    );
-    writeFile(
-      path.join(appDir, "ios", "App", "App", "Info.plist"),
-      "<string>elizaOS App</string>\n",
-    );
-    writeFile(
-      path.join(appDir, "ios", "App", "App", "App.entitlements"),
-      "<string>group.ai.elizaos.app</string>\n",
-    );
-    writeFile(
-      path.join(
-        appDir,
-        "ios",
-        "App",
-        "App",
-        "WebsiteBlockerContentExtension",
-        "WebsiteBlockerContentExtension.entitlements",
-      ),
-      "<string>group.ai.elizaos.app</string>\n",
-    );
-    writeFile(
-      path.join(
-        appDir,
-        "ios",
-        "App",
-        "App",
-        "WebsiteBlockerContentExtension",
-        "ActionRequestHandler.swift",
-      ),
-      'static let appGroupIdentifier = "group.ai.elizaos.app"\n',
-    );
-
-    const updated = syncIosAppIdentity(
-      {
-        appId: "com.miladyai.milady",
-        appName: "Milady",
-        appGroupId: "group.com.miladyai.milady",
-      },
-      {
-        appDirValue: appDir,
-        log: () => {},
-      },
-    );
-
-    expect(updated).toEqual([
-      path.join("ios", "App", "App.xcodeproj", "project.pbxproj"),
-      path.join("ios", "App", "App", "Info.plist"),
-      path.join("ios", "App", "App", "App.entitlements"),
-      path.join(
-        "ios",
-        "App",
-        "App",
-        "WebsiteBlockerContentExtension",
-        "WebsiteBlockerContentExtension.entitlements",
-      ),
-      path.join(
-        "ios",
-        "App",
-        "App",
-        "WebsiteBlockerContentExtension",
-        "ActionRequestHandler.swift",
-      ),
-    ]);
-    expect(
-      fs.readFileSync(
-        path.join(appDir, "ios", "App", "App.xcodeproj", "project.pbxproj"),
-        "utf8",
-      ),
-    ).toContain("com.miladyai.milady.WebsiteBlockerContentExtension");
-    expect(
-      fs.readFileSync(
-        path.join(appDir, "ios", "App", "App", "Info.plist"),
-        "utf8",
-      ),
-    ).toContain("Milady");
-    expect(
-      fs.readFileSync(
-        path.join(appDir, "ios", "App", "App", "App.entitlements"),
-        "utf8",
-      ),
-    ).toContain("group.com.miladyai.milady");
-    expect(
-      fs.readFileSync(
-        path.join(
-          appDir,
-          "ios",
-          "App",
-          "App",
-          "WebsiteBlockerContentExtension",
-          "ActionRequestHandler.swift",
-        ),
-        "utf8",
-      ),
-    ).toContain('static let appGroupIdentifier = "group.com.miladyai.milady"');
   });
 });
