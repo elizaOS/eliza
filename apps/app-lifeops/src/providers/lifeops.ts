@@ -1,9 +1,10 @@
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  State,
+import {
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type State,
+  logger,
 } from "@elizaos/core";
 import type {
   LifeOpsGmailTriageSummary,
@@ -148,8 +149,13 @@ export const lifeOpsProvider: Provider = {
             nextEventContext =
               await service.getNextCalendarEventContext(INTERNAL_URL);
             calendarLines.push(...summarizeNextEvent(nextEventContext));
-          } catch {
-            // Calendar fetch failed — skip silently, don't break the provider
+          } catch (cause) {
+            // Degrading gracefully: calendar fetch failure must not block the
+            // provider, but we need visibility to diagnose recurring failures.
+            logger.warn(
+              { err: cause },
+              "[LifeOpsProvider] calendar fetch failed — omitting calendar context",
+            );
           }
         }
 
@@ -160,13 +166,20 @@ export const lifeOpsProvider: Provider = {
             });
             gmailSummary = triage.summary;
             emailLines.push(...summarizeGmailTriage(triage.summary));
-          } catch {
-            // Gmail fetch failed — skip silently, don't break the provider
+          } catch (cause) {
+            logger.warn(
+              { err: cause },
+              "[LifeOpsProvider] gmail triage fetch failed — omitting email context",
+            );
           }
         }
       }
-    } catch {
-      // Google connector not configured — skip calendar/email context entirely
+    } catch (cause) {
+      // Expected when Google isn't configured; debug-level to avoid per-message noise.
+      logger.debug(
+        { err: cause },
+        "[LifeOpsProvider] Google connector unavailable — skipping calendar/email context",
+      );
     }
 
     return {
