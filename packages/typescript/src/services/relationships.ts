@@ -1967,33 +1967,44 @@ export class RelationshipsService extends Service {
 		}
 
 		// Move identities + relationships from B into A, dedupe via the unique
-		// constraint, then collapse the secondary contact (if any). Done as a
-		// single transaction so partial failures don't leave half-merged state.
+		// constraint, then collapse the secondary contact (if any). PGlite's
+		// prepared-statement protocol disallows multi-statement queries, so we
+		// issue each step as its own execute() inside an explicit transaction.
 		const a = sqlQuote(candidate.entityA);
 		const b = sqlQuote(candidate.entityB);
 		const agent = sqlQuote(this.runtime.agentId);
 		const candidateLiteral = sqlQuote(candidateId);
-		const transactionSql = `
-			BEGIN;
-			INSERT INTO entity_identities (
-				entity_id, agent_id, platform, handle, verified, confidence, source,
-				first_seen, last_seen, evidence_message_ids
-			)
-			SELECT ${a}, agent_id, platform, handle, verified, confidence, source,
-				first_seen, last_seen, evidence_message_ids
-			FROM entity_identities
-			WHERE entity_id = ${b} AND agent_id = ${agent}
-			ON CONFLICT ON CONSTRAINT unique_entity_identity DO UPDATE SET
-				confidence = GREATEST(entity_identities.confidence, EXCLUDED.confidence),
-				verified = entity_identities.verified OR EXCLUDED.verified,
-				last_seen = GREATEST(entity_identities.last_seen, EXCLUDED.last_seen);
-			DELETE FROM entity_identities WHERE entity_id = ${b} AND agent_id = ${agent};
-			UPDATE entity_merge_candidates
-			SET status = 'accepted', resolved_at = now()
-			WHERE id = ${candidateLiteral};
-			COMMIT;`;
 
-		await this.execSql(transactionSql);
+		await this.execSql("BEGIN");
+		try {
+			await this.execSql(
+				`INSERT INTO entity_identities (
+					entity_id, agent_id, platform, handle, verified, confidence, source,
+					first_seen, last_seen, evidence_message_ids
+				)
+				SELECT ${a}, agent_id, platform, handle, verified, confidence, source,
+					first_seen, last_seen, evidence_message_ids
+				FROM entity_identities
+				WHERE entity_id = ${b} AND agent_id = ${agent}
+				ON CONFLICT ON CONSTRAINT unique_entity_identity DO UPDATE SET
+					confidence = GREATEST(entity_identities.confidence, EXCLUDED.confidence),
+					verified = entity_identities.verified OR EXCLUDED.verified,
+					last_seen = GREATEST(entity_identities.last_seen, EXCLUDED.last_seen)`,
+			);
+			await this.execSql(
+				`DELETE FROM entity_identities
+				 WHERE entity_id = ${b} AND agent_id = ${agent}`,
+			);
+			await this.execSql(
+				`UPDATE entity_merge_candidates
+				 SET status = 'accepted', resolved_at = now()
+				 WHERE id = ${candidateLiteral}`,
+			);
+			await this.execSql("COMMIT");
+		} catch (err) {
+			await this.execSql("ROLLBACK").catch(() => undefined);
+			throw err;
+		}
 
 		// Fold the contact rows. mergeContacts requires both sides to have a
 		// contact; if only the secondary has one we drop it so the secondary
