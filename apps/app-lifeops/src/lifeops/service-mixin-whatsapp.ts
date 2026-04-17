@@ -3,7 +3,8 @@ import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared/contracts/l
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 import {
-  parseWhatsAppWebhookMessages,
+  drainWhatsAppInboundBuffer,
+  parseAndBufferWhatsAppWebhookMessages,
   readWhatsAppCredentialsFromEnv,
   sendWhatsAppMessage as sendWhatsAppMessageRequest,
   WhatsAppError,
