@@ -60,9 +60,50 @@ export interface RealTestRuntimeResult {
   cleanup: () => Promise<void>;
 }
 
-type WindowGlobal = typeof globalThis & {
-  window?: unknown;
-};
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isPlugin(value: unknown): value is Plugin {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    typeof value.description === "string"
+  );
+}
+
+function getPendingTrajectoryWrites(service: unknown): Promise<void>[] {
+  if (!isRecord(service)) {
+    return [];
+  }
+
+  const { writeQueues } = service;
+  if (!(writeQueues instanceof Map)) {
+    return [];
+  }
+
+  return Array.from(writeQueues.values()).filter(
+    (pending): pending is Promise<void> => pending instanceof Promise,
+  );
+}
+
+function extractPlugin(
+  moduleExports: unknown,
+  exportNames: readonly string[],
+): Plugin | null {
+  if (!isRecord(moduleExports)) {
+    return null;
+  }
+
+  for (const exportName of exportNames) {
+    const candidate = moduleExports[exportName];
+    if (isPlugin(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
 
 function suppressWindowDuringNodeRuntime(): () => void {
   if (typeof process === "undefined") {
@@ -74,7 +115,7 @@ function suppressWindowDuringNodeRuntime(): () => void {
     return () => {};
   }
 
-  delete (globalThis as WindowGlobal).window;
+  Reflect.deleteProperty(globalThis, "window");
 
   return () => {
     Object.defineProperty(globalThis, "window", descriptor);
@@ -109,10 +150,7 @@ async function flushPendingTrajectoryWrites(
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const pending = runtime
       .getServicesByType("trajectories")
-      .flatMap((service) => {
-        const writeQueues = (service as TrajectoryWriteService).writeQueues;
-        return writeQueues instanceof Map ? Array.from(writeQueues.values()) : [];
-      });
+      .flatMap((service) => getPendingTrajectoryWrites(service));
     if (pending.length === 0) {
       return;
     }
@@ -167,19 +205,14 @@ export async function createRealTestRuntime(
 
     if (options?.withLLM) {
       try {
-        const pluginModule = await import("@elizaos/plugin-local-embedding");
-        const plugin =
-          pluginModule.default ??
-          ("localAiPlugin" in pluginModule
-            ? pluginModule.localAiPlugin
-            : undefined);
-        if (plugin) {
-          configureLocalEmbeddingPlugin(plugin);
-          await runtime.registerPlugin(plugin);
-          logger.info(
-            "[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",
-          );
-        }
+        const { default: localEmbeddingPlugin } = await import(
+          "@elizaos/plugin-local-embedding"
+        );
+        configureLocalEmbeddingPlugin(localEmbeddingPlugin);
+        await runtime.registerPlugin(localEmbeddingPlugin);
+        logger.info(
+          "[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",
+        );
       } catch (err) {
         logger.warn(
           `[real-runtime] Failed to register local embedding plugin: ${err}`,
@@ -202,7 +235,7 @@ export async function createRealTestRuntime(
         applyRuntimeSettings(runtime, providerConfig.env);
         try {
           const pluginModule = await import(providerConfig.pluginPackage);
-          const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
+          const plugin = extractPlugin(pluginModule, ["default", "elizaPlugin"]);
           if (plugin) {
             await runtime.registerPlugin(plugin);
             logger.info(
@@ -222,16 +255,9 @@ export async function createRealTestRuntime(
     // Register Discord plugin if requested and token available
     if (options?.withDiscord && process.env.DISCORD_BOT_TOKEN?.trim()) {
       try {
-        const discordModule = await import("@elizaos/plugin-discord");
-        const plugin =
-          discordModule.default ??
-          ("discordPlugin" in discordModule
-            ? discordModule.discordPlugin
-            : undefined);
-        if (plugin && typeof plugin === "object" && "name" in plugin) {
-          await runtime.registerPlugin(plugin as Plugin);
-          logger.info("[real-runtime] Registered Discord plugin");
-        }
+        const { default: discordPlugin } = await import("@elizaos/plugin-discord");
+        await runtime.registerPlugin(discordPlugin);
+        logger.info("[real-runtime] Registered Discord plugin");
       } catch (err) {
         logger.warn(`[real-runtime] Failed to register Discord plugin: ${err}`);
       }
@@ -240,16 +266,11 @@ export async function createRealTestRuntime(
     // Register Telegram plugin if requested and token available
     if (options?.withTelegram && process.env.TELEGRAM_BOT_TOKEN?.trim()) {
       try {
-        const telegramModule = await import("@elizaos/plugin-telegram");
-        const plugin =
-          telegramModule.default ??
-          ("telegramPlugin" in telegramModule
-            ? telegramModule.telegramPlugin
-            : undefined);
-        if (plugin && typeof plugin === "object" && "name" in plugin) {
-          await runtime.registerPlugin(plugin as Plugin);
-          logger.info("[real-runtime] Registered Telegram plugin");
-        }
+        const { default: telegramPlugin } = await import(
+          "@elizaos/plugin-telegram"
+        );
+        await runtime.registerPlugin(telegramPlugin);
+        logger.info("[real-runtime] Registered Telegram plugin");
       } catch (err) {
         logger.warn(`[real-runtime] Failed to register Telegram plugin: ${err}`);
       }

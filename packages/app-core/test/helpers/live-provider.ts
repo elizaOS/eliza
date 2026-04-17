@@ -16,6 +16,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { test } from "vitest";
 
 // Load .env from repo root if dotenv is available
 const REPO_ROOT = path.resolve(
@@ -35,22 +36,37 @@ try {
 
 const ELIZA_CLOUD_OPENAI_BASE_URL = "https://elizacloud.ai/api/v1";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getTrimmedEnv(name: string): string | null {
+  const value = process.env[name]?.trim();
+  return value ? value : null;
+}
+
+function readCloudApiKey(value: unknown): string {
+  if (!isRecord(value)) {
+    return "";
+  }
+
+  const { cloud } = value;
+  if (!isRecord(cloud)) {
+    return "";
+  }
+
+  const { apiKey } = cloud;
+  return typeof apiKey === "string" ? apiKey.trim() : "";
+}
+
 function loadConfiguredCloudApiKey(): string {
   const configuredPath =
-    process.env.ELIZA_CONFIG_PATH?.trim() ||
     process.env.ELIZA_CONFIG_PATH?.trim() ||
     path.join(os.homedir(), ".eliza", "eliza.json");
 
   try {
     const raw = fs.readFileSync(configuredPath, "utf8");
-    const parsed = JSON.parse(raw) as {
-      cloud?: {
-        apiKey?: unknown;
-      };
-    };
-    return typeof parsed.cloud?.apiKey === "string"
-      ? parsed.cloud.apiKey.trim()
-      : "";
+    return readCloudApiKey(JSON.parse(raw));
   } catch {
     return "";
   }
@@ -169,7 +185,7 @@ export function selectLiveProvider(
   for (const def of candidates) {
     let apiKey = "";
     for (const envVar of def.keyEnvVars) {
-      const val = process.env[envVar]?.trim();
+      const val = getTrimmedEnv(envVar);
       if (val) {
         apiKey = val;
         break;
@@ -178,26 +194,27 @@ export function selectLiveProvider(
     if (!apiKey) continue;
 
     const baseUrl = def.baseUrlEnvVar
-      ? process.env[def.baseUrlEnvVar]?.trim() || def.defaultBaseUrl
+      ? getTrimmedEnv(def.baseUrlEnvVar) ?? def.defaultBaseUrl
       : def.defaultBaseUrl;
 
-    const smallModel =
-      process.env[def.smallModelEnvVar]?.trim() || def.defaultSmallModel;
-    const largeModel =
-      process.env[def.largeModelEnvVar]?.trim() || def.defaultLargeModel;
+    const smallModel = getTrimmedEnv(def.smallModelEnvVar) ?? def.defaultSmallModel;
+    const largeModel = getTrimmedEnv(def.largeModelEnvVar) ?? def.defaultLargeModel;
 
     const env: Record<string, string> = {};
     for (const envVar of def.keyEnvVars) {
-      const val = process.env[envVar]?.trim();
+      const val = getTrimmedEnv(envVar);
       if (val) env[envVar] = val;
     }
-    if (def.baseUrlEnvVar && process.env[def.baseUrlEnvVar]?.trim()) {
-      env[def.baseUrlEnvVar] = process.env[def.baseUrlEnvVar]!.trim();
+    if (def.baseUrlEnvVar) {
+      const configuredBaseUrl = getTrimmedEnv(def.baseUrlEnvVar);
+      if (configuredBaseUrl) {
+        env[def.baseUrlEnvVar] = configuredBaseUrl;
+      }
     }
     env[def.smallModelEnvVar] = smallModel;
     env[def.largeModelEnvVar] = largeModel;
-    env.SMALL_MODEL = process.env.SMALL_MODEL?.trim() || smallModel;
-    env.LARGE_MODEL = process.env.LARGE_MODEL?.trim() || largeModel;
+    env.SMALL_MODEL = getTrimmedEnv("SMALL_MODEL") ?? smallModel;
+    env.LARGE_MODEL = getTrimmedEnv("LARGE_MODEL") ?? largeModel;
 
     return {
       name: def.name,
@@ -211,14 +228,14 @@ export function selectLiveProvider(
   }
 
   const cloudApiKey =
-    process.env.ELIZAOS_CLOUD_API_KEY?.trim() ||
-    process.env.ELIZA_CLOUD_API_KEY?.trim() ||
+    getTrimmedEnv("ELIZAOS_CLOUD_API_KEY") ||
+    getTrimmedEnv("ELIZA_CLOUD_API_KEY") ||
     configuredCloudApiKey;
   if (cloudApiKey && (!preferredProvider || preferredProvider === "openai")) {
-    const smallModel = process.env.OPENAI_SMALL_MODEL?.trim() || "gpt-5.4-mini";
+    const smallModel = getTrimmedEnv("OPENAI_SMALL_MODEL") || "gpt-5.4-mini";
     const largeModel =
-      process.env.OPENAI_LARGE_MODEL?.trim() ||
-      process.env.OPENAI_SMALL_MODEL?.trim() ||
+      getTrimmedEnv("OPENAI_LARGE_MODEL") ||
+      getTrimmedEnv("OPENAI_SMALL_MODEL") ||
       "gpt-5.4-mini";
 
     return {
@@ -233,8 +250,8 @@ export function selectLiveProvider(
         OPENAI_BASE_URL: ELIZA_CLOUD_OPENAI_BASE_URL,
         OPENAI_SMALL_MODEL: smallModel,
         OPENAI_LARGE_MODEL: largeModel,
-        SMALL_MODEL: process.env.SMALL_MODEL?.trim() || smallModel,
-        LARGE_MODEL: process.env.LARGE_MODEL?.trim() || largeModel,
+        SMALL_MODEL: getTrimmedEnv("SMALL_MODEL") ?? smallModel,
+        LARGE_MODEL: getTrimmedEnv("LARGE_MODEL") ?? largeModel,
       },
     };
   }
@@ -243,18 +260,18 @@ export function selectLiveProvider(
 }
 
 /**
- * Select a live provider, or skip the current test if none is available.
- * Useful as a top-level call in describe/it blocks.
+ * Select a live provider. If none is available, register a skipped test and
+ * return null so callers can branch explicitly.
  */
 export function requireLiveProvider(
   preferredProvider?: LiveProviderName,
-): LiveProviderConfig {
+): LiveProviderConfig | null {
   const provider = selectLiveProvider(preferredProvider);
   if (!provider) {
-    const { test } = require("vitest");
     test.skip("No LLM provider API key available");
+    return null;
   }
-  return provider!;
+  return provider;
 }
 
 /**
@@ -274,12 +291,12 @@ export function isLiveTestEnabled(): boolean {
 export function availableProviderNames(): LiveProviderName[] {
   const providers = new Set<LiveProviderName>(
     PROVIDERS.filter((def) =>
-      def.keyEnvVars.some((k) => process.env[k]?.trim()),
+      def.keyEnvVars.some((key) => getTrimmedEnv(key)),
     ).map((def) => def.name),
   );
   if (
-    process.env.ELIZAOS_CLOUD_API_KEY?.trim() ||
-    process.env.ELIZA_CLOUD_API_KEY?.trim() ||
+    getTrimmedEnv("ELIZAOS_CLOUD_API_KEY") ||
+    getTrimmedEnv("ELIZA_CLOUD_API_KEY") ||
     configuredCloudApiKey
   ) {
     providers.add("openai");
