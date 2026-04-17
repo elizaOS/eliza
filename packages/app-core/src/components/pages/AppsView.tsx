@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
 import { getAppSlugFromPath } from "../../navigation";
@@ -10,7 +9,6 @@ import {
   filterAppsForCatalog,
   findAppBySlug,
   getAppSlug,
-  shouldShowAppInAppsView,
 } from "../apps/helpers";
 import {
   getInternalToolApps,
@@ -161,28 +159,6 @@ export function AppsView() {
     void loadApps();
   }, [loadApps]);
 
-  // Auto-launch from URL slug on first load (e.g. /apps/babylon after refresh)
-  useEffect(() => {
-    if (slugAutoLaunchDone.current || apps.length === 0) return;
-    slugAutoLaunchDone.current = true;
-
-    // Skip if a game run is already restored from sessionStorage
-    if (activeGameRunId) return;
-
-    const slug = getAppSlugFromPath(
-      window.location.protocol === "file:"
-        ? window.location.hash.replace(/^#/, "") || "/"
-        : window.location.pathname,
-    );
-    if (!slug) return;
-
-    const app = findAppBySlug(apps, slug);
-    if (app) {
-      void handleLaunch(app);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time on first apps load
-  }, [apps]);
-
   useEffect(() => {
     let cancelled = false;
 
@@ -317,6 +293,28 @@ export function AppsView() {
     [mergeRun, pushAppsUrl, setActionNotice, setState, setTab, t],
   );
 
+  // Auto-launch from URL slug on first load (e.g. /apps/babylon after refresh)
+  useEffect(() => {
+    if (slugAutoLaunchDone.current || apps.length === 0) return;
+    slugAutoLaunchDone.current = true;
+
+    // Skip if a game run is already restored from sessionStorage
+    if (activeGameRunId) return;
+
+    const slug = getAppSlugFromPath(
+      window.location.protocol === "file:"
+        ? window.location.hash.replace(/^#/, "") || "/"
+        : window.location.pathname,
+    );
+    if (!slug) return;
+
+    const app = findAppBySlug(apps, slug);
+    if (app) {
+      void handleLaunch(app);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time on first apps load
+  }, [apps, handleLaunch, activeGameRunId]);
+
   const handleOpenCurrentGame = useCallback(() => {
     if (!hasActiveRun || !activeGameRun) return;
     setState("tab", "apps");
@@ -438,7 +436,9 @@ export function AppsView() {
           setState("activeGameRunId", "");
         }
         setActionNotice(
-          t("appsview.Stopped", { defaultValue: `${run.displayName} stopped.` }),
+          t("appsview.Stopped", {
+            defaultValue: `${run.displayName} stopped.`,
+          }),
           "success",
           2600,
         );
@@ -455,14 +455,7 @@ export function AppsView() {
         setStoppingRunId(null);
       }
     },
-    [
-      activeGameRunId,
-      appRuns,
-      setActionNotice,
-      setState,
-      stoppingRunId,
-      t,
-    ],
+    [activeGameRunId, appRuns, setActionNotice, setState, stoppingRunId, t],
   );
 
   return (
