@@ -1,10 +1,11 @@
 import { Badge, Button } from "@elizaos/app-core";
 import { Loader2, MessageCircle, Phone, QrCode, X } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSignalConnector } from "../hooks/useSignalConnector.js";
 import { useDiscordConnector } from "../hooks/useDiscordConnector.js";
 import { useTelegramConnector } from "../hooks/useTelegramConnector.js";
 import { useIMessageConnector } from "../hooks/useIMessageConnector.js";
+import type { LifeOpsTelegramAuthState } from "@elizaos/shared/contracts/lifeops";
 
 function ConnectorCardShell({
   icon,
@@ -63,6 +64,35 @@ function TelegramIcon({ className }: { className?: string }) {
       <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.479.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
     </svg>
   );
+}
+
+function inferTelegramRetryState(args: {
+  authState: LifeOpsTelegramAuthState;
+  authError: string | null;
+}): LifeOpsTelegramAuthState {
+  if (args.authState !== "error") {
+    return args.authState;
+  }
+
+  const message = (args.authError ?? "").trim().toUpperCase();
+  if (
+    message.includes("PASSWORD_HASH_INVALID") ||
+    message.includes("AUTH.CHECKPASSWORD") ||
+    message.includes("TWO-FACTOR PASSWORD")
+  ) {
+    return "waiting_for_password";
+  }
+  if (
+    message.includes("PHONE_CODE_INVALID") ||
+    message.includes("PHONE_CODE_EXPIRED") ||
+    message.includes("LOGIN CODE")
+  ) {
+    return "waiting_for_code";
+  }
+  if (message.includes("PROVISIONING CODE")) {
+    return "waiting_for_provisioning_code";
+  }
+  return "error";
 }
 
 export function SignalConnectorCard() {
@@ -272,9 +302,22 @@ export function TelegramConnectorCard() {
   const [passwordInput, setPasswordInput] = useState("");
 
   const isConnected = telegram.status?.connected === true;
-  const authState = telegram.authState ?? "idle";
+  const authError = telegram.status?.authError ?? telegram.error;
+  const authState = inferTelegramRetryState({
+    authState: telegram.authState ?? "idle",
+    authError,
+  });
   const busy =
     telegram.actionPending || telegram.loading || telegram.verifyPending;
+
+  useEffect(() => {
+    if (
+      telegram.status?.phone &&
+      phoneInput.trim().length === 0
+    ) {
+      setPhoneInput(telegram.status.phone);
+    }
+  }, [telegram.status?.phone, phoneInput]);
 
   const handleSendCode = useCallback(() => {
     if (phoneInput.trim().length > 0) {
@@ -294,24 +337,43 @@ export function TelegramConnectorCard() {
     }
   }, [passwordInput, telegram]);
 
+  const handleRestartAuth = useCallback(() => {
+    setCodeInput("");
+    setPasswordInput("");
+    void telegram.cancelAuth();
+  }, [telegram]);
+
+  const showPhoneStep = !isConnected && (authState === "idle" || authState === "error");
+  const showCodeStep =
+    authState === "waiting_for_provisioning_code" ||
+    authState === "waiting_for_code";
+  const showPasswordStep = authState === "waiting_for_password";
   const statusLabel = isConnected
     ? "Connected"
     : authState === "waiting_for_provisioning_code"
-      ? "Enter provisioning code"
+      ? "Enter my.telegram.org code"
       : authState === "waiting_for_code"
       ? "Enter verification code"
       : authState === "waiting_for_password"
         ? "2FA password required"
+        : authState === "error"
+          ? "Retry Telegram login"
         : "Not connected";
+  const statusVariant: "ok" | "muted" | "warning" =
+    isConnected
+      ? "ok"
+      : showCodeStep || showPasswordStep || authState === "error"
+        ? "warning"
+        : "muted";
 
   return (
     <ConnectorCardShell
       icon={<TelegramIcon className="h-5 w-5 shrink-0 text-muted" />}
       platform="Telegram"
       status={statusLabel}
-      statusVariant={isConnected ? "ok" : "muted"}
+      statusVariant={statusVariant}
     >
-      {!isConnected && authState === "idle" ? (
+      {showPhoneStep ? (
         <div className="flex items-center gap-2">
           <input
             type="tel"
@@ -336,59 +398,90 @@ export function TelegramConnectorCard() {
         </div>
       ) : null}
 
-      {authState === "waiting_for_provisioning_code" ||
-      authState === "waiting_for_code" ? (
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            placeholder={
-              authState === "waiting_for_provisioning_code"
-                ? "my.telegram.org code"
-                : "Verification code"
-            }
-            value={codeInput}
-            onChange={(e) => setCodeInput(e.target.value)}
-            className="h-8 flex-1 rounded-xl border border-border/28 bg-card/24 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
-            autoComplete="one-time-code"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                handleVerifyCode();
+      {showCodeStep ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              placeholder={
+                authState === "waiting_for_provisioning_code"
+                  ? "my.telegram.org code"
+                  : "Verification code"
               }
-            }}
-          />
-          <Button
-            size="sm"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={busy || codeInput.trim().length === 0}
-            onClick={handleVerifyCode}
-          >
-            Verify
-          </Button>
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.target.value)}
+              className="h-8 flex-1 rounded-xl border border-border/28 bg-card/24 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+              autoComplete="one-time-code"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleVerifyCode();
+                }
+              }}
+            />
+            <Button
+              size="sm"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={busy || codeInput.trim().length === 0}
+              onClick={handleVerifyCode}
+            >
+              Verify
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={busy}
+              onClick={handleRestartAuth}
+            >
+              Restart
+            </Button>
+          </div>
+          <div className="text-xs text-muted">
+            {authState === "waiting_for_provisioning_code"
+              ? "This is the code from my.telegram.org used to provision Telegram app credentials."
+              : "Enter the login code Telegram sent to your app or SMS, then retry if the code was wrong or expired."}
+          </div>
         </div>
       ) : null}
 
-      {authState === "waiting_for_password" ? (
-        <div className="flex items-center gap-2">
-          <input
-            type="password"
-            placeholder="2FA password"
-            value={passwordInput}
-            onChange={(e) => setPasswordInput(e.target.value)}
-            className="h-8 flex-1 rounded-xl border border-border/28 bg-card/24 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                handleSubmitPassword();
-              }
-            }}
-          />
-          <Button
-            size="sm"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={busy || passwordInput.length === 0}
-            onClick={handleSubmitPassword}
-          >
-            Submit
-          </Button>
+      {showPasswordStep ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <input
+              type="password"
+              placeholder="Telegram 2FA password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              className="h-8 flex-1 rounded-xl border border-border/28 bg-card/24 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleSubmitPassword();
+                }
+              }}
+            />
+            <Button
+              size="sm"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={busy || passwordInput.length === 0}
+              onClick={handleSubmitPassword}
+            >
+              Submit
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={busy}
+              onClick={handleRestartAuth}
+            >
+              Restart
+            </Button>
+          </div>
+          <div className="text-xs text-muted">
+            This is your Telegram two-step verification password from Telegram
+            Settings → Privacy and Security → Two-Step Verification. It is not
+            the login code sent by SMS or the Telegram app.
+          </div>
         </div>
       ) : null}
 
@@ -449,8 +542,8 @@ export function TelegramConnectorCard() {
         </div>
       ) : null}
 
-      {telegram.error ? (
-        <div className="text-xs text-danger">{telegram.error}</div>
+      {authError ? (
+        <div className="text-xs text-danger">{authError}</div>
       ) : null}
     </ConnectorCardShell>
   );

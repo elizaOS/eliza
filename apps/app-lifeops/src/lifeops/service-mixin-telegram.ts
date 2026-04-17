@@ -25,6 +25,7 @@ import {
   cancelTelegramAuth,
   deleteStoredTelegramToken,
   findPendingTelegramAuthSession,
+  inferRetryableTelegramAuthState,
   hasManagedTelegramCredentials,
   readStoredTelegramToken,
   startTelegramAuth as startTelegramAuthFlow,
@@ -65,6 +66,15 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
         : null;
       const sessionAvailable = telegramLocalSessionAvailable();
       const connected = Boolean(grant && storedToken && sessionAvailable);
+      const retryableAuthState = pendingSession
+        ? inferRetryableTelegramAuthState({
+            state: pendingSession.state,
+            error: pendingSession.error,
+          })
+        : null;
+      const authState = connected
+        ? "connected"
+        : retryableAuthState ?? pendingSession?.state ?? "idle";
 
       const capabilities: LifeOpsTelegramCapability[] = grant
         ? [...LIFEOPS_TELEGRAM_CAPABILITIES]
@@ -76,7 +86,7 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
         connected,
         reason: connected
           ? "connected"
-          : pendingSession && pendingSession.state !== "error"
+          : pendingSession
             ? "auth_pending"
             : grant || storedToken
               ? "auth_expired"
@@ -91,9 +101,7 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
               ? (grant.identity as LifeOpsTelegramConnectorStatus["identity"])
               : null,
         grantedCapabilities: capabilities,
-        authState: connected
-          ? "connected"
-          : pendingSession?.state ?? "idle",
+        authState,
         authError: pendingSession?.error ?? null,
         phone:
           pendingSession?.phone ??
@@ -197,6 +205,11 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
         "local",
         side,
       );
+      const pendingSession = findPendingTelegramAuthSession(this.agentId(), side);
+
+      if (pendingSession) {
+        await cancelTelegramAuth(pendingSession.sessionId);
+      }
 
       if (grant?.tokenRef) {
         deleteStoredTelegramToken(grant.tokenRef);

@@ -40,7 +40,8 @@ export class CalendlyError extends Error {
   }
 }
 
-const CALENDLY_BASE_URL = "https://api.calendly.com";
+const CALENDLY_BASE_URL =
+  process.env.MILADY_MOCK_CALENDLY_BASE ?? "https://api.calendly.com";
 const REQUEST_TIMEOUT_MS = 12_000;
 
 export function readCalendlyCredentialsFromEnv(

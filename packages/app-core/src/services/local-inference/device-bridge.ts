@@ -401,7 +401,13 @@ export class DeviceBridge {
     });
 
     socket.on("close", () => {
-      if (registered && registeredDeviceId) {
+      if (!registered || !registeredDeviceId) return;
+      // Only evict if THIS socket is still the current one for the
+      // deviceId. When a newer connection supersedes us, its registration
+      // already replaced the map entry; the delayed close event from our
+      // superseded socket must not tear that down.
+      const current = this.devices.get(registeredDeviceId);
+      if (current && current.socket === socket) {
         this.onDeviceDisconnected(registeredDeviceId);
       }
     });

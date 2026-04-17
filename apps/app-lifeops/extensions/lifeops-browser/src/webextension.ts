@@ -123,6 +123,22 @@ type RawPermissions = {
     | undefined;
 };
 
+type RawScriptingExecutionResult = {
+  result?: unknown;
+};
+
+type RawScripting = {
+  executeScript?: (
+    injection: {
+      target: { tabId: number };
+      world?: "ISOLATED" | "MAIN";
+      func: (...args: unknown[]) => unknown;
+      args?: unknown[];
+    },
+    callback?: Callback<RawScriptingExecutionResult[]>,
+  ) => Promise<RawScriptingExecutionResult[]> | undefined;
+};
+
 type RawDeclarativeNetRequestRule = {
   id: number;
   priority: number;
@@ -154,6 +170,7 @@ type RawApi = {
     getURL?: (path: string) => string;
   };
   storage?: { local?: RawStorageArea };
+  scripting?: RawScripting;
   tabs?: RawTabs;
   windows?: RawWindows;
   alarms?: RawAlarms;
@@ -337,6 +354,30 @@ export async function sendRuntimeMessage<T>(message: unknown): Promise<T> {
     runtime.sendMessage?.(message, callback),
   );
   return result as T;
+}
+
+export async function executeScriptInMainWorld<T>(
+  tabId: number,
+  func: (...args: unknown[]) => T | Promise<T>,
+  args: unknown[] = [],
+): Promise<T> {
+  const scripting = getRawApi().scripting;
+  if (!scripting?.executeScript) {
+    throw new Error("scripting.executeScript is unavailable");
+  }
+  const results = await invokeAsync<RawScriptingExecutionResult[]>(
+    (callback) =>
+      scripting.executeScript?.(
+        {
+          target: { tabId },
+          world: "MAIN",
+          func,
+          args,
+        },
+        callback,
+      ),
+  );
+  return (results[0]?.result as T | undefined) as T;
 }
 
 export function addRuntimeMessageListener(

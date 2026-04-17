@@ -66,6 +66,20 @@ body {
   margin-top: 16px;
 }
 
+.auto-card,
+.import-card {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid rgba(38, 68, 50, 0.12);
+  border-radius: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.auto-card {
+  background: rgba(244, 251, 246, 0.82);
+}
+
 label {
   display: grid;
   gap: 4px;
@@ -103,13 +117,7 @@ textarea {
 }
 
 .import-card {
-  margin-top: 16px;
-  padding: 14px;
-  border: 1px solid rgba(38, 68, 50, 0.12);
-  border-radius: 14px;
   background: rgba(255, 255, 255, 0.7);
-  display: grid;
-  gap: 10px;
 }
 
 .import-copy h2 {

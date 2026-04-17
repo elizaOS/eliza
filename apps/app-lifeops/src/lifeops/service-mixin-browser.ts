@@ -1,8 +1,11 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import crypto from "node:crypto";
 import type {
+  CreateLifeOpsBrowserCompanionAutoPairRequest,
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,
+  LifeOpsBrowserCompanionAutoPairResponse,
+  LifeOpsBrowserCompanionConfig,
   CreateLifeOpsBrowserCompanionPairingRequest,
   CreateLifeOpsBrowserSessionRequest,
   LifeOpsBrowserCompanionPairingResponse,
@@ -1000,6 +1003,42 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
           updatedAt: nowIso,
         },
         pairingToken,
+      };
+    }
+
+    async autoPairBrowserCompanion(
+      request: CreateLifeOpsBrowserCompanionAutoPairRequest,
+      apiBaseUrl: string,
+    ): Promise<LifeOpsBrowserCompanionAutoPairResponse> {
+      const profileId = normalizeOptionalString(request.profileId) ?? "default";
+      const profileLabel =
+        normalizeOptionalString(request.profileLabel) ?? "Default";
+      const label =
+        normalizeOptionalString(request.label) ??
+        `LifeOps Browser ${normalizeEnumValue(request.browser, "browser", LIFEOPS_BROWSER_KINDS)} ${profileLabel}`;
+      const pairing = await this.createBrowserCompanionPairing({
+        browser: request.browser,
+        profileId,
+        profileLabel,
+        label,
+        extensionVersion: request.extensionVersion ?? null,
+        metadata: request.metadata,
+      });
+      const config: LifeOpsBrowserCompanionConfig = {
+        apiBaseUrl: requireNonEmptyString(apiBaseUrl, "apiBaseUrl").replace(
+          /\/+$/,
+          "",
+        ),
+        companionId: pairing.companion.id,
+        pairingToken: pairing.pairingToken,
+        browser: pairing.companion.browser,
+        profileId: pairing.companion.profileId,
+        profileLabel: pairing.companion.profileLabel,
+        label: pairing.companion.label,
+      };
+      return {
+        companion: pairing.companion,
+        config,
       };
     }
 
