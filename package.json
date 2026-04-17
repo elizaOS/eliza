@@ -4,7 +4,7 @@
   "module": "index.ts",
   "type": "module",
   "engines": {
-    "node": "23.11.1"
+    "node": "23.3.0"
   },
   "scripts": {
     "postinstall": "bun scripts/patch-nested-core-dist.mjs",
@@ -95,7 +95,7 @@
     "react-dom": "19.2.5",
     "@types/react": "19.2.14",
     "@types/node": "25.4.0",
-    "typedoc-plugin-markdown": "4.11.0",
+    "typedoc-plugin-markdown": "4.2.10",
     "typedoc": "0.27.9",
     "zod": "^4.3.6",
     "drizzle-orm": "^0.45.1"
@@ -116,9 +116,9 @@
     "pg-native": "npm:empty-npm-package@1.0.0",
     "libpq": "npm:empty-npm-package@1.0.0",
     "@uniswap/sdk-core": "^5.9.0",
-    "@uniswap/v3-sdk": "3.30.0",
+    "@uniswap/v3-sdk": "3.28.0",
     "@uniswap/v2-sdk": "4.6.0",
-    "@uniswap/v4-sdk": "1.30.0",
+    "@uniswap/v4-sdk": "2.0.0",
     "drizzle-orm": "^0.45.1"
   },
   "trustedDependencies": [
