@@ -45,7 +45,7 @@ setup(
         "requests~=2.33.0",
         "pytz~=2024.1",
         "transformers~=5.0.0rc3",
-        "torch~=2.8.0",
+        "torch~=2.11.0",
         "accelerate",
         "opencv-python-headless~=4.8.1.78",
         "matplotlib~=3.7.4",
