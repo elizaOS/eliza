@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@elizaos/core": "2.0.0-alpha.173",
-    "@octokit/rest": "^21.0.2"
+    "@octokit/rest": "^22.0.0"
   },
   "peerDependencies": {
     "@elizaos/core": "2.0.0-alpha.173"
