@@ -1,4 +1,4 @@
-name: elizaos-app
+name: milady
 version: '2.0.0-alpha.92'
 summary: Personal AI assistant built on elizaOS
 description: |
@@ -15,15 +15,15 @@ description: |
   - Web3 wallet integration (EVM + Solana)
   - Desktop apps for macOS, Windows, and Linux
 
-  Quick start: sudo snap install elizaos-app && elizaos-app setup
+  Quick start: sudo snap install milady && milady setup
 
 grade: devel
 confinement: strict
 base: core22
 license: MIT
 website: https://app.elizaos.ai
-source-code: https://github.com/elizaos/elizaos-app
-issues: https://github.com/elizaos/elizaos-app/issues
+source-code: https://github.com/milady-ai/milady
+issues: https://github.com/milady-ai/milady/issues
 
 architectures:
   - build-on: [amd64]
@@ -36,8 +36,8 @@ layout:
     symlink: $SNAP/usr/lib/x86_64-linux-gnu/libatomic.so.1
 
 apps:
-  elizaos-app:
-    command: bin/elizaos-app-wrapper
+  milady:
+    command: bin/milady-wrapper
     plugs:
       - network
       - network-bind
@@ -47,12 +47,12 @@ apps:
       - password-manager-service
     environment:
       PATH: $SNAP/node/bin:$SNAP/usr/bin:$SNAP/bin:$PATH
-      NODE_PATH: $SNAP/lib/elizaos-app/node_modules
+      NODE_PATH: $SNAP/lib/milady/node_modules
       HOME: $SNAP_USER_DATA
-      ELIZAOS_APP_DATA_DIR: $SNAP_USER_COMMON/.elizaos-app
+      ELIZAOS_APP_DATA_DIR: $SNAP_USER_COMMON/.milady
       # Ensure Node.js can resolve DNS and make HTTPS requests
       NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
-      # Snap-specific: tell elizaos-app where config lives
+      # Snap-specific: tell Milady where config lives
       XDG_CONFIG_HOME: $SNAP_USER_COMMON
       XDG_DATA_HOME: $SNAP_USER_COMMON
 
@@ -101,7 +101,7 @@ parts:
       - unzip
       - curl
 
-  elizaos-app:
+  milady:
     after: [node, bun]
     plugin: nil
     source: .
@@ -109,19 +109,9 @@ parts:
       set -eu
       export PATH="$CRAFT_STAGE/bun/bin:$CRAFT_STAGE/node/bin:$PATH"
 
-      # Skip building upstream plugins from source — use npm-published packages
+      # Skip building local upstreams and native Capacitor plugins in the snap build.
       export ELIZAOS_APP_SKIP_LOCAL_UPSTREAMS=1
-
-      # Use the shared disable-local-eliza-workspace script so snap and
-      # every other SKIP_LOCAL_UPSTREAMS CI path are consistent. The
-      # script strips `eliza/packages/*` from workspaces, rewrites
-      # `@elizaos/core: workspace:*` to the pinned registry version
-      # across every workspace package.json, and cleans the root
-      # `overrides` block so `bun install` and `bun pm pack` produce a
-      # conflict-free lockfile. Snapcraft runs inside a multipass VM
-      # that does NOT inherit `GITHUB_ACTIONS=true`, so we set the
-      # force flag here to opt into the destructive mutation path.
-      ELIZAOS_APP_DISABLE_LOCAL_UPSTREAMS=force node scripts/disable-local-eliza-workspace.mjs
+      export SKIP_NATIVE_PLUGINS=1
 
       # Remove plugin source directories so tsc/build does not attempt
       # to compile them (their deps like coding-agent-adapters are
@@ -264,45 +254,54 @@ parts:
       # trying to build the (now-removed) plugin-agent-orchestrator from source.
       bun install --ignore-scripts
 
+      # Fresh CI checkouts do not track generated protobuf JS output.
+      if [ -d eliza/packages/schemas ] && [ -f eliza/packages/schemas/buf.gen.yaml ] && [ ! -f eliza/packages/typescript/src/types/generated/eliza/v1/agent_pb.js ]; then
+        (
+          cd eliza/packages/schemas
+          node node_modules/@bufbuild/buf/install.js 2>/dev/null || true
+          bunx @bufbuild/buf@1.67.0 generate
+        )
+      fi
+
       # Run only the safe postinstall steps (patch deps, link browser server)
       node scripts/patch-deps.mjs || true
       node scripts/link-browser-server.mjs || true
 
       # Build the project
-      bun run build || true
+      bun run build
 
       # Install into snap
-      mkdir -p "$CRAFT_PART_INSTALL/lib/elizaos-app"
+      mkdir -p "$CRAFT_PART_INSTALL/lib/milady"
 
       # Copy built artifacts
-      cp -r dist/ "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
-      cp elizaos-app.mjs "$CRAFT_PART_INSTALL/lib/elizaos-app/"
-      cp package.json "$CRAFT_PART_INSTALL/lib/elizaos-app/"
-      cp plugins.json "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
+      cp -r dist/ "$CRAFT_PART_INSTALL/lib/milady/" 2>/dev/null || true
+      cp milady.mjs "$CRAFT_PART_INSTALL/lib/milady/"
+      cp package.json "$CRAFT_PART_INSTALL/lib/milady/"
+      cp plugins.json "$CRAFT_PART_INSTALL/lib/milady/" 2>/dev/null || true
 
       # Copy node_modules for runtime
-      cp -r node_modules "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
+      cp -r node_modules "$CRAFT_PART_INSTALL/lib/milady/" 2>/dev/null || true
 
       # Copy additional runtime files
       for dir in src scripts skills patches; do
         if [ -d "$dir" ]; then
-          cp -r "$dir" "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
+          cp -r "$dir" "$CRAFT_PART_INSTALL/lib/milady/" 2>/dev/null || true
         fi
       done
 
       # Create wrapper script
       mkdir -p "$CRAFT_PART_INSTALL/bin"
-      cat > "$CRAFT_PART_INSTALL/bin/elizaos-app-wrapper" << 'WRAPPER'
+      cat > "$CRAFT_PART_INSTALL/bin/milady-wrapper" << 'WRAPPER'
       #!/bin/sh
       set -e
 
-      # Ensure elizaos-app data directory exists
-      ELIZAOS_APP_HOME="${ELIZAOS_APP_DATA_DIR:-$SNAP_USER_COMMON/.elizaos-app}"
+      # Ensure Milady data directory exists
+      ELIZAOS_APP_HOME="${ELIZAOS_APP_DATA_DIR:-$SNAP_USER_COMMON/.milady}"
       mkdir -p "$ELIZAOS_APP_HOME"
 
-      exec "$SNAP/node/bin/node" "$SNAP/lib/elizaos-app/elizaos-app.mjs" "$@"
+      exec "$SNAP/node/bin/node" "$SNAP/lib/milady/milady.mjs" "$@"
       WRAPPER
-      chmod +x "$CRAFT_PART_INSTALL/bin/elizaos-app-wrapper"
+      chmod +x "$CRAFT_PART_INSTALL/bin/milady-wrapper"
 
     build-packages:
       - curl
