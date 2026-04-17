@@ -111,10 +111,8 @@ export interface CodingAgentTasksPanelProps {
 }
 
 export interface PtyConsoleDrawerProps {
-  activeSessionId: string | null;
+  activeSessionId: string;
   sessions: CodingAgentSession[];
-  onSessionClick: (sessionId: string) => void;
-  onNewSession: () => void;
   onClose: () => void;
 }
 
