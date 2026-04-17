@@ -778,7 +778,11 @@ function isModuleResolutionFailure(err: unknown): boolean {
     return false;
   }
   const code = "code" in err ? (err as NodeJS.ErrnoException).code : undefined;
-  if (code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND") {
+  if (
+    code === "MODULE_NOT_FOUND" ||
+    code === "ERR_MODULE_NOT_FOUND" ||
+    code === "ERR_PACKAGE_PATH_NOT_EXPORTED"
+  ) {
     return true;
   }
   if (!("message" in err) || typeof err.message !== "string") {
@@ -787,7 +791,8 @@ function isModuleResolutionFailure(err: unknown): boolean {
   return (
     err.message.includes("Cannot find module") ||
     err.message.includes("Cannot find package") ||
-    err.message.includes("ERR_MODULE_NOT_FOUND")
+    err.message.includes("ERR_MODULE_NOT_FOUND") ||
+    err.message.includes('is not defined by "exports"')
   );
 }
 
