@@ -48,14 +48,6 @@
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/skills": ["../skills/src/index.ts"],
       "@elizaos/skills/*": ["../skills/src/*"],
-      "react": ["../app-core/node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": [
-        "../app-core/node_modules/@types/react/jsx-runtime.d.ts"
-      ],
-      "react/jsx-dev-runtime": [
-        "../app-core/node_modules/@types/react/jsx-dev-runtime.d.ts"
-      ],
-      "react-dom": ["../app-core/node_modules/@types/react-dom/index.d.ts"],
       "@elizaos/*": ["../../node_modules/@elizaos/*"]
     }
   },
