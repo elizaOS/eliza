@@ -90,6 +90,19 @@ export function withDossier<TBase extends Constructor<LifeOpsServiceBase>>(
         ? input.attendeeHandles.filter((h) => typeof h === "string" && h.trim())
         : [];
 
+      // WS3: track whether we tried cross-platform identity dedup and
+      // whether it was available. Seen primaries collapse Jill-on-Discord
+      // + Jill-on-Telegram + jill@example.com to one dossier entry.
+      let identityClusterDegraded = false;
+      const seenClusterPrimaries = new Set<string>();
+      const relationshipsService =
+        typeof (this as any).runtime?.getService === "function"
+          ? (this as any).runtime.getService("relationships")
+          : null;
+      const canResolveCluster =
+        !!relationshipsService &&
+        typeof relationshipsService.resolvePrimaryEntityId === "function";
+
       if (
         handles.length > 0 &&
         typeof (this as any).listRelationships === "function"
@@ -119,6 +132,30 @@ export function withDossier<TBase extends Constructor<LifeOpsServiceBase>>(
               snippet: "(no relationship on file)",
             });
             continue;
+          }
+
+          // WS3: dedup by cross-platform identity cluster primary.
+          if (rel.id) {
+            if (canResolveCluster) {
+              try {
+                const primary = await relationshipsService.resolvePrimaryEntityId(
+                  rel.id,
+                );
+                if (seenClusterPrimaries.has(primary)) {
+                  sources.push({
+                    kind: "attendee",
+                    ref: handle,
+                    snippet: "(duplicate identity — folded into earlier attendee)",
+                  });
+                  continue;
+                }
+                seenClusterPrimaries.add(primary);
+              } catch {
+                identityClusterDegraded = true;
+              }
+            } else {
+              identityClusterDegraded = true;
+            }
           }
 
           const lines: string[] = [];

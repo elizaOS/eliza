@@ -1,56 +1,24 @@
 /**
  * Unit tests for the planner-preamble emission logic in the message service.
  *
- * Two pieces cooperate to make agents show the planner's text when the first
- * action isn't REPLY:
+ * When the planner returns `{text, actions}`, the runtime decides whether to
+ * surface `text` to the user based on the first action:
  *
- *   1. `stripPlannerReplyForSuppressiveActions` removes REPLY from the action
- *      list when a suppressive action (GMAIL/INBOX/etc.) is present, but now
- *      KEEPS the planner's text so the message service can emit it as a
- *      preamble.
+ *   - Simple mode (`actions === ["REPLY"]`): text is emitted as the reply via
+ *     the normal simple-mode pipeline. No preamble needed.
+ *   - Actions mode with first action REPLY: skip the preamble — the REPLY
+ *     handler generates its own text.
+ *   - Actions mode with first action IGNORE or STOP: skip the preamble —
+ *     nothing is sent to the user.
+ *   - Actions mode with any other first action: fire the preamble so the user
+ *     sees "checking your inbox" before INBOX/GMAIL/etc. produce the grounded
+ *     answer.
  *
- *   2. `shouldEmitPlannerPreamble` decides whether to fire that preamble —
- *      only when text is non-empty AND the first action isn't REPLY, IGNORE,
- *      or STOP.
- *
- * Together, a response like `{text: "checking your inbox", actions: ["INBOX"]}`
- * no longer presents silence to the user; the preamble fires, then INBOX
- * handler produces its grounded answer.
+ * `shouldEmitPlannerPreamble` encodes that decision.
  */
 
 import { describe, expect, it } from "vitest";
-import {
-	shouldEmitPlannerPreamble,
-	stripPlannerReplyForSuppressiveActions,
-} from "../services/message.ts";
-import type { Action, Content, IAgentRuntime } from "../types/index.ts";
-
-function runtimeWithActions(actions: Action[]): IAgentRuntime {
-	return { actions } as unknown as IAgentRuntime;
-}
-
-function suppressiveAction(name: string): Action {
-	return {
-		name,
-		similes: [],
-		description: name,
-		suppressPostActionContinuation: true,
-		validate: async () => true,
-		handler: async () => ({ success: true }),
-		examples: [],
-	};
-}
-
-function plainAction(name: string): Action {
-	return {
-		name,
-		similes: [],
-		description: name,
-		validate: async () => true,
-		handler: async () => ({ success: true }),
-		examples: [],
-	};
-}
+import { shouldEmitPlannerPreamble } from "../services/message.ts";
 
 describe("shouldEmitPlannerPreamble", () => {
 	it("emits when first action is a non-terminal action and text is present", () => {
@@ -121,10 +89,9 @@ describe("shouldEmitPlannerPreamble", () => {
 		expect(shouldEmitPlannerPreamble(undefined)).toBe(false);
 	});
 
-	it("handles first action being REPLY even when more follow (covered by simple-mode detection upstream)", () => {
-		// Defense: if a bundled response slips through as actions-mode with REPLY
-		// as the first entry, we still skip the preamble — the REPLY handler's
-		// own text generation owns the user-visible reply.
+	it("skips preamble when REPLY is the first action even if other actions follow", () => {
+		// The REPLY handler is still invoked via processActions and produces
+		// its own user-visible text, so we don't pre-emit the plan.
 		expect(
 			shouldEmitPlannerPreamble({
 				text: "checking",
@@ -132,69 +99,15 @@ describe("shouldEmitPlannerPreamble", () => {
 			}),
 		).toBe(false);
 	});
-});
 
-describe("stripPlannerReplyForSuppressiveActions", () => {
-	it("preserves text and strips REPLY when a suppressive action is present", () => {
-		const runtime = runtimeWithActions([
-			plainAction("REPLY"),
-			suppressiveAction("GMAIL_ACTION"),
-		]);
-		const content: Content = {
-			text: "checking your inbox",
-			actions: ["REPLY", "GMAIL_ACTION"],
-		};
-
-		stripPlannerReplyForSuppressiveActions(runtime, content);
-
-		// REPLY removed so its handler doesn't generate a second message after
-		// the suppressive action produces its grounded answer.
-		expect(content.actions).toEqual(["GMAIL_ACTION"]);
-		// Text retained — the caller surfaces it as a preamble before actions run.
-		expect(content.text).toBe("checking your inbox");
-	});
-
-	it("is a no-op when no suppressive action is present", () => {
-		const runtime = runtimeWithActions([
-			plainAction("REPLY"),
-			plainAction("PLAIN_ACTION"),
-		]);
-		const content: Content = {
-			text: "hello",
-			actions: ["REPLY", "PLAIN_ACTION"],
-		};
-
-		stripPlannerReplyForSuppressiveActions(runtime, content);
-
-		expect(content.actions).toEqual(["REPLY", "PLAIN_ACTION"]);
-		expect(content.text).toBe("hello");
-	});
-
-	it("is a no-op when no actions are present", () => {
-		const runtime = runtimeWithActions([suppressiveAction("GMAIL_ACTION")]);
-		const content: Content = { text: "standalone", actions: [] };
-
-		stripPlannerReplyForSuppressiveActions(runtime, content);
-
-		expect(content.actions).toEqual([]);
-		expect(content.text).toBe("standalone");
-	});
-
-	it("keeps REPLY if it is the only action (filteredActions fallback)", () => {
-		// Existing behavior: if stripping REPLY would leave the action list
-		// empty, keep REPLY. This is a defensive fallback — in practice the
-		// suppressive-action check earlier prevents this scenario.
-		const runtime = runtimeWithActions([
-			plainAction("REPLY"),
-			suppressiveAction("GMAIL_ACTION"),
-		]);
-		const content: Content = {
-			text: "retained",
-			actions: ["REPLY"],
-		};
-		// No suppressive action in THIS content, so it's a no-op.
-		stripPlannerReplyForSuppressiveActions(runtime, content);
-		expect(content.actions).toEqual(["REPLY"]);
-		expect(content.text).toBe("retained");
+	it("emits preamble when REPLY trails a non-terminal first action", () => {
+		// First action drives the decision; REPLY later in the list is the
+		// responsibility of processActions.
+		expect(
+			shouldEmitPlannerPreamble({
+				text: "checking your inbox",
+				actions: ["INBOX", "REPLY"],
+			}),
+		).toBe(true);
 	});
 });

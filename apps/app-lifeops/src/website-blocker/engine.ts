@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { domainToASCII } from "node:url";
 import { promisify } from "node:util";
-import type { HandlerOptions, Memory } from "@elizaos/core";
+import type { HandlerOptions } from "@elizaos/core";
 import type { PermissionState, PermissionStatus } from "./permissions.ts";
 
 const BLOCK_START_MARKER = "# >>> eliza-selfcontrol >>>";
@@ -655,7 +655,6 @@ export function buildSelfControlManagedHostsBlock(
 
 export function parseSelfControlBlockRequest(
   options?: HandlerOptions,
-  message?: Memory,
 ): { request: SelfControlBlockRequest | null; error?: string } {
   const params = options?.parameters as
     | {
@@ -665,25 +664,20 @@ export function parseSelfControlBlockRequest(
     | undefined;
 
   const websites = normalizeWebsiteTargets(
-    normalizeStringList(params?.websites) ??
-      extractWebsiteTargetsFromText(getMessageText(message)),
+    normalizeStringList(params?.websites) ?? [],
   );
 
   if (websites.length === 0) {
     return {
       request: null,
-      error: message
-        ? "Could not determine which public website hostnames to block from the recent conversation. Name the sites explicitly, or pass them to the action as parameters."
-        : "Provide at least one public website hostname, such as `x.com` or `twitter.com`.",
+      error:
+        "Provide at least one public website hostname, such as `x.com` or `twitter.com`.",
     };
   }
 
   const durationMinutes =
     parseDurationMinutes(params?.durationMinutes) ??
-    extractDurationMinutesFromText(getMessageText(message)) ??
-    (hasIndefiniteBlockIntent(getMessageText(message))
-      ? null
-      : DEFAULT_DURATION_MINUTES);
+    DEFAULT_DURATION_MINUTES;
 
   if (
     durationMinutes !== null &&
@@ -1278,62 +1272,6 @@ function parseDurationMinutes(
   }
 
   return undefined;
-}
-
-export function extractDurationMinutesFromText(text: string): number | null {
-  const match = text.match(
-    /\bfor\s+(\d+(?:\.\d+)?)\s*(minutes?|mins?|hours?|hrs?|days?)\b/i,
-  );
-  if (!match) return null;
-
-  const amount = Number.parseFloat(match[1]);
-  if (!Number.isFinite(amount) || amount <= 0) return null;
-
-  const unit = match[2].toLowerCase();
-  if (unit.startsWith("day")) {
-    return Math.round(amount * 24 * 60);
-  }
-  if (unit.startsWith("hour") || unit.startsWith("hr")) {
-    return Math.round(amount * 60);
-  }
-  return Math.round(amount);
-}
-
-export function hasIndefiniteBlockIntent(text: string): boolean {
-  return (
-    /\b(indefinitely|until i unblock|until i remove|until i say so|until further notice)\b/i.test(
-      text,
-    ) || /\bblock\b.*\bforever\b/i.test(text)
-  );
-}
-
-export function hasWebsiteBlockDeferralIntent(text: string): boolean {
-  return (
-    /\bdo not block\b/i.test(text) ||
-    /\bdon'?t block\b/i.test(text) ||
-    /\bnot yet\b/i.test(text) ||
-    /\bhold off\b/i.test(text) ||
-    /\bwait(?: for me)?(?: to)?\s+(?:confirm|say|tell|be ready)\b/i.test(
-      text,
-    ) ||
-    /\bblock\b.*\blater\b/i.test(text) ||
-    /\bself ?control\b.*\blater\b/i.test(text)
-  );
-}
-
-export function hasWebsiteBlockIntent(text: string): boolean {
-  return /\b(block|unblock|self control|selfcontrol|focus)\b/i.test(text);
-}
-
-export function extractWebsiteTargetsFromText(text: string): string[] {
-  return Array.from(
-    text.matchAll(/https?:\/\/[^\s]+|(?<![@/])(?:[a-z0-9-]+\.)+[a-z]{2,}\b/gi),
-    (match) => match[0],
-  );
-}
-
-function getMessageText(message?: Memory): string {
-  return typeof message?.content?.text === "string" ? message.content.text : "";
 }
 
 function normalizeIsoDate(rawDate: string): string | null {

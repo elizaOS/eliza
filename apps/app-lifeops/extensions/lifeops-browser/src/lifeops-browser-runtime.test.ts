@@ -1,14 +1,82 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runDomAction } from "./dom-actions";
 import { capturePageContext } from "./page-extract";
-import { normalizeCompanionConfig } from "./storage";
+import {
+  discoverLifeOpsApiBaseUrl,
+  normalizeCompanionConfig,
+  saveCompanionConfig,
+} from "./storage";
 import {
   findFocusedTab,
   mergeRememberedTabs,
   selectTabsForSync,
   type RememberedTab,
 } from "./tab-cache";
+
+const storageState = new Map<string, unknown>();
+
+function installMockExtensionApi(args: {
+  tabs?: Array<Record<string, unknown>>;
+}) {
+  const tabs = args.tabs ?? [];
+  (
+    globalThis as typeof globalThis & {
+      chrome?: Record<string, unknown>;
+    }
+  ).chrome = {
+    runtime: {
+      getManifest: () => ({
+        permissions: ["tabs", "storage", "activeTab"],
+      }),
+      lastError: undefined,
+    },
+    storage: {
+      local: {
+        get: (
+          key: string | string[] | Record<string, unknown> | null,
+          callback?: (value: Record<string, unknown>) => void,
+        ) => {
+          const response: Record<string, unknown> = {};
+          if (typeof key === "string") {
+            if (storageState.has(key)) {
+              response[key] = storageState.get(key);
+            }
+          }
+          callback?.(response);
+          return Promise.resolve(response);
+        },
+        set: (
+          values: Record<string, unknown>,
+          callback?: () => void,
+        ) => {
+          for (const [key, value] of Object.entries(values)) {
+            storageState.set(key, value);
+          }
+          callback?.();
+          return Promise.resolve();
+        },
+        remove: (key: string | string[], callback?: () => void) => {
+          const keys = Array.isArray(key) ? key : [key];
+          for (const entry of keys) {
+            storageState.delete(entry);
+          }
+          callback?.();
+          return Promise.resolve();
+        },
+      },
+    },
+    tabs: {
+      query: (
+        _queryInfo: Record<string, unknown>,
+        callback?: (value: unknown[]) => void,
+      ) => {
+        callback?.(tabs);
+        return Promise.resolve(tabs);
+      },
+    },
+  };
+}
 
 describe("normalizeCompanionConfig", () => {
   it("returns null when companionId or pairingToken is missing", () => {
@@ -65,6 +133,82 @@ describe("normalizeCompanionConfig", () => {
     });
     expect(config?.profileLabel).toBe("work");
     expect(config?.label).toBe("LifeOps Browser chrome work");
+  });
+});
+
+describe("LifeOps Browser API base discovery", () => {
+  beforeEach(() => {
+    storageState.clear();
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    delete (
+      globalThis as typeof globalThis & {
+        chrome?: Record<string, unknown>;
+      }
+    ).chrome;
+  });
+
+  it("discovers a reachable Milady app origin from open tabs", async () => {
+    installMockExtensionApi({
+      tabs: [
+        {
+          url: "https://example.com/",
+          title: "Example",
+        },
+        {
+          url: "http://127.0.0.1:2138/chat",
+          title: "Milady",
+        },
+      ],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        return {
+          ok: url === "http://127.0.0.1:2138/api/status",
+          json: async () => ({ state: "running" }),
+        } as Response;
+      }),
+    );
+
+    await expect(discoverLifeOpsApiBaseUrl()).resolves.toBe(
+      "http://127.0.0.1:2138",
+    );
+  });
+
+  it("upgrades a legacy default to the discovered live app origin on save", async () => {
+    installMockExtensionApi({
+      tabs: [
+        {
+          url: "http://127.0.0.1:2138/chat",
+          title: "LifeOps",
+        },
+      ],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        return {
+          ok: url === "http://127.0.0.1:2138/api/status",
+          json: async () => ({ state: "running" }),
+        } as Response;
+      }),
+    );
+
+    const config = await saveCompanionConfig({
+      companionId: "abc",
+      pairingToken: "lobr_xyz",
+    });
+
+    expect(config?.apiBaseUrl).toBe("http://127.0.0.1:2138");
+    expect(
+      (storageState.get("lifeopsBrowserCompanionConfig") as { apiBaseUrl: string })
+        .apiBaseUrl,
+    ).toBe("http://127.0.0.1:2138");
   });
 });
 

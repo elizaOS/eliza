@@ -4,6 +4,10 @@ import type {
   PopupRequest,
   PopupResponse,
 } from "../src/protocol";
+import {
+  discoverLifeOpsApiBaseUrl,
+  LEGACY_LIFEOPS_API_BASE_URL,
+} from "../src/storage";
 import { sendRuntimeMessage } from "../src/webextension";
 
 type FormRefs = {
@@ -52,7 +56,7 @@ function getFormRefs(): FormRefs {
 
 function renderState(refs: FormRefs, state: BackgroundState): void {
   const config = state.config;
-  refs.apiBaseUrl.value = config?.apiBaseUrl ?? "http://127.0.0.1:31337";
+  refs.apiBaseUrl.value = config?.apiBaseUrl ?? LEGACY_LIFEOPS_API_BASE_URL;
   refs.browser.value = config?.browser ?? "chrome";
   refs.companionId.value = config?.companionId ?? "";
   refs.pairingToken.value = config?.pairingToken ?? "";
@@ -72,6 +76,24 @@ function renderState(refs: FormRefs, state: BackgroundState): void {
   ]
     .filter(Boolean)
     .join(" | ");
+}
+
+async function applyDiscoveredApiBaseUrl(
+  refs: FormRefs,
+  state: BackgroundState,
+): Promise<void> {
+  const configured = state.config?.apiBaseUrl?.trim() ?? "";
+  if (
+    configured.length > 0 &&
+    configured.replace(/\/+$/, "") !== LEGACY_LIFEOPS_API_BASE_URL
+  ) {
+    return;
+  }
+  const discovered = await discoverLifeOpsApiBaseUrl();
+  if (!discovered) {
+    return;
+  }
+  refs.apiBaseUrl.value = discovered;
 }
 
 async function sendMessage<T extends PopupRequest>(
@@ -129,6 +151,7 @@ async function refresh(refs: FormRefs): Promise<void> {
     return;
   }
   renderState(refs, response.state);
+  await applyDiscoveredApiBaseUrl(refs, response.state);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -147,6 +170,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     renderState(refs, response.state);
+    await applyDiscoveredApiBaseUrl(refs, response.state);
   });
 
   refs.importButton.addEventListener("click", async () => {
@@ -169,6 +193,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     refs.pairingJson.value = "";
     renderState(refs, response.state);
+    await applyDiscoveredApiBaseUrl(refs, response.state);
   });
 
   refs.syncButton.addEventListener("click", async () => {
@@ -179,6 +204,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     renderState(refs, response.state);
+    await applyDiscoveredApiBaseUrl(refs, response.state);
   });
 
   refs.clearButton.addEventListener("click", async () => {
@@ -190,5 +216,6 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     renderState(refs, response.state);
+    await applyDiscoveredApiBaseUrl(refs, response.state);
   });
 });

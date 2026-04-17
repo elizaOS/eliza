@@ -5,6 +5,24 @@ import { parsePositiveInteger } from "@elizaos/agent/utils/number-parsing";
 import type { RouteHelpers, RouteRequestContext } from "@elizaos/agent/api/route-helpers";
 import { detectAvailableBackends } from "../services/training-backend-check.js";
 import type { TrainingServiceLike } from "../services/training-service-like.js";
+import {
+  ALL_TRAINING_BACKENDS,
+  ALL_TRAINING_TASKS,
+  loadTrainingConfig,
+  normalizeTrainingConfig,
+  saveTrainingConfig,
+  type TrainingBackend,
+} from "../core/training-config.js";
+import {
+  listRuns,
+  loadRun,
+  triggerTraining,
+} from "../core/training-orchestrator.js";
+import type { TrajectoryTrainingTask } from "../core/trajectory-task-datasets.js";
+import {
+  TRAINING_TRIGGER_SERVICE,
+  type RegisteredTrainingTriggerEntry,
+} from "../services/training-trigger.js";
 
 export type TrainingRouteHelpers = RouteHelpers;
 
@@ -16,6 +34,70 @@ export interface TrainingRouteContext extends RouteRequestContext {
 
 function resolveStringSetting(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function emptyTaskCounters(): Record<TrajectoryTrainingTask, number> {
+  return {
+    should_respond: 0,
+    context_routing: 0,
+    action_planner: 0,
+    response: 0,
+    media_description: 0,
+  };
+}
+
+function getTriggerEntry(
+  runtime: AgentRuntime | null,
+): RegisteredTrainingTriggerEntry | null {
+  if (!runtime) return null;
+  const services = (runtime as unknown as {
+    services?: Map<string, unknown[]>;
+  }).services;
+  if (!services) return null;
+  const entries = services.get(TRAINING_TRIGGER_SERVICE);
+  if (!Array.isArray(entries) || entries.length === 0) return null;
+  const candidate = entries[0] as unknown;
+  if (
+    candidate &&
+    typeof candidate === "object" &&
+    typeof (candidate as { notifyTrajectoryCompleted?: unknown })
+      .notifyTrajectoryCompleted === "function"
+  ) {
+    return candidate as RegisteredTrainingTriggerEntry;
+  }
+  return null;
+}
+
+function parseTaskOrNull(input: unknown): {
+  value?: TrajectoryTrainingTask;
+  error?: string;
+} {
+  if (input === undefined || input === null || input === "") return {};
+  if (typeof input !== "string") {
+    return { error: "task must be a string" };
+  }
+  if (!(ALL_TRAINING_TASKS as readonly string[]).includes(input)) {
+    return {
+      error: `task must be one of: ${ALL_TRAINING_TASKS.join(", ")}`,
+    };
+  }
+  return { value: input as TrajectoryTrainingTask };
+}
+
+function parseBackendOrNull(input: unknown): {
+  value?: TrainingBackend;
+  error?: string;
+} {
+  if (input === undefined || input === null || input === "") return {};
+  if (typeof input !== "string") {
+    return { error: "backend must be a string" };
+  }
+  if (!(ALL_TRAINING_BACKENDS as readonly string[]).includes(input)) {
+    return {
+      error: `backend must be one of: ${ALL_TRAINING_BACKENDS.join(", ")}`,
+    };
+  }
+  return { value: input as TrainingBackend };
 }
 
 function resolveOllamaUrlRejection(
@@ -63,10 +145,115 @@ export async function handleTrainingRoutes(
 
   if (method === "GET" && pathname === "/api/training/status") {
     const status = trainingService.getStatus();
+    const trigger = getTriggerEntry(runtime);
+    const triggerStatus = trigger?.getStatus() ?? null;
     json(res, {
       ...status,
       runtimeAvailable: runtime !== null,
+      autoTrain: triggerStatus,
     });
+    return true;
+  }
+
+  // ── Auto-training trigger surface (Phase 4) ─────────────────────────────
+  if (method === "GET" && pathname === "/api/training/auto/status") {
+    const trigger = getTriggerEntry(runtime);
+    if (!trigger) {
+      const config = loadTrainingConfig();
+      json(res, {
+        autoTrainEnabled: config.autoTrain,
+        triggerThreshold: config.triggerThreshold,
+        cooldownHours: config.triggerCooldownHours,
+        counters: emptyTaskCounters(),
+        lastTrain: {},
+        perTaskThresholds: emptyTaskCounters(),
+        perTaskCooldownMs: emptyTaskCounters(),
+        serviceRegistered: false,
+      });
+      return true;
+    }
+    const snapshot = trigger.getStatus();
+    json(res, { ...snapshot, serviceRegistered: true });
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/training/auto/trigger") {
+    const body = await readJsonBody<{
+      task?: string;
+      backend?: string;
+      dryRun?: boolean;
+    }>(req, res);
+    if (!body) return true;
+
+    const taskRejection = parseTaskOrNull(body.task);
+    if (taskRejection.error) {
+      error(res, taskRejection.error, 400);
+      return true;
+    }
+    const backendRejection = parseBackendOrNull(body.backend);
+    if (backendRejection.error) {
+      error(res, backendRejection.error, 400);
+      return true;
+    }
+    if (!runtime) {
+      error(res, "Runtime is required to trigger training", 503);
+      return true;
+    }
+
+    const trigger = getTriggerEntry(runtime);
+    const record = trigger
+      ? await trigger.runManually({
+          task: taskRejection.value,
+          backend: backendRejection.value,
+          dryRun: body.dryRun === true,
+        })
+      : await triggerTraining(runtime, {
+          task: taskRejection.value,
+          backend: backendRejection.value,
+          source: "manual",
+          dryRun: body.dryRun === true,
+        });
+    json(res, { runId: record.runId, status: record.status, run: record }, 201);
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/training/auto/runs") {
+    const url = new URL(
+      req.url ?? "/",
+      `http://${req.headers.host ?? "localhost"}`,
+    );
+    const limit = parsePositiveInteger(url.searchParams.get("limit"), 20);
+    const runs = await listRuns(limit);
+    json(res, { runs });
+    return true;
+  }
+
+  const runMatch = /^\/api\/training\/auto\/runs\/([^/]+)$/.exec(pathname);
+  if (method === "GET" && runMatch) {
+    const runId = decodeURIComponent(runMatch[1]);
+    const run = await loadRun(runId);
+    if (!run) {
+      error(res, "Run not found", 404);
+      return true;
+    }
+    json(res, { run });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/training/auto/config") {
+    json(res, { config: loadTrainingConfig() });
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/training/auto/config") {
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    const merged = normalizeTrainingConfig({
+      ...loadTrainingConfig(),
+      ...body,
+    });
+    saveTrainingConfig(merged);
+    json(res, { config: merged });
     return true;
   }
 

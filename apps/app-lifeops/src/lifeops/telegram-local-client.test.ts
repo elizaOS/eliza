@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { StoredTelegramConnectorToken } from "./telegram-auth.js";
 import {
+  getTelegramReadReceipts,
   listRecentTelegramDialogs,
+  searchTelegramMessages,
   sendTelegramAccountMessage,
   telegramLocalSessionAvailable,
   verifyTelegramLocalConnector,
@@ -41,6 +43,7 @@ function buildClient(overrides: Partial<TelegramLocalClientLike> = {}): Telegram
     disconnect: vi.fn(async () => {}),
     getDialogs: vi.fn(async () => []),
     getEntity: vi.fn(async (target) => target),
+    getMessages: vi.fn(async () => []),
     sendMessage: vi.fn(async () => ({ id: 42 })),
     ...overrides,
   };
@@ -176,5 +179,135 @@ describe("verifyTelegramLocalConnector", () => {
       "LifeOps Telegram verification 2026-04-17T05:00:00.000Z",
     );
     expect(result.send.messageId).toBe("99");
+  });
+});
+
+describe("searchTelegramMessages", () => {
+  it("searches within a scoped dialog and returns normalized message hits", async () => {
+    const target = { peer: "carol" };
+    const client = buildClient({
+      getEntity: vi.fn(async () => {
+        throw new Error("not found");
+      }),
+      getDialogs: vi.fn(async () => [
+        {
+          id: 7,
+          title: "Carol",
+          entity: { username: "carol" },
+          inputEntity: target,
+        },
+      ]),
+      getMessages: vi.fn(async () => [
+        {
+          id: 101,
+          message: "needle in a haystack",
+          date: new Date("2026-04-17T06:00:00.000Z"),
+          out: true,
+        },
+      ]),
+    });
+
+    const results = await searchTelegramMessages({
+      tokenRef: "token-ref",
+      query: "needle",
+      scope: "Carol",
+      deps: {
+        loadSessionString: () => "session-data",
+        readStoredToken: () => buildStoredToken(),
+        createClient: () => client,
+      },
+    });
+
+    expect(results).toEqual([
+      {
+        id: "101",
+        dialogId: "7",
+        dialogTitle: "Carol",
+        username: "carol",
+        content: "needle in a haystack",
+        timestamp: "2026-04-17T06:00:00.000Z",
+        outgoing: true,
+      },
+    ]);
+    expect(client.getMessages).toHaveBeenCalledWith(target, {
+      search: "needle",
+      limit: 10,
+    });
+  });
+});
+
+describe("getTelegramReadReceipts", () => {
+  it("uses dialog readOutboxMaxId to mark outgoing messages as read", async () => {
+    const target = { peer: "carol" };
+    const client = buildClient({
+      getEntity: vi.fn(async () => {
+        throw new Error("not found");
+      }),
+      getDialogs: vi.fn(async () => [
+        {
+          id: 7,
+          title: "Carol",
+          inputEntity: target,
+          dialog: {
+            readOutboxMaxId: 200,
+          },
+        },
+      ]),
+      getMessages: vi.fn(async () => [
+        {
+          id: 199,
+          message: "seen",
+          date: new Date("2026-04-17T06:01:00.000Z"),
+          out: true,
+        },
+        {
+          id: 201,
+          message: "pending",
+          date: new Date("2026-04-17T06:02:00.000Z"),
+          out: true,
+        },
+      ]),
+    });
+
+    const results = await getTelegramReadReceipts({
+      tokenRef: "token-ref",
+      target: "Carol",
+      messageIds: ["199", "201", "oops"],
+      deps: {
+        loadSessionString: () => "session-data",
+        readStoredToken: () => buildStoredToken(),
+        createClient: () => client,
+      },
+    });
+
+    expect(results).toEqual([
+      {
+        messageId: "199",
+        status: "delivered_read",
+        isRead: true,
+        timestamp: "2026-04-17T06:01:00.000Z",
+        content: "seen",
+        outgoing: true,
+      },
+      {
+        messageId: "201",
+        status: "sent",
+        isRead: false,
+        timestamp: "2026-04-17T06:02:00.000Z",
+        content: "pending",
+        outgoing: true,
+      },
+      {
+        messageId: "oops",
+        status: "unknown",
+        isRead: null,
+        timestamp: null,
+        content: null,
+        outgoing: null,
+      },
+    ]);
+    expect(client.getMessages).toHaveBeenCalledWith(target, {
+      ids: [199, 201],
+    });
   });
 });

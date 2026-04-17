@@ -38,7 +38,14 @@ export interface LLMCall {
 	latencyMs?: number;
 
 	// Context
-	purpose: "action" | "reasoning" | "evaluation" | "response" | "other";
+	purpose:
+		| "action"
+		| "reasoning"
+		| "evaluation"
+		| "response"
+		| "should_respond"
+		| "compose_state"
+		| "other";
 	actionType?: string;
 	stepType?: string;
 	tags?: string[];
