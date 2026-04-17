@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.23
 # elizaOS Agent — Cloud-optimized Docker image
 # Goal: keep runtime under ~2GB by doing a production-only install,
 # flattening Bun's store-backed node_modules, and copying only the cloud runtime.
