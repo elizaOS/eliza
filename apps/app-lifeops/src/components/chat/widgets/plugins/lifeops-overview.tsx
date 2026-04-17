@@ -11,15 +11,25 @@ import type {
   LifeOpsOverviewSection,
 } from "@elizaos/shared/contracts/lifeops";
 import {
+  Bell,
   BellRing,
   Bot,
   CheckCircle2,
   Clock3,
+  Cloud,
   ListTodo,
-  RefreshCw,
+  Mail,
+  MessageCircleMore,
+  MessageSquareText,
+  Moon,
+  Phone,
+  Send,
+  Smartphone,
   Sparkles,
+  SquareArrowOutUpRight,
 } from "lucide-react";
-import type { PropsWithChildren, ReactElement } from "react";
+import type { ComponentType } from "react";
+import type { PropsWithChildren, ReactElement, SVGProps } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge, Button } from "@elizaos/ui";
 import { client } from "@elizaos/app-core/api";
@@ -186,10 +196,29 @@ function sectionSummary(section: LifeOpsOverviewSection): string {
   return parts.join(" • ");
 }
 
-function reminderChannelLabel(
+function reminderChannelIcon(
   channel: LifeOpsActiveReminderView["channel"],
-): string {
-  return channel.replace(/_/g, " ");
+): ComponentType<SVGProps<SVGSVGElement>> | null {
+  switch (channel) {
+    case "in_app":
+      return Bell;
+    case "telegram":
+      return Send;
+    case "email":
+      return Mail;
+    case "push":
+      return Smartphone;
+    case "sms":
+      return MessageSquareText;
+    case "cloud":
+      return Cloud;
+    case "discord":
+      return MessageCircleMore;
+    case "whatsapp":
+      return Phone;
+    default:
+      return null;
+  }
 }
 
 function occurrenceSortKey(occurrence: LifeOpsOccurrenceView): number {
@@ -243,10 +272,10 @@ function DetailPanel({
 }: PropsWithChildren<{ title: string }>) {
   return (
     <div className="mt-3 rounded-lg border border-border/50 bg-bg-accent/20 p-3">
-      <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
         {title}
       </div>
-      <div className="mt-2 flex flex-col gap-2 text-xs-tight leading-5 text-muted">
+      <div className="mt-2 flex flex-col gap-2 text-xs leading-5 text-muted">
         {children}
       </div>
     </div>
@@ -322,7 +351,7 @@ function OccurrenceExplanationPanel({
       ) : null}
       {explanation.reminderPlan && explanation.reminderPlan.steps.length > 0 ? (
         <div>
-          <span className="font-semibold text-txt">Reminder ladder:</span>{" "}
+          <span className="font-semibold text-txt">Reminders:</span>{" "}
           {explanation.reminderPlan.steps
             .map((step) => `${step.label} (${step.channel})`)
             .join(", ")}
@@ -491,26 +520,34 @@ function OccurrenceRow({
             <span className="min-w-0 truncate text-xs font-semibold text-txt">
               {occurrence.title}
             </span>
-            <Badge variant="secondary" className="text-3xs">
+            <Badge variant="secondary" className="text-[10px]">
               {cadence}
             </Badge>
             {occurrence.state === "snoozed" ? (
-              <Badge variant="secondary" className="text-3xs">
-                Snoozed
+              <Badge
+                variant="secondary"
+                className="text-[10px]"
+                aria-label="Snoozed"
+              >
+                <Moon className="h-3 w-3" />
               </Badge>
             ) : null}
             {occurrence.subjectType === "agent" ? (
-              <Badge variant="secondary" className="text-3xs">
-                Agent
+              <Badge
+                variant="secondary"
+                className="text-[10px]"
+                aria-label="Agent"
+              >
+                <Bot className="h-3 w-3" />
               </Badge>
             ) : null}
           </div>
           {description ? (
-            <p className="mt-1 line-clamp-2 text-xs-tight leading-5 text-muted">
+            <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">
               {description}
             </p>
           ) : null}
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-2xs uppercase tracking-[0.08em] text-muted/80">
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.08em] text-muted/80">
             {dueLabel ? <span>{dueLabel}</span> : null}
             {cadenceSecondary ? <span>{cadenceSecondary}</span> : null}
           </div>
@@ -594,17 +631,17 @@ function GoalRow({
         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
           {goal.title}
         </span>
-        <Badge variant="secondary" className="text-3xs">
+        <Badge variant="secondary" className="text-[10px]">
           {reviewStateLabel(goal.reviewState)}
         </Badge>
       </div>
       {description.length > 0 ? (
-        <p className="mt-1 line-clamp-2 text-xs-tight leading-5 text-muted">
+        <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">
           {description}
         </p>
       ) : null}
       {cadenceText ? (
-        <div className="mt-2 text-2xs uppercase tracking-[0.08em] text-muted/80">
+        <div className="mt-2 text-[11px] uppercase tracking-[0.08em] text-muted/80">
           {cadenceText}
         </div>
       ) : null}
@@ -627,6 +664,8 @@ function GoalRow({
 function ReminderRow({ reminder }: { reminder: LifeOpsActiveReminderView }) {
   const scheduledFor = formatDateTime(reminder.scheduledFor);
   const dueAt = formatDateTime(reminder.dueAt);
+  const ChannelIcon = reminderChannelIcon(reminder.channel);
+  const channelLabel = reminder.channel.replace(/_/g, " ");
 
   return (
     <div className="rounded-lg border border-border/50 bg-bg/70 p-3">
@@ -634,12 +673,20 @@ function ReminderRow({ reminder }: { reminder: LifeOpsActiveReminderView }) {
         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
           {reminder.title}
         </span>
-        <Badge variant="secondary" className="text-3xs">
-          {reminderChannelLabel(reminder.channel)}
+        <Badge
+          variant="secondary"
+          className="text-[10px]"
+          aria-label={channelLabel}
+        >
+          {ChannelIcon ? (
+            <ChannelIcon className="h-3 w-3" />
+          ) : (
+            channelLabel
+          )}
         </Badge>
       </div>
-      <div className="mt-1 text-xs-tight text-muted">{reminder.stepLabel}</div>
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-2xs uppercase tracking-[0.08em] text-muted/80">
+      <div className="mt-1 text-xs text-muted">{reminder.stepLabel}</div>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.08em] text-muted/80">
         {scheduledFor ? <span>{scheduledFor}</span> : null}
         {dueAt ? <span>Due {dueAt}</span> : null}
       </div>
@@ -684,10 +731,10 @@ function OccurrenceBucketBlock({
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2 px-0.5">
         <span className="text-muted">{icon}</span>
-        <span className="text-xs-tight font-semibold uppercase tracking-[0.08em] text-muted">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
           {title}
         </span>
-        <Badge variant="secondary" className="text-3xs">
+        <Badge variant="secondary" className="text-[10px]">
           {occurrences.length}
         </Badge>
       </div>
@@ -731,10 +778,10 @@ function GoalSection({
         <span className="text-muted">
           <Sparkles className="h-3.5 w-3.5" />
         </span>
-        <span className="text-xs-tight font-semibold uppercase tracking-[0.08em] text-muted">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
           Goals
         </span>
-        <Badge variant="secondary" className="text-3xs">
+        <Badge variant="secondary" className="text-[10px]">
           {goals.length}
         </Badge>
       </div>
@@ -767,10 +814,10 @@ function ReminderSection({
         <span className="text-muted">
           <BellRing className="h-3.5 w-3.5" />
         </span>
-        <span className="text-xs-tight font-semibold uppercase tracking-[0.08em] text-muted">
-          Reminder ladder
+        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+          Reminders
         </span>
-        <Badge variant="secondary" className="text-3xs">
+        <Badge variant="secondary" className="text-[10px]">
           {reminders.length}
         </Badge>
       </div>
@@ -825,16 +872,16 @@ function AgentOpsSection({
         <span className="text-muted">
           <Bot className="h-3.5 w-3.5" />
         </span>
-        <span className="text-xs-tight font-semibold uppercase tracking-[0.08em] text-muted">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
           Agent ops
         </span>
-        <Badge variant="secondary" className="text-3xs">
+        <Badge variant="secondary" className="text-[10px]">
           {section.summary.activeOccurrenceCount +
             section.summary.activeGoalCount +
             section.summary.activeReminderCount}
         </Badge>
       </div>
-      <p className="px-0.5 text-xs-tight text-muted">
+      <p className="px-0.5 text-xs text-muted">
         {sectionSummary(section)}
       </p>
       {section.occurrences
@@ -874,7 +921,7 @@ function AgentOpsSection({
 
 export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
   const lifeOpsApp = useLifeOpsAppState();
-  const { workbench, agentStatus, backendConnection, startupPhase } = useApp();
+  const { workbench, agentStatus, backendConnection, startupPhase, setTab, t } = useApp();
   const [overview, setOverview] = useState<LifeOpsOverview | null>(
     workbench?.lifeops ?? null,
   );
@@ -1128,25 +1175,12 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
       action={
         <Button
           size="sm"
-          variant="outline"
-          disabled={loading || actionState !== null || detailState !== null}
-          onClick={() =>
-            void (async () => {
-              try {
-                await loadOverview();
-              } catch (cause) {
-                setError(
-                  cause instanceof Error && cause.message.trim().length > 0
-                    ? cause.message.trim()
-                    : "Life ops failed to refresh.",
-                );
-                setLoading(false);
-              }
-            })()
-          }
-          className="h-7 px-2"
+          variant="ghost"
+          onClick={() => setTab("lifeops")}
+          aria-label={t("lifeopsoverview.OpenView", { defaultValue: "Open LifeOps view" })}
+          className="h-6 w-6 p-0"
         >
-          <RefreshCw className="h-3.5 w-3.5" />
+          <SquareArrowOutUpRight className="h-3.5 w-3.5" />
         </Button>
       }
       testId="chat-widget-lifeops-overview"
@@ -1217,7 +1251,7 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
               onReviewGoal={onReviewGoal}
             />
           ) : null}
-          <div className="rounded-lg border border-border/50 bg-bg-accent/30 px-3 py-2 text-xs-tight text-muted">
+          <div className="rounded-lg border border-border/50 bg-bg-accent/30 px-3 py-2 text-xs text-muted">
             <div className="flex items-center gap-2">
               <BellRing className="h-3.5 w-3.5" />
               <span>
@@ -1229,7 +1263,7 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
         </div>
       )}
       {error ? (
-        <div className="mt-3 text-xs-tight text-danger">{error}</div>
+        <div className="mt-3 text-xs text-danger">{error}</div>
       ) : null}
     </WidgetSection>
   );

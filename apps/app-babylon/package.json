@@ -27,5 +27,10 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*"
+  },
+  "elizaos": {
+    "app": {
+      "heroImage": "assets/hero.webp"
+    }
   }
 }

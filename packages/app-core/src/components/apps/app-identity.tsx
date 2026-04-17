@@ -9,13 +9,18 @@ import {
   Wrench,
 } from "lucide-react";
 import { type CSSProperties, useState } from "react";
-import { packageNameToAppRouteSlug } from "@elizaos/shared/contracts/apps";
 
 export interface AppIdentitySource {
   name: string;
   displayName?: string | null;
   category?: string | null;
   icon?: string | null;
+  /**
+   * URL to a full-card hero image for this app. Declared by the app
+   * itself in `package.json` → `elizaos.app.heroImage` and surfaced via
+   * `RegistryAppInfo.heroImage`; falls back to procedural art when absent.
+   */
+  heroImage?: string | null;
   description?: string | null;
 }
 
@@ -202,23 +207,11 @@ function getHeroBlobs(seed: number): HeroBlob[] {
 }
 
 /**
- * Resolve the URL where a generated hero image for this app would live.
- * Generation is handled by `scripts/generate-app-heroes.mjs`; the script
- * writes `apps/app/public/app-heroes/<slug>.webp`, so the same slug
- * convention lets the UI opportunistically load the asset when present
- * and fall back to a procedural visual on 404.
- */
-function getAppHeroImageUrl(app: AppIdentitySource): string | null {
-  const slug = packageNameToAppRouteSlug(app.name);
-  if (!slug) return null;
-  return `/app-heroes/${slug}.webp`;
-}
-
-/**
- * Full-card hero visual for an app. Prefers a generated hero image when
- * available, then a caller-provided icon URL, then a procedurally
- * generated gradient scene with soft blobs and a backdrop category icon
- * — seeded from the app name so each app looks distinct.
+ * Full-card hero visual for an app. Prefers an app-declared hero image
+ * (see `AppIdentitySource.heroImage`, sourced from the app's own
+ * package.json and served via `/api/apps/hero/<slug>`), then a
+ * caller-provided icon URL, then a procedurally generated gradient
+ * scene — seeded from the app name so each app looks distinct.
  */
 export function AppHero({
   app,
@@ -229,13 +222,13 @@ export function AppHero({
 }) {
   const palette = getAppPalette(app.name);
   const iconSrc = iconImageSource(app.icon);
-  const heroImageUrl = getAppHeroImageUrl(app);
+  const heroSrc = app.heroImage?.trim() || null;
   const Icon = getAppCategoryIcon(app);
   const monogram = getAppMonogram(app);
   const blobs = getHeroBlobs(hashString(app.name));
   const iconRotation = hashString(app.name) % 24;
 
-  const primarySrc = heroImageUrl ?? iconSrc ?? null;
+  const primarySrc = heroSrc ?? iconSrc ?? null;
   const [imageFailed, setImageFailed] = useState(false);
   const useImage = Boolean(primarySrc) && !imageFailed;
 

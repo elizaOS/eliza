@@ -19,5 +19,10 @@
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
+  },
+  "elizaos": {
+    "app": {
+      "heroImage": "assets/hero.webp"
+    }
   }
 }

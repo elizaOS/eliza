@@ -191,9 +191,7 @@ export function ApiKeyConfig({
             <span
               aria-live="polite"
               className={`truncate text-xs-tight ${
-                modelsFetchResult.tone === "error"
-                  ? "text-danger"
-                  : "text-ok"
+                modelsFetchResult.tone === "error" ? "text-danger" : "text-ok"
               }`}
             >
               {modelsFetchResult.message}

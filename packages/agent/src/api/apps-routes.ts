@@ -1,3 +1,5 @@
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   type AppRunActionResult,
@@ -19,6 +21,85 @@ import {
   toSearchResults,
 } from "../services/registry-client-queries.js";
 import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
+
+const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
+  ".webp": "image/webp",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".avif": "image/avif",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+};
+
+async function streamAppHero(
+  res: unknown,
+  absolutePath: string,
+  contentType: string,
+  error: (response: unknown, message: string, status?: number) => void,
+): Promise<void> {
+  let data: Buffer;
+  try {
+    data = await fs.readFile(absolutePath);
+  } catch {
+    error(res, "Hero image not found", 404);
+    return;
+  }
+  const response = res as {
+    writeHead?: (
+      status: number,
+      headers: Record<string, string | number>,
+    ) => void;
+    setHeader?: (name: string, value: string | number) => void;
+    end?: (chunk?: unknown) => void;
+  };
+  if (typeof response.writeHead === "function") {
+    response.writeHead(200, {
+      "Content-Type": contentType,
+      "Content-Length": data.byteLength,
+      "Cache-Control": "public, max-age=300",
+    });
+  } else if (typeof response.setHeader === "function") {
+    response.setHeader("Content-Type", contentType);
+    response.setHeader("Content-Length", data.byteLength);
+    response.setHeader("Cache-Control", "public, max-age=300");
+  }
+  response.end?.(data);
+}
+
+/**
+ * Resolve the absolute on-disk path for an app's declared hero image.
+ * Returns null if the slug doesn't match a known app, the app doesn't
+ * declare a heroImage, the declared path escapes the package, or the
+ * declared extension isn't an allowed image type.
+ */
+async function resolveAppHeroPath(
+  pluginManager: PluginManagerLike,
+  slug: string,
+): Promise<{ absolutePath: string; contentType: string } | null> {
+  const registry = await pluginManager.refreshRegistry();
+  for (const entry of registry.values()) {
+    if (packageNameToAppRouteSlug(entry.name) !== slug) continue;
+    const heroImage = entry.appMeta?.heroImage;
+    const localPath = entry.localPath;
+    if (!heroImage || !localPath) continue;
+    if (
+      /^(https?:|data:image\/|blob:|file:|capacitor:|electrobun:|app:|\/)/i.test(
+        heroImage,
+      )
+    ) {
+      continue;
+    }
+    const extension = path.extname(heroImage).toLowerCase();
+    const contentType = HERO_IMAGE_CONTENT_TYPES[extension];
+    if (!contentType) continue;
+    const absolute = path.resolve(localPath, heroImage);
+    const packageRoot = `${path.resolve(localPath)}${path.sep}`;
+    if (!absolute.startsWith(packageRoot)) continue;
+    return { absolutePath: absolute, contentType };
+  }
+  return null;
+}
 
 export interface AppManagerLike {
   listAvailable: (pluginManager: PluginManagerLike) => Promise<unknown>;
@@ -427,6 +508,24 @@ export async function handleAppsRoutes(
     const pluginManager = getPluginManager();
     const apps = await appManager.listAvailable(pluginManager);
     json(res, apps as object);
+    return true;
+  }
+
+  if (method === "GET" && pathname.startsWith("/api/apps/hero/")) {
+    const slug = decodeURIComponent(
+      pathname.slice("/api/apps/hero/".length),
+    ).trim();
+    if (!slug) {
+      error(res, "app slug is required", 400);
+      return true;
+    }
+    const pluginManager = getPluginManager();
+    const resolved = await resolveAppHeroPath(pluginManager, slug);
+    if (!resolved) {
+      error(res, `Hero image for "${slug}" is not available`, 404);
+      return true;
+    }
+    await streamAppHero(res, resolved.absolutePath, resolved.contentType, error);
     return true;
   }
 

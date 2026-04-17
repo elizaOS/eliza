@@ -591,7 +591,9 @@ export function CloudDashboard() {
         </div>
         <div className="flex items-center justify-between gap-3">
           <dt className="text-muted">
-            {t("elizaclouddashboard.AutoTopUp", { defaultValue: "Auto top-up" })}
+            {t("elizaclouddashboard.AutoTopUp", {
+              defaultValue: "Auto top-up",
+            })}
           </dt>
           <dd className="text-txt">
             {billingAutoTopUp.enabled

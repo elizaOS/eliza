@@ -444,7 +444,11 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const isSubscriptionSelected =
     isSubscriptionProviderSelectionId(resolvedSelectedId);
   const providerChoices = [
-    { id: "__cloud__", label: t("providerswitcher.elizaCloud"), disabled: false },
+    {
+      id: "__cloud__",
+      label: t("providerswitcher.elizaCloud"),
+      disabled: false,
+    },
     ...SUBSCRIPTION_PROVIDER_SELECTIONS.map((provider) => ({
       id: provider.id,
       label: getSubscriptionProviderLabel(provider, t),
@@ -521,8 +525,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         setModelSaving(true);
         try {
           const cfg = (await client.getConfig()) as Record<string, unknown>;
-          const existingRouting =
-            resolveServiceRoutingInConfig(cfg)?.llmText;
+          const existingRouting = resolveServiceRoutingInConfig(cfg)?.llmText;
           const llmText = buildElizaCloudServiceRoute({
             nanoModel: next.nano,
             smallModel: next.small,
@@ -546,8 +549,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               : {}),
             ...(existingRouting?.mediaDescriptionModel
               ? {
-                  mediaDescriptionModel:
-                    existingRouting.mediaDescriptionModel,
+                  mediaDescriptionModel: existingRouting.mediaDescriptionModel,
                 }
               : {}),
           });

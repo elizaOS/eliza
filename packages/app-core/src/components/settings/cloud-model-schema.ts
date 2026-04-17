@@ -96,7 +96,8 @@ export function buildCloudModelSchema(
   properties.responseHandler = {
     type: "string",
     enum: [DEFAULT_RESPONSE_HANDLER_MODEL, ...allChoices.map((m) => m.id)],
-    description: "Should-respond / response-handler override. Defaults to nano.",
+    description:
+      "Should-respond / response-handler override. Defaults to nano.",
   };
   hints.responseHandler = {
     label: "Response Handler",

@@ -557,9 +557,7 @@ export function SubscriptionStatus({
           configuredButInvalid={Boolean(
             anthropicStatus?.configured && !anthropicStatus.valid,
           )}
-          titleConnected={t(
-            "subscriptionstatus.ConnectedToClaudeSubscription",
-          )}
+          titleConnected={t("subscriptionstatus.ConnectedToClaudeSubscription")}
           titleDisconnected={t("subscriptionstatus.ClaudeSubscriptionTitle")}
           loginLabel={t("onboarding.loginWithAnthropic")}
           loginHint={t("subscriptionstatus.RequiresClaudePro")}
@@ -578,9 +576,7 @@ export function SubscriptionStatus({
               {t("subscriptionstatus.AfterLoggingInCo")}
             </p>
           }
-          oauthInputPlaceholder={t(
-            "subscriptionstatus.PasteTheAuthorizat",
-          )}
+          oauthInputPlaceholder={t("subscriptionstatus.PasteTheAuthorizat")}
           oauthCode={anthropicCode}
           setOauthCode={(v) => {
             setAnthropicCode(v);
@@ -591,9 +587,7 @@ export function SubscriptionStatus({
           oauthExchangeBusy={anthropicExchangeBusy}
           exchangeButtonLabel={t("onboarding.connect")}
           exchangeBusyLabel={t("onboarding.connecting")}
-          disconnecting={
-            subscriptionDisconnecting === "anthropic-subscription"
-          }
+          disconnecting={subscriptionDisconnecting === "anthropic-subscription"}
           onStartOauth={() => void handleAnthropicStart()}
           onExchange={() => void handleAnthropicExchange()}
           onResetFlow={() => {

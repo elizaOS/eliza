@@ -12,9 +12,9 @@ import {
   normalizeReleaseNotesUrl,
   summarizeError,
 } from "../release-center/shared";
-import {
-  type AppReleaseStatus,
-  type DesktopUpdaterSnapshot,
+import type {
+  AppReleaseStatus,
+  DesktopUpdaterSnapshot,
 } from "../release-center/types";
 
 export function ReleaseCenterView() {
@@ -171,7 +171,10 @@ export function ReleaseCenterView() {
     nativeUpdater != null && !nativeUpdater.canAutoUpdate;
 
   const versionRows: Array<{ label: string; value: string }> = [
-    { label: t("releasecenterview.App", { defaultValue: "App" }), value: appVersion },
+    {
+      label: t("releasecenterview.App", { defaultValue: "App" }),
+      value: appVersion,
+    },
     {
       label: t("releasecenterview.Desktop", { defaultValue: "Desktop" }),
       value: desktopVersion,
@@ -185,7 +188,9 @@ export function ReleaseCenterView() {
       value: latestVersion,
     },
     {
-      label: t("releasecenterview.LastChecked", { defaultValue: "Last checked" }),
+      label: t("releasecenterview.LastChecked", {
+        defaultValue: "Last checked",
+      }),
       value: lastChecked,
     },
     {
@@ -242,7 +247,9 @@ export function ReleaseCenterView() {
           size="sm"
           className="h-9 rounded-lg px-3 text-xs font-medium"
           disabled={
-            busyAction === "check-updates" || updateLoading || autoUpdateDisabled
+            busyAction === "check-updates" ||
+            updateLoading ||
+            autoUpdateDisabled
           }
           onClick={() =>
             void runAction(
@@ -322,7 +329,9 @@ export function ReleaseCenterView() {
           htmlFor="release-notes-url"
           className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted"
         >
-          {t("releasecenterview.ReleaseNotes", { defaultValue: "Release Notes" })}
+          {t("releasecenterview.ReleaseNotes", {
+            defaultValue: "Release Notes",
+          })}
         </label>
         <div className="flex flex-col gap-2 sm:flex-row">
           <Input

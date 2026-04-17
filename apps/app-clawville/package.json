@@ -35,6 +35,7 @@
     "app": {
       "displayName": "ClawVille",
       "category": "game",
+      "heroImage": "assets/hero.webp",
       "launchType": "connect",
       "launchUrl": "https://clawville.world/game",
       "capabilities": [
