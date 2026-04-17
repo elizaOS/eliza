@@ -168,16 +168,27 @@ export async function openBrowser(url?: string): Promise<BrowserState> {
   // Create temp user data directory to prevent conflicts
   tempUserDataDir = await mkdtemp(join(tmpdir(), "computeruse-browser-"));
 
+  const isCi =
+    process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
+  const launchArgs = [
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-infobars",
+    `--window-size=1280,900`,
+  ];
+  if (isCi) {
+    launchArgs.push(
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+    );
+  }
   browser = await pup.default.launch({
     executablePath,
     headless: browserHeadless,
     userDataDir: tempUserDataDir,
-    args: [
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-infobars",
-      `--window-size=1280,900`,
-    ],
+    args: launchArgs,
     defaultViewport: { width: 1280, height: 900 },
   });
 
