@@ -612,10 +612,10 @@ export function LifeOpsPageView() {
 
       {appEnabled && runtimeReady ? (
         <>
-          <section className="overflow-hidden rounded-3xl border border-border/16 bg-card/18">
+          <section>
             <button
               type="button"
-              className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left"
+              className="flex w-full items-center justify-between gap-3 py-3 text-left"
               onClick={() => setSetupOpen((current) => !current)}
               aria-expanded={setupOpen}
             >
@@ -628,7 +628,7 @@ export function LifeOpsPageView() {
             </button>
 
             {setupOpen ? (
-              <div className="space-y-6 border-t border-border/12 px-4 pb-4 pt-4">
+              <div className="space-y-6 pt-2">
                 <LifeOpsSettingsSection
                   ownerGithub={ownerGithubSetup}
                   agentGithub={agentGithubSetup}
