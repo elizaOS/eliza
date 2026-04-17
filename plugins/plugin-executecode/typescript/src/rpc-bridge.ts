@@ -11,6 +11,7 @@
 
 import {
   type Action,
+  type ActionParameters,
   type ActionResult,
   type Content,
   type HandlerCallback,
@@ -202,20 +203,24 @@ export function buildToolsProxy({
 
         const options: HandlerOptions = {};
         if (args !== undefined) {
+          // We've already verified args are JSON-cloneable above; cast to
+          // ActionParameters so validateActionParams' nominal type accepts
+          // the same payload.
+          const argsAsParameters = args as ActionParameters;
           if (action.parameters && action.parameters.length > 0) {
-            const validation = validateActionParams(action, args);
+            const validation = validateActionParams(action, argsAsParameters);
             if (validation.params) {
               options.parameters = validation.params;
             } else {
               // Pass through raw args as parameters even if validation surfaced
               // warnings — same posture as the runtime's processActions flow.
-              options.parameters = args;
+              options.parameters = argsAsParameters;
             }
             if (!validation.valid) {
               options.parameterErrors = validation.errors;
             }
           } else {
-            options.parameters = args;
+            options.parameters = argsAsParameters;
           }
         }
 
