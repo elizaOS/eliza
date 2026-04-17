@@ -33,7 +33,7 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^24.0.0",
     "typescript": "^5.6.0",
     "vitest": "^4.0.0"
   },
