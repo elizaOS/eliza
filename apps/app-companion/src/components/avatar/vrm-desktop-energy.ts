@@ -1,9 +1,9 @@
 import {
-  invokeDesktopBridgeRequest,
-  isElectrobunRuntime,
   type CompanionHalfFramerateMode,
   type CompanionVrmPowerMode,
   type DesktopPowerState,
+  invokeDesktopBridgeRequest,
+  isElectrobunRuntime,
 } from "@elizaos/app-core";
 
 /** How often to re-read AC vs battery in the Electrobun shell (ms). */

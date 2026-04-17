@@ -2,19 +2,21 @@
  * Onboarding compat helpers — API key persistence, onboarding defaults,
  * cloud-mode detection, and cloud-provisioned container detection.
  */
+
+import { applyOnboardingCredentialPersistence } from "@elizaos/agent/api/provider-switch-config";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
 import { logger, stringToUuid } from "@elizaos/core";
 import {
   deriveOnboardingCredentialPersistencePlan,
-  getOnboardingProviderOption,
   migrateLegacyRuntimeConfig,
   normalizeOnboardingCredentialInputs,
 } from "@elizaos/shared/contracts/onboarding";
 import {
+  type DeploymentTargetConfig,
+  type LinkedAccountsConfig,
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountsConfig,
   normalizeServiceRoutingConfig,
-  type DeploymentTargetConfig,
-  type LinkedAccountsConfig,
   type ServiceRoutingConfig,
 } from "@elizaos/shared/contracts/service-routing";
 import {
@@ -22,10 +24,8 @@ import {
   getStylePresets,
   normalizeCharacterLanguage,
 } from "@elizaos/shared/onboarding-presets";
-import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
-import { resolveProviderCredential } from "./credential-resolver";
 import { PREMADE_VOICES } from "../voice/types";
-import { applyOnboardingCredentialPersistence } from "@elizaos/agent/api/provider-switch-config";
+import { resolveProviderCredential } from "./credential-resolver";
 
 // ---------------------------------------------------------------------------
 // Internal helpers

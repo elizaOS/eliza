@@ -1,8 +1,6 @@
-
-
+import { Button, Input } from "@elizaos/ui";
 import type { CSSProperties } from "react";
 import type { PluginInfo, PluginParamDef } from "../../api";
-import { Button, Input } from "@elizaos/ui";
 import {
   iconImageSource,
   pluginResourceLinkLabel,

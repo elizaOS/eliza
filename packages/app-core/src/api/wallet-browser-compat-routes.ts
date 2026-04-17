@@ -17,6 +17,10 @@ export function safeParseBigInt(value: string): bigint {
   }
 }
 
+import {
+  isStewardConfigured,
+  signViaSteward,
+} from "@elizaos/app-steward/routes/steward-bridge";
 import { ensureCompatApiAuthorized } from "./auth";
 import {
   type CompatRuntimeState,
@@ -26,7 +30,6 @@ import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
-import { isStewardConfigured, signViaSteward } from "@elizaos/app-steward/routes/steward-bridge";
 
 function normalizeHexData(value: unknown): string | undefined {
   if (typeof value !== "string") {

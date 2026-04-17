@@ -4,7 +4,10 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const SOURCE_ENTRY_URL = new URL("../index.node.ts", import.meta.url);
-const DIST_ENTRY_URL = new URL("../../dist/node/index.node.js", import.meta.url);
+const DIST_ENTRY_URL = new URL(
+	"../../dist/node/index.node.js",
+	import.meta.url,
+);
 const EXPLICIT_EVALUATOR_EXPORT_SNIPPET = `export {
 	factRefinementEvaluator,
 	skillExtractionEvaluator,

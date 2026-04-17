@@ -55,9 +55,10 @@ describe("triage-engine: resolveContactWeight", () => {
 
 	it("maps categories to weights (family=1.0)", async () => {
 		const contactsByHandle = new Map();
-		const contact = fakeContact(asUUID("11111111-1111-1111-1111-111111111111"), [
-			"family",
-		]);
+		const contact = fakeContact(
+			asUUID("11111111-1111-1111-1111-111111111111"),
+			["family"],
+		);
 		contactsByHandle.set("gmail|mom@example.com", contact);
 		const runtime = createFakeRuntime({ contactsByHandle });
 		const { weight } = await resolveContactWeight(

@@ -1,11 +1,9 @@
-
-
+import { FineTuningView } from "@elizaos/app-training/ui/FineTuningView";
+import { Button, SegmentedControl } from "@elizaos/ui";
 import type React from "react";
 import type { Tab } from "../../navigation";
 import { useApp } from "../../state";
 import { DesktopWorkspaceSection } from "../settings/DesktopWorkspaceSection";
-import { FineTuningView } from "@elizaos/app-training/ui/FineTuningView";
-import { Button, SegmentedControl } from "@elizaos/ui";
 
 type SubTab = "fine-tuning" | "desktop";
 

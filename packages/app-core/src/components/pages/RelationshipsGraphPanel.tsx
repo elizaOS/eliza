@@ -1,9 +1,9 @@
+import { useMemo, useState } from "react";
 import type {
   RelationshipsGraphEdge,
   RelationshipsGraphSnapshot,
   RelationshipsPersonSummary,
 } from "../../api/client-types-relationships";
-import { useMemo, useState } from "react";
 
 const GRAPH_WIDTH = 960;
 const GRAPH_HEIGHT = 540;

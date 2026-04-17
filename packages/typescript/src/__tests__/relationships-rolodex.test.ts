@@ -97,9 +97,14 @@ describe("RelationshipsService rolodex extensions (T7b)", () => {
 
 	it("findByHandle round-trips by (platform, identifier)", async () => {
 		const entityId = await fx.makeEntity("Alice");
-		await fx.service.addContact(entityId, ["friend"], {}, {
-			displayName: "Alice",
-		});
+		await fx.service.addContact(
+			entityId,
+			["friend"],
+			{},
+			{
+				displayName: "Alice",
+			},
+		);
 		await fx.service.addHandle(entityId, {
 			platform: "discord",
 			identifier: "Alice#1234",
@@ -122,9 +127,14 @@ describe("RelationshipsService rolodex extensions (T7b)", () => {
 
 	it("recordInteraction updates lastInteractionAt and bounds history", async () => {
 		const entityId = await fx.makeEntity("Bob");
-		await fx.service.addContact(entityId, ["friend"], {}, {
-			displayName: "Bob",
-		});
+		await fx.service.addContact(
+			entityId,
+			["friend"],
+			{},
+			{
+				displayName: "Bob",
+			},
+		);
 
 		const earlier = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
 		const later = new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString();
@@ -166,12 +176,22 @@ describe("RelationshipsService rolodex extensions (T7b)", () => {
 		const primaryId = await fx.makeEntity("Carol-Primary");
 		const secondaryId = await fx.makeEntity("Carol-Secondary");
 
-		await fx.service.addContact(primaryId, ["friend"], {}, {
-			displayName: "Carol",
-		});
-		await fx.service.addContact(secondaryId, ["colleague"], {}, {
-			displayName: "Carol Work",
-		});
+		await fx.service.addContact(
+			primaryId,
+			["friend"],
+			{},
+			{
+				displayName: "Carol",
+			},
+		);
+		await fx.service.addContact(
+			secondaryId,
+			["colleague"],
+			{},
+			{
+				displayName: "Carol Work",
+			},
+		);
 
 		await fx.service.addHandle(primaryId, {
 			platform: "gmail",
@@ -255,8 +275,7 @@ describe("RelationshipsService rolodex extensions (T7b)", () => {
 		const entityId = await fx.makeEntity("Dana");
 		await fx.service.addContact(entityId);
 
-		const progressBefore =
-			await fx.service.getRelationshipProgress(entityId);
+		const progressBefore = await fx.service.getRelationshipProgress(entityId);
 		expect(progressBefore?.cadenceHealth).toBe("no-goal");
 
 		await fx.service.setRelationshipGoal(entityId, {
@@ -275,8 +294,7 @@ describe("RelationshipsService rolodex extensions (T7b)", () => {
 			direction: "outbound",
 			occurredAt: new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString(),
 		});
-		const progressOnTrack =
-			await fx.service.getRelationshipProgress(entityId);
+		const progressOnTrack = await fx.service.getRelationshipProgress(entityId);
 		expect(progressOnTrack?.cadenceHealth).toBe("on-track");
 
 		await fx.service.recordInteraction({
@@ -286,8 +304,7 @@ describe("RelationshipsService rolodex extensions (T7b)", () => {
 			occurredAt: new Date(Date.now() - 45 * 24 * 3600 * 1000).toISOString(),
 		});
 		// lastInteractionAt should not regress; still on-track
-		const stillOnTrack =
-			await fx.service.getRelationshipProgress(entityId);
+		const stillOnTrack = await fx.service.getRelationshipProgress(entityId);
 		expect(stillOnTrack?.cadenceHealth).toBe("on-track");
 	});
 
@@ -326,10 +343,7 @@ describe("RelationshipsService rolodex extensions (T7b)", () => {
 		expect(result.skipped).toHaveLength(1);
 
 		// findByHandle now finds the newly imported contact
-		const newOne = await fx.service.findByHandle(
-			"discord",
-			"new-friend#7",
-		);
+		const newOne = await fx.service.findByHandle("discord", "new-friend#7");
 		expect(newOne).not.toBeNull();
 	});
 });

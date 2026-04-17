@@ -7,8 +7,7 @@
  *   GET  /api/wallet/keys      — EVM + Solana keys (loopback + onboarding gate)
  *   GET  /api/wallet/nfts      — EVM NFT fetch
  */
-import http from "node:http";
-import { logger } from "@elizaos/core";
+import type http from "node:http";
 import { getWalletAddresses } from "@elizaos/agent/api/wallet";
 import { fetchEvmNfts } from "@elizaos/agent/api/wallet-evm-balance";
 import { resolveWalletRpcReadiness } from "@elizaos/agent/api/wallet-rpc";
@@ -16,6 +15,11 @@ import {
   type ElizaConfig,
   loadElizaConfig,
 } from "@elizaos/agent/config/config";
+import {
+  getStewardBridgeStatus,
+  isStewardConfigured,
+} from "@elizaos/app-steward/routes/steward-bridge";
+import { logger } from "@elizaos/core";
 import { deriveAgentVaultId } from "../security/agent-vault-id";
 import {
   createNodePlatformSecureStore,
@@ -32,15 +36,14 @@ import {
   isDevEnvironment,
 } from "./auth";
 import {
+  type CompatRuntimeState,
+  isLoopbackRemoteAddress,
+  readCompatJsonBody,
+} from "./compat-route-shared";
+import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
-import {
-  isLoopbackRemoteAddress,
-  readCompatJsonBody,
-  type CompatRuntimeState,
-} from "./compat-route-shared";
-import { getStewardBridgeStatus, isStewardConfigured } from "@elizaos/app-steward/routes/steward-bridge";
 
 export async function handleWalletCompatRoutes(
   req: http.IncomingMessage,

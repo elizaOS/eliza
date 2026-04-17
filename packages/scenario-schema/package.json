@@ -1,0 +1,8 @@
+{
+  "name": "@elizaos/scenario-schema",
+  "version": "0.0.0-local",
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  }
+}

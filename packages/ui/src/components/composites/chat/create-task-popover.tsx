@@ -118,7 +118,9 @@ export function CreateTaskPopover({
             </label>
             <Select
               value={agentType}
-              onValueChange={(value: string) => setAgentType(value as AgentType)}
+              onValueChange={(value: string) =>
+                setAgentType(value as AgentType)
+              }
             >
               <SelectTrigger id="chat-task-agent-type" className="h-9 text-sm">
                 <SelectValue />

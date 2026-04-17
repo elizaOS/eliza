@@ -1,12 +1,12 @@
 import {
-  resolveDeploymentTargetInConfig,
-  resolveServiceRoutingInConfig,
-} from "@elizaos/shared/contracts/onboarding";
-import {
   getOnboardingProviderOption,
   isElizaCloudLinkedInConfig,
   resolveElizaCloudTopology,
 } from "@elizaos/shared/contracts";
+import {
+  resolveDeploymentTargetInConfig,
+  resolveServiceRoutingInConfig,
+} from "@elizaos/shared/contracts/onboarding";
 import { asRecord, readString } from "../state/config-readers";
 import type {
   CloudPreferenceClientLike as ClientLike,

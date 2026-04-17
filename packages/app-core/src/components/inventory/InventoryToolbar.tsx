@@ -2,11 +2,17 @@ import type {
   WalletBalancesResponse,
   WalletNftsResponse,
 } from "@elizaos/shared/contracts/wallet";
+import {
+  Button,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@elizaos/ui";
 import type { createTranslator } from "../../i18n";
 import type { AppState } from "../../state/types";
-
 import { CHAIN_CONFIGS, PRIMARY_CHAIN_KEYS } from "./chainConfig";
-import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@elizaos/ui";
 
 type InventoryToolbarStateKey = "inventoryView" | "inventorySort";
 type InventorySort = AppState["inventorySort"];

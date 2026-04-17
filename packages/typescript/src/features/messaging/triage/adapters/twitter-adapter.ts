@@ -7,8 +7,7 @@ export class TwitterMessageAdapter extends BaseMessageAdapter {
 
 	isAvailable(runtime: IAgentRuntime): boolean {
 		return (
-			runtime.getService("twitter") != null ||
-			runtime.getService("x") != null
+			runtime.getService("twitter") != null || runtime.getService("x") != null
 		);
 	}
 }

@@ -1,3 +1,4 @@
+import { recentConversationTexts } from "@elizaos/app-lifeops/actions/life-recent-context.js";
 import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   getTrajectoryContext,
@@ -6,7 +7,6 @@ import {
   parseKeyValueXml,
 } from "@elizaos/core";
 import { loadTrajectoryByStepId } from "../runtime/trajectory-internals.js";
-import { recentConversationTexts } from "@elizaos/app-lifeops/actions/life-recent-context.js";
 
 type GroundedReplyDomain = "lifeops" | "gmail" | "calendar";
 

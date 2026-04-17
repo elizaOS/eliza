@@ -5,7 +5,7 @@
 
 import { normalizeOnboardingProviderId } from "@elizaos/shared/contracts";
 import { WALLET_RPC_PROVIDER_OPTIONS } from "@elizaos/shared/contracts/wallet";
-
+import { Button, Switch } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
 import {
@@ -15,7 +15,6 @@ import {
 } from "../../config";
 import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
-import { Button, Switch } from "@elizaos/ui";
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 

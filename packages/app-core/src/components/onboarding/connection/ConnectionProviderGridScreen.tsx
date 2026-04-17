@@ -1,12 +1,12 @@
-
+import { Button } from "@elizaos/ui";
 import type { ProviderOption } from "../../../api";
 import { appNameInterpolationVars, useBranding } from "../../../config";
-import { canRunLocal } from "../../../platform/init";
 import type {
   ConnectionEffect,
   ConnectionEvent,
 } from "../../../onboarding/connection-flow";
 import { CONNECTION_RECOMMENDED_PROVIDER_IDS } from "../../../onboarding/connection-flow";
+import { canRunLocal } from "../../../platform/init";
 import { getProviderLogo } from "../../../providers";
 import { useApp } from "../../../state";
 import {
@@ -16,7 +16,6 @@ import {
   onboardingChoiceCardRecommendedLabelClassName,
   onboardingChoiceCardTitleClassName,
 } from "../onboarding-form-primitives";
-import { Button } from "@elizaos/ui";
 import {
   OnboardingStepHeader,
   onboardingBodyTextShadowStyle,
@@ -51,7 +50,12 @@ export function ConnectionProviderGridScreen({
   getDetectedLabel: (providerId: string) => string | null;
 }) {
   const branding = useBranding();
-  const { t, onboardingRemoteConnected, handleOnboardingBack, handleOnboardingNext } = useApp();
+  const {
+    t,
+    onboardingRemoteConnected,
+    handleOnboardingBack,
+    handleOnboardingNext,
+  } = useApp();
 
   return (
     <>
@@ -81,7 +85,12 @@ export function ConnectionProviderGridScreen({
           >
             {t("onboarding.useElizaCloud", { defaultValue: "Deploy to Cloud" })}
           </button>
-          <span className="text-3xs text-[var(--onboarding-text-faint)]" aria-hidden>|</span>
+          <span
+            className="text-3xs text-[var(--onboarding-text-faint)]"
+            aria-hidden
+          >
+            |
+          </span>
           <button
             type="button"
             className="text-3xs uppercase tracking-[0.1em] text-[var(--onboarding-text-subtle)] hover:text-[var(--onboarding-text-strong)] transition-colors hover:underline"

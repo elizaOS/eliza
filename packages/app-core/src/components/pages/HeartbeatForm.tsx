@@ -1,16 +1,23 @@
-
-
+import {
+  Button,
+  FieldLabel,
+  FieldSwitch,
+  FormSelect,
+  FormSelectItem,
+  Input,
+  PagePanel,
+  StatusDot,
+  Textarea,
+} from "@elizaos/ui";
 import type { TriggerSummary } from "../../api/client";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
-import { PagePanel, Button, FieldLabel, FieldSwitch, FormSelect, FormSelectItem, Input, StatusBadge, StatusDot, Textarea } from "@elizaos/ui";
 import {
   DURATION_UNITS,
   durationUnitLabel,
   formFromTrigger,
   localizedExecutionStatus,
-  toneForLastStatus,
-  type TriggerFormState,
   type TranslateFn,
+  type TriggerFormState,
 } from "./heartbeat-utils";
 
 // ── Props ──────────────────────────────────────────────────────────

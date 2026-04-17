@@ -1,25 +1,10 @@
-/**
- * Test gating utilities for real integration tests.
- *
- * Usage:
- *   import { skipWithout, skipWithoutLive, skipWithoutAnyLLM } from "./skip-without";
- *
- *   describe("Discord connector", () => {
- *     skipWithout("DISCORD_BOT_TOKEN");
- *     // ... tests that require a real Discord bot
- *   });
- */
+/** Env-based gates for live and integration tests. */
 
 import { describe, it, test } from "vitest";
-import { selectLiveProvider, isLiveTestEnabled } from "./live-provider";
+import { isLiveTestEnabled, selectLiveProvider } from "./live-provider";
 
-/**
- * Skip the current test suite if any of the given environment variables are missing.
- * Call at the top of a describe block.
- */
-export function skipWithout(
-  envVarOrVars: string | string[],
-): void {
+/** Skips the current suite when required env vars are missing. */
+export function skipWithout(envVarOrVars: string | string[]): void {
   const vars = Array.isArray(envVarOrVars) ? envVarOrVars : [envVarOrVars];
   const missing = vars.filter((v) => !process.env[v]?.trim());
   if (missing.length > 0) {
@@ -27,59 +12,42 @@ export function skipWithout(
   }
 }
 
-/**
- * Create a describe.skipIf wrapper for when env vars are missing.
- * Use as: describeWithout("DISCORD_BOT_TOKEN")("Discord tests", () => { ... })
- */
+/** Returns a `describe.skipIf` wrapper for env-based gates. */
 export function describeWithout(envVarOrVars: string | string[]) {
   const vars = Array.isArray(envVarOrVars) ? envVarOrVars : [envVarOrVars];
   const missing = vars.some((v) => !process.env[v]?.trim());
   return describe.skipIf(missing);
 }
 
-/**
- * Create an it.skipIf wrapper for when env vars are missing.
- */
+/** Returns an `it.skipIf` wrapper for env-based gates. */
 export function itWithout(envVarOrVars: string | string[]) {
   const vars = Array.isArray(envVarOrVars) ? envVarOrVars : [envVarOrVars];
   const missing = vars.some((v) => !process.env[v]?.trim());
   return it.skipIf(missing);
 }
 
-/**
- * Skip unless MILADY_LIVE_TEST=1 (or ELIZA_LIVE_TEST=1 or LIVE=1).
- */
+/** Skips unless the live-test gate is enabled. */
 export function skipWithoutLive(): void {
   if (!isLiveTestEnabled()) {
     test.skip("MILADY_LIVE_TEST=1 or ELIZA_LIVE_TEST=1 not set");
   }
 }
 
-/**
- * describe.skipIf wrapper for live test gate.
- */
+/** `describe.skipIf` wrapper for the live-test gate. */
 export const describeLive = describe.skipIf(!isLiveTestEnabled());
 
-/**
- * it.skipIf wrapper for live test gate.
- */
+/** `it.skipIf` wrapper for the live-test gate. */
 export const itLive = it.skipIf(!isLiveTestEnabled());
 
-/**
- * Skip unless at least one LLM provider API key is available.
- */
+/** Skips unless at least one LLM provider API key is available. */
 export function skipWithoutAnyLLM(): void {
   if (!selectLiveProvider()) {
     test.skip("No LLM provider API key available");
   }
 }
 
-/**
- * describe.skipIf wrapper for LLM availability.
- */
+/** `describe.skipIf` wrapper for LLM availability. */
 export const describeLLM = describe.skipIf(!selectLiveProvider());
 
-/**
- * it.skipIf wrapper for LLM availability.
- */
+/** `it.skipIf` wrapper for LLM availability. */
 export const itLLM = it.skipIf(!selectLiveProvider());

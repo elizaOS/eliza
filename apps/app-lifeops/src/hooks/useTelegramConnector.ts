@@ -2,6 +2,7 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsTelegramAuthState,
   LifeOpsTelegramConnectorStatus,
+  VerifyLifeOpsTelegramConnectorResponse,
 } from "@elizaos/shared/contracts/lifeops";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "@elizaos/app-core/api";
@@ -25,8 +26,11 @@ export function useTelegramConnector(
     useState<LifeOpsTelegramConnectorStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionPending, setActionPending] = useState(false);
+  const [verifyPending, setVerifyPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [authState, setAuthState] = useState<LifeOpsTelegramAuthState>("idle");
+  const [verification, setVerification] =
+    useState<VerifyLifeOpsTelegramConnectorResponse | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -164,17 +168,33 @@ export function useTelegramConnector(
     }
   }, [side]);
 
+  const verify = useCallback(async () => {
+    try {
+      setVerifyPending(true);
+      setError(null);
+      const result = await client.verifyTelegramConnector({ side });
+      setVerification(result);
+    } catch (cause) {
+      setError(formatError(cause, "Telegram verification failed."));
+    } finally {
+      setVerifyPending(false);
+    }
+  }, [side]);
+
   return {
     status,
     loading,
     actionPending,
+    verifyPending,
     error,
     authState,
+    verification,
     startAuth,
     submitCode,
     submitPassword,
     cancelAuth,
     disconnect,
+    verify,
     refresh,
   } as const;
 }

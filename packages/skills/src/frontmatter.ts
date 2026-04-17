@@ -188,7 +188,10 @@ export function resolveSkillProvenance(
   if (typeof record.derivedFromTrajectory === "string") {
     provenance.derivedFromTrajectory = record.derivedFromTrajectory;
   }
-  if (typeof record.lastEvalScore === "number" && Number.isFinite(record.lastEvalScore)) {
+  if (
+    typeof record.lastEvalScore === "number" &&
+    Number.isFinite(record.lastEvalScore)
+  ) {
     const score = record.lastEvalScore;
     provenance.lastEvalScore = Math.max(0, Math.min(1, score));
   }

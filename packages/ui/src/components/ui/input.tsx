@@ -32,7 +32,9 @@ const _inputVariants = cva(
   },
 );
 
-const inputVariants: (props?: InputVariantProps) => string = _inputVariants as (props?: InputVariantProps) => string;
+const inputVariants: (props?: InputVariantProps) => string = _inputVariants as (
+  props?: InputVariantProps,
+) => string;
 
 export interface InputProps
   extends React.InputHTMLAttributes<HTMLInputElement>,

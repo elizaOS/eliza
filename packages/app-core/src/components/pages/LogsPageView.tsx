@@ -1,7 +1,6 @@
-
+import { ContentLayout } from "@elizaos/ui";
 import type { ReactNode } from "react";
 import { LogsView } from "./LogsView";
-import { ContentLayout } from "@elizaos/ui";
 
 export function LogsPageView({
   contentHeader,

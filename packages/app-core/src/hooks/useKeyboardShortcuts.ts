@@ -1,7 +1,10 @@
-
-
 import { formatShortcut, type ShortcutConfig } from "@elizaos/ui";
-export { formatShortcut, type ShortcutConfig, useKeyboardShortcuts } from "@elizaos/ui";
+
+export {
+  formatShortcut,
+  type ShortcutConfig,
+  useKeyboardShortcuts,
+} from "@elizaos/ui";
 
 // Common shortcuts — app-specific definitions
 export const COMMON_SHORTCUTS: Omit<ShortcutConfig, "handler">[] = [

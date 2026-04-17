@@ -144,10 +144,7 @@ describe("curated skills routes", () => {
       "stable-skill",
       "agent-refined",
     );
-    const ctx = makeContext(
-      "POST",
-      "/api/skills/curated/stable-skill/disable",
-    );
+    const ctx = makeContext("POST", "/api/skills/curated/stable-skill/disable");
     const handled = await handleCuratedSkillsRoutes(ctx);
     expect(handled).toBe(true);
     expect(ctx.recorded.status).toBe(200);

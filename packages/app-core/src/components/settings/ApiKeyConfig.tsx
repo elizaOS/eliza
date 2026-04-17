@@ -1,4 +1,4 @@
-
+import { Button, useTimeout } from "@elizaos/ui";
 import { useCallback, useState } from "react";
 import { client, type PluginParamDef } from "../../api";
 import {
@@ -6,11 +6,9 @@ import {
   defaultRegistry,
   type JsonSchemaObject,
 } from "../../config";
-import { useTimeout } from "@elizaos/ui";
 import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { autoLabel } from "../../utils/labels";
-import { Button } from "@elizaos/ui";
 
 interface ProviderPlugin {
   id: string;

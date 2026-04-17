@@ -17,12 +17,7 @@
  *     metadata.retryCount/metadata.retryDetected
  */
 
-import {
-	existsSync,
-	mkdirSync,
-	readFileSync,
-	writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { logger } from "../../../logger.ts";
 import type {
@@ -297,9 +292,7 @@ function pickMostRecent(
 	items: TrajectoryListItem[],
 ): TrajectoryListItem | undefined {
 	if (items.length === 0) return undefined;
-	const sorted = [...items].sort(
-		(a, b) => (b.endTime ?? 0) - (a.endTime ?? 0),
-	);
+	const sorted = [...items].sort((a, b) => (b.endTime ?? 0) - (a.endTime ?? 0));
 	return sorted[0];
 }
 
@@ -354,7 +347,8 @@ export const skillRefinementEvaluator: Evaluator = {
 
 	validate: async (runtime: IAgentRuntime): Promise<boolean> => {
 		const service = getTrajectoryService(runtime);
-		if (!service?.listTrajectories || !service.getTrajectoryDetail) return false;
+		if (!service?.listTrajectories || !service.getTrajectoryDetail)
+			return false;
 		const list = await service.listTrajectories({ limit: 5 });
 		const latest = pickMostRecent(list.trajectories ?? []);
 		if (!latest) return false;
@@ -364,9 +358,12 @@ export const skillRefinementEvaluator: Evaluator = {
 		return trajectoryUsedSkills(detail).length > 0;
 	},
 
-	handler: async (runtime: IAgentRuntime): Promise<ActionResult | undefined> => {
+	handler: async (
+		runtime: IAgentRuntime,
+	): Promise<ActionResult | undefined> => {
 		const service = getTrajectoryService(runtime);
-		if (!service?.listTrajectories || !service.getTrajectoryDetail) return undefined;
+		if (!service?.listTrajectories || !service.getTrajectoryDetail)
+			return undefined;
 		const list = await service.listTrajectories({ limit: 5 });
 		const latest = pickMostRecent(list.trajectories ?? []);
 		if (!latest) return undefined;

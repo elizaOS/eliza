@@ -162,7 +162,10 @@ export const CONNECTOR_DISPLAY_NAMES: Record<string, string> = {
 };
 
 /** Returns a display-ready name for a plugin, falling back to `plugin.name`. */
-export function connectorDisplayName(plugin: { id: string; name: string }): string {
+export function connectorDisplayName(plugin: {
+  id: string;
+  name: string;
+}): string {
   return CONNECTOR_DISPLAY_NAMES[plugin.id] ?? plugin.name;
 }
 
@@ -976,7 +979,9 @@ export function buildPluginListState(options: {
     (plugin) =>
       plugin.category !== "database" &&
       !ALWAYS_ON_PLUGIN_IDS.has(plugin.id) &&
-      (!isConnectorLikeMode || (plugin.category === "connector" && VISIBLE_CONNECTOR_IDS.has(plugin.id))) &&
+      (!isConnectorLikeMode ||
+        (plugin.category === "connector" &&
+          VISIBLE_CONNECTOR_IDS.has(plugin.id))) &&
       (mode !== "streaming" || plugin.category === "streaming"),
   );
   const nonDbPlugins = [SHOWCASE_PLUGIN, ...categoryPlugins];

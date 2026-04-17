@@ -27,18 +27,18 @@ import {
 // Platform detection
 const platform = Capacitor.getPlatform();
 const isNative = Capacitor.isNativePlatform();
-const isIOS = platform === "ios";
-const isAndroid = platform === "android";
+const _isIOS = platform === "ios";
+const _isAndroid = platform === "android";
 
 function isDesktopPlatform(): boolean {
   return isElectrobunRuntime();
 }
 
-function isWebPlatform(): boolean {
+function _isWebPlatform(): boolean {
   return platform === "web" && !isElectrobunRuntime();
 }
 
-function isMacOSPlatform(): boolean {
+function _isMacOSPlatform(): boolean {
   return isDesktopPlatform();
 }
 

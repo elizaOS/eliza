@@ -28,12 +28,7 @@ export const ALL_MESSAGE_SOURCES: readonly MessageSource[] = [
 	"whatsapp",
 ] as const;
 
-export type TriagePriority =
-	| "critical"
-	| "high"
-	| "medium"
-	| "low"
-	| "spam";
+export type TriagePriority = "critical" | "high" | "medium" | "low" | "spam";
 
 export type SuggestedAction =
 	| "respond-now"

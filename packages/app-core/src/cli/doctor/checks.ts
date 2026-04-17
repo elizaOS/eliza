@@ -17,11 +17,11 @@ import { createConnection } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { resolveConfigPath } from "@elizaos/agent/config/paths";
 import {
   resolveApiSecurityConfig,
   resolveServerOnlyPort,
 } from "@elizaos/shared/runtime-env";
-import { resolveConfigPath } from "@elizaos/agent/config/paths";
 import { getCloudSecret } from "../../api/cloud-secrets";
 
 export type CheckStatus = "pass" | "fail" | "warn" | "skip";

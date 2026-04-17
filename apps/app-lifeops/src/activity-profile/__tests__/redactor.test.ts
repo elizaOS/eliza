@@ -23,6 +23,10 @@ describe("redactWindowTitle", () => {
     );
   });
 
+  it("does not partially redact longer bare digit runs as phone numbers", () => {
+    expect(redactWindowTitle("ref 123456789012", ON)).toBe("ref 123456789012");
+  });
+
   it("redacts credit-card-like digit runs", () => {
     expect(redactWindowTitle("card 4111 1111 1111 1111", ON)).toBe(
       "card [redacted-cc]",

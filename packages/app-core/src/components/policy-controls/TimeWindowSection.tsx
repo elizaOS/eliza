@@ -1,9 +1,7 @@
-
-
+import { Button, Label } from "@elizaos/ui";
 import { DAY_NAMES, TIMEZONES } from "./constants";
 import { formatHour } from "./helpers";
 import type { TimeWindowConfig } from "./types";
-import { Button, Label } from "@elizaos/ui";
 
 /** Static hour options — avoids array-index-as-key lint errors. */
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({

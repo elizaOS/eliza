@@ -5,7 +5,9 @@
  * Probes for an existing install/connection and dispatches the result.
  */
 
-import { type OnboardingOptions, client } from "../api";
+import { ONBOARDING_PROVIDER_CATALOG } from "@elizaos/shared/contracts/onboarding";
+import { getStylePresets } from "@elizaos/shared/onboarding-presets";
+import { client, type OnboardingOptions } from "../api";
 import {
   getBackendStartupTimeoutMs,
   getDesktopRuntimeMode,
@@ -14,17 +16,14 @@ import {
   isElectrobunRuntime,
   scanProviderCredentials,
 } from "../bridge";
-import { ONBOARDING_PROVIDER_CATALOG } from "@elizaos/shared/contracts/onboarding";
-import { getStylePresets } from "@elizaos/shared/onboarding-presets";
+import type { UiLanguage } from "../i18n";
 import { detectExistingOnboardingConnection } from "./onboarding-bootstrap";
 import {
-  createPersistedActiveServer,
   loadPersistedActiveServer,
   loadPersistedOnboardingComplete,
   type PersistedActiveServer,
 } from "./persistence";
-import { type StartupEvent } from "./startup-coordinator";
-import type { UiLanguage } from "../i18n";
+import type { StartupEvent } from "./startup-coordinator";
 
 export interface RestoringSessionDeps {
   setStartupError: (v: null) => void;
@@ -122,7 +121,7 @@ export async function runRestoringSession(
   if (cancelled.current) return;
 
   const isDesktop = forceLocal || isElectrobunRuntime();
-  const hasExistingEvidence = hadPrior || Boolean(desktopInstall?.detected);
+  const _hasExistingEvidence = hadPrior || Boolean(desktopInstall?.detected);
 
   // Probe the API when there is evidence of a prior install, or when no
   // persisted server exists (covers headless/VPS setups where config was

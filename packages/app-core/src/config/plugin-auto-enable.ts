@@ -1,19 +1,19 @@
 // Override applyPluginAutoEnable to inject WeChat auto-enable before upstream.
 import {
   applyPluginAutoEnable as _upstreamApplyPluginAutoEnable,
-  applyPluginSelfDeclaredAutoEnable,
   CONNECTOR_PLUGINS as _upstreamConnectorPlugins,
   type ApplyPluginAutoEnableParams,
   type ApplyPluginAutoEnableResult,
   AUTH_PROVIDER_PLUGINS,
+  applyPluginSelfDeclaredAutoEnable,
   isConnectorConfigured,
   isStreamingDestinationConfigured,
   STREAMING_PLUGINS,
 } from "@elizaos/agent/config/plugin-auto-enable";
 
 export {
-  applyPluginSelfDeclaredAutoEnable,
   AUTH_PROVIDER_PLUGINS,
+  applyPluginSelfDeclaredAutoEnable,
   isConnectorConfigured,
   isStreamingDestinationConfigured,
   STREAMING_PLUGINS,

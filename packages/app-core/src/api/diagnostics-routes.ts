@@ -25,8 +25,7 @@ export async function handleDiagnosticsRoutes(
   return handleAutonomousDiagnosticsRoutes({
     ...ctx,
     resolveExtensionPath: ctx.resolveExtensionPath ?? (() => null),
-    resolveExtensionArtifacts:
-      ctx.resolveExtensionArtifacts ?? (() => ({})),
+    resolveExtensionArtifacts: ctx.resolveExtensionArtifacts ?? (() => ({})),
     auditEventTypes: AUDIT_EVENT_TYPES,
     auditSeverities: AUDIT_SEVERITIES,
     getAuditFeedSize,

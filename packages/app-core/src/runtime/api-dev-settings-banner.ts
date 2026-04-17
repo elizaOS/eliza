@@ -5,8 +5,8 @@ import {
   formatDevSettingsTable,
 } from "@elizaos/shared/dev-settings-table";
 import {
-  firstWinningEnvString,
   ELIZA_RUNTIME_ENV_KEYS,
+  firstWinningEnvString,
   resolveApiSecurityConfig,
   resolveApiToken,
 } from "@elizaos/shared/runtime-env";

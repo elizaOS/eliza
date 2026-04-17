@@ -1,7 +1,7 @@
-import { useApp } from "../../state/useApp";
+import { Button, Checkbox, Input } from "@elizaos/ui";
 
 import { useCallback, useRef, useState } from "react";
-import { Button, Checkbox, Input } from "@elizaos/ui";
+import { useApp } from "../../state/useApp";
 
 export const MAX_UPLOAD_REQUEST_BYTES = 32 * 1_048_576; // Must match server knowledge route limit
 export const BULK_UPLOAD_TARGET_BYTES = 24 * 1_048_576;

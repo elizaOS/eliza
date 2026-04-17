@@ -1,6 +1,7 @@
-import { useApp } from "../../state/useApp";
+import { Button, Input } from "@elizaos/ui";
 
 import { useState } from "react";
+import { useApp } from "../../state/useApp";
 import {
   onboardingCardSurfaceClassName,
   onboardingCardSurfaceHoverClassName,
@@ -8,11 +9,10 @@ import {
   onboardingHelperTextClassName,
   onboardingInputClassName,
   onboardingReadableTextPrimaryClassName,
-  onboardingSubtleTextClassName,
   onboardingRecommendedSurfaceClassName,
   onboardingRecommendedSurfaceHoverClassName,
+  onboardingSubtleTextClassName,
 } from "./onboarding-form-primitives";
-import { Button, Input } from "@elizaos/ui";
 import {
   OnboardingSecondaryActionButton,
   OnboardingStepHeader,

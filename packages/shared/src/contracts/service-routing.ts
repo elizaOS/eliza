@@ -86,19 +86,21 @@ export const SERVICE_CAPABILITIES = [
   "rpc",
 ] as const satisfies readonly ServiceCapability[];
 
-export function buildElizaCloudServiceRoute(args: {
-  nanoModel?: string;
-  smallModel?: string;
-  mediumModel?: string;
-  largeModel?: string;
-  megaModel?: string;
-  responseHandlerModel?: string;
-  shouldRespondModel?: string;
-  actionPlannerModel?: string;
-  plannerModel?: string;
-  responseModel?: string;
-  mediaDescriptionModel?: string;
-} = {}): ServiceRouteConfig {
+export function buildElizaCloudServiceRoute(
+  args: {
+    nanoModel?: string;
+    smallModel?: string;
+    mediumModel?: string;
+    largeModel?: string;
+    megaModel?: string;
+    responseHandlerModel?: string;
+    shouldRespondModel?: string;
+    actionPlannerModel?: string;
+    plannerModel?: string;
+    responseModel?: string;
+    mediaDescriptionModel?: string;
+  } = {},
+): ServiceRouteConfig {
   return {
     ...ELIZA_CLOUD_ROUTE_BASE,
     ...(args.nanoModel ? { nanoModel: args.nanoModel } : {}),
@@ -123,21 +125,23 @@ export function buildElizaCloudServiceRoute(args: {
   };
 }
 
-export function buildDefaultElizaCloudServiceRouting(args: {
-  base?: ServiceRoutingConfig | null;
-  includeInference?: boolean;
-  nanoModel?: string;
-  smallModel?: string;
-  mediumModel?: string;
-  largeModel?: string;
-  megaModel?: string;
-  responseHandlerModel?: string;
-  shouldRespondModel?: string;
-  actionPlannerModel?: string;
-  plannerModel?: string;
-  responseModel?: string;
-  mediaDescriptionModel?: string;
-} = {}): ServiceRoutingConfig {
+export function buildDefaultElizaCloudServiceRouting(
+  args: {
+    base?: ServiceRoutingConfig | null;
+    includeInference?: boolean;
+    nanoModel?: string;
+    smallModel?: string;
+    mediumModel?: string;
+    largeModel?: string;
+    megaModel?: string;
+    responseHandlerModel?: string;
+    shouldRespondModel?: string;
+    actionPlannerModel?: string;
+    plannerModel?: string;
+    responseModel?: string;
+    mediaDescriptionModel?: string;
+  } = {},
+): ServiceRoutingConfig {
   const next: ServiceRoutingConfig = { ...(args.base ?? {}) };
 
   for (const capability of ELIZA_CLOUD_DEFAULT_SERVICE_CAPABILITIES) {
@@ -201,9 +205,7 @@ function normalizeLinkedAccountSource(
 function normalizeServiceTransport(
   value: unknown,
 ): ServiceTransport | undefined {
-  return value === "direct" ||
-    value === "cloud-proxy" ||
-    value === "remote"
+  return value === "direct" || value === "cloud-proxy" || value === "remote"
     ? value
     : undefined;
 }

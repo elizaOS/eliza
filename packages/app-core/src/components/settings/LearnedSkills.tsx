@@ -13,8 +13,8 @@
  *   DELETE /api/skills/curated/:name                      → remove
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@elizaos/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
 
 type CuratedStatus = "active" | "proposed" | "disabled";

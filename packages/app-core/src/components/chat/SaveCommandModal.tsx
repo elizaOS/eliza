@@ -1,8 +1,15 @@
-
-
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+} from "@elizaos/ui";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useApp } from "../../state";
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input } from "@elizaos/ui";
 
 interface SaveCommandModalProps {
   open: boolean;

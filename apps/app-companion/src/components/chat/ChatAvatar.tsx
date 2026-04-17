@@ -1,11 +1,11 @@
 import {
   APP_EMOTE_EVENT,
+  type AppEmoteEventDetail,
   getVrmPreviewUrl,
   getVrmUrl,
   resolveAppAssetUrl,
   STOP_EMOTE_EVENT,
   useApp,
-  type AppEmoteEventDetail,
 } from "@elizaos/app-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 

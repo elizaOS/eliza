@@ -1,23 +1,5 @@
-import type {
-  ConversationChannelType,
-  ConversationMessage,
-} from "../../api/client-types-chat";
-import type { VoiceConfig } from "../../api/client-types-config";
-import { client } from "../../api/client";
-import {
-  ELIZA_CLOUD_STATUS_UPDATED_EVENT,
-  VOICE_CONFIG_UPDATED_EVENT,
-} from "../../events";
-import type { ElizaCloudStatusUpdatedDetail } from "../../events";
-import { useVoiceChat } from "../../hooks/useVoiceChat";
-
-import type {
-  VoiceCaptureMode,
-  VoicePlaybackStartEvent,
-} from "../../hooks/voice-chat-types";
-import type { useApp } from "../../state/useApp";
-import { ttsDebug } from "../../utils/tts-debug";
-import { resolveCharacterVoiceConfigFromAppConfig } from "../../voice/character-voice-config";
+import { useCompanionSceneStatus } from "@elizaos/app-companion/components/companion/companion-scene-status-context";
+import { useDocumentVisibility, useTimeout } from "@elizaos/ui";
 import {
   useCallback,
   useEffect,
@@ -26,8 +8,25 @@ import {
   useRef,
   useState,
 } from "react";
-import { useCompanionSceneStatus } from "@elizaos/app-companion/components/companion/companion-scene-status-context";
-import { useDocumentVisibility, useTimeout } from "@elizaos/ui";
+import { client } from "../../api/client";
+import type {
+  ConversationChannelType,
+  ConversationMessage,
+} from "../../api/client-types-chat";
+import type { VoiceConfig } from "../../api/client-types-config";
+import type { ElizaCloudStatusUpdatedDetail } from "../../events";
+import {
+  ELIZA_CLOUD_STATUS_UPDATED_EVENT,
+  VOICE_CONFIG_UPDATED_EVENT,
+} from "../../events";
+import { useVoiceChat } from "../../hooks/useVoiceChat";
+import type {
+  VoiceCaptureMode,
+  VoicePlaybackStartEvent,
+} from "../../hooks/voice-chat-types";
+import type { useApp } from "../../state/useApp";
+import { ttsDebug } from "../../utils/tts-debug";
+import { resolveCharacterVoiceConfigFromAppConfig } from "../../voice/character-voice-config";
 
 /* ── Shared constants ──────────────────────────────────────────────── */
 

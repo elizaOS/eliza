@@ -25,6 +25,8 @@
  * Tests: `tests/connection-flow.test.ts`
  */
 
+import { canRunLocal } from "../platform/init";
+import type { OnboardingServerTarget } from "./server-target";
 import type {
   ConnectionEvent,
   ConnectionFlowSnapshot,
@@ -34,8 +36,6 @@ import type {
   ConnectionTransitionResult,
   ConnectionUiSpec,
 } from "./types";
-import { type OnboardingServerTarget } from "./server-target";
-import { canRunLocal } from "../platform/init";
 
 export type {
   ConnectionEffect,
@@ -183,8 +183,8 @@ const resetCloudSelectionPatch = (): ConnectionStatePatch => ({
   ...toOnboardingTargetPatch(""),
   onboardingCloudApiKey: "",
   onboardingApiKey: "",
-  onboardingPrimaryModel: "",  // Also clear model when resetting cloud selection
-  onboardingProvider: "",      // Clear provider when backing out of provider selection
+  onboardingPrimaryModel: "", // Also clear model when resetting cloud selection
+  onboardingProvider: "", // Clear provider when backing out of provider selection
   onboardingRemoteError: null,
   onboardingRemoteConnecting: false,
 });
