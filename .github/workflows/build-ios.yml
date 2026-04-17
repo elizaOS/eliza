@@ -198,7 +198,7 @@ jobs:
         if: (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_release)) && env.IOS_CERTIFICATE_BASE64 != ''
         env:
           IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
           files: ${{ runner.temp }}/export/*.ipa
