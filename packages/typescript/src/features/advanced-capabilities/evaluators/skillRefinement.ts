@@ -571,3 +571,149 @@ export const skillRefinementEvaluator: Evaluator = {
 		};
 	},
 };
+
+interface GradientRefinementInput {
+	runtime: IAgentRuntime;
+	trajectoryService: TrajectoryServiceShape;
+	skillName: string;
+	skillBody: string;
+}
+
+interface GradientRefinementResult {
+	optimizedBody: string;
+	score: number;
+	optimizer: "instruction-search" | "prompt-evolution" | "bootstrap-fewshot";
+	datasetSize: number;
+}
+
+/**
+ * Run the native `prompt-evolution` optimizer over the trajectories that
+ * referenced this skill. Returns null when the optimizer module is not
+ * installed, when there are too few trajectories to optimize against, or
+ * when the optimization did not improve over the baseline.
+ *
+ * Uses dynamic import so @elizaos/core does not gain a hard dependency on
+ * @elizaos/app-training.
+ */
+async function tryGradientRefinement(
+	input: GradientRefinementInput,
+): Promise<GradientRefinementResult | null> {
+	const optimizers = await loadOptimizerModule();
+	if (!optimizers) return null;
+
+	const trajectories = await collectSkillTrajectories(
+		input.trajectoryService,
+		input.skillName,
+	);
+	if (trajectories.length < 3) return null;
+
+	const dataset = trajectories.flatMap((trajectory) =>
+		extractOptimizationExamples(trajectory),
+	);
+	if (dataset.length === 0) return null;
+
+	const adapter = optimizers.createRuntimeAdapter(
+		(args: { prompt: string; temperature?: number; maxTokens?: number }) =>
+			input.runtime.useModel(ModelType.TEXT_LARGE, args) as Promise<
+				string | object | undefined
+			>,
+	);
+	const scorer = optimizers.createPromptScorer(adapter);
+	const result = await optimizers.runPromptEvolution({
+		baselinePrompt: input.skillBody,
+		dataset,
+		scorer,
+		llm: adapter,
+		options: { population: 4, generations: 2, mutationRate: 0.5 },
+	});
+	if (result.score <= result.baseline) return null;
+	return {
+		optimizedBody: result.optimizedPrompt,
+		score: result.score,
+		optimizer: "prompt-evolution",
+		datasetSize: dataset.length,
+	};
+}
+
+interface OptimizerModule {
+	createRuntimeAdapter: (
+		useModel: (input: {
+			prompt: string;
+			temperature?: number;
+			maxTokens?: number;
+		}) => Promise<string | object | undefined>,
+	) => unknown;
+	createPromptScorer: (adapter: unknown) => unknown;
+	runPromptEvolution: (input: {
+		baselinePrompt: string;
+		dataset: Array<{
+			input: { user: string; system?: string };
+			expectedOutput: string;
+		}>;
+		scorer: unknown;
+		llm: unknown;
+		options?: {
+			population?: number;
+			generations?: number;
+			mutationRate?: number;
+		};
+	}) => Promise<{
+		optimizedPrompt: string;
+		score: number;
+		baseline: number;
+	}>;
+}
+
+async function loadOptimizerModule(): Promise<OptimizerModule | null> {
+	const dynamicImport = new Function(
+		"name",
+		"return import(name);",
+	) as (name: string) => Promise<unknown>;
+	const mod = (await dynamicImport("@elizaos/app-training/optimizers").catch(
+		() => null,
+	)) as OptimizerModule | null;
+	if (
+		mod &&
+		typeof mod.createRuntimeAdapter === "function" &&
+		typeof mod.createPromptScorer === "function" &&
+		typeof mod.runPromptEvolution === "function"
+	) {
+		return mod;
+	}
+	return null;
+}
+
+async function collectSkillTrajectories(
+	service: TrajectoryServiceShape,
+	skillName: string,
+): Promise<Trajectory[]> {
+	if (!service.listTrajectories || !service.getTrajectoryDetail) return [];
+	const list = await service.listTrajectories({ limit: 50 });
+	const collected: Trajectory[] = [];
+	for (const item of list.trajectories ?? []) {
+		const detail = await service.getTrajectoryDetail(item.id);
+		if (!detail) continue;
+		const used = trajectoryUsedSkills(detail);
+		if (used.includes(skillName)) collected.push(detail);
+	}
+	return collected;
+}
+
+function extractOptimizationExamples(
+	trajectory: Trajectory,
+): Array<{ input: { user: string; system?: string }; expectedOutput: string }> {
+	const out: Array<{
+		input: { user: string; system?: string };
+		expectedOutput: string;
+	}> = [];
+	for (const step of trajectory.steps ?? []) {
+		for (const call of step.llmCalls ?? []) {
+			if (!call.userPrompt || !call.response) continue;
+			out.push({
+				input: { user: call.userPrompt, system: call.systemPrompt },
+				expectedOutput: call.response,
+			});
+		}
+	}
+	return out;
+}
