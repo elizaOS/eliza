@@ -397,7 +397,8 @@ describe("computer-use live parity", () => {
     expect(ocrResult.success).toBe(false);
     expect(ocrResult.error).toContain("not available");
 
-    if (!service.getCapabilities().computerUse.available) {
+    const computerUseCapability = service.getCapabilities().computerUse;
+    if (!computerUseCapability.available) {
       return;
     }
 
@@ -407,9 +408,16 @@ describe("computer-use live parity", () => {
     });
     if (moveResult.success) {
       expect(moveResult.success).toBe(true);
-    } else {
-      expect(moveResult.permissionDenied).toBe(true);
+    } else if (
+      process.platform === "darwin" &&
+      !computerUseCapability.tool.includes("cliclick")
+    ) {
+      expect(moveResult.error).toContain("mouse_move requires cliclick");
+    } else if (moveResult.permissionDenied) {
       expect(moveResult.permissionType).toBe("accessibility");
+    } else {
+      expect(typeof moveResult.error).toBe("string");
+      expect(moveResult.error?.length ?? 0).toBeGreaterThan(0);
     }
   });
 

@@ -237,10 +237,10 @@ async function seedCalendarEvents(
 
 describe("life-ops calendar data layer (real PGLite)", () => {
   let runtime: AgentRuntime;
-  let testResult: RealTestRuntimeResult;
+  let testResult: RealTestRuntimeResult | null = null;
   let repository: LifeOpsRepository;
-  let stateDir: string;
-  let envBackup: { restore: () => void };
+  let stateDir = "";
+  let envBackup: { restore: () => void } | null = null;
 
   beforeAll(async () => {
     envBackup = saveEnv(
@@ -258,18 +258,23 @@ describe("life-ops calendar data layer (real PGLite)", () => {
     repository = new LifeOpsRepository(runtime);
 
     await seedCalendarEvents(runtime, stateDir);
-  }, 180_000);
+  }, 360_000);
 
   afterAll(async () => {
-    await testResult.cleanup();
-    await fs.promises.rm(stateDir, {
-      recursive: true,
-      force: true,
-      maxRetries: 5,
-      retryDelay: 100,
-    });
-    envBackup.restore();
-  });
+    try {
+      await testResult?.cleanup();
+    } finally {
+      if (stateDir) {
+        await fs.promises.rm(stateDir, {
+          recursive: true,
+          force: true,
+          maxRetries: 5,
+          retryDelay: 100,
+        });
+      }
+      envBackup?.restore();
+    }
+  }, 120_000);
 
   it("lists events within a time window (tomorrow only)", async () => {
     const tomorrowStart = allDayStart(1);

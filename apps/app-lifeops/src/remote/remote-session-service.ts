@@ -16,7 +16,10 @@
  */
 
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { logger } from "@elizaos/core";
+import { resolveStateDir } from "@elizaos/agent/config/paths";
 import { PairingCodeStore } from "./pairing-code.js";
 
 export type RemoteSessionStatus = "pending" | "active" | "denied" | "revoked";
@@ -82,6 +85,7 @@ export interface RemoteSessionServiceOptions {
   isLocalMode?: () => boolean;
   now?: () => Date;
   logger?: Pick<typeof logger, "info" | "warn" | "debug">;
+  storagePath?: string;
 }
 
 export class RemoteSessionError extends Error {
@@ -106,6 +110,10 @@ const nullDataPlane: DataPlaneResolver = {
   }),
 };
 
+function defaultStoragePath(): string {
+  return path.join(resolveStateDir(), "lifeops", "remote-sessions.json");
+}
+
 export class RemoteSessionService {
   private readonly sessions = new Map<string, RemoteSession>();
   private readonly pairingCodes: PairingCodeStore;
@@ -113,6 +121,7 @@ export class RemoteSessionService {
   private readonly isLocalMode: () => boolean;
   private readonly now: () => Date;
   private readonly log: Pick<typeof logger, "info" | "warn" | "debug">;
+  private readonly storagePath: string;
 
   constructor(options: RemoteSessionServiceOptions = {}) {
     this.pairingCodes = options.pairingCodes ?? new PairingCodeStore();
@@ -120,6 +129,8 @@ export class RemoteSessionService {
     this.isLocalMode = options.isLocalMode ?? defaultIsLocalMode;
     this.now = options.now ?? (() => new Date());
     this.log = options.logger ?? logger;
+    this.storagePath = options.storagePath ?? defaultStoragePath();
+    this.loadSessions();
   }
 
   /**
@@ -249,6 +260,7 @@ export class RemoteSessionService {
       endedAt,
     };
     this.sessions.set(sessionId, revoked);
+    this.persistSessions();
     this.log.info(
       { boundary: "remote", sessionId },
       `[RemoteSessionService] session ${sessionId} revoked`,
@@ -287,7 +299,75 @@ export class RemoteSessionService {
         input.status === "denied" || input.status === "revoked" ? nowIso : null,
     };
     this.sessions.set(id, session);
+    this.persistSessions();
     return session;
+  }
+
+  private loadSessions(): void {
+    if (!fs.existsSync(this.storagePath)) {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(
+        fs.readFileSync(this.storagePath, "utf8"),
+      ) as unknown;
+      if (!Array.isArray(parsed)) {
+        return;
+      }
+      for (const entry of parsed) {
+        if (!entry || typeof entry !== "object") {
+          continue;
+        }
+        const session = entry as Partial<RemoteSession>;
+        if (
+          typeof session.id !== "string" ||
+          typeof session.requesterIdentity !== "string" ||
+          typeof session.status !== "string" ||
+          typeof session.localMode !== "boolean" ||
+          typeof session.createdAt !== "string" ||
+          typeof session.updatedAt !== "string"
+        ) {
+          continue;
+        }
+        this.sessions.set(session.id, {
+          id: session.id,
+          requesterIdentity: session.requesterIdentity,
+          status:
+            session.status === "active" ||
+            session.status === "pending" ||
+            session.status === "denied" ||
+            session.status === "revoked"
+              ? session.status
+              : "revoked",
+          ingressUrl:
+            typeof session.ingressUrl === "string" ? session.ingressUrl : null,
+          reason:
+            session.reason === "data-plane-not-configured" ||
+            session.reason === "local-mode-no-ingress"
+              ? session.reason
+              : null,
+          localMode: session.localMode,
+          createdAt: session.createdAt,
+          updatedAt: session.updatedAt,
+          endedAt:
+            typeof session.endedAt === "string" ? session.endedAt : null,
+        });
+      }
+    } catch {
+      // Invalid persisted state is ignored so a new process can recreate it.
+    }
+  }
+
+  private persistSessions(): void {
+    fs.mkdirSync(path.dirname(this.storagePath), { recursive: true });
+    fs.writeFileSync(
+      this.storagePath,
+      JSON.stringify(Array.from(this.sessions.values()), null, 2),
+      {
+        encoding: "utf8",
+        mode: 0o600,
+      },
+    );
   }
 }
 

@@ -11,7 +11,9 @@ const candidateRoots = [
 ];
 const repoRoot =
   candidateRoots.find((candidate) =>
-    fs.existsSync(path.join(candidate, "apps", "app", "scripts", "run-ui-playwright.mjs")),
+    fs.existsSync(
+      path.join(candidate, "apps", "app", "scripts", "run-ui-playwright.mjs"),
+    ),
   ) ?? path.resolve(here, "..");
 const uiPlaywrightRunner = path.join(
   repoRoot,
@@ -35,7 +37,9 @@ const specGroups = [
   [
     "test/ui-smoke/ui-smoke.spec.ts",
     "test/ui-smoke/settings-chat-companion.spec.ts",
+    "test/ui-smoke/computer-use.spec.ts",
   ],
+  ["test/ui-smoke/cloud-wallet-import.spec.ts"],
 ];
 
 function getFreePort() {
@@ -61,26 +65,29 @@ function getFreePort() {
 }
 
 const env = { ...process.env };
-if (!env.ELIZA_UI_SMOKE_API_PORT) {
+delete env.CI;
+
+if (!env.MILADY_UI_SMOKE_API_PORT) {
   const apiPort = await getFreePort();
-  env.ELIZA_UI_SMOKE_API_PORT = String(apiPort);
-  env.ELIZA_API_PORT = env.ELIZA_API_PORT || String(apiPort);
+  env.MILADY_UI_SMOKE_API_PORT = String(apiPort);
 }
-if (!env.ELIZA_UI_SMOKE_PORT) {
+env.ELIZA_UI_SMOKE_API_PORT =
+  env.ELIZA_UI_SMOKE_API_PORT || env.MILADY_UI_SMOKE_API_PORT;
+env.MILADY_API_PORT = env.MILADY_API_PORT || env.MILADY_UI_SMOKE_API_PORT;
+env.ELIZA_API_PORT = env.ELIZA_API_PORT || env.MILADY_UI_SMOKE_API_PORT;
+
+if (!env.MILADY_UI_SMOKE_PORT) {
   const uiPort = await getFreePort();
-  env.ELIZA_UI_SMOKE_PORT = String(uiPort);
-  env.ELIZA_PORT = env.ELIZA_PORT || String(uiPort);
+  env.MILADY_UI_SMOKE_PORT = String(uiPort);
 }
+env.ELIZA_UI_SMOKE_PORT = env.ELIZA_UI_SMOKE_PORT || env.MILADY_UI_SMOKE_PORT;
+env.MILADY_PORT = env.MILADY_PORT || env.MILADY_UI_SMOKE_PORT;
+env.ELIZA_PORT = env.ELIZA_PORT || env.MILADY_UI_SMOKE_PORT;
 
 for (const specs of specGroups) {
   const result = spawnSync(
     nodeCmd,
-    [
-      uiPlaywrightRunner,
-      "--config",
-      "playwright.ui-smoke.config.ts",
-      ...specs,
-    ],
+    [uiPlaywrightRunner, "--config", "playwright.ui-smoke.config.ts", ...specs],
     {
       cwd: repoRoot,
       env,

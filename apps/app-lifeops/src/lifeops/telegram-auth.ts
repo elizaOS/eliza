@@ -71,6 +71,16 @@ export interface StoredTelegramConnectorToken {
   updatedAt: string;
 }
 
+interface StoredPendingTelegramAuthSession {
+  sessionId: string;
+  agentId: string;
+  side: LifeOpsConnectorSide;
+  phone: string;
+  apiId: number | null;
+  apiHash: string | null;
+  createdAt: string;
+}
+
 // ---------------------------------------------------------------------------
 // In-memory session store
 // ---------------------------------------------------------------------------
@@ -126,6 +136,12 @@ function telegramStorageRoot(
   return path.join(resolveOAuthDir(env), "lifeops", "telegram");
 }
 
+function telegramPendingSessionDir(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return path.join(telegramStorageRoot(env), "pending");
+}
+
 function sanitizePathSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
@@ -148,8 +164,94 @@ function resolveTokenPath(
   return path.join(telegramStorageRoot(env), tokenRef);
 }
 
+function resolvePendingSessionPath(
+  sessionId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return path.join(
+    telegramPendingSessionDir(env),
+    `${sanitizePathSegment(sessionId)}.json`,
+  );
+}
+
 function ensureTokenStorageDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+}
+
+function writePendingTelegramSession(
+  session: PendingTelegramAuthSession,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const stored: StoredPendingTelegramAuthSession = {
+    sessionId: session.sessionId,
+    agentId: session.agentId,
+    side: session.side,
+    phone: session.phone,
+    apiId: session.apiId,
+    apiHash: session.apiHash,
+    createdAt: session.createdAt,
+  };
+  const filePath = resolvePendingSessionPath(session.sessionId, env);
+  ensureTokenStorageDir(path.dirname(filePath));
+  fs.writeFileSync(filePath, JSON.stringify(stored, null, 2), {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+}
+
+function deletePendingTelegramSession(
+  sessionId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  fs.rmSync(resolvePendingSessionPath(sessionId, env), { force: true });
+}
+
+function readPendingTelegramSession(
+  sessionId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): StoredPendingTelegramAuthSession | null {
+  const filePath = resolvePendingSessionPath(sessionId, env);
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(
+      fs.readFileSync(filePath, "utf8"),
+    ) as StoredPendingTelegramAuthSession;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      parsed.sessionId === sessionId &&
+      typeof parsed.agentId === "string" &&
+      (parsed.side === "owner" || parsed.side === "agent") &&
+      typeof parsed.phone === "string" &&
+      typeof parsed.createdAt === "string"
+    ) {
+      return parsed;
+    }
+  } catch {
+    // Invalid files are discarded below.
+  }
+  fs.rmSync(filePath, { force: true });
+  return null;
+}
+
+function listPendingTelegramSessions(
+  env: NodeJS.ProcessEnv = process.env,
+): StoredPendingTelegramAuthSession[] {
+  const dir = telegramPendingSessionDir(env);
+  if (!fs.existsSync(dir)) {
+    return [];
+  }
+  const sessions: StoredPendingTelegramAuthSession[] = [];
+  for (const entry of fs.readdirSync(dir)) {
+    const sessionId = entry.replace(/\.json$/i, "");
+    const session = readPendingTelegramSession(sessionId, env);
+    if (session) {
+      sessions.push(session);
+    }
+  }
+  return sessions;
 }
 
 // ---------------------------------------------------------------------------
@@ -166,6 +268,30 @@ function cleanupExpiredSessions(): void {
       // Stop the GramJS client before evicting.
       session.authSession.stop().catch(() => {});
       pendingTelegramAuthSessions.delete(sessionId);
+      deletePendingTelegramSession(sessionId);
+    }
+  }
+  for (const session of listPendingTelegramSessions()) {
+    if (now - new Date(session.createdAt).getTime() > TELEGRAM_AUTH_SESSION_TTL_MS) {
+      deletePendingTelegramSession(session.sessionId);
+    }
+  }
+}
+
+function clearPendingSessionsForSide(
+  agentId: string,
+  side: LifeOpsConnectorSide,
+): void {
+  for (const [sessionId, session] of pendingTelegramAuthSessions) {
+    if (session.agentId === agentId && session.side === side) {
+      session.authSession.stop().catch(() => {});
+      pendingTelegramAuthSessions.delete(sessionId);
+      deletePendingTelegramSession(sessionId);
+    }
+  }
+  for (const session of listPendingTelegramSessions()) {
+    if (session.agentId === agentId && session.side === side) {
+      deletePendingTelegramSession(session.sessionId);
     }
   }
 }
@@ -202,6 +328,38 @@ function mapSnapshotIdentity(
   };
 }
 
+function restorePendingTelegramAuthSession(
+  stored: StoredPendingTelegramAuthSession,
+): PendingTelegramAuthSession | null {
+  const authSession = new TelegramAccountAuthSession();
+  const snapshot = authSession.getSnapshot();
+  const connectorConfig = authSession.getResolvedConnectorConfig();
+  const hasRecoverableState =
+    snapshot.status !== "idle" ||
+    Boolean(snapshot.phone) ||
+    Boolean(snapshot.error) ||
+    connectorConfig !== null;
+  if (!hasRecoverableState) {
+    deletePendingTelegramSession(stored.sessionId);
+    return null;
+  }
+  const session: PendingTelegramAuthSession = {
+    sessionId: stored.sessionId,
+    agentId: stored.agentId,
+    side: stored.side,
+    phone: snapshot.phone ?? stored.phone,
+    apiId: stored.apiId,
+    apiHash: stored.apiHash,
+    state: mapSnapshotStatus(snapshot),
+    error: snapshot.error,
+    identity: mapSnapshotIdentity(snapshot),
+    createdAt: stored.createdAt,
+    authSession,
+  };
+  pendingTelegramAuthSessions.set(session.sessionId, session);
+  return session;
+}
+
 // ---------------------------------------------------------------------------
 // Auth flow
 // ---------------------------------------------------------------------------
@@ -214,6 +372,7 @@ export async function startTelegramAuth(args: {
   apiHash?: string;
 }): Promise<PendingTelegramAuthSession> {
   cleanupExpiredSessions();
+  clearPendingSessionsForSide(args.agentId, args.side);
 
   const sessionId = crypto.randomUUID();
   const apiId = resolveApiId(args.apiId);
@@ -237,6 +396,7 @@ export async function startTelegramAuth(args: {
   };
 
   pendingTelegramAuthSessions.set(sessionId, session);
+  writePendingTelegramSession(session);
 
   // Start the real auth flow. If credentials are provided, it goes straight
   // to Telegram code. If not, it starts provisioning via my.telegram.org.
@@ -266,7 +426,12 @@ export async function submitTelegramAuthCode(
 ): Promise<PendingTelegramAuthSession> {
   cleanupExpiredSessions();
 
-  const session = pendingTelegramAuthSessions.get(sessionId);
+  const session =
+    pendingTelegramAuthSessions.get(sessionId) ??
+    (() => {
+      const stored = readPendingTelegramSession(sessionId);
+      return stored ? restorePendingTelegramAuthSession(stored) : null;
+    })();
   if (!session) {
     return {
       sessionId,
@@ -314,7 +479,12 @@ export async function submitTelegramAuthPassword(
 ): Promise<PendingTelegramAuthSession> {
   cleanupExpiredSessions();
 
-  const session = pendingTelegramAuthSessions.get(sessionId);
+  const session =
+    pendingTelegramAuthSessions.get(sessionId) ??
+    (() => {
+      const stored = readPendingTelegramSession(sessionId);
+      return stored ? restorePendingTelegramAuthSession(stored) : null;
+    })();
   if (!session) {
     return {
       sessionId,
@@ -388,7 +558,12 @@ export function getTelegramAuthStatus(
   sessionId: string,
 ): PendingTelegramAuthSession | null {
   cleanupExpiredSessions();
-  return pendingTelegramAuthSessions.get(sessionId) ?? null;
+  const existing = pendingTelegramAuthSessions.get(sessionId);
+  if (existing) {
+    return existing;
+  }
+  const stored = readPendingTelegramSession(sessionId);
+  return stored ? restorePendingTelegramAuthSession(stored) : null;
 }
 
 export async function cancelTelegramAuth(sessionId: string): Promise<void> {
@@ -397,6 +572,7 @@ export async function cancelTelegramAuth(sessionId: string): Promise<void> {
     await session.authSession.stop().catch(() => {});
     pendingTelegramAuthSessions.delete(sessionId);
   }
+  deletePendingTelegramSession(sessionId);
 }
 
 // ---------------------------------------------------------------------------
@@ -419,7 +595,10 @@ export function findPendingTelegramAuthSession(
       return session;
     }
   }
-  return null;
+  const stored = listPendingTelegramSessions().find(
+    (session) => session.agentId === agentId && session.side === side,
+  );
+  return stored ? restorePendingTelegramAuthSession(stored) : null;
 }
 
 // ---------------------------------------------------------------------------

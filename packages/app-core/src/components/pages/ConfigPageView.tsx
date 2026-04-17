@@ -7,7 +7,13 @@
  */
 
 import type { WalletRpcSelections } from "@elizaos/shared/contracts/wallet";
-
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { useApp } from "../../state";
 import {
@@ -24,9 +30,14 @@ import {
   SOLANA_RPC_OPTIONS,
 } from "./config-page-sections";
 import { SecretsView } from "./SecretsView";
-import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from "@elizaos/ui";
 
 /* ── ConfigPageView ──────────────────────────────────────────────────── */
+
+const CLOUD_RPC_SELECTIONS = {
+  evm: "eliza-cloud",
+  bsc: "eliza-cloud",
+  solana: "eliza-cloud",
+} as const satisfies WalletRpcSelections;
 
 export function ConfigPageView({
   embedded = false,
@@ -71,36 +82,48 @@ export function ConfigPageView({
 
   /* ── RPC provider selection state ──────────────────────────────────── */
   const initialRpc = resolveInitialWalletRpcSelections(walletConfig);
+  const initialSelectedRpc = allCloud ? CLOUD_RPC_SELECTIONS : initialRpc;
   const [selectedEvmRpc, setSelectedEvmRpc] = useState<
     WalletRpcSelections["evm"]
-  >(initialRpc.evm);
+  >(initialSelectedRpc.evm);
   const [selectedBscRpc, setSelectedBscRpc] = useState<
     WalletRpcSelections["bsc"]
-  >(initialRpc.bsc);
+  >(initialSelectedRpc.bsc);
   const [selectedSolanaRpc, setSelectedSolanaRpc] = useState<
     WalletRpcSelections["solana"]
-  >(initialRpc.solana);
+  >(initialSelectedRpc.solana);
   const [selectedWalletNetwork, setSelectedWalletNetwork] = useState<
     "mainnet" | "testnet"
   >(walletConfig?.walletNetwork === "testnet" ? "testnet" : "mainnet");
 
   useEffect(() => {
     const selections = resolveInitialWalletRpcSelections(walletConfig);
-    setSelectedEvmRpc(selections.evm);
-    setSelectedBscRpc(selections.bsc);
-    setSelectedSolanaRpc(selections.solana);
+    const nextMode =
+      elizaCloudConnected || selections.evm === "eliza-cloud"
+        ? "cloud"
+        : "custom";
+    setRpcMode(nextMode);
+    if (nextMode === "cloud") {
+      setSelectedEvmRpc(CLOUD_RPC_SELECTIONS.evm);
+      setSelectedBscRpc(CLOUD_RPC_SELECTIONS.bsc);
+      setSelectedSolanaRpc(CLOUD_RPC_SELECTIONS.solana);
+    } else {
+      setSelectedEvmRpc(selections.evm);
+      setSelectedBscRpc(selections.bsc);
+      setSelectedSolanaRpc(selections.solana);
+    }
     setSelectedWalletNetwork(
       walletConfig?.walletNetwork === "testnet" ? "testnet" : "mainnet",
     );
-  }, [walletConfig]);
+  }, [elizaCloudConnected, walletConfig]);
 
   /* When switching to cloud mode, set all providers to eliza-cloud */
   const handleModeChange = useCallback((mode: "cloud" | "custom") => {
     setRpcMode(mode);
     if (mode === "cloud") {
-      setSelectedEvmRpc("eliza-cloud" as WalletRpcSelections["evm"]);
-      setSelectedBscRpc("eliza-cloud" as WalletRpcSelections["bsc"]);
-      setSelectedSolanaRpc("eliza-cloud" as WalletRpcSelections["solana"]);
+      setSelectedEvmRpc(CLOUD_RPC_SELECTIONS.evm);
+      setSelectedBscRpc(CLOUD_RPC_SELECTIONS.bsc);
+      setSelectedSolanaRpc(CLOUD_RPC_SELECTIONS.solana);
     }
   }, []);
 

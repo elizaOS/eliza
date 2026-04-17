@@ -1436,7 +1436,10 @@ export class ComputerUseService extends Service {
       caps.screenshot = { available: true, tool: "screencapture (built-in)" };
       caps.computerUse = commandExists("cliclick")
         ? { available: true, tool: "cliclick" }
-        : { available: true, tool: "AppleScript / Swift fallbacks" };
+        : {
+            available: true,
+            tool: "AppleScript / Swift fallbacks (mouse_move requires cliclick)",
+          };
       caps.windowList = {
         available: true,
         tool: "AppleScript System Events",
