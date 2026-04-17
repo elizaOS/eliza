@@ -442,8 +442,6 @@ export function truncateRecord(
 // Script capture helpers (used by executeCode trajectory steps)
 // ---------------------------------------------------------------------------
 
-import { createHash } from "node:crypto";
-
 /**
  * Cap a script source for inline persistence on a trajectory step. When the
  * source exceeds `TRAJECTORY_STEP_SCRIPT_MAX_CHARS`, returns a truncated

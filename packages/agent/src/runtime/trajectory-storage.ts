@@ -25,6 +25,7 @@ import type {
 import {
   asRecord,
   type BufferedExchange,
+  capScriptForPersistence,
   type CompleteStepOptions,
   computeBySource,
   createBaseTrajectory,
@@ -68,6 +69,7 @@ import {
   warnRuntime,
   writeCompressedJsonlRows,
 } from "./trajectory-internals.js";
+import type { TrajectoryStepKind } from "../types/trajectory.js";
 
 // Re-export types needed by consumers
 export type {
@@ -628,6 +630,17 @@ export async function installDatabaseTrajectoryLogger(
         timestamp: step.timestamp,
         llmCalls: step.llmCalls.map((call) => enrichTrajectoryLlmCall(call)),
         providerAccesses: step.providerAccesses,
+        ...(step.kind !== undefined ? { kind: step.kind } : {}),
+        ...(step.childSteps !== undefined
+          ? { childSteps: step.childSteps }
+          : {}),
+        ...(step.script !== undefined ? { script: step.script } : {}),
+        ...(step.scriptHash !== undefined
+          ? { scriptHash: step.scriptHash }
+          : {}),
+        ...(step.usedSkills !== undefined
+          ? { usedSkills: step.usedSkills }
+          : {}),
       })),
       metrics: { finalStatus: persisted.status },
       metadata: persisted.metadata,
@@ -833,6 +846,84 @@ export async function startTrajectoryStepInDatabase({
       source,
       metadata,
     });
+  });
+
+  return true;
+}
+
+/**
+ * Annotate an existing trajectory step with the structural metadata Track A
+ * relies on (kind discriminator, executeCode script, child step IDs, used
+ * skills). Safe to call for any of the new trajectory step fields; passing
+ * `undefined` for a field leaves the existing value alone, while passing an
+ * explicit value overwrites.
+ */
+export async function annotateTrajectoryStep({
+  runtime,
+  stepId,
+  kind,
+  script,
+  childSteps,
+  appendChildSteps,
+  usedSkills,
+}: {
+  runtime: IAgentRuntime;
+  stepId: string;
+  kind?: TrajectoryStepKind;
+  script?: string;
+  /** Replace child steps wholesale. */
+  childSteps?: string[];
+  /** Append the given child step IDs (deduped, order preserved). */
+  appendChildSteps?: string[];
+  usedSkills?: string[];
+}): Promise<boolean> {
+  if (!hasRuntimeDb(runtime)) return false;
+  const normalizedStepId = normalizeStepId(stepId);
+  if (!normalizedStepId) return false;
+
+  const tableReady = await ensureTrajectoriesTable(runtime);
+  if (!tableReady) return false;
+
+  await enqueueStepWrite(runtime, normalizedStepId, async () => {
+    const now = Date.now();
+    const trajectory =
+      (await loadTrajectoryById(runtime, normalizedStepId)) ??
+      createBaseTrajectory(normalizedStepId, now);
+    const step = ensureStep(trajectory, normalizedStepId, now);
+
+    if (kind !== undefined) {
+      step.kind = kind;
+    }
+    if (script !== undefined) {
+      const capped = capScriptForPersistence(script);
+      step.script = capped.script;
+      if (capped.scriptHash !== undefined) {
+        step.scriptHash = capped.scriptHash;
+      } else {
+        step.scriptHash = undefined;
+      }
+    }
+    if (childSteps !== undefined) {
+      step.childSteps = [...childSteps];
+    }
+    if (appendChildSteps && appendChildSteps.length > 0) {
+      const seen = new Set<string>(step.childSteps ?? []);
+      const merged = step.childSteps ? [...step.childSteps] : [];
+      for (const child of appendChildSteps) {
+        const trimmed = typeof child === "string" ? child.trim() : "";
+        if (!trimmed || seen.has(trimmed)) continue;
+        seen.add(trimmed);
+        merged.push(trimmed);
+      }
+      step.childSteps = merged;
+    }
+    if (usedSkills !== undefined) {
+      step.usedSkills = [...usedSkills];
+    }
+
+    trajectory.endTime = Math.max(trajectory.endTime ?? now, now);
+    trajectory.updatedAt = new Date(now).toISOString();
+    await saveTrajectory(runtime, trajectory);
   });
 
   return true;
@@ -1172,6 +1263,17 @@ export class DatabaseTrajectoryLogger extends Service {
         timestamp: step.timestamp,
         llmCalls: step.llmCalls.map((call) => enrichTrajectoryLlmCall(call)),
         providerAccesses: step.providerAccesses,
+        ...(step.kind !== undefined ? { kind: step.kind } : {}),
+        ...(step.childSteps !== undefined
+          ? { childSteps: step.childSteps }
+          : {}),
+        ...(step.script !== undefined ? { script: step.script } : {}),
+        ...(step.scriptHash !== undefined
+          ? { scriptHash: step.scriptHash }
+          : {}),
+        ...(step.usedSkills !== undefined
+          ? { usedSkills: step.usedSkills }
+          : {}),
       })),
       metrics: { finalStatus: persisted.status },
       metadata: persisted.metadata,
