@@ -1206,14 +1206,19 @@ export function BrowserWorkspaceView(): JSX.Element {
           })
         )}
 
-        {/* Chat overlay */}
+        {/* Chat overlay — bubbles + input float directly over the browser.
+            Container is pointer-events-none so the iframe stays interactive;
+            ChatView's own bubbles and composer opt back in. Each element
+            (textarea + each button) gets its own glass background via
+            arbitrary child selectors, so nothing sits on top of a big
+            shared scrim. */}
         <div
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center px-3 pb-3"
+          className="pointer-events-none absolute inset-0 z-10 flex flex-col px-4
+            [&_textarea]:rounded-3xl [&_textarea]:border [&_textarea]:border-white/15 [&_textarea]:bg-white/10 [&_textarea]:text-white [&_textarea]:placeholder:text-white/60 [&_textarea]:shadow-lg [&_textarea]:backdrop-blur-md
+            [&_button]:border [&_button]:border-white/15 [&_button]:bg-white/10 [&_button]:text-white [&_button]:shadow-lg [&_button]:backdrop-blur-md"
           data-testid="browser-workspace-chat-overlay"
         >
-          <div className="pointer-events-auto flex h-[min(45vh,26rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-black/55 shadow-2xl backdrop-blur-md">
-            <ChatView variant="game-modal" />
-          </div>
+          <ChatView variant="game-modal" hideTerminalPanel />
         </div>
       </div>
     </div>

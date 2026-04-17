@@ -1,9 +1,9 @@
+import { client } from "@elizaos/app-core/api";
 import type {
   LifeOpsConnectorSide,
   LifeOpsDiscordConnectorStatus,
 } from "@elizaos/shared/contracts/lifeops";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "@elizaos/app-core/api";
 
 function formatError(cause: unknown, fallback: string): string {
   if (cause instanceof Error && cause.message.trim().length > 0) {

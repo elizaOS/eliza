@@ -21,11 +21,7 @@ import {
   isOverlayApp,
   overlayAppToRegistryInfo,
 } from "../apps/overlay-app-registry";
-import { PagePanel } from "@elizaos/ui";
-import {
-  getRunAttentionReasons,
-  RunningAppsPanel,
-} from "../apps/RunningAppsPanel";
+import { RunningAppsRow } from "../apps/RunningAppsRow";
 
 export { shouldShowAppInAppsView } from "../apps/helpers";
 
@@ -45,8 +41,6 @@ export function AppsView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showActiveOnly, setShowActiveOnly] = useState(false);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [busyRunId, setBusyRunId] = useState<string | null>(null);
   const slugAutoLaunchDone = useRef(false);
 
@@ -54,7 +48,6 @@ export function AppsView() {
     () => new Set(appRuns.map((run) => run.appName)),
     [appRuns],
   );
-  const hasActiveApps = activeAppNames.size > 0;
   const favoriteAppNames = useMemo(() => new Set(favoriteApps), [favoriteApps]);
   const activeGameRun = useMemo(
     () => appRuns.find((run) => run.runId === activeGameRunId) ?? null,
@@ -85,25 +78,12 @@ export function AppsView() {
     () => [...appRuns].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     [appRuns],
   );
-  const attentionRuns = useMemo(
-    () => sortedRuns.filter((run) => getRunAttentionReasons(run).length > 0),
-    [sortedRuns],
-  );
   const mergeRun = useCallback(
     (run: AppRunSummary) => {
       const nextRuns = [
         run,
         ...appRuns.filter((item) => item.runId !== run.runId),
       ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      setState("appRuns", nextRuns);
-      return nextRuns;
-    },
-    [appRuns, setState],
-  );
-
-  const removeRun = useCallback(
-    (runId: string) => {
-      const nextRuns = appRuns.filter((run) => run.runId !== runId);
       setState("appRuns", nextRuns);
       return nextRuns;
     },
@@ -226,33 +206,9 @@ export function AppsView() {
   }, [refreshRuns]);
 
   useEffect(() => {
-    if (sortedRuns.length === 0) {
-      if (selectedRunId !== null) setSelectedRunId(null);
-      return;
-    }
-    if (
-      selectedRunId &&
-      sortedRuns.some((run) => run.runId === selectedRunId)
-    ) {
-      return;
-    }
-    const preferredRunId =
-      activeGameRunId && sortedRuns.some((run) => run.runId === activeGameRunId)
-        ? activeGameRunId
-        : (attentionRuns[0]?.runId ?? sortedRuns[0].runId);
-    setSelectedRunId(preferredRunId);
-  }, [activeGameRunId, attentionRuns, selectedRunId, sortedRuns]);
-
-  useEffect(() => {
     if (appsSubTab !== "running") return;
     setState("appsSubTab", "browse");
-    setShowActiveOnly(hasActiveApps);
-  }, [appsSubTab, hasActiveApps, setState]);
-
-  useEffect(() => {
-    if (hasActiveApps || !showActiveOnly) return;
-    setShowActiveOnly(false);
-  }, [hasActiveApps, showActiveOnly]);
+  }, [appsSubTab, setState]);
 
   const handleLaunch = useCallback(
     async (app: RegistryAppInfo) => {
@@ -306,9 +262,7 @@ export function AppsView() {
         }
 
         if (primaryRun) {
-          setSelectedRunId(primaryRun.runId);
           setState("appsSubTab", "browse");
-          setShowActiveOnly(true);
           pushAppsUrl(getAppSlug(app.name));
         }
 
@@ -359,15 +313,7 @@ export function AppsView() {
         );
       }
     },
-    [
-      mergeRun,
-      pushAppsUrl,
-      setActionNotice,
-      setShowActiveOnly,
-      setState,
-      setTab,
-      t,
-    ],
+    [mergeRun, pushAppsUrl, setActionNotice, setState, setTab, t],
   );
 
   const handleOpenCurrentGame = useCallback(() => {
@@ -460,97 +406,12 @@ export function AppsView() {
     [mergeRun, pushAppsUrl, setActionNotice, setState, t],
   );
 
-  const handleDetachRun = useCallback(
-    async (run: AppRunSummary) => {
-      setBusyRunId(run.runId);
-      try {
-        const result = await client.detachAppRun(run.runId);
-        const nextRun =
-          result.run ??
-          ({
-            ...run,
-            viewerAttachment: run.viewer ? "detached" : "unavailable",
-          } satisfies AppRunSummary);
-        mergeRun(nextRun);
-        if (activeGameRunId === run.runId) {
-          setState("activeGameRunId", "");
-          setState("appsSubTab", "browse");
-          setShowActiveOnly(true);
-          pushAppsUrl();
-        }
-        setActionNotice(result.message, "success", 2200);
-      } catch (err) {
-        setActionNotice(
-          t("appsview.LaunchFailed", {
-            name: run.displayName,
-            message: err instanceof Error ? err.message : t("common.error"),
-          }),
-          "error",
-          4000,
-        );
-      } finally {
-        setBusyRunId(null);
-      }
-    },
-    [
-      activeGameRunId,
-      mergeRun,
-      pushAppsUrl,
-      setActionNotice,
-      setShowActiveOnly,
-      setState,
-      t,
-    ],
-  );
-
-  const handleStopRun = useCallback(
-    async (run: AppRunSummary) => {
-      setBusyRunId(run.runId);
-      try {
-        const result = await client.stopAppRun(run.runId);
-        const nextRuns = removeRun(run.runId);
-        if (activeGameRunId === run.runId) {
-          setState("activeGameRunId", "");
-          setState("appsSubTab", "browse");
-          setShowActiveOnly(nextRuns.length > 0);
-          pushAppsUrl();
-        }
-        setActionNotice(
-          result.message,
-          result.success ? "success" : "info",
-          result.needsRestart ? 5000 : 3200,
-        );
-      } catch (err) {
-        setActionNotice(
-          t("appsview.LaunchFailed", {
-            name: run.displayName,
-            message: err instanceof Error ? err.message : t("common.error"),
-          }),
-          "error",
-          4000,
-        );
-      } finally {
-        setBusyRunId(null);
-      }
-    },
-    [
-      activeGameRunId,
-      pushAppsUrl,
-      removeRun,
-      setActionNotice,
-      setShowActiveOnly,
-      setState,
-      t,
-    ],
-  );
-
   const visibleApps = useMemo(() => {
     return filterAppsForCatalog(apps, {
       activeAppNames,
       searchQuery,
-      showActiveOnly,
     });
-  }, [activeAppNames, apps, searchQuery, showActiveOnly]);
+  }, [activeAppNames, apps, searchQuery]);
 
   const handleToggleFavorite = useCallback(
     (appName: string) => {
@@ -580,35 +441,25 @@ export function AppsView() {
         ) : null}
       </div>
 
+      <RunningAppsRow
+        runs={sortedRuns}
+        catalogApps={apps}
+        busyRunId={busyRunId}
+        onOpenRun={(run) => void handleOpenRun(run)}
+      />
+
       <AppsCatalogGrid
         activeAppNames={activeAppNames}
         error={error}
         favoriteAppNames={favoriteAppNames}
         loading={loading}
         searchQuery={searchQuery}
-        showActiveOnly={showActiveOnly}
         visibleApps={visibleApps}
         onLaunch={(app) => void handleLaunch(app)}
         onRefresh={() => void refreshApps()}
         onSearchQueryChange={setSearchQuery}
-        onToggleActiveOnly={() => setShowActiveOnly((current) => !current)}
         onToggleFavorite={handleToggleFavorite}
       />
-
-      {sortedRuns.length > 0 ? (
-        <PagePanel variant="inset" className="rounded-2xl p-4 lg:p-5">
-          <RunningAppsPanel
-            runs={sortedRuns}
-            catalogApps={apps}
-            selectedRunId={selectedRunId}
-            busyRunId={busyRunId}
-            onSelectRun={setSelectedRunId}
-            onOpenRun={(run) => void handleOpenRun(run)}
-            onDetachRun={(run) => void handleDetachRun(run)}
-            onStopRun={(run) => void handleStopRun(run)}
-          />
-        </PagePanel>
-      ) : null}
     </div>
   );
 }

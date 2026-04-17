@@ -26,7 +26,7 @@ export function PtyConsoleDrawer({
   const hasSessions = sessions.length > 0;
 
   return (
-    <div className="border-t border-border bg-bg flex flex-col">
+    <div className="flex flex-col">
       {/* Tab bar — always visible */}
       <div className="flex items-center gap-0 px-2 min-h-[32px]">
         {sessions.map((s) => {
