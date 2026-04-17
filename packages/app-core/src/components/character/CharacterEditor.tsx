@@ -1226,6 +1226,13 @@ export function CharacterEditor({
     [d.style, handleStyleEdit],
   );
 
+  const handleReorderStyleEntries = useCallback(
+    (key: string, items: string[]) => {
+      handleStyleEdit(key as "all" | "chat" | "post", items.join("\n"));
+    },
+    [handleStyleEdit],
+  );
+
   const handleStyleEntryDraftChange = useCallback(
     (key: string, index: number, value: string) => {
       setStyleEntryDrafts((prev) => {
@@ -1459,6 +1466,7 @@ export function CharacterEditor({
                     handleRemoveStyleEntry={handleRemoveStyleEntry}
                     handleStyleEntryDraftChange={handleStyleEntryDraftChange}
                     handleCommitStyleEntry={handleCommitStyleEntry}
+                    handleReorderStyleEntries={handleReorderStyleEntries}
                     t={t}
                   />
                 </div>
@@ -1625,12 +1633,13 @@ export function CharacterEditor({
                     handleRemoveStyleEntry={handleRemoveStyleEntry}
                     handleStyleEntryDraftChange={handleStyleEntryDraftChange}
                     handleCommitStyleEntry={handleCommitStyleEntry}
+                    handleReorderStyleEntries={handleReorderStyleEntries}
                     t={t}
                   />
                 </div>
               )}
               {activePage === "examples" && (
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8 lg:items-start">
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8 lg:items-start xl:gap-12">
                   <CharacterExamplesPanel
                     d={d}
                     normalizedMessageExamples={normalizedMessageExamples}
