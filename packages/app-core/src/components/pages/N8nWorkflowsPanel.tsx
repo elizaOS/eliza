@@ -11,7 +11,7 @@
  * filter === "workflows".
  */
 
-import { Button, FieldLabel, StatusBadge } from "@elizaos/ui";
+import { Button, FieldLabel, StatusBadge, Textarea } from "@elizaos/ui";
 import {
   ChevronDown,
   ChevronUp,
@@ -52,31 +52,43 @@ const AUTOMATIONS_SYSTEM_ADDENDUM =
   "DELETE_N8N_WORKFLOW, GET_N8N_EXECUTIONS). Confirm workflow drafts with the " +
   "user before deploying.";
 
+// Action keywords used to detect workflow mutations in assistant replies.
+const WORKFLOW_ACTION_KEYWORDS =
+  /CREATE_N8N_WORKFLOW|ACTIVATE_N8N_WORKFLOW|DEACTIVATE_N8N_WORKFLOW|DELETE_N8N_WORKFLOW|workflow.*(created|deployed|activated|deactivated|deleted)/i;
+
 // Stable conversation title — same value the reference implementation uses.
 const AUTOMATIONS_CONVERSATION_TITLE = "__automations-scope__";
 
 // Module-level cache so re-mounting the tab doesn't re-resolve the conversation.
+// M5: guard against concurrent resolves with an in-flight promise.
 let _cachedConvId: string | null = null;
+let _inflight: Promise<string> | null = null;
 
 async function resolveAutomationsConversation(): Promise<string> {
   if (_cachedConvId) return _cachedConvId;
-  try {
-    const { conversations } = await client.listConversations();
-    const existing = conversations.find(
-      (c) => c.title === AUTOMATIONS_CONVERSATION_TITLE,
-    );
-    if (existing) {
-      _cachedConvId = existing.id;
-      return existing.id;
+  if (_inflight) return _inflight;
+  _inflight = (async () => {
+    try {
+      const { conversations } = await client.listConversations();
+      const existing = conversations.find(
+        (c) => c.title === AUTOMATIONS_CONVERSATION_TITLE,
+      );
+      if (existing) {
+        _cachedConvId = existing.id;
+        return existing.id;
+      }
+    } catch {
+      /* fall through to create */
     }
-  } catch {
-    /* fall through to create */
-  }
-  const { conversation } = await client.createConversation(
-    AUTOMATIONS_CONVERSATION_TITLE,
-  );
-  _cachedConvId = conversation.id;
-  return conversation.id;
+    const { conversation } = await client.createConversation(
+      AUTOMATIONS_CONVERSATION_TITLE,
+    );
+    _cachedConvId = conversation.id;
+    return conversation.id;
+  })().finally(() => {
+    _inflight = null;
+  });
+  return _inflight;
 }
 
 // ---------------------------------------------------------------------------
@@ -98,7 +110,7 @@ function N8nStatusBanner({
   onDismiss,
   dismissed,
 }: N8nStatusBannerProps) {
-  const { t } = useApp();
+  const { t, setTab } = useApp();
 
   if (dismissed || loading || !status) return null;
 
@@ -150,40 +162,48 @@ function N8nStatusBanner({
         : "border-border/30 bg-bg/30";
 
   return (
+    // M6: role="status" so screen readers announce mode transitions
     <div
+      role="status"
       className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs mb-3 ${bannerClass}`}
     >
       <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${dotClass}`} />
       <span className="flex-1 text-txt">{text}</span>
       {showRetry && (
-        <button
+        <Button
           type="button"
-          className="text-danger underline hover:no-underline"
+          variant="ghost"
+          size="icon"
+          className="text-danger underline hover:no-underline h-auto w-auto p-0 text-xs"
           onClick={onRetry}
         >
           {t("automations.n8n.bannerRetry")}
-        </button>
+        </Button>
       )}
       {showSettings && (
-        <button
+        <Button
           type="button"
-          className="text-accent underline hover:no-underline"
+          variant="ghost"
+          size="icon"
+          className="text-accent underline hover:no-underline h-auto w-auto p-0 text-xs"
           onClick={() => {
-            // Navigate to settings — use hash navigation matching develop conventions.
-            window.location.hash = "#/settings";
+            // B6: use real nav API — setTab from useApp()
+            setTab("settings");
           }}
         >
           {t("automations.n8n.settingsLink")}
-        </button>
+        </Button>
       )}
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon"
         aria-label={t("automations.n8n.bannerDismiss")}
         onClick={onDismiss}
-        className="text-muted hover:text-txt"
+        className="text-muted hover:text-txt h-5 w-5"
       >
         <X className="h-3 w-3" />
-      </button>
+      </Button>
     </div>
   );
 }
@@ -214,20 +234,39 @@ function AutomationsChatPane({
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const textareaRef = composerRef as React.RefObject<HTMLTextAreaElement>;
+  // Remove unsafe cast — composerRef is already the right type
+  const textareaRef = composerRef;
 
-  // Resolve scoped conversation on mount.
+  // Resolve scoped conversation on mount. M4: reset cache on 404.
   useEffect(() => {
     let cancelled = false;
-    void resolveAutomationsConversation().then((id) => {
+    void resolveAutomationsConversation().then(async (id) => {
       if (cancelled) return;
       setConvId(id);
-      void client.getConversationMessages(id).then(({ messages: msgs }) => {
+      try {
+        const { messages: msgs } = await client.getConversationMessages(id);
         if (!cancelled) setMessages(msgs);
-      });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "";
+        if (
+          msg.toLowerCase().includes("not found") ||
+          msg.includes("404") ||
+          (err as { status?: number }).status === 404
+        ) {
+          // M4: invalidate cache and re-resolve
+          _cachedConvId = null;
+          if (!cancelled) {
+            void resolveAutomationsConversation().then((newId) => {
+              if (!cancelled) setConvId(newId);
+            });
+          }
+        }
+      }
     });
     return () => {
       cancelled = true;
+      // M1: abort in-flight stream on unmount
+      abortRef.current?.abort();
     };
   }, []);
 
@@ -239,7 +278,7 @@ function AutomationsChatPane({
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
     el.scrollTo({
       top: el.scrollHeight,
-      behavior: dist < 150 ? "instant" : "smooth",
+      behavior: dist < 150 ? "auto" : "smooth",
     });
   }, [messages, sending]);
 
@@ -267,10 +306,12 @@ function AutomationsChatPane({
     const userMsgId = `auto-u-${now}`;
     const assistantMsgId = `auto-a-${now}`;
 
-    // Prepend system addendum to first turn hack — server doesn't yet support
-    // metadata.systemAddendum field.
-    // TODO: switch to metadata.systemAddendum once the streaming endpoint reads it.
-    const textWithAddendum = `[SYSTEM]${AUTOMATIONS_SYSTEM_ADDENDUM}[/SYSTEM]\n\n${raw}`;
+    // B5: Only prepend system addendum on first turn (messages.length === 0).
+    // systemAddendum field not yet present in backend streaming endpoint — keep prepend gate.
+    const isFirstTurn = messages.length === 0;
+    const textToSend = isFirstTurn
+      ? `[SYSTEM]${AUTOMATIONS_SYSTEM_ADDENDUM}[/SYSTEM]\n\n${raw}`
+      : raw;
 
     setMessages((prev) => [
       ...prev,
@@ -284,11 +325,12 @@ function AutomationsChatPane({
     const controller = new AbortController();
     abortRef.current = controller;
     let streamed = "";
+    let finalText = "";
 
     try {
       const data = await client.sendConversationMessageStream(
         convId,
-        textWithAddendum,
+        textToSend,
         (token) => {
           if (!token) return;
           const delta = token.slice(streamed.length);
@@ -305,6 +347,7 @@ function AutomationsChatPane({
         controller.signal,
       );
 
+      finalText = data.text ?? streamed;
       if (data.text && data.text !== streamed) {
         setMessages((prev) =>
           prev.map((m) =>
@@ -313,13 +356,16 @@ function AutomationsChatPane({
         );
       }
 
-      onWorkflowMutated();
+      // M3: Only trigger workflow refresh if reply mentions workflow actions.
+      if (WORKFLOW_ACTION_KEYWORDS.test(finalText)) {
+        onWorkflowMutated();
+      }
     } catch (err) {
       if ((err as { name?: string }).name === "AbortError") return;
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantMsgId
-            ? { ...m, text: "Something went wrong. Please try again." }
+            ? { ...m, text: t("automations.chat.errorGeneric") }
             : m,
         ),
       );
@@ -327,7 +373,7 @@ function AutomationsChatPane({
       setSending(false);
       abortRef.current = null;
     }
-  }, [input, convId, sending, onWorkflowMutated]);
+  }, [input, convId, sending, messages.length, onWorkflowMutated, t]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -360,9 +406,10 @@ function AutomationsChatPane({
   if (collapsed) {
     return (
       <div className="border border-border/40 bg-card/60 rounded-xl overflow-hidden">
-        <button
+        <Button
           type="button"
-          className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-bg/50 transition-colors text-left"
+          variant="ghost"
+          className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-bg/50 transition-colors text-left h-auto justify-start"
           onClick={onToggleCollapse}
           aria-label={t("automations.chat.expand")}
         >
@@ -371,7 +418,7 @@ function AutomationsChatPane({
             {label}
           </span>
           <ChevronDown className="w-3.5 h-3.5 text-muted" />
-        </button>
+        </Button>
       </div>
     );
   }
@@ -382,9 +429,10 @@ function AutomationsChatPane({
       style={{ minHeight: 0 }}
       aria-label={label}
     >
-      <button
+      <Button
         type="button"
-        className="w-full flex items-center gap-2 px-4 py-2.5 border-b border-border/30 hover:bg-bg/50 transition-colors text-left"
+        variant="ghost"
+        className="w-full flex items-center gap-2 px-4 py-2.5 border-b border-border/30 hover:bg-bg/50 transition-colors text-left h-auto justify-start"
         onClick={onToggleCollapse}
         aria-label={t("automations.chat.collapse")}
       >
@@ -393,10 +441,14 @@ function AutomationsChatPane({
           {label}
         </span>
         <ChevronUp className="w-3.5 h-3.5 text-muted" />
-      </button>
+      </Button>
 
+      {/* M6: role="log" + aria-live for screen reader announcements of streamed tokens */}
       <div
         ref={scrollRef}
+        role="log"
+        aria-live="polite"
+        aria-atomic="false"
         className="flex-1 overflow-y-auto px-3 py-2 flex flex-col"
         style={{ maxHeight: "240px", minHeight: "80px" }}
       >
@@ -418,7 +470,9 @@ function AutomationsChatPane({
                 }`}
               >
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-0.5">
-                  {msg.role === "user" ? "You" : "Agent"}
+                  {msg.role === "user"
+                    ? t("automations.chat.roleUser")
+                    : t("automations.chat.roleAssistant")}
                 </div>
                 <div className="whitespace-pre-wrap">{msg.text}</div>
               </div>
@@ -426,7 +480,7 @@ function AutomationsChatPane({
             {sending && !firstTokenReceived && (
               <div className="bg-bg/50 rounded-lg px-3 py-2 mr-8">
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-0.5">
-                  Agent
+                  {t("automations.chat.roleAssistant")}
                 </div>
                 <div className="flex gap-1 items-center">
                   <span className="h-1.5 w-1.5 rounded-full bg-muted/60 animate-bounce [animation-delay:0ms]" />
@@ -440,9 +494,11 @@ function AutomationsChatPane({
       </div>
 
       <div className="flex gap-1.5 items-end border-t border-border/30 px-3 py-2">
-        <textarea
+        {/* M12: use Textarea primitive; className overrides min-h to match design */}
+        <Textarea
           ref={textareaRef}
-          className="flex-1 min-w-0 px-3 py-2 bg-bg/40 border border-border/40 rounded-lg focus:border-accent/40 focus:outline-none text-txt text-sm resize-none overflow-y-hidden min-h-[38px] max-h-[150px] placeholder:text-muted/60"
+          variant="default"
+          className="flex-1 min-w-0 px-3 py-2 bg-bg/40 border border-border/40 rounded-lg focus:border-accent/40 focus-visible:ring-0 focus:outline-none text-txt text-sm resize-none overflow-y-hidden min-h-[38px] max-h-[150px] placeholder:text-muted/60"
           rows={1}
           aria-label={label}
           placeholder={t("automations.chat.placeholder")}
@@ -488,18 +544,23 @@ function WorkflowSidebarRow({
   workflow,
   selected,
   onClick,
+  onKeyDown,
 }: {
   workflow: N8nWorkflow;
   selected: boolean;
   onClick: () => void;
+  onKeyDown?: (e: KeyboardEvent<HTMLButtonElement>) => void;
 }) {
   const { t } = useApp();
   const nodeCount = workflow.nodeCount ?? workflow.nodes?.length ?? 0;
 
   return (
+    // M7: aria-pressed for selection toggle
     <button
       type="button"
       onClick={onClick}
+      onKeyDown={onKeyDown}
+      aria-pressed={selected}
       className={`w-full text-left px-3 py-2.5 flex items-center gap-2.5 rounded-lg transition-colors cursor-pointer hover:bg-bg/50 ${
         selected ? "bg-accent/10" : ""
       }`}
@@ -691,8 +752,6 @@ function WorkflowDetailPane({
 export interface N8nWorkflowsPanelProps {
   /** Forwarded from AutomationsLayout so "New workflow" can focus the composer. */
   composerRef: React.RefObject<HTMLTextAreaElement | null>;
-  /** Called by AutomationsLayout new-action button when filter === "workflows". */
-  onFocusComposer: (seed?: string) => void;
 }
 
 export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
@@ -703,7 +762,8 @@ export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
   const [statusLoading, setStatusLoading] = useState(true);
   const [workflows, setWorkflows] = useState<N8nWorkflow[]>([]);
   const [workflowsLoading, setWorkflowsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // M8: error queue instead of single string
+  const [errors, setErrors] = useState<{ id: string; message: string }[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
@@ -711,38 +771,56 @@ export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
 
   const selectedWorkflow = workflows.find((wf) => wf.id === selectedId) ?? null;
 
+  const pushError = useCallback((message: string) => {
+    const id = `err-${Date.now()}-${Math.random()}`;
+    setErrors((prev) => {
+      const next = [...prev, { id, message }];
+      // Cap at 3, drop oldest
+      return next.length > 3 ? next.slice(next.length - 3) : next;
+    });
+  }, []);
+
+  const dismissError = useCallback((id: string) => {
+    setErrors((prev) => prev.filter((e) => e.id !== id));
+  }, []);
+
   const loadStatus = useCallback(async () => {
     setStatusLoading(true);
-    setError(null);
     try {
       const s = await client.getN8nStatus();
       setN8nStatus(s);
     } catch (err) {
-      setError(
-        `Failed to load n8n status: ${err instanceof Error ? err.message : "network error"}`,
+      pushError(
+        t("automations.n8n.errorLoadStatus", {
+          message: err instanceof Error ? err.message : "network error",
+        }),
       );
     } finally {
       setStatusLoading(false);
     }
-  }, []);
+  }, [pushError, t]);
 
   const loadWorkflows = useCallback(async () => {
     setWorkflowsLoading(true);
-    setError(null);
     try {
       const list = await client.listN8nWorkflows();
       setWorkflows(list);
+      // M8: clear errors on successful refresh
+      setErrors([]);
+      // Minor: rewrite as proper ternary
       setSelectedId((cur) =>
         cur && list.some((wf) => wf.id === cur) ? cur : null,
       );
     } catch (err) {
-      setError(
-        `Failed to load workflows: ${err instanceof Error ? err.message : "network error"}`,
+      pushError(
+        t("automations.n8n.errorLoadWorkflows", {
+          message: err instanceof Error ? err.message : "network error",
+        }),
       );
     } finally {
       setWorkflowsLoading(false);
     }
-  }, []);
+  }, [pushError, t]);
 
   // Bootstrap on mount.
   useEffect(() => {
@@ -756,13 +834,13 @@ export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
     }
   }, [n8nStatus, loadWorkflows]);
 
-  // Auto-start local sidecar once when tab mounts and mode is disabled but
-  // localEnabled is true — kick the lazy sidecar construction.
+  // B3: Auto-start local sidecar when mode is "local" and status is "stopped".
   useEffect(() => {
     if (didAutoStart.current) return;
     if (!n8nStatus) return;
     if (
-      n8nStatus.mode === "disabled" &&
+      n8nStatus.mode === "local" &&
+      n8nStatus.status === "stopped" &&
       n8nStatus.localEnabled !== false &&
       !n8nStatus.cloudConnected
     ) {
@@ -773,11 +851,51 @@ export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
     }
   }, [n8nStatus]);
 
-  // Poll workflows every 10s while the panel is mounted.
+  // B4: Poll status every 3s while starting; stop once ready/error.
+  // M2: Visibility-guarded.
+  useEffect(() => {
+    if (!n8nStatus || n8nStatus.status !== "starting") return;
+    let id: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (!id) id = setInterval(() => void loadStatus(), 3_000);
+    };
+    const stop = () => {
+      if (id) {
+        clearInterval(id);
+        id = null;
+      }
+    };
+    if (document.visibilityState === "visible") start();
+    const onVis = () =>
+      document.visibilityState === "visible" ? start() : stop();
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [n8nStatus, loadStatus]);
+
+  // M2: Poll workflows every 10s with visibility guard.
   useEffect(() => {
     if (!n8nStatus || n8nStatus.mode === "disabled") return;
-    const id = setInterval(() => void loadWorkflows(), 10_000);
-    return () => clearInterval(id);
+    let id: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (!id) id = setInterval(() => void loadWorkflows(), 10_000);
+    };
+    const stop = () => {
+      if (id) {
+        clearInterval(id);
+        id = null;
+      }
+    };
+    if (document.visibilityState === "visible") start();
+    const onVis = () =>
+      document.visibilityState === "visible" ? start() : stop();
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [n8nStatus, loadWorkflows]);
 
   const handleWorkflowMutated = useCallback(() => {
@@ -796,31 +914,37 @@ export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
     void loadStatus();
   }, [loadStatus]);
 
-  const handleToggleActive = useCallback(async (wf: N8nWorkflow) => {
-    setBusy(wf.id);
-    try {
-      if (wf.active) {
-        await client.deactivateN8nWorkflow(wf.id);
-      } else {
-        await client.activateN8nWorkflow(wf.id);
+  const handleToggleActive = useCallback(
+    async (wf: N8nWorkflow) => {
+      setBusy(wf.id);
+      try {
+        if (wf.active) {
+          await client.deactivateN8nWorkflow(wf.id);
+        } else {
+          await client.activateN8nWorkflow(wf.id);
+        }
+        setWorkflows((prev) =>
+          prev.map((w) => (w.id === wf.id ? { ...w, active: !wf.active } : w)),
+        );
+      } catch (err) {
+        pushError(
+          t("automations.n8n.errorUpdateWorkflow", {
+            message: err instanceof Error ? err.message : "error",
+          }),
+        );
+      } finally {
+        setBusy(null);
       }
-      setWorkflows((prev) =>
-        prev.map((w) => (w.id === wf.id ? { ...w, active: !wf.active } : w)),
-      );
-    } catch (err) {
-      setError(
-        `Failed to update workflow: ${err instanceof Error ? err.message : "error"}`,
-      );
-    } finally {
-      setBusy(null);
-    }
-  }, []);
+    },
+    [pushError, t],
+  );
 
   const handleDelete = useCallback(
     async (wf: N8nWorkflow) => {
       const confirmed = await confirmDesktopAction({
         title: t("automations.n8n.deleteWorkflow"),
-        message: `Delete "${wf.name}"? This cannot be undone.`,
+        // M9: i18n the delete confirm message with workflow name
+        message: t("automations.n8n.deleteConfirmWorkflow", { name: wf.name }),
         confirmLabel: t("automations.n8n.deleteWorkflow"),
         cancelLabel: t("common.cancel"),
         type: "warning",
@@ -832,14 +956,37 @@ export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
         setWorkflows((prev) => prev.filter((w) => w.id !== wf.id));
         setSelectedId((cur) => (cur === wf.id ? null : cur));
       } catch (err) {
-        setError(
-          `Failed to delete workflow: ${err instanceof Error ? err.message : "error"}`,
+        pushError(
+          t("automations.n8n.errorDeleteWorkflow", {
+            message: err instanceof Error ? err.message : "error",
+          }),
         );
       } finally {
         setBusy(null);
       }
     },
-    [t],
+    [t, pushError],
+  );
+
+  // M7: Keyboard navigation between workflow rows.
+  const handleRowKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLButtonElement>, index: number) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const nextIndex =
+          e.key === "ArrowDown"
+            ? Math.min(index + 1, workflows.length - 1)
+            : Math.max(index - 1, 0);
+        // Focus the button at nextIndex — they are siblings in the parent div
+        const parent = (e.currentTarget as HTMLButtonElement).parentElement;
+        if (!parent) return;
+        const buttons = parent.querySelectorAll<HTMLButtonElement>(
+          "button[type='button']",
+        );
+        buttons[nextIndex]?.focus();
+      }
+    },
+    [workflows.length],
   );
 
   // ── Sidebar workflow list ───────────────────────────────────────────────
@@ -861,7 +1008,7 @@ export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
           </div>
         </div>
       ) : (
-        workflows.map((wf) => (
+        workflows.map((wf, index) => (
           <WorkflowSidebarRow
             key={wf.id}
             workflow={wf}
@@ -869,6 +1016,7 @@ export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
             onClick={() =>
               setSelectedId((cur) => (cur === wf.id ? null : wf.id))
             }
+            onKeyDown={(e) => handleRowKeyDown(e, index)}
           />
         ))
       )}
@@ -888,9 +1036,12 @@ export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
             dismissed={bannerDismissed}
           />
         </div>
-        <button
+        {/* M12: use Button primitive for refresh */}
+        <Button
           type="button"
-          className="shrink-0 flex items-center gap-1 text-muted hover:text-txt text-xs px-2 py-1 rounded-lg hover:bg-bg/50 transition-colors mb-3"
+          variant="ghost"
+          size="icon"
+          className="shrink-0 flex items-center gap-1 text-muted hover:text-txt text-xs px-2 py-1 rounded-lg hover:bg-bg/50 transition-colors mb-3 h-7 w-7"
           onClick={handleRefresh}
           disabled={workflowsLoading}
           aria-label={t("actions.refresh")}
@@ -898,27 +1049,41 @@ export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
           <RefreshCw
             className={`h-3.5 w-3.5 ${workflowsLoading ? "animate-spin" : ""}`}
           />
-        </button>
+        </Button>
       </div>
 
-      {/* Error strip */}
-      {error && (
-        <div className="mb-2 flex items-center justify-between rounded-lg border border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger">
-          <span>{error}</span>
-          <button
-            type="button"
-            className="ml-2 text-danger/60 hover:text-danger"
-            onClick={() => setError(null)}
-          >
-            <X className="h-3 w-3" />
-          </button>
+      {/* M8: Error queue — stacked, each dismissible, capped at 3 */}
+      {errors.length > 0 && (
+        <div className="mb-2 flex flex-col gap-1">
+          {errors.map((err) => (
+            <div
+              key={err.id}
+              className="flex items-center justify-between rounded-lg border border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger"
+            >
+              <span>{err.message}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="ml-2 text-danger/60 hover:text-danger h-5 w-5"
+                onClick={() => dismissError(err.id)}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
         </div>
       )}
 
       {/* Two-pane: sidebar list + detail */}
       <div className="flex flex-1 min-h-0 gap-4">
-        {/* Left: workflow list (fills sidebar scroll region from parent) */}
-        <div className="w-56 shrink-0 overflow-y-auto">{workflowSidebar}</div>
+        {/* M7: use <nav> with aria-label for workflow list */}
+        <nav
+          aria-label={t("automations.n8n.workflowListLabel")}
+          className="w-56 shrink-0 overflow-y-auto"
+        >
+          {workflowSidebar}
+        </nav>
 
         {/* Right: detail pane */}
         <div className="flex-1 min-w-0 overflow-y-auto">
