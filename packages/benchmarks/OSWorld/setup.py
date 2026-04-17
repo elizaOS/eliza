@@ -48,7 +48,7 @@ setup(
         "torch~=2.8.0",
         "accelerate",
         "opencv-python-headless~=4.8.1.78",
-        "matplotlib~=3.7.4",
+        "matplotlib~=3.10.8",
         "pynput~=1.7.6",
         "pyautogui~=0.9.54",
         "psutil~=5.9.6",
