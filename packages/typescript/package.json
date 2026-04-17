@@ -114,7 +114,7 @@
 		"dotenv": "^17.2.3",
 		"drizzle-orm": "^0.45.1",
 		"fast-redact": "^3.5.0",
-		"file-type": "^21.3.0",
+		"file-type": "^22.0.0",
 		"fs-extra": "^11.3.2",
 		"git-workspace-service": "0.4.5",
 		"glob": "^13.0.0",
