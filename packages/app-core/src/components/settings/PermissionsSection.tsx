@@ -56,7 +56,8 @@ const PLATFORM_COPY: Record<DesktopPlatform, PlatformCopy> = {
     },
     permissionReady: {
       key: "permissionssection.PermissionReadyNote",
-      defaultValue: "All required permissions are ready. Continue when you're ready.",
+      defaultValue:
+        "All required permissions are ready. Continue when you're ready.",
     },
     grantSubNote: {
       key: "permissionssection.PermissionGrantNote",
@@ -108,7 +109,8 @@ const PLATFORM_COPY: Record<DesktopPlatform, PlatformCopy> = {
     },
     permissionReady: {
       key: "permissionssection.PermissionReadyNote",
-      defaultValue: "All required permissions are ready. Continue when you're ready.",
+      defaultValue:
+        "All required permissions are ready. Continue when you're ready.",
     },
     grantSubNote: {
       key: "permissionssection.PermissionGrantNote",

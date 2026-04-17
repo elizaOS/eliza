@@ -187,6 +187,122 @@ describe("n8n status route", () => {
   });
 });
 
+// ── Cloud health probe ──────────────────────────────────────────────────────
+
+describe("n8n status cloudHealth", () => {
+  beforeEach(() => {
+    __resetCloudHealthCacheForTests();
+  });
+
+  it("returns cloudHealth=unknown in local mode", async () => {
+    const { payload } = await invoke({
+      config: { n8n: { localEnabled: true } },
+    });
+    expect(payload).toMatchObject({ mode: "local", cloudHealth: "unknown" });
+  });
+
+  it("returns cloudHealth=ok when cloud health probe returns 200", async () => {
+    const fetchImpl = vi.fn(async () =>
+      mockResponse({ status: 200, body: { ok: true } }),
+    ) as unknown as typeof fetch;
+    const { payload } = await invoke({
+      config: {
+        cloud: {
+          enabled: true,
+          apiKey: "k",
+          baseUrl: "https://cloud.example.com",
+        },
+      },
+      runtime: runtimeWithCloudAuth(true),
+      fetchImpl,
+    });
+    expect(payload).toMatchObject({ mode: "cloud", cloudHealth: "ok" });
+    const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls;
+    const [calledUrl] = calls[0] as [string, RequestInit];
+    expect(calledUrl).toBe("https://cloud.example.com/api/v1/health");
+  });
+
+  it("returns cloudHealth=degraded on non-2xx", async () => {
+    const fetchImpl = vi.fn(async () =>
+      mockResponse({ status: 503, body: { error: "boom" } }),
+    ) as unknown as typeof fetch;
+    const { payload } = await invoke({
+      config: {
+        cloud: {
+          enabled: true,
+          apiKey: "k",
+          baseUrl: "https://cloud.example.com",
+        },
+      },
+      runtime: runtimeWithCloudAuth(true),
+      fetchImpl,
+    });
+    expect(payload).toMatchObject({
+      mode: "cloud",
+      cloudConnected: true,
+      cloudHealth: "degraded",
+    });
+  });
+
+  it("returns cloudHealth=degraded on fetch failure", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error("network down");
+    }) as unknown as typeof fetch;
+    const { payload } = await invoke({
+      config: {
+        cloud: {
+          enabled: true,
+          apiKey: "k",
+          baseUrl: "https://cloud.example.com",
+        },
+      },
+      runtime: runtimeWithCloudAuth(true),
+      fetchImpl,
+    });
+    expect(payload).toMatchObject({ mode: "cloud", cloudHealth: "degraded" });
+  });
+
+  it("caches the probe for subsequent calls (single fetch per 30s)", async () => {
+    const fetchImpl = vi.fn(async () =>
+      mockResponse({ status: 200, body: { ok: true } }),
+    ) as unknown as typeof fetch;
+    const args: InvokeArgs = {
+      config: {
+        cloud: {
+          enabled: true,
+          apiKey: "k",
+          baseUrl: "https://cloud.example.com",
+        },
+      },
+      runtime: runtimeWithCloudAuth(true),
+      fetchImpl,
+    };
+    await invoke(args);
+    await invoke(args);
+    await invoke(args);
+    const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls;
+    expect(calls.length).toBe(1);
+  });
+
+  it("respects cloudHealthOverride (test escape hatch)", async () => {
+    const fetchImpl = vi.fn() as unknown as typeof fetch;
+    const { payload } = await invoke({
+      config: {
+        cloud: { enabled: true, apiKey: "k", baseUrl: "https://c.example" },
+      },
+      runtime: runtimeWithCloudAuth(true),
+      fetchImpl,
+      cloudHealthOverride: "degraded",
+    });
+    expect(payload).toMatchObject({ cloudHealth: "degraded" });
+    const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls;
+    expect(calls.length).toBe(0);
+  });
+});
+
 // ── Mobile (native) platform behaviour ──────────────────────────────────────
 //
 // On iOS / Android the local n8n sidecar cannot run because the embedded

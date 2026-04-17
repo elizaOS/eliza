@@ -15,5 +15,10 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "lucide-react": "^0.575.0"
+  },
+  "elizaos": {
+    "app": {
+      "heroImage": "assets/hero.webp"
+    }
   }
 }

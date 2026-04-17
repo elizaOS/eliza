@@ -294,7 +294,12 @@ export function AppearanceSettingsSection() {
           {BUILTIN_THEMES.map((theme) => {
             const isActive = themeId === theme.id;
             const colors = isDark ? theme.dark : theme.light;
-            const swatches = [colors.bg, colors.card, colors.accent, colors.text];
+            const swatches = [
+              colors.bg,
+              colors.card,
+              colors.accent,
+              colors.text,
+            ];
             return (
               <button
                 key={theme.id}
