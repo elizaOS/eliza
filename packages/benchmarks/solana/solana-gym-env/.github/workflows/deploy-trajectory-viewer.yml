@@ -39,7 +39,7 @@ jobs:
           cp -r ./docs/trajectory-viewer/public/assets ./docs/trajectory-viewer/dist/ || true
         
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./docs/trajectory-viewer/dist
