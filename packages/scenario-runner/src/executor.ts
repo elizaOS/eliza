@@ -336,17 +336,7 @@ export async function runScenario(
     providerName: opts.providerName,
   };
 
-  // Requires gate
-  const requiredPlugins = resolveRequiredPlugins(scenario);
-  const missing = requiredPlugins.filter((p) => !pluginIsRegistered(runtime, p));
-  if (missing.length > 0) {
-    report.status = "skipped";
-    report.skipReason = `required plugin(s) not registered: ${missing.join(",")}`;
-    report.durationMs = Date.now() - startedAt;
-    return report;
-  }
-
-  const interceptor = attachInterceptor(runtime);
+  let interceptor = attachInterceptor(runtime);
   const roomId = crypto.randomUUID() as UUID;
   const userId = crypto.randomUUID() as UUID;
   const worldId = stringToUuid("scenario-runner-world");
@@ -369,6 +359,49 @@ export async function runScenario(
       report.durationMs = Date.now() - startedAt;
       return report;
     }
+
+    // Requires gate runs AFTER seeds so scenarios that register fixture
+    // plugins via a `custom` seed step (e.g. convo.echo-self-test) still
+    // satisfy their own declared `requires.plugins`. For package-named
+    // plugins (e.g. "@elizaos/plugin-agent-skills") we attempt a dynamic
+    // import and register the default export so scenarios don't skip when
+    // the plugin is on disk.
+    const requiredPlugins = resolveRequiredPlugins(scenario);
+    for (const pkg of requiredPlugins) {
+      if (!pkg.startsWith("@")) continue;
+      if (pluginIsRegistered(runtime, pkg)) continue;
+      try {
+        const mod = (await import(pkg)) as Record<string, unknown>;
+        const candidate = mod.default ?? mod.elizaPlugin ?? mod.plugin;
+        if (
+          candidate !== null &&
+          typeof candidate === "object" &&
+          typeof (candidate as { name?: unknown }).name === "string"
+        ) {
+          await runtime.registerPlugin(
+            candidate as unknown as Parameters<
+              AgentRuntime["registerPlugin"]
+            >[0],
+          );
+        }
+      } catch (err) {
+        logger.debug(
+          `[scenario-runner] failed to auto-load required plugin ${pkg}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    const missing = requiredPlugins.filter(
+      (p) => !pluginIsRegistered(runtime, p),
+    );
+    if (missing.length > 0) {
+      report.status = "skipped";
+      report.skipReason = `required plugin(s) not registered: ${missing.join(",")}`;
+      return report;
+    }
+
+    // Re-attach interceptor so any actions registered by seed plugins are wrapped.
+    interceptor.detach();
+    interceptor = attachInterceptor(runtime);
 
     for (const turn of scenario.turns) {
       const kind = typeof turn.kind === "string" ? turn.kind : "message";
