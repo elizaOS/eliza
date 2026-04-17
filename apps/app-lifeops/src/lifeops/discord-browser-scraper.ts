@@ -7,9 +7,12 @@ import {
   openBrowserWorkspaceTab,
   showBrowserWorkspaceTab,
 } from "@elizaos/agent/services/browser-workspace";
-import type { LifeOpsConnectorSide } from "@elizaos/shared/contracts/lifeops";
+import type {
+  LifeOpsBrowserPageContext,
+  LifeOpsConnectorSide,
+} from "@elizaos/shared/contracts/lifeops";
 
-const DISCORD_APP_URL = "https://discord.com/channels/@me";
+export const DISCORD_APP_URL = "https://discord.com/channels/@me";
 const DISCORD_APP_TITLE = "Discord";
 const DISCORD_DM_PREVIEW_LIMIT = 5;
 
@@ -49,11 +52,48 @@ function normalizeDiscordText(value: string | null | undefined): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function isDiscordUrl(value: string | null | undefined): boolean {
+  if (!value) return false;
+  try {
+    const url = new URL(value, "https://discord.com");
+    return /(^|\.)discord\.com$/i.test(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function selectedDiscordDmChannelId(value: string | null | undefined): string | null {
   const normalized = normalizeDiscordText(value);
   if (!normalized) return null;
   const match = normalized.match(/\/channels\/@me\/([^/?#]+)/);
   return match?.[1] ?? null;
+}
+
+function isDiscordLoginPage(args: {
+  url: string | null;
+  title?: string | null;
+  mainText?: string | null;
+  formFields?: string[];
+}): boolean {
+  const url = normalizeDiscordText(args.url);
+  const title = normalizeDiscordText(args.title);
+  const mainText = normalizeDiscordText(args.mainText);
+  const formFields = (args.formFields ?? [])
+    .map((field) => normalizeDiscordText(field))
+    .filter((field): field is string => field !== null)
+    .join(" ");
+
+  if (url?.includes("/login") || url?.includes("/register")) {
+    return true;
+  }
+
+  const combined = [title, mainText, formFields]
+    .filter((value): value is string => value !== null)
+    .join(" ");
+  return /\b(log ?in|sign ?in|register)\b/i.test(combined) &&
+    /\bdiscord\b/i.test(combined)
+    ? true
+    : /\b(email|password)\b/i.test(formFields);
 }
 
 function discordAnchorTextParts(anchor: Element): string[] {
@@ -172,6 +212,80 @@ function emptyDiscordTabProbe(url: string | null = null): DiscordTabProbe {
     },
     rawSnippet: null,
     dmInbox: emptyDiscordDmInboxProbe(),
+  };
+}
+
+export function probeDiscordCapturedPage(
+  page:
+    | Pick<
+        LifeOpsBrowserPageContext,
+        "url" | "title" | "mainText" | "links" | "forms"
+      >
+    | {
+        url: string | null;
+        title?: string | null;
+        mainText?: string | null;
+        links?: Array<{ text: string; href: string }>;
+        forms?: Array<{ action: string | null; fields: string[] }>;
+      },
+): DiscordTabProbe {
+  const safeUrl = normalizeDiscordText(page.url);
+  if (!safeUrl || !isDiscordUrl(safeUrl)) {
+    return emptyDiscordTabProbe(safeUrl ?? null);
+  }
+
+  const formFields = (page.forms ?? []).flatMap((form) => form.fields ?? []);
+  if (
+    isDiscordLoginPage({
+      url: safeUrl,
+      title: page.title ?? null,
+      mainText: page.mainText ?? null,
+      formFields,
+    })
+  ) {
+    return {
+      ...emptyDiscordTabProbe(safeUrl),
+      rawSnippet: normalizeDiscordText(page.mainText ?? null)?.slice(0, 160) ?? null,
+    };
+  }
+
+  const selectedChannelId = selectedDiscordDmChannelId(safeUrl);
+  const previews: DiscordVisibleDmPreview[] = [];
+  const seen = new Set<string>();
+  for (const candidate of page.links ?? []) {
+    if (!isDiscordUrl(candidate.href)) continue;
+    const href = normalizeDiscordText(candidate.href);
+    if (!href || !href.includes("/channels/@me/")) continue;
+    const channelId = selectedDiscordDmChannelId(href);
+    const dedupeKey = channelId ?? href;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    previews.push({
+      channelId,
+      href,
+      label: normalizeDiscordText(candidate.text) ?? channelId ?? "Direct message",
+      selected: channelId !== null && channelId === selectedChannelId,
+      unread: false,
+      snippet: null,
+    });
+  }
+
+  return {
+    loggedIn: true,
+    url: safeUrl,
+    identity: {
+      id: null,
+      username: null,
+      discriminator: null,
+    },
+    rawSnippet: normalizeDiscordText(page.mainText ?? null)?.slice(0, 160) ?? null,
+    dmInbox: {
+      visible: previews.length > 0 || safeUrl.includes("/channels/@me"),
+      count: previews.length,
+      selectedChannelId,
+      previews: previews.slice(0, DISCORD_DM_PREVIEW_LIMIT),
+    },
   };
 }
 
