@@ -16,7 +16,7 @@
  *   } satisfies AppConfig;
  */
 
-import { type BrandingConfig, DEFAULT_BRANDING } from "./branding";
+import type { BrandingConfig } from "./branding";
 
 export interface AppDesktopConfig {
   /** Reverse-domain bundle identifier (e.g. "com.miladyai.milady") */
@@ -59,6 +59,17 @@ export interface AppPackagingConfig {
     packageName: string;
     description: string;
   };
+}
+
+export interface AppWebConfig {
+  /** Short app name used in the web manifest. */
+  shortName?: string;
+  /** Browser UI theme color used for the PWA manifest/meta tags. */
+  themeColor?: string;
+  /** Browser background color used for the PWA manifest/meta tags. */
+  backgroundColor?: string;
+  /** Social share image path relative to the deployed app root. */
+  shareImagePath?: string;
 }
 
 export interface AppConfig {
@@ -106,6 +117,9 @@ export interface AppConfig {
   /** Desktop-specific configuration */
   desktop?: AppDesktopConfig;
 
+  /** Web app manifest and share metadata overrides. */
+  web?: AppWebConfig;
+
   /** Package manager configurations */
   packaging?: AppPackagingConfig;
 
@@ -122,8 +136,24 @@ export interface AppConfig {
  * Merges app-specific overrides with the framework defaults.
  */
 export function resolveAppBranding(appConfig: AppConfig): BrandingConfig {
+  // NOTE: Inlined defaults mirror DEFAULT_BRANDING in ./branding.ts.
+  // Requiring branding at call time was leaking into the browser bundle and
+  // causing a runtime `require is not defined` failure.
+  const defaults: BrandingConfig = {
+    appName: "Eliza",
+    orgName: "elizaos",
+    repoName: "eliza",
+    docsUrl: "https://docs.elizaos.ai",
+    appUrl: "https://app.elizaos.ai",
+    bugReportUrl:
+      "https://github.com/elizaos/eliza/issues/new?template=bug_report.yml",
+    hashtag: "#ElizaAgent",
+    fileExtension: ".eliza-agent",
+    packageScope: "elizaos",
+  };
+
   return {
-    ...DEFAULT_BRANDING,
+    ...defaults,
     appName: appConfig.appName,
     orgName: appConfig.orgName,
     repoName: appConfig.repoName,
