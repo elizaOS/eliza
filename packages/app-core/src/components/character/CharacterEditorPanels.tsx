@@ -544,7 +544,7 @@ export function CharacterExamplesPanel({
                 <div
                   // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
                   key={`msg-${ci}-${mi}`}
-                  className="flex items-center gap-3"
+                  className="group/msg flex items-center gap-3"
                 >
                   <span
                     className={`w-14 shrink-0 pr-1 text-right text-3xs font-bold uppercase tracking-[0.08em] ${msg.name === "{{user1}}" ? "text-muted" : "text-accent"}`}
@@ -567,8 +567,54 @@ export function CharacterExamplesPanel({
                     }}
                     className="h-7 flex-1 rounded-md border border-border/50 bg-white/[0.03] px-2.5 text-xs-tight leading-tight text-txt outline-none focus:border-accent"
                   />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-auto w-auto shrink-0 p-0 text-muted opacity-0 transition-opacity duration-150 hover:text-danger group-hover/msg:opacity-100 focus-visible:opacity-100"
+                    onClick={() => {
+                      const updated = [...normalizedMessageExamples];
+                      const convoClone = {
+                        examples: [...updated[ci].examples],
+                      };
+                      convoClone.examples.splice(mi, 1);
+                      if (convoClone.examples.length === 0) {
+                        updated.splice(ci, 1);
+                      } else {
+                        updated[ci] = convoClone;
+                      }
+                      handleFieldEdit("messageExamples", updated);
+                    }}
+                    aria-label={`${t("common.remove")} message ${mi + 1}`}
+                  >
+                    <CloseIconSvg />
+                  </Button>
                 </div>
               ))}
+              <Button
+                variant="ghost"
+                className="self-start text-2xs font-bold text-accent p-0 h-auto py-0.5 pl-[4.25rem] hover:underline"
+                onClick={() => {
+                  const agentName =
+                    typeof d.name === "string" && d.name.trim()
+                      ? d.name.trim()
+                      : "Agent";
+                  const updated = [...normalizedMessageExamples];
+                  const convoClone = {
+                    examples: [
+                      ...updated[ci].examples,
+                      { name: "{{user1}}", content: { text: "" } },
+                      { name: agentName, content: { text: "" } },
+                    ],
+                  };
+                  updated[ci] = convoClone;
+                  handleFieldEdit("messageExamples", updated);
+                }}
+              >
+                +{" "}
+                {t("charactereditor.AddTurn", {
+                  defaultValue: "Add turn",
+                })}
+              </Button>
             </div>
           ))}
           {normalizedMessageExamples.length === 0 && (
@@ -579,6 +625,31 @@ export function CharacterExamplesPanel({
             </div>
           )}
         </div>
+        <Button
+          variant="ghost"
+          className="self-start text-2xs font-bold text-accent p-0 h-auto py-1 hover:underline"
+          onClick={() => {
+            const agentName =
+              typeof d.name === "string" && d.name.trim()
+                ? d.name.trim()
+                : "Agent";
+            const updated = [
+              ...normalizedMessageExamples,
+              {
+                examples: [
+                  { name: "{{user1}}", content: { text: "" } },
+                  { name: agentName, content: { text: "" } },
+                ],
+              },
+            ];
+            handleFieldEdit("messageExamples", updated);
+          }}
+        >
+          +{" "}
+          {t("charactereditor.AddConversation", {
+            defaultValue: "Add conversation",
+          })}
+        </Button>
       </section>
 
       {/* Post Examples */}
