@@ -31,4 +31,4 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 uuid = { version = "1.7", features = ["serde", "v4"] }
 ethers = "2.0"
 reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
-sha2 = "0.10"
+sha2 = "0.11"
