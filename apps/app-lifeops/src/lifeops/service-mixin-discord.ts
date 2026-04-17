@@ -1,4 +1,6 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
+
+import { logger } from "@elizaos/core";
 import type {
   LifeOpsConnectorGrant,
   LifeOpsConnectorSide,
@@ -7,21 +9,20 @@ import type {
   LifeOpsMessagingConnectorReason,
 } from "@elizaos/shared/contracts/lifeops";
 import {
-  LIFEOPS_DISCORD_CAPABILITIES,
   capabilitiesForSide,
+  LIFEOPS_DISCORD_CAPABILITIES,
 } from "@elizaos/shared/contracts/lifeops";
-import { logger } from "@elizaos/core";
-import { createLifeOpsConnectorGrant } from "./repository.js";
 import {
   closeDiscordTab,
+  type DiscordTabProbe,
   discordBrowserWorkspaceAvailable,
   ensureDiscordTab,
   probeDiscordTab,
-  type DiscordTabProbe,
 } from "./discord-browser-scraper.js";
+import { createLifeOpsConnectorGrant } from "./repository.js";
+import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 import { normalizeOptionalConnectorSide } from "./service-normalize-connector.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 function identityFromProbe(
   probe: DiscordTabProbe | null,
@@ -151,7 +152,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       const loggedIn = probe?.loggedIn === true;
       const capabilities = loggedIn
         ? capabilitiesForSide(LIFEOPS_DISCORD_CAPABILITIES, normalizedSide)
-        : existing?.capabilities ?? [];
+        : (existing?.capabilities ?? []);
       const identity =
         identityFromProbe(probe, existing?.identity ?? null) ?? {};
 

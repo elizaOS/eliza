@@ -51,6 +51,8 @@ interface ChatViewProps {
   variant?: ChatViewVariant;
   /** Override click handler for agent activity box sessions. */
   onPtySessionClick?: (sessionId: string) => void;
+  /** Hide the always-visible terminal/PTY panel (used in embedded overlays). */
+  hideTerminalPanel?: boolean;
 }
 
 function normalizeInboxChatSelection(
@@ -95,6 +97,7 @@ function normalizeInboxChatSelection(
 export function ChatView({
   variant = "default",
   onPtySessionClick,
+  hideTerminalPanel = false,
 }: ChatViewProps) {
   const app = useApp() as ReturnType<typeof useApp> | undefined;
   if (!app) {
@@ -689,7 +692,7 @@ export function ChatView({
       footerStack={
         <>
           {auxiliaryNode}
-          {terminalPanelNode}
+          {hideTerminalPanel ? null : terminalPanelNode}
         </>
       }
       composer={composerNode}

@@ -17,12 +17,10 @@ interface AppsCatalogGridProps {
   favoriteAppNames: Set<string>;
   loading: boolean;
   searchQuery: string;
-  showActiveOnly: boolean;
   visibleApps: RegistryAppInfo[];
   onLaunch: (app: RegistryAppInfo) => void;
   onRefresh: () => void;
   onSearchQueryChange: (value: string) => void;
-  onToggleActiveOnly: () => void;
   onToggleFavorite: (appName: string) => void;
 }
 
@@ -32,12 +30,10 @@ export function AppsCatalogGrid({
   favoriteAppNames,
   loading,
   searchQuery,
-  showActiveOnly,
   visibleApps,
   onLaunch,
   onRefresh,
   onSearchQueryChange,
-  onToggleActiveOnly,
   onToggleFavorite,
 }: AppsCatalogGridProps) {
   const { t } = useApp();
@@ -71,22 +67,6 @@ export function AppsCatalogGrid({
           onClick={onRefresh}
         >
           {t("common.refresh")}
-        </Button>
-        <Button
-          variant={showActiveOnly ? "default" : "outline"}
-          size="sm"
-          className="rounded-xl px-3 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={onToggleActiveOnly}
-          disabled={activeAppNames.size === 0}
-          title={
-            activeAppNames.size === 0
-              ? t("appsview.NoActiveAppsForFilter", {
-                  defaultValue: "No active apps are available to filter.",
-                })
-              : undefined
-          }
-        >
-          {t("appsview.ActiveOnly", { defaultValue: "Active Only" })}
         </Button>
       </div>
 

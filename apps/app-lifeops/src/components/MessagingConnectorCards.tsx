@@ -154,22 +154,36 @@ export function DiscordConnectorCard() {
   const isConnected = discord.status?.connected === true;
   const busy = discord.actionPending || discord.loading;
   const username = discord.status?.identity?.username;
+  const available = discord.status?.available !== false;
+  const pairing = discord.status?.reason === "pairing";
+  const statusLabel = !available
+    ? "Open in Milady desktop"
+    : isConnected
+      ? "Connected"
+      : pairing
+        ? "Sign in to Discord in the opened tab…"
+        : "Not connected";
+  const statusVariant: "ok" | "muted" | "warning" = isConnected
+    ? "ok"
+    : pairing
+      ? "warning"
+      : "muted";
 
   return (
     <ConnectorCardShell
       icon={<DiscordIcon className="h-5 w-5 shrink-0 text-muted" />}
       platform="Discord"
-      status={isConnected ? "Connected" : "Not connected"}
-      statusVariant={isConnected ? "ok" : "muted"}
+      status={statusLabel}
+      statusVariant={statusVariant}
     >
       {!isConnected ? (
         <Button
           size="sm"
           className="h-8 rounded-xl px-3 text-xs font-semibold"
-          disabled={busy}
+          disabled={busy || !available}
           onClick={() => void discord.connect()}
         >
-          Connect Discord
+          {pairing ? "Reopen Discord tab" : "Connect Discord"}
         </Button>
       ) : null}
 
@@ -190,6 +204,12 @@ export function DiscordConnectorCard() {
           >
             Disconnect
           </Button>
+        </div>
+      ) : null}
+
+      {!available ? (
+        <div className="text-xs text-muted">
+          Discord runs inside a Milady browser tab. Open the desktop app to connect.
         </div>
       ) : null}
 
