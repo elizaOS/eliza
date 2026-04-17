@@ -67,6 +67,62 @@ export const LIFEOPS_WORKFLOW_TRIGGER_TYPES = ["manual", "schedule"] as const;
 export type LifeOpsWorkflowTriggerType =
   (typeof LIFEOPS_WORKFLOW_TRIGGER_TYPES)[number];
 
+export const LIFEOPS_NEGOTIATION_STATES = [
+  "initiated",
+  "proposals_sent",
+  "awaiting_response",
+  "confirmed",
+  "cancelled",
+] as const;
+export type LifeOpsNegotiationState =
+  (typeof LIFEOPS_NEGOTIATION_STATES)[number];
+
+export const LIFEOPS_PROPOSAL_STATUSES = [
+  "pending",
+  "accepted",
+  "declined",
+  "expired",
+] as const;
+export type LifeOpsProposalStatus =
+  (typeof LIFEOPS_PROPOSAL_STATUSES)[number];
+
+export const LIFEOPS_PROPOSAL_PROPOSERS = [
+  "agent",
+  "owner",
+  "counterparty",
+] as const;
+export type LifeOpsProposalProposer =
+  (typeof LIFEOPS_PROPOSAL_PROPOSERS)[number];
+
+export interface LifeOpsSchedulingNegotiation {
+  id: string;
+  agentId: string;
+  subject: string;
+  relationshipId: string | null;
+  durationMinutes: number;
+  timezone: string;
+  state: LifeOpsNegotiationState;
+  acceptedProposalId: string | null;
+  startedAt: string;
+  finalizedAt: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LifeOpsSchedulingProposal {
+  id: string;
+  agentId: string;
+  negotiationId: string;
+  startAt: string;
+  endAt: string;
+  proposedBy: LifeOpsProposalProposer;
+  status: LifeOpsProposalStatus;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const LIFEOPS_CONNECTOR_PROVIDERS = [
   "google",
   "x",
@@ -134,6 +190,19 @@ export const LIFEOPS_TELEGRAM_CAPABILITIES = [
 ] as const;
 export type LifeOpsTelegramCapability =
   (typeof LIFEOPS_TELEGRAM_CAPABILITIES)[number];
+
+// ---------------------------------------------------------------------------
+// Side-aware capability policy
+// Owner side = assistive (read-only). Agent side = autonomous (read + send).
+// ---------------------------------------------------------------------------
+
+export function capabilitiesForSide<T extends string>(
+  allCapabilities: readonly T[],
+  side: LifeOpsConnectorSide,
+): T[] {
+  if (side === "agent") return [...allCapabilities];
+  return allCapabilities.filter((c) => c.endsWith(".read")) as T[];
+}
 
 export const LIFEOPS_REMINDER_CHANNELS = [
   "in_app",
@@ -1490,6 +1559,13 @@ export const LIFEOPS_TELEGRAM_AUTH_STATES = [
 export type LifeOpsTelegramAuthState =
   (typeof LIFEOPS_TELEGRAM_AUTH_STATES)[number];
 
+export interface LifeOpsWhatsAppConnectorStatus {
+  provider: "whatsapp";
+  connected: boolean;
+  phoneNumberId?: string;
+  lastCheckedAt: string;
+}
+
 export interface LifeOpsTelegramConnectorStatus {
   provider: "telegram";
   side: LifeOpsConnectorSide;
@@ -1542,6 +1618,22 @@ export interface StartLifeOpsDiscordConnectorResponse {
   provider: "discord";
   side: LifeOpsConnectorSide;
   authUrl: string;
+}
+
+export interface LifeOpsDiscordGuild {
+  id: string;
+  name?: string;
+}
+
+export interface LifeOpsDiscordChannel {
+  id: string;
+  name?: string;
+  type?: number;
+  recipients?: Array<{
+    id: string;
+    username?: string;
+    global_name?: string;
+  }>;
 }
 
 export interface StartLifeOpsTelegramAuthRequest {
@@ -1962,3 +2054,32 @@ export interface CompleteLifeOpsBrowserSessionRequest {
   status?: Extract<LifeOpsBrowserSessionStatus, "done" | "failed">;
   result?: Record<string, unknown>;
 }
+
+// ── Settings card prop contracts ─────────────────────────────────────────────
+
+export type AppBlockerSettingsMode = "desktop" | "mobile" | "web";
+
+export interface AppBlockerSettingsCardProps {
+  mode: AppBlockerSettingsMode;
+}
+
+export type WebsiteBlockerSettingsMode = "desktop" | "mobile" | "web";
+
+export interface WebsiteBlockerSettingsCardProps {
+  mode: WebsiteBlockerSettingsMode;
+  permission?: import("./permissions.js").PermissionState;
+  platform?: string;
+  onOpenPermissionSettings?: () => void | Promise<void>;
+  onRequestPermission?: () => void | Promise<void>;
+}
+
+// ── Occurrence action results ────────────────────────────────────────────────
+
+export interface LifeOpsOccurrenceActionResult {
+  occurrence: LifeOpsOccurrenceView;
+}
+
+// ── Wave 1+ extensions (relationships, X read, cross-channel, screen time,
+//    scheduling, dossier, iMessage, WhatsApp). Re-exported from this barrel so
+//    all downstream imports continue to use `@elizaos/shared/contracts/lifeops`.
+export * from "./lifeops-extensions.js";

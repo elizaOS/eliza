@@ -19,6 +19,7 @@ export const computerStateProvider: Provider = {
   description:
     "Current computer state: platform, screen size, available tools, recent computer-use actions, and approval queue",
 
+  descriptionCompressed: "Platform, screen size, tools, recent actions, approval queue.",
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,

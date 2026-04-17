@@ -11,7 +11,7 @@ import {
   rejectStewardWalletRequest,
   signWithStewardWallet,
 } from "@elizaos/agent/services/steward-wallet";
-import type { StewardSignResponse } from "@elizaos/shared/contracts/wallet";
+import type { StewardSignResponse } from "@elizaos/app-steward/types/steward";
 
 type StewardSignActionRequest = {
   to: string;
@@ -149,6 +149,7 @@ export const signWithElizaWalletAction: Action = {
   name: "SIGN_WITH_ELIZA_WALLET",
   description:
     "Send a transaction through the Eliza Steward-managed wallet while browsing. Use this when the user or agent needs the Eliza wallet to sign and optionally broadcast a transaction.",
+  descriptionCompressed: "Send transaction through Eliza Steward wallet while browsing.",
   similes: [
     "sign transaction with wallet",
     "send with steward wallet",

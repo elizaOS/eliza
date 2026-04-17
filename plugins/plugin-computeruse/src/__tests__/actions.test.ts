@@ -3,7 +3,6 @@
  */
 import { describe, expect, it } from "vitest";
 import { useComputerAction } from "../actions/use-computer.js";
-import { takeScreenshotAction } from "../actions/take-screenshot.js";
 import { browserAction } from "../actions/browser-action.js";
 import { manageWindowAction } from "../actions/manage-window.js";
 import { fileAction } from "../actions/file-action.js";
@@ -58,14 +57,11 @@ describe("USE_COMPUTER action", () => {
   });
 });
 
-describe("TAKE_SCREENSHOT action", () => {
-  it("has correct name", () => {
-    expect(takeScreenshotAction.name).toBe("TAKE_SCREENSHOT");
-    expect(takeScreenshotAction.similes).toContain("CAPTURE_SCREEN");
-  });
-
-  it("has no required parameters", () => {
-    expect(takeScreenshotAction.parameters).toEqual([]);
+describe("USE_COMPUTER screenshot similes (merged from removed TAKE_SCREENSHOT)", () => {
+  it("includes screenshot-related similes", () => {
+    expect(useComputerAction.similes).toContain("TAKE_SCREENSHOT");
+    expect(useComputerAction.similes).toContain("CAPTURE_SCREEN");
+    expect(useComputerAction.similes).toContain("SEE_SCREEN");
   });
 });
 

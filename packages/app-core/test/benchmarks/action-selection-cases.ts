@@ -1,0 +1,442 @@
+/**
+ * Benchmark case library for the action selection benchmark.
+ *
+ * Each case is a single natural-language user message and the action we
+ * expect the agent to pick (or null for plain chat / no action).
+ *
+ * Case ids are stable, human-readable slugs. Tags include the primary
+ * domain ("scheduling", "email", …) plus a severity tag
+ * ("critical" | "standard" | "negative").
+ */
+
+export interface ActionBenchmarkCase {
+  id: string;
+  userMessage: string;
+  expectedAction: string | null;
+  acceptableActions?: string[];
+  expectedParams?: Record<string, unknown>;
+  tags: string[];
+  notes?: string;
+}
+
+export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
+  // ─── Greeting / chat (no action) ──────────────────────────────────────
+  {
+    id: "chat-greeting-hi",
+    userMessage: "hey",
+    expectedAction: null,
+    tags: ["chat", "negative"],
+  },
+  {
+    id: "chat-greeting-hello-how-are-you",
+    userMessage: "Hello! How are you today?",
+    expectedAction: null,
+    tags: ["chat", "negative"],
+  },
+  {
+    id: "chat-thanks",
+    userMessage: "thanks, that was helpful",
+    expectedAction: null,
+    tags: ["chat", "negative"],
+  },
+  {
+    id: "chat-smalltalk-weather",
+    userMessage: "the weather today is pretty nice",
+    expectedAction: null,
+    tags: ["chat", "negative"],
+  },
+  {
+    id: "chat-opinion-question",
+    userMessage: "what do you think about remote work?",
+    expectedAction: null,
+    tags: ["chat", "negative"],
+  },
+
+  // ─── To-dos / habits (LIFE create_definition) ─────────────────────────
+  {
+    id: "todo-add-simple",
+    userMessage: "add a todo: pick up dry cleaning tomorrow",
+    expectedAction: "LIFE",
+    acceptableActions: ["CREATE_TODO", "LIFE_CREATE_DEFINITION"],
+    expectedParams: { intent: "create_definition" },
+    tags: ["todos", "standard"],
+  },
+  {
+    id: "todo-remember-to-call",
+    userMessage: "remember to call mom on Sunday",
+    expectedAction: "LIFE",
+    acceptableActions: ["CREATE_TODO"],
+    tags: ["todos", "standard"],
+  },
+  {
+    id: "habit-daily-meditation",
+    userMessage: "I want to start a daily habit of meditating for 10 minutes each morning",
+    expectedAction: "LIFE",
+    acceptableActions: ["CREATE_HABIT"],
+    tags: ["habits", "standard"],
+  },
+  {
+    id: "habit-weekly-gym",
+    userMessage: "track my gym sessions three times a week",
+    expectedAction: "LIFE",
+    acceptableActions: ["CREATE_HABIT"],
+    tags: ["habits", "standard"],
+  },
+  {
+    id: "todo-list-today",
+    userMessage: "what's on my todo list today?",
+    expectedAction: "LIFE",
+    acceptableActions: ["LIST_TODOS"],
+    tags: ["todos", "standard"],
+  },
+
+  // ─── Goals (LIFE create_goal) ─────────────────────────────────────────
+  {
+    id: "goal-save-money",
+    userMessage: "set a goal to save $5,000 by the end of the year",
+    expectedAction: "LIFE",
+    acceptableActions: ["CREATE_GOAL"],
+    expectedParams: { intent: "create_goal" },
+    tags: ["goals", "standard"],
+  },
+  {
+    id: "goal-read-books",
+    userMessage: "I want a goal of reading 20 books this year",
+    expectedAction: "LIFE",
+    acceptableActions: ["CREATE_GOAL"],
+    tags: ["goals", "standard"],
+  },
+  {
+    id: "goal-career",
+    userMessage: "make getting promoted to senior a goal for me",
+    expectedAction: "LIFE",
+    acceptableActions: ["CREATE_GOAL"],
+    tags: ["goals", "standard"],
+  },
+
+  // ─── Calendar (CALENDAR_ACTION) ───────────────────────────────────────
+  {
+    id: "cal-next-event",
+    userMessage: "what's my next meeting?",
+    expectedAction: "CALENDAR_ACTION",
+    acceptableActions: ["NEXT_EVENT"],
+    expectedParams: { intent: "next_event" },
+    tags: ["calendar", "standard"],
+  },
+  {
+    id: "cal-today",
+    userMessage: "show me my calendar for today",
+    expectedAction: "CALENDAR_ACTION",
+    acceptableActions: ["FEED", "CALENDAR_FEED"],
+    tags: ["calendar", "standard"],
+  },
+  {
+    id: "cal-create-event",
+    userMessage: "schedule a dentist appointment next Tuesday at 3pm",
+    expectedAction: "CALENDAR_ACTION",
+    acceptableActions: ["CREATE_EVENT"],
+    expectedParams: { intent: "create_event" },
+    tags: ["calendar", "critical"],
+  },
+  {
+    id: "cal-create-event-meeting",
+    userMessage: "put a 1:1 with Alex on my calendar Thursday at 10am for 30 minutes",
+    expectedAction: "CALENDAR_ACTION",
+    acceptableActions: ["CREATE_EVENT"],
+    tags: ["calendar", "critical"],
+  },
+  {
+    id: "cal-week-ahead",
+    userMessage: "what does my week look like?",
+    expectedAction: "CALENDAR_ACTION",
+    acceptableActions: ["FEED"],
+    tags: ["calendar", "standard"],
+  },
+
+  // ─── Email triage (GMAIL_ACTION) ──────────────────────────────────────
+  {
+    id: "email-triage-inbox",
+    userMessage: "triage my gmail inbox",
+    expectedAction: "GMAIL_ACTION",
+    acceptableActions: ["TRIAGE"],
+    expectedParams: { intent: "triage" },
+    tags: ["email", "critical"],
+  },
+  {
+    id: "email-unread",
+    userMessage: "summarize my unread emails",
+    expectedAction: "GMAIL_ACTION",
+    acceptableActions: ["TRIAGE", "DIGEST"],
+    tags: ["email", "standard"],
+  },
+  {
+    id: "email-draft-reply",
+    userMessage: "draft a reply to the latest email from Sarah saying I'll review it tomorrow",
+    expectedAction: "GMAIL_ACTION",
+    acceptableActions: ["DRAFT_REPLY"],
+    expectedParams: { intent: "draft_reply" },
+    tags: ["email", "critical"],
+  },
+  {
+    id: "email-send-reply",
+    userMessage: "send a reply to the last email from finance confirming receipt",
+    expectedAction: "GMAIL_ACTION",
+    acceptableActions: ["SEND_REPLY"],
+    expectedParams: { intent: "send_reply" },
+    tags: ["email", "critical"],
+  },
+
+  // ─── Inbox (generic INBOX) ────────────────────────────────────────────
+  {
+    id: "inbox-triage",
+    userMessage: "triage my inbox",
+    expectedAction: "INBOX",
+    acceptableActions: ["TRIAGE"],
+    expectedParams: { intent: "triage" },
+    tags: ["inbox", "critical"],
+  },
+  {
+    id: "inbox-digest",
+    userMessage: "give me my inbox digest",
+    expectedAction: "INBOX",
+    acceptableActions: ["DIGEST"],
+    expectedParams: { intent: "digest" },
+    tags: ["inbox", "standard"],
+  },
+  {
+    id: "inbox-respond",
+    userMessage: "respond to the messages that need an answer in my inbox",
+    expectedAction: "INBOX",
+    acceptableActions: ["RESPOND"],
+    expectedParams: { intent: "respond" },
+    tags: ["inbox", "standard"],
+  },
+
+  // ─── Website blocking ─────────────────────────────────────────────────
+  {
+    id: "block-sites-focus",
+    userMessage: "block twitter and reddit for the next 2 hours",
+    expectedAction: "BLOCK_WEBSITES",
+    tags: ["focus", "blocking", "critical"],
+  },
+  {
+    id: "block-sites-social",
+    userMessage: "turn on a focus block for all social media sites",
+    expectedAction: "BLOCK_WEBSITES",
+    tags: ["focus", "blocking", "standard"],
+  },
+  {
+    id: "block-sites-youtube",
+    userMessage: "I keep getting distracted by youtube, block it",
+    expectedAction: "BLOCK_WEBSITES",
+    tags: ["focus", "blocking", "standard"],
+  },
+
+  // ─── App blocking ─────────────────────────────────────────────────────
+  {
+    id: "block-apps-games",
+    userMessage: "block all games on my phone until 6pm",
+    expectedAction: "BLOCK_APPS",
+    tags: ["focus", "blocking", "standard"],
+  },
+  {
+    id: "block-apps-slack",
+    userMessage: "block the slack app while I focus on deep work",
+    expectedAction: "BLOCK_APPS",
+    tags: ["focus", "blocking", "standard"],
+  },
+
+  // ─── Relationships ────────────────────────────────────────────────────
+  {
+    id: "rel-list-contacts",
+    userMessage: "who are my closest contacts?",
+    expectedAction: "RELATIONSHIP",
+    acceptableActions: ["LIST_CONTACTS"],
+    expectedParams: { intent: "list_contacts" },
+    tags: ["relationships", "standard"],
+  },
+  {
+    id: "rel-follow-up",
+    userMessage: "remind me to follow up with David next week about the project",
+    expectedAction: "RELATIONSHIP",
+    acceptableActions: ["ADD_FOLLOW_UP"],
+    expectedParams: { intent: "add_follow_up" },
+    tags: ["relationships", "standard"],
+  },
+  {
+    id: "rel-days-since",
+    userMessage: "how long has it been since I talked to my brother?",
+    expectedAction: "RELATIONSHIP",
+    acceptableActions: ["DAYS_SINCE"],
+    expectedParams: { intent: "days_since" },
+    tags: ["relationships", "standard"],
+  },
+
+  // ─── Cross-channel send ───────────────────────────────────────────────
+  {
+    id: "cross-send-telegram",
+    userMessage: "send a telegram message to Jane saying I'm running 10 minutes late",
+    expectedAction: "CROSS_CHANNEL_SEND",
+    tags: ["messaging", "critical"],
+  },
+  {
+    id: "cross-send-discord",
+    userMessage: "post 'standup in 5' to the engineering discord channel",
+    expectedAction: "CROSS_CHANNEL_SEND",
+    tags: ["messaging", "standard"],
+  },
+  {
+    id: "cross-send-slack",
+    userMessage: "dm Priya on slack: thanks for the review!",
+    expectedAction: "CROSS_CHANNEL_SEND",
+    tags: ["messaging", "standard"],
+  },
+
+  // ─── X / Twitter read ─────────────────────────────────────────────────
+  {
+    id: "x-read-dms",
+    userMessage: "check my twitter DMs",
+    expectedAction: "X_READ",
+    acceptableActions: ["READ_DMS"],
+    expectedParams: { intent: "read_dms" },
+    tags: ["x", "standard"],
+  },
+  {
+    id: "x-read-feed",
+    userMessage: "what's on my X timeline?",
+    expectedAction: "X_READ",
+    acceptableActions: ["READ_FEED"],
+    expectedParams: { intent: "read_feed" },
+    tags: ["x", "standard"],
+  },
+  {
+    id: "x-search",
+    userMessage: "search twitter for posts about elizaOS",
+    expectedAction: "X_READ",
+    acceptableActions: ["SEARCH"],
+    expectedParams: { intent: "search" },
+    tags: ["x", "standard"],
+  },
+
+  // ─── Screen time ──────────────────────────────────────────────────────
+  {
+    id: "screentime-today",
+    userMessage: "how much screen time have I used today?",
+    expectedAction: "SCREEN_TIME",
+    acceptableActions: ["TODAY"],
+    expectedParams: { intent: "today" },
+    tags: ["screen-time", "standard"],
+  },
+  {
+    id: "screentime-by-app",
+    userMessage: "break down my screen time by app this week",
+    expectedAction: "SCREEN_TIME",
+    acceptableActions: ["BY_APP"],
+    expectedParams: { intent: "by_app" },
+    tags: ["screen-time", "standard"],
+  },
+
+  // ─── Scheduling ───────────────────────────────────────────────────────
+  {
+    id: "sched-start-flow",
+    userMessage: "help me schedule a meeting with the design team",
+    expectedAction: "SCHEDULING",
+    acceptableActions: ["START"],
+    expectedParams: { intent: "start" },
+    tags: ["scheduling", "standard"],
+  },
+  {
+    id: "sched-propose-times",
+    userMessage: "propose three times for a 30 minute sync with Marco next week",
+    expectedAction: "SCHEDULING",
+    acceptableActions: ["PROPOSE"],
+    expectedParams: { intent: "propose" },
+    tags: ["scheduling", "critical"],
+  },
+
+  // ─── Dossier ──────────────────────────────────────────────────────────
+  {
+    id: "dossier-person",
+    userMessage: "pull up a dossier on Satya Nadella",
+    expectedAction: "DOSSIER",
+    tags: ["dossier", "standard"],
+  },
+  {
+    id: "dossier-prep",
+    userMessage: "give me the background on the person I'm meeting next: Julia Chen",
+    expectedAction: "DOSSIER",
+    tags: ["dossier", "standard"],
+  },
+
+  // ─── Twilio voice ─────────────────────────────────────────────────────
+  {
+    id: "twilio-call-dentist",
+    userMessage: "call the dentist and reschedule my appointment",
+    expectedAction: "TWILIO_VOICE_CALL",
+    tags: ["voice", "critical"],
+  },
+  {
+    id: "twilio-call-support",
+    userMessage: "phone my cable company and ask about the outage",
+    expectedAction: "TWILIO_VOICE_CALL",
+    tags: ["voice", "standard"],
+  },
+
+  // ─── Computer use ─────────────────────────────────────────────────────
+  {
+    id: "computer-use-click",
+    userMessage: "open the Finder and create a new folder called Q2-Reports on my desktop",
+    expectedAction: "LIFEOPS_COMPUTER_USE",
+    tags: ["computer-use", "standard"],
+  },
+  {
+    id: "computer-use-fill-form",
+    userMessage: "fill out the expense form that's open on my screen with the amount $42.50",
+    expectedAction: "LIFEOPS_COMPUTER_USE",
+    tags: ["computer-use", "standard"],
+  },
+
+  // ─── Negative / near-miss cases ───────────────────────────────────────
+  {
+    id: "neg-email-chatter",
+    userMessage: "I hate email, it's such a time sink",
+    expectedAction: null,
+    tags: ["chat", "negative"],
+    notes: "Mentions email but is venting, not a triage request",
+  },
+  {
+    id: "neg-calendar-chatter",
+    userMessage: "my calendar has been crazy this quarter",
+    expectedAction: null,
+    tags: ["chat", "negative"],
+    notes: "Mentions calendar but not a request",
+  },
+  {
+    id: "neg-goal-advice",
+    userMessage: "any tips on setting better goals?",
+    expectedAction: null,
+    tags: ["chat", "negative"],
+    notes: "General advice question, not a create_goal request",
+  },
+  {
+    id: "neg-block-hypothetical",
+    userMessage: "do you think blocking websites actually helps productivity?",
+    expectedAction: null,
+    tags: ["chat", "negative"],
+    notes: "Opinion question, not a block request",
+  },
+  {
+    id: "neg-call-hypothetical",
+    userMessage: "should I call my landlord or just email them?",
+    expectedAction: null,
+    tags: ["chat", "negative"],
+    notes: "Advice question, not a call request",
+  },
+  {
+    id: "neg-screentime-chatter",
+    userMessage: "I think I spend way too much time on my phone",
+    expectedAction: null,
+    tags: ["chat", "negative"],
+    notes: "Observation, not a screen_time request",
+  },
+];

@@ -13,7 +13,7 @@ import {
   isLiveTestEnabled,
   selectLiveProvider,
 } from "../../../../test/helpers/live-provider";
-import { createRealTestRuntime } from "../../../../test/helpers/real-runtime";
+import { createLifeOpsTestRuntime } from "./helpers/runtime.js";
 import { saveEnv } from "../../../../test/helpers/test-utils";
 import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
 import { resolveOAuthDir } from "@elizaos/agent/config/paths";
@@ -220,14 +220,14 @@ async function startLiveServer(): Promise<StartedLiveServer> {
   process.env.ELIZA_STATE_DIR = stateDir;
   process.env.ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID = GOOGLE_CLIENT_ID;
 
-  const runtimeResult = await createRealTestRuntime({
+  const runtimeResult = await createLifeOpsTestRuntime({
     withLLM: true,
     preferredProvider: LIVE_PROVIDER?.name,
     plugins: [createElizaPlugin({ agentId: "main" })],
   });
   await seedLocalGmail(runtimeResult.runtime, stateDir);
 
-  const { startApiServer } = await import("../src/api/server");
+  const { startApiServer } = await import("@elizaos/agent/api/server");
   const server = await startApiServer({
     port: 0,
     runtime: runtimeResult.runtime,

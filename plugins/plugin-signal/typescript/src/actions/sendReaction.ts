@@ -42,6 +42,7 @@ export const sendReaction: Action = {
   name: "SIGNAL_SEND_REACTION",
   similes: ["REACT_SIGNAL", "SIGNAL_REACT", "ADD_SIGNAL_REACTION", "SIGNAL_EMOJI"],
   description: "React to a Signal message with an emoji",
+  descriptionCompressed: "React to Signal message.",
     validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
   	const __avTextRaw = typeof message?.content?.text === 'string' ? message.content.text : '';
   	const __avText = __avTextRaw.toLowerCase();

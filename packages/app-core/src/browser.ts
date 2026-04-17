@@ -17,7 +17,6 @@ export * from "./api/index.ts";
 export * from "./api/auth.ts";
 export * from "./api/response.ts";
 export * from "./api/compat-route-shared.ts";
-export * from "./api/server-cloud-tts.ts";
 
 export * from "./bridge/index.ts";
 export * from "./config/index.ts";
@@ -28,13 +27,10 @@ export * from "./hooks/useBugReport.tsx";
 export * from "./hooks/useChatAvatarVoiceBridge.ts";
 export * from "./hooks/useCanvasWindow.ts";
 export * from "./hooks/useContextMenu.ts";
-export * from "./hooks/useGoogleLifeOpsConnector.ts";
 export {
   COMMON_SHORTCUTS,
   useShortcutsHelp,
 } from "./hooks/useKeyboardShortcuts.ts";
-export * from "./hooks/useLifeOpsActivitySignals.ts";
-export * from "./hooks/useLifeOpsAppState.ts";
 export * from "./hooks/useMediaQuery.ts";
 export * from "./hooks/useMusicPlayer.ts";
 export * from "./hooks/useRenderGuard.ts";
@@ -54,7 +50,6 @@ export * from "./utils/index.ts";
 export * from "./character-catalog.ts";
 export * from "./security/platform-secure-store.ts";
 export * from "./security/agent-vault-id.ts";
-export * from "./security/platform-secure-store-node.ts";
 
 export * from "./onboarding/flow.ts";
 export * from "./onboarding/types.ts";

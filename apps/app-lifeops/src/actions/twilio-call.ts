@@ -1,0 +1,509 @@
+import {
+  logger,
+  type Action,
+  type ActionExample,
+  type ActionResult,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+} from "@elizaos/core";
+import { hasAdminAccess, hasOwnerAccess } from "@elizaos/agent/security/access";
+import {
+  readTwilioCredentialsFromEnv,
+  sendTwilioVoiceCall,
+  type TwilioDeliveryResult,
+} from "../lifeops/twilio.js";
+
+const ACTION_NAME = "TWILIO_VOICE_CALL";
+
+type TwilioCallParameters = {
+  to?: string;
+  message?: string;
+  confirmed?: boolean;
+};
+
+function coerceString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function coerceBool(value: unknown): boolean {
+  if (value === true) return true;
+  if (typeof value === "string") return value.toLowerCase() === "true";
+  return false;
+}
+
+export const twilioCallAction: Action = {
+  name: ACTION_NAME,
+  similes: ["CALL_ME", "PLACE_CALL", "VOICE_CALL", "TWILIO_CALL"],
+  description:
+    "Place a voice call via Twilio. Use only for urgent escalations or " +
+    "explicit voice-call requests from the owner. Always drafts first; the " +
+    "caller must pass confirmed: true to actually dial.",
+
+  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    if (!readTwilioCredentialsFromEnv()) return false;
+    return hasAdminAccess(runtime, message);
+  },
+
+  parameters: [
+    {
+      name: "to",
+      description: "Destination phone number in E.164 format (e.g. +15551234567).",
+      required: true,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "message",
+      description:
+        "Plaintext message to speak via TwiML. Will be XML-escaped before dispatch.",
+      required: true,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "confirmed",
+      description:
+        "Set to true when the owner has explicitly confirmed the call should be placed.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+  ],
+
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Call me at +15551234567 and say the build is done" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Draft voice call to +15551234567:\n\n"The build is done."\n\nSay "confirm" to place the call.',
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "confirm" },
+      },
+      {
+        name: "{{agentName}}",
+        content: { text: "Placing voice call to +15551234567." },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Urgent: call +15550000000 and say the server is on fire",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Draft voice call to +15550000000:\n\n"The server is on fire."\n\nSay "confirm" to place the call.',
+        },
+      },
+    ],
+  ] as ActionExample[][],
+
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
+    if (!(await hasAdminAccess(runtime, message))) {
+      return {
+        text: "Permission denied: only the owner or admin may place voice calls.",
+        success: false,
+        values: { success: false, error: "PERMISSION_DENIED" },
+        data: { actionName: ACTION_NAME },
+      };
+    }
+
+    const credentials = readTwilioCredentialsFromEnv();
+    if (!credentials) {
+      return {
+        text: "Twilio is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER.",
+        success: false,
+        values: { success: false, error: "TWILIO_NOT_CONFIGURED" },
+        data: { actionName: ACTION_NAME },
+      };
+    }
+
+    const params = ((options as HandlerOptions | undefined)?.parameters ??
+      {}) as TwilioCallParameters;
+    const to = coerceString(params.to);
+    const messageBody = coerceString(params.message);
+    const confirmed = coerceBool(params.confirmed);
+
+    if (!to) {
+      return {
+        text: "Missing required parameter: to (E.164 phone number).",
+        success: false,
+        values: { success: false, error: "MISSING_TO" },
+        data: { actionName: ACTION_NAME },
+      };
+    }
+    if (!messageBody) {
+      return {
+        text: "Missing required parameter: message.",
+        success: false,
+        values: { success: false, error: "MISSING_MESSAGE" },
+        data: { actionName: ACTION_NAME },
+      };
+    }
+
+    if (!confirmed) {
+      return {
+        text: `Draft voice call to ${to}:\n\n"${messageBody}"\n\nSay "confirm" or re-issue with confirmed: true to place the call.`,
+        success: true,
+        values: {
+          success: true,
+          draft: true,
+          to,
+          message: messageBody,
+        },
+        data: {
+          actionName: ACTION_NAME,
+          draft: true,
+          to,
+          message: messageBody,
+        },
+      };
+    }
+
+    const result = await sendTwilioVoiceCall({
+      credentials,
+      to,
+      message: messageBody,
+    });
+
+    if (!result.ok) {
+      return {
+        text: `Voice call to ${to} failed: ${result.error ?? "unknown error"}.`,
+        success: false,
+        values: {
+          success: false,
+          error: result.error ?? "CALL_FAILED",
+          status: result.status,
+        },
+        data: {
+          actionName: ACTION_NAME,
+          to,
+          message: messageBody,
+          status: result.status,
+          retryCount: result.retryCount,
+        },
+      };
+    }
+
+    return {
+      text: `Placed voice call to ${to}.`,
+      success: true,
+      values: {
+        success: true,
+        to,
+        sid: result.sid ?? null,
+      },
+      data: {
+        actionName: ACTION_NAME,
+        to,
+        message: messageBody,
+        sid: result.sid ?? null,
+        status: result.status,
+        retryCount: result.retryCount,
+      },
+    };
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T9e — CALL_USER / CALL_EXTERNAL with confirmation + allow-list gates.
+//
+// These are distinct from the generic TWILIO_VOICE_CALL action above:
+//   - CALL_USER always dials the configured owner number (safety-fenced).
+//   - CALL_EXTERNAL dials a third party only if it appears in the allow-list.
+// Both require `confirmed: true` in parameters to actually dial.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const OWNER_NUMBER_ENV_KEYS = [
+  "MILADY_E2E_TWILIO_RECIPIENT",
+  "TWILIO_OWNER_NUMBER",
+] as const;
+const EXTERNAL_ALLOWLIST_ENV_KEY = "TWILIO_CALL_EXTERNAL_ALLOWLIST";
+
+type CallUserParameters = {
+  confirmed?: boolean;
+  message?: string;
+};
+
+type CallExternalParameters = {
+  confirmed?: boolean;
+  to?: string;
+  message?: string;
+};
+
+function readOwnerNumber(
+  runtime: { getSetting?: (key: string) => unknown } | undefined,
+): string | null {
+  for (const key of OWNER_NUMBER_ENV_KEYS) {
+    const envVal = process.env[key]?.trim();
+    if (envVal) return envVal;
+    const setting = runtime?.getSetting?.(key);
+    if (typeof setting === "string" && setting.trim().length > 0) {
+      return setting.trim();
+    }
+  }
+  return null;
+}
+
+function readExternalAllowList(
+  runtime: { getSetting?: (key: string) => unknown } | undefined,
+): string[] {
+  const raw =
+    process.env[EXTERNAL_ALLOWLIST_ENV_KEY] ??
+    (() => {
+      const s = runtime?.getSetting?.(EXTERNAL_ALLOWLIST_ENV_KEY);
+      return typeof s === "string" ? s : undefined;
+    })();
+  const list = new Set<string>();
+  if (raw) {
+    for (const part of raw.split(/[\s,;]+/)) {
+      const trimmed = part.trim();
+      if (trimmed) list.add(trimmed);
+    }
+  }
+  const owner = readOwnerNumber(runtime);
+  if (owner) list.add(owner);
+  return Array.from(list);
+}
+
+function deliveryToResult(
+  delivery: TwilioDeliveryResult,
+  to: string,
+  actionName: string,
+): ActionResult {
+  return {
+    text: delivery.ok ? `Placed call to ${to}.` : `Call to ${to} failed.`,
+    success: delivery.ok,
+    values: {
+      success: delivery.ok,
+      to,
+      sid: delivery.sid ?? null,
+    },
+    data: {
+      actionName,
+      to,
+      sid: delivery.sid ?? null,
+      status: delivery.status,
+      error: delivery.error,
+      retryCount: delivery.retryCount ?? 0,
+    },
+  };
+}
+
+export const callUserAction: Action = {
+  name: "CALL_USER",
+  similes: ["PHONE_USER", "CALL_OWNER", "DIAL_OWNER"],
+  description:
+    "Place an outbound phone call to the agent owner via Twilio. Requires explicit confirmation (`confirmed: true`). Without confirmation the action returns a confirmation request instead of dialing.",
+
+  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    return hasOwnerAccess(runtime, message);
+  },
+
+  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
+    if (!(await hasOwnerAccess(runtime, message))) {
+      return {
+        text: "",
+        success: false,
+        values: { success: false, error: "PERMISSION_DENIED" },
+        data: { actionName: "CALL_USER", error: "PERMISSION_DENIED" },
+      };
+    }
+
+    const params =
+      ((options as HandlerOptions | undefined)?.parameters as
+        | CallUserParameters
+        | undefined) ?? {};
+
+    if (params.confirmed !== true) {
+      logger.info({ action: "CALL_USER" }, "[CALL_USER] confirmation required");
+      return {
+        text: "Please confirm before I place the call.",
+        success: false,
+        values: { success: false, requiresConfirmation: true },
+        data: { actionName: "CALL_USER", requiresConfirmation: true },
+      };
+    }
+
+    const to = readOwnerNumber(runtime);
+    if (!to) {
+      logger.warn(
+        { action: "CALL_USER" },
+        "[CALL_USER] owner phone number not configured",
+      );
+      return {
+        text: "",
+        success: false,
+        values: { success: false, error: "OWNER_NUMBER_NOT_CONFIGURED" },
+        data: {
+          actionName: "CALL_USER",
+          error: "OWNER_NUMBER_NOT_CONFIGURED",
+        },
+      };
+    }
+
+    const credentials = readTwilioCredentialsFromEnv();
+    if (!credentials) {
+      return {
+        text: "",
+        success: false,
+        values: { success: false, error: "TWILIO_NOT_CONFIGURED" },
+        data: { actionName: "CALL_USER", error: "TWILIO_NOT_CONFIGURED" },
+      };
+    }
+
+    const spokenMessage =
+      params.message?.trim() || "Your agent is calling you.";
+    const delivery = await sendTwilioVoiceCall({
+      credentials,
+      to,
+      message: spokenMessage,
+    });
+    return deliveryToResult(delivery, to, "CALL_USER");
+  },
+
+  parameters: [
+    {
+      name: "confirmed",
+      description:
+        "Must be true to actually place the call. Without it the action returns a confirmation request.",
+      schema: { type: "boolean" as const },
+    },
+    {
+      name: "message",
+      description: "Spoken message played when the owner answers.",
+      schema: { type: "string" as const },
+    },
+  ],
+};
+
+export const callExternalAction: Action = {
+  name: "CALL_EXTERNAL",
+  similes: ["PHONE_EXTERNAL", "DIAL_EXTERNAL", "CALL_THIRD_PARTY"],
+  description:
+    "Place an outbound phone call to a third party via Twilio. Requires `confirmed: true` AND the recipient must appear in the configured allow-list.",
+
+  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    return hasOwnerAccess(runtime, message);
+  },
+
+  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
+    if (!(await hasOwnerAccess(runtime, message))) {
+      return {
+        text: "",
+        success: false,
+        values: { success: false, error: "PERMISSION_DENIED" },
+        data: { actionName: "CALL_EXTERNAL", error: "PERMISSION_DENIED" },
+      };
+    }
+
+    const params =
+      ((options as HandlerOptions | undefined)?.parameters as
+        | CallExternalParameters
+        | undefined) ?? {};
+    const to = params.to?.trim();
+    if (!to) {
+      return {
+        text: "",
+        success: false,
+        values: { success: false, error: "MISSING_RECIPIENT" },
+        data: { actionName: "CALL_EXTERNAL", error: "MISSING_RECIPIENT" },
+      };
+    }
+
+    if (params.confirmed !== true) {
+      logger.info(
+        { action: "CALL_EXTERNAL", to },
+        "[CALL_EXTERNAL] confirmation required",
+      );
+      return {
+        text: `Please confirm before I call ${to}.`,
+        success: false,
+        values: { success: false, requiresConfirmation: true, to },
+        data: {
+          actionName: "CALL_EXTERNAL",
+          requiresConfirmation: true,
+          to,
+        },
+      };
+    }
+
+    const allowList = readExternalAllowList(runtime);
+    if (!allowList.includes(to)) {
+      logger.warn(
+        { action: "CALL_EXTERNAL", to },
+        "[CALL_EXTERNAL] recipient not in allow-list",
+      );
+      return {
+        text: "",
+        success: false,
+        values: { success: false, reason: "disallowed-recipient", to },
+        data: {
+          actionName: "CALL_EXTERNAL",
+          reason: "disallowed-recipient",
+          to,
+        },
+      };
+    }
+
+    const credentials = readTwilioCredentialsFromEnv();
+    if (!credentials) {
+      return {
+        text: "",
+        success: false,
+        values: { success: false, error: "TWILIO_NOT_CONFIGURED" },
+        data: { actionName: "CALL_EXTERNAL", error: "TWILIO_NOT_CONFIGURED" },
+      };
+    }
+
+    const spokenMessage =
+      params.message?.trim() || "This is a call from an automated assistant.";
+    const delivery = await sendTwilioVoiceCall({
+      credentials,
+      to,
+      message: spokenMessage,
+    });
+    return deliveryToResult(delivery, to, "CALL_EXTERNAL");
+  },
+
+  parameters: [
+    {
+      name: "confirmed",
+      description: "Must be true to actually place the call.",
+      schema: { type: "boolean" as const },
+    },
+    {
+      name: "to",
+      description:
+        "E.164 phone number to call. Must appear in the external allow-list.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "message",
+      description: "Spoken message played when the recipient answers.",
+      schema: { type: "string" as const },
+    },
+  ],
+};
+
+// Exposed for tests.
+export const __internal = {
+  readOwnerNumber,
+  readExternalAllowList,
+};

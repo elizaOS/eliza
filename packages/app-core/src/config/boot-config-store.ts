@@ -18,7 +18,7 @@ import type {
   StewardApprovalActionResponse,
   StewardPendingApproval,
   StewardTxRecord,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/app-steward/types/steward";
 import type { Tab } from "../navigation";
 import type { ActionNotice } from "../state/action-notice";
 import type { BrandingConfig } from "./branding";

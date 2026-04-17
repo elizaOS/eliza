@@ -3,29 +3,12 @@ import type {
   Content,
   IAgentRuntime,
   Memory,
-  Service,
   UUID,
 } from "@elizaos/core";
 import type { TaskExecutor, TaskResult, TaskSpec } from "./task-executor.js";
 
 const CODING_PATTERNS =
   /\b(build|create|make|scaffold|generate|code|implement|develop|fix|debug|refactor|write)\b/i;
-
-/**
- * Minimal subset of the orchestrator plugin's CODE_TASK compatibility
- * service used by this executor. We only depend on the createTask /
- * cancelTask surface here.
- */
-interface CodeTaskServiceSubset extends Service {
-  createTask(
-    name: string,
-    description: string,
-    roomId?: string,
-    providerId?: string,
-    requiredCapabilities?: string[],
-  ): Promise<{ id: string; name: string; metadata?: { status?: string } }>;
-  cancelTask(taskId: string): boolean;
-}
 
 type CreateTaskActionLike = {
   name: string;
@@ -79,14 +62,8 @@ function buildSyntheticTaskMemory(
 }
 
 /**
- * Wraps the existing CODE_TASK compatibility service as a TaskExecutor.
- * Delegates entirely to the orchestrator plugin — does not reimplement
- * any orchestration logic.
- *
- * The CODE_TASK service is registered by the orchestrator plugin and
- * discovered via `runtime.getService("CODE_TASK")`. The SWARM_COORDINATOR
- * service is checked as a secondary signal that coding infrastructure is
- * available.
+ * Executes coding tasks by delegating to the CREATE_TASK / START_CODING_TASK
+ * action registered by the orchestrator plugin.
  */
 export class CodingTaskExecutor implements TaskExecutor {
   readonly type = "coding";
@@ -94,9 +71,7 @@ export class CodingTaskExecutor implements TaskExecutor {
     "Executes coding tasks using the orchestrator task contract";
 
   canHandle(spec: TaskSpec, runtime: IAgentRuntime): boolean {
-    const codeTaskService = runtime.getService("CODE_TASK");
-    const createTaskAction = findCreateTaskAction(runtime);
-    if (!codeTaskService && !createTaskAction) return false;
+    if (!findCreateTaskAction(runtime)) return false;
 
     // Explicit type match
     if (spec.type === "coding") return true;
@@ -106,107 +81,79 @@ export class CodingTaskExecutor implements TaskExecutor {
   }
 
   async execute(spec: TaskSpec, runtime: IAgentRuntime): Promise<TaskResult> {
-    const service = runtime.getService<CodeTaskServiceSubset>("CODE_TASK");
+    const action = findCreateTaskAction(runtime);
     const startTime = Date.now();
 
-    if (!service) {
-      const action = findCreateTaskAction(runtime);
-      if (!action) {
-        return {
-          taskId: spec.id,
-          success: false,
-          error: "Task orchestrator is not available",
-        };
-      }
-
-      const memory = buildSyntheticTaskMemory(runtime, spec);
-      const callbackLines: string[] = [];
-      const callback = async (content: Content): Promise<Memory[]> => {
-        if (
-          typeof content.text === "string" &&
-          content.text.trim().length > 0
-        ) {
-          callbackLines.push(content.text);
-        }
-        return [];
+    if (!action) {
+      return {
+        taskId: spec.id,
+        success: false,
+        error: "Task orchestrator is not available",
       };
+    }
 
-      try {
-        if (action.validate) {
-          const valid = await action.validate(runtime, memory, undefined);
-          if (!valid) {
-            return {
-              taskId: spec.id,
-              success: false,
-              error: "Task orchestrator rejected the coding task request",
-              durationMs: Date.now() - startTime,
-            };
-          }
-        }
+    const memory = buildSyntheticTaskMemory(runtime, spec);
+    const callbackLines: string[] = [];
+    const callback = async (content: Content): Promise<Memory[]> => {
+      if (
+        typeof content.text === "string" &&
+        content.text.trim().length > 0
+      ) {
+        callbackLines.push(content.text);
+      }
+      return [];
+    };
 
-        const result = (await action.handler(
-          runtime,
-          memory,
-          undefined,
-          {
-            parameters: {
-              task: spec.description,
-              ...(spec.agentType ? { agentType: spec.agentType } : {}),
-            },
-          },
-          callback,
-        )) as
-          | {
-              success?: boolean;
-              text?: string;
-              data?: {
-                agents?: Array<{ sessionId?: string }>;
-              };
-              error?: string;
-            }
-          | undefined;
-
-        const sessionId = result?.data?.agents?.[0]?.sessionId;
-        const output = sessionId || result?.text || callbackLines.join("\n");
-        if (result?.success === false) {
+    try {
+      if (action.validate) {
+        const valid = await action.validate(runtime, memory, undefined);
+        if (!valid) {
           return {
             taskId: spec.id,
             success: false,
-            error: result.error || result.text || "Task creation failed",
+            error: "Task orchestrator rejected the coding task request",
             durationMs: Date.now() - startTime,
           };
         }
+      }
 
-        return {
-          taskId: spec.id,
-          success: true,
-          output,
-          durationMs: Date.now() - startTime,
-        };
-      } catch (error) {
+      const result = (await action.handler(
+        runtime,
+        memory,
+        undefined,
+        {
+          parameters: {
+            task: spec.description,
+            ...(spec.agentType ? { agentType: spec.agentType } : {}),
+          },
+        },
+        callback,
+      )) as
+        | {
+            success?: boolean;
+            text?: string;
+            data?: {
+              agents?: Array<{ sessionId?: string }>;
+            };
+            error?: string;
+          }
+        | undefined;
+
+      const sessionId = result?.data?.agents?.[0]?.sessionId;
+      const output = sessionId || result?.text || callbackLines.join("\n");
+      if (result?.success === false) {
         return {
           taskId: spec.id,
           success: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: result.error || result.text || "Task creation failed",
           durationMs: Date.now() - startTime,
         };
       }
-    }
-
-    try {
-      // Delegate to the existing orchestrator task creation flow.
-      // createTask(name, description, roomId?, providerId?, capabilities?)
-      const task = await service.createTask(
-        spec.description.slice(0, 120),
-        spec.description,
-        undefined,
-        spec.agentType ?? "claude",
-      );
 
       return {
         taskId: spec.id,
         success: true,
-        output: task.id,
+        output,
         durationMs: Date.now() - startTime,
       };
     } catch (error) {
@@ -221,6 +168,5 @@ export class CodingTaskExecutor implements TaskExecutor {
 
   async abort(_taskId: string): Promise<void> {
     // Abort is handled through the existing PTY session stop mechanism.
-    // The orchestrator service manages session lifecycle via cancelTask().
   }
 }

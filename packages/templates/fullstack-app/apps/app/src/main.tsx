@@ -35,7 +35,6 @@ import {
 import {
   applyForceFreshOnboardingReset,
   applyLaunchConnectionFromUrl,
-  dispatchQueuedLifeOpsGithubCallbackFromUrl,
   installDesktopPermissionsClientPatch,
   installForceFreshOnboardingClientPatch,
   installLocalProviderCloudPreferencePatch,
@@ -44,6 +43,16 @@ import {
   shouldInstallMainWindowOnboardingPatches,
   syncDetachedShellLocation,
 } from "@elizaos/app-core/platform";
+import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "@elizaos/app-lifeops/platform";
+import { LifeOpsActivitySignalsEffect } from "@elizaos/app-lifeops/components/LifeOpsActivitySignalsEffect";
+// Side-effect: register LifeOps sidebar widgets into the app-core widget registry.
+import "@elizaos/app-lifeops/widgets";
+// Side-effect: register game operator surfaces + detail extensions.
+import "@elizaos/app-babylon/ui";
+import "@elizaos/app-scape/ui";
+import "@elizaos/app-hyperscape/ui";
+import "@elizaos/app-2004scape/ui";
+import "@elizaos/app-defense-of-the-agents/ui";
 import {
   DESKTOP_TRAY_MENU_ITEMS,
   DesktopOnboardingRuntime,
@@ -437,6 +446,7 @@ function mountReactApp(): void {
               <DesktopOnboardingRuntime />
               <DesktopSurfaceNavigationRuntime />
               <DesktopTrayRuntime />
+              <LifeOpsActivitySignalsEffect />
               <App />
             </>
           )}

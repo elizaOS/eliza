@@ -4,10 +4,6 @@
  * Provides the missing transaction capability to Eliza's wallet system,
  * which currently only handles key generation and balance fetching.
  * Used by the registry and drop services for on-chain operations.
- *
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/api/tx-service`.
- * New development should target the app-steward package.
  */
 
 import { logger } from "@elizaos/core";

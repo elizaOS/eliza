@@ -21,7 +21,6 @@
 
 import type { Plugin } from "@elizaos/core";
 import { useComputerAction } from "./actions/use-computer.js";
-import { takeScreenshotAction } from "./actions/take-screenshot.js";
 import { browserAction } from "./actions/browser-action.js";
 import { manageWindowAction } from "./actions/manage-window.js";
 import { fileAction } from "./actions/file-action.js";
@@ -42,7 +41,6 @@ export const computerUsePlugin: Plugin = {
 
   actions: [
     useComputerAction,
-    takeScreenshotAction,
     browserAction,
     manageWindowAction,
     fileAction,

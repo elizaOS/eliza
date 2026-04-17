@@ -176,9 +176,6 @@ export function FeaturesStep() {
       const key = FEATURE_STATE_KEYS[id];
       // Safe cast — keys are known onboarding state fields
       if (key) setState(key as "onboardingFeatureTelegram", enabled);
-      // TODO: For managed connectors, initiate OAuth flow when enabling.
-      // For now, just toggle the state. The OAuth plumbing will be connected
-      // when the cloud backend managed services are wired in (Phase 5).
     },
     [setState],
   );

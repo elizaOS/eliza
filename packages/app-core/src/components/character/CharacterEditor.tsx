@@ -1458,8 +1458,8 @@ export function CharacterEditor({
                 collapseButtonAriaLabel="Collapse character editor"
                 expandButtonAriaLabel="Expand character editor"
               >
-                <SidebarScrollRegion>
-                  <SidebarPanel className="space-y-6">
+                <SidebarScrollRegion className="!pt-0">
+                  <SidebarPanel className="!p-0 !shadow-none">
                     <nav
                       className="space-y-1"
                       aria-label="Character editor sections"

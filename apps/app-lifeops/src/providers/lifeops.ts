@@ -90,6 +90,7 @@ export const lifeOpsProvider: Provider = {
   name: "lifeops",
   description:
     "Owner, explicitly granted users, and the agent only. Provides the current LifeOps overview, upcoming calendar event, and email triage summary. Use LIFE for habits, reminders, alarms, and goals. Use CALENDAR_ACTION for Google Calendar reads/search/create-event tasks. Use GMAIL_ACTION for Gmail triage, search, draft, and send flows. Available in private owner or granted conversations, including Discord.",
+  descriptionCompressed: "LifeOps overview, upcoming calendar, email triage. Owner/granted only.",
   dynamic: true,
   position: 12,
   async get(

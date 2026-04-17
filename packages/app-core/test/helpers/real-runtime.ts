@@ -60,6 +60,27 @@ export interface RealTestRuntimeResult {
   cleanup: () => Promise<void>;
 }
 
+type WindowGlobal = typeof globalThis & {
+  window?: unknown;
+};
+
+function suppressWindowDuringNodeRuntime(): () => void {
+  if (typeof process === "undefined") {
+    return () => {};
+  }
+
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+  if (!descriptor || !descriptor.configurable) {
+    return () => {};
+  }
+
+  delete (globalThis as WindowGlobal).window;
+
+  return () => {
+    Object.defineProperty(globalThis, "window", descriptor);
+  };
+}
+
 function applyRuntimeSettings(
   runtime: AgentRuntime,
   settings: Record<string, string>,
@@ -115,6 +136,7 @@ export async function createRealTestRuntime(
     fs.mkdtempSync(path.join(os.tmpdir(), "eliza-real-test-"));
   const removePgliteDirOnCleanup =
     options?.removePgliteDirOnCleanup ?? options?.pgliteDir === undefined;
+  const restoreWindow = suppressWindowDuringNodeRuntime();
 
   const prevPgliteDir = process.env.PGLITE_DATA_DIR;
   process.env.PGLITE_DATA_DIR = pgliteDir;
@@ -127,145 +149,164 @@ export async function createRealTestRuntime(
     process.env.EMBEDDING_DIMENSION = "384";
   }
 
-  const character = createCharacter({
-    name: options?.characterName ?? "TestAgent",
-  });
+  try {
+    const character = createCharacter({
+      name: options?.characterName ?? "TestAgent",
+    });
 
-  const runtime = new AgentRuntime({
-    character,
-    plugins: [],
-    logLevel: "warn",
-    enableAutonomy: false,
-  });
+    const runtime = new AgentRuntime({
+      character,
+      plugins: [],
+      logLevel: "warn",
+      enableAutonomy: false,
+    });
 
-  // Always register plugin-sql for PGLite database
-  const { default: pluginSql } = await import("@elizaos/plugin-sql");
-  await runtime.registerPlugin(pluginSql);
+    // Always register plugin-sql for PGLite database
+    const { default: pluginSql } = await import("@elizaos/plugin-sql");
+    await runtime.registerPlugin(pluginSql);
 
-  if (options?.withLLM) {
-    try {
-      const pluginModule = await import("@elizaos/plugin-local-embedding");
-      const plugin =
-        pluginModule.default ??
-        ("localAiPlugin" in pluginModule
-          ? pluginModule.localAiPlugin
-          : undefined);
-      if (plugin) {
-        configureLocalEmbeddingPlugin(plugin);
-        await runtime.registerPlugin(plugin);
-        logger.info(
-          "[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",
-        );
-      }
-    } catch (err) {
-      logger.warn(
-        `[real-runtime] Failed to register local embedding plugin: ${err}`,
-      );
-    }
-  }
-
-  // Register LLM plugin if requested
-  let providerName: LiveProviderName | null = null;
-  let providerConfig: LiveProviderConfig | null = null;
-
-  if (options?.withLLM) {
-    providerConfig = selectLiveProvider(options.preferredProvider);
-    if (providerConfig) {
-      providerName = providerConfig.name;
-      // Set provider env vars so the plugin picks them up
-      for (const [key, value] of Object.entries(providerConfig.env)) {
-        process.env[key] = value;
-      }
-      applyRuntimeSettings(runtime, providerConfig.env);
+    if (options?.withLLM) {
       try {
-        const pluginModule = await import(providerConfig.pluginPackage);
-        const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
+        const pluginModule = await import("@elizaos/plugin-local-embedding");
+        const plugin =
+          pluginModule.default ??
+          ("localAiPlugin" in pluginModule
+            ? pluginModule.localAiPlugin
+            : undefined);
         if (plugin) {
+          configureLocalEmbeddingPlugin(plugin);
           await runtime.registerPlugin(plugin);
           logger.info(
-            `[real-runtime] Registered LLM plugin: ${providerConfig.pluginPackage} (${providerName})`,
+            "[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",
           );
         }
       } catch (err) {
         logger.warn(
-          `[real-runtime] Failed to register LLM plugin ${providerConfig.pluginPackage}: ${err}`,
+          `[real-runtime] Failed to register local embedding plugin: ${err}`,
         );
-        providerName = null;
-        providerConfig = null;
       }
     }
-  }
 
-  // Register Discord plugin if requested and token available
-  if (options?.withDiscord && process.env.DISCORD_BOT_TOKEN?.trim()) {
-    try {
-      const discordModule = await import("@elizaos/plugin-discord");
-      const plugin =
-        discordModule.default ??
-        ("discordPlugin" in discordModule
-          ? discordModule.discordPlugin
-          : undefined);
-      if (plugin && typeof plugin === "object" && "name" in plugin) {
-        await runtime.registerPlugin(plugin as Plugin);
-        logger.info("[real-runtime] Registered Discord plugin");
+    // Register LLM plugin if requested
+    let providerName: LiveProviderName | null = null;
+    let providerConfig: LiveProviderConfig | null = null;
+
+    if (options?.withLLM) {
+      providerConfig = selectLiveProvider(options.preferredProvider);
+      if (providerConfig) {
+        providerName = providerConfig.name;
+        // Set provider env vars so the plugin picks them up
+        for (const [key, value] of Object.entries(providerConfig.env)) {
+          process.env[key] = value;
+        }
+        applyRuntimeSettings(runtime, providerConfig.env);
+        try {
+          const pluginModule = await import(providerConfig.pluginPackage);
+          const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
+          if (plugin) {
+            await runtime.registerPlugin(plugin);
+            logger.info(
+              `[real-runtime] Registered LLM plugin: ${providerConfig.pluginPackage} (${providerName})`,
+            );
+          }
+        } catch (err) {
+          logger.warn(
+            `[real-runtime] Failed to register LLM plugin ${providerConfig.pluginPackage}: ${err}`,
+          );
+          providerName = null;
+          providerConfig = null;
+        }
       }
-    } catch (err) {
-      logger.warn(`[real-runtime] Failed to register Discord plugin: ${err}`);
     }
-  }
 
-  // Register Telegram plugin if requested and token available
-  if (options?.withTelegram && process.env.TELEGRAM_BOT_TOKEN?.trim()) {
-    try {
-      const telegramModule = await import("@elizaos/plugin-telegram");
-      const plugin =
-        telegramModule.default ??
-        ("telegramPlugin" in telegramModule
-          ? telegramModule.telegramPlugin
-          : undefined);
-      if (plugin && typeof plugin === "object" && "name" in plugin) {
-        await runtime.registerPlugin(plugin as Plugin);
-        logger.info("[real-runtime] Registered Telegram plugin");
+    // Register Discord plugin if requested and token available
+    if (options?.withDiscord && process.env.DISCORD_BOT_TOKEN?.trim()) {
+      try {
+        const discordModule = await import("@elizaos/plugin-discord");
+        const plugin =
+          discordModule.default ??
+          ("discordPlugin" in discordModule
+            ? discordModule.discordPlugin
+            : undefined);
+        if (plugin && typeof plugin === "object" && "name" in plugin) {
+          await runtime.registerPlugin(plugin as Plugin);
+          logger.info("[real-runtime] Registered Discord plugin");
+        }
+      } catch (err) {
+        logger.warn(`[real-runtime] Failed to register Discord plugin: ${err}`);
       }
-    } catch (err) {
-      logger.warn(`[real-runtime] Failed to register Telegram plugin: ${err}`);
     }
-  }
 
-  // Register any additional plugins
-  for (const plugin of options?.plugins ?? []) {
-    await runtime.registerPlugin(plugin);
-  }
+    // Register Telegram plugin if requested and token available
+    if (options?.withTelegram && process.env.TELEGRAM_BOT_TOKEN?.trim()) {
+      try {
+        const telegramModule = await import("@elizaos/plugin-telegram");
+        const plugin =
+          telegramModule.default ??
+          ("telegramPlugin" in telegramModule
+            ? telegramModule.telegramPlugin
+            : undefined);
+        if (plugin && typeof plugin === "object" && "name" in plugin) {
+          await runtime.registerPlugin(plugin as Plugin);
+          logger.info("[real-runtime] Registered Telegram plugin");
+        }
+      } catch (err) {
+        logger.warn(`[real-runtime] Failed to register Telegram plugin: ${err}`);
+      }
+    }
 
-  await runtime.initialize();
+    // Register any additional plugins
+    for (const plugin of options?.plugins ?? []) {
+      await runtime.registerPlugin(plugin);
+    }
 
-  const cleanup = async () => {
-    try {
-      await flushPendingTrajectoryWrites(runtime);
-    } catch (err) {
-      logger.debug(`[real-runtime] trajectory flush error: ${err}`);
-    }
-    try {
-      await runtime.stop();
-    } catch (err) {
-      logger.debug(`[real-runtime] runtime.stop() error: ${err}`);
-    }
-    try {
-      await flushPendingTrajectoryWrites(runtime);
-    } catch (err) {
-      logger.debug(`[real-runtime] post-stop trajectory flush error: ${err}`);
-    }
-    try {
-      await runtime.close();
-    } catch (err) {
-      logger.debug(`[real-runtime] runtime.close() error: ${err}`);
-    }
-    // Restore previous env
+    await runtime.initialize();
+
+    const cleanup = async () => {
+      try {
+        await flushPendingTrajectoryWrites(runtime);
+      } catch (err) {
+        logger.debug(`[real-runtime] trajectory flush error: ${err}`);
+      }
+      try {
+        await runtime.stop();
+      } catch (err) {
+        logger.debug(`[real-runtime] runtime.stop() error: ${err}`);
+      }
+      try {
+        await flushPendingTrajectoryWrites(runtime);
+      } catch (err) {
+        logger.debug(`[real-runtime] post-stop trajectory flush error: ${err}`);
+      }
+      try {
+        await runtime.close();
+      } catch (err) {
+        logger.debug(`[real-runtime] runtime.close() error: ${err}`);
+      }
+      // Restore previous env
+      if (prevPgliteDir !== undefined) {
+        process.env.PGLITE_DATA_DIR = prevPgliteDir;
+      } else {
+        delete process.env.PGLITE_DATA_DIR;
+      }
+      restoreWindow();
+      if (removePgliteDirOnCleanup) {
+        try {
+          fs.rmSync(pgliteDir, { recursive: true, force: true });
+        } catch {
+          // ignore cleanup errors
+        }
+      }
+    };
+
+    return { runtime, pgliteDir, providerName, providerConfig, cleanup };
+  } catch (error) {
     if (prevPgliteDir !== undefined) {
       process.env.PGLITE_DATA_DIR = prevPgliteDir;
     } else {
       delete process.env.PGLITE_DATA_DIR;
     }
+    restoreWindow();
     if (removePgliteDirOnCleanup) {
       try {
         fs.rmSync(pgliteDir, { recursive: true, force: true });
@@ -273,7 +314,6 @@ export async function createRealTestRuntime(
         // ignore cleanup errors
       }
     }
-  };
-
-  return { runtime, pgliteDir, providerName, providerConfig, cleanup };
+    throw error;
+  }
 }

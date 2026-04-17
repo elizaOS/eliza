@@ -146,6 +146,7 @@ export const transferTokenAction: Action = {
   description:
     "Transfer tokens or native BNB to another address. Use this when a user " +
     "asks to send, transfer, or pay tokens to a recipient address on BSC.",
+  descriptionCompressed: "Transfer tokens/BNB to address on BSC.",
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     return Boolean(

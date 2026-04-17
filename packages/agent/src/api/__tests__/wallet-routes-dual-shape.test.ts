@@ -112,6 +112,7 @@ beforeEach(async () => {
   tmpStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "wallet-routes-"));
   process.env.MILADY_STATE_DIR = tmpStateDir;
   delete process.env.ENABLE_CLOUD_WALLET;
+  delete process.env.ELIZAOS_CLOUD_API_KEY;
   delete process.env.WALLET_SOURCE_EVM;
   delete process.env.WALLET_SOURCE_SOLANA;
 });

@@ -3,11 +3,6 @@
  *
  * Uses inlined OAuth (vendored helpers).
  * Handles local callback server + manual code paste fallback.
- *
- * TODO(plugin-extraction): This module is a candidate for extraction into
- * @elizaos/plugin-openai. The OAuth flow is specific to the OpenAI/Codex
- * subscription provider and should be owned by that plugin rather than
- * living in the core agent package.
  */
 
 import { logger } from "@elizaos/core";

@@ -1,7 +1,7 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { getLifeOpsBrowserCompanionPackageStatus } from "@elizaos/agent/api/lifeops-browser-packaging";
+import {
+  type DiagnosticsRouteContext as AutonomousDiagnosticsRouteContext,
+  handleDiagnosticsRoutes as handleAutonomousDiagnosticsRoutes,
+} from "@elizaos/agent/api/diagnostics-routes";
 import {
   AUDIT_EVENT_TYPES,
   AUDIT_SEVERITIES,
@@ -9,10 +9,6 @@ import {
   queryAuditFeed,
   subscribeAuditFeed,
 } from "@elizaos/agent/security/audit-log";
-import {
-  type DiagnosticsRouteContext as AutonomousDiagnosticsRouteContext,
-  handleDiagnosticsRoutes as handleAutonomousDiagnosticsRoutes,
-} from "@elizaos/agent/api/diagnostics-routes";
 
 type DiagnosticsRouteContext = Omit<
   AutonomousDiagnosticsRouteContext,
@@ -23,43 +19,14 @@ type DiagnosticsRouteContext = Omit<
   | "subscribeAuditFeed"
 >;
 
-function defaultResolveExtensionPath(): string | null {
-  return defaultResolveExtensionArtifacts().extensionPath ?? null;
-}
-
-function defaultResolveExtensionArtifacts() {
-  try {
-    const serverDir = path.dirname(fileURLToPath(import.meta.url));
-    const extensionPath = path.resolve(
-      serverDir,
-      "..",
-      "..",
-      "apps",
-      "extensions",
-      "lifeops-browser",
-    );
-    if (!fs.existsSync(extensionPath)) {
-      return getLifeOpsBrowserCompanionPackageStatus();
-    }
-    const status = getLifeOpsBrowserCompanionPackageStatus();
-    return {
-      ...status,
-      extensionPath,
-    };
-  } catch {
-    return getLifeOpsBrowserCompanionPackageStatus();
-  }
-}
-
 export async function handleDiagnosticsRoutes(
   ctx: DiagnosticsRouteContext,
 ): Promise<boolean> {
   return handleAutonomousDiagnosticsRoutes({
     ...ctx,
-    resolveExtensionPath:
-      ctx.resolveExtensionPath ?? defaultResolveExtensionPath,
+    resolveExtensionPath: ctx.resolveExtensionPath ?? (() => null),
     resolveExtensionArtifacts:
-      ctx.resolveExtensionArtifacts ?? defaultResolveExtensionArtifacts,
+      ctx.resolveExtensionArtifacts ?? (() => ({})),
     auditEventTypes: AUDIT_EVENT_TYPES,
     auditSeverities: AUDIT_SEVERITIES,
     getAuditFeedSize,

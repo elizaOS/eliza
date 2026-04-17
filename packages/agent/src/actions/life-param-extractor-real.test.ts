@@ -21,7 +21,7 @@ import {
   buildExtractionPrompt,
   extractTaskCreatePlanWithLlm,
   extractTaskParamsWithLlm,
-} from "./life-param-extractor.js";
+} from "@elizaos/app-lifeops/actions/life-param-extractor.js";
 
 const provider = selectLiveProvider();
 const describeWithLLM = provider ? describe : describe.skip;

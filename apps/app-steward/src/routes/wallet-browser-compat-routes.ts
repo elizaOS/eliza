@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
-import type { StewardSignRequest } from "@elizaos/shared/contracts/wallet";
+import type { StewardSignRequest } from "../types/steward";
 import { ethers } from "ethers";
 import { deriveSolanaAddress } from "../api/wallet";
 import { resolveWalletRpcReadiness } from "../api/wallet-rpc";

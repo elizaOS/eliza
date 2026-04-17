@@ -50,6 +50,7 @@ export const blockAppsAction: Action = {
     "Admin-only. Block selected apps on the user's phone using native OS controls. " +
     "On iPhone, uses Family Controls to shield apps. On Android, uses Usage Access to detect and overlay blocked apps. " +
     "Pass app package names (Android) or previously selected app tokens (iPhone) to block.",
+  descriptionCompressed: "Admin: block phone apps via native OS controls (Family Controls/Usage Access).",
   validate: async (runtime, message) => {
     const access = await getAppBlockerAccess(runtime, message);
     return access.allowed;
@@ -206,6 +207,7 @@ export const unblockAppsAction: Action = {
   ],
   description:
     "Admin-only. Remove the current app block, unshielding all blocked apps.",
+  descriptionCompressed: "Admin: remove app block, unshield all apps.",
   validate: async (runtime, message) => {
     const access = await getAppBlockerAccess(runtime, message);
     return access.allowed;
@@ -267,6 +269,7 @@ export const getAppBlockStatusAction: Action = {
   ],
   description:
     "Admin-only. Check whether an app block is currently active and when it ends.",
+  descriptionCompressed: "Admin: check if app block is active.",
   validate: async (runtime, message) => {
     const access = await getAppBlockerAccess(runtime, message);
     return access.allowed;

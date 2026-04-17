@@ -18,11 +18,15 @@ import type {
   StewardBalanceResponse,
   StewardHistoryResponse,
   StewardPendingResponse,
+  StewardSignRequest,
+  StewardSignResponse,
   StewardStatusResponse,
   StewardTokenBalancesResponse,
   StewardWalletAddressesResponse,
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
+} from "@elizaos/app-steward/types";
+import type {
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
@@ -31,16 +35,12 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/agent/contracts/wallet";
-import type {
-  StewardSignRequest,
-  StewardSignResponse,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/shared/contracts";
 import type {
   BrowserWorkspaceSolanaMessageSignatureResult,
   BrowserWorkspaceWalletMessageSignatureResult,
   BrowserWorkspaceWalletTransactionResult,
-} from "../browser-workspace-wallet";
+} from "@elizaos/app-steward/browser-workspace-wallet";
 import { ElizaClient } from "./client-base";
 import type {
   ApplyProductionWalletDefaultsResponse,

@@ -1,11 +1,9 @@
 /**
- * BSC trade types.
+ * BSC trade types specific to steward execution flow.
  *
- * Extracted from `@elizaos/shared/contracts/wallet` to decouple
- * BSC-specific trade concerns from the core wallet contract.
- *
- * For backward compatibility, these types are still re-exported
- * from `@elizaos/shared/contracts/wallet` with `@deprecated` notices.
+ * The base BSC trade types (request/quote/preflight/etc.) live in
+ * `@elizaos/shared/contracts/wallet`. This file holds the steward-specific
+ * variants that include policy results and approval pending states.
  */
 
 import type { StewardPolicyResult } from "./steward";

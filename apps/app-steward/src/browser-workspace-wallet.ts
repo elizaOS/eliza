@@ -1,9 +1,11 @@
 import type {
-  StewardSignResponse,
-  StewardStatusResponse,
   WalletAddresses,
   WalletConfigStatus,
 } from "@elizaos/shared/contracts/wallet";
+import type {
+  StewardSignResponse,
+  StewardStatusResponse,
+} from "./types/steward";
 
 export const BROWSER_WALLET_REQUEST_TYPE = "ELIZA_BROWSER_WALLET_REQUEST";
 export const BROWSER_WALLET_RESPONSE_TYPE = "ELIZA_BROWSER_WALLET_RESPONSE";

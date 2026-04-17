@@ -4,7 +4,8 @@ import { extractParamInt } from "./param-parser.js";
 
 export const setCombatStyle: Action = {
   name: "SET_COMBAT_STYLE",
-  description: "Set the combat style (0=Attack, 1=Strength, 2=Defence, 3=Controlled)",
+  description: "Set the combat style (0=Attack, 1=Strength, 2=Defence, 3=Controlled)"
+  descriptionCompressed: "Set combat style (Attack/Strength/Defence/Controlled).",
   similes: ["CHANGE_COMBAT_STYLE", "SWITCH_COMBAT"],
   examples: [],
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {

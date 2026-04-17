@@ -18,9 +18,16 @@ import { withWorkflows } from "./service-mixin-workflows.js";
 import { withDefinitions } from "./service-mixin-definitions.js";
 import { withGoals } from "./service-mixin-goals.js";
 import { withX } from "./service-mixin-x.js";
+import { withXRead } from "./service-mixin-x-read.js";
 import { withTelegram } from "./service-mixin-telegram.js";
 import { withDiscord } from "./service-mixin-discord.js";
 import { withSignal } from "./service-mixin-signal.js";
+import { withIMessage } from "./service-mixin-imessage.js";
+import { withRelationships } from "./service-mixin-relationships.js";
+import { withWhatsApp } from "./service-mixin-whatsapp.js";
+import { withScreenTime } from "./service-mixin-screentime.js";
+import { withScheduling } from "./service-mixin-scheduling.js";
+import { withDossier } from "./service-mixin-dossier.js";
 
 /**
  * Main LifeOps service — assembled from domain mixins layered on top of
@@ -30,18 +37,25 @@ import { withSignal } from "./service-mixin-signal.js";
  * (Calendar, Gmail) → business logic (Reminders, Browser, Workflows,
  * Definitions, Goals) → connectors (X, Telegram, Discord, Signal).
  */
-class LifeOpsServiceComposedBase extends withSignal(
-  withDiscord(
-    withTelegram(
-      withX(
-        withGoals(
-          withDefinitions(
-            withWorkflows(
-              withBrowser(
-                withReminders(
-                  withGmail(
-                    withCalendar(
-                      withGoogle(LifeOpsServiceBase),
+class LifeOpsServiceComposedBase extends withScheduling(
+  withScreenTime(
+  withWhatsApp(
+  withRelationships(
+  withIMessage(
+  withSignal(
+    withDiscord(
+      withTelegram(
+        withXRead(
+          withX(
+            withGoals(
+            withDefinitions(
+              withWorkflows(
+                withBrowser(
+                  withReminders(
+                    withGmail(
+                      withCalendar(
+                        withGoogle(LifeOpsServiceBase),
+                      ),
                     ),
                   ),
                 ),
@@ -51,6 +65,11 @@ class LifeOpsServiceComposedBase extends withSignal(
         ),
       ),
     ),
+  ),
+  ),
+  ),
+  ),
+  ),
   ),
 ) {}
 

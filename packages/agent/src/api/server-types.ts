@@ -11,7 +11,7 @@ import type { AppManager } from "../services/app-manager.js";
 import type { SandboxManager } from "../services/sandbox-manager.js";
 import type { CloudRouteState } from "./cloud-routes.js";
 import type { ConnectorHealthMonitor } from "./connector-health.js";
-import type { DropService } from "./drop-service.js";
+import type { DropService } from "@elizaos/app-elizamaker";
 // PluginEntry and PluginParamDef are defined here to avoid a circular dependency
 // with plugin-discovery-helpers.ts (which imports from server-helpers.ts).
 import type { RegistryService } from "./registry-service.js";

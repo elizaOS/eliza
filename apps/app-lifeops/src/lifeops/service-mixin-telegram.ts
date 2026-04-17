@@ -9,6 +9,7 @@ import type {
 } from "@elizaos/shared/contracts/lifeops";
 import {
   LIFEOPS_TELEGRAM_CAPABILITIES,
+  capabilitiesForSide,
 } from "@elizaos/shared/contracts/lifeops";
 import { createLifeOpsConnectorGrant } from "./repository.js";
 import {
@@ -246,9 +247,8 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
         side,
       );
 
-      const capabilities: LifeOpsTelegramCapability[] = [
-        ...LIFEOPS_TELEGRAM_CAPABILITIES,
-      ];
+      const capabilities: LifeOpsTelegramCapability[] =
+        capabilitiesForSide(LIFEOPS_TELEGRAM_CAPABILITIES, side);
 
       const grant = existing
         ? {

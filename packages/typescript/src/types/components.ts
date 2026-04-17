@@ -67,6 +67,8 @@ export interface ActionParameter
 	name: string;
 	/** Human-readable description for LLM guidance */
 	description: string;
+	/** Compressed description for prompt-optimized rendering */
+	descriptionCompressed?: string;
 	/** Whether this parameter is required (default: false) */
 	required?: boolean;
 	/** JSON Schema for parameter validation */
@@ -161,6 +163,9 @@ export interface Action {
 
 	/** Detailed description */
 	description: string;
+
+	/** Compressed description for prompt-optimized action selection */
+	descriptionCompressed?: string;
 
 	/** Handler function */
 	handler: Handler;
@@ -318,6 +323,9 @@ export interface Provider {
 
 	/** Description of the provider */
 	description?: string;
+
+	/** Compressed description for prompt-optimized rendering */
+	descriptionCompressed?: string;
 
 	/** Whether the provider is dynamic */
 	dynamic?: boolean;
