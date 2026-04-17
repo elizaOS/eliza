@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.23
 # elizaOS Agent — CI Docker Image
 # Pre-built artifacts come from GHA (bun install + tsdown + vite build done before docker)
 ARG NODE_VERSION=22
