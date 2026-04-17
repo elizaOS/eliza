@@ -27,6 +27,7 @@ export const repoSetupSteps = [
   "link-external-plugins.mjs",
   "ensure-vision-deps.mjs",
   "patch-deps.mjs",
+  "ensure-type-package-aliases.mjs",
 ];
 
 function resolveRepoSetupStepPath(repoRoot, step) {
