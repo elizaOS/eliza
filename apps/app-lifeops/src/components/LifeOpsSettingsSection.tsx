@@ -434,7 +434,7 @@ export function LifeOpsSettingsSection({
       </div>
 
       {githubError ? (
-        <div className="rounded-2xl bg-danger/10 px-3 py-2 text-xs text-danger">
+        <div className="py-1 text-xs text-muted">
           {githubError}
         </div>
       ) : null}
