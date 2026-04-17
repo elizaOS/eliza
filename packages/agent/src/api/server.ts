@@ -234,6 +234,7 @@ import {
 // signal-routes: handleSignalRoute dispatch extracted to @elizaos/plugin-signal (setup-routes.ts)
 import { applySignalQrOverride } from "./signal-routes.js";
 import { discoverSkills } from "./skill-discovery-helpers.js";
+import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
 import { routeTaskAgentTextToConnector } from "@elizaos/app-task-coordinator/api/task-agent-message-routing";
@@ -3151,7 +3152,25 @@ async function handleRequest(
 
   // ═══════════════════════════════════════════════════════════════════════
   // Skills routes (extracted to skills-routes.ts)
+  // Curated-skills routes live at /api/skills/curated/* and must be dispatched
+  // before the generic skills routes (which reject "/" in skill IDs).
   // ═══════════════════════════════════════════════════════════════════════
+  if (pathname.startsWith("/api/skills/curated")) {
+    if (
+      await handleCuratedSkillsRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        json,
+        error,
+        readJsonBody,
+      })
+    ) {
+      return;
+    }
+  }
   if (pathname.startsWith("/api/skills")) {
     if (
       await handleSkillsRoutes({
