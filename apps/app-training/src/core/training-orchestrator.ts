@@ -16,7 +16,7 @@
  *      (`exportTrajectoryTaskDatasets`). When `task` is supplied, only that
  *      bucket is forwarded to the backend.
  *   4. Dispatch the chosen task's dataset to the configured backend
- *      (`vertex` | `atropos` | `tinker` | `native`). Phase 5 wires `native`.
+ *      (`vertex` | `atropos` | `tinker` | `native`).
  *   5. Persist a run record at `<state>/training/runs/<runId>.json`.
  */
 
@@ -228,12 +228,51 @@ async function defaultDispatcher(
       };
     }
     case "native": {
+      const { runNativeBackend } = await import("../backends/native.js");
+      const useModelHandler = extractUseModel(input.runtime);
+      if (!useModelHandler) {
+        return {
+          invoked: false,
+          notes: [
+            "native backend requires a runtime exposing useModel; skipped",
+          ],
+        };
+      }
+      const baselinePrompt = await loadBaselineForTask(input.task);
+      const result = await runNativeBackend({
+        datasetPath: input.datasetPath,
+        task: input.task,
+        optimizer: "instruction-search",
+        baselinePrompt,
+        runtime: { useModel: useModelHandler },
+      });
+      const notes = [...result.notes];
+      let artifactPath: string | undefined;
+      if (result.invoked) {
+        const writePath = await persistOptimizedPromptArtifact(
+          input.runtime,
+          {
+            task: input.task,
+            optimizer: result.optimizer,
+            baseline: baselinePrompt,
+            prompt: result.result.optimizedPrompt,
+            score: result.score,
+            baselineScore: result.baselineScore,
+            datasetId: input.datasetPath,
+            datasetSize: result.datasetSize,
+            generatedAt: new Date().toISOString(),
+            lineage: result.result.lineage,
+            fewShotExamples: result.result.fewShotExamples,
+          },
+        );
+        artifactPath = writePath ?? undefined;
+        if (writePath) notes.push(`artifact written to ${writePath}`);
+        else notes.push("OptimizedPromptService unavailable; artifact not persisted");
+      }
       return {
-        invoked: false,
-        notes: [
-          "native backend not yet implemented (Phase 5); dataset staged at " +
-            input.datasetPath,
-        ],
+        invoked: result.invoked,
+        artifactPath,
+        notes,
       };
     }
   }
