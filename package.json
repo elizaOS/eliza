@@ -4,7 +4,7 @@
   "module": "index.ts",
   "type": "module",
   "engines": {
-    "node": "23.3.0"
+    "node": "23.11.1"
   },
   "scripts": {
     "postinstall": "bun scripts/patch-nested-core-dist.mjs",
