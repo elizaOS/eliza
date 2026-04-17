@@ -206,6 +206,16 @@ declare module "./client-base" {
     detachAppRun(runId: string): Promise<AppRunActionResult>;
     stopApp(name: string): Promise<AppStopResult>;
     stopAppRun(runId: string): Promise<AppStopResult>;
+    /**
+     * Cheap liveness ping for an app run. The server's stale-run sweeper
+     * uses the heartbeat to decide whether to reap a run whose UI tab has
+     * gone away. Returns the refreshed run summary on success, or throws
+     * if the run no longer exists (e.g. the sweeper already reaped it,
+     * or another window pressed Stop).
+     */
+    heartbeatAppRun(
+      runId: string,
+    ): Promise<{ ok: boolean; run: AppRunSummary }>;
     getAppInfo(name: string): Promise<RegistryAppInfo>;
     launchApp(name: string): Promise<AppLaunchResult>;
     sendAppRunMessage(
@@ -830,6 +840,16 @@ ElizaClient.prototype.stopAppRun = async function (this: ElizaClient, runId) {
   return this.fetch(`/api/apps/runs/${encodeURIComponent(runId)}/stop`, {
     method: "POST",
   });
+};
+
+ElizaClient.prototype.heartbeatAppRun = async function (
+  this: ElizaClient,
+  runId,
+) {
+  return this.fetch(
+    `/api/apps/runs/${encodeURIComponent(runId)}/heartbeat`,
+    { method: "POST" },
+  );
 };
 
 ElizaClient.prototype.getAppInfo = async function (this: ElizaClient, name) {

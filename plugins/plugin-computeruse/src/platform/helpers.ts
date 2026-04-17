@@ -103,6 +103,25 @@ export function validateCoordinate(
 }
 
 /**
+ * Validate a window/process identifier before interpolating it into a
+ * platform shell command (AppleScript / PowerShell). Rejects anything that
+ * is not a decimal integer or `0x`-prefixed hex, preventing escape out of
+ * the surrounding script literal.
+ */
+export function validateWindowId(windowId: string): string {
+  if (typeof windowId !== "string") {
+    throw new Error(`Invalid windowId: must be string, got ${typeof windowId}`);
+  }
+  const trimmed = windowId.trim();
+  if (!/^[0-9]+$/.test(trimmed) && !/^0x[0-9a-f]+$/i.test(trimmed)) {
+    throw new Error(
+      `Invalid windowId: must be numeric or 0x-prefixed hex, got "${windowId}"`,
+    );
+  }
+  return trimmed;
+}
+
+/**
  * Validate text input length to prevent abuse.
  */
 export function validateText(text: string, maxLength = 4096): string {
