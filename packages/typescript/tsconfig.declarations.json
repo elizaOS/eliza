@@ -4,7 +4,7 @@
 		"outDir": "./dist",
 		"rootDir": "./src",
 		"baseUrl": "./src",
-		"types": ["node", "bun-types"],
+		"types": ["node", "bun"],
 		"noEmit": false,
 		"emitDeclarationOnly": true,
 		"composite": false,
