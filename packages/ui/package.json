@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/ui",
-  "version": "2.0.0-alpha.184",
+  "version": "2.0.0-alpha.182",
   "description": "Shared UI primitives, composites, and layout utilities for elizaOS apps.",
   "type": "module",
   "license": "MIT",
@@ -64,14 +64,14 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.577.0",
+    "lucide-react": "^1.0.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "typescript": "^6.0.0",
+    "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   },
   "publishConfig": {
