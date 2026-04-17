@@ -1,7 +1,12 @@
 import type { AgentRuntime } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { N8nSidecar, N8nSidecarState } from "../services/n8n-sidecar";
-import { handleN8nRoutes, type N8nRoutesConfigLike } from "./n8n-routes";
+import {
+  __resetCloudHealthCacheForTests,
+  handleN8nRoutes,
+  type N8nCloudHealth,
+  type N8nRoutesConfigLike,
+} from "./n8n-routes";
 
 // ── Test helpers ────────────────────────────────────────────────────────────
 
@@ -64,6 +69,7 @@ interface InvokeArgs {
   fetchImpl?: typeof fetch;
   agentId?: string;
   isNativePlatform?: boolean;
+  cloudHealthOverride?: N8nCloudHealth;
 }
 
 interface InvokeResult {
@@ -87,6 +93,9 @@ async function invoke(args: InvokeArgs): Promise<InvokeResult> {
     ...(args.agentId ? { agentId: args.agentId } : {}),
     ...(args.isNativePlatform !== undefined
       ? { isNativePlatform: args.isNativePlatform }
+      : {}),
+    ...(args.cloudHealthOverride !== undefined
+      ? { cloudHealthOverride: args.cloudHealthOverride }
       : {}),
     json: (_res, data, s = 200) => {
       payload = data;
