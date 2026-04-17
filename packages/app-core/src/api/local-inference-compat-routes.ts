@@ -211,7 +211,7 @@ export async function handleLocalInferenceCompatRoutes(
     const modelId = stringBody(body, "modelId");
     const rawSpec = body.spec;
     try {
-      let job;
+      let job: Awaited<ReturnType<typeof localInferenceService.startDownload>>;
       if (rawSpec && typeof rawSpec === "object" && !Array.isArray(rawSpec)) {
         job = await localInferenceService.startDownload(
           rawSpec as unknown as CatalogModel,

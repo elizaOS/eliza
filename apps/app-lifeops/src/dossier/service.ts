@@ -489,6 +489,8 @@ function renderDossierMarkdown(payload: DossierPayload): string {
     degradedNotes.push("relationships service unavailable");
   if (payload.degraded.gmail) degradedNotes.push("gmail service unavailable");
   if (payload.degraded.memories) degradedNotes.push("memory lookup failed");
+  if (payload.degraded.identityCluster)
+    degradedNotes.push("cross-platform identity dedup unavailable");
   if (degradedNotes.length > 0) {
     lines.push(`\n_Degraded: ${degradedNotes.join("; ")}_`);
   }

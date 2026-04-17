@@ -160,6 +160,20 @@ declare module "./client-base" {
       skillId: string,
       enabled: boolean,
     ): Promise<{ skill: SkillInfo }>;
+    enableSkill(
+      skillId: string,
+    ): Promise<{
+      ok: boolean;
+      skill: SkillInfo;
+      scanStatus: string | null;
+    }>;
+    disableSkill(
+      skillId: string,
+    ): Promise<{
+      ok: boolean;
+      skill: SkillInfo;
+      scanStatus: string | null;
+    }>;
     createSkill(
       name: string,
       description: string,
@@ -738,6 +752,24 @@ ElizaClient.prototype.updateSkill = async function (
   return this.fetch(`/api/skills/${encodeURIComponent(skillId)}`, {
     method: "PUT",
     body: JSON.stringify({ enabled }),
+  });
+};
+
+ElizaClient.prototype.enableSkill = async function (
+  this: ElizaClient,
+  skillId,
+) {
+  return this.fetch(`/api/skills/${encodeURIComponent(skillId)}/enable`, {
+    method: "POST",
+  });
+};
+
+ElizaClient.prototype.disableSkill = async function (
+  this: ElizaClient,
+  skillId,
+) {
+  return this.fetch(`/api/skills/${encodeURIComponent(skillId)}/disable`, {
+    method: "POST",
   });
 };
 

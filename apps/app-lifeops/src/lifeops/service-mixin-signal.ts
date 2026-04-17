@@ -264,6 +264,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
         provider: "signal",
         side: resolvedSide,
         connected,
+        inbound: connected && capabilities.includes("signal.read"),
         reason,
         identity,
         grantedCapabilities: capabilities,

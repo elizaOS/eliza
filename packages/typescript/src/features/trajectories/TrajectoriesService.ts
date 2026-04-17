@@ -576,6 +576,8 @@ export class TrajectoriesService extends Service {
 			case "reasoning":
 			case "evaluation":
 			case "response":
+			case "should_respond":
+			case "compose_state":
 			case "other":
 				return value;
 			default:

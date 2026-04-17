@@ -417,7 +417,7 @@ describe("Action Invocation E2E", () => {
   //  6. Social
   // ===================================================================
 
-  describe("social", () => {
+  describe("social — X", () => {
     itIf(canRunLiveTests)(
       "read DMs on X triggers X_READ",
       async () => {
@@ -447,7 +447,7 @@ describe("Action Invocation E2E", () => {
   //  7. Activity
   // ===================================================================
 
-  describe("activity", () => {
+  describe("activity & health", () => {
     itIf(canRunLiveTests)(
       "screen time today triggers SCREEN_TIME",
       async () => {
@@ -471,24 +471,6 @@ describe("Action Invocation E2E", () => {
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
-  });
-
-  // ===================================================================
-  //  8. Meta
-  // ===================================================================
-
-  describe("meta", () => {
-    itIf(canRunLiveTests)(
-      "dossier request triggers DOSSIER",
-      async () => {
-        if (!hasAction("DOSSIER")) return;
-        await withHarness(async (h) => {
-          await h.send("Pull up a dossier on Satya Nadella.");
-          expectActionCalled(h.spy, "DOSSIER");
-        });
-      },
-      DEFAULT_TEST_TIMEOUT_MS,
-    );
 
     itIf(canRunLiveTests)(
       "health summary triggers HEALTH",
@@ -497,6 +479,24 @@ describe("Action Invocation E2E", () => {
         await withHarness(async (h) => {
           await h.send("Summarize my health metrics for today.");
           expectActionCalled(h.spy, "HEALTH");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+  });
+
+  // ===================================================================
+  //  8. Meta & ops
+  // ===================================================================
+
+  describe("meta & ops", () => {
+    itIf(canRunLiveTests)(
+      "dossier request triggers DOSSIER",
+      async () => {
+        if (!hasAction("DOSSIER")) return;
+        await withHarness(async (h) => {
+          await h.send("Pull up a dossier on Satya Nadella.");
+          expectActionCalled(h.spy, "DOSSIER");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -521,7 +521,7 @@ describe("Action Invocation E2E", () => {
   //  9. Comms (action selection only — may require creds to execute)
   // ===================================================================
 
-  describe("comms (selection only)", () => {
+  describe("third-party", () => {
     itIf(canRunLiveTests)(
       "phone call request triggers TWILIO_VOICE_CALL",
       async () => {

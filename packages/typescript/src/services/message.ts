@@ -690,37 +690,6 @@ export function shouldEmitPlannerPreamble(
 	);
 }
 
-export function stripPlannerReplyForSuppressiveActions(
-	runtime: IAgentRuntime,
-	responseContent: Content | null | undefined,
-): void {
-	if (!responseContent?.actions?.length) {
-		return;
-	}
-	if (!suppressesPostActionContinuation(runtime, responseContent)) {
-		return;
-	}
-
-	// Drop REPLY from the action list so the REPLY handler doesn't generate
-	// a second message after a suppressive action (INBOX, GMAIL, etc.) has
-	// produced the grounded answer. The planner's `text` is kept and gets
-	// emitted as a preamble in the actions-mode dispatch below, so the user
-	// sees the agent's plan ("checking your inbox") before the action runs.
-	const actionLookup = buildRuntimeActionLookup(runtime);
-	const filteredActions = responseContent.actions.filter((action) => {
-		if (typeof action !== "string") return true;
-		const canonicalAction =
-			resolveRuntimeAction(actionLookup, action)?.name ?? action;
-		return (
-			normalizeActionIdentifier(canonicalAction) !==
-			normalizeActionIdentifier("REPLY")
-		);
-	});
-	if (filteredActions.length > 0) {
-		responseContent.actions = filteredActions;
-	}
-}
-
 function callbackTextPreview(content: Content | null | undefined): string {
 	if (!content || typeof content !== "object") {
 		return "";
@@ -4037,11 +4006,6 @@ Output ONLY the continuation, starting immediately after the last character abov
 				responseContent.actions = filtered.length ? filtered : ["STOP"];
 			}
 		}
-
-		// Some actions are intended to provide the only grounded user-facing answer.
-		// If the planner emits both REPLY/text and one of those actions, drop the
-		// speculative planner text before persisting/sending the initial assistant turn.
-		stripPlannerReplyForSuppressiveActions(runtime, responseContent);
 
 		// Automatically determine if response is simple
 		const isSimple = isSimpleReplyResponse(responseContent);

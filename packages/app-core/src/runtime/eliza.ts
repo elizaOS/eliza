@@ -355,14 +355,20 @@ async function registerTrackCTrainingCrons(
   runtime: AgentRuntime,
 ): Promise<void> {
   try {
-    const [exportMod, scoringMod] = await Promise.all([
+    const [exportMod, scoringMod, triggerMod] = await Promise.all([
       import("@elizaos/app-training/core/trajectory-export-cron"),
       import("@elizaos/app-training/core/skill-scoring-cron"),
+      import("@elizaos/app-training/services/training-trigger"),
     ]);
     await exportMod.registerTrajectoryExportCron(runtime);
     await scoringMod.registerSkillScoringCron(runtime);
+    triggerMod.registerTrainingTriggerService(
+      runtime as unknown as Parameters<
+        typeof triggerMod.registerTrainingTriggerService
+      >[0],
+    );
     logger.info(
-      "[eliza] Registered Track C training crons (trajectory export + skill scoring)",
+      "[eliza] Registered Track C training crons + auto-train trigger service",
     );
   } catch (err) {
     logger.warn(

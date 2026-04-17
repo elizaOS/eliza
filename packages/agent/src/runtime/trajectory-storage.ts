@@ -217,6 +217,51 @@ async function appendProviderAccess(
 }
 
 // ---------------------------------------------------------------------------
+// Auto-train trigger notification
+// ---------------------------------------------------------------------------
+
+interface TrainingTriggerEntry {
+  notifyTrajectoryCompleted: (trajectoryId: string) => Promise<void>;
+}
+
+/**
+ * Fire-and-forget notification to the optional TrainingTriggerService.
+ *
+ * Registered by `@elizaos/app-core` when `@elizaos/app-training` is installed
+ * (see `runtime/eliza.ts` → `registerTrackCTrainingCrons`). Slim installs
+ * never register the service and this resolves to a no-op.
+ *
+ * Errors are logged at debug level only — auto-train counter increments
+ * must never block or break trajectory persistence.
+ */
+function notifyTrainingTrigger(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+): void {
+  const services = (runtime as unknown as {
+    services?: Map<string, unknown[]>;
+  }).services;
+  if (!services) return;
+  const entries = services.get("TRAINING_TRIGGER_SERVICE");
+  if (!Array.isArray(entries) || entries.length === 0) return;
+  const entry = entries[0];
+  if (
+    !entry ||
+    typeof entry !== "object" ||
+    typeof (entry as { notifyTrajectoryCompleted?: unknown })
+      .notifyTrajectoryCompleted !== "function"
+  ) {
+    return;
+  }
+  const trigger = entry as TrainingTriggerEntry;
+  void trigger.notifyTrajectoryCompleted(trajectoryId).catch((err: unknown) => {
+    coreLogger.debug?.(
+      `[trajectory-storage] training trigger notify failed for ${trajectoryId}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
+}
+
+// ---------------------------------------------------------------------------
 // writeStartedTrajectoryStep / writeCompletedTrajectoryStep
 // ---------------------------------------------------------------------------
 
@@ -552,6 +597,13 @@ export async function installDatabaseTrajectoryLogger(
           stepId: stepIdOrTrajectoryId,
           status: status as TrajectoryStatus,
         });
+
+        // Notify the auto-train trigger service (registered by app-core when
+        // app-training is installed). Optional — the chain is a no-op if the
+        // service was never registered, which is the case for slim installs.
+        if (status === "completed") {
+          notifyTrainingTrigger(runtime, stepIdOrTrajectoryId);
+        }
       },
     );
 

@@ -174,6 +174,60 @@ describe("LifeOps no-heuristics architecture contracts", () => {
     expect(source).toContain("resolveXReadPlanWithLlm");
   });
 
+  it("keeps app blocker routing on the planner instead of package-name text scraping", async () => {
+    const source = await readRepoFile(
+      "eliza/apps/app-lifeops/src/actions/app-blocker.ts",
+    );
+    expect(source).not.toContain("function extractDurationMinutesFromText(");
+    expect(source).not.toContain("function extractPackageNamesFromText(");
+    expect(source).toContain("resolveAppBlockPlanWithLlm");
+  });
+
+  it("keeps website blocker routing on structured params and the LLM planner", async () => {
+    const source = await readRepoFile(
+      "eliza/apps/app-lifeops/src/actions/website-blocker.ts",
+    );
+    expect(source).not.toContain("extractDurationMinutesFromText");
+    expect(source).not.toContain("extractWebsiteTargetsFromText");
+    expect(source).not.toContain("hasWebsiteBlockDeferralIntent");
+    expect(source).not.toContain("collectWebsiteBlockerConversation");
+    expect(source).toContain("resolveWebsiteBlockPlanWithLlm");
+  });
+
+  it("keeps website blocker engine parsing structured-only", async () => {
+    const source = await readRepoFile(
+      "eliza/apps/app-lifeops/src/website-blocker/engine.ts",
+    );
+    expect(source).toContain("parseSelfControlBlockRequest(\n  options?: HandlerOptions,");
+    expect(source).not.toContain("parseSelfControlBlockRequest(\n  options?: HandlerOptions,\n  message?: Memory,");
+    expect(source).not.toContain("extractDurationMinutesFromText(");
+    expect(source).not.toContain("extractWebsiteTargetsFromText(");
+    expect(source).not.toContain("hasWebsiteBlockDeferralIntent(");
+    expect(source).not.toContain("hasWebsiteBlockIntent(");
+    expect(source).not.toContain("hasIndefiniteBlockIntent(");
+  });
+
+  it("keeps website blocker routes on typed request bodies instead of synthetic chat messages", async () => {
+    const source = await readRepoFile(
+      "eliza/apps/app-lifeops/src/routes/website-blocker-routes.ts",
+    );
+    expect(source).not.toContain("text?: string");
+    expect(source).not.toContain("function toSyntheticMessage(");
+    expect(source).not.toContain("parseSelfControlBlockRequest(\n    {\n      parameters,\n    },");
+  });
+
+  it("keeps chat fallback execution off website-blocker regex intent detection", async () => {
+    const source = await readRepoFile(
+      "eliza/packages/agent/src/api/chat-routes.ts",
+    );
+    expect(source).not.toContain("fallbackHasWebsiteBlockDeferralIntent");
+    expect(source).not.toContain("fallbackHasWebsiteBlockIntent");
+    expect(source).not.toContain("inferWebsiteBlockFallback");
+    expect(source).not.toContain("inferWebsiteBlockingPermissionFallback");
+    expect(source).not.toContain("WEBSITE_BLOCK_SUBJECT_RE");
+    expect(source).not.toContain("WEBSITE_BLOCK_FOLLOW_UP_RE");
+  });
+
   it("keeps owner profile updates on typed action parameters", async () => {
     const source = await readRepoFile(
       "eliza/apps/app-lifeops/src/actions/update-owner-profile.ts",

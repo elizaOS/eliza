@@ -1522,6 +1522,7 @@ export interface LifeOpsSignalConnectorStatus {
   provider: "signal";
   side: LifeOpsConnectorSide;
   connected: boolean;
+  inbound: boolean;
   reason: LifeOpsMessagingConnectorReason;
   identity: { phoneNumber?: string; uuid?: string; deviceName?: string } | null;
   grantedCapabilities: LifeOpsSignalCapability[];
