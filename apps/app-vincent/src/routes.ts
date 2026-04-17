@@ -19,10 +19,7 @@ import type http from "node:http";
 import { logger } from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/agent/config/config";
 import { saveElizaConfig } from "@elizaos/agent/config/config";
-import {
-  sendJson,
-  sendJsonError,
-} from "@elizaos/app-core/api/response";
+import { sendJson, sendJsonError } from "@elizaos/app-core/api/response";
 
 const VINCENT_API_BASE = "https://heyvincent.ai";
 

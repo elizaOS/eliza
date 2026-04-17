@@ -5,13 +5,13 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import path from "node:path";
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, UUID } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   resolveApiSecurityConfig,
   resolveApiToken,
   setApiToken,
-} from "../config/runtime-env.js";
+} from "@elizaos/shared/runtime-env";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { sendJsonError } from "./http-helpers.js";
 import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.js";
@@ -178,15 +178,12 @@ export function resolvePluginConfigMutationRejections(
 // Wallet export rejection
 // ---------------------------------------------------------------------------
 
-interface WalletExportRequestBody {
-  confirm?: boolean;
-  exportToken?: string;
-}
+import type {
+  WalletExportRejection,
+  WalletExportRequestBody,
+} from "@elizaos/shared/contracts";
 
-export interface WalletExportRejection {
-  status: 401 | 403;
-  reason: string;
-}
+export type { WalletExportRejection };
 
 export function resolveWalletExportRejection(
   req: http.IncomingMessage,

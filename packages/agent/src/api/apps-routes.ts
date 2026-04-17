@@ -45,6 +45,7 @@ export interface AppManagerLike {
     pluginManager: PluginManagerLike,
     name: string,
     runId?: string,
+    runtime?: IAgentRuntime | null,
   ) => Promise<unknown>;
   getInfo: (pluginManager: PluginManagerLike, name: string) => Promise<unknown>;
 }
@@ -585,7 +586,12 @@ export async function handleAppsRoutes(
 
     if (subroute === "stop") {
       const pluginManager = getPluginManager();
-      const result = await appManager.stop(pluginManager, "", runId);
+      const result = await appManager.stop(
+        pluginManager,
+        "",
+        runId,
+        ctx.runtime as IAgentRuntime | null,
+      );
       json(res, result as object);
       return true;
     }
@@ -613,6 +619,84 @@ export async function handleAppsRoutes(
     return true;
   }
 
+  if (method === "POST" && pathname === "/api/apps/install") {
+    try {
+      const body = await readJsonBody<{ name?: string; version?: string }>(
+        req,
+        res,
+      );
+      if (!body) return true;
+      const name = body.name?.trim();
+      if (!name) {
+        error(res, "name is required");
+        return true;
+      }
+      const progressEvents: InstallProgressLike[] = [];
+      const recordProgress = (progress: InstallProgressLike) => {
+        progressEvents.push(progress);
+      };
+      const pluginManager = getPluginManager();
+      let result = await pluginManager
+        .installPlugin(
+          name,
+          recordProgress,
+          body.version ? { version: body.version } : undefined,
+        )
+        .catch((err: unknown) => ({
+          success: false as const,
+          pluginName: name,
+          version: "",
+          installPath: "",
+          requiresRestart: false,
+          error: err instanceof Error ? err.message : String(err),
+        }));
+      if (
+        !result.success &&
+        result.error?.includes("requires a running agent runtime")
+      ) {
+        // Fall back to the app-core installer which writes directly to
+        // ~/.eliza/plugins/installed without depending on a plugin-manager
+        // service. The runtime plugin resolver already searches that dir.
+        const { installPlugin: installPluginDirect } = (await import(
+          /* webpackIgnore: true */ "@elizaos/app-core/services/plugin-installer"
+        )) as {
+          installPlugin: (
+            name: string,
+            onProgress?: (progress: InstallProgressLike) => void,
+            version?: string,
+          ) => Promise<{
+            success: boolean;
+            pluginName: string;
+            version: string;
+            installPath: string;
+            requiresRestart: boolean;
+            error?: string;
+          }>;
+        };
+        result = await installPluginDirect(name, recordProgress, body.version);
+      }
+      if (!result.success) {
+        json(
+          res,
+          { success: false, error: result.error, progress: progressEvents },
+          422,
+        );
+        return true;
+      }
+      json(res, {
+        success: true,
+        pluginName: result.pluginName ?? name,
+        version: result.version,
+        installPath: result.installPath,
+        requiresRestart: result.requiresRestart,
+        progress: progressEvents,
+      });
+    } catch (e) {
+      error(res, e instanceof Error ? e.message : "Failed to install app", 500);
+    }
+    return true;
+  }
+
   if (method === "POST" && pathname === "/api/apps/stop") {
     const body = await readJsonBody<{ name?: string; runId?: string }>(
       req,
@@ -626,7 +710,12 @@ export async function handleAppsRoutes(
     const appName = body.name?.trim() ?? "";
     const runId = body.runId?.trim();
     const pluginManager = getPluginManager();
-    const result = await appManager.stop(pluginManager, appName, runId);
+    const result = await appManager.stop(
+      pluginManager,
+      appName,
+      runId,
+      ctx.runtime as IAgentRuntime | null,
+    );
     json(res, result as object);
     return true;
   }

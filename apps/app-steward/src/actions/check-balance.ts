@@ -154,6 +154,7 @@ export const checkBalanceAction: Action = {
   description:
     "Check wallet balances across chains. Use this when a user asks about " +
     "their balance, portfolio, holdings, or wallet contents.",
+  descriptionCompressed: "Check wallet balances across chains.",
 
   validate: async () => true,
 

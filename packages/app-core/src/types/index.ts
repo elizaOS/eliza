@@ -1,3 +1,22 @@
+// ── Shared Electrobun RPC types ─────────────────────────────────────────────
+// Defined here so both src/bridge/ and platforms/electrobun/ can import them
+// without crossing the build boundary.
+
+export type ExistingElizaInstallSource =
+  | "config-path-env"
+  | "state-dir-env"
+  | "default-state-dir";
+
+export interface ExistingElizaInstallInfo {
+  detected: boolean;
+  stateDir: string;
+  configPath: string;
+  configExists: boolean;
+  stateDirExists: boolean;
+  hasStateEntries: boolean;
+  source: ExistingElizaInstallSource;
+}
+
 /**
  * A translation function accepted by UI components.
  *
@@ -200,11 +219,6 @@ export type SlackStatus = {
   probe?: SlackProbe | null;
   lastProbeAt?: number | null;
 };
-
-export type {
-  WebsiteBlockerSettingsCardProps,
-  WebsiteBlockerSettingsMode,
-} from "./lifeops-ui";
 
 export type SignalProbe = {
   ok: boolean;

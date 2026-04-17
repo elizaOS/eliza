@@ -33,10 +33,7 @@ const LIVE_BOOT_HTTP_TIMEOUT_MS = 15_000;
 const LIVE_CONVERSATION_REQUEST_TIMEOUT_MS = 45_000;
 const LIVE_ENTITY_RESOLUTION_TIMEOUT_MS = 20_000;
 const LIVE_ENTITY_RESOLUTION_RETRY_MS = 500;
-const LIVE_TEST_LANGUAGE =
-  process.env.ELIZA_LIVE_TEST_LANGUAGE?.trim() ||
-  process.env.ELIZA_LIVE_TEST_LANGUAGE?.trim() ||
-  "en";
+const LIVE_TEST_LANGUAGE = process.env.ELIZA_LIVE_TEST_LANGUAGE?.trim() || "en";
 
 try {
   const { config } = await import("dotenv");
@@ -73,7 +70,7 @@ const LIVE_PROVIDER_CANDIDATES = [
   },
 ] as const;
 
-const LIVE_PROVIDER_ENV_KEYS = [
+export const LIVE_PROVIDER_ENV_KEYS = [
   "OPENAI_API_KEY",
   "OPENAI_BASE_URL",
   "OPENAI_SMALL_MODEL",
@@ -98,7 +95,10 @@ const LIVE_PROVIDER_ENV_KEYS = [
 const LIVE_PROVIDER_PLUGIN_NAMES = new Set(
   LIVE_PROVIDER_CANDIDATES.map((candidate) => candidate.plugin),
 );
-const LIVE_CLOUD_ENV_PREFIXES = ["ELIZAOS_CLOUD_", "ELIZA_CLOUD_"] as const;
+export const LIVE_CLOUD_ENV_PREFIXES = [
+  "ELIZAOS_CLOUD_",
+  "ELIZA_CLOUD_",
+] as const;
 
 const LIVE_PROVIDER_CHEAP_MODELS = {
   anthropic: {
@@ -318,7 +318,7 @@ export function getLifeOpsLiveSetupWarnings(
   selectedProvider: SelectedLiveProvider | null,
 ): string[] {
   return [
-    !LIVE_TESTS_ENABLED ? "set ELIZA_LIVE_TEST=1 or ELIZA_LIVE_TEST=1" : null,
+    !LIVE_TESTS_ENABLED ? "set MILADY_LIVE_TEST=1 or ELIZA_LIVE_TEST=1" : null,
     !selectedProvider
       ? "provide a live provider key such as OPENAI_API_KEY, OPENROUTER_API_KEY, GOOGLE_API_KEY, ANTHROPIC_API_KEY, or GROQ_API_KEY, or configure cloud.apiKey in the Eliza config"
       : null,
@@ -329,7 +329,6 @@ export function applyLocalEmbeddingDefaults(
   env: Record<string, string | undefined>,
 ): void {
   delete env.ELIZA_DISABLE_LOCAL_EMBEDDINGS;
-  delete env.ELIZA_DISABLE_LOCAL_EMBEDDINGS;
 
   if (!env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
     env.LOCAL_EMBEDDING_DIMENSIONS = "384";
@@ -337,6 +336,27 @@ export function applyLocalEmbeddingDefaults(
   if (!env.EMBEDDING_DIMENSION?.trim()) {
     env.EMBEDDING_DIMENSION = "384";
   }
+}
+
+export function getSelectedLiveProviderEnv(
+  selectedProvider: SelectedLiveProvider | null,
+  options?: { omitOpenAiBaseUrl?: boolean },
+): Record<string, string> {
+  if (!selectedProvider) {
+    return {};
+  }
+
+  const env = Object.fromEntries(
+    Object.entries(selectedProvider.env).filter(
+      ([, value]) => value.trim().length > 0,
+    ),
+  ) as Record<string, string>;
+
+  if (options?.omitOpenAiBaseUrl && selectedProvider.name === "openai") {
+    delete env.OPENAI_BASE_URL;
+  }
+
+  return env;
 }
 
 export function buildSelectedLiveProviderEnv(
@@ -355,13 +375,12 @@ export function buildSelectedLiveProviderEnv(
   ) as Record<string, string>;
 
   applyLocalEmbeddingDefaults(env);
-  Object.assign(env, selectedProvider.env);
+  Object.assign(env, getSelectedLiveProviderEnv(selectedProvider));
   return env;
 }
 
 async function loadBaseLiveConfig(): Promise<Record<string, unknown>> {
   const configuredPath =
-    process.env.ELIZA_CONFIG_PATH?.trim() ||
     process.env.ELIZA_CONFIG_PATH?.trim() ||
     path.join(os.homedir(), ".eliza", "eliza.json");
 
@@ -425,7 +444,7 @@ async function waitForChildExit(
   });
 }
 
-async function waitForJsonPredicate<T>(
+export async function waitForJsonPredicate<T>(
   url: string,
   predicate: (value: T) => boolean,
   timeoutMs: number = LIVE_RUNTIME_BOOT_TIMEOUT_MS,

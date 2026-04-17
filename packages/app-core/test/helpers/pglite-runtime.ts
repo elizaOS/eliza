@@ -45,9 +45,24 @@ export interface TestRuntimeResult {
   cleanup: () => Promise<void>;
 }
 
-type TrajectoryWriteService = {
-  writeQueues?: Map<string, Promise<void>>;
-};
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getPendingTrajectoryWrites(service: unknown): Promise<void>[] {
+  if (!isRecord(service)) {
+    return [];
+  }
+
+  const { writeQueues } = service;
+  if (!(writeQueues instanceof Map)) {
+    return [];
+  }
+
+  return Array.from(writeQueues.values()).filter(
+    (pending): pending is Promise<void> => pending instanceof Promise,
+  );
+}
 
 async function flushPendingTrajectoryWrites(
   runtime: AgentRuntime,
@@ -64,10 +79,7 @@ async function flushPendingTrajectoryWrites(
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const pending = runtime
       .getServicesByType("trajectories")
-      .flatMap((service) => {
-        const writeQueues = (service as TrajectoryWriteService).writeQueues;
-        return writeQueues instanceof Map ? Array.from(writeQueues.values()) : [];
-      });
+      .flatMap((service) => getPendingTrajectoryWrites(service));
     if (pending.length === 0) {
       return;
     }

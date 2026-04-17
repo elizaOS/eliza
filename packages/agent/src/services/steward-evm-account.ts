@@ -16,10 +16,6 @@
  *   POST /vault/:agentId/sign-typed-data — sign EIP-712 typed data
  *
  * Auth: Bearer token (STEWARD_AGENT_TOKEN JWT) in Authorization header.
- *
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/services/steward-evm-account`.
- * New development should target the app-steward package.
  */
 
 import type {

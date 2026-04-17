@@ -44,6 +44,7 @@ export * from "./media";
 export * from "./memory";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";
+export { getOptimizationRootDir } from "./optimization-root-dir";
 export * from "./plugin";
 export * from "./plugins";
 

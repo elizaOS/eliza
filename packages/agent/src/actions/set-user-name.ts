@@ -18,7 +18,7 @@ import {
   fetchConfiguredOwnerName,
   OWNER_NAME_MAX_LENGTH,
   persistConfiguredOwnerName,
-} from "../lifeops/owner-profile.js";
+} from "@elizaos/app-lifeops/lifeops/owner-profile";
 import { hasOwnerAccess } from "../security/access.js";
 
 const SET_USER_NAME_CONTEXT_TERMS = getValidationKeywordTerms(

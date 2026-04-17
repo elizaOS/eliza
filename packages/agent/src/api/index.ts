@@ -23,19 +23,14 @@ export * from "./connector-health.js";
 export * from "./credit-detection.js";
 export * from "./database.js";
 export * from "./diagnostics-routes.js";
-export * from "./drop-service.js";
 export * from "./early-logs.js";
 export * from "./http-helpers.js";
 export * from "./knowledge-routes.js";
 export * from "./knowledge-service-loader.js";
-export * from "./lifeops-browser-packaging.js";
 export * from "./memory-bounds.js";
 export * from "./memory-routes.js";
-export * from "./merkle-tree.js";
 export * from "./models-routes.js";
 export * from "./nfa-routes.js";
-export * from "./nft-verify.js";
-export * from "./og-tracker.js";
 export * from "./parse-action-block.js";
 export * from "./permissions-routes.js";
 export * from "./plugin-validation.js";
@@ -62,7 +57,6 @@ export * from "./training-routes.js";
 export * from "./training-service-like.js";
 export * from "./trajectory-routes.js";
 export * from "./trigger-routes.js";
-export * from "./twitter-verify.js";
 export * from "./tx-service.js";
 export * from "./wallet.js";
 export * from "./wallet-dex-prices.js";
@@ -70,7 +64,6 @@ export * from "./wallet-evm-balance.js";
 export * from "./wallet-routes.js";
 export * from "./wallet-rpc.js";
 export * from "./wallet-trading-profile.js";
-export * from "./website-blocker-routes.js";
 export {
   applyWhatsAppQrOverride,
   handleWhatsAppRoute,

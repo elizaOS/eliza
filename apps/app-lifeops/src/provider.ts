@@ -41,6 +41,7 @@ export const lifeOpsBrowserProvider: Provider = {
   name: "lifeops_browser",
   description:
     "Owner/admin-only context for the user's personal Chrome and Safari LifeOps Browser companions. Separate from the Eliza browser workspace.",
+  descriptionCompressed: "Owner: Chrome/Safari LifeOps Browser companion context.",
   dynamic: true,
   position: 13,
   async get(

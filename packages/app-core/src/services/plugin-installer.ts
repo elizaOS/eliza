@@ -34,7 +34,7 @@ import {
   getPluginInfo,
   type RegistryPluginInfo,
 } from "@elizaos/agent/services/registry-client";
-import { loadElizaConfig, saveElizaConfig } from "../config/config";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
 import { createSerialise } from "../utils/serialise";
 
 const execFileAsync = promisify(execFile);

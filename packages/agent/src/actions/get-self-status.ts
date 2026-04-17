@@ -27,6 +27,15 @@ const VALID_MODULES = [
 
 type ValidModule = (typeof VALID_MODULES)[number];
 
+function isAwarenessRegistry(value: unknown): value is AwarenessRegistry {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "getDetail" in value &&
+    typeof value.getDetail === "function"
+  );
+}
+
 export const getSelfStatusAction: Action = {
   name: "GET_SELF_STATUS",
 
@@ -46,9 +55,12 @@ export const getSelfStatusAction: Action = {
 
   handler: async (runtime, _message, _state, options) => {
     const registry =
-      (runtime.getService(
-        "AWARENESS_REGISTRY",
-      ) as unknown as AwarenessRegistry | null) ?? getGlobalAwarenessRegistry();
+      (() => {
+        const service = runtime.getService("AWARENESS_REGISTRY");
+        return isAwarenessRegistry(service)
+          ? service
+          : getGlobalAwarenessRegistry();
+      })();
     if (!registry) {
       return {
         text: "Self-awareness registry is not available.",

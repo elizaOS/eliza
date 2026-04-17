@@ -2,7 +2,8 @@ import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from "@eli
 
 export const openDoor: Action = {
   name: "OPEN_DOOR",
-  description: "Open the nearest door or gate",
+  description: "Open the nearest door or gate"
+  descriptionCompressed: "Open nearest door/gate.",
   similes: ["OPEN_GATE", "USE_DOOR"],
   examples: [],
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {

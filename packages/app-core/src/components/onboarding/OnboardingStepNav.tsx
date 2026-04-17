@@ -1,11 +1,7 @@
-import type {
-  OnboardingStep,
-  OnboardingStepMeta,
-} from "../../state/types";
 import { useApp } from "@elizaos/app-core/state";
 import { useBranding } from "../../config/branding";
 import { getOnboardingNavMetas } from "../../onboarding/flow";
-import * as React from "react";
+import type { OnboardingStep, OnboardingStepMeta } from "../../state/types";
 
 function PureOnboardingStepNav(props: {
   currentStep: OnboardingStep;
@@ -102,7 +98,6 @@ function PureOnboardingStepNav(props: {
               <div
                 className={shellClass}
                 title={t(step.name)}
-                aria-label={`${t(step.name)} — ${t("onboarding.stepLabel", { current: index + 1, total: onboardingNavMetas.length })}`}
                 {...(isActive ? { "aria-current": "step" as const } : {})}
               >
                 {content}

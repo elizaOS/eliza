@@ -6,6 +6,7 @@
  * and trajectory-export modules. Not intended for direct external consumption.
  */
 
+import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
@@ -18,7 +19,11 @@ import {
   ModelType,
 } from "@elizaos/core";
 
-import type { TrajectoryStatus } from "../types/trajectory.js";
+import {
+  TRAJECTORY_STEP_SCRIPT_MAX_CHARS,
+  type TrajectoryStatus,
+  type TrajectoryStepKind,
+} from "../types/trajectory.js";
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -74,6 +79,19 @@ export type PersistedStep = {
   timestamp: number;
   llmCalls: PersistedLlmCall[];
   providerAccesses: PersistedProviderAccess[];
+  /**
+   * Optional discriminator. Legacy rows without this field are treated as
+   * `"llm"` by readers.
+   */
+  kind?: TrajectoryStepKind;
+  /** Step IDs of nested steps (used by `executeCode`). */
+  childSteps?: string[];
+  /** Inline script source for `executeCode` steps (capped). */
+  script?: string;
+  /** sha256 hex digest of the original script when it exceeded the cap. */
+  scriptHash?: string;
+  /** Skill names the step relied on (populated by Track C). */
+  usedSkills?: string[];
 };
 
 export type PersistedTrajectory = {
@@ -298,17 +316,11 @@ export function hasEvaluatorNamed(
   runtime: IAgentRuntime,
   name: string,
 ): boolean {
-  const runtimeLike = runtime as unknown as {
-    evaluators?: Array<{ name?: unknown }>;
-  };
-  const evaluators = runtimeLike.evaluators;
+  const evaluators = runtime.evaluators;
   if (!Array.isArray(evaluators)) return false;
   const target = name.trim().toUpperCase();
   return evaluators.some((evaluator) => {
-    const evaluatorName =
-      evaluator && typeof evaluator.name === "string"
-        ? evaluator.name.trim().toUpperCase()
-        : "";
+    const evaluatorName = evaluator?.name?.trim().toUpperCase() ?? "";
     return evaluatorName === target;
   });
 }
@@ -427,6 +439,30 @@ export function truncateRecord(
 }
 
 // ---------------------------------------------------------------------------
+// Script capture helpers (used by executeCode trajectory steps)
+// ---------------------------------------------------------------------------
+
+/**
+ * Cap a script source for inline persistence on a trajectory step. When the
+ * source exceeds `TRAJECTORY_STEP_SCRIPT_MAX_CHARS`, returns a truncated
+ * prefix together with the sha256 hex digest of the full source so callers
+ * can store the digest alongside.
+ */
+export function capScriptForPersistence(script: string): {
+  script: string;
+  scriptHash?: string;
+} {
+  if (script.length <= TRAJECTORY_STEP_SCRIPT_MAX_CHARS) {
+    return { script };
+  }
+  const scriptHash = createHash("sha256").update(script, "utf8").digest("hex");
+  return {
+    script: script.slice(0, TRAJECTORY_STEP_SCRIPT_MAX_CHARS),
+    scriptHash,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Insight extraction
 // ---------------------------------------------------------------------------
 
@@ -467,10 +503,7 @@ export function extractInsightsFromResponse(
 export function shouldRunObservationExtraction(
   runtime: IAgentRuntime,
 ): boolean {
-  const runtimeAny = runtime as unknown as {
-    getSetting?: (key: string) => unknown;
-  };
-  const explicitSetting = runtimeAny.getSetting?.(
+  const explicitSetting = runtime.getSetting(
     "TRAJECTORY_OBSERVATION_EXTRACTION",
   );
   const explicitValue = toOptionalBoolean(explicitSetting);
@@ -505,7 +538,7 @@ const observationFlushInProgress = new WeakMap<object, boolean>();
 export const TRAJECTORY_ARCHIVE_DIRNAME = "trajectory-archive";
 
 function getObservationBuffer(runtime: IAgentRuntime): BufferedExchange[] {
-  const key = runtime as unknown as object;
+  const key = runtime as object;
   let buffer = observationBuffers.get(key);
   if (!buffer) {
     buffer = [];
@@ -538,7 +571,7 @@ export function pushChatExchange(
   const buffer = getObservationBuffer(runtime);
   buffer.push(exchange);
 
-  const key = runtime as unknown as object;
+  const key = runtime as object;
 
   // Flush on threshold
   if (buffer.length >= OBSERVATION_BUFFER_THRESHOLD) {
@@ -565,7 +598,7 @@ export function pushChatExchange(
 export async function flushObservationBuffer(
   runtime: IAgentRuntime,
 ): Promise<string[]> {
-  const key = runtime as unknown as object;
+  const key = runtime as object;
 
   // Prevent concurrent flushes
   if (observationFlushInProgress.get(key)) return [];
@@ -592,10 +625,10 @@ export async function flushObservationBuffer(
 
   const prompt = OBSERVATION_EXTRACTION_PROMPT + exchangeText;
 
-  const runtimeAny = runtime as unknown as Record<string, unknown>;
+  const runtimeRecord = runtime as unknown as Record<string, unknown>;
   try {
     // Tag the call to prevent recursion
-    runtimeAny.__orchestratorTrajectoryCtx = {
+    runtimeRecord.__orchestratorTrajectoryCtx = {
       source: "orchestrator",
       decisionType: "observation-extraction",
     };
@@ -640,7 +673,7 @@ export async function flushObservationBuffer(
     // Non-critical — observations are best-effort
     return [];
   } finally {
-    delete runtimeAny.__orchestratorTrajectoryCtx;
+    delete runtimeRecord.__orchestratorTrajectoryCtx;
     observationFlushInProgress.set(key, false);
   }
 }
@@ -687,15 +720,12 @@ export async function getSqlRaw(): Promise<
 }
 
 export function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb | null {
-  const runtimeLike = runtime as unknown as {
-    adapter?: {
-      db?: RuntimeDb;
-    };
-    databaseAdapter?: {
-      db?: RuntimeDb;
-    };
-  };
-  const db = runtimeLike.adapter?.db || runtimeLike.databaseAdapter?.db;
+  const adapterDb = runtime.adapter?.db as RuntimeDb | undefined;
+  // Legacy runtimes may expose `databaseAdapter` instead of `adapter`
+  const fallbackDb = (
+    runtime as unknown as { databaseAdapter?: { db?: RuntimeDb } }
+  ).databaseAdapter?.db;
+  const db = adapterDb || fallbackDb;
   if (!db || typeof db.execute !== "function") return null;
   return db;
 }
@@ -752,13 +782,8 @@ export function warnRuntime(
   message: string,
   err?: unknown,
 ): void {
-  const runtimeLike = runtime as unknown as {
-    logger?: {
-      warn?: (meta: Record<string, unknown>, message: string) => void;
-    };
-  };
-  if (runtimeLike.logger?.warn) {
-    runtimeLike.logger.warn(
+  if (runtime.logger?.warn) {
+    runtime.logger.warn(
       { err, src: "eliza", subsystem: "trajectory-db" },
       message,
     );
@@ -772,7 +797,7 @@ export function warnRuntime(
 export async function ensureTrajectoriesTable(
   runtime: IAgentRuntime,
 ): Promise<boolean> {
-  const key = runtime as unknown as object;
+  const key = runtime as object;
 
   // Only skip if verified with current module version
   if (schemaVersions.get(key) === SCHEMA_VERSION) return true;
@@ -1096,11 +1121,6 @@ export function isLegacyTrajectoryLogger(
 export async function resolveTrajectoryLogger(
   runtime: IAgentRuntime,
 ): Promise<TrajectoryLoggerLike | null> {
-  const runtimeLike = runtime as unknown as {
-    getServicesByType?: (serviceType: string) => unknown;
-    getService?: (serviceType: string) => unknown;
-  };
-
   const candidates: TrajectoryLoggerLike[] = [];
   const seen = new Set<unknown>();
   const push = (candidate: unknown): void => {
@@ -1110,17 +1130,13 @@ export async function resolveTrajectoryLogger(
     candidates.push(candidate as TrajectoryLoggerLike);
   };
 
-  if (typeof runtimeLike.getServicesByType === "function") {
-    const byType = runtimeLike.getServicesByType("trajectories");
-    if (Array.isArray(byType)) {
-      for (const item of byType) push(item);
-    } else {
-      push(byType);
-    }
+  const byType = runtime.getServicesByType("trajectories");
+  if (Array.isArray(byType)) {
+    for (const item of byType) push(item);
+  } else {
+    push(byType);
   }
-  if (typeof runtimeLike.getService === "function") {
-    push(runtimeLike.getService("trajectories"));
-  }
+  push(runtime.getService("trajectories"));
 
   if (candidates.length === 0) return null;
 
@@ -1151,7 +1167,7 @@ export function enqueueStepWrite(
   stepId: string,
   work: () => Promise<void>,
 ): Promise<void> {
-  const runtimeKey = runtime as unknown as object;
+  const runtimeKey = runtime as object;
   let perStep = stepWriteQueues.get(runtimeKey);
   if (!perStep) {
     perStep = new Map<string, Promise<void>>();
@@ -1643,7 +1659,8 @@ export function readOrchestratorTrajectoryContext(runtime: unknown):
     }
   | undefined {
   if (!runtime || typeof runtime !== "object") return undefined;
-  const ctx = (runtime as Record<string, unknown>).__orchestratorTrajectoryCtx;
+  const ctx = (runtime as unknown as Record<string, unknown>)
+    .__orchestratorTrajectoryCtx;
   if (!ctx || typeof ctx !== "object") return undefined;
   const candidate = ctx as Record<string, unknown>;
   if (
@@ -1727,29 +1744,23 @@ export async function writeCompressedJsonlRows(
   await once(outStream, "finish");
 }
 
-function isCloudProvisionedContainer(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  return env.ELIZA_CLOUD_PROVISIONED === "1";
-}
-
+/**
+ * Trajectory persistence is unconditionally on. The only paths that disable it:
+ *
+ *   1. `NODE_ENV === "test"` — keeps the test runner free of background DB writes.
+ *   2. `ELIZA_DISABLE_TRAJECTORY_LOGGING=1` — explicit operator opt-out.
+ *
+ * We deliberately stopped honoring the legacy `ENABLE_TRAJECTORIES`,
+ * `ELIZA_TRAJECTORY_LOGGING`, `TRAJECTORY_LOGGING_ENABLED`, and
+ * `ELIZA_CLOUD_PROVISIONED` knobs: each represented a different historical
+ * attempt to gate persistence, and shipping multiple opt-in paths produced
+ * silent gaps where debugging and training data went missing. One opt-out,
+ * otherwise on.
+ */
 export function shouldEnableTrajectoryLoggingByDefault(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  if (isCloudProvisionedContainer(env)) {
-    return true;
-  }
-
-  const explicit = toOptionalBoolean(
-    env.ENABLE_TRAJECTORIES ??
-      env.ELIZA_TRAJECTORY_LOGGING ??
-      env.TRAJECTORY_LOGGING_ENABLED ??
-      env.ELIZA_TRAJECTORY_LOGGING,
-  );
-  if (explicit !== undefined) return explicit;
-
-  // Trajectory capture underpins debugging, export, and training workflows.
-  // Keep it on by default and require an explicit opt-out instead of silently
-  // disabling it in production builds.
+  if (env.NODE_ENV === "test") return false;
+  if (env.ELIZA_DISABLE_TRAJECTORY_LOGGING === "1") return false;
   return true;
 }

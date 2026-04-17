@@ -124,6 +124,7 @@ export const botStateProvider: Provider = {
   name: "RS_SDK_BOT_STATE",
   description:
     "Full game state for the 2004scape bot: player, skills, inventory, equipment, nearby entities, messages, and combat.",
+  descriptionCompressed: "Game state: player, skills, inventory, equipment, nearby, combat.",
 
   async get(
     runtime: IAgentRuntime,

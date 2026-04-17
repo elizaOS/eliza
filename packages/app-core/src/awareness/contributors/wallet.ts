@@ -10,7 +10,7 @@ import {
   canUseLocalTradeExecution,
   resolveTradePermissionMode,
 } from "@elizaos/app-steward/routes/server-wallet-trade";
-import { loadElizaConfig } from "../../config/config.js";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
 
 function shorten(address: string | null): string | null {
   if (!address) return null;

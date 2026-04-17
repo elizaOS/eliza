@@ -5,7 +5,7 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
-import type { TrustEngineServiceWrapper } from "../index.ts";
+import type { TrustEngineServiceWrapper } from "../services/wrappers.ts";
 import { TrustEvidenceType } from "../types/trust.ts";
 
 /** Track last evaluation time per entity to prevent rapid-fire trust changes */

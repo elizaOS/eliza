@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- llama.cpp runs fully on-device; no network or runtime permissions
+         required for inference itself. Model files must already be on disk
+         (downloaded by the @elizaos/app-core downloader). -->
+</manifest>

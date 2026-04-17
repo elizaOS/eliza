@@ -15,8 +15,6 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 
-export * from "@elizaos/agent/runtime/eliza";
-
 import { loadElizaConfig } from "@elizaos/agent/config/config";
 import { resolveUserPath } from "@elizaos/agent/config/paths";
 import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
@@ -31,6 +29,11 @@ import {
   shutdownRuntime as upstreamShutdownRuntime,
   startEliza as upstreamStartEliza,
 } from "@elizaos/agent/runtime/eliza";
+export {
+  CUSTOM_PLUGINS_DIRNAME,
+  resolvePackageEntry,
+  scanDropInPlugins,
+} from "@elizaos/agent/runtime/plugin-types";
 import { getLastFailedPluginNames } from "@elizaos/agent/runtime/plugin-resolver";
 import {
   resolveServerOnlyPort,
@@ -53,6 +56,7 @@ import {
   ensureTextToSpeechHandler,
   isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,
 } from "./ensure-text-to-speech-handler.js";
+import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler.js";
 import { updateStartupEmbeddingProgress } from "./startup-overlay.js";
 
 const AUTONOMY_WORLD_ID = stringToUuid("00000000-0000-0000-0000-000000000001");
@@ -74,6 +78,8 @@ const PLUGIN_SQL_GLOBAL_SINGLETONS = Symbol.for(
   "@elizaos/plugin-sql/global-singletons",
 );
 const ELIZA_AUTO_RESET_PGLITE_ERROR_CODE = "ELIZA_PGLITE_MANUAL_RESET_REQUIRED";
+
+export const shutdownRuntime = upstreamShutdownRuntime;
 
 interface PluginSqlGlobalSingletons {
   pgLiteClientManager?: {
@@ -278,13 +284,17 @@ async function ensureAutonomyBootstrapContext(
 // ---------------------------------------------------------------------------
 
 async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
-  const { vincentPlugin } = await import("@elizaos/app-vincent/plugin");
-  const { shopifyPlugin } = await import("@elizaos/app-shopify/plugin");
-  const { stewardPlugin } = await import("@elizaos/app-steward/plugin");
-  const { lifeopsPlugin } = await import("@elizaos/app-lifeops/routes/plugin");
+  const pluginLoaders: Array<() => Promise<Plugin>> = [
+    async () => (await import("@elizaos/app-vincent/plugin")).vincentPlugin,
+    async () => (await import("@elizaos/app-shopify/plugin")).shopifyPlugin,
+    async () => (await import("@elizaos/app-steward/plugin")).stewardPlugin,
+    async () =>
+      (await import("@elizaos/app-lifeops/routes/plugin")).lifeopsPlugin,
+  ];
 
-  for (const plugin of [vincentPlugin, shopifyPlugin, stewardPlugin, lifeopsPlugin]) {
+  for (const loadPlugin of pluginLoaders) {
     try {
+      const plugin = await loadPlugin();
       // Push rawPath routes directly onto runtime.routes to avoid the core's
       // registerPlugin() path mangling (which prepends /<pluginName>/ to every
       // route path). The rawPath flag means these routes already have their
@@ -298,9 +308,36 @@ async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
       logger.info(`[eliza] Registered app route plugin: ${plugin.name} (${plugin.routes?.length ?? 0} routes)`);
     } catch (err) {
       logger.warn(
-        `[eliza] Failed to register app route plugin ${plugin.name}: ${err instanceof Error ? err.message : String(err)}`,
+        `[eliza] Failed to register app route plugin: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+  }
+}
+
+/**
+ * Register the nightly Track C training crons (trajectory export + skill
+ * scoring) against the live runtime. The @elizaos/app-training package is
+ * optional — if it is not installed, the dynamic import fails and we skip
+ * silently. Each underlying registration also no-ops when the CRON service
+ * is missing, so installs without plugin-cron are safe.
+ */
+async function registerTrackCTrainingCrons(
+  runtime: AgentRuntime,
+): Promise<void> {
+  try {
+    const [exportMod, scoringMod] = await Promise.all([
+      import("@elizaos/app-training/core/trajectory-export-cron"),
+      import("@elizaos/app-training/core/skill-scoring-cron"),
+    ]);
+    await exportMod.registerTrajectoryExportCron(runtime);
+    await scoringMod.registerSkillScoringCron(runtime);
+    logger.info(
+      "[eliza] Registered Track C training crons (trajectory export + skill scoring)",
+    );
+  } catch (err) {
+    logger.warn(
+      `[eliza] Skipped Track C training crons: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
 
@@ -309,6 +346,7 @@ async function repairRuntimeAfterBoot(
 ): Promise<AgentRuntime> {
   await ensureRuntimeSqlCompatibility(runtime);
   await ensureTextToSpeechHandler(runtime);
+  await ensureLocalInferenceHandler(runtime);
   await ensureAutonomyBootstrapContext(runtime);
 
   // ── Register app-specific route plugins (Phase 2 extraction) ────────
@@ -316,6 +354,12 @@ async function repairRuntimeAfterBoot(
   // are proper plugins with rawPath routes served via the runtime plugin
   // route system.
   await registerAppRoutePlugins(runtime);
+
+  // ── Register Track C training crons (trajectory export + skill scoring) ─
+  // Optional: only runs when @elizaos/app-training is installed. Both cron
+  // registrations internally no-op when the CRON service is unavailable, so
+  // installs without plugin-cron are also safe.
+  await registerTrackCTrainingCrons(runtime);
 
   if (!runtime.getService("AUTONOMY")) {
     try {
@@ -525,7 +569,7 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
         dropPendingUpdates: true,
         allowedUpdates: ["message", "message_reaction"],
       })
-      .catch((err) =>
+      .catch((err: unknown) =>
         logger.warn(
           `[eliza] Telegram bot launch error: ${err instanceof Error ? err.message : String(err)}`,
         ),

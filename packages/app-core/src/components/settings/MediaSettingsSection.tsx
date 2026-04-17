@@ -10,7 +10,7 @@ import {
   type VideoProvider,
   type VisionProvider,
 } from "../../api";
-import { useTimeout } from "../../hooks";
+import { useTimeout } from "@elizaos/ui";
 import { COMPANION_ENABLED } from "../../navigation";
 import { useApp } from "../../state";
 import {

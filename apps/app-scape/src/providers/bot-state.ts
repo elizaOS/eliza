@@ -20,6 +20,7 @@ import type { ScapeGameService } from "../services/game-service.js";
 export const botStateProvider: Provider = {
   name: "SCAPE_BOT_STATE",
   description: "Current 'scape agent vitals, position, and combat state.",
+  descriptionCompressed: "Agent vitals, position, combat state.",
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,

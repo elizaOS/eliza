@@ -5,16 +5,18 @@
 
 import type { ReleaseChannel } from "@elizaos/agent/contracts/config";
 import type {
+  CreateTriggerRequest as _CreateTriggerRequest,
+  TriggerHealthSnapshot as _TriggerHealthSnapshot,
+  TriggerRunRecord as _TriggerRunRecord,
+  TriggerSummary as _TriggerSummary,
+  UpdateTriggerRequest as _UpdateTriggerRequest,
+} from "@elizaos/agent/triggers/types";
+import type {
   LifeOpsOccurrenceView,
   LifeOpsOverview,
 } from "@elizaos/shared/contracts/lifeops";
 import type { MessageExampleContent } from "@elizaos/shared/contracts/onboarding";
 import type { ConfigUiHint } from "../types";
-import type {
-  TriggerLastStatus,
-  TriggerType,
-  TriggerWakeMode,
-} from "./client-types-core";
 
 export type {
   CompleteLifeOpsBrowserSessionRequest,
@@ -155,77 +157,11 @@ export interface ConfigSchemaResponse {
   generatedAt: string;
 }
 
-export interface TriggerSummary {
-  id: string;
-  taskId: string;
-  displayName: string;
-  instructions: string;
-  triggerType: TriggerType;
-  enabled: boolean;
-  wakeMode: TriggerWakeMode;
-  createdBy: string;
-  timezone?: string;
-  intervalMs?: number;
-  scheduledAtIso?: string;
-  cronExpression?: string;
-  maxRuns?: number;
-  runCount: number;
-  nextRunAtMs?: number;
-  lastRunAtIso?: string;
-  lastStatus?: TriggerLastStatus;
-  lastError?: string;
-  updatedAt?: number;
-  updateInterval?: number;
-}
-
-export interface TriggerRunRecord {
-  triggerRunId: string;
-  triggerId: string;
-  taskId: string;
-  startedAt: number;
-  finishedAt: number;
-  status: TriggerLastStatus;
-  error?: string;
-  latencyMs: number;
-  source: "scheduler" | "manual";
-}
-
-export interface TriggerHealthSnapshot {
-  triggersEnabled: boolean;
-  activeTriggers: number;
-  disabledTriggers: number;
-  totalExecutions: number;
-  totalFailures: number;
-  totalSkipped: number;
-  lastExecutionAt?: number;
-}
-
-export interface CreateTriggerRequest {
-  displayName?: string;
-  instructions?: string;
-  triggerType?: TriggerType;
-  wakeMode?: TriggerWakeMode;
-  enabled?: boolean;
-  createdBy?: string;
-  timezone?: string;
-  intervalMs?: number;
-  scheduledAtIso?: string;
-  cronExpression?: string;
-  maxRuns?: number;
-}
-
-export interface UpdateTriggerRequest {
-  displayName?: string;
-  instructions?: string;
-  triggerType?: TriggerType;
-  wakeMode?: TriggerWakeMode;
-  enabled?: boolean;
-  timezone?: string;
-  intervalMs?: number;
-  scheduledAtIso?: string;
-  cronExpression?: string;
-  maxRuns?: number;
-}
+export type TriggerSummary = _TriggerSummary;
+export type TriggerRunRecord = _TriggerRunRecord;
+export type TriggerHealthSnapshot = _TriggerHealthSnapshot;
+export type CreateTriggerRequest = _CreateTriggerRequest;
+export type UpdateTriggerRequest = _UpdateTriggerRequest;
 
 // Fine-tuning / training
 export type TrainingJobStatus =
@@ -511,9 +447,7 @@ export interface WorkbenchOverview {
   };
 }
 
-export interface LifeOpsOccurrenceActionResult {
-  occurrence: LifeOpsOccurrenceView;
-}
+export type { LifeOpsOccurrenceActionResult } from "@elizaos/shared/contracts/lifeops";
 
 // Voice / TTS config
 export type VoiceProvider = "elevenlabs" | "simple-voice" | "edge";

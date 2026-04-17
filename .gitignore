@@ -265,7 +265,7 @@ apps/*/src/**/*.d.ts
 apps/*/src/**/*.d.ts.map
 !apps/app-companion/src/three-subpath.d.ts
 !apps/app-companion/src/types/three-vrm-shim.d.ts
-!apps/app-lifeops/src/selfcontrol/elizaos-core-roles.d.ts
+!apps/app-lifeops/src/website-blocker/elizaos-core-roles.ts
 
 # Migration scripts (temporary)
 scripts/migrate-tests-to-vitest.ts

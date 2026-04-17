@@ -520,62 +520,82 @@ export function CharacterExamplesPanel({
             )}
           </Button>
         </div>
-        <div className="flex flex-col gap-1.5 overflow-y-auto min-h-0">
+        <div className="flex flex-col divide-y divide-border/30">
           {normalizedMessageExamples.map((convo, ci) => (
             <div
               // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
               key={`convo-${ci}`}
-              className="group py-2"
+              className="flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0"
             >
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-3xs font-bold uppercase tracking-[0.12em] text-muted">
-                  {t("charactereditor.ConversationN", {
-                    defaultValue: `Conversation ${ci + 1}`,
-                  }).replace("{n}", String(ci + 1))}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="mt-0.5 shrink-0 text-muted opacity-0 transition-opacity duration-150 p-0 h-auto w-auto hover:text-danger group-hover:opacity-100"
+              {convo.examples.map((msg, mi) => (
+                <div
+                  // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
+                  key={`msg-${ci}-${mi}`}
+                  className="flex items-center gap-3"
+                >
+                  <span
+                    className={`w-14 shrink-0 pr-1 text-right text-[0.5rem] font-semibold uppercase tracking-[0.06em] ${msg.name === "{{user1}}" ? "text-muted" : "text-accent"}`}
+                  >
+                    {msg.name === "{{user1}}" ? "user" : "agent"}
+                  </span>
+                  <Input
+                    value={msg.content?.text ?? ""}
+                    onChange={(e) => {
+                      const updated = [...normalizedMessageExamples];
+                      const convoClone = {
+                        examples: [...updated[ci].examples],
+                      };
+                      convoClone.examples[mi] = {
+                        ...convoClone.examples[mi],
+                        content: { text: e.target.value },
+                      };
+                      updated[ci] = convoClone;
+                      handleFieldEdit("messageExamples", updated);
+                    }}
+                    className="h-7 flex-1 rounded-md border border-border/50 bg-white/[0.03] px-2.5 text-xs-tight leading-tight text-txt outline-none focus:border-accent"
+                  />
+                </div>
+              ))}
+              <div className="mt-0.5 ml-[4.25rem] flex items-center justify-between">
+                <button
+                  type="button"
+                  className="text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
+                  onClick={() => {
+                    const agentName =
+                      typeof d.name === "string" && d.name.trim()
+                        ? d.name.trim()
+                        : "Agent";
+                    const updated = [...normalizedMessageExamples];
+                    const convoClone = {
+                      examples: [
+                        ...updated[ci].examples,
+                        { name: "{{user1}}", content: { text: "" } },
+                        { name: agentName, content: { text: "" } },
+                      ],
+                    };
+                    updated[ci] = convoClone;
+                    handleFieldEdit("messageExamples", updated);
+                  }}
+                >
+                  +{" "}
+                  {t("charactereditor.AddTurn", {
+                    defaultValue: "turn",
+                  })}
+                </button>
+                <button
+                  type="button"
+                  className="text-3xs font-semibold text-muted hover:text-danger transition-colors"
                   onClick={() => {
                     const updated = [...normalizedMessageExamples];
                     updated.splice(ci, 1);
                     handleFieldEdit("messageExamples", updated);
                   }}
+                  aria-label={`${t("common.remove")} conversation ${ci + 1}`}
                 >
-                  <CloseIconSvg />
-                </Button>
-              </div>
-              <div className="flex flex-col gap-1">
-                {convo.examples.map((msg, mi) => (
-                  <div
-                    // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
-                    key={`msg-${ci}-${mi}`}
-                    className="flex items-center gap-2"
-                  >
-                    <span
-                      className={`w-10 shrink-0 text-right text-3xs font-bold uppercase tracking-[0.1em] text-muted${msg.name === "{{user1}}" ? "" : " text-accent"}`}
-                    >
-                      {msg.name === "{{user1}}" ? "user" : "agent"}
-                    </span>
-                    <Input
-                      value={msg.content?.text ?? ""}
-                      onChange={(e) => {
-                        const updated = [...normalizedMessageExamples];
-                        const convoClone = {
-                          examples: [...updated[ci].examples],
-                        };
-                        convoClone.examples[mi] = {
-                          ...convoClone.examples[mi],
-                          content: { text: e.target.value },
-                        };
-                        updated[ci] = convoClone;
-                        handleFieldEdit("messageExamples", updated);
-                      }}
-                      className="h-7 flex-1 rounded-md border border-border bg-white/[0.03] px-2 font-mono text-xs-tight text-txt outline-none focus:border-accent"
-                    />
-                  </div>
-                ))}
+                  {t("charactereditor.RemoveExample", {
+                    defaultValue: "remove",
+                  })}
+                </button>
               </div>
             </div>
           ))}
@@ -587,6 +607,31 @@ export function CharacterExamplesPanel({
             </div>
           )}
         </div>
+        <button
+          type="button"
+          className="self-start mt-1 text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
+          onClick={() => {
+            const agentName =
+              typeof d.name === "string" && d.name.trim()
+                ? d.name.trim()
+                : "Agent";
+            const updated = [
+              ...normalizedMessageExamples,
+              {
+                examples: [
+                  { name: "{{user1}}", content: { text: "" } },
+                  { name: agentName, content: { text: "" } },
+                ],
+              },
+            ];
+            handleFieldEdit("messageExamples", updated);
+          }}
+        >
+          +{" "}
+          {t("charactereditor.AddConversation", {
+            defaultValue: "Add conversation",
+          })}
+        </button>
       </section>
 
       {/* Post Examples */}
@@ -617,12 +662,12 @@ export function CharacterExamplesPanel({
             )}
           </Button>
         </div>
-        <div className="flex flex-col gap-1.5 overflow-y-auto min-h-0">
+        <div className="flex flex-col gap-1.5">
           {(d.postExamples ?? []).map((post, pi) => (
             <div
               // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
               key={`post-${pi}`}
-              className="flex items-center gap-1.5"
+              className="group flex items-center gap-1.5"
             >
               <Input
                 value={post}
@@ -631,7 +676,7 @@ export function CharacterExamplesPanel({
                   updated[pi] = e.target.value;
                   handleFieldEdit("postExamples", updated);
                 }}
-                className="h-7 flex-1 rounded-md border border-border bg-white/[0.03] px-2 font-mono text-xs-tight text-txt outline-none focus:border-accent"
+                className="h-7 flex-1 rounded-md border border-border/50 bg-white/[0.03] px-2.5 text-xs-tight leading-tight text-txt outline-none focus:border-accent"
               />
               <Button
                 variant="ghost"
@@ -654,9 +699,9 @@ export function CharacterExamplesPanel({
               })}
             </div>
           )}
-          <Button
-            variant="ghost"
-            className="text-2xs font-bold text-accent p-0 h-auto py-1 text-left hover:underline"
+          <button
+            type="button"
+            className="self-start mt-1 text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
             onClick={() => {
               const updated = [...(d.postExamples ?? []), ""];
               handleFieldEdit("postExamples", updated);
@@ -666,7 +711,7 @@ export function CharacterExamplesPanel({
             {t("charactereditor.AddPost", {
               defaultValue: "Add Post",
             })}
-          </Button>
+          </button>
         </div>
       </section>
     </>

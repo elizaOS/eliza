@@ -11,44 +11,16 @@ import {
 } from "@elizaos/agent/services";
 
 export type {
+  SandboxManagerConfig,
   SandboxMode,
   SandboxState,
 } from "@elizaos/agent/services/sandbox-manager";
 
 import type {
+  SandboxManagerConfig,
   SandboxMode,
   SandboxState,
 } from "@elizaos/agent/services/sandbox-manager";
-
-export interface SandboxManagerConfig {
-  mode: SandboxMode;
-  image?: string;
-  containerPrefix?: string;
-  workdir?: string;
-  readOnlyRoot?: boolean;
-  network?: string;
-  user?: string;
-  capDrop?: string[];
-  env?: Record<string, string>;
-  memory?: string;
-  cpus?: number;
-  pidsLimit?: number;
-  workspaceRoot?: string;
-  binds?: string[];
-  dns?: string[];
-  engineType?: SandboxEngineType;
-  browser?: {
-    enabled?: boolean;
-    image?: string;
-    cdpPort?: number;
-    vncPort?: number;
-    noVncPort?: number;
-    headless?: boolean;
-    enableNoVnc?: boolean;
-    autoStart?: boolean;
-    autoStartTimeoutMs?: number;
-  };
-}
 
 export interface SandboxExecOptions {
   command: string;

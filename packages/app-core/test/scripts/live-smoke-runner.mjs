@@ -157,14 +157,8 @@ const runs = [
     label: "ui-storybook-e2e",
     command: bunCmd,
     args: ["run", "test:e2e"],
-    cwd: path.join(repoRoot, "packages", "ui"),
+    cwd: path.join(repoRoot, "eliza", "apps", "app-companion"),
     scriptName: "test:e2e",
-    getSkipReason() {
-      const e2eDir = path.join(repoRoot, "packages", "ui", "e2e");
-      const hasTests = fs.existsSync(e2eDir) &&
-        fs.readdirSync(e2eDir).some((f) => f.endsWith(".test.ts") || f.endsWith(".spec.ts"));
-      return hasTests ? null : "no e2e test files in packages/ui/e2e";
-    },
   },
   {
     lockName: "live-plugins",
@@ -189,11 +183,9 @@ const runs = [
     cwd: path.join(repoRoot, "eliza", "cloud"),
     scriptName: "test:e2e:smoke",
     skipEnvVar: "ELIZA_SKIP_CLOUD_LIVE_SMOKE",
-    async getSkipReason() {
-      if (await isPortBusy(3000)) {
-        return "port 3000 is already in use, so cloud smoke is unavailable";
-      }
-      return null;
+    env: {
+      ...buildLiveTestEnv(path.join(repoRoot, "eliza", "cloud")),
+      TEST_SERVER_PORT: "3104",
     },
   },
   {
@@ -213,12 +205,6 @@ const runs = [
     cwd: path.join(repoRoot, "eliza", "steward-fi"),
     scriptName: "test:e2e:smoke",
     skipEnvVar: "ELIZA_SKIP_STEWARD_FI_LIVE_SMOKE",
-    getSkipReason() {
-      if (!process.env.STEWARD_URL?.trim()) {
-        return "STEWARD_URL is not configured";
-      }
-      return null;
-    },
   },
 ];
 

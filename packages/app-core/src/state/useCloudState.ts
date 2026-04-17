@@ -372,7 +372,7 @@ export function useCloudState({
             // Store the cloud auth token for provisioning
             if (poll.token && typeof window !== "undefined") {
               (
-                window as unknown as Record<string, unknown>
+                globalThis as Record<string, unknown>
               ).__ELIZA_CLOUD_AUTH_TOKEN__ = poll.token;
               // Also update boot config so subsequent reads use the resolved cloud base.
               const cfg = getBootConfig();

@@ -6,6 +6,7 @@ import {
   resolveOnboardingNextStep,
   resolveOnboardingPreviousStep,
 } from "../flow";
+import { canRunLocal } from "../../platform/init";
 import { inferOnboardingResumeStep } from "../../state/onboarding-resume";
 
 describe("onboarding flow", () => {
@@ -38,10 +39,14 @@ describe("onboarding flow", () => {
     ).toBe(false);
   });
 
-  it("omits setup from the nav only for cloud-only branding", () => {
+  it("omits deployment from the nav for cloud-only branding and local-capable runtimes", () => {
     expect(
       getOnboardingNavMetas("providers", false).map((step) => step.id),
-    ).toEqual(["deployment", "providers", "features"]);
+    ).toEqual(
+      canRunLocal()
+        ? ["providers", "features"]
+        : ["deployment", "providers", "features"],
+    );
     expect(
       getOnboardingNavMetas("providers", true).map((step) => step.id),
     ).toEqual(["providers", "features"]);

@@ -1,1 +1,18 @@
-export * from "@elizaos/core";
+export {
+	canModifyRole,
+	checkSenderPrivateAccess,
+	checkSenderRole,
+	getConfiguredOwnerEntityIds,
+	getConnectorAdminWhitelist,
+	getEntityRole,
+	getLiveEntityMetadataFromMessage,
+	hasConfiguredCanonicalOwner,
+	matchEntityToConnectorAdminWhitelist,
+	normalizeRole,
+	resolveCanonicalOwnerId,
+	resolveCanonicalOwnerIdForMessage,
+	resolveEntityRole,
+	resolveWorldForMessage,
+	setConnectorAdminWhitelist,
+	setEntityRole,
+} from "@elizaos/core";

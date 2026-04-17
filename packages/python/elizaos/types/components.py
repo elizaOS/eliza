@@ -46,6 +46,7 @@ class ActionDefinition:  # runtime interface
 
     name: str
     description: str
+    description_compressed: str | None
     handler: Handler
     validate: Validator
     similes: list[str] | None
@@ -65,9 +66,11 @@ class ActionDefinition:  # runtime interface
         priority: int | None = None,
         tags: list[str] | None = None,
         parameters: list[ActionParameter] | None = None,
+        description_compressed: str | None = None,
     ) -> None:
         self.name = name
         self.description = description
+        self.description_compressed = description_compressed
         self.handler = handler
         self.validate = validate
         self.similes = similes
@@ -131,6 +134,7 @@ class ProviderDefinition:  # runtime interface
 
     name: str
     description: str | None
+    description_compressed: str | None
     dynamic: bool | None
     position: int | None
     private: bool | None
@@ -141,6 +145,7 @@ class ProviderDefinition:  # runtime interface
         name: str,
         get: ProviderGetter,
         description: str | None = None,
+        description_compressed: str | None = None,
         dynamic: bool | None = None,
         position: int | None = None,
         private: bool | None = None,
@@ -148,6 +153,7 @@ class ProviderDefinition:  # runtime interface
         self.name = name
         self.get = get
         self.description = description
+        self.description_compressed = description_compressed
         self.dynamic = dynamic
         self.position = position
         self.private = private

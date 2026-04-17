@@ -1,9 +1,3 @@
-/**
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/api/wallet-rpc`.
- * New development should target the app-steward package.
- */
-
 import {
   isElizaCloudServiceSelectedInConfig,
   migrateLegacyRuntimeConfig,

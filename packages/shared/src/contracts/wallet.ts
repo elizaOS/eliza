@@ -481,10 +481,7 @@ export interface WalletTradingProfileResponse {
   recentSwaps: WalletTradingProfileRecentSwap[];
 }
 
-/**
- * Result from a Steward policy evaluation.
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
+/** Result from a Steward policy evaluation. */
 export interface StewardPolicyResult {
   policyId?: string;
   name?: string;
@@ -492,30 +489,10 @@ export interface StewardPolicyResult {
   reason?: string;
 }
 
-/**
- * Steward pending-approval or rejection info attached to a tx step.
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
+/** Steward pending-approval or rejection info attached to a tx step. */
 export interface StewardApprovalInfo {
   status: "pending_approval" | "rejected";
   policyResults?: StewardPolicyResult[];
-}
-
-/**
- * Response from GET /api/wallet/steward-status.
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
-export interface StewardStatusResponse {
-  configured: boolean;
-  available: boolean;
-  connected: boolean;
-  baseUrl?: string;
-  agentId?: string;
-  evmAddress?: string;
-  error?: string | null;
-  walletAddresses?: { evm: string | null; solana: string | null };
-  agentName?: string;
-  vaultHealth?: "ok" | "degraded" | "error";
 }
 
 /** Response from GET /api/wallet/steward-addresses. */
@@ -662,101 +639,40 @@ export interface WalletGenerateResult {
   privateKey: string;
 }
 
-// ─── Steward Transaction History & Approval Queue ─────────────────────────────
-// @deprecated These types are maintained for backward compatibility.
-// Import from `@elizaos/app-steward/types/steward` instead.
+// ── Wallet Export ──────────────────────────────────────────────────────────
 
-export type StewardTxStatus =
-  | "pending"
-  | "approved"
-  | "rejected"
-  | "signed"
-  | "broadcast"
-  | "confirmed"
-  | "failed";
-
-/**
- * A transaction record from the Steward vault history.
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
-export interface StewardTxRecord {
-  id: string;
-  agentId: string;
-  status: StewardTxStatus;
-  request: {
-    agentId: string;
-    tenantId: string;
-    to: string;
-    value: string;
-    data?: string;
-    chainId: number;
-  };
-  txHash?: string;
-  policyResults: StewardPolicyResult[];
-  createdAt: string;
-  signedAt?: string;
-  confirmedAt?: string;
+/** Request body for wallet private key export endpoints. */
+export interface WalletExportRequestBody {
+  confirm?: boolean;
+  exportToken?: string;
 }
 
-/**
- * A pending approval entry from the Steward approval queue.
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
-export interface StewardPendingApproval {
-  queueId: string;
-  status: "pending" | "approved" | "rejected";
-  requestedAt: string;
-  transaction: StewardTxRecord;
+/** Rejection returned by the wallet export guard. */
+export interface WalletExportRejection {
+  status: 400 | 401 | 402 | 403 | 429;
+  reason: string;
 }
 
-/**
- * Response shape for GET /api/wallet/steward-history
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
-export type StewardHistoryResponse = StewardTxRecord[];
+// ── Wallet Trade Ledger ───────────────────────────────────────────────────
 
-/**
- * Response shape for GET /api/wallet/steward-pending
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
-export type StewardPendingResponse = StewardPendingApproval[];
-
-/**
- * Response shape for POST /api/wallet/steward-approve and steward-reject
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
-export interface StewardApprovalActionResponse {
-  ok: boolean;
-  txHash?: string;
-  error?: string;
-}
-
-// ─── Steward Vault Signing ────────────────────────────────────────────────────
-// @deprecated These types are maintained for backward compatibility.
-// Import from `@elizaos/app-steward/types/steward` instead.
-
-/**
- * Request body for signing a transaction through the Steward vault.
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
-export interface StewardSignRequest {
-  to: string;
-  value: string;
-  chainId: number;
-  data?: string;
-  broadcast?: boolean;
-  description?: string;
-}
-
-/**
- * Response from a Steward vault sign operation.
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
-export interface StewardSignResponse {
-  approved: boolean;
-  txHash?: string;
-  txId?: string;
-  pending?: boolean;
-  denied?: boolean;
-  violations?: Array<{ policy: string; reason: string }>;
+/** Input for recording a trade in the wallet trading profile ledger. */
+export interface WalletTradeLedgerRecordInput {
+  hash: string;
+  source: WalletTradeSource;
+  side: BscTradeSide;
+  tokenAddress: string;
+  slippageBps: number;
+  route: string[];
+  quoteIn: WalletTradeLedgerQuoteLeg;
+  quoteOut: WalletTradeLedgerQuoteLeg;
+  status: BscTradeTxStatus;
+  confirmations: number;
+  nonce: number | null;
+  blockNumber: number | null;
+  gasUsed: string | null;
+  effectiveGasPriceWei: string | null;
+  reason?: string;
+  explorerUrl: string;
+  createdAt?: string;
+  updatedAt?: string;
 }

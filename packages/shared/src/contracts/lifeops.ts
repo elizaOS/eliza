@@ -67,6 +67,62 @@ export const LIFEOPS_WORKFLOW_TRIGGER_TYPES = ["manual", "schedule"] as const;
 export type LifeOpsWorkflowTriggerType =
   (typeof LIFEOPS_WORKFLOW_TRIGGER_TYPES)[number];
 
+export const LIFEOPS_NEGOTIATION_STATES = [
+  "initiated",
+  "proposals_sent",
+  "awaiting_response",
+  "confirmed",
+  "cancelled",
+] as const;
+export type LifeOpsNegotiationState =
+  (typeof LIFEOPS_NEGOTIATION_STATES)[number];
+
+export const LIFEOPS_PROPOSAL_STATUSES = [
+  "pending",
+  "accepted",
+  "declined",
+  "expired",
+] as const;
+export type LifeOpsProposalStatus =
+  (typeof LIFEOPS_PROPOSAL_STATUSES)[number];
+
+export const LIFEOPS_PROPOSAL_PROPOSERS = [
+  "agent",
+  "owner",
+  "counterparty",
+] as const;
+export type LifeOpsProposalProposer =
+  (typeof LIFEOPS_PROPOSAL_PROPOSERS)[number];
+
+export interface LifeOpsSchedulingNegotiation {
+  id: string;
+  agentId: string;
+  subject: string;
+  relationshipId: string | null;
+  durationMinutes: number;
+  timezone: string;
+  state: LifeOpsNegotiationState;
+  acceptedProposalId: string | null;
+  startedAt: string;
+  finalizedAt: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LifeOpsSchedulingProposal {
+  id: string;
+  agentId: string;
+  negotiationId: string;
+  startAt: string;
+  endAt: string;
+  proposedBy: LifeOpsProposalProposer;
+  status: LifeOpsProposalStatus;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const LIFEOPS_CONNECTOR_PROVIDERS = [
   "google",
   "x",
@@ -113,6 +169,40 @@ export type LifeOpsGoogleCapability =
 
 export const LIFEOPS_X_CAPABILITIES = ["x.read", "x.write"] as const;
 export type LifeOpsXCapability = (typeof LIFEOPS_X_CAPABILITIES)[number];
+
+export const LIFEOPS_SIGNAL_CAPABILITIES = [
+  "signal.read",
+  "signal.send",
+] as const;
+export type LifeOpsSignalCapability =
+  (typeof LIFEOPS_SIGNAL_CAPABILITIES)[number];
+
+export const LIFEOPS_DISCORD_CAPABILITIES = [
+  "discord.read",
+  "discord.send",
+] as const;
+export type LifeOpsDiscordCapability =
+  (typeof LIFEOPS_DISCORD_CAPABILITIES)[number];
+
+export const LIFEOPS_TELEGRAM_CAPABILITIES = [
+  "telegram.read",
+  "telegram.send",
+] as const;
+export type LifeOpsTelegramCapability =
+  (typeof LIFEOPS_TELEGRAM_CAPABILITIES)[number];
+
+// ---------------------------------------------------------------------------
+// Side-aware capability policy
+// Owner side = assistive (read-only). Agent side = autonomous (read + send).
+// ---------------------------------------------------------------------------
+
+export function capabilitiesForSide<T extends string>(
+  allCapabilities: readonly T[],
+  side: LifeOpsConnectorSide,
+): T[] {
+  if (side === "agent") return [...allCapabilities];
+  return allCapabilities.filter((c) => c.endsWith(".read")) as T[];
+}
 
 export const LIFEOPS_REMINDER_CHANNELS = [
   "in_app",
@@ -1094,6 +1184,10 @@ export interface LifeOpsCalendarEvent {
   metadata: Record<string, unknown>;
   syncedAt: string;
   updatedAt: string;
+  /** Set when aggregating across multiple Google accounts. */
+  grantId?: string;
+  /** Set when aggregating across multiple Google accounts. */
+  accountEmail?: string;
 }
 
 export interface LifeOpsCalendarFeed {
@@ -1108,6 +1202,8 @@ export interface LifeOpsCalendarFeed {
 export interface GetLifeOpsCalendarFeedRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  /** Target a specific Google account by grant ID (multi-account). */
+  grantId?: string;
   calendarId?: string;
   timeMin?: string;
   timeMax?: string;
@@ -1140,6 +1236,10 @@ export interface LifeOpsGmailMessageSummary {
   metadata: Record<string, unknown>;
   syncedAt: string;
   updatedAt: string;
+  /** Set when aggregating across multiple Google accounts. */
+  grantId?: string;
+  /** Set when aggregating across multiple Google accounts. */
+  accountEmail?: string;
 }
 
 export interface LifeOpsGmailTriageSummary {
@@ -1171,6 +1271,8 @@ export interface LifeOpsGmailNeedsResponseFeed {
 export interface GetLifeOpsGmailTriageRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  /** Target a specific Google account by grant ID (multi-account). */
+  grantId?: string;
   forceSync?: boolean;
   maxResults?: number;
 }
@@ -1182,6 +1284,7 @@ export interface GetLifeOpsGmailSearchRequest {
   maxResults?: number;
   query: string;
   replyNeededOnly?: boolean;
+  grantId?: string;
 }
 
 export interface LifeOpsGmailSearchSummary {
@@ -1206,6 +1309,7 @@ export interface CreateLifeOpsGmailReplyDraftRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   messageId: string;
+  grantId?: string;
   tone?: LifeOpsGmailDraftTone;
   intent?: string;
   includeQuotedOriginal?: boolean;
@@ -1229,6 +1333,7 @@ export interface LifeOpsGmailReplyDraft {
 export interface CreateLifeOpsGmailBatchReplyDraftsRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  grantId?: string;
   forceSync?: boolean;
   maxResults?: number;
   query?: string;
@@ -1260,6 +1365,7 @@ export interface LifeOpsGmailBatchReplyDraftsFeed {
 export interface SendLifeOpsGmailReplyRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  grantId?: string;
   messageId: string;
   bodyText: string;
   subject?: string;
@@ -1271,6 +1377,7 @@ export interface SendLifeOpsGmailReplyRequest {
 export interface SendLifeOpsGmailMessageRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  grantId?: string;
   to: string[];
   cc?: string[];
   bcc?: string[];
@@ -1290,6 +1397,7 @@ export interface LifeOpsGmailBatchReplySendItem {
 export interface SendLifeOpsGmailBatchReplyRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  grantId?: string;
   confirmSend?: boolean;
   items: LifeOpsGmailBatchReplySendItem[];
 }
@@ -1317,6 +1425,7 @@ export interface CreateLifeOpsCalendarEventRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   calendarId?: string;
+  grantId?: string;
   title: string;
   description?: string;
   location?: string;
@@ -1389,9 +1498,206 @@ export interface LifeOpsXConnectorStatus {
   grant: LifeOpsConnectorGrant | null;
 }
 
+// ---------------------------------------------------------------------------
+// Messaging connector types (Signal, Discord, Telegram)
+// ---------------------------------------------------------------------------
+
+export const LIFEOPS_MESSAGING_CONNECTOR_REASONS = [
+  "connected",
+  "disconnected",
+  "pairing",
+  "auth_pending",
+  "auth_expired",
+  "session_revoked",
+] as const;
+export type LifeOpsMessagingConnectorReason =
+  (typeof LIFEOPS_MESSAGING_CONNECTOR_REASONS)[number];
+
+export interface LifeOpsSignalConnectorStatus {
+  provider: "signal";
+  side: LifeOpsConnectorSide;
+  connected: boolean;
+  reason: LifeOpsMessagingConnectorReason;
+  identity: { phoneNumber?: string; uuid?: string; deviceName?: string } | null;
+  grantedCapabilities: LifeOpsSignalCapability[];
+  pairing: LifeOpsSignalPairingStatus | null;
+  grant: LifeOpsConnectorGrant | null;
+}
+
+export interface LifeOpsDiscordDmPreview {
+  channelId: string | null;
+  href: string | null;
+  label: string;
+  selected: boolean;
+  unread: boolean;
+  snippet: string | null;
+}
+
+export interface LifeOpsDiscordDmInboxStatus {
+  visible: boolean;
+  count: number;
+  selectedChannelId: string | null;
+  previews: LifeOpsDiscordDmPreview[];
+}
+
+export interface LifeOpsDiscordConnectorStatus {
+  provider: "discord";
+  side: LifeOpsConnectorSide;
+  /** Browser Workspace desktop bridge is available (Discord lives inside a Milady browser tab). */
+  available: boolean;
+  /** Logged-in Discord DOM was detected in the browser tab. */
+  connected: boolean;
+  reason: LifeOpsMessagingConnectorReason;
+  identity: {
+    id?: string;
+    username?: string;
+    discriminator?: string;
+    email?: string;
+  } | null;
+  /** Whether the owner's DM inbox is visible inside the Discord tab right now. */
+  dmInbox: LifeOpsDiscordDmInboxStatus;
+  grantedCapabilities: LifeOpsDiscordCapability[];
+  lastError: string | null;
+  /** Browser Workspace tab hosting Discord, when one exists. */
+  tabId: string | null;
+  grant: LifeOpsConnectorGrant | null;
+}
+
+export const LIFEOPS_TELEGRAM_AUTH_STATES = [
+  "idle",
+  "waiting_for_provisioning_code",
+  "waiting_for_code",
+  "waiting_for_password",
+  "connected",
+  "error",
+] as const;
+export type LifeOpsTelegramAuthState =
+  (typeof LIFEOPS_TELEGRAM_AUTH_STATES)[number];
+
+export interface LifeOpsWhatsAppConnectorStatus {
+  provider: "whatsapp";
+  connected: boolean;
+  phoneNumberId?: string;
+  lastCheckedAt: string;
+}
+
+export interface LifeOpsTelegramConnectorStatus {
+  provider: "telegram";
+  side: LifeOpsConnectorSide;
+  connected: boolean;
+  reason: LifeOpsMessagingConnectorReason;
+  identity: {
+    id?: string;
+    username?: string;
+    firstName?: string;
+    phone?: string;
+  } | null;
+  grantedCapabilities: LifeOpsTelegramCapability[];
+  authState: LifeOpsTelegramAuthState;
+  authError: string | null;
+  phone: string | null;
+  managedCredentialsAvailable: boolean;
+  storedCredentialsAvailable: boolean;
+  grant: LifeOpsConnectorGrant | null;
+}
+
+export interface LifeOpsTelegramDialogSummary {
+  id: string;
+  title: string;
+  username: string | null;
+  lastMessageText: string | null;
+  lastMessageAt: string | null;
+  unreadCount: number;
+}
+
+export interface VerifyLifeOpsTelegramConnectorRequest {
+  side?: LifeOpsConnectorSide;
+  recentLimit?: number;
+  sendTarget?: string;
+  sendMessage?: string;
+}
+
+export interface VerifyLifeOpsTelegramConnectorResponse {
+  provider: "telegram";
+  side: LifeOpsConnectorSide;
+  verifiedAt: string;
+  read: {
+    ok: boolean;
+    error: string | null;
+    dialogCount: number;
+    dialogs: LifeOpsTelegramDialogSummary[];
+  };
+  send: {
+    ok: boolean;
+    error: string | null;
+    target: string;
+    message: string;
+    messageId: string | null;
+  };
+}
+
+export interface StartLifeOpsSignalPairingRequest {
+  side?: LifeOpsConnectorSide;
+}
+
+export interface StartLifeOpsSignalPairingResponse {
+  provider: "signal";
+  side: LifeOpsConnectorSide;
+  sessionId: string;
+}
+
+export interface LifeOpsSignalPairingStatus {
+  sessionId: string;
+  state:
+    | "idle"
+    | "generating_qr"
+    | "waiting_for_scan"
+    | "linking"
+    | "connected"
+    | "failed";
+  qrDataUrl: string | null;
+  error: string | null;
+}
+
+export interface StartLifeOpsDiscordConnectorRequest {
+  side?: LifeOpsConnectorSide;
+}
+
+export interface StartLifeOpsTelegramAuthRequest {
+  side?: LifeOpsConnectorSide;
+  phone: string;
+  apiId?: number;
+  apiHash?: string;
+}
+
+export interface StartLifeOpsTelegramAuthResponse {
+  provider: "telegram";
+  side: LifeOpsConnectorSide;
+  state:
+    | "waiting_for_provisioning_code"
+    | "waiting_for_code"
+    | "waiting_for_password"
+    | "connected"
+    | "error";
+  error?: string;
+}
+
+export interface SubmitLifeOpsTelegramAuthRequest {
+  side?: LifeOpsConnectorSide;
+  code?: string;
+  password?: string;
+}
+
+export interface DisconnectLifeOpsMessagingConnectorRequest {
+  side?: LifeOpsConnectorSide;
+  provider: "signal" | "discord" | "telegram";
+}
+
 export interface StartLifeOpsGoogleConnectorRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  /** Re-authenticate an existing account by grant ID (multi-account). */
+  grantId?: string;
   capabilities?: LifeOpsGoogleCapability[];
   redirectUrl?: string;
 }
@@ -1775,3 +2081,32 @@ export interface CompleteLifeOpsBrowserSessionRequest {
   status?: Extract<LifeOpsBrowserSessionStatus, "done" | "failed">;
   result?: Record<string, unknown>;
 }
+
+// ── Settings card prop contracts ─────────────────────────────────────────────
+
+export type AppBlockerSettingsMode = "desktop" | "mobile" | "web";
+
+export interface AppBlockerSettingsCardProps {
+  mode: AppBlockerSettingsMode;
+}
+
+export type WebsiteBlockerSettingsMode = "desktop" | "mobile" | "web";
+
+export interface WebsiteBlockerSettingsCardProps {
+  mode: WebsiteBlockerSettingsMode;
+  permission?: import("./permissions.js").PermissionState;
+  platform?: string;
+  onOpenPermissionSettings?: () => void | Promise<void>;
+  onRequestPermission?: () => void | Promise<void>;
+}
+
+// ── Occurrence action results ────────────────────────────────────────────────
+
+export interface LifeOpsOccurrenceActionResult {
+  occurrence: LifeOpsOccurrenceView;
+}
+
+// ── Wave 1+ extensions (relationships, X read, cross-channel, screen time,
+//    scheduling, dossier, iMessage, WhatsApp). Re-exported from this barrel so
+//    all downstream imports continue to use `@elizaos/shared/contracts/lifeops`.
+export * from "./lifeops-extensions.js";

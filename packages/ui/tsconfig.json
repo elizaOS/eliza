@@ -14,6 +14,7 @@
     "paths": {
       "@elizaos/app-lifeops": ["./apps/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["./apps/app-lifeops/src/*"],
+      "@elizaos/app-lifeops/types": ["./apps/app-lifeops/src/types/index.ts"],
       "@elizaos/app-task-coordinator": [
         "./apps/app-task-coordinator/src/index.ts"
       ],
@@ -40,6 +41,8 @@
       "@elizaos/agent/*": ["./packages/agent/src/*"],
       "@elizaos/app-companion": ["./apps/app-companion/src/index.ts"],
       "@elizaos/app-companion/*": ["./apps/app-companion/src/*"],
+      "@elizaos/app-elizamaker": ["./apps/app-elizamaker/src/index.ts"],
+      "@elizaos/app-elizamaker/*": ["./apps/app-elizamaker/src/*"],
       "@elizaos/shared": ["./packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["./packages/shared/src/*"],
       "@elizaos/core": ["./packages/typescript/src/index.ts"],

@@ -1,5 +1,12 @@
-
-
+import {
+  Button,
+  Checkbox,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@elizaos/ui";
 import React, {
   createContext,
   useCallback,
@@ -7,15 +14,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { useApp } from "../../state";
-import { confirmDesktopAction, resolveAppAssetUrl } from "../../utils";
 import { getByPath, setByPath } from "../../config/config-catalog";
-import {
-  ConfigFieldErrors,
-  getConfigInputClassName,
-  getConfigTextareaClassName,
-} from "./config-control-primitives";
-import { Button, Checkbox, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@elizaos/ui";
 import type {
   AuthState,
   CondExpr,
@@ -26,6 +25,13 @@ import type {
   UiSpecValidationCheck,
   UiSpecVisibilityCondition,
 } from "../../config/ui-spec";
+import { useApp } from "../../state";
+import { confirmDesktopAction, resolveAppAssetUrl } from "../../utils";
+import {
+  ConfigFieldErrors,
+  getConfigInputClassName,
+  getConfigTextareaClassName,
+} from "./config-control-primitives";
 
 const UiContext = createContext<UiRenderContext | null>(null);
 
@@ -583,15 +589,16 @@ const CheckboxComponent: ComponentFn = (props, _children, ctx) => {
     props.statePath as string | undefined,
     ctx,
   );
-  // biome-ignore lint/a11y/noLabelWithoutControl: form control is associated programmatically
   return (
-    <label className="flex items-center gap-2 text-xs cursor-pointer">
+    <div className="flex items-center gap-2 text-xs cursor-pointer">
       <Checkbox
         checked={!!value}
-        onCheckedChange={(checked: boolean | "indeterminate") => setValue(!!checked)}
+        onCheckedChange={(checked: boolean | "indeterminate") =>
+          setValue(!!checked)
+        }
       />
       <span className="font-semibold">{String(props.label ?? "")}</span>
-    </label>
+    </div>
   );
 };
 
@@ -807,10 +814,7 @@ const TableComponent: ComponentFn = (props) => {
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr
-              key={row.join("|")}
-              className=""
-            >
+            <tr key={row.join("|")} className="">
               {row.map((cell) => (
                 <td key={cell} className="px-2.5 py-1.5">
                   {cell}

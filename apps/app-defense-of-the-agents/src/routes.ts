@@ -2,22 +2,11 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type {
   AppLaunchDiagnostic,
   AppLaunchResult,
+  AppLaunchSessionContext,
+  AppRunSessionContext,
   AppSessionActionResult,
   AppSessionState,
 } from "@elizaos/shared/contracts/apps";
-
-/** Inlined from packages/agent — keeps this plugin free of circular deps. */
-interface AppLaunchSessionContext {
-  appName: string;
-  launchUrl: string | null;
-  runtime: IAgentRuntime | null;
-  viewer: AppLaunchResult["viewer"] | null;
-}
-
-interface AppRunSessionContext extends AppLaunchSessionContext {
-  runId: string;
-  session: AppSessionState | null;
-}
 
 const APP_NAME = "@elizaos/app-defense-of-the-agents";
 const APP_DISPLAY_NAME = "Defense of the Agents";
@@ -2019,6 +2008,27 @@ export async function refreshRunSession(
       degradedSession.summary ?? "Defense refresh degraded.",
     );
     return degradedSession;
+  }
+}
+
+/**
+ * Called by the host app-manager when the user stops the Defense of the
+ * Agents run. Stops the auto-play game loop and the review-timer interval
+ * so the game actually stops server-side instead of just unmounting the
+ * viewer iframe.
+ *
+ * Idempotent: if auto-play isn't running this is a no-op.
+ */
+export async function stopRun(ctx: {
+  runtime: unknown | null;
+}): Promise<void> {
+  try {
+    stopGameLoop(ctx.runtime as IAgentRuntime | null);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[app-defense-of-the-agents] stopRun: stopGameLoop failed: ${msg}`,
+    );
   }
 }
 

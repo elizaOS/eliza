@@ -1,1 +1,1 @@
-ai.milady.plugins.camera
+ai.eliza.plugins.camera

@@ -28,6 +28,7 @@ export const completeGoal: Action = {
   name: "COMPLETE_GOAL",
   description:
     "Mark the active goal (or a specific goal id) as completed or abandoned. Use <status>completed|abandoned</status> and optional <notes>why</notes>.",
+  descriptionCompressed: "Mark goal completed or abandoned.",
   similes: ["FINISH_GOAL", "ABANDON_GOAL", "CLOSE_GOAL"],
   examples: [],
   validate: async (

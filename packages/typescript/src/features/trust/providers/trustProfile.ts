@@ -5,7 +5,7 @@ import type {
 	Provider,
 	State,
 } from "../../../types/index.ts";
-import type { TrustEngineServiceWrapper } from "../index.ts";
+import type { TrustEngineServiceWrapper } from "../services/wrappers.ts";
 import type { TrustInteraction } from "../types/trust.ts";
 
 export const trustProfileProvider: Provider = {

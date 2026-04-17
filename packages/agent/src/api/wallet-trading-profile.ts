@@ -1,9 +1,3 @@
-/**
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/api/wallet-trading-profile`.
- * New development should target the app-steward package.
- */
-
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "../config/paths.js";
@@ -12,6 +6,7 @@ import type {
   BscTradeTxStatus,
   WalletTradeLedgerEntry,
   WalletTradeLedgerQuoteLeg,
+  WalletTradeLedgerRecordInput,
   WalletTradeSource,
   WalletTradingProfileRecentSwap,
   WalletTradingProfileResponse,
@@ -31,26 +26,7 @@ interface WalletTradeLedgerStore {
   entries: WalletTradeLedgerEntry[];
 }
 
-export interface WalletTradeLedgerRecordInput {
-  hash: string;
-  source: WalletTradeSource;
-  side: BscTradeSide;
-  tokenAddress: string;
-  slippageBps: number;
-  route: string[];
-  quoteIn: WalletTradeLedgerQuoteLeg;
-  quoteOut: WalletTradeLedgerQuoteLeg;
-  status: BscTradeTxStatus;
-  confirmations: number;
-  nonce: number | null;
-  blockNumber: number | null;
-  gasUsed: string | null;
-  effectiveGasPriceWei: string | null;
-  reason?: string;
-  explorerUrl: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
+export type { WalletTradeLedgerRecordInput };
 
 export interface WalletTradeLedgerStatusPatch {
   status: BscTradeTxStatus;

@@ -1,5 +1,8 @@
-import type { SessionConfig, SessionSendPolicyConfig } from "@elizaos/core";
-import type { RolesConfig } from "@elizaos/core";
+import type {
+  RolesConfig,
+  SessionConfig,
+  SessionSendPolicyConfig,
+} from "@elizaos/core";
 import type {
   CustomActionDef,
   DatabaseProviderType,
@@ -464,6 +467,8 @@ export type PluginsLoadConfig = {
 export type PluginInstallRecord = {
   source: "npm" | "archive" | "path";
   spec?: string;
+  requestedVersion?: string;
+  releaseStream?: "latest" | "alpha";
   sourcePath?: string;
   installPath?: string;
   version?: string;
@@ -616,11 +621,11 @@ export type X402Config = {
 // --- Local embedding runtime config ---
 
 export type EmbeddingConfig = {
-  /** GGUF model filename (e.g. "nomic-embed-text-v1.5.Q5_K_M.gguf"). */
+  /** GGUF model filename (e.g. "bge-small-en-v1.5.Q4_K_M.gguf"). */
   model?: string;
   /** Optional Hugging Face repo/source for model resolution. */
   modelRepo?: string;
-  /** Embedding vector dimension (default: 768). */
+  /** Embedding vector dimension (default: 384). */
   dimensions?: number;
   /** Embedding context window size (must match the model; default: model hint). */
   contextSize?: number;
@@ -721,6 +726,14 @@ export type ElizaConfig = {
       /** Assistant avatar (emoji, short text, or image URL/data URI). */
       avatar?: string;
     };
+    /** Selected built-in avatar index (0 means custom upload). */
+    avatarIndex?: number;
+    /** Selected UI / character language. */
+    language?: string;
+    /** Selected built-in character preset id. */
+    presetId?: string;
+    /** Owner display name set during onboarding or via LifeOps. */
+    ownerName?: string;
   };
   knowledge?: KnowledgeConfig;
   roles?: RolesConfig;
@@ -751,6 +764,24 @@ export type ElizaConfig = {
   database?: DatabaseConfig;
   /** Eliza Cloud integration for remote agent provisioning and inference. */
   cloud?: CloudConfig;
+  /** Wallet source selection and cached cloud wallet descriptors. */
+  wallet?: {
+    primary?: Partial<Record<"evm" | "solana", "local" | "cloud">>;
+    cloud?: Partial<
+      Record<
+        "evm" | "solana",
+        {
+          agentWalletId?: string | null;
+          walletAddress?: string | null;
+          address?: string | null;
+          walletProvider?: string | null;
+          balance?: string | number | null;
+        }
+      >
+    >;
+    rpcProviders?: Record<string, string>;
+    [key: string]: unknown;
+  };
   /** Deployment target for the current agent runtime. */
   deploymentTarget?: DeploymentTargetConfig;
   /** Linked external accounts that can be used by routing decisions. */

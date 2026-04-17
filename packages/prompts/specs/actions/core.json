@@ -14,128 +14,235 @@
       "parameters": [],
       "examples": [
         [
-          { "name": "{{name1}}", "content": { "text": "Hello there!" } },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Hello there!"
+            }
+          },
           {
             "name": "{{name2}}",
             "content": {
               "text": "Hi! How can I help you today?",
-              "actions": ["REPLY"]
+              "actions": [
+                "REPLY"
+              ]
             }
           }
         ],
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "What's your favorite color?" }
+            "content": {
+              "text": "What's your favorite color?"
+            }
           },
           {
             "name": "{{name2}}",
             "content": {
               "text": "I really like deep shades of blue. They remind me of the ocean and the night sky.",
-              "actions": ["REPLY"]
+              "actions": [
+                "REPLY"
+              ]
             }
           }
         ],
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "Can you explain how neural networks work?" }
+            "content": {
+              "text": "Can you explain how neural networks work?"
+            }
           },
           {
             "name": "{{name2}}",
             "content": {
               "text": "Let me break that down for you in simple terms...",
-              "actions": ["REPLY"]
+              "actions": [
+                "REPLY"
+              ]
             }
           }
         ],
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "Could you help me solve this math problem?" }
+            "content": {
+              "text": "Could you help me solve this math problem?"
+            }
           },
           {
             "name": "{{name2}}",
             "content": {
               "text": "Of course! Let's work through it step by step.",
-              "actions": ["REPLY"]
+              "actions": [
+                "REPLY"
+              ]
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Reply with generated msg. Default when responding with no other action. Use first as ack, last as final response."
     },
     {
       "name": "IGNORE",
       "description": "Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.",
-      "similes": ["STOP_TALKING", "STOP_CHATTING", "STOP_CONVERSATION"],
+      "similes": [
+        "STOP_TALKING",
+        "STOP_CHATTING",
+        "STOP_CONVERSATION"
+      ],
       "parameters": [],
       "examples": [
         [
-          { "name": "{{name1}}", "content": { "text": "Go screw yourself" } },
-          {
-            "name": "{{name2}}",
-            "content": { "text": "", "actions": ["IGNORE"] }
-          }
-        ],
-        [
-          { "name": "{{name1}}", "content": { "text": "Shut up, bot" } },
-          {
-            "name": "{{name2}}",
-            "content": { "text": "", "actions": ["IGNORE"] }
-          }
-        ],
-        [
-          { "name": "{{name1}}", "content": { "text": "Gotta go" } },
-          {
-            "name": "{{name2}}",
-            "content": { "text": "Okay, talk to you later" }
-          },
-          { "name": "{{name1}}", "content": { "text": "Cya" } },
-          {
-            "name": "{{name2}}",
-            "content": { "text": "", "actions": ["IGNORE"] }
-          }
-        ],
-        [
-          { "name": "{{name1}}", "content": { "text": "bye" } },
-          { "name": "{{name2}}", "content": { "text": "cya" } },
           {
             "name": "{{name1}}",
-            "content": { "text": "", "actions": ["IGNORE"] }
+            "content": {
+              "text": "Go screw yourself"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "",
+              "actions": [
+                "IGNORE"
+              ]
+            }
           }
         ],
         [
-          { "name": "{{name1}}", "content": { "text": "wanna cyber" } },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Shut up, bot"
+            }
+          },
           {
             "name": "{{name2}}",
-            "content": { "text": "thats inappropriate", "actions": ["IGNORE"] }
+            "content": {
+              "text": "",
+              "actions": [
+                "IGNORE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Gotta go"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Okay, talk to you later"
+            }
+          },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Cya"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "",
+              "actions": [
+                "IGNORE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "bye"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "cya"
+            }
+          },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "",
+              "actions": [
+                "IGNORE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "wanna cyber"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "thats inappropriate",
+              "actions": [
+                "IGNORE"
+              ]
+            }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Ignore user. Use when aggressive, creepy, conversation ended, or both sides said goodbye. Don't use if user engaged directly or needs error info."
     },
     {
       "name": "NONE",
       "description": "Respond but perform no additional action. This is the default if the agent is speaking and not doing anything additional.",
-      "similes": ["NO_ACTION", "NO_RESPONSE", "NO_REACTION", "NOOP", "PASS"],
+      "similes": [
+        "NO_ACTION",
+        "NO_RESPONSE",
+        "NO_REACTION",
+        "NOOP",
+        "PASS"
+      ],
       "parameters": [],
       "examples": [
         [
-          { "name": "{{name1}}", "content": { "text": "Hey whats up" } },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Hey whats up"
+            }
+          },
           {
             "name": "{{name2}}",
-            "content": { "text": "oh hey", "actions": ["NONE"] }
+            "content": {
+              "text": "oh hey",
+              "actions": [
+                "NONE"
+              ]
+            }
           }
         ],
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "did u see some faster whisper just came out" }
+            "content": {
+              "text": "did u see some faster whisper just came out"
+            }
           },
           {
             "name": "{{name2}}",
             "content": {
               "text": "yeah but its a pain to get into node.js",
-              "actions": ["NONE"]
+              "actions": [
+                "NONE"
+              ]
             }
           }
         ],
@@ -144,28 +251,43 @@
             "name": "{{name1}}",
             "content": {
               "text": "u think aliens are real",
-              "actions": ["NONE"]
+              "actions": [
+                "NONE"
+              ]
             }
           },
           {
             "name": "{{name2}}",
-            "content": { "text": "ya obviously", "actions": ["NONE"] }
+            "content": {
+              "text": "ya obviously",
+              "actions": [
+                "NONE"
+              ]
+            }
           }
         ],
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "drop a joke on me", "actions": ["NONE"] }
+            "content": {
+              "text": "drop a joke on me",
+              "actions": [
+                "NONE"
+              ]
+            }
           },
           {
             "name": "{{name2}}",
             "content": {
               "text": "why dont scientists trust atoms cuz they make up everything lmao",
-              "actions": ["NONE"]
+              "actions": [
+                "NONE"
+              ]
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Respond without additional action. Default when speaking only."
     },
     {
       "name": "SEND_MESSAGE",
@@ -183,29 +305,57 @@
           "name": "targetType",
           "description": "Whether the message target is a user or a room.",
           "required": true,
-          "schema": { "type": "string", "enum": ["user", "room"] },
-          "examples": ["user", "room"]
+          "schema": {
+            "type": "string",
+            "enum": [
+              "user",
+              "room"
+            ]
+          },
+          "examples": [
+            "user",
+            "room"
+          ],
+          "descriptionCompressed": "user or room target."
         },
         {
           "name": "source",
           "description": "The platform/source to send the message on (e.g. telegram, discord, x).",
           "required": false,
-          "schema": { "type": "string" },
-          "examples": ["telegram", "discord"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "telegram",
+            "discord"
+          ],
+          "descriptionCompressed": "Platform (telegram, discord, x)."
         },
         {
           "name": "target",
           "description": "Identifier of the target. For user targets, a name/handle/id; for room targets, a room name/id.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["dev_guru", "announcements"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "dev_guru",
+            "announcements"
+          ],
+          "descriptionCompressed": "Target name/handle/id."
         },
         {
           "name": "text",
           "description": "The message content to send.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["Hello!", "Important announcement!"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "Hello!",
+            "Important announcement!"
+          ],
+          "descriptionCompressed": "Message content."
         }
       ],
       "examples": [
@@ -220,7 +370,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "Message sent to dev_guru on telegram.",
-              "actions": ["SEND_MESSAGE"]
+              "actions": [
+                "SEND_MESSAGE"
+              ]
             }
           }
         ],
@@ -235,20 +387,26 @@
             "name": "{{name2}}",
             "content": {
               "text": "Message sent to announcements.",
-              "actions": ["SEND_MESSAGE"]
+              "actions": [
+                "SEND_MESSAGE"
+              ]
             }
           }
         ],
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "DM Jimmy and tell him 'Meeting at 3pm'" }
+            "content": {
+              "text": "DM Jimmy and tell him 'Meeting at 3pm'"
+            }
           },
           {
             "name": "{{name2}}",
             "content": {
               "text": "Message sent to Jimmy.",
-              "actions": ["SEND_MESSAGE"]
+              "actions": [
+                "SEND_MESSAGE"
+              ]
             }
           }
         ]
@@ -256,7 +414,10 @@
       "exampleCalls": [
         {
           "user": "Send a message to @dev_guru on telegram saying \"Hello!\"",
-          "actions": ["REPLY", "SEND_MESSAGE"],
+          "actions": [
+            "REPLY",
+            "SEND_MESSAGE"
+          ],
           "params": {
             "SEND_MESSAGE": {
               "targetType": "user",
@@ -266,7 +427,8 @@
             }
           }
         }
-      ]
+      ],
+      "descriptionCompressed": "Send msg to another user or room (not current)."
     },
     {
       "name": "ADD_CONTACT",
@@ -294,15 +456,26 @@
           "name": "name",
           "description": "The contact's primary name.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["Sarah Chen", "John Smith"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "Sarah Chen",
+            "John Smith"
+          ],
+          "descriptionCompressed": "Contact name."
         },
         {
           "name": "notes",
           "description": "Optional notes about the contact (short summary, context, or preferences).",
           "required": false,
-          "schema": { "type": "string" },
-          "examples": ["Met at the AI meetup; interested in agents"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "Met at the AI meetup; interested in agents"
+          ],
+          "descriptionCompressed": "Optional notes/context."
         }
       ],
       "examples": [
@@ -337,33 +510,52 @@
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "Remember Alice as a VIP contact" }
+            "content": {
+              "text": "Remember Alice as a VIP contact"
+            }
           },
           {
             "name": "{{name2}}",
-            "content": { "text": "I've added Alice to your contacts as a VIP." }
+            "content": {
+              "text": "I've added Alice to your contacts as a VIP."
+            }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Add contact to relationships with category/preferences."
     },
     {
       "name": "UPDATE_CONTACT",
       "description": "Update an existing contact's details in the relationships.",
-      "similes": ["EDIT_CONTACT", "MODIFY_CONTACT", "CHANGE_CONTACT_INFO"],
+      "similes": [
+        "EDIT_CONTACT",
+        "MODIFY_CONTACT",
+        "CHANGE_CONTACT_INFO"
+      ],
       "parameters": [
         {
           "name": "name",
           "description": "The contact name to update (must match an existing contact).",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["Sarah Chen"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "Sarah Chen"
+          ],
+          "descriptionCompressed": "Contact name (must match existing)."
         },
         {
           "name": "updates",
           "description": "A JSON object of fields to update (stringified JSON).",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["{\"notes\":\"prefers email\",\"tags\":[\"friend\"]}"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "{\"notes\":\"prefers email\",\"tags\":[\"friend\"]}"
+          ],
+          "descriptionCompressed": "Fields to update (JSON)."
         }
       ],
       "examples": [
@@ -381,7 +573,8 @@
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Update existing contact details."
     },
     {
       "name": "REMOVE_CONTACT",
@@ -398,15 +591,22 @@
           "name": "name",
           "description": "The contact name to remove.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["Sarah Chen"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "Sarah Chen"
+          ],
+          "descriptionCompressed": "Contact name."
         }
       ],
       "examples": [
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "Remove John from my contacts" }
+            "content": {
+              "text": "Remove John from my contacts"
+            }
           },
           {
             "name": "{{name2}}",
@@ -414,13 +614,21 @@
               "text": "Are you sure you want to remove John from your contacts?"
             }
           },
-          { "name": "{{name1}}", "content": { "text": "Yes" } },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Yes"
+            }
+          },
           {
             "name": "{{name2}}",
-            "content": { "text": "I've removed John from your contacts." }
+            "content": {
+              "text": "I've removed John from your contacts."
+            }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Remove contact from relationships."
     },
     {
       "name": "SEARCH_CONTACTS",
@@ -441,13 +649,24 @@
           "name": "query",
           "description": "Search query (name, handle, or free-text).",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["sarah", "AI meetup"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "sarah",
+            "AI meetup"
+          ],
+          "descriptionCompressed": "Search query (name/handle/free-text)."
         }
       ],
       "examples": [
         [
-          { "name": "{{name1}}", "content": { "text": "Show me my friends" } },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Show me my friends"
+            }
+          },
           {
             "name": "{{name2}}",
             "content": {
@@ -455,7 +674,8 @@
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Search/list contacts by name or query."
     },
     {
       "name": "SCHEDULE_FOLLOW_UP",
@@ -477,22 +697,37 @@
           "name": "name",
           "description": "Contact name to follow up with.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["Sarah Chen"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "Sarah Chen"
+          ],
+          "descriptionCompressed": "Contact name."
         },
         {
           "name": "when",
           "description": "When to follow up. Use an ISO-8601 datetime string.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["2026-02-01T09:00:00Z"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "2026-02-01T09:00:00Z"
+          ],
+          "descriptionCompressed": "ISO-8601 datetime."
         },
         {
           "name": "reason",
           "description": "Optional reason/context for the follow-up.",
           "required": false,
-          "schema": { "type": "string" },
-          "examples": ["Check in about the agent framework demo"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "Check in about the agent framework demo"
+          ],
+          "descriptionCompressed": "Optional reason/context."
         }
       ],
       "examples": [
@@ -510,7 +745,8 @@
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Schedule follow-up reminder for contact."
     },
     {
       "name": "CHOOSE_OPTION",
@@ -529,32 +765,48 @@
           "name": "taskId",
           "description": "The pending task id.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["c0a8012e"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "c0a8012e"
+          ],
+          "descriptionCompressed": "Pending task id."
         },
         {
           "name": "option",
           "description": "The selected option name exactly as listed.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["APPROVE", "ABORT"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "APPROVE",
+            "ABORT"
+          ],
+          "descriptionCompressed": "Option name exactly as listed."
         }
       ],
       "examples": [
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "Select the first option" }
+            "content": {
+              "text": "Select the first option"
+            }
           },
           {
             "name": "{{name2}}",
             "content": {
               "text": "I've selected option 1 for the pending task.",
-              "actions": ["CHOOSE_OPTION"]
+              "actions": [
+                "CHOOSE_OPTION"
+              ]
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Select option for pending multi-choice task."
     },
     {
       "name": "FOLLOW_ROOM",
@@ -574,38 +826,52 @@
           "name": "roomId",
           "description": "The target room id to follow.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["00000000-0000-0000-0000-000000000000"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "00000000-0000-0000-0000-000000000000"
+          ],
+          "descriptionCompressed": "Room id to follow."
         }
       ],
       "examples": [
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "hey {{name2}} follow this channel" }
+            "content": {
+              "text": "hey {{name2}} follow this channel"
+            }
           },
           {
             "name": "{{name2}}",
             "content": {
               "text": "Sure, I will now follow this room and chime in",
-              "actions": ["FOLLOW_ROOM"]
+              "actions": [
+                "FOLLOW_ROOM"
+              ]
             }
           }
         ],
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "{{name2}} stay in this chat pls" }
+            "content": {
+              "text": "{{name2}} stay in this chat pls"
+            }
           },
           {
             "name": "{{name2}}",
             "content": {
               "text": "you got it, i'm here",
-              "actions": ["FOLLOW_ROOM"]
+              "actions": [
+                "FOLLOW_ROOM"
+              ]
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Start following channel, chiming in without @mention. Only when explicitly asked."
     },
     {
       "name": "UNFOLLOW_ROOM",
@@ -625,25 +891,35 @@
           "name": "roomId",
           "description": "The target room id to unfollow.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["00000000-0000-0000-0000-000000000000"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "00000000-0000-0000-0000-000000000000"
+          ],
+          "descriptionCompressed": "Room id to unfollow."
         }
       ],
       "examples": [
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "{{name2}} stop following this channel" }
+            "content": {
+              "text": "{{name2}} stop following this channel"
+            }
           },
           {
             "name": "{{name2}}",
             "content": {
               "text": "Okay, I'll stop following this room",
-              "actions": ["UNFOLLOW_ROOM"]
+              "actions": [
+                "UNFOLLOW_ROOM"
+              ]
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Stop following room, cease updates."
     },
     {
       "name": "MUTE_ROOM",
@@ -663,8 +939,13 @@
           "name": "roomId",
           "description": "The room id to mute.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["00000000-0000-0000-0000-000000000000"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "00000000-0000-0000-0000-000000000000"
+          ],
+          "descriptionCompressed": "Room id to mute."
         }
       ],
       "examples": [
@@ -677,20 +958,33 @@
           },
           {
             "name": "{{name2}}",
-            "content": { "text": "Got it", "actions": ["MUTE_ROOM"] }
+            "content": {
+              "text": "Got it",
+              "actions": [
+                "MUTE_ROOM"
+              ]
+            }
           }
         ],
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "{{name2}} plz mute this room" }
+            "content": {
+              "text": "{{name2}} plz mute this room"
+            }
           },
           {
             "name": "{{name2}}",
-            "content": { "text": "np going silent", "actions": ["MUTE_ROOM"] }
+            "content": {
+              "text": "np going silent",
+              "actions": [
+                "MUTE_ROOM"
+              ]
+            }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Mute room, ignore msgs unless @mentioned. Only when asked or annoying."
     },
     {
       "name": "UNMUTE_ROOM",
@@ -710,25 +1004,35 @@
           "name": "roomId",
           "description": "The room id to unmute.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["00000000-0000-0000-0000-000000000000"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "00000000-0000-0000-0000-000000000000"
+          ],
+          "descriptionCompressed": "Room id to unmute."
         }
       ],
       "examples": [
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "{{name2}} unmute this room please" }
+            "content": {
+              "text": "{{name2}} unmute this room please"
+            }
           },
           {
             "name": "{{name2}}",
             "content": {
               "text": "I've unmuted this room and will respond again",
-              "actions": ["UNMUTE_ROOM"]
+              "actions": [
+                "UNMUTE_ROOM"
+              ]
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Unmute room, resume responding."
     },
     {
       "name": "UPDATE_SETTINGS",
@@ -749,25 +1053,35 @@
           "name": "updates",
           "description": "A JSON array of {\"key\": string, \"value\": string} updates (stringified JSON).",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["[{\"key\":\"model\",\"value\":\"gpt-5\"}]"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "[{\"key\":\"model\",\"value\":\"gpt-5\"}]"
+          ],
+          "descriptionCompressed": "JSON array of {key, value} updates."
         }
       ],
       "examples": [
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "Change my language setting to French" }
+            "content": {
+              "text": "Change my language setting to French"
+            }
           },
           {
             "name": "{{name2}}",
             "content": {
               "text": "I've updated your language setting to French.",
-              "actions": ["UPDATE_SETTINGS"]
+              "actions": [
+                "UPDATE_SETTINGS"
+              ]
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Update agent settings via key/value pairs."
     },
     {
       "name": "UPDATE_ROLE",
@@ -786,29 +1100,48 @@
           "name": "entityId",
           "description": "The entity id to update.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["00000000-0000-0000-0000-000000000000"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "00000000-0000-0000-0000-000000000000"
+          ],
+          "descriptionCompressed": "Entity id."
         },
         {
           "name": "role",
           "description": "The new role to assign.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["admin", "member"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "admin",
+            "member"
+          ],
+          "descriptionCompressed": "Role to assign."
         }
       ],
       "examples": [
         [
-          { "name": "{{name1}}", "content": { "text": "Make Sarah an admin" } },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Make Sarah an admin"
+            }
+          },
           {
             "name": "{{name2}}",
             "content": {
               "text": "I've assigned the admin role to Sarah.",
-              "actions": ["UPDATE_ROLE"]
+              "actions": [
+                "UPDATE_ROLE"
+              ]
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Assign role (Admin/Owner/None) to user(s) in channel."
     },
     {
       "name": "UPDATE_ENTITY",
@@ -825,15 +1158,25 @@
           "name": "entityId",
           "description": "The entity id to update.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["00000000-0000-0000-0000-000000000000"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "00000000-0000-0000-0000-000000000000"
+          ],
+          "descriptionCompressed": "Entity id."
         },
         {
           "name": "updates",
           "description": "A JSON array of {\"name\": string, \"value\": string} field updates (stringified JSON).",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["[{\"name\":\"bio\",\"value\":\"Loves Rust\"}]"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "[{\"name\":\"bio\",\"value\":\"Loves Rust\"}]"
+          ],
+          "descriptionCompressed": "JSON array of {name, value} updates."
         }
       ],
       "examples": [
@@ -848,11 +1191,14 @@
             "name": "{{name2}}",
             "content": {
               "text": "I've updated your profile bio.",
-              "actions": ["UPDATE_ENTITY"]
+              "actions": [
+                "UPDATE_ENTITY"
+              ]
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Edit contact details for person in conversation."
     },
     {
       "name": "THINK",
@@ -880,7 +1226,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "That's a great question with several important trade-offs to consider. Let me think through this carefully...",
-              "actions": ["THINK"]
+              "actions": [
+                "THINK"
+              ]
             }
           }
         ],
@@ -895,7 +1243,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "Let me think about the trade-offs for your specific situation...",
-              "actions": ["THINK"]
+              "actions": [
+                "THINK"
+              ]
             }
           }
         ],
@@ -910,7 +1260,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "There are several possible causes here. Let me reason through the full request path systematically...",
-              "actions": ["THINK"]
+              "actions": [
+                "THINK"
+              ]
             }
           }
         ],
@@ -925,11 +1277,14 @@
             "name": "{{name2}}",
             "content": {
               "text": "Cross-platform auth with multiple identity providers has some nuance. Let me plan this out...",
-              "actions": ["THINK"]
+              "actions": [
+                "THINK"
+              ]
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Deep reasoning for complex/ambiguous questions. Re-processes full context through larger model. Use when careful reasoning needed, not for simple lookups."
     },
     {
       "name": "GENERATE_IMAGE",
@@ -948,8 +1303,13 @@
           "name": "prompt",
           "description": "Image generation prompt.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["A futuristic cityscape at sunset, cinematic lighting"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "A futuristic cityscape at sunset, cinematic lighting"
+          ],
+          "descriptionCompressed": "Image prompt."
         }
       ],
       "examples": [
@@ -964,7 +1324,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "Sure, I'll create a futuristic city image for you. One moment...",
-              "actions": ["GENERATE_IMAGE"]
+              "actions": [
+                "GENERATE_IMAGE"
+              ]
             }
           }
         ],
@@ -979,7 +1341,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "I'll create a visualization of a neural network for you, one sec...",
-              "actions": ["GENERATE_IMAGE"]
+              "actions": [
+                "GENERATE_IMAGE"
+              ]
             }
           }
         ],
@@ -994,11 +1358,14 @@
             "name": "{{name2}}",
             "content": {
               "text": "Creating an image to capture calmness for you, please wait a moment...",
-              "actions": ["GENERATE_IMAGE"]
+              "actions": [
+                "GENERATE_IMAGE"
+              ]
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Generate image from conversation context. Use to visualize or illustrate."
     }
   ]
 }

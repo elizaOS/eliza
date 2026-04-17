@@ -4,7 +4,8 @@ import { extractParam } from "./param-parser.js";
 
 export const pickpocketNpc: Action = {
   name: "PICKPOCKET_NPC",
-  description: "Pickpocket a nearby NPC by name",
+  description: "Pickpocket a nearby NPC by name"
+  descriptionCompressed: "Pickpocket nearby NPC.",
   similes: ["STEAL_FROM_NPC", "THIEVE_NPC"],
   examples: [],
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {

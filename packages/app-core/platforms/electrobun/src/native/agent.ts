@@ -77,20 +77,8 @@ export interface BugReportBundleResult {
   startupStatusPath: string | null;
 }
 
-type ExistingElizaInstallSource =
-  | "config-path-env"
-  | "state-dir-env"
-  | "default-state-dir";
-
-export interface ExistingElizaInstallInfo {
-  detected: boolean;
-  stateDir: string;
-  configPath: string;
-  configExists: boolean;
-  stateDirExists: boolean;
-  hasStateEntries: boolean;
-  source: ExistingElizaInstallSource;
-}
+import type { ExistingElizaInstallInfo } from "../rpc-schema";
+export type { ExistingElizaInstallInfo };
 
 // Subprocess type from Bun.spawn
 type BunSubprocess = ReturnType<typeof Bun.spawn>;
@@ -574,9 +562,6 @@ export function getRuntimeDistFallbackCandidates(
   ].filter((candidate, index, all) => all.indexOf(candidate) === index);
 }
 
-/** @deprecated Use getRuntimeDistFallbackCandidates instead. */
-export const getAppDistFallbackCandidates = getRuntimeDistFallbackCandidates;
-
 export function isPackagedDesktopRuntime(
   moduleDir: string = getDefaultModuleDir(),
   execPath: string = process.execPath,
@@ -764,9 +749,6 @@ export function resolveRuntimeDistPath(opts?: {
   );
   return fallback;
 }
-
-/** @deprecated Use resolveRuntimeDistPath instead. */
-export const resolveAppDistPath = resolveRuntimeDistPath;
 
 export function buildChildNodePaths(
   runtimeDistPath: string,
@@ -1170,7 +1152,7 @@ export class AgentManager {
     try {
       // Resolve the bundled runtime dist path.
       this.setStartupPhase("resolving_runtime");
-      const runtimeDistPath = resolveAppDistPath();
+      const runtimeDistPath = resolveRuntimeDistPath();
       diagnosticLog(`[Agent] Resolved runtime dist: ${runtimeDistPath}`);
 
       // Packaged builds can expose the runnable entry either at the dist root

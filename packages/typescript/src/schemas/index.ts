@@ -24,6 +24,16 @@ import { channelParticipantSchema } from "./channel-participant.ts";
 import { componentSchema } from "./component.ts";
 import { embeddingSchema } from "./embedding.ts";
 import { entitySchema } from "./entity.ts";
+import {
+	entityIdentitySchema,
+	entityMergeCandidateSchema,
+	factCandidateSchema,
+} from "./entity-identity.ts";
+export type {
+	EntityMergeCandidateStatus,
+	FactCandidateKind,
+	FactCandidateStatus,
+} from "./entity-identity.ts";
 import { logSchema } from "./log.ts";
 import { memorySchema } from "./memory.ts";
 import { messageSchema } from "./message.ts";
@@ -46,7 +56,10 @@ export {
 	channelSchema,
 	componentSchema,
 	embeddingSchema,
+	entityIdentitySchema,
+	entityMergeCandidateSchema,
 	entitySchema,
+	factCandidateSchema,
 	logSchema,
 	// Advanced memory schemas
 	longTermMemories,

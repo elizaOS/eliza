@@ -1,18 +1,18 @@
 
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  client,
-  type BabylonActivityItem,
-  type BabylonAgentGoal,
-  type BabylonAgentStatus,
-  type BabylonChatMessage,
-  type BabylonLogEntry,
-  type BabylonPredictionMarket,
-  type BabylonTeamAgent,
-  type BabylonWallet,
-} from "../../api";
-import { useIntervalWhenDocumentVisible } from "../../hooks";
+import { client } from "../../api";
+import type {
+  BabylonActivityItem,
+  BabylonAgentGoal,
+  BabylonAgentStatus,
+  BabylonChatMessage,
+  BabylonLogEntry,
+  BabylonPredictionMarket,
+  BabylonTeamAgent,
+  BabylonWallet,
+} from "../../api/client-types-babylon";
+import { useIntervalWhenDocumentVisible } from "@elizaos/ui";
 import { useBabylonSSE } from "../../hooks/useBabylonSSE";
 import { formatTime } from "../../utils/format";
 import { Button, Input } from "@elizaos/ui";

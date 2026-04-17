@@ -4,7 +4,8 @@ import { extractParam, extractParamInt } from "./param-parser.js";
 
 export const walkTo: Action = {
   name: "WALK_TO",
-  description: "Walk the player to a coordinate or named destination (e.g. bank, lumbridge)",
+  description: "Walk the player to a coordinate or named destination (e.g. bank, lumbridge)"
+  descriptionCompressed: "Walk to coordinate or named destination.",
   similes: ["MOVE_TO", "GO_TO", "TRAVEL_TO"],
   examples: [],
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {

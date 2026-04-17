@@ -1,16 +1,14 @@
-import { resolveCharacterGreetingAnimation } from "@elizaos/app-core/components/character/character-greeting";
 import {
   dispatchAppEmoteEvent,
-  VRM_TELEPORT_COMPLETE_EVENT,
-} from "@elizaos/app-core/events";
-import { useRenderGuard } from "@elizaos/app-core/hooks/useRenderGuard";
-import { useCompanionSceneConfig } from "@elizaos/app-core/state/CompanionSceneConfigContext";
-import { useTranslation } from "@elizaos/app-core/state/TranslationContext";
-import {
   getVrmPreviewUrl,
   getVrmUrl,
+  resolveCharacterGreetingAnimation,
+  useCompanionSceneConfig,
+  useRenderGuard,
+  useTranslation,
   VRM_COUNT,
-} from "@elizaos/app-core/state/vrm";
+  VRM_TELEPORT_COMPLETE_EVENT,
+} from "@elizaos/app-core";
 import {
   memo,
   type ReactNode,

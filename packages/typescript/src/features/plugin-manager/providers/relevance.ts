@@ -1,6 +1,9 @@
-import * as core from "../../../index.ts";
 import type { Memory } from "../../../types/memory.ts";
 import type { State } from "../../../types/state.ts";
+import {
+	validateActionKeywords as coreValidateActionKeywords,
+	validateActionRegex as coreValidateActionRegex,
+} from "../../../validation/keywords.ts";
 
 const IGNORED_PLUGIN_NAME_TOKENS = new Set([
 	"app",
@@ -18,28 +21,6 @@ const escapeRegex = (value: string): string =>
 	value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const normalizeKeyword = (value: string): string => value.trim().toLowerCase();
-
-type CoreKeywordValidator = (
-	message: Memory,
-	recentMessages: Memory[],
-	keywords: string[],
-) => boolean;
-type CoreRegexValidator = (
-	message: Memory,
-	recentMessages: Memory[],
-	pattern: RegExp,
-) => boolean;
-
-const coreValidateActionKeywords = (
-	core as unknown as {
-		validateActionKeywords?: CoreKeywordValidator;
-	}
-).validateActionKeywords;
-const coreValidateActionRegex = (
-	core as unknown as {
-		validateActionRegex?: CoreRegexValidator;
-	}
-).validateActionRegex;
 
 export const PLUGIN_MANAGER_BASE_KEYWORDS = [
 	"plugin",

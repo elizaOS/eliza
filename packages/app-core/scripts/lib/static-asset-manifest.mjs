@@ -5,6 +5,10 @@ export const APP_PUBLIC_REPO_PREFIX = "apps/app/public";
 export const HOMEPAGE_PUBLIC_REPO_PREFIX = "apps/homepage/public";
 export const STATIC_ASSET_MANIFEST_REPO_PATH =
   "scripts/generated/static-asset-manifest.json";
+export const IGNORED_STATIC_ASSET_BASENAMES = new Set([
+  ".DS_Store",
+  "Thumbs.db",
+]);
 
 export const APP_DIST_BOOTSTRAP_ASSETS = [
   "animations/idle.glb.gz",
@@ -43,6 +47,12 @@ function listFilesRecursive(dir) {
 
   const files = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (
+      entry.name.startsWith(".") ||
+      IGNORED_STATIC_ASSET_BASENAMES.has(entry.name)
+    ) {
+      continue;
+    }
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       files.push(...listFilesRecursive(fullPath));

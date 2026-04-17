@@ -6,10 +6,6 @@
  *
  * DEX price oracle logic lives in ./wallet-dex-prices.ts
  * EVM balance + NFT fetching lives in ./wallet-evm-balance.ts
- *
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/api/wallet`.
- * New development should target the app-steward package.
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -27,6 +23,11 @@ import type {
   WalletImportResult,
   WalletKeys,
 } from "../contracts/wallet.js";
+
+type StewardAgentPayload = {
+  walletAddress?: string;
+  walletAddresses?: { evm?: string; solana?: string };
+};
 
 // ── Re-exports from contracts/wallet ──────────────────────────────────
 
@@ -592,13 +593,10 @@ export async function initStewardWalletCache(): Promise<void> {
 
     const body = (await res.json()) as {
       ok?: boolean;
-      data?: {
-        walletAddress?: string;
-        walletAddresses?: { evm?: string; solana?: string };
-      };
-    };
+      data?: StewardAgentPayload;
+    } & StewardAgentPayload;
 
-    const agent = body.data ?? (body as unknown as typeof body.data);
+    const agent = body.data ?? body;
     const stewardEvm =
       agent?.walletAddresses?.evm?.trim() ||
       agent?.walletAddress?.trim() ||
@@ -732,13 +730,10 @@ export async function getWalletAddressesWithSteward(): Promise<
 
     const body = (await res.json()) as {
       ok?: boolean;
-      data?: {
-        walletAddress?: string;
-        walletAddresses?: { evm?: string; solana?: string };
-      };
-    };
+      data?: StewardAgentPayload;
+    } & StewardAgentPayload;
 
-    const agent = body.data ?? (body as unknown as typeof body.data);
+    const agent = body.data ?? body;
     const stewardEvm =
       agent?.walletAddresses?.evm?.trim() ||
       agent?.walletAddress?.trim() ||

@@ -35,16 +35,16 @@ export interface ConnectorSetupServiceInstance extends Service {
   /** Resolve the default agent workspace directory. */
   getWorkspaceDir(): string;
   /** Broadcast a WebSocket message to all connected clients. */
-  broadcastWs(data: Record<string, unknown>): void;
+  broadcastWs(data: object): void;
   /** Set the WebSocket broadcast function (called by the server during startup). */
-  setBroadcastWs(fn: ((data: Record<string, unknown>) => void) | null): void;
+  setBroadcastWs(fn: ((data: object) => void) | null): void;
 }
 
 export class ConnectorSetupService extends Service {
   static serviceType = "connector-setup";
   capabilityDescription = "Shared connector setup utilities for plugins";
 
-  private broadcastWsFn: ((data: Record<string, unknown>) => void) | null =
+  private broadcastWsFn: ((data: object) => void) | null =
     null;
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
@@ -91,11 +91,11 @@ export class ConnectorSetupService extends Service {
     return resolveDefaultAgentWorkspaceDir();
   }
 
-  broadcastWs(data: Record<string, unknown>): void {
+  broadcastWs(data: object): void {
     this.broadcastWsFn?.(data);
   }
 
-  setBroadcastWs(fn: ((data: Record<string, unknown>) => void) | null): void {
+  setBroadcastWs(fn: ((data: object) => void) | null): void {
     this.broadcastWsFn = fn;
   }
 }

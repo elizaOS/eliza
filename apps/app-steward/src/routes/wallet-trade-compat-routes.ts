@@ -7,9 +7,11 @@
  */
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
+import {
+  readCompatJsonBody,
+  type CompatRuntimeState,
+} from "@elizaos/app-core/api/compat-route-shared";
 import { ensureCompatApiAuthorized } from "@elizaos/app-core/api/auth";
-import type { CompatRuntimeState } from "@elizaos/app-core/api/compat-route-shared";
-import { readCompatJsonBody } from "@elizaos/app-core/api/compat-route-shared";
 import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,

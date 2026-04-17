@@ -24,6 +24,8 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type {
   AppLaunchDiagnostic,
   AppLaunchResult,
+  AppLaunchSessionContext,
+  AppRunSessionContext,
   AppSessionActionResult,
   AppSessionState,
 } from "@elizaos/shared/contracts/apps";
@@ -59,23 +61,6 @@ const VIEWER_FRAME_ANCESTORS_DIRECTIVE =
   "http://[::1]:* http://[0:0:0:0:0:0:0:1]:* https://localhost:* " +
   "https://127.0.0.1:* https://[::1]:* https://[0:0:0:0:0:0:0:1]:* " +
   "electrobun: capacitor: capacitor-electron: app: tauri: file:";
-
-// ---------------------------------------------------------------------------
-// Types inlined from packages/agent — keeps this plugin free of circular deps
-// (same pattern as app-babylon + app-defense-of-the-agents)
-// ---------------------------------------------------------------------------
-
-interface AppLaunchSessionContext {
-  appName: string;
-  launchUrl: string | null;
-  runtime: IAgentRuntime | null;
-  viewer: AppLaunchResult["viewer"] | null;
-}
-
-interface AppRunSessionContext extends AppLaunchSessionContext {
-  runId: string;
-  session: AppSessionState | null;
-}
 
 interface RouteContext {
   method: string;
@@ -509,6 +494,18 @@ export async function resolveLaunchSession(
  * sessionId has expired server-side (e.g. container restart), we fall
  * back to a fresh /connect via resolveLaunchSession.
  */
+/**
+ * Called by the host app-manager when the user stops the ClawVille run.
+ * ClawVille is a thin proxy to the external ClawVille API — session state
+ * is stored in runtime settings (non-volatile) and the game server is
+ * managed externally. No local resources to tear down. Iframe unmount is
+ * sufficient. This hook is present so the app-manager lifecycle path
+ * stays uniform across all game apps.
+ */
+export async function stopRun(): Promise<void> {
+  // Intentional no-op — no server-side state to clean up.
+}
+
 export async function refreshRunSession(
   ctx: AppRunSessionContext,
 ): Promise<AppLaunchResult["session"]> {

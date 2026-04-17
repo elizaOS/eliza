@@ -42,6 +42,8 @@ import type {
   UpdateLifeOpsWorkflowRequest,
   UpsertLifeOpsChannelPolicyRequest,
   UpsertLifeOpsXConnectorRequest,
+  StartLifeOpsTelegramAuthRequest,
+  SubmitLifeOpsTelegramAuthRequest,
 } from "@elizaos/shared/contracts/lifeops";
 import { LIFEOPS_ACTIVITY_SIGNAL_STATES } from "@elizaos/shared/contracts/lifeops";
 import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
@@ -50,7 +52,7 @@ import {
   saveLifeOpsAppState,
 } from "../lifeops/app-state.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import { isRetryableLifeOpsStorageError } from "../lifeops/sql.js";
+
 import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
 import {
   buildLifeOpsBrowserCompanionPackage,
@@ -264,25 +266,6 @@ async function runRoute(
       ctx.error(ctx.res, error.message, error.status);
       return true;
     }
-    if (isRetryableLifeOpsStorageError(error)) {
-      const message =
-        "Life Ops storage is still initializing. Refresh in a moment.";
-      logger.info(
-        {
-          boundary: "lifeops",
-          operation,
-          statusCode: 503,
-        },
-        `[lifeops] Route unavailable: ${message}`,
-      );
-      span.failure({
-        statusCode: 503,
-        error,
-        errorKind: "lifeops_storage_unavailable",
-      });
-      ctx.error(ctx.res, message, 503);
-      return true;
-    }
     logger.error(
       {
         boundary: "lifeops",
@@ -474,6 +457,7 @@ export async function handleLifeOpsRoutes(
       if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
         throw new LifeOpsServiceError(400, "side must be one of: owner, agent");
       }
+      const rawGrantId = url.searchParams.get("grantId");
       json(
         res,
         await service.getGoogleConnectorStatus(
@@ -483,6 +467,27 @@ export async function handleLifeOpsRoutes(
             | "remote"
             | "cloud_managed"
             | undefined,
+          (rawSide ?? undefined) as "owner" | "agent" | undefined,
+          rawGrantId ?? undefined,
+        ),
+      );
+    });
+  }
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/google/accounts"
+  ) {
+    if (rateLimitRequest(ctx, "google_api_read")) return true;
+    return runRoute(ctx, async (service) => {
+      const rawSide = url.searchParams.get("side");
+      if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
+        throw new LifeOpsServiceError(400, "side must be one of: owner, agent");
+      }
+      json(
+        res,
+        await service.getGoogleConnectorAccounts(
+          url,
           (rawSide ?? undefined) as "owner" | "agent" | undefined,
         ),
       );
@@ -533,6 +538,7 @@ export async function handleLifeOpsRoutes(
           rawForceSync === null
             ? undefined
             : rawForceSync === "true" || rawForceSync === "1",
+        grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getCalendarFeed(url, request));
     });
@@ -617,6 +623,7 @@ export async function handleLifeOpsRoutes(
           url.searchParams.get("maxResults") === null
             ? undefined
             : Number(url.searchParams.get("maxResults")),
+        grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getGmailTriage(url, request));
     });
@@ -682,6 +689,7 @@ export async function handleLifeOpsRoutes(
           rawReplyNeededOnly === null
             ? undefined
             : rawReplyNeededOnly === "true" || rawReplyNeededOnly === "1",
+        grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getGmailSearch(url, request));
     });
@@ -731,6 +739,7 @@ export async function handleLifeOpsRoutes(
           url.searchParams.get("maxResults") === null
             ? undefined
             : Number(url.searchParams.get("maxResults")),
+        grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getGmailNeedsResponse(url, request));
     });
@@ -909,13 +918,15 @@ export async function handleLifeOpsRoutes(
     pathname === "/api/lifeops/connectors/google/disconnect"
   ) {
     if (rateLimitRequest(ctx, "google_api_write")) return true;
-    const body = await readJsonBody<DisconnectLifeOpsGoogleConnectorRequest>(
-      req,
-      res,
-    );
+    const body = await readJsonBody<
+      DisconnectLifeOpsGoogleConnectorRequest & { grantId?: string }
+    >(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(res, await service.disconnectGoogleConnector(body, url));
+      json(
+        res,
+        await service.disconnectGoogleConnector(body, url),
+      );
     });
   }
 
@@ -950,6 +961,159 @@ export async function handleLifeOpsRoutes(
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       json(res, await service.createXPost(body), 201);
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // Telegram connector
+  // -----------------------------------------------------------------------
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/telegram/status"
+  ) {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.getTelegramConnectorStatus(rawSide ?? undefined));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/telegram/start"
+  ) {
+    const body = await readJsonBody<StartLifeOpsTelegramAuthRequest>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.startTelegramAuth(body), 201);
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/telegram/submit"
+  ) {
+    const body = await readJsonBody<SubmitLifeOpsTelegramAuthRequest>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.submitTelegramAuth(body));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/telegram/cancel"
+  ) {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      const side = rawSide ?? "owner";
+      const pending = await service.getTelegramConnectorStatus(side);
+      if (pending.authState !== "idle" && pending.authState !== "connected") {
+        json(res, await service.disconnectTelegram(side));
+      } else {
+        json(res, pending);
+      }
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/telegram/disconnect"
+  ) {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.disconnectTelegram(rawSide ?? undefined));
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // Signal connector
+  // -----------------------------------------------------------------------
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/signal/status"
+  ) {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.getSignalConnectorStatus(rawSide ?? undefined));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/signal/pair"
+  ) {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.startSignalPairing(rawSide ?? undefined), 201);
+    });
+  }
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/signal/pairing-status"
+  ) {
+    const sessionId = url.searchParams.get("sessionId");
+    if (!sessionId) {
+      throw new LifeOpsServiceError(400, "sessionId is required");
+    }
+    return runRoute(ctx, async (service) => {
+      json(res, await service.getSignalPairingStatus(sessionId));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/signal/stop"
+  ) {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      json(res, service.stopSignalPairing(rawSide ?? undefined));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/signal/disconnect"
+  ) {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.disconnectSignal(rawSide ?? undefined));
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // Discord connector
+  // -----------------------------------------------------------------------
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/discord/status"
+  ) {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.getDiscordConnectorStatus(rawSide ?? undefined));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/discord/connect"
+  ) {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.authorizeDiscordConnector(rawSide ?? undefined));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/discord/disconnect"
+  ) {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.disconnectDiscord(rawSide ?? undefined));
     });
   }
 

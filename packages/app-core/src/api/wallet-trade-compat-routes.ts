@@ -27,7 +27,7 @@ import {
 import {
   isStewardConfigured,
   signTransactionWithOptionalSteward,
-} from "./steward-bridge";
+} from "@elizaos/app-steward/routes/steward-bridge";
 import { ensureCompatApiAuthorized } from "./auth";
 import {
   sendJson as sendJsonResponse,

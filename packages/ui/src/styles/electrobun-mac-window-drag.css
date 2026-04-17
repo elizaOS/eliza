@@ -37,7 +37,7 @@ html.eliza-electrobun-frameless header [data-header-toolbar-padding] {
   padding-inline-start: max(
     env(safe-area-inset-left, 0px),
     var(--eliza-macos-frame-left-inset)
-  ) !important;
+  );
   /* Keep end padding aligned with former `px-2` (0.5rem) */
   padding-inline-end: 0.5rem;
 }

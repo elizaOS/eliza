@@ -7,13 +7,12 @@
   "exports": {
     ".": "./src/index.ts",
     "./client": "./src/client.ts",
+    "./plugin": "./src/plugin.ts",
     "./register": "./src/register.ts",
     "./useVincentState": "./src/useVincentState.ts",
     "./*": "./src/*"
   },
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "lucide-react": "^0.575.0"
   }

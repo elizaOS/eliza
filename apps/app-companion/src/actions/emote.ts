@@ -40,6 +40,7 @@ export const emoteAction: Action = {
     "parameter to a valid emote ID. If you also want speech, chain it " +
     "before, after, or alongside other actions in the same turn " +
     "(for example with REPLY, SEND_MESSAGE, or stream actions).",
+  descriptionCompressed: "Play one-shot VRM avatar emote animation. Silent visual side-action.",
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state) => {
     if (runtime.character?.settings?.DISABLE_EMOTES) return false;

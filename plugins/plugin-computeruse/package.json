@@ -1,0 +1,83 @@
+{
+  "name": "@elizaos/plugin-computeruse",
+  "version": "0.6.2-alpha.0",
+  "description": "Desktop automation plugin — screenshots, mouse/keyboard control, browser CDP, window management for elizaOS agents. Ported from open-computer-use (Apache 2.0).",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/ensure-platform-deps.mjs",
+    "build": "bun run build.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@elizaos/core": "workspace:*",
+    "@types/node": "^25.2.3",
+    "typescript": "^5.9.3",
+    "vitest": "3.2.4"
+  },
+  "dependencies": {
+    "puppeteer-core": "^24.9.0"
+  },
+  "license": "Apache-2.0",
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "COMPUTER_USE_ENABLED": {
+        "type": "boolean",
+        "description": "Enable computer use capabilities (desktop automation, screenshots, browser control)",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "COMPUTER_USE_SCREENSHOT_AFTER_ACTION": {
+        "type": "boolean",
+        "description": "Automatically capture a screenshot after each desktop action",
+        "required": false,
+        "default": true,
+        "sensitive": false
+      },
+      "COMPUTER_USE_ACTION_TIMEOUT_MS": {
+        "type": "number",
+        "description": "Maximum action execution timeout in milliseconds",
+        "required": false,
+        "default": 10000,
+        "sensitive": false
+      },
+      "COMPUTER_USE_APPROVAL_MODE": {
+        "type": "string",
+        "description": "Approval mode for local computer actions: full_control, smart_approve, approve_all, or off",
+        "required": false,
+        "default": "full_control",
+        "enum": ["full_control", "smart_approve", "approve_all", "off"],
+        "sensitive": false
+      },
+      "COMPUTER_USE_BROWSER_HEADLESS": {
+        "type": "boolean",
+        "description": "Launch browser automation in headless mode when the environment does not allow visible windows",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      }
+    }
+  }
+}

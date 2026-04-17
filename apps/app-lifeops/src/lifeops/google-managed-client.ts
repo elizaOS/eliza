@@ -64,6 +64,7 @@ export interface ManagedGoogleCalendarEventResponse {
 
 export interface ManagedGoogleCalendarEventUpdateRequest {
   side: LifeOpsConnectorSide;
+  grantId?: string;
   calendarId?: string | null;
   eventId: string;
   title?: string;
@@ -92,6 +93,7 @@ export interface ManagedGoogleGmailReadResponse {
 
 export interface ManagedGoogleReplySendRequest {
   side?: LifeOpsConnectorSide;
+  grantId?: string;
   to: string[];
   cc?: string[];
   subject: string;
@@ -103,6 +105,7 @@ export interface ManagedGoogleReplySendRequest {
 export interface ManagedGoogleMessageSendRequest
   extends Omit<SendLifeOpsGmailMessageRequest, "mode" | "confirmSend"> {
   side?: LifeOpsConnectorSide;
+  grantId?: string;
 }
 
 interface GenericOAuthInitiateResponse {
@@ -314,18 +317,32 @@ export class GoogleManagedClient {
 
   async getStatus(
     side: LifeOpsConnectorSide,
+    grantId?: string,
   ): Promise<ManagedGoogleConnectorStatusResponse> {
     const query = new URLSearchParams({ side });
+    if (grantId) query.set("grantId", grantId);
     return this.request<ManagedGoogleConnectorStatusResponse>(
-      `eliza/google/status?${query.toString()}`,
+      `milady/google/status?${query.toString()}`,
       {
         method: "GET",
       },
     );
   }
 
+  async listAccounts(
+    side?: LifeOpsConnectorSide,
+  ): Promise<ManagedGoogleConnectorStatusResponse[]> {
+    const query = new URLSearchParams();
+    if (side) query.set("side", side);
+    return this.request<ManagedGoogleConnectorStatusResponse[]>(
+      `milady/google/accounts?${query.toString()}`,
+      { method: "GET" },
+    );
+  }
+
   async startConnector(args: {
     side: LifeOpsConnectorSide;
+    grantId?: string;
     capabilities?: LifeOpsGoogleCapability[];
     redirectUrl?: string;
   }): Promise<StartLifeOpsGoogleConnectorResponse> {
@@ -346,6 +363,7 @@ export class GoogleManagedClient {
           redirectUrl: redirectUri,
           scopes: managedGoogleCapabilitiesToScopes(requestedCapabilities),
           connectionRole: args.side,
+          ...(args.grantId ? { grantId: args.grantId } : {}),
         }),
       },
     );
@@ -363,7 +381,7 @@ export class GoogleManagedClient {
     connectionId?: string | null,
     side?: LifeOpsConnectorSide,
   ): Promise<void> {
-    await this.request<{ ok: true }>("eliza/google/disconnect", {
+    await this.request<{ ok: true }>("milady/google/disconnect", {
       method: "POST",
       body: JSON.stringify({
         connectionId: connectionId ?? null,
@@ -374,6 +392,7 @@ export class GoogleManagedClient {
 
   async getCalendarFeed(args: {
     side: LifeOpsConnectorSide;
+    grantId?: string;
     calendarId: string;
     timeMin: string;
     timeMax: string;
@@ -386,8 +405,9 @@ export class GoogleManagedClient {
       timeMax: args.timeMax,
       timeZone: args.timeZone,
     });
+    if (args.grantId) query.set("grantId", args.grantId);
     return this.request<ManagedGoogleCalendarFeedResponse>(
-      `eliza/google/calendar/feed?${query.toString()}`,
+      `milady/google/calendar/feed?${query.toString()}`,
       {
         method: "GET",
       },
@@ -397,6 +417,7 @@ export class GoogleManagedClient {
   async createCalendarEvent(
     request: Omit<CreateLifeOpsCalendarEventRequest, "mode"> & {
       side: LifeOpsConnectorSide;
+      grantId?: string;
     },
   ): Promise<ManagedGoogleCalendarEventResponse> {
     const normalizedRequest = {
@@ -411,7 +432,7 @@ export class GoogleManagedClient {
       ),
     };
     return this.request<ManagedGoogleCalendarEventResponse>(
-      "eliza/google/calendar/events",
+      "milady/google/calendar/events",
       {
         method: "POST",
         body: JSON.stringify(normalizedRequest),
@@ -424,6 +445,7 @@ export class GoogleManagedClient {
   ): Promise<ManagedGoogleCalendarEventResponse> {
     const normalizedRequest = {
       side: request.side,
+      ...(request.grantId ? { grantId: request.grantId } : {}),
       calendarId: request.calendarId ?? undefined,
       title: request.title,
       description: request.description,
@@ -440,7 +462,7 @@ export class GoogleManagedClient {
       attendees: request.attendees ?? undefined,
     };
     return this.request<ManagedGoogleCalendarEventResponse>(
-      `eliza/google/calendar/events/${encodeURIComponent(request.eventId)}`,
+      `milady/google/calendar/events/${encodeURIComponent(request.eventId)}`,
       {
         method: "PATCH",
         body: JSON.stringify(normalizedRequest),
@@ -450,6 +472,7 @@ export class GoogleManagedClient {
 
   async deleteCalendarEvent(request: {
     side: LifeOpsConnectorSide;
+    grantId?: string;
     calendarId?: string | null;
     eventId: string;
   }): Promise<{ ok: true }> {
@@ -457,8 +480,9 @@ export class GoogleManagedClient {
       side: request.side,
       ...(request.calendarId ? { calendarId: request.calendarId } : {}),
     });
+    if (request.grantId) query.set("grantId", request.grantId);
     return this.request<{ ok: true }>(
-      `eliza/google/calendar/events/${encodeURIComponent(request.eventId)}?${query.toString()}`,
+      `milady/google/calendar/events/${encodeURIComponent(request.eventId)}?${query.toString()}`,
       {
         method: "DELETE",
       },
@@ -467,14 +491,16 @@ export class GoogleManagedClient {
 
   async getGmailTriage(args: {
     side: LifeOpsConnectorSide;
+    grantId?: string;
     maxResults: number;
   }): Promise<ManagedGoogleGmailTriageResponse> {
     const query = new URLSearchParams({
       side: args.side,
       maxResults: String(args.maxResults),
     });
+    if (args.grantId) query.set("grantId", args.grantId);
     return this.request<ManagedGoogleGmailTriageResponse>(
-      `eliza/google/gmail/triage?${query.toString()}`,
+      `milady/google/gmail/triage?${query.toString()}`,
       {
         method: "GET",
       },
@@ -483,6 +509,7 @@ export class GoogleManagedClient {
 
   async getGmailSearch(args: {
     side: LifeOpsConnectorSide;
+    grantId?: string;
     query: string;
     maxResults: number;
   }): Promise<ManagedGoogleGmailSearchResponse> {
@@ -491,8 +518,9 @@ export class GoogleManagedClient {
       query: args.query,
       maxResults: String(args.maxResults),
     });
+    if (args.grantId) query.set("grantId", args.grantId);
     return this.request<ManagedGoogleGmailSearchResponse>(
-      `eliza/google/gmail/search?${query.toString()}`,
+      `milady/google/gmail/search?${query.toString()}`,
       {
         method: "GET",
       },
@@ -501,14 +529,16 @@ export class GoogleManagedClient {
 
   async readGmailMessage(args: {
     side: LifeOpsConnectorSide;
+    grantId?: string;
     messageId: string;
   }): Promise<ManagedGoogleGmailReadResponse> {
     const query = new URLSearchParams({
       side: args.side,
       messageId: args.messageId,
     });
+    if (args.grantId) query.set("grantId", args.grantId);
     return this.request<ManagedGoogleGmailReadResponse>(
-      `eliza/google/gmail/read?${query.toString()}`,
+      `milady/google/gmail/read?${query.toString()}`,
       {
         method: "GET",
       },
@@ -518,7 +548,7 @@ export class GoogleManagedClient {
   async sendGmailReply(
     request: ManagedGoogleReplySendRequest,
   ): Promise<{ ok: true }> {
-    return this.request<{ ok: true }>("eliza/google/gmail/reply-send", {
+    return this.request<{ ok: true }>("milady/google/gmail/reply-send", {
       method: "POST",
       body: JSON.stringify(request),
     });
@@ -527,7 +557,7 @@ export class GoogleManagedClient {
   async sendGmailMessage(
     request: ManagedGoogleMessageSendRequest,
   ): Promise<{ ok: true }> {
-    return this.request<{ ok: true }>("eliza/google/gmail/message-send", {
+    return this.request<{ ok: true }>("milady/google/gmail/message-send", {
       method: "POST",
       body: JSON.stringify(request),
     });
