@@ -322,7 +322,7 @@ export class GoogleManagedClient {
     const query = new URLSearchParams({ side });
     if (grantId) query.set("grantId", grantId);
     return this.request<ManagedGoogleConnectorStatusResponse>(
-      `eliza/google/status?${query.toString()}`,
+      `milady/google/status?${query.toString()}`,
       {
         method: "GET",
       },
@@ -335,7 +335,7 @@ export class GoogleManagedClient {
     const query = new URLSearchParams();
     if (side) query.set("side", side);
     return this.request<ManagedGoogleConnectorStatusResponse[]>(
-      `eliza/google/accounts?${query.toString()}`,
+      `milady/google/accounts?${query.toString()}`,
       { method: "GET" },
     );
   }
@@ -381,7 +381,7 @@ export class GoogleManagedClient {
     connectionId?: string | null,
     side?: LifeOpsConnectorSide,
   ): Promise<void> {
-    await this.request<{ ok: true }>("eliza/google/disconnect", {
+    await this.request<{ ok: true }>("milady/google/disconnect", {
       method: "POST",
       body: JSON.stringify({
         connectionId: connectionId ?? null,
@@ -407,7 +407,7 @@ export class GoogleManagedClient {
     });
     if (args.grantId) query.set("grantId", args.grantId);
     return this.request<ManagedGoogleCalendarFeedResponse>(
-      `eliza/google/calendar/feed?${query.toString()}`,
+      `milady/google/calendar/feed?${query.toString()}`,
       {
         method: "GET",
       },
@@ -432,7 +432,7 @@ export class GoogleManagedClient {
       ),
     };
     return this.request<ManagedGoogleCalendarEventResponse>(
-      "eliza/google/calendar/events",
+      "milady/google/calendar/events",
       {
         method: "POST",
         body: JSON.stringify(normalizedRequest),
@@ -462,7 +462,7 @@ export class GoogleManagedClient {
       attendees: request.attendees ?? undefined,
     };
     return this.request<ManagedGoogleCalendarEventResponse>(
-      `eliza/google/calendar/events/${encodeURIComponent(request.eventId)}`,
+      `milady/google/calendar/events/${encodeURIComponent(request.eventId)}`,
       {
         method: "PATCH",
         body: JSON.stringify(normalizedRequest),
@@ -482,7 +482,7 @@ export class GoogleManagedClient {
     });
     if (request.grantId) query.set("grantId", request.grantId);
     return this.request<{ ok: true }>(
-      `eliza/google/calendar/events/${encodeURIComponent(request.eventId)}?${query.toString()}`,
+      `milady/google/calendar/events/${encodeURIComponent(request.eventId)}?${query.toString()}`,
       {
         method: "DELETE",
       },
@@ -500,7 +500,7 @@ export class GoogleManagedClient {
     });
     if (args.grantId) query.set("grantId", args.grantId);
     return this.request<ManagedGoogleGmailTriageResponse>(
-      `eliza/google/gmail/triage?${query.toString()}`,
+      `milady/google/gmail/triage?${query.toString()}`,
       {
         method: "GET",
       },
@@ -520,7 +520,7 @@ export class GoogleManagedClient {
     });
     if (args.grantId) query.set("grantId", args.grantId);
     return this.request<ManagedGoogleGmailSearchResponse>(
-      `eliza/google/gmail/search?${query.toString()}`,
+      `milady/google/gmail/search?${query.toString()}`,
       {
         method: "GET",
       },
@@ -538,7 +538,7 @@ export class GoogleManagedClient {
     });
     if (args.grantId) query.set("grantId", args.grantId);
     return this.request<ManagedGoogleGmailReadResponse>(
-      `eliza/google/gmail/read?${query.toString()}`,
+      `milady/google/gmail/read?${query.toString()}`,
       {
         method: "GET",
       },
@@ -548,7 +548,7 @@ export class GoogleManagedClient {
   async sendGmailReply(
     request: ManagedGoogleReplySendRequest,
   ): Promise<{ ok: true }> {
-    return this.request<{ ok: true }>("eliza/google/gmail/reply-send", {
+    return this.request<{ ok: true }>("milady/google/gmail/reply-send", {
       method: "POST",
       body: JSON.stringify(request),
     });
@@ -557,7 +557,7 @@ export class GoogleManagedClient {
   async sendGmailMessage(
     request: ManagedGoogleMessageSendRequest,
   ): Promise<{ ok: true }> {
-    return this.request<{ ok: true }>("eliza/google/gmail/message-send", {
+    return this.request<{ ok: true }>("milady/google/gmail/message-send", {
       method: "POST",
       body: JSON.stringify(request),
     });
