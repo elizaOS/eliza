@@ -40,7 +40,7 @@
     "@elizaos/core": "__ELIZAOS_VERSION__"
   },
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.0"
   },
   "scripts": {
     "build:rust": "bun run build.ts",
