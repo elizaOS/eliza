@@ -44,6 +44,7 @@ import { LearnedSkillsPanel } from "../settings/LearnedSkills";
 import { MediaSettingsSection } from "../settings/MediaSettingsSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
+import { TrainingSettingsPanel } from "../settings/TrainingSettings";
 import { CloudDashboard } from "./ElizaCloudDashboard";
 import { ReleaseCenterView } from "./ReleaseCenterView";
 
@@ -215,6 +216,27 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "disable",
     ],
     keywordKeys: ["settings.keyword.skills", "settings.keyword.training"],
+  },
+  {
+    id: "auto-training",
+    label: "settings.sections.autoTraining.label",
+    description: "settings.sections.autoTraining.desc",
+    keywords: [
+      "auto",
+      "training",
+      "auto-train",
+      "trigger",
+      "threshold",
+      "cooldown",
+      "vertex",
+      "atropos",
+      "tinker",
+      "native",
+      "trajectory",
+      "fine-tune",
+      "fine tune",
+    ],
+    keywordKeys: ["settings.keyword.training"],
   },
   {
     id: "updates",
@@ -1136,6 +1158,22 @@ export function SettingsView({
           ref={registerContentItem("learned-skills")}
         >
           <LearnedSkillsPanel />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("auto-training") && (
+        <SettingsSection
+          id="auto-training"
+          title={t("settings.sections.autoTraining.label", {
+            defaultValue: "Auto-training",
+          })}
+          description={t("settings.sections.autoTraining.desc", {
+            defaultValue:
+              "Counts completed trajectories per task and fires a training run when the threshold is hit.",
+          })}
+          ref={registerContentItem("auto-training")}
+        >
+          <TrainingSettingsPanel />
         </SettingsSection>
       )}
 

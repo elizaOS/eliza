@@ -60,7 +60,6 @@ function localIso(daysFromToday: number, hour: number, minute = 0): string {
     hour,
     minute,
     second: 0,
-    millisecond: 0,
   }).toISOString();
 }
 
