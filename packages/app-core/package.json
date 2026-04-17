@@ -128,6 +128,7 @@
     "@clack/prompts": "^1.0.0",
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-companion": "workspace:*",
+    "@elizaos/app-lifeops": "workspace:*",
     "@elizaos/app-shopify": "workspace:*",
     "@elizaos/app-steward": "workspace:*",
     "@elizaos/app-task-coordinator": "workspace:*",
