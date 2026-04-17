@@ -100,7 +100,8 @@ describe("TrainingConfig persistence", () => {
     expect(config.autoTrain).toBe(true);
     expect(config.triggerThreshold).toBe(100);
     expect(config.triggerCooldownHours).toBe(12);
-    expect(config.backends).toEqual([]);
+    // Hermes-parity default: native backend is enabled out of the box.
+    expect(config.backends).toEqual(["native"]);
   });
 
   it("normalizes invalid input to defaults", () => {
@@ -113,6 +114,8 @@ describe("TrainingConfig persistence", () => {
     expect(config.autoTrain).toBe(true);
     expect(config.triggerThreshold).toBe(100);
     expect(config.triggerCooldownHours).toBe(12);
+    // Caller's explicit backend list is honored — defaults only fill in
+    // missing fields, not supplied ones.
     expect(config.backends).toEqual(["vertex"]);
   });
 
