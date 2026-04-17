@@ -18,12 +18,14 @@ export function safeParseBigInt(value: string): bigint {
 }
 
 import {
-  ensureCompatApiAuthorized,
-  type CompatRuntimeState,
   readCompatJsonBody,
+  type CompatRuntimeState,
+} from "@elizaos/app-core/api/compat-route-shared";
+import { ensureCompatApiAuthorized } from "@elizaos/app-core/api/auth";
+import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/api/response";
 import { isStewardConfigured, signViaSteward } from "./steward-bridge";
 
 function normalizeHexData(value: unknown): string | undefined {
