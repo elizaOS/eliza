@@ -202,7 +202,7 @@ export function PermissionsPanel() {
       <div className="pb-1 text-xs font-semibold uppercase tracking-wide text-muted">
         Permissions
       </div>
-      <div className="divide-y divide-border/12">
+      <div className="space-y-1">
         {permissions.map((entry) => (
           <PermissionRow key={entry.id} entry={entry} />
         ))}
