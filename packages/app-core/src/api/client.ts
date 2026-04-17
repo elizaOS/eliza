@@ -199,6 +199,14 @@ export type {
   ComputerUseApprovalSnapshot,
   ComputerUsePendingApproval,
 } from "./client-computeruse";
+export type {
+  ActiveModelState,
+  CatalogModel,
+  DownloadJob,
+  HardwareProbe,
+  InstalledModel,
+  ModelHubSnapshot,
+} from "./client-local-inference";
 export {
   DEFAULT_WALLET_RPC_SELECTIONS,
   normalizeWalletRpcProviderId,
@@ -218,6 +226,7 @@ import "./client-wallet";
 import "./client-cloud";
 import "./client-skills";
 import "./client-computeruse";
+import "./client-local-inference";
 import "@elizaos/app-vincent/client";
 
 // ---------------------------------------------------------------------------

@@ -1,7 +1,6 @@
 import { logger, type IAgentRuntime, type Plugin } from "@elizaos/core";
 import { lifeOpsSchema } from "./lifeops/schema.js";
 import { LifeOpsRepository } from "./lifeops/repository.js";
-import { gatePluginSessionForHostedApp } from "@elizaos/agent/services/app-session-gate";
 import { manageLifeOpsBrowserAction } from "./action.ts";
 import { lifeOpsBrowserProvider } from "./provider.ts";
 import { LifeOpsBrowserPluginService } from "./service.ts";
@@ -39,12 +38,27 @@ import {
 } from "./actions/checkin.js";
 import { relationshipAction } from "./actions/relationships.js";
 import { screenTimeAction } from "./actions/screen-time.js";
+// T8d — Activity tracker (plan §6.12).
+import {
+  getActivityReportAction,
+  getTimeOnAppAction,
+  getTimeOnSiteAction,
+} from "./actions/activity-report.js";
+import { ActivityTrackerService } from "./activity-profile/activity-tracker-service.js";
 import { twilioCallAction } from "./actions/twilio-call.js";
 import { remoteDesktopAction } from "./actions/remote-desktop.js";
+import { startRemoteSessionAction } from "./actions/start-remote-session.js";
+import { revokeRemoteSessionAction } from "./actions/revoke-remote-session.js";
+import { listRemoteSessionsAction } from "./actions/list-remote-sessions.js";
 import { lifeOpsComputerUseAction } from "./actions/computer-use.js";
 import { crossChannelSendAction } from "./actions/cross-channel-send.js";
 import { intentSyncAction } from "./actions/intent-sync.js";
 import { passwordManagerAction } from "./actions/password-manager.js";
+import {
+  addAutofillWhitelistAction,
+  listAutofillWhitelistAction,
+  requestFieldFillAction,
+} from "./actions/autofill.js";
 import { calendlyAction } from "./actions/calendly.js";
 import {
   checkAvailabilityAction,
@@ -52,6 +66,13 @@ import {
   schedulingAction,
   updateMeetingPreferencesAction,
 } from "./actions/scheduling.js";
+import { dossierAction } from "./actions/dossier.js";
+import { healthAction } from "./actions/health.js";
+// T8e — browser extension bridge actions (plan §6.13).
+import {
+  fetchBrowserActivityAction,
+  registerBrowserSessionAction,
+} from "./actions/browser-extension.js";
 
 // LifeOps core providers
 import { inboxTriageProvider } from "./providers/inbox-triage.js";
@@ -102,12 +123,21 @@ const rawAppLifeOpsPlugin: Plugin = {
     runNightCheckinAction,
     relationshipAction,
     screenTimeAction,
+    getActivityReportAction,
+    getTimeOnAppAction,
+    getTimeOnSiteAction,
     twilioCallAction,
     remoteDesktopAction,
+    startRemoteSessionAction,
+    revokeRemoteSessionAction,
+    listRemoteSessionsAction,
     lifeOpsComputerUseAction,
     crossChannelSendAction,
     intentSyncAction,
     passwordManagerAction,
+    requestFieldFillAction,
+    addAutofillWhitelistAction,
+    listAutofillWhitelistAction,
     calendlyAction,
     proposeMeetingTimesAction,
     checkAvailabilityAction,
@@ -116,6 +146,10 @@ const rawAppLifeOpsPlugin: Plugin = {
     listOverdueFollowupsAction,
     markFollowupDoneAction,
     setFollowupThresholdAction,
+    dossierAction,
+    healthAction,
+    registerBrowserSessionAction,
+    fetchBrowserActivityAction,
   ],
   providers: [
     lifeOpsBrowserProvider,
@@ -125,7 +159,11 @@ const rawAppLifeOpsPlugin: Plugin = {
     inboxTriageProvider,
     activityProfileProvider,
   ],
-  services: [LifeOpsBrowserPluginService, WebsiteBlockerService],
+  services: [
+    LifeOpsBrowserPluginService,
+    WebsiteBlockerService,
+    ActivityTrackerService,
+  ],
   init: async (
     pluginConfig: Record<string, unknown>,
     runtime: IAgentRuntime,
@@ -235,10 +273,7 @@ const rawAppLifeOpsPlugin: Plugin = {
   },
 };
 
-export const appLifeOpsPlugin: Plugin = gatePluginSessionForHostedApp(
-  rawAppLifeOpsPlugin,
-  "@elizaos/app-lifeops",
-);
+export const appLifeOpsPlugin: Plugin = rawAppLifeOpsPlugin;
 
 export const lifeOpsBrowserPlugin = appLifeOpsPlugin;
 

@@ -28,6 +28,7 @@ import { withWhatsApp } from "./service-mixin-whatsapp.js";
 import { withScreenTime } from "./service-mixin-screentime.js";
 import { withScheduling } from "./service-mixin-scheduling.js";
 import { withDossier } from "./service-mixin-dossier.js";
+import { withHealth } from "./service-mixin-health.js";
 
 /**
  * Main LifeOps service — assembled from domain mixins layered on top of
@@ -37,7 +38,9 @@ import { withDossier } from "./service-mixin-dossier.js";
  * (Calendar, Gmail) → business logic (Reminders, Browser, Workflows,
  * Definitions, Goals) → connectors (X, Telegram, Discord, Signal).
  */
-class LifeOpsServiceComposedBase extends withScheduling(
+class LifeOpsServiceComposedBase extends withHealth(
+  withDossier(
+  withScheduling(
   withScreenTime(
   withWhatsApp(
   withRelationships(
@@ -65,6 +68,8 @@ class LifeOpsServiceComposedBase extends withScheduling(
         ),
       ),
     ),
+  ),
+  ),
   ),
   ),
   ),

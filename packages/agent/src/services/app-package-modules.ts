@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Plugin } from "@elizaos/core";
@@ -94,6 +95,36 @@ function packageNameToDirName(packageName: string): string {
   return packageName.replace(/^@[^/]+\//, "");
 }
 
+function sanitiseInstalledPackageDirName(packageName: string): string {
+  return packageName.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+/**
+ * Directory where the plugin-installer writes dynamically-installed plugins.
+ * Matches `packages/app-core/src/services/plugin-installer.ts::pluginsBaseDir`.
+ */
+function installedPluginsBaseDir(): string {
+  const stateDir = process.env.ELIZA_STATE_DIR?.trim();
+  const base = stateDir || path.join(os.homedir(), ".eliza");
+  return path.join(base, "plugins", "installed");
+}
+
+/**
+ * Path to a dynamically-installed plugin's actual package directory (inside
+ * `node_modules` under the install target). Returns null if not installed.
+ */
+function resolveInstalledPluginDir(packageName: string): string | null {
+  const installRoot = path.join(
+    installedPluginsBaseDir(),
+    sanitiseInstalledPackageDirName(packageName),
+    "node_modules",
+    ...packageName.split("/"),
+  );
+  return fs.existsSync(path.join(installRoot, "package.json"))
+    ? installRoot
+    : null;
+}
+
 async function readPackageName(packageDir: string): Promise<string | null> {
   try {
     const packageJson = JSON.parse(
@@ -105,9 +136,9 @@ async function readPackageName(packageDir: string): Promise<string | null> {
   }
 }
 
-async function resolveWorkspacePackageDir(
+async function resolveWorkspacePackageDirs(
   packageName: string,
-): Promise<string | null> {
+): Promise<string[]> {
   const dirName = packageNameToDirName(packageName);
   const candidateDirs: string[] = [];
 
@@ -139,17 +170,25 @@ async function resolveWorkspacePackageDir(
     }
   }
 
+  const matches: string[] = [];
   for (const candidateDir of uniquePaths(candidateDirs)) {
     if (!fs.existsSync(path.join(candidateDir, "package.json"))) {
       continue;
     }
     const discoveredName = await readPackageName(candidateDir);
     if (discoveredName === packageName) {
-      return candidateDir;
+      matches.push(candidateDir);
     }
   }
 
-  return null;
+  return matches;
+}
+
+async function resolveWorkspacePackageDir(
+  packageName: string,
+): Promise<string | null> {
+  const matches = await resolveWorkspacePackageDirs(packageName);
+  return matches[0] ?? null;
 }
 
 async function importFirstExistingModule<T>(
@@ -351,16 +390,56 @@ async function importLocalAppPluginModule(
   packageName: string,
 ): Promise<AppPluginModule | null> {
   const resolved = await resolveAppModuleTarget(packageName);
-  const localPath =
-    resolved?.localPath ?? (await resolveWorkspacePackageDir(packageName));
-  if (!localPath) return null;
+  const localPaths: string[] = [];
+  if (resolved?.localPath) {
+    localPaths.push(resolved.localPath);
+  }
+  for (const dir of await resolveWorkspacePackageDirs(packageName)) {
+    if (!localPaths.includes(dir)) {
+      localPaths.push(dir);
+    }
+  }
+  const installedDir = resolveInstalledPluginDir(packageName);
+  if (installedDir && !localPaths.includes(installedDir)) {
+    localPaths.push(installedDir);
+  }
+  if (localPaths.length === 0) return null;
 
-  const candidatePaths = [
-    path.join(localPath, "src", "index.ts"),
-    path.join(localPath, "src", "index.js"),
-    path.join(localPath, "dist", "index.js"),
-  ];
-  return importFirstExistingModule<AppPluginModule>(candidatePaths);
+  let firstModule: AppPluginModule | null = null;
+  let lastError: unknown = null;
+  for (const localPath of localPaths) {
+    const candidatePaths = [
+      path.join(localPath, "src", "index.ts"),
+      path.join(localPath, "src", "index.js"),
+      path.join(localPath, "dist", "index.js"),
+    ];
+    let mod: AppPluginModule | null = null;
+    try {
+      mod = await importFirstExistingModule<AppPluginModule>(candidatePaths);
+    } catch (err) {
+      lastError = err;
+      logger.warn(
+        `[app-package-modules] Failed to import plugin from ${localPath}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      continue;
+    }
+    if (!mod) continue;
+    if (firstModule === null) {
+      firstModule = mod;
+    }
+    if (resolvePluginExport(mod, packageName)) {
+      return mod;
+    }
+  }
+  if (firstModule) {
+    return firstModule;
+  }
+  if (lastError) {
+    throw lastError;
+  }
+  return null;
 }
 
 function isPluginLike(value: unknown): value is Plugin {

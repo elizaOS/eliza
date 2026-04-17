@@ -145,6 +145,7 @@ import {
 } from "./dev-console-log";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
 import { handleComputerUseCompatRoutes } from "./computer-use-compat-routes";
+import { handleLocalInferenceCompatRoutes } from "./local-inference-compat-routes";
 import { isCloudProvisioned as _isCloudProvisioned } from "./server-onboarding-compat";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
@@ -753,6 +754,7 @@ async function handleCompatRoute(
   // Auth / pairing / onboarding status — extracted to auth-pairing-compat-routes.ts
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;
   if (await handleComputerUseCompatRoutes(req, res, state)) return true;
+  if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
 
   if (method === "POST" && url.pathname === "/api/tts/cloud") {
     if (!ensureCompatApiAuthorized(req, res)) return true;

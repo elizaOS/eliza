@@ -53,6 +53,9 @@
       "@elizaos/shared/*": ["./packages/shared/src/*"],
       "@elizaos/core": ["./packages/typescript/src/index.ts"],
       "@elizaos/core/*": ["./packages/typescript/src/*"],
+      "@elizaos/native-activity-tracker": [
+        "./packages/native-plugins/activity-tracker/src/index.ts"
+      ],
       "react": ["./packages/app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [
         "./packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"

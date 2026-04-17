@@ -6,6 +6,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { asUUID, logger } from "@elizaos/core";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import {
   type ContactInfo,
   getRelationshipsServiceLike,
@@ -66,7 +67,7 @@ export const markFollowupDoneAction: Action = {
     "Mark a contact as followed-up-with (updates lastContactedAt to now). " +
     "Requires either an explicit contactId (UUID) or an unambiguous contactName. " +
     "Ambiguous names return a clarifying response without modifying any contact.",
-  validate: async () => true,
+  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,
     _message,

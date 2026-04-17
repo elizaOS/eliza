@@ -110,6 +110,7 @@
     "./onboarding-config": "./src/onboarding-config.ts",
     "./runtime/eliza": "./src/runtime/eliza.ts",
     "./providers": "./src/providers/index.ts",
+    "./services/plugin-installer": "./src/services/plugin-installer.ts",
     "./services/steward-credentials": "./src/services/steward-credentials.ts",
     "./services/steward-sidecar": "./src/services/steward-sidecar.ts",
     "./styles/base.css": "./src/styles/base.css",
@@ -128,6 +129,12 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
+  "optionalDependencies": {
+    "node-llama-cpp": "3.18.1"
+  },
+  "trustedDependencies": [
+    "node-llama-cpp"
+  ],
   "dependencies": {
     "@capacitor/core": "8.0.2",
     "@capacitor/haptics": "8.0.0",
@@ -173,6 +180,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.6.0",
     "telegraf": "^4.16.3",
+    "undici": "^7.10.0",
     "zod": "^4.3.6"
   },
   "publishConfig": {
