@@ -16,7 +16,7 @@
     "@elizaos/core": "2.0.0-alpha.3"
   },
   "devDependencies": {
-    "vitest": "3.2.4",
+    "vitest": "4.1.4",
     "typescript": "5.8.2"
   }
 }
