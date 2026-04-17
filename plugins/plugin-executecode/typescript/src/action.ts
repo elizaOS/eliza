@@ -267,7 +267,7 @@ export const executeCodeAction: Action = {
       );
     }
 
-    const summary: ToolCallResultsSummary = {
+    const summary: Record<string, unknown> = {
       parentStepId,
       childSteps,
       childCount: childSteps.length,
@@ -280,25 +280,33 @@ export const executeCodeAction: Action = {
         success: false,
         text,
         error: scriptError,
-        data: summary,
+        // ProviderDataRecord is loosely indexable JSON.
+        data: summary as ActionResult["data"],
       };
     }
 
     const text = formatReturnValue(scriptValue);
     if (callback) await callback({ text, source: "execute-code" });
 
+    const successData: Record<string, unknown> = {
+      ...summary,
+      returnValue: jsonSafe(scriptValue),
+    };
     return {
       success: true,
       text,
-      data: { ...summary, returnValue: scriptValue },
+      data: successData as ActionResult["data"],
     };
   },
 };
 
-interface ToolCallResultsSummary {
-  parentStepId: string;
-  childSteps: string[];
-  childCount: number;
+/** Coerce a value to something JSON.stringify will round-trip. */
+function jsonSafe(value: unknown): unknown {
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return undefined;
+  }
 }
 
 function formatReturnValue(value: unknown): string {
