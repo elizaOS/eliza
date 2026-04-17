@@ -15,7 +15,7 @@
 			"../../node_modules",
 			"../../node_modules/.bun/node_modules"
 		],
-		"types": ["node", "bun-types"],
+		"types": ["node", "bun"],
 		"noEmit": true,
 		"composite": false,
 		"declaration": false,
