@@ -50,7 +50,7 @@ dependencies {
     implementation project(':capacitor-android')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutinesVersion"
-    implementation "androidx.exifinterface:exifinterface:1.3.7"
+    implementation "androidx.exifinterface:exifinterface:1.4.2"
     
     // CameraX
     implementation "androidx.camera:camera-core:$cameraxVersion"
