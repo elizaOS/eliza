@@ -2,7 +2,7 @@
 import { loadElizaConfig } from "@elizaos/agent/config/config";
 import type { LifeOpsIMessageConnectorStatus } from "@elizaos/shared/contracts/lifeops";
 import {
-  detectIMessageBackend,
+  getIMessageBackendStatus,
   listIMessageChats as listIMessageChatsBridge,
   readIMessages as readIMessagesBridge,
   sendIMessage as sendIMessageBridge,
@@ -102,16 +102,20 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
   class LifeOpsIMessageServiceMixin extends Base {
     async getIMessageConnectorStatus(): Promise<LifeOpsIMessageConnectorStatus> {
       const config = resolveLifeOpsIMessageBridgeConfig();
-      const backend = await detectIMessageBackend(config);
+      const status = await getIMessageBackendStatus(config);
       const checkedAt = new Date().toISOString();
       return {
-        available: backend !== "none",
-        connected: backend !== "none",
-        bridgeType: backend,
-        accountHandle: null,
+        available: status.backend !== "none",
+        connected: status.backend !== "none",
+        bridgeType: status.backend,
+        accountHandle: status.accountHandle,
+        sendMode: status.sendMode,
+        helperConnected: status.helperConnected,
+        privateApiEnabled: status.privateApiEnabled,
+        diagnostics: status.diagnostics,
         lastSyncAt: null,
         lastCheckedAt: checkedAt,
-        error: backend === "none" ? "no_backend_available" : null,
+        error: status.backend === "none" ? "no_backend_available" : null,
       };
     }
 

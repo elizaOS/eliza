@@ -106,8 +106,8 @@ export function useCloudState({
     string | null
   >(null);
   const [cloudDashboardView, setCloudDashboardView] = useState<
-    "billing" | "agents"
-  >("billing");
+    "overview" | "billing"
+  >("overview");
   const [elizaCloudLoginBusy, setElizaCloudLoginBusy] = useState(false);
   const [elizaCloudLoginError, setElizaCloudLoginError] = useState<
     string | null

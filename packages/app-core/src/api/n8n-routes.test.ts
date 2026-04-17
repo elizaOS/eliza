@@ -63,6 +63,7 @@ interface InvokeArgs {
   sidecar?: N8nSidecar | null;
   fetchImpl?: typeof fetch;
   agentId?: string;
+  isNativePlatform?: boolean;
 }
 
 interface InvokeResult {
@@ -84,6 +85,9 @@ async function invoke(args: InvokeArgs): Promise<InvokeResult> {
     n8nSidecar: args.sidecar ?? null,
     ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}),
     ...(args.agentId ? { agentId: args.agentId } : {}),
+    ...(args.isNativePlatform !== undefined
+      ? { isNativePlatform: args.isNativePlatform }
+      : {}),
     json: (_res, data, s = 200) => {
       payload = data;
       status = s;
@@ -118,6 +122,7 @@ describe("n8n status route", () => {
       mode: "cloud",
       cloudConnected: true,
       host: null,
+      platform: "desktop",
     });
   });
 
@@ -170,6 +175,76 @@ describe("n8n status route", () => {
       sidecar,
     });
     expect(JSON.stringify(payload)).not.toContain("SECRET_KEY");
+  });
+});
+
+// ── Mobile (native) platform behaviour ──────────────────────────────────────
+//
+// On iOS / Android the local n8n sidecar cannot run because the embedded
+// Capacitor runtime has no `node:child_process`. The status route must
+// report `platform: "mobile"`, force `localEnabled: false` even when the
+// stored config says otherwise, and the `/sidecar/start` endpoint must
+// refuse with a 409.
+
+describe("n8n mobile platform", () => {
+  it("adds platform=mobile to status and forces localEnabled=false", async () => {
+    const { payload } = await invoke({
+      pathname: "/api/n8n/status",
+      // Stored user setting says local is enabled — mobile override must
+      // flip the read-time view to disabled without touching config.
+      config: { n8n: { localEnabled: true } },
+      isNativePlatform: true,
+    });
+    expect(payload).toMatchObject({
+      mode: "disabled",
+      host: null,
+      status: "stopped",
+      cloudConnected: false,
+      localEnabled: false,
+      platform: "mobile",
+    });
+  });
+
+  it("still reports cloud mode on mobile when cloud is authenticated", async () => {
+    const { payload } = await invoke({
+      pathname: "/api/n8n/status",
+      config: { cloud: { enabled: true, apiKey: "sk-mobile" } },
+      isNativePlatform: true,
+    });
+    expect(payload).toMatchObject({
+      mode: "cloud",
+      cloudConnected: true,
+      platform: "mobile",
+      // localEnabled remains false on mobile even when cloud is connected —
+      // the local sidecar is fundamentally unreachable from this platform.
+      localEnabled: false,
+    });
+  });
+
+  it("rejects POST /api/n8n/sidecar/start with 409 on mobile", async () => {
+    const { handled, status, payload } = await invoke({
+      method: "POST",
+      pathname: "/api/n8n/sidecar/start",
+      config: { n8n: { localEnabled: true } },
+      isNativePlatform: true,
+    });
+    expect(handled).toBe(true);
+    expect(status).toBe(409);
+    expect(payload).toEqual({
+      error: "Local n8n not supported on mobile. Use Eliza Cloud.",
+      platform: "mobile",
+    });
+  });
+
+  it("returns 503 disabled for /api/n8n/workflows on mobile without cloud", async () => {
+    const { status, payload } = await invoke({
+      method: "GET",
+      pathname: "/api/n8n/workflows",
+      config: { n8n: { localEnabled: true } },
+      isNativePlatform: true,
+    });
+    expect(status).toBe(503);
+    expect(payload).toMatchObject({ error: "n8n disabled", status: "stopped" });
   });
 });
 

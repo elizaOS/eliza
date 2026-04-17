@@ -1,12 +1,9 @@
 import { Button, Input } from "@elizaos/ui";
+import type { MouseEvent } from "react";
 import type { RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
-import { AppIdentityTile } from "./app-identity";
-import {
-  getAppCatalogSectionLabel,
-  getAppShortName,
-  groupAppsForCatalog,
-} from "./helpers";
+import { AppHero } from "./app-identity";
+import { getAppShortName, groupAppsForCatalog } from "./helpers";
 
 interface AppsCatalogGridProps {
   activeAppNames: Set<string>;
@@ -98,38 +95,38 @@ export function AppsCatalogGrid({
                   return (
                     <div
                       key={app.name}
-                      className="group relative rounded-2xl border border-border/35 bg-card/72 transition-all hover:border-accent/25 hover:bg-bg-hover/70 focus-within:ring-2 focus-within:ring-accent/35"
+                      className={`group relative overflow-hidden rounded-2xl border bg-card/72 transition-all hover:border-accent/45 focus-within:ring-2 focus-within:ring-accent/35 ${
+                        isActive
+                          ? "border-ok/45 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]"
+                          : "border-border/35 hover:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.4)]"
+                      }`}
                     >
                       <button
                         type="button"
                         data-testid={`app-card-${app.name.replace(/[^a-z0-9]+/gi, "-")}`}
                         title={displayName}
                         aria-label={displayName}
-                        className="flex w-full flex-col p-4 text-left focus-visible:outline-none"
+                        className="block w-full text-left focus-visible:outline-none"
                         onClick={() => onLaunch(app)}
                       >
-                        <div className="flex items-start justify-between gap-3 pe-8">
-                          <div className="flex items-center gap-3">
-                            <AppIdentityTile
-                              app={app}
-                              active={isActive}
-                              size="sm"
-                            />
-                            <div>
-                              <div className="text-sm font-semibold text-txt">
-                                {displayName}
-                              </div>
-                              <div className="text-xs-tight text-muted-strong">
-                                {getAppCatalogSectionLabel(app)}
-                              </div>
+                        <AppHero
+                          app={app}
+                          className="aspect-[5/4] transition-transform duration-300 group-hover:scale-[1.02]"
+                        />
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end p-4 pe-12">
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-semibold text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
+                              {displayName}
                             </div>
                           </div>
                         </div>
-                        <p className="mt-3 line-clamp-2 text-xs leading-5 text-muted-strong">
-                          {app.description ||
-                            "Launch and manage this agent experience."}
-                        </p>
                       </button>
+                      {isActive ? (
+                        <span
+                          aria-label="Running"
+                          className="pointer-events-none absolute right-4 top-4 h-2.5 w-2.5 rounded-full bg-ok shadow-[0_0_0_3px_rgba(16,185,129,0.35)]"
+                        />
+                      ) : null}
                       <button
                         type="button"
                         aria-label={
@@ -137,16 +134,19 @@ export function AppsCatalogGrid({
                             ? "Remove from favorites"
                             : "Add to favorites"
                         }
-                        className={`absolute right-4 top-4 shrink-0 p-1 transition-colors ${
+                        className={`absolute bottom-3 right-3 rounded-full p-1.5 text-white transition-all ${
                           isFavorite
-                            ? "text-warn"
-                            : "text-muted/40 opacity-0 group-hover:opacity-100 hover:text-warn"
+                            ? "bg-black/30 text-warn backdrop-blur-sm"
+                            : "bg-black/30 text-white/70 opacity-0 backdrop-blur-sm group-hover:opacity-100 hover:text-warn"
                         }`}
-                        onClick={() => onToggleFavorite(app.name)}
+                        onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                          event.stopPropagation();
+                          onToggleFavorite(app.name);
+                        }}
                       >
                         <svg
-                          width="16"
-                          height="16"
+                          width="14"
+                          height="14"
                           viewBox="0 0 24 24"
                           fill={isFavorite ? "currentColor" : "none"}
                           stroke="currentColor"

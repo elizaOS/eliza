@@ -52,6 +52,15 @@ type CrossChannelSendParameters = {
   confirmed?: boolean;
 };
 
+type DispatchContext = {
+  runtime: IAgentRuntime;
+  service: LifeOpsService;
+  channel: CrossChannelSendChannel;
+  target: string;
+  body: string;
+  subject?: string;
+};
+
 function coerceString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
@@ -136,6 +145,195 @@ async function dispatchViaRuntimeSendHandler(
     },
   );
 }
+
+function buildDispatchFailure(args: {
+  channel: CrossChannelSendChannel;
+  target: string;
+  body: string;
+  error: string;
+  subject?: string;
+}): ActionResult {
+  const { channel, target, body, error, subject } = args;
+  return {
+    text: `${channel} dispatch to ${target} failed: ${error}.`,
+    success: false,
+    values: { success: false, channel, target, error },
+    data: {
+      actionName: ACTION_NAME,
+      channel,
+      target,
+      message: body,
+      subject: subject ?? null,
+    },
+  };
+}
+
+function buildDispatchSuccess(args: {
+  channel: CrossChannelSendChannel;
+  target: string;
+  body: string;
+  subject?: string;
+  result?: unknown;
+}): ActionResult {
+  const { channel, target, body, subject, result } = args;
+  return {
+    text: `Sent ${channel} to ${target}.`,
+    success: true,
+    values: { success: true, channel, target },
+    data: {
+      actionName: ACTION_NAME,
+      channel,
+      target,
+      message: body,
+      subject: subject ?? null,
+      result: result as never,
+    },
+  };
+}
+
+function createLifeOpsMethodDispatcher(args: {
+  method: string;
+  buildRequest: (ctx: DispatchContext) => Record<string, unknown>;
+}) {
+  return async (ctx: DispatchContext): Promise<ActionResult> => {
+    const serviceUnknown = ctx.service as unknown as Record<
+      string,
+      (...args: unknown[]) => Promise<unknown>
+    >;
+    const method = serviceUnknown[args.method];
+    if (typeof method !== "function") {
+      return buildDispatchFailure({
+        channel: ctx.channel,
+        target: ctx.target,
+        body: ctx.body,
+        subject: ctx.subject,
+        error:
+          `${ctx.channel} send is unavailable because the required LifeOps connector method is not loaded`,
+      });
+    }
+
+    try {
+      const result = await method.call(ctx.service, args.buildRequest(ctx));
+      return buildDispatchSuccess({
+        channel: ctx.channel,
+        target: ctx.target,
+        body: ctx.body,
+        subject: ctx.subject,
+        result,
+      });
+    } catch (error) {
+      return buildDispatchFailure({
+        channel: ctx.channel,
+        target: ctx.target,
+        body: ctx.body,
+        subject: ctx.subject,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+}
+
+const CHANNEL_DISPATCHERS: Record<
+  CrossChannelSendChannel,
+  (ctx: DispatchContext) => Promise<ActionResult>
+> = {
+  sms: async ({ channel, target, body }) => {
+    const credentials = readTwilioCredentialsFromEnv();
+    if (!credentials) {
+      return {
+        text: "Twilio is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER.",
+        success: false,
+        values: { success: false, error: "TWILIO_NOT_CONFIGURED", channel },
+        data: { actionName: ACTION_NAME, channel },
+      };
+    }
+    const result = await sendTwilioSms({ credentials, to: target, body });
+    return twilioResultToActionResult({ channel, target, message: body, result });
+  },
+  twilio_voice: async ({ channel, target, body }) => {
+    const credentials = readTwilioCredentialsFromEnv();
+    if (!credentials) {
+      return {
+        text: "Twilio is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER.",
+        success: false,
+        values: { success: false, error: "TWILIO_NOT_CONFIGURED", channel },
+        data: { actionName: ACTION_NAME, channel },
+      };
+    }
+    const result = await sendTwilioVoiceCall({
+      credentials,
+      to: target,
+      message: body,
+    });
+    return twilioResultToActionResult({ channel, target, message: body, result });
+  },
+  email: async ({ service, channel, target, body, subject }) => {
+    if (!subject) {
+      return {
+        text: "Email send requires a subject.",
+        success: false,
+        values: { success: false, error: "MISSING_SUBJECT", channel },
+        data: { actionName: ACTION_NAME, channel },
+      };
+    }
+    const requestUrl = new URL("http://internal.invalid/lifeops/gmail/send");
+    try {
+      await service.sendGmailMessage(requestUrl, {
+        to: [target],
+        subject,
+        bodyText: body,
+        confirmSend: true,
+      });
+      return buildDispatchSuccess({ channel, target, body, subject });
+    } catch (error) {
+      return buildDispatchFailure({
+        channel,
+        target,
+        body,
+        subject,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  },
+  telegram: createLifeOpsMethodDispatcher({
+    method: "sendTelegramMessage",
+    buildRequest: ({ target, body }) => ({ target, message: body }),
+  }),
+  imessage: createLifeOpsMethodDispatcher({
+    method: "sendIMessage",
+    buildRequest: ({ target, body }) => ({ to: target, text: body }),
+  }),
+  whatsapp: createLifeOpsMethodDispatcher({
+    method: "sendWhatsAppMessage",
+    buildRequest: ({ target, body }) => ({ to: target, text: body }),
+  }),
+  discord: async ({ runtime, channel, target, body }) => {
+    try {
+      await dispatchViaRuntimeSendHandler(runtime, channel, target, body);
+      return buildDispatchSuccess({ channel, target, body });
+    } catch (error) {
+      return buildDispatchFailure({
+        channel,
+        target,
+        body,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  },
+  signal: async ({ runtime, channel, target, body }) => {
+    try {
+      await dispatchViaRuntimeSendHandler(runtime, channel, target, body);
+      return buildDispatchSuccess({ channel, target, body });
+    } catch (error) {
+      return buildDispatchFailure({
+        channel,
+        target,
+        body,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  },
+};
 
 export const crossChannelSendAction: Action = {
   name: ACTION_NAME,
@@ -324,148 +522,13 @@ export const crossChannelSendAction: Action = {
     }
 
     const service = new LifeOpsService(runtime);
-
-    switch (channel) {
-      case "sms":
-      case "twilio_voice": {
-        const credentials = readTwilioCredentialsFromEnv();
-        if (!credentials) {
-          return {
-            text: "Twilio is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER.",
-            success: false,
-            values: { success: false, error: "TWILIO_NOT_CONFIGURED", channel },
-            data: { actionName: ACTION_NAME, channel },
-          };
-        }
-        const result =
-          channel === "sms"
-            ? await sendTwilioSms({ credentials, to: target, body })
-            : await sendTwilioVoiceCall({ credentials, to: target, message: body });
-        return twilioResultToActionResult({ channel, target, message: body, result });
-      }
-
-      case "email": {
-        if (!subject) {
-          return {
-            text: "Email send requires a subject.",
-            success: false,
-            values: { success: false, error: "MISSING_SUBJECT", channel },
-            data: { actionName: ACTION_NAME, channel },
-          };
-        }
-        const requestUrl = new URL("http://internal.invalid/lifeops/gmail/send");
-        try {
-          await service.sendGmailMessage(requestUrl, {
-            to: [target],
-            subject,
-            bodyText: body,
-            confirmSend: true,
-          });
-          return {
-            text: `Sent email to ${target}.`,
-            success: true,
-            values: { success: true, channel, target, subject },
-            data: { actionName: ACTION_NAME, channel, target, subject, message: body },
-          };
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
-          return {
-            text: `Email to ${target} failed: ${errorMessage}.`,
-            success: false,
-            values: { success: false, channel, target, error: errorMessage },
-            data: { actionName: ACTION_NAME, channel, target, subject, message: body },
-          };
-        }
-      }
-
-      case "telegram":
-      case "imessage":
-      case "whatsapp": {
-        // Each mixin exposes a slightly different request shape. Centralize the
-        // mapping here so the action keeps a uniform {target, message} API.
-        const mapping: Record<
-          string,
-          { method: string; build: () => Record<string, unknown> }
-        > = {
-          telegram: {
-            method: "sendTelegramMessage",
-            build: () => ({ target, message: body }),
-          },
-          imessage: {
-            method: "sendIMessage",
-            build: () => ({ to: target, text: body }),
-          },
-          whatsapp: {
-            method: "sendWhatsAppMessage",
-            build: () => ({ to: target, text: body }),
-          },
-        };
-        const { method: methodName, build } = mapping[channel];
-        const serviceUnknown = service as unknown as Record<
-          string,
-          (...args: unknown[]) => Promise<unknown>
-        >;
-        const method = serviceUnknown[methodName];
-        if (typeof method !== "function") {
-          return {
-            text: `${channel} send is unavailable because the required LifeOps connector method is not loaded.`,
-            success: false,
-            values: {
-              success: false,
-              error: "CHANNEL_UNAVAILABLE",
-              channel,
-            },
-            data: { actionName: ACTION_NAME, channel },
-          };
-        }
-        try {
-          const result = await method.call(service, build());
-          return {
-            text: `Sent ${channel} to ${target}.`,
-            success: true,
-            values: { success: true, channel, target },
-            data: {
-              actionName: ACTION_NAME,
-              channel,
-              target,
-              message: body,
-              result: result as never,
-            },
-          };
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
-          return {
-            text: `${channel} dispatch to ${target} failed: ${errorMessage}.`,
-            success: false,
-            values: { success: false, channel, target, error: errorMessage },
-            data: { actionName: ACTION_NAME, channel, target, message: body },
-          };
-        }
-      }
-
-      case "discord":
-      case "signal": {
-        try {
-          await dispatchViaRuntimeSendHandler(runtime, channel, target, body);
-          return {
-            text: `Sent ${channel} to ${target}.`,
-            success: true,
-            values: { success: true, channel, target },
-            data: { actionName: ACTION_NAME, channel, target, message: body },
-          };
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
-          return {
-            text: `${channel} dispatch to ${target} failed: ${errorMessage}.`,
-            success: false,
-            values: { success: false, channel, target, error: errorMessage },
-            data: { actionName: ACTION_NAME, channel, target, message: body },
-          };
-        }
-      }
-    }
+    return CHANNEL_DISPATCHERS[channel]({
+      runtime,
+      service,
+      channel,
+      target,
+      body,
+      subject,
+    });
   },
 };

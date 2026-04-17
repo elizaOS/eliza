@@ -20,10 +20,6 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
 } from "@elizaos/shared/contracts/lifeops";
-import {
-  getValidationKeywordTerms,
-  textIncludesKeywordTerm,
-} from "@elizaos/shared/validation-keywords";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import {
@@ -32,10 +28,6 @@ import {
   getWeekdayForLocalDate,
   getZonedDateParts,
 } from "../lifeops/time.js";
-import {
-  collectKeywordTermMatchesForKey,
-  hasContextSignalSyncForKey,
-} from "@elizaos/agent/actions/context-signal";
 import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import {
@@ -63,10 +55,6 @@ type CalendarSubaction =
   | "update_event"
   | "delete_event"
   | "trip_window";
-
-type TripWindowIntent = {
-  location: string;
-};
 
 type RankedCalendarSearchCandidate = {
   event: LifeOpsCalendarEvent;
@@ -102,35 +90,8 @@ type CalendarActionParams = {
   details?: Record<string, unknown>;
 };
 
-const CALENDAR_VALIDATION_CONTEXT_LIMIT = 12;
 const PARAMETER_DOC_NOISE_PATTERN =
   /\b(?:actions?|params?|parameters?|query\?:string|subaction\?:string|details\?:object|required parameter|supported keys include|may include:|match against titles|structured calendar arguments|structured data when needed|boolean when)\b|\b\w+\?:\w+\b/i;
-
-const CAL_I18N_OPTS = { includeAllLocales: true } as const;
-const CAL_AFFIRMATIVE_TERMS = getValidationKeywordTerms(
-  "contextSignal.affirmative.strong",
-  CAL_I18N_OPTS,
-);
-const CAL_TEMPORAL_FOLLOWUP_TERMS = getValidationKeywordTerms(
-  "contextSignal.temporal_followup.strong",
-  CAL_I18N_OPTS,
-);
-const CAL_LIFEOPS_STRONG_TERMS = getValidationKeywordTerms(
-  "contextSignal.lifeops.strong",
-  CAL_I18N_OPTS,
-);
-const CAL_CALENDAR_STRONG_TERMS = getValidationKeywordTerms(
-  "contextSignal.calendar.strong",
-  CAL_I18N_OPTS,
-);
-const CAL_CALENDAR_WEAK_TERMS = getValidationKeywordTerms(
-  "contextSignal.calendar.weak",
-  CAL_I18N_OPTS,
-);
-
-function textMatchesAnyCal(text: string, terms: readonly string[]): boolean {
-  return terms.some((term) => textIncludesKeywordTerm(text, term));
-}
 
 const I18N_LOCALES = ["en", "zh-CN", "ko", "es", "pt", "vi", "tl"];
 
@@ -274,21 +235,6 @@ function buildCalendarReplyOnlyFallback(
   }
 }
 
-function looksLikeLifeReminderRequestForCalendarAction(text: string): boolean {
-  const normalized = normalizeText(text);
-  if (!normalized) {
-    return false;
-  }
-  if (
-    collectKeywordTermMatchesForKey([normalized], "calendar", {
-      includeAllLocales: true,
-    }).size > 0
-  ) {
-    return false;
-  }
-  return textMatchesAnyCal(normalized, CAL_LIFEOPS_STRONG_TERMS);
-}
-
 function buildCalendarServiceErrorFallback(
   error: LifeOpsServiceError,
   intent: string,
@@ -340,48 +286,6 @@ function buildCalendarEventDisambiguationFallback(args: {
   ].join("\n");
 }
 
-function shouldDeleteAllMatchingCalendarEvents(args: {
-  intent: string;
-  titleHint?: string;
-  candidateCount: number;
-}): boolean {
-  const normalizedIntent = normalizeText(args.intent);
-  const normalizedTitleHint = normalizeText(args.titleHint ?? "");
-  const titleStartsWithQuantifier = /^(all|both|every|each)\b/.test(
-    normalizedTitleHint,
-  );
-
-  if (
-    /\b(?:remove|delete|cancel|kill|drop)\b\s+(?:the\s+)?(?:duplicates?|copies)\b/.test(
-      normalizedIntent,
-    )
-  ) {
-    return true;
-  }
-
-  const quantifierMatch = normalizedIntent.match(
-    /\b(?:remove|delete|cancel|kill|drop)\b\s+(both|all|every|each)\b/,
-  );
-  if (!quantifierMatch) {
-    return false;
-  }
-  if (titleStartsWithQuantifier) {
-    return false;
-  }
-
-  const quantifier = quantifierMatch[1];
-  if (quantifier === "both" && args.candidateCount !== 2) {
-    return false;
-  }
-
-  const trailingIntent = normalizedIntent.slice(
-    (quantifierMatch.index ?? 0) + quantifierMatch[0].length,
-  );
-  return /\b(?:matching|events?|meetings?|appointments?|invites?|entries|duplicates?|copies)\b/.test(
-    trailingIntent,
-  );
-}
-
 async function renderCalendarActionReply(args: {
   runtime: IAgentRuntime;
   message: Memory;
@@ -418,26 +322,6 @@ function normalizeText(value: string): string {
 
 function normalizeLookupKey(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
-function hasCalendarTextSignal(text: string): boolean {
-  if (!text.trim()) {
-    return false;
-  }
-  if (
-    collectKeywordTermMatchesForKey([text], "calendar", {
-      includeAllLocales: true,
-      strength: "strong",
-    }).size > 0
-  ) {
-    return true;
-  }
-  return (
-    collectKeywordTermMatchesForKey([text], "calendar", {
-      includeAllLocales: true,
-      strength: "weak",
-    }).size >= 2
-  );
 }
 
 function wordCount(value: string): number {
@@ -494,18 +378,6 @@ function normalizeCalendarSearchQueryValue(
   const cleaned = normalizeText(value)
     .replace(/\b(?:actions?|params?|parameters?)\b[:;]*/g, "")
     .replace(/\b\w+\?:\w+(?:\s+\[[^\]]+\])?\s*-\s*/g, " ")
-    .replace(
-      /\b(?:search|find|look(?:ing)? for|show me|check)\s+(?:my\s+)?(?:calendar|schedule)\s+for\b/g,
-      "",
-    )
-    .replace(/\b(?:search|find|look(?:ing)? for|show me|check)\b/g, "")
-    .replace(/\b(?:on|in) my calendar\b/g, "")
-    .replace(
-      /\b(?:today|tomorrow|tonight|this week(?:end)?|next week(?:end)?|week after(?: next)?|this month|next month|this year|next year)\b/g,
-      "",
-    )
-    .replace(/\b(?:scheduled|coming up|happening|for me)\b/g, "")
-    .replace(/\b(?:events?|appointments?|meetings?)\b$/g, "")
     .replace(/\bsupported keys include\b.*$/g, "")
     .replace(/\bmatch against titles\b.*$/g, "")
     .replace(/\bstructured calendar arguments\b.*$/g, "")
@@ -516,7 +388,7 @@ function normalizeCalendarSearchQueryValue(
   if (
     !cleaned ||
     ["calendar", "schedule", "event", "events"].includes(cleaned) ||
-    textMatchesAnyCal(cleaned, CAL_TEMPORAL_FOLLOWUP_TERMS) ||
+    cleaned.length > 160 ||
     PARAMETER_DOC_NOISE_PATTERN.test(cleaned)
   ) {
     return undefined;
@@ -585,52 +457,6 @@ function parseStateLine(line: string): { role: string; text: string } {
   return { role: "", text: trimmed };
 }
 
-const SYSTEM_ROLE_NAMES = new Set(["assistant", "system"]);
-
-function splitStateTextCandidates(value: string): string[] {
-  return value
-    .split(/\n+/)
-    .map((line) => parseStateLine(line).text)
-    .filter((text) => text.length > 0);
-}
-
-function userIntentsFromState(state: State | undefined): string[] {
-  if (!state || typeof state !== "object") {
-    return [];
-  }
-
-  const stateRecord = state as Record<string, unknown>;
-  const values =
-    stateRecord.values && typeof stateRecord.values === "object"
-      ? (stateRecord.values as Record<string, unknown>)
-      : undefined;
-  const raw =
-    typeof values?.recentMessages === "string"
-      ? values.recentMessages
-      : typeof stateRecord.text === "string"
-        ? stateRecord.text
-        : "";
-  if (!raw) {
-    return [];
-  }
-
-  const agentName =
-    typeof values?.agentName === "string" ? values.agentName.toLowerCase() : "";
-  const excludedRoles = new Set(SYSTEM_ROLE_NAMES);
-  if (agentName) {
-    excludedRoles.add(agentName);
-  }
-
-  return raw
-    .split(/\n+/)
-    .filter((line) => {
-      const { role } = parseStateLine(line);
-      return role.length > 0 && !excludedRoles.has(role);
-    })
-    .map((line) => parseStateLine(line).text)
-    .filter((text) => text.length > 0);
-}
-
 function planningConversationLines(state: State | undefined): string[] {
   if (!state || typeof state !== "object") {
     return [];
@@ -658,356 +484,51 @@ function planningConversationLines(state: State | undefined): string[] {
     .map((line) => `${line.role}: ${line.text}`);
 }
 
-function hasCalendarContextSignal(
-  message: Memory,
-  state: State | undefined,
-): boolean {
-  return hasContextSignalSyncForKey(message, state, "calendar", {
-    contextLimit: CALENDAR_VALIDATION_CONTEXT_LIMIT,
-  });
-}
-
-function stateTextCandidates(state: State | undefined): string[] {
-  if (!state || typeof state !== "object") {
-    return [];
-  }
-
-  const stateRecord = state as Record<string, unknown>;
-  const values =
-    stateRecord.values && typeof stateRecord.values === "object"
-      ? (stateRecord.values as Record<string, unknown>)
-      : undefined;
-
-  const candidates: string[] = [];
-  const pushText = (value: unknown) => {
-    if (typeof value === "string" && value.trim().length > 0) {
-      candidates.push(...splitStateTextCandidates(value));
-    }
-  };
-
-  pushText(values?.recentMessages);
-  pushText(stateRecord.text);
-
-  const recentMessagesData =
-    stateRecord.recentMessagesData ?? stateRecord.recentMessages;
-  if (Array.isArray(recentMessagesData)) {
-    for (const item of recentMessagesData) {
-      if (!item || typeof item !== "object") {
-        continue;
-      }
-      const content = (item as Record<string, unknown>).content;
-      if (!content || typeof content !== "object") {
-        continue;
-      }
-      pushText((content as Record<string, unknown>).text);
-    }
-  }
-
-  return [...new Set(candidates)];
-}
-
-function scoreIntentCandidate(value: string): number {
-  const normalized = normalizeText(value);
-  if (!normalized) {
-    return Number.NEGATIVE_INFINITY;
-  }
-
-  let score = Math.min(normalized.length, 160) / 16;
-  if (textMatchesAnyCal(normalized, CAL_AFFIRMATIVE_TERMS)) {
-    score -= 200;
-  }
-  if (PARAMETER_DOC_NOISE_PATTERN.test(normalized)) {
-    score -= 500;
-  }
-  if (hasCalendarTextSignal(value)) {
-    score += 10;
-  }
-  if (textMatchesAnyCal(normalized, CAL_CALENDAR_STRONG_TERMS)) {
-    score += 14;
-  }
-  if (textMatchesAnyCal(normalized, CAL_CALENDAR_WEAK_TERMS)) {
-    score += 10;
-  }
-  if (textMatchesAnyCal(normalized, CAL_CALENDAR_STRONG_TERMS)) {
-    score += 8;
-  }
-  return score;
-}
-
-function looksLikeNarrativeCalendarQuery(value: string): boolean {
-  const normalized = normalizeText(value);
-  if (!normalized) {
-    return false;
-  }
-
-  return (
-    /\b(?:tell me if|let me know if|whether|can you|could you|would you|do i have|are there|what(?:'s| is) on|what(?: event| events)? do i have|when do i|try to find)\b/.test(
-      normalized,
-    ) &&
-    /\b(?:calendar|schedule|event|events|flight|flights|travel|trip|appointment|meeting|hotel|stay|return)\b/.test(
-      normalized,
-    )
-  );
-}
-
-function looksLikeLiteralRequestEcho(query: string, intent: string): boolean {
-  const normalizedQuery = normalizeText(query);
-  const normalizedIntent = normalizeText(intent);
-  const questionLike = /[?¿]/.test(query);
-  if (!normalizedQuery || !normalizedIntent) {
-    return false;
-  }
-  if (normalizedQuery === normalizedIntent) {
-    return (
-      questionLike ||
-      wordCount(normalizedQuery) >= 10 ||
-      normalizedQuery.length >= 80
-    );
-  }
-  return (
-    (normalizedQuery.includes(normalizedIntent) ||
-      normalizedIntent.includes(normalizedQuery)) &&
-    (questionLike || normalizedQuery.length >= 96)
-  );
-}
-
-function resolveCalendarIntent(
+function resolveCalendarIntentInput(
   paramsIntent: string | undefined,
   message: Parameters<typeof messageText>[0],
-  state: State | undefined,
 ): string {
-  const normalizeFollowUpConstraint = (value: string) => {
-    const cleaned = value
-      .trim()
-      .replace(
-        /^(?:yes|yeah|yep|yup|ok|okay|sure|please|please do|do it|go ahead|sounds good)\b[\s,.-]*/i,
-        "",
-      )
-      .replace(/^(?:and\s+|also\s+)/i, "")
-      .replace(
-        /^(?:what about|how about|and the|also the|or the|only the|just the)\s+/i,
-        "",
-      )
-      .trim();
-    if (
-      /^(?:try\s+(?:it|again|that)|retry|do\s+(?:it\s+)?again|one\s+more\s+time|proceed|go for it)$/i.test(
-        cleaned,
-      )
-    ) {
-      return "";
-    }
-    return cleaned;
-  };
-  const currentMessageText = messageText(message).trim();
-  const normalizedCurrentMessage = normalizeText(currentMessageText);
-  const currentMessageHasCalendarSignal =
-    hasCalendarTextSignal(currentMessageText);
-  const isRefinement =
-    /^(?:what about|how about|and the|also the|or the|only the|just the)\b/i.test(
-      normalizedCurrentMessage,
-    );
-  if (currentMessageText && currentMessageHasCalendarSignal && !isRefinement) {
-    return currentMessageText;
-  }
-
-  if (
-    currentMessageText &&
-    (textMatchesAnyCal(normalizedCurrentMessage, CAL_AFFIRMATIVE_TERMS) ||
-      textMatchesAnyCal(
-        normalizedCurrentMessage,
-        CAL_TEMPORAL_FOLLOWUP_TERMS,
-      ) ||
-      isRefinement ||
-      hasCalendarContextSignal(message, state))
-  ) {
-    const followUpCandidates = userIntentsFromState(state).filter(
-      (candidate) =>
-        hasCalendarTextSignal(candidate) &&
-        normalizeText(candidate) !== normalizedCurrentMessage,
-    );
-    const recentRelevantIntent =
-      followUpCandidates.length > 0
-        ? followUpCandidates.reduce((best, current) =>
-            scoreIntentCandidate(current) >= scoreIntentCandidate(best)
-              ? current
-              : best,
-          )
-        : undefined;
-    if (recentRelevantIntent) {
-      const followUpConstraint =
-        normalizeFollowUpConstraint(currentMessageText);
-      return followUpConstraint
-        ? `${recentRelevantIntent} ${followUpConstraint}`.trim()
-        : recentRelevantIntent;
-    }
-  }
-
-  const candidates = [
-    {
-      text: paramsIntent?.trim(),
-      source: "params" as const,
-    },
-    {
-      text: messageText(message).trim(),
-      source: "message" as const,
-    },
-    ...stateTextCandidates(state).map((text) => ({
-      text,
-      source: "state" as const,
-    })),
-  ].filter(
-    (
-      candidate,
-    ): candidate is { text: string; source: "params" | "message" | "state" } =>
-      Boolean(candidate.text && candidate.text.trim().length > 0),
-  );
-
-  if (candidates.length === 0) {
-    return "";
-  }
-
-  return [...candidates]
-    .sort((left, right) => {
-      const leftBonus =
-        left.source === "message" && hasCalendarTextSignal(left.text) ? 20 : 0;
-      const rightBonus =
-        right.source === "message" && hasCalendarTextSignal(right.text)
-          ? 20
-          : 0;
-      return (
-        scoreIntentCandidate(right.text) +
-        rightBonus -
-        (scoreIntentCandidate(left.text) + leftBonus)
-      );
-    })
-    .map((candidate) => candidate.text)[0];
+  return paramsIntent?.trim() || messageText(message).trim();
 }
 
-function inferCalendarSubaction(
-  intent: string,
+function resolveStructuredCalendarSubaction(
+  params: CalendarActionParams,
   details: Record<string, unknown> | undefined,
-  query: string | undefined,
-): CalendarSubaction {
-  // Delete intent is checked first because phrases like "delete the duplicate
-  // event" otherwise get swept up by the search_events branch via "duplicate"
-  // → "look for". Only the verb decides the subaction here.
-  if (
-    /\b(delete|remove|cancel|drop|get rid of|trash|kill)\b.*\b(event|meeting|appointment|calendar|reminder|invite)\b/.test(
-      intent,
-    ) ||
-    /\b(uncancel|unbook|unschedule)\b/.test(intent)
-  ) {
+): CalendarSubaction | null {
+  if (detailString(details, "eventId")) {
+    if (
+      detailString(details, "newTitle") ||
+      detailString(details, "title") ||
+      detailString(details, "startAt") ||
+      detailString(details, "endAt") ||
+      detailString(details, "description") ||
+      detailString(details, "location")
+    ) {
+      return "update_event";
+    }
     return "delete_event";
   }
-  // Update intent — same eager-match treatment so "rename", "move", "reschedule"
-  // don't get pulled into search_events.
-  if (
-    /\b(rename|reschedule|move|push|change|update|edit|modify)\b.*\b(event|meeting|appointment|calendar|invite)\b/.test(
-      intent,
-    )
-  ) {
-    return "update_event";
-  }
-  if (
-    query ||
-    detailString(details, "query") ||
-    /\b(find|search|look for|matching|related to|flight|flights|fly|travel|trip|return)\b/.test(
-      intent,
-    )
-  ) {
-    return "search_events";
-  }
+
   if (
     detailString(details, "startAt") ||
+    detailString(details, "endAt") ||
+    detailString(details, "windowPreset") ||
     detailNumber(details, "durationMinutes") ||
-    /\b(create|add|book)\b/.test(intent) ||
-    /\bschedule\s+(?:a|an|this|that|the)?\s*(?:calendar\s+)?(?:meeting|event|appointment|call)\b/.test(
-      intent,
-    ) ||
-    /\bput\b.*\b(calendar|meeting|event)\b/.test(intent) ||
-    /\bmake an event\b/.test(intent)
+    params.title ||
+    detailString(details, "title")
   ) {
     return "create_event";
   }
+
   if (
-    /\b(next|upcoming|soon|about to|coming up)\b/.test(intent) &&
-    /\b(event|meeting|appointment|call|calendar item|thing)\b/.test(intent)
+    params.query ||
+    detailString(details, "query") ||
+    (params.queries?.length ?? 0) > 0 ||
+    (detailArray(details, "queries")?.length ?? 0) > 0 ||
+    detailString(details, "timeMin") ||
+    detailString(details, "timeMax")
   ) {
-    return "next_event";
-  }
-  return "feed";
-}
-
-function shouldTrustExplicitCalendarSubaction(
-  subaction: CalendarSubaction | undefined,
-  params: CalendarActionParams,
-  details: Record<string, unknown> | undefined,
-): boolean {
-  if (!subaction) {
-    return false;
-  }
-
-  switch (subaction) {
-    case "create_event":
-      return Boolean(
-        params.title ||
-          detailString(details, "title") ||
-          detailString(details, "startAt") ||
-          detailString(details, "windowPreset") ||
-          detailNumber(details, "durationMinutes"),
-      );
-    case "update_event":
-      return Boolean(
-        detailString(details, "eventId") ||
-          detailString(details, "title") ||
-          detailString(details, "newTitle") ||
-          detailString(details, "startAt") ||
-          detailString(details, "endAt"),
-      );
-    case "delete_event":
-      return Boolean(
-        detailString(details, "eventId") ||
-          params.title ||
-          detailString(details, "title"),
-      );
-    case "search_events":
-      return Boolean(
-        params.query ||
-          detailString(details, "query") ||
-          (params.queries?.length ?? 0) > 0 ||
-          (detailArray(details, "queries")?.length ?? 0) > 0,
-      );
-    default:
-      return false;
-  }
-}
-
-function cleanTripLocation(value: string): string | undefined {
-  const cleaned = value
-    .trim()
-    .replace(
-      /\b(?:today|tomorrow|tonight|this week(?:end)?|next week(?:end)?|this month|next month|for me|coming up|upcoming|on my calendar|on the calendar|on my schedule|on the schedule)\b.*$/i,
-      "",
-    )
-    .replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, "")
-    .trim();
-  return cleaned.length > 0 ? cleaned : undefined;
-}
-
-function inferTripWindowIntent(intent: string): TripWindowIntent | null {
-  const patterns = [
-    /\bwhile\s+(?:i(?:'m| am)|im)\s+in\s+(.+?)(?=$|[?.!,])/i,
-    /\bwhen\s+(?:i(?:'m| am)|im)\s+in\s+(.+?)(?=$|[?.!,])/i,
-    /\bduring\s+(?:my\s+)?(?:trip|stay|visit)\s+(?:to|in)\s+(.+?)(?=$|[?.!,])/i,
-    /\bonce\s+(?:i(?:'m| am)|im)\s+in\s+(.+?)(?=$|[?.!,])/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = intent.match(pattern);
-    const location = cleanTripLocation(match?.[1] ?? "");
-    if (location) {
-      return { location };
-    }
+    return "search_events";
   }
 
   return null;
@@ -1107,27 +628,6 @@ function getLocalTodayDate(timeZone: string): LocalDateOnly {
     year: localNow.year,
     month: localNow.month,
     day: localNow.day,
-  };
-}
-
-function addMonthsToLocalDate(
-  dateOnly: LocalDateOnly,
-  monthDelta: number,
-): LocalDateOnly {
-  const utcDate = new Date(
-    Date.UTC(
-      dateOnly.year,
-      dateOnly.month - 1 + monthDelta,
-      dateOnly.day,
-      12,
-      0,
-      0,
-    ),
-  );
-  return {
-    year: utcDate.getUTCFullYear(),
-    month: utcDate.getUTCMonth() + 1,
-    day: utcDate.getUTCDate(),
   };
 }
 
@@ -1253,20 +753,11 @@ function formatCreateEventCalendarContext(
   return lines.join("\n");
 }
 
-function isPersonalCreateEvent(intent: string, title: string): boolean {
-  return /\b(hug|wife|husband|partner|girlfriend|boyfriend|family|mom|dad|date|dinner|lunch|coffee|check in|check-in|call|text|birthday|anniversary|pick up|pickup|drop off|drop-off)\b/i.test(
-    `${intent} ${title}`,
-  );
-}
-
-function resolveSuggestedCreateEventDurationMinutes(
-  intent: string,
-  title: string,
-): number {
-  if (isShortPreparationEvent(intent, title)) {
-    return MIN_CREATE_EVENT_DURATION_MINUTES;
-  }
-  return isPersonalCreateEvent(intent, title) ? 15 : 60;
+// Fallback default duration when neither the user nor the LLM supplies one.
+// Specialization (personal vs work vs prep) is now handled by the LLM during
+// inferCreateEventDetails — never by English keyword regex.
+function resolveSuggestedCreateEventDurationMinutes(): number {
+  return 60;
 }
 
 function roundUpToStep(value: number, step: number): number {
@@ -1323,22 +814,14 @@ function busyWindowsForLocalDate(
   return windows.sort((left, right) => left.startMinute - right.startMinute);
 }
 
+// Preferred slot ordering for tentative event scheduling. Locale-agnostic:
+// weekdays prefer mid-morning through evening, weekends prefer late morning
+// and afternoon. Specific category preferences (personal vs work) are now
+// supplied by the LLM via inferCreateEventDetails — not by English regex.
 function resolvePreferredCreateEventMinutes(
-  intent: string,
-  title: string,
   targetDate: LocalDateOnly,
 ): number[] {
   const weekday = getWeekdayForLocalDate(targetDate);
-  if (isPersonalCreateEvent(intent, title)) {
-    return [19 * 60, 20 * 60, 18 * 60 + 30, 17 * 60 + 30];
-  }
-  if (
-    /\b(dentist|doctor|therapy|appointment|meeting|interview|review|sync)\b/i.test(
-      `${intent} ${title}`,
-    )
-  ) {
-    return [9 * 60, 10 * 60, 11 * 60, 14 * 60, 15 * 60];
-  }
   return weekday === 0 || weekday === 6
     ? [10 * 60, 13 * 60, 18 * 60]
     : [9 * 60, 11 * 60, 14 * 60, 16 * 60, 19 * 60];
@@ -1396,10 +879,7 @@ function suggestCreateEventStartAt(args: {
     return null;
   }
 
-  const durationMinutes = resolveSuggestedCreateEventDurationMinutes(
-    args.intent,
-    args.title,
-  );
+  const durationMinutes = resolveSuggestedCreateEventDurationMinutes();
   const busyWindows = busyWindowsForLocalDate(
     args.calendarContext.feed.events,
     targetDate,
@@ -1407,11 +887,7 @@ function suggestCreateEventStartAt(args: {
   );
   const startMinute = chooseSuggestedCreateEventMinute({
     busyWindows,
-    preferredMinutes: resolvePreferredCreateEventMinutes(
-      args.intent,
-      args.title,
-      targetDate,
-    ),
+    preferredMinutes: resolvePreferredCreateEventMinutes(targetDate),
     durationMinutes,
   });
   if (startMinute === null) {
@@ -1513,75 +989,6 @@ function resolveCalendarLlmWindow(
   };
 }
 
-function resolveWeekendWindow(
-  timeZone: string,
-  modifier: "this" | "next",
-): { timeMin: string; timeMax: string } {
-  const localToday = getLocalTodayDate(timeZone);
-  const currentWeekday = getWeekdayForLocalDate(localToday);
-  let startOffsetDays = (6 - currentWeekday + 7) % 7;
-  let endOffsetFromToday = startOffsetDays + 2;
-  if (modifier === "this" && (currentWeekday === 6 || currentWeekday === 0)) {
-    startOffsetDays = 0;
-    endOffsetFromToday = currentWeekday === 6 ? 2 : 1;
-  }
-  if (modifier === "next") {
-    startOffsetDays += 7;
-    endOffsetFromToday += 7;
-  }
-  const startDay = addDaysToLocalDate(localToday, startOffsetDays);
-  const endDay = addDaysToLocalDate(localToday, endOffsetFromToday);
-  return buildLocalDateRange(timeZone, startDay, endDay);
-}
-
-function resolveMonthWindow(
-  timeZone: string,
-  modifier: "this" | "next",
-): { timeMin: string; timeMax: string } {
-  const localToday = getLocalTodayDate(timeZone);
-  if (modifier === "this") {
-    const endOfWindow = addMonthsToLocalDate(
-      {
-        year: localToday.year,
-        month: localToday.month,
-        day: 1,
-      },
-      1,
-    );
-    return buildLocalDateRange(timeZone, localToday, endOfWindow);
-  }
-
-  const startOfNextMonth = addMonthsToLocalDate(
-    {
-      year: localToday.year,
-      month: localToday.month,
-      day: 1,
-    },
-    1,
-  );
-  const startOfFollowingMonth = addMonthsToLocalDate(startOfNextMonth, 1);
-  return buildLocalDateRange(timeZone, startOfNextMonth, startOfFollowingMonth);
-}
-
-function resolveTonightWindow(timeZone: string): {
-  timeMin: string;
-  timeMax: string;
-} {
-  const localNow = getZonedDateParts(new Date(), timeZone);
-  const startHour = Math.max(localNow.hour, 17);
-  const startMinute = localNow.hour >= 17 ? localNow.minute : 0;
-  const startDay = {
-    year: localNow.year,
-    month: localNow.month,
-    day: localNow.day,
-  };
-  const endDay = addDaysToLocalDate(startDay, 1);
-  return buildLocalDateRange(timeZone, startDay, endDay, {
-    startHour,
-    startMinute,
-  });
-}
-
 // Wide window used by update_event / delete_event lookups when the user
 // gave no time hint. Reaches 1 year back and 5 years forward — far enough
 // to find a future birthday or a recent past meeting without scanning the
@@ -1594,7 +1001,7 @@ function buildWideLookupRange(timeZone: string): {
 }
 
 function resolveCalendarWindow(
-  intent: string,
+  _intent: string,
   details: Record<string, unknown> | undefined,
   forSearch: boolean,
   llmPlan?: CalendarLlmPlan,
@@ -1631,154 +1038,6 @@ function resolveCalendarWindow(
         timeMax: llmWindow.timeMax,
       },
       label: llmWindow.label,
-    };
-  }
-
-  const normalizedIntent = normalizeText(intent);
-  const explicitDate = parseExplicitLocalDate(normalizedIntent, timeZone);
-  if (explicitDate) {
-    const nextDate = addDaysToLocalDate(explicitDate, 1);
-    const explicitDateLabel = (
-      normalizedIntent.match(/(?:on|for)\s+(.+)$/i)?.[1] ?? normalizedIntent
-    )
-      .replace(/^(?:on|for)\s+/i, "")
-      .trim();
-    return {
-      request: {
-        calendarId,
-        timeZone,
-        forceSync,
-        timeMin: buildUtcDateFromLocalParts(timeZone, {
-          year: explicitDate.year,
-          month: explicitDate.month,
-          day: explicitDate.day,
-          hour: 0,
-          minute: 0,
-          second: 0,
-        }).toISOString(),
-        timeMax: buildUtcDateFromLocalParts(timeZone, {
-          year: nextDate.year,
-          month: nextDate.month,
-          day: nextDate.day,
-          hour: 0,
-          minute: 0,
-          second: 0,
-        }).toISOString(),
-      },
-      label: `on ${explicitDateLabel}`,
-    };
-  }
-  if (/\btonight\b/.test(normalizedIntent)) {
-    return {
-      request: {
-        calendarId,
-        timeZone,
-        forceSync,
-        ...resolveTonightWindow(timeZone),
-      },
-      label: "tonight",
-    };
-  }
-  if (
-    /\bnext week\b/.test(normalizedIntent) &&
-    /\b(?:week after next|the week after)\b/.test(normalizedIntent)
-  ) {
-    return {
-      request: {
-        calendarId,
-        timeZone,
-        forceSync,
-        ...buildLocalDayRange(timeZone, 7, 21),
-      },
-      label: "next week or the week after",
-    };
-  }
-  if (/\btomorrow\b/.test(normalizedIntent)) {
-    return {
-      request: {
-        calendarId,
-        timeZone,
-        forceSync,
-        ...buildLocalDayRange(timeZone, 1, 2),
-      },
-      label: "tomorrow",
-    };
-  }
-  if (/\bnext weekend\b/.test(normalizedIntent)) {
-    return {
-      request: {
-        calendarId,
-        timeZone,
-        forceSync,
-        ...resolveWeekendWindow(timeZone, "next"),
-      },
-      label: "next weekend",
-    };
-  }
-  if (/\b(?:this weekend|weekend)\b/.test(normalizedIntent)) {
-    return {
-      request: {
-        calendarId,
-        timeZone,
-        forceSync,
-        ...resolveWeekendWindow(timeZone, "this"),
-      },
-      label: "this weekend",
-    };
-  }
-  if (/\b(?:week after next|the week after)\b/.test(normalizedIntent)) {
-    return {
-      request: {
-        calendarId,
-        timeZone,
-        forceSync,
-        ...buildLocalDayRange(timeZone, 14, 21),
-      },
-      label: "the week after next",
-    };
-  }
-  if (/\bnext week\b/.test(normalizedIntent)) {
-    return {
-      request: {
-        calendarId,
-        timeZone,
-        forceSync,
-        ...buildLocalDayRange(timeZone, 7, 14),
-      },
-      label: "next week",
-    };
-  }
-  if (/\b(this week|week)\b/.test(normalizedIntent)) {
-    return {
-      request: {
-        calendarId,
-        timeZone,
-        forceSync,
-        ...buildLocalDayRange(timeZone, 0, 7),
-      },
-      label: "this week",
-    };
-  }
-  if (/\bnext month\b/.test(normalizedIntent)) {
-    return {
-      request: {
-        calendarId,
-        timeZone,
-        forceSync,
-        ...resolveMonthWindow(timeZone, "next"),
-      },
-      label: "next month",
-    };
-  }
-  if (/\bthis month\b/.test(normalizedIntent)) {
-    return {
-      request: {
-        calendarId,
-        timeZone,
-        forceSync,
-        ...resolveMonthWindow(timeZone, "this"),
-      },
-      label: "this month",
     };
   }
 
@@ -1848,177 +1107,6 @@ function resolveTripWindowRequest(
   };
 }
 
-function inferCalendarSearchQuery(intent: string): string | undefined {
-  const normalizedIntent = normalizeText(intent);
-  if (/\b(flight|flights|fly|flying|travel|trip)\b/.test(normalizedIntent)) {
-    const locationMatch = normalizedIntent.match(
-      /\b(?:from|to)\s+(.+?)(?=\b(?:today|tomorrow|tonight|this week(?:end)?|next week(?:end)?|week after(?: next)?|this month|next month|this year|next year|or|and|please|idk|i dk|i don't know)\b|[?.!,]|$)/i,
-    );
-    const parts = ["flight"];
-    if (/\b(return|back|home)\b/.test(normalizedIntent)) {
-      parts.push("return");
-    }
-    const location = normalizeCalendarSearchQueryValue(
-      locationMatch?.[1] ?? "",
-    );
-    if (location) {
-      parts.push(location);
-    }
-    return normalizeCalendarSearchQueryValue(parts.join(" ")) ?? "flight";
-  }
-
-  const dateMatch = normalizedIntent.match(
-    /\b(?:on|for)\s+((?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|\d{4}-\d{1,2}-\d{1,2})\b/i,
-  );
-  const normalizedDate = normalizeCalendarSearchQueryValue(dateMatch?.[1]);
-  if (normalizedDate) {
-    return normalizedDate;
-  }
-
-  const patterns = [
-    /^(?:please\s+)?(?:find|search(?: for)?|look(?:ing)? for|show me)\s+(.+)$/i,
-    /^(?:please\s+)?(?:do i have|are there)\s+(?:any\s+)?(.+?)(?:\?|$)/i,
-    /^(?:please\s+)?(?:check|look|see)\s+(?:my\s+)?calendar\s+for\s+(.+?)(?:\?|$)/i,
-    /^what\s+(?:event|events)\s+do\s+i\s+have\s+(?:on|for)\s+(.+?)(?:\?|$)/i,
-    /^(?:please\s+)?any\s+(.+?)(?:\?|$)/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = normalizedIntent.match(pattern);
-    const value = normalizeCalendarSearchQueryValue(match?.[1] ?? "");
-    if (value) {
-      return value;
-    }
-  }
-
-  return undefined;
-}
-
-function inferCalendarSearchQueries(intent: string): string[] {
-  const normalizedIntent = normalizeText(intent);
-  const queries = new Set<string>();
-  const push = (value: string | undefined) => {
-    const normalized = normalizeCalendarSearchQueryValue(value);
-    if (normalized) {
-      queries.add(normalized);
-    }
-  };
-
-  push(inferCalendarSearchQuery(intent));
-
-  if (/\b(return|back|home)\b/.test(normalizedIntent)) {
-    const locationMatch = normalizedIntent.match(
-      /\b(?:from|to)\s+(.+?)(?=\b(?:today|tomorrow|tonight|this week(?:end)?|next week(?:end)?|week after(?: next)?|this month|next month|this year|next year|or|and|please|idk|i dk|i don't know)\b|[?.!,]|$)/i,
-    );
-    const location = normalizeCalendarSearchQueryValue(
-      locationMatch?.[1] ?? "",
-    );
-    push(`return flight${location ? ` ${location}` : ""}`);
-    if (location) {
-      push(`flight back ${location}`);
-      push(`${location} return flight`);
-    }
-  }
-
-  return [...queries];
-}
-
-function sanitizeCalendarQuery(
-  query: string | undefined,
-  intent: string,
-): string | undefined {
-  if (!query) {
-    return undefined;
-  }
-  const raw = normalizeText(query);
-  if (
-    PARAMETER_DOC_NOISE_PATTERN.test(raw) ||
-    raw.includes("supported keys include") ||
-    raw.includes("match against titles") ||
-    raw.includes("structured calendar arguments")
-  ) {
-    return undefined;
-  }
-  const cleaned = normalizeCalendarSearchQueryValue(query);
-  if (
-    !cleaned ||
-    PARAMETER_DOC_NOISE_PATTERN.test(cleaned) ||
-    textMatchesAnyCal(cleaned, CAL_TEMPORAL_FOLLOWUP_TERMS) ||
-    looksLikeLiteralRequestEcho(cleaned, intent) ||
-    cleaned.length > 160
-  ) {
-    return undefined;
-  }
-  const inferred = inferCalendarSearchQuery(intent);
-  if (
-    inferred &&
-    looksLikeNarrativeCalendarQuery(cleaned) &&
-    normalizeText(inferred) !== normalizeText(cleaned)
-  ) {
-    return undefined;
-  }
-  return cleaned;
-}
-
-function scoreCalendarQueryCandidate(query: string, intent: string): number {
-  const normalized = normalizeText(query);
-  if (!normalized) {
-    return Number.NEGATIVE_INFINITY;
-  }
-
-  let score = 0;
-  if (PARAMETER_DOC_NOISE_PATTERN.test(normalized)) {
-    score -= 500;
-  }
-  if (looksLikeNarrativeCalendarQuery(normalized)) {
-    score -= 120;
-  }
-  if (looksLikeLiteralRequestEcho(query, intent)) {
-    score -= 120;
-  }
-  if (textMatchesAnyCal(normalized, CAL_TEMPORAL_FOLLOWUP_TERMS)) {
-    score -= 120;
-  }
-
-  const tokens = tokenizeForSearch(normalized);
-  if (tokens.length <= 4) {
-    score += 12;
-  } else if (tokens.length >= 8) {
-    score -= 15;
-  }
-
-  const inferredQueries = inferCalendarSearchQueries(intent).map((value) =>
-    normalizeText(value),
-  );
-  if (inferredQueries.includes(normalized)) {
-    score += 60;
-  }
-  for (const inferredQuery of inferredQueries) {
-    if (!inferredQuery) {
-      continue;
-    }
-    if (
-      normalized.includes(inferredQuery) ||
-      inferredQuery.includes(normalized)
-    ) {
-      score += 18;
-    }
-    const inferredTokens = new Set(tokenizeForSearch(inferredQuery));
-    score += tokens.filter((token) => inferredTokens.has(token)).length * 8;
-  }
-
-  if (
-    /\b(flight|flights|travel|trip|return|back|home)\b/.test(
-      normalizeText(intent),
-    ) &&
-    /\b(flight|flights|travel|trip|return|back|home)\b/.test(normalized)
-  ) {
-    score += 12;
-  }
-
-  return score;
-}
-
 function eventDateSearchTerms(event: LifeOpsCalendarEvent): Set<string> {
   const formatter = (options: Intl.DateTimeFormatOptions) =>
     new Intl.DateTimeFormat("en-US", {
@@ -2057,18 +1145,6 @@ function eventDateSearchTerms(event: LifeOpsCalendarEvent): Set<string> {
       weekdayShort,
     ].map((term) => normalizeText(term)),
   );
-}
-
-async function extractCalendarSearchQueriesWithLlm(
-  runtime: IAgentRuntime,
-  message: Memory,
-  state: State | undefined,
-  intent: string,
-  timeZone?: string,
-): Promise<string[]> {
-  return (
-    await extractCalendarPlanWithLlm(runtime, message, state, intent, timeZone)
-  ).queries;
 }
 
 export async function extractCalendarPlanWithLlm(
@@ -2116,15 +1192,17 @@ export async function extractCalendarPlanWithLlm(
     "  delete_event — remove or cancel an existing event (e.g. 'delete the team meeting', 'cancel my appointment', 'remove the duplicate event')",
     "  trip_window — query what's happening during a trip or stay in a specific place (e.g. 'what's happening while I'm in Denver', 'my Tokyo itinerary')",
     "",
-    "For feed, search_events, or trip_window, infer an exact timeMin/timeMax window when the request names or implies a date or date range.",
+    "For feed, search_events, trip_window, update_event, or delete_event, infer an exact timeMin/timeMax window when the request names or implies a date or date range.",
     "timeMin and timeMax must be ISO 8601 datetimes that the API can use directly.",
     "windowLabel should be a short natural-language label like on monday, this weekend, next month, or tonight.",
-    "For search_events or trip_window, extract up to 3 short search queries.",
+    "For search_events, update_event, delete_event, or trip_window, extract up to 3 short search queries.",
     "Preserve names, places, and keywords in their original language or script when useful.",
     "Convert time constraints into concise searchable dates or windows even if the user phrases them in another language.",
     "Focus on people, places, flights, itinerary, appointments, and explicit dates.",
     "If the request is about a date, include a date query like april 12 or 2026-04-12.",
     "If the request asks what is happening while the user is in a place, use trip_window and include tripLocation.",
+    "For update_event or delete_event, use queries to identify the existing target event and title for the new title only when the user is renaming it.",
+    "For requests like all events, full schedule, everything on my calendar, or a broad itinerary sweep, return a broad timeMin/timeMax window instead of relying on downstream heuristics.",
     "",
     "Examples:",
     '  "what\'s on my calendar tomorrow" → {"subaction":"feed","shouldAct":true,"response":null}',
@@ -2230,73 +1308,32 @@ export async function extractCalendarPlanWithLlm(
   };
 }
 
-async function resolveCalendarSearchQueries(
-  runtime: IAgentRuntime,
-  message: Memory,
-  state: State | undefined,
-  explicitQueries: Array<string | undefined>,
-  intent: string,
-  llmPlan?: CalendarLlmPlan,
-  timeZone?: string,
-): Promise<string[]> {
-  const providedQueries = dedupeCalendarQueries(
-    explicitQueries.map((query) => sanitizeCalendarQuery(query, intent)),
-  );
-  const heuristicQueries = inferCalendarSearchQueries(intent);
-  const llmQueries =
-    llmPlan && llmPlan.queries.length > 0
-      ? llmPlan.queries
-      : await extractCalendarSearchQueriesWithLlm(
-          runtime,
-          message,
-          state,
-          intent,
-          timeZone,
-        );
-  const stateQueries = userIntentsFromState(state)
-    .reverse()
-    .flatMap((candidate) => inferCalendarSearchQueries(candidate));
-  const candidates = dedupeCalendarQueries(
-    [
-      ...providedQueries,
-      ...llmQueries,
-      ...heuristicQueries,
-      ...stateQueries,
-    ].map((query) => sanitizeCalendarQuery(query, intent)),
-  );
-  return [...candidates].sort(
-    (left, right) =>
-      scoreCalendarQueryCandidate(right, intent) -
-      scoreCalendarQueryCandidate(left, intent),
-  );
+function resolveCalendarSearchQueries(args: {
+  explicitQueries: Array<string | undefined>;
+  llmPlan?: CalendarLlmPlan;
+  fallbackQueries?: Array<string | undefined>;
+}): string[] {
+  return dedupeCalendarQueries([
+    ...args.explicitQueries,
+    ...(args.llmPlan?.queries ?? []),
+    ...(args.fallbackQueries ?? []),
+  ]);
 }
 
-function inferCreateEventTitle(intent: string): string | undefined {
-  const patterns = [
-    /\b(?:create|add|schedule|book|put)\s+(?:a|an|the)?\s*(.+?)(?=\b(?:for|on|at|tomorrow|today|tonight|next|this|from)\b|[?.!,]|$)/i,
-    /\b(?:meeting|appointment|call|event)\s+(?:with|for)\s+(.+?)(?=\b(?:for|on|at|tomorrow|today|tonight|next|this|from)\b|[?.!,]|$)/i,
-  ];
-  for (const pattern of patterns) {
-    const match = intent.match(pattern);
-    const value = match?.[1]?.trim();
-    if (value && !/^(calendar|event|meeting|appointment|call)$/i.test(value)) {
-      return value.replace(/\s+/g, " ").trim();
-    }
+function normalizeIsShortPreparationFlag(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
   }
-  return undefined;
-}
-
-function isShortPreparationEvent(intent: string, title: string): boolean {
-  return /\b(get ready|ready for|prep|prepare|packing|pack|leave for|head to|airport|flight|reminder|remind me)\b/i.test(
-    `${intent} ${title}`,
-  );
+  return false;
 }
 
 function resolveCreateEventDurationMinutes(args: {
   explicitDuration: number | undefined;
   extractedDuration: number | undefined;
-  intent: string;
-  title: string;
+  isShortPreparation: boolean;
   hasExplicitEndAt: boolean;
   hasExplicitWindowPreset: boolean;
   hasExplicitStartAt: boolean;
@@ -2304,8 +1341,7 @@ function resolveCreateEventDurationMinutes(args: {
   const {
     explicitDuration,
     extractedDuration,
-    intent,
-    title,
+    isShortPreparation,
     hasExplicitEndAt,
     hasExplicitWindowPreset,
     hasExplicitStartAt,
@@ -2325,7 +1361,7 @@ function resolveCreateEventDurationMinutes(args: {
       return extractedDuration;
     }
     if (
-      isShortPreparationEvent(intent, title) &&
+      isShortPreparation &&
       (hasExplicitStartAt || hasExplicitWindowPreset)
     ) {
       return MIN_CREATE_EVENT_DURATION_MINUTES;
@@ -2334,7 +1370,7 @@ function resolveCreateEventDurationMinutes(args: {
   }
   if (
     !hasExplicitEndAt &&
-    isShortPreparationEvent(intent, title) &&
+    isShortPreparation &&
     (hasExplicitStartAt || hasExplicitWindowPreset)
   ) {
     return MIN_CREATE_EVENT_DURATION_MINUTES;
@@ -2466,8 +1502,9 @@ function buildCreateEventRequest(
   const durationMinutes = resolveCreateEventDurationMinutes({
     explicitDuration: explicitDuration,
     extractedDuration,
-    intent: args.intent,
-    title: title ?? args.fallbackRequest?.title ?? "",
+    isShortPreparation: normalizeIsShortPreparationFlag(
+      args.extractedDetails.isShortPreparation,
+    ),
     hasExplicitEndAt: Boolean(rawEndAt),
     hasExplicitWindowPreset: Boolean(resolvedWindowPreset),
     hasExplicitStartAt: Boolean(resolvedStartAt),
@@ -2630,6 +1667,7 @@ async function inferCreateEventDetails(
     "Return XML only. No prose. Leave fields empty when unknown.",
     "If a start time or window is implied but duration is not explicit, infer a reasonable positive duration.",
     "For short prep or reminder blocks, use at least 15 minutes instead of 0.",
+    "Set isShortPreparation=true when the event is a brief prep/reminder/leave-for/get-ready block (any language) where 15 minutes is the right default.",
     "When the user gives a concrete day or date without an exact time-of-day, use the calendar context to infer a plausible open startAt in the calendar timezone. Avoid obvious overlaps with nearby events. If the calendar context is unavailable or the timing is ambiguous, leave startAt empty.",
     "Only use windowPreset for explicit 'tomorrow morning|afternoon|evening' phrasing — never as a fallback for arbitrary dates.",
     "",
@@ -2642,6 +1680,7 @@ async function inferCreateEventDetails(
     "  <durationMinutes>number if implied</durationMinutes>",
     "  <windowPreset>tomorrow_morning|tomorrow_afternoon|tomorrow_evening</windowPreset>",
     "  <timeZone>IANA timezone if stated</timeZone>",
+    "  <isShortPreparation>true|false</isShortPreparation>",
     "</response>",
     "",
     `Current timezone: ${timeZone}`,
@@ -2906,15 +1945,12 @@ function scoreCalendarEvent(
       queryTokens.filter((token) => attendeeTokenSet.has(token)).length * 8;
   }
 
-  if (/\b(return|back|home)\b/.test(normalizedQuery)) {
-    if (/\b(return|back|home)\b/.test(`${title} ${description}`)) {
-      score += 24;
-    } else if (
-      /\b(flight|travel|trip)\b/.test(`${title} ${description} ${location}`)
-    ) {
-      score -= 36;
-    }
-  }
+  // (Earlier revisions added an English-only "return/back/home" boost and a
+  // counter-penalty against generic flight/travel/trip events. Token matching
+  // above already covers any language; the boost was multilingual-hostile and
+  // produced wrong results when the user said the equivalent in another
+  // language. The grounded LLM disambiguation step picks the right match
+  // when token scores are tied.)
 
   const dateTerms = eventDateSearchTerms(event);
   if (
@@ -3078,12 +2114,6 @@ async function groundCalendarSearchMatchesWithLlm(
   }
 }
 
-function isTravelEvent(event: LifeOpsCalendarEvent): boolean {
-  return /\b(flight|fly|travel|trip|hotel|stay|lodging|airbnb|check[- ]?in|check[- ]?out|return|home)\b/i.test(
-    `${event.title} ${event.description} ${event.location}`,
-  );
-}
-
 function eventStartMs(event: LifeOpsCalendarEvent): number {
   return Date.parse(event.startAt);
 }
@@ -3100,11 +2130,14 @@ function resolveTripWindowEvents(
   events: LifeOpsCalendarEvent[],
   location: string,
 ): LifeOpsCalendarEvent[] | null {
+  // Trip-window anchoring is driven entirely by location-token matching via
+  // scoreCalendarEvent. The previous English-only "travel keyword" boost
+  // (flight/hotel/airbnb/...) was multilingual-hostile; the LLM trip_window
+  // planner already supplies a location, so location matching alone is enough.
   const anchors = events
     .map((event) => ({
       event,
-      score:
-        scoreCalendarEvent(event, location) + (isTravelEvent(event) ? 12 : 0),
+      score: scoreCalendarEvent(event, location),
     }))
     .filter((candidate) => candidate.score > 0)
     .sort(
@@ -3160,21 +2193,17 @@ function formatCalendarSearchResults(
   events: LifeOpsCalendarEvent[],
   query: string,
   label: string,
-  intent: string,
 ): string {
   if (events.length === 0) {
     return `No calendar events matched "${query}" ${label}.`;
   }
   if (events.length === 1) {
     const event = events[0];
-    const normalizedIntent = normalizeText(intent);
-    const matchingSubject =
-      /\b(flight|flights|fly|travel|trip|return|back|home)\b/.test(
-        `${normalizedIntent} ${query}`,
-      )
-        ? "flight"
-        : "calendar event";
-    return `Your matching ${matchingSubject} is **${event.title}** (${formatCalendarMoment(event)}).`;
+    // The fallback wording is intentionally generic ("calendar event") so it
+    // is correct in any language. The grounded LLM reply renderer is what
+    // gives this string its final natural phrasing — no English keyword
+    // regex picks the noun anymore.
+    return `Your matching calendar event is **${event.title}** (${formatCalendarMoment(event)}).`;
   }
   const lines = [
     `Found ${events.length} calendar event${events.length === 1 ? "" : "s"} for "${query}" ${label}:`,
@@ -3266,11 +2295,8 @@ export const calendarAction: Action & {
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",
   descriptionCompressed: "Google Calendar via LifeOps: view schedule, search events, create events, query travel. Not for email or habits.",
   suppressPostActionContinuation: true,
-  validate: async (runtime, message, state) => {
-    if (!(await hasLifeOpsAccess(runtime, message))) {
-      return false;
-    }
-    return hasCalendarContextSignal(message, state);
+  validate: async (runtime, message) => {
+    return hasLifeOpsAccess(runtime, message);
   },
   handler: async (
     runtime,
@@ -3293,7 +2319,7 @@ export const calendarAction: Action & {
       | CalendarActionParams
       | undefined;
     const params = rawParams ?? ({} as CalendarActionParams);
-    const intent = resolveCalendarIntent(params.intent, message, state);
+    const intent = resolveCalendarIntentInput(params.intent, message);
     const details = normalizeCalendarDetails(params.details);
     const planningTimeZone = resolveCalendarTimeZone(details);
     const llmPlan = await extractCalendarPlanWithLlm(
@@ -3303,39 +2329,36 @@ export const calendarAction: Action & {
       intent,
       planningTimeZone,
     );
-    const heuristicQuery = inferCalendarSearchQuery(intent);
-    const inferredQuery = sanitizeCalendarQuery(
-      params.query ?? detailString(details, "query"),
-      intent,
-    );
-    const inferredQueries = dedupeCalendarQueries([
-      inferredQuery,
-      ...llmPlan.queries,
-      ...(params.queries ?? []),
-      ...(detailArray(details, "queries")?.map((value) =>
-        typeof value === "string" ? value : undefined,
-      ) ?? []),
-    ]);
+    const explicitSubaction = normalizeCalendarSubaction(params.subaction);
     const explicitTitle =
       (typeof params.title === "string" && params.title.trim().length > 0
         ? params.title.trim()
         : undefined) ??
       detailString(details, "title") ??
       llmPlan.title;
-    const inferredTitle =
-      explicitTitle ?? llmPlan.title ?? inferCreateEventTitle(intent);
+    const inferredTitle = explicitTitle ?? llmPlan.title;
     const tripWindowIntent =
       llmPlan.tripLocation && llmPlan.tripLocation.trim().length > 0
         ? { location: llmPlan.tripLocation.trim() }
-        : inferTripWindowIntent(intent);
-    const explicitSubaction = params.subaction as CalendarSubaction | undefined;
-    const preferExplicitSubaction = shouldTrustExplicitCalendarSubaction(
-      explicitSubaction,
+        : null;
+    const searchQueries = resolveCalendarSearchQueries({
+      explicitQueries: [
+        params.query,
+        detailString(details, "query"),
+        ...(params.queries ?? []),
+        ...(detailArray(details, "queries")?.map((value) =>
+          typeof value === "string" ? value : undefined,
+        ) ?? []),
+      ],
+      llmPlan,
+      fallbackQueries: [tripWindowIntent?.location],
+    });
+    const structuredSubaction = resolveStructuredCalendarSubaction(
       params,
       details,
     );
     const hasExplicitCalendarExecutionInput = Boolean(
-      params.subaction ||
+      explicitSubaction ||
         params.title ||
         params.query ||
         (params.queries?.length ?? 0) > 0 ||
@@ -3348,73 +2371,15 @@ export const calendarAction: Action & {
         detailString(details, "windowPreset") ||
         detailNumber(details, "windowDays"),
     );
-    const forcedSubaction = ((): CalendarSubaction | null => {
-      const text = normalizeText(messageText(message));
-      if (
-        /\b(?:rename|change|move|reschedule|push back)\b[^.?!]+\bto\b/.test(
-          text,
-        ) ||
-        /\b(rename|reschedule|update|edit|modify|change|move)\b.*\b(event|meeting|appointment|calendar|invite)\b/.test(
-          text,
-        )
-      ) {
-        return "update_event";
-      }
-      if (
-        /\b(delete|remove|cancel|drop|get rid of|trash|kill)\b.*\b(event|meeting|appointment|calendar|invite)\b/.test(
-          text,
-        ) ||
-        /\b(delete|remove|cancel)\b.+\b(today|tomorrow|tonight|this week|next week)\b/.test(
-          text,
-        )
-      ) {
-        return "delete_event";
-      }
-      if (
-        /\b(create|add|book|schedule|make|put)\b[^.?!]*\b(event|meeting|appointment|invite|calendar)\b/.test(
-          text,
-        )
-      ) {
-        return "create_event";
-      }
-      if (
-        /\b(show|list|tell|give|read)\b[^.?!]*\b(all|every|everything|entire|full|whole)\b[^.?!]*\b(event|events|calendar|schedule|meeting|meetings|appointment|appointments|entry|entries|agenda)\b/.test(
-          text,
-        ) ||
-        /\b(all|every|everything)\b\s+(?:my\s+)?(?:calendar|events?|meetings?|appointments?)\b/.test(
-          text,
-        )
-      ) {
-        return "feed";
-      }
-      return null;
-    })();
-
-    let subaction: CalendarSubaction;
-    if (tripWindowIntent) {
-      subaction = "trip_window";
-    } else if (forcedSubaction) {
-      subaction = forcedSubaction;
-    } else if (llmPlan.subaction && !preferExplicitSubaction) {
-      subaction = llmPlan.subaction;
-    } else if (params.subaction) {
-      subaction = params.subaction as CalendarSubaction;
-    } else {
-      runtime.logger?.warn?.(
-        { src: "action:calendar", intent },
-        "Calendar LLM plan returned no subaction; falling back to regex inference",
-      );
-      subaction = inferCalendarSubaction(
-        normalizeText(intent),
-        details,
-        inferredQuery ?? heuristicQuery,
-      );
-    }
+    const subaction =
+      explicitSubaction ??
+      llmPlan.subaction ??
+      (tripWindowIntent ? "trip_window" : null) ??
+      structuredSubaction;
     runtime.logger?.debug?.(
       {
         src: "action:calendar",
         subaction,
-        forcedSubaction,
         rawMessage: messageText(message).slice(0, 200),
         resolvedIntent: intent.slice(0, 200),
         params: {
@@ -3457,31 +2422,28 @@ export const calendarAction: Action & {
       });
 
     if (
+      llmPlan.shouldAct === false &&
       !hasExplicitCalendarExecutionInput &&
-      !forcedSubaction &&
-      !tripWindowIntent &&
-      looksLikeLifeReminderRequestForCalendarAction(messageText(message))
+      !explicitSubaction
     ) {
       const fallback =
-        "That sounds like a reminder or todo rather than a calendar event. Tell me the reminder and when it should happen.";
+        llmPlan.response ?? buildCalendarReplyOnlyFallback(llmPlan.subaction);
       return respond({
         success: true,
-        text: await renderReply("out_of_domain", fallback, {
-          requestedDomain: "lifeops",
+        text: await renderReply("reply_only", fallback, {
+          llmPlan,
+          suggestedSubaction: llmPlan.subaction,
         }),
         data: {
           noop: true,
-          suggestedSubaction: null,
+          ...(llmPlan.subaction
+            ? { suggestedSubaction: llmPlan.subaction }
+            : {}),
         },
       });
     }
 
-    if (
-      llmPlan.shouldAct === false &&
-      !hasExplicitCalendarExecutionInput &&
-      !forcedSubaction &&
-      !tripWindowIntent
-    ) {
+    if (!subaction) {
       const fallback =
         llmPlan.response ?? buildCalendarReplyOnlyFallback(llmPlan.subaction);
       return respond({
@@ -3696,41 +2658,35 @@ export const calendarAction: Action & {
             text: calendarWriteUnavailableMessage(google),
           });
         }
-        // Parse "rename X to Y" / "change X to Y" patterns directly from
-        // the user message. The chat LLM tends to put only the NEW title in
-        // params.title, but we need the OLD title to find the event we're
-        // patching. Pull both halves from the literal phrase if it's there.
-        // We try the raw message first because resolveCalendarIntent may
-        // have replaced the user's text with the LLM's rewritten version,
-        // which often drops "rename" entirely.
-        const rawMessageText = messageText(message);
-        const renamePattern =
-          /\b(?:rename|change|update|edit)\b\s+["“]?([^"”]+?)["”]?\s+(?:to|into|as)\s+["“]?([^"”]+?)["”]?(?:[.!?]|$)/i;
-        const renameMatch =
-          rawMessageText.match(renamePattern) ?? intent.match(renamePattern);
-        const oldTitleFromIntent = renameMatch?.[1]?.trim();
-        const newTitleFromIntent = renameMatch?.[2]?.trim();
-
         const explicitEventId = detailString(details, "eventId");
         let resolvedEventId = explicitEventId;
         let resolvedCalendarId = detailString(details, "calendarId");
         let targetEvent: LifeOpsCalendarEvent | null = null;
-        // Same lookup-by-title fallback as delete_event so the user can say
-        // "rename my dentist appointment to dentist follow-up" without first
-        // copying an opaque google id.
         if (!resolvedEventId) {
-          // Use a wide lookup window — events can be far in the future
-          // (e.g. a birthday in 2027). The default narrow window would
-          // miss anything beyond the current day.
-          // forceSync: true is critical here — without it the feed query
-          // returns the local cache (life_calendar_events), which may not
-          // contain far-future events that have never been synced before
-          // (or any events at all if the cache was wiped). Forcing the
-          // sync makes the bot pull a fresh window from Google so the
-          // title-based lookup actually has events to filter against.
-          const wideLookup = buildWideLookupRange(
-            resolveCalendarTimeZone(details),
-          );
+          const titleHint = searchQueries[0];
+          if (!titleHint) {
+            return respond({
+              success: false,
+              text: await renderReply(
+                "clarify_update_event_target",
+                "Tell me which calendar event you want to change by title, person, place, or date.",
+                {
+                  missing: ["target event"],
+                },
+              ),
+            });
+          }
+          const feedRequest =
+            detailString(details, "timeMin") ||
+            detailString(details, "timeMax") ||
+            llmPlan.timeMin ||
+            llmPlan.timeMax
+              ? resolveCalendarWindow(intent, details, true, llmPlan).request
+              : {
+                  calendarId: detailString(details, "calendarId"),
+                  timeZone: resolveCalendarTimeZone(details),
+                  ...buildWideLookupRange(resolveCalendarTimeZone(details)),
+                };
           const feed = await service.getCalendarFeed(INTERNAL_URL, {
             mode: detailString(details, "mode") as
               | "local"
@@ -3742,15 +2698,9 @@ export const calendarAction: Action & {
               | "agent"
               | undefined,
             grantId: detailString(details, "grantId"),
-            calendarId: detailString(details, "calendarId"),
-            timeZone: resolveCalendarTimeZone(details),
             forceSync: true,
-            ...wideLookup,
+            ...feedRequest,
           });
-          // Prefer the OLD title parsed from "rename X to Y" — explicit
-          // title from the chat LLM almost always carries the NEW name.
-          const titleHint =
-            oldTitleFromIntent ?? explicitTitle ?? inferredTitle;
           const candidates = titleHint
             ? feed.events.filter((e) =>
                 normalizeText(e.title).includes(normalizeText(titleHint)),
@@ -3786,53 +2736,10 @@ export const calendarAction: Action & {
           resolvedEventId = targetEvent.externalId;
           resolvedCalendarId = targetEvent.calendarId;
         }
-        const newTitle =
-          newTitleFromIntent ??
-          detailString(details, "newTitle") ??
-          explicitTitle;
-
-        // Reuse the same LLM extractor that create_event uses to pull
-        // startAt / endAt / location / description out of the user's intent
-        // text. The chat LLM rarely populates `details.startAt` directly for
-        // an update — it just rewrites the intent and lets the action figure
-        // out the time. Without this we'd PATCH with no fields and the
-        // event wouldn't actually move.
-        //
-        // CRITICAL: only run the extractor when the user actually mentioned
-        // a time. For pure rename intents like "rename X to Y" the LLM will
-        // happily hallucinate a startAt from the year in the new title
-        // ("rename my party 2027 to ..." → startAt 2027-01-01), and a
-        // PATCH with start.dateTime but no matching end.dateTime triggers
-        // Google's "Bad Request" rejection. Detect time keywords in the
-        // raw message before invoking the extractor.
+        const newTitle = detailString(details, "newTitle") ?? explicitTitle;
         const explicitStartAtForUpdate = detailString(details, "startAt");
         const explicitEndAtForUpdate = detailString(details, "endAt");
-        const rawForUpdate = normalizeText(messageText(message));
-        const hasTimeAnchor =
-          /\b(at|on|by|from|until)\s+\d/.test(rawForUpdate) ||
-          /\b(today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december)\b/.test(
-            rawForUpdate,
-          ) ||
-          /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/.test(rawForUpdate) ||
-          /\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/.test(rawForUpdate);
-        const hasRelativeShiftCue =
-          /\b(?:later|earlier|push back|push it back|bring forward|move forward|move back|delay|postpone|advance)\b/.test(
-            rawForUpdate,
-          );
-        const needsTimeExtraction =
-          (hasTimeAnchor || hasRelativeShiftCue) &&
-          !(
-            explicitStartAtForUpdate ||
-            explicitEndAtForUpdate ||
-            detailNumber(details, "durationMinutes")
-          );
-        const shouldInferUpdateDetails =
-          Boolean(targetEvent) &&
-          (needsTimeExtraction ||
-            /\b(?:rename|change|move|reschedule|update|edit|location|description|notes)\b/.test(
-              rawForUpdate,
-            ));
-        const extractedForUpdate = shouldInferUpdateDetails
+        const extractedForUpdate = targetEvent
           ? await inferUpdateEventDetails(
               runtime,
               message,
@@ -3841,16 +2748,7 @@ export const calendarAction: Action & {
               targetEvent,
               targetEvent?.timezone ?? planningTimeZone,
             )
-          : needsTimeExtraction
-            ? await inferCreateEventDetails(
-                runtime,
-                message,
-                state,
-                intent,
-                null,
-                targetEvent?.timezone ?? planningTimeZone,
-              )
-            : ({} as Record<string, unknown>);
+          : ({} as Record<string, unknown>);
         const extractedStartAt =
           typeof extractedForUpdate.startAt === "string"
             ? extractedForUpdate.startAt.trim()
@@ -3919,30 +2817,34 @@ export const calendarAction: Action & {
         }
         const explicitEventId = detailString(details, "eventId");
         const calendarIdForDelete = detailString(details, "calendarId");
-        // The LLM may not know the event id directly. Fall back to a feed
-        // lookup so phrases like "delete the duplicate test event tomorrow"
-        // can resolve to a concrete event without forcing the user to copy
-        // an opaque google id from the bot's previous reply.
         const resolvedEventId = explicitEventId;
         let resolvedEventTitle: string | undefined;
         const resolvedCalendarId = calendarIdForDelete;
         if (!resolvedEventId) {
-          // For delete-by-title we honor an explicit time window if the
-          // user gave one ("delete the test event tomorrow"); otherwise we
-          // search wide so far-future events are still findable.
-          // forceSync: true ensures the lookup actually queries Google
-          // instead of returning a stale (or empty) local cache.
-          const hasExplicitWindow =
-            /\b(today|tomorrow|tonight|this week|next week|the week after|this weekend|next weekend|weekend|this month|next month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.test(
-              intent,
-            );
-          const feedRequest = hasExplicitWindow
-            ? resolveCalendarWindow(intent, details, false, llmPlan).request
-            : {
-                calendarId: detailString(details, "calendarId"),
-                timeZone: resolveCalendarTimeZone(details),
-                ...buildWideLookupRange(resolveCalendarTimeZone(details)),
-              };
+          const titleHint = searchQueries[0];
+          if (!titleHint) {
+            return respond({
+              success: false,
+              text: await renderReply(
+                "clarify_delete_event_target",
+                "Tell me which calendar event you want to delete by title, person, place, or date.",
+                {
+                  missing: ["target event"],
+                },
+              ),
+            });
+          }
+          const feedRequest =
+            detailString(details, "timeMin") ||
+            detailString(details, "timeMax") ||
+            llmPlan.timeMin ||
+            llmPlan.timeMax
+              ? resolveCalendarWindow(intent, details, true, llmPlan).request
+              : {
+                  calendarId: detailString(details, "calendarId"),
+                  timeZone: resolveCalendarTimeZone(details),
+                  ...buildWideLookupRange(resolveCalendarTimeZone(details)),
+                };
           const feed = await service.getCalendarFeed(INTERNAL_URL, {
             mode: detailString(details, "mode") as
               | "local"
@@ -3957,7 +2859,6 @@ export const calendarAction: Action & {
             forceSync: true,
             ...feedRequest,
           });
-          const titleHint = explicitTitle ?? inferredTitle;
           const candidates = titleHint
             ? feed.events.filter((e) =>
                 normalizeText(e.title).includes(normalizeText(titleHint)),
@@ -3975,15 +2876,7 @@ export const calendarAction: Action & {
             });
           }
 
-          // Detect "delete all / delete both / delete N" phrasing — when the
-          // user explicitly opts in to multi-delete, sweep every match.
-          const deleteAllMatch = shouldDeleteAllMatchingCalendarEvents({
-            intent,
-            titleHint,
-            candidateCount: candidates.length,
-          });
-
-          if (candidates.length > 1 && !deleteAllMatch) {
+          if (candidates.length > 1) {
             const fallback = buildCalendarEventDisambiguationFallback({
               action: "delete",
               candidates,
@@ -3999,7 +2892,7 @@ export const calendarAction: Action & {
             });
           }
 
-          const targets = deleteAllMatch ? candidates : [candidates[0]];
+          const targets = [candidates[0]];
           const deleteResults: Array<{
             title: string;
             ok: boolean;
@@ -4149,34 +3042,14 @@ export const calendarAction: Action & {
       // events" returns "no events today" even when the calendar has
       // dozens of upcoming items. We apply this regardless of whether the
       // chat LLM picked feed or search_events because both subactions go
-      // through this code path.
-      const rawMessageNorm = normalizeText(messageText(message));
-      const wantsWideWindow =
-        /\b(all|every|everything|entire|full|whole)\b[^.?!]*\b(event|events|calendar|schedule|meeting|meetings|appointment|appointments|entry|entries|agenda)\b/.test(
-          rawMessageNorm,
-        ) ||
-        /\b(next|past|last)\s+\d+\s*(year|years|month|months|weeks?)\b/.test(
-          rawMessageNorm,
-        ) ||
-        /\b(today\s+(?:until|through|to)\s+next\s+(?:year|month))\b/.test(
-          rawMessageNorm,
-        ) ||
-        /\bevery\s+calendar\s+entry\b/.test(rawMessageNorm);
       const baseResolved = resolveCalendarWindow(
         intent,
         details,
-        subaction === "search_events" || wantsWideWindow,
+        subaction === "search_events",
         llmPlan,
       );
-      const request = wantsWideWindow
-        ? {
-            ...baseResolved.request,
-            ...buildWideLookupRange(resolveCalendarTimeZone(details)),
-          }
-        : baseResolved.request;
-      const label = wantsWideWindow
-        ? "across the full window"
-        : baseResolved.label;
+      const request = baseResolved.request;
+      const label = baseResolved.label;
       const feed = await service.getCalendarFeed(INTERNAL_URL, {
         mode: detailString(details, "mode") as
           | "local"
@@ -4185,20 +3058,10 @@ export const calendarAction: Action & {
           | undefined,
         side: detailString(details, "side") as "owner" | "agent" | undefined,
         grantId: detailString(details, "grantId"),
-        forceSync: wantsWideWindow,
         ...request,
       });
 
       if (subaction === "search_events") {
-        const searchQueries = await resolveCalendarSearchQueries(
-          runtime,
-          message,
-          state,
-          [...inferredQueries],
-          intent,
-          llmPlan,
-          planningTimeZone,
-        );
         const query = searchQueries[0];
         if (!query || searchQueries.length === 0) {
           return respond({
@@ -4265,7 +3128,6 @@ export const calendarAction: Action & {
           filteredEvents,
           query,
           label,
-          intent,
         );
         return respond({
           success: true,

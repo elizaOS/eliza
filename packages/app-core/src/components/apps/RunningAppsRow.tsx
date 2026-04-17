@@ -1,6 +1,6 @@
 import type { MouseEvent } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";
-import { AppIdentityTile } from "./app-identity";
+import { AppHero } from "./app-identity";
 import { getRunAttentionReasons } from "./run-attention";
 
 interface RunningAppsRowProps {
@@ -12,21 +12,17 @@ interface RunningAppsRowProps {
   stoppingRunId?: string | null;
 }
 
-function HealthBadge({ run }: { run: AppRunSummary }) {
-  const toneClass =
-    run.health.state === "healthy"
-      ? "border-ok/30 bg-ok/10 text-ok"
-      : run.health.state === "degraded"
-        ? "border-warn/30 bg-warn/10 text-warn"
-        : "border-danger/30 bg-danger/10 text-danger";
-
-  return (
-    <span
-      className={`inline-flex min-h-5 items-center rounded-full border px-2 py-0.5 text-2xs font-medium uppercase tracking-[0.14em] ${toneClass}`}
-    >
-      {run.health.state}
-    </span>
-  );
+function getHealthTone(state: AppRunSummary["health"]["state"]): {
+  dot: string;
+  ring: string;
+} {
+  if (state === "healthy") {
+    return { dot: "bg-ok", ring: "shadow-[0_0_0_3px_rgba(16,185,129,0.35)]" };
+  }
+  if (state === "degraded") {
+    return { dot: "bg-warn", ring: "shadow-[0_0_0_3px_rgba(245,158,11,0.35)]" };
+  }
+  return { dot: "bg-danger", ring: "shadow-[0_0_0_3px_rgba(239,68,68,0.35)]" };
 }
 
 export function RunningAppsRow({
@@ -63,65 +59,67 @@ export function RunningAppsRow({
           const attentionReasons = getRunAttentionReasons(run);
           const needsAttention = attentionReasons.length > 0;
           const isBusy = busyRunId === run.runId;
+          const isStopping = stoppingRunId === run.runId;
+          const tone = getHealthTone(run.health.state);
 
           return (
             <div
               key={run.runId}
               data-testid={`running-app-card-${run.runId}`}
-              className="group rounded-2xl border border-accent/25 bg-card/72 transition-all hover:border-accent/45 hover:bg-bg-hover/70 focus-within:ring-2 focus-within:ring-accent/35"
+              className="group relative overflow-hidden rounded-2xl border border-accent/35 bg-card/72 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.4)] transition-all hover:border-accent/55 focus-within:ring-2 focus-within:ring-accent/35"
             >
               <button
                 type="button"
                 aria-label={`Open ${run.displayName}`}
                 aria-busy={isBusy || undefined}
-                className="flex w-full flex-col p-4 text-left focus-visible:outline-none"
+                className="block w-full text-left focus-visible:outline-none"
                 onClick={() => onOpenRun(run)}
               >
-                <div className="flex items-start gap-3">
-                  <AppIdentityTile app={app} active size="sm" />
+                <AppHero
+                  app={app}
+                  className="aspect-[5/4] transition-transform duration-300 group-hover:scale-[1.02]"
+                />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end p-4 pe-12">
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="truncate text-sm font-semibold text-txt">
-                        {run.displayName}
-                      </span>
-                      <HealthBadge run={run} />
-                    </div>
-                    <div className="mt-1 line-clamp-1 text-xs-tight text-muted-strong">
-                      {run.status}
+                    <div className="truncate text-sm font-semibold text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
+                      {run.displayName}
                     </div>
                   </div>
                 </div>
               </button>
+
+              <span
+                aria-label={`Health: ${run.health.state}`}
+                title={
+                  needsAttention ? attentionReasons[0] : run.health.state
+                }
+                className={`pointer-events-none absolute right-4 top-4 h-2.5 w-2.5 rounded-full ${tone.dot} ${tone.ring}`}
+              />
+
               {needsAttention ? (
-                <div className="px-4 pb-3">
-                  <div className="flex flex-wrap gap-1.5">
-                    <span className="inline-flex items-center rounded-full border border-warn/30 bg-warn/10 px-2 py-0.5 text-2xs font-medium uppercase tracking-[0.12em] text-warn">
-                      Needs attention
-                    </span>
-                  </div>
-                </div>
+                <span
+                  aria-label="Needs attention"
+                  title={attentionReasons[0]}
+                  className="pointer-events-none absolute right-10 top-3.5 inline-flex items-center rounded-full border border-warn/40 bg-black/40 px-2 py-0.5 text-[0.56rem] font-semibold uppercase tracking-[0.2em] text-warn backdrop-blur-sm"
+                >
+                  !
+                </span>
               ) : null}
+
               {onStopRun ? (
-                <div className="flex justify-end px-4 pb-4">
-                  <button
-                    type="button"
-                    data-testid={`running-app-stop-${run.runId}`}
-                    aria-label={`Stop ${run.displayName}`}
-                    disabled={stoppingRunId === run.runId}
-                    className="inline-flex items-center rounded-full border border-danger/30 bg-danger/10 px-3 py-1 text-2xs font-semibold uppercase tracking-[0.14em] text-danger transition-all hover:border-danger/60 hover:bg-danger/20 disabled:cursor-not-allowed disabled:opacity-50"
-                    onClick={(event: MouseEvent<HTMLButtonElement>) => {
-                      event.stopPropagation();
-                      onStopRun(run);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.stopPropagation();
-                      }
-                    }}
-                  >
-                    {stoppingRunId === run.runId ? "Stopping…" : "Stop"}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  data-testid={`running-app-stop-${run.runId}`}
+                  aria-label={`Stop ${run.displayName}`}
+                  disabled={isStopping}
+                  className="absolute bottom-3 right-3 inline-flex items-center rounded-full bg-black/40 px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-white/90 backdrop-blur-sm transition-all hover:bg-danger/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                    event.stopPropagation();
+                    onStopRun(run);
+                  }}
+                >
+                  {isStopping ? "Stopping…" : "Stop"}
+                </button>
               ) : null}
             </div>
           );

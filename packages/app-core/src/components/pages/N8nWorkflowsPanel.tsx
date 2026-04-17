@@ -99,99 +99,198 @@ interface N8nStatusBannerProps {
   status: N8nStatusResponse | null;
   loading: boolean;
   onRetry: () => void;
+  onStartLocal: () => void;
   onDismiss: () => void;
   dismissed: boolean;
+  retrying: boolean;
 }
 
 function N8nStatusBanner({
   status,
   loading,
   onRetry,
+  onStartLocal,
   onDismiss,
   dismissed,
+  retrying,
 }: N8nStatusBannerProps) {
-  const { t, setTab } = useApp();
+  const { t, setTab, setState } = useApp();
 
-  if (dismissed || loading || !status) return null;
+  if (loading || !status) return null;
 
   const mode: N8nMode = status.mode;
   const sidecarStatus: N8nSidecarStatus = status.status;
+  const platform = status.platform ?? "desktop";
+  const cloudHealth = status.cloudHealth ?? "ok";
 
-  let dot: "green" | "amber" | "red" | "muted" = "muted";
-  let text = "";
-  let showRetry = false;
-  let showSettings = false;
+  // ── CTA block for disabled mode ─────────────────────────────────────────
+  if (mode === "disabled") {
+    const headingId = "n8n-cta-heading";
+    if (platform === "mobile") {
+      return (
+        <div
+          role="region"
+          aria-labelledby={headingId}
+          className="rounded-xl border border-border/30 bg-bg/30 px-4 py-5 mb-3 space-y-3"
+        >
+          <h3
+            id={headingId}
+            className="text-sm font-semibold text-txt-strong"
+          >
+            {t("automations.n8n.ctaHeadingMobile")}
+          </h3>
+          <p className="text-xs text-muted">
+            {t("automations.n8n.ctaBodyMobile")}
+          </p>
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            className="h-8 px-4 text-xs"
+            onClick={() => {
+              setState("cloudDashboardView", "overview");
+              setTab("settings");
+            }}
+          >
+            {t("automations.n8n.ctaSignInCloud")}
+          </Button>
+        </div>
+      );
+    }
 
-  if (mode === "cloud") {
-    dot = "green";
-    text = t("automations.n8n.bannerCloud");
-  } else if (mode === "local" && sidecarStatus === "ready") {
-    dot = "green";
-    text = t("automations.n8n.bannerLocalReady");
-  } else if (mode === "local" && sidecarStatus === "starting") {
-    dot = "amber";
-    text = t("automations.n8n.bannerLocalStarting");
-  } else if (mode === "local" && sidecarStatus === "error") {
-    dot = "red";
-    text = t("automations.n8n.bannerLocalError");
-    showRetry = true;
-  } else if (mode === "disabled") {
-    dot = "muted";
-    text = t("automations.n8n.bannerDisabled");
-    showSettings = true;
-  } else {
-    // local + stopped — normal before sidecar is requested
-    dot = "amber";
-    text = t("automations.n8n.bannerLocalStarting");
+    // desktop: cloud (recommended) + local secondary
+    return (
+      <div
+        role="region"
+        aria-labelledby={headingId}
+        className="rounded-xl border border-border/30 bg-bg/30 px-4 py-5 mb-3 space-y-3"
+      >
+        <h3
+          id={headingId}
+          className="text-sm font-semibold text-txt-strong"
+        >
+          {t("automations.n8n.ctaHeadingDesktop")}
+        </h3>
+        <p className="text-xs text-muted">
+          {t("automations.n8n.ctaBodyDesktop")}
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            className="h-8 px-4 text-xs"
+            onClick={() => {
+              setState("cloudDashboardView", "overview");
+              setTab("settings");
+            }}
+          >
+            {t("automations.n8n.ctaSignInCloud")}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 px-4 text-xs"
+            onClick={onStartLocal}
+          >
+            {t("automations.n8n.ctaEnableLocal")}
+          </Button>
+        </div>
+      </div>
+    );
   }
 
-  const dotClass =
-    dot === "green"
-      ? "bg-ok"
-      : dot === "amber"
-        ? "bg-warning animate-pulse"
-        : dot === "red"
-          ? "bg-danger"
-          : "bg-muted/40";
+  // ── Cloud-health degraded banner ─────────────────────────────────────────
+  if (mode === "cloud" && cloudHealth === "degraded") {
+    return (
+      <div
+        role="status"
+        className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/5 px-3 py-3 text-xs mb-3"
+      >
+        <div className="flex-1 space-y-1">
+          <div className="font-semibold text-warning">
+            {t("automations.n8n.cloudDegradedHeading")}
+          </div>
+          <div className="text-muted">
+            {t("automations.n8n.cloudDegradedBody")}
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-busy={retrying}
+          className="shrink-0 text-warning underline hover:no-underline h-auto w-auto p-0 text-xs"
+          onClick={onRetry}
+          disabled={retrying}
+        >
+          {t("automations.n8n.cloudDegradedRetry")}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={t("automations.n8n.bannerDismiss")}
+          onClick={onDismiss}
+          className="shrink-0 text-muted hover:text-txt h-5 w-5"
+        >
+          <X className="h-3 w-3" />
+        </Button>
+      </div>
+    );
+  }
 
-  const bannerClass =
-    dot === "red"
-      ? "border-danger/20 bg-danger/5"
-      : dot === "green"
-        ? "border-ok/20 bg-ok/5"
-        : "border-border/30 bg-bg/30";
+  if (dismissed) return null;
+
+  // ── Mode pill ────────────────────────────────────────────────────────────
+  let pillLabel: string;
+  let pillVariant: "success" | "warning" | "danger" | "muted";
+  let pillAria: string;
+
+  if (mode === "cloud") {
+    // cloudHealth is "ok" or "unknown" here (degraded handled above)
+    pillLabel = t("automations.n8n.pillCloudHealthy");
+    pillVariant = "success";
+    pillAria = t("automations.n8n.pillAriaCloudHealthy");
+  } else if (mode === "local" && sidecarStatus === "ready") {
+    pillLabel = t("automations.n8n.pillLocalReady");
+    pillVariant = "success";
+    pillAria = t("automations.n8n.pillAriaLocalReady");
+  } else if (mode === "local" && sidecarStatus === "error") {
+    pillLabel = t("automations.n8n.bannerLocalError");
+    pillVariant = "danger";
+    pillAria = t("automations.n8n.bannerLocalError");
+  } else {
+    // local + starting or stopped
+    pillLabel = t("automations.n8n.pillLocalStarting");
+    pillVariant = "warning";
+    pillAria = t("automations.n8n.pillAriaLocalStarting");
+  }
 
   return (
-    // M6: role="status" so screen readers announce mode transitions
     <div
       role="status"
-      className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs mb-3 ${bannerClass}`}
+      className="flex items-center gap-2 rounded-lg border border-border/20 bg-bg/20 px-3 py-2 text-xs mb-3"
     >
-      <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${dotClass}`} />
-      <span className="flex-1 text-txt">{text}</span>
-      {showRetry && (
+      <StatusBadge
+        label={pillLabel}
+        variant={pillVariant}
+        withDot
+        aria-label={pillAria}
+      />
+      <span className="flex-1" />
+      {mode === "local" && sidecarStatus === "error" && (
         <Button
           type="button"
           variant="ghost"
           size="icon"
+          aria-busy={retrying}
           className="text-danger underline hover:no-underline h-auto w-auto p-0 text-xs"
           onClick={onRetry}
+          disabled={retrying}
         >
           {t("automations.n8n.bannerRetry")}
-        </Button>
-      )}
-      {showSettings && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="text-accent underline hover:no-underline h-auto w-auto p-0 text-xs"
-          onClick={() => {
-            // B6: use real nav API — setTab from useApp()
-            setTab("settings");
-          }}
-        >
-          {t("automations.n8n.settingsLink")}
         </Button>
       )}
       <Button
@@ -767,6 +866,7 @@ export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const didAutoStart = useRef(false);
 
   const selectedWorkflow = workflows.find((wf) => wf.id === selectedId) ?? null;
@@ -909,9 +1009,25 @@ export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
     void loadWorkflows();
   }, [loadStatus, loadWorkflows]);
 
-  const handleRetry = useCallback(() => {
-    void client.startN8nSidecar().catch(() => {});
-    void loadStatus();
+  const handleRetry = useCallback(async () => {
+    setRetrying(true);
+    try {
+      await client.startN8nSidecar().catch(() => {});
+      await loadStatus();
+    } finally {
+      setRetrying(false);
+    }
+  }, [loadStatus]);
+
+  // User-initiated local sidecar start (from the CTA block on desktop disabled mode).
+  const handleStartLocal = useCallback(async () => {
+    setRetrying(true);
+    try {
+      await client.startN8nSidecar().catch(() => {});
+      await loadStatus();
+    } finally {
+      setRetrying(false);
+    }
   }, [loadStatus]);
 
   const handleToggleActive = useCallback(
@@ -1031,9 +1147,11 @@ export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
           <N8nStatusBanner
             status={n8nStatus}
             loading={statusLoading}
-            onRetry={handleRetry}
+            onRetry={() => void handleRetry()}
+            onStartLocal={() => void handleStartLocal()}
             onDismiss={() => setBannerDismissed(true)}
             dismissed={bannerDismissed}
+            retrying={retrying}
           />
         </div>
         {/* M12: use Button primitive for refresh */}

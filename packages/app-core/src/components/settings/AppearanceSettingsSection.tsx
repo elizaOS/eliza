@@ -8,7 +8,7 @@
 
 import type { ResolvedContentPack } from "@elizaos/shared/contracts/content-pack";
 import { BUILTIN_THEMES } from "@elizaos/shared/themes/presets";
-import { Button, Card, CardContent, Input } from "@elizaos/ui";
+import { Button, Input } from "@elizaos/ui";
 import { Check, Moon, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -257,161 +257,135 @@ export function AppearanceSettingsSection() {
   );
 
   const isDark = uiTheme === "dark";
+  const activeDescription = BUILTIN_THEMES.find(
+    (t) => t.id === themeId,
+  )?.description;
 
+  /* ── Render ───────────────────────────────────────────────────── */
   return (
     <div className="space-y-6">
       {/* Light / Dark mode */}
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-txt/70">
+      <section className="space-y-2">
+        <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
           {t("settings.appearance.mode", { defaultValue: "Mode" })}
-        </p>
+        </h3>
         <div className="flex gap-2">
-          <button
-            type="button"
+          <ModeButton
+            active={!isDark}
+            icon={<Sun className="h-4 w-4" />}
+            label={t("settings.appearance.light", { defaultValue: "Light" })}
             onClick={() => setUiTheme("light")}
-            className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
-              !isDark
-                ? "border-accent bg-accent/8 ring-1 ring-accent/30"
-                : "border-border hover:border-accent/40 hover:bg-bg-hover"
-            }`}
-          >
-            <Sun className="h-4 w-4" />
-            {t("settings.appearance.light", { defaultValue: "Light" })}
-          </button>
-          <button
-            type="button"
+          />
+          <ModeButton
+            active={isDark}
+            icon={<Moon className="h-4 w-4" />}
+            label={t("settings.appearance.dark", { defaultValue: "Dark" })}
             onClick={() => setUiTheme("dark")}
-            className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
-              isDark
-                ? "border-accent bg-accent/8 ring-1 ring-accent/30"
-                : "border-border hover:border-accent/40 hover:bg-bg-hover"
-            }`}
-          >
-            <Moon className="h-4 w-4" />
-            {t("settings.appearance.dark", { defaultValue: "Dark" })}
-          </button>
+          />
         </div>
-      </div>
+      </section>
 
       {/* Theme picker */}
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-txt/70">
+      <section className="space-y-2">
+        <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
           {t("settings.appearance.theme", { defaultValue: "Theme" })}
-        </p>
+        </h3>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           {BUILTIN_THEMES.map((theme) => {
             const isActive = themeId === theme.id;
             const colors = isDark ? theme.dark : theme.light;
+            const swatches = [colors.bg, colors.card, colors.accent, colors.text];
             return (
               <button
                 key={theme.id}
                 type="button"
                 onClick={() => setThemeId(theme.id)}
-                className={`relative flex flex-col items-center gap-1.5 rounded-lg border p-3 transition-colors ${
-                  isActive
-                    ? "border-accent bg-accent/8 ring-1 ring-accent/30"
-                    : "border-border hover:border-accent/40 hover:bg-bg-hover"
-                }`}
+                className={selectableTileClass(isActive)}
               >
-                {/* Color swatch preview */}
                 <div className="flex items-center gap-1">
-                  <span
-                    className="h-5 w-5 rounded-full border border-border/40"
-                    style={{ background: colors.bg }}
-                  />
-                  <span
-                    className="h-5 w-5 rounded-full border border-border/40"
-                    style={{ background: colors.card }}
-                  />
-                  <span
-                    className="h-5 w-5 rounded-full border border-border/40"
-                    style={{ background: colors.accent }}
-                  />
-                  <span
-                    className="h-5 w-5 rounded-full border border-border/40"
-                    style={{ background: colors.text }}
-                  />
+                  {swatches.map((bg, i) => (
+                    <span
+                      key={i}
+                      className="h-4 w-4 rounded-full border border-border/40"
+                      style={{ background: bg }}
+                    />
+                  ))}
                 </div>
                 <span className="text-xs font-medium text-txt">
                   {theme.name}
                 </span>
                 {isActive && (
-                  <span className="absolute right-1.5 top-1.5 rounded-full bg-accent p-0.5">
-                    <Check className="h-3 w-3 text-accent-fg" />
-                  </span>
+                  <Check className="absolute right-1.5 top-1.5 h-3 w-3 text-accent" />
                 )}
               </button>
             );
           })}
         </div>
-        {BUILTIN_THEMES.find((t) => t.id === themeId)?.description && (
-          <p className="text-xs text-muted">
-            {BUILTIN_THEMES.find((t) => t.id === themeId)?.description}
-          </p>
+        {activeDescription && (
+          <p className="text-xs-tight text-muted">{activeDescription}</p>
         )}
-      </div>
+      </section>
 
       {/* Loaded packs */}
       {loadedPacks.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-foreground/70">
+        <section className="space-y-2">
+          <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
             {t("settings.appearance.loadedPacks", {
               defaultValue: "Loaded content packs",
             })}
-          </p>
+          </h3>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {loadedPacks.map((pack) => {
               const isActive = activePackId === pack.manifest.id;
               return (
-                <Card
+                <button
                   key={pack.manifest.id}
-                  className={`cursor-pointer border transition-colors ${
-                    isActive
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
-                  }`}
+                  type="button"
                   onClick={() => handleTogglePack(pack)}
+                  className={`flex items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${
+                    isActive
+                      ? "border-accent bg-accent/8"
+                      : "border-border/50 hover:border-accent/40 hover:bg-bg-hover"
+                  }`}
                 >
-                  <CardContent className="flex items-center gap-3 px-3 py-2.5">
-                    {pack.vrmPreviewUrl && (
-                      <img
-                        src={pack.vrmPreviewUrl}
-                        alt=""
-                        className="h-10 w-10 rounded object-cover"
-                      />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold">
-                        {pack.manifest.name}
+                  {pack.vrmPreviewUrl && (
+                    <img
+                      src={pack.vrmPreviewUrl}
+                      alt=""
+                      className="h-9 w-9 shrink-0 rounded object-cover"
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-txt">
+                      {pack.manifest.name}
+                    </p>
+                    {pack.manifest.description && (
+                      <p className="truncate text-xs-tight text-muted">
+                        {pack.manifest.description}
                       </p>
-                      {pack.manifest.description && (
-                        <p className="truncate text-xs text-muted-foreground">
-                          {pack.manifest.description}
-                        </p>
-                      )}
-                    </div>
-                    {isActive && (
-                      <span className="shrink-0 rounded bg-primary px-2 py-0.5 text-2xs font-bold text-primary-foreground">
-                        {t("settings.appearance.active", {
-                          defaultValue: "ACTIVE",
-                        })}
-                      </span>
                     )}
-                  </CardContent>
-                </Card>
+                  </div>
+                  {isActive && (
+                    <span className="shrink-0 rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-2xs font-medium text-accent">
+                      {t("settings.appearance.active", {
+                        defaultValue: "Active",
+                      })}
+                    </span>
+                  )}
+                </button>
               );
             })}
           </div>
-        </div>
+        </section>
       )}
 
-      {/* Load from URL */}
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-foreground/70">
+      {/* Load from URL or folder */}
+      <section className="space-y-2">
+        <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
           {t("settings.appearance.loadPack", {
             defaultValue: "Load content pack",
           })}
-        </p>
+        </h3>
         <div className="flex items-center gap-2">
           <Input
             placeholder={t("settings.appearance.packUrlPlaceholder", {
@@ -419,7 +393,7 @@ export function AppearanceSettingsSection() {
             })}
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
-            className="flex-1 text-sm"
+            className="h-9 flex-1 rounded-lg bg-bg text-sm"
             onKeyDown={(e) => {
               if (e.key === "Enter") handleLoadFromUrl();
             }}
@@ -427,46 +401,87 @@ export function AppearanceSettingsSection() {
           <Button
             variant="outline"
             size="sm"
+            className="h-9 rounded-lg"
             onClick={handleLoadFromUrl}
             disabled={!urlInput.trim()}
           >
             {t("settings.appearance.load", { defaultValue: "Load" })}
           </Button>
+          {canPickDirectory && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9 rounded-lg text-xs text-muted hover:text-txt"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {t("settings.appearance.loadFromFolder", {
+                  defaultValue: "From folder",
+                })}
+              </Button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                multiple
+                className="hidden"
+                onChange={handleFolderSelected}
+              />
+            </>
+          )}
         </div>
-
-        {canPickDirectory && (
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {t("settings.appearance.loadFromFolder", {
-                defaultValue: "Load from folder",
-              })}
-            </Button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              multiple
-              className="hidden"
-              onChange={handleFolderSelected}
-            />
-          </>
+        {packLoadError && (
+          <p className="text-xs-tight text-destructive">{packLoadError}</p>
         )}
-      </div>
-
-      {packLoadError && (
-        <p className="text-xs text-destructive">{packLoadError}</p>
-      )}
-
-      {activePackId && (
-        <Button variant="ghost" size="sm" onClick={deactivatePack}>
-          {t("settings.appearance.deactivate", {
-            defaultValue: "Deactivate current pack",
-          })}
-        </Button>
-      )}
+        {activePackId && (
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-xs-tight text-muted hover:text-txt"
+            onClick={deactivatePack}
+          >
+            {t("settings.appearance.deactivate", {
+              defaultValue: "Deactivate current pack",
+            })}
+          </Button>
+        )}
+      </section>
     </div>
+  );
+}
+
+/* ── Internal helpers ───────────────────────────────────────────── */
+
+function selectableTileClass(active: boolean): string {
+  return `relative flex flex-col items-center gap-1.5 rounded-lg border p-3 transition-colors ${
+    active
+      ? "border-accent bg-accent/8"
+      : "border-border/50 hover:border-accent/40 hover:bg-bg-hover"
+  }`;
+}
+
+function ModeButton({
+  active,
+  icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+        active
+          ? "border-accent bg-accent/8 text-txt"
+          : "border-border/50 text-muted hover:border-accent/40 hover:bg-bg-hover hover:text-txt"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }

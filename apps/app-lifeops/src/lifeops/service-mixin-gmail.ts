@@ -64,6 +64,7 @@ import {
 import {
   buildFallbackGmailReplyDraftBody,
   buildGmailReplyDraft,
+  compareGmailMessagePriority,
   createGmailMessageId,
   filterGmailMessagesBySearch,
   materializeGmailMessageSummary,
@@ -710,12 +711,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       const triage = await this.getGmailTriage(requestUrl, request, now);
       const messages = triage.messages
         .filter((message) => message.likelyReplyNeeded)
-        .sort((left, right) => {
-          if (right.triageScore !== left.triageScore) {
-            return right.triageScore - left.triageScore;
-          }
-          return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
-        });
+        .sort(compareGmailMessagePriority);
       return {
         messages,
         source: triage.source,
@@ -821,12 +817,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
         }
         messages = messages
           .filter((message) => messageIds.includes(message.id))
-          .sort((left, right) => {
-            if (right.triageScore !== left.triageScore) {
-              return right.triageScore - left.triageScore;
-            }
-            return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
-          });
+          .sort(compareGmailMessagePriority);
         return {
           grant,
           query: null,

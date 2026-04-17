@@ -37,6 +37,7 @@
 
 import { type ChildProcess, spawn as nodeSpawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
+import fs from "node:fs/promises";
 import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -64,6 +65,10 @@ export interface N8nSidecarConfig {
   version?: string;
   /** Preferred starting port; next free port used on collision. Default 5678. */
   startPort?: number;
+  /** Bind host for the child. Default 127.0.0.1. */
+  host?: string;
+  /** Binary used to run n8n. Default "bunx". */
+  binary?: string;
   /** State directory root; owner email/password + sqlite live here. */
   stateDir?: string;
   /** Readiness probe timeout in ms. Default 60000. */
@@ -89,6 +94,33 @@ export interface N8nSidecarDeps {
   pickPort?: (start: number) => Promise<number>;
   /** Sleep override for deterministic backoff tests. */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Returns true if a process with the given pid is alive. Overridable so
+   * tests can simulate orphaned pids without needing real OS processes.
+   */
+  isProcessAlive?: (pid: number) => boolean;
+  /**
+   * Returns the command-line of a process (or null). Used for orphan
+   * detection to avoid killing an unrelated pid that may have been reused.
+   */
+  readProcessCommand?: (pid: number) => Promise<string | null>;
+  /**
+   * Sends a signal to a pid. Used when reaping an orphan from a pidfile.
+   * Separate from the child-process kill because we may not own the
+   * orphan's ChildProcess handle.
+   */
+  killPid?: (pid: number, signal: NodeJS.Signals) => void;
+  /**
+   * Preflight check for the spawn binary. Default implementation runs
+   * `<binary> --version` with a short timeout. Throws on failure.
+   */
+  preflightBinary?: (binary: string) => Promise<void>;
+  /** Current wall-clock time. Injected for deterministic retry-reset tests. */
+  now?: () => number;
+  /** setTimeout override so tests can control the 5-minute retry-reset timer. */
+  setTimer?: (fn: () => void, ms: number) => unknown;
+  /** clearTimeout override paired with `setTimer`. */
+  clearTimer?: (handle: unknown) => void;
 }
 
 type Listener = (state: N8nSidecarState) => void;
@@ -98,10 +130,18 @@ type Listener = (state: N8nSidecarState) => void;
 // TODO pin on release — validated via `npm view n8n version` before ship.
 const DEFAULT_N8N_VERSION = "1.70.0";
 const DEFAULT_START_PORT = 5678;
+const DEFAULT_HOST = "127.0.0.1";
+const DEFAULT_BINARY = "bunx";
 const DEFAULT_PROBE_TIMEOUT_MS = 60_000;
 const DEFAULT_PROBE_INTERVAL_MS = 750;
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BACKOFF_BASE_MS = 2_000;
+/** Uptime after which a ready sidecar is considered healthy and retries reset. */
+const RETRY_RESET_AFTER_MS = 5 * 60 * 1_000;
+/** Hard cap on how long we wait for a child to exit during supervision. */
+const CHILD_EXIT_WAIT_TIMEOUT_MS = 2 * 60 * 1_000;
+/** Grace period between SIGTERM and SIGKILL when reaping an orphan. */
+const ORPHAN_SIGTERM_GRACE_MS = 5_000;
 
 /** Terminal statuses that mean "not running right now". */
 const TERMINAL_STATUSES: ReadonlySet<N8nSidecarStatus> = new Set([
@@ -138,15 +178,138 @@ function sleepDefault(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isProcessAliveDefault(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    // Signal 0 is the POSIX "does the pid exist and am I allowed to signal
+    // it?" probe — doesn't actually deliver a signal.
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException | null)?.code;
+    // EPERM means the process exists but we can't signal it — still alive.
+    if (code === "EPERM") return true;
+    return false;
+  }
+}
+
+async function readProcessCommandDefault(pid: number): Promise<string | null> {
+  if (!Number.isInteger(pid) || pid <= 0) return null;
+  // Linux-first; macOS exposes /proc only via `ps`. We fall back to `ps` on
+  // any read failure so this works across both platforms in dev.
+  try {
+    const cmdline = await fs.readFile(`/proc/${pid}/cmdline`, "utf-8");
+    // /proc cmdline is NUL-separated; normalize.
+    return cmdline.replace(/\0/g, " ").trim();
+  } catch {
+    // Fall through to `ps` fallback.
+  }
+  try {
+    const { spawn } = await import("node:child_process");
+    return await new Promise<string | null>((resolve) => {
+      const proc = spawn("ps", ["-p", String(pid), "-o", "command="], {
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      let out = "";
+      proc.stdout?.on("data", (buf: Buffer) => {
+        out += buf.toString();
+      });
+      proc.once("error", () => resolve(null));
+      proc.once("exit", (code) => {
+        if (code === 0) {
+          const trimmed = out.trim();
+          resolve(trimmed.length ? trimmed : null);
+        } else {
+          resolve(null);
+        }
+      });
+    });
+  } catch {
+    return null;
+  }
+}
+
+function killPidDefault(pid: number, signal: NodeJS.Signals): void {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  try {
+    process.kill(pid, signal);
+  } catch {
+    /* pid gone or not ours — nothing to do */
+  }
+}
+
+async function preflightBinaryDefault(binary: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const proc = nodeSpawn(binary, ["--version"], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const timer = setTimeout(() => {
+      try {
+        proc.kill("SIGKILL");
+      } catch {
+        /* no-op */
+      }
+      reject(
+        new Error(
+          `${binary} --version timed out; bun runtime not found on PATH — required for local n8n. Install from https://bun.sh.`,
+        ),
+      );
+    }, 5_000);
+    timer.unref?.();
+    proc.once("error", (err) => {
+      clearTimeout(timer);
+      reject(
+        new Error(
+          `${binary} runtime not found on PATH — required for local n8n. Install from https://bun.sh. (${err.message})`,
+        ),
+      );
+    });
+    proc.once("exit", (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(
+          new Error(
+            `${binary} --version exited with code ${code ?? "null"} — required for local n8n. Install from https://bun.sh.`,
+          ),
+        );
+      }
+    });
+  });
+}
+
 /** Redact a secret to a short fingerprint that's safe to log. */
 function fingerprint(secret: string): string {
   if (!secret || secret.length < 8) return "***";
   return `${secret.slice(0, 4)}…${secret.slice(-2)} (len=${secret.length})`;
 }
 
+type ResolvedConfig = Required<
+  Omit<N8nSidecarConfig, "onStatusChange" | "onLog">
+> &
+  Pick<N8nSidecarConfig, "onStatusChange" | "onLog">;
+
+function resolveConfig(config: N8nSidecarConfig): ResolvedConfig {
+  return {
+    enabled: config.enabled ?? true,
+    version: config.version ?? DEFAULT_N8N_VERSION,
+    startPort: config.startPort ?? DEFAULT_START_PORT,
+    host: config.host ?? DEFAULT_HOST,
+    binary: config.binary ?? DEFAULT_BINARY,
+    stateDir: config.stateDir ?? defaultStateDir(),
+    readinessTimeoutMs: config.readinessTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS,
+    readinessIntervalMs:
+      config.readinessIntervalMs ?? DEFAULT_PROBE_INTERVAL_MS,
+    maxRetries: config.maxRetries ?? DEFAULT_MAX_RETRIES,
+    backoffBaseMs: config.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS,
+    onStatusChange: config.onStatusChange,
+    onLog: config.onLog,
+  };
+}
+
 export class N8nSidecar {
-  private config: Required<Omit<N8nSidecarConfig, "onStatusChange" | "onLog">> &
-    Pick<N8nSidecarConfig, "onStatusChange" | "onLog">;
+  private config: ResolvedConfig;
   private deps: Required<N8nSidecarDeps>;
   private state: N8nSidecarState = {
     status: "stopped",
@@ -162,26 +325,37 @@ export class N8nSidecar {
   private listeners: Set<Listener> = new Set();
   private stopping = false;
   private supervisorRunning = false;
+  /**
+   * Handle for the retry-reset timer. A sidecar that stays ready for
+   * RETRY_RESET_AFTER_MS is declared healthy and its retry count is zeroed
+   * so a future crash doesn't count as part of the original burst.
+   */
+  private retryResetTimer: unknown = null;
 
   constructor(config: N8nSidecarConfig = {}, deps: N8nSidecarDeps = {}) {
-    this.config = {
-      enabled: config.enabled ?? true,
-      version: config.version ?? DEFAULT_N8N_VERSION,
-      startPort: config.startPort ?? DEFAULT_START_PORT,
-      stateDir: config.stateDir ?? defaultStateDir(),
-      readinessTimeoutMs: config.readinessTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS,
-      readinessIntervalMs:
-        config.readinessIntervalMs ?? DEFAULT_PROBE_INTERVAL_MS,
-      maxRetries: config.maxRetries ?? DEFAULT_MAX_RETRIES,
-      backoffBaseMs: config.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS,
-      onStatusChange: config.onStatusChange,
-      onLog: config.onLog,
-    };
+    this.config = resolveConfig(config);
     this.deps = {
       spawn: deps.spawn ?? nodeSpawn,
       fetch: deps.fetch ?? fetch,
       pickPort: deps.pickPort ?? pickFreePortDefault,
       sleep: deps.sleep ?? sleepDefault,
+      isProcessAlive: deps.isProcessAlive ?? isProcessAliveDefault,
+      readProcessCommand: deps.readProcessCommand ?? readProcessCommandDefault,
+      killPid: deps.killPid ?? killPidDefault,
+      preflightBinary: deps.preflightBinary ?? preflightBinaryDefault,
+      now: deps.now ?? (() => Date.now()),
+      setTimer:
+        deps.setTimer ??
+        ((fn, ms) => {
+          const handle = setTimeout(fn, ms);
+          handle.unref?.();
+          return handle;
+        }),
+      clearTimer:
+        deps.clearTimer ??
+        ((handle) => {
+          if (handle) clearTimeout(handle as ReturnType<typeof setTimeout>);
+        }),
     };
   }
 
@@ -195,6 +369,70 @@ export class N8nSidecar {
    */
   getApiKey(): string | null {
     return this.apiKey;
+  }
+
+  /**
+   * Merge new config into the existing sidecar. Safe to call at any time.
+   *
+   * - If the sidecar has not been spawned yet (no child), the next call to
+   *   start() will pick up the new values.
+   * - If the sidecar is currently running AND a field that requires a
+   *   respawn (binary, host, startPort, stateDir, version) changed, we log
+   *   a warning and keep the old values live. Callers must stop() + start()
+   *   explicitly to apply those changes.
+   */
+  updateConfig(next: N8nSidecarConfig): void {
+    const merged = resolveConfig({ ...this.snapshotConfig(), ...next });
+    if (!this.child) {
+      this.config = merged;
+      return;
+    }
+    const respawnFields: ReadonlyArray<keyof ResolvedConfig> = [
+      "binary",
+      "host",
+      "startPort",
+      "stateDir",
+      "version",
+    ];
+    const changed = respawnFields.filter(
+      (field) => merged[field] !== this.config[field],
+    );
+    if (changed.length > 0) {
+      logger.warn(
+        `[n8n-sidecar] updateConfig: ${changed.join(", ")} changed while sidecar is running; restart required to apply`,
+      );
+    }
+    // Non-respawn fields (retries, timeouts, callbacks) take effect immediately.
+    this.config = {
+      ...merged,
+      // Preserve respawn-critical fields tied to the live child process.
+      binary: this.config.binary,
+      host: this.config.host,
+      startPort: this.config.startPort,
+      stateDir: this.config.stateDir,
+      version: this.config.version,
+    };
+  }
+
+  /**
+   * Return the current ResolvedConfig as an N8nSidecarConfig input (used by
+   * updateConfig for the merge). Excludes internal timer state.
+   */
+  private snapshotConfig(): N8nSidecarConfig {
+    return {
+      enabled: this.config.enabled,
+      version: this.config.version,
+      startPort: this.config.startPort,
+      host: this.config.host,
+      binary: this.config.binary,
+      stateDir: this.config.stateDir,
+      readinessTimeoutMs: this.config.readinessTimeoutMs,
+      readinessIntervalMs: this.config.readinessIntervalMs,
+      maxRetries: this.config.maxRetries,
+      backoffBaseMs: this.config.backoffBaseMs,
+      onStatusChange: this.config.onStatusChange,
+      onLog: this.config.onLog,
+    };
   }
 
   subscribe(fn: Listener): () => void {
@@ -268,8 +506,10 @@ export class N8nSidecar {
     try {
       while (!this.stopping) {
         try {
+          await this.deps.preflightBinary(this.config.binary);
+
           const port = await this.deps.pickPort(this.config.startPort);
-          const host = `http://127.0.0.1:${port}`;
+          const host = `http://${this.config.host}:${port}`;
           this.setState({ host, port });
 
           try {
@@ -280,7 +520,11 @@ export class N8nSidecar {
             );
           }
 
+          await this.reapOrphan();
+
           await this.spawnChild(port);
+          await this.writePidfile(this.child?.pid ?? null);
+
           const reachable = await this.probeReadiness(host);
           if (!reachable) {
             throw new Error(
@@ -288,13 +532,13 @@ export class N8nSidecar {
             );
           }
 
-          // Provision API key — optional; readiness is still "ready" if it fails.
+          // Try the cached API key first; provision if missing or rejected.
           try {
-            const key = await this.provisionApiKey(host);
+            const key = await this.ensureApiKey(host);
             if (key) {
               this.apiKey = key;
               logger.info(
-                `[n8n-sidecar] provisioned api key ${fingerprint(key)}`,
+                `[n8n-sidecar] using api key ${fingerprint(key)}`,
               );
             }
           } catch (err) {
@@ -304,8 +548,11 @@ export class N8nSidecar {
           }
 
           this.setState({ status: "ready", errorMessage: null });
+          this.armRetryResetTimer();
+
           // Wait for child to exit; then decide retry vs shutdown.
-          await this.waitForChildExit();
+          await this.waitForChildExitWithTimeout();
+          this.cancelRetryResetTimer();
           if (this.stopping) return;
 
           logger.warn("[n8n-sidecar] child exited unexpectedly");
@@ -313,6 +560,7 @@ export class N8nSidecar {
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           logger.warn(`[n8n-sidecar] start attempt failed: ${msg}`);
+          this.cancelRetryResetTimer();
           this.setState({
             status: "starting",
             errorMessage: msg,
@@ -350,7 +598,7 @@ export class N8nSidecar {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       N8N_PORT: String(port),
-      N8N_HOST: "127.0.0.1",
+      N8N_HOST: this.config.host,
       N8N_PROTOCOL: "http",
       N8N_USER_MANAGEMENT_DISABLED: "true",
       N8N_DIAGNOSTICS_ENABLED: "false",
@@ -363,11 +611,15 @@ export class N8nSidecar {
     };
 
     const versioned = `n8n@${this.config.version}`;
-    const child = this.deps.spawn("bunx", ["--", versioned, "start"], {
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: false,
-    });
+    const child = this.deps.spawn(
+      this.config.binary,
+      ["--", versioned, "start"],
+      {
+        env,
+        stdio: ["ignore", "pipe", "pipe"],
+        detached: false,
+      },
+    );
 
     this.child = child;
     this.setState({ pid: child.pid ?? null });
@@ -396,18 +648,41 @@ export class N8nSidecar {
     });
   }
 
-  private waitForChildExit(): Promise<void> {
+  /**
+   * Wait for the current child to exit. Returns early if the child is null.
+   * Capped at CHILD_EXIT_WAIT_TIMEOUT_MS — beyond that we assume the child
+   * is hung, send SIGKILL, and treat it as exited so the supervisor can
+   * make forward progress instead of blocking forever.
+   */
+  private waitForChildExitWithTimeout(): Promise<void> {
     return new Promise((resolve) => {
       const child = this.child;
       if (!child) {
         resolve();
         return;
       }
-      const onExit = () => {
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
         child.removeListener("exit", onExit);
+        this.deps.clearTimer(timer);
         resolve();
       };
+      const onExit = () => settle();
       child.once("exit", onExit);
+      const timer = this.deps.setTimer(() => {
+        if (settled) return;
+        logger.warn(
+          `[n8n-sidecar] child did not exit within ${CHILD_EXIT_WAIT_TIMEOUT_MS}ms; forcing kill`,
+        );
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          /* no-op */
+        }
+        settle();
+      }, CHILD_EXIT_WAIT_TIMEOUT_MS);
     });
   }
 
@@ -418,7 +693,7 @@ export class N8nSidecar {
     try {
       child.kill("SIGTERM");
       // Hard kill after 5s if it's still alive.
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         if (!child.killed) {
           try {
             child.kill("SIGKILL");
@@ -426,7 +701,8 @@ export class N8nSidecar {
             /* no-op */
           }
         }
-      }, 5_000).unref?.();
+      }, 5_000);
+      timer.unref?.();
     } catch (err) {
       logger.warn(
         `[n8n-sidecar] kill error: ${err instanceof Error ? err.message : String(err)}`,
@@ -461,6 +737,74 @@ export class N8nSidecar {
       await this.deps.sleep(this.config.readinessIntervalMs);
     }
     return false;
+  }
+
+  /**
+   * Resolve an API key for this sidecar.
+   *
+   * Strategy:
+   *   1. If a key is cached on the filesystem at {stateDir}/api-key, try
+   *      it first. If /rest/api-keys accepts it, reuse it — this preserves
+   *      webhook configs across restarts.
+   *   2. Otherwise provision a new key via /rest/me/api-keys and persist
+   *      it mode-600 for the next boot.
+   *   3. If everything fails, return null. The caller logs a warning but
+   *      does not fail readiness.
+   */
+  private async ensureApiKey(host: string): Promise<string | null> {
+    const cached = await this.loadPersistedApiKey();
+    if (cached) {
+      const valid = await this.validateApiKey(host, cached);
+      if (valid) return cached;
+      logger.warn("[n8n-sidecar] cached api key rejected; re-provisioning");
+    }
+    const fresh = await this.provisionApiKey(host);
+    if (fresh) {
+      await this.persistApiKey(fresh);
+    }
+    return fresh;
+  }
+
+  private apiKeyPath(): string {
+    return path.join(this.config.stateDir, "api-key");
+  }
+
+  private async loadPersistedApiKey(): Promise<string | null> {
+    const raw = await fs.readFile(this.apiKeyPath(), "utf-8").catch(() => null);
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    return trimmed.length ? trimmed : null;
+  }
+
+  private async persistApiKey(key: string): Promise<void> {
+    try {
+      await fs.mkdir(this.config.stateDir, { recursive: true });
+      await fs.writeFile(this.apiKeyPath(), key, { mode: 0o600 });
+      // Re-chmod defensively — writeFile's `mode` is ignored on some
+      // platforms when the file already exists.
+      await fs.chmod(this.apiKeyPath(), 0o600).catch(() => undefined);
+    } catch (err) {
+      logger.warn(
+        `[n8n-sidecar] failed to persist api key: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * Validate a cached API key by listing keys through n8n's public API.
+   * A 2xx means the key is still live; 401/403 means it was revoked.
+   */
+  private async validateApiKey(host: string, key: string): Promise<boolean> {
+    try {
+      const res = await this.deps.fetch(`${host}/rest/api-keys`, {
+        method: "GET",
+        headers: { "X-N8N-API-KEY": key },
+        signal: AbortSignal.timeout(5_000),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -502,7 +846,9 @@ export class N8nSidecar {
   /** Stop the sidecar. Idempotent. */
   async stop(): Promise<void> {
     this.stopping = true;
+    this.cancelRetryResetTimer();
     this.killChild();
+    await this.removePidfile();
     this.setState({
       status: "stopped",
       host: null,
@@ -518,6 +864,100 @@ export class N8nSidecar {
   isRunning(): boolean {
     return !TERMINAL_STATUSES.has(this.state.status);
   }
+
+  // ── Orphan detection ─────────────────────────────────────────────────────
+
+  private pidfilePath(): string {
+    return path.join(this.config.stateDir, "pid");
+  }
+
+  private async readPidfile(): Promise<number | null> {
+    const raw = await fs.readFile(this.pidfilePath(), "utf-8").catch(() => null);
+    if (!raw) return null;
+    const parsed = Number.parseInt(raw.trim(), 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  private async writePidfile(pid: number | null): Promise<void> {
+    if (pid === null) return;
+    try {
+      await fs.mkdir(this.config.stateDir, { recursive: true });
+      await fs.writeFile(this.pidfilePath(), String(pid), { mode: 0o600 });
+    } catch (err) {
+      logger.warn(
+        `[n8n-sidecar] failed to write pidfile: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  private async removePidfile(): Promise<void> {
+    await fs.unlink(this.pidfilePath()).catch(() => undefined);
+  }
+
+  /**
+   * If the pidfile points at a live n8n process, kill it before spawning.
+   * Guards against orphans created by SIGKILL'ing the parent — without this,
+   * each cold boot leaks a port and eventually a zombie per start.
+   *
+   * We do two levels of verification to avoid nuking an unrelated pid that
+   * may have been reused by the OS:
+   *   1. The pid must be alive.
+   *   2. The pid's cmdline must mention "n8n".
+   */
+  private async reapOrphan(): Promise<void> {
+    const pid = await this.readPidfile();
+    if (pid === null) return;
+    if (!this.deps.isProcessAlive(pid)) {
+      await this.removePidfile();
+      return;
+    }
+    const cmd = await this.deps.readProcessCommand(pid);
+    if (!cmd || !/n8n/i.test(cmd)) {
+      // Pid reused by a different process. Drop the stale pidfile and move on.
+      await this.removePidfile();
+      return;
+    }
+    logger.warn(
+      `[n8n-sidecar] reaping orphan n8n pid=${pid} before spawn (cmd=${cmd.slice(0, 120)})`,
+    );
+    this.deps.killPid(pid, "SIGTERM");
+    const deadline =
+      this.deps.now() + ORPHAN_SIGTERM_GRACE_MS;
+    while (this.deps.now() < deadline) {
+      if (!this.deps.isProcessAlive(pid)) {
+        await this.removePidfile();
+        return;
+      }
+      await this.deps.sleep(250);
+    }
+    if (this.deps.isProcessAlive(pid)) {
+      logger.warn(`[n8n-sidecar] orphan pid=${pid} survived SIGTERM; SIGKILL`);
+      this.deps.killPid(pid, "SIGKILL");
+    }
+    await this.removePidfile();
+  }
+
+  // ── Retry-reset timer ────────────────────────────────────────────────────
+
+  private armRetryResetTimer(): void {
+    this.cancelRetryResetTimer();
+    this.retryResetTimer = this.deps.setTimer(() => {
+      this.retryResetTimer = null;
+      if (this.state.status === "ready" && this.state.retries !== 0) {
+        logger.info(
+          "[n8n-sidecar] retry count reset after sustained healthy uptime",
+        );
+        this.setState({ retries: 0 });
+      }
+    }, RETRY_RESET_AFTER_MS);
+  }
+
+  private cancelRetryResetTimer(): void {
+    if (this.retryResetTimer !== null) {
+      this.deps.clearTimer(this.retryResetTimer);
+      this.retryResetTimer = null;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -530,16 +970,54 @@ export class N8nSidecar {
 // thread it through CompatRuntimeState.
 
 let _singleton: N8nSidecar | null = null;
+/**
+ * Tracks an in-flight disposal so concurrent getN8nSidecarAsync() callers
+ * don't race and construct a second sidecar while the old one is still
+ * tearing down. Cleared once dispose resolves.
+ */
+let _disposing: Promise<void> | null = null;
 
 /**
  * Returns the process-wide n8n sidecar singleton, constructing it lazily
- * on first access. Nothing is started until start() is called.
+ * on first access.
+ *
+ * If the singleton already exists, the provided config is merged via
+ * `updateConfig()` — changes that require a respawn (binary/host/port/
+ * stateDir/version) log a warning and do NOT take effect until an explicit
+ * stop()+start() cycle. Non-respawn fields (timeouts, callbacks, retries)
+ * apply immediately.
+ *
+ * NOTE: This accessor is synchronous for backwards compatibility with
+ * existing callers. If a disposal is currently in flight, you may get a
+ * sidecar that races with the old one. Prefer `getN8nSidecarAsync()` in
+ * new code.
  */
 export function getN8nSidecar(config: N8nSidecarConfig = {}): N8nSidecar {
+  if (_disposing !== null) {
+    logger.warn(
+      "[n8n-sidecar] getN8nSidecar() called during disposal; prefer getN8nSidecarAsync()",
+    );
+  }
   if (!_singleton) {
     _singleton = new N8nSidecar(config);
+    return _singleton;
   }
+  _singleton.updateConfig(config);
   return _singleton;
+}
+
+/**
+ * Async-safe variant of getN8nSidecar(). Awaits any in-flight disposal
+ * before constructing or returning the singleton. Use this from code that
+ * can be async (most callers already are).
+ */
+export async function getN8nSidecarAsync(
+  config: N8nSidecarConfig = {},
+): Promise<N8nSidecar> {
+  if (_disposing !== null) {
+    await _disposing;
+  }
+  return getN8nSidecar(config);
 }
 
 /**
@@ -551,11 +1029,27 @@ export function peekN8nSidecar(): N8nSidecar | null {
   return _singleton;
 }
 
-/** Stops and clears the singleton. Tests + shutdown paths use this. */
+/**
+ * Stops and clears the singleton. Tests + shutdown paths use this.
+ *
+ * Concurrency contract: concurrent callers all await the same in-flight
+ * stop() before `_singleton` is cleared. Once disposal resolves, the
+ * singleton slot is free and a new sidecar can be constructed.
+ */
 export async function disposeN8nSidecar(): Promise<void> {
-  const existing = _singleton;
-  _singleton = null;
-  if (existing) {
-    await existing.stop();
+  if (_disposing !== null) {
+    await _disposing;
+    return;
   }
+  const existing = _singleton;
+  if (!existing) return;
+  _disposing = (async () => {
+    try {
+      await existing.stop();
+    } finally {
+      _singleton = null;
+      _disposing = null;
+    }
+  })();
+  await _disposing;
 }

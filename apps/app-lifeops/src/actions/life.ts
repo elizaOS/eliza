@@ -23,10 +23,6 @@ import type {
   UpdateLifeOpsGoalRequest,
 } from "@elizaos/shared/contracts/lifeops";
 import {
-  getValidationKeywordTerms,
-  textIncludesKeywordTerm,
-} from "@elizaos/shared/validation-keywords";
-import {
   buildNativeAppleReminderMetadata,
   type NativeAppleReminderLikeKind,
 } from "../lifeops/apple-reminders.js";
@@ -110,91 +106,6 @@ type LifeAction =
   | "email"
   | "overview";
 
-const LIFE_EMAIL_QUERY_TERMS = getValidationKeywordTerms(
-  "contextSignal.gmail.strong",
-  {
-    includeAllLocales: true,
-  },
-);
-
-const LIFE_I18N_OPTS = { includeAllLocales: true } as const;
-const LIFE_COMPLETE_TERMS = getValidationKeywordTerms(
-  "contextSignal.lifeops_complete.strong",
-  LIFE_I18N_OPTS,
-);
-const LIFE_SKIP_TERMS = getValidationKeywordTerms(
-  "contextSignal.lifeops_skip.strong",
-  LIFE_I18N_OPTS,
-);
-const LIFE_SNOOZE_TERMS = getValidationKeywordTerms(
-  "contextSignal.lifeops_snooze.strong",
-  LIFE_I18N_OPTS,
-);
-const LIFE_DELETE_TERMS = getValidationKeywordTerms(
-  "contextSignal.lifeops_delete.strong",
-  LIFE_I18N_OPTS,
-);
-const LIFE_UPDATE_TERMS = getValidationKeywordTerms(
-  "contextSignal.lifeops_update.strong",
-  LIFE_I18N_OPTS,
-);
-const LIFE_OVERVIEW_TERMS = getValidationKeywordTerms(
-  "contextSignal.lifeops_overview.strong",
-  LIFE_I18N_OPTS,
-);
-const LIFE_REMINDER_PREF_TERMS = getValidationKeywordTerms(
-  "contextSignal.lifeops_reminder_pref.strong",
-  LIFE_I18N_OPTS,
-);
-const LIFE_CALENDAR_TERMS = getValidationKeywordTerms(
-  "contextSignal.calendar.strong",
-  LIFE_I18N_OPTS,
-);
-const LIFE_CADENCE_TERMS = getValidationKeywordTerms(
-  "contextSignal.lifeops_cadence.strong",
-  LIFE_I18N_OPTS,
-);
-const LIFE_GOAL_TERMS = getValidationKeywordTerms(
-  "contextSignal.lifeops_goal.strong",
-  LIFE_I18N_OPTS,
-);
-const LIFE_ESCALATION_TERMS = getValidationKeywordTerms(
-  "contextSignal.lifeops_escalation.strong",
-  LIFE_I18N_OPTS,
-);
-const LIFE_PHONE_TERMS = getValidationKeywordTerms(
-  "contextSignal.lifeops_phone.strong",
-  LIFE_I18N_OPTS,
-);
-const LIFE_REVIEW_TERMS = getValidationKeywordTerms(
-  "contextSignal.lifeops_review.strong",
-  LIFE_I18N_OPTS,
-);
-const LIFE_LIFEOPS_STRONG_TERMS = getValidationKeywordTerms(
-  "contextSignal.lifeops.strong",
-  LIFE_I18N_OPTS,
-);
-const LIFE_AFFIRMATIVE_TERMS = getValidationKeywordTerms(
-  "contextSignal.affirmative.strong",
-  LIFE_I18N_OPTS,
-);
-const LIFE_NEGATIVE_TERMS = getValidationKeywordTerms(
-  "contextSignal.negative.strong",
-  LIFE_I18N_OPTS,
-);
-const LIFE_DRAFT_EDIT_TERMS = getValidationKeywordTerms(
-  "contextSignal.draft_edit.strong",
-  LIFE_I18N_OPTS,
-);
-const LIFE_TEMPORAL_NEXT_TERMS = getValidationKeywordTerms(
-  "contextSignal.temporal_next.strong",
-  LIFE_I18N_OPTS,
-);
-
-function textMatchesAnyTerm(text: string, terms: readonly string[]): boolean {
-  return terms.some((term) => textIncludesKeywordTerm(text, term));
-}
-
 const ACTION_TO_OPERATION: Record<LifeAction, LifeOperation> = {
   create: "create_definition",
   create_goal: "create_goal",
@@ -223,7 +134,6 @@ type LifeParams = {
   details?: Record<string, unknown>;
 };
 
-// CADENCE_HINT_RE removed — cadence detection uses i18n LIFE_CADENCE_TERMS
 const GENERIC_DERIVED_TITLE_RE =
   /^(?:new\s+)?(?:habit|routine|task|goal|life goal|thing|item|something|anything|stuff|plan|reminder|todo|to do|achieve|achieve a|achieve an)$/i;
 /** Maximum age (ms) for a deferred draft before it expires. */
@@ -286,78 +196,6 @@ type DeferredLifeDraftFollowupMode =
   | "cancel"
   | null;
 
-// ── Intent classifier ─────────────────────────────────
-
-export function classifyIntent(intent: string): LifeOperation {
-  // All matching is i18n-aware via validation keyword terms.
-  // English words are included in the base terms so no regex needed.
-
-  // Reminder preference — check early
-  if (textMatchesAnyTerm(intent, LIFE_REMINDER_PREF_TERMS)) {
-    return "set_reminder_preference";
-  }
-
-  // Update — check before calendar so "edit my workout schedule" doesn't hit calendar
-  if (textMatchesAnyTerm(intent, LIFE_UPDATE_TERMS)) {
-    if (textMatchesAnyTerm(intent, LIFE_GOAL_TERMS)) return "update_goal";
-    return "update_definition";
-  }
-
-  // Escalation config — check before phone capture
-  if (textMatchesAnyTerm(intent, LIFE_ESCALATION_TERMS))
-    return "configure_escalation";
-
-  // Phone capture
-  if (textMatchesAnyTerm(intent, LIFE_PHONE_TERMS)) return "capture_phone";
-
-  // Review — check before calendar
-  if (textMatchesAnyTerm(intent, LIFE_REVIEW_TERMS)) return "review_goal";
-
-  // Delete — check before calendar
-  if (textMatchesAnyTerm(intent, LIFE_DELETE_TERMS)) {
-    if (textMatchesAnyTerm(intent, LIFE_GOAL_TERMS)) return "delete_goal";
-    return "delete_definition";
-  }
-
-  // Completion
-  if (looksLikeCompletionReport(intent)) return "complete_occurrence";
-
-  // Skip
-  if (textMatchesAnyTerm(intent, LIFE_SKIP_TERMS)) return "skip_occurrence";
-
-  // Snooze
-  if (textMatchesAnyTerm(intent, LIFE_SNOOZE_TERMS)) return "snooze_occurrence";
-
-  // Calendar query — only when not a lifeops create or lifeops item reference
-  if (
-    !looksLikeDefinitionCreateIntent(intent) &&
-    !looksLikeGoalCreateIntent(intent) &&
-    !textMatchesAnyTerm(intent, LIFE_LIFEOPS_STRONG_TERMS) &&
-    textMatchesAnyTerm(intent, LIFE_CALENDAR_TERMS)
-  ) {
-    // Sub-classify: next event vs today/tomorrow/week
-    const lower = intent.toLowerCase();
-    if (textMatchesAnyTerm(lower, LIFE_TEMPORAL_NEXT_TERMS))
-      return "query_calendar_next";
-    return "query_calendar_today";
-  }
-
-  // Email query
-  if (textMatchesAnyTerm(intent, LIFE_EMAIL_QUERY_TERMS)) return "query_email";
-
-  // Overview
-  if (textMatchesAnyTerm(intent, LIFE_OVERVIEW_TERMS)) return "query_overview";
-
-  // Create definition (has cadence hint)
-  if (looksLikeDefinitionCreateIntent(intent)) return "create_definition";
-
-  // Create goal (goal mention without cadence)
-  if (looksLikeGoalCreateIntent(intent)) return "create_goal";
-
-  // Default: create a task/habit/routine
-  return "create_definition";
-}
-
 async function resolveLifeOperationPlan(args: {
   runtime: IAgentRuntime;
   message: Memory;
@@ -397,18 +235,6 @@ async function resolveLifeOperationPlan(args: {
   };
 }
 
-function looksLikeDefinitionCreateIntent(text: string): boolean {
-  return hasCadenceHint(text);
-}
-
-function looksLikeGoalCreateIntent(text: string): boolean {
-  return textMatchesAnyTerm(text, LIFE_GOAL_TERMS) && !hasCadenceHint(text);
-}
-
-function hasCadenceHint(text: string): boolean {
-  return textMatchesAnyTerm(text, LIFE_CADENCE_TERMS);
-}
-
 function shouldForceLifeCreateExecution(args: {
   intent: string;
   missing: ExtractedLifeMissingField[];
@@ -435,18 +261,6 @@ function shouldForceLifeCreateExecution(args: {
     return true;
   }
   return false;
-}
-
-function looksLikeCompletionReport(text: string): boolean {
-  // Exclude overview queries — these mention "done/finish" but ask what's remaining
-  if (textMatchesAnyTerm(text, LIFE_OVERVIEW_TERMS)) {
-    return false;
-  }
-  // Exclude create-intent with cadence — "create a habit until I complete it"
-  if (textMatchesAnyTerm(text, LIFE_CADENCE_TERMS)) {
-    return false;
-  }
-  return textMatchesAnyTerm(text, LIFE_COMPLETE_TERMS);
 }
 
 // ── Helpers ───────────────────────────────────────────
@@ -867,49 +681,6 @@ function latestDeferredLifeDraft(
     : null;
 }
 
-function looksLikeDeferredLifeConfirmation(text: string): boolean {
-  const normalized = text.trim().toLowerCase();
-  if (!normalized) return false;
-  if (textMatchesAnyTerm(normalized, LIFE_NEGATIVE_TERMS)) return false;
-  if (textMatchesAnyTerm(normalized, LIFE_DRAFT_EDIT_TERMS)) return false;
-  return textMatchesAnyTerm(normalized, LIFE_AFFIRMATIVE_TERMS);
-}
-
-function normalizeDeferredLifeDraftReference(
-  value: string | undefined,
-): string {
-  return normalizeIntentText(value ?? "")
-    .replace(
-      /\b(the|that|this|a|an|my|routine|habit|task|goal|reminder)\b/g,
-      " ",
-    )
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function matchesDeferredLifeDraftTitle(
-  value: string | undefined,
-  draft: DeferredLifeDraft | null,
-): boolean {
-  if (!draft) {
-    return false;
-  }
-
-  const normalizedValue = normalizeDeferredLifeDraftReference(value);
-  const normalizedDraftTitle = normalizeDeferredLifeDraftReference(
-    draft.request.title,
-  );
-  if (!normalizedValue || !normalizedDraftTitle) {
-    return false;
-  }
-
-  return (
-    normalizedValue === normalizedDraftTitle ||
-    normalizedValue.includes(normalizedDraftTitle) ||
-    normalizedDraftTitle.includes(normalizedValue)
-  );
-}
-
 function deferredLifeDraftExpiryReason(args: {
   draft: DeferredLifeDraft | null;
   turnsSinceDraft?: number;
@@ -931,14 +702,6 @@ function deferredLifeDraftExpiryReason(args: {
     return "turns";
   }
   return null;
-}
-
-function looksLikeDeferredLifeDraftEdit(text: string): boolean {
-  const normalized = normalizeIntentText(text);
-  if (!normalized || looksLikeDeferredLifeConfirmation(text)) return false;
-  if (textMatchesAnyTerm(normalized, LIFE_NEGATIVE_TERMS)) return false;
-  if (textMatchesAnyTerm(normalized, LIFE_DRAFT_EDIT_TERMS)) return true;
-  return hasCadenceHint(normalized) || /\b\d+\b/.test(normalized);
 }
 
 async function extractDeferredLifeDraftFollowupWithLlm(args: {
@@ -1022,13 +785,9 @@ function stringifyDeferredLifeDraftForPrompt(draft: DeferredLifeDraft): string {
 }
 
 function resolveDeferredLifeDraftReuseMode(args: {
-  currentText: string;
   details: Record<string, unknown> | undefined;
   draft: DeferredLifeDraft | null;
   explicitAction: LifeAction | undefined;
-  paramsIntent: string | undefined;
-  target: string | undefined;
-  title: string | undefined;
   llmMode?: DeferredLifeDraftFollowupMode;
   /** Number of messages since the draft was stored. */
   turnsSinceDraft?: number;
@@ -1045,50 +804,6 @@ function resolveDeferredLifeDraftReuseMode(args: {
     return "confirm";
   }
 
-  const words = args.currentText.trim().split(/\s+/).filter(Boolean);
-  const isConfirmationFollowup =
-    words.length > 0 &&
-    words.length <= 6 &&
-    !hasCadenceHint(args.currentText.toLowerCase()) &&
-    looksLikeDeferredLifeConfirmation(args.currentText);
-  if (isConfirmationFollowup) {
-    if (
-      args.explicitAction &&
-      ACTION_TO_OPERATION[args.explicitAction] !== args.draft.operation
-    ) {
-      return null;
-    }
-    return "confirm";
-  }
-
-  const explicitReferenceMatchesDraft =
-    matchesDeferredLifeDraftTitle(args.title, args.draft) ||
-    matchesDeferredLifeDraftTitle(args.target, args.draft);
-  if (looksLikeDeferredLifeConfirmation(args.currentText)) {
-    if (
-      args.explicitAction &&
-      ACTION_TO_OPERATION[args.explicitAction] !== args.draft.operation
-    ) {
-      return null;
-    }
-    if (explicitReferenceMatchesDraft) {
-      return "confirm";
-    }
-  }
-
-  const normalizedCurrentText = normalizeIntentText(args.currentText);
-  const normalizedParamsIntent =
-    typeof args.paramsIntent === "string" && args.paramsIntent.trim().length > 0
-      ? normalizeIntentText(args.paramsIntent)
-      : "";
-  if (
-    normalizedParamsIntent &&
-    normalizedParamsIntent !== normalizedCurrentText &&
-    !looksLikeDeferredLifeConfirmation(args.paramsIntent ?? "")
-  ) {
-    return null;
-  }
-
   if (
     args.explicitAction &&
     ACTION_TO_OPERATION[args.explicitAction] !== args.draft.operation
@@ -1099,11 +814,7 @@ function resolveDeferredLifeDraftReuseMode(args: {
   if (args.llmMode === "confirm" || args.llmMode === "edit") {
     return args.llmMode;
   }
-
-  if (args.title || args.target) {
-    return null;
-  }
-  return looksLikeDeferredLifeDraftEdit(args.currentText) ? "edit" : null;
+  return null;
 }
 
 async function resolveGoal(
@@ -1465,27 +1176,6 @@ type LifeReplyScenario =
   | "overview"
   | "service_error";
 
-function extractNaturalTimePhrase(intent: string): string | null {
-  const normalized = normalizeLifeInputText(intent).toLowerCase();
-  if (/\bmornings?\s+only\b|\bmornings?\b/.test(normalized)) {
-    return "mornings now";
-  }
-  if (/\bafternoons?\s+only\b|\bafternoons?\b/.test(normalized)) {
-    return "afternoons now";
-  }
-  if (/\bevenings?\s+only\b|\bevenings?\b/.test(normalized)) {
-    return "evenings now";
-  }
-  if (/\bnights?\s+only\b|\bnights?\b/.test(normalized)) {
-    return "nights now";
-  }
-  const timeMatch = normalized.match(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))\b/);
-  if (timeMatch?.[1]) {
-    return `${timeMatch[1].replace(/\s+/g, "")} now`;
-  }
-  return null;
-}
-
 function buildRuleBasedLifeReply(args: {
   scenario: LifeReplyScenario;
   intent: string;
@@ -1506,13 +1196,13 @@ function buildRuleBasedLifeReply(args: {
     (typeof created?.title === "string" ? created.title : null) ??
     (typeof context.title === "string" ? context.title : null) ??
     null;
-  const timePhrase = extractNaturalTimePhrase(args.intent);
+  // Time-phrase nuance ("mornings now", "7pm now", etc.) is rendered by the
+  // LLM in renderGroundedActionReply via the additionalRules contract. The
+  // rule-based fallback intentionally only carries the title — never tries
+  // to parse English-only time phrases out of the intent.
 
   switch (args.scenario) {
     case "updated_definition":
-      if (title && timePhrase) {
-        return `${title} is set for ${timePhrase}.`;
-      }
       if (title) {
         return `${title} is updated.`;
       }
@@ -2785,11 +2475,20 @@ export const lifeAction: Action & {
       deferredDraft != null
         ? (countTurnsSinceLatestDeferredLifeDraft(state) ?? 0) + 1
         : undefined;
+    const deferredDraftFollowupMode = deferredDraft
+      ? await extractDeferredLifeDraftFollowupWithLlm({
+          runtime,
+          message,
+          state,
+          currentText,
+          draft: deferredDraft,
+        })
+      : null;
     const draftExpiryReason = deferredLifeDraftExpiryReason({
       draft: deferredDraft,
       turnsSinceDraft,
     });
-    if (draftExpiryReason && looksLikeDeferredLifeConfirmation(currentText)) {
+    if (draftExpiryReason && deferredDraftFollowupMode === "confirm") {
       const fallback =
         "That LifeOps draft expired. Please restate it and I'll preview it again.";
       return {
@@ -2807,15 +2506,6 @@ export const lifeAction: Action & {
         }),
       };
     }
-    const deferredDraftFollowupMode = deferredDraft
-      ? await extractDeferredLifeDraftFollowupWithLlm({
-          runtime,
-          message,
-          state,
-          currentText,
-          draft: deferredDraft,
-        })
-      : null;
     if (deferredDraftFollowupMode === "cancel") {
       const fallback = "Okay, I won't save it yet.";
       return {
@@ -2844,13 +2534,9 @@ export const lifeAction: Action & {
       };
     }
     const deferredDraftReuseMode = resolveDeferredLifeDraftReuseMode({
-      currentText,
       details,
       draft: deferredDraft,
       explicitAction: params.action,
-      paramsIntent: params.intent,
-      target: params.target,
-      title: params.title,
       llmMode: deferredDraftFollowupMode,
       turnsSinceDraft,
     });
@@ -2932,9 +2618,30 @@ export const lifeAction: Action & {
         },
       };
     }
-    const operation =
-      (forceCreateExecution ? "create_definition" : operationPlan.operation) ??
-      classifyIntent(intent);
+    const operation = forceCreateExecution
+      ? "create_definition"
+      : operationPlan.operation;
+    if (!operation) {
+      const fallback = "Tell me what LifeOps action you want me to take.";
+      return {
+        success: true,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "reply_only",
+          fallback,
+          context: {
+            reason: "missing_operation_after_extraction",
+          },
+        }),
+        data: {
+          actionName: "LIFE",
+          noop: true,
+        },
+      };
+    }
     const service = new LifeOpsService(runtime);
     const domain = detailString(details, "domain") as LifeOpsDomain | undefined;
     const ownership = requestedOwnership(domain);

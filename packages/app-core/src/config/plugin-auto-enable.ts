@@ -25,6 +25,7 @@ export const CONNECTOR_PLUGINS: Record<string, string> = {
   wechat: "elizaoswechat",
 };
 
+import { isNativeServerPlatform } from "../platform/is-native-server";
 import { isWechatConfigured } from "./wechat-config";
 
 export function applyPluginAutoEnable(
@@ -58,6 +59,11 @@ export function applyPluginAutoEnable(
     }
   }
 
-  // Delegate to upstream for all other connectors
-  return _upstreamApplyPluginAutoEnable(params);
+  // Delegate to upstream for all other connectors. On mobile, the n8n
+  // sidecar cannot run, so the upstream auto-enable gate should require
+  // cloud auth before enabling @elizaos/plugin-n8n-workflow.
+  return _upstreamApplyPluginAutoEnable({
+    ...params,
+    isNativePlatform: params.isNativePlatform ?? isNativeServerPlatform(),
+  });
 }

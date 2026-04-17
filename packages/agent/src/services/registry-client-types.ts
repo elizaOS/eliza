@@ -32,6 +32,13 @@ export interface RegistryAppMeta {
   launchType: string;
   launchUrl: string | null;
   icon: string | null;
+  /**
+   * URL or package-relative path to a full-card hero image. Apps declare
+   * this in `package.json` → `elizaos.app.heroImage` as a relative path
+   * (e.g. `"assets/hero.webp"`); the runtime resolves it to a served
+   * URL before surfacing the field on `RegistryAppInfo`.
+   */
+  heroImage: string | null;
   capabilities: string[];
   minPlayers: number | null;
   maxPlayers: number | null;

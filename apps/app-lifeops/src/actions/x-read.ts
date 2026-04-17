@@ -8,6 +8,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import {
+  ModelType,
+  parseJSONObjectFromText,
+  parseKeyValueXml,
+} from "@elizaos/core";
 import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,
@@ -15,6 +20,7 @@ import type {
 } from "@elizaos/shared/contracts/lifeops";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { hasLifeOpsAccess, messageText } from "./lifeops-google-helpers.js";
+import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 
 type XReadSubaction = "read_dms" | "read_feed" | "search";
 
@@ -24,6 +30,15 @@ type XReadActionParams = {
   query?: string;
   feedType?: LifeOpsXFeedType;
   limit?: number;
+};
+
+type XReadLlmPlan = {
+  subaction: XReadSubaction | null;
+  query?: string;
+  feedType?: LifeOpsXFeedType;
+  limit?: number;
+  shouldAct?: boolean | null;
+  response?: string;
 };
 
 function normalizeSubaction(value: unknown): XReadSubaction | null {
@@ -47,6 +62,15 @@ function normalizeFeedType(value: unknown): LifeOpsXFeedType {
   return "home_timeline";
 }
 
+function normalizeOptionalFeedType(
+  value: unknown,
+): LifeOpsXFeedType | undefined {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return undefined;
+  }
+  return normalizeFeedType(value);
+}
+
 function normalizeLimit(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     return undefined;
@@ -54,17 +78,114 @@ function normalizeLimit(value: unknown): number | undefined {
   return Math.min(100, Math.floor(value));
 }
 
-/**
- * Infer the X_READ subaction from the user's free-text intent when the caller
- * didn't pick one explicitly. We favour explicit parameters; this is the
- * fallback.
- */
-function inferSubactionFromIntent(intent: string): XReadSubaction {
-  const text = intent.toLowerCase();
-  if (/\b(dm|dms|direct message|inbox)\b/.test(text)) return "read_dms";
-  if (/\b(mention|mentions)\b/.test(text)) return "read_feed";
-  if (/\b(search|find)\b/.test(text)) return "search";
-  return "read_feed";
+function normalizeShouldAct(value: unknown): boolean | null {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") {
+      return true;
+    }
+    if (normalized === "false") {
+      return false;
+    }
+  }
+  return null;
+}
+
+function normalizePlannerResponse(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+async function resolveXReadPlanWithLlm(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+  intent: string;
+}): Promise<XReadLlmPlan> {
+  const recentConversation = (
+    await collectRecentConversationTexts({
+      runtime: args.runtime,
+      message: args.message,
+      state: args.state,
+      limit: 8,
+    })
+  ).join("\n");
+  const currentMessage = messageText(args.message).trim();
+  const prompt = [
+    "Plan the X read action for this request.",
+    "The user may speak in any language.",
+    "Use the current request plus recent conversation context.",
+    "Return a JSON object with exactly these fields:",
+    "  subaction: one of read_dms, read_feed, search, or null",
+    "  feedType: one of home_timeline or mentions when subaction is read_feed, otherwise null",
+    "  query: short search query when subaction is search, otherwise empty or null",
+    "  limit: optional integer 1-100 when the user explicitly requests an amount",
+    "  shouldAct: boolean",
+    "  response: short natural-language reply when shouldAct is false or clarification is needed",
+    "",
+    "Use read_dms for direct messages or inbox reads.",
+    "Use read_feed for the timeline or mentions feed.",
+    "Use search only when the user is explicitly asking to find posts by keyword, phrase, author, or topic.",
+    "Set feedType=mentions when the user asks for mentions; otherwise use home_timeline for feed reads.",
+    "Set shouldAct=false when the user is vague or only asks for general X help.",
+    "",
+    "Examples:",
+    '  "check my X DMs" -> {"subaction":"read_dms","feedType":null,"query":null,"limit":null,"shouldAct":true,"response":null}',
+    '  "show me my mentions" -> {"subaction":"read_feed","feedType":"mentions","query":null,"limit":null,"shouldAct":true,"response":null}',
+    '  "search X for Milady" -> {"subaction":"search","feedType":null,"query":"Milady","limit":null,"shouldAct":true,"response":null}',
+    '  "help me with X" -> {"subaction":null,"feedType":null,"query":null,"limit":null,"shouldAct":false,"response":"Do you want me to read your X DMs, timeline, mentions, or run a search?"}',
+    "",
+    "Return ONLY valid JSON.",
+    `Current request: ${JSON.stringify(currentMessage)}`,
+    `Resolved intent: ${JSON.stringify(args.intent)}`,
+    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+  ].join("\n");
+
+  try {
+    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+    });
+    const rawResponse = typeof result === "string" ? result : "";
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
+      parseJSONObjectFromText(rawResponse);
+    if (!parsed) {
+      return {
+        subaction: null,
+        shouldAct: null,
+      };
+    }
+
+    return {
+      subaction: normalizeSubaction(parsed.subaction),
+      query:
+        typeof parsed.query === "string" && parsed.query.trim().length > 0
+          ? parsed.query.trim()
+          : undefined,
+      feedType: normalizeOptionalFeedType(parsed.feedType),
+      limit: normalizeLimit(parsed.limit),
+      shouldAct: normalizeShouldAct(parsed.shouldAct),
+      response: normalizePlannerResponse(parsed.response),
+    };
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:x-read",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "X read planning model call failed",
+    );
+    return {
+      subaction: null,
+      shouldAct: null,
+    };
+  }
 }
 
 function summarizeDms(dms: LifeOpsXDm[]): string {
@@ -126,11 +247,20 @@ export const xReadAction: Action = {
 
     const params = (options?.parameters ?? {}) as XReadActionParams;
     const intent = (params.intent ?? messageText(message) ?? "").trim();
-    const subaction =
-      normalizeSubaction(params.subaction) ?? inferSubactionFromIntent(intent);
-    const feedType = normalizeFeedType(params.feedType);
-    const limit = normalizeLimit(params.limit);
-    const query = typeof params.query === "string" ? params.query.trim() : "";
+    const explicitSubaction = normalizeSubaction(params.subaction);
+    const llmPlan = await resolveXReadPlanWithLlm({
+      runtime,
+      message,
+      state,
+      intent,
+    });
+    const subaction = explicitSubaction ?? llmPlan.subaction;
+    const feedType = normalizeFeedType(params.feedType ?? llmPlan.feedType);
+    const limit = normalizeLimit(params.limit ?? llmPlan.limit);
+    const query =
+      typeof params.query === "string" && params.query.trim().length > 0
+        ? params.query.trim()
+        : llmPlan.query ?? "";
 
     const service = new LifeOpsService(runtime);
     const respond = async (payload: ActionResult): Promise<ActionResult> => {
@@ -141,6 +271,32 @@ export const xReadAction: Action = {
       });
       return payload;
     };
+
+    if (
+      llmPlan.shouldAct === false &&
+      !explicitSubaction &&
+      !params.query &&
+      !params.feedType &&
+      params.limit === undefined
+    ) {
+      return respond({
+        success: true,
+        text:
+          llmPlan.response ??
+          "Do you want me to read your X DMs, timeline, mentions, or run a search?",
+        data: { noop: true },
+      });
+    }
+
+    if (!subaction) {
+      return respond({
+        success: false,
+        text:
+          llmPlan.response ??
+          "Do you want me to read your X DMs, timeline, mentions, or run a search?",
+        data: { error: "MISSING_SUBACTION" },
+      });
+    }
 
     try {
       if (subaction === "read_dms") {

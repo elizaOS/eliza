@@ -48,6 +48,15 @@ export interface IMessageChat {
   lastMessageAt?: string;
 }
 
+export interface IMessageBackendStatus {
+  backend: IMessageBackend;
+  accountHandle: string | null;
+  sendMode: "cli" | "private-api" | "apple-script" | "none";
+  helperConnected: boolean | null;
+  privateApiEnabled: boolean | null;
+  diagnostics: string[];
+}
+
 export class IMessageBridgeError extends Error {
   readonly backend: IMessageBackend;
   readonly cause?: unknown;
@@ -160,6 +169,56 @@ export async function detectIMessageBackend(
 /** Clear the backend detection cache. Mostly useful for tests. */
 export function clearIMessageBackendCache(): void {
   detectionCache.clear();
+}
+
+export async function getIMessageBackendStatus(
+  config?: IMessageBridgeConfig,
+): Promise<IMessageBackendStatus> {
+  const backend = await detectIMessageBackend(config);
+  if (backend === "none") {
+    return {
+      backend,
+      accountHandle: null,
+      sendMode: "none",
+      helperConnected: null,
+      privateApiEnabled: null,
+      diagnostics: ["no_backend_available"],
+    };
+  }
+
+  if (backend === "imsg") {
+    return {
+      backend,
+      accountHandle: null,
+      sendMode: "cli",
+      helperConnected: null,
+      privateApiEnabled: null,
+      diagnostics: [],
+    };
+  }
+
+  const info = await getBlueBubblesServerInfo(config ?? {});
+  const diagnostics: string[] = [];
+  const sendMode = deriveBlueBubblesSendMode(info);
+  if (!info.private_api) {
+    diagnostics.push("bluebubbles_private_api_disabled");
+  }
+  if (info.private_api && !info.helper_connected) {
+    diagnostics.push("bluebubbles_helper_disconnected");
+  }
+
+  return {
+    backend,
+    accountHandle: info.detected_imessage ?? info.detected_icloud ?? null,
+    sendMode,
+    helperConnected:
+      typeof info.helper_connected === "boolean"
+        ? info.helper_connected
+        : null,
+    privateApiEnabled:
+      typeof info.private_api === "boolean" ? info.private_api : null,
+    diagnostics,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -342,6 +401,21 @@ interface BlueBubblesResponse<T> {
   data?: T;
 }
 
+interface BlueBubblesServerInfo {
+  private_api?: boolean;
+  helper_connected?: boolean;
+  detected_imessage?: string | null;
+  detected_icloud?: string | null;
+}
+
+function deriveBlueBubblesSendMode(
+  info: BlueBubblesServerInfo,
+): "private-api" | "apple-script" {
+  return info.private_api && info.helper_connected
+    ? "private-api"
+    : "apple-script";
+}
+
 interface BlueBubblesChat {
   guid: string;
   displayName?: string | null;
@@ -441,6 +515,16 @@ async function bluebubblesRequest<T>(
   return body.data;
 }
 
+async function getBlueBubblesServerInfo(
+  config: IMessageBridgeConfig,
+): Promise<BlueBubblesServerInfo> {
+  return bluebubblesRequest<BlueBubblesServerInfo>(
+    config,
+    "/api/v1/server/info",
+    { method: "GET" },
+  );
+}
+
 function normalizeBlueBubblesChat(raw: BlueBubblesChat): IMessageChat {
   return {
     id: raw.guid,
@@ -485,6 +569,8 @@ async function sendViaBlueBubbles(
   config: IMessageBridgeConfig,
 ): Promise<{ ok: true; messageId?: string }> {
   const target = await resolveBlueBubblesTarget(req.to, config);
+  const info = await getBlueBubblesServerInfo(config);
+  const method = deriveBlueBubblesSendMode(info);
   const result = await bluebubblesRequest<BlueBubblesMessage>(
     config,
     "/api/v1/message/text",
@@ -495,7 +581,7 @@ async function sendViaBlueBubbles(
         chatGuid: target,
         message: req.text,
         tempGuid: randomUUID(),
-        method: "apple-script",
+        method,
       }),
     },
   );

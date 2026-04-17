@@ -1,6 +1,6 @@
 import { Button } from "@elizaos/ui";
 import { Check } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { SystemPermissionId } from "../../api";
 import { useBootConfig } from "../../config";
 import {
@@ -24,10 +24,112 @@ import {
   CAPABILITIES,
   getPermissionAction,
   SYSTEM_PERMISSIONS,
-  translateWithFallback,
 } from "./permission-types";
 
-/** Mobile (Capacitor) permission UI for streaming to cloud sandbox. */
+/* ── Platform copy keys ─────────────────────────────────────────── */
+//
+// Each platform has its own description / note string. Encoding them as a
+// map removes the chains of nested ternaries that used to repeat across
+// the file.
+
+type DesktopPlatform = "darwin" | "win32" | "linux";
+
+interface PlatformCopy {
+  systemDescription: { key: string; defaultValue: string };
+  grantNote: { key: string; defaultValue: string };
+  permissionReady: { key: string; defaultValue: string };
+  grantSubNote: { key: string; defaultValue: string };
+  onboardingIntro: { key: string; defaultValue: string };
+}
+
+const PLATFORM_COPY: Record<DesktopPlatform, PlatformCopy> = {
+  darwin: {
+    systemDescription: {
+      key: "permissionssection.MacSystemPermissionsDescription",
+      defaultValue:
+        "Review the native permissions the app needs for desktop control, voice input, and visual analysis. macOS changes may require opening System Settings.",
+    },
+    grantNote: {
+      key: "permissionssection.MacGrantAccessNote",
+      defaultValue:
+        "macOS requires Accessibility permission for computer control. Open System Settings → Privacy & Security to grant access.",
+    },
+    permissionReady: {
+      key: "permissionssection.PermissionReadyNote",
+      defaultValue: "All required permissions are ready. Continue when you're ready.",
+    },
+    grantSubNote: {
+      key: "permissionssection.PermissionGrantNote",
+      defaultValue:
+        "Granting now will request what can be approved immediately and open Settings for anything that must be enabled there.",
+    },
+    onboardingIntro: {
+      key: "permissionssection.GrantPermissionsTo",
+      defaultValue: "Grant permissions to unlock desktop features.",
+    },
+  },
+  win32: {
+    systemDescription: {
+      key: "permissionssection.WindowsSystemPermissionsDescription",
+      defaultValue:
+        "Open Windows privacy settings for microphone and camera, then verify access by using those features in the app.",
+    },
+    grantNote: {
+      key: "permissionssection.WindowsGrantPermissionsNote",
+      defaultValue:
+        "Windows may not list the app as a named app here. Use Privacy settings to enable microphone and camera access, then test them in the app.",
+    },
+    permissionReady: {
+      key: "permissionssection.WindowsPermissionReadyNote",
+      defaultValue:
+        "Windows privacy settings are advisory here. Continue, then verify microphone and camera directly in the app.",
+    },
+    grantSubNote: {
+      key: "permissionssection.WindowsPermissionGrantNote",
+      defaultValue:
+        "This opens Windows privacy settings for microphone and camera. The app may not appear as a named app there; the real check is whether capture works back in the app.",
+    },
+    onboardingIntro: {
+      key: "permissionssection.WindowsGrantPermissionsTo",
+      defaultValue:
+        "Open Windows privacy settings to prepare microphone and camera access for desktop features.",
+    },
+  },
+  linux: {
+    systemDescription: {
+      key: "permissionssection.SystemPermissionsDescription",
+      defaultValue:
+        "Grant the runtime access it needs for voice input, camera capture, shell tasks, and desktop automation features.",
+    },
+    grantNote: {
+      key: "permissionssection.GrantPermissionsNote",
+      defaultValue:
+        "Grant permissions to enable features like voice input and computer control.",
+    },
+    permissionReady: {
+      key: "permissionssection.PermissionReadyNote",
+      defaultValue: "All required permissions are ready. Continue when you're ready.",
+    },
+    grantSubNote: {
+      key: "permissionssection.PermissionGrantNote",
+      defaultValue:
+        "Granting now will request what can be approved immediately and open Settings for anything that must be enabled there.",
+    },
+    onboardingIntro: {
+      key: "permissionssection.GrantPermissionsTo",
+      defaultValue: "Grant permissions to unlock desktop features.",
+    },
+  },
+};
+
+function platformCopy(platform: string | null | undefined): PlatformCopy {
+  if (platform === "darwin") return PLATFORM_COPY.darwin;
+  if (platform === "win32") return PLATFORM_COPY.win32;
+  return PLATFORM_COPY.linux;
+}
+
+/* ── Streaming permission views (mobile / web) ──────────────────── */
+
 function MobilePermissionsView() {
   const { t } = useApp();
   const { websiteBlockerSettingsCard: WebsiteBlockerSettingsCard } =
@@ -37,16 +139,13 @@ function MobilePermissionsView() {
       <StreamingPermissionsSettingsView
         mode="mobile"
         testId="mobile-permissions"
-        title={translateWithFallback(
-          t,
-          "permissionssection.StreamingPermissions",
-          "Streaming Permissions",
-        )}
-        description={translateWithFallback(
-          t,
-          "permissionssection.MobileStreamingDesc",
-          "Your device streams camera, microphone, and screen to your Eliza Cloud agent for processing.",
-        )}
+        title={t("permissionssection.StreamingPermissions", {
+          defaultValue: "Streaming Permissions",
+        })}
+        description={t("permissionssection.MobileStreamingDesc", {
+          defaultValue:
+            "Your device streams camera, microphone, and screen to your Eliza Cloud agent for processing.",
+        })}
       />
       {WebsiteBlockerSettingsCard ? (
         <WebsiteBlockerSettingsCard mode="mobile" />
@@ -55,7 +154,6 @@ function MobilePermissionsView() {
   );
 }
 
-/** Web browser permission UI — uses getUserMedia. */
 function WebPermissionsView() {
   const { t } = useApp();
   const { websiteBlockerSettingsCard: WebsiteBlockerSettingsCard } =
@@ -65,16 +163,13 @@ function WebPermissionsView() {
       <StreamingPermissionsSettingsView
         mode="web"
         testId="web-permissions-info"
-        title={translateWithFallback(
-          t,
-          "permissionssection.BrowserPermissions",
-          "Browser Permissions",
-        )}
-        description={translateWithFallback(
-          t,
-          "permissionssection.WebStreamingDesc",
-          "Grant browser access to your camera, microphone, and screen to stream to your agent.",
-        )}
+        title={t("permissionssection.BrowserPermissions", {
+          defaultValue: "Browser Permissions",
+        })}
+        description={t("permissionssection.WebStreamingDesc", {
+          defaultValue:
+            "Grant browser access to your camera, microphone, and screen to stream to your agent.",
+        })}
       />
       {WebsiteBlockerSettingsCard ? (
         <WebsiteBlockerSettingsCard mode="web" />
@@ -83,9 +178,10 @@ function WebPermissionsView() {
   );
 }
 
+/* ── Desktop permission view ────────────────────────────────────── */
+
 function DesktopPermissionsView() {
-  const { t } = useApp();
-  const { plugins, handlePluginToggle } = useApp();
+  const { t, plugins, handlePluginToggle } = useApp();
   const { websiteBlockerSettingsCard: WebsiteBlockerSettingsCard } =
     useBootConfig();
   const {
@@ -100,7 +196,6 @@ function DesktopPermissionsView() {
     shellEnabled,
   } = useDesktopPermissionsState();
 
-  /** Check if all required permissions for a capability are granted. */
   const arePermissionsGranted = useCallback(
     (requiredPerms: SystemPermissionId[]): boolean => {
       if (!permissions) return false;
@@ -114,156 +209,118 @@ function DesktopPermissionsView() {
     [permissions],
   );
 
-  /** Filter permissions applicable to current platform. */
-  const applicablePermissions = SYSTEM_PERMISSIONS.filter((def) => {
-    if (!permissions) return true;
-    const state = permissions[def.id];
-    return state?.status !== "not-applicable";
-  });
+  const applicablePermissions = useMemo(
+    () =>
+      SYSTEM_PERMISSIONS.filter((def) => {
+        if (!permissions) return true;
+        const state = permissions[def.id];
+        return state?.status !== "not-applicable";
+      }),
+    [permissions],
+  );
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-border/60 bg-card/92 px-4 py-6 text-center text-xs text-muted shadow-sm">
-        {translateWithFallback(
-          t,
-          "permissionssection.LoadingPermissions",
-          "Loading permissions...",
-        )}
-      </div>
+      <p className="py-6 text-center text-xs text-muted">
+        {t("permissionssection.LoadingPermissions", {
+          defaultValue: "Loading permissions...",
+        })}
+      </p>
     );
   }
 
   if (!permissions) {
     return (
-      <div className="rounded-2xl border border-border/60 bg-card/92 px-4 py-6 text-center text-xs text-muted shadow-sm">
-        {translateWithFallback(
-          t,
-          "permissionssection.UnableToLoadPermi",
-          "Unable to load permissions.",
-        )}
-      </div>
+      <p className="py-6 text-center text-xs text-muted">
+        {t("permissionssection.UnableToLoadPermi", {
+          defaultValue: "Unable to load permissions.",
+        })}
+      </p>
     );
   }
+
+  const copy = platformCopy(platform);
 
   return (
     <div className="space-y-6">
       {/* System Permissions */}
-      <div>
-        <div className="rounded-2xl border border-border/60 bg-card/92 shadow-sm">
-          <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-1">
-              <div className="font-bold text-sm text-txt">
-                {translateWithFallback(
-                  t,
-                  "permissionssection.SystemPermissions",
-                  "System Permissions",
-                )}
-              </div>
-              <div className="max-w-2xl text-xs-tight leading-5 text-muted">
-                {platform === "darwin"
-                  ? translateWithFallback(
-                      t,
-                      "permissionssection.MacSystemPermissionsDescription",
-                      "Review the native permissions the app needs for desktop control, voice input, and visual analysis. macOS changes may require opening System Settings.",
-                    )
-                  : platform === "win32"
-                    ? translateWithFallback(
-                        t,
-                        "permissionssection.WindowsSystemPermissionsDescription",
-                        "Open Windows privacy settings for microphone and camera, then verify access by using those features in the app.",
-                      )
-                    : translateWithFallback(
-                        t,
-                        "permissionssection.SystemPermissionsDescription",
-                        "Grant the runtime access it needs for voice input, camera capture, shell tasks, and desktop automation features.",
-                      )}
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="default"
-                size="sm"
-                className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
-                onClick={async () => {
-                  for (const def of applicablePermissions) {
-                    if (def.id === "shell") continue;
-                    const state = permissions[def.id];
-                    if (state?.status === "granted") continue;
-                    if (state?.canRequest) {
-                      await handleRequest(def.id);
-                    } else {
-                      await handleOpenSettings(def.id);
-                    }
-                  }
-                }}
-              >
-                {translateWithFallback(
-                  t,
-                  "permissionssection.AllowAll",
-                  "Allow All",
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                data-testid="permissions-refresh-button"
-                className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
-                onClick={handleRefresh}
-                disabled={refreshing}
-              >
-                {refreshing
-                  ? translateWithFallback(
-                      t,
-                      "permissionssection.Refreshing",
-                      "Refreshing...",
-                    )
-                  : translateWithFallback(t, "common.refresh", "Refresh")}
-              </Button>
-            </div>
+      <section className="space-y-2">
+        <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-0.5">
+            <h3 className="text-sm font-semibold text-txt">
+              {t("permissionssection.SystemPermissions", {
+                defaultValue: "System Permissions",
+              })}
+            </h3>
+            <p className="max-w-2xl text-xs-tight leading-5 text-muted">
+              {t(copy.systemDescription.key, {
+                defaultValue: copy.systemDescription.defaultValue,
+              })}
+            </p>
           </div>
-          <div className="divide-y divide-border/50">
-            {applicablePermissions.map((def) => {
-              const state = permissions[def.id];
-              return (
-                <PermissionRow
-                  key={def.id}
-                  def={def}
-                  status={state?.status ?? "not-determined"}
-                  reason={state?.reason}
-                  platform={platform}
-                  canRequest={state?.canRequest ?? false}
-                  onRequest={() => handleRequest(def.id)}
-                  onOpenSettings={() => handleOpenSettings(def.id)}
-                  isShell={def.id === "shell"}
-                  shellEnabled={shellEnabled}
-                  onToggleShell={
-                    def.id === "shell" ? handleToggleShell : undefined
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              className="h-9 rounded-lg px-3 text-xs font-semibold"
+              onClick={async () => {
+                for (const def of applicablePermissions) {
+                  if (def.id === "shell") continue;
+                  const state = permissions[def.id];
+                  if (state?.status === "granted") continue;
+                  if (state?.canRequest) {
+                    await handleRequest(def.id);
+                  } else {
+                    await handleOpenSettings(def.id);
                   }
-                />
-              );
-            })}
+                }
+              }}
+            >
+              {t("permissionssection.AllowAll", { defaultValue: "Allow All" })}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="permissions-refresh-button"
+              className="h-9 rounded-lg px-3 text-xs font-semibold"
+              onClick={handleRefresh}
+              disabled={refreshing}
+            >
+              {refreshing
+                ? t("permissionssection.Refreshing", {
+                    defaultValue: "Refreshing...",
+                  })
+                : t("common.refresh", { defaultValue: "Refresh" })}
+            </Button>
           </div>
+        </header>
+
+        <div className="divide-y divide-border/40 rounded-lg border border-border/40">
+          {applicablePermissions.map((def) => {
+            const state = permissions[def.id];
+            return (
+              <PermissionRow
+                key={def.id}
+                def={def}
+                status={state?.status ?? "not-determined"}
+                reason={state?.reason}
+                platform={platform}
+                canRequest={state?.canRequest ?? false}
+                onRequest={() => handleRequest(def.id)}
+                onOpenSettings={() => handleOpenSettings(def.id)}
+                isShell={def.id === "shell"}
+                shellEnabled={shellEnabled}
+                onToggleShell={
+                  def.id === "shell" ? handleToggleShell : undefined
+                }
+              />
+            );
+          })}
         </div>
-        <div className="mt-2 text-xs-tight leading-5 text-muted">
-          {platform === "darwin"
-            ? translateWithFallback(
-                t,
-                "permissionssection.MacGrantAccessNote",
-                "macOS requires Accessibility permission for computer control. Open System Settings → Privacy & Security to grant access.",
-              )
-            : platform === "win32"
-              ? translateWithFallback(
-                  t,
-                  "permissionssection.WindowsGrantPermissionsNote",
-                  "Windows may not list the app as a named app here. Use Privacy settings to enable microphone and camera access, then test them in the app.",
-                )
-              : translateWithFallback(
-                  t,
-                  "permissionssection.GrantPermissionsNote",
-                  "Grant permissions to enable features like voice input and computer control.",
-                )}
-        </div>
-      </div>
+        <p className="text-xs-tight leading-5 text-muted">
+          {t(copy.grantNote.key, { defaultValue: copy.grantNote.defaultValue })}
+        </p>
+      </section>
 
       {WebsiteBlockerSettingsCard ? (
         <WebsiteBlockerSettingsCard
@@ -278,71 +335,50 @@ function DesktopPermissionsView() {
       ) : null}
 
       {/* Capability Toggles */}
-      <div>
-        <div className="rounded-2xl border border-border/60 bg-card/92 shadow-sm">
-          <div className="px-4 py-4">
-            <div className="font-bold text-sm text-txt">
-              {t("appsview.Capabilities")}
-            </div>
-            <div className="mt-1 text-xs-tight leading-5 text-muted">
-              {translateWithFallback(
-                t,
-                "permissionssection.CapabilitiesDescription",
+      <section className="space-y-2 border-t border-border/40 pt-5">
+        <header className="space-y-0.5">
+          <h3 className="text-sm font-semibold text-txt">
+            {t("appsview.Capabilities")}
+          </h3>
+          <p className="max-w-2xl text-xs-tight leading-5 text-muted">
+            {t("permissionssection.CapabilitiesDescription", {
+              defaultValue:
                 "Turn higher-level capabilities on only after the required runtime permissions are available.",
-              )}
-            </div>
-          </div>
-          <div className="space-y-2 px-4 py-4">
-            {CAPABILITIES.map((cap) => {
-              const plugin = plugins.find((p) => p.id === cap.id) ?? null;
-              const permissionsGranted = arePermissionsGranted(
-                cap.requiredPermissions,
-              );
-              return (
-                <CapabilityToggle
-                  key={cap.id}
-                  cap={cap}
-                  plugin={plugin}
-                  permissionsGranted={permissionsGranted}
-                  onToggle={(enabled) => {
-                    if (plugin) void handlePluginToggle(cap.id, enabled);
-                  }}
-                />
-              );
             })}
-          </div>
+          </p>
+        </header>
+        <div className="space-y-2">
+          {CAPABILITIES.map((cap) => {
+            const plugin = plugins.find((p) => p.id === cap.id) ?? null;
+            const permissionsGranted = arePermissionsGranted(
+              cap.requiredPermissions,
+            );
+            return (
+              <CapabilityToggle
+                key={cap.id}
+                cap={cap}
+                plugin={plugin}
+                permissionsGranted={permissionsGranted}
+                onToggle={(enabled) => {
+                  if (plugin) void handlePluginToggle(cap.id, enabled);
+                }}
+              />
+            );
+          })}
         </div>
-        <div className="mt-2 text-xs-tight leading-5 text-muted">
-          {translateWithFallback(
-            t,
-            "permissionssection.CapabilitiesRequire",
-            "Capabilities require the system permissions listed above.",
-          )}
-        </div>
-      </div>
+      </section>
     </div>
   );
 }
 
 export function PermissionsSection() {
-  if (isWebPlatform()) {
-    return <WebPermissionsView />;
-  }
-
-  if (isNative && !isDesktopPlatform()) {
-    return <MobilePermissionsView />;
-  }
-
+  if (isWebPlatform()) return <WebPermissionsView />;
+  if (isNative && !isDesktopPlatform()) return <MobilePermissionsView />;
   return <DesktopPermissionsView />;
 }
 
-/**
- * Onboarding **senses** step: system / streaming permissions with explicit grant
- * and skip actions. Per-permission status stays visible on each row, while the footer
- * makes the outcome of skipping clear. **`onContinue()`** still advances the wizard;
- * `allowPermissionBypass` is used for the explicit skip path.
- */
-/** Onboarding section for mobile — streaming permissions to cloud sandbox. */
+/* ── Onboarding permission views ────────────────────────────────── */
+
 function MobileOnboardingPermissions({
   onContinue,
   onBack,
@@ -357,21 +393,17 @@ function MobileOnboardingPermissions({
       onContinue={onContinue}
       onBack={onBack}
       testId="mobile-onboarding-permissions"
-      title={translateWithFallback(
-        t,
-        "permissionssection.StreamingPermissions",
-        "Streaming Permissions",
-      )}
-      description={translateWithFallback(
-        t,
-        "permissionssection.MobileOnboardingDesc",
-        "Allow access so your device can stream to your cloud agent.",
-      )}
+      title={t("permissionssection.StreamingPermissions", {
+        defaultValue: "Streaming Permissions",
+      })}
+      description={t("permissionssection.MobileOnboardingDesc", {
+        defaultValue:
+          "Allow access so your device can stream to your cloud agent.",
+      })}
     />
   );
 }
 
-/** Web onboarding — browser media permissions. */
 function WebOnboardingPermissions({
   onContinue,
   onBack,
@@ -386,16 +418,13 @@ function WebOnboardingPermissions({
       onContinue={onContinue}
       onBack={onBack}
       testId="web-onboarding-permissions"
-      title={translateWithFallback(
-        t,
-        "permissionssection.BrowserPermissions",
-        "Browser Permissions",
-      )}
-      description={translateWithFallback(
-        t,
-        "permissionssection.WebOnboardingDesc",
-        "Allow browser access so your camera, mic, and screen can stream to your agent.",
-      )}
+      title={t("permissionssection.BrowserPermissions", {
+        defaultValue: "Browser Permissions",
+      })}
+      description={t("permissionssection.WebOnboardingDesc", {
+        defaultValue:
+          "Allow browser access so your camera, mic, and screen can stream to your agent.",
+      })}
     />
   );
 }
@@ -407,19 +436,14 @@ export function PermissionsOnboardingSection({
   onContinue: (options?: { allowPermissionBypass?: boolean }) => void;
   onBack?: () => void;
 }) {
-  // Web: no permissions needed
   if (isWebPlatform()) {
     return <WebOnboardingPermissions onContinue={onContinue} onBack={onBack} />;
   }
-
-  // Mobile (Capacitor): streaming permissions
   if (isNative && !isDesktopPlatform()) {
     return (
       <MobileOnboardingPermissions onContinue={onContinue} onBack={onBack} />
     );
   }
-
-  // Desktop shell: existing permission flow
   return (
     <DesktopOnboardingPermissions onContinue={onContinue} onBack={onBack} />
   );
@@ -443,8 +467,8 @@ function DesktopOnboardingPermissions({
   } = useDesktopPermissionsState();
   const [grantingPermissions, setGrantingPermissions] = useState(false);
   const usesWindowsPrivacyFlow = platform === "win32";
+  const copy = platformCopy(platform);
 
-  /** Check if all critical permissions are granted (or not applicable). */
   const allGranted = hasRequiredOnboardingPermissions(permissions);
   const canProceed = allGranted || usesWindowsPrivacyFlow;
   const essentialPermissions = SYSTEM_PERMISSIONS.filter((def) => {
@@ -452,26 +476,16 @@ function DesktopOnboardingPermissions({
     return state?.status !== "not-applicable" && def.id !== "shell";
   });
   const footerStatusMessage = canProceed
-    ? translateWithFallback(
-        t,
-        usesWindowsPrivacyFlow
-          ? "permissionssection.WindowsPermissionReadyNote"
-          : "permissionssection.PermissionReadyNote",
-        usesWindowsPrivacyFlow
-          ? "Windows privacy settings are advisory here. Continue, then verify microphone and camera directly in the app."
-          : "All required permissions are ready. Continue when you're ready.",
-      )
-    : translateWithFallback(
-        t,
-        "permissionssection.PermissionSkipNote",
-        "Skipping keeps desktop features locked until you grant the missing permissions in Settings.",
-      );
+    ? t(copy.permissionReady.key, {
+        defaultValue: copy.permissionReady.defaultValue,
+      })
+    : t("permissionssection.PermissionSkipNote", {
+        defaultValue:
+          "Skipping keeps desktop features locked until you grant the missing permissions in Settings.",
+      });
 
   const handleGrantPermissions = useCallback(async () => {
-    if (grantingPermissions) {
-      return;
-    }
-
+    if (grantingPermissions) return;
     setGrantingPermissions(true);
     try {
       for (const def of essentialPermissions) {
@@ -506,41 +520,31 @@ function DesktopOnboardingPermissions({
     usesWindowsPrivacyFlow,
   ]);
 
-  const handleSkipForNow = useCallback(() => {
-    onContinue({ allowPermissionBypass: true });
-  }, [onContinue]);
-
   if (loading) {
     return (
-      <div className="text-center py-8">
-        <div className="text-muted text-sm">
-          {translateWithFallback(
-            t,
-            "permissionssection.CheckingPermissions",
-            "Checking permissions...",
-          )}
-        </div>
-      </div>
+      <p className="py-8 text-center text-sm text-muted">
+        {t("permissionssection.CheckingPermissions", {
+          defaultValue: "Checking permissions...",
+        })}
+      </p>
     );
   }
 
   if (!permissions) {
     return (
-      <div className="text-center py-8">
-        <div className="text-muted text-sm mb-4">
-          {translateWithFallback(
-            t,
-            "permissionssection.UnableToCheckPerm",
-            "Unable to check permissions.",
-          )}
-        </div>
+      <div className="py-8 text-center">
+        <p className="mb-4 text-sm text-muted">
+          {t("permissionssection.UnableToCheckPerm", {
+            defaultValue: "Unable to check permissions.",
+          })}
+        </p>
         <Button
           type="button"
           variant="default"
           data-testid="permissions-onboarding-continue"
           onClick={() => onContinue()}
         >
-          {translateWithFallback(t, "onboarding.savedMyKeys", "Continue")}
+          {t("onboarding.savedMyKeys", { defaultValue: "Continue" })}
         </Button>
       </div>
     );
@@ -548,30 +552,20 @@ function DesktopOnboardingPermissions({
 
   return (
     <div className="space-y-5">
-      <div className="text-center mb-6">
-        <div className="text-xl font-bold mb-2">
-          {translateWithFallback(
-            t,
-            "permissionssection.SystemPermissions",
-            "System Permissions",
-          )}
-        </div>
-        <div className="text-muted text-sm">
-          {platform === "win32"
-            ? translateWithFallback(
-                t,
-                "permissionssection.WindowsGrantPermissionsTo",
-                "Open Windows privacy settings to prepare microphone and camera access for desktop features.",
-              )
-            : translateWithFallback(
-                t,
-                "permissionssection.GrantPermissionsTo",
-                "Grant permissions to unlock desktop features.",
-              )}
-        </div>
-      </div>
+      <header className="text-center">
+        <h2 className="mb-1 text-xl font-bold text-txt">
+          {t("permissionssection.SystemPermissions", {
+            defaultValue: "System Permissions",
+          })}
+        </h2>
+        <p className="text-sm text-muted">
+          {t(copy.onboardingIntro.key, {
+            defaultValue: copy.onboardingIntro.defaultValue,
+          })}
+        </p>
+      </header>
 
-      <div className="space-y-3 mb-6">
+      <div className="space-y-2">
         {essentialPermissions.map((def) => {
           const state = permissions[def.id];
           const status = state?.status ?? "not-determined";
@@ -588,32 +582,26 @@ function DesktopOnboardingPermissions({
             <div
               key={def.id}
               data-permission-id={def.id}
-              className={`flex flex-col gap-3 rounded-2xl border p-4 shadow-sm sm:flex-row sm:items-center ${
+              className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 ${
                 isGranted
-                  ? "border-ok/35 bg-ok/10"
-                  : "border-border/60 bg-card/92"
+                  ? "border-ok/30 bg-ok/5"
+                  : "border-border/50 bg-card/60"
               }`}
             >
-              <div className="flex min-w-0 flex-1 items-start gap-4">
-                <PermissionIcon icon={def.icon} />
-                <div className="min-w-0 flex-1">
-                  <div className="font-semibold text-sm text-txt">
-                    {def.name}
-                  </div>
-                  <div className="text-xs-tight leading-5 text-muted">
-                    {def.description}
-                  </div>
+              <PermissionIcon icon={def.icon} />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-txt">{def.name}</div>
+                <div className="text-xs-tight leading-5 text-muted">
+                  {def.description}
                 </div>
               </div>
               {isGranted ? (
-                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-ok/30 bg-ok/10">
-                  <Check className="h-4 w-4 text-ok" />
-                </div>
+                <Check className="h-4 w-4 shrink-0 text-ok" />
               ) : action ? (
                 <Button
                   variant="default"
                   size="sm"
-                  className="min-h-10 rounded-xl px-3 text-xs font-semibold text-txt-strong hover:text-txt-strong sm:self-center"
+                  className="h-9 rounded-lg px-3 text-xs font-semibold"
                   onClick={() =>
                     action.type === "request"
                       ? handleRequest(def.id)
@@ -629,72 +617,62 @@ function DesktopOnboardingPermissions({
         })}
       </div>
 
-      <div className="mt-[18px] pt-3.5">
-        <div className="mb-4 space-y-1 text-xs-tight leading-5 text-muted">
+      <div className="space-y-3 border-t border-border/40 pt-4">
+        <div className="space-y-1 text-xs-tight leading-5 text-muted">
           <p>{footerStatusMessage}</p>
-          {!canProceed ? (
+          {!canProceed && (
             <p>
-              {translateWithFallback(
-                t,
-                platform === "win32"
-                  ? "permissionssection.WindowsPermissionGrantNote"
-                  : "permissionssection.PermissionGrantNote",
-                platform === "win32"
-                  ? "This opens Windows privacy settings for microphone and camera. The app may not appear as a named app there; the real check is whether capture works back in the app."
-                  : "Granting now will request what can be approved immediately and open Settings for anything that must be enabled there.",
-              )}
+              {t(copy.grantSubNote.key, {
+                defaultValue: copy.grantSubNote.defaultValue,
+              })}
             </p>
-          ) : null}
+          )}
         </div>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           {onBack ? (
             <Button
               variant="ghost"
               size="sm"
-              className="justify-start p-0 text-2xs uppercase tracking-[0.15em] text-muted-strong hover:text-txt"
+              className="justify-start p-0 text-2xs uppercase tracking-[0.15em] text-muted hover:text-txt"
               onClick={() => onBack()}
               type="button"
             >
-              {translateWithFallback(t, "onboarding.back", "Back")}
+              {t("onboarding.back", { defaultValue: "Back" })}
             </Button>
           ) : (
             <span />
           )}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-            {!canProceed ? (
+            {!canProceed && (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="min-h-11 rounded-xl px-4 py-2 text-xs-tight font-semibold"
+                className="h-10 rounded-lg px-4 text-xs font-semibold"
                 disabled={grantingPermissions}
-                onClick={handleSkipForNow}
+                onClick={() => onContinue({ allowPermissionBypass: true })}
               >
-                {translateWithFallback(t, "onboarding.rpcSkip", "Skip for now")}
+                {t("onboarding.rpcSkip", { defaultValue: "Skip for now" })}
               </Button>
-            ) : null}
+            )}
             <Button
               type="button"
               variant="default"
               size="sm"
               data-testid="permissions-onboarding-continue"
-              className="min-h-11 min-w-[8.5rem] rounded-xl px-4 py-2 text-xs-tight font-semibold leading-tight text-txt-strong hover:text-txt-strong"
+              className="h-10 min-w-[8.5rem] rounded-lg px-4 text-xs font-semibold"
               disabled={grantingPermissions}
               onClick={canProceed ? () => onContinue() : handleGrantPermissions}
             >
               {canProceed
-                ? translateWithFallback(t, "onboarding.savedMyKeys", "Continue")
+                ? t("onboarding.savedMyKeys", { defaultValue: "Continue" })
                 : grantingPermissions
-                  ? translateWithFallback(
-                      t,
-                      "permissionssection.GrantingPermissions",
-                      "Granting...",
-                    )
-                  : translateWithFallback(
-                      t,
-                      "permissionssection.GrantPermissions",
-                      "Grant Permissions",
-                    )}
+                  ? t("permissionssection.GrantingPermissions", {
+                      defaultValue: "Granting...",
+                    })
+                  : t("permissionssection.GrantPermissions", {
+                      defaultValue: "Grant Permissions",
+                    })}
             </Button>
           </div>
         </div>

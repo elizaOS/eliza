@@ -208,7 +208,7 @@ function ConnectorPluginCard({
     draftConfig: pluginConfigs[plugin.id],
   });
   const openCloudAgentsView = () => {
-    setState("cloudDashboardView", "agents");
+    setState("cloudDashboardView", "overview");
     setTab("settings");
   };
   const ensureManagedDiscordGatewayProvisioned = async (

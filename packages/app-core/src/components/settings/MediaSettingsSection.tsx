@@ -41,6 +41,19 @@ import { VoiceConfigView } from "./VoiceConfigView";
 export { DesktopMediaControlPanel } from "./media-settings-providers";
 export { DESKTOP_MEDIA_CLICK_AUDIT } from "./media-settings-types";
 
+// ── Shared classes ───────────────────────────────────────────────────
+
+const SEGMENTED_BUTTON_BASE =
+  "flex-1 basis-[calc(50%-0.125rem)] sm:basis-0 min-h-touch rounded-lg border px-2 py-1.5 text-xs-tight font-semibold !whitespace-normal";
+const SEGMENTED_BUTTON_ACTIVE =
+  "border-accent/45 bg-accent/16 text-txt-strong shadow-sm";
+const SEGMENTED_BUTTON_INACTIVE =
+  "border-border/40 text-muted-strong hover:border-border-strong hover:bg-bg-hover hover:text-txt";
+
+function segmentedButtonClass(active: boolean): string {
+  return `${SEGMENTED_BUTTON_BASE} ${active ? SEGMENTED_BUTTON_ACTIVE : SEGMENTED_BUTTON_INACTIVE}`;
+}
+
 // ── Main component ───────────────────────────────────────────────────
 
 export function MediaSettingsSection() {
@@ -214,11 +227,7 @@ export function MediaSettingsSection() {
                   type="button"
                   variant={active ? "default" : "ghost"}
                   size="sm"
-                  className={`flex-1 basis-[calc(50%-0.125rem)] sm:basis-0 min-h-touch rounded-lg border px-2 py-1.5 text-xs-tight font-semibold !whitespace-normal ${
-                    active
-                      ? "border-accent/45 bg-accent/16 text-txt-strong shadow-sm"
-                      : "border-border/40 text-muted-strong hover:border-border-strong hover:bg-bg-hover hover:text-txt"
-                  }`}
+                  className={segmentedButtonClass(active)}
                   onClick={() => setCompanionVrmPowerMode(mode)}
                   aria-pressed={active}
                 >
@@ -248,11 +257,7 @@ export function MediaSettingsSection() {
                     type="button"
                     variant={active ? "default" : "ghost"}
                     size="sm"
-                    className={`flex-1 basis-[calc(50%-0.125rem)] sm:basis-0 min-h-touch rounded-lg border px-2 py-1.5 text-xs-tight font-semibold !whitespace-normal ${
-                      active
-                        ? "border-accent/45 bg-accent/16 text-txt-strong shadow-sm"
-                        : "border-border/40 text-muted-strong hover:border-border-strong hover:bg-bg-hover hover:text-txt"
-                    }`}
+                    className={segmentedButtonClass(active)}
                     onClick={() => setCompanionHalfFramerateMode(mode)}
                     aria-pressed={active}
                   >
@@ -295,45 +300,28 @@ export function MediaSettingsSection() {
           defaultValue: "Media generation by category",
         })}
       >
-        <header className="flex flex-col gap-0.5 pb-2">
-          <p className="text-2xs font-bold uppercase tracking-[0.1em] text-muted">
-            {t("mediasettingssection.GenerateGroupTitle", {
-              defaultValue: "Generation",
-            })}
-          </p>
-          <p className="text-2xs text-muted leading-snug">
-            {t("mediasettingssection.GenerateGroupHint", {
-              defaultValue:
-                "Use the tabs to switch category; settings below apply to the selected tab.",
-            })}
-          </p>
-        </header>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted">
+          {t("mediasettingssection.GenerateGroupTitle", {
+            defaultValue: "Generation",
+          })}
+        </p>
 
-        {/* Category tabs */}
+        {/* Category tabs — status dots removed in favour of the single
+            "Configured / Needs setup" pill shown below the tabs. */}
         <SettingsControls.SegmentedGroup>
           {(
             ["image", "video", "audio", "vision", "voice"] as MediaCategory[]
           ).map((cat) => {
             const active = activeTab === cat;
-            const catConfigured = isProviderConfigured(cat);
             return (
               <Button
                 key={cat}
                 variant={active ? "default" : "ghost"}
                 size="sm"
-                className={`flex-1 basis-[calc(50%-0.125rem)] sm:basis-0 min-h-touch rounded-lg border px-2 py-2 text-2xs sm:text-xs font-semibold !whitespace-normal ${
-                  active
-                    ? "border-accent/45 bg-accent/16 text-txt-strong shadow-sm"
-                    : "border-border/40 text-muted-strong hover:border-border-strong hover:bg-bg-hover hover:text-txt"
-                }`}
+                className={segmentedButtonClass(active)}
                 onClick={() => setActiveTab(cat)}
               >
-                <span>{t(CATEGORY_LABELS[cat])}</span>
-                <span
-                  className={`ml-1.5 inline-block w-1.5 h-1.5 rounded-full ${
-                    catConfigured ? "bg-ok" : "bg-border-strong"
-                  }`}
-                />
+                {t(CATEGORY_LABELS[cat])}
               </Button>
             );
           })}
@@ -371,12 +359,15 @@ export function MediaSettingsSection() {
 
               {/* Status badge */}
               <span
-                className={`ml-auto rounded-full border px-2 py-0.5 text-2xs ${
+                className={`ml-auto inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-2xs font-medium ${
                   configured
-                    ? "border-ok bg-ok/10 text-txt"
-                    : "border-warn bg-warn-subtle text-txt"
+                    ? "border-ok/30 bg-ok/10 text-ok"
+                    : "border-warn/30 bg-warn/10 text-warn"
                 }`}
               >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${configured ? "bg-ok" : "bg-warn"}`}
+                />
                 {configured
                   ? t("config-field.Configured")
                   : t("mediasettingssection.NeedsSetup")}

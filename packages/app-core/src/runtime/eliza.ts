@@ -41,6 +41,7 @@ import {
   resolveServerOnlyPort,
   syncResolvedApiPort,
 } from "@elizaos/shared/runtime-env";
+import { isNativeServerPlatform } from "../platform/is-native-server.js";
 import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
 import { ensureRuntimeSqlCompatibility } from "../utils/sql-compat.js";
 import type { EmbeddingProgressCallback } from "./embedding-manager-support.js";
@@ -193,6 +194,21 @@ export function applyN8nConfigToEnv(
   ...args: Parameters<typeof upstreamApplyN8nConfigToEnv>
 ): ReturnType<typeof upstreamApplyN8nConfigToEnv> {
   syncBrandEnvAliases();
+  // On mobile (iOS / Android) the local n8n sidecar cannot run — spawning a
+  // child process via node:child_process is unavailable. Treat
+  // `config.n8n.localEnabled` as false regardless of the stored user setting
+  // so the env pump only considers the Eliza Cloud gateway path. The stored
+  // config is not mutated.
+  if (isNativeServerPlatform()) {
+    const [config, agentId] = args;
+    const mobileConfig =
+      config?.n8n?.localEnabled === false
+        ? config
+        : { ...config, n8n: { ...(config.n8n ?? {}), localEnabled: false } };
+    const result = upstreamApplyN8nConfigToEnv(mobileConfig, agentId);
+    syncBrandEnvAliases();
+    return result;
+  }
   const result = upstreamApplyN8nConfigToEnv(...args);
   syncBrandEnvAliases();
   return result;
@@ -414,7 +430,43 @@ async function repairRuntimeAfterBoot(
   // Telegraf instance with proper lifecycle management.
   await ensureTelegramBotPolling(runtime);
 
+  // Bridge Eliza Cloud auth transitions → n8n sidecar lifecycle so signing
+  // in releases the local sidecar (saves port 5678 + ~200MB) and signing
+  // out proactively re-spawns it (when localEnabled and not mobile).
+  await ensureN8nAuthBridge(runtime);
+
   return runtime;
+}
+
+// Module-level handle for the n8n auth bridge, reset across hot-reloads so
+// the previous poller does not race the fresh runtime's CLOUD_AUTH service.
+let _n8nAuthBridge: { stop: () => void } | null = null;
+
+async function ensureN8nAuthBridge(runtime: AgentRuntime): Promise<void> {
+  if (_n8nAuthBridge) {
+    try {
+      _n8nAuthBridge.stop();
+    } catch {
+      /* ignore */
+    }
+    _n8nAuthBridge = null;
+  }
+  try {
+    const [{ startN8nAuthBridge }, config] = await Promise.all([
+      import("../services/n8n-auth-bridge.js"),
+      Promise.resolve(loadElizaConfig()),
+    ]);
+    _n8nAuthBridge = startN8nAuthBridge(runtime, config, {
+      getConfig: () => loadElizaConfig(),
+    });
+    logger.info("[eliza] n8n auth bridge armed");
+  } catch (err) {
+    logger.warn(
+      `[eliza] Failed to start n8n auth bridge: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
 }
 
 // Module-level Telegraf bot reference for lifecycle management across restarts.
@@ -1092,6 +1144,16 @@ export async function startEliza(
         }
         if (currentRuntime) {
           await upstreamShutdownRuntime(currentRuntime, "server-only shutdown");
+        }
+        // Stop the n8n auth bridge first so the poller does not try to
+        // spawn a fresh sidecar while we are tearing down.
+        if (_n8nAuthBridge) {
+          try {
+            _n8nAuthBridge.stop();
+          } catch {
+            /* ignore */
+          }
+          _n8nAuthBridge = null;
         }
         // Stop the n8n sidecar if it was started during this session. The
         // singleton is lazily constructed, so this is a no-op when n8n was
