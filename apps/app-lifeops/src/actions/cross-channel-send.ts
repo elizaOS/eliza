@@ -374,13 +374,34 @@ export const crossChannelSendAction: Action = {
       case "signal":
       case "imessage":
       case "whatsapp": {
-        const methodName = {
-          telegram: "sendTelegramMessage",
-          discord: "sendDiscordMessage",
-          signal: "sendSignalMessage",
-          imessage: "sendIMessage",
-          whatsapp: "sendWhatsAppMessage",
-        }[channel];
+        // Each mixin exposes a slightly different request shape. Centralize the
+        // mapping here so the action keeps a uniform {target, message} API.
+        const mapping: Record<
+          string,
+          { method: string; build: () => Record<string, unknown> }
+        > = {
+          telegram: {
+            method: "sendTelegramMessage",
+            build: () => ({ target, message: body }),
+          },
+          discord: {
+            method: "sendDiscordMessage",
+            build: () => ({ target, message: body }),
+          },
+          signal: {
+            method: "sendSignalMessage",
+            build: () => ({ target, message: body }),
+          },
+          imessage: {
+            method: "sendIMessage",
+            build: () => ({ to: target, text: body }),
+          },
+          whatsapp: {
+            method: "sendWhatsAppMessage",
+            build: () => ({ to: target, text: body }),
+          },
+        };
+        const { method: methodName, build } = mapping[channel];
         const serviceUnknown = service as unknown as Record<
           string,
           (...args: unknown[]) => Promise<unknown>
@@ -390,7 +411,7 @@ export const crossChannelSendAction: Action = {
           return notImplemented(channel);
         }
         try {
-          const result = await method.call(service, { target, message: body });
+          const result = await method.call(service, build());
           return {
             text: `Sent ${channel} to ${target}.`,
             success: true,

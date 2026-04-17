@@ -120,6 +120,7 @@ const FEATURE_PLUGINS: Record<string, string> = {
   obsidian: "@elizaos/plugin-obsidian",
   cron: "@elizaos/plugin-cron",
   shell: "@elizaos/plugin-shell",
+  executeCode: "@elizaos/plugin-executecode",
   imageGen: "@elizaos/plugin-image-generation",
   tts: "@elizaos/plugin-edge-tts",
   stt: "@elizaos/plugin-stt",
