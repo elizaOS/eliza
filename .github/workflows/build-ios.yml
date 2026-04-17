@@ -47,7 +47,7 @@ jobs:
           xcodebuild -version
 
       - name: Cache CocoaPods
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.APP_DIR }}/ios/App/Pods
           key: pods-${{ runner.os }}-${{ hashFiles('apps/app/ios/App/Podfile.lock') }}
