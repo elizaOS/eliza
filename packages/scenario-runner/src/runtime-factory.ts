@@ -9,7 +9,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
-import { AgentRuntime as AgentRuntimeCtor, createCharacter, logger } from "@elizaos/core";
+import {
+  AgentRuntime as AgentRuntimeCtor,
+  createBasicCapabilitiesPlugin,
+  createCharacter,
+  logger,
+} from "@elizaos/core";
 import {
   type LiveProviderConfig,
   type LiveProviderName,
@@ -101,6 +106,16 @@ export async function createScenarioRuntime(
     default: Plugin;
   };
   await runtime.registerPlugin(pluginSql);
+
+  // Basic capabilities: REPLY, CHOICE, IGNORE, NONE actions, core providers
+  // (CHARACTER, ACTIONS, MESSAGES, ENTITIES, ...), and baseline services
+  // (TaskService, EmbeddingGenerationService). advancedCapabilities also
+  // registers contact/message actions (ADD_CONTACT, SEND_MESSAGE, ...).
+  // Without this plugin the runtime has no conversational reply action and
+  // nearly every scenario fails with "expected 1 call(s) to REPLY, saw 0".
+  await runtime.registerPlugin(
+    createBasicCapabilitiesPlugin({ advancedCapabilities: true }),
+  );
 
   try {
     const localEmbedding = (await import(
