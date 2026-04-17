@@ -151,8 +151,14 @@ export async function buildActivityProfile(
         if (room?.source) {
           roomSourceMap.set(roomId, room.source);
         }
-      } catch {
-        // Skip rooms we can't read
+      } catch (cause) {
+        // Room read can fail for deleted/migrated rooms during batch fetch.
+        // Missing source is non-fatal for the profile build; log so repeated
+        // misses surface in telemetry.
+        logger.debug(
+          { err: cause, roomId },
+          "[ActivityProfile] room source lookup failed",
+        );
       }
     }),
   );
@@ -238,8 +244,11 @@ export async function refreshCurrentState(
           if (room?.source) {
             roomSourceMap.set(roomId, room.source);
           }
-        } catch {
-          // Skip rooms we cannot inspect during refresh.
+        } catch (cause) {
+          logger.debug(
+            { err: cause, roomId },
+            "[ActivityProfile] room source lookup failed during refresh",
+          );
         }
       }),
     );

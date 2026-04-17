@@ -1,5 +1,5 @@
 import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
-import { logger, stringToUuid } from "@elizaos/core";
+import { logger, runPluginMigrations, stringToUuid } from "@elizaos/core";
 import { loadLifeOpsAppState } from "./app-state.js";
 import { LifeOpsService } from "./service.js";
 import { readTwilioCredentialsFromEnv } from "./twilio.js";
@@ -15,8 +15,71 @@ type AutonomyServiceLike = {
   getAutonomousRoomId?: () => UUID;
 };
 
+type RuntimeWithPluginMigrations = IAgentRuntime & {
+  runPluginMigrations?: () => Promise<void>;
+};
+
+type ErrorWithCause = {
+  cause?: unknown;
+  code?: unknown;
+  message?: unknown;
+  query?: unknown;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isErrorWithCause(value: unknown): value is ErrorWithCause {
+  return Boolean(value) && typeof value === "object";
+}
+
+function isMissingTasksTableError(error: unknown): boolean {
+  const queue: unknown[] = [error];
+  const seen = new Set<unknown>();
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current === undefined || seen.has(current)) {
+      continue;
+    }
+    seen.add(current);
+
+    if (current instanceof Error) {
+      if (current.message.includes('relation "tasks" does not exist')) {
+        return true;
+      }
+      if (current.cause !== undefined) {
+        queue.push(current.cause);
+      }
+      continue;
+    }
+
+    if (!isErrorWithCause(current)) {
+      continue;
+    }
+
+    if (
+      typeof current.message === "string" &&
+      current.message.includes('relation "tasks" does not exist')
+    ) {
+      return true;
+    }
+
+    if (
+      current.code === "42P01" &&
+      typeof current.query === "string" &&
+      current.query.includes('"tasks"')
+    ) {
+      return true;
+    }
+
+    if (current.cause !== undefined) {
+      queue.push(current.cause);
+    }
+  }
+
+  return false;
 }
 
 function isLifeOpsSchedulerTask(task: Task): boolean {
@@ -52,6 +115,16 @@ export function resolveLifeOpsTaskIntervalMs(agentId: UUID): number {
     hash = (hash * 31 + agentId.charCodeAt(index)) >>> 0;
   }
   return LIFEOPS_TASK_INTERVAL_MS + (hash % (LIFEOPS_TASK_JITTER_MS + 1));
+}
+
+async function rerunPluginMigrations(runtime: IAgentRuntime): Promise<void> {
+  const runtimeWithPluginMigrations = runtime as RuntimeWithPluginMigrations;
+  if (typeof runtimeWithPluginMigrations.runPluginMigrations === "function") {
+    await runtimeWithPluginMigrations.runPluginMigrations();
+    return;
+  }
+
+  await runPluginMigrations(runtime);
 }
 
 export async function executeLifeOpsSchedulerTask(
@@ -98,9 +171,11 @@ export function registerLifeOpsTaskWorker(runtime: IAgentRuntime): void {
  */
 async function waitForDbReady(
   runtime: IAgentRuntime,
-  maxAttempts = 3,
+  maxAttempts = 12,
   delayMs = 500,
 ): Promise<void> {
+  let lastError: unknown = null;
+  let migrationRepairAttempts = 0;
   for (let i = 0; i < maxAttempts; i++) {
     try {
       // Light-weight probe: fetch tasks with a filter that should match nothing.
@@ -109,14 +184,25 @@ async function waitForDbReady(
         tags: ["__db_ready_probe__"],
       });
       return;
-    } catch {
+    } catch (error) {
+      lastError = error;
+      if (
+        isMissingTasksTableError(error) &&
+        typeof runtime.runPluginMigrations === "function" &&
+        migrationRepairAttempts < 2
+      ) {
+        migrationRepairAttempts += 1;
+        await rerunPluginMigrations(runtime);
+        continue;
+      }
       if (i < maxAttempts - 1) {
         await new Promise((r) => setTimeout(r, delayMs));
       }
     }
   }
-  // If still failing, let the caller proceed — the original retry logic in
-  // plugin-sql will handle it, we just reduced the likelihood of hitting it.
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("[lifeops] database adapter did not become ready");
 }
 
 let credentialStatusLogged = false;
@@ -131,10 +217,32 @@ function logCredentialStatus(): void {
   }
 }
 
+export async function ensureRuntimeAgentRecord(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  const existing = await runtime.getAgent(runtime.agentId);
+  if (existing) {
+    return;
+  }
+
+  await runtime.createAgent({
+    ...runtime.character,
+    id: runtime.agentId,
+  });
+
+  const hydrated = await runtime.getAgent(runtime.agentId);
+  if (!hydrated) {
+    throw new Error(
+      `[lifeops] runtime agent ${runtime.agentId} is missing from the agents table`,
+    );
+  }
+}
+
 export async function ensureLifeOpsSchedulerTask(
   runtime: IAgentRuntime,
 ): Promise<UUID> {
   await waitForDbReady(runtime);
+  await ensureRuntimeAgentRecord(runtime);
   logCredentialStatus();
 
   const tasks = await runtime.getTasks({

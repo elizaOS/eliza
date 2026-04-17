@@ -5,6 +5,21 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
+import { resolveUserPath } from "@elizaos/agent/config/paths";
+import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
+import {
+  type BootElizaRuntimeOptions,
+  type StartElizaOptions,
+  applyCloudConfigToEnv as upstreamApplyCloudConfigToEnv,
+  applyN8nConfigToEnv as upstreamApplyN8nConfigToEnv,
+  bootElizaRuntime as upstreamBootElizaRuntime,
+  CHANNEL_PLUGIN_MAP as upstreamChannelPluginMap,
+  collectPluginNames as upstreamCollectPluginNames,
+  configureLocalEmbeddingPlugin as upstreamConfigureLocalEmbeddingPlugin,
+  shutdownRuntime as upstreamShutdownRuntime,
+  startEliza as upstreamStartEliza,
+} from "@elizaos/agent/runtime/eliza";
 import {
   type AgentRuntime,
   AutonomyService,
@@ -15,31 +30,18 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 
-import { loadElizaConfig } from "@elizaos/agent/config/config";
-import { resolveUserPath } from "@elizaos/agent/config/paths";
-import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
-import {
-  type BootElizaRuntimeOptions,
-  type StartElizaOptions,
-  applyCloudConfigToEnv as upstreamApplyCloudConfigToEnv,
-  bootElizaRuntime as upstreamBootElizaRuntime,
-  CHANNEL_PLUGIN_MAP as upstreamChannelPluginMap,
-  collectPluginNames as upstreamCollectPluginNames,
-  configureLocalEmbeddingPlugin as upstreamConfigureLocalEmbeddingPlugin,
-  shutdownRuntime as upstreamShutdownRuntime,
-  startEliza as upstreamStartEliza,
-} from "@elizaos/agent/runtime/eliza";
 export {
   CUSTOM_PLUGINS_DIRNAME,
   resolvePackageEntry,
   scanDropInPlugins,
 } from "@elizaos/agent/runtime/plugin-types";
+
 import { getLastFailedPluginNames } from "@elizaos/agent/runtime/plugin-resolver";
 import {
   resolveServerOnlyPort,
   syncResolvedApiPort,
 } from "@elizaos/shared/runtime-env";
-import { syncElizaEnvAliases, syncAppEnvToEliza } from "../utils/env.js";
+import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
 import { ensureRuntimeSqlCompatibility } from "../utils/sql-compat.js";
 import type { EmbeddingProgressCallback } from "./embedding-manager-support.js";
 import {
@@ -51,12 +53,11 @@ import {
 } from "./embedding-manager-support.js";
 import { detectEmbeddingPreset } from "./embedding-presets.js";
 import { shouldWarmupLocalEmbeddingModel } from "./embedding-warmup-policy.js";
-import { buildCharacterFromConfig } from "./build-character-from-config.js";
+import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler.js";
 import {
   ensureTextToSpeechHandler,
   isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,
 } from "./ensure-text-to-speech-handler.js";
-import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler.js";
 import { updateStartupEmbeddingProgress } from "./startup-overlay.js";
 
 const AUTONOMY_WORLD_ID = stringToUuid("00000000-0000-0000-0000-000000000001");
@@ -188,6 +189,15 @@ export function applyCloudConfigToEnv(
   return result;
 }
 
+export function applyN8nConfigToEnv(
+  ...args: Parameters<typeof upstreamApplyN8nConfigToEnv>
+): ReturnType<typeof upstreamApplyN8nConfigToEnv> {
+  syncBrandEnvAliases();
+  const result = upstreamApplyN8nConfigToEnv(...args);
+  syncBrandEnvAliases();
+  return result;
+}
+
 async function ensureAutonomyBootstrapContext(
   runtime: AgentRuntime,
 ): Promise<void> {
@@ -301,11 +311,15 @@ async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
       // final absolute paths (e.g. /api/lifeops/app-state).
       if (plugin.routes?.length) {
         for (const route of plugin.routes) {
-          const routePath = route.path.startsWith("/") ? route.path : `/${route.path}`;
+          const routePath = route.path.startsWith("/")
+            ? route.path
+            : `/${route.path}`;
           runtime.routes.push({ ...route, path: routePath });
         }
       }
-      logger.info(`[eliza] Registered app route plugin: ${plugin.name} (${plugin.routes?.length ?? 0} routes)`);
+      logger.info(
+        `[eliza] Registered app route plugin: ${plugin.name} (${plugin.routes?.length ?? 0} routes)`,
+      );
     } catch (err) {
       logger.warn(
         `[eliza] Failed to register app route plugin: ${err instanceof Error ? err.message : String(err)}`,
@@ -1078,6 +1092,17 @@ export async function startEliza(
         }
         if (currentRuntime) {
           await upstreamShutdownRuntime(currentRuntime, "server-only shutdown");
+        }
+        // Stop the n8n sidecar if it was started during this session. The
+        // singleton is lazily constructed, so this is a no-op when n8n was
+        // never used.
+        try {
+          const { disposeN8nSidecar } = await import(
+            "../services/n8n-sidecar.js"
+          );
+          await disposeN8nSidecar();
+        } catch {
+          /* non-critical — best effort */
         }
         process.exit(0);
       };

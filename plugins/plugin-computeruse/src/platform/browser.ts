@@ -45,6 +45,7 @@ let browser: Browser | null = null;
 let activePage: Page | null = null;
 let tempUserDataDir: string | null = null;
 let browserHeadless = false;
+const BROWSER_LAUNCH_ATTEMPTS = 3;
 
 export function setBrowserRuntimeOptions(options: {
   headless?: boolean;
@@ -165,9 +166,6 @@ export async function openBrowser(url?: string): Promise<BrowserState> {
     await closeBrowser();
   }
 
-  // Create temp user data directory to prevent conflicts
-  tempUserDataDir = await mkdtemp(join(tmpdir(), "computeruse-browser-"));
-
   const isCi =
     process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
   const launchArgs = [
@@ -184,27 +182,52 @@ export async function openBrowser(url?: string): Promise<BrowserState> {
       "--disable-gpu",
     );
   }
-  browser = await pup.default.launch({
-    executablePath,
-    headless: browserHeadless,
-    userDataDir: tempUserDataDir,
-    args: launchArgs,
-    defaultViewport: { width: 1280, height: 900 },
-  });
+  let lastError: unknown = null;
 
-  const pages = await browser.pages();
-  activePage = pages[0] ?? (await browser.newPage());
+  for (
+    let attempt = 1;
+    attempt <= BROWSER_LAUNCH_ATTEMPTS;
+    attempt += 1
+  ) {
+    tempUserDataDir = await mkdtemp(join(tmpdir(), "computeruse-browser-"));
 
-  if (url) {
-    await activePage.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    try {
+      browser = await pup.default.launch({
+        executablePath,
+        headless: browserHeadless,
+        userDataDir: tempUserDataDir,
+        args: launchArgs,
+        defaultViewport: { width: 1280, height: 900 },
+      });
+
+      const pages = await browser.pages();
+      activePage = pages[0] ?? (await browser.newPage());
+
+      if (url) {
+        await activePage.goto(url, {
+          waitUntil: "domcontentloaded",
+          timeout: 30000,
+        });
+      }
+
+      return {
+        url: activePage.url(),
+        title: await activePage.title(),
+        isOpen: true,
+        is_open: true,
+      };
+    } catch (error) {
+      lastError = error;
+      await closeBrowser();
+      if (attempt < BROWSER_LAUNCH_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+      }
+    }
   }
 
-  return {
-    url: activePage.url(),
-    title: await activePage.title(),
-    isOpen: true,
-    is_open: true,
-  };
+  const message =
+    lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`Failed to launch browser after retries: ${message}`);
 }
 
 export async function closeBrowser(): Promise<void> {

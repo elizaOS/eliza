@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, test } from "vitest";
 import {
   PairingCodeStore,
@@ -82,14 +85,19 @@ const nullDataPlane: DataPlaneResolver = {
 describe("RemoteSessionService", () => {
   let pairingCodes: PairingCodeStore;
   let service: RemoteSessionService;
+  let storageDir: string;
+  let storagePath: string;
 
   beforeEach(() => {
+    storageDir = fs.mkdtempSync(path.join(os.tmpdir(), "lifeops-remote-session-"));
+    storagePath = path.join(storageDir, "sessions.json");
     pairingCodes = new PairingCodeStore();
     service = new RemoteSessionService({
       pairingCodes,
       dataPlane: nullDataPlane,
       isLocalMode: () => false,
       logger: silentLogger,
+      storagePath,
     });
   });
 
@@ -216,5 +224,31 @@ describe("RemoteSessionService", () => {
     const active = await service.listActiveSessions();
     expect(active).toHaveLength(1);
     expect(active[0].id).toBe(ok.sessionId);
+  });
+
+  test("persists the session ledger across service re-instantiation", async () => {
+    const { code } = service.issuePairingCode();
+    const started = await service.startSession({
+      requesterIdentity: "friend-persisted",
+      pairingCode: code,
+      confirmed: true,
+    });
+
+    const restarted = new RemoteSessionService({
+      pairingCodes: new PairingCodeStore(),
+      dataPlane: nullDataPlane,
+      isLocalMode: () => false,
+      logger: silentLogger,
+      storagePath,
+    });
+    const restored = await restarted.getSession(started.sessionId);
+
+    expect(restored?.requesterIdentity).toBe("friend-persisted");
+    expect(restored?.status).toBe("active");
+    expect(await restarted.listActiveSessions()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: started.sessionId, status: "active" }),
+      ]),
+    );
   });
 });

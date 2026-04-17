@@ -1,22 +1,25 @@
 #!/usr/bin/env node
 
-import fs from "node:fs";
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..", "..", "..");
-const candidateTests = [
+const requiredTests = [
   "eliza/apps/app-task-coordinator/test/coding-agent-codex-artifact.live.e2e.test.ts",
   "eliza/apps/app-task-coordinator/test/quicksort-coding-agent.live.e2e.test.ts",
-].filter((relativePath) => fs.existsSync(path.join(repoRoot, relativePath)));
+];
+const missingTests = requiredTests.filter(
+  (relativePath) => !fs.existsSync(path.join(repoRoot, relativePath)),
+);
 
-if (candidateTests.length === 0) {
-  console.log(
-    "[coding-agent-e2e] No app-task-coordinator live E2E tests are present in this checkout; skipping focused coding-agent vitest files.",
+if (missingTests.length > 0) {
+  console.error(
+    `[coding-agent-e2e] Required focused coding-agent live E2E files are missing:\n${missingTests.join("\n")}`,
   );
-  process.exit(0);
+  process.exit(1);
 }
 
 const result = spawnSync(
@@ -31,7 +34,7 @@ const result = spawnSync(
     "run",
     "--config",
     "test/vitest/live-e2e.config.ts",
-    ...candidateTests,
+    ...requiredTests,
   ],
   {
     cwd: repoRoot,

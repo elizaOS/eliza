@@ -122,7 +122,6 @@
     "./character-catalog": "./src/character-catalog.ts",
     "./test-support/test-helpers": "./src/test-support/test-helpers.ts",
     "./test/helpers/*": "./test/helpers/*.ts",
-    "./test/stubs/*": "./test/stubs/*.ts",
     "./test/live-agent/helpers/*": "./test/live-agent/helpers/*.ts"
   },
   "peerDependencies": {

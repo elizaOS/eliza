@@ -6,6 +6,7 @@
  */
 import { config as loadDotenv } from "dotenv";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
 import {
@@ -32,6 +33,80 @@ type StartedLiveServer = {
   port: number;
 };
 
+type WalletExportResponse = {
+  evm: {
+    address: string | null;
+    privateKey: string;
+  } | null;
+  solana: {
+    address: string | null;
+    privateKey: string;
+  } | null;
+};
+
+function readExportNonce(errorMessage: unknown): {
+  delaySeconds: number;
+  nonce: string;
+} {
+  if (typeof errorMessage !== "string" || errorMessage.length === 0) {
+    throw new Error("Wallet export nonce request did not return an error payload");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(errorMessage);
+  } catch (error) {
+    throw new Error(
+      `Wallet export nonce response was not valid JSON: ${errorMessage}`,
+      { cause: error },
+    );
+  }
+
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    Array.isArray(parsed) ||
+    typeof parsed.nonce !== "string" ||
+    typeof parsed.delaySeconds !== "number"
+  ) {
+    throw new Error(`Wallet export nonce response was malformed: ${errorMessage}`);
+  }
+
+  return {
+    nonce: parsed.nonce,
+    delaySeconds: parsed.delaySeconds,
+  };
+}
+
+async function exportWallet(
+  port: number,
+  exportToken: string,
+  headers: Record<string, string>,
+): Promise<WalletExportResponse> {
+  const { status: nonceStatus, data: nonceData } = await req(
+    port,
+    "POST",
+    "/api/wallet/export",
+    { confirm: true, exportToken, requestNonce: true },
+    headers,
+  );
+  expect(nonceStatus).toBe(403);
+
+  const { delaySeconds, nonce } = readExportNonce(nonceData.error);
+  await sleep((delaySeconds + 1) * 1_000);
+
+  const { status: exportStatus, data: exportData } = await req(
+    port,
+    "POST",
+    "/api/wallet/export",
+    { confirm: true, exportToken, exportNonce: nonce },
+    headers,
+  );
+  expect(exportStatus).toBe(200);
+
+  return exportData as WalletExportResponse;
+}
+
 async function ensureWalletKeys(): Promise<void> {
   if (!process.env.SOLANA_PRIVATE_KEY && process.env.SOLANA_API_KEY) {
     process.env.SOLANA_PRIVATE_KEY = process.env.SOLANA_API_KEY;
@@ -44,7 +119,7 @@ async function ensureWalletKeys(): Promise<void> {
   }
 
   const { deriveEvmAddress, deriveSolanaAddress, generateWalletKeys } =
-    await import("../src/api/wallet");
+    await import("@elizaos/agent/api/wallet");
 
   let generatedKeys: {
     evmPrivateKey: string;
@@ -108,7 +183,11 @@ async function startLiveServer(args: {
     preferredProvider: LIVE_PROVIDER?.name,
     plugins: [createElizaPlugin({ agentId: "main" })],
   });
-  const { startApiServer } = await import("../src/api/server");
+  const { startApiServer } = await import("../../src/api/server");
+  const { _resetForTesting } = await import(
+    "@elizaos/app-steward/routes/wallet-export-guard"
+  );
+  _resetForTesting();
   const server = await startApiServer({
     port: 0,
     runtime: runtimeResult.runtime,
@@ -298,17 +377,13 @@ describeIf(CAN_RUN)(
         wallets[0].address.toLowerCase(),
       );
 
-      const { data: exported } = await req(
+      const exported = await exportWallet(
         server?.port ?? 0,
-        "POST",
-        "/api/wallet/export",
-        { confirm: true, exportToken: EXPORT_TOKEN },
+        EXPORT_TOKEN,
         authHeaders,
       );
-      const evm = exported.evm as {
-        address: string | null;
-        privateKey: string;
-      };
+      const evm = exported.evm;
+      expect(evm).not.toBeNull();
       expect(evm.address?.toLowerCase()).toBe(wallets[0].address.toLowerCase());
       expect(evm.privateKey.startsWith("0x")).toBe(true);
     });
@@ -478,17 +553,13 @@ describeIf(CAN_RUN)("Live: Auth + CORS + wallet combined", () => {
     expect(importStatus).toBe(200);
     expect(importData.ok).toBe(true);
 
-    const { data: exported } = await req(
+    const exported = await exportWallet(
       server?.port ?? 0,
-      "POST",
-      "/api/wallet/export",
-      { confirm: true, exportToken: EXPORT_TOKEN },
+      EXPORT_TOKEN,
       auth,
     );
-    const evm = exported.evm as {
-      address: string | null;
-      privateKey: string;
-    };
+    const evm = exported.evm;
+    expect(evm).not.toBeNull();
     expect(evm.privateKey).toBe(importedKey);
     expect(evm.address).toBe(importData.address);
   });
