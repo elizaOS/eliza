@@ -659,7 +659,40 @@ function suppressesPostActionContinuation(
 	});
 }
 
-function stripPlannerReplyForSuppressiveActions(
+/**
+ * True when the planner's `text` field should be surfaced to the user as a
+ * preamble before action handlers run in actions-mode dispatch. The goal:
+ * the user sees "checking your inbox" rather than silence while INBOX/GMAIL
+ * do their work.
+ *
+ * Skipped when the first action is REPLY (the REPLY handler generates its own
+ * text), IGNORE (no user-visible response), or STOP (terminal). Also skipped
+ * when `text` is empty.
+ */
+export function shouldEmitPlannerPreamble(
+	responseContent: Pick<Content, "text" | "actions"> | null | undefined,
+): boolean {
+	if (!responseContent) return false;
+	const text =
+		typeof responseContent.text === "string"
+			? responseContent.text.trim()
+			: "";
+	if (text.length === 0) return false;
+
+	const firstAction =
+		typeof responseContent.actions?.[0] === "string"
+			? normalizeActionIdentifier(responseContent.actions[0])
+			: "";
+	if (firstAction.length === 0) return false;
+
+	return (
+		firstAction !== normalizeActionIdentifier("REPLY") &&
+		firstAction !== normalizeActionIdentifier("IGNORE") &&
+		firstAction !== normalizeActionIdentifier("STOP")
+	);
+}
+
+export function stripPlannerReplyForSuppressiveActions(
 	runtime: IAgentRuntime,
 	responseContent: Content | null | undefined,
 ): void {
@@ -670,6 +703,11 @@ function stripPlannerReplyForSuppressiveActions(
 		return;
 	}
 
+	// Drop REPLY from the action list so the REPLY handler doesn't generate
+	// a second message after a suppressive action (INBOX, GMAIL, etc.) has
+	// produced the grounded answer. The planner's `text` is kept and gets
+	// emitted as a preamble in the actions-mode dispatch below, so the user
+	// sees the agent's plan ("checking your inbox") before the action runs.
 	const actionLookup = buildRuntimeActionLookup(runtime);
 	const filteredActions = responseContent.actions.filter((action) => {
 		if (typeof action !== "string") return true;
@@ -682,10 +720,6 @@ function stripPlannerReplyForSuppressiveActions(
 	});
 	if (filteredActions.length > 0) {
 		responseContent.actions = filteredActions;
-	}
-
-	if (typeof responseContent.text === "string" && responseContent.text.trim()) {
-		responseContent.text = "";
 	}
 }
 
@@ -2241,6 +2275,16 @@ export class DefaultMessageService implements IMessageService {
 					}
 					pendingSimpleEmit = responseContent;
 				} else if (mode === "actions") {
+					// Surface the planner's text before action handlers run, so the
+					// user sees the agent's plan rather than silence. The full
+					// responseContent is already persisted as a memory above.
+					if (callback && shouldEmitPlannerPreamble(responseContent)) {
+						await callback({
+							...responseContent,
+							actions: [],
+						});
+					}
+
 					// Pass onStreamChunk to processActions so each action can manage its own streaming context
 					await runtime.processActions(
 						message,

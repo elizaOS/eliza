@@ -28,6 +28,7 @@ import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
+import type { CatalogModel } from "../services/local-inference/types";
 
 function isStreamAuthorized(
   req: http.IncomingMessage,
@@ -201,23 +202,57 @@ export async function handleLocalInferenceCompatRoutes(
   }
 
   // ── POST: start download ────────────────────────────────────────────
+  // Body: either `{ modelId }` for a curated entry, or
+  // `{ spec: CatalogModel }` for a HuggingFace-search result.
   if (method === "POST" && pathname === "/api/local-inference/downloads") {
     if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
     const body = await readCompatJsonBody(req, res);
     if (!body) return true;
     const modelId = stringBody(body, "modelId");
-    if (!modelId) {
-      sendJsonErrorResponse(res, 400, "modelId is required");
-      return true;
-    }
+    const rawSpec = body.spec;
     try {
-      const job = await localInferenceService.startDownload(modelId);
+      let job;
+      if (rawSpec && typeof rawSpec === "object" && !Array.isArray(rawSpec)) {
+        job = await localInferenceService.startDownload(
+          rawSpec as unknown as CatalogModel,
+        );
+      } else if (modelId) {
+        job = await localInferenceService.startDownload(modelId);
+      } else {
+        sendJsonErrorResponse(res, 400, "modelId or spec is required");
+        return true;
+      }
       sendJsonResponse(res, 202, { job });
     } catch (err) {
       sendJsonErrorResponse(
         res,
         400,
         err instanceof Error ? err.message : "Failed to start download",
+      );
+    }
+    return true;
+  }
+
+  // ── GET: HuggingFace search ─────────────────────────────────────────
+  if (method === "GET" && pathname === "/api/local-inference/hf-search") {
+    if (!ensureCompatApiAuthorized(req, res)) return true;
+    const q = url.searchParams.get("q")?.trim() ?? "";
+    if (q.length === 0) {
+      sendJsonResponse(res, 200, { models: [] });
+      return true;
+    }
+    const limitRaw = url.searchParams.get("limit");
+    const limit = limitRaw
+      ? Math.max(1, Math.min(50, Number.parseInt(limitRaw, 10) || 12))
+      : 12;
+    try {
+      const models = await localInferenceService.searchHuggingFace(q, limit);
+      sendJsonResponse(res, 200, { models });
+    } catch (err) {
+      sendJsonErrorResponse(
+        res,
+        502,
+        err instanceof Error ? err.message : "HuggingFace search failed",
       );
     }
     return true;

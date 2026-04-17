@@ -56,6 +56,7 @@ import {
   ensureTextToSpeechHandler,
   isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,
 } from "./ensure-text-to-speech-handler.js";
+import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler.js";
 import { updateStartupEmbeddingProgress } from "./startup-overlay.js";
 
 const AUTONOMY_WORLD_ID = stringToUuid("00000000-0000-0000-0000-000000000001");
@@ -318,6 +319,7 @@ async function repairRuntimeAfterBoot(
 ): Promise<AgentRuntime> {
   await ensureRuntimeSqlCompatibility(runtime);
   await ensureTextToSpeechHandler(runtime);
+  await ensureLocalInferenceHandler(runtime);
   await ensureAutonomyBootstrapContext(runtime);
 
   // ── Register app-specific route plugins (Phase 2 extraction) ────────

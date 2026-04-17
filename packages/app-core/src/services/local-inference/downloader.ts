@@ -95,21 +95,30 @@ export class Downloader {
   }
 
   /**
-   * Start a download for a catalog model. Idempotent: returns the existing
-   * job if one is already running for the same id.
+   * Start a download for a model. Accepts either a curated catalog id, or
+   * a full `CatalogModel` spec for ad-hoc HF-search results. Idempotent —
+   * returns the existing job if one is already running for the same id.
    */
-  async start(modelId: string): Promise<DownloadJob> {
+  async start(
+    modelIdOrSpec: string | CatalogModel,
+  ): Promise<DownloadJob> {
+    const catalogEntry =
+      typeof modelIdOrSpec === "string"
+        ? findCatalogModel(modelIdOrSpec)
+        : modelIdOrSpec;
+    if (!catalogEntry) {
+      throw new Error(
+        `Unknown model id: ${typeof modelIdOrSpec === "string" ? modelIdOrSpec : "(no id)"}`,
+      );
+    }
+    const modelId = catalogEntry.id;
+
     const existing = this.active.get(modelId);
     if (
       existing &&
       (existing.job.state === "queued" || existing.job.state === "downloading")
     ) {
       return { ...existing.job };
-    }
-
-    const catalogEntry = findCatalogModel(modelId);
-    if (!catalogEntry) {
-      throw new Error(`Unknown model id: ${modelId}`);
     }
 
     await ensureDirs();

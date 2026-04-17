@@ -1,5 +1,6 @@
 import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
 import { logger, stringToUuid } from "@elizaos/core";
+import { loadLifeOpsAppState } from "./app-state.js";
 import { LifeOpsService } from "./service.js";
 import { readTwilioCredentialsFromEnv } from "./twilio.js";
 
@@ -74,7 +75,17 @@ export function registerLifeOpsTaskWorker(runtime: IAgentRuntime): void {
   }
   runtime.registerTaskWorker({
     name: LIFEOPS_TASK_NAME,
-    shouldRun: async () => true,
+    // Skip execution when the user has disabled LifeOps via the UI. The task
+    // record and worker stay registered so toggling back on requires no
+    // restart — cycles just become cheap no-ops while disabled.
+    shouldRun: async (rt) => {
+      try {
+        const state = await loadLifeOpsAppState(rt as IAgentRuntime);
+        return state.enabled;
+      } catch {
+        return true;
+      }
+    },
     execute: async (rt, options) =>
       executeLifeOpsSchedulerTask(rt, isRecord(options) ? options : {}),
   });

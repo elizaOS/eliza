@@ -1,38 +1,86 @@
 /**
- * Minimal standalone llama.cpp engine.
+ * Standalone llama.cpp engine.
  *
- * Owns one `Llama` binding instance and at most one loaded `LlamaModel`.
- * Model swap is unload-then-load so we never double-allocate VRAM. This
- * engine does not (yet) expose generation — that wiring depends on how
- * plugin-local-ai integrates with the agent runtime. The value it provides
- * now is:
- *   - making "Activate model" actually load the GGUF into memory
- *   - giving the coordinator a real `currentModelPath()` signal
- *   - proving the full pipe from Model Hub → service → binding works
+ * Owns one `Llama` binding instance, at most one loaded `LlamaModel`, and
+ * a cached `LlamaChatSession` that wraps it. Model swap is unload-then-load
+ * so we never double-allocate VRAM.
+ *
+ * Two consumption paths:
+ *   1. The Model Hub UI calls `load()` / `unload()` to make "Activate" work.
+ *   2. The agent runtime calls `generate()` via the registered
+ *      `ModelType.TEXT_SMALL` / `TEXT_LARGE` handlers (see
+ *      `ensure-local-inference-handler.ts`).
  *
  * Dynamic import keeps the binding optional: if `node-llama-cpp` is not
- * installed, `available()` returns false and the coordinator surfaces a
- * clear error instead of crashing the process.
+ * installed, `available()` returns false and callers surface a clear error
+ * instead of crashing the process.
  */
 
+export interface GenerateArgs {
+  prompt: string;
+  stopSequences?: string[];
+  /** Upper bound on output tokens; defaults to 2048. */
+  maxTokens?: number;
+  /** 0..1; 0.7 default. */
+  temperature?: number;
+  /** nucleus sampling; defaults to 0.9. */
+  topP?: number;
+}
+
+interface LlamaContextSequence {
+  dispose(): Promise<void>;
+}
+
+interface LlamaContext {
+  getSequence(): LlamaContextSequence;
+  dispose(): Promise<void>;
+}
+
+interface LlamaChatSession {
+  prompt(
+    text: string,
+    options?: {
+      maxTokens?: number;
+      temperature?: number;
+      topP?: number;
+      stopOnAbortSignal?: AbortSignal;
+      customStopTriggers?: string[];
+    },
+  ): Promise<string>;
+  dispose?(): void | Promise<void>;
+}
+
+interface LlamaChatSessionCtor {
+  new (args: { contextSequence: LlamaContextSequence }): LlamaChatSession;
+}
+
 interface LlamaModel {
+  createContext(args?: { contextSize?: number }): Promise<LlamaContext>;
   dispose(): Promise<void>;
 }
 
 interface Llama {
-  loadModel(args: { modelPath: string }): Promise<LlamaModel>;
+  loadModel(args: {
+    modelPath: string;
+    gpuLayers?: number | "max" | "auto";
+  }): Promise<LlamaModel>;
 }
 
 interface LlamaBindingModule {
-  getLlama(): Promise<Llama>;
+  getLlama(options?: { gpu?: "auto" | false }): Promise<Llama>;
+  LlamaChatSession: LlamaChatSessionCtor;
 }
 
 export class LocalInferenceEngine {
   private llama: Llama | null = null;
   private loadedModel: LlamaModel | null = null;
+  private loadedContext: LlamaContext | null = null;
+  private loadedSession: LlamaChatSession | null = null;
   private loadedPath: string | null = null;
   private bindingChecked = false;
   private bindingModule: LlamaBindingModule | null = null;
+  /** Serialises generate calls so concurrent requests don't corrupt session state. */
+  private generationQueue: Promise<unknown> = Promise.resolve();
 
   async available(): Promise<boolean> {
     if (!this.bindingChecked) {
@@ -46,11 +94,31 @@ export class LocalInferenceEngine {
     return this.loadedPath;
   }
 
+  hasLoadedModel(): boolean {
+    return this.loadedModel !== null;
+  }
+
   async unload(): Promise<void> {
     if (!this.loadedModel) return;
+    const session = this.loadedSession;
+    const context = this.loadedContext;
     const model = this.loadedModel;
+    this.loadedSession = null;
+    this.loadedContext = null;
     this.loadedModel = null;
     this.loadedPath = null;
+    // Dispose bottom-up: session first, then context, then the model. Each
+    // dispose is wrapped because a partial failure must not strand state.
+    try {
+      await session?.dispose?.();
+    } catch {
+      /* best effort */
+    }
+    try {
+      await context?.dispose();
+    } catch {
+      /* best effort */
+    }
     await model.dispose();
   }
 
@@ -68,11 +136,50 @@ export class LocalInferenceEngine {
     }
 
     if (!this.llama) {
-      this.llama = await this.bindingModule.getLlama();
+      this.llama = await this.bindingModule.getLlama({ gpu: "auto" });
     }
 
-    this.loadedModel = await this.llama.loadModel({ modelPath });
+    const model = await this.llama.loadModel({
+      modelPath,
+      gpuLayers: "auto",
+    });
+    const context = await model.createContext();
+    const sequence = context.getSequence();
+    const session = new this.bindingModule.LlamaChatSession({
+      contextSequence: sequence,
+    });
+
+    this.loadedModel = model;
+    this.loadedContext = context;
+    this.loadedSession = session;
     this.loadedPath = modelPath;
+  }
+
+  /**
+   * Generate text from the loaded model. Serialised — a new call waits for
+   * any in-flight generation to finish so the chat session's internal state
+   * stays consistent.
+   */
+  async generate(args: GenerateArgs): Promise<string> {
+    if (!this.loadedSession) {
+      throw new Error(
+        "No local model is active. Select one in Settings → Local models before using local inference.",
+      );
+    }
+    const session = this.loadedSession;
+    const run = async (): Promise<string> => {
+      return session.prompt(args.prompt, {
+        maxTokens: args.maxTokens ?? 2048,
+        temperature: args.temperature ?? 0.7,
+        topP: args.topP ?? 0.9,
+        customStopTriggers: args.stopSequences,
+      });
+    };
+    const job = this.generationQueue.then(run, run);
+    this.generationQueue = job.catch(() => {
+      /* swallow so queue remains usable after a failure */
+    });
+    return job;
   }
 
   private async loadBinding(): Promise<LlamaBindingModule | null> {
@@ -82,6 +189,7 @@ export class LocalInferenceEngine {
         mod &&
         typeof mod === "object" &&
         "getLlama" in mod &&
+        "LlamaChatSession" in mod &&
         typeof (mod as { getLlama: unknown }).getLlama === "function"
       ) {
         return mod as LlamaBindingModule;

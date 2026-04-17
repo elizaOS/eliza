@@ -9,6 +9,7 @@ import {
   loadOwnerContactsConfig,
   resolveOwnerContactWithFallback,
 } from "@elizaos/agent/config/owner-contacts";
+import { loadLifeOpsAppState } from "../lifeops/app-state.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
@@ -725,7 +726,17 @@ export function registerProactiveTaskWorker(runtime: IAgentRuntime): void {
   }
   runtime.registerTaskWorker({
     name: PROACTIVE_TASK_NAME,
-    shouldRun: async () => true,
+    // Skip execution when the user has disabled LifeOps via the UI. The task
+    // record and worker stay registered so toggling back on requires no
+    // restart — cycles just become cheap no-ops while disabled.
+    shouldRun: async (rt) => {
+      try {
+        const state = await loadLifeOpsAppState(rt as IAgentRuntime);
+        return state.enabled;
+      } catch {
+        return true;
+      }
+    },
     execute: (rt) => executeProactiveTask(rt),
   });
 }
