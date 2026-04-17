@@ -221,7 +221,9 @@ async function resolveSubactionPlan(
 
 const ACTION_NAME = "INBOX";
 
-export const inboxAction: Action = {
+export const inboxAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: ACTION_NAME,
   similes: [
     "CHECK_INBOX",
@@ -232,9 +234,12 @@ export const inboxAction: Action = {
     "SCAN_MESSAGES",
     "CHECK_MESSAGES",
     "DAILY_DIGEST",
+    "DAILY_BRIEF",
     "INBOX_SUMMARY",
     "REPLY_INBOX",
     "RESPOND_TO_MESSAGE",
+    "MISSED_CALL_FOLLOWUP",
+    "GROUP_CHAT_HANDOFF",
   ],
   description:
     "Unified inbox management: triage new messages across all channels, " +
@@ -245,6 +250,7 @@ export const inboxAction: Action = {
     "Subactions: triage, digest, respond. Admin/owner only.",
   descriptionCompressed:
     "Unified inbox: triage messages, daily digest, draft/send responses. Admin only.",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => hasAdminAccess(runtime, message),
 

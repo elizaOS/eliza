@@ -306,11 +306,20 @@ function deliveryToResult(
   };
 }
 
-export const callUserAction: Action = {
+export const callUserAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "CALL_USER",
-  similes: ["PHONE_USER", "CALL_OWNER", "DIAL_OWNER"],
+  similes: [
+    "PHONE_USER",
+    "CALL_OWNER",
+    "DIAL_OWNER",
+    "ESCALATE_TO_OWNER",
+    "CALL_IF_STUCK",
+  ],
   description:
     "Place an outbound phone call to the agent owner via Twilio. Use this when the assistant is blocked and needs real-time help from the owner, or when the owner explicitly asks to be called. This action can be selected on a standing escalation policy or first-turn draft; without confirmation it returns a confirmation request instead of dialing.",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     return hasOwnerAccess(runtime, message);
@@ -421,11 +430,20 @@ export const callUserAction: Action = {
   ] as ActionExample[][],
 };
 
-export const callExternalAction: Action = {
+export const callExternalAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "CALL_EXTERNAL",
-  similes: ["PHONE_EXTERNAL", "DIAL_EXTERNAL", "CALL_THIRD_PARTY"],
+  similes: [
+    "PHONE_EXTERNAL",
+    "DIAL_EXTERNAL",
+    "CALL_THIRD_PARTY",
+    "BOOK_BY_PHONE",
+    "REBOOK_BY_PHONE",
+  ],
   description:
     "Place an outbound phone call to a third party via Twilio. Use this for approved booking/reschedule/escalation calls to vendors or counterparties. This action can draft the call, ask which saved contact to use, and then require confirmation before dialing. The recipient must appear in the configured allow-list before the actual call is placed.",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     return hasOwnerAccess(runtime, message);

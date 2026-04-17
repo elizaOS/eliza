@@ -17,19 +17,25 @@ type OwnerProfileParameters = {
   travelBookingPreferences?: string;
 };
 
-export const updateOwnerProfileAction: Action = {
+export const updateOwnerProfileAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "UPDATE_OWNER_PROFILE",
   similes: [
     "SAVE_OWNER_PROFILE",
     "SET_OWNER_PROFILE",
     "UPDATE_USER_PROFILE",
     "SAVE_USER_PROFILE",
+    "SAVE_TRAVEL_PREFERENCES",
+    "TRAVEL_PROFILE",
+    "BOOKING_PREFERENCES",
   ],
   description:
     "Silently persist stable, owner-only LifeOps profile details when the canonical owner clearly states or confirms them. " +
     "Use only for the owner, never for other contacts, and do not ask follow-up questions just to fill these fields. " +
     "This includes durable travel-booking preferences or a reusable travel-preference checklist when the owner wants those preferences remembered for future bookings.",
   descriptionCompressed: "Persist stable owner profile details when stated/confirmed. Owner only.",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {
     return hasOwnerAccess(runtime, message);

@@ -521,19 +521,25 @@ export const checkAvailabilityAction: Action = {
   ],
 };
 
-export const updateMeetingPreferencesAction: Action = {
+export const updateMeetingPreferencesAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "UPDATE_MEETING_PREFERENCES",
   similes: [
     "SET_MEETING_PREFERENCES",
     "SAVE_MEETING_PREFERENCES",
     "SET_PREFERRED_TIMES",
     "SET_BLACKOUT_WINDOWS",
+    "SLEEP_WINDOW",
+    "NO_CALL_HOURS",
+    "PROTECT_SLEEP",
   ],
   description:
     "Persist the owner's meeting scheduling preferences: preferred start/end " +
     "of day (24h HH:MM local), blackout windows, default meeting duration, " +
     "and travel buffer. These drive PROPOSE_MEETING_TIMES. Use this for durable " +
     "sleep windows, no-call hours, and other recurring scheduling rules.",
+  suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (runtime, message, _state, options, callback) => {
     if (await denyIfNoAccess(runtime, message)) {
