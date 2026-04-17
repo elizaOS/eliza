@@ -294,11 +294,11 @@ export function AppearanceSettingsSection() {
           {BUILTIN_THEMES.map((theme) => {
             const isActive = themeId === theme.id;
             const colors = isDark ? theme.dark : theme.light;
-            const swatches = [
-              colors.bg,
-              colors.card,
-              colors.accent,
-              colors.text,
+            const swatches: Array<[string, string]> = [
+              ["bg", colors.bg],
+              ["card", colors.card],
+              ["accent", colors.accent],
+              ["text", colors.text],
             ];
             return (
               <button
@@ -308,9 +308,9 @@ export function AppearanceSettingsSection() {
                 className={selectableTileClass(isActive)}
               >
                 <div className="flex items-center gap-1">
-                  {swatches.map((bg, i) => (
+                  {swatches.map(([slot, bg]) => (
                     <span
-                      key={i}
+                      key={slot}
                       className="h-4 w-4 rounded-full border border-border/40"
                       style={{ background: bg }}
                     />
