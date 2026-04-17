@@ -9,6 +9,7 @@ import type {
   InstalledModel,
   ModelHubSnapshot,
 } from "../../api/client-local-inference";
+import { isAndroid, isIOS } from "../../platform/init";
 import { useApp } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
@@ -190,11 +191,29 @@ export function LocalInferencePanel() {
     );
   }
 
+  // On mobile (Capacitor iOS / Android) users can only realistically run
+  // small and tiny models, so we hide the larger buckets entirely and
+  // surface a note about the mobile runtime story. The server-side
+  // catalog is unchanged; this is a pure display filter.
+  const mobile = isIOS || isAndroid;
+  const catalog = mobile
+    ? hub.catalog.filter(
+        (m) => m.bucket === "small" && (m.params === "1B" || m.params === "1.7B" || m.params === "3B"),
+      )
+    : hub.catalog;
+
   return (
     <div className="flex flex-col gap-4">
       <HardwareBadge hardware={hub.hardware} />
+      {mobile && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
+          On-device inference on mobile requires the Milady native runtime
+          plugin (follow-up). Until then, select a small model and Milady
+          will run inference via the companion desktop or cloud server.
+        </div>
+      )}
       <FirstRunOffer
-        catalog={hub.catalog}
+        catalog={catalog}
         installed={hub.installed}
         hardware={hub.hardware}
         onDownload={handleDownload}
@@ -207,7 +226,7 @@ export function LocalInferencePanel() {
         busy={busy}
       />
       <ModelHubView
-        catalog={hub.catalog}
+        catalog={catalog}
         installed={hub.installed}
         downloads={hub.downloads}
         active={hub.active}
