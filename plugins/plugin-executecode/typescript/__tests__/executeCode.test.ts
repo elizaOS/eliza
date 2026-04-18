@@ -116,8 +116,12 @@ function createMessage(): Memory {
   } as Memory;
 }
 
-function makeRecordingAction(name: string, calls: string[]): Action {
-  return {
+function makeRecordingAction(
+  name: string,
+  calls: string[],
+  contexts?: string[],
+): Action {
+  const action: Action = {
     name,
     description: `${name} for tests`,
     similes: [],
@@ -133,6 +137,10 @@ function makeRecordingAction(name: string, calls: string[]): Action {
       } as ActionResult;
     },
   };
+  if (contexts) {
+    (action as Action & { contexts?: string[] }).contexts = contexts;
+  }
+  return action;
 }
 
 describe("EXECUTE_CODE action", () => {
@@ -287,5 +295,268 @@ describe("EXECUTE_CODE action", () => {
     expect(result.success).toBe(false);
     expect(result.text).toMatch(/not in allowedActions/);
     expect(dispatched).toEqual([]);
+  });
+
+  it("defaults to context-filtered actions when state supplies routing context", async () => {
+    const dispatched: string[] = [];
+    const trajectoryService = new FakeTrajectoryService();
+    const walletAction = makeRecordingAction("WALLET_ACTION", dispatched, [
+      "wallet",
+    ]);
+    const mediaAction = makeRecordingAction("MEDIA_ACTION", dispatched, [
+      "media",
+    ]);
+    const runtime = createFakeRuntime({
+      actions: [walletAction, mediaAction],
+      trajectoryService,
+    });
+    const message = createMessage();
+    const state = {
+      values: {
+        __contextRouting: {
+          primaryContext: "wallet",
+          secondaryContexts: [],
+        },
+      },
+      data: {},
+    } as unknown as Parameters<typeof executeCodeAction.handler>[2];
+
+    // Calling MEDIA_ACTION is blocked because wallet context doesn't include
+    // media. WALLET_ACTION is allowed.
+    const blockedResult = await executeCodeAction.handler(
+      runtime,
+      message,
+      state,
+      { parameters: { script: `await tools.MEDIA_ACTION({});` } },
+    );
+    if (!blockedResult || typeof blockedResult !== "object" || !("success" in blockedResult)) {
+      throw new Error("expected ActionResult");
+    }
+    expect(blockedResult.success).toBe(false);
+    expect(blockedResult.text).toMatch(
+      /not in current routing contexts \(wallet,general\)/,
+    );
+
+    const allowedResult = await executeCodeAction.handler(
+      runtime,
+      message,
+      state,
+      { parameters: { script: `await tools.WALLET_ACTION({});` } },
+    );
+    if (!allowedResult || typeof allowedResult !== "object" || !("success" in allowedResult)) {
+      throw new Error("expected ActionResult");
+    }
+    expect(allowedResult.success).toBe(true);
+    expect(dispatched).toEqual(["WALLET_ACTION:null"]);
+  });
+
+  it("falls through to all actions when no state is supplied", async () => {
+    const dispatched: string[] = [];
+    const trajectoryService = new FakeTrajectoryService();
+    const runtime = createFakeRuntime({
+      actions: [
+        makeRecordingAction("ACTION_A", dispatched, ["wallet"]),
+        makeRecordingAction("ACTION_B", dispatched, ["media"]),
+      ],
+      trajectoryService,
+    });
+    const message = createMessage();
+
+    const result = await executeCodeAction.handler(
+      runtime,
+      message,
+      undefined,
+      { parameters: { script: `await tools.ACTION_B({});` } },
+    );
+    if (!result || typeof result !== "object" || !("success" in result)) {
+      throw new Error("expected ActionResult");
+    }
+    expect(result.success).toBe(true);
+    expect(dispatched).toEqual(["ACTION_B:null"]);
+  });
+
+  it("context.getMemories ignores roomId override and scopes to the message room", async () => {
+    // The script must not be able to reach cross-room memories by passing a
+    // different roomId. Confirmed via the rpc-bridge implementation which
+    // passes the fixed message.roomId through to runtime.getMemories.
+    const dispatched: string[] = [];
+    const trajectoryService = new FakeTrajectoryService();
+    const messageRoom = "00000000-0000-0000-0000-000000000ccc" as UUID;
+    const runtime = {
+      ...createFakeRuntime({ actions: [], trajectoryService }),
+    } as IAgentRuntime;
+
+    const capturedRoomIds: string[] = [];
+    (runtime as unknown as { getMemories: IAgentRuntime["getMemories"] }).getMemories =
+      (async (params: { tableName: string; roomId: string; limit?: number }) => {
+        capturedRoomIds.push(params.roomId);
+        return [];
+      }) as unknown as IAgentRuntime["getMemories"];
+
+    const message = createMessage();
+    const script = `
+      await context.getMemories({
+        tableName: "messages",
+        limit: 3,
+        roomId: "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      });
+      return "ok";
+    `;
+
+    const result = await executeCodeAction.handler(
+      runtime,
+      message,
+      undefined,
+      { parameters: { script } },
+    );
+    if (!result || typeof result !== "object" || !("success" in result)) {
+      throw new Error("expected ActionResult");
+    }
+    expect(result.success).toBe(true);
+    // Runtime saw the message's own roomId, not the fake override.
+    expect(capturedRoomIds).toEqual([messageRoom]);
+  });
+
+  it("cannot reach runtime.databaseAdapter or runtime.services via context", async () => {
+    const dispatched: string[] = [];
+    const trajectoryService = new FakeTrajectoryService();
+    const runtime = createFakeRuntime({
+      actions: [makeRecordingAction("ACTION_A", dispatched)],
+      trajectoryService,
+    });
+    const message = createMessage();
+
+    // The script probes `context` for escape hatches and returns what it found.
+    const script = `
+      const keys = Object.keys(context).sort();
+      return {
+        keys,
+        hasDatabaseAdapter: "databaseAdapter" in context,
+        hasServices: "services" in context,
+        hasRuntime: "runtime" in context,
+      };
+    `;
+
+    const result = await executeCodeAction.handler(
+      runtime,
+      message,
+      undefined,
+      { parameters: { script } },
+    );
+    if (!result || typeof result !== "object" || !("success" in result)) {
+      throw new Error("expected ActionResult");
+    }
+    expect(result.success).toBe(true);
+    const data = (result as ActionResult & {
+      data?: { returnValue?: { keys: string[]; hasDatabaseAdapter: boolean; hasServices: boolean; hasRuntime: boolean } };
+    }).data;
+    const returnValue = data?.returnValue;
+    expect(returnValue?.hasDatabaseAdapter).toBe(false);
+    expect(returnValue?.hasServices).toBe(false);
+    expect(returnValue?.hasRuntime).toBe(false);
+    // Positive: only the documented context surface is present.
+    expect(returnValue?.keys).toEqual([
+      "agentId",
+      "entityId",
+      "getMemories",
+      "roomId",
+      "searchMemories",
+    ]);
+  });
+
+  it("sanitizes class-instance data returned from an action to undefined", async () => {
+    const dispatched: string[] = [];
+    const trajectoryService = new FakeTrajectoryService();
+
+    class HostBound {
+      constructor(public secret: string) {}
+    }
+
+    const leakyAction: Action = {
+      name: "LEAKY_ACTION",
+      description: "returns a class instance in data",
+      similes: [],
+      validate: async () => true,
+      handler: async (): Promise<ActionResult> => {
+        dispatched.push("LEAKY_ACTION");
+        return {
+          success: true,
+          text: "ok",
+          data: {
+            hostBound: new HostBound("secret-value"),
+            safeString: "visible",
+          } as ActionResult["data"],
+        };
+      },
+    };
+    const runtime = createFakeRuntime({
+      actions: [leakyAction],
+      trajectoryService,
+    });
+    const message = createMessage();
+
+    const script = `
+      const r = await tools.LEAKY_ACTION({});
+      return {
+        hasHostBound: r.data && "hostBound" in r.data,
+        safeString: r.data?.data?.safeString,
+      };
+    `;
+
+    const result = await executeCodeAction.handler(
+      runtime,
+      message,
+      undefined,
+      { parameters: { script } },
+    );
+    if (!result || typeof result !== "object" || !("success" in result)) {
+      throw new Error("expected ActionResult");
+    }
+    expect(result.success).toBe(true);
+    const returnValue = (result as ActionResult & {
+      data?: { returnValue?: { hasHostBound: boolean; safeString: string } };
+    }).data?.returnValue;
+    // sanitizeForScript drops non-plain-object fields — `hostBound` becomes
+    // undefined and omitted from the sanitized data object.
+    expect(returnValue?.hasHostBound).toBe(false);
+    expect(returnValue?.safeString).toBe("visible");
+  });
+
+  it("allowedActions explicit list bypasses context filter", async () => {
+    const dispatched: string[] = [];
+    const trajectoryService = new FakeTrajectoryService();
+    const runtime = createFakeRuntime({
+      actions: [
+        makeRecordingAction("ACTION_A", dispatched, ["wallet"]),
+        makeRecordingAction("ACTION_B", dispatched, ["media"]),
+      ],
+      trajectoryService,
+    });
+    const message = createMessage();
+    const state = {
+      values: {
+        __contextRouting: { primaryContext: "wallet", secondaryContexts: [] },
+      },
+      data: {},
+    } as unknown as Parameters<typeof executeCodeAction.handler>[2];
+
+    // Wallet routing would normally block ACTION_B, but explicit allowedActions
+    // wins.
+    const result = await executeCodeAction.handler(
+      runtime,
+      message,
+      state,
+      {
+        parameters: {
+          script: `await tools.ACTION_B({});`,
+          allowedActions: ["ACTION_B"],
+        },
+      },
+    );
+    if (!result || typeof result !== "object" || !("success" in result)) {
+      throw new Error("expected ActionResult");
+    }
+    expect(result.success).toBe(true);
+    expect(dispatched).toEqual(["ACTION_B:null"]);
   });
 });
