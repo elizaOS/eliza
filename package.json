@@ -152,6 +152,7 @@
   ],
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.983.0",
+    "class-variance-authority": "^0.7.1",
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-groq": "workspace:*",
