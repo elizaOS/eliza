@@ -2775,6 +2775,41 @@ export const calendarAction: Action & {
       | undefined;
     const params = rawParams ?? ({} as CalendarActionParams);
     const intent = resolveCalendarIntentInput(params.intent, message);
+
+    // Multi-slot proposal requests ("propose three times for a 30 min sync",
+    // "suggest a few slots next week") belong to PROPOSE_MEETING_TIMES, not
+    // CALENDAR_ACTION. Detect that intent here and hand it off rather than
+    // collapsing to a single create_event that always lacks a concrete time.
+    const combinedIntentText = `${intent ?? ""} ${messageText(message) ?? ""}`.toLowerCase();
+    const looksLikeMultiSlotProposal =
+      /\b(propose|suggest|offer|share|send)\b[^.]*\b(\d+|a few|some|several|multiple|three|two|four|five)\b[^.]*\b(times?|slots?|options?|windows?)\b/.test(
+        combinedIntentText,
+      ) ||
+      /\bfind\b[^.]*\b(times?|slots?)\b[^.]*\b(that work|for)\b/.test(
+        combinedIntentText,
+      ) ||
+      /\bwhen (is|am i) free\b/.test(combinedIntentText);
+    if (looksLikeMultiSlotProposal) {
+      const handoffText =
+        "I'll propose concrete candidate slots based on your availability and meeting preferences.";
+      await callback?.({
+        text: handoffText,
+        source: "action",
+        action: "CALENDAR_ACTION",
+      });
+      return {
+        success: false,
+        text: handoffText,
+        values: {
+          success: false,
+          error: "USE_PROPOSE_MEETING_TIMES",
+        },
+        data: {
+          actionName: "CALENDAR_ACTION",
+          handoff: "PROPOSE_MEETING_TIMES",
+        },
+      };
+    }
     const details = normalizeCalendarDetails(params.details);
     const planningTimeZone = resolveCalendarTimeZone(details);
     const llmPlan = await extractCalendarPlanWithLlm(
