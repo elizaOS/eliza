@@ -8,6 +8,7 @@ import type {
   CompleteLifeOpsBrowserSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
   ConfirmLifeOpsBrowserSessionRequest,
+  CreateLifeOpsBrowserCompanionAutoPairRequest,
   CreateLifeOpsBrowserCompanionPairingRequest,
   CreateLifeOpsBrowserSessionRequest,
   CreateLifeOpsCalendarEventRequest,
@@ -124,12 +125,29 @@ function getBrowserCompanionAuth(
   };
 }
 
+function browserAutoPairOriginAllowed(ctx: LifeOpsRouteContext): boolean {
+  const originHeader =
+    typeof ctx.req.headers.origin === "string"
+      ? ctx.req.headers.origin.trim()
+      : "";
+  if (!originHeader) {
+    return true;
+  }
+  if (originHeader === ctx.url.origin) {
+    return true;
+  }
+  return (
+    originHeader.startsWith("chrome-extension://") ||
+    originHeader.startsWith("safari-web-extension://")
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Rate limit configuration per operation.
 // Keys are logical operation names; the "default" entry applies to any
 // operation not explicitly listed.
 // ---------------------------------------------------------------------------
-const LIFEOPS_RATE_LIMITS: Record<string, RateLimitConfig> = {
+const LIFEOPS_RATE_LIMITS = {
   google_api_read: { maxRequests: 120, windowMs: 60_000 },
   google_api_write: { maxRequests: 30, windowMs: 60_000 },
   reminders_process: { maxRequests: 10, windowMs: 60_000 },
@@ -139,7 +157,7 @@ const LIFEOPS_RATE_LIMITS: Record<string, RateLimitConfig> = {
   gmail_send: { maxRequests: 5, windowMs: 60_000 },
   calendar_create: { maxRequests: 20, windowMs: 60_000 },
   default: { maxRequests: 60, windowMs: 60_000 },
-};
+} satisfies Record<string, RateLimitConfig>;
 
 /**
  * Check rate limit for a LifeOps operation. If the limit is exceeded,
@@ -152,7 +170,36 @@ function rateLimitRequest(
 ): boolean {
   const agentId = String(ctx.state.runtime?.agentId ?? "unknown");
   const limitKey = `${agentId}:${operation}`;
-  const config = LIFEOPS_RATE_LIMITS[operation] ?? LIFEOPS_RATE_LIMITS.default;
+  let config: RateLimitConfig;
+  switch (operation) {
+    case "google_api_read":
+      config = LIFEOPS_RATE_LIMITS.google_api_read;
+      break;
+    case "google_api_write":
+      config = LIFEOPS_RATE_LIMITS.google_api_write;
+      break;
+    case "reminders_process":
+      config = LIFEOPS_RATE_LIMITS.reminders_process;
+      break;
+    case "task_create":
+      config = LIFEOPS_RATE_LIMITS.task_create;
+      break;
+    case "task_update":
+      config = LIFEOPS_RATE_LIMITS.task_update;
+      break;
+    case "gmail_draft":
+      config = LIFEOPS_RATE_LIMITS.gmail_draft;
+      break;
+    case "gmail_send":
+      config = LIFEOPS_RATE_LIMITS.gmail_send;
+      break;
+    case "calendar_create":
+      config = LIFEOPS_RATE_LIMITS.calendar_create;
+      break;
+    default:
+      config = LIFEOPS_RATE_LIMITS.default;
+      break;
+  }
   const { allowed, retryAfterMs } = checkRateLimit(limitKey, config);
   if (!allowed) {
     ctx.res.writeHead(429, {
@@ -170,6 +217,17 @@ function routeOperation(ctx: LifeOpsRouteContext): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function decodeMatchedPathComponent(
+  ctx: LifeOpsRouteContext,
+  match: RegExpMatchArray | null,
+  index: number,
+  res: http.ServerResponse,
+  label: string,
+): string | null {
+  const raw = match?.[index];
+  return raw ? ctx.decodePathComponent(raw, res, label) : null;
 }
 
 function parsePositiveIntegerQuery(
@@ -1313,8 +1371,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/website-access\/callbacks\/([^/]+)\/resolve$/,
   );
   if (method === "POST" && websiteAccessCallbackMatch) {
-    const callbackKey = decodePathComponent(
-      websiteAccessCallbackMatch[1],
+    const callbackKey = decodeMatchedPathComponent(
+      ctx,
+      websiteAccessCallbackMatch,
+      1,
       res,
       "website access callback key",
     );
@@ -1400,6 +1460,33 @@ export async function handleLifeOpsRoutes(
     });
   }
 
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/browser/companions/auto-pair"
+  ) {
+    if (!browserAutoPairOriginAllowed(ctx)) {
+      ctx.error(
+        res,
+        "browser auto-pair must come from the LifeOps app or a browser extension",
+        403,
+      );
+      return true;
+    }
+    const body =
+      await readJsonBody<CreateLifeOpsBrowserCompanionAutoPairRequest>(
+        req,
+        res,
+      );
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.autoPairBrowserCompanion(body, ctx.url.origin),
+        201,
+      );
+    });
+  }
+
   if (method === "GET" && pathname === "/api/lifeops/browser/companions") {
     return runRoute(ctx, async (service) => {
       json(res, { companions: await service.listBrowserCompanions() });
@@ -1444,8 +1531,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/browser\/packages\/([^/]+)\/build$/,
   );
   if (method === "POST" && browserPackageBuildMatch) {
-    const browser = decodePathComponent(
-      browserPackageBuildMatch[1],
+    const browser = decodeMatchedPathComponent(
+      ctx,
+      browserPackageBuildMatch,
+      1,
       res,
       "browser package target",
     );
@@ -1465,8 +1554,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/browser\/packages\/([^/]+)\/download$/,
   );
   if (method === "GET" && browserPackageDownloadMatch) {
-    const browser = decodePathComponent(
-      browserPackageDownloadMatch[1],
+    const browser = decodeMatchedPathComponent(
+      ctx,
+      browserPackageDownloadMatch,
+      1,
       res,
       "browser package target",
     );
@@ -1569,8 +1660,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/definitions\/([^/]+)$/,
   );
   if (definitionMatch) {
-    const definitionId = decodePathComponent(
-      definitionMatch[1],
+    const definitionId = decodeMatchedPathComponent(
+      ctx,
+      definitionMatch,
+      1,
       res,
       "definition id",
     );
@@ -1613,7 +1706,7 @@ export async function handleLifeOpsRoutes(
 
   const goalMatch = pathname.match(/^\/api\/lifeops\/goals\/([^/]+)$/);
   if (goalMatch) {
-    const goalId = decodePathComponent(goalMatch[1], res, "goal id");
+    const goalId = decodeMatchedPathComponent(ctx, goalMatch, 1, res, "goal id");
     if (!goalId) return true;
     if (method === "GET") {
       return runRoute(ctx, async (service) => {
@@ -1640,7 +1733,13 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/goals\/([^/]+)\/review$/,
   );
   if (goalReviewMatch && method === "GET") {
-    const goalId = decodePathComponent(goalReviewMatch[1], res, "goal id");
+    const goalId = decodeMatchedPathComponent(
+      ctx,
+      goalReviewMatch,
+      1,
+      res,
+      "goal id",
+    );
     if (!goalId) return true;
     return runRoute(ctx, async (service) => {
       json(res, await service.reviewGoal(goalId));
@@ -1649,8 +1748,10 @@ export async function handleLifeOpsRoutes(
 
   const workflowMatch = pathname.match(/^\/api\/lifeops\/workflows\/([^/]+)$/);
   if (workflowMatch) {
-    const workflowId = decodePathComponent(
-      workflowMatch[1],
+    const workflowId = decodeMatchedPathComponent(
+      ctx,
+      workflowMatch,
+      1,
       res,
       "workflow id",
     );
@@ -1673,8 +1774,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/workflows\/([^/]+)\/run$/,
   );
   if (method === "POST" && workflowRunMatch) {
-    const workflowId = decodePathComponent(
-      workflowRunMatch[1],
+    const workflowId = decodeMatchedPathComponent(
+      ctx,
+      workflowRunMatch,
+      1,
       res,
       "workflow id",
     );
@@ -1690,8 +1793,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/browser\/sessions\/([^/]+)$/,
   );
   if (browserSessionMatch) {
-    const sessionId = decodePathComponent(
-      browserSessionMatch[1],
+    const sessionId = decodeMatchedPathComponent(
+      ctx,
+      browserSessionMatch,
+      1,
       res,
       "browser session id",
     );
@@ -1707,8 +1812,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/browser\/sessions\/([^/]+)\/confirm$/,
   );
   if (method === "POST" && browserConfirmMatch) {
-    const sessionId = decodePathComponent(
-      browserConfirmMatch[1],
+    const sessionId = decodeMatchedPathComponent(
+      ctx,
+      browserConfirmMatch,
+      1,
       res,
       "browser session id",
     );
@@ -1729,8 +1836,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/browser\/sessions\/([^/]+)\/complete$/,
   );
   if (method === "POST" && browserCompleteMatch) {
-    const sessionId = decodePathComponent(
-      browserCompleteMatch[1],
+    const sessionId = decodeMatchedPathComponent(
+      ctx,
+      browserCompleteMatch,
+      1,
       res,
       "browser session id",
     );
@@ -1751,8 +1860,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/browser\/companions\/sessions\/([^/]+)\/progress$/,
   );
   if (method === "POST" && browserCompanionProgressMatch) {
-    const sessionId = decodePathComponent(
-      browserCompanionProgressMatch[1],
+    const sessionId = decodeMatchedPathComponent(
+      ctx,
+      browserCompanionProgressMatch,
+      1,
       res,
       "browser session id",
     );
@@ -1782,8 +1893,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/browser\/companions\/sessions\/([^/]+)\/complete$/,
   );
   if (method === "POST" && browserCompanionCompleteMatch) {
-    const sessionId = decodePathComponent(
-      browserCompanionCompleteMatch[1],
+    const sessionId = decodeMatchedPathComponent(
+      ctx,
+      browserCompanionCompleteMatch,
+      1,
       res,
       "browser session id",
     );
@@ -1813,8 +1926,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/occurrences\/([^/]+)\/explanation$/,
   );
   if (occurrenceExplanationMatch && method === "GET") {
-    const occurrenceId = decodePathComponent(
-      occurrenceExplanationMatch[1],
+    const occurrenceId = decodeMatchedPathComponent(
+      ctx,
+      occurrenceExplanationMatch,
+      1,
       res,
       "occurrence id",
     );
@@ -1828,8 +1943,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/occurrences\/([^/]+)\/complete$/,
   );
   if (method === "POST" && completeMatch) {
-    const occurrenceId = decodePathComponent(
-      completeMatch[1],
+    const occurrenceId = decodeMatchedPathComponent(
+      ctx,
+      completeMatch,
+      1,
       res,
       "occurrence id",
     );
@@ -1847,8 +1964,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/occurrences\/([^/]+)\/skip$/,
   );
   if (method === "POST" && skipMatch) {
-    const occurrenceId = decodePathComponent(
-      skipMatch[1],
+    const occurrenceId = decodeMatchedPathComponent(
+      ctx,
+      skipMatch,
+      1,
       res,
       "occurrence id",
     );
@@ -1866,8 +1985,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/occurrences\/([^/]+)\/snooze$/,
   );
   if (method === "POST" && snoozeMatch) {
-    const occurrenceId = decodePathComponent(
-      snoozeMatch[1],
+    const occurrenceId = decodeMatchedPathComponent(
+      ctx,
+      snoozeMatch,
+      1,
       res,
       "occurrence id",
     );

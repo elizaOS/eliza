@@ -543,9 +543,8 @@ function normalizeBlueBubblesChat(raw: BlueBubblesChat): IMessageChat {
 }
 
 function normalizeBlueBubblesMessage(raw: BlueBubblesMessage): IMessageRecord {
-  const chatId =
-    raw.chatGuid ??
-    (raw.chats && raw.chats.length > 0 ? raw.chats[0].guid : undefined);
+  const firstChat = raw.chats?.[0];
+  const chatId = raw.chatGuid ?? firstChat?.guid;
   return {
     id: raw.guid,
     fromHandle: raw.handle?.address ?? "",

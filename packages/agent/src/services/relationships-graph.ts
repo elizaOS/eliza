@@ -942,6 +942,9 @@ function buildClusters(
       continue;
     }
     const anchor = ids[0];
+    if (!anchor) {
+      continue;
+    }
     for (const entityId of ids.slice(1)) {
       union(anchor, entityId);
     }
@@ -972,7 +975,8 @@ function buildClusters(
     );
   };
 
-  return Array.from(grouped.values()).map((memberEntityIds) => {
+  const clusters: ClusterRecord[] = [];
+  for (const memberEntityIds of grouped.values()) {
     const sortedMembers = [...memberEntityIds].sort((left, right) => {
       if (ownerEntityId) {
         if (left === ownerEntityId) {
@@ -992,13 +996,17 @@ function buildClusters(
         entityNames(contexts.get(right)?.entity ?? null)[0] ?? right;
       return leftLabel.localeCompare(rightLabel);
     });
-    const primaryEntityId = sortedMembers[0] ?? memberEntityIds[0];
-    return {
+    const primaryEntityId = sortedMembers[0];
+    if (!primaryEntityId) {
+      continue;
+    }
+    clusters.push({
       groupId: primaryEntityId,
       primaryEntityId,
       memberEntityIds: sortedMembers,
-    };
-  });
+    });
+  }
+  return clusters;
 }
 
 async function countFacts(
@@ -1404,7 +1412,12 @@ async function buildConversationEdgeMap(
         ) {
           const previousMessage = relevantMessages[messageIndex - 1];
           const currentMessage = relevantMessages[messageIndex];
-          if (!previousMessage.entityId || !currentMessage.entityId) {
+          if (
+            !previousMessage ||
+            !currentMessage ||
+            !previousMessage.entityId ||
+            !currentMessage.entityId
+          ) {
             continue;
           }
           const previousCluster = clusterByEntityId.get(

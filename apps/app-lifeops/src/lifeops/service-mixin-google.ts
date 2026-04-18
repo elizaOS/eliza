@@ -227,31 +227,36 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         await this.repository.listConnectorGrants(this.agentId())
       ).filter((grant) => grant.provider === "google");
 
-      const resolvedPreferredGrant =
-        (preferredMode && preferredSide
-          ? (googleGrants.find(
-              (grant) =>
-                grant.mode === preferredMode && grant.side === preferredSide,
-            ) ?? null)
-          : null) ??
-        (preferredMode
-          ? ([...googleGrants]
-              .filter((grant) => grant.mode === preferredMode)
-              .sort((left, right) =>
-                right.updatedAt.localeCompare(left.updatedAt),
-              )[0] ?? null)
-          : null) ??
-        (preferredSide
-          ? ([...googleGrants]
-              .filter((grant) => grant.side === preferredSide)
-              .sort((left, right) =>
-                right.updatedAt.localeCompare(left.updatedAt),
-              )[0] ?? null)
-          : null) ??
-        [...googleGrants].sort((left, right) =>
-          right.updatedAt.localeCompare(left.updatedAt),
-        )[0] ??
-        null;
+      let resolvedPreferredGrant: LifeOpsConnectorGrant | null = null;
+      if (preferredMode && preferredSide) {
+        resolvedPreferredGrant =
+          googleGrants.find(
+            (grant) =>
+              grant.mode === preferredMode && grant.side === preferredSide,
+          ) ?? null;
+      }
+      if (resolvedPreferredGrant === null && preferredMode) {
+        resolvedPreferredGrant =
+          [...googleGrants]
+            .filter((grant) => grant.mode === preferredMode)
+            .sort((left, right) =>
+              right.updatedAt.localeCompare(left.updatedAt),
+            )[0] ?? null;
+      }
+      if (resolvedPreferredGrant === null && preferredSide) {
+        resolvedPreferredGrant =
+          [...googleGrants]
+            .filter((grant) => grant.side === preferredSide)
+            .sort((left, right) =>
+              right.updatedAt.localeCompare(left.updatedAt),
+            )[0] ?? null;
+      }
+      if (resolvedPreferredGrant === null) {
+        resolvedPreferredGrant =
+          [...googleGrants].sort((left, right) =>
+            right.updatedAt.localeCompare(left.updatedAt),
+          )[0] ?? null;
+      }
 
       for (const grant of googleGrants) {
         const shouldPrefer =

@@ -85,6 +85,9 @@ export function windowPolicyMatchesDefaults(
   for (let i = 0; i < DEFAULT_TIME_WINDOWS.length; i++) {
     const def = DEFAULT_TIME_WINDOWS[i];
     const win = policy.windows[i];
+    if (!def || !win) {
+      return false;
+    }
     if (
       win.name !== def.name ||
       win.startMinute !== def.startMinute ||
@@ -179,7 +182,11 @@ export function computeAdaptiveWindowPolicy(
       ADAPTIVE_EVENING_END_CAP_MINUTES,
     );
   } else {
-    eveningEndMinute = DEFAULT_TIME_WINDOWS[2].endMinute;
+    const defaultEveningWindow = DEFAULT_TIME_WINDOWS[2];
+    if (!defaultEveningWindow) {
+      throw new Error("[lifeops-defaults] missing default evening window");
+    }
+    eveningEndMinute = defaultEveningWindow.endMinute;
   }
 
   // Guard: evening end must be strictly after evening start.

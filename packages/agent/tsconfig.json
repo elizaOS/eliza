@@ -18,6 +18,7 @@
     "declaration": false,
     "allowImportingTsExtensions": true,
     "noEmit": true,
+    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
       "@elizaos/core": ["../typescript/src/index.node.ts"],

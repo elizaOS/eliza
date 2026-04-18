@@ -345,12 +345,23 @@ export const healthAction: Action = {
         endAt,
       });
       const total = points.reduce((acc, p) => acc + p.value, 0);
+      const firstPoint = points[0];
+      if (!firstPoint) {
+        const text =
+          `No ${metric} data recorded in the last ${days} day${days === 1 ? "" : "s"}.`;
+        await callback?.({ text, source: "action", action: "HEALTH" });
+        return {
+          text,
+          success: true,
+          data: { subaction, metric, startAt, endAt, points },
+        };
+      }
       const text =
         points.length === 0
           ? `No ${metric} data recorded in the last ${days} day${days === 1 ? "" : "s"}.`
           : `${metric} — last ${days} day${days === 1 ? "" : "s"}: total ${total.toFixed(
               2,
-            )} ${points[0].unit} across ${points.length} sample${points.length === 1 ? "" : "s"}.`;
+            )} ${firstPoint.unit} across ${points.length} sample${points.length === 1 ? "" : "s"}.`;
       await callback?.({ text, source: "action", action: "HEALTH" });
       return {
         text,

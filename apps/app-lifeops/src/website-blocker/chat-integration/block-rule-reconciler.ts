@@ -39,10 +39,14 @@ async function isTodoCompleted(
          LIMIT 1`,
     );
     if (defRows.length === 0) return false;
-    const status = defRows[0].status;
+    const definitionRow = defRows[0];
+    if (!definitionRow) return false;
+    const status = definitionRow.status;
     return typeof status === "string" && status.toLowerCase() === "completed";
   }
-  const state = rows[0].state;
+  const row = rows[0];
+  if (!row) return false;
+  const state = row.state;
   return typeof state === "string" && state.toLowerCase() === "completed";
 }
 

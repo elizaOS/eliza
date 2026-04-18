@@ -17,7 +17,9 @@ export interface XPostResult {
   category: "success" | "auth" | "rate_limit" | "network" | "unknown";
 }
 
-const X_POST_URL = "https://api.twitter.com/2/tweets";
+const X_BASE_URL =
+  process.env.MILADY_MOCK_X_BASE ?? "https://api.twitter.com";
+const X_POST_URL = `${X_BASE_URL}/2/tweets`;
 
 function percentEncode(value: string): string {
   return encodeURIComponent(value).replace(
@@ -33,7 +35,7 @@ function buildSignatureBaseString(
 ): string {
   const sorted = Object.keys(params)
     .sort()
-    .map((key) => `${percentEncode(key)}=${percentEncode(params[key])}`)
+    .map((key) => `${percentEncode(key)}=${percentEncode(params[key] ?? "")}`)
     .join("&");
 
   return `${method.toUpperCase()}&${percentEncode(url)}&${percentEncode(sorted)}`;
@@ -76,7 +78,10 @@ function buildOAuth1AuthorizationHeader(args: {
 
   const header = Object.keys(oauthParams)
     .sort()
-    .map((key) => `${percentEncode(key)}="${percentEncode(oauthParams[key])}"`)
+    .map(
+      (key) =>
+        `${percentEncode(key)}="${percentEncode(oauthParams[key] ?? "")}"`,
+    )
     .join(", ");
 
   return `OAuth ${header}`;
@@ -218,8 +223,7 @@ export interface XDmResult {
   category: "success" | "auth" | "rate_limit" | "network" | "unknown";
 }
 
-const X_DM_URL_TEMPLATE =
-  "https://api.twitter.com/2/dm_conversations/with/{participantId}/messages";
+const X_DM_URL_TEMPLATE = `${X_BASE_URL}/2/dm_conversations/with/{participantId}/messages`;
 
 /**
  * Send a Direct Message on X (Twitter) via the v2 DM API.

@@ -476,13 +476,19 @@ export function extractInsightsFromResponse(
   let match: RegExpExecArray | null;
   match = decisionPattern.exec(response);
   while (match !== null) {
-    insights.push(match[1].trim());
+    const decision = match[1];
+    if (decision) {
+      insights.push(decision.trim());
+    }
     match = decisionPattern.exec(response);
   }
   const keyDecisionPattern = /"keyDecision"\s*:\s*"([^"]+)"/g;
   match = keyDecisionPattern.exec(response);
   while (match !== null) {
-    insights.push(match[1].trim());
+    const keyDecision = match[1];
+    if (keyDecision) {
+      insights.push(keyDecision.trim());
+    }
     match = keyDecisionPattern.exec(response);
   }
   if (
@@ -490,7 +496,8 @@ export function extractInsightsFromResponse(
     insights.length === 0
   ) {
     const reasoningMatch = response.match(/"reasoning"\s*:\s*"([^"]{20,200})"/);
-    if (reasoningMatch) insights.push(reasoningMatch[1].trim());
+    const reasoning = reasoningMatch?.[1];
+    if (reasoning) insights.push(reasoning.trim());
   }
   return insights;
 }
@@ -654,6 +661,9 @@ export async function flushObservationBuffer(
 
     // Write observations to the most recent trajectory in the batch
     const lastExchange = exchanges[exchanges.length - 1];
+    if (!lastExchange) {
+      return observations;
+    }
     const trajectory = await loadTrajectoryById(
       runtime,
       lastExchange.trajectoryId,

@@ -5,7 +5,7 @@ import {
   stopSelfControlBlock,
 } from "../website-blocker/engine.ts";
 import { syncWebsiteBlockerExpiryTask } from "../website-blocker/service.ts";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {
   LifeOpsOccurrence,
@@ -16,23 +16,10 @@ import type { RouteRequestContext } from "@elizaos/agent/api/route-helpers";
 type WebsiteBlockerRequestBody = {
   websites?: string[] | string;
   durationMinutes?: number | string | null;
-  text?: string;
 };
 
 export interface WebsiteBlockerRouteContext extends RouteRequestContext {
   runtime?: IAgentRuntime | null;
-}
-
-function toSyntheticMessage(text: string | undefined): Memory | undefined {
-  if (typeof text !== "string" || text.trim().length === 0) {
-    return undefined;
-  }
-
-  return {
-    content: {
-      text,
-    },
-  } as Memory;
 }
 
 function buildBlockRequest(
@@ -50,12 +37,9 @@ function buildBlockRequest(
     parameters.durationMinutes = body.durationMinutes;
   }
 
-  return parseSelfControlBlockRequest(
-    {
-      parameters,
-    },
-    toSyntheticMessage(body.text),
-  );
+  return parseSelfControlBlockRequest({
+    parameters,
+  });
 }
 
 interface RequiredTaskInfo {
@@ -103,7 +87,11 @@ async function resolveRequiredTasksForHost(
     return { groupKey: null, requiredTasks: [] };
   }
 
-  const groupKey = matchingDefinitions[0].websiteAccess?.groupKey ?? null;
+  const firstMatchingDefinition = matchingDefinitions[0];
+  if (!firstMatchingDefinition) {
+    return { groupKey: null, requiredTasks: [] };
+  }
+  const groupKey = firstMatchingDefinition.websiteAccess?.groupKey ?? null;
   const requiredTasks: RequiredTaskInfo[] = [];
 
   for (const definition of matchingDefinitions) {
