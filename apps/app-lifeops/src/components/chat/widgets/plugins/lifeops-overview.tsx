@@ -3,6 +3,7 @@
 import type {
   LifeOpsActiveReminderView,
   LifeOpsCadence,
+  LifeOpsDiscordDmPreview,
   LifeOpsGoalDefinition,
   LifeOpsGoalReview,
   LifeOpsOccurrenceExplanation,
@@ -34,17 +35,20 @@ import { Badge, Button } from "@elizaos/ui";
 import { client } from "@elizaos/app-core/api";
 import { isApiError } from "@elizaos/app-core/api/client-types-core";
 import { useLifeOpsAppState } from "../../../../hooks/useLifeOpsAppState.js";
+import { useDiscordConnector } from "../../../../hooks/useDiscordConnector.js";
 import { useApp } from "@elizaos/app-core/state";
 import { EmptyWidgetState, WidgetSection } from "@elizaos/app-core/components/chat/widgets/shared";
 import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "@elizaos/app-core/components/chat/widgets/types";
+import { GoogleGlanceSection } from "./lifeops.js";
 
 const LIFEOPS_REFRESH_INTERVAL_MS = 15_000;
-const MAX_SECTION_OCCURRENCES = 4;
-const MAX_SECTION_GOALS = 3;
+const MAX_SECTION_OCCURRENCES = 3;
+const MAX_SECTION_GOALS = 2;
 const MAX_SECTION_REMINDERS = 2;
+const MAX_DISCORD_PREVIEWS = 3;
 const NEXT_WINDOW_MS = 6 * 60 * 60 * 1000;
 
 type SnoozePreset = "15m" | "30m" | "1h" | "tonight" | "tomorrow_morning";
@@ -507,7 +511,7 @@ function OccurrenceRow({
     occurrence.state === "muted";
 
   return (
-    <div className="rounded-lg border border-border/50 bg-bg/70 p-3">
+    <div className="rounded-lg border border-border/50 bg-bg/70 p-2">
       <div className="flex items-start gap-2">
         <span
           className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${
@@ -625,7 +629,7 @@ function GoalRow({
   const description = goal.description.trim() || groundingSummary || "";
 
   return (
-    <div className="rounded-lg border border-border/50 bg-bg/70 p-3">
+    <div className="rounded-lg border border-border/50 bg-bg/70 p-2">
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
           {goal.title}
@@ -667,7 +671,7 @@ function ReminderRow({ reminder }: { reminder: LifeOpsActiveReminderView }) {
   const channelLabel = reminder.channel.replace(/_/g, " ");
 
   return (
-    <div className="rounded-lg border border-border/50 bg-bg/70 p-3">
+    <div className="rounded-lg border border-border/50 bg-bg/70 p-2">
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
           {reminder.title}
