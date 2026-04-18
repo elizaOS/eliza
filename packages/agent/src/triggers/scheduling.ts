@@ -87,12 +87,12 @@ function parseCronPart(part: string, range: CronRange): Set<number> | null {
     const chunk = chunkRaw.trim();
     if (!chunk) return null;
 
-    const stepParts = chunk.split("/");
-    if (stepParts.length > 2) return null;
-    const step = stepParts.length === 2 ? parseInteger(stepParts[1].trim()) : 1;
+    const [baseRaw, stepRaw, extraStep] = chunk.split("/");
+    if (baseRaw === undefined || extraStep !== undefined) return null;
+    const step = stepRaw === undefined ? 1 : parseInteger(stepRaw.trim());
     if (step === null || step <= 0) return null;
 
-    const base = stepParts[0].trim();
+    const base = baseRaw.trim();
     if (base === "*") {
       for (let value = range.min; value <= range.max; value += step) {
         output.add(value);
@@ -100,18 +100,18 @@ function parseCronPart(part: string, range: CronRange): Set<number> | null {
       continue;
     }
 
-    const rangeParts = base.split("-");
-    if (rangeParts.length === 1) {
-      const single = parseInteger(rangeParts[0].trim());
+    const [rangeStartRaw, rangeEndRaw, extraRange] = base.split("-");
+    if (rangeStartRaw === undefined || extraRange !== undefined) return null;
+    if (rangeEndRaw === undefined) {
+      const single = parseInteger(rangeStartRaw.trim());
       if (single === null) return null;
       if (single < range.min || single > range.max) return null;
       output.add(single);
       continue;
     }
 
-    if (rangeParts.length !== 2) return null;
-    const start = parseInteger(rangeParts[0].trim());
-    const end = parseInteger(rangeParts[1].trim());
+    const start = parseInteger(rangeStartRaw.trim());
+    const end = parseInteger(rangeEndRaw.trim());
     if (start === null || end === null) return null;
     if (start > end) return null;
     if (start < range.min || end > range.max) return null;
@@ -129,11 +129,23 @@ export function parseCronExpression(expression: string): CronSchedule | null {
   const parts = trimmed.split(/\s+/);
   if (parts.length !== CRON_FIELDS) return null;
 
-  const minute = parseCronPart(parts[0], CRON_RANGES[0]);
-  const hour = parseCronPart(parts[1], CRON_RANGES[1]);
-  const dayOfMonth = parseCronPart(parts[2], CRON_RANGES[2]);
-  const month = parseCronPart(parts[3], CRON_RANGES[3]);
-  const dayOfWeek = parseCronPart(parts[4], CRON_RANGES[4]);
+  const [minuteExpr, hourExpr, dayOfMonthExpr, monthExpr, dayOfWeekExpr] =
+    parts;
+  if (
+    minuteExpr === undefined ||
+    hourExpr === undefined ||
+    dayOfMonthExpr === undefined ||
+    monthExpr === undefined ||
+    dayOfWeekExpr === undefined
+  ) {
+    return null;
+  }
+
+  const minute = parseCronPart(minuteExpr, CRON_RANGES[0]!);
+  const hour = parseCronPart(hourExpr, CRON_RANGES[1]!);
+  const dayOfMonth = parseCronPart(dayOfMonthExpr, CRON_RANGES[2]!);
+  const month = parseCronPart(monthExpr, CRON_RANGES[3]!);
+  const dayOfWeek = parseCronPart(dayOfWeekExpr, CRON_RANGES[4]!);
 
   if (!minute || !hour || !dayOfMonth || !month || !dayOfWeek) {
     return null;

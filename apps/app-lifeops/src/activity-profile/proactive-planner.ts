@@ -146,10 +146,12 @@ export function planGm(
   );
   if (todayEvents.length > 0) {
     const first = todayEvents[0];
-    const firstParts = getZonedDateParts(new Date(first.startAt), timezone);
-    contextParts.push(
-      `${todayEvents.length} meeting${todayEvents.length > 1 ? "s" : ""} today, first at ${firstParts.hour}:${String(firstParts.minute).padStart(2, "0")}`,
-    );
+    if (first) {
+      const firstParts = getZonedDateParts(new Date(first.startAt), timezone);
+      contextParts.push(
+        `${todayEvents.length} meeting${todayEvents.length > 1 ? "s" : ""} today, first at ${firstParts.hour}:${String(firstParts.minute).padStart(2, "0")}`,
+      );
+    }
   }
 
   const contextSummary =
@@ -452,9 +454,10 @@ function resolveGmHour(
 ): number {
   // Priority 1: calendar — 30 min before first event
   const todayEvents = getTodayNonAllDayEvents(calendarEvents, timezone, now);
-  if (todayEvents.length > 0) {
+  const firstEvent = todayEvents[0];
+  if (firstEvent) {
     const firstParts = getZonedDateParts(
-      new Date(todayEvents[0].startAt),
+      new Date(firstEvent.startAt),
       timezone,
     );
     const leadHour = firstParts.hour - GM_LEAD_MINUTES / 60;
@@ -543,7 +546,7 @@ function capitalizeSentence(value: string): string {
   if (trimmed.length === 0) {
     return "";
   }
-  return trimmed[0].toUpperCase() + trimmed.slice(1);
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
 function isBusyDay(

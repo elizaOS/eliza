@@ -1107,9 +1107,13 @@ function buildGmailSearchPlan(args: { queries: string[] }): {
   if (queries.length === 0) {
     return null;
   }
+  const displayQuery = queries[0];
+  if (!displayQuery) {
+    return null;
+  }
   return {
     queries,
-    displayQuery: queries[0],
+    displayQuery,
   };
 }
 
@@ -1254,8 +1258,12 @@ export const gmailAction: Action & {
   name: "GMAIL_ACTION",
   similes: [
     "GMAIL",
+    "GMAIL_INBOX",
     "CHECK_EMAIL",
     "EMAIL_TRIAGE",
+    "TRIAGE_GMAIL_INBOX",
+    "UNREAD_EMAILS",
+    "EMAIL_UNREAD",
     "SEARCH_EMAIL",
     "DRAFT_EMAIL_REPLY",
     "SEND_EMAIL_REPLY",
@@ -1264,7 +1272,9 @@ export const gmailAction: Action & {
     "Interact with Gmail through LifeOps. " +
     "USE this action for: inbox triage and unread summaries; searching emails by sender, subject, keyword, date, or label; " +
     "reading full email bodies by message ID; checking which emails need a reply; " +
-    "drafting reply text for one or more emails; sending confirmed replies. " +
+    "drafting reply text for one or more emails; sending confirmed replies; " +
+    "requests like 'triage my Gmail inbox', 'summarize my unread emails', 'draft a reply to the latest email from Sarah', or 'send a reply to the last email from finance'. " +
+    "If the request explicitly says Gmail, email, unread emails, sender, subject, or reply to a specific email, use GMAIL_ACTION instead of INBOX. " +
     "DO NOT use this action for calendar events, meetings, or scheduling — use CALENDAR_ACTION instead. " +
     "DO NOT use this action for personal habits, goals, routines, or reminders — use LIFE instead. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",
@@ -2196,6 +2206,30 @@ export const gmailAction: Action & {
     [
       {
         name: "{{name1}}",
+        content: { text: "Triage my Gmail inbox." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Inbox triage: 6 unread, 2 important, 3 likely needing a reply.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Summarize my unread emails." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Unread emails: 6. Top items: investor follow-up from Jane Doe, contract update from Legal.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
         content: { text: "Do I have any emails I need to reply to?" },
       },
       {
@@ -2231,12 +2265,36 @@ export const gmailAction: Action & {
       {
         name: "{{name1}}",
         content: {
+          text: "Draft a reply to the latest email from Sarah saying I'll review it tomorrow.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: { text: "Drafted reply to Sarah saying you will review it tomorrow." },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
           text: "Draft a reply to message abc123 thanking them and saying next week works.",
         },
       },
       {
         name: "{{agentName}}",
         content: { text: "Drafted reply for **Re: Scheduling**." },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Send a reply to the last email from finance confirming receipt.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: { text: "Sent the confirmed reply to the latest email from finance." },
       },
     ],
   ] as ActionExample[][],

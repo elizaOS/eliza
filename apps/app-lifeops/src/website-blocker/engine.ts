@@ -923,8 +923,9 @@ function parseManagedBlockMetadata(
 function extractManagedBlockWebsiteTargets(block: string): string[] {
   const websites = Array.from(
     block.matchAll(/^(?:0\.0\.0\.0|::1)\s+([^\s#]+)$/gm),
-    (match) => match[1],
-  );
+  )
+    .map((match) => match[1])
+    .filter((website): website is string => typeof website === "string");
   return normalizeWebsiteTargets(websites);
 }
 

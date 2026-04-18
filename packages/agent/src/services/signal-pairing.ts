@@ -24,6 +24,14 @@ const COMMON_SIGNAL_CLI_PATHS = [
   "/usr/local/bin/signal-cli",
 ];
 
+type SignalNativeModule = {
+  linkDevice: (authDir: string, deviceName: string) => Promise<string>;
+  finishLink: (authDir: string) => Promise<void>;
+  getProfile: (
+    authDir: string,
+  ) => Promise<{ uuid: string; phoneNumber?: string | null }>;
+};
+
 /** Validate accountId to prevent path traversal. */
 export function sanitizeAccountId(raw: string): string {
   const cleaned = raw.replace(/[^a-zA-Z0-9_-]/g, "");
@@ -279,10 +287,12 @@ export class SignalPairingSession {
   }
 
   private async loadSignalNativeModule(): Promise<
-    typeof import("@elizaos/signal-native") | null
+    SignalNativeModule | null
   > {
     try {
-      return await import(/* @vite-ignore */ SIGNAL_NATIVE_MODULE_ID);
+      const moduleSpecifier: string = SIGNAL_NATIVE_MODULE_ID;
+      const imported = await import(/* @vite-ignore */ moduleSpecifier);
+      return imported as SignalNativeModule;
     } catch (error) {
       console.info(
         `${LOG_PREFIX} Signal native module unavailable, using signal-cli pairing: ${String(error)}`,
@@ -292,7 +302,7 @@ export class SignalPairingSession {
   }
 
   private async startWithSignalNative(
-    native: typeof import("@elizaos/signal-native"),
+    native: SignalNativeModule,
     qrCode: QrCodeModule,
   ): Promise<void> {
     console.info(`${LOG_PREFIX} Starting device linking with signal-native...`);

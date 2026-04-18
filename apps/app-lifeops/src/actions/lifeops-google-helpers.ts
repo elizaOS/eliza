@@ -414,13 +414,21 @@ function describeEmailSearchQuery(query: string): string {
     if (!match) {
       return value;
     }
+    const unitToken = match[2];
+    if (!unitToken) {
+      return value;
+    }
     const unit =
-      match[2].toLowerCase() === "d"
+      unitToken.toLowerCase() === "d"
         ? "day"
-        : match[2].toLowerCase() === "m"
+        : unitToken.toLowerCase() === "m"
           ? "month"
           : "year";
-    const amount = Number(match[1]);
+    const amountToken = match[1];
+    if (!amountToken) {
+      return value;
+    }
+    const amount = Number(amountToken);
     return `${amount} ${unit}${amount === 1 ? "" : "s"}`;
   };
   if (sender) {

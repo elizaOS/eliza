@@ -27,6 +27,7 @@
     "./lifeops/*": "./src/lifeops/*.ts",
     "./inbox/*": "./src/inbox/*.ts",
     "./actions/*": "./src/actions/*.ts",
+    "./actions/*.js": "./src/actions/*.ts",
     "./providers/*": "./src/providers/*.ts",
     "./routes/*": "./src/routes/*.ts",
     "./activity-profile/*": "./src/activity-profile/*.ts",
@@ -68,7 +69,7 @@
   },
   "elizaos": {
     "app": {
-      "heroImage": "assets/hero.webp"
+      "heroImage": "assets/hero.png"
     }
   }
 }
