@@ -46,15 +46,6 @@ async function createBenchmarkRuntimeFactory(): Promise<{
     selectLiveProvider("openrouter")?.name ??
     selectLiveProvider("groq")?.name;
 
-  // Load the LifeOps plugin so its 30+ actions are registered. Without this,
-  // the action planner sees only the 4 generic core actions
-  // (REPLY, IGNORE, NONE, UPDATE_ENTITY) and can't possibly route to LIFE,
-  // CALENDAR_ACTION, X_READ etc. — making the benchmark meaningless.
-  const { appLifeOpsPlugin } = await import(
-    // @ts-ignore — workspace package resolved at runtime
-    "@elizaos/app-lifeops/plugin"
-  );
-
   if (USE_MOCKED_APIS) {
     const {
       createMockedTestRuntime,
@@ -64,6 +55,10 @@ async function createBenchmarkRuntimeFactory(): Promise<{
       "../../../../../test/mocks/helpers/mock-runtime.ts"
     );
     const environment = await prepareMockedTestEnvironment();
+    const { appLifeOpsPlugin } = await import(
+      // @ts-ignore — workspace package resolved at runtime
+      "@elizaos/app-lifeops/plugin"
+    );
     return {
       createCaseRuntime: async () =>
         createMockedTestRuntime({
@@ -77,6 +72,14 @@ async function createBenchmarkRuntimeFactory(): Promise<{
       },
     };
   }
+
+  // Load the LifeOps plugin after any mock env setup has happened so
+  // client modules that read env-based mock endpoints do not capture the
+  // production URLs during module evaluation.
+  const { appLifeOpsPlugin } = await import(
+    // @ts-ignore — workspace package resolved at runtime
+    "@elizaos/app-lifeops/plugin"
+  );
 
   return {
     createCaseRuntime: async () =>

@@ -358,6 +358,56 @@ function extractPlannerDecision(
 }
 
 /**
+ * Seed the per-case runtime with the fixtures the benchmark cases depend on:
+ *   - A pre-existing relationship for "David" (used by rel-follow-up).
+ *   - ELIZA_ADMIN_ENTITY_ID settings so hasAdminAccess/hasOwnerAccess return
+ *     true for the benchmark user.
+ *
+ * Called once per case, before the user message is sent. All failures are
+ * logged and swallowed so that a seed-level issue on one fixture can't cascade
+ * across the whole benchmark.
+ */
+async function seedBenchmarkCaseFixtures(
+  runtime: AgentRuntime,
+  userEntityId: string,
+): Promise<void> {
+  try {
+    const now = new Date().toISOString();
+    const { LifeOpsRepository } = await import(
+      // @ts-ignore — workspace package resolved at runtime
+      "@elizaos/app-lifeops/lifeops/repository"
+    );
+    const repo = new LifeOpsRepository(runtime);
+    if (typeof (repo as unknown as { upsertRelationship?: unknown })
+        .upsertRelationship === "function") {
+      await (
+        repo as unknown as {
+          upsertRelationship: (rel: Record<string, unknown>) => Promise<unknown>;
+        }
+      ).upsertRelationship({
+        id: crypto.randomUUID(),
+        agentId: runtime.agentId,
+        name: "David",
+        primaryChannel: "email",
+        primaryHandle: "david@example.com",
+        email: "david@example.com",
+        phone: null,
+        notes: "benchmark fixture",
+        tags: ["benchmark"],
+        relationshipType: "colleague",
+        lastContactedAt: null,
+        metadata: {},
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  } catch (error) {
+    // Relationships plugin may not be loaded in every benchmark variant.
+    runtime.logger?.debug?.({ src: "benchmark", userEntityId, error: String(error) }, "seedBenchmarkCaseFixtures: relationship seed skipped");
+  }
+}
+
+/**
  * Run a single case against the runtime: register a one-shot hook that
  * captures the first action name delivered for this room, send the message,
  * wait for handling to complete (or timeout), and return the captured action.
@@ -372,6 +422,7 @@ async function runSingleCaseWithRecording(
   const started = Date.now();
   const userEntityId = resolveBenchmarkOwnerEntityId(runtime);
   runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", userEntityId, false);
+  await seedBenchmarkCaseFixtures(runtime, userEntityId);
   const harness = new RecordingHarness(runtime, {
     caseId: tc.id,
     userId: userEntityId,
@@ -579,6 +630,7 @@ async function runSingleCase(
 
   try {
     runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", entityId, false);
+    await seedBenchmarkCaseFixtures(runtime, entityId);
     await runtime.ensureConnection({
       entityId,
       roomId,

@@ -353,44 +353,51 @@ async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
 async function registerTrackCTrainingCrons(
   runtime: AgentRuntime,
 ): Promise<void> {
+  // `@elizaos/app-training` is an optional dependency: the package may not be
+  // installed at all in minimal deployments. Scope the try/catch to the
+  // dynamic imports so a missing package logs a skip, but real errors inside
+  // the registration helpers propagate with full context.
+  let exportMod: typeof import("@elizaos/app-training/core/trajectory-export-cron");
+  let scoringMod: typeof import("@elizaos/app-training/core/skill-scoring-cron");
+  let triggerMod: typeof import("@elizaos/app-training/services/training-trigger");
   try {
-    const [exportMod, scoringMod, triggerMod] = await Promise.all([
+    [exportMod, scoringMod, triggerMod] = await Promise.all([
       import("@elizaos/app-training/core/trajectory-export-cron"),
       import("@elizaos/app-training/core/skill-scoring-cron"),
       import("@elizaos/app-training/services/training-trigger"),
     ]);
-    await exportMod.registerTrajectoryExportCron(runtime);
-    await scoringMod.registerSkillScoringCron(runtime);
-    const triggerService = triggerMod.registerTrainingTriggerService(
-      runtime as unknown as Parameters<
-        typeof triggerMod.registerTrainingTriggerService
-      >[0],
-    );
-    logger.info(
-      "[eliza] Registered Track C training crons + auto-train trigger service",
-    );
-    // Phase 5.5 — Hermes-parity default-on bootstrap. Fire-and-forget so
-    // runtime boot stays fast; the bootstrap helper short-circuits when
-    // counters are below threshold or an artifact already exists.
-    void triggerMod
-      .bootstrapOptimizationFromAccumulatedTrajectories(
-        runtime as unknown as Parameters<
-          typeof triggerMod.bootstrapOptimizationFromAccumulatedTrajectories
-        >[0],
-        triggerService,
-      )
-      .then((fired) => {
-        if (fired.length > 0) {
-          logger.info(
-            `[eliza] Bootstrapped prompt optimization for ${fired.join(", ")}`,
-          );
-        }
-      });
   } catch (err) {
     logger.warn(
-      `[eliza] Skipped Track C training crons: ${err instanceof Error ? err.message : String(err)}`,
+      `[eliza] @elizaos/app-training not installed, skipping Track C training crons: ${err instanceof Error ? err.message : String(err)}`,
     );
+    return;
   }
+
+  await exportMod.registerTrajectoryExportCron(runtime);
+  await scoringMod.registerSkillScoringCron(runtime);
+  const triggerService = triggerMod.registerTrainingTriggerService(runtime);
+  logger.info(
+    "[eliza] Registered Track C training crons + auto-train trigger service",
+  );
+  // Phase 5.5 — Hermes-parity default-on bootstrap. Fire-and-forget so
+  // runtime boot stays fast; the bootstrap helper short-circuits when
+  // counters are below threshold or an artifact already exists. We log the
+  // rejection instead of swallowing so a bug in the bootstrap helper is
+  // surfaced at boot time rather than silently lost.
+  void triggerMod
+    .bootstrapOptimizationFromAccumulatedTrajectories(runtime, triggerService)
+    .then((fired) => {
+      if (fired.length > 0) {
+        logger.info(
+          `[eliza] Bootstrapped prompt optimization for ${fired.join(", ")}`,
+        );
+      }
+    })
+    .catch((err) => {
+      logger.error(
+        `[eliza] bootstrapOptimizationFromAccumulatedTrajectories failed: ${err instanceof Error ? err.stack ?? err.message : String(err)}`,
+      );
+    });
 }
 
 async function repairRuntimeAfterBoot(

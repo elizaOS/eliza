@@ -18,6 +18,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { IAgentRuntime, Service, ServiceTypeName } from "@elizaos/core";
 import type {
   AnonymizerLookup,
   FilterableTrajectory,
@@ -36,7 +37,17 @@ import {
 } from "../core/training-orchestrator.js";
 import type { TrajectoryTrainingTask } from "../core/trajectory-task-datasets.js";
 
-export const TRAINING_TRIGGER_SERVICE = "TRAINING_TRIGGER_SERVICE";
+// Extend the core ServiceTypeRegistry so TRAINING_TRIGGER_SERVICE is a known
+// service name. This avoids `as never` casts at the registration site and lets
+// `runtime.getService` return a typed value via ServiceInstance mapping.
+declare module "@elizaos/core" {
+  interface ServiceTypeRegistry {
+    TRAINING_TRIGGER_SERVICE: "training_trigger_service";
+  }
+}
+
+export const TRAINING_TRIGGER_SERVICE =
+  "training_trigger_service" as ServiceTypeName;
 
 interface MinimalLogger {
   info: (message: string) => void;
@@ -48,6 +59,11 @@ interface TrajectoryServiceLike {
   getTrajectoryDetail: (id: string) => Promise<TrajectoryDetailLike | null>;
 }
 
+/**
+ * Minimal runtime shape the trigger service + bootstrap helpers depend on.
+ * Structurally a subset of `IAgentRuntime`, so full runtimes satisfy it
+ * without casts. Tests pass a small shim that matches this shape.
+ */
 interface RuntimeLike {
   getService: (name: string) => unknown;
   logger?: MinimalLogger;
@@ -435,6 +451,25 @@ export class TrainingTriggerService {
 }
 
 /**
+ * Registered entry shape — kept as a standalone interface so callers that
+ * `getService(TRAINING_TRIGGER_SERVICE)` can type the result without
+ * importing the concrete class.
+ */
+export interface RegisteredTrainingTriggerEntry {
+  notifyTrajectoryCompleted: (trajectoryId: string) => Promise<void>;
+  getStatus: () => TriggerStatusSnapshot;
+  runManually: (input: {
+    task?: TrajectoryTrainingTask;
+    backend?: TrainingBackend;
+    dryRun?: boolean;
+  }) => Promise<TrainingRunRecord>;
+  resetCounters: (task?: TrajectoryTrainingTask) => void;
+  stop: () => Promise<void>;
+  capabilityDescription: string;
+  instance: TrainingTriggerService;
+}
+
+/**
  * Register the service against a runtime's services map. Mirrors the
  * n8n-dispatch pattern in `packages/app-core/src/runtime/eliza.ts`: we
  * insert a function-shaped service entry directly rather than going through
@@ -443,13 +478,11 @@ export class TrainingTriggerService {
  * Safe to call multiple times — subsequent calls replace the entry.
  */
 export function registerTrainingTriggerService(
-  runtime: RuntimeLike & {
-    services: Map<string, unknown[]>;
-  },
+  runtime: IAgentRuntime,
   options: TrainingTriggerServiceOptions = {},
 ): TrainingTriggerService {
   const service = new TrainingTriggerService(runtime, options);
-  const entry = {
+  const entry: RegisteredTrainingTriggerEntry = {
     notifyTrajectoryCompleted: service.notifyTrajectoryCompleted.bind(service),
     getStatus: service.getStatus.bind(service),
     runManually: service.runManually.bind(service),
@@ -458,7 +491,12 @@ export function registerTrainingTriggerService(
     capabilityDescription: service.capabilityDescription,
     instance: service,
   };
-  runtime.services.set(TRAINING_TRIGGER_SERVICE as never, [entry as never]);
+  // The runtime's services map is typed Map<ServiceTypeName, Service[]>. Our
+  // entry is structurally Service-compatible (stop + capabilityDescription)
+  // plus extra methods consumed via the registered entry interface. Use a
+  // single explicit cast at the boundary rather than `as never` — the entry
+  // does satisfy the minimum Service contract that callers rely on.
+  runtime.services.set(TRAINING_TRIGGER_SERVICE, [entry as unknown as Service]);
   return service;
 }
 
@@ -508,7 +546,7 @@ export interface BootstrapOptimizationOptions {
  * surfaces them rather than swallowing them silently.
  */
 export async function bootstrapOptimizationFromAccumulatedTrajectories(
-  runtime: RuntimeLike,
+  runtime: IAgentRuntime,
   service: TrainingTriggerService,
   options: BootstrapOptimizationOptions = {},
 ): Promise<TrajectoryTrainingTask[]> {
@@ -544,18 +582,4 @@ export async function bootstrapOptimizationFromAccumulatedTrajectories(
     runtime.logger?.info(`[TrainingTriggerService] ${message}`);
   }
   return fired;
-}
-
-export interface RegisteredTrainingTriggerEntry {
-  notifyTrajectoryCompleted: (trajectoryId: string) => Promise<void>;
-  getStatus: () => TriggerStatusSnapshot;
-  runManually: (input: {
-    task?: TrajectoryTrainingTask;
-    backend?: TrainingBackend;
-    dryRun?: boolean;
-  }) => Promise<TrainingRunRecord>;
-  resetCounters: (task?: TrajectoryTrainingTask) => void;
-  stop: () => Promise<void>;
-  capabilityDescription: string;
-  instance: TrainingTriggerService;
 }
