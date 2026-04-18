@@ -798,6 +798,54 @@ function GoalSection({
   );
 }
 
+function DiscordPreviewRow({ preview }: { preview: LifeOpsDiscordDmPreview }) {
+  const snippet = preview.snippet?.trim() ?? "";
+  return (
+    <div className="flex items-center gap-2 px-0.5 py-0.5">
+      <span
+        className={`shrink-0 inline-block h-1.5 w-1.5 rounded-full ${preview.unread ? "bg-accent" : "bg-muted/30"}`}
+      />
+      <span className="min-w-0 flex-1 truncate text-2xs text-txt">
+        {preview.label}
+      </span>
+      {snippet.length > 0 ? (
+        <span className="min-w-0 max-w-[50%] truncate text-3xs text-muted">
+          {snippet}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function DiscordMessagesGlance() {
+  const connector = useDiscordConnector({ side: "owner" });
+  const previews = connector.status?.dmInbox?.previews ?? [];
+  if (!connector.status?.connected || previews.length === 0) {
+    return null;
+  }
+  const unreadFirst = [...previews].sort(
+    (a, b) => Number(b.unread) - Number(a.unread),
+  );
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1.5 px-0.5">
+        <span className="text-muted">
+          <MessageCircleMore className="h-3 w-3" />
+        </span>
+        <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+          Discord
+        </span>
+      </div>
+      {unreadFirst.slice(0, MAX_DISCORD_PREVIEWS).map((preview) => (
+        <DiscordPreviewRow
+          key={`${preview.channelId ?? preview.label}`}
+          preview={preview}
+        />
+      ))}
+    </div>
+  );
+}
+
 function ReminderSection({
   reminders,
 }: {
