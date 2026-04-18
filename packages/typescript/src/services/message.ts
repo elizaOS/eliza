@@ -273,7 +273,7 @@ export function extractStandaloneActionParams(
 	return fragments.join("\n");
 }
 
-function extractPlannerActionNames(
+export function extractPlannerActionNames(
 	parsedXml: Record<string, unknown>,
 ): string[] {
 	return (() => {
