@@ -28,9 +28,9 @@ export interface TrajectoryListItem {
   startTime: number;
   endTime: number | null;
   durationMs: number | null;
-  stepCount?: number;
+  stepCount: number;
   llmCallCount: number;
-  providerAccessCount?: number;
+  providerAccessCount: number;
   totalPromptTokens: number;
   totalCompletionTokens: number;
   scenarioId?: string;
