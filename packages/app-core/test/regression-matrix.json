@@ -122,7 +122,6 @@
       "workflowCall": "./.github/workflows/release-electrobun.yml",
       "requiredSnippets": [
         "publish_release: false",
-        "publish_docker: false",
         "draft: false",
         "secrets: inherit"
       ],
