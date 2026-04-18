@@ -626,7 +626,8 @@ function countTurnsSinceLatestDeferredLifeDraft(
 
   let latestDraftIndex = -1;
   for (let index = entries.length - 1; index >= 0; index--) {
-    if (isDeferredLifeDraftMessageEntry(entries[index])) {
+    const entry = entries[index];
+    if (entry && isDeferredLifeDraftMessageEntry(entry)) {
       latestDraftIndex = index;
       break;
     }
@@ -676,9 +677,7 @@ function latestDeferredLifeDraft(
   }
 
   const messageDrafts = stateMessageDrafts(state);
-  return messageDrafts.length > 0
-    ? messageDrafts[messageDrafts.length - 1]
-    : null;
+  return messageDrafts.at(-1) ?? null;
 }
 
 function deferredLifeDraftExpiryReason(args: {
@@ -964,12 +963,12 @@ async function resolveOccurrence(
     (o) => normalizeTitle(o.title) === normalized,
   );
   if (exactMatches.length === 1) {
-    return { match: exactMatches[0], ambiguousCandidates: [] };
+    return { match: exactMatches.at(0) ?? null, ambiguousCandidates: [] };
   }
   if (exactMatches.length > 1) {
     const narrowedMatches = narrowOccurrenceCandidates(exactMatches);
     if (narrowedMatches.length === 1) {
-      return { match: narrowedMatches[0], ambiguousCandidates: [] };
+      return { match: narrowedMatches.at(0) ?? null, ambiguousCandidates: [] };
     }
     return {
       match: null,
@@ -984,20 +983,23 @@ async function resolveOccurrence(
     normalizeTitle(o.title).includes(normalized),
   );
   if (substringMatches.length === 1) {
-    return { match: substringMatches[0], ambiguousCandidates: [] };
+    return { match: substringMatches.at(0) ?? null, ambiguousCandidates: [] };
   }
   if (substringMatches.length > 1) {
     const narrowedSubstringMatches =
       narrowOccurrenceCandidates(substringMatches);
     if (narrowedSubstringMatches.length === 1) {
-      return { match: narrowedSubstringMatches[0], ambiguousCandidates: [] };
+      return {
+        match: narrowedSubstringMatches.at(0) ?? null,
+        ambiguousCandidates: [],
+      };
     }
     // Prefer startsWith over generic includes
     const startsWithMatches = narrowedSubstringMatches.filter((o) =>
       normalizeTitle(o.title).startsWith(normalized),
     );
     if (startsWithMatches.length === 1) {
-      return { match: startsWithMatches[0], ambiguousCandidates: [] };
+      return { match: startsWithMatches.at(0) ?? null, ambiguousCandidates: [] };
     }
     if (startsWithMatches.length > 1) {
       return {
@@ -1025,13 +1027,16 @@ async function resolveOccurrence(
       return targetTokens.every((token) => occurrenceTokens.has(token));
     });
     if (tokenSetMatches.length === 1) {
-      return { match: tokenSetMatches[0], ambiguousCandidates: [] };
+      return { match: tokenSetMatches.at(0) ?? null, ambiguousCandidates: [] };
     }
     if (tokenSetMatches.length > 1) {
       const narrowedTokenSetMatches =
         narrowOccurrenceCandidates(tokenSetMatches);
       if (narrowedTokenSetMatches.length === 1) {
-        return { match: narrowedTokenSetMatches[0], ambiguousCandidates: [] };
+        return {
+          match: narrowedTokenSetMatches.at(0) ?? null,
+          ambiguousCandidates: [],
+        };
       }
       return {
         match: null,
@@ -1366,15 +1371,27 @@ function buildSlotsFromWindows(
 
 function buildDistributedDailySlots(count: number): LifeOpsDailySlot[] {
   const normalizedCount = Math.max(1, Math.min(6, count));
-  const presets: Record<number, number[]> = {
-    1: [9 * 60],
-    2: [8 * 60, 21 * 60],
-    3: [8 * 60, 13 * 60, 20 * 60],
-    4: [8 * 60, 12 * 60, 16 * 60, 20 * 60],
-    5: [8 * 60, 11 * 60, 14 * 60, 17 * 60, 20 * 60],
-    6: [8 * 60, 10 * 60, 12 * 60, 14 * 60, 17 * 60, 20 * 60],
-  };
-  const minutes = presets[normalizedCount] ?? presets[1];
+  let minutes: number[];
+  switch (normalizedCount) {
+    case 1:
+      minutes = [9 * 60];
+      break;
+    case 2:
+      minutes = [8 * 60, 21 * 60];
+      break;
+    case 3:
+      minutes = [8 * 60, 13 * 60, 20 * 60];
+      break;
+    case 4:
+      minutes = [8 * 60, 12 * 60, 16 * 60, 20 * 60];
+      break;
+    case 5:
+      minutes = [8 * 60, 11 * 60, 14 * 60, 17 * 60, 20 * 60];
+      break;
+    default:
+      minutes = [8 * 60, 10 * 60, 12 * 60, 14 * 60, 17 * 60, 20 * 60];
+      break;
+  }
   return minutes.map((minuteOfDay, index) => ({
     key: `slot-${index + 1}`,
     label: `Time ${index + 1}`,
@@ -1624,9 +1641,17 @@ function parseExplicitLocalDateForLifeRequest(
     /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b/i,
   );
   if (monthNameMatch) {
+    const monthToken = monthNameMatch[1];
+    if (!monthToken) {
+      return null;
+    }
+    const month = monthMap[monthToken.toLowerCase().replace(/\./g, "")];
+    if (month === undefined) {
+      return null;
+    }
     return {
       year: monthNameMatch[3] ? Number(monthNameMatch[3]) : localToday.year,
-      month: monthMap[monthNameMatch[1].toLowerCase().replace(/\./g, "")],
+      month,
       day: Number(monthNameMatch[2]),
       explicitYear: Boolean(monthNameMatch[3]),
     };
@@ -1707,7 +1732,9 @@ function mergeMetadataRecords(
 function extractExplicitDailySlots(intent: string): LifeOpsDailySlot[] {
   const tokens = [
     ...intent.matchAll(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm)|noon|midnight)\b/gi),
-  ].map((match) => match[1]);
+  ]
+    .map((match) => match[1])
+    .filter((token): token is string => typeof token === "string" && token.length > 0);
   const seen = new Set<number>();
   const slots: LifeOpsDailySlot[] = [];
   for (const [index, token] of tokens.entries()) {
@@ -2417,8 +2444,13 @@ export const lifeAction: Action & {
     "MANAGE_LIFEOPS",
     "QUERY_LIFEOPS",
     "CREATE_TASK",
+    "CREATE_TODO",
+    "ADD_TODO",
+    "LIST_TODOS",
+    "TODO_LIST",
     "CREATE_HABIT",
     "CREATE_GOAL",
+    "LIFE_CREATE_DEFINITION",
     "TRACK_HABIT",
     "COMPLETE_TASK",
     "SET_ALARM",
@@ -2429,13 +2461,16 @@ export const lifeAction: Action & {
   description:
     "Manage the user's personal routines, habits, goals, reminders, alarms, and escalation settings through LifeOps. " +
     "USE this action for: creating, editing, or deleting tasks, habits, routines, and goals; " +
+    "todo and goal requests like 'add a todo: pick up dry cleaning tomorrow', 'remember to call mom on Sunday', 'what's on my todo list today?', or 'set a goal to save $5,000 by the end of the year'; " +
     "setting one-off alarms or wake-up reminders like 'set an alarm for 7am' or 'wake me up at 7'; " +
     "helping the user actually set up follow-through when they say things like 'help me brush my teeth every day', 'i keep forgetting x', or 'help me actually do it'; " +
     "using LifeOps defaults for common routines when the user gives a natural window instead of an exact clock, like water reminders, stretch breaks, weekday-after-lunch Invisalign checks, twice-weekly shave reminders, or brushing when they wake up and before bed; " +
     "marking items as complete, skipping, or snoozing them; reviewing goal progress; " +
     "setting up phone/SMS escalation channels; adjusting reminder frequency or intensity; " +
     "querying an overview of active LifeOps items. " +
+    "These are executable LifeOps items, not profile facts or bio updates. " +
     "ALWAYS use LIFE for dynamic status questions like 'what's still left for today', 'what do i still need to do today', or 'anything else in my LifeOps list', even when the conversation already mentioned tasks, because their status may have changed after a completion, snooze, or reminder. " +
+    "Do not fall back to REPLY, UPDATE_ENTITY, or UPDATE_OWNER_PROFILE when the user is asking to create or inspect a todo, habit, goal, reminder, or alarm. " +
     "DO NOT use this action for Gmail inbox triage, email search, drafting or sending emails — use GMAIL_ACTION instead. " +
     "DO NOT use this action for daily briefs, unread summaries, drafts awaiting sign-off, or cross-channel inbox review — use INBOX, GMAIL_ACTION, or SEARCH_ACROSS_CHANNELS instead. " +
     "DO NOT use this action for calendar lookups, scheduling meetings, searching events, or travel itineraries — use CALENDAR_ACTION instead. " +
@@ -3943,6 +3978,51 @@ export const lifeAction: Action & {
     },
   ],
   examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "add a todo: pick up dry cleaning tomorrow",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'I can save "Pick up dry cleaning" for tomorrow. Confirm and I\'ll save it.',
+          actions: ["LIFE"],
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "what's on my todo list today?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "You have 2 LifeOps items due today: pick up dry cleaning and call mom.",
+          actions: ["LIFE"],
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "set a goal to save $5,000 by the end of the year",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'I can save this goal as "Save $5,000 by the end of the year". Confirm and I\'ll save it, or tell me what to change.',
+          actions: ["LIFE"],
+        },
+      },
+    ],
     [
       {
         name: "{{name1}}",

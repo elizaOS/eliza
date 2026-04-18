@@ -87,7 +87,11 @@ async function resolveRequiredTasksForHost(
     return { groupKey: null, requiredTasks: [] };
   }
 
-  const groupKey = matchingDefinitions[0].websiteAccess?.groupKey ?? null;
+  const firstMatchingDefinition = matchingDefinitions[0];
+  if (!firstMatchingDefinition) {
+    return { groupKey: null, requiredTasks: [] };
+  }
+  const groupKey = firstMatchingDefinition.websiteAccess?.groupKey ?? null;
   const requiredTasks: RequiredTaskInfo[] = [];
 
   for (const definition of matchingDefinitions) {

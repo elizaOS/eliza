@@ -20,7 +20,11 @@ const execFileAsync = promisify(execFile);
 // Types
 // ---------------------------------------------------------------------------
 
-export type PasswordManagerBackend = "1password" | "protonpass" | "none";
+export type PasswordManagerBackend =
+  | "1password"
+  | "protonpass"
+  | "fixture"
+  | "none";
 
 export interface PasswordManagerItem {
   id: string;
@@ -60,6 +64,74 @@ export class PasswordManagerError extends Error {
 }
 
 const CLIPBOARD_TTL_SECONDS = 30;
+
+const PASSWORD_MANAGER_FIXTURE_ITEMS: ReadonlyArray<PasswordManagerItem> = [
+  {
+    id: "pm-github",
+    title: "GitHub",
+    url: "https://github.com/login",
+    username: "benchmark-user",
+    hasPassword: true,
+    tags: ["dev", "github", "code"],
+    metadata: { vault: "Mocked Benchmark" },
+  },
+  {
+    id: "pm-google-workspace",
+    title: "Google Workspace",
+    url: "https://mail.google.com",
+    username: "owner@example.com",
+    hasPassword: true,
+    tags: ["google", "email"],
+    metadata: { vault: "Mocked Benchmark" },
+  },
+  {
+    id: "pm-aws-prod",
+    title: "AWS Console",
+    url: "https://signin.aws.amazon.com",
+    username: "infra@example.com",
+    hasPassword: true,
+    tags: ["aws", "cloud"],
+    metadata: { vault: "Mocked Benchmark" },
+  },
+];
+
+function isTruthyEnv(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on" ||
+    normalized === "fixture"
+  );
+}
+
+function isFalsyEnv(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "0" ||
+    normalized === "false" ||
+    normalized === "no" ||
+    normalized === "off"
+  );
+}
+
+function isFixturePasswordManagerEnabled(): boolean {
+  const explicit = process.env.MILADY_TEST_PASSWORD_MANAGER_BACKEND;
+  if (isFalsyEnv(explicit)) return false;
+  if (isTruthyEnv(explicit)) return true;
+  return process.env.MILADY_BENCHMARK_USE_MOCKS === "1";
+}
+
+function listItemsViaFixture(): PasswordManagerItem[] {
+  return PASSWORD_MANAGER_FIXTURE_ITEMS.map((item) => ({
+    ...item,
+    tags: item.tags ? [...item.tags] : undefined,
+    metadata: item.metadata ? { ...item.metadata } : undefined,
+  }));
+}
 
 // ---------------------------------------------------------------------------
 // Detection
@@ -124,6 +196,14 @@ export async function detectPasswordManagerBackend(
   if (preferred === "none") {
     detectionCache.set(key, "none");
     return "none";
+  }
+  if (preferred === "fixture") {
+    detectionCache.set(key, "fixture");
+    return "fixture";
+  }
+  if (isFixturePasswordManagerEnabled()) {
+    detectionCache.set(key, "fixture");
+    return "fixture";
   }
   if (preferred === "1password") {
     const ok = await probeOp(config);
@@ -461,7 +541,9 @@ export async function searchPasswordItems(
 ): Promise<PasswordManagerItem[]> {
   const backend = await resolveActiveBackend(config);
   const items =
-    backend === "1password"
+    backend === "fixture"
+      ? listItemsViaFixture()
+      : backend === "1password"
       ? await listItemsVia1Password(config)
       : await listItemsViaProtonPass(config);
   return items.filter((item) => matchesQuery(item, query));
@@ -473,7 +555,9 @@ export async function listPasswordItems(
 ): Promise<PasswordManagerItem[]> {
   const backend = await resolveActiveBackend(config);
   const items =
-    backend === "1password"
+    backend === "fixture"
+      ? listItemsViaFixture()
+      : backend === "1password"
       ? await listItemsVia1Password(config)
       : await listItemsViaProtonPass(config);
   const limit = opts.limit;
@@ -495,6 +579,10 @@ export async function injectCredentialToClipboard(
     );
   }
   const backend = await resolveActiveBackend(config);
+
+  if (backend === "fixture") {
+    return { ok: true, expiresInSeconds: CLIPBOARD_TTL_SECONDS };
+  }
 
   if (backend === "1password") {
     const binary = resolveOpBinary(config);

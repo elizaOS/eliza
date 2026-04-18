@@ -66,6 +66,7 @@ import type {
   EvaluateBrowserWorkspaceTabRequest,
   NavigateBrowserWorkspaceTabRequest,
   OpenBrowserWorkspaceTabRequest,
+  WebBrowserWorkspaceTabState,
 } from "./browser-workspace-types.js";
 
 // ── Re-export state ──────────────────────────────────────────────────
@@ -259,6 +260,9 @@ export async function navigateBrowserWorkspaceTab(
       }
 
       const existing = webWorkspaceState.tabs[index];
+      if (!existing) {
+        throw createBrowserWorkspaceNotFoundError(request.id);
+      }
       const updatedAt = getBrowserWorkspaceTimestamp();
       const state = getBrowserWorkspaceRuntimeState("web", existing.id);
       clearWebBrowserWorkspaceTabElementRefs(existing.id);
@@ -267,7 +271,7 @@ export async function navigateBrowserWorkspaceTab(
         nextUrl === "about:blank"
           ? createEmptyWebBrowserWorkspaceDom(nextUrl)
           : null;
-      const nextTab = {
+      const nextTab: WebBrowserWorkspaceTabState = {
         ...existing,
         title: inferBrowserWorkspaceTitle(nextUrl),
         url: nextUrl,
@@ -334,9 +338,13 @@ export async function hideBrowserWorkspaceTab(
         throw createBrowserWorkspaceNotFoundError(id);
       }
 
+      const existing = webWorkspaceState.tabs[index];
+      if (!existing) {
+        throw createBrowserWorkspaceNotFoundError(id);
+      }
       const updatedAt = getBrowserWorkspaceTimestamp();
-      const nextTab = {
-        ...webWorkspaceState.tabs[index],
+      const nextTab: WebBrowserWorkspaceTabState = {
+        ...existing,
         visible: false,
         updatedAt,
       };

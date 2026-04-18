@@ -74,15 +74,38 @@ export class ConversationHarness {
   }
 
   async setup(): Promise<void> {
+    const worldMetadata = {
+      ownership: {
+        ownerId: this.userId,
+      },
+      roles: {
+        [this.userId]: "OWNER",
+      },
+    } as const;
+
+    await this.runtime.ensureWorldExists({
+      id: this.worldId,
+      name: `${this.userName}'s World`,
+      agentId: this.runtime.agentId,
+      messageServerId: this.userId,
+      metadata: worldMetadata,
+    } as Parameters<typeof this.runtime.ensureWorldExists>[0]);
+
     await this.runtime.ensureConnection({
       entityId: this.userId,
       roomId: this.roomId,
       worldId: this.worldId,
+      worldName: `${this.userName}'s World`,
       userName: this.userName,
+      name: this.userName,
       source: this.source,
       channelId: this.roomId,
       type: ChannelType.DM,
+      messageServerId: this.userId,
+      metadata: worldMetadata,
     });
+    await this.runtime.ensureParticipantInRoom(this.runtime.agentId, this.roomId);
+    await this.runtime.ensureParticipantInRoom(this.userId, this.roomId);
     if (!this.attached) {
       this.spy.attach(this.runtime);
       this.attached = true;

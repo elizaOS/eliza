@@ -865,10 +865,24 @@ function bucketMidpointHour(bucket: TimeBucket): number {
 }
 
 function median(sorted: number[]): number {
+  if (sorted.length === 0) {
+    throw new Error("[activity-profile] median requires at least one value");
+  }
   const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? Math.round((sorted[mid - 1] + sorted[mid]) / 2)
-    : sorted[mid];
+  if (sorted.length % 2 !== 0) {
+    const medianValue = sorted[mid];
+    if (medianValue === undefined) {
+      throw new Error("[activity-profile] median index out of bounds");
+    }
+    return medianValue;
+  }
+
+  const left = sorted[mid - 1];
+  const right = sorted[mid];
+  if (left === undefined || right === undefined) {
+    throw new Error("[activity-profile] median pair is incomplete");
+  }
+  return Math.round((left + right) / 2);
 }
 
 export function wasActiveToday(

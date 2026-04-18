@@ -1570,6 +1570,66 @@ export interface LifeOpsDiscordDmInboxStatus {
   previews: LifeOpsDiscordDmPreview[];
 }
 
+export const LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES = [
+  "lifeops_browser",
+  "desktop_browser",
+] as const;
+export type LifeOpsOwnerBrowserAccessSource =
+  (typeof LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES)[number];
+
+export const LIFEOPS_OWNER_BROWSER_TAB_STATES = [
+  "missing",
+  "background_discord",
+  "discord_open",
+  "dm_inbox_visible",
+] as const;
+export type LifeOpsOwnerBrowserTabState =
+  (typeof LIFEOPS_OWNER_BROWSER_TAB_STATES)[number];
+
+export const LIFEOPS_OWNER_BROWSER_AUTH_STATES = [
+  "unknown",
+  "logged_out",
+  "logged_in",
+] as const;
+export type LifeOpsOwnerBrowserAuthState =
+  (typeof LIFEOPS_OWNER_BROWSER_AUTH_STATES)[number];
+
+export const LIFEOPS_OWNER_BROWSER_NEXT_ACTIONS = [
+  "none",
+  "connect_browser",
+  "open_extension_popup",
+  "enable_browser_access",
+  "enable_browser_control",
+  "open_discord",
+  "open_dm_inbox",
+  "focus_discord_manually",
+  "focus_dm_inbox_manually",
+  "log_in",
+  "open_milady_desktop",
+] as const;
+export type LifeOpsOwnerBrowserNextAction =
+  (typeof LIFEOPS_OWNER_BROWSER_NEXT_ACTIONS)[number];
+
+export interface LifeOpsOwnerBrowserAccessStatus {
+  source: LifeOpsOwnerBrowserAccessSource;
+  sourceLabel: string;
+  active: boolean;
+  available: boolean;
+  browser: LifeOpsBrowserKind | null;
+  profileId: string | null;
+  profileLabel: string | null;
+  companionId: string | null;
+  companionLabel: string | null;
+  canControl: boolean;
+  siteAccessOk: boolean | null;
+  currentUrl: string | null;
+  tabState: LifeOpsOwnerBrowserTabState;
+  authState: LifeOpsOwnerBrowserAuthState;
+  nextAction: LifeOpsOwnerBrowserNextAction;
+  nextActionLabel: string | null;
+  message: string;
+}
+
 export interface LifeOpsDiscordConnectorStatus {
   provider: "discord";
   side: LifeOpsConnectorSide;
@@ -1590,6 +1650,8 @@ export interface LifeOpsDiscordConnectorStatus {
   lastError: string | null;
   /** Browser Workspace tab hosting Discord, when that desktop path is in use. */
   tabId: string | null;
+  /** Owner-side browser options for reaching the user's real Discord session. */
+  browserAccess: LifeOpsOwnerBrowserAccessStatus[];
   grant: LifeOpsConnectorGrant | null;
 }
 

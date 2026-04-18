@@ -133,8 +133,7 @@ function buildTriagePrompt(
 
   // Messages to classify
   sections.push("", "## Messages to classify:", "");
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i];
+  for (const [index, msg] of messages.entries()) {
     const gmailHints: string[] = [];
     if (msg.gmailIsImportant) gmailHints.push("Gmail-marked-important");
     if (msg.gmailLikelyReplyNeeded)
@@ -142,7 +141,7 @@ function buildTriagePrompt(
     const hintsStr = gmailHints.length > 0 ? ` [${gmailHints.join(", ")}]` : "";
 
     sections.push(
-      `### Message ${i + 1}`,
+      `### Message ${index + 1}`,
       `Source: ${msg.source} | Channel: ${msg.channelName} (${msg.channelType}) | From: ${msg.senderName}${hintsStr}`,
       `Text: ${msg.text.slice(0, 500)}`,
     );
@@ -187,7 +186,7 @@ function parseTriageJsonArray(raw: string): unknown[] {
   }
   const fenced = candidate.match(TRIAGE_CODE_FENCE_PATTERN);
   if (fenced) {
-    candidate = fenced[1].trim();
+    candidate = (fenced[1] ?? "").trim();
   }
   if (!candidate.startsWith("[")) {
     throw new InboxTriageClassificationError(

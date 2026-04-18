@@ -79,9 +79,15 @@ function parseReleaseVersion(raw: string): ReleaseVersion | null {
   if (!match) {
     return null;
   }
-  const major = Number.parseInt(match[1], 10);
-  const minor = Number.parseInt(match[2], 10);
-  const patch = Number.parseInt(match[3], 10);
+  const majorRaw = match[1];
+  const minorRaw = match[2];
+  const patchRaw = match[3];
+  if (!majorRaw || !minorRaw || !patchRaw) {
+    return null;
+  }
+  const major = Number.parseInt(majorRaw, 10);
+  const minor = Number.parseInt(minorRaw, 10);
+  const patch = Number.parseInt(patchRaw, 10);
   const prereleaseLabel = match[4] ?? null;
   const prereleaseValue = match[5] ?? null;
   return {

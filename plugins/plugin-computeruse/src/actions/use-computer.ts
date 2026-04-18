@@ -6,12 +6,140 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import type { DesktopActionParams } from "../types.js";
+import type {
+  ComputerActionResult,
+  DesktopActionParams,
+} from "../types.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
 import {
   buildScreenshotAttachment,
   resolveActionParams,
 } from "./helpers.js";
+
+const MOCK_SCREENSHOT_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+R4QAAAAASUVORK5CYII=";
+
+function isTruthyEnv(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on" ||
+    normalized === "fixture"
+  );
+}
+
+function isFalsyEnv(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "0" ||
+    normalized === "false" ||
+    normalized === "no" ||
+    normalized === "off"
+  );
+}
+
+function isMockComputerUseEnabled(): boolean {
+  const explicit = process.env.MILADY_TEST_COMPUTERUSE_BACKEND;
+  if (isFalsyEnv(explicit)) return false;
+  if (isTruthyEnv(explicit)) return true;
+  return process.env.MILADY_BENCHMARK_USE_MOCKS === "1";
+}
+
+function getComputerUseService(
+  runtime: IAgentRuntime,
+): ComputerUseService | null {
+  return (
+    (runtime.getService("computeruse") as unknown as ComputerUseService) ?? null
+  );
+}
+
+function buildMockDesktopResult(
+  params: DesktopActionParams,
+): ComputerActionResult {
+  if (params.action === "detect_elements") {
+    return {
+      success: true,
+      message: "Mocked desktop element scan completed.",
+      screenshot: MOCK_SCREENSHOT_BASE64,
+      data: {
+        elements: [
+          {
+            role: "textbox",
+            label: "Amount",
+            coordinate: params.coordinate ?? [640, 360],
+          },
+        ],
+      },
+    };
+  }
+
+  if (params.action === "ocr") {
+    return {
+      success: true,
+      message: "Mocked OCR completed.",
+      screenshot: MOCK_SCREENSHOT_BASE64,
+      data: { text: "Expense form\nAmount\n$42.50" },
+    };
+  }
+
+  const message =
+    params.action === "screenshot"
+      ? "Mocked desktop screenshot captured."
+      : `Mocked desktop action completed: ${params.action}.`;
+
+  return {
+    success: true,
+    message,
+    screenshot: MOCK_SCREENSHOT_BASE64,
+    data: {
+      mocked: true,
+      action: params.action,
+      coordinate: params.coordinate,
+      startCoordinate: params.startCoordinate,
+      text: params.text,
+      key: params.key,
+      modifiers: params.modifiers,
+      button: params.button,
+      clicks: params.clicks,
+      scrollDirection: params.scrollDirection,
+      scrollAmount: params.scrollAmount,
+    },
+  };
+}
+
+async function deliverResult(
+  params: DesktopActionParams,
+  result: ComputerActionResult,
+  callback?: HandlerCallback,
+): Promise<void> {
+  if (!callback) return;
+  await callback({
+    text: result.success
+      ? params.action === "screenshot"
+        ? "Here is the current screen."
+        : result.message ?? `Completed ${params.action}.`
+      : `Desktop action failed: ${result.error}`,
+    ...(result.screenshot
+      ? {
+          attachments: [
+            buildScreenshotAttachment({
+              idPrefix: "computeruse-screenshot",
+              screenshot: result.screenshot,
+              title: "Screenshot",
+              description:
+                params.action === "screenshot"
+                  ? "Current screen capture"
+                  : `Screen capture after ${params.action}`,
+            }),
+          ],
+        }
+      : {}),
+  });
+}
 
 export const useComputerAction: Action = {
   name: "USE_COMPUTER",
@@ -137,10 +265,8 @@ export const useComputerAction: Action = {
     _message: Memory,
     _state?: State,
   ): Promise<boolean> => {
-    const service =
-      (runtime.getService("computeruse") as unknown as ComputerUseService) ??
-      null;
-    return !!service;
+    const service = getComputerUseService(runtime);
+    return service !== null || isMockComputerUseEnabled();
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -149,42 +275,21 @@ export const useComputerAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ) => {
-    const service =
-      (runtime.getService("computeruse") as unknown as ComputerUseService) ??
-      null;
-    if (!service) {
-      return { success: false, error: "ComputerUseService not available" };
-    }
-
     const params = resolveActionParams<DesktopActionParams>(message, options);
     params.action ??= "screenshot";
 
-    const result = await service.executeDesktopAction(params);
-
-    if (callback) {
-      await callback({
-        text: result.success
-          ? params.action === "screenshot"
-            ? "Here is the current screen."
-            : result.message ?? `Completed ${params.action}.`
-          : `Desktop action failed: ${result.error}`,
-        ...(result.screenshot
-          ? {
-              attachments: [
-                buildScreenshotAttachment({
-                  idPrefix: "computeruse-screenshot",
-                  screenshot: result.screenshot,
-                  title: "Screenshot",
-                  description:
-                    params.action === "screenshot"
-                      ? "Current screen capture"
-                      : `Screen capture after ${params.action}`,
-                }),
-              ],
-            }
-          : {}),
-      });
+    const service = getComputerUseService(runtime);
+    if (!service) {
+      if (!isMockComputerUseEnabled()) {
+        return { success: false, error: "ComputerUseService not available" };
+      }
+      const mockResult = buildMockDesktopResult(params);
+      await deliverResult(params, mockResult, callback);
+      return mockResult as unknown as any;
     }
+
+    const result = await service.executeDesktopAction(params);
+    await deliverResult(params, result, callback);
 
     return result as unknown as any;
   },

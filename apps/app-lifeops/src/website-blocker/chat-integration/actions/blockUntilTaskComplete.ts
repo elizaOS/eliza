@@ -130,10 +130,13 @@ export const blockUntilTaskCompleteAction: Action = {
     "BLOCK_SITES_UNTIL_TODO_DONE",
     "BLOCK_WEBSITE_UNTIL_TASK",
     "CONDITIONAL_WEBSITE_BLOCK",
+    "BLOCK_UNTIL_DONE",
+    "FOCUS_UNTIL_TASK_DONE",
   ],
   description:
-    "Block websites until a specific todo is marked complete. Creates a block rule whose release is gated on todo completion. " +
-    "If todoName is provided with no matching active todo, the todo is created first.",
+    "Block websites until a specific todo is marked complete. Use this only when the unblock condition is finishing a task, workout, assignment, or todo, like 'block x.com until I finish my workout'. " +
+    "Creates a block rule whose release is gated on todo completion. If todoName is provided with no matching active todo, the todo is created first. " +
+    "Do not use this for fixed-duration blocks like 'for 2 hours' or generic focus blocks like 'turn on social media blocking' — those are BLOCK_WEBSITES.",
   descriptionCompressed:
     "Block websites until a named todo is completed.",
   validate: async () => true,
@@ -245,6 +248,19 @@ export const blockUntilTaskCompleteAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Block rule created for x.com until todo workout is completed.",
+          action: "BLOCK_UNTIL_TASK_COMPLETE",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Block youtube until I finish this report." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Block rule created for youtube.com until todo report is completed.",
           action: "BLOCK_UNTIL_TASK_COMPLETE",
         },
       },

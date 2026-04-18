@@ -215,7 +215,8 @@ export class InboxTriageRepository {
        WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}
        LIMIT 1`,
     );
-    return rows.length > 0 ? parseTriageEntry(rows[0]) : null;
+    const row = rows[0];
+    return row ? parseTriageEntry(row) : null;
   }
 
   async getBySourceMessageId(
@@ -228,7 +229,8 @@ export class InboxTriageRepository {
          AND agent_id = ${sqlText(this.agentId)}
        LIMIT 1`,
     );
-    return rows.length > 0 ? parseTriageEntry(rows[0]) : null;
+    const row = rows[0];
+    return row ? parseTriageEntry(row) : null;
   }
 
   async getBySourceMessageIds(

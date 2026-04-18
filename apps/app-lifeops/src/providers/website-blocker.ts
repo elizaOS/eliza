@@ -11,7 +11,7 @@ import { getCachedSelfControlStatus } from "../website-blocker/engine.ts";
 export const websiteBlockerProvider: Provider = {
   name: "websiteBlocker",
   description:
-    "Admin-only provider for the local hosts-file website blocker integration",
+    "Admin-only provider for the local hosts-file website blocker integration. Use BLOCK_WEBSITES for timed or generic focus blocks, and BLOCK_UNTIL_TASK_COMPLETE only when the unblock condition is finishing a task.",
   descriptionCompressed: "Admin: hosts-file website blocker.",
   dynamic: true,
   get: async (
