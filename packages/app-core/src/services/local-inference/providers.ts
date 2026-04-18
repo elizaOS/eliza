@@ -88,8 +88,8 @@ const LOCAL_PROVIDER: ProviderDefinition = {
       const entries = await fs.readdir(`${localInferenceRoot()}/models`, {
         withFileTypes: true,
       });
-      const hasModel = entries.some((e) =>
-        e.isFile() && e.name.toLowerCase().endsWith(".gguf"),
+      const hasModel = entries.some(
+        (e) => e.isFile() && e.name.toLowerCase().endsWith(".gguf"),
       );
       return hasModel
         ? { enabled: true, reason: "GGUF model installed" }
@@ -177,7 +177,13 @@ const OPENAI_PROVIDER: ProviderDefinition = {
   label: "OpenAI API",
   kind: "cloud-api",
   description: "GPT models via the OpenAI API. Requires an API key.",
-  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING", "OBJECT_SMALL", "OBJECT_LARGE"],
+  supportedSlots: [
+    "TEXT_SMALL",
+    "TEXT_LARGE",
+    "TEXT_EMBEDDING",
+    "OBJECT_SMALL",
+    "OBJECT_LARGE",
+  ],
   async getEnableState(): Promise<ProviderEnableState> {
     const key = process.env.OPENAI_API_KEY?.trim();
     return key
@@ -236,8 +242,7 @@ const GOOGLE_PROVIDER: ProviderDefinition = {
   supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     const key =
-      process.env.GOOGLE_API_KEY?.trim() ??
-      process.env.GEMINI_API_KEY?.trim();
+      process.env.GOOGLE_API_KEY?.trim() ?? process.env.GEMINI_API_KEY?.trim();
     return key
       ? { enabled: true, reason: "API key set" }
       : { enabled: false, reason: "No API key" };

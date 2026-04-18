@@ -286,6 +286,7 @@ export async function createRealTestRuntime(
     }
 
     await runtime.initialize();
+    runtime.registerSendHandler("client_chat", async () => {});
 
     const cleanup = async () => {
       try {

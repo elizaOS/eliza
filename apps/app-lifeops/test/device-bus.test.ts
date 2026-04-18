@@ -1,11 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+
+const { broadcastIntent } = vi.hoisted(() => ({
+  broadcastIntent: vi.fn(async () => ({ id: "intent-local-1" })),
+}));
+
+vi.mock("../src/lifeops/intent-sync.js", () => ({
+  broadcastIntent,
+}));
+
 import { publishDeviceIntentAction, __internal } from "../src/actions/device-bus.js";
 
 const ORIGINAL_ENV = { ...process.env };
 
 function makeMessage() {
   return {
-    entityId: "00000000-0000-0000-0000-000000000001",
+    entityId: "00000000-0000-0000-0000-000000000003",
     roomId: "00000000-0000-0000-0000-000000000002",
     content: { text: "publish", ownerAccess: true },
   } as unknown as Parameters<
@@ -30,6 +39,7 @@ beforeEach(() => {
 afterEach(() => {
   process.env = { ...ORIGINAL_ENV };
   vi.restoreAllMocks();
+  broadcastIntent.mockClear();
 });
 
 describe("normalizeKind", () => {
@@ -48,7 +58,7 @@ describe("normalizeKind", () => {
 });
 
 describe("PUBLISH_DEVICE_INTENT graceful degradation", () => {
-  test("returns device-bus-not-configured when URL missing", async () => {
+  test("falls back to the local intent store when URL missing", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const result = await publishDeviceIntentAction.handler!(
       makeRuntime(),
@@ -58,16 +68,14 @@ describe("PUBLISH_DEVICE_INTENT graceful degradation", () => {
     );
     expect(fetchSpy).not.toHaveBeenCalled();
     const r = result as { success: boolean; data?: Record<string, unknown> };
-    expect(r.success).toBe(false);
+    expect(r.success).toBe(true);
     const data = r.data ?? {};
-    expect(
-      data.reason === "device-bus-not-configured" ||
-        data.error === "PERMISSION_DENIED",
-    ).toBe(true);
+    expect(data.reason).toBe("device-bus-local-fallback");
+    expect(data.transport).toBe("local-fallback");
+    expect(broadcastIntent).toHaveBeenCalledTimes(1);
   });
 
-  test("missing kind fails cleanly", async () => {
-    process.env.MILADY_DEVICE_BUS_URL = "https://example.test";
+  test("missing kind defaults cleanly through the local fallback", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const result = await publishDeviceIntentAction.handler!(
       makeRuntime(),
@@ -76,7 +84,9 @@ describe("PUBLISH_DEVICE_INTENT graceful degradation", () => {
       { parameters: {} },
     );
     expect(fetchSpy).not.toHaveBeenCalled();
-    const r = result as { success: boolean };
-    expect(r.success).toBe(false);
+    const r = result as { success: boolean; data?: Record<string, unknown> };
+    expect(r.success).toBe(true);
+    expect(r.data?.kind).toBe("reminder");
+    expect(broadcastIntent).toHaveBeenCalledTimes(1);
   });
 });

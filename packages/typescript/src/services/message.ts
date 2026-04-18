@@ -273,28 +273,60 @@ export function extractStandaloneActionParams(
 	return fragments.join("\n");
 }
 
-function normalizePlannerActions(
+function unwrapPlannerIdentifier(value: string): string {
+	const trimmed = value.trim().replace(/^["'`]+|["'`]+$/g, "");
+	if (!trimmed) {
+		return "";
+	}
+
+	const nameMatch = trimmed.match(/^<name\b[^>]*>([\s\S]*?)<\/name>$/i);
+	if (nameMatch) {
+		return nameMatch[1].trim();
+	}
+
+	const actionMatch = trimmed.match(/^<action\b[^>]*>([\s\S]*?)<\/action>$/i);
+	if (!actionMatch) {
+		return trimmed;
+	}
+
+	const inner = actionMatch[1].trim();
+	if (!inner) {
+		return "";
+	}
+
+	const nestedNameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
+	if (nestedNameMatch) {
+		return nestedNameMatch[1].trim();
+	}
+
+	return /<[A-Za-z][^>]*>/.test(inner) ? trimmed : inner;
+}
+
+export function extractPlannerActionNames(
 	parsedXml: Record<string, unknown>,
-	runtime: IAgentRuntime,
 ): string[] {
-	const normalizedActions = (() => {
+	return (() => {
 		if (typeof parsedXml.actions === "string") {
 			const actionsXml = parsedXml.actions;
-			if (actionsXml.includes("<action>") || actionsXml.includes("<action ")) {
+			if (/<action\b[^>]*>/i.test(actionsXml)) {
 				const actionEntries: Array<{
 					name: string;
 					paramsXml?: string;
 				}> = [];
 				for (const match of actionsXml.matchAll(
-					/<action>([\s\S]*?)<\/action>/g,
+					/<action\b[^>]*>([\s\S]*?)<\/action>/gi,
 				)) {
 					const inner = match[1];
-					const nameMatch = inner.match(/<name>([\s\S]*?)<\/name>/);
-					const paramsMatch = inner.match(/<params>([\s\S]*?)<\/params>/);
-					if (nameMatch) {
-						const name = nameMatch[1].trim();
-						const paramsXml = paramsMatch ? paramsMatch[1].trim() : undefined;
-						if (name) actionEntries.push({ name, paramsXml });
+					const nameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
+					const paramsMatch = inner.match(
+						/<params\b[^>]*>([\s\S]*?)<\/params>/i,
+					);
+					const name = unwrapPlannerIdentifier(
+						nameMatch ? nameMatch[1] : match[0],
+					);
+					const paramsXml = paramsMatch ? paramsMatch[1].trim() : undefined;
+					if (name) {
+						actionEntries.push({ name, paramsXml });
 					}
 				}
 
@@ -319,7 +351,7 @@ function normalizePlannerActions(
 
 			const commaSplitActions = actionsXml
 				.split(",")
-				.map((action) => String(action).trim())
+				.map((action) => unwrapPlannerIdentifier(String(action)))
 				.filter((action) => action.length > 0);
 
 			if (!parsedXml.params || parsedXml.params === "") {
@@ -336,11 +368,18 @@ function normalizePlannerActions(
 		}
 		if (Array.isArray(parsedXml.actions)) {
 			return parsedXml.actions
-				.map((action) => String(action).trim())
+				.map((action) => unwrapPlannerIdentifier(String(action)))
 				.filter((action) => action.length > 0);
 		}
 		return [];
 	})();
+}
+
+function normalizePlannerActions(
+	parsedXml: Record<string, unknown>,
+	runtime: IAgentRuntime,
+): string[] {
+	const normalizedActions = extractPlannerActionNames(parsedXml);
 
 	const finalActions =
 		!runtime.isActionPlanningEnabled() && normalizedActions.length > 1
@@ -348,19 +387,35 @@ function normalizePlannerActions(
 			: normalizedActions;
 
 	const actionLookup = buildRuntimeActionLookup(runtime);
-	const validActions = finalActions.filter((actionName) => {
+	const validActions = finalActions.flatMap((actionName) => {
 		const normalized = normalizeActionIdentifier(actionName);
 		if (!normalized) {
-			return false;
+			return [];
 		}
 
 		if (PLANNER_CONTROL_ACTIONS.has(normalized)) {
-			return true;
+			return [actionName];
 		}
 
 		const resolvedAction = resolveRuntimeAction(actionLookup, actionName);
 		if (resolvedAction) {
-			return true;
+			return [resolvedAction.name];
+		}
+
+		const aliasedActionName = PLANNER_ACTION_ALIASES.get(normalized);
+		if (aliasedActionName) {
+			const resolvedAlias = resolveRuntimeAction(actionLookup, aliasedActionName);
+			if (resolvedAlias) {
+				runtime.logger.info(
+					{
+						src: "service:message",
+						actionName,
+						aliasedActionName: resolvedAlias.name,
+					},
+					"Repaired planner action alias",
+				);
+				return [resolvedAlias.name];
+			}
 		}
 
 		runtime.logger.warn(
@@ -370,7 +425,7 @@ function normalizePlannerActions(
 			},
 			"Dropping unknown planner action",
 		);
-		return false;
+		return [];
 	});
 
 	if (validActions.length > 0) {
@@ -465,9 +520,17 @@ function normalizePlannerProviders(
 	}
 	const normalizedProviders = providerNames
 		.map((providerName) => {
-			const canonicalProvider = providerLookup.get(
-				normalizeActionIdentifier(providerName),
-			);
+			const normalizedProviderName = normalizeActionIdentifier(providerName);
+			const canonicalProvider =
+				providerLookup.get(normalizedProviderName) ??
+				(() => {
+					const aliasedProvider =
+						PLANNER_PROVIDER_ALIASES.get(normalizedProviderName);
+					if (!aliasedProvider) {
+						return undefined;
+					}
+					return providerLookup.get(normalizeActionIdentifier(aliasedProvider));
+				})();
 			if (canonicalProvider) {
 				return canonicalProvider;
 			}
@@ -826,8 +889,45 @@ function isStopResponse(
 }
 
 function normalizeActionIdentifier(actionName: string): string {
-	return actionName.trim().toUpperCase().replace(/_/g, "");
+	return unwrapPlannerIdentifier(actionName).toUpperCase().replace(/_/g, "");
 }
+
+const PLANNER_ACTION_ALIASES = new Map(
+	[
+		["BULK_RESCHEDULE_MEETINGS", "PROPOSE_MEETING_TIMES"],
+		["SCHEDULE_MEETING", "CALENDAR_ACTION"],
+		["RESCHEDULE_MEETINGS", "CALENDAR_ACTION"],
+		["CREATE_EVENT", "CALENDAR_ACTION"],
+		["CREATE_RECURRING_EVENT", "CALENDAR_ACTION"],
+		["CALENDAR_CREATE_RECURRING_EVENT", "CALENDAR_ACTION"],
+		["SCHEDULE_RECURRING_EVENT", "CALENDAR_ACTION"],
+		["SCHEDULE_RECURRING_MEETING", "CALENDAR_ACTION"],
+		["SCHEDULE_RECURRING", "CALENDAR_ACTION"],
+		["BOOK_TRAVEL", "CALL_EXTERNAL"],
+		["CAPTURE_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
+		["CAPTURE_BOOKING_PREFERENCES", "UPDATE_OWNER_PROFILE"],
+		["SET_PREFERENCES", "UPDATE_OWNER_PROFILE"],
+		["SET_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
+		["CREATE_FOLLOWUP", "INBOX"],
+		["GET_PENDING_ASSETS", "INBOX"],
+		["GET_PENDING_ITEMS", "INBOX"],
+		["PROPOSE_GROUP_CHAT_HANDOFF", "INBOX"],
+		["SET_MULTI_DEVICE_MEETING_REMINDER", "PUBLISH_DEVICE_INTENT"],
+		["HANDLE_CANCELLATION_FEE", "PUBLISH_DEVICE_INTENT"],
+		["GET_ID_STATUS", "PUBLISH_DEVICE_INTENT"],
+		["REQUEST_UPLOAD", "LIFEOPS_COMPUTER_USE"],
+	].map(([from, to]) => [
+		normalizeActionIdentifier(from),
+		to,
+	]),
+);
+
+const PLANNER_PROVIDER_ALIASES = new Map(
+	[
+		["DOCUMENT_LOOKUP", "ATTACHMENTS"],
+		["INBOX_TRIAGE", "inboxTriage"],
+	].map(([from, to]) => [normalizeActionIdentifier(from), to]),
+);
 
 const PROVIDER_FOLLOWUP_PASSIVE_ACTIONS = new Set(
 	["REPLY", "RESPOND", "NONE"].map(normalizeActionIdentifier),
@@ -1166,6 +1266,7 @@ function suppressesPostActionContinuation(
  * when `text` is empty.
  */
 export function shouldEmitPlannerPreamble(
+	runtime: Pick<IAgentRuntime, "actions">,
 	responseContent: Pick<Content, "text" | "actions"> | null | undefined,
 ): boolean {
 	if (!responseContent) return false;
@@ -1178,6 +1279,15 @@ export function shouldEmitPlannerPreamble(
 			? normalizeActionIdentifier(responseContent.actions[0])
 			: "";
 	if (firstAction.length === 0) return false;
+
+	const resolvedAction = (runtime.actions ?? []).find(
+		(action) =>
+			normalizeActionIdentifier(action.name) === firstAction &&
+			action.suppressPostActionContinuation === true,
+	);
+	if (resolvedAction) {
+		return false;
+	}
 
 	return (
 		firstAction !== normalizeActionIdentifier("REPLY") &&
@@ -2820,7 +2930,11 @@ export class DefaultMessageService implements IMessageService {
 					// Surface the planner's text before action handlers run, so the
 					// user sees the agent's plan rather than silence. The full
 					// responseContent is already persisted as a memory above.
-					if (callback && shouldEmitPlannerPreamble(responseContent)) {
+					if (
+						callback &&
+						!isBenchmarkMode(state) &&
+						shouldEmitPlannerPreamble(runtime, responseContent)
+					) {
 						await callback({
 							...responseContent,
 							actions: [],

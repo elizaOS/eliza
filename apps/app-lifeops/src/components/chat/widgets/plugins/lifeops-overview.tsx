@@ -15,9 +15,12 @@ import {
   Bell,
   BellRing,
   Bot,
+  Check,
   CheckCircle2,
+  Clock,
   Clock3,
   Cloud,
+  Info,
   ListTodo,
   Mail,
   MessageCircleMore,
@@ -28,6 +31,7 @@ import {
   Smartphone,
   Sparkles,
   SquareArrowOutUpRight,
+  X,
 } from "lucide-react";
 import type { PropsWithChildren, ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -158,6 +162,20 @@ function reviewStateLabel(
       return "At risk";
     default:
       return "Idle";
+  }
+}
+
+function reviewStateDotClass(
+  reviewState: LifeOpsGoalDefinition["reviewState"],
+): string {
+  switch (reviewState) {
+    case "needs_attention":
+    case "at_risk":
+      return "bg-warn";
+    case "on_track":
+      return "bg-ok";
+    default:
+      return "bg-muted/40";
   }
 }
 
@@ -444,9 +462,10 @@ function SnoozeMenu({
         variant="ghost"
         disabled={disabled}
         onClick={() => setOpen(true)}
-        className="h-7 px-2 text-xs-tight"
+        aria-label="Snooze"
+        className="h-6 w-6 p-0"
       >
-        Snooze
+        <Clock className="h-3.5 w-3.5" />
       </Button>
     );
   }
@@ -554,7 +573,7 @@ function OccurrenceRow({
             {dueLabel ? <span>{dueLabel}</span> : null}
             {cadenceSecondary ? <span>{cadenceSecondary}</span> : null}
           </div>
-          <div className="mt-3 flex flex-wrap gap-1.5">
+          <div className="mt-2 flex flex-wrap items-center gap-1">
             {!isClosed ? (
               <>
                 <Button
@@ -562,9 +581,10 @@ function OccurrenceRow({
                   variant="outline"
                   disabled={actionPending}
                   onClick={() => void onAction(occurrence.id, "complete")}
-                  className="h-7 px-2 text-xs-tight"
+                  aria-label="Done"
+                  className="h-6 w-6 p-0"
                 >
-                  Done
+                  <Check className="h-3.5 w-3.5" />
                 </Button>
                 <SnoozeMenu
                   occurrenceId={occurrence.id}
@@ -576,9 +596,10 @@ function OccurrenceRow({
                   variant="ghost"
                   disabled={actionPending}
                   onClick={() => void onAction(occurrence.id, "skip")}
-                  className="h-7 px-2 text-xs-tight"
+                  aria-label="Skip"
+                  className="h-6 w-6 p-0"
                 >
-                  Skip
+                  <X className="h-3.5 w-3.5" />
                 </Button>
               </>
             ) : null}
@@ -587,9 +608,10 @@ function OccurrenceRow({
               variant="ghost"
               disabled={detailPending}
               onClick={() => void onExplain(occurrence.id)}
-              className="h-7 px-2 text-xs-tight"
+              aria-label={isExpanded ? "Hide details" : "Show details"}
+              className="h-6 w-6 p-0"
             >
-              {isExpanded ? "Hide why" : "Why this?"}
+              <Info className="h-3.5 w-3.5" />
             </Button>
           </div>
           {isExpanded && explanation ? (
@@ -631,12 +653,14 @@ function GoalRow({
   return (
     <div className="rounded-lg border border-border/50 bg-bg/70 p-2">
       <div className="flex flex-wrap items-center gap-1.5">
+        <span
+          className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${reviewStateDotClass(goal.reviewState)}`}
+          aria-label={reviewStateLabel(goal.reviewState)}
+          title={reviewStateLabel(goal.reviewState)}
+        />
         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
           {goal.title}
         </span>
-        <Badge variant="secondary" className="text-[10px]">
-          {reviewStateLabel(goal.reviewState)}
-        </Badge>
       </div>
       {description.length > 0 ? (
         <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">
@@ -648,15 +672,16 @@ function GoalRow({
           {cadenceText}
         </div>
       ) : null}
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      <div className="mt-2 flex flex-wrap gap-1">
         <Button
           size="sm"
           variant="ghost"
           disabled={detailPending}
           onClick={() => void onReview(goal.id)}
-          className="h-7 px-2 text-xs-tight"
+          aria-label={isExpanded ? "Hide review" : "Review"}
+          className="h-6 w-6 p-0"
         >
-          {isExpanded ? "Hide review" : "Review"}
+          <Info className="h-3.5 w-3.5" />
         </Button>
       </div>
       {isExpanded && review ? <GoalReviewPanel review={review} /> : null}

@@ -22,4 +22,14 @@ describe("LifeOps inbox triage schema bootstrap", () => {
     await expect(repo.getUnresolved()).resolves.toEqual([]);
     await expect(repo.getExamples(3)).resolves.toEqual([]);
   });
+
+  it("registers a client_chat send handler for integration runtimes", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    await expect(
+      runtimeResult.runtime.sendMessageToTarget(
+        { source: "client_chat", entityId: runtimeResult.runtime.agentId },
+        { text: "ping" },
+      ),
+    ).resolves.toBeUndefined();
+  });
 });

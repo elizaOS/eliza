@@ -235,4 +235,84 @@ describe("local-inference-compat-routes e2e", () => {
     );
     expect(res.status).toBe(404);
   });
+
+  it("GET /api/local-inference/providers returns the full provider list", async () => {
+    const res = await fetch(
+      `${harness.baseUrl}/api/local-inference/providers`,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      providers: Array<{ id: string; kind: string }>;
+    };
+    expect(Array.isArray(body.providers)).toBe(true);
+    expect(
+      body.providers.some((p) => p.id === "milady-local-inference"),
+    ).toBe(true);
+    expect(body.providers.some((p) => p.id === "anthropic")).toBe(true);
+  });
+
+  it("GET /api/local-inference/routing returns registrations + preferences", async () => {
+    const res = await fetch(`${harness.baseUrl}/api/local-inference/routing`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      registrations: unknown[];
+      preferences: { preferredProvider: unknown; policy: unknown };
+    };
+    expect(Array.isArray(body.registrations)).toBe(true);
+    expect(body.preferences.preferredProvider).toEqual({});
+    expect(body.preferences.policy).toEqual({});
+  });
+
+  it("POST /api/local-inference/routing/preferred persists + survives a GET", async () => {
+    const post = await fetch(
+      `${harness.baseUrl}/api/local-inference/routing/preferred`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slot: "TEXT_LARGE", provider: "openai" }),
+      },
+    );
+    expect(post.status).toBe(200);
+    const getRes = await fetch(
+      `${harness.baseUrl}/api/local-inference/routing`,
+    );
+    const body = (await getRes.json()) as {
+      preferences: { preferredProvider: Record<string, string> };
+    };
+    expect(body.preferences.preferredProvider.TEXT_LARGE).toBe("openai");
+  });
+
+  it("POST /api/local-inference/routing/policy validates the policy enum", async () => {
+    const bad = await fetch(
+      `${harness.baseUrl}/api/local-inference/routing/policy`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slot: "TEXT_LARGE", policy: "nonsense" }),
+      },
+    );
+    expect(bad.status).toBe(400);
+
+    const ok = await fetch(
+      `${harness.baseUrl}/api/local-inference/routing/policy`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slot: "TEXT_LARGE", policy: "cheapest" }),
+      },
+    );
+    expect(ok.status).toBe(200);
+  });
+
+  it("POST /api/local-inference/routing/preferred rejects an unknown slot", async () => {
+    const res = await fetch(
+      `${harness.baseUrl}/api/local-inference/routing/preferred`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slot: "NOT_A_SLOT", provider: "openai" }),
+      },
+    );
+    expect(res.status).toBe(400);
+  });
 });

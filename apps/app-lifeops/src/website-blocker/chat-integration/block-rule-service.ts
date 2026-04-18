@@ -5,7 +5,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { createUniqueUuid, logger, stringToUuid } from "@elizaos/core";
+import { ChannelType, createUniqueUuid, logger, stringToUuid } from "@elizaos/core";
 import { executeRawSql, sqlQuote, sqlText } from "../../lifeops/sql.js";
 import { blockWebsitesAction } from "../../actions/website-blocker.js";
 import {
@@ -91,21 +91,68 @@ function makeSyntheticMessage(
   runtime: IAgentRuntime,
   websites: readonly string[],
 ): Memory {
+  const worldId = stringToUuid(
+    `block-rule-service-world-${String(runtime.agentId)}`,
+  );
   const roomId = stringToUuid(
     `block-rule-service-${String(runtime.agentId)}`,
   );
-  const entityId = stringToUuid(
-    `block-rule-service-entity-${String(runtime.agentId)}`,
-  );
   return {
     id: createUniqueUuid(runtime, `block-rule-${Date.now()}`),
-    entityId,
+    entityId: runtime.agentId,
     agentId: runtime.agentId as UUID,
     roomId,
+    worldId,
     content: {
       text: `Block ${websites.join(", ")}.`,
+      source: "agent",
     },
   } as Memory;
+}
+
+async function ensureSyntheticMessageContext(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<void> {
+  const worldId = message.worldId ?? stringToUuid(`block-rule-service-world-${String(runtime.agentId)}`);
+  const roomId = message.roomId;
+  const worldMetadata = {
+    ownerId: runtime.agentId,
+    adminIds: [runtime.agentId],
+    roles: {
+      [runtime.agentId]: "OWNER",
+    },
+  } as const;
+
+  if (typeof runtime.ensureWorldExists === "function") {
+    await runtime.ensureWorldExists({
+      id: worldId,
+      name: "Block Rule Service",
+      agentId: runtime.agentId,
+      messageServerId: runtime.agentId,
+      metadata: worldMetadata,
+    } as Parameters<typeof runtime.ensureWorldExists>[0]);
+  }
+
+  if (typeof runtime.ensureConnection === "function") {
+    await runtime.ensureConnection({
+      entityId: runtime.agentId,
+      roomId,
+      worldId,
+      worldName: "Block Rule Service",
+      userName: "Block Rule Service",
+      name: "Block Rule Service",
+      source: "agent",
+      channelId: String(roomId),
+      type: ChannelType.DM,
+      messageServerId: runtime.agentId,
+      metadata: worldMetadata,
+    });
+  }
+
+  if (typeof runtime.ensureParticipantInRoom === "function") {
+    await runtime.ensureParticipantInRoom(runtime.agentId, roomId);
+  }
 }
 
 function computeHandlerOptionsForCreate(
@@ -166,6 +213,7 @@ export class BlockRuleWriter {
     );
 
     const message = makeSyntheticMessage(this.runtime, input.websites);
+    await ensureSyntheticMessageContext(this.runtime, message);
     const handlerOptions = computeHandlerOptionsForCreate(input);
     const result = await blockWebsitesAction.handler(
       this.runtime,

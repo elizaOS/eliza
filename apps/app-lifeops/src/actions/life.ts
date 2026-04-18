@@ -1123,6 +1123,11 @@ async function resolveOccurrenceWithIntentFallback(args: {
 }
 
 function summarizeCadence(cadence: LifeOpsCadence): string {
+  const cadenceWindows = Array.isArray((cadence as { windows?: unknown }).windows)
+    ? ((cadence as { windows: string[] }).windows).filter((window) =>
+        typeof window === "string" && window.trim().length > 0,
+      )
+    : [];
   switch (cadence.kind) {
     case "once": {
       const dueAt = new Date(cadence.dueAt);
@@ -1138,14 +1143,18 @@ function summarizeCadence(cadence: LifeOpsCadence): string {
       })}`;
     }
     case "daily":
-      return `every day in ${cadence.windows.join(", ")}`;
+      return cadenceWindows.length > 0
+        ? `every day in ${cadenceWindows.join(", ")}`
+        : "every day";
     case "times_per_day":
       return cadence.slots
         .map((slot) => slot.label?.trim() || `${slot.minuteOfDay}`)
         .filter(Boolean)
         .join(" and ");
     case "interval":
-      return `every ${cadence.everyMinutes} minutes in ${cadence.windows.join(", ")}`;
+      return cadenceWindows.length > 0
+        ? `every ${cadence.everyMinutes} minutes in ${cadenceWindows.join(", ")}`
+        : `every ${cadence.everyMinutes} minutes`;
     case "weekly":
       return `weekly on ${cadence.weekdays
         .map(
