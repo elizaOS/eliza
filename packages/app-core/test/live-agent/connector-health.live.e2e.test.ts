@@ -76,6 +76,24 @@ async function getFreePort(): Promise<number> {
   });
 }
 
+function buildConfiguredConnectorConfig(): Record<string, Record<string, string>> {
+  const connectors: Record<string, Record<string, string>> = {};
+
+  const discordToken =
+    process.env.DISCORD_BOT_TOKEN?.trim() ||
+    process.env.DISCORD_API_TOKEN?.trim();
+  if (discordToken) {
+    connectors.discord = { token: discordToken };
+  }
+
+  const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  if (telegramBotToken) {
+    connectors.telegram = { botToken: telegramBotToken };
+  }
+
+  return connectors;
+}
+
 import type { RuntimeHarness as Runtime } from "./helpers/runtime-harness";
 
 async function startRuntime(): Promise<Runtime> {
@@ -87,12 +105,14 @@ async function startRuntime(): Promise<Runtime> {
   const allowPlugins = CONFIGURED_CONNECTORS.map(
     (connector) => connector.pluginId,
   );
+  const connectors = buildConfiguredConnectorConfig();
 
   await mkdir(stateDir, { recursive: true });
   await writeFile(
     configPath,
     JSON.stringify({
       logging: { level: "info" },
+      connectors,
       plugins: { allow: allowPlugins },
     }),
     "utf8",
@@ -166,7 +186,16 @@ describeIf(LIVE_CONNECTOR_SUITE_ENABLED)(
         ? (res.data as Array<Record<string, unknown>>)
         : Array.isArray(res.data.connectors)
           ? (res.data.connectors as Array<Record<string, unknown>>)
-          : [];
+          : res.data?.connectors &&
+              typeof res.data.connectors === "object" &&
+              !Array.isArray(res.data.connectors)
+            ? Object.entries(
+                res.data.connectors as Record<string, Record<string, unknown>>,
+              ).map(([id, config]) => ({
+                id,
+                ...(config ?? {}),
+              }))
+            : [];
       expect(connectors.length).toBeGreaterThan(0);
 
       for (const connector of CONFIGURED_CONNECTORS) {

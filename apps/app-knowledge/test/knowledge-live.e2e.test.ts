@@ -42,7 +42,7 @@ async function startKnowledgeServer(): Promise<StartedKnowledgeServer> {
     preferredProvider: LIVE_PROVIDER?.name,
     plugins: [createElizaPlugin({ agentId: "main" })],
   });
-  const { startApiServer } = await import("../src/api/server");
+  const { startApiServer } = await import("@elizaos/agent/api/server");
   const server = await startApiServer({
     port: 0,
     runtime: runtimeResult.runtime,
@@ -190,9 +190,32 @@ RAG retrieval should answer questions about this codeword from the document.
   });
 
   it("step 7: chat retrieves the uploaded knowledge through the real runtime", async () => {
-    const { conversationId } = await createConversation(server?.port ?? 0, {
+    const conversation = await createConversation(server?.port ?? 0, {
       title: "Knowledge retrieval",
     });
+    const conversationId = conversation.conversationId;
+    const roomId = conversation.data?.conversation?.roomId as string | undefined;
+    expect(typeof roomId).toBe("string");
+
+    const roomScopedContent = `
+# Conversation Knowledge Document
+
+The deployment codeword is ${KNOWLEDGE_CODEWORD}.
+    `.trim();
+    const upload = await req(
+      server?.port ?? 0,
+      "POST",
+      "/api/knowledge/documents",
+      {
+        content: roomScopedContent,
+        filename: "conversation-knowledge-doc.md",
+        contentType: "text/markdown",
+        roomId,
+      },
+    );
+    expect(upload.status).toBe(200);
+    expect(upload.data.ok).toBe(true);
+
     const { status, data } = await postConversationMessage(
       server?.port ?? 0,
       conversationId,

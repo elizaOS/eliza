@@ -42,6 +42,7 @@ function coerceConfirmedFlag(value: unknown): boolean {
 
 type WebsiteBlockPlan = {
   shouldAct?: boolean | null;
+  confirmed?: boolean | null;
   response?: string;
   websites: string[];
   durationMinutes?: number | null;
@@ -183,12 +184,15 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
     "Use the current request plus recent conversation context.",
     "Return a JSON object with these fields:",
     "  shouldAct: boolean",
+    "  confirmed: boolean",
     "  response: short natural-language reply when clarification or deferral is needed",
     "  websites: array of public website hostnames or URLs to block",
     "  durationMinutes: positive integer for a timed block, null for an indefinite/manual block, or omit it when the default duration should apply",
     "",
     "Rules:",
     "- Only start a block when the user is clearly asking to block websites now.",
+    "- Set confirmed=true only when the current request explicitly authorizes the block to happen now, including a direct follow-up instruction to act now on previously discussed websites.",
+    "- Set confirmed=false when the user is only naming candidate websites, asking for advice, or asking you to wait.",
     "- Generic focus-block requests like 'turn on a focus block for all social media sites' belong here; do not invent a task gate for them.",
     "- Use BLOCK_WEBSITES for fixed-duration or generic focus blocks. Do not treat them as task-gated blocks unless the user explicitly says until I finish, until I complete, or until I'm done with a task.",
     "- If the user says not yet, later, hold off, wait, or is only discussing candidate sites, set shouldAct=false and explain that you will wait for confirmation.",
@@ -199,10 +203,11 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
     "- If the user gives an exact timed duration like 45, 90, or 135 minutes, preserve that exact duration instead of falling back to the default 60-minute block.",
     "",
     "Examples:",
-    '  {"shouldAct":true,"response":null,"websites":["x.com","twitter.com"],"durationMinutes":120}',
-    '  {"shouldAct":true,"response":null,"websites":["twitter.com"],"durationMinutes":90}',
-    '  {"shouldAct":false,"response":"I noted those websites and will wait for your confirmation before blocking them.","websites":["x.com","twitter.com"]}',
-    '  {"shouldAct":false,"response":"Tell me which public website hostnames to block, such as x.com or youtube.com.","websites":[]}',
+    '  {"shouldAct":true,"confirmed":true,"response":null,"websites":["x.com","twitter.com"],"durationMinutes":120}',
+    '  {"shouldAct":true,"confirmed":true,"response":null,"websites":["twitter.com"],"durationMinutes":90}',
+    '  {"shouldAct":false,"confirmed":false,"response":"I noted those websites and will wait for your confirmation before blocking them.","websites":["x.com","twitter.com"]}',
+    '  {"shouldAct":false,"confirmed":false,"response":"Tell me which public website hostnames to block, such as x.com or youtube.com.","websites":[]}',
+    '  {"shouldAct":true,"confirmed":true,"response":null,"websites":["x.com","twitter.com"],"durationMinutes":1}',
     "",
     "Return ONLY valid JSON.",
     `Current request: ${JSON.stringify(currentMessage)}`,
@@ -225,6 +230,7 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
     }
     return {
       shouldAct: normalizeShouldAct(parsed.shouldAct),
+      confirmed: normalizeShouldAct(parsed.confirmed),
       response: normalizePlannerResponse(parsed.response),
       websites: normalizeWebsiteCandidates(parsed.websites),
       durationMinutes: normalizeDurationMinutes(parsed.durationMinutes),
@@ -333,7 +339,8 @@ export const blockWebsitesAction: Action & {
       };
     }
 
-    const confirmed = coerceConfirmedFlag(params?.confirmed);
+    const confirmed =
+      coerceConfirmedFlag(params?.confirmed) || llmPlan?.confirmed === true;
     if (!confirmed) {
       const websitesLabel = formatWebsiteList(parsed.request.websites);
       const durationLabel =

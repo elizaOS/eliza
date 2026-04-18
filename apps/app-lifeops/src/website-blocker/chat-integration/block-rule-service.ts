@@ -122,7 +122,7 @@ async function ensureSyntheticMessageContext(
     roles: {
       [runtime.agentId]: "OWNER",
     },
-  } as const;
+  };
 
   if (typeof runtime.ensureWorldExists === "function") {
     await runtime.ensureWorldExists({

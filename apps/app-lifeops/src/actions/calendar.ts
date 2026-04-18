@@ -1609,6 +1609,64 @@ function resolveCalendarSearchQueries(args: {
   ]);
 }
 
+async function recoverCalendarSearchQueriesWithLlm(args: {
+  runtime: IAgentRuntime;
+  currentMessage: string;
+  intent: string;
+  recentConversation: string;
+}): Promise<string[]> {
+  const prompt = [
+    "Extract up to 3 short calendar search queries from this request.",
+    "Return ONLY valid JSON with this shape:",
+    '  {"queries":["query one","query two"]}',
+    "",
+    "Rules:",
+    "- Queries should be short people, places, trip labels, flight labels, appointment names, or other event lookup phrases.",
+    "- Do not return generic filler like calendar, event, schedule, search, what, tell me, or do i have.",
+    "- When the user is only asking for the agenda on a date or date range and there is no separate search target, return an empty array.",
+    "- The user may speak in any language.",
+    "",
+    "Examples:",
+    '  "do i have any flights to denver" -> {"queries":["flights to denver","denver"]}',
+    '  "puedes buscar si tengo un vuelo a denver" -> {"queries":["vuelo a denver","denver"]}',
+    '  "what event do i have on March 5" -> {"queries":[]}',
+    "",
+    `Current request: ${JSON.stringify(args.currentMessage)}`,
+    `Resolved intent: ${JSON.stringify(args.intent)}`,
+    `Recent conversation: ${JSON.stringify(args.recentConversation)}`,
+  ].join("\n");
+
+  try {
+    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt,
+    });
+    const raw = typeof result === "string" ? result : "";
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(raw) ??
+      parseJSONObjectFromText(raw);
+    if (!parsed) {
+      return [];
+    }
+    const rawQueries = Array.isArray(parsed.queries)
+      ? parsed.queries
+      : typeof parsed.queries === "string"
+        ? parsed.queries.split(/\s*\|\|\s*|,|\n/)
+        : [];
+    return dedupeCalendarQueries(
+      rawQueries.filter((value): value is string => typeof value === "string"),
+    );
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:calendar",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Calendar search query recovery model call failed",
+    );
+    return [];
+  }
+}
+
 function normalizeIsShortPreparationFlag(value: unknown): boolean {
   if (typeof value === "boolean") return value;
   if (typeof value === "string") {
@@ -3391,8 +3449,58 @@ export const calendarAction: Action & {
       });
 
       if (subaction === "search_events") {
-        const query = searchQueries[0];
-        if (!query || searchQueries.length === 0) {
+        let queriesForSearch = searchQueries;
+        if (queriesForSearch.length === 0) {
+          const recentConversation = (
+            await collectRecentConversationTexts({
+              runtime,
+              message,
+              state,
+              limit: 8,
+            })
+          ).join("\n");
+          queriesForSearch = await recoverCalendarSearchQueriesWithLlm({
+            runtime,
+            currentMessage: messageText(message).trim(),
+            intent,
+            recentConversation,
+          });
+          if (queriesForSearch.length === 0) {
+            const recoveredReadPlan =
+              await disambiguateCalendarReadPlanWithLlm({
+                runtime,
+                currentMessage: messageText(message).trim(),
+                intent,
+                recentConversation,
+                candidateSubaction: "search_events",
+              });
+            if (recoveredReadPlan?.subaction === "feed") {
+              const fallback = formatCalendarFeed(feed, label);
+              return respond({
+                success: true,
+                text: await renderReply("feed_results", fallback, {
+                  label,
+                  events: feed.events,
+                }),
+                data: toActionData(feed),
+              });
+            }
+          }
+        }
+
+        const query = queriesForSearch[0];
+        if (!query || queriesForSearch.length === 0) {
+          if (resolveCalendarLlmWindow(llmPlan)) {
+            const fallback = formatCalendarFeed(feed, label);
+            return respond({
+              success: true,
+              text: await renderReply("feed_results", fallback, {
+                label,
+                events: feed.events,
+              }),
+              data: toActionData(feed),
+            });
+          }
           return respond({
             success: false,
             text: await renderReply(
@@ -3408,7 +3516,7 @@ export const calendarAction: Action & {
           .map((event) => {
             const matchedQueries: string[] = [];
             let score = 0;
-            for (const candidateQuery of searchQueries) {
+            for (const candidateQuery of queriesForSearch) {
               const queryScore = scoreCalendarEvent(event, candidateQuery);
               if (queryScore > 0) {
                 matchedQueries.push(candidateQuery);
@@ -3443,7 +3551,7 @@ export const calendarAction: Action & {
             runtime,
             state,
             intent,
-            searchQueries,
+            queriesForSearch,
             rankedEvents.slice(0, 6),
           );
           if (groundedIds) {
@@ -3462,14 +3570,14 @@ export const calendarAction: Action & {
           success: true,
           text: await renderReply("search_results", fallback, {
             query,
-            queries: searchQueries,
+            queries: queriesForSearch,
             events: filteredEvents,
             label,
           }),
           data: toActionData({
             ...feed,
             query,
-            queries: searchQueries,
+            queries: queriesForSearch,
             events: filteredEvents,
           }),
         });
