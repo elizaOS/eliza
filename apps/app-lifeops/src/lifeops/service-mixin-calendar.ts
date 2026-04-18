@@ -347,16 +347,54 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
         };
       }
 
-      return this.syncGoogleCalendarFeed({
-        requestUrl,
-        requestedMode: mode,
-        requestedSide: effectiveSide,
-        grantId: grant.id,
-        calendarId,
-        timeMin,
-        timeMax,
-        timeZone,
-      });
+      try {
+        return await this.syncGoogleCalendarFeed({
+          requestUrl,
+          requestedMode: mode,
+          requestedSide: effectiveSide,
+          grantId: grant.id,
+          calendarId,
+          timeMin,
+          timeMax,
+          timeZone,
+        });
+      } catch (error) {
+        if (
+          error instanceof LifeOpsServiceError &&
+          (error.status === 401 || error.status === 403)
+        ) {
+          const cachedEvents = await this.repository.listCalendarEvents(
+            this.agentId(),
+            "google",
+            timeMin,
+            timeMax,
+            effectiveSide,
+          );
+          if (cachedEvents.length > 0) {
+            this.logLifeOpsWarn(
+              "calendar_feed_cache_fallback",
+              "Using cached calendar events after Google sync failed.",
+              {
+                statusCode: error.status,
+                calendarId,
+                timeMin,
+                timeMax,
+                side: effectiveSide,
+                cachedEventCount: cachedEvents.length,
+              },
+            );
+            return {
+              calendarId,
+              events: cachedEvents,
+              source: "cache",
+              timeMin,
+              timeMax,
+              syncedAt: syncState?.syncedAt ?? null,
+            };
+          }
+        }
+        throw error;
+      }
     }
 
     public async aggregateCalendarFeeds(
