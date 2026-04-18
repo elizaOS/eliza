@@ -13,7 +13,7 @@
  * `runtime.useModel` (which would loop back to us and recurse).
  */
 
-import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
+import { AgentRuntime, type IAgentRuntime } from "@elizaos/core";
 
 export interface HandlerRegistration {
   modelType: string;
@@ -101,12 +101,13 @@ class HandlerRegistry {
   }
 
   /**
-   * Install the interception on a runtime. Idempotent per runtime instance —
-   * we wrap `registerModel` exactly once even if called multiple times
-   * from different boot paths. The wrapper forwards to the original so
-   * core still sees every registration.
+   * Install the interception on a runtime. Idempotent per runtime instance.
+   * For most boot paths the prototype-level patch below already covers the
+   * runtime before any plugin registers; this method is the belt-and-braces
+   * fallback for runtimes constructed before the patch ran.
    */
   installOn(runtime: AgentRuntime): void {
+    installPrototypePatch();
     const rt = runtime as AgentRuntime & {
       registerModel?: unknown;
     };
@@ -114,13 +115,26 @@ class HandlerRegistry {
     if (this.installedOn.has(rt)) return;
     this.installedOn.add(rt);
 
+    // If the runtime already inherited the patched prototype method the
+    // prototype handles every call. Nothing to do per-instance.
+    const protoMethod = Object.getPrototypeOf(rt)?.registerModel as
+      | HandlerRegistration["handler"]
+      | undefined;
+    if (
+      protoMethod &&
+      (protoMethod as unknown as { [PATCH_MARK]?: true })[PATCH_MARK]
+    ) {
+      return;
+    }
+
+    // Per-instance wrap only for legacy runtimes whose prototype pre-dates
+    // our prototype patch (shouldn't happen in practice).
     const original = rt.registerModel.bind(runtime) as (
       modelType: string,
       handler: HandlerRegistration["handler"],
       provider: string,
       priority?: number,
     ) => void;
-
     rt.registerModel = ((
       modelType: string,
       handler: HandlerRegistration["handler"],
@@ -137,7 +151,66 @@ class HandlerRegistry {
       return original(modelType, handler, provider, priority);
     }) as typeof rt.registerModel;
   }
+
+  /** Exposed so the prototype patch can record through the singleton. */
+  recordFromPrototype(reg: HandlerRegistration): void {
+    this.record(reg);
+  }
 }
+
+const PATCH_MARK = Symbol.for("milady.local-inference.registerModel.patched");
+let prototypePatched = false;
+
+/**
+ * One-shot patch of `AgentRuntime.prototype.registerModel` so every runtime
+ * instance — including ones constructed later in boot — records through
+ * the singleton handler registry. Idempotent.
+ */
+function installPrototypePatch(): void {
+  if (prototypePatched) return;
+  const proto = AgentRuntime.prototype as unknown as {
+    registerModel: (
+      this: AgentRuntime,
+      modelType: string,
+      handler: HandlerRegistration["handler"],
+      provider: string,
+      priority?: number,
+    ) => void;
+  };
+  const original = proto.registerModel;
+  if (typeof original !== "function") return;
+  if ((original as unknown as { [PATCH_MARK]?: true })[PATCH_MARK]) {
+    prototypePatched = true;
+    return;
+  }
+  const patched = function patchedRegisterModel(
+    this: AgentRuntime,
+    modelType: string,
+    handler: HandlerRegistration["handler"],
+    provider: string,
+    priority?: number,
+  ): void {
+    try {
+      handlerRegistry.recordFromPrototype({
+        modelType: String(modelType),
+        provider: String(provider),
+        priority: typeof priority === "number" ? priority : 0,
+        registeredAt: new Date().toISOString(),
+        handler,
+      });
+    } catch {
+      // Never let registry bookkeeping break the registration path.
+    }
+    return original.call(this, modelType, handler, provider, priority);
+  } as typeof original & { [PATCH_MARK]?: true };
+  patched[PATCH_MARK] = true;
+  proto.registerModel = patched;
+  prototypePatched = true;
+}
+
+// Install at module-import time. This is a process-wide side effect but a
+// benign one: the patch is idempotent and forwards to the original.
+installPrototypePatch();
 
 export const handlerRegistry = new HandlerRegistry();
 

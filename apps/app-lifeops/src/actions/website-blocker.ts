@@ -15,6 +15,7 @@ import {
   formatWebsiteList,
   getSelfControlPermissionState,
   getSelfControlStatus,
+  normalizeWebsiteTargets,
   parseSelfControlBlockRequest,
   requestSelfControlPermission,
   startSelfControlBlock,
@@ -136,6 +137,7 @@ function normalizeWebsiteCandidates(value: unknown): string[] {
     values
       .filter((item): item is string => typeof item === "string")
       .map((item) => item.trim())
+      .map((item) => item.replace(/^[\[\]'"]+|[\[\]'"]+$/g, ""))
       .filter((item) => item.length > 0),
   )];
 }
@@ -238,6 +240,21 @@ function extractHeuristicDurationMinutes(text: string): number | null | undefine
   }
 
   return undefined;
+}
+
+function shouldTrustExplicitWebsites(
+  explicitWebsites: readonly string[],
+  heuristicWebsites: readonly string[],
+): boolean {
+  if (explicitWebsites.length === 0) {
+    return false;
+  }
+  if (heuristicWebsites.length === 0) {
+    return true;
+  }
+  return explicitWebsites.every((website) =>
+    heuristicWebsites.includes(website),
+  );
 }
 
 async function collectWebsiteBlockConversationTurns(args: {
@@ -462,20 +479,27 @@ export const blockWebsitesAction: Action & {
 
     const messageText = getMessageText(message);
     const params = options?.parameters as BlockWebsitesParameters | undefined;
-    const explicitWebsites = normalizeWebsiteCandidates(params?.websites);
+    const explicitWebsites = normalizeWebsiteTargets(
+      normalizeWebsiteCandidates(params?.websites),
+    );
     const explicitDurationMinutes = normalizeDurationMinutes(
       params?.durationMinutes,
     );
-    const heuristicWebsites =
-      explicitWebsites.length === 0
-        ? extractHeuristicWebsites(messageText)
-        : [];
+    const heuristicWebsites = normalizeWebsiteTargets(
+      extractHeuristicWebsites(messageText),
+    );
+    const trustedExplicitWebsites = shouldTrustExplicitWebsites(
+      explicitWebsites,
+      heuristicWebsites,
+    )
+      ? explicitWebsites
+      : [];
     const heuristicDurationMinutes =
       explicitDurationMinutes === undefined
         ? extractHeuristicDurationMinutes(messageText)
         : explicitDurationMinutes;
     const llmPlan =
-      explicitWebsites.length === 0 && heuristicWebsites.length === 0
+      trustedExplicitWebsites.length === 0 && heuristicWebsites.length === 0
         ? await resolveWebsiteBlockPlanWithLlm({
             runtime,
             message,
@@ -483,7 +507,7 @@ export const blockWebsitesAction: Action & {
           })
         : null;
     const recoveredWebsites =
-      explicitWebsites.length === 0 &&
+      trustedExplicitWebsites.length === 0 &&
       (llmPlan?.websites.length ?? 0) === 0
         ? await recoverWebsiteContextWithLlm({
             runtime,
@@ -492,15 +516,15 @@ export const blockWebsitesAction: Action & {
           })
         : [];
     const plannedWebsites =
-      explicitWebsites.length > 0
-        ? explicitWebsites
+      trustedExplicitWebsites.length > 0
+        ? trustedExplicitWebsites
         : heuristicWebsites.length > 0
           ? heuristicWebsites
-        : ((llmPlan?.websites.length ?? 0) > 0
+          : ((llmPlan?.websites.length ?? 0) > 0
             ? llmPlan?.websites
             : recoveredWebsites);
 
-    if (llmPlan?.shouldAct === false && explicitWebsites.length === 0) {
+    if (llmPlan?.shouldAct === false && trustedExplicitWebsites.length === 0) {
       return {
         success: true,
         text:
