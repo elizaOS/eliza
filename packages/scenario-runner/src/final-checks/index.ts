@@ -48,6 +48,94 @@ function matchesPattern(value: string, pattern: string | RegExp): boolean {
   return pattern.test(value);
 }
 
+function matchesActionName(
+  value: string,
+  accepted: string | string[] | undefined,
+): boolean {
+  if (accepted === undefined) {
+    return true;
+  }
+  return toArray(accepted).includes(value);
+}
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function hasBrowserTaskCompletedValue(value: unknown): boolean {
+  const record = toRecord(value);
+  if (!record) {
+    return false;
+  }
+  const browserTask = toRecord(record.browserTask);
+  if (browserTask?.completed === true) {
+    return true;
+  }
+  const cancellation = toRecord(record.cancellation);
+  if (cancellation?.status === "completed") {
+    return true;
+  }
+  const session = toRecord(record.session);
+  return session?.status === "done";
+}
+
+function hasBrowserTaskNeedsHumanValue(value: unknown): boolean {
+  const record = toRecord(value);
+  if (!record) {
+    return false;
+  }
+  const browserTask = toRecord(record.browserTask);
+  if (browserTask?.needsHuman === true) {
+    return true;
+  }
+  const cancellation = toRecord(record.cancellation);
+  if (
+    typeof cancellation?.status === "string" &&
+    [
+      "awaiting_confirmation",
+      "needs_login",
+      "needs_mfa",
+      "needs_user_choice",
+      "retention_offer",
+      "phone_only",
+      "chat_only",
+      "blocked",
+    ].includes(cancellation.status)
+  ) {
+    return true;
+  }
+  const session = toRecord(record.session);
+  return session?.status === "awaiting_confirmation";
+}
+
+function actionArtifactsPresent(action: ScenarioContext["actionsCalled"][number]): boolean {
+  const result = action.result;
+  if (!result) {
+    return false;
+  }
+  if (
+    typeof result.screenshot === "string" ||
+    typeof result.frontendScreenshot === "string" ||
+    typeof result.path === "string"
+  ) {
+    return true;
+  }
+  const raw = toRecord(result.raw);
+  const data = toRecord(result.data);
+  const browserTask = toRecord(data?.browserTask);
+  const nestedArtifacts = Array.isArray(browserTask?.artifacts)
+    ? browserTask.artifacts
+    : Array.isArray(data?.artifacts)
+      ? data.artifacts
+      : null;
+  return (
+    Array.isArray(raw?.attachments) ||
+    Array.isArray(nestedArtifacts) && nestedArtifacts.length > 0
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Built-in handlers
 // ---------------------------------------------------------------------------
@@ -174,22 +262,44 @@ registerFinalCheckHandler("memoryWriteOccurred", (check, { ctx }) => {
 
 registerFinalCheckHandler(
   "approvalRequestExists",
-  (_check, { ctx }) => {
+  (check, { ctx }) => {
     if (ctx.approvalRequests === undefined) {
       return {
         status: "skipped-dependency-missing",
         detail: "no approval queue service registered",
       };
     }
-    if (ctx.approvalRequests.length === 0) {
+    const { expected, actionName, state } = check as {
+      expected?: boolean;
+      actionName?: string | string[];
+      state?: string | string[];
+    };
+    const filtered = ctx.approvalRequests.filter((request) => {
+      if (!matchesActionName(request.actionName, actionName)) {
+        return false;
+      }
+      if (state === undefined) {
+        return true;
+      }
+      return toArray(state).includes(request.state);
+    });
+    const want = expected ?? true;
+    const any = filtered.length > 0;
+    if (any === want) {
+      return {
+        status: "passed",
+        detail: `${filtered.length} matching approval request(s)`,
+      };
+    }
+    if (!any) {
       return {
         status: "failed",
-        detail: "approval queue registered but no requests captured",
+        detail: "approval queue registered but no matching requests were captured",
       };
     }
     return {
-      status: "passed",
-      detail: `${ctx.approvalRequests.length} approval request(s)`,
+      status: "failed",
+      detail: `expected approvalRequestExists=${want}, saw ${filtered.length} matching request(s)`,
     };
   },
 );
@@ -250,6 +360,106 @@ registerFinalCheckHandler("interventionRequestExists", (check, { ctx }) => {
   return {
     status: "failed",
     detail: `expected interventionRequestExists=${want}, saw ${any}`,
+  };
+});
+
+registerFinalCheckHandler("noSideEffectOnReject", (check, { ctx }) => {
+  const { actionName } = check as { actionName: string | string[] };
+  const matchingActions = ctx.actionsCalled.filter((action) =>
+    matchesActionName(action.actionName, actionName),
+  );
+  const rejected = matchingActions.some((action) => {
+    const params = toRecord(action.parameters);
+    return params?.confirmed === false;
+  });
+  if (!rejected) {
+    return {
+      status: "failed",
+      detail: `no rejected action found for [${toArray(actionName).join(",")}]`,
+    };
+  }
+  const completed = matchingActions.some((action) =>
+    hasBrowserTaskCompletedValue(action.result?.data) ||
+    hasBrowserTaskCompletedValue(action.result?.raw),
+  );
+  const artifacts = matchingActions.some((action) => actionArtifactsPresent(action));
+  if (completed || artifacts) {
+    return {
+      status: "failed",
+      detail: "reject path still produced a completion or artifact side effect",
+    };
+  }
+  return {
+    status: "passed",
+    detail: "reject path produced no completion or artifact side effects",
+  };
+});
+
+registerFinalCheckHandler("browserTaskCompleted", (check, { ctx }) => {
+  const { expected } = check as { expected?: boolean };
+  const any =
+    ctx.actionsCalled.some(
+      (action) =>
+        hasBrowserTaskCompletedValue(action.result?.data) ||
+        hasBrowserTaskCompletedValue(action.result?.raw),
+    ) ||
+    (ctx.stateTransitions ?? []).some(
+      (transition) =>
+        transition.subject === "browser_task" && transition.to === "completed",
+    );
+  const want = expected ?? true;
+  if (any === want) {
+    return {
+      status: "passed",
+      detail: `browserTaskCompleted=${want}`,
+    };
+  }
+  return {
+    status: "failed",
+    detail: `expected browserTaskCompleted=${want}, saw ${any}`,
+  };
+});
+
+registerFinalCheckHandler("browserTaskNeedsHuman", (check, { ctx }) => {
+  const { expected } = check as { expected?: boolean };
+  const any =
+    ctx.actionsCalled.some(
+      (action) =>
+        hasBrowserTaskNeedsHumanValue(action.result?.data) ||
+        hasBrowserTaskNeedsHumanValue(action.result?.raw),
+    ) ||
+    (ctx.stateTransitions ?? []).some(
+      (transition) =>
+        transition.subject === "browser_task" && transition.to === "needs_human",
+    );
+  const want = expected ?? true;
+  if (any === want) {
+    return {
+      status: "passed",
+      detail: `browserTaskNeedsHuman=${want}`,
+    };
+  }
+  return {
+    status: "failed",
+    detail: `expected browserTaskNeedsHuman=${want}, saw ${any}`,
+  };
+});
+
+registerFinalCheckHandler("uploadedAssetExists", (check, { ctx }) => {
+  const { expected } = check as { expected?: boolean };
+  const any =
+    (ctx.artifacts ?? []).length > 0 ||
+    ctx.actionsCalled.some((action) => actionArtifactsPresent(action));
+  const want = expected ?? true;
+  if (any === want) {
+    return {
+      status: "passed",
+      detail: `uploadedAssetExists=${want}`,
+    };
+  }
+  return {
+    status: "failed",
+    detail: `expected uploadedAssetExists=${want}, saw ${any}`,
   };
 });
 

@@ -53,11 +53,17 @@ describe("LifeOps executive-assistant prompt benchmark contracts", () => {
 
       expect(directCase?.expectedAction).not.toBeNull();
       expect(directCase?.forbiddenActions ?? []).toEqual([]);
+      expect(String(directCase?.benchmarkContext).toLowerCase()).toContain(
+        "prefer executing the best matching action",
+      );
 
       expect(nullCase?.expectedAction).toBeNull();
       expect(nullCase?.acceptableActions).toEqual(["REPLY"]);
       expect(nullCase?.forbiddenActions).toEqual(
         expect.arrayContaining([String(directCase?.expectedAction ?? "")]),
+      );
+      expect(String(nullCase?.benchmarkContext).toLowerCase()).toContain(
+        "avoid executing durable actions",
       );
     }
   });

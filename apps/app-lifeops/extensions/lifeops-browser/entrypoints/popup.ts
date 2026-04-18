@@ -203,9 +203,9 @@ async function refresh(refs: FormRefs): Promise<void> {
   }
   if (!response.state.config && !autoPairAttempted) {
     autoPairAttempted = true;
-    refs.statusTitle.textContent = "Looking for Milady in this browser";
+    refs.statusTitle.textContent = "Looking for LifeOps in this browser";
     refs.statusDetail.textContent =
-      "Searching open tabs for a live Milady or Eliza app so this browser can connect itself.";
+      "Searching open tabs for a live LifeOps app so this browser can connect itself.";
     const autoPairResponse = await sendMessage({
       type: "lifeops-browser:auto-pair",
     });

@@ -3048,7 +3048,8 @@ _ALL_ACTION_DOCS_JSON = """{
         "HOW_TO",
         "GET_INSTRUCTIONS",
         "LEARN_SKILL",
-        "LOOKUP_SKILL"
+        "LOOKUP_SKILL",
+        "USE_SKILL"
       ]
     },
     {
@@ -3433,7 +3434,8 @@ _ALL_ACTION_DOCS_JSON = """{
       "parameters": [],
       "similes": [
         "EXECUTE_SKILL_SCRIPT",
-        "SKILL_SCRIPT"
+        "SKILL_SCRIPT",
+        "USE_SKILL"
       ]
     },
     {
@@ -3483,7 +3485,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "SEARCH_SKILLS",
-      "description": "Search the skill registry for available skills by keyword or category.",
+      "description": "Search the skill registry for available skills by keyword or category. Returns each result with action chips (use/enable/disable/install/copy/details).",
       "parameters": [],
       "similes": [
         "BROWSE_SKILLS",
@@ -3966,6 +3968,17 @@ _ALL_ACTION_DOCS_JSON = """{
         "SEE_SCREEN",
         "LOOK_AT_SCREEN",
         "VIEW_SCREEN"
+      ]
+    },
+    {
+      "name": "USE_SKILL",
+      "description": "Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
+      "parameters": [],
+      "similes": [
+        "INVOKE_SKILL",
+        "EXECUTE_SKILL",
+        "RUN_SKILL",
+        "CALL_SKILL"
       ]
     }
   ]

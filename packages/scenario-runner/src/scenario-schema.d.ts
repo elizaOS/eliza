@@ -7,6 +7,13 @@ declare module "@elizaos/scenario-schema" {
       data?: unknown;
       values?: unknown;
       text?: string;
+      message?: string;
+      error?: string;
+      screenshot?: string;
+      frontendScreenshot?: string;
+      path?: string;
+      exists?: boolean;
+      raw?: unknown;
     };
     error?: {
       message?: string;
@@ -46,6 +53,8 @@ declare module "@elizaos/scenario-schema" {
     id: string;
     state: ApprovalRequestState;
     actionName: string;
+    source?: string;
+    command?: string;
     channel?: string;
     payload?: unknown;
     createdAt?: string;
@@ -73,7 +82,20 @@ declare module "@elizaos/scenario-schema" {
     subject: string;
     from?: string;
     to: string;
+    actionName?: string;
+    requestId?: string;
+    metadata?: Record<string, unknown>;
     at?: string;
+  };
+
+  export type CapturedArtifact = {
+    source: string;
+    actionName?: string;
+    kind: string;
+    label?: string;
+    detail?: string;
+    data?: unknown;
+    createdAt?: string;
   };
 
   export type ScenarioContext = {
@@ -84,6 +106,7 @@ declare module "@elizaos/scenario-schema" {
     connectorDispatches?: CapturedConnectorDispatch[];
     memoryWrites?: CapturedMemoryWrite[];
     stateTransitions?: CapturedStateTransition[];
+    artifacts?: CapturedArtifact[];
   };
 
   export type ScenarioSeedStep = {

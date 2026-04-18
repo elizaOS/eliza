@@ -12,6 +12,7 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "outDir": "dist/esm",
+    "rootDir": "src",
     "pretty": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,

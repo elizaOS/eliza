@@ -39,7 +39,6 @@ import {
   addTabsRemovedListener,
   addTabsUpdatedListener,
   addWindowFocusListener,
-  clearAlarm,
   createAlarm,
   createTab,
   executeScriptInMainWorld,
@@ -82,7 +81,7 @@ let backgroundState: BackgroundState = {
 let rememberedTabs: RememberedTab[] = [];
 let syncScheduled = false;
 let syncInFlight = false;
-let configInvalidated = false;
+let _configInvalidated = false;
 let activeSessionId: string | null = null;
 let autoPairInFlight = false;
 let lastAutoPairAttemptAt = 0;
@@ -279,7 +278,9 @@ async function requestAutoPairFromTab(
   }
 }
 
-async function attemptAutoPair(reason: string): Promise<CompanionConfig | null> {
+async function attemptAutoPair(
+  reason: string,
+): Promise<CompanionConfig | null> {
   if (autoPairInFlight) {
     return null;
   }
@@ -301,15 +302,19 @@ async function attemptAutoPair(reason: string): Promise<CompanionConfig | null> 
       ]),
     ];
     let lastErrorMessage =
-      "Open LifeOps or the Eliza app in this browser, then reopen the popup to auto-pair.";
+      "Open LifeOps in this browser, then reopen the popup to auto-pair.";
 
     for (const apiBaseUrl of candidateApiBaseUrls) {
       for (const tabId of tabsForApiBaseUrl(openTabs, apiBaseUrl)) {
-        const response = await requestAutoPairFromTab(tabId, apiBaseUrl, request);
+        const response = await requestAutoPairFromTab(
+          tabId,
+          apiBaseUrl,
+          request,
+        );
         if (response.ok) {
           const config = await saveCompanionConfig(response.data.config);
           if (config) {
-            configInvalidated = false;
+            _configInvalidated = false;
             createAlarm(SYNC_ALARM, SYNC_INTERVAL_MINUTES);
             await setState({
               config,
@@ -330,7 +335,7 @@ async function attemptAutoPair(reason: string): Promise<CompanionConfig | null> 
       if (response.ok) {
         const config = await saveCompanionConfig(response.data.config);
         if (config) {
-          configInvalidated = false;
+          _configInvalidated = false;
           createAlarm(SYNC_ALARM, SYNC_INTERVAL_MINUTES);
           await setState({
             config,
@@ -351,7 +356,7 @@ async function attemptAutoPair(reason: string): Promise<CompanionConfig | null> 
       lastError:
         reason === "popup"
           ? lastErrorMessage
-          : backgroundState.lastError ?? lastErrorMessage,
+          : (backgroundState.lastError ?? lastErrorMessage),
     });
     return null;
   } finally {
@@ -817,8 +822,7 @@ async function syncNow(reason: string): Promise<BackgroundState> {
     await setState({
       syncing: false,
       lastError:
-        backgroundState.lastError ??
-        "LifeOps Browser companion is not paired.",
+        backgroundState.lastError ?? "LifeOps Browser companion is not paired.",
       settingsSummary: null,
       lastSessionStatus: null,
     });
@@ -855,7 +859,7 @@ async function syncNow(reason: string): Promise<BackgroundState> {
     const isPairingInvalid =
       error instanceof RelayApiError && error.status === 401;
     if (isPairingInvalid) {
-      configInvalidated = true;
+      _configInvalidated = true;
       syncScheduled = false;
       await clearCompanionConfig();
     }
@@ -914,7 +918,7 @@ async function handlePopupMessage(
         if (!nextConfig) {
           throw new Error("companionId and pairingToken are required");
         }
-        configInvalidated = false;
+        _configInvalidated = false;
         await saveCompanionConfig(nextConfig);
         await setState({
           config: nextConfig,
@@ -926,7 +930,7 @@ async function handlePopupMessage(
         return { ok: true, state: backgroundState };
       }
       case "lifeops-browser:clear-config": {
-        configInvalidated = false;
+        _configInvalidated = false;
         await clearCompanionConfig();
         rememberedTabs = [];
         activeSessionId = null;

@@ -32,6 +32,12 @@ import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBrid
 
 const POLL_INTERVAL_MS = 2_500;
 
+function isBrowserWorkspaceSessionMode(
+  mode: BrowserWorkspaceSnapshot["mode"],
+): boolean {
+  return mode === "cloud" || mode === "desktop";
+}
+
 function normalizeBrowserWorkspaceInputUrl(rawUrl: string): string | null {
   const trimmed = rawUrl.trim();
   if (!trimmed) return null;
@@ -48,7 +54,7 @@ function normalizeBrowserWorkspaceInputUrl(rawUrl: string): string | null {
     throw new Error("Enter a valid http or https URL.");
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("Only http and https pages can be embedded.");
+    throw new Error("Only http and https URLs are supported.");
   }
   return parsed.toString();
 }
@@ -122,6 +128,8 @@ export function BrowserWorkspaceView(): JSX.Element {
   const [locationDirty, setLocationDirty] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
+  const [tabSnapshots, setTabSnapshots] = useState<Record<string, string>>({});
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [chatSidebarCollapsed, setChatSidebarCollapsed] = useState(false);
   const initialBrowseUrlRef = useRef<string | null | undefined>(undefined);
@@ -150,6 +158,9 @@ export function BrowserWorkspaceView(): JSX.Element {
     () => workspace.tabs.find((tab) => tab.id === selectedTabId) ?? null,
     [selectedTabId, workspace.tabs],
   );
+  const selectedTabSnapshot = selectedTabId ? tabSnapshots[selectedTabId] ?? null : null;
+  const selectedTabLiveViewUrl =
+    selectedTab?.interactiveLiveViewUrl ?? selectedTab?.liveViewUrl ?? null;
 
   useEffect(() => {
     getStewardPendingRef.current = getStewardPending;
@@ -262,6 +273,34 @@ export function BrowserWorkspaceView(): JSX.Element {
     [],
   );
 
+  const loadSelectedBrowserWorkspaceSnapshot = useCallback(
+    async (tabId: string, mode: BrowserWorkspaceSnapshot["mode"]) => {
+      if (!isBrowserWorkspaceSessionMode(mode)) {
+        setSnapshotError(null);
+        return;
+      }
+      try {
+        const snapshot = await client.snapshotBrowserWorkspaceTab(tabId);
+        setTabSnapshots((current) => {
+          if (current[tabId] === snapshot.data) {
+            return current;
+          }
+          return { ...current, [tabId]: snapshot.data };
+        });
+        setSnapshotError(null);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : tRef.current("browserworkspace.SnapshotFailed", {
+                defaultValue: "Failed to load browser session preview.",
+              });
+        setSnapshotError(message);
+      }
+    },
+    [],
+  );
+
   const openNewBrowserWorkspaceTab = useCallback(
     async (rawUrl: string) => {
       const url = normalizeBrowserWorkspaceInputUrl(rawUrl);
@@ -305,17 +344,20 @@ export function BrowserWorkspaceView(): JSX.Element {
         selectedTabId,
         url,
       );
-      // React won't re-navigate an existing iframe when only the src attribute
-      // changes (same key = same DOM element). Set the src directly via the ref.
-      const iframe = iframeRefs.current.get(selectedTabId);
-      if (iframe && iframe.src !== tab.url) {
-        iframe.src = tab.url;
+      if (workspace.mode === "web") {
+        // React won't re-navigate an existing iframe when only the src
+        // attribute changes (same key = same DOM element). Set the src
+        // directly via the ref in embedded web mode only.
+        const iframe = iframeRefs.current.get(selectedTabId);
+        if (iframe && iframe.src !== tab.url) {
+          iframe.src = tab.url;
+        }
       }
       await loadWorkspace({ preferTabId: tab.id, silent: true });
       setLocationInput(tab.url);
       setLocationDirty(false);
     },
-    [loadWorkspace, openNewBrowserWorkspaceTab, selectedTabId],
+    [loadWorkspace, openNewBrowserWorkspaceTab, selectedTabId, workspace.mode],
   );
 
   const registerBrowserWorkspaceIframe = useCallback(
@@ -331,7 +373,7 @@ export function BrowserWorkspaceView(): JSX.Element {
 
   const { postBrowserWalletReady } = useBrowserWorkspaceWalletBridge({
     iframeRefs,
-    workspaceTabs: workspace.tabs,
+    workspaceTabs: workspace.mode === "web" ? workspace.tabs : [],
     walletState: browserWalletState,
     loadWalletState: loadBrowserWalletState,
   });
@@ -350,6 +392,28 @@ export function BrowserWorkspaceView(): JSX.Element {
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [loadWorkspace, selectedTabId]);
+
+  useEffect(() => {
+    if (!selectedTabId || !isBrowserWorkspaceSessionMode(workspace.mode)) {
+      setSnapshotError(null);
+      return;
+    }
+    void loadSelectedBrowserWorkspaceSnapshot(selectedTabId, workspace.mode);
+  }, [loadSelectedBrowserWorkspaceSnapshot, selectedTabId, workspace.mode]);
+
+  useEffect(() => {
+    if (!selectedTabId || !isBrowserWorkspaceSessionMode(workspace.mode)) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void loadSelectedBrowserWorkspaceSnapshot(selectedTabId, workspace.mode);
+    }, POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [
+    loadSelectedBrowserWorkspaceSnapshot,
+    selectedTabId,
+    workspace.mode,
+  ]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -415,13 +479,17 @@ export function BrowserWorkspaceView(): JSX.Element {
     workspace.tabs,
   ]);
 
-  const reloadSelectedBrowserWorkspaceTab = useCallback(() => {
+  const reloadSelectedBrowserWorkspaceTab = useCallback(async () => {
     if (!selectedTab) return;
-    const iframe = iframeRefs.current.get(selectedTab.id);
-    if (iframe) {
-      iframe.src = selectedTab.url;
+    if (workspace.mode === "web") {
+      const iframe = iframeRefs.current.get(selectedTab.id);
+      if (iframe) {
+        iframe.src = selectedTab.url;
+      }
+      return;
     }
-  }, [selectedTab]);
+    await client.navigateBrowserWorkspaceTab(selectedTab.id, selectedTab.url);
+  }, [selectedTab, workspace.mode]);
 
   return (
     <div
@@ -432,6 +500,7 @@ export function BrowserWorkspaceView(): JSX.Element {
       <div className="flex items-center gap-1 overflow-x-auto border-b border-border/30 bg-card/30 px-2 pt-2">
         {workspace.tabs.map((tab) => {
           const active = tab.id === selectedTabId;
+          const tabHasSessionFocus = workspace.mode === "web" ? tab.visible : active;
           const label = getBrowserWorkspaceTabLabel(tab);
           const activate = () =>
             void runBrowserWorkspaceAction(`show:${tab.id}`, async () => {
@@ -459,7 +528,7 @@ export function BrowserWorkspaceView(): JSX.Element {
                   : "border-transparent bg-card/30 text-muted hover:bg-card/60 hover:text-txt"
               }`}
             >
-              {tab.visible ? (
+              {tabHasSessionFocus ? (
                 <>
                   <span
                     aria-hidden
@@ -538,7 +607,11 @@ export function BrowserWorkspaceView(): JSX.Element {
           className="h-8 w-8"
           aria-label={t("common.refresh", { defaultValue: "Refresh" })}
           disabled={!selectedTab || busyAction !== null}
-          onClick={reloadSelectedBrowserWorkspaceTab}
+          onClick={() =>
+            void runBrowserWorkspaceAction("reload:selected", async () => {
+              await reloadSelectedBrowserWorkspaceTab();
+            })
+          }
         >
           <RefreshCw className="h-4 w-4" />
         </Button>
@@ -580,6 +653,15 @@ export function BrowserWorkspaceView(): JSX.Element {
         </Button>
       </div>
 
+      {workspace.mode === "web" ? (
+        <div className="border-b border-border/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+          {t("browserworkspace.WebFallbackNotice", {
+            defaultValue:
+              "Embedded fallback only. This mode uses iframe/JSDOM browsing and is not equivalent to a real browser session. Sites like Google and Discord may refuse to load here. Use desktop or cloud browser sessions for full browsing.",
+          })}
+        </div>
+      ) : null}
+
       {/* Content row — iframes on the left, chat sidebar on the right */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="relative flex-1 min-h-0 overflow-hidden bg-bg">
@@ -605,16 +687,22 @@ export function BrowserWorkspaceView(): JSX.Element {
                       })}
                 </div>
                 <div className="text-xs text-muted">
-                  {t("browserworkspace.EmptyDescription", {
-                    defaultValue:
-                      "Open a page here, or jump straight to a site like Discord from LifeOps.",
-                  })}
+                  {isBrowserWorkspaceSessionMode(workspace.mode)
+                    ? t("browserworkspace.EmptySessionDescription", {
+                        defaultValue:
+                          "Open a page to start a real browser session. The preview here follows the session instead of embedding the target site directly.",
+                      })
+                    : t("browserworkspace.EmptyDescription", {
+                        defaultValue:
+                          "Open a page here, or jump straight to a site like Discord from LifeOps.",
+                      })}
                 </div>
               </div>
             </div>
-          ) : (
+          ) : workspace.mode === "web" ? (
             workspace.tabs.map((tab) => {
               const active = tab.id === selectedTabId;
+              const highlighted = tab.visible;
               return (
                 <iframe
                   key={tab.id}
@@ -632,10 +720,116 @@ export function BrowserWorkspaceView(): JSX.Element {
                       ? "pointer-events-auto opacity-100"
                       : "pointer-events-none opacity-0"
                   }`}
-                  onLoad={() => postBrowserWalletReady(tab, browserWalletState)}
+                  onLoad={() =>
+                    highlighted
+                      ? postBrowserWalletReady(tab, browserWalletState)
+                      : undefined
+                  }
                 />
               );
             })
+          ) : (
+            <div className="flex h-full flex-1 flex-col bg-bg">
+              <div className="flex flex-wrap items-center gap-2 border-b border-border/30 bg-card/20 px-3 py-2 text-xs text-muted">
+                <span className="rounded-full border border-border/40 bg-card/60 px-2 py-1 font-medium text-txt">
+                  {workspace.mode === "cloud"
+                    ? t("browserworkspace.CloudSession", {
+                        defaultValue: "Cloud browser session",
+                      })
+                    : t("browserworkspace.DesktopSession", {
+                        defaultValue: "Desktop browser session",
+                      })}
+                </span>
+                {selectedTab?.provider ? (
+                  <span>
+                    {t("browserworkspace.Provider", {
+                      defaultValue: "Provider",
+                    })}
+                    {`: ${selectedTab.provider}`}
+                  </span>
+                ) : null}
+                {selectedTab?.status ? (
+                  <span>
+                    {t("browserworkspace.Status", {
+                      defaultValue: "Status",
+                    })}
+                    {`: ${selectedTab.status}`}
+                  </span>
+                ) : null}
+                {selectedTabLiveViewUrl ? (
+                  <button
+                    type="button"
+                    className="rounded-md border border-border/40 px-2 py-1 text-txt hover:bg-card/60"
+                    onClick={() =>
+                      void runBrowserWorkspaceAction(
+                        "open:live-session",
+                        async () => {
+                          await openExternalUrl(selectedTabLiveViewUrl);
+                        },
+                      )
+                    }
+                  >
+                    {t("browserworkspace.OpenLiveSession", {
+                      defaultValue: "Open live session",
+                    })}
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-card/15">
+                {snapshotError ? (
+                  <div
+                    className="absolute left-1/2 top-6 z-20 -translate-x-1/2 rounded-md border border-danger/50 bg-danger/15 px-3 py-1.5 text-xs text-danger"
+                    role="alert"
+                  >
+                    {snapshotError}
+                  </div>
+                ) : null}
+
+                {selectedTabSnapshot ? (
+                  <img
+                    alt={
+                      selectedTab
+                        ? getBrowserWorkspaceTabLabel(selectedTab)
+                        : t("browserworkspace.SessionPreview", {
+                            defaultValue: "Browser session preview",
+                          })
+                    }
+                    src={`data:image/png;base64,${selectedTabSnapshot}`}
+                    className="h-full w-full object-contain"
+                  />
+                ) : (
+                  <div className="flex max-w-sm flex-col items-center gap-2 px-6 text-center">
+                    <div className="text-sm font-semibold text-txt">
+                      {t("browserworkspace.SessionPreviewPending", {
+                        defaultValue: "Waiting for browser session preview",
+                      })}
+                    </div>
+                    <div className="text-xs text-muted">
+                      {t("browserworkspace.SessionPreviewPendingDescription", {
+                        defaultValue:
+                          "The page is running in a real browser session. A fresh preview will appear here as the session updates.",
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {selectedTab ? (
+                <div className="border-t border-border/30 bg-card/20 px-3 py-2 text-xs text-muted">
+                  <div className="truncate font-medium text-txt">
+                    {getBrowserWorkspaceTabLabel(selectedTab)}
+                  </div>
+                  <div className="truncate">{selectedTab.url}</div>
+                  <div className="mt-1">
+                    {t("browserworkspace.RealSessionDescription", {
+                      defaultValue:
+                        "This is a real browser session, not a raw iframe embed. Use chat or browser actions to navigate and interact with sites like Google and Discord.",
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
           )}
         </div>
 

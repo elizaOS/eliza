@@ -27,6 +27,7 @@ import type {
 import { hasAdminAccess } from "@elizaos/agent/security/access";
 import { resolveAdminEntityId } from "@elizaos/agent/actions/send-message";
 import { INTERNAL_URL } from "./lifeops-google-helpers.js";
+import { looksLikeEmailVenting } from "./non-actionable-request.js";
 
 // ---------------------------------------------------------------------------
 // Subaction types & params
@@ -257,13 +258,19 @@ export const inboxAction: Action & {
     "priority inbox ranking, unread summaries, drafts awaiting sign-off, " +
     "missed-call repair follow-up, and group-chat handoff coordination. " +
     "Examples: 'triage my inbox', 'give me my inbox digest', or 'respond to the messages that need an answer in my inbox'. " +
+    "DO NOT use this action when the user is only complaining about email or messages without asking for triage, a digest, or a reply workflow. " +
     "If the request is explicitly Gmail or email-specific, about unread emails, or about drafting or sending a reply to a specific email, use GMAIL_ACTION instead. " +
     "Subactions: triage, digest, respond. Admin/owner only.",
   descriptionCompressed:
     "Unified inbox: triage messages, daily digest, draft/send responses. Admin only.",
   suppressPostActionContinuation: true,
 
-  validate: async (runtime, message) => hasAdminAccess(runtime, message),
+  validate: async (runtime, message) => {
+    if (looksLikeEmailVenting(extractText(message))) {
+      return false;
+    }
+    return hasAdminAccess(runtime, message);
+  },
 
   handler: async (
     runtime: IAgentRuntime,

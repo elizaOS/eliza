@@ -38,7 +38,8 @@ export const setFollowupThresholdAction: Action = {
     "SET_CONTACT_FREQUENCY_DAYS",
   ],
   description:
-    "Set the follow-up threshold (in days) for a specific contact. " +
+    "Set a recurring follow-up cadence threshold (in days) for a specific contact. " +
+    "Use this for durable rules like 'every 14 days', not one-off reminders like 'next week'. " +
     "Requires a positive integer threshold and either contactId or an unambiguous contactName.",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (

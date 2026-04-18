@@ -8,6 +8,7 @@
 import type {
   CapturedAction,
   CapturedApprovalRequest,
+  CapturedArtifact,
   CapturedConnectorDispatch,
   CapturedMemoryWrite,
   CapturedStateTransition,
@@ -67,10 +68,16 @@ export interface AggregateReport {
     passed: number;
     failed: number;
     skipped: number;
+    flakyPassed: number;
+    costUsd: number;
   };
   // Present for benchmark compatibility.
   totalCount: number;
+  passedCount: number;
   failedCount: number;
+  skippedCount: number;
+  flakyPassedCount: number;
+  totalCostUsd: number;
 }
 
 export interface RunnerContext extends ScenarioContext {
@@ -80,6 +87,7 @@ export interface RunnerContext extends ScenarioContext {
   connectorDispatches: CapturedConnectorDispatch[];
   memoryWrites: CapturedMemoryWrite[];
   stateTransitions: CapturedStateTransition[];
+  artifacts: CapturedArtifact[];
 }
 
 export type { ScenarioDefinition, ScenarioTurn, ScenarioFinalCheck };

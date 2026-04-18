@@ -32,6 +32,55 @@ function getTrimmedEnv(name: string): string | null {
   return value ? value : null;
 }
 
+function providerKeyMatchesSelection(
+  providerName: LiveProviderName,
+  apiKey: string,
+): boolean {
+  const trimmed = apiKey.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (providerName === "openai" && /^gsk[-_]/i.test(trimmed)) {
+    return false;
+  }
+
+  return true;
+}
+
+function getLiveTestModelOverride(kind: "small" | "large"): string | null {
+  const key =
+    kind === "small"
+      ? ["MILADY_LIVE_TEST_SMALL_MODEL", "ELIZA_LIVE_TEST_SMALL_MODEL"]
+      : ["MILADY_LIVE_TEST_LARGE_MODEL", "ELIZA_LIVE_TEST_LARGE_MODEL"];
+
+  for (const name of key) {
+    const value = getTrimmedEnv(name);
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function getLiveTestBaseUrlOverride(
+  providerName: LiveProviderName,
+): string | null {
+  const suffix = providerName.toUpperCase().replace(/-/g, "_");
+  for (const name of [
+    `MILADY_LIVE_TEST_${suffix}_BASE_URL`,
+    `ELIZA_LIVE_TEST_${suffix}_BASE_URL`,
+  ]) {
+    const value = getTrimmedEnv(name);
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 function readCloudApiKey(value: unknown): string {
   if (!isRecord(value)) {
     return "";
@@ -79,6 +128,14 @@ export type LiveProviderConfig = {
   /** Env vars to set for the runtime process. */
   env: Record<string, string>;
 };
+
+export const LIVE_PROVIDER_ENV_KEYS = new Set<string>([
+  "SMALL_MODEL",
+  "LARGE_MODEL",
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZA_CLOUD_API_KEY",
+  "ELIZA_DISABLE_SUBSCRIPTION_CREDENTIALS",
+]);
 
 const PROVIDERS: Array<{
   name: LiveProviderName;
@@ -144,6 +201,17 @@ const PROVIDERS: Array<{
   },
 ];
 
+for (const provider of PROVIDERS) {
+  for (const key of provider.keyEnvVars) {
+    LIVE_PROVIDER_ENV_KEYS.add(key);
+  }
+  if (provider.baseUrlEnvVar) {
+    LIVE_PROVIDER_ENV_KEYS.add(provider.baseUrlEnvVar);
+  }
+  LIVE_PROVIDER_ENV_KEYS.add(provider.smallModelEnvVar);
+  LIVE_PROVIDER_ENV_KEYS.add(provider.largeModelEnvVar);
+}
+
 /**
  * Select the first available LLM provider based on environment variables.
  * Returns null if no provider API keys are found.
@@ -161,21 +229,20 @@ export function selectLiveProvider(
     let apiKey = "";
     for (const envVar of def.keyEnvVars) {
       const val = getTrimmedEnv(envVar);
-      if (val) {
+      if (val && providerKeyMatchesSelection(def.name, val)) {
         apiKey = val;
         break;
       }
     }
     if (!apiKey) continue;
 
-    const baseUrl = def.baseUrlEnvVar
-      ? (getTrimmedEnv(def.baseUrlEnvVar) ?? def.defaultBaseUrl)
-      : def.defaultBaseUrl;
+    const baseUrl =
+      getLiveTestBaseUrlOverride(def.name) ?? def.defaultBaseUrl;
 
     const smallModel =
-      getTrimmedEnv(def.smallModelEnvVar) ?? def.defaultSmallModel;
+      getLiveTestModelOverride("small") ?? def.defaultSmallModel;
     const largeModel =
-      getTrimmedEnv(def.largeModelEnvVar) ?? def.defaultLargeModel;
+      getLiveTestModelOverride("large") ?? def.defaultLargeModel;
 
     const env: Record<string, string> = {};
     for (const envVar of def.keyEnvVars) {
@@ -183,15 +250,12 @@ export function selectLiveProvider(
       if (val) env[envVar] = val;
     }
     if (def.baseUrlEnvVar) {
-      const configuredBaseUrl = getTrimmedEnv(def.baseUrlEnvVar);
-      if (configuredBaseUrl) {
-        env[def.baseUrlEnvVar] = configuredBaseUrl;
-      }
+      env[def.baseUrlEnvVar] = baseUrl;
     }
     env[def.smallModelEnvVar] = smallModel;
     env[def.largeModelEnvVar] = largeModel;
-    env.SMALL_MODEL = getTrimmedEnv("SMALL_MODEL") ?? smallModel;
-    env.LARGE_MODEL = getTrimmedEnv("LARGE_MODEL") ?? largeModel;
+    env.SMALL_MODEL = smallModel;
+    env.LARGE_MODEL = largeModel;
 
     return {
       name: def.name,
@@ -208,7 +272,7 @@ export function selectLiveProvider(
     getTrimmedEnv("ELIZAOS_CLOUD_API_KEY") ||
     getTrimmedEnv("ELIZA_CLOUD_API_KEY") ||
     configuredCloudApiKey;
-  if (cloudApiKey && (!preferredProvider || preferredProvider === "openai")) {
+  if (cloudApiKey && !preferredProvider) {
     const smallModel = getTrimmedEnv("OPENAI_SMALL_MODEL") || "gpt-5.4-mini";
     const largeModel =
       getTrimmedEnv("OPENAI_LARGE_MODEL") ||
@@ -227,8 +291,8 @@ export function selectLiveProvider(
         OPENAI_BASE_URL: ELIZA_CLOUD_OPENAI_BASE_URL,
         OPENAI_SMALL_MODEL: smallModel,
         OPENAI_LARGE_MODEL: largeModel,
-        SMALL_MODEL: getTrimmedEnv("SMALL_MODEL") ?? smallModel,
-        LARGE_MODEL: getTrimmedEnv("LARGE_MODEL") ?? largeModel,
+        SMALL_MODEL: smallModel,
+        LARGE_MODEL: largeModel,
       },
     };
   }
@@ -268,7 +332,10 @@ export function isLiveTestEnabled(): boolean {
 export function availableProviderNames(): LiveProviderName[] {
   const providers = new Set<LiveProviderName>(
     PROVIDERS.filter((def) =>
-      def.keyEnvVars.some((key) => getTrimmedEnv(key)),
+      def.keyEnvVars.some((key) => {
+        const value = getTrimmedEnv(key);
+        return value ? providerKeyMatchesSelection(def.name, value) : false;
+      }),
     ).map((def) => def.name),
   );
   if (
@@ -279,4 +346,24 @@ export function availableProviderNames(): LiveProviderName[] {
     providers.add("openai");
   }
   return [...providers];
+}
+
+export function buildIsolatedLiveProviderEnv(
+  baseEnv: NodeJS.ProcessEnv,
+  provider: Pick<LiveProviderConfig, "env"> | null | undefined,
+): NodeJS.ProcessEnv {
+  const nextEnv: NodeJS.ProcessEnv = { ...baseEnv };
+  for (const key of LIVE_PROVIDER_ENV_KEYS) {
+    nextEnv[key] = "";
+  }
+
+  if (provider?.env) {
+    for (const [key, value] of Object.entries(provider.env)) {
+      nextEnv[key] = value;
+    }
+  }
+
+  nextEnv.ELIZA_DISABLE_SUBSCRIPTION_CREDENTIALS = "1";
+
+  return nextEnv;
 }

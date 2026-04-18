@@ -100,4 +100,38 @@ describe("derivePopupStatusModel", () => {
     });
     expect(model.kind).toBe("needs_settings");
   });
+
+  it("surfaces sync errors before healthy-looking settings", () => {
+    const model = derivePopupStatusModel({
+      state: makeState({
+        config: {
+          apiBaseUrl: "http://127.0.0.1:2138",
+          browser: "chrome",
+          companionId: "companion-1",
+          pairingToken: "lobr_123",
+          profileId: "default",
+          profileLabel: "Default",
+          label: "LifeOps Browser chrome Default",
+        },
+        settings: {
+          enabled: true,
+          trackingMode: "active_tabs",
+          allowBrowserControl: true,
+          requireConfirmationForAccountAffecting: true,
+          incognitoEnabled: false,
+          siteAccessMode: "all_sites",
+          grantedOrigins: [],
+          blockedOrigins: [],
+          maxRememberedTabs: 10,
+          pauseUntil: null,
+          metadata: {},
+          updatedAt: null,
+        },
+        lastError: "Sync failed",
+      }),
+      discoveredApiBaseUrl: "http://127.0.0.1:2138",
+    });
+    expect(model.kind).toBe("error");
+    expect(model.detail).toContain("Sync failed");
+  });
 });

@@ -63,7 +63,7 @@ export const remoteDesktopAction: Action = {
     "PHONE_REMOTE_ACCESS",
   ],
   description:
-    "Start or end a secure remote desktop session so you can view/control the computer from your phone. Requires a pairing code. Subactions: start, status, end, list.",
+    "Start or end a secure remote desktop session so you can view/control the computer from another device. Requires a pairing code. Use this only for remote-session lifecycle work (start, status, end, list), not for local Finder/Desktop automation, screenshots, browser workflows, or file handling on this machine — those belong to LIFEOPS_COMPUTER_USE.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasOwnerAccess(runtime, message),

@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startN8nAutoStart } from "./n8n-autostart";
 import {
   disposeN8nSidecar,
+  type N8nSidecarConfig,
   type N8nSidecar,
   type N8nSidecarStatus,
 } from "./n8n-sidecar";
@@ -34,7 +35,9 @@ function makeRuntime(auth: FakeAuth | null): AgentRuntime {
 
 interface SidecarStubHandle {
   sidecar: { start: ReturnType<typeof vi.fn> };
-  getSidecar: ReturnType<typeof vi.fn>;
+  getSidecar: (
+    config: N8nSidecarConfig,
+  ) => Promise<{ start: () => Promise<void> }>;
 }
 
 function makeSidecarStub(

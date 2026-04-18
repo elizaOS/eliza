@@ -1,7 +1,5 @@
 import type http from "node:http";
-import { LifeOpsService } from "@elizaos/app-lifeops/lifeops/service";
 import type { AgentRuntime, Task, UUID } from "@elizaos/core";
-import type { LifeOpsOverview } from "../contracts/lifeops.js";
 import type { TriggerSummary } from "../triggers/types.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import { WORKBENCH_TASK_TAG, WORKBENCH_TODO_TAG } from "./workbench-helpers.js";
@@ -92,8 +90,6 @@ export async function handleWorkbenchRoutes(
     let tasksAvailable = false;
     let triggersAvailable = false;
     let todosAvailable = false;
-    let lifeopsAvailable = false;
-    let lifeops: LifeOpsOverview | null = null;
     let runtimeTasks: Task[] = [];
 
     if (state.runtime) {
@@ -116,15 +112,6 @@ export async function handleWorkbenchRoutes(
       } catch {
         tasksAvailable = false;
         todosAvailable = false;
-      }
-
-      try {
-        lifeops = await new LifeOpsService(state.runtime, {
-          ownerEntityId: state.adminEntityId,
-        }).getOverview();
-        lifeopsAvailable = true;
-      } catch {
-        lifeopsAvailable = false;
       }
 
       try {
@@ -177,11 +164,9 @@ export async function handleWorkbenchRoutes(
       triggers,
       todos,
       summary,
-      ...(lifeops ? { lifeops } : {}),
       tasksAvailable,
       triggersAvailable,
       todosAvailable,
-      lifeopsAvailable,
     });
     return true;
   }

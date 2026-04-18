@@ -48,13 +48,40 @@ function error(
   httpSendJsonError(res, message, status);
 }
 
+function firstHeaderValue(
+  value: string | string[] | undefined,
+): string | null {
+  if (Array.isArray(value)) {
+    return firstHeaderValue(value[0]);
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.split(",")[0]?.trim();
+  return normalized ? normalized : null;
+}
+
+function requestBaseUrl(req: http.IncomingMessage): string {
+  const headers = req.headers ?? {};
+  const protocol =
+    firstHeaderValue(headers["x-forwarded-proto"]) ??
+    (((req.socket as { encrypted?: boolean } | undefined)?.encrypted ?? false)
+      ? "https"
+      : "http");
+  const host =
+    firstHeaderValue(headers["x-forwarded-host"]) ??
+    firstHeaderValue(headers.host) ??
+    "localhost";
+  return `${protocol}://${host}`;
+}
+
 function buildLifeOpsContext(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   runtime: AgentRuntime | null,
 ): LifeOpsRouteContext {
   const method = (req.method ?? "GET").toUpperCase();
-  const url = new URL(req.url ?? "/", "http://localhost");
+  const url = new URL(req.url ?? "/", requestBaseUrl(req));
   return {
     req,
     res,
@@ -78,7 +105,7 @@ function buildWebsiteBlockerContext(
   runtime: AgentRuntime | null,
 ): WebsiteBlockerRouteContext {
   const method = (req.method ?? "GET").toUpperCase();
-  const url = new URL(req.url ?? "/", "http://localhost");
+  const url = new URL(req.url ?? "/", requestBaseUrl(req));
   return {
     req,
     res,

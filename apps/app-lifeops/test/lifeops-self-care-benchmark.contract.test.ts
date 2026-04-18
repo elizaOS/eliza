@@ -104,6 +104,9 @@ describe("LifeOps self-care prompt benchmark contracts", () => {
       expect(testCase.forbiddenActions).toContain("LIFE");
       expect(testCase.prompt).not.toBe(testCase.basePrompt);
       expect(testCase.prompt.toLowerCase()).toContain("do not do this yet");
+      expect(testCase.benchmarkContext.toLowerCase()).toContain(
+        "avoid executing durable actions",
+      );
     }
   });
 });

@@ -51,6 +51,7 @@ import {
   messageText,
   toActionData,
 } from "./lifeops-google-helpers.js";
+import { looksLikeEmailVenting } from "./non-actionable-request.js";
 
 type GmailSubaction =
   | "triage"
@@ -1275,12 +1276,16 @@ export const gmailAction: Action & {
     "drafting reply text for one or more emails; sending confirmed replies; " +
     "requests like 'triage my Gmail inbox', 'summarize my unread emails', 'draft a reply to the latest email from Sarah', or 'send a reply to the last email from finance'. " +
     "If the request explicitly says Gmail, email, unread emails, sender, subject, or reply to a specific email, use GMAIL_ACTION instead of INBOX. " +
+    "DO NOT use this action when the user is only venting or making a general observation like 'I hate email' unless they actually ask you to triage, search, read, draft, or send. " +
     "DO NOT use this action for calendar events, meetings, or scheduling — use CALENDAR_ACTION instead. " +
     "DO NOT use this action for personal habits, goals, routines, or reminders — use LIFE instead. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",
   descriptionCompressed: "Gmail via LifeOps: inbox triage, search, read, draft/send replies. Not for calendar or habits.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message, state) => {
+    if (looksLikeEmailVenting(messageText(message))) {
+      return false;
+    }
     if (!(await hasLifeOpsAccess(runtime, message))) return false;
     return hasContextSignalForKey(runtime, message, state, "gmail", {
       contextLimit: GMAIL_CONTEXT_WINDOW,

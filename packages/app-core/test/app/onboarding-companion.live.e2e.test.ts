@@ -21,7 +21,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 import { buildOnboardingRuntimeConfig } from "../../src/onboarding-config";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
+import {
+  buildIsolatedLiveProviderEnv,
+  selectLiveProvider,
+} from "../../../../../test/helpers/live-provider";
 
 const LIVE_TESTS_ENABLED =
   process.env.MILADY_LIVE_TEST === "1" ||
@@ -502,8 +505,10 @@ async function startRealStack(): Promise<StartedStack> {
     {
       cwd: REPO_ROOT,
       env: {
-        ...process.env,
+        ...buildIsolatedLiveProviderEnv(process.env, LIVE_PROVIDER),
         ALLOW_NO_DATABASE: "",
+        CHECK_SHOULD_RESPOND: "false",
+        CONVERSATION_LENGTH: "20",
         FORCE_COLOR: "0",
         ELIZA_API_PORT: String(apiPort),
         ELIZA_HOME_PORT: String(uiPort),

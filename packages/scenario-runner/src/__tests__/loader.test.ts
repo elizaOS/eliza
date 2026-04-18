@@ -2,7 +2,11 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { discoverScenarios, loadAllScenarios } from "../loader.ts";
+import {
+  discoverScenarios,
+  loadAllScenarios,
+  matchesScenarioFileGlobs,
+} from "../loader.ts";
 
 function writeScenario(dir: string, filename: string, body: string): string {
   const fullPath = path.join(dir, filename);
@@ -61,5 +65,28 @@ describe("loader", () => {
     );
     const loaded = await loadAllScenarios(root, new Set(["keep.me"]));
     expect(loaded.map((l) => l.scenario.id)).toEqual(["keep.me"]);
+  });
+
+  it("matches shard globs against scenario file paths", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "sc-loader4-"));
+    mkdirSync(path.join(root, "browser"));
+    mkdirSync(path.join(root, "messaging"));
+
+    const browserFile = writeScenario(
+      path.join(root, "browser"),
+      "keep.scenario.ts",
+      `export default { id: "browser.keep", title: "t", domain: "d", turns: [] };\n`,
+    );
+    writeScenario(
+      path.join(root, "messaging"),
+      "drop.scenario.ts",
+      `export default { id: "messaging.drop", title: "t", domain: "d", turns: [] };\n`,
+    );
+
+    const browserGlob = `${root.replace(/\\/g, "/")}/browser/**/*.scenario.ts`;
+    expect(matchesScenarioFileGlobs(browserFile, [browserGlob])).toBe(true);
+
+    const loaded = await loadAllScenarios(root, undefined, [browserGlob]);
+    expect(loaded.map((l) => l.scenario.id)).toEqual(["browser.keep"]);
   });
 });

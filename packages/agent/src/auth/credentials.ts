@@ -416,6 +416,20 @@ export async function applySubscriptionCredentials(config?: {
     defaults?: { subscriptionProvider?: string; model?: { primary?: string } };
   };
 }): Promise<void> {
+  const subscriptionCredentialsDisabled =
+    process.env.ELIZA_DISABLE_SUBSCRIPTION_CREDENTIALS?.trim().toLowerCase();
+  if (
+    subscriptionCredentialsDisabled === "1" ||
+    subscriptionCredentialsDisabled === "true" ||
+    subscriptionCredentialsDisabled === "yes" ||
+    subscriptionCredentialsDisabled === "on"
+  ) {
+    logger.info(
+      "[auth] Subscription credential application disabled by ELIZA_DISABLE_SUBSCRIPTION_CREDENTIALS",
+    );
+    return;
+  }
+
   // ── Anthropic subscription ──────────────────────────────────────────
   //
   // Anthropic subscription tokens (sk-ant-oat*) are restricted to the

@@ -314,8 +314,7 @@ async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
     async () => (await import("@elizaos/app-vincent/plugin")).vincentPlugin,
     async () => (await import("@elizaos/app-shopify/plugin")).shopifyPlugin,
     async () => (await import("@elizaos/app-steward/plugin")).stewardPlugin,
-    async () =>
-      (await import("@elizaos/app-lifeops/routes/plugin")).lifeopsPlugin,
+    async () => (await import("@elizaos/app-lifeops/public")).lifeopsPlugin,
   ];
 
   for (const loadPlugin of pluginLoaders) {

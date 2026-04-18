@@ -28,8 +28,7 @@ import {
   Sparkles,
   SquareArrowOutUpRight,
 } from "lucide-react";
-import type { ComponentType } from "react";
-import type { PropsWithChildren, ReactElement, SVGProps } from "react";
+import type { PropsWithChildren, ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge, Button } from "@elizaos/ui";
 import { client } from "@elizaos/app-core/api";
@@ -198,24 +197,24 @@ function sectionSummary(section: LifeOpsOverviewSection): string {
 
 function reminderChannelIcon(
   channel: LifeOpsActiveReminderView["channel"],
-): ComponentType<SVGProps<SVGSVGElement>> | null {
+): ReactElement | null {
   switch (channel) {
     case "in_app":
-      return Bell;
+      return <Bell className="h-3 w-3" />;
     case "telegram":
-      return Send;
-    case "email":
-      return Mail;
-    case "push":
-      return Smartphone;
+      return <Send className="h-3 w-3" />;
     case "sms":
-      return MessageSquareText;
-    case "cloud":
-      return Cloud;
+      return <MessageSquareText className="h-3 w-3" />;
+    case "voice":
+      return <Phone className="h-3 w-3" />;
     case "discord":
-      return MessageCircleMore;
+      return <MessageCircleMore className="h-3 w-3" />;
+    case "signal":
+      return <Mail className="h-3 w-3" />;
     case "whatsapp":
-      return Phone;
+      return <Smartphone className="h-3 w-3" />;
+    case "imessage":
+      return <Cloud className="h-3 w-3" />;
     default:
       return null;
   }
@@ -664,7 +663,7 @@ function GoalRow({
 function ReminderRow({ reminder }: { reminder: LifeOpsActiveReminderView }) {
   const scheduledFor = formatDateTime(reminder.scheduledFor);
   const dueAt = formatDateTime(reminder.dueAt);
-  const ChannelIcon = reminderChannelIcon(reminder.channel);
+  const channelIcon = reminderChannelIcon(reminder.channel);
   const channelLabel = reminder.channel.replace(/_/g, " ");
 
   return (
@@ -678,11 +677,7 @@ function ReminderRow({ reminder }: { reminder: LifeOpsActiveReminderView }) {
           className="text-[10px]"
           aria-label={channelLabel}
         >
-          {ChannelIcon ? (
-            <ChannelIcon className="h-3 w-3" />
-          ) : (
-            channelLabel
-          )}
+          {channelIcon ?? channelLabel}
         </Badge>
       </div>
       <div className="mt-1 text-xs text-muted">{reminder.stepLabel}</div>
@@ -918,10 +913,9 @@ function AgentOpsSection({
 
 export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
   const lifeOpsApp = useLifeOpsAppState();
-  const { workbench, agentStatus, backendConnection, startupPhase, setTab, t } = useApp();
-  const [overview, setOverview] = useState<LifeOpsOverview | null>(
-    workbench?.lifeops ?? null,
-  );
+  const { agentStatus, backendConnection, startupPhase, setTab, t } =
+    useApp();
+  const [overview, setOverview] = useState<LifeOpsOverview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionState, setActionState] = useState<string | null>(null);
@@ -941,12 +935,6 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
     agentState: agentStatus?.state ?? null,
     backendState: backendConnection?.state ?? null,
   });
-
-  useEffect(() => {
-    if (workbench?.lifeops) {
-      setOverview(workbench.lifeops);
-    }
-  }, [workbench?.lifeops]);
 
   const loadOverview = useCallback(
     async (silent = false) => {
@@ -975,7 +963,7 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
 
     void (async () => {
       try {
-        await loadOverview(Boolean(workbench?.lifeops));
+        await loadOverview(false);
       } catch (cause) {
         if (isTransientLifeOpsAvailabilityError(cause)) {
           setError(null);
@@ -986,9 +974,7 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
           cause instanceof Error && cause.message.trim().length > 0
             ? cause.message.trim()
             : "Life ops failed to refresh.";
-        if (!workbench?.lifeops) {
-          setOverview(null);
-        }
+        setOverview(null);
         setError(message);
         setLoading(false);
       }
@@ -1019,7 +1005,7 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
       active = false;
       window.clearInterval(intervalId);
     };
-  }, [loadOverview, runtimeReady, workbench?.lifeops]);
+  }, [loadOverview, runtimeReady]);
 
   const onOccurrenceAction = useCallback(
     async (occurrenceId: string, action: OccurrenceAction) => {

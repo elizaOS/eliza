@@ -114,7 +114,7 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
     try {
       setActionPending(true);
       setError(null);
-      const result = await client.startSignalPairing({ side });
+      const result = await client.startLifeOpsSignalPairing({ side });
       pairingSessionIdRef.current = result.sessionId;
       pollPairingStatus(result.sessionId);
       return result.sessionId;
@@ -132,7 +132,7 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
     try {
       setActionPending(true);
       clearPairingPoll();
-      await client.stopSignalPairing(sessionId);
+      await client.stopLifeOpsSignalPairing(sessionId);
       pairingSessionIdRef.current = null;
       setPairingStatus(null);
       setError(null);

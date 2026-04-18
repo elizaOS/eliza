@@ -91,6 +91,7 @@ export type PromptBenchmarkCase = {
   domain: string;
   basePrompt: string;
   prompt: string;
+  benchmarkContext: string;
   variantId: PromptBenchmarkVariantId;
   variantLabel: string;
   axes: string[];
@@ -377,6 +378,19 @@ function deriveExecutiveAssistantExpectation(
   };
 }
 
+function buildPromptBenchmarkContext(args: {
+  caseId: string;
+  scenarioTitle: string;
+  expectedAction: string | null;
+}): string {
+  const scenarioLabel = `${args.scenarioTitle} (${args.caseId})`;
+  if (args.expectedAction === null) {
+    return `Prompt benchmark case ${scenarioLabel}. Treat this as a benchmark of restraint: the user may be thinking out loud, making smalltalk, or previewing a future task. Use grounded reasoning and avoid executing durable actions unless the request is explicit.`;
+  }
+
+  return `Prompt benchmark case ${scenarioLabel}. Treat this as a benchmark of grounded follow-through: when the user is making a real request, prefer executing the best matching action instead of only describing a hypothetical plan.`;
+}
+
 function buildPromptBenchmarkCasesForScenario(args: {
   expectation: BenchmarkExpectation;
   scenario: ScenarioLike;
@@ -388,45 +402,56 @@ function buildPromptBenchmarkCasesForScenario(args: {
 
   return PROMPT_BENCHMARK_VARIANTS.map((variant) => {
     const positiveCase = variant.shouldExecute;
+    const caseId = `${scenario.id}__${variant.id}`;
+    const expectedAction = positiveCase ? expectation.expectedAction : null;
+    const riskClass =
+      positiveCase && expectation.expectedAction === null
+        ? "null"
+        : variant.riskClass;
+    const benchmarkWeight =
+      positiveCase && expectation.expectedAction === null
+        ? Math.max(variant.benchmarkWeight, 2)
+        : variant.benchmarkWeight;
+    const acceptableActions = positiveCase
+      ? [...(expectation.acceptableActions ?? [])]
+      : ["REPLY"];
+    const forbiddenActions = positiveCase
+      ? expectation.expectedAction === null
+        ? [...(expectation.forbiddenActions ?? [])]
+        : []
+      : uniqueStrings([
+          expectation.expectedAction,
+          ...(expectation.acceptableActions ?? []),
+          ...(expectation.forbiddenActions ?? []),
+        ]);
 
     return {
-      caseId: `${scenario.id}__${variant.id}`,
+      caseId,
       suiteId,
       baseScenarioId: scenario.id,
       scenarioTitle: scenario.title,
       domain: scenario.domain,
       basePrompt,
       prompt: variant.rewrite(basePrompt),
+      benchmarkContext: buildPromptBenchmarkContext({
+        caseId,
+        scenarioTitle: scenario.title,
+        expectedAction,
+      }),
       variantId: variant.id,
       variantLabel: variant.label,
       axes: [...variant.axes],
-      riskClass:
-        positiveCase && expectation.expectedAction === null
-          ? "null"
-          : variant.riskClass,
-      benchmarkWeight:
-        positiveCase && expectation.expectedAction === null
-          ? Math.max(variant.benchmarkWeight, 2)
-          : variant.benchmarkWeight,
-      expectedAction: positiveCase ? expectation.expectedAction : null,
-      acceptableActions: positiveCase
-        ? [...(expectation.acceptableActions ?? [])]
-        : ["REPLY"],
-      forbiddenActions: positiveCase
-        ? expectation.expectedAction === null
-          ? [...(expectation.forbiddenActions ?? [])]
-          : []
-        : uniqueStrings([
-            expectation.expectedAction,
-            ...(expectation.acceptableActions ?? []),
-            ...(expectation.forbiddenActions ?? []),
-          ]),
+      riskClass,
+      benchmarkWeight,
+      expectedAction,
+      acceptableActions,
+      forbiddenActions,
       expectedOperation: positiveCase ? expectation.expectedOperation ?? null : null,
       tags: uniqueStrings([
         suiteId,
         scenario.domain,
         variant.id,
-        variant.riskClass,
+        riskClass,
         ...scenarioTags,
       ]),
       notes:

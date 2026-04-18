@@ -469,7 +469,9 @@ const CHANNEL_DISPATCHERS: Record<
   },
 };
 
-export const crossChannelSendAction: Action = {
+export const crossChannelSendAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: ACTION_NAME,
   similes: [
     "SEND_MESSAGE_TO",
@@ -481,6 +483,7 @@ export const crossChannelSendAction: Action = {
     "Draft or send a message across any connected channel (email, telegram, " +
     "discord, signal, sms, twilio_voice, imessage, whatsapp, notifications). Always " +
     "drafts first; caller must re-invoke with confirmed: true to dispatch.",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasAdminAccess(runtime, message),

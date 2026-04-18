@@ -133,21 +133,18 @@ async function connectDevice(
     send(payload) {
       socket.send(JSON.stringify(payload));
     },
-    nextMessage(type) {
+    nextMessage<T = Record<string, unknown>>(type: string): Promise<T> {
       const cached = queue.findIndex((m) => m.type === type);
       if (cached >= 0) {
-        const msg = queue.splice(cached, 1)[0] as unknown as Record<
-          string,
-          unknown
-        >;
-        return Promise.resolve(msg) as Promise<never>;
+        const msg = queue.splice(cached, 1)[0];
+        return Promise.resolve(msg as T);
       }
-      return new Promise((resolve) => {
+      return new Promise<T>((resolve) => {
         pending.push({
           type,
-          resolve: resolve as (typeof pending)[0]["resolve"],
+          resolve: (value) => resolve(value as T),
         });
-      }) as Promise<never>;
+      });
     },
     async close() {
       if (

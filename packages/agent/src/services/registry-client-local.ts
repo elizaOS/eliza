@@ -23,7 +23,7 @@ interface LocalPackageAppMeta {
   launchUrl?: string | null;
   icon?: string | null;
   /**
-   * Package-relative path (e.g. `"assets/hero.webp"`) or absolute URL to
+   * Package-relative path (e.g. `"assets/hero.png"`) or absolute URL to
    * a full-card hero image. The registry resolves relative paths to a
    * served URL (`/api/apps/hero/<slug>`) so clients get a plain URL.
    */

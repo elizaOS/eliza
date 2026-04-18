@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  BASELINE_BUNDLED_RUNTIME_PACKAGES,
   discoverAlwaysBundledPackages,
   discoverRuntimePackages,
   shouldBundleDiscoveredPackage,
@@ -880,9 +881,15 @@ function main(): void {
   fs.rmSync(targetNodeModules, { recursive: true, force: true });
   fs.mkdirSync(targetNodeModules, { recursive: true });
 
-  const alwaysBundled = new Set(
-    discoverAlwaysBundledPackages(PACKAGE_JSON_PATH),
-  );
+  const alwaysBundled = new Set(discoverAlwaysBundledPackages(PACKAGE_JSON_PATH));
+  for (const packageName of BASELINE_BUNDLED_RUNTIME_PACKAGES) {
+    if (alwaysBundled.has(packageName)) {
+      continue;
+    }
+    if (resolvePackage(packageName, null, ROOT)) {
+      alwaysBundled.add(packageName);
+    }
+  }
   const rootDependencySpecs = new Map(
     getRuntimeDependencyEntries(PACKAGE_JSON_PATH).map((entry) => [
       entry.name,

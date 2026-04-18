@@ -69,7 +69,7 @@ const chromeSubmission = {
   shortDescription:
     "Connect your real browser to LifeOps so it can read the page you are on and carry out owner-approved actions.",
   description:
-    "LifeOps Browser pairs your personal Chrome profile with LifeOps. It keeps the current page available to the app and can execute owner-approved browser actions such as opening tabs, navigating, clicking, typing, and reading page content. Automatic pairing is built in for local Milady/LifeOps apps and for logged-in cloud app sessions.",
+    "LifeOps Browser pairs your personal Chrome profile with LifeOps. It keeps the current page available to the app and can execute owner-approved browser actions such as opening tabs, navigating, clicking, typing, and reading page content. Automatic pairing is built in for local and cloud-hosted LifeOps apps.",
   packageFileName: chromePackageFile,
   version: metadata.chromeVersion,
   versionName: metadata.chromeVersionName,
@@ -127,7 +127,7 @@ const safariSubmission = {
   ...sharedSubmissionData,
   browser: "safari",
   appName: "LifeOps Browser",
-  bundleIdentifier: "ai.eliza.lifeopsbrowser",
+  bundleIdentifier: "ai.lifeops.browser",
   category: "Productivity",
   subtitle: "Owner-approved browser relay for LifeOps",
   description:
@@ -169,7 +169,7 @@ const checklistLines = [
   `- Generated Xcode project archive: \`${safariProjectFile}\``,
   `- Marketing version: \`${metadata.safariMarketingVersion}\``,
   `- Build version: \`${metadata.safariBuildVersion}\``,
-  `- Bundle identifier: \`ai.eliza.lifeopsbrowser\``,
+  `- Bundle identifier: \`ai.lifeops.browser\``,
   `- Support URL: ${supportUrl ?? "REQUIRED: set ELIZA_LIFEOPS_BROWSER_SUPPORT_URL"}`,
   `- Privacy policy URL: ${privacyPolicyUrl ?? "REQUIRED: set ELIZA_LIFEOPS_BROWSER_PRIVACY_POLICY_URL"}`,
   `- App Store URL: ${storeUrls.safariAppStoreUrl ?? "Not configured yet"}`,

@@ -204,7 +204,9 @@ async function resolveAppBlockPlanWithLlm(args: {
   }
 }
 
-export const blockAppsAction: Action = {
+export const blockAppsAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "BLOCK_APPS",
   similes: [
     "BLOCK_APP",
@@ -217,8 +219,10 @@ export const blockAppsAction: Action = {
   description:
     "Admin-only. Block selected apps on the user's phone using native OS controls. " +
     "On iPhone, uses Family Controls to shield apps. On Android, uses Usage Access to detect and overlay blocked apps. " +
+    "Use this for requests like 'block all games on my phone until 6pm' or 'block the Slack app while I focus on deep work'. " +
     "Pass app package names (Android) or previously selected app tokens (iPhone) to block.",
   descriptionCompressed: "Admin: block phone apps via native OS controls (Family Controls/Usage Access).",
+  suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
     const access = await getAppBlockerAccess(runtime, message);
     return access.allowed;

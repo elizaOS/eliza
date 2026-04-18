@@ -316,6 +316,7 @@ export async function runScenario(
     connectorDispatches: [],
     memoryWrites: [],
     stateTransitions: [],
+    artifacts: [],
   };
 
   const report: ScenarioReport = {
@@ -460,6 +461,7 @@ export async function runScenario(
 
     ctx.actionsCalled = interceptor.actions;
     ctx.memoryWrites = interceptor.memoryWrites;
+    ctx.artifacts = interceptor.artifacts;
     report.actionsCalled = [...interceptor.actions];
 
     const finalChecks = Array.isArray(

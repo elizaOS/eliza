@@ -64,7 +64,8 @@ export const markFollowupDoneAction: Action = {
     "RECORD_INTERACTION",
   ],
   description:
-    "Mark a contact as followed-up-with (updates lastContactedAt to now). " +
+    "Mark a contact as already followed-up-with (updates lastContactedAt to now). " +
+    "Use this only when the interaction already happened, not for future reminders. " +
     "Requires either an explicit contactId (UUID) or an unambiguous contactName. " +
     "Ambiguous names return a clarifying response without modifying any contact.",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),

@@ -139,7 +139,7 @@ export function mergeContextRouting(
 export function getActiveRoutingContexts(
 	routing: ContextRoutingDecision,
 ): AgentContext[] {
-	const contextSet = new Set<string>(["general"]);
+	const contextSet = new Set<string>();
 	if (routing.primaryContext) {
 		contextSet.add(routing.primaryContext);
 	}
@@ -148,6 +148,10 @@ export function getActiveRoutingContexts(
 			contextSet.add(context);
 		}
 	}
+	if (contextSet.size === 0) {
+		return [];
+	}
+	contextSet.add("general");
 	return Array.from(contextSet) as AgentContext[];
 }
 

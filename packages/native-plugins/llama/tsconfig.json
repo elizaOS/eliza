@@ -5,7 +5,7 @@
     "esModuleInterop": true,
     "lib": ["DOM", "ES2021"],
     "module": "ES2020",
-    "moduleResolution": "Node",
+    "moduleResolution": "bundler",
     "noImplicitAny": true,
     "noImplicitReturns": true,
     "outDir": "./dist/esm",

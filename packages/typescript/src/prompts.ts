@@ -441,13 +441,15 @@ export const messageHandlerTemplate = `task: Generate dialog and actions for {{a
 context:
 {{providers}}
 
-rules[17]:
+rules[20]:
 - think briefly, then respond
 - always include a <thought> field, even for direct replies
 - actions execute in listed order
 - if replying without another grounded state/action query, REPLY goes first
 - use IGNORE or STOP only by themselves
 - include providers only when needed
+- when the user asks about uploaded files, documents, prior uploads, or knowledge-base contents, call the relevant providers before replying instead of asking the user to resend the material
+- when the user refers to "the uploaded file", "the document I uploaded", or a prior upload without naming it, treat that as a provider lookup request first; only ask which file after grounded document/knowledge lookup still leaves multiple plausible answers
 - use provider_hints from context when present instead of restating the same rules
 - if an action needs inputs, include them inside that action's <params> block
 - if a required param is unknown, ask for clarification in text
@@ -459,6 +461,8 @@ rules[17]:
 - when the user defines a durable preference, recurring block, escalation policy, upload policy, approval-gated workflow, or multi-device reminder rule, select the owning action even if some implementation details are still missing
 - do not wait for portal names, priority labels, event IDs, exact travel preferences, or the definition of "important" before selecting the owning action; let the action gather those details
 - for LifeOps create requests with a clear defaultable habit or natural window, such as drinking water, stretch breaks during the day, weekday-after-lunch Invisalign checks, or brushing when waking up and before bed, call LIFE instead of asking for exact clock times unless the user explicitly asks for precise scheduling
+- only choose actions that directly satisfy the user's request or an explicit live-state question; do not opportunistically triage inboxes, summarize calendars, propose meetings, or call adjacent tools just because provider context makes them available
+- when the user is venting, reflecting, stating an opinion, or asking for generic advice about a domain, stay in REPLY or NONE unless they explicitly ask you to inspect state, change state, send something, schedule something, or perform a real operation
 
 control_actions:
 - STOP means the task is done and the agent should end the run without executing more actions
@@ -607,12 +611,14 @@ recent action results:
 latest reflection task status:
 {{taskCompletionStatus}}
 
-rules[10]:
+rules[11]:
 - think briefly, then continue the task from the latest action results
 - actions execute in listed order
 - if replying, REPLY goes first
 - use IGNORE or STOP only by themselves
 - include providers only when needed
+- when the user asks about uploaded files, documents, prior uploads, or knowledge-base contents, call the relevant providers before replying instead of asking the user to resend the material
+- when the user refers to "the uploaded file", "the document I uploaded", or a prior upload without naming it, treat that as a provider lookup request first; only ask which file after grounded document/knowledge lookup still leaves multiple plausible answers
 - use provider_hints from context when present instead of restating the same rules
 - if an action needs inputs, include them under params keyed by action name
 - if a required param is unknown, ask for clarification in text

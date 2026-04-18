@@ -184,9 +184,11 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
     "- If the websites are unclear or missing, set shouldAct=false and ask the user to name the public hostnames explicitly.",
     "- Prefer bare public hostnames like x.com in the websites array.",
     "- Use durationMinutes=null only when the user explicitly wants the block to last until manual removal.",
+    "- If the user gives an exact timed duration like 45, 90, or 135 minutes, preserve that exact duration instead of falling back to the default 60-minute block.",
     "",
     "Examples:",
     '  {"shouldAct":true,"response":null,"websites":["x.com","twitter.com"],"durationMinutes":120}',
+    '  {"shouldAct":true,"response":null,"websites":["twitter.com"],"durationMinutes":90}',
     '  {"shouldAct":false,"response":"I noted those websites and will wait for your confirmation before blocking them.","websites":["x.com","twitter.com"]}',
     '  {"shouldAct":false,"response":"Tell me which public website hostnames to block, such as x.com or youtube.com.","websites":[]}',
     "",
@@ -230,7 +232,9 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
   }
 }
 
-export const blockWebsitesAction: Action = {
+export const blockWebsitesAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "BLOCK_WEBSITES",
   similes: [
     "SELFCONTROL_BLOCK_WEBSITES",
@@ -253,6 +257,7 @@ export const blockWebsitesAction: Action = {
     "Do not use this when the unblock condition is finishing a task, workout, or todo; that is BLOCK_UNTIL_TASK_COMPLETE. " +
     "If the user confirms a block in a follow-up message without repeating the hostnames, reuse that context through the action planner.",
   descriptionCompressed: "Admin: block websites via hosts file for set duration.",
+  suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
     const access = await getSelfControlAccess(runtime, message);
     return access.allowed;
@@ -395,6 +400,19 @@ export const blockWebsitesAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Started a website block for x.com, twitter.com until 2026-04-04T13:44:54.000Z.",
+          action: "BLOCK_WEBSITES",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Block twitter.com for exactly 90 minutes." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Started a website block for twitter.com until 2026-04-04T13:44:54.000Z.",
           action: "BLOCK_WEBSITES",
         },
       },

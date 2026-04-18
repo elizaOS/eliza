@@ -42,7 +42,7 @@ export const startRemoteSessionAction: Action = {
   name: ACTION_NAME,
   similes: ["OPEN_REMOTE_SESSION", "BEGIN_REMOTE_SESSION", "REMOTE_START"],
   description:
-    "Open a remote-control session. Requires confirmed: true. If running in local mode (MILADY_REMOTE_LOCAL_MODE=1) no pairing code is needed; otherwise a valid 6-digit pairing code is required.",
+    "Open a remote-control session. Requires confirmed: true. If running in local mode (MILADY_REMOTE_LOCAL_MODE=1) no pairing code is needed; otherwise a valid 6-digit pairing code is required. Use this only to start a remote session, not for local screenshots, Finder/Desktop tasks, or browser/file automation on this Mac — those belong to LIFEOPS_COMPUTER_USE.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasOwnerAccess(runtime, message),

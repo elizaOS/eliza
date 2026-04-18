@@ -9,10 +9,12 @@
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { AgentEventService } from "@elizaos/core";
 import { launchAppAction, stopAppAction } from "../actions/app-control.js";
+import { browserSessionAction } from "../actions/browser-session.js";
 import {
   readEntityAction,
   searchEntityAction,
 } from "../actions/entity-actions.js";
+import { extractPageAction } from "../actions/extract-page.js";
 import { manageTasksAction } from "../actions/manage-tasks.js";
 import { readChannelAction } from "../actions/read-channel.js";
 import { restartAction } from "../actions/restart.js";
@@ -205,6 +207,8 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       setUserNameAction,
       skillCommandAction,
       webSearchAction,
+      extractPageAction,
+      browserSessionAction,
       readChannelAction,
       searchConversationsAction,
       searchEntityAction,

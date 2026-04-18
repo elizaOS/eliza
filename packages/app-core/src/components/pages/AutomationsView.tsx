@@ -2205,7 +2205,7 @@ function AutomationsLayout() {
         if (options?.initialPrompt?.trim()) {
           await client.sendConversationMessage(
             conversation.id,
-            options.initialPrompt.trim(),
+            `[SYSTEM]${WORKFLOW_SYSTEM_ADDENDUM}[/SYSTEM]\n\n${options.initialPrompt.trim()}`,
             "DM",
             undefined,
             undefined,

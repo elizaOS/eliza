@@ -10,8 +10,8 @@ import {
 import {
   findFocusedTab,
   mergeRememberedTabs,
-  selectTabsForSync,
   type RememberedTab,
+  selectTabsForSync,
 } from "./tab-cache";
 
 const storageState = new Map<string, unknown>();
@@ -46,10 +46,7 @@ function installMockExtensionApi(args: {
           callback?.(response);
           return Promise.resolve(response);
         },
-        set: (
-          values: Record<string, unknown>,
-          callback?: () => void,
-        ) => {
+        set: (values: Record<string, unknown>, callback?: () => void) => {
           for (const [key, value] of Object.entries(values)) {
             storageState.set(key, value);
           }
@@ -82,12 +79,8 @@ describe("normalizeCompanionConfig", () => {
   it("returns null when companionId or pairingToken is missing", () => {
     expect(normalizeCompanionConfig(null)).toBeNull();
     expect(normalizeCompanionConfig({})).toBeNull();
-    expect(
-      normalizeCompanionConfig({ companionId: "abc" }),
-    ).toBeNull();
-    expect(
-      normalizeCompanionConfig({ pairingToken: "lobr_1" }),
-    ).toBeNull();
+    expect(normalizeCompanionConfig({ companionId: "abc" })).toBeNull();
+    expect(normalizeCompanionConfig({ pairingToken: "lobr_1" })).toBeNull();
   });
 
   it("defaults apiBaseUrl to the loopback API port and strips trailing slashes", () => {
@@ -103,9 +96,9 @@ describe("normalizeCompanionConfig", () => {
     const config = normalizeCompanionConfig({
       companionId: "abc",
       pairingToken: "lobr_xyz",
-      apiBaseUrl: "https://milady.example.com/api///",
+      apiBaseUrl: "https://lifeops.example.com/api///",
     });
-    expect(config?.apiBaseUrl).toBe("https://milady.example.com/api");
+    expect(config?.apiBaseUrl).toBe("https://lifeops.example.com/api");
   });
 
   it("coerces unknown browser values to chrome and preserves safari", () => {
@@ -150,7 +143,7 @@ describe("LifeOps Browser API base discovery", () => {
     ).chrome;
   });
 
-  it("discovers a reachable Milady app origin from open tabs", async () => {
+  it("discovers a reachable LifeOps app origin from open tabs", async () => {
     installMockExtensionApi({
       tabs: [
         {
@@ -159,7 +152,7 @@ describe("LifeOps Browser API base discovery", () => {
         },
         {
           url: "http://127.0.0.1:2138/chat",
-          title: "Milady",
+          title: "LifeOps",
         },
       ],
     });
@@ -206,8 +199,11 @@ describe("LifeOps Browser API base discovery", () => {
 
     expect(config?.apiBaseUrl).toBe("http://127.0.0.1:2138");
     expect(
-      (storageState.get("lifeopsBrowserCompanionConfig") as { apiBaseUrl: string })
-        .apiBaseUrl,
+      (
+        storageState.get("lifeopsBrowserCompanionConfig") as {
+          apiBaseUrl: string;
+        }
+      ).apiBaseUrl,
     ).toBe("http://127.0.0.1:2138");
   });
 });
@@ -227,9 +223,7 @@ const baseSettings = {
   updatedAt: null,
 };
 
-function makeTab(
-  overrides: Partial<RememberedTab> = {},
-): RememberedTab {
+function makeTab(overrides: Partial<RememberedTab> = {}): RememberedTab {
   return {
     browser: "chrome",
     profileId: "default",
@@ -261,7 +255,10 @@ describe("tab-cache", () => {
   });
 
   it("mergeRememberedTabs keeps previous lastFocusedAt when snapshot is null", () => {
-    const prior = makeTab({ tabId: "x", lastFocusedAt: "2026-04-16T00:00:00.000Z" });
+    const prior = makeTab({
+      tabId: "x",
+      lastFocusedAt: "2026-04-16T00:00:00.000Z",
+    });
     const next = makeTab({ tabId: "x", lastFocusedAt: null });
     const merged = mergeRememberedTabs([prior], [next], 10);
     expect(merged[0].lastFocusedAt).toBe("2026-04-16T00:00:00.000Z");
@@ -326,7 +323,11 @@ describe("tab-cache", () => {
   it("selectTabsForSync filters blocked origins", () => {
     const snapshot = [
       makeTab({ tabId: "1", url: "https://bad.example/", focusedActive: true }),
-      makeTab({ tabId: "2", url: "https://good.example/", activeInWindow: true }),
+      makeTab({
+        tabId: "2",
+        url: "https://good.example/",
+        activeInWindow: true,
+      }),
     ];
     const selected = selectTabsForSync({
       previous: [],
@@ -358,8 +359,16 @@ describe("tab-cache", () => {
 
   it("selectTabsForSync granted_sites mode admits only allow-listed origins", () => {
     const snapshot = [
-      makeTab({ tabId: "1", url: "https://listed.example/", focusedActive: true }),
-      makeTab({ tabId: "2", url: "https://other.example/", activeInWindow: true }),
+      makeTab({
+        tabId: "1",
+        url: "https://listed.example/",
+        focusedActive: true,
+      }),
+      makeTab({
+        tabId: "2",
+        url: "https://other.example/",
+        activeInWindow: true,
+      }),
     ];
     const selected = selectTabsForSync({
       previous: [],
@@ -463,9 +472,9 @@ describe("dom-actions.runDomAction", () => {
   });
 
   it("type without text throws", () => {
-    expect(() =>
-      runDomAction({ kind: "type", selector: "#x" }),
-    ).toThrow(/text is required/);
+    expect(() => runDomAction({ kind: "type", selector: "#x" })).toThrow(
+      /text is required/,
+    );
   });
 
   it("type rejects elements that do not support typing", () => {
@@ -484,9 +493,10 @@ describe("dom-actions.runDomAction", () => {
         <button id="submit" type="submit">Go</button>
       </form>
     `;
-    const form = document.querySelector("form")!;
+    const form = document.querySelector("form");
+    expect(form).not.toBeNull();
     let submitted = false;
-    form.addEventListener("submit", (evt) => {
+    form?.addEventListener("submit", (evt) => {
       evt.preventDefault();
       submitted = true;
     });
@@ -496,9 +506,7 @@ describe("dom-actions.runDomAction", () => {
   });
 
   it("submit throws when no form is available", () => {
-    expect(() => runDomAction({ kind: "submit" })).toThrow(
-      /No form available/,
-    );
+    expect(() => runDomAction({ kind: "submit" })).toThrow(/No form available/);
   });
 
   it("history_back and history_forward return direction markers", () => {
