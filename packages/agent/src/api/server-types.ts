@@ -32,6 +32,7 @@ export interface ConversationMetadata {
   scope?: ConversationScope;
   automationType?: ConversationAutomationType;
   taskId?: string;
+  triggerId?: string;
   workflowId?: string;
   workflowName?: string;
   draftId?: string;

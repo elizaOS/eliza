@@ -31,6 +31,22 @@ describe("conversation metadata helpers", () => {
     });
   });
 
+  it("sanitizes trigger-backed coordinator automation metadata", () => {
+    expect(
+      sanitizeConversationMetadata({
+        scope: "automation-coordinator",
+        automationType: "coordinator_text",
+        triggerId: "trigger-7",
+        terminalBridgeConversationId: "terminal-1",
+      }),
+    ).toEqual({
+      scope: "automation-coordinator",
+      automationType: "coordinator_text",
+      triggerId: "trigger-7",
+      terminalBridgeConversationId: "terminal-1",
+    });
+  });
+
   it("persists automation metadata onto room metadata and reads it back", () => {
     const metadata = buildConversationRoomMetadata(
       {
