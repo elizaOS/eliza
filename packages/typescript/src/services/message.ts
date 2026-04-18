@@ -829,8 +829,8 @@ function normalizeActionIdentifier(actionName: string): string {
 	return actionName.trim().toUpperCase().replace(/_/g, "");
 }
 
-const PROVIDER_FOLLOWUP_REPLY_ACTIONS = new Set(
-	["REPLY", "RESPOND"].map(normalizeActionIdentifier),
+const PROVIDER_FOLLOWUP_PASSIVE_ACTIONS = new Set(
+	["REPLY", "RESPOND", "NONE"].map(normalizeActionIdentifier),
 );
 
 function shouldRunProviderFollowup(
@@ -853,7 +853,7 @@ function shouldRunProviderFollowup(
 	}
 
 	return normalizedActions.every((actionName) =>
-		PROVIDER_FOLLOWUP_REPLY_ACTIONS.has(actionName),
+		PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(actionName),
 	);
 }
 
@@ -893,7 +893,7 @@ function shouldAttemptProviderRescue(
 	}
 
 	return normalizedActions.every((actionName) =>
-		PROVIDER_FOLLOWUP_REPLY_ACTIONS.has(actionName),
+		PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(actionName),
 	);
 }
 

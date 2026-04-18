@@ -191,7 +191,12 @@ async function resolveRelationshipId(
     return null;
   }
 
-  return resolveRelationshipIdByName(service, name);
+  const resolvedFromName = await resolveRelationshipIdByName(service, name);
+  if (resolvedFromName) {
+    return resolvedFromName;
+  }
+
+  return resolveRelationshipIdFromText(service, name);
 }
 
 function normalizeFollowUpDueAt(rawDueAt: string): string | null {
