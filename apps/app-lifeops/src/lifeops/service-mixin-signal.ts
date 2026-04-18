@@ -112,7 +112,7 @@ async function ensureSignalPluginLoaded(
 /** @internal */
 export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
   class LifeOpsSignalServiceMixin extends Base {
-    #signalServiceConnected(): boolean {
+    lifeOpsSignalServiceConnected(): boolean {
       const signalService = this.runtime.getService("signal") as
         | {
             getAccountNumber?: () => string | null;
@@ -124,11 +124,11 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
       );
     }
 
-    #signalServiceRegistered(): boolean {
+    lifeOpsSignalServiceRegistered(): boolean {
       return Boolean(this.runtime.getService("signal"));
     }
 
-    async #ensureSignalRuntimeReady(
+    async lifeOpsEnsureSignalRuntimeReady(
       authDir: string,
       phoneNumber: string,
     ): Promise<void> {
@@ -160,7 +160,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
       this.runtime.setSetting("SIGNAL_AUTH_DIR", authDir, false);
       this.runtime.setSetting("SIGNAL_ACCOUNT_NUMBER", phoneNumber, false);
 
-      if (!configChanged && this.#signalServiceRegistered()) {
+      if (!configChanged && this.lifeOpsSignalServiceRegistered()) {
         return;
       }
 
@@ -173,7 +173,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
       }
     }
 
-    async #clearSignalRuntimeConfig(
+    async lifeOpsClearSignalRuntimeConfig(
       authDir: string | null,
       phoneNumber: string | null,
     ): Promise<void> {
@@ -202,7 +202,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
         this.runtime.setSetting("SIGNAL_ACCOUNT_NUMBER", null, false);
       }
 
-      if (!configChanged && !this.#signalServiceConnected()) {
+      if (!configChanged && !this.lifeOpsSignalServiceConnected()) {
         return;
       }
 
@@ -235,7 +235,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
       if (grant?.tokenRef) {
         const deviceInfo = readSignalLinkedDeviceInfo(grant.tokenRef);
         if (deviceInfo) {
-          await this.#ensureSignalRuntimeReady(
+          await this.lifeOpsEnsureSignalRuntimeReady(
             deviceInfo.authDir,
             deviceInfo.phoneNumber,
           );
@@ -351,7 +351,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
           "local",
           resolvedSide,
         );
-        await this.#clearSignalRuntimeConfig(
+        await this.lifeOpsClearSignalRuntimeConfig(
           grant.tokenRef,
           deviceInfo?.phoneNumber ?? null,
         );
