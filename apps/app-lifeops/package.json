@@ -27,6 +27,7 @@
     "./lifeops/*": "./src/lifeops/*.ts",
     "./inbox/*": "./src/inbox/*.ts",
     "./actions/*": "./src/actions/*.ts",
+    "./actions/*.js": "./src/actions/*.ts",
     "./providers/*": "./src/providers/*.ts",
     "./routes/*": "./src/routes/*.ts",
     "./activity-profile/*": "./src/activity-profile/*.ts",
@@ -56,7 +57,7 @@
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "drizzle-orm": "^0.45.1",
-    "lucide-react": "^0.575.0",
+    "lucide-react": "^1.0.0",
     "sharp": "^0.34.5"
   },
   "peerDependencies": {

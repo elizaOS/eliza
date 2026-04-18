@@ -148,8 +148,9 @@ async function resolveSubactionPlan(
     '{"subaction":"triage"|"digest"|"respond"|null,"shouldAct":true|false,"response":"string|null","target":"string|null","entryId":"string|null","confirmed":true|false|null}',
     "",
     "Choose triage for requests to scan new messages, unread items, or the current inbox.",
-    "Choose digest for requests to summarize, brief, recap, or review inbox activity.",
-    "Choose respond for requests to reply, draft, edit, approve, confirm, or send a reply to a message or person.",
+    "Choose digest for requests to summarize, brief, recap, review inbox activity, give a daily brief, rank urgent-vs-low items, surface drafts awaiting sign-off, or add a standing requirement to a recurring daily brief.",
+    "Choose respond for requests to reply, draft, edit, approve, confirm, send a reply to a message or person, repair a missed call by drafting follow-up, or set up a group-chat handoff.",
+    "Standing inbox policies like 'if relaying gets messy, suggest a group chat handoff' or 'if I miss a call, repair that and reschedule' should still choose an inbox subaction instead of shouldAct=false.",
     "If a pending draft exists and the current request clearly refers to sending, revising, or confirming it, choose respond even if the user does not restate the recipient.",
     "Set confirmed=true only when the user clearly approves sending the current pending draft right now.",
     "Set confirmed=false when the user is editing, hesitating, declining, or asking for more changes to the current draft.",
@@ -220,7 +221,9 @@ async function resolveSubactionPlan(
 
 const ACTION_NAME = "INBOX";
 
-export const inboxAction: Action = {
+export const inboxAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: ACTION_NAME,
   similes: [
     "CHECK_INBOX",
@@ -231,16 +234,34 @@ export const inboxAction: Action = {
     "SCAN_MESSAGES",
     "CHECK_MESSAGES",
     "DAILY_DIGEST",
+    "DAILY_BRIEF",
     "INBOX_SUMMARY",
     "REPLY_INBOX",
     "RESPOND_TO_MESSAGE",
+    "MISSED_CALL_FOLLOWUP",
+    "GROUP_CHAT_HANDOFF",
+  ],
+  tags: [
+    "always-include",
+    "daily brief",
+    "cross-channel inbox",
+    "missed call repair",
+    "group chat handoff",
+    "bump unanswered decision",
+    "unread summary",
   ],
   description:
     "Unified inbox management: triage new messages across all channels, " +
     "generate a daily digest summary, or draft/send a response to a triaged " +
-    "item. Subactions: triage, digest, respond. Admin/owner only.",
+    "item. Use this for executive-assistant daily briefs, urgent-vs-low " +
+    "priority inbox ranking, unread summaries, drafts awaiting sign-off, " +
+    "missed-call repair follow-up, and group-chat handoff coordination. " +
+    "Examples: 'triage my inbox', 'give me my inbox digest', or 'respond to the messages that need an answer in my inbox'. " +
+    "If the request is explicitly Gmail or email-specific, about unread emails, or about drafting or sending a reply to a specific email, use GMAIL_ACTION instead. " +
+    "Subactions: triage, digest, respond. Admin/owner only.",
   descriptionCompressed:
     "Unified inbox: triage messages, daily digest, draft/send responses. Admin only.",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => hasAdminAccess(runtime, message),
 
@@ -352,7 +373,7 @@ export const inboxAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Check my inbox for new messages" },
+        content: { text: "Triage my inbox" },
       },
       {
         name: "{{agentName}}",
@@ -364,7 +385,7 @@ export const inboxAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Give me my daily inbox summary" },
+        content: { text: "Give me my inbox digest" },
       },
       {
         name: "{{agentName}}",
@@ -376,12 +397,68 @@ export const inboxAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Respond to Alice's Discord message" },
+        content: { text: "Respond to the messages that need an answer in my inbox" },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "I'll send this to Alice on Discord DM:\n\n> Hey Alice, yes we're still on for tomorrow!\n\nSay \"send it\" to confirm.",
+          text: "I found 3 inbox items that need a reply. I'll draft the first response for your review.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "In the daily brief, also tell me which drafts still need my sign-off.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll include any drafts still waiting for your sign-off in the daily inbox brief.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "I missed a call with the Frontier Tower guys today. Need to repair that and reschedule if possible asap.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll draft the repair follow-up and line up the reschedule details so we can send it quickly.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "If direct relaying gets messy here, suggest making a group chat handoff instead.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Understood. If the relay gets tangled, I'll suggest a group-chat handoff instead of letting the thread drift.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "If I still haven't answered about those three events, bump me again with context instead of starting over.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll keep the prior context attached and bump you again about those three events instead of restarting the thread from zero.",
         },
       },
     ],
@@ -476,8 +553,9 @@ async function handleTriage(
   const llmResultMap = new Map<string, TriageResult>();
   for (let i = 0; i < newMessages.length; i++) {
     const result = llmResults[i];
-    if (result) {
-      llmResultMap.set(newMessages[i].id, result);
+    const message = newMessages[i];
+    if (result && message) {
+      llmResultMap.set(message.id, result);
     }
   }
 
@@ -771,7 +849,16 @@ async function handleRespond(
       };
     }
     if (needsReply.length === 1) {
-      entry = needsReply[0];
+      const onlyEntry = needsReply.at(0);
+      if (!onlyEntry) {
+        return {
+          text: "Could not find the inbox item you want to respond to.",
+          success: false,
+          values: { success: false },
+          data: { actionName: ACTION_NAME, subaction: "respond" },
+        };
+      }
+      entry = onlyEntry;
     } else {
       const itemList = needsReply
         .map(

@@ -22,8 +22,9 @@ function normalizeTime(value: string | undefined | null): string | null {
   if (!trimmed) return null;
   const match = HHMM_RE.exec(trimmed);
   if (!match) return null;
-  const hours = Number.parseInt(match[1], 10);
-  const minutes = Number.parseInt(match[2], 10);
+  const [, rawHours = "", rawMinutes = ""] = match;
+  const hours = Number.parseInt(rawHours, 10);
+  const minutes = Number.parseInt(rawMinutes, 10);
   if (!Number.isFinite(hours) || hours < 0 || hours > 23) return null;
   if (!Number.isFinite(minutes) || minutes < 0 || minutes > 59) return null;
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;

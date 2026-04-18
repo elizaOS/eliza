@@ -1,6 +1,9 @@
 import crypto from "node:crypto";
 import { logger } from "@elizaos/core";
 
+const X_BASE_URL =
+  process.env.MILADY_MOCK_X_BASE ?? "https://api.twitter.com";
+
 /**
  * Read-side credentials for the X/Twitter API v2. Mirrors the shape used by
  * {@link ./x-poster.ts} but accepts the canonical `apiSecret` naming; both
@@ -90,7 +93,7 @@ function buildSignatureBaseString(
 ): string {
   const sorted = Object.keys(params)
     .sort()
-    .map((key) => `${percentEncode(key)}=${percentEncode(params[key])}`)
+    .map((key) => `${percentEncode(key)}=${percentEncode(params[key] ?? "")}`)
     .join("&");
   return `${method.toUpperCase()}&${percentEncode(url)}&${percentEncode(sorted)}`;
 }
@@ -135,7 +138,10 @@ function buildOAuth1GetHeader(args: {
     "OAuth " +
     Object.keys(oauthParams)
       .sort()
-      .map((key) => `${percentEncode(key)}="${percentEncode(oauthParams[key])}"`)
+      .map(
+        (key) =>
+          `${percentEncode(key)}="${percentEncode(oauthParams[key] ?? "")}"`,
+      )
       .join(", ")
   );
 }
@@ -309,7 +315,7 @@ export async function readXDms(
   options: XReadPageOptions = {},
 ): Promise<XReadPage<XRawDm>> {
   const limit = clampLimit(options.limit);
-  const url = "https://api.twitter.com/2/dm_events";
+  const url = `${X_BASE_URL}/2/dm_events`;
   const queryParams: Record<string, string> = {
     max_results: String(limit),
     "dm_event.fields": "id,event_type,text,sender_id,dm_conversation_id,created_at",
@@ -363,7 +369,7 @@ export async function pullXFeed(
         category: "unknown",
       });
     }
-    url = `https://api.twitter.com/2/users/${encodeURIComponent(credentials.userId)}/timelines/reverse_chronological`;
+    url = `${X_BASE_URL}/2/users/${encodeURIComponent(credentials.userId)}/timelines/reverse_chronological`;
   } else if (feedType === "mentions") {
     if (!credentials.userId) {
       throw new XReadError("mentions requires credentials.userId", {
@@ -371,7 +377,7 @@ export async function pullXFeed(
         category: "unknown",
       });
     }
-    url = `https://api.twitter.com/2/users/${encodeURIComponent(credentials.userId)}/mentions`;
+    url = `${X_BASE_URL}/2/users/${encodeURIComponent(credentials.userId)}/mentions`;
   } else {
     const query = (options.query ?? "").trim();
     if (query.length === 0) {
@@ -380,7 +386,7 @@ export async function pullXFeed(
         category: "unknown",
       });
     }
-    url = "https://api.twitter.com/2/tweets/search/recent";
+    url = `${X_BASE_URL}/2/tweets/search/recent`;
     baseQuery.query = query;
   }
 

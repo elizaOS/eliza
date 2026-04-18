@@ -217,7 +217,11 @@ export class BlockRuleWriter {
     if (rows.length === 0) {
       throw new Error(`[BlockRuleWriter] block rule ${id} not found`);
     }
-    const rule = rowToBlockRule(rows[0]);
+    const row = rows[0];
+    if (!row) {
+      throw new Error(`[BlockRuleWriter] block rule ${id} not found`);
+    }
+    const rule = rowToBlockRule(row);
     if (rule.gateType === "harsh_no_bypass") {
       throw new Error(
         `[BlockRuleWriter] block rule ${id} is harsh_no_bypass and cannot be released by user confirmation`,
@@ -307,6 +311,7 @@ export class BlockRuleReader {
          LIMIT 1`,
     );
     if (rows.length === 0) return null;
-    return rowToBlockRule(rows[0]);
+    const row = rows[0];
+    return row ? rowToBlockRule(row) : null;
   }
 }
