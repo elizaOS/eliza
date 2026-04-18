@@ -68,6 +68,21 @@ const sessions = new Map<string, SessionRuntimeState>();
 const DEFAULT_VNC_PORT = 5900;
 const DEFAULT_SESSION_MINUTES = 60;
 
+function isMockRemoteDesktopEnabled(): boolean {
+  const explicit = process.env.MILADY_TEST_REMOTE_DESKTOP_BACKEND?.trim();
+  if (explicit) {
+    const normalized = explicit.toLowerCase();
+    return (
+      normalized === "1" ||
+      normalized === "true" ||
+      normalized === "yes" ||
+      normalized === "on" ||
+      normalized === "fixture"
+    );
+  }
+  return process.env.MILADY_BENCHMARK_USE_MOCKS === "1";
+}
+
 // ---------------------------------------------------------------------------
 // Env / config resolution
 // ---------------------------------------------------------------------------
@@ -161,6 +176,9 @@ async function probeNgrok(token?: string): Promise<boolean> {
 export async function detectRemoteDesktopBackend(
   config?: RemoteDesktopConfig,
 ): Promise<RemoteDesktopBackend> {
+  if (isMockRemoteDesktopEnabled()) {
+    return "tailscale-vnc";
+  }
   const resolved = resolveConfig(config);
 
   if (resolved.preferredBackend === "none") return "none";
@@ -370,6 +388,7 @@ export async function startRemoteSession(
   config?: RemoteDesktopConfig,
 ): Promise<RemoteDesktopSession> {
   const resolved = resolveConfig(config);
+  const mockEnabled = isMockRemoteDesktopEnabled();
   const backend = await detectRemoteDesktopBackend(config);
 
   const now = new Date();
@@ -400,6 +419,21 @@ export async function startRemoteSession(
   }
 
   try {
+    if (mockEnabled) {
+      const activeSession: RemoteDesktopSession = {
+        ...initialSession,
+        backend,
+        status: "active",
+        accessUrl: `vnc://127.0.0.1:${resolved.vncPort}/mock/${id}`,
+      };
+      const expiryTimer = scheduleExpiry(id, durationMs);
+      sessions.set(id, {
+        session: activeSession,
+        expiryTimer,
+      });
+      return activeSession;
+    }
+
     let accessUrl: string;
     let ngrokProcess: ChildProcess | undefined;
 

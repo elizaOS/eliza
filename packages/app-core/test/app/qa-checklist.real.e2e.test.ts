@@ -535,7 +535,9 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
         await waitFor(
           async () => {
             const list = await apiJson<{ trajectories: Array<{ id: string }> }>(
-              "/api/trajectories?limit=20",
+              `/api/trajectories?limit=20&search=${encodeURIComponent(
+                KNOWLEDGE_CODEWORD,
+              )}`,
             );
             return (list.trajectories ?? []).length > 0 ? true : null;
           },
@@ -551,13 +553,12 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
           await typeInto(
             page,
             trajectorySearchSelector,
-            "qa codeword from the uploaded file",
+            KNOWLEDGE_CODEWORD,
           );
           await page.waitForSelector(
             '[data-testid="trajectories-sidebar"] [data-sidebar-item]',
           );
         }
-        await waitForText(page, "qa codeword from the uploaded file", 30_000);
         await waitForText(page, KNOWLEDGE_CODEWORD, 30_000);
 
         logQaStep(profile, "smoke tabs");
