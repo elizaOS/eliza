@@ -15,8 +15,11 @@ RUBRIC:
 CANDIDATE RESPONSE:
 {candidate}
 
-Respond with ONLY a JSON object on one line, no markdown, no prose:
-{"score": <0.0-1.0 float>, "reason": "<one-sentence justification>"}`;
+Respond with ONLY a compact JSON object on one line, no markdown, no prose, no code fences. Keep "reason" under 20 words so the output fits in 120 tokens:
+{"score": <0.0-1.0 float>, "reason": "<≤20 word justification>"}`;
+
+const MAX_JUDGE_TOKENS = 512;
+const MAX_RETRIES = 2;
 
 export interface JudgeResult {
   score: number;
@@ -30,21 +33,82 @@ function clamp01(value: number): number {
   return value;
 }
 
-function parseJudgeJson(raw: string): JudgeResult {
-  const match = raw.match(/\{[\s\S]*?\}/);
-  if (!match) {
-    throw new Error(
-      `[scenario-judge] model did not return a JSON object. Raw: ${raw.slice(0, 200)}`,
-    );
+/**
+ * Extract the first balanced `{...}` JSON object substring from the model
+ * output. Respects string boundaries and escape sequences so that a `}`
+ * inside a string value does not terminate the match prematurely.
+ *
+ * Returns null when no balanced object is found.
+ */
+function extractBalancedJsonObject(raw: string): string | null {
+  const start = raw.indexOf("{");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = start; i < raw.length; i += 1) {
+    const ch = raw[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\" && inString) {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return raw.slice(start, i + 1);
+      }
+    }
   }
-  const parsed = JSON.parse(match[0]) as Record<string, unknown>;
+  return null;
+}
+
+function parseJudgeJson(raw: string): JudgeResult | null {
+  const json = extractBalancedJsonObject(raw);
+  if (!json) return null;
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const scoreRaw = parsed.score;
   const score =
-    typeof parsed.score === "number"
-      ? parsed.score
-      : Number.parseFloat(String(parsed.score ?? ""));
+    typeof scoreRaw === "number"
+      ? scoreRaw
+      : Number.parseFloat(String(scoreRaw ?? ""));
+  if (!Number.isFinite(score)) return null;
   const reason =
-    typeof parsed.reason === "string" ? parsed.reason : "(no reason)";
+    typeof parsed.reason === "string" && parsed.reason.length > 0
+      ? parsed.reason
+      : "(no reason)";
   return { score: clamp01(score), reason };
+}
+
+export class JudgeParseError extends Error {
+  readonly raw: string;
+  constructor(attempts: number, raw: string) {
+    const preview =
+      raw.length <= 300
+        ? raw
+        : `${raw.slice(0, 150)} … ${raw.slice(-100)} (${raw.length} chars)`;
+    super(
+      `[scenario-judge] model did not return a parseable JSON object after ${attempts} attempt(s). Raw: ${preview}`,
+    );
+    this.name = "JudgeParseError";
+    this.raw = raw;
+  }
 }
 
 export async function judgeTextWithLlm(
@@ -57,19 +121,30 @@ export async function judgeTextWithLlm(
     candidate,
   );
 
-  const output = await runtime.useModel(ModelType.TEXT_LARGE, {
-    prompt,
-    maxTokens: 200,
-    temperature: 0,
-  });
-
-  const raw = typeof output === "string" ? output : JSON.stringify(output);
-  try {
-    return parseJudgeJson(raw);
-  } catch (err) {
+  let lastRaw = "";
+  for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt += 1) {
+    const output = await runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt,
+      maxTokens: MAX_JUDGE_TOKENS,
+      temperature: 0,
+    });
+    const raw = typeof output === "string" ? output : JSON.stringify(output);
+    lastRaw = raw;
+    const result = parseJudgeJson(raw);
+    if (result) {
+      if (attempt > 1) {
+        logger.info(
+          `[scenario-judge] parsed on attempt ${attempt} after earlier unparseable output`,
+        );
+      }
+      return result;
+    }
     logger.warn(
-      `[scenario-judge] failed to parse judge output: ${err instanceof Error ? err.message : String(err)}`,
+      `[scenario-judge] attempt ${attempt} produced unparseable output (${raw.length} chars); ${
+        attempt <= MAX_RETRIES ? "retrying" : "giving up"
+      }`,
     );
-    throw err;
   }
+
+  throw new JudgeParseError(MAX_RETRIES + 1, lastRaw);
 }

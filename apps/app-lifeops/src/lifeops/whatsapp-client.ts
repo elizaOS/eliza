@@ -33,8 +33,9 @@ export class WhatsAppError extends Error {
 }
 
 const DEFAULT_API_VERSION = "v21.0";
-const WHATSAPP_BASE_URL =
-  process.env.MILADY_MOCK_WHATSAPP_BASE ?? "https://graph.facebook.com";
+function getWhatsAppBaseUrl(): string {
+  return process.env.MILADY_MOCK_WHATSAPP_BASE ?? "https://graph.facebook.com";
+}
 
 export function readWhatsAppCredentialsFromEnv(
   env: NodeJS.ProcessEnv = process.env,
@@ -57,7 +58,7 @@ export async function sendWhatsAppMessage(
   req: WhatsAppSendRequest,
 ): Promise<{ ok: true; messageId: string }> {
   const apiVersion = creds.apiVersion ?? DEFAULT_API_VERSION;
-  const url = `${WHATSAPP_BASE_URL}/${apiVersion}/${encodeURIComponent(creds.phoneNumberId)}/messages`;
+  const url = `${getWhatsAppBaseUrl()}/${apiVersion}/${encodeURIComponent(creds.phoneNumberId)}/messages`;
 
   const payload: Record<string, unknown> = {
     messaging_product: "whatsapp",
