@@ -4,6 +4,9 @@
   "description": "Lean scenario runner for the WS7 scenario-schema architecture. Loads .scenario.ts files, executes them against a real @elizaos/core AgentRuntime with a live LLM, and emits a JSON report.",
   "type": "module",
   "main": "./src/index.ts",
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "milady-scenarios": "./bin/milady-scenarios"
   },
