@@ -12,10 +12,14 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import puppeteer, { type Browser, type Page } from "puppeteer-core";
+import { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { buildOnboardingRuntimeConfig } from "../../src/onboarding-config";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
+import {
+  closePuppeteerBrowser,
+  launchPuppeteerBrowserWithRetry,
+} from "../helpers/browser-launch";
 import {
   buildIsolatedLiveProviderEnv,
   selectLiveProvider,
@@ -128,7 +132,7 @@ describeLive("Live memory + relationships browser E2E", () => {
     apiUrl = stripTrailingSlash(liveStack.apiBase);
     await ensureHttpOk(`${uiUrl}/`);
     await ensureHttpOk(`${apiUrl}/api/status`);
-    browser = await puppeteer.launch({
+    browser = await launchPuppeteerBrowserWithRetry({
       executablePath: CHROME_PATH,
       headless: true,
       protocolTimeout: 180_000,
@@ -141,7 +145,7 @@ describeLive("Live memory + relationships browser E2E", () => {
   }, 120_000);
 
   afterAll(async () => {
-    await browser?.close();
+    await closePuppeteerBrowser(browser);
     await stopRealStack(liveStack);
     liveStack = null;
   }, 30_000);

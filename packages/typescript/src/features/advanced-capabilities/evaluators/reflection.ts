@@ -71,6 +71,11 @@ interface ReflectionXmlResult {
 	taskCompletionReason?: string;
 }
 
+const UUID_PATTERN =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PLACEHOLDER_ENTITY_REFERENCE_PATTERN =
+	/^(entity_(initiating|being)_interaction|user(?:-\d+)?|scenarioagent(?:-agent)?|[a-z]+-agent|clinic|sms-message)$/i;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -445,26 +450,38 @@ const reflectionTemplate = reflectionEvaluatorTemplate;
  * @returns {UUID} - The resolved UUID of the entity.
  * @throws {Error} - If the entity ID cannot be resolved to a valid UUID.
  */
+function normalizeEntityReference(entityId: string): string {
+	const trimmed = entityId.trim();
+	const idWrapper = trimmed.match(/^\(id:\s*([^)]+)\)$/i);
+	const unwrapped = idWrapper?.[1] ?? trimmed;
+	return unwrapped.replace(/^["'`]+|["'`]+$/g, "").trim();
+}
+
+function isPlaceholderEntityReference(entityId: string): boolean {
+	const normalized = normalizeEntityReference(entityId);
+	return (
+		normalized.length === 0 ||
+		PLACEHOLDER_ENTITY_REFERENCE_PATTERN.test(normalized)
+	);
+}
+
 function resolveEntity(entityId: string, entities: Entity[]): UUID {
+	const normalizedId = normalizeEntityReference(entityId);
 	// First try exact UUID match
-	if (
-		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-			entityId,
-		)
-	) {
-		return entityId as UUID;
+	if (UUID_PATTERN.test(normalizedId)) {
+		return normalizedId as UUID;
 	}
 
 	let entity: Entity | undefined;
 
 	// Try to match the entityId exactly
-	entity = entities.find((a) => a.id === entityId);
+	entity = entities.find((a) => a.id === normalizedId);
 	if (entity?.id) {
 		return entity.id;
 	}
 
 	// Try partial UUID match with entityId
-	entity = entities.find((a) => a.id?.includes(entityId));
+	entity = entities.find((a) => a.id?.includes(normalizedId));
 	if (entity?.id) {
 		return entity.id;
 	}
@@ -472,14 +489,16 @@ function resolveEntity(entityId: string, entities: Entity[]): UUID {
 	// Try name match as last resort
 	entity = entities.find((a) =>
 		a.names.some((n: string) =>
-			n.toLowerCase().includes(entityId.toLowerCase()),
+			n.toLowerCase().includes(normalizedId.toLowerCase()),
 		),
 	);
 	if (entity?.id) {
 		return entity.id;
 	}
 
-	throw new Error(`Could not resolve entityId "${entityId}" to a valid UUID`);
+	throw new Error(
+		`Could not resolve entityId "${normalizedId}" to a valid UUID`,
+	);
 }
 
 function formatActionResults(actionResults: ActionResult[]): string {
@@ -795,9 +814,27 @@ async function handler(
 	// Update or create relationships
 	for (const relationship of relationshipsArray) {
 		if (!relationship.sourceEntityId || !relationship.targetEntityId) {
-			console.warn(
-				"Skipping relationship with missing entity IDs:",
-				relationship,
+			runtime.logger.debug(
+				{
+					src: "plugin:advanced-capabilities:evaluator:reflection",
+					agentId: runtime.agentId,
+					relationship,
+				},
+				"Skipping reflection relationship with missing entity IDs",
+			);
+			continue;
+		}
+		if (
+			isPlaceholderEntityReference(relationship.sourceEntityId) ||
+			isPlaceholderEntityReference(relationship.targetEntityId)
+		) {
+			runtime.logger.debug(
+				{
+					src: "plugin:advanced-capabilities:evaluator:reflection",
+					agentId: runtime.agentId,
+					relationship,
+				},
+				"Skipping reflection relationship with placeholder entity references",
 			);
 			continue;
 		}
@@ -809,8 +846,15 @@ async function handler(
 			sourceId = resolveEntity(relationship.sourceEntityId, entities);
 			target = resolveEntity(relationship.targetEntityId, entities);
 		} catch (error) {
-			console.warn("Failed to resolve relationship entities:", error);
-			console.warn("relationship:\n", relationship);
+			runtime.logger.debug(
+				{
+					src: "plugin:advanced-capabilities:evaluator:reflection",
+					agentId: runtime.agentId,
+					error: error instanceof Error ? error.message : String(error),
+					relationship,
+				},
+				"Skipping reflection relationship with unresolved entity references",
+			);
 			continue; // Skip this relationship if we can't resolve the IDs
 		}
 

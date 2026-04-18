@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import type {
+  ChannelType,
   HandlerOptions,
   IAgentRuntime,
   Memory,
@@ -91,21 +92,64 @@ function makeSyntheticMessage(
   runtime: IAgentRuntime,
   websites: readonly string[],
 ): Memory {
-  const roomId = stringToUuid(
-    `block-rule-service-${String(runtime.agentId)}`,
-  );
-  const entityId = stringToUuid(
-    `block-rule-service-entity-${String(runtime.agentId)}`,
-  );
+  const roomId = stringToUuid(`block-rule-service-room-${String(runtime.agentId)}`);
   return {
     id: createUniqueUuid(runtime, `block-rule-${Date.now()}`),
-    entityId,
+    entityId: runtime.agentId as UUID,
     agentId: runtime.agentId as UUID,
     roomId,
     content: {
       text: `Block ${websites.join(", ")}.`,
+      source: "agent",
     },
   } as Memory;
+}
+
+async function ensureSyntheticMessageContext(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<void> {
+  if (
+    typeof runtime.ensureWorldExists !== "function" ||
+    typeof runtime.ensureConnection !== "function" ||
+    typeof runtime.ensureParticipantInRoom !== "function"
+  ) {
+    return;
+  }
+
+  const worldId = stringToUuid(`block-rule-service-world-${String(runtime.agentId)}`);
+  const metadata = {
+    ownership: {
+      ownerId: runtime.agentId,
+    },
+    roles: {
+      [runtime.agentId]: "OWNER",
+    },
+  } as const;
+
+  await runtime.ensureWorldExists({
+    id: worldId,
+    name: "Block Rule Service",
+    agentId: runtime.agentId,
+    messageServerId: worldId,
+    metadata,
+  } as Parameters<typeof runtime.ensureWorldExists>[0]);
+
+  await runtime.ensureConnection({
+    entityId: runtime.agentId,
+    roomId: message.roomId,
+    worldId,
+    worldName: "Block Rule Service",
+    userName: "BlockRuleWriter",
+    name: "BlockRuleWriter",
+    source: "agent",
+    channelId: message.roomId,
+    type: "DM" as ChannelType,
+    messageServerId: worldId,
+    metadata,
+  } as Parameters<typeof runtime.ensureConnection>[0]);
+
+  await runtime.ensureParticipantInRoom(runtime.agentId, message.roomId);
 }
 
 function computeHandlerOptionsForCreate(
@@ -166,6 +210,7 @@ export class BlockRuleWriter {
     );
 
     const message = makeSyntheticMessage(this.runtime, input.websites);
+    await ensureSyntheticMessageContext(this.runtime, message);
     const handlerOptions = computeHandlerOptionsForCreate(input);
     const result = await blockWebsitesAction.handler(
       this.runtime,

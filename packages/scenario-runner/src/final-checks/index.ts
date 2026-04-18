@@ -136,6 +136,66 @@ function actionArtifactsPresent(action: ScenarioContext["actionsCalled"][number]
   );
 }
 
+function actionBlob(
+  action: ScenarioContext["actionsCalled"][number],
+): string {
+  const parts = [action.actionName];
+  if (action.parameters) {
+    parts.push(JSON.stringify(action.parameters));
+  }
+  if (action.result?.data) {
+    parts.push(JSON.stringify(action.result.data));
+  }
+  if (action.result?.values) {
+    parts.push(JSON.stringify(action.result.values));
+  }
+  if (action.result?.text) {
+    parts.push(action.result.text);
+  }
+  if (action.result?.message) {
+    parts.push(action.result.message);
+  }
+  if (action.error?.message) {
+    parts.push(action.error.message);
+  }
+  return parts.join(" ").toLowerCase();
+}
+
+function actionMatchesChannel(
+  action: ScenarioContext["actionsCalled"][number],
+  channel: string,
+): boolean {
+  const blob = actionBlob(action);
+  if (blob.includes(channel.toLowerCase())) {
+    return true;
+  }
+  switch (channel) {
+    case "gmail":
+      return ["GMAIL_ACTION", "INBOX", "CROSS_CHANNEL_SEND"].includes(
+        action.actionName,
+      );
+    case "discord":
+    case "telegram":
+    case "signal":
+    case "imessage":
+    case "whatsapp":
+    case "sms":
+      return ["INBOX", "CROSS_CHANNEL_SEND"].includes(action.actionName);
+    case "x-dm":
+      return ["X_READ", "INBOX", "CROSS_CHANNEL_SEND"].includes(
+        action.actionName,
+      );
+    case "desktop":
+    case "mobile":
+    case "phone_call":
+      return ["PUBLISH_DEVICE_INTENT", "INTENT_SYNC", "CALL_USER", "CALL_EXTERNAL"].includes(
+        action.actionName,
+      );
+    default:
+      return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Built-in handlers
 // ---------------------------------------------------------------------------
@@ -304,6 +364,94 @@ registerFinalCheckHandler(
   },
 );
 
+registerFinalCheckHandler("connectorDispatchOccurred", (check, { ctx }) => {
+  if (ctx.connectorDispatches === undefined) {
+    return {
+      status: "skipped-dependency-missing",
+      detail: "no connector dispatcher registered",
+    };
+  }
+  const { channel, actionName, minCount } = check as {
+    channel: string | string[];
+    actionName?: string | string[];
+    minCount?: number;
+  };
+  const channels = toArray(channel);
+  const matched = ctx.connectorDispatches.filter((dispatch) => {
+    if (channels.length > 0 && !channels.includes(dispatch.channel)) {
+      return false;
+    }
+    return matchesActionName(dispatch.actionName ?? "", actionName);
+  });
+  const min = typeof minCount === "number" ? minCount : 1;
+  if (matched.length < min) {
+    return {
+      status: "failed",
+      detail: `expected ${min} connector dispatch(es) on [${channels.join(",")}], saw ${matched.length} of ${ctx.connectorDispatches.length}`,
+    };
+  }
+  return {
+    status: "passed",
+    detail: `${matched.length} connector dispatch(es) on [${channels.join(",")}]`,
+  };
+});
+
+registerFinalCheckHandler("draftExists", (check, { ctx }) => {
+  const { channel, expected } = check as {
+    channel?: string | string[];
+    expected?: boolean;
+  };
+  const channels = toArray(channel);
+  const any = ctx.actionsCalled.some((action) => {
+    const blob = actionBlob(action);
+    const channelOk =
+      channels.length === 0 ||
+      channels.some((candidate) => actionMatchesChannel(action, candidate));
+    return channelOk && /draft/.test(blob);
+  });
+  const want = expected ?? true;
+  if (any === want) {
+    return { status: "passed", detail: `draftExists=${want}` };
+  }
+  return {
+    status: "failed",
+    detail: `expected draftExists=${want}, saw ${any}`,
+  };
+});
+
+registerFinalCheckHandler("messageDelivered", (check, { ctx }) => {
+  const { channel, expected } = check as {
+    channel?: string | string[];
+    expected?: boolean;
+  };
+  const channels = toArray(channel);
+  const anyDispatch = (ctx.connectorDispatches ?? []).some((dispatch) =>
+    channels.length === 0 ? true : channels.includes(dispatch.channel),
+  );
+  const anyAction = ctx.actionsCalled.some((action) => {
+    const channelOk =
+      channels.length === 0 ||
+      channels.some((candidate) => actionMatchesChannel(action, candidate));
+    if (!channelOk) {
+      return false;
+    }
+    const blob = actionBlob(action);
+    return (
+      action.result?.success === true &&
+      /(deliver|delivered|sent|send|placed|dial|reply|booking link)/.test(blob)
+    );
+  });
+  const any = anyDispatch || anyAction;
+  const want = expected ?? true;
+  if (any === want) {
+    return { status: "passed", detail: `messageDelivered=${want}` };
+  }
+  return {
+    status: "failed",
+    detail: `expected messageDelivered=${want}, saw ${any}`,
+  };
+});
+
 registerFinalCheckHandler("pushSent", (check, { ctx }) => {
   if (ctx.connectorDispatches === undefined) {
     return {
@@ -323,6 +471,45 @@ registerFinalCheckHandler("pushSent", (check, { ctx }) => {
     };
   }
   return { status: "passed", detail: `${hit.length} push(es)` };
+});
+
+registerFinalCheckHandler("pushEscalationOrder", (check, { ctx }) => {
+  const { channelOrder } = check as { channelOrder: string[] };
+  const seen = (ctx.connectorDispatches ?? []).map((dispatch) => dispatch.channel);
+  let cursor = 0;
+  for (const channel of channelOrder) {
+    const index = seen.indexOf(channel, cursor);
+    if (index === -1) {
+      return {
+        status: "failed",
+        detail: `expected push escalation order [${channelOrder.join(",")}], saw [${seen.join(",")}]`,
+      };
+    }
+    cursor = index + 1;
+  }
+  return {
+    status: "passed",
+    detail: `push escalation order matched [${channelOrder.join(",")}]`,
+  };
+});
+
+registerFinalCheckHandler("pushAcknowledgedSync", (check, { ctx }) => {
+  const { expected } = check as { expected?: boolean };
+  const any = ctx.actionsCalled.some((action) => {
+    const blob = actionBlob(action);
+    return (
+      action.actionName === "INTENT_SYNC" ||
+      (/acknowledge/.test(blob) && /sync/.test(blob))
+    );
+  });
+  const want = expected ?? true;
+  if (any === want) {
+    return { status: "passed", detail: `pushAcknowledgedSync=${want}` };
+  }
+  return {
+    status: "failed",
+    detail: `expected pushAcknowledgedSync=${want}, saw ${any}`,
+  };
 });
 
 registerFinalCheckHandler("clarificationRequested", (check, { ctx }) => {

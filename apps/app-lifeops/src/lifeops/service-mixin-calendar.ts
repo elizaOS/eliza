@@ -172,6 +172,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
       );
       const syncCalendar = async (): Promise<LifeOpsCalendarFeed> => {
         const syncedAt = new Date().toISOString();
+        const syncRecordedAt = new Date(syncedAt);
         const existingEvents = await this.repository.listCalendarEvents(
           this.agentId(),
           "google",
@@ -239,15 +240,41 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
         }
         await this.syncCalendarReminderPlans(nextEvents);
 
+        const existingSyncState = await this.repository.getCalendarSyncState(
+          this.agentId(),
+          "google",
+          args.calendarId,
+          grant.side,
+        );
+        const preserveExistingCoveredWindow =
+          existingSyncState &&
+          isCalendarSyncStateFresh({
+            syncedAt: existingSyncState.syncedAt,
+            timeMin: existingSyncState.windowStartAt,
+            timeMax: existingSyncState.windowEndAt,
+            windowStartAt: existingSyncState.windowStartAt,
+            windowEndAt: existingSyncState.windowEndAt,
+            now: syncRecordedAt,
+          }) &&
+          Date.parse(existingSyncState.windowStartAt) <=
+            Date.parse(args.timeMin) &&
+          Date.parse(existingSyncState.windowEndAt) >= Date.parse(args.timeMax);
+
         await this.repository.upsertCalendarSyncState(
           createLifeOpsCalendarSyncState({
             agentId: this.agentId(),
             provider: "google",
             side: grant.side,
             calendarId: args.calendarId,
-            windowStartAt: args.timeMin,
-            windowEndAt: args.timeMax,
-            syncedAt,
+            windowStartAt: preserveExistingCoveredWindow
+              ? existingSyncState.windowStartAt
+              : args.timeMin,
+            windowEndAt: preserveExistingCoveredWindow
+              ? existingSyncState.windowEndAt
+              : args.timeMax,
+            syncedAt: preserveExistingCoveredWindow
+              ? existingSyncState.syncedAt
+              : syncedAt,
           }),
         );
         await this.clearGoogleGrantAuthFailure(grant);
@@ -319,7 +346,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
         calendarId,
         effectiveSide,
       );
-      if (
+      const cacheFresh =
         !forceSync &&
         syncState &&
         isCalendarSyncStateFresh({
@@ -329,7 +356,9 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
           windowStartAt: syncState.windowStartAt,
           windowEndAt: syncState.windowEndAt,
           now,
-        })
+        });
+      if (
+        cacheFresh
       ) {
         return {
           calendarId,

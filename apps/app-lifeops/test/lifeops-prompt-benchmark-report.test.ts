@@ -20,7 +20,7 @@ const SAMPLE_RESULTS: PromptBenchmarkResult[] = [
       prompt:
         "Set up a workout habit every afternoon. Block X, Instagram, and Hacker News until I finish it, then unlock them for 60 minutes.",
       benchmarkContext:
-        "Prompt benchmark case Workout blocker routine (workout-blocker-basic__direct). Treat this as a benchmark of grounded follow-through: when the user is making a real request, prefer executing the best matching action instead of only describing a hypothetical plan.",
+        'Prompt benchmark case Workout blocker routine (workout-blocker-basic__direct). Treat this as a benchmark of grounded follow-through: when the user is making a real request, prefer executing the best matching registered action instead of only describing a hypothetical plan.',
       variantId: "direct",
       variantLabel: "Direct",
       axes: ["baseline", "direct"],

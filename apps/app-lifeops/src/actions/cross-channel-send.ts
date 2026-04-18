@@ -23,6 +23,12 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  State,
+} from "@elizaos/core";
+import {
+  ModelType,
+  parseJSONObjectFromText,
+  parseKeyValueXml,
 } from "@elizaos/core";
 import { hasAdminAccess } from "@elizaos/agent/security/access";
 import {
@@ -45,6 +51,7 @@ import {
   readXPosterCredentialsFromEnv,
   sendXDm,
 } from "../lifeops/x-poster.js";
+import { recentConversationTexts } from "./life-recent-context.js";
 
 const ACTION_NAME = "CROSS_CHANNEL_SEND";
 
@@ -71,6 +78,25 @@ type CrossChannelSendParameters = {
   confirmed?: boolean;
 };
 
+type CrossChannelSendLlmPlan = {
+  channel?: string;
+  target?: string;
+  message?: string;
+  subject?: string;
+  confirmed?: boolean | null;
+  shouldAct?: boolean | null;
+  response?: string;
+};
+
+type PendingCrossChannelSendDraft = {
+  channel: CrossChannelSendChannel;
+  target: string;
+  message: string;
+  subject?: string | null;
+  approvalTaskId?: string | null;
+  createdAt: string;
+};
+
 type DispatchContext = {
   runtime: IAgentRuntime;
   service: LifeOpsService;
@@ -92,10 +118,246 @@ function coerceBool(value: unknown): boolean {
   return false;
 }
 
+function coerceOptionalBool(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return undefined;
+}
+
 function isCrossChannelSendChannel(
   value: string,
 ): value is CrossChannelSendChannel {
   return (CROSS_CHANNEL_SEND_CHANNELS as readonly string[]).includes(value);
+}
+
+function normalizeChannelAlias(
+  value: string | undefined,
+): CrossChannelSendChannel | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[-\s]+/g, "_");
+  const aliasMap: Record<string, CrossChannelSendChannel> = {
+    sms: "sms",
+    twilio_sms: "sms",
+    twiliosms: "sms",
+    twilio_voice: "twilio_voice",
+    twiliovoice: "twilio_voice",
+    email: "email",
+    gmail: "email",
+    telegram: "telegram",
+    discord: "discord",
+    signal: "signal",
+    imessage: "imessage",
+    whatsapp: "whatsapp",
+    notifications: "notifications",
+    notification: "notifications",
+    push: "notifications",
+    ntfy: "notifications",
+    calendly: "calendly",
+    x_dm: "x_dm",
+    xdm: "x_dm",
+    twitter_dm: "x_dm",
+    twitterdm: "x_dm",
+  };
+  const canonical = aliasMap[normalized];
+  if (canonical) {
+    return canonical;
+  }
+  return isCrossChannelSendChannel(normalized) ? normalized : undefined;
+}
+
+function normalizePlannerResponse(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function normalizePlannerBoolean(value: unknown): boolean | null {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return null;
+}
+
+function getPendingDraftCacheKey(roomId: string): string {
+  return `lifeops:cross-channel-send:pending:${roomId}`;
+}
+
+async function readPendingDraft(
+  runtime: IAgentRuntime,
+  roomId: string,
+): Promise<PendingCrossChannelSendDraft | null> {
+  if (typeof runtime.getCache !== "function") {
+    return null;
+  }
+  return (
+    (await runtime.getCache<PendingCrossChannelSendDraft>(
+      getPendingDraftCacheKey(roomId),
+    )) ?? null
+  );
+}
+
+async function writePendingDraft(
+  runtime: IAgentRuntime,
+  roomId: string,
+  draft: PendingCrossChannelSendDraft,
+): Promise<void> {
+  if (typeof runtime.setCache !== "function") {
+    return;
+  }
+  await runtime.setCache(getPendingDraftCacheKey(roomId), draft);
+}
+
+async function clearPendingDraft(
+  runtime: IAgentRuntime,
+  roomId: string,
+): Promise<void> {
+  if (typeof runtime.deleteCache !== "function") {
+    return;
+  }
+  await runtime.deleteCache(getPendingDraftCacheKey(roomId));
+}
+
+async function resolveCrossChannelSendPlanWithLlm(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+  pendingDraft: PendingCrossChannelSendDraft | null;
+}): Promise<CrossChannelSendLlmPlan> {
+  const currentMessage =
+    typeof args.message.content?.text === "string"
+      ? args.message.content.text.trim()
+      : "";
+  const recentConversation = (
+    await recentConversationTexts({
+      runtime: args.runtime,
+      message: args.message,
+      state: args.state,
+      limit: 8,
+    })
+  ).join("\n");
+  const prompt = [
+    "Plan the CROSS_CHANNEL_SEND action for this request.",
+    "Use the current request, recent conversation, and any pending draft.",
+    "Return a JSON object with exactly these fields:",
+    "  channel: one of email, telegram, discord, signal, sms, twilio_voice, imessage, whatsapp, notifications, calendly, x_dm, or null",
+    "  target: recipient identifier string or null",
+    "  message: message body string or null",
+    "  subject: email subject string or null",
+    "  confirmed: boolean or null",
+    "  shouldAct: boolean",
+    "  response: short natural-language reply when shouldAct is false or more context is needed",
+    "",
+    "Rules:",
+    "- If the user is confirming a previously drafted send, keep the pending draft channel/target/message and set confirmed=true.",
+    "- If the user is only stating a policy, preference, or future trigger, set shouldAct=false and explain the policy instead of fabricating a send.",
+    "- Group-chat handoff suggestions are not sends. Set shouldAct=false and explain that you'll suggest a group-chat handoff when relay coordination gets messy.",
+    "- For email, include a subject when the request implies one or a pending draft already has one.",
+    "- Return only JSON.",
+    "",
+    "Examples:",
+    '  current request: "send it" with pending draft {"channel":"sms","target":"+15555550101","message":"Running 10 minutes late."}',
+    '  -> {"channel":"sms","target":"+15555550101","message":"Running 10 minutes late.","subject":null,"confirmed":true,"shouldAct":true,"response":null}',
+    '  current request: "Email alice@example.com the notes from today" with no pending draft',
+    '  -> {"channel":"email","target":"alice@example.com","message":"Here are the notes from today.","subject":"Notes from today","confirmed":false,"shouldAct":true,"response":null}',
+    '  current request: "If direct relaying gets messy here, suggest making a group chat handoff instead."',
+    '  -> {"channel":null,"target":null,"message":null,"subject":null,"confirmed":null,"shouldAct":false,"response":"If relay coordination gets messy, I will suggest moving everyone into a group chat handoff instead of continuing one-off relays."}',
+    "",
+    `Current request: ${JSON.stringify(currentMessage)}`,
+    `Pending draft: ${JSON.stringify(args.pendingDraft)}`,
+    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+  ].join("\n");
+
+  try {
+    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+    });
+    const rawResponse = typeof result === "string" ? result : "";
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
+      parseJSONObjectFromText(rawResponse);
+    if (!parsed) {
+      const fallbackResponse = rawResponse.trim();
+      return fallbackResponse.length > 0
+        ? {
+            shouldAct: false,
+            response: fallbackResponse,
+          }
+        : {};
+    }
+    return {
+      channel: normalizePlannerResponse(parsed.channel),
+      target: normalizePlannerResponse(parsed.target),
+      message: normalizePlannerResponse(parsed.message),
+      subject: normalizePlannerResponse(parsed.subject),
+      confirmed: normalizePlannerBoolean(parsed.confirmed),
+      shouldAct: normalizePlannerBoolean(parsed.shouldAct),
+      response: normalizePlannerResponse(parsed.response),
+    };
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:cross-channel-send",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Cross-channel send planning model call failed",
+    );
+    return {};
+  }
+}
+
+async function enqueueApprovalRequest(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  channel: CrossChannelSendChannel;
+  target: string;
+  body: string;
+  subject?: string;
+}): Promise<string | null> {
+  if (typeof args.runtime.createTask !== "function") {
+    return null;
+  }
+  return await args.runtime.createTask({
+    name: `CROSS_CHANNEL_SEND_${Date.now()}`,
+    description: `Approve sending ${args.channel} to ${args.target}${args.subject ? ` (${args.subject})` : ""}: ${args.body}`,
+    roomId: args.message.roomId,
+    entityId: args.message.entityId,
+    tags: ["AWAITING_CHOICE", "APPROVAL", "CROSS_CHANNEL_SEND"],
+    metadata: {
+      options: [
+        { name: "confirm", description: "Send the drafted message" },
+        { name: "cancel", description: "Do not send it" },
+      ],
+      approvalRequest: {
+        timeoutMs: 24 * 60 * 60 * 1000,
+        timeoutDefault: "cancel",
+        createdAt: Date.now(),
+        isAsync: true,
+      },
+      actionName: ACTION_NAME,
+      channel: args.channel,
+      payload: {
+        channel: args.channel,
+        target: args.target,
+        message: args.body,
+        subject: args.subject ?? null,
+      },
+    },
+  });
 }
 
 function twilioResultToActionResult(args: {
@@ -491,11 +753,19 @@ export const crossChannelSendAction: Action & {
   parameters: [
     {
       name: "channel",
-      description: `Channel to send on. One of: ${CROSS_CHANNEL_SEND_CHANNELS.join(", ")}.`,
+      description: `Channel to send on. Use canonical values ${CROSS_CHANNEL_SEND_CHANNELS.join(", ")}. Alias inputs like twilio_sms, gmail, push, ntfy, and twitter_dm are also accepted and normalized.`,
       required: true,
       schema: {
         type: "string" as const,
-        enum: [...CROSS_CHANNEL_SEND_CHANNELS],
+        enum: [
+          ...CROSS_CHANNEL_SEND_CHANNELS,
+          "twilio_sms",
+          "gmail",
+          "push",
+          "ntfy",
+          "twitter_dm",
+          "group_chat",
+        ],
       },
     },
     {
@@ -504,6 +774,7 @@ export const crossChannelSendAction: Action & {
         "Recipient identifier. Email address for email, E.164 phone for sms/twilio_voice, handle/user ID for chat channels, Ntfy topic name for notifications.",
       required: true,
       schema: { type: "string" as const },
+      examples: ["+15555550101", "owner@example.test", "team-ops"],
     },
     {
       name: "message",
@@ -577,7 +848,7 @@ export const crossChannelSendAction: Action & {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state,
+    state,
     options,
   ): Promise<ActionResult> => {
     if (!(await hasAdminAccess(runtime, message))) {
@@ -592,50 +863,118 @@ export const crossChannelSendAction: Action & {
     const params = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as CrossChannelSendParameters;
 
+    const pendingDraft = await readPendingDraft(runtime, message.roomId);
     const rawChannel = coerceString(params.channel);
-    const target = coerceString(params.target);
-    const body = coerceString(params.message);
-    const subject = coerceString(params.subject);
-    const confirmed = coerceBool(params.confirmed);
+    const planner =
+      !rawChannel ||
+      normalizeChannelAlias(rawChannel) === undefined ||
+      !coerceString(params.target) ||
+      !coerceString(params.message) ||
+      coerceOptionalBool(params.confirmed) === undefined
+        ? await resolveCrossChannelSendPlanWithLlm({
+            runtime,
+            message,
+            state,
+            pendingDraft,
+          })
+        : null;
+    const normalizedChannel =
+      normalizeChannelAlias(rawChannel) ??
+      normalizeChannelAlias(planner?.channel) ??
+      pendingDraft?.channel;
+    const target =
+      coerceString(params.target) ??
+      planner?.target ??
+      pendingDraft?.target;
+    const body =
+      coerceString(params.message) ??
+      planner?.message ??
+      pendingDraft?.message;
+    const subject =
+      coerceString(params.subject) ??
+      planner?.subject ??
+      pendingDraft?.subject ??
+      undefined;
+    const confirmed =
+      coerceOptionalBool(params.confirmed) ??
+      (planner?.confirmed ?? undefined) ??
+      false;
 
-    if (!rawChannel) {
+    if (planner?.shouldAct === false && planner.response) {
       return {
-        text: "Missing required parameter: channel.",
+        text: planner.response,
+        success: true,
+        values: {
+          success: true,
+          acted: false,
+        },
+        data: {
+          actionName: ACTION_NAME,
+          acted: false,
+        },
+      };
+    }
+
+    if (!normalizedChannel) {
+      if (rawChannel) {
+        return {
+          text: `Unknown channel "${rawChannel}". Valid channels: ${CROSS_CHANNEL_SEND_CHANNELS.join(", ")}.`,
+          success: false,
+          values: {
+            success: false,
+            error: "UNKNOWN_CHANNEL",
+            channel: rawChannel,
+          },
+          data: { actionName: ACTION_NAME },
+        };
+      }
+      return {
+        text: planner?.response ?? "Missing required parameter: channel.",
         success: false,
         values: { success: false, error: "MISSING_CHANNEL" },
         data: { actionName: ACTION_NAME },
       };
     }
-    if (!isCrossChannelSendChannel(rawChannel)) {
-      return {
-        text: `Unknown channel "${rawChannel}". Valid channels: ${CROSS_CHANNEL_SEND_CHANNELS.join(", ")}.`,
-        success: false,
-        values: { success: false, error: "UNKNOWN_CHANNEL", channel: rawChannel },
-        data: { actionName: ACTION_NAME },
-      };
-    }
-    const channel: CrossChannelSendChannel = rawChannel;
+    const channel: CrossChannelSendChannel = normalizedChannel;
 
     if (!target) {
       return {
-        text: "Missing required parameter: target.",
+        text: planner?.response ?? "Missing required parameter: target.",
         success: false,
-        values: { success: false, error: "MISSING_TARGET" },
-        data: { actionName: ACTION_NAME },
+        values: { success: false, error: "MISSING_TARGET", channel },
+        data: { actionName: ACTION_NAME, channel },
       };
     }
     if (!body) {
       return {
-        text: "Missing required parameter: message.",
+        text: planner?.response ?? "Missing required parameter: message.",
         success: false,
-        values: { success: false, error: "MISSING_MESSAGE" },
-        data: { actionName: ACTION_NAME },
+        values: { success: false, error: "MISSING_MESSAGE", channel },
+        data: { actionName: ACTION_NAME, channel },
       };
     }
 
     if (!confirmed) {
+      const approvalTaskId = await enqueueApprovalRequest({
+        runtime,
+        message,
+        channel,
+        target,
+        body,
+        subject: subject ?? pendingDraft?.subject ?? undefined,
+      });
+      await writePendingDraft(runtime, message.roomId, {
+        channel,
+        target,
+        message: body,
+        subject: subject ?? pendingDraft?.subject ?? null,
+        approvalTaskId,
+        createdAt: new Date().toISOString(),
+      });
       const subjectLine =
-        channel === "email" && subject ? `\nSubject: ${subject}\n` : "";
+        channel === "email" && (subject ?? pendingDraft?.subject)
+          ? `\nSubject: ${subject ?? pendingDraft?.subject}\n`
+          : "";
       return {
         text: `Draft ${channel} to ${target}:\n${subjectLine}\n"${body}"\n\nRe-issue with confirmed: true to dispatch.`,
         success: true,
@@ -645,7 +984,7 @@ export const crossChannelSendAction: Action & {
           channel,
           target,
           message: body,
-          subject: subject ?? null,
+          subject: subject ?? pendingDraft?.subject ?? null,
         },
         data: {
           actionName: ACTION_NAME,
@@ -653,19 +992,28 @@ export const crossChannelSendAction: Action & {
           channel,
           target,
           message: body,
-          subject: subject ?? null,
+          subject: subject ?? pendingDraft?.subject ?? null,
+          approvalTaskId,
         },
       };
     }
 
     const service = new LifeOpsService(runtime);
-    return CHANNEL_DISPATCHERS[channel]({
+    const result = await CHANNEL_DISPATCHERS[channel]({
       runtime,
       service,
       channel,
       target,
       body,
-      subject,
+      subject: subject ?? pendingDraft?.subject ?? undefined,
     });
+    if (result.success) {
+      await clearPendingDraft(runtime, message.roomId);
+      const approvalTaskId = pendingDraft?.approvalTaskId;
+      if (approvalTaskId) {
+        await runtime.deleteTask(approvalTaskId as never);
+      }
+    }
+    return result;
   },
 };

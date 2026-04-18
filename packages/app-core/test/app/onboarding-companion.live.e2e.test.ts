@@ -14,13 +14,16 @@ import { setTimeout as sleep } from "node:timers/promises";
 import {
   type Browser,
   type BrowserContext,
-  chromium,
   type Page,
 } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 import { buildOnboardingRuntimeConfig } from "../../src/onboarding-config";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
+import {
+  closePlaywrightBrowser,
+  launchPlaywrightBrowserWithRetry,
+} from "../helpers/browser-launch";
 import {
   buildIsolatedLiveProviderEnv,
   selectLiveProvider,
@@ -547,7 +550,7 @@ async function startRealStack(): Promise<StartedStack> {
     );
   }
 
-  const browser = await chromium.launch({
+  const browser = await launchPlaywrightBrowserWithRetry({
     executablePath: CHROME_PATH,
     args: ["--use-angle=swiftshader"],
     headless: true,
@@ -567,7 +570,7 @@ async function stopRealStack(stack: StartedStack | null): Promise<void> {
   if (!stack) return;
 
   try {
-    await stack.browser.close();
+    await closePlaywrightBrowser(stack.browser);
   } catch {
     // Best effort during cleanup.
   }

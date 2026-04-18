@@ -21,18 +21,34 @@ import {
   stopSelfControlBlock,
 } from "../website-blocker/engine.ts";
 import { syncWebsiteBlockerExpiryTask } from "../website-blocker/service.ts";
-import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 
 type BlockWebsitesParameters = {
   websites?: string[] | string;
   durationMinutes?: number | string | null;
+  confirmed?: boolean | string | null;
 };
+
+function coerceConfirmedFlag(value: unknown): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return normalized === "true" || normalized === "yes" || normalized === "1";
+  }
+  return false;
+}
 
 type WebsiteBlockPlan = {
   shouldAct?: boolean | null;
   response?: string;
   websites: string[];
   durationMinutes?: number | null;
+};
+
+type WebsiteBlockConversationTurn = {
+  speaker: "user" | "assistant";
+  text: string;
 };
 
 function formatStatusText(
@@ -152,19 +168,137 @@ function normalizeDurationMinutes(value: unknown): number | null | undefined {
   return undefined;
 }
 
+const WEBSITE_ALIAS_MAP: Readonly<Record<string, readonly string[]>> = {
+  twitter: ["x.com", "twitter.com"],
+  x: ["x.com", "twitter.com"],
+  reddit: ["reddit.com"],
+  youtube: ["youtube.com"],
+  facebook: ["facebook.com"],
+  instagram: ["instagram.com"],
+  tiktok: ["tiktok.com"],
+} as const;
+
+const SOCIAL_MEDIA_SITES = [
+  "facebook.com",
+  "instagram.com",
+  "reddit.com",
+  "tiktok.com",
+  "twitter.com",
+  "x.com",
+  "youtube.com",
+] as const;
+
+function extractHeuristicWebsites(text: string): string[] {
+  const normalized = text.toLowerCase();
+  const fromAliases = Object.entries(WEBSITE_ALIAS_MAP).flatMap(
+    ([alias, websites]) => {
+      if (!new RegExp(`(^|[^a-z0-9])${alias}([^a-z0-9]|$)`, "i").test(normalized)) {
+        return [];
+      }
+      return [...websites];
+    },
+  );
+
+  const explicitHosts = Array.from(
+    normalized.matchAll(
+      /\b(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/g,
+    ),
+    (match) => match[1] ?? "",
+  );
+
+  if (/\bsocial media\b/i.test(normalized)) {
+    return normalizeWebsiteCandidates([
+      ...explicitHosts,
+      ...fromAliases,
+      ...SOCIAL_MEDIA_SITES,
+    ]);
+  }
+
+  return normalizeWebsiteCandidates([...explicitHosts, ...fromAliases]);
+}
+
+function extractHeuristicDurationMinutes(text: string): number | null | undefined {
+  const normalized = text.toLowerCase();
+  if (
+    /\buntil (?:i|we) unblock\b/.test(normalized) ||
+    /\buntil manual(?:ly)? removed?\b/.test(normalized) ||
+    /\bforever\b/.test(normalized)
+  ) {
+    return null;
+  }
+
+  const hourMatch = normalized.match(/\b(\d+(?:\.\d+)?)\s*hours?\b/);
+  if (hourMatch?.[1]) {
+    return Math.round(Number.parseFloat(hourMatch[1]) * 60);
+  }
+
+  const minuteMatch = normalized.match(/\b(\d+(?:\.\d+)?)\s*minutes?\b/);
+  if (minuteMatch?.[1]) {
+    return Math.round(Number.parseFloat(minuteMatch[1]));
+  }
+
+  return undefined;
+}
+
+async function collectWebsiteBlockConversationTurns(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  limit: number;
+}): Promise<WebsiteBlockConversationTurn[]> {
+  const roomId =
+    typeof args.message.roomId === "string" ? args.message.roomId : "";
+  if (!roomId || typeof args.runtime.getMemories !== "function") {
+    return [];
+  }
+
+  try {
+    const memories = await args.runtime.getMemories({
+      roomId,
+      tableName: "messages",
+      limit: Math.max(args.limit * 2, args.limit),
+    });
+    if (!Array.isArray(memories)) {
+      return [];
+    }
+
+    return memories
+      .slice()
+      .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
+      .map((memory) => {
+        const text =
+          typeof memory?.content?.text === "string"
+            ? memory.content.text.trim()
+            : "";
+        if (!text) {
+          return null;
+        }
+
+        return {
+          speaker:
+            memory.entityId === args.runtime.agentId ? "assistant" : "user",
+          text,
+        } satisfies WebsiteBlockConversationTurn;
+      })
+      .filter(
+        (turn): turn is WebsiteBlockConversationTurn =>
+          turn !== null && turn.text.length > 0,
+      )
+      .slice(-args.limit);
+  } catch {
+    return [];
+  }
+}
+
 async function resolveWebsiteBlockPlanWithLlm(args: {
   runtime: IAgentRuntime;
   message: Memory;
   state: State | undefined;
 }): Promise<WebsiteBlockPlan> {
-  const recentConversation = (
-    await collectRecentConversationTexts({
-      runtime: args.runtime,
-      message: args.message,
-      state: args.state,
-      limit: 8,
-    })
-  ).join("\n");
+  const recentTurns = await collectWebsiteBlockConversationTurns({
+    runtime: args.runtime,
+    message: args.message,
+    limit: 10,
+  });
   const currentMessage = getMessageText(args.message).trim();
   const prompt = [
     "Plan the website blocking action for this request.",
@@ -194,11 +328,11 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
     "",
     "Return ONLY valid JSON.",
     `Current request: ${JSON.stringify(currentMessage)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+    `Recent conversation turns: ${JSON.stringify(recentTurns)}`,
   ].join("\n");
 
   try {
-    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
       prompt,
     });
     const rawResponse = typeof result === "string" ? result : "";
@@ -229,6 +363,60 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
       websites: [],
       shouldAct: null,
     };
+  }
+}
+
+async function recoverWebsiteContextWithLlm(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+}): Promise<string[]> {
+  const recentTurns = await collectWebsiteBlockConversationTurns({
+    runtime: args.runtime,
+    message: args.message,
+    limit: 12,
+  });
+
+  if (recentTurns.length === 0) {
+    return [];
+  }
+
+  const currentMessage = getMessageText(args.message).trim();
+  const prompt = [
+    "Recover previously mentioned public website hostnames for a website-block request.",
+    "Use the current request plus recent conversation context.",
+    "Return a JSON object with one field only:",
+    "  websites: array of public website hostnames or URLs relevant to the current blocking request",
+    "",
+    "Rules:",
+    "- Extract only websites that were actually mentioned in recent conversation.",
+    "- Prefer bare public hostnames like x.com.",
+    "- Do not invent websites.",
+    "- Return an empty array when no websites were previously mentioned.",
+    "",
+    "Return ONLY valid JSON.",
+    `Current request: ${JSON.stringify(currentMessage)}`,
+    `Recent conversation turns: ${JSON.stringify(recentTurns)}`,
+  ].join("\n");
+
+  try {
+    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt,
+    });
+    const rawResponse = typeof result === "string" ? result : "";
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
+      parseJSONObjectFromText(rawResponse);
+    return normalizeWebsiteCandidates(parsed?.websites);
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:website-blocker",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Website blocker context recovery model call failed",
+    );
+    return [];
   }
 }
 
@@ -271,29 +459,58 @@ export const blockWebsitesAction: Action & {
       };
     }
 
+    const messageText = getMessageText(message);
     const params = options?.parameters as BlockWebsitesParameters | undefined;
     const explicitWebsites = normalizeWebsiteCandidates(params?.websites);
     const explicitDurationMinutes = normalizeDurationMinutes(
       params?.durationMinutes,
     );
-    const llmPlan =
+    const heuristicWebsites =
       explicitWebsites.length === 0
+        ? extractHeuristicWebsites(messageText)
+        : [];
+    const heuristicDurationMinutes =
+      explicitDurationMinutes === undefined
+        ? extractHeuristicDurationMinutes(messageText)
+        : explicitDurationMinutes;
+    const llmPlan =
+      explicitWebsites.length === 0 && heuristicWebsites.length === 0
         ? await resolveWebsiteBlockPlanWithLlm({
             runtime,
             message,
             state,
           })
         : null;
+    const recoveredWebsites =
+      explicitWebsites.length === 0 &&
+      (llmPlan?.websites.length ?? 0) === 0
+        ? await recoverWebsiteContextWithLlm({
+            runtime,
+            message,
+            state,
+          })
+        : [];
+    const plannedWebsites =
+      explicitWebsites.length > 0
+        ? explicitWebsites
+        : heuristicWebsites.length > 0
+          ? heuristicWebsites
+        : ((llmPlan?.websites.length ?? 0) > 0
+            ? llmPlan?.websites
+            : recoveredWebsites);
 
     if (llmPlan?.shouldAct === false && explicitWebsites.length === 0) {
       return {
         success: true,
         text:
           llmPlan.response ??
-          "I noted those websites and will wait for your confirmation before blocking them.",
+          (plannedWebsites.length > 0
+            ? `I noted ${formatWebsiteList(plannedWebsites)} and will wait for your confirmation before blocking them.`
+            : "I noted those websites and will wait for your confirmation before blocking them."),
         data: {
           deferred: true,
           noop: true,
+          websites: plannedWebsites,
         },
       };
     }
@@ -301,13 +518,13 @@ export const blockWebsitesAction: Action & {
     const parsed = parseSelfControlBlockRequest({
       parameters: {
         websites:
-          explicitWebsites.length > 0
-            ? explicitWebsites
-            : (llmPlan?.websites ?? null),
+          plannedWebsites.length > 0 ? plannedWebsites : null,
         durationMinutes:
           explicitDurationMinutes !== undefined
             ? explicitDurationMinutes
-            : (llmPlan?.durationMinutes ?? null),
+            : (heuristicDurationMinutes !== undefined
+                ? heuristicDurationMinutes
+                : (llmPlan?.durationMinutes ?? null)),
       },
     });
     if (!parsed.request) {
@@ -376,7 +593,7 @@ export const blockWebsitesAction: Action & {
       name: "websites",
       description:
         "Website hostnames or URLs to block, for example ['x.com', 'twitter.com']. When omitted, the planner can recover them from recent conversation context.",
-      required: false,
+      required: true,
       schema: {
         type: "array" as const,
         items: { type: "string" as const },

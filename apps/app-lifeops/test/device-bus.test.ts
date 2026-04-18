@@ -1,11 +1,27 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { broadcastIntent } from "../src/lifeops/intent-sync.js";
 import { publishDeviceIntentAction, __internal } from "../src/actions/device-bus.js";
+
+vi.mock("../src/lifeops/intent-sync.js", () => ({
+  broadcastIntent: vi.fn(async (_runtime, input) => ({
+    id: "intent-local-1",
+    agentId: "00000000-0000-0000-0000-000000000003",
+    kind: input.kind,
+    target: input.target ?? "all",
+    title: input.title,
+    body: input.body,
+    actionUrl: input.actionUrl,
+    priority: input.priority ?? "high",
+    createdAt: "2026-04-18T00:00:00.000Z",
+    metadata: input.metadata ?? {},
+  })),
+}));
 
 const ORIGINAL_ENV = { ...process.env };
 
 function makeMessage() {
   return {
-    entityId: "00000000-0000-0000-0000-000000000001",
+    entityId: "00000000-0000-0000-0000-000000000003",
     roomId: "00000000-0000-0000-0000-000000000002",
     content: { text: "publish", ownerAccess: true },
   } as unknown as Parameters<
@@ -25,6 +41,7 @@ function makeRuntime(settings: Record<string, string> = {}) {
 beforeEach(() => {
   delete process.env.MILADY_DEVICE_BUS_URL;
   delete process.env.MILADY_DEVICE_BUS_TOKEN;
+  vi.mocked(broadcastIntent).mockClear();
 });
 
 afterEach(() => {
@@ -48,26 +65,29 @@ describe("normalizeKind", () => {
 });
 
 describe("PUBLISH_DEVICE_INTENT graceful degradation", () => {
-  test("returns device-bus-not-configured when URL missing", async () => {
+  test("falls back to the local intent store when URL missing", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const result = await publishDeviceIntentAction.handler!(
       makeRuntime(),
       makeMessage(),
       undefined,
-      { parameters: { kind: "alarm", payload: { time: "07:00" } } },
+      {
+        parameters: {
+          kind: "alarm",
+          payload: { title: "Stretch break", message: "Get up and stretch." },
+        },
+      },
     );
     expect(fetchSpy).not.toHaveBeenCalled();
+    expect(broadcastIntent).toHaveBeenCalledTimes(1);
     const r = result as { success: boolean; data?: Record<string, unknown> };
-    expect(r.success).toBe(false);
+    expect(r.success).toBe(true);
     const data = r.data ?? {};
-    expect(
-      data.reason === "device-bus-not-configured" ||
-        data.error === "PERMISSION_DENIED",
-    ).toBe(true);
+    expect(data.transport).toBe("local-fallback");
+    expect(data.intentId).toBe("intent-local-1");
   });
 
-  test("missing kind fails cleanly", async () => {
-    process.env.MILADY_DEVICE_BUS_URL = "https://example.test";
+  test("missing kind defaults to a local reminder when the bridge is absent", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const result = await publishDeviceIntentAction.handler!(
       makeRuntime(),
@@ -76,7 +96,9 @@ describe("PUBLISH_DEVICE_INTENT graceful degradation", () => {
       { parameters: {} },
     );
     expect(fetchSpy).not.toHaveBeenCalled();
-    const r = result as { success: boolean };
-    expect(r.success).toBe(false);
+    expect(broadcastIntent).toHaveBeenCalledTimes(1);
+    const r = result as { success: boolean; values?: Record<string, unknown> };
+    expect(r.success).toBe(true);
+    expect(r.values?.kind).toBe("reminder");
   });
 });

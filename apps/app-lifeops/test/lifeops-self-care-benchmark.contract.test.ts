@@ -107,6 +107,8 @@ describe("LifeOps self-care prompt benchmark contracts", () => {
       expect(testCase.benchmarkContext.toLowerCase()).toContain(
         "avoid executing durable actions",
       );
+      expect(testCase.benchmarkContext).not.toContain(testCase.caseId);
+      expect(testCase.benchmarkContext).not.toContain(testCase.baseScenarioId);
     }
   });
 });

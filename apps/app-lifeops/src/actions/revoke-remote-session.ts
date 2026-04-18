@@ -39,7 +39,8 @@ export const revokeRemoteSessionAction: Action = {
   parameters: [
     {
       name: "sessionId",
-      description: "Session id returned by START_REMOTE_SESSION.",
+      description:
+        "Session id returned by the REMOTE_DESKTOP start subaction.",
       required: true,
       schema: { type: "string" as const },
     },

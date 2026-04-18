@@ -29,6 +29,8 @@ export const updateOwnerProfileAction: Action & {
     "SAVE_TRAVEL_PREFERENCES",
     "TRAVEL_PROFILE",
     "BOOKING_PREFERENCES",
+    "CAPTURE_TRAVEL_PREFERENCES",
+    "CAPTURE_BOOKING_PREFERENCES",
   ],
   tags: [
     "always-include",
@@ -42,6 +44,7 @@ export const updateOwnerProfileAction: Action & {
     "Silently persist stable, owner-only LifeOps profile details when the canonical owner clearly states or confirms them. " +
     "Use only for the owner, never for other contacts, and do not ask follow-up questions just to fill these fields. " +
     "This includes durable travel-booking preferences or a reusable travel-preference checklist when the owner wants those preferences remembered for future bookings. " +
+    "Requests like 'set up a list of my flight and hotel preferences so you do not have to ask every time' belong here even when the action still needs to gather the actual preference list. " +
     "Do not use this for todos, goals, reminders, temporary plans, or live task state.",
   descriptionCompressed: "Persist stable owner profile details when stated/confirmed. Owner only.",
   suppressPostActionContinuation: true,

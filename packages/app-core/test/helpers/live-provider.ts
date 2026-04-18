@@ -156,7 +156,7 @@ const PROVIDERS: Array<{
     smallModelEnvVar: "GROQ_SMALL_MODEL",
     largeModelEnvVar: "GROQ_LARGE_MODEL",
     defaultSmallModel: "llama-3.1-8b-instant",
-    defaultLargeModel: "llama-3.1-8b-instant",
+    defaultLargeModel: "llama-3.3-70b-versatile",
   },
   {
     name: "openai",

@@ -22,6 +22,7 @@ import type { LocalInferenceLoader } from "../services/local-inference/active-mo
 import { readAssignments } from "../services/local-inference/assignments";
 import { deviceBridge } from "../services/local-inference/device-bridge";
 import { localInferenceEngine } from "../services/local-inference/engine";
+import { handlerRegistry } from "../services/local-inference/handler-registry";
 import { listInstalledModels } from "../services/local-inference/registry";
 import type { AgentModelSlot } from "../services/local-inference/types";
 
@@ -203,6 +204,12 @@ export async function ensureLocalInferenceHandler(
   ) {
     return;
   }
+
+  // Install the side-registry interception as early as possible so it
+  // captures every subsequent `registerModel` call — including our own
+  // handlers below, plus anything else that registers during the rest of
+  // boot. Idempotent per-runtime.
+  handlerRegistry.installOn(runtime);
 
   // Loader precedence:
   //   1. Capacitor native adapter when running on a mobile device itself.

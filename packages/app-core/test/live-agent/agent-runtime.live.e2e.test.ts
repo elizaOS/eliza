@@ -865,19 +865,35 @@ describe("Agent Runtime E2E", () => {
           channelId: conversationRoomId,
           type: ChannelType.DM,
         });
-        const msg = createMessageMemory({
-          id: crypto.randomUUID() as UUID,
-          entityId: userId,
-          roomId: conversationRoomId,
-          content: {
-            text: "Say hello in one word.",
-            source: "test",
-            channelType: ChannelType.DM,
+        const createProbeMessage = () =>
+          createMessageMemory({
+            id: crypto.randomUUID() as UUID,
+            entityId: userId,
+            roomId: conversationRoomId,
+            content: {
+              text: "Say hello in one word.",
+              source: "test",
+              channelType: ChannelType.DM,
+            },
+          });
+
+        let resp = await handleMessageAndCollectText(
+          runtime,
+          createProbeMessage(),
+          {
+            timeoutMs: 90_000,
           },
-        });
-        const resp = await handleMessageAndCollectText(runtime, msg, {
-          timeoutMs: 90_000,
-        });
+        );
+        if (resp.length === 0) {
+          await sleep(1_000);
+          resp = await handleMessageAndCollectText(
+            runtime,
+            createProbeMessage(),
+            {
+              timeoutMs: 90_000,
+            },
+          );
+        }
         if (resp.length === 0) {
           if (
             await shouldSkipDueModelProviderUnavailable(

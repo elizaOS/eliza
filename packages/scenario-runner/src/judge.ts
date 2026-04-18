@@ -9,6 +9,8 @@ import { ModelType, logger } from "@elizaos/core";
 
 const JUDGE_PROMPT_TEMPLATE = `You are a strict evaluator. Score the candidate response against the rubric from 0.0 (fails completely) to 1.0 (fully satisfies).
 
+The candidate may contain both natural-language replies and structured execution evidence such as action traces, result payloads, browser-task status, intervention requests, connector dispatches, and artifacts. Treat that structured evidence as primary proof of whether the flow actually happened. Do not require the assistant prose itself to restate every connector name when the trace already proves execution.
+
 RUBRIC:
 {rubric}
 

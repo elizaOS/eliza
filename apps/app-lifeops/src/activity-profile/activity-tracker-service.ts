@@ -19,7 +19,11 @@ import {
 } from "@elizaos/native-activity-tracker";
 import { insertActivityEvent } from "./activity-tracker-repo.js";
 
-export type ActivityTrackerMode = "running" | "disabled-non-darwin" | "failed";
+export type ActivityTrackerMode =
+  | "running"
+  | "disabled-config"
+  | "disabled-non-darwin"
+  | "failed";
 
 export class ActivityTrackerService extends Service {
   static override readonly serviceType = "activity_tracker";
@@ -51,6 +55,17 @@ export class ActivityTrackerService extends Service {
   }
 
   private async startCollector(): Promise<void> {
+    if (
+      process.env.MILADY_DISABLE_ACTIVITY_TRACKER === "1" ||
+      process.env.ELIZA_DISABLE_ACTIVITY_TRACKER === "1"
+    ) {
+      this.mode = "disabled-config";
+      logger.info(
+        "[activity-tracker] Collector disabled by configuration; reports will use seeded data only.",
+      );
+      return;
+    }
+
     if (!isSupportedPlatform()) {
       this.mode = "disabled-non-darwin";
       logger.info(

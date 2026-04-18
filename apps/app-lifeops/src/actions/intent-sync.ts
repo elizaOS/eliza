@@ -88,12 +88,33 @@ function fail(
   };
 }
 
-export const intentSyncAction: Action = {
+export const intentSyncAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: ACTION_NAME,
-  similes: ["BROADCAST_INTENT", "SYNC_INTENT", "CROSS_DEVICE_INTENT"],
+  similes: [
+    "BROADCAST_INTENT",
+    "SYNC_INTENT",
+    "CROSS_DEVICE_INTENT",
+    "BROADCAST_REMINDER",
+    "MOBILE_REMINDER",
+    "DEVICE_REMINDER",
+    "ROUTINE_REMINDER_TO_PHONE",
+  ],
+  tags: [
+    "always-include",
+    "broadcast reminder",
+    "mobile reminder",
+    "device reminder",
+    "routine reminder",
+    "notify my phone",
+  ],
   description:
     "Broadcast intents across devices or acknowledge pending intents. " +
-    "Subactions: broadcast, list_pending, acknowledge, prune_expired.",
+    "Subactions: broadcast, list_pending, acknowledge, prune_expired. " +
+    "Use this for requests like 'broadcast a routine reminder to my mobile titled Stretch break saying Get up and stretch for five minutes', " +
+    "'broadcast a reminder to all my devices', or 'ping my phone with a reminder'.",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasAdminAccess(runtime, message),

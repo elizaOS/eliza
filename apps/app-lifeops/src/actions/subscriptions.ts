@@ -7,9 +7,15 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import {
+  ModelType,
+  parseJSONObjectFromText,
+  parseKeyValueXml,
+} from "@elizaos/core";
 import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import type { LifeOpsSubscriptionExecutor } from "../lifeops/subscriptions-types.js";
+import { recentConversationTexts } from "./life-recent-context.js";
 
 type SubscriptionSubaction = "audit" | "cancel" | "status";
 
@@ -22,6 +28,17 @@ type SubscriptionActionParams = {
   executor?: LifeOpsSubscriptionExecutor;
   queryWindowDays?: number;
   confirmed?: boolean;
+};
+
+type SubscriptionActionPlan = {
+  mode?: SubscriptionSubaction | null;
+  serviceName?: string;
+  serviceSlug?: string;
+  executor?: LifeOpsSubscriptionExecutor;
+  queryWindowDays?: number;
+  confirmed?: boolean | null;
+  shouldAct?: boolean | null;
+  response?: string;
 };
 
 const ACTION_NAME = "SUBSCRIPTIONS";
@@ -65,11 +82,133 @@ function normalizeMode(value: unknown): SubscriptionSubaction | null {
   return null;
 }
 
-function parseConfirmed(text: string, params: SubscriptionActionParams): boolean {
-  if (typeof params.confirmed === "boolean") {
-    return params.confirmed;
+function normalizeExecutor(
+  value: unknown,
+): LifeOpsSubscriptionExecutor | undefined {
+  if (typeof value !== "string") {
+    return undefined;
   }
-  return /\b(go ahead|confirm|yes cancel|do it now|proceed)\b/i.test(text);
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "user_browser" ||
+    normalized === "agent_browser" ||
+    normalized === "desktop_native"
+  ) {
+    return normalized;
+  }
+  return undefined;
+}
+
+function normalizePlannerNumber(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  const whole = Math.floor(value);
+  return whole > 0 ? whole : undefined;
+}
+
+function normalizePlannerBoolean(value: unknown): boolean | null {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return null;
+}
+
+function normalizePlannerResponse(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+async function resolveSubscriptionsPlanWithLlm(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+  params: SubscriptionActionParams;
+}): Promise<SubscriptionActionPlan> {
+  const recentConversation = (
+    await recentConversationTexts({
+      runtime: args.runtime,
+      message: args.message,
+      state: args.state,
+      limit: 8,
+    })
+  ).join("\n");
+  const currentMessage = messageText(args.message).trim();
+  const prompt = [
+    "Plan the SUBSCRIPTIONS action for this request.",
+    "Use the current request, recent conversation, and any already-extracted parameters.",
+    "Return a JSON object with exactly these fields:",
+    "  mode: one of audit, cancel, status, or null",
+    "  serviceName: subscription service display name or null",
+    "  serviceSlug: normalized service slug or null",
+    "  executor: one of user_browser, agent_browser, desktop_native, or null",
+    "  queryWindowDays: integer number of days for audits, or null",
+    "  confirmed: boolean or null",
+    "  shouldAct: boolean",
+    "  response: short natural-language reply when shouldAct is false or clarification is needed",
+    "",
+    "Rules:",
+    "- Use cancel for subscription cancellation requests, including requests that mention login, MFA, or sign-in walls.",
+    "- Use status for follow-ups asking what happened with a cancellation or whether it completed.",
+    "- Use audit for subscription reviews, audits, and lists of recurring services.",
+    "- When the user is confirming an already discussed cancellation, set confirmed=true and carry forward the same service from context.",
+    "- Use user_browser when the request explicitly says to use the user's browser. Otherwise prefer agent_browser.",
+    "- Return only JSON.",
+    "",
+    "Examples:",
+    '  "Cancel Fixture Access Wall; if the site needs login, pause and tell me what credential is missing."',
+    '  -> {"mode":"cancel","serviceName":"Fixture Access Wall","serviceSlug":"fixture-access-wall","executor":"agent_browser","queryWindowDays":null,"confirmed":false,"shouldAct":true,"response":null}',
+    '  "yes go ahead" after a pending cancellation for Netflix',
+    '  -> {"mode":"cancel","serviceName":"Netflix","serviceSlug":"netflix","executor":"agent_browser","queryWindowDays":null,"confirmed":true,"shouldAct":true,"response":null}',
+    '  "audit my subscriptions from the last 90 days"',
+    '  -> {"mode":"audit","serviceName":null,"serviceSlug":null,"executor":null,"queryWindowDays":90,"confirmed":null,"shouldAct":true,"response":null}',
+    '  "what happened with that subscription cancellation?"',
+    '  -> {"mode":"status","serviceName":null,"serviceSlug":null,"executor":null,"queryWindowDays":null,"confirmed":null,"shouldAct":true,"response":null}',
+    "",
+    `Current request: ${JSON.stringify(currentMessage)}`,
+    `Existing parameters: ${JSON.stringify(args.params)}`,
+    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+  ].join("\n");
+
+  try {
+    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+    });
+    const rawResponse = typeof result === "string" ? result : "";
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
+      parseJSONObjectFromText(rawResponse);
+    if (!parsed) {
+      return {};
+    }
+    return {
+      mode: normalizeMode(parsed.mode),
+      serviceName: normalizePlannerResponse(parsed.serviceName),
+      serviceSlug: normalizePlannerResponse(parsed.serviceSlug),
+      executor: normalizeExecutor(parsed.executor),
+      queryWindowDays: normalizePlannerNumber(parsed.queryWindowDays),
+      confirmed: normalizePlannerBoolean(parsed.confirmed),
+      shouldAct: normalizePlannerBoolean(parsed.shouldAct),
+      response: normalizePlannerResponse(parsed.response),
+    };
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:subscriptions",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Subscriptions planning model call failed",
+    );
+    return {};
+  }
 }
 
 function browserTaskData(
@@ -102,29 +241,48 @@ async function runSubscriptionsAction(
   state: State | undefined,
   options?: HandlerOptions,
 ): Promise<ActionResult> {
-  void state;
-  const text = messageText(message);
   const params = mergeParams(message, options);
   const service = new LifeOpsService(runtime);
-  const inferred = service.resolveSubscriptionIntent(text);
-  const mode = normalizeMode(params.mode) ?? inferred.mode;
+  const planner = await resolveSubscriptionsPlanWithLlm({
+    runtime,
+    message,
+    state,
+    params,
+  });
+  const mode = normalizeMode(params.mode) ?? planner.mode ?? null;
 
+  if (planner.shouldAct === false && planner.response) {
+    return {
+      success: true,
+      text: planner.response,
+      data: { actionName: ACTION_NAME, acted: false },
+    };
+  }
   if (!mode) {
     return {
       success: false,
       text:
+        planner.response ??
         "Tell me whether you want a subscription audit, a cancellation, or a status check.",
       data: { error: "AMBIGUOUS_SUBSCRIPTIONS_REQUEST" },
     };
   }
 
-  const serviceName = params.serviceName ?? inferred.serviceName ?? null;
-  const serviceSlug = params.serviceSlug ?? inferred.serviceSlug ?? null;
+  const serviceName = params.serviceName ?? planner.serviceName ?? null;
+  const serviceSlug = params.serviceSlug ?? planner.serviceSlug ?? null;
+  const executor =
+    params.executor ??
+    planner.executor ??
+    null;
+  const confirmed =
+    typeof params.confirmed === "boolean"
+      ? params.confirmed
+      : planner.confirmed === true;
 
   switch (mode) {
     case "audit": {
       const summary = await service.auditSubscriptions(INTERNAL_URL, {
-        queryWindowDays: params.queryWindowDays,
+        queryWindowDays: params.queryWindowDays ?? planner.queryWindowDays,
         serviceQuery: serviceName ?? serviceSlug,
       });
       return {
@@ -147,8 +305,8 @@ async function runSubscriptionsAction(
         candidateId: params.candidateId ?? null,
         serviceName,
         serviceSlug,
-        executor: params.executor ?? inferred.executor ?? null,
-        confirmed: parseConfirmed(text, params),
+        executor,
+        confirmed,
       });
       return {
         success:
@@ -265,6 +423,21 @@ const examples: ActionExample[][] = [
       },
     },
   ],
+  [
+    {
+      name: "{{name1}}",
+      content: {
+        text: "Cancel my subscription even if the site makes me sign in first.",
+      },
+    },
+    {
+      name: "{{agentName}}",
+      content: {
+        text: "I'll run the subscription cancellation flow, stop if the site requires sign-in or other human handoff, and report the exact status.",
+        actions: [ACTION_NAME],
+      },
+    },
+  ],
 ];
 
 export const subscriptionsAction: Action & {
@@ -273,7 +446,12 @@ export const subscriptionsAction: Action & {
   name: ACTION_NAME,
   similes: [
     "SUBSCRIPTION_AUDIT",
+    "AUDIT_SUBSCRIPTIONS",
     "SUBSCRIPTION_CANCEL",
+    "CANCEL_SUBSCRIPTION",
+    "LIST_SUBSCRIPTIONS",
+    "SUBSCRIPTION_STATUS",
+    "GET_SUBSCRIPTION_STATUS",
     "UNSUBSCRIBE_SERVICE",
     "MANAGE_SUBSCRIPTIONS",
     "CANCEL_NETFLIX",
@@ -283,7 +461,8 @@ export const subscriptionsAction: Action & {
   ],
   description:
     "Audit recurring subscriptions from LifeOps signals, cancel supported subscriptions through the browser, and report cancellation status with artifacts and human-handoff states. " +
-    "Use this for requests like 'cancel my Netflix subscription', 'cancel Hulu in my browser', 'cancel my Google Play subscription', or 'cancel my App Store subscription on this Mac'.",
+    "Use this for requests like 'cancel my Netflix subscription', 'cancel Hulu in my browser', 'cancel my Google Play subscription', 'cancel my App Store subscription on this Mac', or any subscription cancellation that may require sign-in, MFA, or user confirmation. " +
+    "Do not route subscription cancellations that hit a login wall to INBOX or CROSS_CHANNEL_SEND; they still belong here.",
   suppressPostActionContinuation: true,
   validate: async (runtime: IAgentRuntime, message: Memory) =>
     hasLifeOpsAccess(runtime, message),
