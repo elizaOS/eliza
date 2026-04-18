@@ -472,12 +472,16 @@ export async function triggerTraining(
     if (detail) trajectories.push(detail);
   }
 
+  // Privacy filter is REQUIRED here — the downstream export writes JSONL to
+  // disk, and those files must never contain raw user secrets or un-anonymized
+  // handles. Filtering happens before any write path below runs.
   const filtered = applyPrivacyFilter(trajectories, {
     anonymizer: options.anonymizer,
   });
 
   const outputDir = join(trainingStateRoot(), "runs", runId, "datasets");
   await mkdir(outputDir, { recursive: true });
+  // privacy filter applied above
   const dataset = await exportTrajectoryTaskDatasets(
     filtered.trajectories as unknown as Parameters<
       typeof exportTrajectoryTaskDatasets
