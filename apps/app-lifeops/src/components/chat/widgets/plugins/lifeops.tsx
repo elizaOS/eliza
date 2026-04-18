@@ -1,8 +1,6 @@
-
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
-  LifeOpsConnectorSide,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailTriageFeed,
   LifeOpsGoogleCapability,
@@ -11,14 +9,8 @@ import type {
 import { CalendarDays, Mail } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { Badge } from "@elizaos/ui";
 import { client } from "@elizaos/app-core/api";
 import { useGoogleLifeOpsConnector } from "../../../../hooks/useGoogleLifeOpsConnector.js";
-import { useLifeOpsAppState } from "../../../../hooks/useLifeOpsAppState.js";
-import type {
-  ChatSidebarWidgetDefinition,
-  ChatSidebarWidgetProps,
-} from "@elizaos/app-core/components/chat/widgets/types";
 
 const GOOGLE_WIDGET_REFRESH_INTERVAL_MS = 15_000;
 const GOOGLE_WIDGET_EVENT_LIMIT = 3;
@@ -28,42 +20,6 @@ function capabilitySet(
   status: LifeOpsGoogleConnectorStatus | null,
 ): Set<LifeOpsGoogleCapability> {
   return new Set(status?.grantedCapabilities ?? []);
-}
-
-function modeLabel(mode: LifeOpsGoogleConnectorStatus["mode"]): string {
-  switch (mode) {
-    case "cloud_managed":
-      return "Cloud";
-    case "remote":
-      return "Remote";
-    default:
-      return "Local";
-  }
-}
-
-function readIdentityLabel(identity: Record<string, unknown> | null): {
-  primary: string;
-  secondary: string | null;
-} {
-  if (!identity) {
-    return { primary: "Disconnected", secondary: null };
-  }
-  const name =
-    typeof identity.name === "string" && identity.name.trim().length > 0
-      ? identity.name.trim()
-      : null;
-  const email =
-    typeof identity.email === "string" && identity.email.trim().length > 0
-      ? identity.email.trim()
-      : null;
-  return {
-    primary: name ?? email ?? "Google connected",
-    secondary: name && email ? email : null,
-  };
-}
-
-function sideLabel(side: LifeOpsConnectorSide): string {
-  return side === "owner" ? "Owner" : "Agent";
 }
 
 function formatGoogleConnectorError(message: string | null): string | null {
@@ -106,24 +62,11 @@ function formatEventTime(
   }
 }
 
-function formatReceivedAt(value: string): string | null {
-  const receivedAt = Date.parse(value);
-  if (!Number.isFinite(receivedAt)) {
-    return null;
-  }
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(receivedAt));
-}
-
-function SectionHeading({ icon, title }: { icon: ReactNode; title: string }) {
+function GlanceHeading({ icon, title }: { icon: ReactNode; title: string }) {
   return (
-    <div className="flex items-center gap-2 px-0.5">
+    <div className="flex items-center gap-1.5 px-0.5">
       <span className="text-muted">{icon}</span>
-      <span className="text-xs-tight font-semibold uppercase tracking-[0.08em] text-muted">
+      <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
         {title}
       </span>
     </div>
@@ -139,107 +82,33 @@ function CalendarRow({
 }) {
   const timeLabel = formatEventTime(event, timeZone);
   return (
-    <div className="rounded-lg border border-border/50 bg-bg/70 p-3">
-      <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
-          {event.title}
-        </span>
-        {timeLabel ? (
-          <span className="text-3xs text-muted">{timeLabel}</span>
-        ) : null}
-      </div>
-      {event.location.trim().length > 0 ? (
-        <div className="mt-1 truncate text-xs-tight text-muted">
-          {event.location}
-        </div>
+    <div className="flex items-center gap-2 px-0.5 py-0.5">
+      <span className="min-w-0 flex-1 truncate text-2xs text-txt">
+        {event.title}
+      </span>
+      {timeLabel ? (
+        <span className="shrink-0 text-3xs text-muted">{timeLabel}</span>
       ) : null}
     </div>
   );
 }
 
 function GmailRow({ message }: { message: LifeOpsGmailMessageSummary }) {
-  const receivedLabel = formatReceivedAt(message.receivedAt);
   return (
-    <div className="rounded-lg border border-border/50 bg-bg/70 p-3">
-      <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
-          {message.subject}
+    <div className="flex items-center gap-2 px-0.5 py-0.5">
+      <span className="min-w-0 flex-1 truncate text-2xs text-txt">
+        {message.subject}
+      </span>
+      {message.likelyReplyNeeded ? (
+        <span className="shrink-0 text-3xs uppercase tracking-wider text-accent">
+          Reply
         </span>
-        {message.likelyReplyNeeded ? (
-          <Badge variant="secondary" className="text-3xs">
-            Reply
-          </Badge>
-        ) : null}
-      </div>
-      <div className="mt-1 truncate text-xs-tight text-muted">
-        {message.from}
-      </div>
-      {receivedLabel ? (
-        <div className="mt-2 text-2xs uppercase tracking-[0.08em] text-muted/80">
-          {receivedLabel}
-        </div>
       ) : null}
     </div>
   );
 }
 
-function GoogleAccountCard({
-  side,
-  status,
-}: {
-  side: LifeOpsConnectorSide;
-  status: LifeOpsGoogleConnectorStatus;
-}) {
-  const capabilities = capabilitySet(status);
-  const identityLabel = readIdentityLabel(status?.identity ?? null);
-
-  return (
-    <div className="rounded-lg border border-border/50 bg-bg/70 p-3">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Badge variant="outline" className="text-3xs">
-          {sideLabel(side)}
-        </Badge>
-        {status?.preferredByAgent ? (
-          <Badge variant="secondary" className="text-3xs">
-            Default
-          </Badge>
-        ) : null}
-        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
-          {identityLabel.primary}
-        </span>
-        <Badge variant="secondary" className="text-3xs">
-          {modeLabel(status.mode)}
-        </Badge>
-      </div>
-      {identityLabel.secondary ? (
-        <div className="mt-1 truncate text-xs-tight text-muted">
-          {identityLabel.secondary}
-        </div>
-      ) : null}
-      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-muted">
-        {(capabilities.has("google.calendar.read") ||
-          capabilities.has("google.calendar.write")) && (
-          <CalendarDays className="h-3.5 w-3.5" aria-label="Calendar" />
-        )}
-        {capabilities.has("google.gmail.triage") ? (
-          <Mail className="h-3.5 w-3.5" aria-label="Gmail" />
-        ) : null}
-        {status.reason === "needs_reauth" ? (
-          <Badge variant="outline" className="text-3xs">
-            Reauth needed
-          </Badge>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-export function GoogleSidebarWidget(_props: ChatSidebarWidgetProps) {
-  const lifeOpsApp = useLifeOpsAppState();
-  const timeZone = useMemo(
-    () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-    [],
-  );
+export function GoogleGlanceSection({ timeZone }: { timeZone: string }) {
   const ownerConnector = useGoogleLifeOpsConnector({
     pollWhileDisconnected: false,
     side: "owner",
@@ -257,26 +126,18 @@ export function GoogleSidebarWidget(_props: ChatSidebarWidgetProps) {
     null,
   );
   const [feedError, setFeedError] = useState<string | null>(null);
-  const connectedConnectors = useMemo(
-    () =>
-      [ownerConnector, agentConnector].filter(
-        (connector) => connector.status?.connected === true,
-      ),
-    [agentConnector, ownerConnector],
-  );
-  const dataConnector = useMemo(() => {
-    const connectors = connectedConnectors;
+
+  const dataStatus = useMemo(() => {
+    const candidates = [ownerConnector.status, agentConnector.status].filter(
+      (candidate): candidate is LifeOpsGoogleConnectorStatus =>
+        candidate?.connected === true,
+    );
     return (
-      connectors.find(
-        (connector) =>
-          connector.status?.connected === true &&
-          connector.status.preferredByAgent,
-      ) ??
-      connectors.find((connector) => connector.status?.connected === true) ??
+      candidates.find((status) => status.preferredByAgent) ??
+      candidates[0] ??
       null
     );
-  }, [connectedConnectors]);
-  const dataStatus = dataConnector?.status ?? null;
+  }, [ownerConnector.status, agentConnector.status]);
 
   useEffect(() => {
     let active = true;
@@ -343,36 +204,20 @@ export function GoogleSidebarWidget(_props: ChatSidebarWidgetProps) {
     ownerConnector.error ?? agentConnector.error ?? feedError ?? null,
   );
 
-  if (lifeOpsApp.loading || !lifeOpsApp.enabled) {
-    return null;
-  }
-
-  if (connectedConnectors.length === 0) {
+  if (!dataStatus?.connected) {
     return null;
   }
 
   return (
-    <section data-testid="chat-widget-google" className="flex flex-col gap-4">
-      {connectedConnectors.map((connector) =>
-        connector.status ? (
-          <GoogleAccountCard
-            key={connector.status.side}
-            side={connector.status.side}
-            status={connector.status}
-          />
-        ) : null,
-      )}
-
+    <>
       {showCalendar ? (
-        <div className="flex flex-col gap-2">
-          <SectionHeading
-            icon={<CalendarDays className="h-3.5 w-3.5" />}
+        <div className="flex flex-col gap-1">
+          <GlanceHeading
+            icon={<CalendarDays className="h-3 w-3" />}
             title="Calendar"
           />
           {connectorError ? null : calendarEvents.length === 0 ? (
-            <div className="px-0.5 text-xs-tight text-muted">
-              No upcoming events
-            </div>
+            <div className="px-0.5 text-3xs text-muted">No upcoming events</div>
           ) : (
             calendarEvents
               .slice(0, GOOGLE_WIDGET_EVENT_LIMIT)
@@ -388,38 +233,24 @@ export function GoogleSidebarWidget(_props: ChatSidebarWidgetProps) {
       ) : null}
 
       {showInbox ? (
-        <div className="flex flex-col gap-2">
-          <SectionHeading
-            icon={<Mail className="h-3.5 w-3.5" />}
+        <div className="flex flex-col gap-1">
+          <GlanceHeading
+            icon={<Mail className="h-3 w-3" />}
             title="Inbox"
           />
           {connectorError ? null : gmailMessages.length === 0 ? (
-            <div className="px-0.5 text-xs-tight text-muted">
-              No priority mail
-            </div>
+            <div className="px-0.5 text-3xs text-muted">No priority mail</div>
           ) : (
             gmailMessages
               .slice(0, GOOGLE_WIDGET_MESSAGE_LIMIT)
-              .map((message) => (
-                <GmailRow key={message.id} message={message} />
-              ))
+              .map((message) => <GmailRow key={message.id} message={message} />)
           )}
         </div>
       ) : null}
 
       {connectorError ? (
-        <div className="text-xs-tight text-danger">{connectorError}</div>
+        <div className="px-0.5 text-3xs text-danger">{connectorError}</div>
       ) : null}
-    </section>
+    </>
   );
 }
-
-export const LIFEOPS_WIDGETS: ChatSidebarWidgetDefinition[] = [
-  {
-    id: "lifeops.google",
-    pluginId: "lifeops",
-    order: 150,
-    defaultEnabled: true,
-    Component: GoogleSidebarWidget,
-  },
-];
