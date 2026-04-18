@@ -150,6 +150,73 @@ function findActionByName(
   return undefined;
 }
 
+interface ResolveAllowSetParams {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state?: State;
+  allowedActions?: string[];
+}
+
+interface ResolvedAllowSet {
+  /** Null → all actions permitted (no filter). */
+  allowSet: Set<string> | null;
+  /** Human-readable reason surfaced to the script on a reject. */
+  rejectionReason: string;
+}
+
+/**
+ * Resolve the effective allow-set for a tools proxy instance.
+ *
+ * Precedence:
+ *   1. Explicit `allowedActions` from the script params → exact allow-list.
+ *   2. Current turn's routing contexts (state + message metadata) → filter
+ *      the runtime action list to those whose `contexts` intersect the
+ *      active set.
+ *   3. No context resolvable → null allow-set (all actions permitted); logs a
+ *      debug note so the fall-through is visible.
+ */
+function resolveAllowSet({
+  runtime,
+  message,
+  state,
+  allowedActions,
+}: ResolveAllowSetParams): ResolvedAllowSet {
+  if (allowedActions) {
+    return {
+      allowSet: new Set(
+        allowedActions.map((n) => n.toLowerCase().replace(/_/g, "")),
+      ),
+      rejectionReason: "action not in allowedActions",
+    };
+  }
+
+  const routing = {
+    ...getContextRoutingFromState(state),
+    ...getContextRoutingFromMessage(message),
+  };
+  const activeContexts = getActiveRoutingContexts(routing);
+  if (activeContexts.length === 0) {
+    coreLogger.debug(
+      `${LOG_PREFIX} no routing contexts resolvable for turn ${message.id ?? "<no-id>"}; tools allow-set falls through to all actions`,
+    );
+    return { allowSet: null, rejectionReason: "action not permitted" };
+  }
+
+  const contextualSet = new Set<string>();
+  for (const action of runtime.actions) {
+    if (shouldIncludeByContext(action.contexts, activeContexts)) {
+      contextualSet.add(action.name.toLowerCase().replace(/_/g, ""));
+      for (const simile of action.similes ?? []) {
+        contextualSet.add(simile.toLowerCase().replace(/_/g, ""));
+      }
+    }
+  }
+  return {
+    allowSet: contextualSet,
+    rejectionReason: `action not in current routing contexts (${activeContexts.join(",")})`,
+  };
+}
+
 export function buildToolsProxy({
   runtime,
   message,
@@ -160,9 +227,17 @@ export function buildToolsProxy({
   allowedActions,
   recordChildStep,
 }: BuildToolsProxyParams): ToolsProxy {
-  const allowSet = allowedActions
-    ? new Set(allowedActions.map((n) => n.toLowerCase().replace(/_/g, "")))
-    : null;
+  // Resolve the effective allow-list. Explicit `allowedActions` always wins.
+  // Otherwise, default to the actions whose declared `contexts` intersect the
+  // current turn's routing contexts (pulled from state + message metadata).
+  // When no routing context is resolvable, fall back to all registered
+  // actions — matching the previous default but logging the fall-through.
+  const { allowSet, rejectionReason } = resolveAllowSet({
+    runtime,
+    message,
+    state,
+    allowedActions,
+  });
 
   const target: ToolsProxy = {};
   return new Proxy(target, {
@@ -190,7 +265,7 @@ export function buildToolsProxy({
           !allowSet.has(prop.toLowerCase().replace(/_/g, ""))
         ) {
           throw new Error(
-            `${LOG_PREFIX} tools.${prop}: action not in allowedActions`,
+            `${LOG_PREFIX} tools.${prop}: ${rejectionReason}`,
           );
         }
 
