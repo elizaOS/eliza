@@ -1,6 +1,14 @@
 import { CodingAgentTasksPanel as AppCodingAgentTasksPanel } from "@elizaos/app-task-coordinator";
 import { Badge, Button } from "@elizaos/ui";
-import { Activity } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  Eye,
+  EyeOff,
+  Play,
+  SquareArrowOutUpRight,
+  Trash2,
+} from "lucide-react";
 import { startTransition, useEffect, useMemo, useState } from "react";
 import { client } from "../../../../api";
 import type { AppRunSummary } from "../../../../api/client-types-cloud";
@@ -99,44 +107,40 @@ function AppRunCard({
   run: AppRunSummary;
   attentionReasons: string[];
 }) {
-  const healthTone =
+  const healthDot =
     run.health.state === "healthy"
-      ? "bg-ok/20 text-ok"
+      ? "bg-ok"
       : run.health.state === "degraded"
-        ? "bg-warn/20 text-warn"
-        : "bg-danger/20 text-danger";
+        ? "bg-warn"
+        : "bg-danger";
+  const ViewerIcon = run.viewerAttachment === "attached" ? Eye : EyeOff;
 
   return (
-    <div className="rounded-lg border border-border/50 bg-bg-accent/30 p-3">
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-xs font-semibold text-txt">
-            {run.displayName}
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-muted">
-            <Badge variant="secondary" className={`px-1.5 py-0 ${healthTone}`}>
-              {run.health.state}
-            </Badge>
-            <span>{run.status}</span>
-            <span>{run.viewerAttachment}</span>
-            <span>{formatIsoTime(run.lastHeartbeatAt ?? run.updatedAt)}</span>
-          </div>
+    <div className="rounded-lg border border-border/50 bg-bg-accent/30 p-2">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-2xs font-semibold text-txt">
+          {run.displayName}
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-3xs text-muted">
+          <span
+            className={`inline-block h-1.5 w-1.5 rounded-full ${healthDot}`}
+            aria-label={run.health.state}
+            title={run.health.state}
+          />
+          <ViewerIcon
+            className="h-3 w-3"
+            aria-label={run.viewerAttachment}
+          />
+          <span>{formatIsoTime(run.lastHeartbeatAt ?? run.updatedAt)}</span>
         </div>
       </div>
-      <div className="mt-2 line-clamp-2 text-xs-tight text-muted">
+      <div className="mt-1 line-clamp-2 text-3xs text-muted">
         {run.summary || run.health.message || "Run active."}
       </div>
       {attentionReasons.length > 0 ? (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          <Badge
-            variant="secondary"
-            className="bg-warn/15 px-1.5 py-0 text-3xs text-warn"
-          >
-            Needs attention
-          </Badge>
-          <span className="inline-flex max-w-full items-center rounded-full border border-border/30 bg-bg-hover/70 px-2 py-0.5 text-2xs text-muted-strong">
-            <span className="truncate">{attentionReasons[0]}</span>
-          </span>
+        <div className="mt-1.5 flex items-center gap-1.5 text-3xs text-warn">
+          <AlertTriangle className="h-3 w-3 shrink-0" aria-label="Needs attention" />
+          <span className="truncate">{attentionReasons[0]}</span>
         </div>
       ) : null}
     </div>
@@ -225,12 +229,13 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
       title={t("appsview.Running", { defaultValue: "Apps" })}
       icon={<Activity className="h-4 w-4" />}
       action={
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           {currentRun ? (
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 px-2 text-2xs"
+              className="h-6 w-6 p-0"
+              aria-label="Resume viewer"
               onClick={() => {
                 setState("appRuns", runs);
                 setState("activeGameRunId", currentRun.runId);
@@ -238,20 +243,21 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
                 setState("appsSubTab", "games");
               }}
             >
-              Resume Viewer
+              <Play className="h-3.5 w-3.5" />
             </Button>
           ) : null}
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 px-2 text-2xs"
+            className="h-6 w-6 p-0"
+            aria-label="Open apps"
             onClick={() => {
               setState("appRuns", runs);
               setState("tab", "apps");
               setState("appsSubTab", "running");
             }}
           >
-            Open Apps
+            <SquareArrowOutUpRight className="h-3.5 w-3.5" />
           </Button>
         </div>
       }
@@ -272,29 +278,37 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
           />
         )
       ) : (
-        <div className="flex flex-col gap-2.5">
-          <div className="flex flex-wrap gap-2 text-2xs text-muted">
-            <Badge variant="secondary" className="bg-bg-hover/70 text-muted">
-              Currently playing: {attachedCount}
-            </Badge>
-            <Badge variant="secondary" className="bg-bg-hover/70 text-muted">
-              Background: {backgroundCount}
-            </Badge>
-            <Badge
-              variant="secondary"
-              className={
-                needsAttentionCount > 0
-                  ? "bg-warn/15 text-warn"
-                  : "bg-ok/15 text-ok"
-              }
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-3 text-3xs text-muted">
+            <span
+              className="inline-flex items-center gap-1"
+              title="Currently playing"
             >
-              Needs attention: {needsAttentionCount}
-            </Badge>
+              <Eye className="h-3 w-3" />
+              {attachedCount}
+            </span>
+            <span
+              className="inline-flex items-center gap-1"
+              title="Background"
+            >
+              <EyeOff className="h-3 w-3" />
+              {backgroundCount}
+            </span>
+            <span
+              className={`inline-flex items-center gap-1 ${
+                needsAttentionCount > 0 ? "text-warn" : "text-ok"
+              }`}
+              title="Needs attention"
+            >
+              <AlertTriangle className="h-3 w-3" />
+              {needsAttentionCount}
+            </span>
           </div>
           {attentionRuns.length > 0 ? (
-            <div className="rounded-lg border border-warn/30 bg-warn/10 p-2.5">
-              <div className="mb-2 text-2xs font-semibold uppercase tracking-[0.08em] text-warn">
-                Recovery queue
+            <div className="rounded-lg border border-warn/30 bg-warn/10 p-2">
+              <div className="mb-1.5 flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-[0.08em] text-warn">
+                <AlertTriangle className="h-3 w-3" />
+                Recovery
               </div>
               <div className="flex flex-col gap-2">
                 {attentionRuns.slice(0, 3).map((run) => {

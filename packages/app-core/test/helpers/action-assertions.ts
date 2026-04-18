@@ -83,10 +83,7 @@ export function expectActionCalledTimes(
   }
 }
 
-export function expectActionOrder(
-  spy: ActionSpy,
-  actionNames: string[],
-): void {
+export function expectActionOrder(spy: ActionSpy, actionNames: string[]): void {
   const ordered = spy.getCompletedCalls();
   let cursor = 0;
   for (const wanted of actionNames) {

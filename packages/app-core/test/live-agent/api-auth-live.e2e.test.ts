@@ -4,11 +4,18 @@
  * These tests exercise the real authenticated flow end-to-end:
  * auth -> onboarding -> agent start -> chat -> wallet operations -> agent stop.
  */
-import { config as loadDotenv } from "dotenv";
+
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
+import { config as loadDotenv } from "dotenv";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
+import {
+  createConversation,
+  postConversationMessage,
+  req,
+} from "../../../../../test/helpers/http";
 import {
   buildIsolatedLiveProviderEnv,
   isLiveTestEnabled,
@@ -17,12 +24,6 @@ import {
 } from "../../../../../test/helpers/live-provider";
 import { createRealTestRuntime } from "../../../../../test/helpers/real-runtime";
 import { saveEnv } from "../../../../../test/helpers/test-utils";
-import {
-  createConversation,
-  postConversationMessage,
-  req,
-} from "../../../../../test/helpers/http";
-import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
 
 const envPath = path.resolve(import.meta.dirname, "..", "..", "..", ".env");
 loadDotenv({ path: envPath });
@@ -51,7 +52,9 @@ function readExportNonce(errorMessage: unknown): {
   nonce: string;
 } {
   if (typeof errorMessage !== "string" || errorMessage.length === 0) {
-    throw new Error("Wallet export nonce request did not return an error payload");
+    throw new Error(
+      "Wallet export nonce request did not return an error payload",
+    );
   }
 
   let parsed: unknown;
@@ -71,7 +74,9 @@ function readExportNonce(errorMessage: unknown): {
     typeof parsed.nonce !== "string" ||
     typeof parsed.delaySeconds !== "number"
   ) {
-    throw new Error(`Wallet export nonce response was malformed: ${errorMessage}`);
+    throw new Error(
+      `Wallet export nonce response was malformed: ${errorMessage}`,
+    );
   }
 
   return {
@@ -559,11 +564,7 @@ describeIf(CAN_RUN)("Live: Auth + CORS + wallet combined", () => {
     expect(importStatus).toBe(200);
     expect(importData.ok).toBe(true);
 
-    const exported = await exportWallet(
-      server?.port ?? 0,
-      EXPORT_TOKEN,
-      auth,
-    );
+    const exported = await exportWallet(server?.port ?? 0, EXPORT_TOKEN, auth);
     const evm = exported.evm;
     expect(evm).not.toBeNull();
     expect(evm.privateKey).toBe(importedKey);

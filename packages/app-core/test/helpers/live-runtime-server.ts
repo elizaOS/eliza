@@ -89,9 +89,7 @@ export async function startLiveRuntimeServer(
   child.stderr.on("data", (chunk: string) => logBuf.push(chunk));
   child.once("exit", (code, signal) => {
     childExitReason =
-      signal !== null
-        ? `signal ${signal}`
-        : `exit code ${code ?? "unknown"}`;
+      signal !== null ? `signal ${signal}` : `exit code ${code ?? "unknown"}`;
   });
 
   const deadline =

@@ -84,7 +84,7 @@ export async function runBootstrapFewshot(
 	);
 	lineage.push({ round: 0, variant: 0, score: baselineScore, notes: "baseline" });
 
-	const ranked = await rankExamples(input, baselineScore);
+	const ranked = await rankExamples(input);
 	const fewShot = ranked.slice(0, Math.min(k, ranked.length));
 
 	const optimizedPrompt = withDemonstrations(input.baselinePrompt, fewShot);
@@ -107,7 +107,6 @@ export async function runBootstrapFewshot(
 
 async function rankExamples(
 	input: BootstrapFewshotInput,
-	baselineScore: number,
 ): Promise<OptimizationExample[]> {
 	if (input.options?.rankByScorer) {
 		const scored: Array<{ example: OptimizationExample; score: number }> = [];
@@ -123,7 +122,6 @@ async function rankExamples(
 				b.score - a.score ||
 				(b.example.reward ?? 0) - (a.example.reward ?? 0),
 		);
-		void baselineScore;
 		return scored.map((entry) => entry.example);
 	}
 

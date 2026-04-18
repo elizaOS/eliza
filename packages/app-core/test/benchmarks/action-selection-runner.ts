@@ -268,7 +268,11 @@ function determineFailureMode(args: {
   const actualNorm = normalizeActionName(args.actual);
   const plannedNorm = normalizeActionName(args.planned);
   const expectedNorm = normalizeActionName(args.expected);
-  if (actualNorm !== null && expectedNorm !== null && actualNorm === expectedNorm) {
+  if (
+    actualNorm !== null &&
+    expectedNorm !== null &&
+    actualNorm === expectedNorm
+  ) {
     return "passed";
   }
   if (
@@ -374,15 +378,19 @@ async function seedBenchmarkCaseFixtures(
   try {
     const now = new Date().toISOString();
     const { LifeOpsRepository } = await import(
-      // @ts-ignore — workspace package resolved at runtime
+      // @ts-expect-error — workspace package resolved at runtime
       "@elizaos/app-lifeops/lifeops/repository"
     );
     const repo = new LifeOpsRepository(runtime);
-    if (typeof (repo as unknown as { upsertRelationship?: unknown })
-        .upsertRelationship === "function") {
+    if (
+      typeof (repo as unknown as { upsertRelationship?: unknown })
+        .upsertRelationship === "function"
+    ) {
       await (
         repo as unknown as {
-          upsertRelationship: (rel: Record<string, unknown>) => Promise<unknown>;
+          upsertRelationship: (
+            rel: Record<string, unknown>,
+          ) => Promise<unknown>;
         }
       ).upsertRelationship({
         id: crypto.randomUUID(),
@@ -403,7 +411,10 @@ async function seedBenchmarkCaseFixtures(
     }
   } catch (error) {
     // Relationships plugin may not be loaded in every benchmark variant.
-    runtime.logger?.debug?.({ src: "benchmark", userEntityId, error: String(error) }, "seedBenchmarkCaseFixtures: relationship seed skipped");
+    runtime.logger?.debug?.(
+      { src: "benchmark", userEntityId, error: String(error) },
+      "seedBenchmarkCaseFixtures: relationship seed skipped",
+    );
   }
 }
 
@@ -669,19 +680,13 @@ async function runSingleCase(
     const filteredActions = await computeFilteredActions(runtime, message);
 
     const handlePromise = Promise.resolve(
-      runtime.messageService?.handleMessage(
-        runtime,
-        message,
-        async () => [],
-      ),
+      runtime.messageService?.handleMessage(runtime, message, async () => []),
     );
 
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(
-          new Error(
-            `benchmark case ${tc.id} exceeded timeout ${timeoutMs}ms`,
-          ),
+          new Error(`benchmark case ${tc.id} exceeded timeout ${timeoutMs}ms`),
         );
       }, timeoutMs);
       handlePromise
@@ -776,9 +781,12 @@ export async function runActionSelectionBenchmark(
     await fs.rm(trajectoryDir, { recursive: true, force: true });
   }
 
-  const sharedRegisteredActions = opts.runtime?.actions.map((a) => a.name) ?? [];
+  const sharedRegisteredActions =
+    opts.runtime?.actions.map((a) => a.name) ?? [];
 
-  const runOne = async (tc: ActionBenchmarkCase): Promise<ActionBenchmarkResult> => {
+  const runOne = async (
+    tc: ActionBenchmarkCase,
+  ): Promise<ActionBenchmarkResult> => {
     if (opts.createCaseRuntime) {
       const handle = await opts.createCaseRuntime();
       const registeredActions = handle.runtime.actions.map((a) => a.name);
@@ -961,8 +969,12 @@ export function formatBenchmarkReportMarkdown(
 ): string {
   const lines: string[] = [];
   const selectionPassed = report.results.filter((result) => result.pass).length;
-  const plannerPassed = report.results.filter((result) => result.plannerPass).length;
-  const executionPassed = report.results.filter((result) => result.executionPass).length;
+  const plannerPassed = report.results.filter(
+    (result) => result.plannerPass,
+  ).length;
+  const executionPassed = report.results.filter(
+    (result) => result.executionPass,
+  ).length;
   const executionIssues = report.results.filter(
     (result) => result.pass && (!result.executionPass || Boolean(result.error)),
   );
@@ -1007,7 +1019,8 @@ export function formatBenchmarkReportMarkdown(
     error: 0,
   };
   for (const r of report.results) {
-    const mode: ActionFailureMode = r.failureMode ?? (r.pass ? "passed" : "error");
+    const mode: ActionFailureMode =
+      r.failureMode ?? (r.pass ? "passed" : "error");
     modeCounts[mode] += 1;
   }
 
@@ -1030,7 +1043,9 @@ export function formatBenchmarkReportMarkdown(
   if (report.failures.length > 0) {
     lines.push(`## Failures (${report.failures.length})`);
     lines.push("");
-    lines.push("| Case | Expected | Planned | Completed | Failure Mode | Error |");
+    lines.push(
+      "| Case | Expected | Planned | Completed | Failure Mode | Error |",
+    );
     lines.push("| --- | --- | --- | --- | --- | --- |");
     for (const f of report.failures) {
       const expected =

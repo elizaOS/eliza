@@ -34,7 +34,9 @@ export function useIsolatedConfigEnv(
         process.env.MILADY_CONFIG_PATH = previousMiladyConfigPath;
       }
 
-      await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+      await fsp
+        .rm(tempDir, { recursive: true, force: true })
+        .catch(() => undefined);
     },
   };
 }

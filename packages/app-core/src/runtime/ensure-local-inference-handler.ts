@@ -22,7 +22,9 @@ import type { LocalInferenceLoader } from "../services/local-inference/active-mo
 import { readAssignments } from "../services/local-inference/assignments";
 import { deviceBridge } from "../services/local-inference/device-bridge";
 import { localInferenceEngine } from "../services/local-inference/engine";
+import { handlerRegistry } from "../services/local-inference/handler-registry";
 import { listInstalledModels } from "../services/local-inference/registry";
+import { installRouterHandler } from "../services/local-inference/router-handler";
 import type { AgentModelSlot } from "../services/local-inference/types";
 
 type GenerateTextHandler = (
@@ -204,6 +206,12 @@ export async function ensureLocalInferenceHandler(
     return;
   }
 
+  // Belt-and-braces: the prototype-level patch installed by
+  // `handler-registry.ts` at module import catches future registrations.
+  // Calling installOn here is a no-op in the common case but ensures
+  // runtimes constructed before the patch was loaded still get wrapped.
+  handlerRegistry.installOn(runtime);
+
   // Loader precedence:
   //   1. Capacitor native adapter when running on a mobile device itself.
   //   2. Device-bridge (WebSocket to a paired phone) when explicitly
@@ -264,5 +272,14 @@ export async function ensureLocalInferenceHandler(
 
   logger.info(
     `[local-inference] Registered local llama.cpp handler for TEXT_SMALL / TEXT_LARGE at priority ${LOCAL_INFERENCE_PRIORITY}`,
+  );
+
+  // Install the top-priority router AFTER everything else has registered.
+  // The router sits at Number.MAX_SAFE_INTEGER so the runtime dispatches
+  // to it first; at dispatch time it picks a real provider via
+  // `routing-policy` and calls that handler directly.
+  installRouterHandler(runtime);
+  logger.info(
+    "[local-inference] Installed top-priority router for cross-provider routing",
   );
 }

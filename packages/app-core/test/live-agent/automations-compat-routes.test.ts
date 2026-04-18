@@ -36,7 +36,8 @@ vi.mock("@elizaos/agent/api/workbench-helpers", () => ({
 
 vi.mock("@elizaos/agent/triggers/runtime", () => ({
   listTriggerTasks: (...args: unknown[]) => listTriggerTasksMock(...args),
-  taskToTriggerSummary: (...args: unknown[]) => taskToTriggerSummaryMock(...args),
+  taskToTriggerSummary: (...args: unknown[]) =>
+    taskToTriggerSummaryMock(...args),
 }));
 
 vi.mock("@elizaos/app-lifeops/lifeops/service", () => ({
@@ -276,7 +277,11 @@ describe("automations compat routes", () => {
         res,
       }: {
         pathname: string;
-        json: (res: http.ServerResponse, body: unknown, status?: number) => void;
+        json: (
+          res: http.ServerResponse,
+          body: unknown,
+          status?: number,
+        ) => void;
         res: http.ServerResponse;
       }) => {
         if (pathname === "/api/n8n/status") {

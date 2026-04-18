@@ -3,9 +3,7 @@
   "manualChecklistDoc": "docs/apps/desktop/release-regression-checklist.md",
   "workflowContracts": {
     "pr": {
-      "files": [
-        ".github/workflows/test.yml"
-      ],
+      "files": [".github/workflows/test.yml"],
       "scheduledSuites": [
         "vitest-real",
         "db-check",
@@ -21,9 +19,7 @@
       ]
     },
     "nightly": {
-      "files": [
-        ".github/workflows/nightly.yml"
-      ],
+      "files": [".github/workflows/nightly.yml"],
       "scheduledSuites": [
         "coverage",
         "db-check",
@@ -38,9 +34,7 @@
       ]
     },
     "release": {
-      "files": [
-        ".github/workflows/release-electrobun.yml"
-      ],
+      "files": [".github/workflows/release-electrobun.yml"],
       "scheduledSuites": [
         "regression-matrix-release",
         "live-cloud",
@@ -51,9 +45,7 @@
       ]
     },
     "release-contract": {
-      "files": [
-        ".github/workflows/test-electrobun-release.yml"
-      ],
+      "files": [".github/workflows/test-electrobun-release.yml"],
       "scheduledSuites": [
         "release-contract",
         "regression-matrix-release-contract"
@@ -157,14 +149,9 @@
   "surfaces": [
     {
       "name": "packages-shared",
-      "globs": [
-        "eliza/packages/shared/**"
-      ],
+      "globs": ["eliza/packages/shared/**"],
       "workflowSuites": {
-        "pr": [
-          "vitest-real",
-          "validation-e2e"
-        ],
+        "pr": ["vitest-real", "validation-e2e"],
         "nightly": [
           "coverage",
           "integration-deterministic",
@@ -177,14 +164,9 @@
     },
     {
       "name": "packages-agent",
-      "globs": [
-        "eliza/packages/agent/**"
-      ],
+      "globs": ["eliza/packages/agent/**"],
       "workflowSuites": {
-        "pr": [
-          "vitest-real",
-          "db-check"
-        ],
+        "pr": ["vitest-real", "db-check"],
         "nightly": [
           "coverage",
           "db-check",
@@ -193,23 +175,14 @@
           "e2e-heavy",
           "live-cloud"
         ],
-        "release": [
-          "e2e-heavy",
-          "live-cloud"
-        ]
+        "release": ["e2e-heavy", "live-cloud"]
       }
     },
     {
       "name": "packages-app-core",
-      "globs": [
-        "eliza/packages/app-core/**"
-      ],
+      "globs": ["eliza/packages/app-core/**"],
       "workflowSuites": {
-        "pr": [
-          "vitest-real",
-          "db-check",
-          "validation-e2e"
-        ],
+        "pr": ["vitest-real", "db-check", "validation-e2e"],
         "nightly": [
           "coverage",
           "db-check",
@@ -231,12 +204,8 @@
         "eliza/packages/app-core/scripts/playwright-ui-live-stack.ts"
       ],
       "workflowSuites": {
-        "pr": [
-          "ui-playwright-smoke"
-        ],
-        "nightly": [
-          "ui-playwright-smoke"
-        ]
+        "pr": ["ui-playwright-smoke"],
+        "nightly": ["ui-playwright-smoke"]
       }
     },
     {
@@ -247,10 +216,7 @@
         "apps/app/test/electrobun-packaged/**"
       ],
       "workflowSuites": {
-        "pr": [
-          "vitest-real",
-          "desktop-contract"
-        ],
+        "pr": ["vitest-real", "desktop-contract"],
         "nightly": [
           "coverage",
           "desktop-contract",
@@ -288,18 +254,10 @@
         "test/vitest/*.ts"
       ],
       "workflowSuites": {
-        "pr": [
-          "vitest-real"
-        ],
-        "nightly": [
-          "coverage"
-        ],
-        "release": [
-          "regression-matrix-release"
-        ],
-        "release-contract": [
-          "release-contract"
-        ]
+        "pr": ["vitest-real"],
+        "nightly": ["coverage"],
+        "release": ["regression-matrix-release"],
+        "release-contract": ["release-contract"]
       }
     },
     {
@@ -312,10 +270,7 @@
         "test/vitest/e2e.config.ts"
       ],
       "workflowSuites": {
-        "pr": [
-          "vitest-real",
-          "validation-e2e"
-        ],
+        "pr": ["vitest-real", "validation-e2e"],
         "nightly": [
           "integration-deterministic",
           "e2e-deterministic",
@@ -323,10 +278,7 @@
           "e2e-heavy",
           "live-cloud"
         ],
-        "release": [
-          "e2e-heavy",
-          "live-cloud"
-        ]
+        "release": ["e2e-heavy", "live-cloud"]
       }
     }
   ],
@@ -549,13 +501,9 @@
   },
   "guards": {
     "packageScriptDisallowlist": {
-      "test:e2e": [
-        "apps-e2e.e2e.test.ts"
-      ]
+      "test:e2e": ["apps-e2e.e2e.test.ts"]
     },
-    "desktopInventorySources": [
-      "docs/apps/desktop/release-heavy-inventory.md"
-    ],
+    "desktopInventorySources": ["docs/apps/desktop/release-heavy-inventory.md"],
     "forbiddenDesktopInventoryMarkers": [
       "it.todo(",
       "conditional test helper misuse"

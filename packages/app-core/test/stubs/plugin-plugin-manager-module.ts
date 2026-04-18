@@ -74,8 +74,7 @@ export const types = {};
 // `import plugin from "@elizaos/plugin-plugin-manager"` keeps working.
 const plugin = {
   name: "plugin-plugin-manager-stub",
-  description:
-    "Test stub for @elizaos/plugin-plugin-manager (vitest alias).",
+  description: "Test stub for @elizaos/plugin-plugin-manager (vitest alias).",
   services: [PluginManagerService, CoreManagerService] as const,
 };
 

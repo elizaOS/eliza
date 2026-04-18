@@ -1,4 +1,4 @@
-process.on('unhandledRejection', reason => {
+process.on("unhandledRejection", (reason) => {
   // If the reason is already an Error object, throw it directly to preserve the stack trace.
   if (reason instanceof Error) {
     throw reason;

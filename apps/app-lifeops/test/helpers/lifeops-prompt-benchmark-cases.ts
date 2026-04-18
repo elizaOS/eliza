@@ -383,12 +383,12 @@ function buildPromptBenchmarkContext(args: {
   scenarioTitle: string;
   expectedAction: string | null;
 }): string {
-  const scenarioLabel = `${args.scenarioTitle} (${args.caseId})`;
+  const scenarioLabel = args.scenarioTitle;
   if (args.expectedAction === null) {
-    return `Prompt benchmark case ${scenarioLabel}. Treat this as a benchmark of restraint: the user may be thinking out loud, making smalltalk, or previewing a future task. Use grounded reasoning and avoid executing durable actions unless the request is explicit.`;
+    return `Prompt benchmark case ${scenarioLabel}. Treat this as a benchmark of restraint: the user may be thinking out loud, making smalltalk, or previewing a future task. Use grounded reasoning, use only registered runtime action/provider names, and avoid executing durable actions unless the request is explicit.`;
   }
 
-  return `Prompt benchmark case ${scenarioLabel}. Treat this as a benchmark of grounded follow-through: when the user is making a real request, prefer executing the best matching action instead of only describing a hypothetical plan.`;
+  return `Prompt benchmark case ${scenarioLabel}. Treat this as a benchmark of grounded follow-through: when the user is making a real request, prefer executing the best matching registered action instead of only describing a hypothetical plan. Use only registered runtime action/provider names.`;
 }
 
 function buildPromptBenchmarkCasesForScenario(args: {

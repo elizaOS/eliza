@@ -22,11 +22,11 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.173",
+    "@elizaos/core": "alpha",
     "@octokit/rest": "^22.0.0"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.173"
+    "@elizaos/core": "alpha"
   },
   "devDependencies": {
     "@types/node": "24.12.2",

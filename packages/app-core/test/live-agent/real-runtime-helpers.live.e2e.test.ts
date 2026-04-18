@@ -7,8 +7,7 @@ import { ConversationHarness } from "../helpers/conversation-harness.js";
 import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 
 const liveModelTestsEnabled =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;

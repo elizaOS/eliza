@@ -47,16 +47,14 @@ async function createBenchmarkRuntimeFactory(): Promise<{
     selectLiveProvider("groq")?.name;
 
   if (USE_MOCKED_APIS) {
-    const {
-      createMockedTestRuntime,
-      prepareMockedTestEnvironment,
-    } = await import(
-      // @ts-ignore — path is outside the package, resolved relative to repo root
-      "../../../../../test/mocks/helpers/mock-runtime.ts"
-    );
+    const { createMockedTestRuntime, prepareMockedTestEnvironment } =
+      await import(
+        // @ts-expect-error — path is outside the package, resolved relative to repo root
+        "../../../../../test/mocks/helpers/mock-runtime.ts"
+      );
     const environment = await prepareMockedTestEnvironment();
     const { appLifeOpsPlugin } = await import(
-      // @ts-ignore — workspace package resolved at runtime
+      // @ts-expect-error — workspace package resolved at runtime
       "@elizaos/app-lifeops/plugin"
     );
     return {
@@ -77,7 +75,7 @@ async function createBenchmarkRuntimeFactory(): Promise<{
   // client modules that read env-based mock endpoints do not capture the
   // production URLs during module evaluation.
   const { appLifeOpsPlugin } = await import(
-    // @ts-ignore — workspace package resolved at runtime
+    // @ts-expect-error — workspace package resolved at runtime
     "@elizaos/app-lifeops/plugin"
   );
 

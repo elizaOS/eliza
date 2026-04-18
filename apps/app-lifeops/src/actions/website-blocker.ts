@@ -26,7 +26,19 @@ import { recentConversationTexts as collectRecentConversationTexts } from "./lif
 type BlockWebsitesParameters = {
   websites?: string[] | string;
   durationMinutes?: number | string | null;
+  confirmed?: boolean | string | null;
 };
+
+function coerceConfirmedFlag(value: unknown): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return normalized === "true" || normalized === "yes" || normalized === "1";
+  }
+  return false;
+}
 
 type WebsiteBlockPlan = {
   shouldAct?: boolean | null;
@@ -255,6 +267,7 @@ export const blockWebsitesAction: Action & {
     "Use this for fixed-duration or generic focus blocks like 'block twitter and reddit for the next 2 hours', 'turn on a focus block for all social media sites', or 'block youtube'. " +
     "Use recent conversation context to block public websites like x.com for a fixed duration or until manually unblocked. " +
     "Do not use this when the unblock condition is finishing a task, workout, or todo; that is BLOCK_UNTIL_TASK_COMPLETE. " +
+    "Always drafts first; the owner must pass confirmed: true (e.g. by replying 'confirm') to actually edit the hosts file. " +
     "If the user confirms a block in a follow-up message without repeating the hostnames, reuse that context through the action planner.",
   descriptionCompressed: "Admin: block websites via hosts file for set duration.",
   suppressPostActionContinuation: true,
@@ -317,6 +330,24 @@ export const blockWebsitesAction: Action & {
           llmPlan?.response ??
           parsed.error ??
           "Could not determine which public website hostnames to block.",
+      };
+    }
+
+    const confirmed = coerceConfirmedFlag(params?.confirmed);
+    if (!confirmed) {
+      const websitesLabel = formatWebsiteList(parsed.request.websites);
+      const durationLabel =
+        parsed.request.durationMinutes === null
+          ? "until you manually unblock"
+          : `for ${parsed.request.durationMinutes} minute${parsed.request.durationMinutes === 1 ? "" : "s"}`;
+      return {
+        success: true,
+        text: `Ready to block ${websitesLabel} ${durationLabel}. Reply "confirm" or re-issue with confirmed: true to start the block.`,
+        data: {
+          draft: true,
+          websites: parsed.request.websites,
+          durationMinutes: parsed.request.durationMinutes,
+        },
       };
     }
 
@@ -389,12 +420,30 @@ export const blockWebsitesAction: Action & {
       required: false,
       schema: { type: "number" as const, default: 60 },
     },
+    {
+      name: "confirmed",
+      description:
+        "Set to true only when the owner has explicitly confirmed the block. Without it, the action returns a draft confirmation request instead of editing the system hosts file.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
   ],
   examples: [
     [
       {
         name: "{{name1}}",
         content: { text: "Block x.com and twitter.com for 2 hours." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Ready to block x.com, twitter.com for 120 minutes. Reply \"confirm\" or re-issue with confirmed: true to start the block.",
+          action: "BLOCK_WEBSITES",
+        },
+      },
+      {
+        name: "{{name1}}",
+        content: { text: "confirm" },
       },
       {
         name: "{{agentName}}",

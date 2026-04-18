@@ -236,8 +236,7 @@ export function selectLiveProvider(
     }
     if (!apiKey) continue;
 
-    const baseUrl =
-      getLiveTestBaseUrlOverride(def.name) ?? def.defaultBaseUrl;
+    const baseUrl = getLiveTestBaseUrlOverride(def.name) ?? def.defaultBaseUrl;
 
     const smallModel =
       getLiveTestModelOverride("small") ?? def.defaultSmallModel;

@@ -41,16 +41,22 @@ type DiscordMessage = {
 };
 
 const DEFAULT_GUILD_NAME = process.env.DISCORD_QA_GUILD_NAME ?? "Cozy Devs";
-const DEFAULT_GUILD_ID = process.env.DISCORD_QA_GUILD_ID ?? "1051457140637827122";
+const DEFAULT_GUILD_ID =
+  process.env.DISCORD_QA_GUILD_ID ?? "1051457140637827122";
 const POST_CHALLENGE = process.env.MILADY_DISCORD_QA_POST === "1";
 const WAIT_FOR_HUMAN = process.env.MILADY_DISCORD_QA_WAIT_FOR_HUMAN === "1";
-const EXPECT_BOT_RESPONSE = process.env.MILADY_DISCORD_QA_EXPECT_BOT_RESPONSE === "1";
-const TIMEOUT_MS =
-  Math.max(30_000, Number.parseInt(process.env.DISCORD_QA_TIMEOUT_MS ?? "", 10) || 10 * 60_000);
+const EXPECT_BOT_RESPONSE =
+  process.env.MILADY_DISCORD_QA_EXPECT_BOT_RESPONSE === "1";
+const TIMEOUT_MS = Math.max(
+  30_000,
+  Number.parseInt(process.env.DISCORD_QA_TIMEOUT_MS ?? "", 10) || 10 * 60_000,
+);
 
 function loadDiscordToken(): string {
   const configPath = path.join(os.homedir(), ".milady", "milady.json");
-  const parsed = JSON.parse(fs.readFileSync(configPath, "utf8")) as DiscordConfig;
+  const parsed = JSON.parse(
+    fs.readFileSync(configPath, "utf8"),
+  ) as DiscordConfig;
   const fromConfig =
     parsed.env?.DISCORD_API_TOKEN?.trim() ??
     parsed.plugins?.entries?.discord?.config?.DISCORD_API_TOKEN?.trim();
@@ -103,11 +109,13 @@ function rankChannels(channels: DiscordChannel[]): DiscordChannel[] {
   const scored = textChannels
     .map((channel) => {
       let score = 0;
-      if (/(testing|test|bot-commands|sandbox)/i.test(channel.name)) score += 100;
+      if (/(testing|test|bot-commands|sandbox)/i.test(channel.name))
+        score += 100;
       if (/(bot|commands|qa)/i.test(channel.name)) score += 50;
       if (/(agent|arena)/i.test(channel.name)) score += 20;
       if (/(dev|core)/i.test(channel.name)) score -= 10;
-      if (/(moderator|rules|news|feed|reviewers|releases)/i.test(channel.name)) score -= 100;
+      if (/(moderator|rules|news|feed|reviewers|releases)/i.test(channel.name))
+        score -= 100;
       return { channel, score };
     })
     .sort((left, right) => right.score - left.score);
@@ -132,21 +140,32 @@ const botUser = await discordRequest<{ id: string; username: string }>(
 
 let guild: DiscordGuild | null = null;
 try {
-  const guilds = await discordRequest<DiscordGuild[]>(token, "/users/@me/guilds");
+  const guilds = await discordRequest<DiscordGuild[]>(
+    token,
+    "/users/@me/guilds",
+  );
   guild = guilds.find((entry) => entry.name === DEFAULT_GUILD_NAME) ?? null;
 } catch {
   guild = null;
 }
 
 if (!guild) {
-  guild = await discordRequest<DiscordGuild>(token, `/guilds/${DEFAULT_GUILD_ID}`);
+  guild = await discordRequest<DiscordGuild>(
+    token,
+    `/guilds/${DEFAULT_GUILD_ID}`,
+  );
 }
 
-const channels = await discordRequest<DiscordChannel[]>(token, `/guilds/${guild.id}/channels`);
+const channels = await discordRequest<DiscordChannel[]>(
+  token,
+  `/guilds/${guild.id}/channels`,
+);
 const rankedChannels = rankChannels(channels);
 const selectedChannel = rankedChannels[0] ?? null;
 if (!selectedChannel) {
-  throw new Error(`No usable Discord text channel found in guild ${guild.name}`);
+  throw new Error(
+    `No usable Discord text channel found in guild ${guild.name}`,
+  );
 }
 let activeChannel = selectedChannel;
 
@@ -175,7 +194,9 @@ if (POST_CHALLENGE) {
 
   for (const candidate of rankedChannels) {
     report.attemptedPostChannels = [
-      ...((report.attemptedPostChannels as Array<{ id: string; name: string }> | undefined) ?? []),
+      ...((report.attemptedPostChannels as
+        | Array<{ id: string; name: string }>
+        | undefined) ?? []),
       { id: candidate.id, name: candidate.name },
     ];
     try {
@@ -236,7 +257,9 @@ if (POST_CHALLENGE) {
           timestamp: humanReply.timestamp,
           content: humanReply.content,
         };
-        report.status = EXPECT_BOT_RESPONSE ? "waiting_for_bot" : "human_reply_received";
+        report.status = EXPECT_BOT_RESPONSE
+          ? "waiting_for_bot"
+          : "human_reply_received";
 
         if (!EXPECT_BOT_RESPONSE) {
           break;
@@ -270,7 +293,10 @@ if (POST_CHALLENGE) {
       await pollDelay(3000);
     }
 
-    if (report.status === "waiting_for_human" || report.status === "waiting_for_bot") {
+    if (
+      report.status === "waiting_for_human" ||
+      report.status === "waiting_for_bot"
+    ) {
       report.status = "timed_out";
     }
   }
@@ -323,7 +349,10 @@ const markdown = [
     : []),
 ].join("\n");
 
-fs.writeFileSync(path.join(reportDir, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
+fs.writeFileSync(
+  path.join(reportDir, "report.json"),
+  `${JSON.stringify(report, null, 2)}\n`,
+);
 fs.writeFileSync(path.join(reportDir, "report.md"), `${markdown}\n`);
 
 console.log(
