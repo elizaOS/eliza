@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/skills",
-	"version": "2.0.0-alpha.188",
+	"version": "2.0.0-alpha.189",
 	"description": "Bundled skills and skill loading utilities for elizaOS agents",
 	"type": "module",
 	"main": "dist/index.js",
