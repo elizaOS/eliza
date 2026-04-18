@@ -236,6 +236,7 @@ packages/typescript/src/i18n/generated/
 # Vitest config files (if not needed in repo)
 vitest.config.ts
 !apps/app-lifeops/vitest.config.ts
+!apps/app-training/vitest.config.ts
 tsconfig.test.json
 
 # Migration status docs (temporary)

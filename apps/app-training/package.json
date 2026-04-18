@@ -41,7 +41,9 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "train": "bun run src/cli/train.ts"
+    "train": "bun run src/cli/train.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@elizaos/ui": "workspace:*",
