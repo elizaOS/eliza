@@ -3,11 +3,17 @@
 // Knowledge*, Memory*, MCP*, Share*
 // ---------------------------------------------------------------------------
 
+import type {
+  ConversationMetadata,
+  ConversationScope,
+} from "@elizaos/agent/api/server-types";
+
 // Conversations
 export interface Conversation {
   id: string;
   title: string;
   roomId: string;
+  metadata?: ConversationMetadata;
   createdAt: string;
   updatedAt: string;
 }
@@ -23,7 +29,10 @@ export interface CreateConversationOptions {
   includeGreeting?: boolean;
   bootstrapGreeting?: boolean;
   lang?: string;
+  metadata?: ConversationMetadata;
 }
+
+export type { ConversationMetadata, ConversationScope };
 
 // ── A2UI Content Blocks (Agent-to-UI) ────────────────────────────────
 

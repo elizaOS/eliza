@@ -189,6 +189,7 @@ export interface ConversationMeta {
   id: string;
   title: string;
   roomId: UUID;
+  metadata?: import("./server-types.js").ConversationMetadata;
   createdAt: string;
   updatedAt: string;
 }
