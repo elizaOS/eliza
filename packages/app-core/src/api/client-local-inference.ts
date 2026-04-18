@@ -6,6 +6,11 @@
  */
 
 import type { DeviceBridgeStatus } from "../services/local-inference/device-bridge";
+import type { PublicRegistration } from "../services/local-inference/handler-registry";
+import type {
+  RoutingPolicy,
+  RoutingPreferences,
+} from "../services/local-inference/routing-preferences";
 import type {
   ActiveModelState,
   AgentModelSlot,
@@ -31,6 +36,9 @@ export type {
   ModelAssignments,
   ModelBucket,
   ModelHubSnapshot,
+  PublicRegistration,
+  RoutingPolicy,
+  RoutingPreferences,
   VerifyResult,
 };
 
@@ -63,6 +71,18 @@ declare module "./client-base" {
       modelId: string | null,
     ): Promise<{ assignments: ModelAssignments }>;
     verifyLocalInferenceModel(id: string): Promise<VerifyResult>;
+    getLocalInferenceRouting(): Promise<{
+      registrations: PublicRegistration[];
+      preferences: RoutingPreferences;
+    }>;
+    setLocalInferencePreferredProvider(
+      slot: AgentModelSlot,
+      provider: string | null,
+    ): Promise<{ preferences: RoutingPreferences }>;
+    setLocalInferencePolicy(
+      slot: AgentModelSlot,
+      policy: RoutingPolicy | null,
+    ): Promise<{ preferences: RoutingPreferences }>;
   }
 }
 
@@ -189,4 +209,32 @@ ElizaClient.prototype.verifyLocalInferenceModel = async function (
     `/api/local-inference/installed/${encodeURIComponent(id)}/verify`,
     { method: "POST" },
   );
+};
+
+ElizaClient.prototype.getLocalInferenceRouting = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/local-inference/routing");
+};
+
+ElizaClient.prototype.setLocalInferencePreferredProvider = async function (
+  this: ElizaClient,
+  slot: AgentModelSlot,
+  provider: string | null,
+) {
+  return this.fetch("/api/local-inference/routing/preferred", {
+    method: "POST",
+    body: JSON.stringify({ slot, provider }),
+  });
+};
+
+ElizaClient.prototype.setLocalInferencePolicy = async function (
+  this: ElizaClient,
+  slot: AgentModelSlot,
+  policy: RoutingPolicy | null,
+) {
+  return this.fetch("/api/local-inference/routing/policy", {
+    method: "POST",
+    body: JSON.stringify({ slot, policy }),
+  });
 };

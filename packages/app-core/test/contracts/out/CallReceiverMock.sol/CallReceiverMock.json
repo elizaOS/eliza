@@ -1,1 +1,273 @@
-{"abi":[{"type":"function","name":"mockFunction","inputs":[],"outputs":[{"name":"","type":"string","internalType":"string"}],"stateMutability":"payable"},{"type":"function","name":"mockFunctionEmptyReturn","inputs":[],"outputs":[],"stateMutability":"payable"},{"type":"function","name":"mockFunctionNonPayable","inputs":[],"outputs":[{"name":"","type":"string","internalType":"string"}],"stateMutability":"nonpayable"},{"type":"function","name":"mockFunctionOutOfGas","inputs":[],"outputs":[],"stateMutability":"payable"},{"type":"function","name":"mockFunctionRevertsNoReason","inputs":[],"outputs":[],"stateMutability":"payable"},{"type":"function","name":"mockFunctionRevertsReason","inputs":[],"outputs":[],"stateMutability":"payable"},{"type":"function","name":"mockFunctionThrows","inputs":[],"outputs":[],"stateMutability":"payable"},{"type":"function","name":"mockFunctionWithArgs","inputs":[{"name":"a","type":"uint256","internalType":"uint256"},{"name":"b","type":"uint256","internalType":"uint256"}],"outputs":[{"name":"","type":"string","internalType":"string"}],"stateMutability":"payable"},{"type":"function","name":"mockFunctionWritesStorage","inputs":[{"name":"slot","type":"bytes32","internalType":"bytes32"},{"name":"value","type":"bytes32","internalType":"bytes32"}],"outputs":[{"name":"","type":"string","internalType":"string"}],"stateMutability":"nonpayable"},{"type":"function","name":"mockStaticFunction","inputs":[],"outputs":[{"name":"","type":"string","internalType":"string"}],"stateMutability":"pure"},{"type":"event","name":"MockFunctionCalled","inputs":[],"anonymous":false},{"type":"event","name":"MockFunctionCalledWithArgs","inputs":[{"name":"a","type":"uint256","indexed":false,"internalType":"uint256"},{"name":"b","type":"uint256","indexed":false,"internalType":"uint256"}],"anonymous":false}],"bytecode":{"object":"0x608060405234801561000f575f80fd5b506103b38061001d5f395ff3fe60806040526004361061008f575f3560e01c8063425397a211610057578063425397a2146100de578063a793ab471461011a578063c292d81c14610122578063c8fc76961461012a578063fdb2732514610158575f80fd5b80630c034968146100935780630f63e42c1461009d5780632c81d638146100c75780633bcfaa14146100ce5780633e6fec04146100d6575b5f80fd5b61009b61016b565b005b3480156100a8575f80fd5b506100b16101b7565b6040516100be91906102da565b60405180910390f35b61009b5f80fd5b61009b610203565b6100b16101b7565b3480156100e9575f80fd5b506100b16100f8366004610325565b90556040805180820190915260068152650c1e0c4c8ccd60d21b602082015290565b61009b61020d565b61009b610250565b348015610135575f80fd5b506040805180820190915260068152650c1e0c4c8ccd60d21b60208201526100b1565b6100b1610166366004610325565b61027a565b60405162461bcd60e51b815260206004820152601b60248201527f43616c6c52656365697665724d6f636b3a20726576657274696e670000000000604482015260640160405180910390fd5b6040516060907f52c66ed6ec9ca819cba26fe2b2650059270d8981b295af300187a964f54a8c23905f90a1506040805180820190915260068152650c1e0c4c8ccd60d21b602082015290565b61020b610345565b565b5f5b5f80546001810182559080527f290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e5630181905561024981610359565b905061020f565b6040517f52c66ed6ec9ca819cba26fe2b2650059270d8981b295af300187a964f54a8c23905f90a1565b60408051838152602081018390526060917f2b42b3c9af4187c86225f201736204c7597312c830cb5c2537dff6ef24b946ae910160405180910390a1506040805180820190915260068152650c1e0c4c8ccd60d21b602082015292915050565b5f6020808352835180828501525f5b81811015610305578581018301518582016040015282016102e9565b505f604082860101526040601f19601f8301168501019250505092915050565b5f8060408385031215610336575f80fd5b50508035926020909101359150565b634e487b7160e01b5f52600160045260245ffd5b5f6001820161037657634e487b7160e01b5f52601160045260245ffd5b506001019056fea2646970667358221220f230a08e2bb668df7b1839c609fbee3444612adeed3ceed2bf95b49dca6c93ac64736f6c63430008140033","sourceMap":"58:1414:80:-:0;;;;;;;;;;;;;;;;;;;","linkReferences":{}},"deployedBytecode":{"object":"0x60806040526004361061008f575f3560e01c8063425397a211610057578063425397a2146100de578063a793ab471461011a578063c292d81c14610122578063c8fc76961461012a578063fdb2732514610158575f80fd5b80630c034968146100935780630f63e42c1461009d5780632c81d638146100c75780633bcfaa14146100ce5780633e6fec04146100d6575b5f80fd5b61009b61016b565b005b3480156100a8575f80fd5b506100b16101b7565b6040516100be91906102da565b60405180910390f35b61009b5f80fd5b61009b610203565b6100b16101b7565b3480156100e9575f80fd5b506100b16100f8366004610325565b90556040805180820190915260068152650c1e0c4c8ccd60d21b602082015290565b61009b61020d565b61009b610250565b348015610135575f80fd5b506040805180820190915260068152650c1e0c4c8ccd60d21b60208201526100b1565b6100b1610166366004610325565b61027a565b60405162461bcd60e51b815260206004820152601b60248201527f43616c6c52656365697665724d6f636b3a20726576657274696e670000000000604482015260640160405180910390fd5b6040516060907f52c66ed6ec9ca819cba26fe2b2650059270d8981b295af300187a964f54a8c23905f90a1506040805180820190915260068152650c1e0c4c8ccd60d21b602082015290565b61020b610345565b565b5f5b5f80546001810182559080527f290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e5630181905561024981610359565b905061020f565b6040517f52c66ed6ec9ca819cba26fe2b2650059270d8981b295af300187a964f54a8c23905f90a1565b60408051838152602081018390526060917f2b42b3c9af4187c86225f201736204c7597312c830cb5c2537dff6ef24b946ae910160405180910390a1506040805180820190915260068152650c1e0c4c8ccd60d21b602082015292915050565b5f6020808352835180828501525f5b81811015610305578581018301518582016040015282016102e9565b505f604082860101526040601f19601f8301168501019250505092915050565b5f8060408385031215610336575f80fd5b50508035926020909101359150565b634e487b7160e01b5f52600160045260245ffd5b5f6001820161037657634e487b7160e01b5f52601160045260245ffd5b506001019056fea2646970667358221220f230a08e2bb668df7b1839c609fbee3444612adeed3ceed2bf95b49dca6c93ac64736f6c63430008140033","sourceMap":"58:1414:80:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;954:106;;;:::i;:::-;;626:133;;;;;;;;;;;;;:::i;:::-;;;;;;;:::i;:::-;;;;;;;;869:79;;58:1414;;;1066:75;;;:::i;214:131::-;;;:::i;1282:188::-;;;;;;;;;;-1:-1:-1;1282:188:80;;;;;:::i;:::-;1410:19;;1448:15;;;;;;;;;;;;-1:-1:-1;;;1448:15:80;;;;;1282:188;1147:129;;;:::i;351:92::-;;;:::i;765:98::-;;;;;;;;;;-1:-1:-1;841:15:80;;;;;;;;;;;;-1:-1:-1;;;841:15:80;;;;765:98;;449:171;;;;;;:::i;:::-;;:::i;954:106::-;1016:37;;-1:-1:-1;;;1016:37:80;;1275:2:310;1016:37:80;;;1257:21:310;1314:2;1294:18;;;1287:30;1353:29;1333:18;;;1326:57;1400:18;;1016:37:80;;;;;;;626:133;706:20;;676:13;;706:20;;;;;-1:-1:-1;737:15:80;;;;;;;;;;;;-1:-1:-1;;;737:15:80;;;;;626:133::o;1066:75::-;1121:13;;:::i;:::-;1066:75::o;1147:129::-;1209:9;1204:66;1245:6;:14;;;;;;;;;;;;;;;1226:3;1257:1;1226:3;:::i;:::-;;;1204:66;;351:92;416:20;;;;;;;351:92::o;449:171::-;555:32;;;1972:25:310;;;2028:2;2013:18;;2006:34;;;525:13:80;;555:32;;1945:18:310;555:32:80;;;;;;;-1:-1:-1;598:15:80;;;;;;;;;;;;-1:-1:-1;;;598:15:80;;;;449:171;;;;:::o;14:548:310:-;126:4;155:2;184;173:9;166:21;216:6;210:13;259:6;254:2;243:9;239:18;232:34;284:1;294:140;308:6;305:1;302:13;294:140;;;403:14;;;399:23;;393:30;369:17;;;388:2;365:26;358:66;323:10;;294:140;;;298:3;483:1;478:2;469:6;458:9;454:22;450:31;443:42;553:2;546;542:7;537:2;529:6;525:15;521:29;510:9;506:45;502:54;494:62;;;;14:548;;;;:::o;567:248::-;635:6;643;696:2;684:9;675:7;671:23;667:32;664:52;;;712:1;709;702:12;664:52;-1:-1:-1;;735:23:310;;;805:2;790:18;;;777:32;;-1:-1:-1;567:248:310:o;1429:127::-;1490:10;1485:3;1481:20;1478:1;1471:31;1521:4;1518:1;1511:15;1545:4;1542:1;1535:15;1561:232;1600:3;1621:17;;;1618:140;;1680:10;1675:3;1671:20;1668:1;1661:31;1715:4;1712:1;1705:15;1743:4;1740:1;1733:15;1618:140;-1:-1:-1;1785:1:310;1774:13;;1561:232::o","linkReferences":{}},"methodIdentifiers":{"mockFunction()":"3e6fec04","mockFunctionEmptyReturn()":"c292d81c","mockFunctionNonPayable()":"0f63e42c","mockFunctionOutOfGas()":"a793ab47","mockFunctionRevertsNoReason()":"2c81d638","mockFunctionRevertsReason()":"0c034968","mockFunctionThrows()":"3bcfaa14","mockFunctionWithArgs(uint256,uint256)":"fdb27325","mockFunctionWritesStorage(bytes32,bytes32)":"425397a2","mockStaticFunction()":"c8fc7696"},"rawMetadata":"{\"compiler\":{\"version\":\"0.8.20+commit.a1b79de6\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"anonymous\":false,\"inputs\":[],\"name\":\"MockFunctionCalled\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"a\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"b\",\"type\":\"uint256\"}],\"name\":\"MockFunctionCalledWithArgs\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"mockFunction\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"mockFunctionEmptyReturn\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"mockFunctionNonPayable\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"mockFunctionOutOfGas\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"mockFunctionRevertsNoReason\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"mockFunctionRevertsReason\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"mockFunctionThrows\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"a\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"b\",\"type\":\"uint256\"}],\"name\":\"mockFunctionWithArgs\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"slot\",\"type\":\"bytes32\"},{\"internalType\":\"bytes32\",\"name\":\"value\",\"type\":\"bytes32\"}],\"name\":\"mockFunctionWritesStorage\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"mockStaticFunction\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"pure\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"lib/openzeppelin-contracts/contracts/mocks/CallReceiverMock.sol\":\"CallReceiverMock\"},\"evmVersion\":\"shanghai\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\",\":openzeppelin/=lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"lib/openzeppelin-contracts/contracts/mocks/CallReceiverMock.sol\":{\"keccak256\":\"0xcd89c966a6072bffc9a638ca8fe7410ca63d6f5b05f088b71abce7b35377b444\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://b625e9426fac25cce0862a06c86272cda50c3eacd38de1197e0288dfe77dc696\",\"dweb:/ipfs/QmQs2evkJZzWrY3eYQM58ftQUZAPnD8UEat346gDfem878\"]}},\"version\":1}","metadata":{"compiler":{"version":"0.8.20+commit.a1b79de6"},"language":"Solidity","output":{"abi":[{"inputs":[],"type":"event","name":"MockFunctionCalled","anonymous":false},{"inputs":[{"internalType":"uint256","name":"a","type":"uint256","indexed":false},{"internalType":"uint256","name":"b","type":"uint256","indexed":false}],"type":"event","name":"MockFunctionCalledWithArgs","anonymous":false},{"inputs":[],"stateMutability":"payable","type":"function","name":"mockFunction","outputs":[{"internalType":"string","name":"","type":"string"}]},{"inputs":[],"stateMutability":"payable","type":"function","name":"mockFunctionEmptyReturn"},{"inputs":[],"stateMutability":"nonpayable","type":"function","name":"mockFunctionNonPayable","outputs":[{"internalType":"string","name":"","type":"string"}]},{"inputs":[],"stateMutability":"payable","type":"function","name":"mockFunctionOutOfGas"},{"inputs":[],"stateMutability":"payable","type":"function","name":"mockFunctionRevertsNoReason"},{"inputs":[],"stateMutability":"payable","type":"function","name":"mockFunctionRevertsReason"},{"inputs":[],"stateMutability":"payable","type":"function","name":"mockFunctionThrows"},{"inputs":[{"internalType":"uint256","name":"a","type":"uint256"},{"internalType":"uint256","name":"b","type":"uint256"}],"stateMutability":"payable","type":"function","name":"mockFunctionWithArgs","outputs":[{"internalType":"string","name":"","type":"string"}]},{"inputs":[{"internalType":"bytes32","name":"slot","type":"bytes32"},{"internalType":"bytes32","name":"value","type":"bytes32"}],"stateMutability":"nonpayable","type":"function","name":"mockFunctionWritesStorage","outputs":[{"internalType":"string","name":"","type":"string"}]},{"inputs":[],"stateMutability":"pure","type":"function","name":"mockStaticFunction","outputs":[{"internalType":"string","name":"","type":"string"}]}],"devdoc":{"kind":"dev","methods":{},"version":1},"userdoc":{"kind":"user","methods":{},"version":1}},"settings":{"remappings":["@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/","ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/","erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/","forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/","openzeppelin-contracts/=lib/openzeppelin-contracts/","openzeppelin/=lib/openzeppelin-contracts/contracts/"],"optimizer":{"enabled":true,"runs":200},"metadata":{"bytecodeHash":"ipfs"},"compilationTarget":{"lib/openzeppelin-contracts/contracts/mocks/CallReceiverMock.sol":"CallReceiverMock"},"evmVersion":"shanghai","libraries":{}},"sources":{"lib/openzeppelin-contracts/contracts/mocks/CallReceiverMock.sol":{"keccak256":"0xcd89c966a6072bffc9a638ca8fe7410ca63d6f5b05f088b71abce7b35377b444","urls":["bzz-raw://b625e9426fac25cce0862a06c86272cda50c3eacd38de1197e0288dfe77dc696","dweb:/ipfs/QmQs2evkJZzWrY3eYQM58ftQUZAPnD8UEat346gDfem878"],"license":"MIT"}},"version":1},"id":80}
+{
+  "abi": [
+    {
+      "type": "function",
+      "name": "mockFunction",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "string", "internalType": "string" }],
+      "stateMutability": "payable"
+    },
+    {
+      "type": "function",
+      "name": "mockFunctionEmptyReturn",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "payable"
+    },
+    {
+      "type": "function",
+      "name": "mockFunctionNonPayable",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "string", "internalType": "string" }],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "mockFunctionOutOfGas",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "payable"
+    },
+    {
+      "type": "function",
+      "name": "mockFunctionRevertsNoReason",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "payable"
+    },
+    {
+      "type": "function",
+      "name": "mockFunctionRevertsReason",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "payable"
+    },
+    {
+      "type": "function",
+      "name": "mockFunctionThrows",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "payable"
+    },
+    {
+      "type": "function",
+      "name": "mockFunctionWithArgs",
+      "inputs": [
+        { "name": "a", "type": "uint256", "internalType": "uint256" },
+        { "name": "b", "type": "uint256", "internalType": "uint256" }
+      ],
+      "outputs": [{ "name": "", "type": "string", "internalType": "string" }],
+      "stateMutability": "payable"
+    },
+    {
+      "type": "function",
+      "name": "mockFunctionWritesStorage",
+      "inputs": [
+        { "name": "slot", "type": "bytes32", "internalType": "bytes32" },
+        { "name": "value", "type": "bytes32", "internalType": "bytes32" }
+      ],
+      "outputs": [{ "name": "", "type": "string", "internalType": "string" }],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "mockStaticFunction",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "string", "internalType": "string" }],
+      "stateMutability": "pure"
+    },
+    {
+      "type": "event",
+      "name": "MockFunctionCalled",
+      "inputs": [],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "MockFunctionCalledWithArgs",
+      "inputs": [
+        {
+          "name": "a",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "b",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    }
+  ],
+  "bytecode": {
+    "object": "0x608060405234801561000f575f80fd5b506103b38061001d5f395ff3fe60806040526004361061008f575f3560e01c8063425397a211610057578063425397a2146100de578063a793ab471461011a578063c292d81c14610122578063c8fc76961461012a578063fdb2732514610158575f80fd5b80630c034968146100935780630f63e42c1461009d5780632c81d638146100c75780633bcfaa14146100ce5780633e6fec04146100d6575b5f80fd5b61009b61016b565b005b3480156100a8575f80fd5b506100b16101b7565b6040516100be91906102da565b60405180910390f35b61009b5f80fd5b61009b610203565b6100b16101b7565b3480156100e9575f80fd5b506100b16100f8366004610325565b90556040805180820190915260068152650c1e0c4c8ccd60d21b602082015290565b61009b61020d565b61009b610250565b348015610135575f80fd5b506040805180820190915260068152650c1e0c4c8ccd60d21b60208201526100b1565b6100b1610166366004610325565b61027a565b60405162461bcd60e51b815260206004820152601b60248201527f43616c6c52656365697665724d6f636b3a20726576657274696e670000000000604482015260640160405180910390fd5b6040516060907f52c66ed6ec9ca819cba26fe2b2650059270d8981b295af300187a964f54a8c23905f90a1506040805180820190915260068152650c1e0c4c8ccd60d21b602082015290565b61020b610345565b565b5f5b5f80546001810182559080527f290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e5630181905561024981610359565b905061020f565b6040517f52c66ed6ec9ca819cba26fe2b2650059270d8981b295af300187a964f54a8c23905f90a1565b60408051838152602081018390526060917f2b42b3c9af4187c86225f201736204c7597312c830cb5c2537dff6ef24b946ae910160405180910390a1506040805180820190915260068152650c1e0c4c8ccd60d21b602082015292915050565b5f6020808352835180828501525f5b81811015610305578581018301518582016040015282016102e9565b505f604082860101526040601f19601f8301168501019250505092915050565b5f8060408385031215610336575f80fd5b50508035926020909101359150565b634e487b7160e01b5f52600160045260245ffd5b5f6001820161037657634e487b7160e01b5f52601160045260245ffd5b506001019056fea2646970667358221220f230a08e2bb668df7b1839c609fbee3444612adeed3ceed2bf95b49dca6c93ac64736f6c63430008140033",
+    "sourceMap": "58:1414:80:-:0;;;;;;;;;;;;;;;;;;;",
+    "linkReferences": {}
+  },
+  "deployedBytecode": {
+    "object": "0x60806040526004361061008f575f3560e01c8063425397a211610057578063425397a2146100de578063a793ab471461011a578063c292d81c14610122578063c8fc76961461012a578063fdb2732514610158575f80fd5b80630c034968146100935780630f63e42c1461009d5780632c81d638146100c75780633bcfaa14146100ce5780633e6fec04146100d6575b5f80fd5b61009b61016b565b005b3480156100a8575f80fd5b506100b16101b7565b6040516100be91906102da565b60405180910390f35b61009b5f80fd5b61009b610203565b6100b16101b7565b3480156100e9575f80fd5b506100b16100f8366004610325565b90556040805180820190915260068152650c1e0c4c8ccd60d21b602082015290565b61009b61020d565b61009b610250565b348015610135575f80fd5b506040805180820190915260068152650c1e0c4c8ccd60d21b60208201526100b1565b6100b1610166366004610325565b61027a565b60405162461bcd60e51b815260206004820152601b60248201527f43616c6c52656365697665724d6f636b3a20726576657274696e670000000000604482015260640160405180910390fd5b6040516060907f52c66ed6ec9ca819cba26fe2b2650059270d8981b295af300187a964f54a8c23905f90a1506040805180820190915260068152650c1e0c4c8ccd60d21b602082015290565b61020b610345565b565b5f5b5f80546001810182559080527f290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e5630181905561024981610359565b905061020f565b6040517f52c66ed6ec9ca819cba26fe2b2650059270d8981b295af300187a964f54a8c23905f90a1565b60408051838152602081018390526060917f2b42b3c9af4187c86225f201736204c7597312c830cb5c2537dff6ef24b946ae910160405180910390a1506040805180820190915260068152650c1e0c4c8ccd60d21b602082015292915050565b5f6020808352835180828501525f5b81811015610305578581018301518582016040015282016102e9565b505f604082860101526040601f19601f8301168501019250505092915050565b5f8060408385031215610336575f80fd5b50508035926020909101359150565b634e487b7160e01b5f52600160045260245ffd5b5f6001820161037657634e487b7160e01b5f52601160045260245ffd5b506001019056fea2646970667358221220f230a08e2bb668df7b1839c609fbee3444612adeed3ceed2bf95b49dca6c93ac64736f6c63430008140033",
+    "sourceMap": "58:1414:80:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;954:106;;;:::i;:::-;;626:133;;;;;;;;;;;;;:::i;:::-;;;;;;;:::i;:::-;;;;;;;;869:79;;58:1414;;;1066:75;;;:::i;214:131::-;;;:::i;1282:188::-;;;;;;;;;;-1:-1:-1;1282:188:80;;;;;:::i;:::-;1410:19;;1448:15;;;;;;;;;;;;-1:-1:-1;;;1448:15:80;;;;;1282:188;1147:129;;;:::i;351:92::-;;;:::i;765:98::-;;;;;;;;;;-1:-1:-1;841:15:80;;;;;;;;;;;;-1:-1:-1;;;841:15:80;;;;765:98;;449:171;;;;;;:::i;:::-;;:::i;954:106::-;1016:37;;-1:-1:-1;;;1016:37:80;;1275:2:310;1016:37:80;;;1257:21:310;1314:2;1294:18;;;1287:30;1353:29;1333:18;;;1326:57;1400:18;;1016:37:80;;;;;;;626:133;706:20;;676:13;;706:20;;;;;-1:-1:-1;737:15:80;;;;;;;;;;;;-1:-1:-1;;;737:15:80;;;;;626:133::o;1066:75::-;1121:13;;:::i;:::-;1066:75::o;1147:129::-;1209:9;1204:66;1245:6;:14;;;;;;;;;;;;;;;1226:3;1257:1;1226:3;:::i;:::-;;;1204:66;;351:92;416:20;;;;;;;351:92::o;449:171::-;555:32;;;1972:25:310;;;2028:2;2013:18;;2006:34;;;525:13:80;;555:32;;1945:18:310;555:32:80;;;;;;;-1:-1:-1;598:15:80;;;;;;;;;;;;-1:-1:-1;;;598:15:80;;;;449:171;;;;:::o;14:548:310:-;126:4;155:2;184;173:9;166:21;216:6;210:13;259:6;254:2;243:9;239:18;232:34;284:1;294:140;308:6;305:1;302:13;294:140;;;403:14;;;399:23;;393:30;369:17;;;388:2;365:26;358:66;323:10;;294:140;;;298:3;483:1;478:2;469:6;458:9;454:22;450:31;443:42;553:2;546;542:7;537:2;529:6;525:15;521:29;510:9;506:45;502:54;494:62;;;;14:548;;;;:::o;567:248::-;635:6;643;696:2;684:9;675:7;671:23;667:32;664:52;;;712:1;709;702:12;664:52;-1:-1:-1;;735:23:310;;;805:2;790:18;;;777:32;;-1:-1:-1;567:248:310:o;1429:127::-;1490:10;1485:3;1481:20;1478:1;1471:31;1521:4;1518:1;1511:15;1545:4;1542:1;1535:15;1561:232;1600:3;1621:17;;;1618:140;;1680:10;1675:3;1671:20;1668:1;1661:31;1715:4;1712:1;1705:15;1743:4;1740:1;1733:15;1618:140;-1:-1:-1;1785:1:310;1774:13;;1561:232::o",
+    "linkReferences": {}
+  },
+  "methodIdentifiers": {
+    "mockFunction()": "3e6fec04",
+    "mockFunctionEmptyReturn()": "c292d81c",
+    "mockFunctionNonPayable()": "0f63e42c",
+    "mockFunctionOutOfGas()": "a793ab47",
+    "mockFunctionRevertsNoReason()": "2c81d638",
+    "mockFunctionRevertsReason()": "0c034968",
+    "mockFunctionThrows()": "3bcfaa14",
+    "mockFunctionWithArgs(uint256,uint256)": "fdb27325",
+    "mockFunctionWritesStorage(bytes32,bytes32)": "425397a2",
+    "mockStaticFunction()": "c8fc7696"
+  },
+  "rawMetadata": "{\"compiler\":{\"version\":\"0.8.20+commit.a1b79de6\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"anonymous\":false,\"inputs\":[],\"name\":\"MockFunctionCalled\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"a\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"b\",\"type\":\"uint256\"}],\"name\":\"MockFunctionCalledWithArgs\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"mockFunction\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"mockFunctionEmptyReturn\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"mockFunctionNonPayable\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"mockFunctionOutOfGas\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"mockFunctionRevertsNoReason\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"mockFunctionRevertsReason\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"mockFunctionThrows\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"a\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"b\",\"type\":\"uint256\"}],\"name\":\"mockFunctionWithArgs\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"slot\",\"type\":\"bytes32\"},{\"internalType\":\"bytes32\",\"name\":\"value\",\"type\":\"bytes32\"}],\"name\":\"mockFunctionWritesStorage\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"mockStaticFunction\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"pure\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"lib/openzeppelin-contracts/contracts/mocks/CallReceiverMock.sol\":\"CallReceiverMock\"},\"evmVersion\":\"shanghai\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\",\":openzeppelin/=lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"lib/openzeppelin-contracts/contracts/mocks/CallReceiverMock.sol\":{\"keccak256\":\"0xcd89c966a6072bffc9a638ca8fe7410ca63d6f5b05f088b71abce7b35377b444\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://b625e9426fac25cce0862a06c86272cda50c3eacd38de1197e0288dfe77dc696\",\"dweb:/ipfs/QmQs2evkJZzWrY3eYQM58ftQUZAPnD8UEat346gDfem878\"]}},\"version\":1}",
+  "metadata": {
+    "compiler": { "version": "0.8.20+commit.a1b79de6" },
+    "language": "Solidity",
+    "output": {
+      "abi": [
+        {
+          "inputs": [],
+          "type": "event",
+          "name": "MockFunctionCalled",
+          "anonymous": false
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "a",
+              "type": "uint256",
+              "indexed": false
+            },
+            {
+              "internalType": "uint256",
+              "name": "b",
+              "type": "uint256",
+              "indexed": false
+            }
+          ],
+          "type": "event",
+          "name": "MockFunctionCalledWithArgs",
+          "anonymous": false
+        },
+        {
+          "inputs": [],
+          "stateMutability": "payable",
+          "type": "function",
+          "name": "mockFunction",
+          "outputs": [
+            { "internalType": "string", "name": "", "type": "string" }
+          ]
+        },
+        {
+          "inputs": [],
+          "stateMutability": "payable",
+          "type": "function",
+          "name": "mockFunctionEmptyReturn"
+        },
+        {
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "mockFunctionNonPayable",
+          "outputs": [
+            { "internalType": "string", "name": "", "type": "string" }
+          ]
+        },
+        {
+          "inputs": [],
+          "stateMutability": "payable",
+          "type": "function",
+          "name": "mockFunctionOutOfGas"
+        },
+        {
+          "inputs": [],
+          "stateMutability": "payable",
+          "type": "function",
+          "name": "mockFunctionRevertsNoReason"
+        },
+        {
+          "inputs": [],
+          "stateMutability": "payable",
+          "type": "function",
+          "name": "mockFunctionRevertsReason"
+        },
+        {
+          "inputs": [],
+          "stateMutability": "payable",
+          "type": "function",
+          "name": "mockFunctionThrows"
+        },
+        {
+          "inputs": [
+            { "internalType": "uint256", "name": "a", "type": "uint256" },
+            { "internalType": "uint256", "name": "b", "type": "uint256" }
+          ],
+          "stateMutability": "payable",
+          "type": "function",
+          "name": "mockFunctionWithArgs",
+          "outputs": [
+            { "internalType": "string", "name": "", "type": "string" }
+          ]
+        },
+        {
+          "inputs": [
+            { "internalType": "bytes32", "name": "slot", "type": "bytes32" },
+            { "internalType": "bytes32", "name": "value", "type": "bytes32" }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "mockFunctionWritesStorage",
+          "outputs": [
+            { "internalType": "string", "name": "", "type": "string" }
+          ]
+        },
+        {
+          "inputs": [],
+          "stateMutability": "pure",
+          "type": "function",
+          "name": "mockStaticFunction",
+          "outputs": [
+            { "internalType": "string", "name": "", "type": "string" }
+          ]
+        }
+      ],
+      "devdoc": { "kind": "dev", "methods": {}, "version": 1 },
+      "userdoc": { "kind": "user", "methods": {}, "version": 1 }
+    },
+    "settings": {
+      "remappings": [
+        "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+        "ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/",
+        "erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+        "forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/",
+        "openzeppelin-contracts/=lib/openzeppelin-contracts/",
+        "openzeppelin/=lib/openzeppelin-contracts/contracts/"
+      ],
+      "optimizer": { "enabled": true, "runs": 200 },
+      "metadata": { "bytecodeHash": "ipfs" },
+      "compilationTarget": {
+        "lib/openzeppelin-contracts/contracts/mocks/CallReceiverMock.sol": "CallReceiverMock"
+      },
+      "evmVersion": "shanghai",
+      "libraries": {}
+    },
+    "sources": {
+      "lib/openzeppelin-contracts/contracts/mocks/CallReceiverMock.sol": {
+        "keccak256": "0xcd89c966a6072bffc9a638ca8fe7410ca63d6f5b05f088b71abce7b35377b444",
+        "urls": [
+          "bzz-raw://b625e9426fac25cce0862a06c86272cda50c3eacd38de1197e0288dfe77dc696",
+          "dweb:/ipfs/QmQs2evkJZzWrY3eYQM58ftQUZAPnD8UEat346gDfem878"
+        ],
+        "license": "MIT"
+      }
+    },
+    "version": 1
+  },
+  "id": 80
+}

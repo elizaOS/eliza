@@ -40,9 +40,11 @@ describe("resolveWidgetsForSlot", () => {
       },
     };
 
-    const resolved = resolveWidgetsForSlot("chat-sidebar", [
-      { id: "todo", enabled: true, isActive: true },
-    ], [serverWidget]);
+    const resolved = resolveWidgetsForSlot(
+      "chat-sidebar",
+      [{ id: "todo", enabled: true, isActive: true }],
+      [serverWidget],
+    );
 
     expect(
       resolved.some(
@@ -53,35 +55,32 @@ describe("resolveWidgetsForSlot", () => {
     ).toBe(true);
   });
 
-  it(
-    "does not enable server-only widgets when the owning plugin is missing",
-    () => {
-      const serverWidget: PluginWidgetDeclaration = {
-        id: "custom.sidebar",
-        pluginId: "custom",
-        slot: "chat-sidebar",
-        label: "Custom sidebar",
-        defaultEnabled: true,
-        uiSpec: {
-          type: "section",
-          title: "Custom",
-          body: [],
-        },
-      };
+  it("does not enable server-only widgets when the owning plugin is missing", () => {
+    const serverWidget: PluginWidgetDeclaration = {
+      id: "custom.sidebar",
+      pluginId: "custom",
+      slot: "chat-sidebar",
+      label: "Custom sidebar",
+      defaultEnabled: true,
+      uiSpec: {
+        type: "section",
+        title: "Custom",
+        body: [],
+      },
+    };
 
-      const resolved = resolveWidgetsForSlot(
-        "chat-sidebar",
-        [{ id: "openai", enabled: true, isActive: true }],
-        [serverWidget],
-      );
+    const resolved = resolveWidgetsForSlot(
+      "chat-sidebar",
+      [{ id: "openai", enabled: true, isActive: true }],
+      [serverWidget],
+    );
 
-      expect(
-        resolved.some(
-          (widget) =>
-            widget.declaration.pluginId === "custom" &&
-            widget.declaration.id === "custom.sidebar",
-        ),
-      ).toBe(false);
-    },
-  );
+    expect(
+      resolved.some(
+        (widget) =>
+          widget.declaration.pluginId === "custom" &&
+          widget.declaration.id === "custom.sidebar",
+      ),
+    ).toBe(false);
+  });
 });

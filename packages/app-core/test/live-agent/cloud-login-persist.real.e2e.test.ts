@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { startApiServer } from "../../src/api/server";
 import { req } from "../helpers/http.ts";
 import { useIsolatedConfigEnv } from "../helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../helpers/real-runtime";
-import { startApiServer } from "../../src/api/server";
 
 describe("Cloud login persist real route coverage", () => {
   let configEnv: ReturnType<typeof useIsolatedConfigEnv> | null = null;

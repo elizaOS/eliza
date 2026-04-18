@@ -23,16 +23,16 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  extractPlugin,
+  resolveTelegramPluginImportSpecifier,
+} from "@elizaos/app-core";
+import {
   AgentRuntime,
   createCharacter,
   logger,
   type Plugin,
   stringToUuid,
 } from "@elizaos/core";
-import {
-  extractPlugin,
-  resolveTelegramPluginImportSpecifier,
-} from "@elizaos/app-core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
@@ -313,7 +313,7 @@ describeIfLive("Telegram Connector - Message Handling", () => {
         reply_to_message_id: original.message_id,
       });
       expect(reply.reply_to_message).toBeDefined();
-      expect(reply.reply_to_message!.message_id).toBe(original.message_id);
+      expect(reply.reply_to_message?.message_id).toBe(original.message_id);
     },
     TEST_TIMEOUT,
   );
@@ -322,7 +322,7 @@ describeIfLive("Telegram Connector - Message Handling", () => {
     "handles long message chunking (4096 char limit)",
     async () => {
       // Telegram's message limit is 4096 characters. Send exactly 4096.
-      const longText = "[E2E] " + "A".repeat(4090);
+      const longText = `[E2E] ${"A".repeat(4090)}`;
       expect(longText.length).toBe(4096);
 
       const msg = await sendAndTrack({ text: longText });
@@ -348,9 +348,9 @@ describeIfLive("Telegram Connector - Message Handling", () => {
         parse_mode: "MarkdownV2",
       });
       expect(msg.entities).toBeDefined();
-      expect(msg.entities!.length).toBeGreaterThanOrEqual(4);
+      expect(msg.entities?.length).toBeGreaterThanOrEqual(4);
 
-      const entityTypes = msg.entities!.map((e) => e.type);
+      const entityTypes = msg.entities?.map((e) => e.type);
       expect(entityTypes).toContain("bold");
       expect(entityTypes).toContain("italic");
       expect(entityTypes).toContain("code");
@@ -372,8 +372,8 @@ describeIfLive("Telegram Connector - Message Handling", () => {
         reply_to_message_id: msg2.message_id,
       });
 
-      expect(msg2.reply_to_message!.message_id).toBe(msg1.message_id);
-      expect(msg3.reply_to_message!.message_id).toBe(msg2.message_id);
+      expect(msg2.reply_to_message?.message_id).toBe(msg1.message_id);
+      expect(msg3.reply_to_message?.message_id).toBe(msg2.message_id);
     },
     TEST_TIMEOUT,
   );
@@ -464,7 +464,7 @@ describeIfLive("Telegram Connector - Telegram-Specific Features", () => {
       if (resp.ok) {
         sentMessageIds.push(resp.result.message_id);
         expect(resp.result.sticker).toBeDefined();
-        expect(resp.result.sticker!.file_id).toBeDefined();
+        expect(resp.result.sticker?.file_id).toBeDefined();
       } else {
         // Sticker file_id may be expired; verify the API understands the method
         expect(resp.description).toBeDefined();
@@ -492,8 +492,8 @@ describeIfLive("Telegram Connector - Telegram-Specific Features", () => {
       expect(resp.ok).toBe(true);
       sentMessageIds.push(resp.result.message_id);
       expect(resp.result.poll).toBeDefined();
-      expect(resp.result.poll!.question).toBe("[E2E] Test Poll");
-      expect(resp.result.poll!.options).toHaveLength(3);
+      expect(resp.result.poll?.question).toBe("[E2E] Test Poll");
+      expect(resp.result.poll?.options).toHaveLength(3);
     },
     TEST_TIMEOUT,
   );
@@ -576,8 +576,8 @@ describeIfLive("Telegram Connector - Media & Attachments", () => {
       expect(resp.ok).toBe(true);
       sentMessageIds.push(resp.result.message_id);
       expect(resp.result.photo).toBeDefined();
-      expect(resp.result.photo!.length).toBeGreaterThan(0);
-      expect(resp.result.photo![0].file_id).toBeDefined();
+      expect(resp.result.photo?.length).toBeGreaterThan(0);
+      expect(resp.result.photo?.[0].file_id).toBeDefined();
     },
     TEST_TIMEOUT,
   );
@@ -593,7 +593,7 @@ describeIfLive("Telegram Connector - Media & Attachments", () => {
       expect(resp.ok).toBe(true);
       sentMessageIds.push(resp.result.message_id);
       expect(resp.result.document).toBeDefined();
-      expect(resp.result.document!.file_id).toBeDefined();
+      expect(resp.result.document?.file_id).toBeDefined();
     },
     TEST_TIMEOUT,
   );

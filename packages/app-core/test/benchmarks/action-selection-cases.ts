@@ -70,7 +70,8 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   },
   {
     id: "habit-daily-meditation",
-    userMessage: "I want to start a daily habit of meditating for 10 minutes each morning",
+    userMessage:
+      "I want to start a daily habit of meditating for 10 minutes each morning",
     expectedAction: "LIFE",
     acceptableActions: ["CREATE_HABIT"],
     tags: ["habits", "standard"],
@@ -172,7 +173,8 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   },
   {
     id: "email-draft-reply",
-    userMessage: "draft a reply to the latest email from Sarah saying I'll review it tomorrow",
+    userMessage:
+      "draft a reply to the latest email from Sarah saying I'll review it tomorrow",
     expectedAction: "GMAIL_ACTION",
     acceptableActions: ["DRAFT_REPLY"],
     expectedParams: { intent: "draft_reply" },
@@ -180,7 +182,8 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   },
   {
     id: "email-send-reply",
-    userMessage: "send a reply to the last email from finance confirming receipt",
+    userMessage:
+      "send a reply to the last email from finance confirming receipt",
     expectedAction: "GMAIL_ACTION",
     acceptableActions: ["SEND_REPLY"],
     expectedParams: { intent: "send_reply" },
@@ -258,7 +261,8 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   },
   {
     id: "rel-follow-up",
-    userMessage: "remind me to follow up with David next week about the project",
+    userMessage:
+      "remind me to follow up with David next week about the project",
     expectedAction: "RELATIONSHIP",
     acceptableActions: ["ADD_FOLLOW_UP", "SCHEDULE_FOLLOW_UP"],
     expectedParams: { intent: "add_follow_up" },
@@ -276,7 +280,8 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   // ─── Cross-channel send ───────────────────────────────────────────────
   {
     id: "cross-send-telegram",
-    userMessage: "send a telegram message to Jane saying I'm running 10 minutes late",
+    userMessage:
+      "send a telegram message to Jane saying I'm running 10 minutes late",
     expectedAction: "CROSS_CHANNEL_SEND",
     tags: ["messaging", "critical"],
   },
@@ -348,7 +353,8 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   },
   {
     id: "sched-propose-times",
-    userMessage: "propose three times for a 30 minute sync with Marco next week",
+    userMessage:
+      "propose three times for a 30 minute sync with Marco next week",
     expectedAction: "SCHEDULING",
     acceptableActions: ["PROPOSE", "PROPOSE_MEETING_TIMES"],
     expectedParams: { intent: "propose" },
@@ -364,7 +370,8 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   },
   {
     id: "dossier-prep",
-    userMessage: "give me the background on the person I'm meeting next: Julia Chen",
+    userMessage:
+      "give me the background on the person I'm meeting next: Julia Chen",
     expectedAction: "DOSSIER",
     tags: ["dossier", "standard"],
   },
@@ -388,7 +395,8 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   // ─── Computer use ─────────────────────────────────────────────────────
   {
     id: "computer-use-click",
-    userMessage: "open the Finder and create a new folder called Q2-Reports on my desktop",
+    userMessage:
+      "open the Finder and create a new folder called Q2-Reports on my desktop",
     expectedAction: "LIFEOPS_COMPUTER_USE",
     tags: ["computer-use", "standard"],
   },

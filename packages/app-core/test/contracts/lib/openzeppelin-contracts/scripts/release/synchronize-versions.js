@@ -3,13 +3,13 @@
 // Synchronizes the version in contracts/package.json with the one in package.json.
 // This is run automatically when npm version is run.
 
-const fs = require('fs');
+const fs = require("node:fs");
 
-setVersion('package.json', 'contracts/package.json');
+setVersion("package.json", "contracts/package.json");
 
 function setVersion(from, to) {
   const fromJson = JSON.parse(fs.readFileSync(from));
   const toJson = JSON.parse(fs.readFileSync(to));
   toJson.version = fromJson.version;
-  fs.writeFileSync(to, JSON.stringify(toJson, null, 2) + '\n');
+  fs.writeFileSync(to, `${JSON.stringify(toJson, null, 2)}\n`);
 }

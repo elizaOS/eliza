@@ -1,1 +1,741 @@
-{"abi":[{"type":"function","name":"bridge","inputs":[],"outputs":[{"name":"","type":"address","internalType":"contract IBridge"}],"stateMutability":"view"},{"type":"function","name":"calculateRetryableSubmissionFee","inputs":[{"name":"dataLength","type":"uint256","internalType":"uint256"},{"name":"baseFee","type":"uint256","internalType":"uint256"}],"outputs":[{"name":"","type":"uint256","internalType":"uint256"}],"stateMutability":"view"},{"type":"function","name":"createRetryableTicket","inputs":[{"name":"to","type":"address","internalType":"address"},{"name":"l2CallValue","type":"uint256","internalType":"uint256"},{"name":"maxSubmissionCost","type":"uint256","internalType":"uint256"},{"name":"excessFeeRefundAddress","type":"address","internalType":"address"},{"name":"callValueRefundAddress","type":"address","internalType":"address"},{"name":"gasLimit","type":"uint256","internalType":"uint256"},{"name":"maxFeePerGas","type":"uint256","internalType":"uint256"},{"name":"data","type":"bytes","internalType":"bytes"}],"outputs":[{"name":"","type":"uint256","internalType":"uint256"}],"stateMutability":"payable"},{"type":"function","name":"depositEth","inputs":[],"outputs":[{"name":"","type":"uint256","internalType":"uint256"}],"stateMutability":"payable"},{"type":"function","name":"initialize","inputs":[{"name":"_bridge","type":"address","internalType":"contract IBridge"},{"name":"_sequencerInbox","type":"address","internalType":"address"}],"outputs":[],"stateMutability":"nonpayable"},{"type":"function","name":"pause","inputs":[],"outputs":[],"stateMutability":"nonpayable"},{"type":"function","name":"postUpgradeInit","inputs":[{"name":"_bridge","type":"address","internalType":"contract IBridge"}],"outputs":[],"stateMutability":"nonpayable"},{"type":"function","name":"sendContractTransaction","inputs":[{"name":"gasLimit","type":"uint256","internalType":"uint256"},{"name":"maxFeePerGas","type":"uint256","internalType":"uint256"},{"name":"to","type":"address","internalType":"address"},{"name":"value","type":"uint256","internalType":"uint256"},{"name":"data","type":"bytes","internalType":"bytes"}],"outputs":[{"name":"","type":"uint256","internalType":"uint256"}],"stateMutability":"nonpayable"},{"type":"function","name":"sendL1FundedContractTransaction","inputs":[{"name":"gasLimit","type":"uint256","internalType":"uint256"},{"name":"maxFeePerGas","type":"uint256","internalType":"uint256"},{"name":"to","type":"address","internalType":"address"},{"name":"data","type":"bytes","internalType":"bytes"}],"outputs":[{"name":"","type":"uint256","internalType":"uint256"}],"stateMutability":"payable"},{"type":"function","name":"sendL1FundedUnsignedTransaction","inputs":[{"name":"gasLimit","type":"uint256","internalType":"uint256"},{"name":"maxFeePerGas","type":"uint256","internalType":"uint256"},{"name":"nonce","type":"uint256","internalType":"uint256"},{"name":"to","type":"address","internalType":"address"},{"name":"data","type":"bytes","internalType":"bytes"}],"outputs":[{"name":"","type":"uint256","internalType":"uint256"}],"stateMutability":"payable"},{"type":"function","name":"sendL2Message","inputs":[{"name":"messageData","type":"bytes","internalType":"bytes"}],"outputs":[{"name":"","type":"uint256","internalType":"uint256"}],"stateMutability":"nonpayable"},{"type":"function","name":"sendL2MessageFromOrigin","inputs":[{"name":"messageData","type":"bytes","internalType":"bytes"}],"outputs":[{"name":"","type":"uint256","internalType":"uint256"}],"stateMutability":"nonpayable"},{"type":"function","name":"sendUnsignedTransaction","inputs":[{"name":"gasLimit","type":"uint256","internalType":"uint256"},{"name":"maxFeePerGas","type":"uint256","internalType":"uint256"},{"name":"nonce","type":"uint256","internalType":"uint256"},{"name":"to","type":"address","internalType":"address"},{"name":"value","type":"uint256","internalType":"uint256"},{"name":"data","type":"bytes","internalType":"bytes"}],"outputs":[{"name":"","type":"uint256","internalType":"uint256"}],"stateMutability":"nonpayable"},{"type":"function","name":"sequencerInbox","inputs":[],"outputs":[{"name":"","type":"address","internalType":"address"}],"stateMutability":"view"},{"type":"function","name":"unpause","inputs":[],"outputs":[],"stateMutability":"nonpayable"},{"type":"function","name":"unsafeCreateRetryableTicket","inputs":[{"name":"to","type":"address","internalType":"address"},{"name":"l2CallValue","type":"uint256","internalType":"uint256"},{"name":"maxSubmissionCost","type":"uint256","internalType":"uint256"},{"name":"excessFeeRefundAddress","type":"address","internalType":"address"},{"name":"callValueRefundAddress","type":"address","internalType":"address"},{"name":"gasLimit","type":"uint256","internalType":"uint256"},{"name":"maxFeePerGas","type":"uint256","internalType":"uint256"},{"name":"data","type":"bytes","internalType":"bytes"}],"outputs":[{"name":"","type":"uint256","internalType":"uint256"}],"stateMutability":"payable"},{"type":"event","name":"InboxMessageDelivered","inputs":[{"name":"messageNum","type":"uint256","indexed":true,"internalType":"uint256"},{"name":"data","type":"bytes","indexed":false,"internalType":"bytes"}],"anonymous":false},{"type":"event","name":"InboxMessageDeliveredFromOrigin","inputs":[{"name":"messageNum","type":"uint256","indexed":true,"internalType":"uint256"}],"anonymous":false}],"bytecode":{"object":"0x","sourceMap":"","linkReferences":{}},"deployedBytecode":{"object":"0x","sourceMap":"","linkReferences":{}},"methodIdentifiers":{"bridge()":"e78cea92","calculateRetryableSubmissionFee(uint256,uint256)":"a66b327d","createRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)":"679b6ded","depositEth()":"439370b1","initialize(address,address)":"485cc955","pause()":"8456cb59","postUpgradeInit(address)":"c474d2c5","sendContractTransaction(uint256,uint256,address,uint256,bytes)":"8a631aa6","sendL1FundedContractTransaction(uint256,uint256,address,bytes)":"5e916758","sendL1FundedUnsignedTransaction(uint256,uint256,uint256,address,bytes)":"67ef3ab8","sendL2Message(bytes)":"b75436bb","sendL2MessageFromOrigin(bytes)":"1fe927cf","sendUnsignedTransaction(uint256,uint256,uint256,address,uint256,bytes)":"5075788b","sequencerInbox()":"ee35f327","unpause()":"3f4ba83a","unsafeCreateRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)":"6e6e8a6a"},"rawMetadata":"{\"compiler\":{\"version\":\"0.8.20+commit.a1b79de6\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"messageNum\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"InboxMessageDelivered\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"messageNum\",\"type\":\"uint256\"}],\"name\":\"InboxMessageDeliveredFromOrigin\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"bridge\",\"outputs\":[{\"internalType\":\"contract IBridge\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"dataLength\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"baseFee\",\"type\":\"uint256\"}],\"name\":\"calculateRetryableSubmissionFee\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"l2CallValue\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxSubmissionCost\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"excessFeeRefundAddress\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"callValueRefundAddress\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"gasLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxFeePerGas\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"createRetryableTicket\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"depositEth\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"contract IBridge\",\"name\":\"_bridge\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_sequencerInbox\",\"type\":\"address\"}],\"name\":\"initialize\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"pause\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"contract IBridge\",\"name\":\"_bridge\",\"type\":\"address\"}],\"name\":\"postUpgradeInit\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"gasLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxFeePerGas\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"sendContractTransaction\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"gasLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxFeePerGas\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"sendL1FundedContractTransaction\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"gasLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxFeePerGas\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"sendL1FundedUnsignedTransaction\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"messageData\",\"type\":\"bytes\"}],\"name\":\"sendL2Message\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"messageData\",\"type\":\"bytes\"}],\"name\":\"sendL2MessageFromOrigin\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"gasLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxFeePerGas\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"sendUnsignedTransaction\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"sequencerInbox\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"unpause\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"l2CallValue\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxSubmissionCost\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"excessFeeRefundAddress\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"callValueRefundAddress\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"gasLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxFeePerGas\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"unsafeCreateRetryableTicket\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"payable\",\"type\":\"function\"}],\"devdoc\":{\"events\":{\"InboxMessageDelivered(uint256,bytes)\":{\"details\":\"event emitted when a inbox message is added to the Bridge's delayed accumulator\"},\"InboxMessageDeliveredFromOrigin(uint256)\":{\"details\":\"event emitted when a inbox message is added to the Bridge's delayed accumulator same as InboxMessageDelivered but the batch data is available in tx.input\"}},\"kind\":\"dev\",\"methods\":{\"calculateRetryableSubmissionFee(uint256,uint256)\":{\"details\":\"This fee can be paid by funds already in the L2 aliased address or by the current message valueThis formula may change in the future, to future proof your code query this method instead of inlining!!\",\"params\":{\"baseFee\":\"The block basefee when the retryable is included in the chain, if 0 current block.basefee will be used\",\"dataLength\":\"The length of the retryable's calldata, in bytes\"}},\"createRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)\":{\"details\":\"all msg.value will deposited to callValueRefundAddress on L2Gas limit and maxFeePerGas should not be set to 1 as that is used to trigger the RetryableData error\",\"params\":{\"callValueRefundAddress\":\"l2Callvalue gets credited here on L2 if retryable txn times out or gets cancelled\",\"data\":\"ABI encoded data of L2 message\",\"excessFeeRefundAddress\":\"gasLimit x maxFeePerGas - execution cost gets credited here on L2 balance\",\"gasLimit\":\"Max gas deducted from user's L2 balance to cover L2 execution. Should not be set to 1 (magic value used to trigger the RetryableData error)\",\"l2CallValue\":\"call value for retryable L2 message\",\"maxFeePerGas\":\"price bid for L2 execution. Should not be set to 1 (magic value used to trigger the RetryableData error)\",\"maxSubmissionCost\":\"Max gas deducted from user's L2 balance to cover base submission fee\",\"to\":\"destination L2 contract address\"},\"returns\":{\"_0\":\"unique message number of the retryable transaction\"}},\"depositEth()\":{\"details\":\"This does not trigger the fallback function when receiving in the L2 side.      Look into retryable tickets if you are interested in this functionality.This function should not be called inside contract constructors\"},\"postUpgradeInit(address)\":{\"details\":\"function to be called one time during the inbox upgrade process      this is used to fix the storage slots\"},\"sendL2Message(bytes)\":{\"details\":\"This method can be used to send any type of message that doesn't require L1 validation\",\"params\":{\"messageData\":\"Data of the message being sent\"}},\"sendL2MessageFromOrigin(bytes)\":{\"details\":\"This method is an optimization to avoid having to emit the entirety of the messageData in a log. Instead validators are expected to be able to parse the data from the transaction's input\",\"params\":{\"messageData\":\"Data of the message being sent\"}},\"unsafeCreateRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)\":{\"details\":\"Same as createRetryableTicket, but does not guarantee that submission will succeed by requiring the needed funds come from the deposit alone, rather than falling back on the user's L2 balanceAdvanced usage only (does not rewrite aliases for excessFeeRefundAddress and callValueRefundAddress). createRetryableTicket method is the recommended standard.Gas limit and maxFeePerGas should not be set to 1 as that is used to trigger the RetryableData error\",\"params\":{\"callValueRefundAddress\":\"l2Callvalue gets credited here on L2 if retryable txn times out or gets cancelled\",\"data\":\"ABI encoded data of L2 message\",\"excessFeeRefundAddress\":\"gasLimit x maxFeePerGas - execution cost gets credited here on L2 balance\",\"gasLimit\":\"Max gas deducted from user's L2 balance to cover L2 execution. Should not be set to 1 (magic value used to trigger the RetryableData error)\",\"l2CallValue\":\"call value for retryable L2 message\",\"maxFeePerGas\":\"price bid for L2 execution. Should not be set to 1 (magic value used to trigger the RetryableData error)\",\"maxSubmissionCost\":\"Max gas deducted from user's L2 balance to cover base submission fee\",\"to\":\"destination L2 contract address\"},\"returns\":{\"_0\":\"unique message number of the retryable transaction\"}}},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{\"calculateRetryableSubmissionFee(uint256,uint256)\":{\"notice\":\"Get the L1 fee for submitting a retryable\"},\"createRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)\":{\"notice\":\"Put a message in the L2 inbox that can be reexecuted for some fixed amount of time if it reverts\"},\"depositEth()\":{\"notice\":\"Deposit eth from L1 to L2 to address of the sender if sender is an EOA, and to its aliased address if the sender is a contract\"},\"pause()\":{\"notice\":\"pauses all inbox functionality\"},\"sendL2Message(bytes)\":{\"notice\":\"Send a generic L2 message to the chain\"},\"sendL2MessageFromOrigin(bytes)\":{\"notice\":\"Send a generic L2 message to the chain\"},\"unpause()\":{\"notice\":\"unpauses all inbox functionality\"},\"unsafeCreateRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)\":{\"notice\":\"Put a message in the L2 inbox that can be reexecuted for some fixed amount of time if it reverts\"}},\"version\":1}},\"settings\":{\"compilationTarget\":{\"lib/openzeppelin-contracts/contracts/vendor/arbitrum/IInbox.sol\":\"IInbox\"},\"evmVersion\":\"shanghai\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\",\":openzeppelin/=lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"lib/openzeppelin-contracts/contracts/vendor/arbitrum/IBridge.sol\":{\"keccak256\":\"0xe1e854715c581bfa526f35e4f76579f6b66dc0799d3221c530ded139c3370807\",\"license\":\"BUSL-1.1\",\"urls\":[\"bzz-raw://91e16564ebee6c34ef04f0567ccc726f5c3750a85de9f18eb678e768be68ff1f\",\"dweb:/ipfs/QmRXx3S9XqXGnbcF65VyxSUC4LsWn2TQdQqN7ZCfDSeMUf\"]},\"lib/openzeppelin-contracts/contracts/vendor/arbitrum/IDelayedMessageProvider.sol\":{\"keccak256\":\"0xccec6fc7eac1151017a785c98f4d3d13d90c19b87a9ec1e8955245ba98f3e19b\",\"license\":\"BUSL-1.1\",\"urls\":[\"bzz-raw://c823dbf6495801b10bb720e10a31c191f9404478f6ac2993d6314f5067f8d0ea\",\"dweb:/ipfs/QmSyCRiPjqouJ84U2cmeo7nddsuW5LpfWR3qDQiAP63S2w\"]},\"lib/openzeppelin-contracts/contracts/vendor/arbitrum/IInbox.sol\":{\"keccak256\":\"0xecfd5a7ee81dbe73dccc19db52fdde940dcb19deaeb39424c32a01d1907149ec\",\"license\":\"BUSL-1.1\",\"urls\":[\"bzz-raw://1071a46c4100717e17395aa276c18b3ee61f6ffe785505630ff1dd21d83334f0\",\"dweb:/ipfs/QmaF9hvzRu3vJb2dh2DBZAS2QPMAjmtmbHaVGtZqx7KHdx\"]}},\"version\":1}","metadata":{"compiler":{"version":"0.8.20+commit.a1b79de6"},"language":"Solidity","output":{"abi":[{"inputs":[{"internalType":"uint256","name":"messageNum","type":"uint256","indexed":true},{"internalType":"bytes","name":"data","type":"bytes","indexed":false}],"type":"event","name":"InboxMessageDelivered","anonymous":false},{"inputs":[{"internalType":"uint256","name":"messageNum","type":"uint256","indexed":true}],"type":"event","name":"InboxMessageDeliveredFromOrigin","anonymous":false},{"inputs":[],"stateMutability":"view","type":"function","name":"bridge","outputs":[{"internalType":"contract IBridge","name":"","type":"address"}]},{"inputs":[{"internalType":"uint256","name":"dataLength","type":"uint256"},{"internalType":"uint256","name":"baseFee","type":"uint256"}],"stateMutability":"view","type":"function","name":"calculateRetryableSubmissionFee","outputs":[{"internalType":"uint256","name":"","type":"uint256"}]},{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"l2CallValue","type":"uint256"},{"internalType":"uint256","name":"maxSubmissionCost","type":"uint256"},{"internalType":"address","name":"excessFeeRefundAddress","type":"address"},{"internalType":"address","name":"callValueRefundAddress","type":"address"},{"internalType":"uint256","name":"gasLimit","type":"uint256"},{"internalType":"uint256","name":"maxFeePerGas","type":"uint256"},{"internalType":"bytes","name":"data","type":"bytes"}],"stateMutability":"payable","type":"function","name":"createRetryableTicket","outputs":[{"internalType":"uint256","name":"","type":"uint256"}]},{"inputs":[],"stateMutability":"payable","type":"function","name":"depositEth","outputs":[{"internalType":"uint256","name":"","type":"uint256"}]},{"inputs":[{"internalType":"contract IBridge","name":"_bridge","type":"address"},{"internalType":"address","name":"_sequencerInbox","type":"address"}],"stateMutability":"nonpayable","type":"function","name":"initialize"},{"inputs":[],"stateMutability":"nonpayable","type":"function","name":"pause"},{"inputs":[{"internalType":"contract IBridge","name":"_bridge","type":"address"}],"stateMutability":"nonpayable","type":"function","name":"postUpgradeInit"},{"inputs":[{"internalType":"uint256","name":"gasLimit","type":"uint256"},{"internalType":"uint256","name":"maxFeePerGas","type":"uint256"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"},{"internalType":"bytes","name":"data","type":"bytes"}],"stateMutability":"nonpayable","type":"function","name":"sendContractTransaction","outputs":[{"internalType":"uint256","name":"","type":"uint256"}]},{"inputs":[{"internalType":"uint256","name":"gasLimit","type":"uint256"},{"internalType":"uint256","name":"maxFeePerGas","type":"uint256"},{"internalType":"address","name":"to","type":"address"},{"internalType":"bytes","name":"data","type":"bytes"}],"stateMutability":"payable","type":"function","name":"sendL1FundedContractTransaction","outputs":[{"internalType":"uint256","name":"","type":"uint256"}]},{"inputs":[{"internalType":"uint256","name":"gasLimit","type":"uint256"},{"internalType":"uint256","name":"maxFeePerGas","type":"uint256"},{"internalType":"uint256","name":"nonce","type":"uint256"},{"internalType":"address","name":"to","type":"address"},{"internalType":"bytes","name":"data","type":"bytes"}],"stateMutability":"payable","type":"function","name":"sendL1FundedUnsignedTransaction","outputs":[{"internalType":"uint256","name":"","type":"uint256"}]},{"inputs":[{"internalType":"bytes","name":"messageData","type":"bytes"}],"stateMutability":"nonpayable","type":"function","name":"sendL2Message","outputs":[{"internalType":"uint256","name":"","type":"uint256"}]},{"inputs":[{"internalType":"bytes","name":"messageData","type":"bytes"}],"stateMutability":"nonpayable","type":"function","name":"sendL2MessageFromOrigin","outputs":[{"internalType":"uint256","name":"","type":"uint256"}]},{"inputs":[{"internalType":"uint256","name":"gasLimit","type":"uint256"},{"internalType":"uint256","name":"maxFeePerGas","type":"uint256"},{"internalType":"uint256","name":"nonce","type":"uint256"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"},{"internalType":"bytes","name":"data","type":"bytes"}],"stateMutability":"nonpayable","type":"function","name":"sendUnsignedTransaction","outputs":[{"internalType":"uint256","name":"","type":"uint256"}]},{"inputs":[],"stateMutability":"view","type":"function","name":"sequencerInbox","outputs":[{"internalType":"address","name":"","type":"address"}]},{"inputs":[],"stateMutability":"nonpayable","type":"function","name":"unpause"},{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"l2CallValue","type":"uint256"},{"internalType":"uint256","name":"maxSubmissionCost","type":"uint256"},{"internalType":"address","name":"excessFeeRefundAddress","type":"address"},{"internalType":"address","name":"callValueRefundAddress","type":"address"},{"internalType":"uint256","name":"gasLimit","type":"uint256"},{"internalType":"uint256","name":"maxFeePerGas","type":"uint256"},{"internalType":"bytes","name":"data","type":"bytes"}],"stateMutability":"payable","type":"function","name":"unsafeCreateRetryableTicket","outputs":[{"internalType":"uint256","name":"","type":"uint256"}]}],"devdoc":{"kind":"dev","methods":{"calculateRetryableSubmissionFee(uint256,uint256)":{"details":"This fee can be paid by funds already in the L2 aliased address or by the current message valueThis formula may change in the future, to future proof your code query this method instead of inlining!!","params":{"baseFee":"The block basefee when the retryable is included in the chain, if 0 current block.basefee will be used","dataLength":"The length of the retryable's calldata, in bytes"}},"createRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)":{"details":"all msg.value will deposited to callValueRefundAddress on L2Gas limit and maxFeePerGas should not be set to 1 as that is used to trigger the RetryableData error","params":{"callValueRefundAddress":"l2Callvalue gets credited here on L2 if retryable txn times out or gets cancelled","data":"ABI encoded data of L2 message","excessFeeRefundAddress":"gasLimit x maxFeePerGas - execution cost gets credited here on L2 balance","gasLimit":"Max gas deducted from user's L2 balance to cover L2 execution. Should not be set to 1 (magic value used to trigger the RetryableData error)","l2CallValue":"call value for retryable L2 message","maxFeePerGas":"price bid for L2 execution. Should not be set to 1 (magic value used to trigger the RetryableData error)","maxSubmissionCost":"Max gas deducted from user's L2 balance to cover base submission fee","to":"destination L2 contract address"},"returns":{"_0":"unique message number of the retryable transaction"}},"depositEth()":{"details":"This does not trigger the fallback function when receiving in the L2 side.      Look into retryable tickets if you are interested in this functionality.This function should not be called inside contract constructors"},"postUpgradeInit(address)":{"details":"function to be called one time during the inbox upgrade process      this is used to fix the storage slots"},"sendL2Message(bytes)":{"details":"This method can be used to send any type of message that doesn't require L1 validation","params":{"messageData":"Data of the message being sent"}},"sendL2MessageFromOrigin(bytes)":{"details":"This method is an optimization to avoid having to emit the entirety of the messageData in a log. Instead validators are expected to be able to parse the data from the transaction's input","params":{"messageData":"Data of the message being sent"}},"unsafeCreateRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)":{"details":"Same as createRetryableTicket, but does not guarantee that submission will succeed by requiring the needed funds come from the deposit alone, rather than falling back on the user's L2 balanceAdvanced usage only (does not rewrite aliases for excessFeeRefundAddress and callValueRefundAddress). createRetryableTicket method is the recommended standard.Gas limit and maxFeePerGas should not be set to 1 as that is used to trigger the RetryableData error","params":{"callValueRefundAddress":"l2Callvalue gets credited here on L2 if retryable txn times out or gets cancelled","data":"ABI encoded data of L2 message","excessFeeRefundAddress":"gasLimit x maxFeePerGas - execution cost gets credited here on L2 balance","gasLimit":"Max gas deducted from user's L2 balance to cover L2 execution. Should not be set to 1 (magic value used to trigger the RetryableData error)","l2CallValue":"call value for retryable L2 message","maxFeePerGas":"price bid for L2 execution. Should not be set to 1 (magic value used to trigger the RetryableData error)","maxSubmissionCost":"Max gas deducted from user's L2 balance to cover base submission fee","to":"destination L2 contract address"},"returns":{"_0":"unique message number of the retryable transaction"}}},"version":1},"userdoc":{"kind":"user","methods":{"calculateRetryableSubmissionFee(uint256,uint256)":{"notice":"Get the L1 fee for submitting a retryable"},"createRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)":{"notice":"Put a message in the L2 inbox that can be reexecuted for some fixed amount of time if it reverts"},"depositEth()":{"notice":"Deposit eth from L1 to L2 to address of the sender if sender is an EOA, and to its aliased address if the sender is a contract"},"pause()":{"notice":"pauses all inbox functionality"},"sendL2Message(bytes)":{"notice":"Send a generic L2 message to the chain"},"sendL2MessageFromOrigin(bytes)":{"notice":"Send a generic L2 message to the chain"},"unpause()":{"notice":"unpauses all inbox functionality"},"unsafeCreateRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)":{"notice":"Put a message in the L2 inbox that can be reexecuted for some fixed amount of time if it reverts"}},"version":1}},"settings":{"remappings":["@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/","ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/","erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/","forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/","openzeppelin-contracts/=lib/openzeppelin-contracts/","openzeppelin/=lib/openzeppelin-contracts/contracts/"],"optimizer":{"enabled":true,"runs":200},"metadata":{"bytecodeHash":"ipfs"},"compilationTarget":{"lib/openzeppelin-contracts/contracts/vendor/arbitrum/IInbox.sol":"IInbox"},"evmVersion":"shanghai","libraries":{}},"sources":{"lib/openzeppelin-contracts/contracts/vendor/arbitrum/IBridge.sol":{"keccak256":"0xe1e854715c581bfa526f35e4f76579f6b66dc0799d3221c530ded139c3370807","urls":["bzz-raw://91e16564ebee6c34ef04f0567ccc726f5c3750a85de9f18eb678e768be68ff1f","dweb:/ipfs/QmRXx3S9XqXGnbcF65VyxSUC4LsWn2TQdQqN7ZCfDSeMUf"],"license":"BUSL-1.1"},"lib/openzeppelin-contracts/contracts/vendor/arbitrum/IDelayedMessageProvider.sol":{"keccak256":"0xccec6fc7eac1151017a785c98f4d3d13d90c19b87a9ec1e8955245ba98f3e19b","urls":["bzz-raw://c823dbf6495801b10bb720e10a31c191f9404478f6ac2993d6314f5067f8d0ea","dweb:/ipfs/QmSyCRiPjqouJ84U2cmeo7nddsuW5LpfWR3qDQiAP63S2w"],"license":"BUSL-1.1"},"lib/openzeppelin-contracts/contracts/vendor/arbitrum/IInbox.sol":{"keccak256":"0xecfd5a7ee81dbe73dccc19db52fdde940dcb19deaeb39424c32a01d1907149ec","urls":["bzz-raw://1071a46c4100717e17395aa276c18b3ee61f6ffe785505630ff1dd21d83334f0","dweb:/ipfs/QmaF9hvzRu3vJb2dh2DBZAS2QPMAjmtmbHaVGtZqx7KHdx"],"license":"BUSL-1.1"}},"version":1},"id":260}
+{
+  "abi": [
+    {
+      "type": "function",
+      "name": "bridge",
+      "inputs": [],
+      "outputs": [
+        { "name": "", "type": "address", "internalType": "contract IBridge" }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "calculateRetryableSubmissionFee",
+      "inputs": [
+        { "name": "dataLength", "type": "uint256", "internalType": "uint256" },
+        { "name": "baseFee", "type": "uint256", "internalType": "uint256" }
+      ],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "createRetryableTicket",
+      "inputs": [
+        { "name": "to", "type": "address", "internalType": "address" },
+        { "name": "l2CallValue", "type": "uint256", "internalType": "uint256" },
+        {
+          "name": "maxSubmissionCost",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "excessFeeRefundAddress",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "callValueRefundAddress",
+          "type": "address",
+          "internalType": "address"
+        },
+        { "name": "gasLimit", "type": "uint256", "internalType": "uint256" },
+        {
+          "name": "maxFeePerGas",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        { "name": "data", "type": "bytes", "internalType": "bytes" }
+      ],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "payable"
+    },
+    {
+      "type": "function",
+      "name": "depositEth",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "payable"
+    },
+    {
+      "type": "function",
+      "name": "initialize",
+      "inputs": [
+        {
+          "name": "_bridge",
+          "type": "address",
+          "internalType": "contract IBridge"
+        },
+        {
+          "name": "_sequencerInbox",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "pause",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "postUpgradeInit",
+      "inputs": [
+        {
+          "name": "_bridge",
+          "type": "address",
+          "internalType": "contract IBridge"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "sendContractTransaction",
+      "inputs": [
+        { "name": "gasLimit", "type": "uint256", "internalType": "uint256" },
+        {
+          "name": "maxFeePerGas",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        { "name": "to", "type": "address", "internalType": "address" },
+        { "name": "value", "type": "uint256", "internalType": "uint256" },
+        { "name": "data", "type": "bytes", "internalType": "bytes" }
+      ],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "sendL1FundedContractTransaction",
+      "inputs": [
+        { "name": "gasLimit", "type": "uint256", "internalType": "uint256" },
+        {
+          "name": "maxFeePerGas",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        { "name": "to", "type": "address", "internalType": "address" },
+        { "name": "data", "type": "bytes", "internalType": "bytes" }
+      ],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "payable"
+    },
+    {
+      "type": "function",
+      "name": "sendL1FundedUnsignedTransaction",
+      "inputs": [
+        { "name": "gasLimit", "type": "uint256", "internalType": "uint256" },
+        {
+          "name": "maxFeePerGas",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        { "name": "nonce", "type": "uint256", "internalType": "uint256" },
+        { "name": "to", "type": "address", "internalType": "address" },
+        { "name": "data", "type": "bytes", "internalType": "bytes" }
+      ],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "payable"
+    },
+    {
+      "type": "function",
+      "name": "sendL2Message",
+      "inputs": [
+        { "name": "messageData", "type": "bytes", "internalType": "bytes" }
+      ],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "sendL2MessageFromOrigin",
+      "inputs": [
+        { "name": "messageData", "type": "bytes", "internalType": "bytes" }
+      ],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "sendUnsignedTransaction",
+      "inputs": [
+        { "name": "gasLimit", "type": "uint256", "internalType": "uint256" },
+        {
+          "name": "maxFeePerGas",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        { "name": "nonce", "type": "uint256", "internalType": "uint256" },
+        { "name": "to", "type": "address", "internalType": "address" },
+        { "name": "value", "type": "uint256", "internalType": "uint256" },
+        { "name": "data", "type": "bytes", "internalType": "bytes" }
+      ],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "sequencerInbox",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "address", "internalType": "address" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "unpause",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "unsafeCreateRetryableTicket",
+      "inputs": [
+        { "name": "to", "type": "address", "internalType": "address" },
+        { "name": "l2CallValue", "type": "uint256", "internalType": "uint256" },
+        {
+          "name": "maxSubmissionCost",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "excessFeeRefundAddress",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "callValueRefundAddress",
+          "type": "address",
+          "internalType": "address"
+        },
+        { "name": "gasLimit", "type": "uint256", "internalType": "uint256" },
+        {
+          "name": "maxFeePerGas",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        { "name": "data", "type": "bytes", "internalType": "bytes" }
+      ],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "payable"
+    },
+    {
+      "type": "event",
+      "name": "InboxMessageDelivered",
+      "inputs": [
+        {
+          "name": "messageNum",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "data",
+          "type": "bytes",
+          "indexed": false,
+          "internalType": "bytes"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "InboxMessageDeliveredFromOrigin",
+      "inputs": [
+        {
+          "name": "messageNum",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    }
+  ],
+  "bytecode": { "object": "0x", "sourceMap": "", "linkReferences": {} },
+  "deployedBytecode": { "object": "0x", "sourceMap": "", "linkReferences": {} },
+  "methodIdentifiers": {
+    "bridge()": "e78cea92",
+    "calculateRetryableSubmissionFee(uint256,uint256)": "a66b327d",
+    "createRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)": "679b6ded",
+    "depositEth()": "439370b1",
+    "initialize(address,address)": "485cc955",
+    "pause()": "8456cb59",
+    "postUpgradeInit(address)": "c474d2c5",
+    "sendContractTransaction(uint256,uint256,address,uint256,bytes)": "8a631aa6",
+    "sendL1FundedContractTransaction(uint256,uint256,address,bytes)": "5e916758",
+    "sendL1FundedUnsignedTransaction(uint256,uint256,uint256,address,bytes)": "67ef3ab8",
+    "sendL2Message(bytes)": "b75436bb",
+    "sendL2MessageFromOrigin(bytes)": "1fe927cf",
+    "sendUnsignedTransaction(uint256,uint256,uint256,address,uint256,bytes)": "5075788b",
+    "sequencerInbox()": "ee35f327",
+    "unpause()": "3f4ba83a",
+    "unsafeCreateRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)": "6e6e8a6a"
+  },
+  "rawMetadata": "{\"compiler\":{\"version\":\"0.8.20+commit.a1b79de6\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"messageNum\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"InboxMessageDelivered\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"messageNum\",\"type\":\"uint256\"}],\"name\":\"InboxMessageDeliveredFromOrigin\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"bridge\",\"outputs\":[{\"internalType\":\"contract IBridge\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"dataLength\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"baseFee\",\"type\":\"uint256\"}],\"name\":\"calculateRetryableSubmissionFee\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"l2CallValue\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxSubmissionCost\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"excessFeeRefundAddress\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"callValueRefundAddress\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"gasLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxFeePerGas\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"createRetryableTicket\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"depositEth\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"contract IBridge\",\"name\":\"_bridge\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_sequencerInbox\",\"type\":\"address\"}],\"name\":\"initialize\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"pause\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"contract IBridge\",\"name\":\"_bridge\",\"type\":\"address\"}],\"name\":\"postUpgradeInit\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"gasLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxFeePerGas\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"sendContractTransaction\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"gasLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxFeePerGas\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"sendL1FundedContractTransaction\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"gasLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxFeePerGas\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"sendL1FundedUnsignedTransaction\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"messageData\",\"type\":\"bytes\"}],\"name\":\"sendL2Message\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"messageData\",\"type\":\"bytes\"}],\"name\":\"sendL2MessageFromOrigin\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"gasLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxFeePerGas\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"sendUnsignedTransaction\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"sequencerInbox\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"unpause\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"l2CallValue\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxSubmissionCost\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"excessFeeRefundAddress\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"callValueRefundAddress\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"gasLimit\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"maxFeePerGas\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"unsafeCreateRetryableTicket\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"payable\",\"type\":\"function\"}],\"devdoc\":{\"events\":{\"InboxMessageDelivered(uint256,bytes)\":{\"details\":\"event emitted when a inbox message is added to the Bridge's delayed accumulator\"},\"InboxMessageDeliveredFromOrigin(uint256)\":{\"details\":\"event emitted when a inbox message is added to the Bridge's delayed accumulator same as InboxMessageDelivered but the batch data is available in tx.input\"}},\"kind\":\"dev\",\"methods\":{\"calculateRetryableSubmissionFee(uint256,uint256)\":{\"details\":\"This fee can be paid by funds already in the L2 aliased address or by the current message valueThis formula may change in the future, to future proof your code query this method instead of inlining!!\",\"params\":{\"baseFee\":\"The block basefee when the retryable is included in the chain, if 0 current block.basefee will be used\",\"dataLength\":\"The length of the retryable's calldata, in bytes\"}},\"createRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)\":{\"details\":\"all msg.value will deposited to callValueRefundAddress on L2Gas limit and maxFeePerGas should not be set to 1 as that is used to trigger the RetryableData error\",\"params\":{\"callValueRefundAddress\":\"l2Callvalue gets credited here on L2 if retryable txn times out or gets cancelled\",\"data\":\"ABI encoded data of L2 message\",\"excessFeeRefundAddress\":\"gasLimit x maxFeePerGas - execution cost gets credited here on L2 balance\",\"gasLimit\":\"Max gas deducted from user's L2 balance to cover L2 execution. Should not be set to 1 (magic value used to trigger the RetryableData error)\",\"l2CallValue\":\"call value for retryable L2 message\",\"maxFeePerGas\":\"price bid for L2 execution. Should not be set to 1 (magic value used to trigger the RetryableData error)\",\"maxSubmissionCost\":\"Max gas deducted from user's L2 balance to cover base submission fee\",\"to\":\"destination L2 contract address\"},\"returns\":{\"_0\":\"unique message number of the retryable transaction\"}},\"depositEth()\":{\"details\":\"This does not trigger the fallback function when receiving in the L2 side.      Look into retryable tickets if you are interested in this functionality.This function should not be called inside contract constructors\"},\"postUpgradeInit(address)\":{\"details\":\"function to be called one time during the inbox upgrade process      this is used to fix the storage slots\"},\"sendL2Message(bytes)\":{\"details\":\"This method can be used to send any type of message that doesn't require L1 validation\",\"params\":{\"messageData\":\"Data of the message being sent\"}},\"sendL2MessageFromOrigin(bytes)\":{\"details\":\"This method is an optimization to avoid having to emit the entirety of the messageData in a log. Instead validators are expected to be able to parse the data from the transaction's input\",\"params\":{\"messageData\":\"Data of the message being sent\"}},\"unsafeCreateRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)\":{\"details\":\"Same as createRetryableTicket, but does not guarantee that submission will succeed by requiring the needed funds come from the deposit alone, rather than falling back on the user's L2 balanceAdvanced usage only (does not rewrite aliases for excessFeeRefundAddress and callValueRefundAddress). createRetryableTicket method is the recommended standard.Gas limit and maxFeePerGas should not be set to 1 as that is used to trigger the RetryableData error\",\"params\":{\"callValueRefundAddress\":\"l2Callvalue gets credited here on L2 if retryable txn times out or gets cancelled\",\"data\":\"ABI encoded data of L2 message\",\"excessFeeRefundAddress\":\"gasLimit x maxFeePerGas - execution cost gets credited here on L2 balance\",\"gasLimit\":\"Max gas deducted from user's L2 balance to cover L2 execution. Should not be set to 1 (magic value used to trigger the RetryableData error)\",\"l2CallValue\":\"call value for retryable L2 message\",\"maxFeePerGas\":\"price bid for L2 execution. Should not be set to 1 (magic value used to trigger the RetryableData error)\",\"maxSubmissionCost\":\"Max gas deducted from user's L2 balance to cover base submission fee\",\"to\":\"destination L2 contract address\"},\"returns\":{\"_0\":\"unique message number of the retryable transaction\"}}},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{\"calculateRetryableSubmissionFee(uint256,uint256)\":{\"notice\":\"Get the L1 fee for submitting a retryable\"},\"createRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)\":{\"notice\":\"Put a message in the L2 inbox that can be reexecuted for some fixed amount of time if it reverts\"},\"depositEth()\":{\"notice\":\"Deposit eth from L1 to L2 to address of the sender if sender is an EOA, and to its aliased address if the sender is a contract\"},\"pause()\":{\"notice\":\"pauses all inbox functionality\"},\"sendL2Message(bytes)\":{\"notice\":\"Send a generic L2 message to the chain\"},\"sendL2MessageFromOrigin(bytes)\":{\"notice\":\"Send a generic L2 message to the chain\"},\"unpause()\":{\"notice\":\"unpauses all inbox functionality\"},\"unsafeCreateRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)\":{\"notice\":\"Put a message in the L2 inbox that can be reexecuted for some fixed amount of time if it reverts\"}},\"version\":1}},\"settings\":{\"compilationTarget\":{\"lib/openzeppelin-contracts/contracts/vendor/arbitrum/IInbox.sol\":\"IInbox\"},\"evmVersion\":\"shanghai\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\",\":openzeppelin/=lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"lib/openzeppelin-contracts/contracts/vendor/arbitrum/IBridge.sol\":{\"keccak256\":\"0xe1e854715c581bfa526f35e4f76579f6b66dc0799d3221c530ded139c3370807\",\"license\":\"BUSL-1.1\",\"urls\":[\"bzz-raw://91e16564ebee6c34ef04f0567ccc726f5c3750a85de9f18eb678e768be68ff1f\",\"dweb:/ipfs/QmRXx3S9XqXGnbcF65VyxSUC4LsWn2TQdQqN7ZCfDSeMUf\"]},\"lib/openzeppelin-contracts/contracts/vendor/arbitrum/IDelayedMessageProvider.sol\":{\"keccak256\":\"0xccec6fc7eac1151017a785c98f4d3d13d90c19b87a9ec1e8955245ba98f3e19b\",\"license\":\"BUSL-1.1\",\"urls\":[\"bzz-raw://c823dbf6495801b10bb720e10a31c191f9404478f6ac2993d6314f5067f8d0ea\",\"dweb:/ipfs/QmSyCRiPjqouJ84U2cmeo7nddsuW5LpfWR3qDQiAP63S2w\"]},\"lib/openzeppelin-contracts/contracts/vendor/arbitrum/IInbox.sol\":{\"keccak256\":\"0xecfd5a7ee81dbe73dccc19db52fdde940dcb19deaeb39424c32a01d1907149ec\",\"license\":\"BUSL-1.1\",\"urls\":[\"bzz-raw://1071a46c4100717e17395aa276c18b3ee61f6ffe785505630ff1dd21d83334f0\",\"dweb:/ipfs/QmaF9hvzRu3vJb2dh2DBZAS2QPMAjmtmbHaVGtZqx7KHdx\"]}},\"version\":1}",
+  "metadata": {
+    "compiler": { "version": "0.8.20+commit.a1b79de6" },
+    "language": "Solidity",
+    "output": {
+      "abi": [
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "messageNum",
+              "type": "uint256",
+              "indexed": true
+            },
+            {
+              "internalType": "bytes",
+              "name": "data",
+              "type": "bytes",
+              "indexed": false
+            }
+          ],
+          "type": "event",
+          "name": "InboxMessageDelivered",
+          "anonymous": false
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "messageNum",
+              "type": "uint256",
+              "indexed": true
+            }
+          ],
+          "type": "event",
+          "name": "InboxMessageDeliveredFromOrigin",
+          "anonymous": false
+        },
+        {
+          "inputs": [],
+          "stateMutability": "view",
+          "type": "function",
+          "name": "bridge",
+          "outputs": [
+            {
+              "internalType": "contract IBridge",
+              "name": "",
+              "type": "address"
+            }
+          ]
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "dataLength",
+              "type": "uint256"
+            },
+            { "internalType": "uint256", "name": "baseFee", "type": "uint256" }
+          ],
+          "stateMutability": "view",
+          "type": "function",
+          "name": "calculateRetryableSubmissionFee",
+          "outputs": [
+            { "internalType": "uint256", "name": "", "type": "uint256" }
+          ]
+        },
+        {
+          "inputs": [
+            { "internalType": "address", "name": "to", "type": "address" },
+            {
+              "internalType": "uint256",
+              "name": "l2CallValue",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "maxSubmissionCost",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "excessFeeRefundAddress",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "callValueRefundAddress",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "gasLimit",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "maxFeePerGas",
+              "type": "uint256"
+            },
+            { "internalType": "bytes", "name": "data", "type": "bytes" }
+          ],
+          "stateMutability": "payable",
+          "type": "function",
+          "name": "createRetryableTicket",
+          "outputs": [
+            { "internalType": "uint256", "name": "", "type": "uint256" }
+          ]
+        },
+        {
+          "inputs": [],
+          "stateMutability": "payable",
+          "type": "function",
+          "name": "depositEth",
+          "outputs": [
+            { "internalType": "uint256", "name": "", "type": "uint256" }
+          ]
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "contract IBridge",
+              "name": "_bridge",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "_sequencerInbox",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "initialize"
+        },
+        {
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "pause"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "contract IBridge",
+              "name": "_bridge",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "postUpgradeInit"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "gasLimit",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "maxFeePerGas",
+              "type": "uint256"
+            },
+            { "internalType": "address", "name": "to", "type": "address" },
+            { "internalType": "uint256", "name": "value", "type": "uint256" },
+            { "internalType": "bytes", "name": "data", "type": "bytes" }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "sendContractTransaction",
+          "outputs": [
+            { "internalType": "uint256", "name": "", "type": "uint256" }
+          ]
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "gasLimit",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "maxFeePerGas",
+              "type": "uint256"
+            },
+            { "internalType": "address", "name": "to", "type": "address" },
+            { "internalType": "bytes", "name": "data", "type": "bytes" }
+          ],
+          "stateMutability": "payable",
+          "type": "function",
+          "name": "sendL1FundedContractTransaction",
+          "outputs": [
+            { "internalType": "uint256", "name": "", "type": "uint256" }
+          ]
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "gasLimit",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "maxFeePerGas",
+              "type": "uint256"
+            },
+            { "internalType": "uint256", "name": "nonce", "type": "uint256" },
+            { "internalType": "address", "name": "to", "type": "address" },
+            { "internalType": "bytes", "name": "data", "type": "bytes" }
+          ],
+          "stateMutability": "payable",
+          "type": "function",
+          "name": "sendL1FundedUnsignedTransaction",
+          "outputs": [
+            { "internalType": "uint256", "name": "", "type": "uint256" }
+          ]
+        },
+        {
+          "inputs": [
+            { "internalType": "bytes", "name": "messageData", "type": "bytes" }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "sendL2Message",
+          "outputs": [
+            { "internalType": "uint256", "name": "", "type": "uint256" }
+          ]
+        },
+        {
+          "inputs": [
+            { "internalType": "bytes", "name": "messageData", "type": "bytes" }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "sendL2MessageFromOrigin",
+          "outputs": [
+            { "internalType": "uint256", "name": "", "type": "uint256" }
+          ]
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "gasLimit",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "maxFeePerGas",
+              "type": "uint256"
+            },
+            { "internalType": "uint256", "name": "nonce", "type": "uint256" },
+            { "internalType": "address", "name": "to", "type": "address" },
+            { "internalType": "uint256", "name": "value", "type": "uint256" },
+            { "internalType": "bytes", "name": "data", "type": "bytes" }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "sendUnsignedTransaction",
+          "outputs": [
+            { "internalType": "uint256", "name": "", "type": "uint256" }
+          ]
+        },
+        {
+          "inputs": [],
+          "stateMutability": "view",
+          "type": "function",
+          "name": "sequencerInbox",
+          "outputs": [
+            { "internalType": "address", "name": "", "type": "address" }
+          ]
+        },
+        {
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "unpause"
+        },
+        {
+          "inputs": [
+            { "internalType": "address", "name": "to", "type": "address" },
+            {
+              "internalType": "uint256",
+              "name": "l2CallValue",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "maxSubmissionCost",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "excessFeeRefundAddress",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "callValueRefundAddress",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "gasLimit",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "maxFeePerGas",
+              "type": "uint256"
+            },
+            { "internalType": "bytes", "name": "data", "type": "bytes" }
+          ],
+          "stateMutability": "payable",
+          "type": "function",
+          "name": "unsafeCreateRetryableTicket",
+          "outputs": [
+            { "internalType": "uint256", "name": "", "type": "uint256" }
+          ]
+        }
+      ],
+      "devdoc": {
+        "kind": "dev",
+        "methods": {
+          "calculateRetryableSubmissionFee(uint256,uint256)": {
+            "details": "This fee can be paid by funds already in the L2 aliased address or by the current message valueThis formula may change in the future, to future proof your code query this method instead of inlining!!",
+            "params": {
+              "baseFee": "The block basefee when the retryable is included in the chain, if 0 current block.basefee will be used",
+              "dataLength": "The length of the retryable's calldata, in bytes"
+            }
+          },
+          "createRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)": {
+            "details": "all msg.value will deposited to callValueRefundAddress on L2Gas limit and maxFeePerGas should not be set to 1 as that is used to trigger the RetryableData error",
+            "params": {
+              "callValueRefundAddress": "l2Callvalue gets credited here on L2 if retryable txn times out or gets cancelled",
+              "data": "ABI encoded data of L2 message",
+              "excessFeeRefundAddress": "gasLimit x maxFeePerGas - execution cost gets credited here on L2 balance",
+              "gasLimit": "Max gas deducted from user's L2 balance to cover L2 execution. Should not be set to 1 (magic value used to trigger the RetryableData error)",
+              "l2CallValue": "call value for retryable L2 message",
+              "maxFeePerGas": "price bid for L2 execution. Should not be set to 1 (magic value used to trigger the RetryableData error)",
+              "maxSubmissionCost": "Max gas deducted from user's L2 balance to cover base submission fee",
+              "to": "destination L2 contract address"
+            },
+            "returns": {
+              "_0": "unique message number of the retryable transaction"
+            }
+          },
+          "depositEth()": {
+            "details": "This does not trigger the fallback function when receiving in the L2 side.      Look into retryable tickets if you are interested in this functionality.This function should not be called inside contract constructors"
+          },
+          "postUpgradeInit(address)": {
+            "details": "function to be called one time during the inbox upgrade process      this is used to fix the storage slots"
+          },
+          "sendL2Message(bytes)": {
+            "details": "This method can be used to send any type of message that doesn't require L1 validation",
+            "params": { "messageData": "Data of the message being sent" }
+          },
+          "sendL2MessageFromOrigin(bytes)": {
+            "details": "This method is an optimization to avoid having to emit the entirety of the messageData in a log. Instead validators are expected to be able to parse the data from the transaction's input",
+            "params": { "messageData": "Data of the message being sent" }
+          },
+          "unsafeCreateRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)": {
+            "details": "Same as createRetryableTicket, but does not guarantee that submission will succeed by requiring the needed funds come from the deposit alone, rather than falling back on the user's L2 balanceAdvanced usage only (does not rewrite aliases for excessFeeRefundAddress and callValueRefundAddress). createRetryableTicket method is the recommended standard.Gas limit and maxFeePerGas should not be set to 1 as that is used to trigger the RetryableData error",
+            "params": {
+              "callValueRefundAddress": "l2Callvalue gets credited here on L2 if retryable txn times out or gets cancelled",
+              "data": "ABI encoded data of L2 message",
+              "excessFeeRefundAddress": "gasLimit x maxFeePerGas - execution cost gets credited here on L2 balance",
+              "gasLimit": "Max gas deducted from user's L2 balance to cover L2 execution. Should not be set to 1 (magic value used to trigger the RetryableData error)",
+              "l2CallValue": "call value for retryable L2 message",
+              "maxFeePerGas": "price bid for L2 execution. Should not be set to 1 (magic value used to trigger the RetryableData error)",
+              "maxSubmissionCost": "Max gas deducted from user's L2 balance to cover base submission fee",
+              "to": "destination L2 contract address"
+            },
+            "returns": {
+              "_0": "unique message number of the retryable transaction"
+            }
+          }
+        },
+        "version": 1
+      },
+      "userdoc": {
+        "kind": "user",
+        "methods": {
+          "calculateRetryableSubmissionFee(uint256,uint256)": {
+            "notice": "Get the L1 fee for submitting a retryable"
+          },
+          "createRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)": {
+            "notice": "Put a message in the L2 inbox that can be reexecuted for some fixed amount of time if it reverts"
+          },
+          "depositEth()": {
+            "notice": "Deposit eth from L1 to L2 to address of the sender if sender is an EOA, and to its aliased address if the sender is a contract"
+          },
+          "pause()": { "notice": "pauses all inbox functionality" },
+          "sendL2Message(bytes)": {
+            "notice": "Send a generic L2 message to the chain"
+          },
+          "sendL2MessageFromOrigin(bytes)": {
+            "notice": "Send a generic L2 message to the chain"
+          },
+          "unpause()": { "notice": "unpauses all inbox functionality" },
+          "unsafeCreateRetryableTicket(address,uint256,uint256,address,address,uint256,uint256,bytes)": {
+            "notice": "Put a message in the L2 inbox that can be reexecuted for some fixed amount of time if it reverts"
+          }
+        },
+        "version": 1
+      }
+    },
+    "settings": {
+      "remappings": [
+        "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+        "ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/",
+        "erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+        "forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/",
+        "openzeppelin-contracts/=lib/openzeppelin-contracts/",
+        "openzeppelin/=lib/openzeppelin-contracts/contracts/"
+      ],
+      "optimizer": { "enabled": true, "runs": 200 },
+      "metadata": { "bytecodeHash": "ipfs" },
+      "compilationTarget": {
+        "lib/openzeppelin-contracts/contracts/vendor/arbitrum/IInbox.sol": "IInbox"
+      },
+      "evmVersion": "shanghai",
+      "libraries": {}
+    },
+    "sources": {
+      "lib/openzeppelin-contracts/contracts/vendor/arbitrum/IBridge.sol": {
+        "keccak256": "0xe1e854715c581bfa526f35e4f76579f6b66dc0799d3221c530ded139c3370807",
+        "urls": [
+          "bzz-raw://91e16564ebee6c34ef04f0567ccc726f5c3750a85de9f18eb678e768be68ff1f",
+          "dweb:/ipfs/QmRXx3S9XqXGnbcF65VyxSUC4LsWn2TQdQqN7ZCfDSeMUf"
+        ],
+        "license": "BUSL-1.1"
+      },
+      "lib/openzeppelin-contracts/contracts/vendor/arbitrum/IDelayedMessageProvider.sol": {
+        "keccak256": "0xccec6fc7eac1151017a785c98f4d3d13d90c19b87a9ec1e8955245ba98f3e19b",
+        "urls": [
+          "bzz-raw://c823dbf6495801b10bb720e10a31c191f9404478f6ac2993d6314f5067f8d0ea",
+          "dweb:/ipfs/QmSyCRiPjqouJ84U2cmeo7nddsuW5LpfWR3qDQiAP63S2w"
+        ],
+        "license": "BUSL-1.1"
+      },
+      "lib/openzeppelin-contracts/contracts/vendor/arbitrum/IInbox.sol": {
+        "keccak256": "0xecfd5a7ee81dbe73dccc19db52fdde940dcb19deaeb39424c32a01d1907149ec",
+        "urls": [
+          "bzz-raw://1071a46c4100717e17395aa276c18b3ee61f6ffe785505630ff1dd21d83334f0",
+          "dweb:/ipfs/QmaF9hvzRu3vJb2dh2DBZAS2QPMAjmtmbHaVGtZqx7KHdx"
+        ],
+        "license": "BUSL-1.1"
+      }
+    },
+    "version": 1
+  },
+  "id": 260
+}

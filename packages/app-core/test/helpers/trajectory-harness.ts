@@ -198,11 +198,11 @@ function classifyLlmPurpose(
   return "other";
 }
 
-function memoryToTranscriptEntry(
-  m: Memory,
-): { text: string; actions?: string[] } {
-  const text =
-    typeof m.content?.text === "string" ? m.content.text : "";
+function memoryToTranscriptEntry(m: Memory): {
+  text: string;
+  actions?: string[];
+} {
+  const text = typeof m.content?.text === "string" ? m.content.text : "";
   const actionsRaw = m.content?.actions;
   const actions = Array.isArray(actionsRaw)
     ? actionsRaw.filter((a): a is string => typeof a === "string")
@@ -390,7 +390,9 @@ export class RecordingHarness {
     const handler = async (payload: unknown): Promise<void> => {
       const data: Record<string, unknown> = {};
       if (payload && typeof payload === "object") {
-        for (const [k, v] of Object.entries(payload as Record<string, unknown>)) {
+        for (const [k, v] of Object.entries(
+          payload as Record<string, unknown>,
+        )) {
           if (k === "runtime" || typeof v === "function") continue;
           data[k] = v;
         }
@@ -496,9 +498,7 @@ export class RecordingHarness {
       includeList,
       providers,
       text:
-        typeof state.text === "string"
-          ? state.text.slice(0, 8000)
-          : undefined,
+        typeof state.text === "string" ? state.text.slice(0, 8000) : undefined,
     });
   }
 
@@ -547,9 +547,8 @@ export class RecordingHarness {
           this.originalCreateMemory;
       }
       if (this.originalComposeState) {
-        (
-          runtime as unknown as { composeState: ComposeStateFn }
-        ).composeState = this.originalComposeState;
+        (runtime as unknown as { composeState: ComposeStateFn }).composeState =
+          this.originalComposeState;
       }
       for (const unsub of this.eventUnsubs.splice(0)) unsub();
       this.installed = false;

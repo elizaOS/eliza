@@ -1,6 +1,11 @@
 /** Sends messages through a runtime and captures responses plus action calls. */
 import crypto from "node:crypto";
-import type { AgentRuntime, Memory, MessageMetadata, UUID } from "@elizaos/core";
+import type {
+  AgentRuntime,
+  Memory,
+  MessageMetadata,
+  UUID,
+} from "@elizaos/core";
 import { ChannelType, createMessageMemory } from "@elizaos/core";
 import {
   type ActionSpy,
@@ -138,7 +143,10 @@ export class ConversationHarness {
       messageServerId: this.userId,
       metadata: worldMetadata,
     });
-    await this.runtime.ensureParticipantInRoom(this.runtime.agentId, this.roomId);
+    await this.runtime.ensureParticipantInRoom(
+      this.runtime.agentId,
+      this.roomId,
+    );
     await this.runtime.ensureParticipantInRoom(this.userId, this.roomId);
     if (!this.attached) {
       this.spy.attach(this.runtime);

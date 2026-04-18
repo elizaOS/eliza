@@ -10,12 +10,7 @@
  * unused): every test spins up a fresh ConversationHarness (new roomId) so
  * context cannot leak between cases.
  */
-import {
-  type AgentRuntime,
-  logger,
-  type Memory,
-  type UUID,
-} from "@elizaos/core";
+
 import { getAppBlockerStatus } from "@elizaos/app-lifeops/app-blocker/engine";
 import { readCalendlyCredentialsFromEnv } from "@elizaos/app-lifeops/lifeops/calendly-client";
 import { detectHealthBackend } from "@elizaos/app-lifeops/lifeops/health-bridge";
@@ -25,6 +20,12 @@ import { LifeOpsService } from "@elizaos/app-lifeops/lifeops/service";
 import { readTwilioCredentialsFromEnv } from "@elizaos/app-lifeops/lifeops/twilio";
 import { appLifeOpsPlugin } from "@elizaos/app-lifeops/plugin";
 import { getSelfControlStatus } from "@elizaos/app-lifeops/website-blocker/public";
+import {
+  type AgentRuntime,
+  logger,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect } from "vitest";
 import { itIf } from "../../../../../test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
@@ -40,8 +41,7 @@ import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 // ---------------------------------------------------------------------------
 
 const liveModelTestsEnabled =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;
@@ -364,7 +364,9 @@ describe("Action Invocation E2E", () => {
       async () => {
         if (!requireAction("CROSS_CHANNEL_SEND")) return;
         await withHarness(async (h) => {
-          await h.send("Send a Signal message to Priya saying thanks for the review.");
+          await h.send(
+            "Send a Signal message to Priya saying thanks for the review.",
+          );
           expectActionCalled(h.spy, "CROSS_CHANNEL_SEND");
         });
       },
@@ -376,9 +378,7 @@ describe("Action Invocation E2E", () => {
       async () => {
         if (!requireAction("CROSS_CHANNEL_SEND")) return;
         await withHarness(async (h) => {
-          await h.send(
-            "Email alice@example.com the meeting notes from today.",
-          );
+          await h.send("Email alice@example.com the meeting notes from today.");
           expectAnyCompletedAction(h, ["CROSS_CHANNEL_SEND", "GMAIL_ACTION"]);
         });
       },
@@ -432,9 +432,7 @@ describe("Action Invocation E2E", () => {
       async () => {
         if (!requireAction("CALENDAR_ACTION")) return;
         await withHarness(async (h) => {
-          await h.send(
-            "Schedule a dentist appointment next Tuesday at 3pm.",
-          );
+          await h.send("Schedule a dentist appointment next Tuesday at 3pm.");
           expectActionCalled(h.spy, "CALENDAR_ACTION");
         });
       },
@@ -447,10 +445,7 @@ describe("Action Invocation E2E", () => {
         if (!requireAction("SCHEDULING")) return;
         await withHarness(async (h) => {
           await h.send("Help me schedule a meeting with the design team.");
-          expectAnyCompletedAction(h, [
-            "SCHEDULING",
-            "PROPOSE_MEETING_TIMES",
-          ]);
+          expectAnyCompletedAction(h, ["SCHEDULING", "PROPOSE_MEETING_TIMES"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -655,10 +650,7 @@ describe("Action Invocation E2E", () => {
         if (!requireAction("INTENT_SYNC")) return;
         await withHarness(async (h) => {
           await h.send("Broadcast a reminder to all my devices.");
-          expectAnySelectedAction(h, [
-            "INTENT_SYNC",
-            "PUBLISH_DEVICE_INTENT",
-          ]);
+          expectAnySelectedAction(h, ["INTENT_SYNC", "PUBLISH_DEVICE_INTENT"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -746,10 +738,7 @@ describe("Action Invocation E2E", () => {
           await h.send(
             "Cancel my Google Play subscription and handle the cancellation workflow for me.",
           );
-          expectAnySelectedAction(h, [
-            "SUBSCRIPTIONS",
-            "LIFEOPS_COMPUTER_USE",
-          ]);
+          expectAnySelectedAction(h, ["SUBSCRIPTIONS", "LIFEOPS_COMPUTER_USE"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -839,8 +828,11 @@ describe("Action Invocation E2E", () => {
           const resultData = results
             .map(
               (result) =>
-                ((result.content as { data?: Record<string, unknown> } | undefined)
-                  ?.data ?? null) as Record<string, unknown> | null,
+                ((
+                  result.content as
+                    | { data?: Record<string, unknown> }
+                    | undefined
+                )?.data ?? null) as Record<string, unknown> | null,
             )
             .filter((data): data is Record<string, unknown> => data !== null);
           const dataWithBounds = resultData.find((data) => {
@@ -850,16 +842,14 @@ describe("Action Invocation E2E", () => {
               data.endAt ?? data.endat ?? data.timeMax ?? data.timemax;
             return typeof start === "string" && typeof end === "string";
           });
-          const startValue =
-            (dataWithBounds?.startAt ??
-              dataWithBounds?.startat ??
-              dataWithBounds?.timeMin ??
-              dataWithBounds?.timemin) as string | undefined;
-          const endValue =
-            (dataWithBounds?.endAt ??
-              dataWithBounds?.endat ??
-              dataWithBounds?.timeMax ??
-              dataWithBounds?.timemax) as string | undefined;
+          const startValue = (dataWithBounds?.startAt ??
+            dataWithBounds?.startat ??
+            dataWithBounds?.timeMin ??
+            dataWithBounds?.timemin) as string | undefined;
+          const endValue = (dataWithBounds?.endAt ??
+            dataWithBounds?.endat ??
+            dataWithBounds?.timeMax ??
+            dataWithBounds?.timemax) as string | undefined;
           expect(
             startValue && endValue,
             `Expected start/end bounds in result data: ${blob}`,
@@ -897,8 +887,14 @@ describe("Action Invocation E2E", () => {
             "Expected at least one action_result memory",
           ).toBeGreaterThan(0);
           const blob = stringifyResults(results).toLowerCase();
-          expect(blob, `Expected duration "90" in result data: ${blob}`).toMatch(/90/);
-          expect(blob, `Expected "twitter" reference in result data: ${blob}`).toMatch(/twitter/);
+          expect(
+            blob,
+            `Expected duration "90" in result data: ${blob}`,
+          ).toMatch(/90/);
+          expect(
+            blob,
+            `Expected "twitter" reference in result data: ${blob}`,
+          ).toMatch(/twitter/);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS * 2,

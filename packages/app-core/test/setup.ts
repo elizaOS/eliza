@@ -1,5 +1,5 @@
-import path from "node:path";
 import Module from "node:module";
+import path from "node:path";
 import { afterAll, afterEach, vi } from "vitest";
 import {
   createMemoryStorage,

@@ -796,6 +796,7 @@ async function resolveSchedulingPlanWithLlm(args: {
     "Use cancel when stopping an active negotiation.",
     "Use list_active for listing negotiations.",
     "Use list_proposals for listing proposals in one negotiation.",
+    "If the user is making a first-turn calendar request, asking for recurring time, asking to bundle meetings while traveling, or asking for missed-call repair, this action is the wrong tool. Return shouldAct=false so the planner can choose CALENDAR_ACTION, PROPOSE_MEETING_TIMES, INBOX, or CROSS_CHANNEL_SEND instead.",
     "Set shouldAct=false when the user is vague or only asks for general scheduling help.",
     "",
     "Examples:",
@@ -866,15 +867,22 @@ function formatProposalSummary(p: {
 export const schedulingAction: Action = {
   name: "SCHEDULING",
   similes: [
-    "SCHEDULE_MEETING",
     "NEGOTIATE_MEETING",
-    "COORDINATE_SCHEDULE",
     "MULTI_TURN_SCHEDULING",
+    "MANAGE_SCHEDULING_NEGOTIATION",
+    "RESPOND_TO_MEETING_PROPOSAL",
+    "FINALIZE_SCHEDULING_NEGOTIATION",
   ],
   description:
-    "Multi-turn scheduling coordinator. Manages negotiations with another " +
-    "party across proposal/response rounds: start a negotiation, propose " +
-    "times, record responses, finalize the confirmed slot, or cancel.",
+    "Multi-turn scheduling negotiation coordinator. Use this only for an " +
+    "existing proposal workflow: start a negotiation record, submit a concrete " +
+    "proposal for that negotiation, record accepted/declined responses, " +
+    "finalize the winning proposal, cancel, or list negotiations/proposals. " +
+    "Do not use this for first-turn calendar requests, recurring blocks, " +
+    "travel-time bundling, missed-call repair, or fresh candidate-slot " +
+    "searches; those belong to CALENDAR_ACTION, PROPOSE_MEETING_TIMES, INBOX, " +
+    "or CROSS_CHANNEL_SEND.",
+  suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasAdminAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,

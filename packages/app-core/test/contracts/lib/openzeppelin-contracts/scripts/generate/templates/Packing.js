@@ -1,7 +1,7 @@
-const format = require('../format-lines');
-const sanitize = require('../helpers/sanitize');
-const { product } = require('../../helpers');
-const { SIZES } = require('./Packing.opts');
+const format = require("../format-lines");
+const sanitize = require("../helpers/sanitize");
+const { product } = require("../../helpers");
+const { SIZES } = require("./Packing.opts");
 
 // TEMPLATE
 const header = `\
@@ -47,8 +47,8 @@ function pack_${left}_${right}(bytes${left} left, bytes${right} right) internal 
   left + right
 } result) {
     assembly ("memory-safe") {
-        left := ${sanitize.bytes('left', left)}
-        right := ${sanitize.bytes('right', right)}
+        left := ${sanitize.bytes("left", left)}
+        right := ${sanitize.bytes("right", right)}
         result := or(left, shr(${8 * left}, right))
     }
 }
@@ -58,7 +58,7 @@ const extract = (outer, inner) => `\
 function extract_${outer}_${inner}(bytes${outer} self, uint8 offset) internal pure returns (bytes${inner} result) {
     if (offset > ${outer - inner}) revert OutOfRangeAccess();
     assembly ("memory-safe") {
-        result := ${sanitize.bytes('shl(mul(8, offset), self)', inner)}
+        result := ${sanitize.bytes("shl(mul(8, offset), self)", inner)}
     }
 }
 `;
@@ -67,7 +67,7 @@ const replace = (outer, inner) => `\
 function replace_${outer}_${inner}(bytes${outer} self, bytes${inner} value, uint8 offset) internal pure returns (bytes${outer} result) {
     bytes${inner} oldValue = extract_${outer}_${inner}(self, offset);
     assembly ("memory-safe") {
-        value := ${sanitize.bytes('value', inner)}
+        value := ${sanitize.bytes("value", inner)}
         result := xor(self, shr(mul(8, offset), xor(oldValue, value)))
     }
 }
@@ -76,7 +76,7 @@ function replace_${outer}_${inner}(bytes${outer} self, bytes${inner} value, uint
 // GENERATE
 module.exports = format(
   header.trimEnd(),
-  'library Packing {',
+  "library Packing {",
   format(
     [].concat(
       errors,
@@ -85,8 +85,11 @@ module.exports = format(
         .map(([left, right]) => pack(left, right)),
       product(SIZES, SIZES)
         .filter(([outer, inner]) => outer > inner)
-        .flatMap(([outer, inner]) => [extract(outer, inner), replace(outer, inner)]),
+        .flatMap(([outer, inner]) => [
+          extract(outer, inner),
+          replace(outer, inner),
+        ]),
     ),
   ).trimEnd(),
-  '}',
+  "}",
 );

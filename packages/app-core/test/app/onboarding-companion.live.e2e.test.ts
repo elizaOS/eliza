@@ -1,12 +1,12 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
   type Server,
   type ServerResponse,
 } from "node:http";
-import { existsSync } from "node:fs";
-import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -17,18 +17,17 @@ import {
   chromium,
   type Page,
 } from "playwright-core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
-import { buildOnboardingRuntimeConfig } from "../../src/onboarding-config";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
 import {
   buildIsolatedLiveProviderEnv,
   selectLiveProvider,
 } from "../../../../../test/helpers/live-provider";
+import { buildOnboardingRuntimeConfig } from "../../src/onboarding-config";
 
 const LIVE_TESTS_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const LIVE_PROVIDER =
   (LIVE_TESTS_ENABLED && selectLiveProvider("openai")) ||
   (LIVE_TESTS_ENABLED ? selectLiveProvider() : null);
@@ -43,7 +42,14 @@ const LIVE_PROVIDER_LABEL = LIVE_PROVIDER
   ? LIVE_PROVIDER_LABELS[LIVE_PROVIDER.name]
   : null;
 const describeLive = describeIf(LIVE_TESTS_ENABLED && LIVE_PROVIDER !== null);
-const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..", "..");
+const REPO_ROOT = path.resolve(
+  import.meta.dirname,
+  "..",
+  "..",
+  "..",
+  "..",
+  "..",
+);
 const APP_DIST_DIR = path.join(REPO_ROOT, "apps/app", "dist");
 const SCREENSHOT_DIR = path.join(REPO_ROOT, "test-results", "live-onboarding");
 const READY_TIMEOUT_MS = 120_000;

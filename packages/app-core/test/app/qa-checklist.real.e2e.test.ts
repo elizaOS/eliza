@@ -13,7 +13,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { config as loadDotenv } from "dotenv";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
 import {
@@ -50,8 +50,7 @@ const CHROME_PATH =
   process.env.ELIZA_CHROME_PATH ??
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const LIVE_TESTS_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const CHROME_AVAILABLE = existsSync(CHROME_PATH);
 const LIVE_PROVIDER =
   (LIVE_TESTS_ENABLED && selectLiveProvider("openai")) ||
@@ -67,7 +66,8 @@ const LIVE_PROVIDER_LABEL = LIVE_PROVIDER
   ? LIVE_PROVIDER_LABELS[LIVE_PROVIDER.name]
   : null;
 const REQUIRE_STRICT_TTS_ASSERTIONS = ELEVENLABS_API_KEY.length > 0;
-const CAN_RUN = LIVE_TESTS_ENABLED && CHROME_AVAILABLE && LIVE_PROVIDER !== null;
+const CAN_RUN =
+  LIVE_TESTS_ENABLED && CHROME_AVAILABLE && LIVE_PROVIDER !== null;
 const PROFILE_FILTER = new Set(
   (process.env.ELIZA_LIVE_PROFILE ?? "")
     .split(",")
@@ -78,7 +78,14 @@ const PROFILE_FILTER = new Set(
 const EXPECTED_SARAH_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
 const KNOWLEDGE_CODEWORD = "VELVET-MOON-4821";
 const QA_ARTIFACT_DIR = path.join(os.tmpdir(), "eliza-live-qa");
-const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..", "..");
+const REPO_ROOT = path.resolve(
+  import.meta.dirname,
+  "..",
+  "..",
+  "..",
+  "..",
+  "..",
+);
 const APP_DIST_DIR = path.join(REPO_ROOT, "apps/app", "dist");
 const STACK_READY_TIMEOUT_MS = 120_000;
 const RESET_TRANSITION_GRACE_MS = 10_000;
@@ -243,11 +250,9 @@ function isIgnorableQaRequestFailure(failure: QaRequestFailure): boolean {
   if (
     (failure.errorText === "net::ERR_FAILED" ||
       failure.errorText === "net::ERR_ABORTED") &&
-    [
-      "/api/config",
-      "/api/onboarding/status",
-      "/api/vincent/status",
-    ].includes(pathname)
+    ["/api/config", "/api/onboarding/status", "/api/vincent/status"].includes(
+      pathname,
+    )
   ) {
     return true;
   }
@@ -386,9 +391,7 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
             const tts = config?.messages?.tts;
             return tts?.provider === "elevenlabs" ? tts : null;
           }, 60_000);
-          expect(voiceConfig.elevenlabs?.voiceId).toBe(
-            EXPECTED_SARAH_VOICE_ID,
-          );
+          expect(voiceConfig.elevenlabs?.voiceId).toBe(EXPECTED_SARAH_VOICE_ID);
         }
         await page.evaluate(() => {
           window.dispatchEvent(new Event("eliza:vrm-teleport-complete"));
@@ -452,7 +455,10 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
           body: JSON.stringify({ enabled: true }),
         });
 
-        await clickSelector(page, '[data-testid="companion-shell-toggle-desktop"]');
+        await clickSelector(
+          page,
+          '[data-testid="companion-shell-toggle-desktop"]',
+        );
         await navigate(page, `${UI_URL}/knowledge`);
         await page.waitForSelector('[data-testid="knowledge-view"]', {
           visible: true,
@@ -550,11 +556,7 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
         const trajectorySearchSelector =
           '[data-testid="trajectories-sidebar"] input[type="text"]';
         if (await isSelectorVisible(page, trajectorySearchSelector)) {
-          await typeInto(
-            page,
-            trajectorySearchSelector,
-            KNOWLEDGE_CODEWORD,
-          );
+          await typeInto(page, trajectorySearchSelector, KNOWLEDGE_CODEWORD);
           await page.waitForSelector(
             '[data-testid="trajectories-sidebar"] [data-sidebar-item]',
           );
@@ -649,7 +651,10 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
         logQaStep(profile, "avatar-voice QA open onboarding");
         await navigate(page, `${UI_URL}/?test_force_vrm=1`);
 
-        logQaStep(profile, "avatar-voice QA complete local provider onboarding");
+        logQaStep(
+          profile,
+          "avatar-voice QA complete local provider onboarding",
+        );
         await completeLocalProviderOnboarding(page);
 
         logQaStep(profile, "avatar-voice QA enter companion mode");
@@ -1136,7 +1141,9 @@ async function restartLiveStack(): Promise<void> {
   liveStack = await startRealStack();
   API_URL = stripTrailingSlash(liveStack.apiBase);
   UI_URL = stripTrailingSlash(liveStack.uiBase);
-  console.log(`[live-qa][setup] restart live stack: ready ui=${UI_URL} api=${API_URL}`);
+  console.log(
+    `[live-qa][setup] restart live stack: ready ui=${UI_URL} api=${API_URL}`,
+  );
 }
 
 async function stopRealStack(stack: StartedStack | null): Promise<void> {
@@ -1212,7 +1219,8 @@ async function smokeTabs(page: Page, profile: Profile) {
     {
       path: "/wallets",
       name: "wallets",
-      waitForReady: () => page.waitForSelector('[data-testid="wallet-rpc-popup"]'),
+      waitForReady: () =>
+        page.waitForSelector('[data-testid="wallet-rpc-popup"]'),
     },
     {
       path: "/connectors",
@@ -1230,7 +1238,8 @@ async function smokeTabs(page: Page, profile: Profile) {
     {
       path: "/settings",
       name: "settings",
-      waitForReady: () => page.waitForSelector('[data-testid="settings-shell"]'),
+      waitForReady: () =>
+        page.waitForSelector('[data-testid="settings-shell"]'),
     },
     {
       path: "/triggers",
@@ -1251,7 +1260,11 @@ async function smokeTabs(page: Page, profile: Profile) {
       path: "/skills",
       name: "skills",
       waitForReady: () =>
-        waitForAnyText(page, ["Create Skill", "No Skills Installed", "Skills"], 30_000),
+        waitForAnyText(
+          page,
+          ["Create Skill", "No Skills Installed", "Skills"],
+          30_000,
+        ),
     },
     {
       path: "/runtime",
@@ -1764,7 +1777,7 @@ async function currentVrmRegistry(page: Page): Promise<QaVrmRegistryEntry[]> {
   });
 }
 
-async function waitForWorldStageAvatar(
+async function _waitForWorldStageAvatar(
   page: Page,
   expectedSlug?: string | null,
   timeout = 90_000,
@@ -1790,7 +1803,7 @@ async function qaEmoteEvents(page: Page): Promise<QaEmoteEventRecord[]> {
   });
 }
 
-async function qaPlayEmoteCalls(page: Page): Promise<QaPlayEmoteRecord[]> {
+async function _qaPlayEmoteCalls(page: Page): Promise<QaPlayEmoteRecord[]> {
   return page.evaluate(() => {
     const qaWindow = window as typeof window & {
       __qaPlayEmoteCalls?: QaPlayEmoteRecord[];
@@ -1799,7 +1812,7 @@ async function qaPlayEmoteCalls(page: Page): Promise<QaPlayEmoteRecord[]> {
   });
 }
 
-async function qaTeleportEvents(page: Page): Promise<QaTeleportRecord[]> {
+async function _qaTeleportEvents(page: Page): Promise<QaTeleportRecord[]> {
   return page.evaluate(() => {
     const qaWindow = window as typeof window & {
       __qaTeleportEvents?: QaTeleportRecord[];
@@ -1817,21 +1830,24 @@ async function waitForCharacterRoster(
     timeout,
   });
   await waitFor(async () => {
-    const roster = await page.$$eval('[data-testid^="character-preset-"]', (buttons) => {
-      const visibleButtons = buttons.filter((button) => {
-        const style = window.getComputedStyle(button);
-        return style.display !== "none" && style.visibility !== "hidden";
-      });
-      const selected = visibleButtons.find(
-        (button) => button.getAttribute("aria-pressed") === "true",
-      );
-      return visibleButtons.length > 0 && selected
-        ? {
-            count: visibleButtons.length,
-            selectedTestId: selected.getAttribute("data-testid"),
-          }
-        : null;
-    });
+    const roster = await page.$$eval(
+      '[data-testid^="character-preset-"]',
+      (buttons) => {
+        const visibleButtons = buttons.filter((button) => {
+          const style = window.getComputedStyle(button);
+          return style.display !== "none" && style.visibility !== "hidden";
+        });
+        const selected = visibleButtons.find(
+          (button) => button.getAttribute("aria-pressed") === "true",
+        );
+        return visibleButtons.length > 0 && selected
+          ? {
+              count: visibleButtons.length,
+              selectedTestId: selected.getAttribute("data-testid"),
+            }
+          : null;
+      },
+    );
     return roster?.count ? roster : null;
   }, timeout);
 
@@ -1868,7 +1884,7 @@ async function characterRosterEntries(
   });
 }
 
-async function selectedCharacterPreviewSrc(page: Page): Promise<string> {
+async function _selectedCharacterPreviewSrc(page: Page): Promise<string> {
   const previewSrc = await page.$eval(
     '[data-testid^="character-preset-"][aria-pressed="true"] img',
     (img) => img.getAttribute("src"),
@@ -1883,11 +1899,7 @@ async function clickByText(page: Page, text: string) {
   await clickByTextWithin(page, text);
 }
 
-async function clickByTextWithin(
-  page: Page,
-  text: string,
-  timeout = 45_000,
-) {
+async function clickByTextWithin(page: Page, text: string, timeout = 45_000) {
   await page.waitForFunction(
     (expected) => {
       const normalizedExpected = String(expected).toLowerCase();
@@ -1952,11 +1964,7 @@ async function clickAnyText(
     : new Error(`Could not click any of: ${texts.join(", ")}`);
 }
 
-async function clickButtonLabel(
-  page: Page,
-  label: string,
-  timeout = 45_000,
-) {
+async function clickButtonLabel(page: Page, label: string, timeout = 45_000) {
   const normalizedLabel = label.trim().toLowerCase();
   await page.waitForFunction(
     (expected) => {
@@ -2122,7 +2130,11 @@ async function completeLocalProviderOnboarding(page: Page) {
           timeout: 30_000,
         },
       );
-      await typeInto(page, 'input[placeholder*="your-agent.example.com"]', UI_URL);
+      await typeInto(
+        page,
+        'input[placeholder*="your-agent.example.com"]',
+        UI_URL,
+      );
       await clickButtonLabel(page, "Connect");
 
       const connectionRemoteApiBase = await page
@@ -2192,7 +2204,9 @@ async function completeLocalProviderOnboarding(page: Page) {
 }
 
 async function enterCompanionMode(page: Page) {
-  if (await isSelectorVisible(page, '[data-testid="ui-shell-toggle-companion"]')) {
+  if (
+    await isSelectorVisible(page, '[data-testid="ui-shell-toggle-companion"]')
+  ) {
     await clickSelector(page, '[data-testid="ui-shell-toggle-companion"]');
   } else {
     await navigate(page, `${UI_URL}/apps/companion`);
@@ -2236,10 +2250,13 @@ async function qaCharacterSwitchAndDance(page: Page, profile?: Profile) {
   }
   await clickSelector(page, `[data-testid="${nextEntry.testId}"]`);
   await page
-    .waitForSelector(`[data-testid="${nextEntry.testId}"][aria-pressed="true"]`, {
-      visible: true,
-      timeout: 20_000,
-    })
+    .waitForSelector(
+      `[data-testid="${nextEntry.testId}"][aria-pressed="true"]`,
+      {
+        visible: true,
+        timeout: 20_000,
+      },
+    )
     .catch(() => null);
 
   const danceFetchBaseline = (await qaFetches(page)).length;
@@ -2256,28 +2273,32 @@ async function qaCharacterSwitchAndDance(page: Page, profile?: Profile) {
     timeout: 30_000,
   });
   await clickSelector(page, 'button[title="Dance Happy"]');
-  await waitFor(async () => {
-    const overlayVisible = await page
-      .waitForSelector(
-        '[data-testid="global-emote-overlay"][data-emote-id="dance-happy"]',
-        {
-          visible: true,
-          timeout: 1000,
-        },
-      )
-      .then(() => true)
-      .catch(() => false);
-    if (overlayVisible) {
-      return true;
-    }
+  await waitFor(
+    async () => {
+      const overlayVisible = await page
+        .waitForSelector(
+          '[data-testid="global-emote-overlay"][data-emote-id="dance-happy"]',
+          {
+            visible: true,
+            timeout: 1000,
+          },
+        )
+        .then(() => true)
+        .catch(() => false);
+      if (overlayVisible) {
+        return true;
+      }
 
-    const events = await qaEmoteEvents(page);
-    return events
-      .slice(danceEmoteBaseline)
-      .some((event) => event.emoteId === "dance-happy")
-      ? true
-      : null;
-  }, 45_000, 1000);
+      const events = await qaEmoteEvents(page);
+      return events
+        .slice(danceEmoteBaseline)
+        .some((event) => event.emoteId === "dance-happy")
+        ? true
+        : null;
+    },
+    45_000,
+    1000,
+  );
 
   if (profile) {
     logQaStep(profile, "character-switch QA wait for dance emote API");
@@ -2448,7 +2469,7 @@ async function isHttpOk(url: string): Promise<boolean> {
   }
 }
 
-async function resolveLiveUiUrl(): Promise<string> {
+async function _resolveLiveUiUrl(): Promise<string> {
   if (await isHttpOk(`${DEFAULT_UI_URL}/`)) {
     return DEFAULT_UI_URL;
   }
