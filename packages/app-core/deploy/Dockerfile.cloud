@@ -35,7 +35,11 @@ COPY eliza/packages/app-core/platforms/electrobun/package.json ./eliza/packages/
 COPY eliza/packages/app-core/deploy/cloud-agent-template/package.json ./eliza/packages/app-core/deploy/cloud-agent-template/package.json
 
 ENV NODE_LLAMA_CPP_SKIP_DOWNLOAD=true
-RUN bun install --frozen-lockfile --ignore-scripts --no-progress
+# Drop --frozen-lockfile: the host bun.lock references workspaces (eliza/apps/*,
+# eliza/packages/native-plugins/*) that we intentionally don't COPY into the
+# cloud image. Letting bun regenerate inside the image lets it skip workspace
+# entries whose package.json files aren't present in this build context.
+RUN bun install --ignore-scripts --no-progress
 
 FROM node:${NODE_VERSION}-slim AS tsx
 RUN npm install --prefix /opt/tsx --ignore-scripts --no-save tsx@4.21.0 \
