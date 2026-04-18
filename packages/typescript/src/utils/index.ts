@@ -52,6 +52,22 @@ export {
 	parseBooleanText,
 	parseBooleanValue,
 } from "./boolean.js";
+export {
+	attachAvailableContexts,
+	AVAILABLE_CONTEXTS_STATE_KEY,
+	CONTEXT_ROUTING_METADATA_KEY,
+	CONTEXT_ROUTING_STATE_KEY,
+	type ContextRoutingDecision,
+	deriveAvailableContexts,
+	getActiveRoutingContexts,
+	getContextRoutingFromMessage,
+	getContextRoutingFromState,
+	mergeContextRouting,
+	parseContextList,
+	parseContextRoutingMetadata,
+	setContextRoutingMetadata,
+	shouldIncludeByContext,
+} from "./context-routing.js";
 export { deferStartupWork } from "./defer-startup-work.js";
 export { extractAndParseJSONObjectFromText } from "./json-llm.js";
 export {
