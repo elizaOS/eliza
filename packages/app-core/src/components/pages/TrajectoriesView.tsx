@@ -20,6 +20,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { client } from "../../api/client";
@@ -84,6 +85,7 @@ export function TrajectoriesView({
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(0);
   const pageSize = 50;
+  const previousSearchQueryRef = useRef(searchQuery);
 
   const [exporting, setExporting] = useState(false);
   const [deletingTrajectoryId, setDeletingTrajectoryId] = useState<
@@ -127,6 +129,17 @@ export function TrajectoriesView({
   useEffect(() => {
     void loadTrajectories();
   }, [loadTrajectories]);
+
+  useEffect(() => {
+    const previousSearchQuery = previousSearchQueryRef.current;
+    if (previousSearchQuery === searchQuery) {
+      return;
+    }
+    previousSearchQueryRef.current = searchQuery;
+    if (selectedTrajectoryId != null) {
+      onSelectTrajectory?.(null);
+    }
+  }, [searchQuery, selectedTrajectoryId, onSelectTrajectory]);
 
   const handleExport = async (
     format: "json" | "csv" | "zip",
