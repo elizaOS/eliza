@@ -13,6 +13,16 @@
 
 import type http from "node:http";
 import { deviceBridge } from "../services/local-inference/device-bridge";
+import {
+  handlerRegistry,
+  toPublicRegistration,
+} from "../services/local-inference/handler-registry";
+import {
+  type RoutingPolicy,
+  readRoutingPreferences,
+  setPolicy,
+  setPreferredProvider,
+} from "../services/local-inference/routing-preferences";
 import { localInferenceService } from "../services/local-inference/service";
 import type {
   AgentModelSlot,
