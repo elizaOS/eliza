@@ -83,10 +83,7 @@ function runChild(script: string, modelPath: string): Promise<ChildResult> {
   });
 }
 
-const ENGINE_MODULE = path.resolve(
-  __dirname,
-  "engine.ts",
-);
+const ENGINE_MODULE = path.resolve(__dirname, "engine.ts");
 
 const CHILD_SCRIPT = `
 import { LocalInferenceEngine } from ${JSON.stringify(ENGINE_MODULE)};
@@ -122,38 +119,34 @@ try {
 `;
 
 describe("LocalInferenceEngine e2e (real GGUF, real inference)", () => {
-  it(
-    "loads a GGUF and produces generated text",
-    async () => {
-      const pick = await pickSmallestGguf();
-      console.log(
-        `[engine.e2e] HOME=${process.env.HOME} cwd=${process.cwd()} pick=${pick?.path ?? "null"}`,
+  it("loads a GGUF and produces generated text", async () => {
+    const pick = await pickSmallestGguf();
+    console.log(
+      `[engine.e2e] HOME=${process.env.HOME} cwd=${process.cwd()} pick=${pick?.path ?? "null"}`,
+    );
+    if (!pick) {
+      console.warn(
+        "[engine.e2e] No local GGUF found. Install an LM Studio / Jan / Ollama model, or run a real Milady download, to exercise this path.",
       );
-      if (!pick) {
-        console.warn(
-          "[engine.e2e] No local GGUF found. Install an LM Studio / Jan / Ollama model, or run a real Milady download, to exercise this path.",
-        );
-        return;
-      }
-      console.log(
-        `[engine.e2e] Using ${pick.externalOrigin} model at ${pick.path} (${(pick.sizeBytes / 1024 ** 3).toFixed(2)} GB)`,
-      );
+      return;
+    }
+    console.log(
+      `[engine.e2e] Using ${pick.externalOrigin} model at ${pick.path} (${(pick.sizeBytes / 1024 ** 3).toFixed(2)} GB)`,
+    );
 
-      const result = await runChild(CHILD_SCRIPT, pick.path);
-      if (!result.ok) {
-        throw new Error(`engine child failed: ${result.error}`);
-      }
-      console.log(
-        `[engine.e2e] "Say hello." → ${JSON.stringify(result.generatedText)}`,
-      );
-      console.log(
-        `[engine.e2e] "What is 2+2?" → ${JSON.stringify(result.generatedText2)}`,
-      );
-      expect(typeof result.generatedText).toBe("string");
-      expect((result.generatedText ?? "").length).toBeGreaterThan(0);
-      expect(typeof result.generatedText2).toBe("string");
-      expect((result.generatedText2 ?? "").length).toBeGreaterThan(0);
-    },
-    300_000,
-  );
+    const result = await runChild(CHILD_SCRIPT, pick.path);
+    if (!result.ok) {
+      throw new Error(`engine child failed: ${result.error}`);
+    }
+    console.log(
+      `[engine.e2e] "Say hello." → ${JSON.stringify(result.generatedText)}`,
+    );
+    console.log(
+      `[engine.e2e] "What is 2+2?" → ${JSON.stringify(result.generatedText2)}`,
+    );
+    expect(typeof result.generatedText).toBe("string");
+    expect((result.generatedText ?? "").length).toBeGreaterThan(0);
+    expect(typeof result.generatedText2).toBe("string");
+    expect((result.generatedText2 ?? "").length).toBeGreaterThan(0);
+  }, 300_000);
 });

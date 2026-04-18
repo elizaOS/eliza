@@ -2288,11 +2288,21 @@ export const calendarAction: Action & {
     "RECURRING_TIME_BLOCK",
     "REBOOK_TRAVEL",
   ],
+  tags: [
+    "always-include",
+    "calendar",
+    "schedule",
+    "meeting",
+    "event",
+    "recurring block",
+    "time block",
+    "travel itinerary",
+  ],
   description:
     "Interact with Google Calendar through LifeOps. " +
     "USE this action for: viewing today's or this week's schedule; checking the next upcoming event; " +
     "searching events by title, attendee, location, or date range; creating new calendar events; " +
-    "querying travel itineraries, flights, hotel stays, trip windows, reserving time blocks, and rebooking or moving calendar-backed commitments. " +
+    "querying travel itineraries, flights, hotel stays, trip windows, reserving recurring time blocks, and rebooking or moving calendar-backed commitments. " +
     "DO NOT use this action for email inbox work, drafting or sending emails — use GMAIL_ACTION instead. " +
     "DO NOT use this action for personal habits, goals, routines, or reminders — use LIFE instead. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",

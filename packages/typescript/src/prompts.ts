@@ -441,7 +441,7 @@ export const messageHandlerTemplate = `task: Generate dialog and actions for {{a
 context:
 {{providers}}
 
-rules[14]:
+rules[15]:
 - think briefly, then respond
 - always include a <thought> field, even for direct replies
 - actions execute in listed order

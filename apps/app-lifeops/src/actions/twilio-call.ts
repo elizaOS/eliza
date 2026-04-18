@@ -317,6 +317,13 @@ export const callUserAction: Action & {
     "ESCALATE_TO_OWNER",
     "CALL_IF_STUCK",
   ],
+  tags: [
+    "always-include",
+    "call me",
+    "phone me",
+    "stuck in browser",
+    "unblock computer",
+  ],
   description:
     "Place an outbound phone call to the agent owner via Twilio. Use this when the assistant is blocked and needs real-time help from the owner, or when the owner explicitly asks to be called. This action can be selected on a standing escalation policy or first-turn draft; without confirmation it returns a confirmation request instead of dialing.",
   suppressPostActionContinuation: true,
@@ -441,6 +448,13 @@ export const callExternalAction: Action & {
     "BOOK_BY_PHONE",
     "REBOOK_BY_PHONE",
   ],
+  tags: [
+    "always-include",
+    "book by phone",
+    "rebook by phone",
+    "call vendor",
+    "call airline",
+  ],
   description:
     "Place an outbound phone call to a third party via Twilio. Use this for approved booking/reschedule/escalation calls to vendors or counterparties. This action can draft the call, ask which saved contact to use, and then require confirmation before dialing. The recipient must appear in the configured allow-list before the actual call is placed.",
   suppressPostActionContinuation: true,
@@ -558,6 +572,20 @@ export const callExternalAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "I can draft that external call. Tell me which saved contact or number to use, and I'll ask for confirmation before dialing.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "I can go ahead and start booking the flights and hotel today if that's good with you.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I can draft the booking calls and hold them behind your approval so nothing gets booked until you say yes.",
         },
       },
     ],

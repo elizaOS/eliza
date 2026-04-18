@@ -287,6 +287,18 @@ export function LocalInferencePanel() {
 
   return (
     <div className="flex flex-col gap-4">
+      <header className="flex flex-col gap-1">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Local models
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Run llama.cpp on this machine or on a paired device. Enable alongside
+          cloud providers — the agent will prefer whichever handler has the
+          highest priority for each ModelType. Use the slot assignments below to
+          pin a specific local model to a slot, or leave them unset to let cloud
+          take priority when configured.
+        </p>
+      </header>
       <HardwareBadge hardware={hub.hardware} />
       <DeviceBridgeStatusBar />
       {mobile && (

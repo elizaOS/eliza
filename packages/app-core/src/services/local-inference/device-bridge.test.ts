@@ -100,8 +100,7 @@ async function connectDevice(
         pairingToken: registerPayload.pairingToken,
         capabilities: {
           platform: registerPayload.platform,
-          deviceModel:
-            registerPayload.deviceModel ?? registerPayload.platform,
+          deviceModel: registerPayload.deviceModel ?? registerPayload.platform,
           totalRamGb: registerPayload.totalRamGb,
           cpuCores: 8,
           gpu,
@@ -144,7 +143,10 @@ async function connectDevice(
         return Promise.resolve(msg) as Promise<never>;
       }
       return new Promise((resolve) => {
-        pending.push({ type, resolve: resolve as typeof pending[0]["resolve"] });
+        pending.push({
+          type,
+          resolve: resolve as (typeof pending)[0]["resolve"],
+        });
       }) as Promise<never>;
     },
     async close() {
@@ -373,9 +375,7 @@ describe("DeviceBridge e2e", () => {
     // Fresh bridge since the token is read in the constructor.
     const tokenHarness = await startHarness();
     try {
-      const socket = new WebSocket(
-        `${tokenHarness.wsUrl}?token=shhhh`,
-      );
+      const socket = new WebSocket(`${tokenHarness.wsUrl}?token=shhhh`);
       await new Promise<void>((resolve, reject) => {
         socket.once("open", () => resolve());
         socket.once("error", reject);
