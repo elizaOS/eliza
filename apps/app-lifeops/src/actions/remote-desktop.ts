@@ -27,6 +27,29 @@ interface RemoteDesktopParameters {
   confirmed?: boolean;
 }
 
+function parseLooseParameterString(raw: unknown): Partial<RemoteDesktopParameters> {
+  if (typeof raw !== "string") {
+    return {};
+  }
+  const subactionMatch = raw.match(
+    /\bsubaction\s*[:=]\s*["']?([a-z_]+)["']?/i,
+  );
+  const intentMatch = raw.match(/\bintent\s*[:=]\s*["']?([^,"']+)["']?/i);
+  const sessionIdMatch = raw.match(
+    /\bsessionId\s*[:=]\s*["']?([a-z0-9-]+)["']?/i,
+  );
+  const confirmedMatch = raw.match(/\bconfirmed\s*[:=]\s*(true|false)\b/i);
+  return {
+    subaction: subactionMatch?.[1],
+    intent: intentMatch?.[1]?.trim(),
+    sessionId: sessionIdMatch?.[1],
+    confirmed:
+      confirmedMatch?.[1] != null
+        ? confirmedMatch[1].toLowerCase() === "true"
+        : undefined,
+  };
+}
+
 function coerceSubaction(value: unknown): RemoteDesktopSubaction | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim().toLowerCase();
@@ -70,6 +93,21 @@ function inferSubactionFromText(
     )
   ) {
     return "start";
+  }
+  return undefined;
+}
+
+function inferConfirmedFromText(text: string): boolean | undefined {
+  const lower = text.toLowerCase();
+  if (
+    /\bconfirmed\s*:\s*true\b/.test(lower) ||
+    /\byes[, ]+confirmed\b/.test(lower) ||
+    /\bplease proceed\b/.test(lower)
+  ) {
+    return true;
+  }
+  if (/\bconfirmed\s*:\s*false\b/.test(lower)) {
+    return false;
   }
   return undefined;
 }
@@ -187,8 +225,13 @@ export const remoteDesktopAction: Action & {
       };
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
-      {}) as RemoteDesktopParameters;
+    const rawParameters = (options as HandlerOptions | undefined)?.parameters;
+    const params = {
+      ...parseLooseParameterString(rawParameters),
+      ...((typeof rawParameters === "object" && rawParameters !== null
+        ? (rawParameters as RemoteDesktopParameters)
+        : {}) ?? {}),
+    } satisfies RemoteDesktopParameters;
 
     const messageText =
       typeof message.content?.text === "string" ? message.content.text : "";
@@ -279,7 +322,11 @@ export const remoteDesktopAction: Action & {
     }
 
     // subaction === "start"
-    if (params.confirmed !== true) {
+    const confirmed =
+      params.confirmed === true
+        ? true
+        : (inferConfirmedFromText(params.intent ?? messageText) ?? false);
+    if (!confirmed) {
       const backend = await detectRemoteDesktopBackend();
       return {
         text:
