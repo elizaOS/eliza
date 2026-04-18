@@ -8,7 +8,7 @@
   "dependencies": {
     "@codama/nodes-from-anchor": "^1.2.3",
     "@coral-xyz/anchor": "^0.32.0",
-    "@coral-xyz/borsh": "^0.31.1",
+    "@coral-xyz/borsh": "^0.32.0",
     "@ellipsis-labs/phoenix-sdk": "^2.0.3",
     "@jup-ag/api": "^6.0.0",
     "@orca-so/whirlpools-sdk": "^0.15.0",
