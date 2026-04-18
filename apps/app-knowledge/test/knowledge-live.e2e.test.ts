@@ -220,7 +220,7 @@ The deployment codeword is ${KNOWLEDGE_CODEWORD}.
       server?.port ?? 0,
       conversationId,
       {
-        text: "What is the deployment codeword from the uploaded knowledge document? Reply with just the codeword.",
+        text: "What is the deployment codeword? Reply with only the codeword.",
       },
       undefined,
       { timeoutMs: 120_000 },

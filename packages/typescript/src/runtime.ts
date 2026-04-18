@@ -4150,31 +4150,45 @@ export class AgentRuntime implements IAgentRuntime {
 				: typeof response === "string"
 					? response
 					: undefined;
-		this.adapter.createLogs([
-			{
-				entityId: this.agentId,
-				roomId: this.currentRoomId ?? this.agentId,
-				body: {
-					modelType,
-					modelKey,
-					prompt: promptContent ?? undefined,
-					systemPrompt: this.character.system ?? undefined,
-					runId: this.getCurrentRunId(),
-					timestamp: Date.now(),
-					executionTime: elapsedTime,
-					provider:
-						provider || this.models.get(modelKey)?.[0]?.provider || "unknown",
-					actionContext: this.currentActionContext
-						? {
-								actionName: this.currentActionContext.actionName,
-								actionId: this.currentActionContext.actionId,
-							}
-						: undefined,
-					response: responseValue,
+		void this.adapter
+			.createLogs([
+				{
+					entityId: this.agentId,
+					roomId: this.currentRoomId ?? this.agentId,
+					body: {
+						modelType,
+						modelKey,
+						prompt: promptContent ?? undefined,
+						systemPrompt: this.character.system ?? undefined,
+						runId: this.getCurrentRunId(),
+						timestamp: Date.now(),
+						executionTime: elapsedTime,
+						provider:
+							provider ||
+							this.models.get(modelKey)?.[0]?.provider ||
+							"unknown",
+						actionContext: this.currentActionContext
+							? {
+									actionName: this.currentActionContext.actionName,
+									actionId: this.currentActionContext.actionId,
+								}
+							: undefined,
+						response: responseValue,
+					},
+					type: `useModel:${modelKey}`,
 				},
-				type: `useModel:${modelKey}`,
-			},
-		]);
+			])
+			.catch((error) => {
+				this.logger.debug(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						model: modelKey,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"Model call log write failed",
+				);
+			});
 	}
 
 	async useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(

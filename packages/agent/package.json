@@ -44,6 +44,7 @@
     "./api": "./src/api/index.ts",
     "./api/*": "./src/api/*.ts",
     "./api/server": "./src/api/server.ts",
+    "./api/server-auth": "./src/api/server-auth.ts",
     "./auth": "./src/auth/index.ts",
     "./auth/*": "./src/auth/*.ts",
     "./autonomy": "./src/autonomy/index.ts",
