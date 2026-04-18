@@ -2703,6 +2703,16 @@ async function groundCalendarSearchMatchesWithLlm(
   }
 }
 
+function buildCalendarGroundingCandidates(
+  events: LifeOpsCalendarEvent[],
+): RankedCalendarSearchCandidate[] {
+  return events.slice(0, 24).map((event, index) => ({
+    event,
+    score: Math.max(1, 24 - index),
+    matchedQueries: [],
+  }));
+}
+
 function eventStartMs(event: LifeOpsCalendarEvent): number {
   return Date.parse(event.startAt);
 }
@@ -2936,6 +2946,7 @@ export const calendarAction: Action & {
       | undefined;
     const params = rawParams ?? ({} as CalendarActionParams);
     const intent = resolveCalendarIntentInput(params.intent, message);
+    const currentMessageText = messageText(message).trim();
     const details = normalizeCalendarDetails(params.details);
     const planningTimeZone = resolveCalendarTimeZone(details);
     const llmPlan = await extractCalendarPlanWithLlm(
@@ -3693,26 +3704,59 @@ export const calendarAction: Action & {
 
       if (subaction === "search_events") {
         let queriesForSearch = searchQueries;
+        const recentConversation = (
+          await collectRecentConversationTexts({
+            runtime,
+            message,
+            state,
+            limit: 8,
+          })
+        ).join("\n");
         if (queriesForSearch.length === 0) {
-          const recentConversation = (
-            await collectRecentConversationTexts({
-              runtime,
-              message,
-              state,
-              limit: 8,
-            })
-          ).join("\n");
           queriesForSearch = await recoverCalendarSearchQueriesWithLlm({
             runtime,
-            currentMessage: messageText(message).trim(),
+            currentMessage: currentMessageText,
             intent,
             recentConversation,
           });
           if (queriesForSearch.length === 0) {
+            const groundedFromFeed = await groundCalendarSearchMatchesWithLlm(
+              runtime,
+              state,
+              intent,
+              [],
+              buildCalendarGroundingCandidates(feed.events),
+            );
+            if (groundedFromFeed && groundedFromFeed.length > 0) {
+              const groundedIdSet = new Set(groundedFromFeed);
+              const filteredEvents = feed.events.filter((event) =>
+                groundedIdSet.has(event.id),
+              );
+              const fallback = formatCalendarSearchResults(
+                filteredEvents,
+                currentMessageText || intent || "your request",
+                label,
+              );
+              return respond({
+                success: true,
+                text: await renderReply("search_results", fallback, {
+                  query: currentMessageText || intent,
+                  queries: [],
+                  events: filteredEvents,
+                  label,
+                }),
+                data: toActionData({
+                  ...feed,
+                  query: currentMessageText || intent,
+                  queries: [],
+                  events: filteredEvents,
+                }),
+              });
+            }
             const recoveredReadPlan =
               await disambiguateCalendarReadPlanWithLlm({
                 runtime,
-                currentMessage: messageText(message).trim(),
+                currentMessage: currentMessageText,
                 intent,
                 recentConversation,
                 candidateSubaction: "search_events",
@@ -3802,6 +3846,23 @@ export const calendarAction: Action & {
             filteredEvents = rankedEvents
               .filter((candidate) => groundedIdSet.has(candidate.event.id))
               .map((candidate) => candidate.event);
+          }
+        }
+        if (filteredEvents.length === 0 && feed.events.length > 0) {
+          const groundedIds = await groundCalendarSearchMatchesWithLlm(
+            runtime,
+            state,
+            intent,
+            queriesForSearch,
+            rankedEvents.length > 0
+              ? rankedEvents.slice(0, 12)
+              : buildCalendarGroundingCandidates(feed.events),
+          );
+          if (groundedIds && groundedIds.length > 0) {
+            const groundedIdSet = new Set(groundedIds);
+            filteredEvents = feed.events.filter((event) =>
+              groundedIdSet.has(event.id),
+            );
           }
         }
         const fallback = formatCalendarSearchResults(
