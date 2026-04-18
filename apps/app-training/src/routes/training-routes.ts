@@ -4,6 +4,7 @@ import type {
 } from "@elizaos/agent/api/route-helpers";
 import { parsePositiveInteger } from "@elizaos/agent/utils/number-parsing";
 import type { AgentRuntime } from "@elizaos/core";
+import { AGENT_CONTEXTS, type AgentContext } from "../core/context-types.js";
 import type { RoleplayExecutionReport } from "../core/roleplay-executor.js";
 import {
   ALL_TRAINING_BACKENDS,
@@ -73,6 +74,53 @@ function getTriggerEntry(
     return candidate as RegisteredTrainingTriggerEntry;
   }
   return null;
+}
+
+const AGENT_DECISIONS = ["RESPOND", "IGNORE", "STOP"] as const;
+type AgentDecision = (typeof AGENT_DECISIONS)[number];
+
+function narrowAgentContexts(input: unknown): AgentContext[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const out: AgentContext[] = [];
+  for (const entry of input) {
+    if (
+      typeof entry === "string" &&
+      (AGENT_CONTEXTS as readonly string[]).includes(entry)
+    ) {
+      out.push(entry as AgentContext);
+    }
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function narrowAgentDecisions(input: unknown): AgentDecision[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const out: AgentDecision[] = [];
+  for (const entry of input) {
+    if (
+      typeof entry === "string" &&
+      (AGENT_DECISIONS as readonly string[]).includes(entry)
+    ) {
+      out.push(entry as AgentDecision);
+    }
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function narrowTrainingTasks(
+  input: unknown,
+): readonly TrajectoryTrainingTask[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const out: TrajectoryTrainingTask[] = [];
+  for (const entry of input) {
+    if (
+      typeof entry === "string" &&
+      (ALL_TRAINING_TASKS as readonly string[]).includes(entry)
+    ) {
+      out.push(entry as TrajectoryTrainingTask);
+    }
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 function parseTaskOrNull(input: unknown): {
@@ -579,8 +627,8 @@ export async function handleTrainingRoutes(
         outputDir,
         concurrency: body.concurrency ?? 5,
         limitBlueprints: body.limitBlueprints,
-        filterContexts: body.filterContexts as any,
-        filterDecisions: body.filterDecisions as any,
+        filterContexts: narrowAgentContexts(body.filterContexts),
+        filterDecisions: narrowAgentDecisions(body.filterDecisions),
       });
 
       const { validateDataset } = await import("../core/replay-validator.js");
@@ -657,8 +705,8 @@ export async function handleTrainingRoutes(
         outputDir,
         concurrency: body.concurrency ?? 5,
         limitBlueprints: body.limitBlueprints,
-        filterContexts: body.filterContexts as any,
-        filterDecisions: body.filterDecisions as any,
+        filterContexts: narrowAgentContexts(body.filterContexts),
+        filterDecisions: narrowAgentDecisions(body.filterDecisions),
       });
       const episodes = buildRoleplayEpisodes(samples);
       const paths = await exportRoleplayEpisodes(episodes, samples, outputDir);
@@ -791,9 +839,14 @@ export async function handleTrainingRoutes(
           "../core/trajectory-task-datasets.js"
         );
         const dataset = await exportTrajectoryTaskDatasets(
-          details as any,
+          // TrainingServiceLike returns loose Record<string, unknown>; cast at
+          // the boundary so the exporter can typecheck against the real
+          // Trajectory shape it was designed for.
+          details as unknown as Parameters<
+            typeof exportTrajectoryTaskDatasets
+          >[0],
           body.outputDir ?? `.tmp/training-trajectory-export-${Date.now()}`,
-          body.tasks as any,
+          narrowTrainingTasks(body.tasks),
         );
         exported =
           dataset.counts.should_respond +
@@ -875,9 +928,10 @@ export async function handleTrainingRoutes(
         projectId: body.projectId,
         region: body.region ?? "us-central1",
         gcsBucket: body.gcsBucket,
-        baseModel: (body.baseModel === "flash"
-          ? "gemini-2.5-flash"
-          : "gemini-2.5-flash-lite") as any,
+        baseModel:
+          body.baseModel === "flash"
+            ? "gemini-2.5-flash"
+            : "gemini-2.5-flash-lite",
         trainingDataPath: body.trainingDataPath,
         validationDataPath: body.validationDataPath,
         epochs: body.epochs ?? 3,
@@ -1065,8 +1119,8 @@ export async function handleTrainingRoutes(
             outputDir: datasetOutputDir,
             concurrency: body.concurrency ?? 5,
             limitBlueprints: body.limitBlueprints,
-            filterContexts: body.filterContexts as any,
-            filterDecisions: body.filterDecisions as any,
+            filterContexts: narrowAgentContexts(body.filterContexts),
+            filterDecisions: narrowAgentDecisions(body.filterDecisions),
           });
           datasetPaths = await exportToGeminiJSONL(samples, datasetOutputDir);
           trainingDataPath =
