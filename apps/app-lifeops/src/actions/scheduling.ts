@@ -283,19 +283,30 @@ async function denyIfNoAccess(
   return !(await hasLifeOpsAccess(runtime, message));
 }
 
-export const proposeMeetingTimesAction: Action = {
+export const proposeMeetingTimesAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "PROPOSE_MEETING_TIMES",
   similes: [
     "SUGGEST_MEETING_TIMES",
     "OFFER_MEETING_SLOTS",
     "FIND_MEETING_SLOTS",
     "PROPOSE_SLOTS",
+    "BUNDLE_MEETINGS_WHILE_TRAVELING",
+  ],
+  tags: [
+    "always-include",
+    "meeting slots",
+    "bundle meetings",
+    "travel scheduling",
+    "reschedule options",
   ],
   description:
     "Propose candidate meeting time slots to offer to another person. " +
     "Reads the owner's calendar busy times and meeting preferences " +
     "(preferred hours, blackout windows, travel buffer) and returns " +
-    "three available slots by default over the next seven days.",
+    "three available slots by default over the next seven days. Use this for bundled scheduling while traveling or when you need concrete reschedule options.",
+  suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (runtime, message, _state, options, callback) => {
     if (await denyIfNoAccess(runtime, message)) {
@@ -417,6 +428,22 @@ export const proposeMeetingTimesAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "While I'm traveling, try to bundle meetings with PendingReality and Ryan on the same day if possible.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll propose bundled meeting slots that cluster those meetings together while you're traveling.",
+        },
+      },
+    ],
+  ],
 };
 
 export const checkAvailabilityAction: Action = {
@@ -533,6 +560,13 @@ export const updateMeetingPreferencesAction: Action & {
     "SLEEP_WINDOW",
     "NO_CALL_HOURS",
     "PROTECT_SLEEP",
+  ],
+  tags: [
+    "always-include",
+    "sleep window",
+    "no-call hours",
+    "protected hours",
+    "blackout window",
   ],
   description:
     "Persist the owner's meeting scheduling preferences: preferred start/end " +

@@ -241,6 +241,15 @@ export const inboxAction: Action & {
     "MISSED_CALL_FOLLOWUP",
     "GROUP_CHAT_HANDOFF",
   ],
+  tags: [
+    "always-include",
+    "daily brief",
+    "cross-channel inbox",
+    "missed call repair",
+    "group chat handoff",
+    "bump unanswered decision",
+    "unread summary",
+  ],
   description:
     "Unified inbox management: triage new messages across all channels, " +
     "generate a daily digest summary, or draft/send a response to a triaged " +
@@ -434,6 +443,20 @@ export const inboxAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "Understood. If the relay gets tangled, I'll suggest a group-chat handoff instead of letting the thread drift.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "If I still haven't answered about those three events, bump me again with context instead of starting over.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll keep the prior context attached and bump you again about those three events instead of restarting the thread from zero.",
         },
       },
     ],
