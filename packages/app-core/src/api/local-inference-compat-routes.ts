@@ -13,6 +13,17 @@
 
 import type http from "node:http";
 import { deviceBridge } from "../services/local-inference/device-bridge";
+import {
+  handlerRegistry,
+  toPublicRegistration,
+} from "../services/local-inference/handler-registry";
+import { snapshotProviders } from "../services/local-inference/providers";
+import {
+  type RoutingPolicy,
+  readRoutingPreferences,
+  setPolicy,
+  setPreferredProvider,
+} from "../services/local-inference/routing-preferences";
 import { localInferenceService } from "../services/local-inference/service";
 import type {
   AgentModelSlot,
@@ -233,6 +244,128 @@ export async function handleLocalInferenceCompatRoutes(
         res,
         400,
         err instanceof Error ? err.message : "Failed to start download",
+      );
+    }
+    return true;
+  }
+
+  // ── GET: provider snapshot (enable state + supported slots) ────────
+  if (method === "GET" && pathname === "/api/local-inference/providers") {
+    if (!ensureCompatApiAuthorized(req, res)) return true;
+    try {
+      const providers = await snapshotProviders();
+      sendJsonResponse(res, 200, { providers });
+    } catch (err) {
+      sendJsonErrorResponse(
+        res,
+        500,
+        err instanceof Error ? err.message : "Failed to snapshot providers",
+      );
+    }
+    return true;
+  }
+
+  // ── GET: registered model handlers across all providers ────────────
+  if (method === "GET" && pathname === "/api/local-inference/routing") {
+    if (!ensureCompatApiAuthorized(req, res)) return true;
+    try {
+      const prefs = await readRoutingPreferences();
+      const registrations = handlerRegistry.getAll().map(toPublicRegistration);
+      sendJsonResponse(res, 200, { registrations, preferences: prefs });
+    } catch (err) {
+      sendJsonErrorResponse(
+        res,
+        500,
+        err instanceof Error ? err.message : "Failed to read routing state",
+      );
+    }
+    return true;
+  }
+
+  // ── POST: set preferred provider for a slot (manual override) ──────
+  if (
+    method === "POST" &&
+    pathname === "/api/local-inference/routing/preferred"
+  ) {
+    if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
+    const body = await readCompatJsonBody(req, res);
+    if (!body) return true;
+    const slot = stringBody(body, "slot") as AgentModelSlot | null;
+    if (!slot || !AGENT_MODEL_SLOTS.includes(slot)) {
+      sendJsonErrorResponse(
+        res,
+        400,
+        "slot is required and must be a valid AgentModelSlot",
+      );
+      return true;
+    }
+    const raw = body.provider;
+    const provider =
+      raw === null
+        ? null
+        : typeof raw === "string" && raw.trim().length > 0
+          ? raw.trim()
+          : null;
+    try {
+      const prefs = await setPreferredProvider(slot, provider);
+      sendJsonResponse(res, 200, { preferences: prefs });
+    } catch (err) {
+      sendJsonErrorResponse(
+        res,
+        500,
+        err instanceof Error
+          ? err.message
+          : "Failed to write preferred provider",
+      );
+    }
+    return true;
+  }
+
+  // ── POST: set routing policy for a slot ─────────────────────────────
+  if (method === "POST" && pathname === "/api/local-inference/routing/policy") {
+    if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
+    const body = await readCompatJsonBody(req, res);
+    if (!body) return true;
+    const slot = stringBody(body, "slot") as AgentModelSlot | null;
+    if (!slot || !AGENT_MODEL_SLOTS.includes(slot)) {
+      sendJsonErrorResponse(
+        res,
+        400,
+        "slot is required and must be a valid AgentModelSlot",
+      );
+      return true;
+    }
+    const validPolicies: RoutingPolicy[] = [
+      "manual",
+      "cheapest",
+      "fastest",
+      "prefer-local",
+      "round-robin",
+    ];
+    const raw = body.policy;
+    const policy =
+      raw === null
+        ? null
+        : typeof raw === "string" &&
+            validPolicies.includes(raw as RoutingPolicy)
+          ? (raw as RoutingPolicy)
+          : null;
+    if (raw !== null && policy === null) {
+      sendJsonErrorResponse(
+        res,
+        400,
+        `policy must be one of ${validPolicies.join(", ")} or null`,
+      );
+      return true;
+    }
+    try {
+      const prefs = await setPolicy(slot, policy);
+      sendJsonResponse(res, 200, { preferences: prefs });
+    } catch (err) {
+      sendJsonErrorResponse(
+        res,
+        500,
+        err instanceof Error ? err.message : "Failed to write routing policy",
       );
     }
     return true;

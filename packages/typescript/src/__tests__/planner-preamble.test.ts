@@ -20,10 +20,18 @@
 import { describe, expect, it } from "vitest";
 import { shouldEmitPlannerPreamble } from "../services/message.ts";
 
+const runtime = {
+	actions: [
+		{ name: "INBOX" },
+		{ name: "GMAIL_ACTION" },
+		{ name: "BLOCK_WEBSITES", suppressPostActionContinuation: true },
+	],
+} as Parameters<typeof shouldEmitPlannerPreamble>[0];
+
 describe("shouldEmitPlannerPreamble", () => {
 	it("emits when first action is a non-terminal action and text is present", () => {
 		expect(
-			shouldEmitPlannerPreamble({
+			shouldEmitPlannerPreamble(runtime, {
 				text: "checking your inbox",
 				actions: ["INBOX"],
 			}),
@@ -32,7 +40,7 @@ describe("shouldEmitPlannerPreamble", () => {
 
 	it("emits when text is present and first action is any non-REPLY/IGNORE/STOP", () => {
 		expect(
-			shouldEmitPlannerPreamble({
+			shouldEmitPlannerPreamble(runtime, {
 				text: "looking that up",
 				actions: ["GMAIL_ACTION"],
 			}),
@@ -41,59 +49,68 @@ describe("shouldEmitPlannerPreamble", () => {
 
 	it("does not emit when first action is REPLY (REPLY handler produces text)", () => {
 		expect(
-			shouldEmitPlannerPreamble({ text: "hello", actions: ["REPLY"] }),
+			shouldEmitPlannerPreamble(runtime, { text: "hello", actions: ["REPLY"] }),
 		).toBe(false);
 	});
 
 	it("does not emit when first action is IGNORE (no user-visible response)", () => {
 		expect(
-			shouldEmitPlannerPreamble({ text: "irrelevant", actions: ["IGNORE"] }),
+			shouldEmitPlannerPreamble(runtime, {
+				text: "irrelevant",
+				actions: ["IGNORE"],
+			}),
 		).toBe(false);
 	});
 
 	it("does not emit when first action is STOP (terminal)", () => {
 		expect(
-			shouldEmitPlannerPreamble({ text: "shutting down", actions: ["STOP"] }),
+			shouldEmitPlannerPreamble(runtime, {
+				text: "shutting down",
+				actions: ["STOP"],
+			}),
 		).toBe(false);
 	});
 
 	it("does not emit when text is empty", () => {
-		expect(shouldEmitPlannerPreamble({ text: "", actions: ["INBOX"] })).toBe(
-			false,
-		);
+		expect(
+			shouldEmitPlannerPreamble(runtime, { text: "", actions: ["INBOX"] }),
+		).toBe(false);
 	});
 
 	it("does not emit when text is whitespace only", () => {
 		expect(
-			shouldEmitPlannerPreamble({ text: "   \n  ", actions: ["INBOX"] }),
+			shouldEmitPlannerPreamble(runtime, {
+				text: "   \n  ",
+				actions: ["INBOX"],
+			}),
 		).toBe(false);
 	});
 
 	it("does not emit when actions array is empty", () => {
-		expect(shouldEmitPlannerPreamble({ text: "something", actions: [] })).toBe(
-			false,
-		);
+		expect(
+			shouldEmitPlannerPreamble(runtime, { text: "something", actions: [] }),
+		).toBe(false);
 	});
 
 	it("normalizes action identifiers (underscores, case)", () => {
-		expect(shouldEmitPlannerPreamble({ text: "hi", actions: ["reply"] })).toBe(
-			false,
-		);
-		expect(shouldEmitPlannerPreamble({ text: "hi", actions: ["Re_Ply"] })).toBe(
-			false,
-		);
+		expect(
+			shouldEmitPlannerPreamble(runtime, { text: "hi", actions: ["reply"] }),
+		).toBe(false);
+		expect(
+			shouldEmitPlannerPreamble(runtime, { text: "hi", actions: ["Re_Ply"] }),
+		).toBe(false);
 	});
 
 	it("returns false for null / undefined content", () => {
-		expect(shouldEmitPlannerPreamble(null)).toBe(false);
-		expect(shouldEmitPlannerPreamble(undefined)).toBe(false);
+		expect(shouldEmitPlannerPreamble(runtime, null)).toBe(false);
+		expect(shouldEmitPlannerPreamble(runtime, undefined)).toBe(false);
 	});
 
 	it("skips preamble when REPLY is the first action even if other actions follow", () => {
 		// The REPLY handler is still invoked via processActions and produces
 		// its own user-visible text, so we don't pre-emit the plan.
 		expect(
-			shouldEmitPlannerPreamble({
+			shouldEmitPlannerPreamble(runtime, {
 				text: "checking",
 				actions: ["REPLY", "INBOX"],
 			}),
@@ -104,10 +121,19 @@ describe("shouldEmitPlannerPreamble", () => {
 		// First action drives the decision; REPLY later in the list is the
 		// responsibility of processActions.
 		expect(
-			shouldEmitPlannerPreamble({
+			shouldEmitPlannerPreamble(runtime, {
 				text: "checking your inbox",
 				actions: ["INBOX", "REPLY"],
 			}),
 		).toBe(true);
+	});
+
+	it("does not emit when the first action suppresses post-action continuation", () => {
+		expect(
+			shouldEmitPlannerPreamble(runtime, {
+				text: "blocking x.com and twitter.com for 1 minute.",
+				actions: ["BLOCK_WEBSITES"],
+			}),
+		).toBe(false);
 	});
 });

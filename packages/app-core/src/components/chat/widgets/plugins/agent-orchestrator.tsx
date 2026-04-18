@@ -363,9 +363,10 @@ function OrchestratorActivityWidget({
           variant="ghost"
           size="sm"
           onClick={clearEvents}
-          className="h-6 px-2 text-xs text-muted"
+          aria-label="Clear activity"
+          className="h-6 w-6 p-0 text-muted"
         >
-          Clear
+          <Trash2 className="h-3.5 w-3.5" />
         </Button>
       }
       testId="chat-widget-events"

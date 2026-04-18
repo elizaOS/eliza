@@ -41,9 +41,7 @@ class RingBuffer {
   }
   p50(): number | null {
     if (this.buf.length === 0) return null;
-    const sorted = [...this.buf]
-      .map((s) => s.durationMs)
-      .sort((a, b) => a - b);
+    const sorted = [...this.buf].map((s) => s.durationMs).sort((a, b) => a - b);
     return sorted[Math.floor(sorted.length / 2)] ?? null;
   }
   size(): number {
@@ -57,7 +55,9 @@ class RingBuffer {
  * Sources: vendor pricing pages. Local / device-bridge = 0 because the
  * user already paid for the hardware.
  */
-const COST_PER_MILLION_TOKENS: Partial<Record<string, { input: number; output: number }>> = {
+const COST_PER_MILLION_TOKENS: Partial<
+  Record<string, { input: number; output: number }>
+> = {
   "milady-local-inference": { input: 0, output: 0 },
   "milady-device-bridge": { input: 0, output: 0 },
   "capacitor-llama": { input: 0, output: 0 },
@@ -133,9 +133,13 @@ class PolicyEngine {
     /** Provider ID of the router itself — always excluded from candidates. */
     selfProvider: string;
   }): HandlerRegistration | null {
-    const eligible = args.candidates.filter(
-      (c) => c.provider !== args.selfProvider,
-    );
+    const eligible = args.candidates
+      .filter((c) => c.provider !== args.selfProvider)
+      .slice()
+      // Defensive sort — real callers already sort, but test fixtures and
+      // non-registry callers might not, and a silent "pick-wrong" would be
+      // worse than the extra O(n log n).
+      .sort((a, b) => b.priority - a.priority);
     if (eligible.length === 0) return null;
 
     switch (args.policy) {
@@ -173,9 +177,10 @@ class PolicyEngine {
         return ranked[0] ?? null;
       }
       case "prefer-local": {
-        const local = eligible.find((c) =>
-          c.provider === "milady-local-inference" ||
-          c.provider === "capacitor-llama",
+        const local = eligible.find(
+          (c) =>
+            c.provider === "milady-local-inference" ||
+            c.provider === "capacitor-llama",
         );
         if (local) return local;
         const bridge = eligible.find(

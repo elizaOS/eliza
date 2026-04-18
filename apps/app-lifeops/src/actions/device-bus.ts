@@ -8,6 +8,7 @@ import {
   type Memory,
 } from "@elizaos/core";
 import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { broadcastIntent } from "../lifeops/intent-sync.js";
 
 /**
  * Cross-device intent bus agent-side action.
@@ -30,6 +31,56 @@ type PublishDeviceIntentParameters = {
   payload?: unknown;
   userId?: string;
 };
+
+function coercePayload(
+  payload: unknown,
+): Record<string, unknown> {
+  return payload && typeof payload === "object"
+    ? (payload as Record<string, unknown>)
+    : {};
+}
+
+function readPayloadString(
+  payload: Record<string, unknown>,
+  keys: readonly string[],
+): string | null {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function mapLocalIntentKind(kind: string): "attention_request" | "routine_reminder" {
+  return kind === "block" ? "attention_request" : "routine_reminder";
+}
+
+async function publishLocalFallbackIntent(
+  runtime: IAgentRuntime,
+  kind: string,
+  payload: Record<string, unknown>,
+) {
+  const title =
+    readPayloadString(payload, ["title", "label", "subject"]) ??
+    `Device ${kind}`;
+  const body =
+    readPayloadString(payload, ["body", "message", "text", "description"]) ??
+    `Published ${kind} intent for local delivery.`;
+
+  return await broadcastIntent(runtime, {
+    kind: mapLocalIntentKind(kind),
+    title,
+    body,
+    priority: kind === "alarm" || kind === "block" ? "high" : "medium",
+    metadata: {
+      sourceAction: "PUBLISH_DEVICE_INTENT",
+      deviceBusKind: kind,
+      payload,
+    },
+  });
+}
 
 function readDeviceBusConfig(
   runtime: { getSetting?: (key: string) => unknown } | undefined,
@@ -108,25 +159,30 @@ export const publishDeviceIntentAction: Action & {
 
     const kind = normalizeKind(params.kind) ?? "reminder";
 
-    const payload =
-      params.payload && typeof params.payload === "object"
-        ? (params.payload as Record<string, unknown>)
-        : {};
+    const payload = coercePayload(params.payload);
 
     const config = readDeviceBusConfig(runtime);
     if (!config) {
       logger.warn(
         { action: "PUBLISH_DEVICE_INTENT", kind },
-        "[PUBLISH_DEVICE_INTENT] device bus not configured (set MILADY_DEVICE_BUS_URL)",
+        "[PUBLISH_DEVICE_INTENT] device bus not configured; falling back to local intent store",
       );
+      const localIntent = await publishLocalFallbackIntent(runtime, kind, payload);
       return {
-        text: "",
-        success: false,
-        values: { success: false, reason: "device-bus-not-configured", kind },
+        text: `Queued ${kind} intent locally for device delivery.`,
+        success: true,
+        values: {
+          success: true,
+          reason: "device-bus-local-fallback",
+          kind,
+          intentId: localIntent.id,
+        },
         data: {
           actionName: "PUBLISH_DEVICE_INTENT",
-          reason: "device-bus-not-configured",
+          reason: "device-bus-local-fallback",
           kind,
+          intentId: localIntent.id,
+          transport: "local-fallback",
         },
       };
     }

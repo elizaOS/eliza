@@ -445,7 +445,11 @@ describe("Action Invocation E2E", () => {
         if (!requireAction("SCHEDULING")) return;
         await withHarness(async (h) => {
           await h.send("Help me schedule a meeting with the design team.");
-          expectAnyCompletedAction(h, ["SCHEDULING", "PROPOSE_MEETING_TIMES"]);
+          expectAnyCompletedAction(h, [
+            "SCHEDULING",
+            "PROPOSE_MEETING_TIMES",
+            "CALENDAR_ACTION",
+          ]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,

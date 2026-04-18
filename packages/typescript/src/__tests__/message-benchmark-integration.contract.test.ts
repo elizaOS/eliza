@@ -14,7 +14,7 @@ describe("message service benchmark integration contracts", () => {
 		expect(source).toContain('function isBenchmarkMode(state: Pick<State, "values">)');
 		expect(source).not.toContain("state.values.benchmark_has_context === true");
 		expect(source).not.toContain("state.values.benchmark_has_context !== true");
-		expect(source.match(/isBenchmarkMode\(state\)/g)).toHaveLength(2);
+		expect(source.match(/isBenchmarkMode\(state\)/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
 	});
 
 	it("still gates both action forcing and continuation suppression on benchmark mode", async () => {

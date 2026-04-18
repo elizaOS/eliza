@@ -21,6 +21,8 @@ import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
 import { HuggingFaceSearch } from "./HuggingFaceSearch";
 import { ModelHubView } from "./ModelHubView";
+import { ProvidersList } from "./ProvidersList";
+import { RoutingMatrix } from "./RoutingMatrix";
 import { SlotAssignments } from "./SlotAssignments";
 
 /**
@@ -395,6 +397,8 @@ export function LocalInferencePanel() {
         />
       )}
 
+      <ProvidersList />
+      <RoutingMatrix />
       <SlotAssignments
         installed={hub.installed}
         assignments={hub.assignments}
