@@ -15,6 +15,7 @@ import { config as loadDotenv } from "dotenv";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
+import { resolveLiveBrowserExecutable } from "../../../../../test/helpers/browser-executable";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
 import {
   buildIsolatedLiveProviderEnv,
@@ -46,12 +47,11 @@ const API_TOKEN =
   process.env.ELIZA_API_TOKEN?.trim() ??
   "";
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY?.trim() ?? "";
-const CHROME_PATH =
-  process.env.ELIZA_CHROME_PATH ??
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const LIVE_BROWSER = resolveLiveBrowserExecutable();
+const CHROME_PATH = LIVE_BROWSER.executablePath;
 const LIVE_TESTS_ENABLED =
   process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
-const CHROME_AVAILABLE = existsSync(CHROME_PATH);
+const CHROME_AVAILABLE = CHROME_PATH !== null && existsSync(CHROME_PATH);
 const LIVE_PROVIDER =
   (LIVE_TESTS_ENABLED && selectLiveProvider("openai")) ||
   (LIVE_TESTS_ENABLED ? selectLiveProvider() : null);
@@ -272,6 +272,7 @@ function actionableQaRequestFailures(failures: QaRequestFailure[]): string[] {
 }
 
 let browser: Browser | null = null;
+let browserProfileDir: string | null = null;
 let UI_URL = DEFAULT_UI_URL;
 let liveStack: StartedStack | null = null;
 
@@ -289,23 +290,20 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
     console.log("[live-qa][setup] ui reachable");
     await ensureHttpOk(`${API_URL}/api/status`);
     console.log("[live-qa][setup] api reachable");
-    browser = await puppeteer.launch({
-      executablePath: CHROME_PATH,
-      headless: true,
-      protocolTimeout: 300_000,
-      args: [
-        "--autoplay-policy=no-user-gesture-required",
-        "--disable-background-timer-throttling",
-        "--disable-renderer-backgrounding",
-        "--use-angle=swiftshader",
-      ],
-    });
+    browserProfileDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-qa-browser-"),
+    );
+    browser = await launchQaBrowser(browserProfileDir);
     console.log("[live-qa][setup] browser launched");
   }, 120_000);
 
   afterAll(async () => {
     if (!CAN_RUN) return;
     await browser?.close();
+    if (browserProfileDir) {
+      await fs.rm(browserProfileDir, { recursive: true, force: true });
+      browserProfileDir = null;
+    }
     await stopRealStack(liveStack);
     liveStack = null;
   }, 30_000);
@@ -1904,7 +1902,9 @@ async function clickByTextWithin(page: Page, text: string, timeout = 45_000) {
     (expected) => {
       const normalizedExpected = String(expected).toLowerCase();
       return Array.from(
-        document.querySelectorAll<HTMLElement>("button,[role='button']"),
+        document.querySelectorAll<HTMLElement>(
+          "button,[role='button'],a,[data-radix-collection-item]",
+        ),
       ).some((element) => {
         const position = window.getComputedStyle(element).position;
         const visible =
@@ -1919,10 +1919,12 @@ async function clickByTextWithin(page: Page, text: string, timeout = 45_000) {
     text,
   );
 
-  const clicked = await page.evaluate((expected) => {
+  const targetBox = await page.evaluate((expected) => {
     const normalizedExpected = String(expected).toLowerCase();
     const elements = Array.from(
-      document.querySelectorAll<HTMLElement>("button,[role='button']"),
+      document.querySelectorAll<HTMLElement>(
+        "button,[role='button'],a,[data-radix-collection-item]",
+      ),
     );
     const target = elements.find((element) => {
       const position = window.getComputedStyle(element).position;
@@ -1933,10 +1935,24 @@ async function clickByTextWithin(page: Page, text: string, timeout = 45_000) {
       const label = (element.innerText ?? "").toLowerCase();
       return visible && label.includes(normalizedExpected);
     });
-    target?.click();
-    return Boolean(target);
+    if (!target) {
+      return null;
+    }
+    target.scrollIntoView({ block: "center", inline: "center" });
+    const rect = target.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
   }, text);
-  expect(clicked).toBe(true);
+  expect(targetBox).not.toBeNull();
+  if (!targetBox) {
+    throw new Error(`Unable to resolve clickable target for text: ${text}`);
+  }
+  await page.mouse.click(targetBox.x, targetBox.y);
 }
 
 async function clickAnyText(
@@ -1956,7 +1972,7 @@ async function clickAnyText(
         lastError = error;
       }
     }
-    await page.waitForTimeout(250);
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
 
   throw lastError instanceof Error
@@ -2162,10 +2178,20 @@ async function completeLocalProviderOnboarding(page: Page) {
       }
     }
   } else {
-    if (await pageContainsText(page, "Create Local Agent")) {
-      await clickAnyText(page, ["Create Local Agent"]);
-    } else {
-      await clickAnyText(page, ["Get Started"]);
+    const alreadyOnProviderGrid =
+      (await pageContainsText(page, "Choose your AI provider")) ||
+      (await pageContainsText(page, LIVE_PROVIDER_LABEL));
+    if (!alreadyOnProviderGrid) {
+      await waitForAnyText(
+        page,
+        ["Create Local Agent", "Get Started", "Choose your AI provider"],
+        60_000,
+      );
+      if (await pageContainsText(page, "Create Local Agent")) {
+        await clickAnyText(page, ["Create Local Agent"], 30_000);
+      } else if (await pageContainsText(page, "Get Started")) {
+        await clickAnyText(page, ["Get Started"], 30_000);
+      }
     }
   }
 
@@ -2175,14 +2201,14 @@ async function completeLocalProviderOnboarding(page: Page) {
 
   if (!alreadyOnProviderGrid) {
     await waitForAnyText(page, ["Continue", "Chen"], 60_000);
-    await clickAnyText(page, ["Continue"]);
+    await clickAnyText(page, ["Continue"], 30_000);
   }
   await waitForAnyText(
     page,
     ["Choose your AI provider", LIVE_PROVIDER_LABEL],
     60_000,
   );
-  await clickAnyText(page, [LIVE_PROVIDER_LABEL]);
+  await clickAnyText(page, [LIVE_PROVIDER_LABEL], 30_000);
 
   const providerApiKeyInput = await page
     .waitForSelector("#provider-api-key", {
@@ -2680,6 +2706,41 @@ async function waitFor<T>(
 
 function stripTrailingSlash(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+async function launchQaBrowser(userDataDir: string): Promise<Browser> {
+  if (!CHROME_PATH) {
+    throw new Error(
+      `QA browser executable unavailable via ${LIVE_BROWSER.source}.`,
+    );
+  }
+
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await puppeteer.launch({
+        executablePath: CHROME_PATH,
+        headless: true,
+        protocolTimeout: 300_000,
+        userDataDir,
+        args: [
+          "--autoplay-policy=no-user-gesture-required",
+          "--disable-background-timer-throttling",
+          "--disable-renderer-backgrounding",
+          "--disable-dev-shm-usage",
+          "--use-angle=swiftshader",
+        ],
+      });
+    } catch (error) {
+      lastError = error;
+      await sleep(1000 * (attempt + 1));
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Failed to launch QA browser");
 }
 
 function normalizeText(value: string): string {

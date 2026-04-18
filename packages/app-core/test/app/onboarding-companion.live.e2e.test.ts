@@ -19,6 +19,7 @@ import {
 } from "playwright-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
+import { resolveLiveBrowserExecutable } from "../../../../../test/helpers/browser-executable";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
 import {
   buildIsolatedLiveProviderEnv,
@@ -54,9 +55,8 @@ const APP_DIST_DIR = path.join(REPO_ROOT, "apps/app", "dist");
 const SCREENSHOT_DIR = path.join(REPO_ROOT, "test-results", "live-onboarding");
 const READY_TIMEOUT_MS = 120_000;
 const UI_SETTLE_MS = 4_000;
-const CHROME_PATH =
-  process.env.ELIZA_CHROME_PATH ??
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const LIVE_BROWSER = resolveLiveBrowserExecutable();
+const CHROME_PATH = LIVE_BROWSER.executablePath;
 
 type StartedStack = {
   apiBase: string;
@@ -429,7 +429,7 @@ async function waitForVisibleText(
         return locator;
       }
     }
-    await page.waitForTimeout(250);
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
   throw new Error(
     `Could not find any of: ${labels.map((label) => String(label)).join(", ")}`,
@@ -479,7 +479,7 @@ async function clickVisibleText(
       }
     }
 
-    await page.waitForTimeout(250);
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
 
   if (lastError instanceof Error) {
@@ -547,9 +547,9 @@ async function startRealStack(): Promise<StartedStack> {
   });
   process.env.ELIZA_API_PORT = String(apiPort);
 
-  if (!existsSync(CHROME_PATH)) {
+  if (!CHROME_PATH || !existsSync(CHROME_PATH)) {
     throw new Error(
-      `Chrome was not found at ${CHROME_PATH}; set ELIZA_CHROME_PATH to a valid browser executable.`,
+      `Browser executable unavailable via ${LIVE_BROWSER.source}; set ELIZA_CHROME_PATH to a valid browser executable.`,
     );
   }
 
@@ -844,7 +844,7 @@ describeLive("real onboarding handoff to companion mode", () => {
           state: "visible",
           timeout: READY_TIMEOUT_MS,
         });
-        await page.waitForTimeout(UI_SETTLE_MS);
+        await new Promise((resolve) => setTimeout(resolve, UI_SETTLE_MS));
 
         await page.screenshot({
           path: path.join(
