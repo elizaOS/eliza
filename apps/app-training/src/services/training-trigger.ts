@@ -557,9 +557,13 @@ export async function bootstrapOptimizationFromAccumulatedTrajectories(
   if (!config.autoTrain) return [];
   if (!config.backends.includes("native")) return [];
 
+  // IAgentRuntime.getService returns a typed Service subclass. The
+  // OptimizedPromptService shape we consume is structurally compatible but
+  // not exposed as a named type from core, so we cross the nominal type
+  // boundary via unknown once.
   const optimizedPromptService = runtime.getService(
     "optimized_prompt",
-  ) as OptimizedPromptServiceLike | null;
+  ) as unknown as OptimizedPromptServiceLike | null;
 
   const status = service.getStatus();
   const fired: TrajectoryTrainingTask[] = [];
