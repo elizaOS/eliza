@@ -110,7 +110,13 @@ async function resolveSubactionPlan(
   messageText: string,
   state: State | undefined,
 ): Promise<InboxSubactionPlan> {
-  if (params.subaction) {
+  const hasExplicitExecutionTarget =
+    params.entryId !== undefined ||
+    params.target !== undefined ||
+    params.messageText !== undefined ||
+    params.confirmed !== undefined;
+
+  if (params.subaction && hasExplicitExecutionTarget) {
     return {
       subaction: params.subaction,
       shouldAct: true,
@@ -158,8 +164,12 @@ async function resolveSubactionPlan(
     "Set confirmed=null when there is no pending draft approval decision in the request.",
     "Set shouldAct=false only when the request is too vague to choose triage, digest, or respond safely.",
     "When shouldAct=false, response must ask the minimum clarifying question in the user's language.",
+    "For standing inbox policies that should be acknowledged now without triaging a live item, set shouldAct=true, choose the right subaction, and put the user-facing acknowledgement in response.",
     "Extract target when the user identifies a person, channel, or inbox item to respond to.",
+    'Example: {"currentRequest":"If direct relaying gets messy here, suggest making a group chat handoff instead.","subaction":"respond","shouldAct":true,"response":"If the relay gets messy, I will suggest moving everyone into a group-chat handoff instead of continuing one-off relays.","target":null,"entryId":null,"confirmed":null}',
+    'Example: {"currentRequest":"I missed a call with the Frontier Tower guys today. Need to repair that and reschedule if possible asap.","subaction":"respond","shouldAct":true,"response":null,"target":"Frontier Tower guys","entryId":null,"confirmed":null}',
     "",
+    `Planner hint subaction (non-binding): ${JSON.stringify(params.subaction ?? null)}`,
     `Current request: ${JSON.stringify(intent)}`,
     `Pending draft: ${stringifyInboxDraftContext(pendingDraft)}`,
     `Recent conversation: ${JSON.stringify(inboxRecentConversation(state).join("\n"))}`,
@@ -184,7 +194,7 @@ async function resolveSubactionPlan(
       typeof parsed.subaction === "string" &&
       ["triage", "digest", "respond"].includes(parsed.subaction)
         ? (parsed.subaction as InboxSubaction)
-        : null;
+        : params.subaction ?? null;
     const shouldAct =
       typeof parsed.shouldAct === "boolean" ? parsed.shouldAct : null;
     return {
@@ -240,7 +250,14 @@ export const inboxAction: Action & {
     "REPLY_INBOX",
     "RESPOND_TO_MESSAGE",
     "MISSED_CALL_FOLLOWUP",
+    "MISSED_CALL_REPAIR",
     "GROUP_CHAT_HANDOFF",
+    "CREATE_GROUP_CHAT",
+    "ADD_PARTICIPANTS_TO_GROUP_CHAT",
+    "GROUP_CHAT_POLICY",
+    "MESSY_RELAY_HANDOFF",
+    "BUMP_UNANSWERED_DECISION",
+    "GET_PENDING_ASSETS",
   ],
   tags: [
     "always-include",
@@ -249,6 +266,8 @@ export const inboxAction: Action & {
     "missed call repair",
     "group chat handoff",
     "bump unanswered decision",
+    "pending assets",
+    "event asset checklist",
     "unread summary",
   ],
   description:
@@ -256,13 +275,15 @@ export const inboxAction: Action & {
     "generate a daily digest summary, or draft/send a response to a triaged " +
     "item. Use this for executive-assistant daily briefs, urgent-vs-low " +
     "priority inbox ranking, unread summaries, drafts awaiting sign-off, " +
-    "missed-call repair follow-up, and group-chat handoff coordination. " +
+    "missed-call repair follow-up, unanswered-decision bump policies, event asset checklists, and group-chat handoff coordination. " +
+    "Standing inbox policies like 'if direct relaying gets messy here, suggest making a group chat handoff instead' should call this action instead of staying in plain chat. " +
+    "If the request sets a standing inbox policy or follow-up rule, still call this action on the first turn even when the action needs to acknowledge the policy before a live inbox item exists. " +
     "Examples: 'triage my inbox', 'give me my inbox digest', or 'respond to the messages that need an answer in my inbox'. " +
     "DO NOT use this action when the user is only complaining about email or messages without asking for triage, a digest, or a reply workflow. " +
     "If the request is explicitly Gmail or email-specific, about unread emails, or about drafting or sending a reply to a specific email, use GMAIL_ACTION instead. " +
     "Subactions: triage, digest, respond. Admin/owner only.",
   descriptionCompressed:
-    "Unified inbox: triage messages, daily digest, draft/send responses. Admin only.",
+    "Unified inbox: triage messages, daily digest, draft/send responses, missed-call repair, and group-chat handoff policies. Admin only.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {
@@ -316,6 +337,28 @@ export const inboxAction: Action & {
       entryId: params.entryId ?? subactionPlan.entryId ?? undefined,
       confirmed: params.confirmed ?? subactionPlan.confirmed ?? undefined,
     };
+
+    const hasConcreteRespondTarget =
+      resolvedParams.target !== undefined ||
+      resolvedParams.entryId !== undefined ||
+      resolvedParams.messageText !== undefined ||
+      resolvedParams.confirmed !== undefined;
+    if (
+      typeof subactionPlan.response === "string" &&
+      subactionPlan.response.trim().length > 0 &&
+      !hasConcreteRespondTarget
+    ) {
+      return {
+        text: subactionPlan.response.trim(),
+        success: true,
+        values: { success: true, acknowledged: true },
+        data: {
+          actionName: ACTION_NAME,
+          subaction: subactionPlan.subaction,
+          acknowledged: true,
+        },
+      };
+    }
 
     switch (subactionPlan.subaction) {
       case "triage":

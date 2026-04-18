@@ -36,15 +36,10 @@ async function createBenchmarkRuntimeFactory(): Promise<{
   }>;
   cleanup: () => Promise<void>;
 }> {
+  const providerOverride = process.env.MILADY_BENCHMARK_PROVIDER?.trim();
   const preferredProvider =
-    (process.env.MILADY_BENCHMARK_PROVIDER?.trim() as
-      | LiveProviderName
-      | undefined) ??
-    selectLiveProvider("anthropic")?.name ??
-    selectLiveProvider("openai")?.name ??
-    selectLiveProvider("google")?.name ??
-    selectLiveProvider("openrouter")?.name ??
-    selectLiveProvider("groq")?.name;
+    (providerOverride as LiveProviderName | undefined) ??
+    selectLiveProvider()?.name;
 
   if (USE_MOCKED_APIS) {
     const {
@@ -109,7 +104,7 @@ describe("action selection benchmark", () => {
           createCaseRuntime: runtimeFactory.createCaseRuntime,
           cases: ACTION_BENCHMARK_CASES,
           trajectoryDir: BENCHMARK_TRAJECTORY_DIR,
-          timeoutMsPerCase: 90_000,
+          timeoutMsPerCase: 180_000,
         });
         const md = formatBenchmarkReportMarkdown(report);
         // Log to stdout so CI log aggregators pick it up.

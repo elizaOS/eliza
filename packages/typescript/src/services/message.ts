@@ -273,29 +273,30 @@ export function extractStandaloneActionParams(
 	return fragments.join("\n");
 }
 
-function normalizePlannerActions(
+function extractPlannerActionNames(
 	parsedXml: Record<string, unknown>,
-	runtime: IAgentRuntime,
 ): string[] {
-	const normalizedActions = (() => {
+	return (() => {
 		if (typeof parsedXml.actions === "string") {
 			const actionsXml = parsedXml.actions;
-			if (actionsXml.includes("<action>") || actionsXml.includes("<action ")) {
+			if (/<action\b[^>]*>/i.test(actionsXml)) {
 				const actionEntries: Array<{
 					name: string;
 					paramsXml?: string;
 				}> = [];
 				for (const match of actionsXml.matchAll(
-					/<action>([\s\S]*?)<\/action>/g,
+					/<action\b[^>]*>([\s\S]*?)<\/action>/gi,
 				)) {
 					const inner = match[1];
-					const nameMatch = inner.match(/<name>([\s\S]*?)<\/name>/);
-					const paramsMatch = inner.match(/<params>([\s\S]*?)<\/params>/);
-					if (nameMatch) {
-						const name = nameMatch[1].trim();
-						const paramsXml = paramsMatch ? paramsMatch[1].trim() : undefined;
-						if (name) actionEntries.push({ name, paramsXml });
-					}
+					const nameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
+					const paramsMatch = inner.match(
+						/<params\b[^>]*>([\s\S]*?)<\/params>/i,
+					);
+					const name = unwrapPlannerIdentifier(
+						nameMatch ? nameMatch[1] : match[0],
+					);
+					const paramsXml = paramsMatch ? paramsMatch[1].trim() : undefined;
+					if (name) actionEntries.push({ name, paramsXml });
 				}
 
 				if (actionEntries.length > 0) {
@@ -319,7 +320,7 @@ function normalizePlannerActions(
 
 			const commaSplitActions = actionsXml
 				.split(",")
-				.map((action) => String(action).trim())
+				.map((action) => unwrapPlannerIdentifier(String(action)))
 				.filter((action) => action.length > 0);
 
 			if (!parsedXml.params || parsedXml.params === "") {
@@ -336,11 +337,18 @@ function normalizePlannerActions(
 		}
 		if (Array.isArray(parsedXml.actions)) {
 			return parsedXml.actions
-				.map((action) => String(action).trim())
+				.map((action) => unwrapPlannerIdentifier(String(action)))
 				.filter((action) => action.length > 0);
 		}
 		return [];
 	})();
+}
+
+function normalizePlannerActions(
+	parsedXml: Record<string, unknown>,
+	runtime: IAgentRuntime,
+): string[] {
+	const normalizedActions = extractPlannerActionNames(parsedXml);
 
 	const finalActions =
 		!runtime.isActionPlanningEnabled() && normalizedActions.length > 1
@@ -348,19 +356,38 @@ function normalizePlannerActions(
 			: normalizedActions;
 
 	const actionLookup = buildRuntimeActionLookup(runtime);
-	const validActions = finalActions.filter((actionName) => {
+	const validActions = finalActions.flatMap((actionName) => {
 		const normalized = normalizeActionIdentifier(actionName);
 		if (!normalized) {
-			return false;
+			return [];
 		}
 
 		if (PLANNER_CONTROL_ACTIONS.has(normalized)) {
-			return true;
+			return [actionName];
 		}
 
 		const resolvedAction = resolveRuntimeAction(actionLookup, actionName);
 		if (resolvedAction) {
-			return true;
+			return [resolvedAction.name];
+		}
+
+		const aliasedActionName = PLANNER_ACTION_ALIASES.get(normalized);
+		if (aliasedActionName) {
+			const resolvedAlias = resolveRuntimeAction(
+				actionLookup,
+				aliasedActionName,
+			);
+			if (resolvedAlias) {
+				runtime.logger.info(
+					{
+						src: "service:message",
+						actionName,
+						aliasedActionName: resolvedAlias.name,
+					},
+					"Repaired planner action alias",
+				);
+				return [resolvedAlias.name];
+			}
 		}
 
 		runtime.logger.warn(
@@ -370,7 +397,7 @@ function normalizePlannerActions(
 			},
 			"Dropping unknown planner action",
 		);
-		return false;
+		return [];
 	});
 
 	if (validActions.length > 0) {
@@ -465,9 +492,17 @@ function normalizePlannerProviders(
 	}
 	const normalizedProviders = providerNames
 		.map((providerName) => {
-			const canonicalProvider = providerLookup.get(
-				normalizeActionIdentifier(providerName),
-			);
+			const normalizedProviderName = normalizeActionIdentifier(providerName);
+			const canonicalProvider =
+				providerLookup.get(normalizedProviderName) ??
+				(() => {
+					const aliasedProvider =
+						PLANNER_PROVIDER_ALIASES.get(normalizedProviderName);
+					if (!aliasedProvider) {
+						return undefined;
+					}
+					return providerLookup.get(normalizeActionIdentifier(aliasedProvider));
+				})();
 			if (canonicalProvider) {
 				return canonicalProvider;
 			}
@@ -826,12 +861,175 @@ function isStopResponse(
 }
 
 function normalizeActionIdentifier(actionName: string): string {
-	return actionName.trim().toUpperCase().replace(/_/g, "");
+	return unwrapPlannerIdentifier(actionName).toUpperCase().replace(/_/g, "");
 }
+
+function unwrapPlannerIdentifier(value: string): string {
+	const trimmed = value.trim().replace(/^["'`]+|["'`]+$/g, "");
+	if (!trimmed) {
+		return "";
+	}
+
+	const nameMatch = trimmed.match(/^<name\b[^>]*>([\s\S]*?)<\/name>$/i);
+	if (nameMatch) {
+		return nameMatch[1].trim();
+	}
+
+	const actionMatch = trimmed.match(/^<action\b[^>]*>([\s\S]*?)<\/action>$/i);
+	if (!actionMatch) {
+		return trimmed;
+	}
+
+	const inner = actionMatch[1].trim();
+	if (!inner) {
+		return "";
+	}
+
+	const nestedNameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
+	if (nestedNameMatch) {
+		return nestedNameMatch[1].trim();
+	}
+
+	return /<[A-Za-z][^>]*>/.test(inner) ? trimmed : inner;
+}
+
+const PLANNER_ACTION_ALIASES = new Map(
+	[
+		["BULK_RESCHEDULE_MEETINGS", "PROPOSE_MEETING_TIMES"],
+		["RESCHEDULE_MEETINGS", "CALENDAR_ACTION"],
+		["CREATE_RECURRING_EVENT", "CALENDAR_ACTION"],
+		["SCHEDULE_RECURRING_MEETING", "CALENDAR_ACTION"],
+		["CAPTURE_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
+		["CAPTURE_BOOKING_PREFERENCES", "UPDATE_OWNER_PROFILE"],
+		["GET_PENDING_ASSETS", "INBOX"],
+		["GET_PENDING_ITEMS", "INBOX"],
+		["PROPOSE_GROUP_CHAT_HANDOFF", "INBOX"],
+		["SET_MULTI_DEVICE_MEETING_REMINDER", "PUBLISH_DEVICE_INTENT"],
+		["HANDLE_CANCELLATION_FEE", "PUBLISH_DEVICE_INTENT"],
+		["GET_ID_STATUS", "PUBLISH_DEVICE_INTENT"],
+		["REQUEST_UPLOAD", "LIFEOPS_COMPUTER_USE"],
+	].map(([from, to]) => [
+		normalizeActionIdentifier(from),
+		normalizeActionIdentifier(to),
+	]),
+);
+
+const PLANNER_PROVIDER_ALIASES = new Map(
+	[
+		["DOCUMENT_LOOKUP", "ATTACHMENTS"],
+		["INBOX_TRIAGE", "inboxTriage"],
+	].map(([from, to]) => [
+		normalizeActionIdentifier(from),
+		to,
+	]),
+);
 
 const PROVIDER_FOLLOWUP_PASSIVE_ACTIONS = new Set(
 	["REPLY", "RESPOND", "NONE"].map(normalizeActionIdentifier),
 );
+
+const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
+	["REPLY", "RESPOND", "NONE", "IGNORE"].map(normalizeActionIdentifier),
+);
+
+function shouldAttemptCanonicalActionRepair(
+	rawPlannerActions: string[],
+	normalizedActions: string[],
+): boolean {
+	const hasUnknownOperationalAction = rawPlannerActions.some((actionName) => {
+		const normalized = normalizeActionIdentifier(actionName);
+		return (
+			normalized.length > 0 &&
+			!ACTION_REPAIR_PASSIVE_ACTIONS.has(normalized) &&
+			!PLANNER_CONTROL_ACTIONS.has(normalized)
+		);
+	});
+
+	if (!hasUnknownOperationalAction) {
+		return false;
+	}
+
+	return (
+		normalizedActions.length === 0 ||
+		normalizedActions.every((actionName) =>
+			ACTION_REPAIR_PASSIVE_ACTIONS.has(
+				normalizeActionIdentifier(actionName),
+			),
+		)
+	);
+}
+
+function buildCanonicalActionRepairPrompt(args: {
+	userText: string;
+	rawPlannerActions: string[];
+	rawPlannerProviders: string[];
+	plannerReplyText: string;
+	availableActionNames: string[];
+}): string {
+	const plannerReplyText =
+		args.plannerReplyText.trim().length > 0
+			? args.plannerReplyText.trim()
+			: "(empty)";
+
+	return [
+		"You are repairing an action-planner output that used a non-canonical action name.",
+		"Choose ONLY from the available runtime actions below.",
+		"If the user explicitly asked for an operational artifact or workflow, select the responsible action instead of replying inline.",
+		"If the subject is already present, do not ask a clarifying question just because the original planner used a generic lookup verb.",
+		"Map generic planner labels like LOOKUP, SEARCH, FETCH, GET, RETRIEVE, BRIEF, or BACKGROUND to the best canonical runtime action.",
+		'Return ONLY XML with top-level fields from this schema: <response><actions>...</actions><providers>...</providers><params>...</params></response>.',
+		"Do not include <text> unless there is truly no matching runtime action.",
+		"",
+		`user_message:\n${args.userText}`,
+		"",
+		`planner_actions_raw:\n${JSON.stringify(args.rawPlannerActions, null, 2)}`,
+		"",
+		`planner_providers_raw:\n${JSON.stringify(args.rawPlannerProviders, null, 2)}`,
+		"",
+		`planner_reply_text:\n${plannerReplyText}`,
+		"",
+		`available_runtime_actions:\n${args.availableActionNames.join(", ")}`,
+		"",
+		"Example:",
+		'user_message: "Pull up a dossier on Satya Nadella."',
+		'planner_actions_raw: ["LOOKUP"]',
+		'output: <response><actions><action>DOSSIER</action></actions><params><DOSSIER><subject>Satya Nadella</subject></DOSSIER></params></response>',
+	].join("\n");
+}
+
+async function repairCanonicalPlannerActions(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	rawPlannerActions: string[];
+	rawPlannerProviders: string[];
+	plannerReplyText: string;
+}): Promise<Record<string, unknown> | null> {
+	const availableActionNames = Array.from(
+		new Set(
+			(args.runtime.actions ?? [])
+				.map((action) => action.name?.trim())
+				.filter((name): name is string => Boolean(name)),
+		),
+	).sort();
+
+	if (availableActionNames.length === 0) {
+		return null;
+	}
+
+	const repairPrompt = buildCanonicalActionRepairPrompt({
+		userText: String(args.message.content.text ?? ""),
+		rawPlannerActions: args.rawPlannerActions,
+		rawPlannerProviders: args.rawPlannerProviders,
+		plannerReplyText: args.plannerReplyText,
+		availableActionNames,
+	});
+
+	const repairResponse = await args.runtime.useModel(ModelType.TEXT_LARGE, {
+		prompt: repairPrompt,
+	});
+
+	return parseKeyValueXml<Record<string, unknown>>(repairResponse);
+}
 
 function shouldRunProviderFollowup(
 	responseContent: Pick<Content, "actions" | "providers"> | null | undefined,
@@ -1166,6 +1364,7 @@ function suppressesPostActionContinuation(
  * when `text` is empty.
  */
 export function shouldEmitPlannerPreamble(
+	runtime: IAgentRuntime,
 	responseContent: Pick<Content, "text" | "actions"> | null | undefined,
 ): boolean {
 	if (!responseContent) return false;
@@ -1175,14 +1374,22 @@ export function shouldEmitPlannerPreamble(
 
 	const firstAction =
 		typeof responseContent.actions?.[0] === "string"
-			? normalizeActionIdentifier(responseContent.actions[0])
+			? responseContent.actions[0]
 			: "";
 	if (firstAction.length === 0) return false;
 
+	const actionLookup = buildRuntimeActionLookup(runtime);
+	const resolvedAction = resolveRuntimeAction(actionLookup, firstAction);
+	if (resolvedAction?.suppressPostActionContinuation) {
+		return false;
+	}
+
+	const normalizedFirstAction = normalizeActionIdentifier(firstAction);
+
 	return (
-		firstAction !== normalizeActionIdentifier("REPLY") &&
-		firstAction !== normalizeActionIdentifier("IGNORE") &&
-		firstAction !== normalizeActionIdentifier("STOP")
+		normalizedFirstAction !== normalizeActionIdentifier("REPLY") &&
+		normalizedFirstAction !== normalizeActionIdentifier("IGNORE") &&
+		normalizedFirstAction !== normalizeActionIdentifier("STOP")
 	);
 }
 
@@ -2820,7 +3027,11 @@ export class DefaultMessageService implements IMessageService {
 					// Surface the planner's text before action handlers run, so the
 					// user sees the agent's plan rather than silence. The full
 					// responseContent is already persisted as a memory above.
-					if (callback && shouldEmitPlannerPreamble(responseContent)) {
+					if (
+						callback &&
+						!isBenchmarkMode(state) &&
+						shouldEmitPlannerPreamble(runtime, responseContent)
+					) {
 						await callback({
 							...responseContent,
 							actions: [],
@@ -4384,19 +4595,57 @@ export class DefaultMessageService implements IMessageService {
 		if (parsedXml) {
 			// Mark streaming as complete now that we have a valid response
 			streamingExtractor?.markComplete();
-			const finalActions = normalizePlannerActions(
+			const rawPlannerActions = extractPlannerActionNames(
+				parsedXml as Record<string, unknown>,
+			);
+			let finalActions = normalizePlannerActions(
 				parsedXml as Record<string, unknown>,
 				runtime,
 			);
+			let normalizedProviders = normalizePlannerProviders(
+				parsedXml as Record<string, unknown>,
+				runtime,
+			);
+
+			if (
+				shouldAttemptCanonicalActionRepair(rawPlannerActions, finalActions)
+			) {
+				const repairedPlannerOutput = await repairCanonicalPlannerActions({
+					runtime,
+					message,
+					rawPlannerActions,
+					rawPlannerProviders: normalizedProviders,
+					plannerReplyText: String(parsedXml.text || ""),
+				});
+				if (repairedPlannerOutput) {
+					const repairedActions = normalizePlannerActions(
+						repairedPlannerOutput,
+						runtime,
+					);
+					const hasRecoveredOperationalAction = repairedActions.some(
+						(actionName) =>
+							!ACTION_REPAIR_PASSIVE_ACTIONS.has(
+								normalizeActionIdentifier(actionName),
+							),
+					);
+					if (hasRecoveredOperationalAction) {
+						finalActions = repairedActions;
+						normalizedProviders = normalizePlannerProviders(
+							repairedPlannerOutput,
+							runtime,
+						);
+						if (repairedPlannerOutput.params) {
+							parsedXml.params = repairedPlannerOutput.params;
+						}
+					}
+				}
+			}
 
 			responseContent = {
 				...parsedXml,
 				thought: String(parsedXml.thought || ""),
 				actions: finalActions,
-				providers: normalizePlannerProviders(
-					parsedXml as Record<string, unknown>,
-					runtime,
-				),
+				providers: normalizedProviders,
 				text: String(parsedXml.text || ""),
 				simple: parsedXml.simple === true || parsedXml.simple === "true",
 			};

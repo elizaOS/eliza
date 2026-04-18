@@ -152,6 +152,33 @@ async function waitForHostsBlock(
   );
 }
 
+async function removeTempRoot(tempRoot: string): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  let lastError: unknown = null;
+
+  while (Date.now() < deadline) {
+    try {
+      await rm(tempRoot, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      lastError = error;
+      const code =
+        typeof error === "object" && error && "code" in error
+          ? String((error as NodeJS.ErrnoException).code ?? "")
+          : "";
+      if (!["EBUSY", "ENOTEMPTY", "EPERM"].includes(code)) {
+        throw error;
+      }
+    }
+
+    await sleep(250);
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Timed out removing temp directory: ${tempRoot}`);
+}
+
 async function startDevStack(): Promise<StartedDevStack> {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "eliza-dev-stack-"));
   const stateDir = path.join(tempRoot, "state");
@@ -218,7 +245,7 @@ async function startDevStack(): Promise<StartedDevStack> {
       child.kill("SIGKILL");
       await waitForChildExit(child, 5_000);
     }
-    await rm(tempRoot, { recursive: true, force: true });
+    await removeTempRoot(tempRoot);
     throw new Error(
       `Dev stack failed to start: ${error instanceof Error ? error.message : String(error)}\n${logTail}`,
     );
@@ -239,7 +266,7 @@ async function startDevStack(): Promise<StartedDevStack> {
         }
       }
 
-      await rm(tempRoot, { recursive: true, force: true });
+      await removeTempRoot(tempRoot);
     },
   };
 }

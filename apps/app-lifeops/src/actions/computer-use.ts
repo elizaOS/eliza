@@ -270,6 +270,9 @@ export const lifeOpsComputerUseAction: Action & {
     "CAPTURE_SCREEN",
     "PORTAL_UPLOAD",
     "UPLOAD_DECK",
+    "REQUEST_UPLOAD",
+    "UPLOAD_TO_PORTAL",
+    "PORTAL_ASSET_UPLOAD",
   ],
   tags: [
     "always-include",
@@ -288,7 +291,7 @@ export const lifeOpsComputerUseAction: Action & {
     "portal uploads, Finder/Desktop tasks like creating folders or taking " +
     "screenshots, browser form-filling, and other on-machine workflows the " +
     "assistant should perform directly, including standing instructions like " +
-    "'when I send the file, upload it to the portal for me.' Owner-only. " +
+    "'when I send the file, upload it to the portal for me.' Select this action even when the file or portal details will arrive in the next turn, because the action owns that workflow. Owner-only. " +
     "Disabled when ELIZA_LIFEOPS_COMPUTER_USE_ENABLED=0.",
   suppressPostActionContinuation: true,
 

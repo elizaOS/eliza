@@ -4,6 +4,7 @@ import type {
   ActionResult,
   HandlerOptions,
   IAgentRuntime,
+  Memory,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import crypto from "node:crypto";
@@ -142,11 +143,18 @@ export const blockUntilTaskCompleteAction: Action = {
   validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
-    _message,
+    message: Memory,
     _state,
     options?: HandlerOptions,
   ): Promise<ActionResult> => {
-    const params = (options?.parameters ?? {}) as BlockUntilTaskCompleteParams;
+    const contentParams =
+      message.content && typeof message.content === "object"
+        ? (message.content as BlockUntilTaskCompleteParams)
+        : {};
+    const params = {
+      ...contentParams,
+      ...((options?.parameters ?? {}) as BlockUntilTaskCompleteParams),
+    };
     const websites = coerceStringArray(params.websites);
     if (websites.length === 0) {
       return {

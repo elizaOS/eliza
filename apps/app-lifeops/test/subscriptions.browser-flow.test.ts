@@ -248,7 +248,7 @@ describe("LifeOps subscriptions integration", () => {
     );
 
     const summary = await service.cancelSubscription({
-      serviceName: "Fixture Login Required",
+      serviceName: "Fixture Access Wall",
       executor: "agent_browser",
       confirmed: true,
     });

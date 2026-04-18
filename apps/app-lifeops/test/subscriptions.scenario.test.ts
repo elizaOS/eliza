@@ -7,13 +7,46 @@ import { runScenario } from "../../../packages/scenario-runner/src/executor.ts";
 import cancelGooglePlayScenario from "../../../../test/scenarios/browser.lifeops/subscriptions.cancel-google-play.scenario";
 import loginRequiredScenario from "../../../../test/scenarios/browser.lifeops/subscriptions.login-required.scenario";
 
+function buildSubscriptionsPlannerStub() {
+  return async (_modelType: unknown, input: { prompt?: string } | string) => {
+    const prompt =
+      typeof input === "string"
+        ? input
+        : typeof input?.prompt === "string"
+          ? input.prompt
+          : "";
+    const requestMatch = prompt.match(/Current request:\s*(".*")/);
+    const request = requestMatch ? JSON.parse(requestMatch[1]) : "";
+    const normalized = String(request).toLowerCase();
+    const serviceName = normalized.includes("google play")
+      ? "Google Play"
+      : normalized.includes("fixture access wall")
+        ? "Fixture Access Wall"
+        : null;
+    const serviceSlug =
+      serviceName === null
+        ? null
+        : serviceName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const plan = {
+      mode: "cancel",
+      serviceName,
+      serviceSlug,
+      executor: "agent_browser",
+      queryWindowDays: null,
+      confirmed:
+        normalized.includes("confirm") || normalized.includes("go ahead"),
+      shouldAct: true,
+      response: null,
+    };
+    return JSON.stringify(plan);
+  };
+}
+
 async function createScenarioRuntime(agentId: string) {
   const runtime = createLifeOpsChatTestRuntime({
     agentId,
     actions: [subscriptionsAction],
-    useModel: async () => {
-      throw new Error("scenario tests should not invoke useModel");
-    },
+    useModel: buildSubscriptionsPlannerStub(),
     handleTurn: async ({ message, onResponse, runtime, state }) => {
       const result = await subscriptionsAction.handler(runtime, message as Memory, state, {
         parameters: {},

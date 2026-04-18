@@ -68,6 +68,8 @@ export function createLifeOpsChatTestRuntime(options: {
 }): AgentRuntime {
   const sqlite = new DatabaseSync(":memory:");
   let tasks: Task[] = [];
+  const settings = new Map<string, string>();
+  const cache = new Map<string, unknown>();
   const memoriesByRoom = new Map<string, Array<Record<string, unknown>>>();
   const roomsById = new Map<string, { id: UUID; worldId: UUID }>();
   const worldsById = new Map<
@@ -91,7 +93,17 @@ export function createLifeOpsChatTestRuntime(options: {
         error: () => {},
       } as AgentRuntime["logger"]),
     useModel: options.useModel,
-    getSetting: () => undefined,
+    getSetting: (key: string) => settings.get(key),
+    setSetting: (key: string, value: string) => {
+      settings.set(key, value);
+    },
+    getCache: async <T>(key: string) => cache.get(key) as T | undefined,
+    setCache: async (key: string, value: unknown) => {
+      cache.set(key, value);
+    },
+    deleteCache: async (key: string) => {
+      cache.delete(key);
+    },
     getService: () => null,
     getRoomsByWorld: async () => [],
     getRoom: async (roomId: UUID) => roomsById.get(String(roomId)) ?? null,

@@ -20,6 +20,14 @@ import {
   type LiveProviderName,
   selectLiveProvider,
 } from "../../app-core/test/helpers/live-provider.ts";
+import {
+  prepareMockedTestEnvironment,
+} from "../../../../test/mocks/helpers/mock-runtime.ts";
+import { seedBenchmarkLifeOpsFixtures } from "../../../../test/mocks/helpers/seed-benchmark-fixtures.ts";
+import {
+  seedGoogleConnectorGrant,
+  seedXConnectorGrant,
+} from "../../../../test/mocks/helpers/seed-grants.ts";
 
 export interface RuntimeFactoryResult {
   runtime: AgentRuntime;
@@ -76,6 +84,7 @@ export async function createScenarioRuntime(
       "[scenario-runner] no LLM provider configured. Set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY / OPENROUTER_API_KEY.",
     );
   }
+  const mockedEnvironment = await prepareMockedTestEnvironment();
   for (const [key, value] of Object.entries(providerConfig.env)) {
     process.env[key] = value;
   }
@@ -84,12 +93,38 @@ export async function createScenarioRuntime(
     path.join(os.tmpdir(), "scenario-runner-pglite-"),
   );
   const prevPgliteDir = process.env.PGLITE_DATA_DIR;
+  const prevWebsiteBlockerHostsFilePath =
+    process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH;
+  const prevSelfControlHostsFilePath = process.env.SELFCONTROL_HOSTS_FILE_PATH;
+  const prevMiladyDisableActivityTracker =
+    process.env.MILADY_DISABLE_ACTIVITY_TRACKER;
+  const prevElizaDisableActivityTracker =
+    process.env.ELIZA_DISABLE_ACTIVITY_TRACKER;
+  let scenarioHostsRoot: string | null = null;
   process.env.PGLITE_DATA_DIR = pgliteDir;
+  process.env.MILADY_DISABLE_ACTIVITY_TRACKER = "1";
+  process.env.ELIZA_DISABLE_ACTIVITY_TRACKER = "1";
   if (!process.env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
     process.env.LOCAL_EMBEDDING_DIMENSIONS = "384";
   }
   if (!process.env.EMBEDDING_DIMENSION?.trim()) {
     process.env.EMBEDDING_DIMENSION = "384";
+  }
+  if (
+    !prevWebsiteBlockerHostsFilePath?.trim() &&
+    !prevSelfControlHostsFilePath?.trim()
+  ) {
+    scenarioHostsRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "scenario-runner-hosts-"),
+    );
+    const scenarioHostsFilePath = path.join(scenarioHostsRoot, "hosts");
+    fs.writeFileSync(
+      scenarioHostsFilePath,
+      ["127.0.0.1 localhost", "::1 localhost", ""].join("\n"),
+      "utf8",
+    );
+    process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH = scenarioHostsFilePath;
+    process.env.SELFCONTROL_HOSTS_FILE_PATH = scenarioHostsFilePath;
   }
 
   const character = createCharacter({
@@ -191,13 +226,53 @@ export async function createScenarioRuntime(
     );
   }
 
+  // Load the separate LifeOps route bridge plugin so scenario API turns can
+  // exercise the same HTTP handlers the app exposes at runtime.
+  try {
+    const lifeOpsRoutesModule = (await import(
+      "@elizaos/app-lifeops/routes/plugin"
+    )) as Record<string, unknown>;
+    const lifeOpsRoutesPlugin = extractPlugin(lifeOpsRoutesModule, [
+      "default",
+      "lifeopsPlugin",
+    ]);
+    if (lifeOpsRoutesPlugin) {
+      if (lifeOpsRoutesPlugin.routes?.length) {
+        for (const route of lifeOpsRoutesPlugin.routes) {
+          const routePath = route.path.startsWith("/")
+            ? route.path
+            : `/${route.path}`;
+          runtime.routes.push({ ...route, path: routePath });
+        }
+      }
+    } else {
+      logger.warn(
+        "[scenario-runner] @elizaos/app-lifeops/routes/plugin did not export a Plugin; skipping",
+      );
+    }
+  } catch (err) {
+    logger.warn(
+      `[scenario-runner] @elizaos/app-lifeops/routes/plugin unavailable: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   for (const extra of options?.extraPlugins ?? []) {
     await runtime.registerPlugin(extra);
   }
 
   await runtime.initialize();
+  const cleanupRuntimeFixtures =
+    await mockedEnvironment.applyRuntimeFixtures?.(runtime);
+  await seedGoogleConnectorGrant(runtime);
+  await seedXConnectorGrant(runtime);
+  await seedBenchmarkLifeOpsFixtures(runtime);
 
   const cleanup = async (): Promise<void> => {
+    try {
+      await cleanupRuntimeFixtures?.();
+    } catch (err) {
+      logger.debug(`[scenario-runner] runtime fixture cleanup error: ${err}`);
+    }
     try {
       await runtime.stop();
     } catch (err) {
@@ -213,10 +288,47 @@ export async function createScenarioRuntime(
     } else {
       delete process.env.PGLITE_DATA_DIR;
     }
+    if (prevWebsiteBlockerHostsFilePath !== undefined) {
+      process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH =
+        prevWebsiteBlockerHostsFilePath;
+    } else {
+      delete process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH;
+    }
+    if (prevSelfControlHostsFilePath !== undefined) {
+      process.env.SELFCONTROL_HOSTS_FILE_PATH = prevSelfControlHostsFilePath;
+    } else {
+      delete process.env.SELFCONTROL_HOSTS_FILE_PATH;
+    }
+    if (prevMiladyDisableActivityTracker !== undefined) {
+      process.env.MILADY_DISABLE_ACTIVITY_TRACKER =
+        prevMiladyDisableActivityTracker;
+    } else {
+      delete process.env.MILADY_DISABLE_ACTIVITY_TRACKER;
+    }
+    if (prevElizaDisableActivityTracker !== undefined) {
+      process.env.ELIZA_DISABLE_ACTIVITY_TRACKER =
+        prevElizaDisableActivityTracker;
+    } else {
+      delete process.env.ELIZA_DISABLE_ACTIVITY_TRACKER;
+    }
+    try {
+      await mockedEnvironment.cleanup();
+    } catch (err) {
+      logger.debug(
+        `[scenario-runner] mocked environment cleanup error: ${err}`,
+      );
+    }
     try {
       fs.rmSync(pgliteDir, { recursive: true, force: true });
     } catch {
       // ignore cleanup errors
+    }
+    if (scenarioHostsRoot) {
+      try {
+        fs.rmSync(scenarioHostsRoot, { recursive: true, force: true });
+      } catch {
+        // ignore cleanup errors
+      }
     }
   };
 

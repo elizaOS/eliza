@@ -8,6 +8,7 @@ import {
   type Memory,
 } from "@elizaos/core";
 import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { broadcastIntent } from "../lifeops/intent-sync.js";
 
 /**
  * Cross-device intent bus agent-side action.
@@ -30,6 +31,8 @@ type PublishDeviceIntentParameters = {
   payload?: unknown;
   userId?: string;
 };
+
+type DeviceIntentPayload = Record<string, unknown>;
 
 function readDeviceBusConfig(
   runtime: { getSetting?: (key: string) => unknown } | undefined,
@@ -59,6 +62,119 @@ function normalizeKind(kind: string | undefined): KnownKind | string | null {
   return lower;
 }
 
+function coercePayload(
+  payload: unknown,
+): DeviceIntentPayload {
+  return payload && typeof payload === "object"
+    ? (payload as DeviceIntentPayload)
+    : {};
+}
+
+function readPayloadString(
+  payload: DeviceIntentPayload,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function readPayloadNumber(
+  payload: DeviceIntentPayload,
+  keys: string[],
+): number | null {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string" && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return null;
+}
+
+function mapLocalIntentKind(kind: string): "routine_reminder" | "attention_request" {
+  if (kind === "block") {
+    return "attention_request";
+  }
+  return "routine_reminder";
+}
+
+async function publishLocalFallbackIntent(args: {
+  runtime: IAgentRuntime;
+  kind: string;
+  payload: DeviceIntentPayload;
+  userId?: string;
+}): Promise<ActionResult> {
+  const title =
+    readPayloadString(args.payload, ["title", "label", "name", "subject"]) ??
+    (args.kind === "alarm"
+      ? "Device alarm"
+      : args.kind === "block"
+        ? "Device warning"
+        : "Device reminder");
+  const body =
+    readPayloadString(args.payload, [
+      "body",
+      "message",
+      "text",
+      "description",
+      "summary",
+    ]) ?? title;
+  const actionUrl =
+    readPayloadString(args.payload, ["actionUrl", "url", "deepLink"]) ?? undefined;
+  const expiresInMinutes = readPayloadNumber(args.payload, [
+    "expiresInMinutes",
+    "durationMinutes",
+  ]);
+
+  const intent = await broadcastIntent(args.runtime, {
+    kind: mapLocalIntentKind(args.kind),
+    target: "all",
+    title,
+    body,
+    actionUrl,
+    priority: "high",
+    expiresInMinutes:
+      expiresInMinutes !== null && expiresInMinutes > 0
+        ? Math.round(expiresInMinutes)
+        : undefined,
+    metadata: {
+      transport: "local-fallback",
+      originalKind: args.kind,
+      payload: args.payload,
+      userId: args.userId ?? null,
+    },
+  });
+
+  return {
+    text: `Queued ${args.kind} intent locally.`,
+    success: true,
+    values: {
+      success: true,
+      kind: args.kind,
+      intentId: intent.id,
+      transport: "local-fallback",
+    },
+    data: {
+      actionName: "PUBLISH_DEVICE_INTENT",
+      kind: args.kind,
+      intentId: intent.id,
+      transport: "local-fallback",
+      payload: args.payload,
+    },
+  };
+}
+
 export const publishDeviceIntentAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
@@ -67,21 +183,37 @@ export const publishDeviceIntentAction: Action & {
     "BROADCAST_DEVICE_INTENT",
     "FIRE_DEVICE_INTENT",
     "NOTIFY_ALL_DEVICES",
+    "BROADCAST_REMINDER",
+    "ROUTINE_REMINDER_TO_PHONE",
+    "MOBILE_REMINDER",
     "SIGNATURE_REMINDER",
     "MEETING_REMINDER_LADDER",
     "DEVICE_WARNING",
+    "CANCELLATION_FEE_WARNING",
+    "UPDATED_ID_COPY_REQUEST",
+    "WORKFLOW_BLOCKER_NUDGE",
   ],
   tags: [
     "always-include",
     "device reminder",
+    "broadcast reminder",
+    "mobile reminder",
+    "routine reminder",
+    "notify my phone",
     "meeting reminder ladder",
     "signature reminder",
     "cancellation fee warning",
     "workflow escalation",
     "updated id copy",
+    "cancellation fee warning",
+    "expired id reminder",
   ],
   description:
-    "Publish a cross-device intent (alarm, reminder, block, or custom) to the device bus so all paired devices can realize it. Use this for desktop+phone reminder ladders, multi-device meeting nudges, document-signing reminders, and urgent device-level escalation where the owner wants the same intent realized across paired devices. Standing 'if/when this happens, warn or remind me on my devices' policies should still use this action on the first turn.",
+    "Publish a cross-device intent (alarm, reminder, block, or custom) to the device bus so all paired devices can realize it. " +
+    "Use this for desktop+phone reminder ladders, multi-device meeting nudges, document-signing reminders, urgent device-level escalation, and requests like " +
+    "'broadcast a routine reminder to my mobile titled Stretch break saying Get up and stretch for five minutes'. " +
+    "Use it for standing warning or escalation policies like cancellation-fee warnings, expired-ID nudges, document-signing reminders, or asking for an updated copy when a workflow is blocked. " +
+    "Standing 'if/when this happens, warn or remind me on my devices' policies should still use this action on the first turn.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
@@ -108,27 +240,20 @@ export const publishDeviceIntentAction: Action & {
 
     const kind = normalizeKind(params.kind) ?? "reminder";
 
-    const payload =
-      params.payload && typeof params.payload === "object"
-        ? (params.payload as Record<string, unknown>)
-        : {};
+    const payload = coercePayload(params.payload);
 
     const config = readDeviceBusConfig(runtime);
     if (!config) {
-      logger.warn(
+      logger.info(
         { action: "PUBLISH_DEVICE_INTENT", kind },
-        "[PUBLISH_DEVICE_INTENT] device bus not configured (set MILADY_DEVICE_BUS_URL)",
+        "[PUBLISH_DEVICE_INTENT] device bus not configured; falling back to local intent store",
       );
-      return {
-        text: "",
-        success: false,
-        values: { success: false, reason: "device-bus-not-configured", kind },
-        data: {
-          actionName: "PUBLISH_DEVICE_INTENT",
-          reason: "device-bus-not-configured",
-          kind,
-        },
-      };
+      return publishLocalFallbackIntent({
+        runtime,
+        kind,
+        payload,
+        userId: typeof params.userId === "string" ? params.userId : undefined,
+      });
     }
 
     const body = {

@@ -58,7 +58,6 @@ import {
   twilioCallAction,
 } from "./actions/twilio-call.js";
 import { remoteDesktopAction } from "./actions/remote-desktop.js";
-import { startRemoteSessionAction } from "./actions/start-remote-session.js";
 import { revokeRemoteSessionAction } from "./actions/revoke-remote-session.js";
 import { listRemoteSessionsAction } from "./actions/list-remote-sessions.js";
 import { lifeOpsComputerUseAction } from "./actions/computer-use.js";
@@ -128,12 +127,20 @@ async function ensureTaskWithRetries(args: {
   ensure: () => Promise<unknown>;
   delays?: readonly number[];
 }): Promise<void> {
+  const isRuntimeStopped = () =>
+    (args.runtime as IAgentRuntime & { stopped?: boolean }).stopped === true;
   const delays = args.delays ?? [2_000, 5_000, 10_000];
   for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    if (isRuntimeStopped()) {
+      return;
+    }
     try {
       await args.ensure();
       return;
     } catch (error) {
+      if (isRuntimeStopped()) {
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
       if (attempt < delays.length) {
         args.runtime.logger?.warn?.(
@@ -179,9 +186,19 @@ function scheduleTaskEnsureAfterRuntimeInit(args: {
 }): void {
   void args.runtime.initPromise
     .then(async () => {
+      if (
+        (args.runtime as IAgentRuntime & { stopped?: boolean }).stopped === true
+      ) {
+        return;
+      }
       await ensureTaskWithRetries(args);
     })
     .catch((error) => {
+      if (
+        (args.runtime as IAgentRuntime & { stopped?: boolean }).stopped === true
+      ) {
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
       args.runtime.logger?.error?.(
         `${args.prefix} ${args.label} init failed after runtime initialization: ${message}`,
@@ -223,7 +240,6 @@ const rawAppLifeOpsPlugin: Plugin = {
     callUserAction,
     callExternalAction,
     remoteDesktopAction,
-    startRemoteSessionAction,
     revokeRemoteSessionAction,
     listRemoteSessionsAction,
     lifeOpsComputerUseAction,

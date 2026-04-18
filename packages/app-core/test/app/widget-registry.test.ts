@@ -17,12 +17,12 @@ describe("resolveWidgetsForSlot", () => {
     expect(widgetIds).toEqual(
       expect.arrayContaining([
         "lifeops/lifeops.overview",
-        "lifeops/lifeops.google",
         "agent-orchestrator/agent-orchestrator.apps",
         "agent-orchestrator/agent-orchestrator.tasks",
         "agent-orchestrator/agent-orchestrator.activity",
       ]),
     );
+    expect(widgetIds).not.toContain("lifeops/lifeops.google");
     expect(widgetIds).not.toContain("todo/todo.items");
   });
 

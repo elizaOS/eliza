@@ -120,7 +120,7 @@ async function deliverResult(
   await callback({
     text: result.success
       ? params.action === "screenshot"
-        ? "Here is the current screen."
+        ? result.message ?? "Here is the current screen."
         : result.message ?? `Completed ${params.action}.`
       : `Desktop action failed: ${result.error}`,
     ...(result.screenshot

@@ -41,6 +41,39 @@ function coerceSubaction(value: unknown): RemoteDesktopSubaction | undefined {
   return undefined;
 }
 
+function inferSubactionFromText(
+  text: string,
+): RemoteDesktopSubaction | undefined {
+  const lower = text.toLowerCase();
+  if (!lower.trim()) return undefined;
+  if (/\b(list|show|what)\b.*\b(remote|sessions?|vnc)\b/.test(lower)) {
+    return "list";
+  }
+  if (
+    /\b(status|check|how is|is the)\b.*\b(remote|session|vnc)\b/.test(lower)
+  ) {
+    return "status";
+  }
+  if (
+    /\b(end|stop|close|terminate|kill|disconnect)\b.*\b(remote|session|vnc)\b/.test(
+      lower,
+    )
+  ) {
+    return "end";
+  }
+  if (
+    /\b(start|open|begin|launch|initiate|set up|setup|create)\b.*\b(remote|session|vnc|screen share|desktop)\b/.test(
+      lower,
+    ) ||
+    /\b(connect|access|control)\b.*\b(from my phone|from another|remotely)\b/.test(
+      lower,
+    )
+  ) {
+    return "start";
+  }
+  return undefined;
+}
+
 function formatSession(session: RemoteDesktopSession): string {
   const lines = [
     `Session ${session.id}`,
@@ -54,7 +87,9 @@ function formatSession(session: RemoteDesktopSession): string {
   return lines.join("\n");
 }
 
-export const remoteDesktopAction: Action = {
+export const remoteDesktopAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: ACTION_NAME,
   similes: [
     "REMOTE_SESSION",
@@ -64,6 +99,7 @@ export const remoteDesktopAction: Action = {
   ],
   description:
     "Start or end a secure remote desktop session so you can view/control the computer from another device. Requires a pairing code. Use this only for remote-session lifecycle work (start, status, end, list), not for local Finder/Desktop automation, screenshots, browser workflows, or file handling on this machine — those belong to LIFEOPS_COMPUTER_USE.",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasOwnerAccess(runtime, message),
@@ -154,7 +190,12 @@ export const remoteDesktopAction: Action = {
     const params = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as RemoteDesktopParameters;
 
-    const subaction = coerceSubaction(params.subaction);
+    const messageText =
+      typeof message.content?.text === "string" ? message.content.text : "";
+    const subaction =
+      coerceSubaction(params.subaction) ??
+      inferSubactionFromText(params.intent ?? "") ??
+      inferSubactionFromText(messageText);
     if (!subaction) {
       return {
         text: "Missing or invalid subaction. Use one of: start, status, end, list.",

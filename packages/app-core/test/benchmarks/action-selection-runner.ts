@@ -132,6 +132,48 @@ function resolveBenchmarkOwnerEntityId(runtime: AgentRuntime): UUID {
   return stringToUuid(`${runtime.agentId}-admin-entity`);
 }
 
+async function ensureBenchmarkConversation(args: {
+  runtime: AgentRuntime;
+  entityId: UUID;
+  roomId: UUID;
+  worldId: UUID;
+}): Promise<void> {
+  const { runtime, entityId, roomId, worldId } = args;
+  const worldMetadata = {
+    ownership: {
+      ownerId: entityId,
+    },
+    roles: {
+      [entityId]: "OWNER",
+    },
+  } as const;
+
+  await runtime.ensureWorldExists({
+    id: worldId,
+    name: `${BENCHMARK_USER_NAME}'s Benchmark World`,
+    agentId: runtime.agentId,
+    messageServerId: entityId,
+    metadata: worldMetadata,
+  });
+
+  await runtime.ensureConnection({
+    entityId,
+    roomId,
+    worldId,
+    worldName: `${BENCHMARK_USER_NAME}'s Benchmark World`,
+    userName: BENCHMARK_USER_NAME,
+    name: BENCHMARK_USER_NAME,
+    source: BENCHMARK_SOURCE,
+    channelId: roomId,
+    type: ChannelType.DM,
+    messageServerId: entityId,
+    metadata: worldMetadata,
+  });
+
+  await runtime.ensureParticipantInRoom(runtime.agentId, roomId);
+  await runtime.ensureParticipantInRoom(entityId, roomId);
+}
+
 function normalizeActionName(name: string | null | undefined): string | null {
   if (typeof name !== "string") return null;
   const trimmed = name.trim();
@@ -631,14 +673,11 @@ async function runSingleCase(
   try {
     runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", entityId, false);
     await seedBenchmarkCaseFixtures(runtime, entityId);
-    await runtime.ensureConnection({
+    await ensureBenchmarkConversation({
+      runtime,
       entityId,
       roomId,
       worldId,
-      userName: BENCHMARK_USER_NAME,
-      source: BENCHMARK_SOURCE,
-      channelId: roomId,
-      type: ChannelType.DM,
     });
 
     runtime.registerPipelineHook({

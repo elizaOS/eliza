@@ -1237,9 +1237,22 @@ function normalizeStringList(
   }
 
   if (typeof value === "string") {
-    return value
+    const trimmed = value.trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(trimmed.replace(/'/g, '"'));
+        if (Array.isArray(parsed)) {
+          return parsed.filter((item): item is string => typeof item === "string");
+        }
+      } catch {
+        // Fall through to the delimiter-based parser below for malformed
+        // planner output such as "['twitter.com', 'reddit.com']".
+      }
+    }
+    return trimmed
       .split(/[,\n]/)
       .map((item) => item.trim())
+      .map((item) => item.replace(/^[\[\]'"]+|[\[\]'"]+$/g, ""))
       .filter((item) => item.length > 0);
   }
 

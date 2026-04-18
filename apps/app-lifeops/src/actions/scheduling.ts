@@ -293,6 +293,8 @@ export const proposeMeetingTimesAction: Action & {
     "FIND_MEETING_SLOTS",
     "PROPOSE_SLOTS",
     "BUNDLE_MEETINGS_WHILE_TRAVELING",
+    "BULK_RESCHEDULE_MEETINGS",
+    "RESCHEDULE_MEETINGS",
   ],
   tags: [
     "always-include",
