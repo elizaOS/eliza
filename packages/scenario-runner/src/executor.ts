@@ -21,6 +21,7 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import type {
+  CapturedAction,
   ScenarioContext,
   ScenarioDefinition,
   ScenarioFinalCheck,
@@ -429,7 +430,28 @@ export async function runScenario(
         roomId,
         userId,
       );
-      const actionsThisTurn = interceptor.actions.slice(actionsBefore);
+      let actionsThisTurn = interceptor.actions.slice(actionsBefore);
+      // Synthesize an implicit REPLY capture when the runtime emitted text to
+      // the user but the LLM did not wrap it in an <action> envelope. This
+      // preserves the REPLY semantic for scenario assertions without requiring
+      // every model to produce the action XML perfectly.
+      if (
+        actionsThisTurn.length === 0 &&
+        typeof responseText === "string" &&
+        responseText.trim().length > 0
+      ) {
+        const synthesizedReply: CapturedAction = {
+          actionName: "REPLY",
+          parameters: undefined,
+          result: {
+            success: true,
+            text: responseText,
+            data: { source: "synthesized-reply" },
+          },
+        };
+        interceptor.actions.push(synthesizedReply);
+        actionsThisTurn = [synthesizedReply];
+      }
       const execution: ScenarioTurnExecution = {
         actionsCalled: actionsThisTurn,
         responseText,
