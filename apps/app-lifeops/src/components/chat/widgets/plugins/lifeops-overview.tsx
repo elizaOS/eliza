@@ -1198,6 +1198,10 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
     () => bucketOccurrences(overview?.owner.occurrences ?? [], new Date()),
     [overview?.owner.occurrences],
   );
+  const timeZone = useMemo(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    [],
+  );
 
   if (lifeOpsApp.loading || !lifeOpsApp.enabled) {
     return null;
@@ -1205,7 +1209,7 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
 
   return (
     <WidgetSection
-      title="Life Ops"
+      title="Glance"
       icon={<ListTodo className="h-4 w-4" />}
       action={
         <Button
@@ -1220,74 +1224,78 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
       }
       testId="chat-widget-lifeops-overview"
     >
-      {!hasAnyContent ? (
-        <EmptyWidgetState
-          icon={<CheckCircle2 className="h-8 w-8" />}
-          title={loading ? "Refreshing life ops…" : "No life ops yet"}
-        />
-      ) : (
-        <div className="flex flex-col gap-4">
-          <OccurrenceBucketBlock
-            title="Now"
-            icon={<ListTodo className="h-3.5 w-3.5" />}
-            occurrences={ownerBuckets.now}
-            actionState={actionState}
-            detailState={detailState}
-            occurrenceExplanations={occurrenceExplanations}
-            expandedOccurrenceId={expandedOccurrenceId}
-            onOccurrenceAction={onOccurrenceAction}
-            onSnoozeOccurrence={onSnoozeOccurrence}
-            onExplainOccurrence={onExplainOccurrence}
-          />
-          <OccurrenceBucketBlock
-            title="Next"
-            icon={<Clock3 className="h-3.5 w-3.5" />}
-            occurrences={ownerBuckets.next}
-            actionState={actionState}
-            detailState={detailState}
-            occurrenceExplanations={occurrenceExplanations}
-            expandedOccurrenceId={expandedOccurrenceId}
-            onOccurrenceAction={onOccurrenceAction}
-            onSnoozeOccurrence={onSnoozeOccurrence}
-            onExplainOccurrence={onExplainOccurrence}
-          />
-          <OccurrenceBucketBlock
-            title="Upcoming"
-            icon={<Clock3 className="h-3.5 w-3.5" />}
-            occurrences={ownerBuckets.upcoming}
-            actionState={actionState}
-            detailState={detailState}
-            occurrenceExplanations={occurrenceExplanations}
-            expandedOccurrenceId={expandedOccurrenceId}
-            onOccurrenceAction={onOccurrenceAction}
-            onSnoozeOccurrence={onSnoozeOccurrence}
-            onExplainOccurrence={onExplainOccurrence}
-          />
-          <GoalSection
-            goals={ownerSection?.goals ?? []}
-            goalReviews={goalReviews}
-            detailState={detailState}
-            expandedGoalId={expandedGoalId}
-            onReviewGoal={onReviewGoal}
-          />
-          <ReminderSection reminders={ownerSection?.reminders ?? []} />
-          {agentOpsSection ? (
-            <AgentOpsSection
-              section={agentOpsSection}
+      <div className="flex flex-col gap-3">
+        {hasAnyContent ? (
+          <>
+            <OccurrenceBucketBlock
+              title="Now"
+              icon={<ListTodo className="h-3 w-3" />}
+              occurrences={ownerBuckets.now}
               actionState={actionState}
               detailState={detailState}
               occurrenceExplanations={occurrenceExplanations}
-              goalReviews={goalReviews}
               expandedOccurrenceId={expandedOccurrenceId}
-              expandedGoalId={expandedGoalId}
               onOccurrenceAction={onOccurrenceAction}
               onSnoozeOccurrence={onSnoozeOccurrence}
               onExplainOccurrence={onExplainOccurrence}
+            />
+            <OccurrenceBucketBlock
+              title="Next"
+              icon={<Clock3 className="h-3 w-3" />}
+              occurrences={ownerBuckets.next}
+              actionState={actionState}
+              detailState={detailState}
+              occurrenceExplanations={occurrenceExplanations}
+              expandedOccurrenceId={expandedOccurrenceId}
+              onOccurrenceAction={onOccurrenceAction}
+              onSnoozeOccurrence={onSnoozeOccurrence}
+              onExplainOccurrence={onExplainOccurrence}
+            />
+            <OccurrenceBucketBlock
+              title="Upcoming"
+              icon={<Clock3 className="h-3 w-3" />}
+              occurrences={ownerBuckets.upcoming}
+              actionState={actionState}
+              detailState={detailState}
+              occurrenceExplanations={occurrenceExplanations}
+              expandedOccurrenceId={expandedOccurrenceId}
+              onOccurrenceAction={onOccurrenceAction}
+              onSnoozeOccurrence={onSnoozeOccurrence}
+              onExplainOccurrence={onExplainOccurrence}
+            />
+            <GoalSection
+              goals={ownerSection?.goals ?? []}
+              goalReviews={goalReviews}
+              detailState={detailState}
+              expandedGoalId={expandedGoalId}
               onReviewGoal={onReviewGoal}
             />
-          ) : null}
-        </div>
-      )}
+            <ReminderSection reminders={ownerSection?.reminders ?? []} />
+            {agentOpsSection ? (
+              <AgentOpsSection
+                section={agentOpsSection}
+                actionState={actionState}
+                detailState={detailState}
+                occurrenceExplanations={occurrenceExplanations}
+                goalReviews={goalReviews}
+                expandedOccurrenceId={expandedOccurrenceId}
+                expandedGoalId={expandedGoalId}
+                onOccurrenceAction={onOccurrenceAction}
+                onSnoozeOccurrence={onSnoozeOccurrence}
+                onExplainOccurrence={onExplainOccurrence}
+                onReviewGoal={onReviewGoal}
+              />
+            ) : null}
+          </>
+        ) : (
+          <EmptyWidgetState
+            icon={<CheckCircle2 className="h-8 w-8" />}
+            title={loading ? "Refreshing life ops…" : "No life ops yet"}
+          />
+        )}
+        <GoogleGlanceSection timeZone={timeZone} />
+        <DiscordMessagesGlance />
+      </div>
       {error ? (
         <div className="mt-3 text-xs text-danger">{error}</div>
       ) : null}
