@@ -2670,7 +2670,7 @@ export class DefaultMessageService implements IMessageService {
 				);
 			}
 
-				if (shouldRunProviderFollowup(responseContent)) {
+				if (responseContent && shouldRunProviderFollowup(responseContent)) {
 					const providerFollowupState =
 						responseContent.providers && responseContent.providers.length > 0
 							? withContextRoutingValues(
