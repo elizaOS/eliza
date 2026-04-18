@@ -6,6 +6,7 @@ import {
 	parseActionParams,
 } from "../actions";
 import type { Action } from "../types";
+import { ACTION_BENCHMARK_CASES } from "../../../app-core/test/benchmarks/action-selection-cases.ts";
 
 describe("Actions", () => {
 	const mockActions: Action[] = [
@@ -192,6 +193,7 @@ describe("Actions", () => {
 			expect(formatted).toContain("actions[1]:");
 			expect(formatted).toContain("- greet:");
 			expect(formatted).toContain("Greet someone");
+			expect(formatted).toContain("aliases[2]: say hi, welcome");
 		});
 
 		it("should include parameter definitions and examples when present", () => {
@@ -263,6 +265,26 @@ describe("Actions", () => {
 			);
 		});
 
+		it("deduplicates and trims aliases before rendering them", () => {
+			const formatted = formatActions([
+				{
+					name: "FOLLOW_UP",
+					description: "Schedule a follow-up.",
+					examples: [],
+					similes: ["  ping back  ", "ping back", "", "check in"],
+					handler: async () => {
+						throw new Error("Not implemented");
+					},
+					validate: async () => {
+						throw new Error("Not implemented");
+					},
+				},
+			]);
+
+			expect(formatted).toContain("aliases[2]: ping back, check in");
+			expect(formatted).not.toContain("aliases[4]");
+		});
+
 		it("should include commas and newlines between multiple actions", () => {
 			const formatted = formatActions([mockActions[0], mockActions[1]]);
 			expect(formatted).toContain("actions[2]:");
@@ -273,6 +295,57 @@ describe("Actions", () => {
 		it("should handle empty actions array", () => {
 			const formatted = formatActions([]);
 			expect(formatted).toBe("");
+		});
+	});
+
+	describe("Action benchmark cases", () => {
+		it("keeps structurally tricky routing cases single-turn and supported", () => {
+			const casesById = new Map(
+				ACTION_BENCHMARK_CASES.map((testCase) => [testCase.id, testCase]),
+			);
+
+			expect(casesById.has("cross-send-slack")).toBe(false);
+			expect(casesById.get("cross-send-signal")).toMatchObject({
+				expectedAction: "CROSS_CHANNEL_SEND",
+				userMessage: "send a Signal message to Priya saying thanks for the review",
+			});
+
+			expect(casesById.has("computer-use-fill-form")).toBe(false);
+			expect(casesById.get("computer-use-screenshot")).toMatchObject({
+				expectedAction: "LIFEOPS_COMPUTER_USE",
+				userMessage: "take a screenshot of my desktop",
+			});
+
+			expect(casesById.has("intent-sync-send-to-mobile")).toBe(false);
+			expect(casesById.get("intent-sync-mobile-routine-reminder"))
+				.toMatchObject({
+					expectedAction: "INTENT_SYNC",
+					expectedParams: {
+						subaction: "broadcast",
+						kind: "routine_reminder",
+						target: "mobile",
+						title: "Stretch break",
+						body: "Get up and stretch for five minutes",
+					},
+				});
+
+			expect(casesById.has("calendly-list-slots")).toBe(false);
+			expect(casesById.get("calendly-check-availability")).toMatchObject({
+				expectedAction: "CALENDLY",
+				expectedParams: {
+					subaction: "availability",
+					eventTypeUri: "https://api.calendly.com/event_types/abc",
+					startDate: "2026-04-20",
+					endDate: "2026-04-24",
+				},
+			});
+			expect(casesById.get("calendly-create-single-use-link")).toMatchObject({
+				expectedAction: "CALENDLY",
+				expectedParams: {
+					subaction: "single_use_link",
+					eventTypeUri: "https://api.calendly.com/event_types/abc",
+				},
+			});
 		});
 	});
 

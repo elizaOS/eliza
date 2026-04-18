@@ -131,8 +131,15 @@ export const setFollowupThresholdAction: Action = {
           },
         };
       }
-      resolvedContact = matches[0].contact;
-      resolvedDisplayName = matches[0].displayName;
+      const match = matches[0];
+      if (!match) {
+        return {
+          success: false,
+          text: `No contact found matching "${contactName}".`,
+        };
+      }
+      resolvedContact = match.contact;
+      resolvedDisplayName = match.displayName;
     } else {
       return {
         success: false,

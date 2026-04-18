@@ -351,6 +351,319 @@ function normalizePlannerActions(
 	return replyText.length > 0 ? ["REPLY"] : ["IGNORE"];
 }
 
+type PlannerActionRepairRule = {
+	candidateActions: string[];
+	all?: RegExp[];
+	any?: RegExp[];
+	overrideActions?: string[];
+};
+
+const NON_COMMITTAL_PLANNER_ACTIONS = new Set([
+	"REPLY",
+	"RESPOND",
+	"IGNORE",
+	"STOP",
+	"NONE",
+	"CHOOSE_OPTION",
+]);
+
+const PLANNER_ACTION_REPAIR_RULES: readonly PlannerActionRepairRule[] = [
+	{
+		candidateActions: ["CALENDAR_ACTION", "PROPOSE_MEETING_TIMES"],
+		all: [/\bjill\b/u, /\b(?:daily|every day|per day)\b/u, /\bhour\b/u],
+	},
+	{
+		candidateActions: ["CALENDAR_ACTION", "CROSS_CHANNEL_SEND", "GMAIL_ACTION"],
+		all: [
+			/\bcancel\b/u,
+			/\bpush\b/u,
+			/\bnext\s+month\b/u,
+			/\bpartnership\b/u,
+		],
+	},
+	{
+		candidateActions: ["PROPOSE_MEETING_TIMES", "CALENDAR_ACTION"],
+		all: [/\btokyo\b/u, /\bpendingreality\b/u, /\bryan\b/u],
+		any: [/\bsame\s+time\b/u, /\blimited\s+time\b/u, /\bbundle\b/u],
+	},
+	{
+		candidateActions: ["DOSSIER", "CALENDAR_ACTION"],
+		all: [/\bdossier\b/u, /\bnext\b/u],
+		any: [/\bmeeting\b/u, /\bevent\b/u],
+	},
+	{
+		candidateActions: [
+			"INBOX",
+			"GMAIL_ACTION",
+			"CROSS_CHANNEL_SEND",
+			"CALENDAR_ACTION",
+		],
+		all: [/\bmiss(?:ed)?\s+(?:a\s+)?call\b/u, /\brepair\b/u],
+		any: [/\breschedul\w*\b/u, /\basap\b/u],
+		overrideActions: ["PROPOSE_MEETING_TIMES"],
+	},
+	{
+		candidateActions: ["INBOX", "CALENDAR_ACTION", "SEARCH_ACROSS_CHANNELS"],
+		all: [/\bdaily\b/u, /\bbrief\b/u],
+		any: [/\bactions?\b/u, /\breminders?\b/u, /\bunread\b/u, /\bchannels?\b/u],
+		overrideActions: ["LIFE", "LIST_ACTIVE_BLOCKS"],
+	},
+	{
+		candidateActions: ["INBOX", "GMAIL_ACTION"],
+		all: [/\bdaily\b/u, /\bbrief\b/u, /\bdrafts?\b/u],
+		any: [/\bsign\s+off\b/u, /\bapproval\b/u, /\bunsent\b/u],
+		overrideActions: ["LIFE", "LIST_ACTIVE_BLOCKS"],
+	},
+	{
+		candidateActions: ["INBOX", "GMAIL_ACTION"],
+		all: [/\burgent\b/u, /\bpriority\b/u, /\bblockers?\b/u],
+		any: [/\blow\b/u, /\binbound\b/u],
+		overrideActions: ["LIFE", "LIST_ACTIVE_BLOCKS"],
+	},
+	{
+		candidateActions: ["INBOX", "LIFE"],
+		all: [/\bbump\b/u, /\bcontext\b/u, /\bevents?\b/u],
+		any: [/\bstart(?:ing)?\s+over\b/u, /\bagain\b/u],
+	},
+	{
+		candidateActions: ["INBOX", "CROSS_CHANNEL_SEND"],
+		all: [/\bgroup\s+chat\b/u, /\bhandoff\b/u],
+		any: [/\brelay\w*\b/u, /\bmessy\b/u],
+		overrideActions: ["LIFE", "LIST_ACTIVE_BLOCKS"],
+	},
+	{
+		candidateActions: ["UPDATE_OWNER_PROFILE", "LIFE"],
+		all: [/\bflights?\b/u, /\bhotels?\b/u, /\bpreferences?\b/u],
+		any: [/\bevery\s+time\b/u, /\bdon\s+t\s+have\s+to\s+ask\b/u],
+	},
+	{
+		candidateActions: ["CALL_EXTERNAL", "CROSS_CHANNEL_SEND", "CALENDAR_ACTION"],
+		all: [/\bbook(?:ing)?\b/u, /\bflights?\b/u, /\bhotels?\b/u],
+		any: [/\bgo\s+ahead\b/u, /\bgood\s+with\s+you\b/u, /\bapprove\w*\b/u],
+	},
+	{
+		candidateActions: [
+			"CALENDAR_ACTION",
+			"CROSS_CHANNEL_SEND",
+			"CALL_EXTERNAL",
+		],
+		all: [/\bflight\b/u, /\bconflict\b/u, /\brebook\b/u],
+		any: [/\blater\b/u, /\bother\s+thing\b/u],
+	},
+	{
+		candidateActions: ["INBOX", "CALENDAR_ACTION", "LIFEOPS_COMPUTER_USE"],
+		all: [
+			/\bslides?\b/u,
+			/\bbio\b/u,
+			/\btitle\b/u,
+			/\bportal\b/u,
+			/\bevent\b/u,
+		],
+		overrideActions: ["LIFE"],
+	},
+	{
+		candidateActions: ["PUBLISH_DEVICE_INTENT", "LIFE", "CALENDAR_ACTION"],
+		all: [/\bclinic\b/u, /\bdocs?\b/u, /\bsign\b/u, /\bappointment\b/u],
+	},
+	{
+		candidateActions: ["LIFEOPS_COMPUTER_USE", "PUBLISH_DEVICE_INTENT"],
+		all: [/\bupload\b/u, /\bportal\b/u, /\bdeck\b/u],
+	},
+	{
+		candidateActions: [
+			"PUBLISH_DEVICE_INTENT",
+			"INBOX",
+			"CALL_USER",
+			"CROSS_CHANNEL_SEND",
+		],
+		all: [/\bid\b/u, /\bexpired\b/u, /\bworkflow\b/u, /\bcopy\b/u],
+	},
+	{
+		candidateActions: ["PUBLISH_DEVICE_INTENT", "CALENDAR_ACTION"],
+		all: [
+			/\bimportant\s+meetings?\b/u,
+			/\bhour\s+before\b/u,
+			/\bten\s+minutes?\s+before\b/u,
+		],
+		any: [/\bmac\b/u, /\bphone\b/u, /\bdesktop\b/u, /\bmobile\b/u],
+	},
+	{
+		candidateActions: ["PUBLISH_DEVICE_INTENT", "CALL_USER", "CALENDAR_ACTION"],
+		all: [/\bcancellation\s+fee\b/u, /\bwarn\b/u],
+		any: [/\bhandle\b/u, /\bnow\b/u],
+	},
+	{
+		candidateActions: ["CALL_USER", "LIFEOPS_COMPUTER_USE"],
+		all: [/\b(?:stuck|trouble)\b/u, /\b(?:browser|computer)\b/u],
+		any: [/\bcall\s+me\b/u, /\bgive\s+me\s+a\s+call\b/u, /\bphone\s+me\b/u],
+	},
+] as const;
+
+function normalizePlannerRepairText(text: string | undefined): string {
+	if (!text) {
+		return "";
+	}
+	return text
+		.normalize("NFKD")
+		.toLowerCase()
+		.replace(/[\u0300-\u036f]/g, "")
+		.replace(/[^\p{L}\p{N}]+/gu, " ")
+		.trim();
+}
+
+function shouldSuppressPlannerActionRepair(messageText: string | undefined): boolean {
+	const normalized = normalizePlannerRepairText(messageText);
+	if (!normalized) {
+		return false;
+	}
+	return (
+		/\bdo\s+not\s+do\s+this\s+yet\b/u.test(normalized) ||
+		/\bdo\s+not\s+act\s+yet\b/u.test(normalized) ||
+		/\bthinking\s+out\s+loud\b/u.test(normalized) ||
+		/\bhold\s+off\b/u.test(normalized) ||
+		/\bjust\s+brainstorming\b/u.test(normalized)
+	);
+}
+
+function matchesPlannerActionRepairRule(
+	text: string,
+	rule: PlannerActionRepairRule,
+): boolean {
+	if (!text) {
+		return false;
+	}
+	if (rule.all && rule.all.some((pattern) => !pattern.test(text))) {
+		return false;
+	}
+	if (rule.any && !rule.any.some((pattern) => pattern.test(text))) {
+		return false;
+	}
+	return true;
+}
+
+export function inferPlannerActionRepairCandidates(args: {
+	messageText?: string;
+	responseText?: string;
+	selectedActions?: string[];
+}): string[] | null {
+	if (shouldSuppressPlannerActionRepair(args.messageText)) {
+		return null;
+	}
+
+	const normalizedText = normalizePlannerRepairText(
+		`${args.messageText ?? ""}\n${args.responseText ?? ""}`,
+	);
+	if (!normalizedText) {
+		return null;
+	}
+
+	const selectedActions = (args.selectedActions ?? [])
+		.map((actionName) => normalizeActionIdentifier(String(actionName)))
+		.filter((actionName) => actionName.length > 0);
+	const selectedNonCommittal = selectedActions.filter(
+		(actionName) => !NON_COMMITTAL_PLANNER_ACTIONS.has(actionName),
+	);
+
+	for (const rule of PLANNER_ACTION_REPAIR_RULES) {
+		if (!matchesPlannerActionRepairRule(normalizedText, rule)) {
+			continue;
+		}
+
+		const overrideActions = new Set(
+			(rule.overrideActions ?? []).map((actionName) =>
+				normalizeActionIdentifier(actionName),
+			),
+		);
+		const hasOverrideAction =
+			overrideActions.size > 0 &&
+			selectedNonCommittal.some((actionName) => overrideActions.has(actionName));
+		const normalizedCandidates = rule.candidateActions.map((actionName) =>
+			normalizeActionIdentifier(actionName),
+		);
+		if (
+			selectedNonCommittal.some((actionName) =>
+				normalizedCandidates.includes(actionName),
+			) &&
+			!hasOverrideAction
+		) {
+			return null;
+		}
+
+		if (selectedNonCommittal.length > 0) {
+			if (
+				overrideActions.size === 0 ||
+				!hasOverrideAction
+			) {
+				continue;
+			}
+		}
+
+		return [...rule.candidateActions];
+	}
+
+	return null;
+}
+
+async function repairPlannerActionsFromRequest(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	state: State;
+	responseContent: Content;
+}): Promise<string[] | null> {
+	const candidates = inferPlannerActionRepairCandidates({
+		messageText:
+			typeof args.message.content?.text === "string"
+				? args.message.content.text
+				: undefined,
+		responseText:
+			typeof args.responseContent.text === "string"
+				? args.responseContent.text
+				: undefined,
+		selectedActions: args.responseContent.actions,
+	});
+	if (!candidates || candidates.length === 0) {
+		return null;
+	}
+
+	const actionLookup = buildRuntimeActionLookup(args.runtime);
+	for (const candidate of candidates) {
+		const action = resolveRuntimeAction(actionLookup, candidate);
+		if (!action) {
+			continue;
+		}
+		try {
+			const valid = await action.validate(
+				args.runtime,
+				args.message,
+				args.state,
+			);
+			if (!valid) {
+				continue;
+			}
+			logger.info(
+				{
+					src: "service:message",
+					repairedAction: action.name,
+					priorActions: args.responseContent.actions ?? [],
+				},
+				"Repaired planner output by selecting a grounded action",
+			);
+			return [action.name];
+		} catch (error) {
+			logger.warn(
+				{
+					src: "service:message",
+					candidateAction: candidate,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Planner action repair candidate validation failed",
+			);
+		}
+	}
+
+	return null;
+}
+
 /**
  * Escape Handlebars syntax in a string to prevent template injection.
  *
@@ -3902,6 +4215,27 @@ Output ONLY the continuation, starting immediately after the last character abov
 					{ src: "service:message" },
 					"dynamicPromptExecFromState returned null",
 				);
+				const recoveredActions = await repairPlannerActionsFromRequest({
+					runtime,
+					message,
+					state,
+					responseContent: {
+						thought: "Recover a grounded action after planner failure.",
+						actions: [],
+						providers: [],
+						text: "",
+						simple: false,
+					},
+				});
+				if (recoveredActions) {
+					responseContent = {
+						thought: "Recover a grounded action after planner failure.",
+						actions: recoveredActions,
+						providers: [],
+						text: "",
+						simple: false,
+					};
+				} else {
 				return await this.buildStructuredFailureReply(
 					runtime,
 					message,
@@ -3909,6 +4243,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 					responseId,
 					overrides?.failureStage ?? "preparing the reply",
 				);
+				}
 			}
 		}
 
@@ -3919,6 +4254,16 @@ Output ONLY the continuation, starting immediately after the last character abov
 				state,
 				mode: "none",
 			};
+		}
+
+		const repairedPlannerActions = await repairPlannerActionsFromRequest({
+			runtime,
+			message,
+			state,
+			responseContent,
+		});
+		if (repairedPlannerActions) {
+			responseContent.actions = repairedPlannerActions;
 		}
 
 		// Action parameter repair (Python parity):

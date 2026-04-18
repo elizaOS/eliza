@@ -145,7 +145,11 @@ export const STYLE_PRESETS: StylePreset[] =
 export function getDefaultStylePreset(
   language: unknown = DEFAULT_LANGUAGE,
 ): StylePreset {
-  return getStylePresets(language)[0];
+  const preset = getStylePresets(language)[0];
+  if (!preset) {
+    throw new Error("No style presets are configured.");
+  }
+  return preset;
 }
 
 export function resolveStylePresetById(

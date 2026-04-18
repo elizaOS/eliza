@@ -177,6 +177,8 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
     "",
     "Rules:",
     "- Only start a block when the user is clearly asking to block websites now.",
+    "- Generic focus-block requests like 'turn on a focus block for all social media sites' belong here; do not invent a task gate for them.",
+    "- Use BLOCK_WEBSITES for fixed-duration or generic focus blocks. Do not treat them as task-gated blocks unless the user explicitly says until I finish, until I complete, or until I'm done with a task.",
     "- If the user says not yet, later, hold off, wait, or is only discussing candidate sites, set shouldAct=false and explain that you will wait for confirmation.",
     "- If the current request refers to previously mentioned websites, recover them from recent conversation context.",
     "- If the websites are unclear or missing, set shouldAct=false and ask the user to name the public hostnames explicitly.",
@@ -240,10 +242,15 @@ export const blockWebsitesAction: Action = {
     "START_FOCUS_BLOCK",
     "BLOCK_SITE",
     "BLOCK_DISTRACTING_SITES",
+    "FOCUS_BLOCK",
+    "BLOCK_SOCIAL_MEDIA",
+    "SOCIAL_MEDIA_BLOCK",
   ],
   description:
     "Admin-only. Start a local website block by editing the system hosts file. " +
+    "Use this for fixed-duration or generic focus blocks like 'block twitter and reddit for the next 2 hours', 'turn on a focus block for all social media sites', or 'block youtube'. " +
     "Use recent conversation context to block public websites like x.com for a fixed duration or until manually unblocked. " +
+    "Do not use this when the unblock condition is finishing a task, workout, or todo; that is BLOCK_UNTIL_TASK_COMPLETE. " +
     "If the user confirms a block in a follow-up message without repeating the hostnames, reuse that context through the action planner.",
   descriptionCompressed: "Admin: block websites via hosts file for set duration.",
   validate: async (runtime, message) => {
@@ -388,6 +395,21 @@ export const blockWebsitesAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Started a website block for x.com, twitter.com until 2026-04-04T13:44:54.000Z.",
+          action: "BLOCK_WEBSITES",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Turn on a focus block for all social media sites.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Started a website block for facebook.com, instagram.com, reddit.com, tiktok.com, x.com, and youtube.com until you unblock it.",
           action: "BLOCK_WEBSITES",
         },
       },

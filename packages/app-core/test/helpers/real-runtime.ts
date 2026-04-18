@@ -15,6 +15,8 @@ import {
 export interface RealTestRuntimeOptions {
   /** Name for the test agent character. Defaults to "TestAgent". */
   characterName?: string;
+  /** Enable built-in advanced capabilities (for example MODIFY_CHARACTER). */
+  advancedCapabilities?: boolean;
   /** Additional plugins to register. */
   plugins?: Plugin[];
   /** Register a real LLM plugin based on available API keys. Default: false. */
@@ -172,6 +174,7 @@ export async function createRealTestRuntime(
       character,
       plugins: [],
       logLevel: "warn",
+      advancedCapabilities: options?.advancedCapabilities ?? false,
       enableAutonomy: false,
     });
 

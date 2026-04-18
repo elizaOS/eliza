@@ -460,12 +460,17 @@ export function BrowserWorkspaceView(): JSX.Element {
               }`}
             >
               {tab.visible ? (
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full bg-accent shadow-[0_0_6px_var(--accent)]"
-                  aria-label={t("browserworkspace.AgentActive", {
-                    defaultValue: "Agent is on this tab",
-                  })}
-                />
+                <>
+                  <span
+                    aria-hidden
+                    className="h-2 w-2 shrink-0 rounded-full bg-accent shadow-[0_0_6px_var(--accent)]"
+                  />
+                  <span className="sr-only">
+                    {t("browserworkspace.AgentActive", {
+                      defaultValue: "Agent is on this tab",
+                    })}
+                  </span>
+                </>
               ) : (
                 <span
                   aria-hidden
@@ -602,7 +607,7 @@ export function BrowserWorkspaceView(): JSX.Element {
                 <div className="text-xs text-muted">
                   {t("browserworkspace.EmptyDescription", {
                     defaultValue:
-                      "Open a page here, or let the agent create tabs through the browser workspace plugin.",
+                      "Open a page here, or jump straight to a site like Discord from LifeOps.",
                   })}
                 </div>
               </div>

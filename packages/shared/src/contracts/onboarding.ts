@@ -676,6 +676,9 @@ export function normalizeOnboardingProviderId(
     const preferredMatch =
       pluginMatches.find((provider) => provider.authMode === "api-key") ??
       pluginMatches[0];
+    if (!preferredMatch) {
+      continue;
+    }
     return preferredMatch.id;
   }
 

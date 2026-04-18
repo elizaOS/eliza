@@ -93,7 +93,7 @@ function buildSignatureBaseString(
 ): string {
   const sorted = Object.keys(params)
     .sort()
-    .map((key) => `${percentEncode(key)}=${percentEncode(params[key])}`)
+    .map((key) => `${percentEncode(key)}=${percentEncode(params[key] ?? "")}`)
     .join("&");
   return `${method.toUpperCase()}&${percentEncode(url)}&${percentEncode(sorted)}`;
 }
@@ -138,7 +138,10 @@ function buildOAuth1GetHeader(args: {
     "OAuth " +
     Object.keys(oauthParams)
       .sort()
-      .map((key) => `${percentEncode(key)}="${percentEncode(oauthParams[key])}"`)
+      .map(
+        (key) =>
+          `${percentEncode(key)}="${percentEncode(oauthParams[key] ?? "")}"`,
+      )
       .join(", ")
   );
 }

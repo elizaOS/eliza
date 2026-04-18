@@ -20,8 +20,9 @@ import { accessSync, constants as fsConstants } from "node:fs";
 import { logger } from "@elizaos/core";
 
 const execFileAsync = promisify(execFile);
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-export type HealthBackend = "healthkit" | "google-fit" | "none";
+export type HealthBackend = "healthkit" | "google-fit" | "fixture" | "none";
 
 export interface HealthDataPoint {
   metric:
@@ -70,6 +71,175 @@ export class HealthBridgeError extends Error {
   }
 }
 
+function isTruthyEnv(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on" ||
+    normalized === "fixture"
+  );
+}
+
+function isFalsyEnv(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "0" ||
+    normalized === "false" ||
+    normalized === "no" ||
+    normalized === "off"
+  );
+}
+
+function isFixtureHealthBackendEnabled(): boolean {
+  const explicit = process.env.MILADY_TEST_HEALTH_BACKEND;
+  if (isFalsyEnv(explicit)) return false;
+  if (isTruthyEnv(explicit)) return true;
+  return process.env.MILADY_BENCHMARK_USE_MOCKS === "1";
+}
+
+function utcMidnightMs(date: string): number {
+  const ms = Date.parse(`${date}T00:00:00.000Z`);
+  if (!Number.isFinite(ms)) {
+    throw new HealthBridgeError(`Invalid fixture health date: ${date}`, "fixture");
+  }
+  return ms;
+}
+
+function todayDateKeyUtc(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function fixtureDayOffset(date: string): number {
+  return Math.round((utcMidnightMs(date) - utcMidnightMs(todayDateKeyUtc())) / ONE_DAY_MS);
+}
+
+function fixtureSummaryForDate(date: string): HealthDailySummary {
+  const offset = fixtureDayOffset(date);
+  const distance = Math.abs(offset);
+  const direction = offset < 0 ? 1 : -1;
+  const steps = Math.max(1500, 8420 + direction * distance * 260 + (distance % 3) * 175);
+  const activeMinutes = Math.max(
+    18,
+    63 + direction * distance * 4 + (distance % 2 === 0 ? 2 : -3),
+  );
+  const sleepHours = Math.max(5.2, 7.4 + direction * distance * 0.15);
+  const heartRateAvg = Math.max(54, 62 - direction * distance);
+  const calories = Math.max(1650, 2180 + direction * distance * 55);
+  const distanceMeters = Math.max(1200, steps * 0.78);
+
+  return {
+    date,
+    steps: Math.round(steps),
+    activeMinutes: Math.round(activeMinutes),
+    sleepHours,
+    heartRateAvg,
+    calories,
+    distanceMeters,
+    source: "fixture",
+  };
+}
+
+function enumerateFixtureDates(startAt: string, endAt: string): string[] {
+  const start = new Date(startAt);
+  const end = new Date(endAt);
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+    throw new HealthBridgeError(
+      "Invalid time window for fixture health data",
+      "fixture",
+    );
+  }
+  if (endMs < startMs) {
+    return [];
+  }
+
+  const dates: string[] = [];
+  const cursor = new Date(Date.UTC(
+    start.getUTCFullYear(),
+    start.getUTCMonth(),
+    start.getUTCDate(),
+  ));
+  const endCursorMs = Date.UTC(
+    end.getUTCFullYear(),
+    end.getUTCMonth(),
+    end.getUTCDate(),
+  );
+
+  while (cursor.getTime() <= endCursorMs) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+}
+
+function fixturePointValue(
+  summary: HealthDailySummary,
+  metric: HealthDataPoint["metric"],
+): { value: number; unit: string; startAt: string; endAt: string } {
+  if (metric === "sleep_hours") {
+    const startAt = `${summary.date}T00:30:00.000Z`;
+    const endMs =
+      Date.parse(startAt) + Math.round(summary.sleepHours * 60 * 60 * 1000);
+    return {
+      value: summary.sleepHours,
+      unit: "hours",
+      startAt,
+      endAt: new Date(endMs).toISOString(),
+    };
+  }
+
+  return {
+    value:
+      metric === "steps"
+        ? summary.steps
+        : metric === "active_minutes"
+          ? summary.activeMinutes
+          : metric === "heart_rate"
+            ? summary.heartRateAvg ?? 0
+            : metric === "calories"
+              ? summary.calories ?? 0
+              : summary.distanceMeters ?? 0,
+    unit:
+      metric === "steps"
+        ? "count"
+        : metric === "active_minutes"
+          ? "minutes"
+          : metric === "heart_rate"
+            ? "bpm"
+            : metric === "calories"
+              ? "kcal"
+              : "m",
+    startAt: `${summary.date}T00:00:00.000Z`,
+    endAt: `${summary.date}T23:59:59.999Z`,
+  };
+}
+
+function fixtureDataPoints(opts: {
+  metric: HealthDataPoint["metric"];
+  startAt: string;
+  endAt: string;
+}): HealthDataPoint[] {
+  return enumerateFixtureDates(opts.startAt, opts.endAt)
+    .map((date) => fixtureSummaryForDate(date))
+    .map((summary) => {
+      const point = fixturePointValue(summary, opts.metric);
+      return {
+        metric: opts.metric,
+        value: point.value,
+        unit: point.unit,
+        startAt: point.startAt,
+        endAt: point.endAt,
+        source: "fixture" as const,
+      };
+    })
+    .filter((point) => point.value > 0);
+}
+
 // ---------------------------------------------------------------------------
 // Backend detection
 // ---------------------------------------------------------------------------
@@ -104,7 +274,16 @@ function resolveGoogleFitAccessToken(
 export async function detectHealthBackend(
   config?: HealthBridgeConfig,
 ): Promise<HealthBackend> {
-  if (config?.preferredBackend && config.preferredBackend !== "none") {
+  if (config?.preferredBackend === "none") {
+    return "none";
+  }
+  if (config?.preferredBackend === "fixture") {
+    return "fixture";
+  }
+  if (isFixtureHealthBackendEnabled()) {
+    return "fixture";
+  }
+  if (config?.preferredBackend) {
     if (
       config.preferredBackend === "healthkit" &&
       resolveHealthKitCliPath(config)
@@ -480,6 +659,9 @@ export async function getDailySummary(
   config?: HealthBridgeConfig,
 ): Promise<HealthDailySummary> {
   const backend = await detectHealthBackend(config);
+  if (backend === "fixture") {
+    return fixtureSummaryForDate(date);
+  }
   if (backend === "healthkit") {
     const cliPath = resolveHealthKitCliPath(config);
     if (!cliPath) {
@@ -508,6 +690,9 @@ export async function getDataPoints(
   config?: HealthBridgeConfig,
 ): Promise<HealthDataPoint[]> {
   const backend = await detectHealthBackend(config);
+  if (backend === "fixture") {
+    return fixtureDataPoints(opts);
+  }
   if (backend === "healthkit") {
     const cliPath = resolveHealthKitCliPath(config);
     if (!cliPath) {

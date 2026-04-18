@@ -49,8 +49,10 @@ function unwrapPromptResult<T>(value: T, message = "Operation cancelled."): T {
   return value;
 }
 
-function validateProjectDirectory(name: string): string | undefined {
-  const normalized = normalizeProjectName(name);
+function validateProjectDirectory(
+  name: string | undefined,
+): string | Error | undefined {
+  const normalized = normalizeProjectName(name ?? "");
   if (!normalized) return "Project name is required";
   if (fs.existsSync(normalized))
     return `Directory '${normalized}' already exists`;

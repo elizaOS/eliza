@@ -21,8 +21,8 @@ export const inboxTriageProvider: Provider = {
   description:
     "Injects pending inbox triage items into admin context. Shows urgent messages, " +
     "items needing reply, and recent auto-replies across all channels including email. " +
-    "Use INBOX_RESPOND to draft and send replies. Use INBOX_TRIAGE to scan for new messages. " +
-    "Use INBOX_DIGEST for a daily summary.",
+    "Use INBOX for cross-channel triage, digest, and respond workflows. " +
+    "Use GMAIL_ACTION instead when the request is explicitly Gmail-only, about unread emails, or about drafting/sending a specific email reply.",
   descriptionCompressed: "Pending inbox triage items across all channels incl email.",
   dynamic: true,
   position: 14, // after lifeops (12), before escalation (15)

@@ -210,6 +210,17 @@ function shuffleActions<T>(items: T[], seed = "actions"): T[] {
 	return deterministicShuffle(items, seed);
 }
 
+function formatActionSimiles(action: Action): string | null {
+	const similes = [...new Set((action.similes ?? []).map((simile) => simile.trim()))]
+		.filter((simile) => simile.length > 0);
+
+	if (similes.length === 0) {
+		return null;
+	}
+
+	return `  aliases[${similes.length}]: ${similes.join(", ")}`;
+}
+
 export function formatActionNames(actions: Action[], seed = "actions"): string {
 	if (!actions?.length) return "";
 
@@ -230,6 +241,11 @@ export function formatActions(actions: Action[], seed = "actions"): string {
 				`- ${action.name}: ${action.description || "No description available"}`,
 			];
 			const exampleSummary = formatActionExampleSummary(action);
+			const similes = formatActionSimiles(action);
+
+			if (similes) {
+				lines.push(similes);
+			}
 
 			if (action.parameters && action.parameters.length > 0) {
 				lines.push(

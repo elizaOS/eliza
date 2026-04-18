@@ -10,7 +10,14 @@
  * unused): every test spins up a fresh ConversationHarness (new roomId) so
  * context cannot leak between cases.
  */
-import { type AgentRuntime, logger, type Memory, type UUID } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  logger,
+  type Memory,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
+import { appLifeOpsPlugin } from "@elizaos/app-lifeops/plugin";
 import { afterAll, beforeAll, describe, expect } from "vitest";
 import { itIf } from "../../../../../test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
@@ -34,6 +41,7 @@ const selectedLiveProvider = liveModelTestsEnabled
 const canRunLiveTests = liveModelTestsEnabled && selectedLiveProvider !== null;
 
 const DEFAULT_TEST_TIMEOUT_MS = 90_000;
+const OWNER_ID = stringToUuid("action-e2e-owner");
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -77,7 +85,10 @@ describe("Action Invocation E2E", () => {
   async function withHarness(
     fn: (harness: ConversationHarness) => Promise<void>,
   ): Promise<void> {
-    const harness = new ConversationHarness(runtime);
+    const harness = new ConversationHarness(runtime, {
+      userId: OWNER_ID,
+      userName: "Owner",
+    });
     await harness.setup();
     try {
       await fn(harness);
@@ -92,16 +103,20 @@ describe("Action Invocation E2E", () => {
     process.env.LOG_LEVEL = process.env.ELIZA_E2E_LOG_LEVEL ?? "error";
     process.env.ENABLE_TRAJECTORIES = "false";
     process.env.ELIZA_TRAJECTORY_LOGGING = "false";
+    process.env.ELIZA_DISABLE_PROACTIVE_AGENT = "1";
 
     const result = await createRealTestRuntime({
       withLLM: true,
       preferredProvider: selectedLiveProvider?.name,
       characterName: "ActionTestAgent",
+      advancedCapabilities: true,
+      plugins: [appLifeOpsPlugin],
     });
 
     runtime = result.runtime;
     cleanup = result.cleanup;
     initialized = true;
+    runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", OWNER_ID, false);
 
     registeredActions = new Set(
       runtime.actions.map((a) => normalizeActionName(a.name)),

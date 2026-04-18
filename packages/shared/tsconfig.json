@@ -6,6 +6,7 @@
     "allowJs": false,
     "jsx": "react-jsx",
     "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
     "esModuleInterop": false,
     "allowSyntheticDefaultImports": true,
     "strict": false,

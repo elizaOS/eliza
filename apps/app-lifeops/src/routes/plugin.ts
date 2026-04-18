@@ -158,6 +158,7 @@ const LIFEOPS_STATIC_ROUTES: Array<{ type: string; path: string; public?: boolea
   { type: "GET", path: "/api/lifeops/browser/settings" },
   { type: "POST", path: "/api/lifeops/browser/settings" },
   { type: "POST", path: "/api/lifeops/browser/companions/pair" },
+  { type: "POST", path: "/api/lifeops/browser/companions/auto-pair" },
   { type: "GET", path: "/api/lifeops/browser/companions" },
   { type: "GET", path: "/api/lifeops/browser/packages" },
   { type: "POST", path: "/api/lifeops/browser/companions/sync" },

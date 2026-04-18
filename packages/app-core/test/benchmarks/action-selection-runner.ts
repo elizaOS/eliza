@@ -20,6 +20,7 @@ import {
   ChannelType,
   createMessageMemory,
   type Memory,
+  stringToUuid,
   type UUID,
 } from "@elizaos/core";
 
@@ -40,7 +41,13 @@ export type ActionFailureMode =
 
 export interface ActionBenchmarkResult {
   case: ActionBenchmarkCase;
+  plannedAction?: string | null;
+  plannedActions?: string[];
+  startedAction?: string | null;
+  completedAction?: string | null;
   actualAction: string | null;
+  selectionPass?: boolean;
+  executionPass?: boolean;
   pass: boolean;
   latencyMs: number;
   error?: string;
@@ -55,6 +62,8 @@ export interface ActionBenchmarkResult {
   failureMode?: ActionFailureMode;
   /** Action names whose `validate()` returned false for this case's message. */
   filteredActions?: string[];
+  /** Action names that were visible to the planner in the actual prompt. */
+  availableActions?: string[];
   /** Snapshot of the runtime's registered action names at benchmark start. */
   registeredActions?: string[];
   /** First ~200 chars of the agent reply, when available. */
@@ -104,6 +113,16 @@ export interface ActionBenchmarkRunOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 60_000;
+const BENCHMARK_SOURCE = "dashboard";
+const BENCHMARK_USER_NAME = "Owner";
+
+function resolveBenchmarkOwnerEntityId(runtime: AgentRuntime): UUID {
+  const configured = runtime.getSetting("ELIZA_ADMIN_ENTITY_ID");
+  if (typeof configured === "string" && configured.trim().length > 0) {
+    return configured as UUID;
+  }
+  return stringToUuid(`${runtime.agentId}-admin-entity`);
+}
 
 function normalizeActionName(name: string | null | undefined): string | null {
   if (typeof name !== "string") return null;
@@ -147,11 +166,12 @@ async function computeFilteredActions(
   runtime: AgentRuntime,
   message: Memory,
 ): Promise<string[]> {
+  const state = await runtime.composeState(message);
   const filtered: string[] = [];
   for (const action of runtime.actions) {
     let ok = false;
     try {
-      ok = await action.validate(runtime, message);
+      ok = await action.validate(runtime, message, state);
     } catch {
       // A throwing validator is effectively "filtered out" from the planner's
       // perspective — count it the same way.
@@ -166,17 +186,35 @@ function determineFailureMode(args: {
   pass: boolean;
   expected: string | null;
   actual: string | null;
+  planned: string | null;
   filtered: string[];
   hadError: boolean;
 }): ActionFailureMode {
   if (args.hadError) return "error";
   if (args.pass) return "passed";
   const actualNorm = normalizeActionName(args.actual);
+  const plannedNorm = normalizeActionName(args.planned);
   const expectedNorm = normalizeActionName(args.expected);
   if (actualNorm !== null && expectedNorm !== null && actualNorm === expectedNorm) {
     return "passed";
   }
-  if (actualNorm === null) {
+  if (
+    expectedNorm !== null &&
+    args.filtered.some((n) => normalizeActionName(n) === expectedNorm)
+  ) {
+    return "validate_filtered";
+  }
+  if (
+    plannedNorm === null ||
+    plannedNorm === "REPLY" ||
+    plannedNorm === "NONE" ||
+    plannedNorm === "IGNORE"
+  ) {
+    if (actualNorm === null) {
+      return "llm_chose_reply";
+    }
+  }
+  if (actualNorm === null && plannedNorm === null) {
     if (
       expectedNorm !== null &&
       args.filtered.some((n) => normalizeActionName(n) === expectedNorm)
@@ -186,6 +224,64 @@ function determineFailureMode(args: {
     return "llm_chose_reply";
   }
   return "llm_chose_other_action";
+}
+
+interface PlannerDecision {
+  availableActions: string[];
+  plannedActions: string[];
+  plannedAction: string | null;
+}
+
+function parseAvailableActionsFromPrompt(prompt: string): string[] {
+  const lines = prompt.split("\n");
+  const available: string[] = [];
+  let inSection = false;
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!inSection) {
+      if (line === "# Available Actions") {
+        inSection = true;
+      }
+      continue;
+    }
+    if (!line) continue;
+    if (line.startsWith("# ") || line.startsWith("## ")) break;
+    const match = line.match(/^- ([A-Z0-9_]+):/);
+    if (match?.[1]) {
+      available.push(match[1]);
+    }
+  }
+  return available;
+}
+
+function parsePlannedActionsFromResponse(response: string): string[] {
+  const names = Array.from(
+    response.matchAll(/<name>\s*([^<]+?)\s*<\/name>/gi),
+    (match) => normalizeActionName(match[1]),
+  ).filter((name): name is string => name !== null);
+  return [...new Set(names)];
+}
+
+function extractPlannerDecision(
+  trajectory: TrajectoryRecord | undefined,
+): PlannerDecision {
+  const plannerCall = trajectory?.agentTrajectory.llmCalls.find(
+    (call) => call.purpose === "action_planner",
+  );
+  if (!plannerCall) {
+    return {
+      availableActions: [],
+      plannedActions: [],
+      plannedAction: null,
+    };
+  }
+  const availableActions = parseAvailableActionsFromPrompt(plannerCall.prompt);
+  const plannedActions = parsePlannedActionsFromResponse(plannerCall.response);
+  return {
+    availableActions,
+    plannedActions,
+    plannedAction: plannedActions[0] ?? null,
+  };
 }
 
 /**
@@ -201,53 +297,67 @@ async function runSingleCaseWithRecording(
   registeredActions: string[],
 ): Promise<ActionBenchmarkResult> {
   const started = Date.now();
+  const ownerEntityId = resolveBenchmarkOwnerEntityId(runtime);
+  runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", ownerEntityId, false);
   const harness = new RecordingHarness(runtime, {
     caseId: tc.id,
-    source: "benchmark",
-    userName: "BenchmarkUser",
+    userId: ownerEntityId,
+    source: BENCHMARK_SOURCE,
+    userName: BENCHMARK_USER_NAME,
     force: true,
   });
-  let firstAction: string | null = null;
+  let startedAction: string | null = null;
+  let completedAction: string | null = null;
   let responseText: string | undefined;
   try {
     await harness.setup();
     const turn = await harness.send(tc.userMessage, { timeoutMs });
-    const completed = turn.actions.find((a) => a.phase === "completed");
-    firstAction = completed?.actionName ?? null;
+    startedAction =
+      turn.actions.find((a) => a.phase === "started")?.actionName ?? null;
+    completedAction =
+      turn.actions.find((a) => a.phase === "completed")?.actionName ?? null;
     responseText =
       typeof turn.responseText === "string"
         ? turn.responseText.slice(0, 200)
         : undefined;
-    const pass = caseMatches(
-      firstAction,
+    const trajectory = harness.dumpTrajectory();
+    const planner = extractPlannerDecision(trajectory);
+    const filteredActions =
+      planner.availableActions.length > 0
+        ? registeredActions.filter(
+            (actionName) => !planner.availableActions.includes(actionName),
+          )
+        : [];
+    const selectionPass = caseMatches(
+      planner.plannedAction,
       tc.expectedAction,
       tc.acceptableActions,
     );
-    const probeMessage = createMessageMemory({
-      id: crypto.randomUUID() as UUID,
-      entityId: crypto.randomUUID() as UUID,
-      roomId: crypto.randomUUID() as UUID,
-      content: {
-        text: tc.userMessage,
-        source: "benchmark",
-        channelType: ChannelType.DM,
-      },
-    });
-    const filteredActions = await computeFilteredActions(runtime, probeMessage);
+    const executionPass = caseMatches(
+      completedAction,
+      tc.expectedAction,
+      tc.acceptableActions,
+    );
+    const pass = executionPass;
     const failureMode = determineFailureMode({
       pass,
       expected: tc.expectedAction,
-      actual: firstAction,
+      actual: completedAction,
+      planned: planner.plannedAction,
       filtered: filteredActions,
       hadError: false,
     });
     harness.setMetadata("expectedAction", tc.expectedAction);
-    harness.setMetadata("actualAction", firstAction);
+    harness.setMetadata("plannedAction", planner.plannedAction);
+    harness.setMetadata("startedAction", startedAction);
+    harness.setMetadata("actualAction", completedAction);
     harness.setMetadata("pass", pass);
+    harness.setMetadata("selectionPass", selectionPass);
+    harness.setMetadata("executionPass", executionPass);
     harness.setMetadata("tags", tc.tags);
     harness.setMetadata("failureMode", failureMode);
+    harness.setMetadata("availableActions", planner.availableActions);
     harness.setMetadata("filteredActions", filteredActions);
-    const trajectory = harness.dumpTrajectory();
     let trajectoryPath: string | undefined;
     if (trajectoryDir) {
       trajectoryPath = path.join(trajectoryDir, "cases", `${tc.id}.json`);
@@ -255,27 +365,78 @@ async function runSingleCaseWithRecording(
     }
     return {
       case: tc,
-      actualAction: firstAction,
+      plannedAction: planner.plannedAction,
+      plannedActions: planner.plannedActions,
+      startedAction,
+      completedAction,
+      actualAction: completedAction,
+      selectionPass,
+      executionPass,
       pass,
       latencyMs: Date.now() - started,
       trajectory,
       trajectoryPath,
       failureMode,
       filteredActions,
+      availableActions: planner.availableActions,
       registeredActions,
       responseText,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const trajectory = harness.dumpTrajectory();
+    const planner = extractPlannerDecision(trajectory);
+    const filteredActions =
+      planner.availableActions.length > 0
+        ? registeredActions.filter(
+            (actionName) => !planner.availableActions.includes(actionName),
+          )
+        : [];
+    startedAction ??=
+      trajectory.actions.find((action) => action.phase === "started")?.actionName ??
+      null;
+    completedAction ??=
+      trajectory.actions.find((action) => action.phase === "completed")?.actionName ??
+      null;
+    const selectionPass = caseMatches(
+      planner.plannedAction,
+      tc.expectedAction,
+      tc.acceptableActions,
+    );
+    const executionPass = caseMatches(
+      completedAction,
+      tc.expectedAction,
+      tc.acceptableActions,
+    );
+    let trajectoryPath: string | undefined;
+    if (trajectoryDir) {
+      trajectoryPath = path.join(trajectoryDir, "cases", `${tc.id}.json`);
+      await harness.writeTrajectoryToFile(trajectoryPath);
+    }
     return {
       case: tc,
-      actualAction: firstAction,
-      pass: false,
+      plannedAction: planner.plannedAction,
+      plannedActions: planner.plannedActions,
+      startedAction,
+      completedAction,
+      actualAction: completedAction,
+      selectionPass,
+      executionPass,
+      pass: executionPass,
       latencyMs: Date.now() - started,
       error: message,
       trajectory,
-      failureMode: "error",
+      trajectoryPath,
+      failureMode: determineFailureMode({
+        pass: executionPass,
+        expected: tc.expectedAction,
+        actual: completedAction,
+        planned: planner.plannedAction,
+        filtered: filteredActions,
+        hadError: true,
+      }),
+      filteredActions,
+      availableActions: planner.availableActions,
       registeredActions,
       responseText,
     };
@@ -292,19 +453,20 @@ async function runSingleCase(
 ): Promise<ActionBenchmarkResult> {
   const started = Date.now();
   const roomId = crypto.randomUUID() as UUID;
-  const entityId = crypto.randomUUID() as UUID;
+  const entityId = resolveBenchmarkOwnerEntityId(runtime);
   const worldId = crypto.randomUUID() as UUID;
 
   const capture: TurnCapture = { firstAction: null };
   const hookId = `action-benchmark-${tc.id}-${roomId}`;
 
   try {
+    runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", entityId, false);
     await runtime.ensureConnection({
       entityId,
       roomId,
       worldId,
-      userName: "BenchmarkUser",
-      source: "benchmark",
+      userName: BENCHMARK_USER_NAME,
+      source: BENCHMARK_SOURCE,
       channelId: roomId,
       type: ChannelType.DM,
     });
@@ -329,10 +491,12 @@ async function runSingleCase(
       roomId,
       content: {
         text: tc.userMessage,
-        source: "benchmark",
+        source: BENCHMARK_SOURCE,
         channelType: ChannelType.DM,
       },
     });
+
+    const filteredActions = await computeFilteredActions(runtime, message);
 
     const handlePromise = Promise.resolve(
       runtime.messageService?.handleMessage(
@@ -366,19 +530,24 @@ async function runSingleCase(
       tc.expectedAction,
       tc.acceptableActions,
     );
-
-    const filteredActions = await computeFilteredActions(runtime, message);
     const failureMode = determineFailureMode({
       pass,
       expected: tc.expectedAction,
       actual: capture.firstAction,
+      planned: capture.firstAction,
       filtered: filteredActions,
       hadError: false,
     });
 
     return {
       case: tc,
+      plannedAction: capture.firstAction,
+      plannedActions: capture.firstAction ? [capture.firstAction] : [],
+      startedAction: capture.firstAction,
+      completedAction: capture.firstAction,
       actualAction: capture.firstAction,
+      selectionPass: pass,
+      executionPass: pass,
       pass,
       latencyMs: Date.now() - started,
       failureMode,
@@ -389,7 +558,13 @@ async function runSingleCase(
     const message = err instanceof Error ? err.message : String(err);
     return {
       case: tc,
+      plannedAction: capture.firstAction,
+      plannedActions: capture.firstAction ? [capture.firstAction] : [],
+      startedAction: capture.firstAction,
+      completedAction: capture.firstAction,
       actualAction: capture.firstAction,
+      selectionPass: false,
+      executionPass: false,
       pass: false,
       latencyMs: Date.now() - started,
       error: message,
@@ -422,6 +597,9 @@ export async function runActionSelectionBenchmark(
   const captureEnabled =
     opts.forceTrajectoryCapture === true || isTrajectoryCaptureEnabled();
   const trajectoryDir = captureEnabled ? opts.trajectoryDir : undefined;
+  if (captureEnabled && trajectoryDir) {
+    await fs.rm(trajectoryDir, { recursive: true, force: true });
+  }
 
   const registeredActions = opts.runtime.actions.map((a) => a.name);
 
@@ -516,14 +694,16 @@ async function writeTrajectoryIndexHtml(
     .map((r) => {
       const status = r.pass ? "PASS" : "FAIL";
       const expected = r.case.expectedAction ?? "(none)";
-      const actual = r.actualAction ?? "(none)";
+      const planned = r.plannedAction ?? "(none)";
+      const completed = r.completedAction ?? "(none)";
       const link = `cases/${r.case.id}.json`;
       const colour = r.pass ? "#0a7" : "#c33";
       return `<tr>
   <td><a href="${link}">${escapeHtml(r.case.id)}</a></td>
   <td style="color:${colour};font-weight:600">${status}</td>
   <td>${escapeHtml(expected)}</td>
-  <td>${escapeHtml(actual)}</td>
+  <td>${escapeHtml(planned)}</td>
+  <td>${escapeHtml(completed)}</td>
   <td>${Math.round(r.latencyMs)}ms</td>
   <td>${escapeHtml(r.case.tags.join(", "))}</td>
 </tr>`;
@@ -540,7 +720,7 @@ async function writeTrajectoryIndexHtml(
 <h1>Action Benchmark Trajectories</h1>
 <p>${results.filter((r) => r.pass).length} / ${results.length} passed.</p>
 <table>
-<thead><tr><th>Case</th><th>Result</th><th>Expected</th><th>Actual</th><th>Latency</th><th>Tags</th></tr></thead>
+<thead><tr><th>Case</th><th>Result</th><th>Expected</th><th>Planned</th><th>Completed</th><th>Latency</th><th>Tags</th></tr></thead>
 <tbody>
 ${rows}
 </tbody></table>
@@ -569,6 +749,10 @@ export function formatBenchmarkReportMarkdown(
     `**Latency:** avg ${Math.round(report.latency.avg)}ms · p50 ${Math.round(
       report.latency.p50,
     )}ms · p95 ${Math.round(report.latency.p95)}ms`,
+  );
+  const selectionPassed = report.results.filter((result) => result.selectionPass).length;
+  lines.push(
+    `**Planner Accuracy:** ${(report.total === 0 ? 0 : (selectionPassed / report.total) * 100).toFixed(1)}% (${selectionPassed}/${report.total})`,
   );
   lines.push("");
 
@@ -618,16 +802,17 @@ export function formatBenchmarkReportMarkdown(
   if (report.failures.length > 0) {
     lines.push(`## Failures (${report.failures.length})`);
     lines.push("");
-    lines.push("| Case | Expected | Actual | Failure Mode | Error |");
-    lines.push("| --- | --- | --- | --- | --- |");
+    lines.push("| Case | Expected | Planned | Completed | Failure Mode | Error |");
+    lines.push("| --- | --- | --- | --- | --- | --- |");
     for (const f of report.failures) {
       const expected =
         f.case.expectedAction === null ? "(no action)" : f.case.expectedAction;
-      const actual = f.actualAction ?? "(none)";
+      const planned = f.plannedAction ?? "(none)";
+      const completed = f.completedAction ?? "(none)";
       const mode = f.failureMode ?? "error";
       const err = f.error ? f.error.replace(/\|/g, "\\|") : "";
       lines.push(
-        `| ${f.case.id} | ${expected} | ${actual} | ${mode} | ${err} |`,
+        `| ${f.case.id} | ${expected} | ${planned} | ${completed} | ${mode} | ${err} |`,
       );
     }
     lines.push("");

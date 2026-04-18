@@ -286,8 +286,8 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     tags: ["messaging", "standard"],
   },
   {
-    id: "cross-send-slack",
-    userMessage: "dm Priya on slack: thanks for the review!",
+    id: "cross-send-signal",
+    userMessage: "send a Signal message to Priya saying thanks for the review",
     expectedAction: "CROSS_CHANNEL_SEND",
     tags: ["messaging", "standard"],
   },
@@ -390,8 +390,8 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     tags: ["computer-use", "standard"],
   },
   {
-    id: "computer-use-fill-form",
-    userMessage: "fill out the expense form that's open on my screen with the amount $42.50",
+    id: "computer-use-screenshot",
+    userMessage: "take a screenshot of my desktop",
     expectedAction: "LIFEOPS_COMPUTER_USE",
     tags: ["computer-use", "standard"],
   },
@@ -476,23 +476,43 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     tags: ["intent-sync", "standard"],
   },
   {
-    id: "intent-sync-send-to-mobile",
-    userMessage: "send this to my mobile",
+    id: "intent-sync-mobile-routine-reminder",
+    userMessage:
+      "broadcast a routine reminder to my mobile titled 'Stretch break' saying 'Get up and stretch for five minutes'",
     expectedAction: "INTENT_SYNC",
+    expectedParams: {
+      subaction: "broadcast",
+      kind: "routine_reminder",
+      target: "mobile",
+      title: "Stretch break",
+      body: "Get up and stretch for five minutes",
+    },
     tags: ["intent-sync", "standard"],
   },
 
   // ─── Calendly ─────────────────────────────────────────────────────────
   {
-    id: "calendly-list-slots",
-    userMessage: "what slots are available on my Calendly next week",
+    id: "calendly-check-availability",
+    userMessage:
+      "check my Calendly availability for https://api.calendly.com/event_types/abc from 2026-04-20 to 2026-04-24",
     expectedAction: "CALENDLY",
+    expectedParams: {
+      subaction: "availability",
+      eventTypeUri: "https://api.calendly.com/event_types/abc",
+      startDate: "2026-04-20",
+      endDate: "2026-04-24",
+    },
     tags: ["calendly", "scheduling", "standard"],
   },
   {
     id: "calendly-create-single-use-link",
-    userMessage: "create a single-use Calendly booking link",
+    userMessage:
+      "create a single-use Calendly booking link for https://api.calendly.com/event_types/abc",
     expectedAction: "CALENDLY",
+    expectedParams: {
+      subaction: "single_use_link",
+      eventTypeUri: "https://api.calendly.com/event_types/abc",
+    },
     tags: ["calendly", "scheduling", "standard"],
   },
 
