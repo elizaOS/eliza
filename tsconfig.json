@@ -16,7 +16,6 @@
     "declarationMap": true,
     "strict": true,
     "jsx": "react-jsx",
-    "baseUrl": ".",
     "paths": {
       "@elizaos/ui": ["packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["packages/ui/src/*"],
