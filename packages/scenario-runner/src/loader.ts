@@ -7,6 +7,7 @@
 
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
+import process from "node:process";
 import { pathToFileURL } from "node:url";
 import type { ScenarioDefinition } from "./types.ts";
 
@@ -27,6 +28,31 @@ async function walk(dir: string, out: string[]): Promise<void> {
 export interface LoadedScenario {
   file: string;
   scenario: ScenarioDefinition;
+}
+
+function toPosixPath(value: string): string {
+  return value.replace(/\\/g, "/");
+}
+
+export function matchesScenarioFileGlobs(
+  file: string,
+  fileGlobs: readonly string[],
+): boolean {
+  const resolvedFile = path.resolve(file);
+  const absoluteFile = toPosixPath(resolvedFile);
+  const cwdRelativeFile = toPosixPath(
+    path.relative(process.cwd(), resolvedFile),
+  );
+
+  return fileGlobs.some((fileGlob) => {
+    const normalizedGlob = toPosixPath(
+      path.isAbsolute(fileGlob) ? path.resolve(fileGlob) : fileGlob,
+    );
+    if (path.posix.isAbsolute(normalizedGlob)) {
+      return path.posix.matchesGlob(absoluteFile, normalizedGlob);
+    }
+    return path.posix.matchesGlob(cwdRelativeFile, normalizedGlob);
+  });
 }
 
 function isScenarioDefinition(value: unknown): value is ScenarioDefinition {
@@ -52,9 +78,7 @@ export async function discoverScenarios(root: string): Promise<string[]> {
   return files;
 }
 
-export async function loadScenarioFile(
-  file: string,
-): Promise<LoadedScenario> {
+export async function loadScenarioFile(file: string): Promise<LoadedScenario> {
   const mod = (await import(pathToFileURL(file).href)) as Record<
     string,
     unknown
@@ -71,10 +95,16 @@ export async function loadScenarioFile(
 export async function loadAllScenarios(
   root: string,
   filter?: Set<string>,
+  fileGlobs?: readonly string[],
 ): Promise<LoadedScenario[]> {
   const files = await discoverScenarios(root);
   const loaded: LoadedScenario[] = [];
   for (const file of files) {
+    if (fileGlobs && fileGlobs.length > 0) {
+      if (!matchesScenarioFileGlobs(file, fileGlobs)) {
+        continue;
+      }
+    }
     const result = await loadScenarioFile(file);
     if (filter && !filter.has(result.scenario.id)) continue;
     loaded.push(result);

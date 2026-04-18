@@ -311,6 +311,9 @@ async function runSinglePromptBenchmarkCase(args: {
     await harness.setup();
     const turn = await harness.send(args.testCase.prompt, {
       timeoutMs: args.timeoutMs,
+      metadata: {
+        benchmarkContext: args.testCase.benchmarkContext,
+      },
     });
     const actionNames = uniqueStrings(
       turn.actions

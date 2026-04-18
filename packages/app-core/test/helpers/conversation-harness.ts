@@ -1,7 +1,7 @@
 /** Sends messages through a runtime and captures responses plus action calls. */
 import crypto from "node:crypto";
-import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
-import { ChannelType, createMessageMemory, stringToUuid } from "@elizaos/core";
+import type { AgentRuntime, Memory, MessageMetadata, UUID } from "@elizaos/core";
+import { ChannelType, createMessageMemory } from "@elizaos/core";
 import {
   type ActionSpy,
   type ActionSpyCall,
@@ -26,7 +26,16 @@ export interface ConversationHarnessOptions {
   spy?: ActionSpy;
 }
 
+export interface ConversationSendOptions {
+  timeoutMs?: number;
+  metadata?: Partial<MessageMetadata>;
+}
+
 const DEFAULT_TIMEOUT_MS = 120_000;
+const ACTION_SETTLE_MIN_MS = 1_000;
+const ACTION_SETTLE_MAX_MS = 5_000;
+const ACTION_SETTLE_IDLE_MS = 400;
+const ACTION_SETTLE_POLL_MS = 100;
 
 function withTimeout<T>(
   promise: Promise<T>,
@@ -51,6 +60,30 @@ function withTimeout<T>(
   });
 }
 
+async function waitForActionSettle(spy: ActionSpy): Promise<void> {
+  const startedAt = Date.now();
+  const deadline = startedAt + ACTION_SETTLE_MAX_MS;
+  let lastCount = spy.getCalls().length;
+  let lastChangeAt = startedAt;
+
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, ACTION_SETTLE_POLL_MS));
+
+    const currentCount = spy.getCalls().length;
+    if (currentCount !== lastCount) {
+      lastCount = currentCount;
+      lastChangeAt = Date.now();
+      continue;
+    }
+
+    const minWaitElapsed = Date.now() - startedAt >= ACTION_SETTLE_MIN_MS;
+    const idleElapsed = Date.now() - lastChangeAt >= ACTION_SETTLE_IDLE_MS;
+    if (minWaitElapsed && idleElapsed) {
+      return;
+    }
+  }
+}
+
 export class ConversationHarness {
   readonly runtime: AgentRuntime;
   readonly spy: ActionSpy;
@@ -65,12 +98,13 @@ export class ConversationHarness {
 
   constructor(runtime: AgentRuntime, opts: ConversationHarnessOptions = {}) {
     this.runtime = runtime;
-    this.spy = opts.spy ?? createActionSpy();
     this.roomId = opts.roomId ?? (crypto.randomUUID() as UUID);
     this.userId = opts.userId ?? (crypto.randomUUID() as UUID);
-    this.worldId = opts.worldId ?? stringToUuid("conversation-harness-world");
+    this.worldId = opts.worldId ?? (crypto.randomUUID() as UUID);
     this.userName = opts.userName ?? "TestUser";
     this.source = opts.source ?? "test";
+    this.spy = opts.spy ?? createActionSpy();
+    this.spy.setRoomFilter(this.roomId);
   }
 
   async setup(): Promise<void> {
@@ -114,7 +148,7 @@ export class ConversationHarness {
 
   async send(
     text: string,
-    opts?: { timeoutMs?: number },
+    opts?: ConversationSendOptions,
   ): Promise<ConversationTurn> {
     const startedAt = Date.now();
     let responseText = "";
@@ -130,6 +164,12 @@ export class ConversationHarness {
         channelType: ChannelType.DM,
       },
     });
+    if (opts?.metadata) {
+      message.metadata = {
+        ...message.metadata,
+        ...opts.metadata,
+      };
+    }
 
     const messageService = (
       this.runtime as unknown as {
@@ -174,8 +214,9 @@ export class ConversationHarness {
       }
     }
 
-    // Let completed-action events and memory writes catch up.
-    await new Promise((r) => setTimeout(r, 500));
+    // Action events and follow-up callbacks can arrive slightly after the
+    // initial handleMessage promise resolves, especially under Vitest workers.
+    await waitForActionSettle(this.spy);
 
     const allCalls = this.spy.getCalls();
     const actions = allCalls.slice(callsBefore);

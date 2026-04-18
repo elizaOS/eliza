@@ -13,7 +13,10 @@ import fs from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { selectLiveProvider } from "../helpers/live-provider.ts";
+import {
+  type LiveProviderName,
+  selectLiveProvider,
+} from "../helpers/live-provider.ts";
 import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 import { ACTION_BENCHMARK_CASES } from "./action-selection-cases.ts";
 import {
@@ -26,10 +29,23 @@ const BENCHMARK_TRAJECTORY_DIR = "action-benchmark-report";
 
 const USE_MOCKED_APIS = process.env.MILADY_BENCHMARK_USE_MOCKS === "1";
 
-async function createBenchmarkRuntime(): Promise<{
-  runtime: Awaited<ReturnType<typeof createRealTestRuntime>>["runtime"];
+async function createBenchmarkRuntimeFactory(): Promise<{
+  createCaseRuntime: () => Promise<{
+    runtime: Awaited<ReturnType<typeof createRealTestRuntime>>["runtime"];
+    cleanup: () => Promise<void>;
+  }>;
   cleanup: () => Promise<void>;
 }> {
+  const preferredProvider =
+    (process.env.MILADY_BENCHMARK_PROVIDER?.trim() as
+      | LiveProviderName
+      | undefined) ??
+    selectLiveProvider("anthropic")?.name ??
+    selectLiveProvider("openai")?.name ??
+    selectLiveProvider("google")?.name ??
+    selectLiveProvider("openrouter")?.name ??
+    selectLiveProvider("groq")?.name;
+
   // Load the LifeOps plugin so its 30+ actions are registered. Without this,
   // the action planner sees only the 4 generic core actions
   // (REPLY, IGNORE, NONE, UPDATE_ENTITY) and can't possibly route to LIFE,
@@ -40,23 +56,37 @@ async function createBenchmarkRuntime(): Promise<{
   );
 
   if (USE_MOCKED_APIS) {
-    // Lazy import — mock-runtime.ts lives outside the app-core test tree and
-    // depends on Mockoon CLI being available at test time.
-    const { createMockedTestRuntime } = await import(
+    const {
+      createMockedTestRuntime,
+      prepareMockedTestEnvironment,
+    } = await import(
       // @ts-ignore — path is outside the package, resolved relative to repo root
       "../../../../../test/mocks/helpers/mock-runtime.ts"
     );
-    const mocked = await createMockedTestRuntime({
-      withLLM: true,
-      plugins: [appLifeOpsPlugin],
-    });
-    return { runtime: mocked.runtime, cleanup: mocked.cleanup };
+    const environment = await prepareMockedTestEnvironment();
+    return {
+      createCaseRuntime: async () =>
+        createMockedTestRuntime({
+          withLLM: true,
+          plugins: [appLifeOpsPlugin],
+          preferredProvider,
+          sharedEnvironment: environment,
+        }),
+      cleanup: async () => {
+        await environment.cleanup();
+      },
+    };
   }
-  const real = await createRealTestRuntime({
-    withLLM: true,
-    plugins: [appLifeOpsPlugin],
-  });
-  return { runtime: real.runtime, cleanup: real.cleanup };
+
+  return {
+    createCaseRuntime: async () =>
+      createRealTestRuntime({
+        withLLM: true,
+        plugins: [appLifeOpsPlugin],
+        preferredProvider,
+      }),
+    cleanup: async () => {},
+  };
 }
 
 describe("action selection benchmark", () => {
@@ -69,13 +99,14 @@ describe("action selection benchmark", () => {
         return;
       }
 
-      const { runtime, cleanup } = await createBenchmarkRuntime();
+      const runtimeFactory = await createBenchmarkRuntimeFactory();
 
       try {
         const report = await runActionSelectionBenchmark({
-          runtime,
+          createCaseRuntime: runtimeFactory.createCaseRuntime,
           cases: ACTION_BENCHMARK_CASES,
           trajectoryDir: BENCHMARK_TRAJECTORY_DIR,
+          timeoutMsPerCase: 90_000,
         });
         const md = formatBenchmarkReportMarkdown(report);
         // Log to stdout so CI log aggregators pick it up.
@@ -89,9 +120,9 @@ describe("action selection benchmark", () => {
         expect(report.accuracy).toBeGreaterThanOrEqual(0);
         expect(report.accuracy).toBeLessThanOrEqual(1);
       } finally {
-        await cleanup();
+        await runtimeFactory.cleanup();
       }
     },
-    30 * 60 * 1000,
+    60 * 60 * 1000,
   );
 });

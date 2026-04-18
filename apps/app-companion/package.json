@@ -56,7 +56,9 @@
   },
   "elizaos": {
     "app": {
-      "heroImage": "assets/hero.webp"
+      "displayName": "Milady Companion",
+      "category": "game",
+      "heroImage": "assets/hero.png"
     }
   }
 }

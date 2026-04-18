@@ -1,8 +1,8 @@
 /**
  * `milady-scenarios` CLI. Two commands:
  *
- *   run  <dir> [--report <path>] [--scenario <id,id,...>]
- *   list <dir>
+ *   run  <dir> [--report <path>] [--report-dir <dir>] [--runId <id>] [--scenario <id,id,...>] [fileGlob ...]
+ *   list <dir> [fileGlob ...]
  *
  * Exit codes:
  *   0  all scenarios passed (or skipped with SKIP_REASON set)
@@ -21,6 +21,7 @@ import {
   buildAggregate,
   printStdoutSummary,
   writeReport,
+  writeReportBundle,
 } from "./reporter.ts";
 import { createScenarioRuntime } from "./runtime-factory.ts";
 import type { ScenarioReport } from "./types.ts";
@@ -29,13 +30,16 @@ interface ParsedArgs {
   command: "run" | "list";
   dir: string;
   reportPath?: string;
+  reportDir?: string;
+  runId?: string;
   filter?: Set<string>;
+  fileGlobs?: string[];
 }
 
 function usageAndExit(message: string, code: number): never {
   process.stderr.write(`[milady-scenarios] ${message}\n`);
   process.stderr.write(
-    "Usage:\n  milady-scenarios run  <dir> [--report <jsonPath>] [--scenario id1,id2]\n  milady-scenarios list <dir>\n",
+    "Usage:\n  milady-scenarios run  <dir> [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [fileGlob ...]\n  milady-scenarios list <dir> [fileGlob ...]\n",
   );
   process.exit(code);
 }
@@ -53,13 +57,29 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
     usageAndExit("missing scenario directory", 2);
   }
   let reportPath: string | undefined;
+  let reportDir: string | undefined;
+  let runId: string | undefined;
   let filter: Set<string> | undefined;
+  const fileGlobs: string[] = [];
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
+    if (!arg) {
+      usageAndExit("unexpected empty argument", 2);
+    }
     if (arg === "--report") {
       const next = argv[i + 1];
       if (!next) usageAndExit("--report missing value", 2);
       reportPath = next;
+      i += 1;
+    } else if (arg === "--report-dir") {
+      const next = argv[i + 1];
+      if (!next) usageAndExit("--report-dir missing value", 2);
+      reportDir = next;
+      i += 1;
+    } else if (arg === "--runId") {
+      const next = argv[i + 1];
+      if (!next) usageAndExit("--runId missing value", 2);
+      runId = next;
       i += 1;
     } else if (arg === "--scenario") {
       const next = argv[i + 1];
@@ -70,15 +90,20 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
         .filter(Boolean);
       filter = new Set(ids);
       i += 1;
+    } else if (arg.startsWith("--")) {
+      usageAndExit(`unknown flag '${arg}'`, 2);
     } else {
-      // tolerate extra positional args (reserved for future use)
+      fileGlobs.push(arg);
     }
   }
   return {
     command: command as "run" | "list",
     dir: path.resolve(dir),
     reportPath: reportPath ? path.resolve(reportPath) : undefined,
+    reportDir: reportDir ? path.resolve(reportDir) : undefined,
+    runId,
     filter,
+    fileGlobs,
   };
 }
 
@@ -87,7 +112,11 @@ async function main(): Promise<number> {
   const parsed = parseArgs(argv);
 
   if (parsed.command === "list") {
-    const loaded = await loadAllScenarios(parsed.dir, parsed.filter);
+    const loaded = await loadAllScenarios(
+      parsed.dir,
+      parsed.filter,
+      parsed.fileGlobs,
+    );
     for (const { scenario } of loaded) {
       process.stdout.write(`${scenario.id}\n`);
     }
@@ -111,10 +140,14 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  const loaded = await loadAllScenarios(parsed.dir, parsed.filter);
+  const loaded = await loadAllScenarios(
+    parsed.dir,
+    parsed.filter,
+    parsed.fileGlobs,
+  );
   if (loaded.length === 0) {
     process.stderr.write(
-      `[milady-scenarios] no scenarios discovered under ${parsed.dir}${parsed.filter ? ` (filter=${[...parsed.filter].join(",")})` : ""}\n`,
+      `[milady-scenarios] no scenarios discovered under ${parsed.dir}${parsed.filter ? ` (filter=${[...parsed.filter].join(",")})` : ""}${parsed.fileGlobs && parsed.fileGlobs.length > 0 ? ` (fileGlobs=${parsed.fileGlobs.join(",")})` : ""}\n`,
     );
     return 2;
   }
@@ -151,11 +184,14 @@ async function main(): Promise<number> {
     providerName,
     startedAtIso,
     completedAtIso,
-    crypto.randomUUID(),
+    parsed.runId ?? crypto.randomUUID(),
   );
 
   if (parsed.reportPath) {
     writeReport(aggregate, parsed.reportPath);
+  }
+  if (parsed.reportDir) {
+    writeReportBundle(aggregate, parsed.reportDir);
   }
   printStdoutSummary(aggregate);
 

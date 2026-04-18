@@ -238,13 +238,13 @@ declare module "@elizaos/app-core/api/client-base" {
     getSignalConnectorStatus(
       side?: LifeOpsConnectorSide,
     ): Promise<LifeOpsSignalConnectorStatus>;
-    startSignalPairing(
+    startLifeOpsSignalPairing(
       data?: StartLifeOpsSignalPairingRequest,
     ): Promise<StartLifeOpsSignalPairingResponse>;
     getSignalPairingStatus(
       sessionId: string,
     ): Promise<LifeOpsSignalPairingStatus>;
-    stopSignalPairing(sessionId: string): Promise<void>;
+    stopLifeOpsSignalPairing(sessionId: string): Promise<void>;
     disconnectSignalConnector(
       data?: DisconnectLifeOpsMessagingConnectorRequest,
     ): Promise<LifeOpsSignalConnectorStatus>;
@@ -837,14 +837,17 @@ ElizaClient.prototype.getSignalConnectorStatus = async function (
   return this.fetch(`/api/lifeops/connectors/signal/status${query}`);
 };
 
-ElizaClient.prototype.startSignalPairing = async function (
+ElizaClient.prototype.startLifeOpsSignalPairing = async function (
   this: ElizaClient,
   data = {},
-) {
-  return this.fetch("/api/lifeops/connectors/signal/pair", {
+): Promise<StartLifeOpsSignalPairingResponse> {
+  return this.fetch<StartLifeOpsSignalPairingResponse>(
+    "/api/lifeops/connectors/signal/pair",
+    {
     method: "POST",
     body: JSON.stringify(data),
-  });
+    },
+  );
 };
 
 ElizaClient.prototype.getSignalPairingStatus = async function (
@@ -857,11 +860,11 @@ ElizaClient.prototype.getSignalPairingStatus = async function (
   );
 };
 
-ElizaClient.prototype.stopSignalPairing = async function (
+ElizaClient.prototype.stopLifeOpsSignalPairing = async function (
   this: ElizaClient,
   sessionId,
-) {
-  return this.fetch("/api/lifeops/connectors/signal/stop", {
+): Promise<void> {
+  return this.fetch<void>("/api/lifeops/connectors/signal/stop", {
     method: "POST",
     body: JSON.stringify({ sessionId }),
   });

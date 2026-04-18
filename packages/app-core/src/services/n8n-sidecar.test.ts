@@ -59,8 +59,8 @@ function makeFakeChild(pid = 4242): FakeChild {
 interface Harness {
   spawn: ReturnType<typeof vi.fn>;
   fetch: ReturnType<typeof vi.fn>;
-  pickPort: ReturnType<typeof vi.fn>;
-  sleep: ReturnType<typeof vi.fn>;
+  pickPort: (start: number) => Promise<number>;
+  sleep: (ms: number) => Promise<void>;
   children: FakeChild[];
   deps: N8nSidecarDeps;
 }
@@ -77,8 +77,8 @@ function makeHarness(overrides: Partial<Harness> = {}): Harness {
   const fetchFn = vi.fn(async (_input: string, _init?: RequestInit) => {
     return new Response(null, { status: 200 });
   });
-  const pickPortFn = vi.fn(async (start: number) => start);
-  const sleepFn = vi.fn(async (_ms: number) => undefined);
+  const pickPortFn: Harness["pickPort"] = vi.fn(async (start: number) => start);
+  const sleepFn: Harness["sleep"] = vi.fn(async (_ms: number) => undefined);
 
   return {
     spawn: overrides.spawn ?? spawnFn,
@@ -620,7 +620,7 @@ describe("N8nSidecar", () => {
   describe("retry reset (Bug 4)", () => {
     it("resets retries to 0 after sustained healthy uptime", async () => {
       const RETRY_RESET_MS = 5 * 60 * 1_000;
-      let retryResetFn: (() => void) | null = null;
+      let retryResetFn: () => void = () => {};
       const setTimer = vi.fn((fn: () => void, ms: number) => {
         // Only capture the retry-reset timer (5-minute schedule); ignore
         // the child-exit timer (2-minute schedule).
@@ -651,8 +651,7 @@ describe("N8nSidecar", () => {
       // recovery), then fire the reset timer.
       (sidecar as unknown as { state: N8nSidecarState }).state.retries = 2;
       expect(sidecar.getState().retries).toBe(2);
-      expect(retryResetFn).not.toBeNull();
-      retryResetFn?.();
+      retryResetFn();
       expect(sidecar.getState().retries).toBe(0);
 
       await sidecar.stop();
@@ -816,7 +815,7 @@ describe("N8nSidecar", () => {
 
     it("disposeN8nSidecar is concurrency-safe: awaits single stop, then clears", async () => {
       const sidecar = getN8nSidecar({ enabled: false });
-      let stopResolves: (() => void) | null = null;
+      let stopResolves: () => void = () => {};
       const stopPromise = new Promise<void>((resolve) => {
         stopResolves = resolve;
       });
@@ -829,14 +828,14 @@ describe("N8nSidecar", () => {
       // Singleton must still be present until stop() resolves, so a
       // peek during disposal still sees the old instance.
       expect(peekN8nSidecar()).toBe(sidecar);
-      stopResolves?.();
+      stopResolves();
       await Promise.all([d1, d2]);
       expect(peekN8nSidecar()).toBeNull();
     });
 
     it("getN8nSidecarAsync waits for disposal before returning a new instance", async () => {
       const sidecar = getN8nSidecar({ enabled: false });
-      let stopResolves: (() => void) | null = null;
+      let stopResolves: () => void = () => {};
       const stopPromise = new Promise<void>((resolve) => {
         stopResolves = resolve;
       });
@@ -849,14 +848,14 @@ describe("N8nSidecar", () => {
 
       // Without resolving stop, the async getter must still be pending.
       let resolved = false;
-      nextPromise.then(() => {
+      void nextPromise.then(() => {
         resolved = true;
       });
       await Promise.resolve();
       await Promise.resolve();
       expect(resolved).toBe(false);
 
-      stopResolves?.();
+      stopResolves();
       await disposalPromise;
       const next = await nextPromise;
       expect(next).not.toBe(sidecar);

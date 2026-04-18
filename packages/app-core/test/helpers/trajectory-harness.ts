@@ -134,7 +134,7 @@ export function isTrajectoryCaptureEnabled(
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
 }
 
-function safeStringify(value: unknown, max = 8000): string {
+function safeStringify(value: unknown, max = 64_000): string {
   try {
     if (typeof value === "string") return value.slice(0, max);
     const text = JSON.stringify(value, (_k, v) =>
@@ -144,6 +144,29 @@ function safeStringify(value: unknown, max = 8000): string {
   } catch {
     return String(value).slice(0, max);
   }
+}
+
+function stringifyTrajectoryRecord(value: unknown): string {
+  const seen = new WeakSet<object>();
+  return JSON.stringify(
+    value,
+    (_key, currentValue) => {
+      if (typeof currentValue === "function") {
+        return `[Function ${currentValue.name || "anonymous"}]`;
+      }
+      if (typeof currentValue === "bigint") {
+        return currentValue.toString();
+      }
+      if (typeof currentValue === "object" && currentValue !== null) {
+        if (seen.has(currentValue)) {
+          return "[Circular]";
+        }
+        seen.add(currentValue);
+      }
+      return currentValue;
+    },
+    2,
+  );
 }
 
 function classifyLlmPurpose(
@@ -414,9 +437,9 @@ export class RecordingHarness {
       timestamp: start,
       latencyMs: Date.now() - start,
       modelType,
-      prompt: prompt.slice(0, 16_000),
+      prompt,
       systemPrompt,
-      response: response.slice(0, 16_000),
+      response,
       purpose: classifyLlmPurpose(prompt, response, modelType),
     });
   }
@@ -508,7 +531,7 @@ export class RecordingHarness {
   async writeTrajectoryToFile(filePath: string): Promise<void> {
     const record = this.dumpTrajectory();
     await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, JSON.stringify(record, null, 2), "utf8");
+    await fs.writeFile(filePath, stringifyTrajectoryRecord(record), "utf8");
   }
 
   async cleanup(): Promise<void> {

@@ -36,10 +36,18 @@ function coerceBool(value: unknown): boolean {
 
 export const twilioCallAction: Action = {
   name: ACTION_NAME,
-  similes: ["CALL_ME", "PLACE_CALL", "VOICE_CALL", "TWILIO_CALL"],
+  similes: [
+    "CALL_ME",
+    "PLACE_CALL",
+    "VOICE_CALL",
+    "TWILIO_CALL",
+    "CALL_DENTIST",
+    "PHONE_SUPPORT",
+  ],
   description:
     "Place a voice call via Twilio. Use only for urgent escalations or " +
-    "explicit voice-call requests from the owner. Always drafts first; the " +
+    "explicit voice-call requests from the owner. Use this for real phone " +
+    "calls, not for calendar-only rescheduling or advice. Always drafts first; the " +
     "caller must pass confirmed: true to actually dial.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
@@ -447,6 +455,10 @@ export const callExternalAction: Action & {
     "CALL_THIRD_PARTY",
     "BOOK_BY_PHONE",
     "REBOOK_BY_PHONE",
+    "CALL_DENTIST",
+    "PHONE_CABLE_COMPANY",
+    "CALL_SUPPORT",
+    "RESCHEDULE_APPOINTMENT_BY_PHONE",
   ],
   tags: [
     "always-include",
@@ -454,9 +466,14 @@ export const callExternalAction: Action & {
     "rebook by phone",
     "call vendor",
     "call airline",
+    "call dentist",
+    "call doctor",
+    "phone support",
+    "call cable company",
+    "reschedule appointment",
   ],
   description:
-    "Place an outbound phone call to a third party via Twilio. Use this for approved booking/reschedule/escalation calls to vendors or counterparties. This action can draft the call, ask which saved contact to use, and then require confirmation before dialing. The recipient must appear in the configured allow-list before the actual call is placed.",
+    "Place an outbound phone call to a third party via Twilio. Use this for approved booking, reschedule, outage, support, or escalation calls to vendors or counterparties. Examples: 'call the dentist and reschedule my appointment', 'phone my cable company and ask about the outage', 'call the airline', or 'call the hotel to rebook'. This action can draft the call, ask which saved contact to use, and then require confirmation before dialing. If the user wants a real phone call to a third party, prefer this action over CALENDAR_ACTION, LIFE, or CROSS_CHANNEL_SEND. The recipient must appear in the configured allow-list before the actual call is placed.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
@@ -600,6 +617,34 @@ export const callExternalAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "I'll prepare the hotel call. I still need the saved contact or phone number before I can place it.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Call the dentist and reschedule my appointment.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I can draft that call and hold it behind your approval. Tell me which saved contact or phone number to use, and I'll ask for confirmation before dialing.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Phone my cable company and ask about the outage.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I can draft the support call. Tell me which saved contact or phone number to use, and I'll ask for confirmation before dialing.",
         },
       },
     ],

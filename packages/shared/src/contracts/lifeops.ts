@@ -1605,14 +1605,13 @@ export const LIFEOPS_OWNER_BROWSER_NEXT_ACTIONS = [
   "focus_discord_manually",
   "focus_dm_inbox_manually",
   "log_in",
-  "open_milady_desktop",
+  "open_desktop_browser",
 ] as const;
 export type LifeOpsOwnerBrowserNextAction =
   (typeof LIFEOPS_OWNER_BROWSER_NEXT_ACTIONS)[number];
 
 export interface LifeOpsOwnerBrowserAccessStatus {
   source: LifeOpsOwnerBrowserAccessSource;
-  sourceLabel: string;
   active: boolean;
   available: boolean;
   browser: LifeOpsBrowserKind | null;
@@ -1626,8 +1625,6 @@ export interface LifeOpsOwnerBrowserAccessStatus {
   tabState: LifeOpsOwnerBrowserTabState;
   authState: LifeOpsOwnerBrowserAuthState;
   nextAction: LifeOpsOwnerBrowserNextAction;
-  nextActionLabel: string | null;
-  message: string;
 }
 
 export interface LifeOpsDiscordConnectorStatus {
@@ -1651,7 +1648,7 @@ export interface LifeOpsDiscordConnectorStatus {
   /** Browser Workspace tab hosting Discord, when that desktop path is in use. */
   tabId: string | null;
   /** Owner-side browser options for reaching the user's real Discord session. */
-  browserAccess: LifeOpsOwnerBrowserAccessStatus[];
+  browserAccess?: LifeOpsOwnerBrowserAccessStatus[];
   grant: LifeOpsConnectorGrant | null;
 }
 

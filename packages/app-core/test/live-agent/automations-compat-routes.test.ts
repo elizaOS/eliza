@@ -195,6 +195,38 @@ function buildRuntimeStub() {
   };
 }
 
+function buildRuntimeWithDuplicateSystemTasks() {
+  return {
+    ...buildRuntimeStub(),
+    getTasks: vi.fn(async () => [
+      {
+        id: "task-user-1",
+        name: "Inbox triage",
+        description: "Clear my inbox and create follow-ups.",
+        tags: [],
+        isCompleted: false,
+        updatedAt: Date.parse("2026-04-17T10:00:00Z"),
+      },
+      {
+        id: "task-system-1",
+        name: "EMBEDDING_DRAIN",
+        description: "",
+        tags: ["queue", "repeat"],
+        isCompleted: false,
+        updatedAt: Date.parse("2026-04-17T08:00:00Z"),
+      },
+      {
+        id: "task-system-2",
+        name: "EMBEDDING_DRAIN",
+        description: "Embedding generation drain",
+        tags: ["queue", "repeat"],
+        isCompleted: false,
+        updatedAt: Date.parse("2026-04-17T09:00:00Z"),
+      },
+    ]),
+  };
+}
+
 describe("automations compat routes", () => {
   let harness: Harness;
 
@@ -368,6 +400,54 @@ describe("automations compat routes", () => {
     expect(workflowItem?.schedules).toHaveLength(1);
   });
 
+  it("deduplicates repeated system tasks so the sidebar is not flooded", async () => {
+    harness = await startApiHarness({
+      current: buildRuntimeWithDuplicateSystemTasks() as never,
+      pendingAgentName: null,
+      pendingRestartReasons: [],
+    });
+
+    const response = await fetch(`${harness.baseUrl}/api/automations`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      automations: Array<{ id: string; title: string; system: boolean }>;
+      summary: { total: number; coordinatorCount: number };
+    };
+
+    const embeddingDrainItems = body.automations.filter(
+      (item) => item.title === "EMBEDDING_DRAIN" && item.system,
+    );
+
+    expect(embeddingDrainItems).toHaveLength(1);
+    expect(body.summary.total).toBe(5);
+    expect(body.summary.coordinatorCount).toBe(3);
+  });
+
+  it("does not surface trigger-backed runtime tasks as separate coordinator items", async () => {
+    harness = await startApiHarness({
+      current: buildRuntimeStub() as never,
+      pendingAgentName: null,
+      pendingRestartReasons: [],
+    });
+
+    const response = await fetch(`${harness.baseUrl}/api/automations`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      automations: Array<{ id: string; taskId?: string }>;
+    };
+
+    expect(body.automations).not.toContainEqual(
+      expect.objectContaining({
+        id: "task:task-trigger-1",
+      }),
+    );
+    expect(body.automations).not.toContainEqual(
+      expect.objectContaining({
+        id: "task:task-trigger-workflow-1",
+      }),
+    );
+  });
+
   it("GET /api/automations/nodes returns enabled and disabled runtime and LifeOps nodes", async () => {
     harness = await startApiHarness({
       current: buildRuntimeStub() as never,
@@ -405,12 +485,14 @@ describe("automations compat routes", () => {
         availability: "enabled",
       }),
     );
-    expect(body.nodes).toContainEqual(
+    expect(body.nodes).not.toContainEqual(
       expect.objectContaining({
         id: "provider:recent-conversations",
-        class: "context",
-        source: "runtime_provider",
-        availability: "enabled",
+      }),
+    );
+    expect(body.nodes).not.toContainEqual(
+      expect.objectContaining({
+        id: "provider:relevant-conversations",
       }),
     );
     expect(body.nodes).toContainEqual(

@@ -73,6 +73,10 @@ const SYSTEM_TASK_NAMES = new Set([
   "TRIGGER_DISPATCH",
   "heartbeat",
 ]);
+const BLOCKED_AUTOMATION_PROVIDER_NODES = new Set([
+  "recent-conversations",
+  "relevant-conversations",
+]);
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -140,6 +144,43 @@ function isSystemTask(task: WorkbenchTask): boolean {
   }
   const tags = new Set(task.tags ?? []);
   return tags.has("queue") && tags.has("repeat");
+}
+
+function choosePreferredSystemTask(
+  current: WorkbenchTask,
+  candidate: WorkbenchTask,
+): WorkbenchTask {
+  const currentHasDescription = current.description.trim().length > 0;
+  const candidateHasDescription = candidate.description.trim().length > 0;
+  if (candidateHasDescription && !currentHasDescription) {
+    return candidate;
+  }
+  if (currentHasDescription && !candidateHasDescription) {
+    return current;
+  }
+  return (candidate.updatedAt ?? 0) > (current.updatedAt ?? 0)
+    ? candidate
+    : current;
+}
+
+function deduplicateSystemTasks(tasks: WorkbenchTask[]): WorkbenchTask[] {
+  const systemTasksByName = new Map<string, WorkbenchTask>();
+  const userTasks: WorkbenchTask[] = [];
+
+  for (const task of tasks) {
+    if (!isSystemTask(task)) {
+      userTasks.push(task);
+      continue;
+    }
+    const existing = systemTasksByName.get(task.name);
+    if (!existing) {
+      systemTasksByName.set(task.name, task);
+      continue;
+    }
+    systemTasksByName.set(task.name, choosePreferredSystemTask(existing, task));
+  }
+
+  return [...userTasks, ...systemTasksByName.values()];
 }
 
 function buildRoomBinding(
@@ -350,13 +391,16 @@ function buildWorkflowItem(
 }
 
 function compareAutomationItems(left: AutomationItem, right: AutomationItem): number {
+  if (left.system !== right.system) {
+    return left.system ? 1 : -1;
+  }
+  if (left.isDraft !== right.isDraft) {
+    return left.isDraft ? -1 : 1;
+  }
   const leftUpdated = left.updatedAt ? Date.parse(left.updatedAt) : 0;
   const rightUpdated = right.updatedAt ? Date.parse(right.updatedAt) : 0;
   if (rightUpdated !== leftUpdated) {
     return rightUpdated - leftUpdated;
-  }
-  if (left.isDraft !== right.isDraft) {
-    return left.isDraft ? -1 : 1;
   }
   return left.title.localeCompare(right.title);
 }
@@ -394,16 +438,19 @@ async function buildAutomationListResponse(
     .filter((room) => typeof room.metadata.draftId === "string")
     .map((room) => buildWorkflowDraftItem(room));
 
-  const tasks = (await runtime.getTasks({}))
+  const tasks = deduplicateSystemTasks(
+    (await runtime.getTasks({}))
     .map((task) => toWorkbenchTask(task))
-    .filter((task): task is WorkbenchTask => task !== null);
-  const taskItems = tasks.map((task) =>
-    buildCoordinatorTaskItem(task, taskRooms.get(task.id)),
+    .filter((task): task is WorkbenchTask => task !== null),
   );
 
   const triggerItems = (await listTriggerTasks(runtime))
     .map((task) => taskToTriggerSummary(task))
     .filter((trigger): trigger is TriggerSummary => trigger !== null);
+  const triggerTaskIds = new Set(triggerItems.map((trigger) => trigger.taskId));
+  const taskItems = tasks
+    .filter((task) => !triggerTaskIds.has(task.id))
+    .map((task) => buildCoordinatorTaskItem(task, taskRooms.get(task.id)));
 
   const n8nStatusResult = await invokeN8nCompatRoute<N8nStatusResponse>(
     req,
@@ -638,6 +685,9 @@ async function buildAutomationNodeCatalog(
 
   const runtimeProviderNodes: AutomationNodeDescriptor[] = runtime.providers
     .slice()
+    .filter(
+      (provider) => !BLOCKED_AUTOMATION_PROVIDER_NODES.has(provider.name),
+    )
     .sort((left, right) => left.name.localeCompare(right.name))
     .map((provider) => ({
       id: `provider:${provider.name}`,

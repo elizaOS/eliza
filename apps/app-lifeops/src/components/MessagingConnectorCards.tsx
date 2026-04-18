@@ -123,11 +123,11 @@ function inferTelegramRetryState(args: {
 
 function browserAccessTitle(access: LifeOpsOwnerBrowserAccessStatus): string {
   if (access.source === "desktop_browser") {
-    return access.sourceLabel;
+    return "Milady Desktop Browser";
   }
   const browserLabel = access.browser === "safari" ? "Safari" : "Chrome";
   const profileLabel = access.profileLabel?.trim() || "Default profile";
-  return `${access.sourceLabel} · ${browserLabel} / ${profileLabel}`;
+  return `Your Browser · ${browserLabel} / ${profileLabel}`;
 }
 
 function browserAccessBadge(access: LifeOpsOwnerBrowserAccessStatus): {
@@ -141,6 +141,96 @@ function browserAccessBadge(access: LifeOpsOwnerBrowserAccessStatus): {
     return { label: "Available", variant: "secondary" };
   }
   return { label: "Not ready", variant: "outline" };
+}
+
+function browserAccessSourceLabel(
+  access: LifeOpsOwnerBrowserAccessStatus | null | undefined,
+): string {
+  if (!access) {
+    return "your browser";
+  }
+  return access.source === "desktop_browser"
+    ? "Milady Desktop Browser"
+    : "Your Browser";
+}
+
+function browserAccessActionLabel(
+  action: LifeOpsOwnerBrowserAccessStatus["nextAction"] | null | undefined,
+): string | null {
+  switch (action) {
+    case "connect_browser":
+      return "Connect Your Browser";
+    case "open_extension_popup":
+      return "Open Extension Popup";
+    case "enable_browser_access":
+      return "Turn On Browser Access";
+    case "enable_browser_control":
+      return "Enable Browser Control";
+    case "open_discord":
+      return "Open Discord";
+    case "open_dm_inbox":
+      return "Open Discord DMs";
+    case "focus_discord_manually":
+      return "Open Discord Manually";
+    case "focus_dm_inbox_manually":
+      return "Focus DMs Manually";
+    case "log_in":
+      return "Log In to Discord";
+    case "open_desktop_browser":
+      return "Open Milady Desktop";
+    default:
+      return null;
+  }
+}
+
+function browserAccessMessage(access: LifeOpsOwnerBrowserAccessStatus): string {
+  const sourceLabel = browserAccessSourceLabel(access);
+  if (access.source === "lifeops_browser") {
+    if (!access.available && access.nextAction === "enable_browser_access") {
+      return access.active
+        ? "Browser access is paused in LifeOps Browser settings."
+        : "Browser access is turned off in LifeOps Browser settings.";
+    }
+    if (access.nextAction === "connect_browser") {
+      return "No browser profile is connected yet. Install the extension, then open its popup in the browser profile that has your account.";
+    }
+    if (access.nextAction === "open_extension_popup") {
+      return "A browser was paired before, but no profile is connected right now. Reopen the extension popup in the browser profile you want LifeOps to use.";
+    }
+    if (access.authState === "logged_out") {
+      return `Discord is open in ${sourceLabel}, but that profile still needs you to log in.`;
+    }
+    if (!access.canControl && access.tabState === "missing") {
+      return `${sourceLabel} is connected, but browser control is off, so LifeOps cannot open Discord for you.`;
+    }
+    if (!access.canControl && access.tabState !== "dm_inbox_visible") {
+      return `${sourceLabel} can see Discord, but browser control is off. Focus the Discord DM tab manually or turn browser control on.`;
+    }
+    if (access.siteAccessOk === false) {
+      return `${sourceLabel} is connected, but Discord has not been granted yet in this profile. Open Discord there and retry.`;
+    }
+    if (access.tabState === "missing") {
+      return `${sourceLabel} is connected, but Discord is not open in that browser profile yet.`;
+    }
+    if (access.authState === "logged_in" && access.tabState !== "dm_inbox_visible") {
+      return `${sourceLabel} sees your Discord session, but not the DM inbox yet.`;
+    }
+    return `${sourceLabel} is ready for Discord.`;
+  }
+
+  if (access.nextAction === "open_desktop_browser") {
+    return "Open Milady Desktop to use its built-in browser for your Discord session.";
+  }
+  if (access.authState === "logged_out") {
+    return "Discord is open in Milady Desktop Browser, but that session still needs you to log in.";
+  }
+  if (access.tabState === "missing") {
+    return "Milady Desktop Browser is available, but Discord is not open there yet.";
+  }
+  if (access.authState === "logged_in" && access.tabState !== "dm_inbox_visible") {
+    return "Milady Desktop Browser sees your Discord session, but not the DM inbox yet.";
+  }
+  return "Milady Desktop Browser is ready for Discord.";
 }
 
 export function SignalConnectorCard() {
@@ -260,20 +350,20 @@ export function DiscordConnectorCard() {
   const statusLabel = dmInboxVisible
     ? `Connected • ${visibleDmCount} DM${visibleDmCount === 1 ? "" : "s"} visible`
     : authPending
-      ? `Log in to Discord in ${preferredAccess?.sourceLabel ?? "your browser"}`
+      ? `Log in to Discord in ${browserAccessSourceLabel(preferredAccess)}`
       : preferredAccess?.nextAction === "enable_browser_control"
         ? "Enable browser control"
         : preferredAccess?.nextAction === "connect_browser" ||
             preferredAccess?.nextAction === "open_extension_popup"
           ? "Connect Your Browser"
-          : preferredAccess?.nextAction === "open_milady_desktop"
+          : preferredAccess?.nextAction === "open_desktop_browser"
             ? "Open Milady Desktop"
             : !available
               ? "Browser access unavailable"
               : isConnected
                 ? "Connected, opening DM inbox"
                 : pairing
-                  ? `Opening Discord in ${preferredAccess?.sourceLabel ?? "LifeOps"}…`
+                  ? `Opening Discord in ${browserAccessSourceLabel(preferredAccess)}…`
                   : "Not connected";
   const statusVariant: "ok" | "muted" | "warning" = isConnected
     ? dmInboxVisible
@@ -321,7 +411,7 @@ export function DiscordConnectorCard() {
           disabled={busy || !available}
           onClick={() => void discord.connect()}
         >
-          {preferredAccess?.nextActionLabel ??
+          {browserAccessActionLabel(preferredAccess?.nextAction) ??
             (authPending
               ? "Open Discord Login"
               : isConnected
@@ -334,7 +424,7 @@ export function DiscordConnectorCard() {
 
       {isElectrobunRuntime() &&
       desktopAccess &&
-      (desktopAccess.nextAction === "open_milady_desktop" ||
+      (desktopAccess.nextAction === "open_desktop_browser" ||
         desktopAccess.nextAction === "open_discord" ||
         desktopAccess.nextAction === "open_dm_inbox" ||
         (!dmInboxVisible && desktopAccess.available)) ? (
@@ -384,8 +474,9 @@ export function DiscordConnectorCard() {
 
       {!isConnected && authPending ? (
         <div className="text-xs text-muted">
-          {preferredAccess?.message ??
-            "LifeOps found Discord, but that browser session still needs you to log in."}
+          {preferredAccess
+            ? browserAccessMessage(preferredAccess)
+            : "LifeOps found Discord, but that browser session still needs you to log in."}
         </div>
       ) : null}
 
@@ -413,7 +504,9 @@ export function DiscordConnectorCard() {
                     {badge.label}
                   </Badge>
                 </div>
-                <div className="mt-1 text-xs text-muted">{access.message}</div>
+                <div className="mt-1 text-xs text-muted">
+                  {browserAccessMessage(access)}
+                </div>
                 <div className="mt-1 text-[11px] text-muted/80">
                   {access.canControl ? "Control on" : "Control off"}
                   {access.siteAccessOk === false

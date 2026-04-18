@@ -1,5 +1,11 @@
 import fs from "node:fs";
 import type http from "node:http";
+import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
+import {
+  checkRateLimit,
+  type RateLimitConfig,
+} from "@elizaos/agent/api/rate-limiter";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import type {
   AcknowledgeLifeOpsReminderRequest,
@@ -19,10 +25,10 @@ import type {
   CreateLifeOpsWorkflowRequest,
   CreateLifeOpsXPostRequest,
   DisconnectLifeOpsGoogleConnectorRequest,
-  GetLifeOpsIMessageMessagesRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailSearchRequest,
   GetLifeOpsGmailTriageRequest,
+  GetLifeOpsIMessageMessagesRequest,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   ProcessLifeOpsRemindersRequest,
@@ -37,6 +43,8 @@ import type {
   SetLifeOpsReminderPreferenceRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsGoogleConnectorRequest,
+  StartLifeOpsTelegramAuthRequest,
+  SubmitLifeOpsTelegramAuthRequest,
   SyncLifeOpsBrowserStateRequest,
   UpdateLifeOpsBrowserSessionProgressRequest,
   UpdateLifeOpsBrowserSettingsRequest,
@@ -45,25 +53,19 @@ import type {
   UpdateLifeOpsWorkflowRequest,
   UpsertLifeOpsChannelPolicyRequest,
   UpsertLifeOpsXConnectorRequest,
-  StartLifeOpsTelegramAuthRequest,
-  SubmitLifeOpsTelegramAuthRequest,
   VerifyLifeOpsTelegramConnectorRequest,
 } from "@elizaos/shared/contracts/lifeops";
 import { LIFEOPS_ACTIVITY_SIGNAL_STATES } from "@elizaos/shared/contracts/lifeops";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
 import {
   loadLifeOpsAppState,
   saveLifeOpsAppState,
 } from "../lifeops/app-state.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-
-import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
 import {
   buildLifeOpsBrowserCompanionPackage,
   getLifeOpsBrowserCompanionDownloadFile,
   getLifeOpsBrowserCompanionPackageStatus,
 } from "./lifeops-browser-packaging.js";
-import { checkRateLimit, type RateLimitConfig } from "@elizaos/agent/api/rate-limiter";
 
 export interface LifeOpsRouteContext {
   req: http.IncomingMessage;
@@ -102,11 +104,13 @@ function getService(ctx: LifeOpsRouteContext): LifeOpsService | null {
 function getBrowserCompanionAuth(
   ctx: LifeOpsRouteContext,
 ): { companionId: string; pairingToken: string } | null {
-  const companionHeader = ctx.req.headers["x-eliza-browser-companion-id"];
+  const companionHeader =
+    ctx.req.headers["x-lifeops-browser-companion-id"] ??
+    ctx.req.headers["x-eliza-browser-companion-id"];
   const companionId =
     typeof companionHeader === "string" ? companionHeader.trim() : "";
   if (!companionId) {
-    ctx.error(ctx.res, "Missing X-Eliza-Browser-Companion-Id header", 401);
+    ctx.error(ctx.res, "Missing X-LifeOps-Browser-Companion-Id header", 401);
     return null;
   }
   const authHeader =
@@ -454,16 +458,7 @@ function writeHtml(
 export async function handleLifeOpsRoutes(
   ctx: LifeOpsRouteContext,
 ): Promise<boolean> {
-  const {
-    req,
-    res,
-    method,
-    pathname,
-    url,
-    json,
-    readJsonBody,
-    decodePathComponent,
-  } = ctx;
+  const { req, res, method, pathname, url, json, readJsonBody } = ctx;
 
   if (method === "GET" && pathname === "/api/lifeops/app-state") {
     if (!ctx.state.runtime) {
@@ -984,10 +979,7 @@ export async function handleLifeOpsRoutes(
     >(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.disconnectGoogleConnector(body, url),
-      );
+      json(res, await service.disconnectGoogleConnector(body, url));
     });
   }
 
@@ -1162,7 +1154,10 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/connectors/telegram/verify"
   ) {
-    const body = await readJsonBody<VerifyLifeOpsTelegramConnectorRequest>(req, res);
+    const body = await readJsonBody<VerifyLifeOpsTelegramConnectorRequest>(
+      req,
+      res,
+    );
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       json(res, await service.verifyTelegramConnector(body));
@@ -1183,10 +1178,7 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/connectors/signal/pair"
-  ) {
+  if (method === "POST" && pathname === "/api/lifeops/connectors/signal/pair") {
     const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
     return runRoute(ctx, async (service) => {
       json(res, await service.startSignalPairing(rawSide ?? undefined), 201);
@@ -1206,10 +1198,7 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/connectors/signal/stop"
-  ) {
+  if (method === "POST" && pathname === "/api/lifeops/connectors/signal/stop") {
     const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
     return runRoute(ctx, async (service) => {
       json(res, service.stopSignalPairing(rawSide ?? undefined));
@@ -1706,7 +1695,13 @@ export async function handleLifeOpsRoutes(
 
   const goalMatch = pathname.match(/^\/api\/lifeops\/goals\/([^/]+)$/);
   if (goalMatch) {
-    const goalId = decodeMatchedPathComponent(ctx, goalMatch, 1, res, "goal id");
+    const goalId = decodeMatchedPathComponent(
+      ctx,
+      goalMatch,
+      1,
+      res,
+      "goal id",
+    );
     if (!goalId) return true;
     if (method === "GET") {
       return runRoute(ctx, async (service) => {

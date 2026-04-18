@@ -73,6 +73,10 @@ import {
   weekRange,
 } from "./lifeops-google-helpers.js";
 import {
+  looksLikeGoalAdviceOnly,
+  looksLikeRelationshipFollowUpRequest,
+} from "./non-actionable-request.js";
+import {
   extractExplicitTimeZoneFromText,
   normalizeExplicitTimeZoneToken,
 } from "./timezone-normalization.js";
@@ -2471,6 +2475,8 @@ export const lifeAction: Action & {
     "These are executable LifeOps items, not profile facts or bio updates. " +
     "ALWAYS use LIFE for dynamic status questions like 'what's still left for today', 'what do i still need to do today', or 'anything else in my LifeOps list', even when the conversation already mentioned tasks, because their status may have changed after a completion, snooze, or reminder. " +
     "Do not fall back to REPLY, UPDATE_ENTITY, or UPDATE_OWNER_PROFILE when the user is asking to create or inspect a todo, habit, goal, reminder, or alarm. " +
+    "DO NOT use this action for generic coaching or advice questions like 'any tips on setting better goals?' unless the user is also asking you to create, update, review, or track a concrete goal, task, reminder, or routine. " +
+    "DO NOT use this action for person-specific follow-ups like 'remind me to follow up with David next week about the project' — use RELATIONSHIP instead. " +
     "DO NOT use this action for Gmail inbox triage, email search, drafting or sending emails — use GMAIL_ACTION instead. " +
     "DO NOT use this action for daily briefs, unread summaries, drafts awaiting sign-off, or cross-channel inbox review — use INBOX, GMAIL_ACTION, or SEARCH_ACROSS_CHANNELS instead. " +
     "DO NOT use this action for calendar lookups, scheduling meetings, searching events, or travel itineraries — use CALENDAR_ACTION instead. " +
@@ -2481,6 +2487,13 @@ export const lifeAction: Action & {
   descriptionCompressed: "LifeOps: manage habits, goals, reminders, alarms, escalation. Create/edit/complete/snooze items. Query active status.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
+    const text = messageText(message);
+    if (
+      looksLikeGoalAdviceOnly(text) ||
+      looksLikeRelationshipFollowUpRequest(text)
+    ) {
+      return false;
+    }
     return hasLifeOpsAccess(runtime, message);
   },
   handler: async (runtime, message, state, options) => {

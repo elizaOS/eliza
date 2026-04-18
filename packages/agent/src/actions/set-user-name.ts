@@ -13,7 +13,7 @@ import {
   fetchConfiguredOwnerName,
   OWNER_NAME_MAX_LENGTH,
   persistConfiguredOwnerName,
-} from "@elizaos/app-lifeops/lifeops/owner-profile";
+} from "../services/owner-name.js";
 import type { Action, HandlerOptions, State } from "@elizaos/core";
 import {
   getValidationKeywordTerms,

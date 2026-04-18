@@ -34,7 +34,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { resolveLifeOpsBrowserApiBaseUrl } from "../utils/lifeops-url.js";
 
 type SettingsDraft = {
@@ -107,6 +107,15 @@ function parseDateTimeLocalValue(value: string): string | null {
     throw new Error("Pause until must be a valid local date and time");
   }
   return parsed.toISOString();
+}
+
+function isFutureLocalDateTimeValue(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  const parsed = new Date(trimmed);
+  return Number.isFinite(parsed.getTime()) && parsed.getTime() > Date.now();
 }
 
 function normalizePairingRequest(
@@ -482,6 +491,9 @@ function BrowserCompanionRow({
 export function LifeOpsBrowserSetupPanel() {
   const { setActionNotice, setTab } = useApp();
   const [draft, setDraft] = useState<SettingsDraft | null>(null);
+  const [draftDirty, setDraftDirty] = useState(false);
+  const draftRef = useRef<SettingsDraft | null>(null);
+  const draftDirtyRef = useRef(false);
   const [companions, setCompanions] = useState<
     Awaited<
       ReturnType<typeof client.listLifeOpsBrowserCompanions>
@@ -504,23 +516,68 @@ export function LifeOpsBrowserSetupPanel() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+
+  useEffect(() => {
+    draftDirtyRef.current = draftDirty;
+  }, [draftDirty]);
+
+  const refresh = useCallback(async (options?: { preserveDraft?: boolean }) => {
     setLoading(true);
     setError(null);
-    try {
-      const [settingsResponse, companionsResponse, status] = await Promise.all([
+    const [settingsResult, companionsResult, statusResult] =
+      await Promise.allSettled([
         client.getLifeOpsBrowserSettings(),
         client.listLifeOpsBrowserCompanions(),
         client.getLifeOpsBrowserPackageStatus(),
       ]);
-      setDraft(settingsToDraft(settingsResponse.settings));
-      setCompanions(companionsResponse.companions);
-      setPackageStatus((current) => mergePackageStatus(current, status.status));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setLoading(false);
+    const errors: string[] = [];
+
+    if (settingsResult.status === "fulfilled") {
+      if (
+        !options?.preserveDraft ||
+        !draftDirtyRef.current ||
+        !draftRef.current
+      ) {
+        setDraft(settingsToDraft(settingsResult.value.settings));
+        setDraftDirty(false);
+      }
+    } else {
+      errors.push(
+        settingsResult.reason instanceof Error
+          ? settingsResult.reason.message
+          : String(settingsResult.reason),
+      );
     }
+
+    if (companionsResult.status === "fulfilled") {
+      setCompanions(companionsResult.value.companions);
+    } else {
+      errors.push(
+        companionsResult.reason instanceof Error
+          ? companionsResult.reason.message
+          : String(companionsResult.reason),
+      );
+    }
+
+    if (statusResult.status === "fulfilled") {
+      setPackageStatus((current) =>
+        mergePackageStatus(current, statusResult.value.status),
+      );
+    } else {
+      errors.push(
+        statusResult.reason instanceof Error
+          ? statusResult.reason.message
+          : String(statusResult.reason),
+      );
+    }
+
+    if (errors.length > 0) {
+      setError(errors[0]);
+    }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -529,7 +586,7 @@ export function LifeOpsBrowserSetupPanel() {
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      void refresh();
+      void refresh({ preserveDraft: true });
     }, CONNECTION_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [refresh]);
@@ -567,11 +624,11 @@ export function LifeOpsBrowserSetupPanel() {
 
   const connectionSummary = useMemo(() => {
     const trackingEnabled = draft ? draft.trackingMode !== "off" : false;
+    const paused = draft ? isFutureLocalDateTimeValue(draft.pauseUntilLocal) : false;
     const browserReady =
       Boolean(draft?.enabled) &&
       trackingEnabled &&
       connectedCompanions.length > 0;
-    const paused = Boolean(draft?.pauseUntilLocal);
     const controlEnabled = Boolean(draft?.allowBrowserControl);
 
     if (!draft) {
@@ -581,6 +638,20 @@ export function LifeOpsBrowserSetupPanel() {
         title: "Loading browser connection",
         detail: "Checking whether Your Browser is connected to LifeOps.",
         steps: [] as string[],
+      };
+    }
+
+    if (paused) {
+      return {
+        badge: "Paused",
+        badgeVariant: "outline" as const,
+        title: "Browser access is paused",
+        detail:
+          "LifeOps is paired to browsers, but tracking is paused right now, so owner-side connectors cannot see live tabs.",
+        steps: [
+          "Clear Pause until or wait for it to expire.",
+          "Keep Tracking on if you want connector status to stay current.",
+        ],
       };
     }
 
@@ -610,20 +681,6 @@ export function LifeOpsBrowserSetupPanel() {
         steps: [
           "Turn on Browser control if you want LifeOps to open or focus sites for you.",
           "Leave Browser control off only if you are okay opening the target tabs yourself.",
-        ],
-      };
-    }
-
-    if (paused) {
-      return {
-        badge: "Paused",
-        badgeVariant: "outline" as const,
-        title: "Browser access is paused",
-        detail:
-          "LifeOps is paired to browsers, but tracking is paused right now, so owner-side connectors cannot see live tabs.",
-        steps: [
-          "Clear Pause until or wait for it to expire.",
-          "Keep Tracking on if you want connector status to stay current.",
         ],
       };
     }
@@ -675,6 +732,7 @@ export function LifeOpsBrowserSetupPanel() {
     value: SettingsDraft[K],
   ) => {
     setDraft((current) => (current ? { ...current, [key]: value } : current));
+    setDraftDirty(true);
   };
 
   const saveSettings = async () => {
@@ -702,6 +760,7 @@ export function LifeOpsBrowserSetupPanel() {
         pauseUntil: parseDateTimeLocalValue(draft.pauseUntilLocal),
       });
       setDraft(settingsToDraft(response.settings));
+      setDraftDirty(false);
       setStatusMessage("Saved LifeOps Browser settings.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -930,7 +989,7 @@ export function LifeOpsBrowserSetupPanel() {
           variant="outline"
           className="h-8 rounded-xl px-3 text-xs font-semibold"
           disabled={loading}
-          onClick={() => void refresh()}
+          onClick={() => void refresh({ preserveDraft: true })}
         >
           <RefreshCw className="mr-1.5 h-3 w-3" />
           Refresh

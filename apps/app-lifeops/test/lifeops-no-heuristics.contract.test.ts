@@ -194,6 +194,25 @@ describe("LifeOps no-heuristics architecture contracts", () => {
     expect(source).toContain("resolveWebsiteBlockPlanWithLlm");
   });
 
+  it("keeps follow-up action gating on owner access instead of text heuristics", async () => {
+    const sources = await Promise.all([
+      readRepoFile(
+        "eliza/apps/app-lifeops/src/followup/actions/listOverdueFollowups.ts",
+      ),
+      readRepoFile(
+        "eliza/apps/app-lifeops/src/followup/actions/markFollowupDone.ts",
+      ),
+      readRepoFile(
+        "eliza/apps/app-lifeops/src/followup/actions/setFollowupThreshold.ts",
+      ),
+    ]);
+    for (const source of sources) {
+      expect(source).not.toContain("function looksLike");
+      expect(source).not.toContain("messageText(");
+      expect(source).toContain("hasOwnerAccess");
+    }
+  });
+
   it("keeps website blocker engine parsing structured-only", async () => {
     const source = await readRepoFile(
       "eliza/apps/app-lifeops/src/website-blocker/engine.ts",

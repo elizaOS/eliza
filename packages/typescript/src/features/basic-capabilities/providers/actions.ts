@@ -16,9 +16,20 @@ import {
 } from "../../../utils/context-routing.ts";
 import { buildDeterministicSeed } from "../../../utils/deterministic";
 import { addHeader } from "../../../utils.ts";
+import {
+	looksLikeNonActionableChatter,
+	looksLikeRelationshipFollowUpReminder,
+} from "./non-actionable-chatter.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("ACTIONS");
+const GENERIC_CHAT_ACTIONS = new Set(["REPLY", "IGNORE", "NONE"]);
+const RELATIONSHIP_FOLLOW_UP_ACTIONS = new Set([
+	"RELATIONSHIP",
+	"REPLY",
+	"IGNORE",
+	"NONE",
+]);
 
 /**
  * A provider object that fetches possible response actions based on the provided runtime, message, and state.
@@ -78,7 +89,26 @@ export const actionsProvider: Provider = {
 
 		const resolvedActions = await Promise.all(actionPromises);
 
-		const actionsData = resolvedActions.filter(Boolean) as Action[];
+		const nonActionableChatter = looksLikeNonActionableChatter(message);
+		const relationshipFollowUpReminder =
+			looksLikeRelationshipFollowUpReminder(message);
+		const availableActions = resolvedActions.filter(Boolean) as Action[];
+		const hasRelationshipAction = availableActions.some(
+			(action) => action.name === "RELATIONSHIP",
+		);
+		const actionsData = availableActions.filter((action) => {
+			if (nonActionableChatter && !GENERIC_CHAT_ACTIONS.has(action.name)) {
+				return false;
+			}
+			if (
+				relationshipFollowUpReminder &&
+				hasRelationshipAction &&
+				!RELATIONSHIP_FOLLOW_UP_ACTIONS.has(action.name)
+			) {
+				return false;
+			}
+			return true;
+		});
 		const actionSeed = buildDeterministicSeed(
 			runtime.agentId,
 			message.roomId,

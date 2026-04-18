@@ -28,6 +28,33 @@ function stripOptionalToonLabel(text: string): string {
 	return rest.join("\n").trim();
 }
 
+function resolveToonCandidate(text: string): string {
+	const trimmed = stripOptionalToonLabel(stripFencedBlock(text));
+	if (looksLikeToonDocument(trimmed)) {
+		return trimmed;
+	}
+
+	const lines = trimmed.split(/\r?\n/);
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index]?.trim() ?? "";
+		if (
+			!line ||
+			(!/^TOON(?:\s+DOCUMENT)?[:\s-]*$/i.test(line) &&
+				!SIMPLE_TOON_KEY_RE.test(line))
+		) {
+			continue;
+		}
+
+		const candidate = lines.slice(index).join("\n").trim();
+		const normalizedCandidate = stripOptionalToonLabel(candidate);
+		if (looksLikeToonDocument(normalizedCandidate)) {
+			return normalizedCandidate;
+		}
+	}
+
+	return trimmed;
+}
+
 function looksLikeToonDocument(text: string): boolean {
 	if (!text) return false;
 	if (text.includes("<response>") || text.includes("</response>")) return false;
@@ -75,7 +102,7 @@ const SIMPLE_TOON_KEY_RE =
 	/^([A-Za-z_][A-Za-z0-9_.-]*(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?):(?:\s?(.*))?$/;
 
 export function tryParseToonValue(text: string): unknown | null {
-	const trimmed = stripOptionalToonLabel(stripFencedBlock(text));
+	const trimmed = resolveToonCandidate(text);
 	if (!looksLikeToonDocument(trimmed)) {
 		return null;
 	}
@@ -90,7 +117,7 @@ export function tryParseToonValue(text: string): unknown | null {
 export function tryParseLooseToonRecord(
 	text: string,
 ): Record<string, unknown> | null {
-	const trimmed = stripOptionalToonLabel(stripFencedBlock(text));
+	const trimmed = resolveToonCandidate(text);
 	if (!looksLikeToonDocument(trimmed)) {
 		return null;
 	}

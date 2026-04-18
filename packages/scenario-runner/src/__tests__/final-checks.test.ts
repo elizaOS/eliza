@@ -10,6 +10,7 @@ function ctxWith(partial: Partial<ScenarioContext>): ScenarioContext {
     connectorDispatches: [],
     memoryWrites: [],
     stateTransitions: [],
+    artifacts: [],
     ...partial,
   };
 }
@@ -71,6 +72,81 @@ describe("final-checks", () => {
       { runtime, ctx },
     );
     expect(res.status).toBe("skipped-dependency-missing");
+  });
+
+  it("browserTaskCompleted passes when action result marks completion", async () => {
+    const ctx = ctxWith({
+      actionsCalled: [
+        {
+          actionName: "SUBSCRIPTIONS",
+          result: {
+            success: true,
+            data: {
+              browserTask: { completed: true },
+              cancellation: { status: "completed" },
+            },
+          },
+        },
+      ],
+    });
+    const res = await runFinalCheck(
+      { type: "browserTaskCompleted", expected: true },
+      { runtime, ctx },
+    );
+    expect(res.status).toBe("passed");
+  });
+
+  it("browserTaskNeedsHuman passes when cancellation awaits confirmation", async () => {
+    const ctx = ctxWith({
+      actionsCalled: [
+        {
+          actionName: "SUBSCRIPTIONS",
+          result: {
+            success: true,
+            data: {
+              browserTask: { needsHuman: true },
+              cancellation: { status: "awaiting_confirmation" },
+            },
+          },
+        },
+      ],
+    });
+    const res = await runFinalCheck(
+      { type: "browserTaskNeedsHuman", expected: true },
+      { runtime, ctx },
+    );
+    expect(res.status).toBe("passed");
+  });
+
+  it("uploadedAssetExists passes on captured artifacts", async () => {
+    const ctx = ctxWith({
+      artifacts: [{ source: "result", kind: "screenshot", detail: "x" }],
+    });
+    const res = await runFinalCheck(
+      { type: "uploadedAssetExists", expected: true },
+      { runtime, ctx },
+    );
+    expect(res.status).toBe("passed");
+  });
+
+  it("noSideEffectOnReject passes when rejection has no completion or artifacts", async () => {
+    const ctx = ctxWith({
+      actionsCalled: [
+        {
+          actionName: "SUBSCRIPTIONS",
+          parameters: { confirmed: false },
+          result: {
+            success: true,
+            data: { cancellation: { status: "awaiting_confirmation" } },
+          },
+        },
+      ],
+    });
+    const res = await runFinalCheck(
+      { type: "noSideEffectOnReject", actionName: "SUBSCRIPTIONS" },
+      { runtime, ctx },
+    );
+    expect(res.status).toBe("passed");
   });
 
   it("unknown type returns unknown-kind, not failure", async () => {

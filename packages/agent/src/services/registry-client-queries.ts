@@ -130,7 +130,7 @@ export function toSearchResults<T extends RegistryPluginInfo>(
  * Accepts three shapes:
  *   - null / empty → null (no hero image)
  *   - absolute URL / data URL / already-rooted `/api/...` or `/...` path → returned as-is
- *   - package-relative path (e.g. `"assets/hero.webp"`) → rewritten to
+ *   - package-relative path (e.g. `"assets/hero.png"`) → rewritten to
  *     `/api/apps/hero/<slug>` so the runtime can stream it from the app's
  *     local package directory
  */

@@ -37,6 +37,17 @@ interface LoadedComputerUseActions {
   terminal: Action | null;
 }
 
+const DESKTOP_COMMAND_ALIASES = new Set([
+  "finder",
+  "open_finder",
+  "create_folder",
+  "new_folder",
+  "desktop_screenshot",
+  "take_screenshot",
+  "capture_screen",
+  "screenshot",
+]);
+
 function isComputerUseEnabled(): boolean {
   return process.env.ELIZA_LIFEOPS_COMPUTER_USE_ENABLED !== "0";
 }
@@ -80,17 +91,13 @@ function inferSurface(params: Record<string, unknown>): ComputerUseSurface {
 
   const action =
     typeof params.action === "string" ? params.action.trim().toLowerCase() : "";
+  const command =
+    typeof params.command === "string"
+      ? params.command.trim().toLowerCase()
+      : "";
 
-  if (
-    params.command !== undefined ||
-    params.sessionId !== undefined ||
-    params.session_id !== undefined ||
-    action === "execute" ||
-    action === "execute_command" ||
-    action === "read" ||
-    action === "clear"
-  ) {
-    return "terminal";
+  if (DESKTOP_COMMAND_ALIASES.has(action) || DESKTOP_COMMAND_ALIASES.has(command)) {
+    return "desktop";
   }
 
   if (
@@ -114,6 +121,18 @@ function inferSurface(params: Record<string, unknown>): ComputerUseSurface {
     action === "list_downloads"
   ) {
     return "file";
+  }
+
+  if (
+    params.command !== undefined ||
+    params.sessionId !== undefined ||
+    params.session_id !== undefined ||
+    action === "execute" ||
+    action === "execute_command" ||
+    action === "read" ||
+    action === "clear"
+  ) {
+    return "terminal";
   }
 
   if (
@@ -243,11 +262,20 @@ export const lifeOpsComputerUseAction: Action & {
     "DESKTOP_AUTOMATION",
     "COMPUTER_USE",
     "CONTROL_DESKTOP",
+    "FINDER",
+    "OPEN_FINDER",
+    "CREATE_FOLDER",
+    "NEW_FOLDER",
+    "TAKE_SCREENSHOT",
+    "CAPTURE_SCREEN",
     "PORTAL_UPLOAD",
     "UPLOAD_DECK",
   ],
   tags: [
     "always-include",
+    "finder",
+    "desktop screenshot",
+    "create folder",
     "portal upload",
     "upload deck",
     "speaker portal",
@@ -257,7 +285,8 @@ export const lifeOpsComputerUseAction: Action & {
   description:
     "Control the owner's desktop (screenshots, mouse, keyboard, browser, " +
     "windows, files, terminal) via @elizaos/plugin-computeruse. Use this for " +
-    "portal uploads, browser form-filling, and other on-machine workflows the " +
+    "portal uploads, Finder/Desktop tasks like creating folders or taking " +
+    "screenshots, browser form-filling, and other on-machine workflows the " +
     "assistant should perform directly, including standing instructions like " +
     "'when I send the file, upload it to the portal for me.' Owner-only. " +
     "Disabled when ELIZA_LIFEOPS_COMPUTER_USE_ENABLED=0.",
@@ -344,6 +373,20 @@ export const lifeOpsComputerUseAction: Action & {
 
   examples: [
     ...stubExamples,
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Open Finder and create a new folder called Q2-Reports on my desktop.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll handle that on your Mac with computer use.",
+        },
+      },
+    ],
     [
       {
         name: "{{name1}}",

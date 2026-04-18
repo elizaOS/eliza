@@ -95,7 +95,7 @@
     "app": {
       "displayName": "'scape",
       "category": "game",
-      "heroImage": "assets/hero.webp",
+    "heroImage": "assets/hero.png",
       "launchType": "connect",
       "launchUrl": "https://scape-client-2sqyc.kinsta.page",
       "capabilities": [

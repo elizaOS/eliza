@@ -195,4 +195,218 @@ describe("relationships handler — real PGLite", () => {
       (result as unknown as { data?: { error?: string } }).data?.error,
     ).toBe("MISSING_FIELDS");
   });
+
+  it("relationshipAction add_follow_up resolves an existing contact by name and loose dueAt text", async () => {
+    await service.upsertRelationship({
+      name: "Dana Benchmark",
+      primaryChannel: "email",
+      primaryHandle: "dana.benchmark@example.com",
+      email: "dana.benchmark@example.com",
+      phone: null,
+      notes: "Project contact.",
+      tags: ["work"],
+      relationshipType: "contact",
+      lastContactedAt: null,
+      metadata: {},
+    });
+
+    const result = await relationshipAction.handler!(
+      runtime,
+      makeMessage(
+        runtime,
+        "remind me to follow up with Dana next week about the project",
+      ) as never,
+      undefined,
+      {
+        parameters: {
+          subaction: "add_follow_up",
+          name: "Dana",
+          reason: "Project follow-up",
+          dueAt: "ISO-8601 date and time for next week",
+        },
+      } as never,
+      async () => {},
+    );
+
+    expect(result?.success).toBe(true);
+    const data = (
+      result as unknown as {
+        data?: { followUp?: { relationshipId: string; dueAt: string } };
+      }
+    ).data;
+    expect(data?.followUp?.relationshipId).toBeTruthy();
+    expect(data?.followUp?.dueAt).toContain("T");
+  });
+
+  it("relationshipAction days_since resolves an existing contact by name", async () => {
+    const rel = await service.upsertRelationship({
+      name: "Zora Benchmark",
+      primaryChannel: "email",
+      primaryHandle: "zora.benchmark@example.com",
+      email: "zora.benchmark@example.com",
+      phone: null,
+      notes: "Project contact.",
+      tags: ["work"],
+      relationshipType: "contact",
+      lastContactedAt: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString(),
+      metadata: {},
+    });
+
+    const result = await relationshipAction.handler!(
+      runtime,
+      makeMessage(runtime, "how long has it been since I talked to Zora?") as never,
+      undefined,
+      {
+        parameters: {
+          subaction: "days_since",
+          name: "Zora",
+        },
+      } as never,
+      async () => {},
+    );
+
+    expect(result?.success).toBe(true);
+    const data = (
+      result as unknown as {
+        data?: { relationshipId?: string; days?: number | null };
+      }
+    ).data;
+    expect(data?.relationshipId).toBe(rel.id);
+    expect(data?.days).toBeGreaterThanOrEqual(8);
+  });
+
+  it("relationshipAction days_since treats a non-UUID relationshipId as a contact name alias", async () => {
+    const rel = await service.upsertRelationship({
+      name: "Mina Benchmark",
+      primaryChannel: "email",
+      primaryHandle: "mina.benchmark@example.com",
+      email: "mina.benchmark@example.com",
+      phone: null,
+      notes: "Project contact.",
+      tags: ["work"],
+      relationshipType: "contact",
+      lastContactedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+      metadata: {},
+    });
+
+    const result = await relationshipAction.handler!(
+      runtime,
+      makeMessage(runtime, "how long has it been since I talked to Mina?") as never,
+      undefined,
+      {
+        parameters: {
+          subaction: "days_since",
+          relationshipId: "Mina",
+        },
+      } as never,
+      async () => {},
+    );
+
+    expect(result?.success).toBe(true);
+    const data = (
+      result as unknown as {
+        data?: { relationshipId?: string; days?: number | null };
+      }
+    ).data;
+    expect(data?.relationshipId).toBe(rel.id);
+    expect(data?.days).toBeGreaterThanOrEqual(3);
+  });
+
+  it("relationshipAction days_since can resolve the contact from intent or message text when name fields are missing", async () => {
+    const rel = await service.upsertRelationship({
+      name: "Nadia Benchmark",
+      primaryChannel: "email",
+      primaryHandle: "nadia.benchmark@example.com",
+      email: "nadia.benchmark@example.com",
+      phone: null,
+      notes: "Project contact.",
+      tags: ["work"],
+      relationshipType: "contact",
+      lastContactedAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
+      metadata: {},
+    });
+
+    const result = await relationshipAction.handler!(
+      runtime,
+      makeMessage(runtime, "how long has it been since I talked to Nadia?") as never,
+      undefined,
+      {
+        parameters: {
+          subaction: "days_since",
+          intent: "Nadia",
+        },
+      } as never,
+      async () => {},
+    );
+
+    expect(result?.success).toBe(true);
+    const data = (
+      result as unknown as {
+        data?: { relationshipId?: string; days?: number | null };
+      }
+    ).data;
+    expect(data?.relationshipId).toBe(rel.id);
+    expect(data?.days).toBeGreaterThanOrEqual(5);
+  });
+
+  it("relationshipAction executes a valid planned subaction even when the planner wrongly marks shouldAct=false", async () => {
+    const rel = await service.upsertRelationship({
+      name: "Omar Benchmark",
+      primaryChannel: "email",
+      primaryHandle: "omar.benchmark@example.com",
+      email: "omar.benchmark@example.com",
+      phone: null,
+      notes: "Project contact.",
+      tags: ["work"],
+      relationshipType: "contact",
+      lastContactedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      metadata: {},
+    });
+
+    const originalUseModel = runtime.useModel.bind(runtime);
+    runtime.useModel = (async (modelType, input) => {
+      if (
+        modelType === "TEXT_SMALL" &&
+        typeof input === "object" &&
+        input &&
+        "prompt" in input &&
+        typeof input.prompt === "string" &&
+        input.prompt.includes("Plan the RELATIONSHIP (Rolodex) subaction")
+      ) {
+        return [
+          "The response will be in valid JSON format with exactly the required fields.",
+          "```json",
+          JSON.stringify({
+            subaction: "days_since",
+            shouldAct: false,
+            response: "Omar, what have you been up to since we last talked?",
+          }),
+          "```",
+        ].join("\n");
+      }
+      return originalUseModel(modelType, input as never);
+    }) as typeof runtime.useModel;
+
+    try {
+      const result = await relationshipAction.handler!(
+        runtime,
+        makeMessage(runtime, "how long has it been since I talked to Omar?") as never,
+        undefined,
+        { parameters: {} } as never,
+        async () => {},
+      );
+
+      expect(result?.success).toBe(true);
+      const data = (
+        result as unknown as {
+          data?: { relationshipId?: string; days?: number | null; noop?: boolean };
+        }
+      ).data;
+      expect(data?.noop).not.toBe(true);
+      expect(data?.relationshipId).toBe(rel.id);
+      expect(data?.days).toBeGreaterThanOrEqual(1);
+    } finally {
+      runtime.useModel = originalUseModel;
+    }
+  });
 });

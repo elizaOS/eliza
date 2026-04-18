@@ -10,7 +10,9 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
 import {
+  buildIsolatedLiveProviderEnv,
   isLiveTestEnabled,
+  LIVE_PROVIDER_ENV_KEYS,
   selectLiveProvider,
 } from "../../../../../test/helpers/live-provider";
 import { createRealTestRuntime } from "../../../../../test/helpers/real-runtime";
@@ -154,7 +156,7 @@ async function startLiveServer(args: {
   exportToken?: string;
 }): Promise<{ restore: () => Promise<void>; server: StartedLiveServer }> {
   const envBackup = saveEnv(
-    ...Object.keys(LIVE_PROVIDER?.env ?? {}),
+    ...LIVE_PROVIDER_ENV_KEYS,
     "ELIZA_API_TOKEN",
     "ELIZA_WALLET_EXPORT_TOKEN",
     "ELIZA_PAIRING_DISABLED",
@@ -165,8 +167,12 @@ async function startLiveServer(args: {
     "PGLITE_DATA_DIR",
   );
 
-  for (const [key, value] of Object.entries(LIVE_PROVIDER?.env ?? {})) {
-    process.env[key] = value;
+  const isolatedProviderEnv = buildIsolatedLiveProviderEnv(
+    process.env,
+    LIVE_PROVIDER,
+  );
+  for (const key of LIVE_PROVIDER_ENV_KEYS) {
+    process.env[key] = isolatedProviderEnv[key] ?? "";
   }
   process.env.ELIZA_API_TOKEN = args.apiToken;
   if (args.exportToken) {

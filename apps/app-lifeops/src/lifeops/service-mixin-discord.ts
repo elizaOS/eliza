@@ -38,8 +38,6 @@ import { fail } from "./service-normalize.js";
 import { normalizeOptionalConnectorSide } from "./service-normalize-connector.js";
 
 const DISCORD_CONNECTOR_SESSION_TITLE = "Open Discord for LifeOps";
-const LIFEOPS_BROWSER_SOURCE_LABEL = "Your Browser";
-const DESKTOP_BROWSER_SOURCE_LABEL = "Milady Desktop Browser";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -312,35 +310,6 @@ function browserTabState(args: {
   return "missing";
 }
 
-function browserAccessActionLabel(
-  action: LifeOpsOwnerBrowserNextAction,
-): string | null {
-  switch (action) {
-    case "connect_browser":
-      return "Connect Your Browser";
-    case "open_extension_popup":
-      return "Open Extension Popup";
-    case "enable_browser_access":
-      return "Turn On Browser Access";
-    case "enable_browser_control":
-      return "Enable Browser Control";
-    case "open_discord":
-      return "Open Discord";
-    case "open_dm_inbox":
-      return "Open Discord DMs";
-    case "focus_discord_manually":
-      return "Open Discord Manually";
-    case "focus_dm_inbox_manually":
-      return "Focus DMs Manually";
-    case "log_in":
-      return "Log In to Discord";
-    case "open_milady_desktop":
-      return "Open Milady Desktop";
-    default:
-      return null;
-  }
-}
-
 function lifeOpsBrowserAccessStatus(args: {
   active: boolean;
   settingsEnabled: boolean;
@@ -361,52 +330,31 @@ function lifeOpsBrowserAccessStatus(args: {
   });
 
   let nextAction: LifeOpsOwnerBrowserNextAction = "none";
-  let message = "Your Browser is ready for Discord.";
 
   if (!args.settingsEnabled || !args.trackingEnabled || args.paused) {
     nextAction = "enable_browser_access";
-    message = args.paused
-      ? "Browser access is paused in LifeOps Browser settings."
-      : "Browser access is turned off in LifeOps Browser settings.";
   } else if (!args.hasAnyCompanion) {
     nextAction = "connect_browser";
-    message =
-      "No browser profile is connected yet. Install the extension, then open its popup in the browser profile that has your account.";
   } else if (!args.hasConnectedCompanion) {
     nextAction = "open_extension_popup";
-    message =
-      "A browser was paired before, but no profile is connected right now. Reopen the extension popup in the browser profile you want LifeOps to use.";
   } else if (authState === "logged_out") {
     nextAction = "log_in";
-    message =
-      "Discord is open in Your Browser, but that profile still needs you to log in.";
   } else if (!args.canControl && tabState === "missing") {
     nextAction = "enable_browser_control";
-    message =
-      "Your Browser is connected, but browser control is off, so LifeOps cannot open Discord for you.";
   } else if (!args.canControl && tabState !== "dm_inbox_visible") {
     nextAction = "focus_dm_inbox_manually";
-    message =
-      "Your Browser can see Discord, but browser control is off. Focus the Discord DM tab manually or turn browser control on.";
   } else if (tabState === "missing") {
     nextAction = "open_discord";
-    message =
-      "Your Browser is connected, but Discord is not open in that browser profile yet.";
   } else if (authState === "logged_in" && tabState !== "dm_inbox_visible") {
     nextAction = "open_dm_inbox";
-    message =
-      "Your Browser sees your Discord session, but not the DM inbox yet.";
   }
 
   if (args.siteAccessOk === false && nextAction === "none") {
     nextAction = "open_discord";
-    message =
-      "Your Browser is connected, but Discord has not been granted yet in this profile. Open Discord there and retry.";
   }
 
   return {
     source: "lifeops_browser",
-    sourceLabel: LIFEOPS_BROWSER_SOURCE_LABEL,
     active: args.active,
     available:
       args.settingsEnabled &&
@@ -424,8 +372,6 @@ function lifeOpsBrowserAccessStatus(args: {
     tabState,
     authState,
     nextAction,
-    nextActionLabel: browserAccessActionLabel(nextAction),
-    message,
   };
 }
 
@@ -442,29 +388,19 @@ function desktopBrowserAccessStatus(args: {
   });
 
   let nextAction: LifeOpsOwnerBrowserNextAction = "none";
-  let message = "Milady Desktop Browser is ready for Discord.";
 
   if (!args.available) {
-    nextAction = "open_milady_desktop";
-    message =
-      "Open Milady Desktop to use its built-in browser for your Discord session.";
+    nextAction = "open_desktop_browser";
   } else if (authState === "logged_out") {
     nextAction = "log_in";
-    message =
-      "Discord is open in Milady Desktop Browser, but that session still needs you to log in.";
   } else if (tabState === "missing") {
     nextAction = "open_discord";
-    message =
-      "Milady Desktop Browser is available, but Discord is not open there yet.";
   } else if (authState === "logged_in" && tabState !== "dm_inbox_visible") {
     nextAction = "open_dm_inbox";
-    message =
-      "Milady Desktop Browser sees your Discord session, but not the DM inbox yet.";
   }
 
   return {
     source: "desktop_browser",
-    sourceLabel: DESKTOP_BROWSER_SOURCE_LABEL,
     active: args.active,
     available: args.available,
     browser: null,
@@ -478,8 +414,6 @@ function desktopBrowserAccessStatus(args: {
     tabState,
     authState,
     nextAction,
-    nextActionLabel: browserAccessActionLabel(nextAction),
-    message,
   };
 }
 
@@ -773,7 +707,12 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
 
       if (normalizedSide === "owner") {
         const browserState = await this.#getOwnerBrowserDiscordState(existing);
-        if (browserState) {
+        const hasConnectedBrowserPath =
+          browserState.hasConnectedCompanion ||
+          Boolean(browserState.currentPageUrl?.includes("discord.com")) ||
+          Boolean(browserState.discordTab) ||
+          Boolean(browserState.probe);
+        if (hasConnectedBrowserPath) {
           const probe = browserState.probe;
           const connected = probe?.loggedIn === true;
           const dmInboxVisible = probe?.dmInbox.visible === true;

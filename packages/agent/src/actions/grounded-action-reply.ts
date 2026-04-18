@@ -1,4 +1,4 @@
-import { recentConversationTexts } from "@elizaos/app-lifeops/actions/life-recent-context.js";
+import { recentConversationTexts } from "./recent-conversation-texts.js";
 import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   getTrajectoryContext,

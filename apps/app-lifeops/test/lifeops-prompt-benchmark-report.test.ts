@@ -19,6 +19,8 @@ const SAMPLE_RESULTS: PromptBenchmarkResult[] = [
         "Set up a workout habit every afternoon. Block X, Instagram, and Hacker News until I finish it, then unlock them for 60 minutes.",
       prompt:
         "Set up a workout habit every afternoon. Block X, Instagram, and Hacker News until I finish it, then unlock them for 60 minutes.",
+      benchmarkContext:
+        "Prompt benchmark case Workout blocker routine (workout-blocker-basic__direct). Treat this as a benchmark of grounded follow-through: when the user is making a real request, prefer executing the best matching action instead of only describing a hypothetical plan.",
       variantId: "direct",
       variantLabel: "Direct",
       axes: ["baseline", "direct"],
@@ -51,6 +53,8 @@ const SAMPLE_RESULTS: PromptBenchmarkResult[] = [
         "Need to book 1 hour per day for time with Jill. Any time is fine, ideally before sleep.",
       prompt:
         "Do not do this yet. I'm only thinking out loud: need to book 1 hour per day for time with Jill. Any time is fine, ideally before sleep.",
+      benchmarkContext:
+        "Prompt benchmark case Reserve recurring daily time with Jill (ea.schedule.daily-time-with-jill__subtle-null). Treat this as a benchmark of restraint: the user may be thinking out loud, making smalltalk, or previewing a future task. Use grounded reasoning and avoid executing durable actions unless the request is explicit.",
       variantId: "subtle-null",
       variantLabel: "Subtle Null",
       axes: ["null-case", "non-request", "confuser"],

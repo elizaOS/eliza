@@ -350,6 +350,13 @@ export interface Provider {
 	 */
 	contexts?: AgentContext[];
 
+	/**
+	 * Additional providers that should run alongside this provider when it is
+	 * selected by the planner. Use this for provider composition, not semantic
+	 * routing.
+	 */
+	companionProviders?: string[];
+
 	/** Data retrieval function */
 	get: (
 		runtime: IAgentRuntime,

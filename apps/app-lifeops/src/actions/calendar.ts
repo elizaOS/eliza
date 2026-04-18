@@ -46,6 +46,7 @@ import {
   messageText,
   toActionData,
 } from "./lifeops-google-helpers.js";
+import { looksLikeCalendarObservation } from "./non-actionable-request.js";
 
 type CalendarSubaction =
   | "feed"
@@ -90,6 +91,12 @@ export type CalendarLlmPlan = {
 };
 
 const MIN_CREATE_EVENT_DURATION_MINUTES = 15;
+type CalendarReadSubaction =
+  | "feed"
+  | "next_event"
+  | "search_events"
+  | "trip_window"
+  | null;
 
 type CalendarActionParams = {
   subaction?: CalendarSubaction;
@@ -203,12 +210,12 @@ function normalizeCalendarSubaction(value: unknown): CalendarSubaction | null {
 function buildCalendarPlanFromParsed(
   parsed: Record<string, unknown>,
 ): CalendarLlmPlan | null {
-  const shouldAct = normalizeShouldAct(parsed.shouldAct);
+  const subaction = normalizeCalendarSubaction(parsed.subaction);
+  const shouldAct = normalizeShouldAct(parsed.shouldAct) ?? (subaction ? true : null);
   if (shouldAct === null) {
     return null;
   }
 
-  const subaction = normalizeCalendarSubaction(parsed.subaction);
   if (shouldAct && subaction === null) {
     return null;
   }
@@ -333,6 +340,165 @@ function buildCalendarReplyOnlyFallback(
     default:
       return "What do you want to do on your calendar — check your schedule, find an event, or create one?";
   }
+}
+
+function normalizeCalendarReadSubaction(
+  value: unknown,
+): CalendarReadSubaction {
+  if (
+    value === "feed" ||
+    value === "next_event" ||
+    value === "search_events" ||
+    value === "trip_window"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function normalizeCalendarReadResolution(
+  parsed: Record<string, unknown> | null | undefined,
+): { subaction: CalendarReadSubaction; tripLocation?: string } | null {
+  if (!parsed) {
+    return null;
+  }
+  const subaction = normalizeCalendarReadSubaction(parsed.subaction);
+  const tripLocation =
+    typeof parsed.tripLocation === "string" &&
+    parsed.tripLocation.trim().length > 0
+      ? parsed.tripLocation.trim()
+      : undefined;
+  return { subaction, tripLocation };
+}
+
+function shouldDisambiguateCalendarReadPlan(
+  plan: CalendarLlmPlan | null,
+): boolean {
+  if (plan === null) {
+    return true;
+  }
+  return (
+    plan.subaction === null ||
+    plan.subaction === "feed" ||
+    plan.subaction === "next_event" ||
+    plan.subaction === "search_events"
+  );
+}
+
+async function disambiguateCalendarReadPlanWithLlm(args: {
+  runtime: IAgentRuntime;
+  currentMessage: string;
+  intent: string;
+  recentConversation: string;
+  candidateSubaction: CalendarSubaction | null;
+}): Promise<{ subaction: CalendarReadSubaction; tripLocation?: string } | null> {
+  const prompt = [
+    "Resolve this calendar read intent.",
+    "The user may speak in any language.",
+    "Choose exactly one subaction: feed, next_event, search_events, trip_window, or null.",
+    "feed means a schedule or agenda view over today, tomorrow, this week, or another time window.",
+    "next_event means only the single next upcoming meeting or appointment.",
+    "search_events means find calendar events by title, attendee, location, date, or keyword, including flights and appointments.",
+    "trip_window means show what is happening while the user is in a place or during a trip/stay in that place.",
+    "Use null only when the request is not asking for a calendar read lookup.",
+    "If you choose trip_window, also return tripLocation when the place is recoverable from the request or recent conversation.",
+    "",
+    "Examples:",
+    '  "What\'s on my calendar today?" -> {"subaction":"feed"}',
+    '  "今日の予定は何ですか？" -> {"subaction":"feed"}',
+    '  "What\'s my next meeting?" -> {"subaction":"next_event"}',
+    '  "¿Cuál es mi próxima reunión?" -> {"subaction":"next_event"}',
+    '  "find my return flight" -> {"subaction":"search_events"}',
+    '  "東京にいる間、何がありますか？" -> {"subaction":"trip_window","tripLocation":"東京"}',
+    '  "Can you help me with my calendar?" -> {"subaction":null}',
+    "",
+    "Return ONLY valid JSON with exactly these fields:",
+    "  subaction: feed, next_event, search_events, trip_window, or null",
+    "  tripLocation: optional string",
+    "",
+    `Current request: ${JSON.stringify(args.currentMessage)}`,
+    `Resolved intent: ${JSON.stringify(args.intent)}`,
+    `Recent conversation: ${JSON.stringify(args.recentConversation)}`,
+    `Current planner candidate: ${JSON.stringify(args.candidateSubaction)}`,
+  ].join("\n");
+
+  try {
+    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt,
+    });
+    const raw = typeof result === "string" ? result : "";
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(raw) ??
+      parseJSONObjectFromText(raw);
+    return normalizeCalendarReadResolution(parsed);
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:calendar",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Calendar read disambiguation model call failed",
+    );
+    return null;
+  }
+}
+
+async function finalizeCalendarPlan(args: {
+  runtime: IAgentRuntime;
+  currentMessage: string;
+  intent: string;
+  recentConversation: string;
+  plan: CalendarLlmPlan | null;
+}): Promise<CalendarLlmPlan> {
+  const { runtime, currentMessage, intent, recentConversation, plan } = args;
+  if (!shouldDisambiguateCalendarReadPlan(plan)) {
+    return (
+      plan ?? {
+        subaction: null,
+        queries: [],
+        shouldAct: null,
+      }
+    );
+  }
+
+  const resolvedReadPlan = await disambiguateCalendarReadPlanWithLlm({
+    runtime,
+    currentMessage,
+    intent,
+    recentConversation,
+    candidateSubaction: plan?.subaction ?? null,
+  });
+
+  if (resolvedReadPlan === null || resolvedReadPlan.subaction === null) {
+    return (
+      plan ?? {
+        subaction: null,
+        queries: [],
+        shouldAct: null,
+      }
+    );
+  }
+
+  if (plan) {
+    return {
+      ...plan,
+      subaction: resolvedReadPlan.subaction,
+      tripLocation: resolvedReadPlan.tripLocation ?? plan.tripLocation,
+      queries: dedupeCalendarQueries([
+        ...plan.queries,
+        resolvedReadPlan.tripLocation,
+      ]),
+      shouldAct: true,
+      response: undefined,
+    };
+  }
+
+  return {
+    subaction: resolvedReadPlan.subaction,
+    queries: dedupeCalendarQueries([resolvedReadPlan.tripLocation]),
+    shouldAct: true,
+    tripLocation: resolvedReadPlan.tripLocation,
+  };
 }
 
 function buildCalendarServiceErrorFallback(
@@ -1326,6 +1492,7 @@ export async function extractCalendarPlanWithLlm(
     "",
     "Examples:",
     '  "what\'s on my calendar tomorrow" → {"subaction":"feed","shouldAct":true,"response":null}',
+    '  "今日の予定は何ですか？" → {"subaction":"feed","shouldAct":true,"response":null}',
     '  "schedule a meeting with Alex at 3pm" → {"subaction":"create_event","shouldAct":true,"response":null,"title":"Meeting with Alex"}',
     '  "find my return flight" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["return flight"]}',
     '  "what do I have while I\'m in Tokyo" → {"subaction":"trip_window","shouldAct":true,"response":null,"queries":["tokyo"],"tripLocation":"Tokyo"}',
@@ -1384,7 +1551,13 @@ export async function extractCalendarPlanWithLlm(
 
   const parsedPlan = parseResponse(rawResponse);
   if (parsedPlan) {
-    return parsedPlan;
+    return finalizeCalendarPlan({
+      runtime,
+      currentMessage,
+      intent,
+      recentConversation,
+      plan: parsedPlan,
+    });
   }
 
   try {
@@ -1400,13 +1573,13 @@ export async function extractCalendarPlanWithLlm(
       }),
     });
     const repairedRaw = typeof repairResult === "string" ? repairResult : "";
-    return (
-      parseResponse(repairedRaw) ?? {
-        subaction: null,
-        queries: [],
-        shouldAct: null,
-      }
-    );
+    return finalizeCalendarPlan({
+      runtime,
+      currentMessage,
+      intent,
+      recentConversation,
+      plan: parseResponse(repairedRaw),
+    });
   } catch (error) {
     runtime.logger?.warn?.(
       {
@@ -2428,12 +2601,16 @@ export const calendarAction: Action & {
     "requests like 'what's my next meeting?', 'show me my calendar for today', 'what does my week look like?', or 'schedule a dentist appointment next Tuesday at 3pm'; " +
     "querying travel itineraries, flights, hotel stays, trip windows, reserving recurring time blocks, and rebooking or moving calendar-backed commitments. " +
     "These are live calendar reads and writes, so do not answer them from provider context alone and do not fall back to NONE or REPLY when this action is available. " +
+    "DO NOT use this action when the user is only making an observation like 'my calendar has been crazy this quarter' unless they actually ask you to inspect or change calendar state. " +
     "DO NOT use this action for email inbox work, drafting or sending emails — use GMAIL_ACTION instead. " +
     "DO NOT use this action for personal habits, goals, routines, or reminders — use LIFE instead. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",
   descriptionCompressed: "Google Calendar via LifeOps: view schedule, search events, create events, query travel. Not for email or habits.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
+    if (looksLikeCalendarObservation(messageText(message))) {
+      return false;
+    }
     return hasLifeOpsAccess(runtime, message);
   },
   handler: async (

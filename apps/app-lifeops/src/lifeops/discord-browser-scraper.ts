@@ -427,7 +427,9 @@ export async function ensureDiscordTab(args: {
 }): Promise<{ tabId: string; url: string }> {
   const env = args.env ?? process.env;
   if (!discordBrowserWorkspaceAvailable(env)) {
-    throw new Error("Discord connector requires Milady Desktop Browser.");
+    throw new Error(
+      "Discord connector requires the Milady Desktop Browser workspace.",
+    );
   }
 
   const partition = discordPartitionFor(args.agentId, args.side);

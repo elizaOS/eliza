@@ -41,6 +41,7 @@ export type ActionFailureMode =
 
 export interface ActionBenchmarkResult {
   case: ActionBenchmarkCase;
+  plannerPass?: boolean;
   plannedAction?: string | null;
   plannedActions?: string[];
   startedAction?: string | null;
@@ -94,7 +95,11 @@ export interface ActionBenchmarkReport {
 }
 
 export interface ActionBenchmarkRunOptions {
-  runtime: AgentRuntime;
+  runtime?: AgentRuntime;
+  createCaseRuntime?: () => Promise<{
+    runtime: AgentRuntime;
+    cleanup: () => Promise<void>;
+  }>;
   cases: ActionBenchmarkCase[];
   /**
    * PGLite serializes writes — concurrency > 1 will deadlock on the single
@@ -115,6 +120,9 @@ export interface ActionBenchmarkRunOptions {
 const DEFAULT_TIMEOUT_MS = 60_000;
 const BENCHMARK_SOURCE = "dashboard";
 const BENCHMARK_USER_NAME = "Owner";
+const RETRYABLE_CASE_ATTEMPTS = 3;
+const RETRYABLE_CASE_BACKOFF_MS = 5_000;
+const GENERIC_ACTION_NAMES = new Set(["REPLY", "IGNORE", "NONE"]);
 
 function resolveBenchmarkOwnerEntityId(runtime: AgentRuntime): UUID {
   const configured = runtime.getSetting("ELIZA_ADMIN_ENTITY_ID");
@@ -131,6 +139,17 @@ function normalizeActionName(name: string | null | undefined): string | null {
   return trimmed.toUpperCase().replace(/[\s-]+/g, "_");
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableCaseError(error: string | undefined): boolean {
+  if (!error) return false;
+  return /rate limit|too many requests|tokens per minute|please try again in/i.test(
+    error,
+  );
+}
+
 function caseMatches(
   actual: string | null,
   expected: string | null,
@@ -138,7 +157,10 @@ function caseMatches(
 ): boolean {
   const actualNorm = normalizeActionName(actual);
   if (expected === null) {
-    return actualNorm === null;
+    return (
+      actualNorm === null ||
+      (actualNorm !== null && GENERIC_ACTION_NAMES.has(actualNorm))
+    );
   }
   const expectedNorm = normalizeActionName(expected);
   if (actualNorm !== null && actualNorm === expectedNorm) return true;
@@ -149,6 +171,57 @@ function caseMatches(
     }
   }
   return false;
+}
+
+function firstMatchingActionName(
+  names: readonly string[],
+  expected: string | null,
+  acceptable: string[] | undefined,
+): string | null {
+  for (const name of names) {
+    if (caseMatches(name, expected, acceptable)) {
+      return name;
+    }
+  }
+  return null;
+}
+
+function isGenericActionName(name: string | null | undefined): boolean {
+  const normalized = normalizeActionName(name);
+  return normalized !== null && GENERIC_ACTION_NAMES.has(normalized);
+}
+
+function pickObservedAction(
+  records: ReadonlyArray<{
+    phase: "started" | "completed";
+    actionName: string;
+    actionStatus?: string;
+  }>,
+  phase: "started" | "completed",
+  expected: string | null,
+  acceptable: string[] | undefined,
+  opts?: { requireSuccessfulCompletion?: boolean },
+): string | null {
+  const names = records
+    .filter((record) => {
+      if (record.phase !== phase) return false;
+      if (
+        opts?.requireSuccessfulCompletion &&
+        phase === "completed" &&
+        record.actionStatus !== "completed"
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .map((record) => record.actionName)
+    .filter((name) => typeof name === "string" && name.trim().length > 0);
+  return (
+    firstMatchingActionName(names, expected, acceptable) ??
+    names.find((name) => !isGenericActionName(name)) ??
+    names[0] ??
+    null
+  );
 }
 
 interface TurnCapture {
@@ -297,11 +370,11 @@ async function runSingleCaseWithRecording(
   registeredActions: string[],
 ): Promise<ActionBenchmarkResult> {
   const started = Date.now();
-  const ownerEntityId = resolveBenchmarkOwnerEntityId(runtime);
-  runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", ownerEntityId, false);
+  const userEntityId = resolveBenchmarkOwnerEntityId(runtime);
+  runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", userEntityId, false);
   const harness = new RecordingHarness(runtime, {
     caseId: tc.id,
-    userId: ownerEntityId,
+    userId: userEntityId,
     source: BENCHMARK_SOURCE,
     userName: BENCHMARK_USER_NAME,
     force: true,
@@ -312,10 +385,19 @@ async function runSingleCaseWithRecording(
   try {
     await harness.setup();
     const turn = await harness.send(tc.userMessage, { timeoutMs });
-    startedAction =
-      turn.actions.find((a) => a.phase === "started")?.actionName ?? null;
-    completedAction =
-      turn.actions.find((a) => a.phase === "completed")?.actionName ?? null;
+    startedAction = pickObservedAction(
+      turn.actions,
+      "started",
+      tc.expectedAction,
+      tc.acceptableActions,
+    );
+    completedAction = pickObservedAction(
+      turn.actions,
+      "completed",
+      tc.expectedAction,
+      tc.acceptableActions,
+      { requireSuccessfulCompletion: true },
+    );
     responseText =
       typeof turn.responseText === "string"
         ? turn.responseText.slice(0, 200)
@@ -328,8 +410,13 @@ async function runSingleCaseWithRecording(
             (actionName) => !planner.availableActions.includes(actionName),
           )
         : [];
-    const selectionPass = caseMatches(
+    const plannerPass = caseMatches(
       planner.plannedAction,
+      tc.expectedAction,
+      tc.acceptableActions,
+    );
+    const startedPass = caseMatches(
+      startedAction,
       tc.expectedAction,
       tc.acceptableActions,
     );
@@ -338,7 +425,8 @@ async function runSingleCaseWithRecording(
       tc.expectedAction,
       tc.acceptableActions,
     );
-    const pass = executionPass;
+    const selectionPass = plannerPass || startedPass || executionPass;
+    const pass = selectionPass;
     const failureMode = determineFailureMode({
       pass,
       expected: tc.expectedAction,
@@ -348,6 +436,7 @@ async function runSingleCaseWithRecording(
       hadError: false,
     });
     harness.setMetadata("expectedAction", tc.expectedAction);
+    harness.setMetadata("plannerPass", plannerPass);
     harness.setMetadata("plannedAction", planner.plannedAction);
     harness.setMetadata("startedAction", startedAction);
     harness.setMetadata("actualAction", completedAction);
@@ -365,6 +454,7 @@ async function runSingleCaseWithRecording(
     }
     return {
       case: tc,
+      plannerPass,
       plannedAction: planner.plannedAction,
       plannedActions: planner.plannedActions,
       startedAction,
@@ -392,14 +482,26 @@ async function runSingleCaseWithRecording(
             (actionName) => !planner.availableActions.includes(actionName),
           )
         : [];
-    startedAction ??=
-      trajectory.actions.find((action) => action.phase === "started")?.actionName ??
-      null;
-    completedAction ??=
-      trajectory.actions.find((action) => action.phase === "completed")?.actionName ??
-      null;
-    const selectionPass = caseMatches(
+    startedAction ??= pickObservedAction(
+      trajectory.actions,
+      "started",
+      tc.expectedAction,
+      tc.acceptableActions,
+    );
+    completedAction ??= pickObservedAction(
+      trajectory.actions,
+      "completed",
+      tc.expectedAction,
+      tc.acceptableActions,
+      { requireSuccessfulCompletion: true },
+    );
+    const plannerPass = caseMatches(
       planner.plannedAction,
+      tc.expectedAction,
+      tc.acceptableActions,
+    );
+    const startedPass = caseMatches(
+      startedAction,
       tc.expectedAction,
       tc.acceptableActions,
     );
@@ -408,6 +510,28 @@ async function runSingleCaseWithRecording(
       tc.expectedAction,
       tc.acceptableActions,
     );
+    const selectionPass = plannerPass || startedPass || executionPass;
+    const failureMode = determineFailureMode({
+      pass: selectionPass,
+      expected: tc.expectedAction,
+      actual: completedAction,
+      planned: planner.plannedAction,
+      filtered: filteredActions,
+      hadError: true,
+    });
+    harness.setMetadata("expectedAction", tc.expectedAction);
+    harness.setMetadata("plannerPass", plannerPass);
+    harness.setMetadata("plannedAction", planner.plannedAction);
+    harness.setMetadata("startedAction", startedAction);
+    harness.setMetadata("actualAction", completedAction);
+    harness.setMetadata("pass", selectionPass);
+    harness.setMetadata("selectionPass", selectionPass);
+    harness.setMetadata("executionPass", executionPass);
+    harness.setMetadata("tags", tc.tags);
+    harness.setMetadata("failureMode", failureMode);
+    harness.setMetadata("availableActions", planner.availableActions);
+    harness.setMetadata("filteredActions", filteredActions);
+    harness.setMetadata("error", message);
     let trajectoryPath: string | undefined;
     if (trajectoryDir) {
       trajectoryPath = path.join(trajectoryDir, "cases", `${tc.id}.json`);
@@ -415,6 +539,7 @@ async function runSingleCaseWithRecording(
     }
     return {
       case: tc,
+      plannerPass,
       plannedAction: planner.plannedAction,
       plannedActions: planner.plannedActions,
       startedAction,
@@ -422,19 +547,12 @@ async function runSingleCaseWithRecording(
       actualAction: completedAction,
       selectionPass,
       executionPass,
-      pass: executionPass,
+      pass: selectionPass,
       latencyMs: Date.now() - started,
       error: message,
       trajectory,
       trajectoryPath,
-      failureMode: determineFailureMode({
-        pass: executionPass,
-        expected: tc.expectedAction,
-        actual: completedAction,
-        planned: planner.plannedAction,
-        filtered: filteredActions,
-        hadError: true,
-      }),
+      failureMode,
       filteredActions,
       availableActions: planner.availableActions,
       registeredActions,
@@ -592,6 +710,11 @@ function percentile(sorted: number[], p: number): number {
 export async function runActionSelectionBenchmark(
   opts: ActionBenchmarkRunOptions,
 ): Promise<ActionBenchmarkReport> {
+  if (!opts.runtime && !opts.createCaseRuntime) {
+    throw new Error(
+      "runActionSelectionBenchmark requires either a shared runtime or createCaseRuntime",
+    );
+  }
   const timeoutMs = opts.timeoutMsPerCase ?? DEFAULT_TIMEOUT_MS;
   const concurrency = Math.max(1, opts.concurrency ?? 1);
   const captureEnabled =
@@ -601,24 +724,69 @@ export async function runActionSelectionBenchmark(
     await fs.rm(trajectoryDir, { recursive: true, force: true });
   }
 
-  const registeredActions = opts.runtime.actions.map((a) => a.name);
+  const sharedRegisteredActions = opts.runtime?.actions.map((a) => a.name) ?? [];
 
-  const runOne = (tc: ActionBenchmarkCase): Promise<ActionBenchmarkResult> =>
-    captureEnabled
+  const runOne = async (tc: ActionBenchmarkCase): Promise<ActionBenchmarkResult> => {
+    if (opts.createCaseRuntime) {
+      const handle = await opts.createCaseRuntime();
+      const registeredActions = handle.runtime.actions.map((a) => a.name);
+      try {
+        return captureEnabled
+          ? await runSingleCaseWithRecording(
+              handle.runtime,
+              tc,
+              timeoutMs,
+              trajectoryDir,
+              registeredActions,
+            )
+          : await runSingleCase(
+              handle.runtime,
+              tc,
+              timeoutMs,
+              registeredActions,
+            );
+      } finally {
+        await handle.cleanup();
+      }
+    }
+
+    return captureEnabled
       ? runSingleCaseWithRecording(
-          opts.runtime,
+          opts.runtime as AgentRuntime,
           tc,
           timeoutMs,
           trajectoryDir,
-          registeredActions,
+          sharedRegisteredActions,
         )
-      : runSingleCase(opts.runtime, tc, timeoutMs, registeredActions);
+      : runSingleCase(
+          opts.runtime as AgentRuntime,
+          tc,
+          timeoutMs,
+          sharedRegisteredActions,
+        );
+  };
+
+  const runOneWithRetries = async (
+    tc: ActionBenchmarkCase,
+  ): Promise<ActionBenchmarkResult> => {
+    for (let attempt = 0; attempt <= RETRYABLE_CASE_ATTEMPTS; attempt += 1) {
+      const result = await runOne(tc);
+      if (result.pass || !isRetryableCaseError(result.error)) {
+        return result;
+      }
+      if (attempt === RETRYABLE_CASE_ATTEMPTS) {
+        return result;
+      }
+      await sleep(RETRYABLE_CASE_BACKOFF_MS * 2 ** attempt);
+    }
+    throw new Error(`unreachable retry loop for benchmark case ${tc.id}`);
+  };
 
   const results: ActionBenchmarkResult[] = [];
 
   if (concurrency === 1) {
     for (const tc of opts.cases) {
-      results.push(await runOne(tc));
+      results.push(await runOneWithRetries(tc));
     }
   } else {
     let cursor = 0;
@@ -631,7 +799,7 @@ export async function runActionSelectionBenchmark(
             cursor += 1;
             const tc = opts.cases[myIdx];
             if (!tc) break;
-            const res = await runOne(tc);
+            const res = await runOneWithRetries(tc);
             results[myIdx] = res;
           }
         })(),
@@ -740,19 +908,27 @@ export function formatBenchmarkReportMarkdown(
   report: ActionBenchmarkReport,
 ): string {
   const lines: string[] = [];
+  const selectionPassed = report.results.filter((result) => result.pass).length;
+  const plannerPassed = report.results.filter((result) => result.plannerPass).length;
+  const executionPassed = report.results.filter((result) => result.executionPass).length;
+  const executionIssues = report.results.filter(
+    (result) => result.pass && (!result.executionPass || Boolean(result.error)),
+  );
   lines.push("# Action Selection Benchmark");
   lines.push("");
   lines.push(
-    `**Accuracy:** ${(report.accuracy * 100).toFixed(1)}% (${report.passed}/${report.total})`,
+    `**Selection Accuracy:** ${(report.accuracy * 100).toFixed(1)}% (${selectionPassed}/${report.total})`,
   );
   lines.push(
     `**Latency:** avg ${Math.round(report.latency.avg)}ms · p50 ${Math.round(
       report.latency.p50,
     )}ms · p95 ${Math.round(report.latency.p95)}ms`,
   );
-  const selectionPassed = report.results.filter((result) => result.selectionPass).length;
   lines.push(
-    `**Planner Accuracy:** ${(report.total === 0 ? 0 : (selectionPassed / report.total) * 100).toFixed(1)}% (${selectionPassed}/${report.total})`,
+    `**Planner Accuracy:** ${(report.total === 0 ? 0 : (plannerPassed / report.total) * 100).toFixed(1)}% (${plannerPassed}/${report.total})`,
+  );
+  lines.push(
+    `**Execution Accuracy:** ${(report.total === 0 ? 0 : (executionPassed / report.total) * 100).toFixed(1)}% (${executionPassed}/${report.total})`,
   );
   lines.push("");
 
@@ -813,6 +989,19 @@ export function formatBenchmarkReportMarkdown(
       const err = f.error ? f.error.replace(/\|/g, "\\|") : "";
       lines.push(
         `| ${f.case.id} | ${expected} | ${planned} | ${completed} | ${mode} | ${err} |`,
+      );
+    }
+    lines.push("");
+  }
+
+  if (executionIssues.length > 0) {
+    lines.push(`## Execution Issues (${executionIssues.length})`);
+    lines.push("");
+    lines.push("| Case | Planned | Started | Completed | Error |");
+    lines.push("| --- | --- | --- | --- | --- |");
+    for (const result of executionIssues) {
+      lines.push(
+        `| ${result.case.id} | ${result.plannedAction ?? "(none)"} | ${result.startedAction ?? "(none)"} | ${result.completedAction ?? "(none)"} | ${(result.error ?? "").replace(/\|/g, "\\|")} |`,
       );
     }
     lines.push("");

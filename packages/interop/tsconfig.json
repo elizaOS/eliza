@@ -9,7 +9,6 @@
     "outDir": "./dist",
     "rootDir": "./typescript",
     "types": ["node", "bun-types"],
-    "ignoreDeprecations": "6.0",
     "noEmit": false,
     "declaration": true,
     "allowImportingTsExtensions": false,

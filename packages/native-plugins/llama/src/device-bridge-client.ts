@@ -12,7 +12,7 @@
  * contract.
  */
 
-import { capacitorLlama } from "./index";
+import { loadCapacitorLlama } from "./load-capacitor-llama";
 
 interface DeviceCapabilities {
   platform: "ios" | "android" | "web";
@@ -184,6 +184,7 @@ export class DeviceBridgeClient {
   }
 
   private async sendRegister(ws: WebSocket): Promise<void> {
+    const capacitorLlama = await loadCapacitorLlama();
     const hardware = await capacitorLlama.getHardwareInfo();
     const loaded = await capacitorLlama.isLoaded();
     const msg: DeviceOutbound = {
@@ -221,6 +222,7 @@ export class DeviceBridgeClient {
 
     if (msg.type === "load") {
       try {
+        const capacitorLlama = await loadCapacitorLlama();
         await capacitorLlama.load({
           modelPath: msg.modelPath,
           contextSize: msg.contextSize,
@@ -245,6 +247,7 @@ export class DeviceBridgeClient {
 
     if (msg.type === "unload") {
       try {
+        const capacitorLlama = await loadCapacitorLlama();
         await capacitorLlama.unload();
         this.send(ws, {
           type: "unloadResult",
@@ -264,6 +267,7 @@ export class DeviceBridgeClient {
 
     if (msg.type === "generate") {
       try {
+        const capacitorLlama = await loadCapacitorLlama();
         const result = await capacitorLlama.generate({
           prompt: msg.prompt,
           stopSequences: msg.stopSequences,
