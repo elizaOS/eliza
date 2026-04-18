@@ -43,6 +43,22 @@ type PasswordManagerParameters = {
   limit?: number;
 };
 
+function parseLooseParameterString(raw: unknown): Partial<PasswordManagerParameters> {
+  if (typeof raw !== "string") {
+    return {};
+  }
+  const subactionMatch = raw.match(
+    /\bsubaction\s*[:=]\s*["']?([a-z_]+)["']?/i,
+  );
+  const queryMatch = raw.match(/\bquery\s*[:=]\s*["']([^"']+)["']/i);
+  const intentMatch = raw.match(/\bintent\s*[:=]\s*["']([^"']+)["']/i);
+  return {
+    subaction: subactionMatch?.[1],
+    query: queryMatch?.[1],
+    intent: intentMatch?.[1],
+  };
+}
+
 function readConfig(
   runtime: { getSetting?: (key: string) => unknown } | undefined,
 ): PasswordManagerBridgeConfig {
@@ -86,6 +102,17 @@ function inferSubactionFromText(
     return "search";
   }
   return undefined;
+}
+
+function extractPasswordSearchQuery(text: string): string | undefined {
+  const domainMatch = text.match(/\b([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/i);
+  if (domainMatch?.[1]) {
+    return domainMatch[1].toLowerCase();
+  }
+  const serviceMatch = text.match(
+    /\b(?:for|about|on|my)\s+([a-z0-9._-]+)(?:\s+(?:login|password|credentials?))?\b/i,
+  );
+  return serviceMatch?.[1];
 }
 
 function describeItems(items: PasswordManagerItem[]): string {
@@ -179,10 +206,13 @@ export const passwordManagerAction: Action & {
       return failure("PERMISSION_DENIED");
     }
 
-    const params =
-      ((options as HandlerOptions | undefined)?.parameters as
-        | PasswordManagerParameters
-        | undefined) ?? {};
+    const rawParameters = (options as HandlerOptions | undefined)?.parameters;
+    const params = {
+      ...parseLooseParameterString(rawParameters),
+      ...((typeof rawParameters === "object" && rawParameters !== null
+        ? (rawParameters as PasswordManagerParameters)
+        : {}) ?? {}),
+    } satisfies PasswordManagerParameters;
 
     const messageText =
       typeof message.content?.text === "string" ? message.content.text : "";
@@ -192,9 +222,10 @@ export const passwordManagerAction: Action & {
     const config = readConfig(runtime);
 
     if (subaction === "search") {
-      const query = (params.query ?? params.intent ?? messageText)
-        .toString()
-        .trim();
+      const query =
+        (params.query ?? extractPasswordSearchQuery(params.intent ?? messageText) ?? params.intent ?? messageText)
+          .toString()
+          .trim();
       if (!query) return failure("MISSING_QUERY");
       const items = await searchPasswordItems(query, config);
       const text = `Saved login items only — passwords remain hidden.\n${describeItems(items)}`;
