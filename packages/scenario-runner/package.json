@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/scenario-runner",
-  "version": "2.0.0-alpha.198",
+  "version": "2.0.0-alpha.199",
   "description": "Lean scenario runner for the WS7 scenario-schema architecture. Loads .scenario.ts files, executes them against a real @elizaos/core AgentRuntime with a live LLM, and emits a JSON report.",
   "type": "module",
   "main": "./src/index.ts",
