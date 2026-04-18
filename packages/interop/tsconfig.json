@@ -13,9 +13,8 @@
     "declaration": true,
     "allowImportingTsExtensions": false,
     "composite": false,
-    "baseUrl": "../..",
     "paths": {
-      "@elizaos/core": ["packages/typescript/dist/index.node.d.ts"]
+      "@elizaos/core": ["../typescript/dist/index.node.d.ts"]
     }
   },
   "include": ["typescript/**/*.ts"],

@@ -4,7 +4,6 @@
 	"compilerOptions": {
 		"outDir": "./dist",
 		"rootDir": "../../",
-		"baseUrl": "../../",
 		"typeRoots": [
 			"../../../node_modules/@types",
 			"../../../node_modules/.bun/node_modules/@types",
@@ -22,8 +21,8 @@
 		"declarationMap": false,
 		"skipLibCheck": true,
 		"paths": {
-			"@elizaos/core": ["./packages/typescript/src/index.node.ts"],
-			"@elizaos/core/*": ["./packages/typescript/src/*"]
+			"@elizaos/core": ["./src/index.node.ts"],
+			"@elizaos/core/*": ["./src/*"]
 		}
 	},
 	"include": ["src/**/*.ts", "../@schemas/**/*.ts"],

@@ -142,7 +142,9 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
     // Token helper
     // -----------------------------------------------------------------------
 
-    async #localAccessToken(grant: { tokenRef: string | null }): Promise<string> {
+    async lifeOpsDriveAccessToken(
+      grant: { tokenRef: string | null },
+    ): Promise<string> {
       return (
         await ensureFreshGoogleAccessToken(
           grant.tokenRef ?? fail(409, "Google Drive token reference is missing."),
@@ -178,7 +180,7 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
       );
 
       const run = async () => {
-        const accessToken = await this.#localAccessToken(grant);
+        const accessToken = await this.lifeOpsDriveAccessToken(grant);
         return listDriveFiles({
           accessToken,
           folderId: request.folderId,
@@ -214,7 +216,7 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
       );
 
       const run = async () => {
-        const accessToken = await this.#localAccessToken(grant);
+        const accessToken = await this.lifeOpsDriveAccessToken(grant);
         return getDriveFile({ accessToken, fileId: request.fileId });
       };
 
@@ -246,7 +248,7 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
       );
 
       const run = async () => {
-        const accessToken = await this.#localAccessToken(grant);
+        const accessToken = await this.lifeOpsDriveAccessToken(grant);
         return searchDriveFiles({
           accessToken,
           query: request.query,
@@ -281,7 +283,7 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
       );
 
       const run = async () => {
-        const accessToken = await this.#localAccessToken(grant);
+        const accessToken = await this.lifeOpsDriveAccessToken(grant);
         return getDocContent({ accessToken, documentId: request.documentId });
       };
 
@@ -313,7 +315,7 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
       );
 
       const run = async () => {
-        const accessToken = await this.#localAccessToken(grant);
+        const accessToken = await this.lifeOpsDriveAccessToken(grant);
         return getSheetContent({
           accessToken,
           spreadsheetId: request.spreadsheetId,
@@ -352,7 +354,7 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
       );
 
       const run = async () => {
-        const accessToken = await this.#localAccessToken(grant);
+        const accessToken = await this.lifeOpsDriveAccessToken(grant);
         return createDriveFile({
           accessToken,
           name: request.name,
@@ -390,7 +392,7 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
       );
 
       const run = async () => {
-        const accessToken = await this.#localAccessToken(grant);
+        const accessToken = await this.lifeOpsDriveAccessToken(grant);
         return appendToDoc({
           accessToken,
           documentId: request.documentId,
@@ -428,7 +430,7 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
       );
 
       const run = async () => {
-        const accessToken = await this.#localAccessToken(grant);
+        const accessToken = await this.lifeOpsDriveAccessToken(grant);
         return updateSheetCells({
           accessToken,
           spreadsheetId: request.spreadsheetId,

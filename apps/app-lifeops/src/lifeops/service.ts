@@ -40,7 +40,7 @@ import { withSubscriptions } from "./service-mixin-subscriptions.js";
  * (Calendar, Gmail, Drive) → business logic (Reminders, Browser, Workflows,
  * Definitions, Goals) → connectors (X, Telegram, Discord, Signal).
  */
-class LifeOpsServiceComposedBase extends withHealth(
+export class LifeOpsServiceComposedBase extends withHealth(
   withDossier(
   withScheduling(
   withScreenTime(

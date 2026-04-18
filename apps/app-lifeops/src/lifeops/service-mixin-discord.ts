@@ -422,7 +422,9 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {
   class LifeOpsDiscordServiceMixin extends Base {
-    async #probeTab(tabId: string | null): Promise<DiscordTabProbe | null> {
+    async lifeOpsDiscordProbeTab(
+      tabId: string | null,
+    ): Promise<DiscordTabProbe | null> {
       if (!tabId) return null;
       try {
         return await probeDiscordTab(tabId);
@@ -434,7 +436,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    async #getBrowserSessionById(
+    async lifeOpsDiscordGetBrowserSessionById(
       sessionId: string | null,
     ): Promise<LifeOpsBrowserSession | null> {
       if (!sessionId) return null;
@@ -445,7 +447,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    async #getOwnerBrowserDiscordState(
+    async lifeOpsDiscordGetOwnerBrowserDiscordState(
       grant: LifeOpsConnectorGrant | null,
     ): Promise<{
       available: boolean;
@@ -486,7 +488,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         ? probeDiscordCapturedPage(currentPage)
         : null;
       const discordTab = pickNewestDiscordTab(tabs);
-      const session = await this.#getBrowserSessionById(
+      const session = await this.lifeOpsDiscordGetBrowserSessionById(
         sessionIdFromGrant(grant),
       );
       const sessionProbe = parseSessionProbe(session);
@@ -561,13 +563,13 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
-    async #buildWorkspaceDiscordStatus(
+    async lifeOpsDiscordBuildWorkspaceStatus(
       normalizedSide: LifeOpsConnectorSide,
       grant: LifeOpsConnectorGrant | null,
     ): Promise<LifeOpsDiscordConnectorStatus> {
       const available = discordBrowserWorkspaceAvailable();
       const tabId = tabIdFromGrant(grant);
-      const probe = available ? await this.#probeTab(tabId) : null;
+      const probe = available ? await this.lifeOpsDiscordProbeTab(tabId) : null;
       const loggedIn = probe?.loggedIn === true;
       const browserAccess = [
         desktopBrowserAccessStatus({
@@ -618,11 +620,12 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         normalizedSide,
       );
       if (normalizedSide === "owner") {
-        const browserState = await this.#getOwnerBrowserDiscordState(grant);
+        const browserState =
+          await this.lifeOpsDiscordGetOwnerBrowserDiscordState(grant);
         const workspaceAvailable = discordBrowserWorkspaceAvailable();
         const workspaceTabId = tabIdFromGrant(grant);
         const workspaceProbe = workspaceAvailable
-          ? await this.#probeTab(workspaceTabId)
+          ? await this.lifeOpsDiscordProbeTab(workspaceTabId)
           : null;
         const probe = browserState.probe;
         const connected = probe?.loggedIn === true;
@@ -675,7 +678,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
             grant,
           };
         }
-        const workspaceStatus = await this.#buildWorkspaceDiscordStatus(
+        const workspaceStatus = await this.lifeOpsDiscordBuildWorkspaceStatus(
           normalizedSide,
           grant,
         );
@@ -685,7 +688,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         };
       }
 
-      return this.#buildWorkspaceDiscordStatus(normalizedSide, grant);
+      return this.lifeOpsDiscordBuildWorkspaceStatus(normalizedSide, grant);
     }
 
     /**
@@ -706,7 +709,8 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       );
 
       if (normalizedSide === "owner") {
-        const browserState = await this.#getOwnerBrowserDiscordState(existing);
+        const browserState =
+          await this.lifeOpsDiscordGetOwnerBrowserDiscordState(existing);
         const hasConnectedBrowserPath =
           browserState.hasConnectedCompanion ||
           Boolean(browserState.currentPageUrl?.includes("discord.com")) ||
@@ -920,7 +924,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         show: true,
       });
 
-      const probe = await this.#probeTab(tabId);
+      const probe = await this.lifeOpsDiscordProbeTab(tabId);
       const loggedIn = probe?.loggedIn === true;
       const capabilities = loggedIn
         ? capabilitiesForSide(LIFEOPS_DISCORD_CAPABILITIES, normalizedSide)

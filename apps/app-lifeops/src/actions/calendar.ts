@@ -211,7 +211,8 @@ function buildCalendarPlanFromParsed(
   parsed: Record<string, unknown>,
 ): CalendarLlmPlan | null {
   const subaction = normalizeCalendarSubaction(parsed.subaction);
-  const shouldAct = normalizeShouldAct(parsed.shouldAct) ?? (subaction ? true : null);
+  const shouldAct =
+    normalizeShouldAct(parsed.shouldAct) ?? (subaction ? true : null);
   if (shouldAct === null) {
     return null;
   }
