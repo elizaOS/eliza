@@ -34,7 +34,6 @@ import path from "node:path";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
 import { DropService, handleDropRoutes } from "@elizaos/app-elizamaker";
 import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
-import { handleWebsiteBlockerRoutes } from "@elizaos/app-lifeops/routes/website-blocker-routes";
 import { TxService } from "@elizaos/app-steward/api/tx-service";
 import type {
   SwarmEvent,
@@ -190,6 +189,7 @@ import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
+import { extractConversationMetadataFromRoom } from "./conversation-metadata.js";
 import { handleConversationRoutes } from "./conversation-routes.js";
 import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
 import { handleDatabaseRoute } from "./database.js";
@@ -3673,21 +3673,6 @@ async function handleRequest(
   }
 
   if (
-    await handleWebsiteBlockerRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      runtime: state.runtime ?? undefined,
-      readJsonBody,
-      json,
-      error,
-    })
-  ) {
-    return;
-  }
-
-  if (
     await handleBrowserWorkspaceRoutes({
       req,
       res,
@@ -5403,10 +5388,16 @@ export async function startApiServer(opts?: {
           // non-fatal — use current time
         }
 
+        const conversationMetadata = extractConversationMetadataFromRoom(
+          room,
+          convId,
+        );
+
         state.conversations.set(convId, {
           id: convId,
           title: room.name || "Chat",
           roomId: room.id as UUID,
+          ...(conversationMetadata ? { metadata: conversationMetadata } : {}),
           createdAt: updatedAt,
           updatedAt,
         });

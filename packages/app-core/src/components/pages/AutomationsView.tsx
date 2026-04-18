@@ -43,6 +43,7 @@ import { useApp } from "../../state";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import { WidgetHost } from "../../widgets";
+import { AutomationRoomChatPane } from "./AutomationRoomChatPane";
 import { HeartbeatForm } from "./HeartbeatForm";
 import {
   buildCreateRequest,
@@ -60,6 +61,10 @@ import {
   validateForm,
 } from "./heartbeat-utils";
 import { N8nWorkflowsPanel } from "./N8nWorkflowsPanel";
+import {
+  buildCoordinatorConversationMetadata,
+  getAutomationBridgeConversationId,
+} from "./automation-conversations";
 
 // ── Filter types ──────────────────────────────────────────────────
 
@@ -1118,8 +1123,25 @@ function TaskDetailPane({
   task: WorkbenchTask;
   system: boolean;
 }) {
+  const { activeConversationId, conversations } = useApp();
   const { openEditTask, onDeleteTask, onToggleTaskCompleted, t } =
     useAutomationsViewContext();
+  const [chatCollapsed, setChatCollapsed] = useState(false);
+  const coordinatorComposerRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const bridgeConversationId = getAutomationBridgeConversationId(
+    activeConversationId,
+    conversations,
+  );
+  const taskConversationMetadata = buildCoordinatorConversationMetadata(
+    task.id,
+    bridgeConversationId,
+  );
+  const coordinatorSystemAddendum =
+    "You are in a workflow-specific automation room for a coordinator task. " +
+    "Focus on this task only. Use the linked terminal conversation only when " +
+    "it directly informs the task. Keep planning, execution, and follow-up " +
+    "scoped to this task.";
 
   return (
     <div className="w-full">
@@ -1201,6 +1223,20 @@ function TaskDetailPane({
           </div>
         )}
       </div>
+
+      {!system && (
+        <AutomationRoomChatPane
+          assistantLabel={t("automations.chat.assistantLabel")}
+          collapsed={chatCollapsed}
+          composerRef={coordinatorComposerRef}
+          metadata={taskConversationMetadata}
+          onAutomationMutated={() => {}}
+          onToggleCollapse={() => setChatCollapsed((value) => !value)}
+          placeholder="Ask the coordinator to work on this automation task."
+          systemAddendum={coordinatorSystemAddendum}
+          title={task.name}
+        />
+      )}
     </div>
   );
 }
@@ -1259,6 +1295,7 @@ function AutomationsLayout() {
 
   // Ref forwarded to the n8n scoped chat composer so "New workflow" can focus it.
   const workflowComposerRef = useRef<HTMLTextAreaElement | null>(null);
+  const [workflowDraftToken, setWorkflowDraftToken] = useState(0);
 
   const focusWorkflowComposer = useCallback(
     (seed = "Create a new workflow that ") => {
@@ -1366,7 +1403,10 @@ function AutomationsLayout() {
               className="h-8 shrink-0 gap-1 px-3 text-xs font-medium"
               onClick={
                 filter === "workflows"
-                  ? () => focusWorkflowComposer()
+                  ? () => {
+                      setWorkflowDraftToken((value) => value + 1);
+                      window.requestAnimationFrame(() => focusWorkflowComposer());
+                    }
                   : openCreateTrigger
               }
             >
@@ -1539,7 +1579,10 @@ function AutomationsLayout() {
         ) : null}
 
         {filter === "workflows" ? (
-          <N8nWorkflowsPanel composerRef={workflowComposerRef} />
+          <N8nWorkflowsPanel
+            composerRef={workflowComposerRef}
+            draftToken={workflowDraftToken}
+          />
         ) : editorOpen || editingId || editingTaskId ? (
           editorMode === "task" || editingTaskId ? (
             <TaskForm />

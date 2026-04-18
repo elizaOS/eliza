@@ -95,6 +95,14 @@ function buildConversationRows(
   t: TranslateFn,
 ): ConversationsSidebarRow[] {
   return conversations
+    .filter((conversation) => {
+      const scope = conversation.metadata?.scope;
+      return (
+        scope !== "automation-coordinator" &&
+        scope !== "automation-workflow" &&
+        scope !== "automation-workflow-draft"
+      );
+    })
     .map((conversation) => ({
       id: conversation.id,
       kind: "conversation" as const,

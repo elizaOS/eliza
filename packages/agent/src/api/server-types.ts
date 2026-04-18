@@ -20,11 +20,31 @@ import type { RegistryService } from "./registry-service.js";
 // Conversation metadata
 // ---------------------------------------------------------------------------
 
+export type ConversationScope =
+  | "general"
+  | "automation-coordinator"
+  | "automation-workflow"
+  | "automation-workflow-draft";
+
+export type ConversationAutomationType = "coordinator_text" | "n8n_workflow";
+
+export interface ConversationMetadata {
+  scope?: ConversationScope;
+  automationType?: ConversationAutomationType;
+  taskId?: string;
+  workflowId?: string;
+  workflowName?: string;
+  draftId?: string;
+  sourceConversationId?: string;
+  terminalBridgeConversationId?: string;
+}
+
 /** Metadata for a web-chat conversation. */
 export interface ConversationMeta {
   id: string;
   title: string;
   roomId: UUID;
+  metadata?: ConversationMetadata;
   createdAt: string;
   updatedAt: string;
 }

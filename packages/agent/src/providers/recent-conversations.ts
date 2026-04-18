@@ -9,6 +9,10 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared/validation-keywords";
+import {
+  extractConversationMetadataFromRoom,
+  isAutomationConversationMetadata,
+} from "../api/conversation-metadata.js";
 import { hasAdminAccess } from "../security/access.js";
 import {
   formatRelativeTimestamp,
@@ -47,6 +51,15 @@ export const recentConversationsProvider: Provider = {
     }
 
     try {
+      const currentRoom = await runtime.getRoom(message.roomId);
+      if (
+        isAutomationConversationMetadata(
+          extractConversationMetadataFromRoom(currentRoom),
+        )
+      ) {
+        return { text: "", values: {}, data: {} };
+      }
+
       const roomIds = await runtime.getRoomsForParticipant(entityId);
       if (!roomIds || roomIds.length === 0) {
         return { text: "", values: {}, data: {} };

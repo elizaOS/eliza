@@ -53,15 +53,20 @@ import {
 import { evictOldestConversation } from "./memory-bounds.js";
 import type { RouteRequestContext } from "./route-helpers.js";
 import {
+  buildConversationRoomMetadata,
+  extractConversationMetadataFromRoom,
+  sanitizeConversationMetadata,
+} from "./conversation-metadata.js";
+import {
   buildUserMessages,
   type ConversationMeta,
   getErrorMessage,
   isUuidLike,
-  persistConversationRoomTitle,
   resolveAppUserName,
   resolveConversationGreetingText,
   resolveWalletModeGuidanceReply,
 } from "./server.js";
+import type { ConversationMetadata } from "./server-types.js";
 
 // ---------------------------------------------------------------------------
 // Deleted-conversations state persistence
@@ -357,17 +362,41 @@ async function ensureConversationRoom(
   await ensureWorldOwnershipAndRoles(runtime, worldId as UUID, userId);
 }
 
-async function syncConversationRoomTitle(
+async function syncConversationRoomState(
   state: ConversationRouteState,
   conv: ConversationMeta,
 ): Promise<void> {
-  try {
-    await persistConversationRoomTitle(state.runtime, conv);
-  } catch (err) {
-    logger.debug(
-      `[conversations] Failed to persist room title for ${conv.id}: ${err instanceof Error ? err.message : String(err)}`,
-    );
+  if (!state.runtime) return;
+  const runtime = state.runtime;
+  const room = await runtime.getRoom(conv.roomId);
+  if (!room) return;
+
+  const ownerId = ensureAdminEntityId(state);
+  const nextMetadata = buildConversationRoomMetadata(
+    conv,
+    ownerId,
+    room.metadata,
+  );
+  const nextName = conv.title;
+  const metadataChanged =
+    JSON.stringify(room.metadata ?? null) !== JSON.stringify(nextMetadata);
+
+  if (room.name === nextName && !metadataChanged) {
+    return;
   }
+
+  const adapter = runtime.adapter as {
+    updateRoom?: (nextRoom: typeof room) => Promise<void>;
+  };
+  if (typeof adapter.updateRoom !== "function") {
+    return;
+  }
+
+  await adapter.updateRoom({
+    ...room,
+    name: nextName,
+    metadata: nextMetadata,
+  });
 }
 
 async function waitForConversationRestore(
@@ -782,6 +811,7 @@ export async function handleConversationRoutes(
       title?: string;
       includeGreeting?: boolean;
       lang?: string;
+      metadata?: ConversationMetadata;
     }>(req, res);
     if (!body) return true;
     await waitForConversationRestore(state);
@@ -792,6 +822,9 @@ export async function handleConversationRoutes(
       id,
       title: body.title?.trim() || "New Chat",
       roomId,
+      ...(sanitizeConversationMetadata(body.metadata)
+        ? { metadata: sanitizeConversationMetadata(body.metadata) }
+        : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -811,7 +844,7 @@ export async function handleConversationRoutes(
     if (state.runtime) {
       try {
         await ensureConversationRoom(state, conv);
-        await syncConversationRoomTitle(state, conv);
+        await syncConversationRoomState(state, conv);
         if (body.includeGreeting === true) {
           const storedGreeting = await ensureConversationGreetingStored(
             state,
@@ -1578,6 +1611,7 @@ export async function handleConversationRoutes(
     const body = await readJsonBody<{
       title?: string;
       generate?: boolean;
+      metadata?: ConversationMetadata | null;
     }>(req, res);
     if (!body) return true;
 
@@ -1624,12 +1658,23 @@ export async function handleConversationRoutes(
       if (resolvedTitle) {
         conv.title = resolvedTitle;
         conv.updatedAt = new Date().toISOString();
-        await syncConversationRoomTitle(state, conv);
+        await syncConversationRoomState(state, conv);
       }
     } else if (body.title?.trim()) {
       conv.title = body.title.trim();
       conv.updatedAt = new Date().toISOString();
-      await syncConversationRoomTitle(state, conv);
+      await syncConversationRoomState(state, conv);
+    }
+
+    if (body.metadata !== undefined) {
+      const nextMetadata = sanitizeConversationMetadata(body.metadata);
+      if (nextMetadata) {
+        conv.metadata = nextMetadata;
+      } else {
+        delete conv.metadata;
+      }
+      conv.updatedAt = new Date().toISOString();
+      await syncConversationRoomState(state, conv);
     }
     json(res, { conversation: conv });
     return true;

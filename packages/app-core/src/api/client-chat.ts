@@ -11,6 +11,7 @@ import type {
   ConnectionTestResult,
   ContentBlock,
   Conversation,
+  ConversationMetadata,
   ConversationChannelType,
   ConversationGreeting,
   ConversationMessage,
@@ -203,6 +204,14 @@ declare module "./client-base" {
       title: string,
       options?: { generate?: boolean },
     ): Promise<{ conversation: Conversation }>;
+    updateConversation(
+      id: string,
+      data: {
+        title?: string;
+        generate?: boolean;
+        metadata?: ConversationMetadata | null;
+      },
+    ): Promise<{ conversation: Conversation }>;
     deleteConversation(id: string): Promise<{ ok: boolean }>;
     getKnowledgeStats(): Promise<KnowledgeStats>;
     listKnowledgeDocuments(options?: {
@@ -276,7 +285,6 @@ declare module "./client-base" {
         tasksAvailable?: boolean;
         triggersAvailable?: boolean;
         todosAvailable?: boolean;
-        lifeopsAvailable?: boolean;
       }
     >;
     listWorkbenchTasks(): Promise<{ tasks: WorkbenchTask[] }>;
@@ -534,6 +542,7 @@ ElizaClient.prototype.createConversation = async function (
       ...(typeof options?.lang === "string" && options.lang.trim()
         ? { lang: options.lang.trim() }
         : {}),
+      ...(options?.metadata ? { metadata: options.metadata } : {}),
     }),
   });
   if (!response.greeting) {
@@ -739,9 +748,26 @@ ElizaClient.prototype.renameConversation = async function (
   title,
   options?,
 ) {
+  return this.updateConversation(id, {
+    title,
+    generate: options?.generate,
+  });
+};
+
+ElizaClient.prototype.updateConversation = async function (
+  this: ElizaClient,
+  id,
+  data,
+) {
   return this.fetch(`/api/conversations/${encodeURIComponent(id)}`, {
     method: "PATCH",
-    body: JSON.stringify({ title, generate: options?.generate }),
+    body: JSON.stringify({
+      ...(typeof data?.title === "string" ? { title: data.title } : {}),
+      ...(typeof data?.generate === "boolean"
+        ? { generate: data.generate }
+        : {}),
+      ...(data && "metadata" in data ? { metadata: data.metadata } : {}),
+    }),
   });
 };
 
