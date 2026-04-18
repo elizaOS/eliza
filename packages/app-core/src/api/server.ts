@@ -43,6 +43,7 @@ import {
   ensureCompatSensitiveRouteAuthorized,
   getCompatApiToken,
 } from "./auth";
+import { handleAutomationsCompatRoutes } from "./automations-compat-routes";
 import {
   type CompatRuntimeState,
   clearCompatRuntimeRestart,
@@ -737,6 +738,7 @@ async function handleCompatRoute(
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;
   if (await handleComputerUseCompatRoutes(req, res, state)) return true;
   if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
+  if (await handleAutomationsCompatRoutes(req, res, state)) return true;
 
   // n8n routes — status surface (read-only), sidecar start (fire-and-forget),
   // and workflow CRUD proxy. Auth sits in front of every n8n route. The

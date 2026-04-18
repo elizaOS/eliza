@@ -72,6 +72,23 @@ export function buildCoordinatorConversationMetadata(
   };
 }
 
+export function buildCoordinatorTriggerConversationMetadata(
+  triggerId: string,
+  bridgeConversationId?: string,
+): ConversationMetadata {
+  return {
+    scope: "automation-coordinator",
+    automationType: "coordinator_text",
+    triggerId,
+    ...(bridgeConversationId
+      ? {
+          sourceConversationId: bridgeConversationId,
+          terminalBridgeConversationId: bridgeConversationId,
+        }
+      : {}),
+  };
+}
+
 export function buildWorkflowConversationMetadata(
   workflowId: string,
   workflowName: string,
@@ -108,6 +125,24 @@ export function buildWorkflowDraftConversationMetadata(
   };
 }
 
+export function buildAutomationResponseRoutingMetadata(
+  metadata: ConversationMetadata,
+): Record<string, unknown> | undefined {
+  if (
+    metadata.scope === "automation-coordinator" ||
+    metadata.scope === "automation-workflow" ||
+    metadata.scope === "automation-workflow-draft"
+  ) {
+    return {
+      __responseContext: {
+        primaryContext: "automation",
+        secondaryContexts: ["automation", "code", "system"],
+      },
+    };
+  }
+  return undefined;
+}
+
 function normalizedMetadata(
   metadata: ConversationMetadata | null | undefined,
 ): Record<string, string> {
@@ -121,6 +156,9 @@ function normalizedMetadata(
 
   const taskId = trimOptionalString(metadata?.taskId);
   if (taskId) next.taskId = taskId;
+
+  const triggerId = trimOptionalString(metadata?.triggerId);
+  if (triggerId) next.triggerId = triggerId;
 
   const workflowId = trimOptionalString(metadata?.workflowId);
   if (workflowId) next.workflowId = workflowId;
@@ -149,6 +187,9 @@ function automationIdentityForMetadata(
 ): string | null {
   if (metadata?.taskId) {
     return `task:${metadata.taskId}`;
+  }
+  if (metadata?.triggerId) {
+    return `trigger:${metadata.triggerId}`;
   }
   if (metadata?.workflowId) {
     return `workflow:${metadata.workflowId}`;

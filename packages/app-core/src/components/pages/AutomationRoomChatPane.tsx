@@ -24,7 +24,10 @@ import type {
   ConversationMetadata,
 } from "../../api/client-types";
 import { useApp } from "../../state";
-import { resolveAutomationConversation } from "./automation-conversations";
+import {
+  buildAutomationResponseRoutingMetadata,
+  resolveAutomationConversation,
+} from "./automation-conversations";
 
 interface AutomationRoomChatPaneProps {
   assistantLabel: string;
@@ -175,6 +178,7 @@ export function AutomationRoomChatPane({
     const userMessageId = `automation-user-${now}`;
     const assistantMessageId = `automation-assistant-${now}`;
     const isFirstTurn = messages.length === 0;
+    const routingMetadata = buildAutomationResponseRoutingMetadata(metadata);
     const textToSend =
       isFirstTurn && systemAddendum
         ? `[SYSTEM]${systemAddendum}[/SYSTEM]\n\n${rawInput}`
@@ -218,6 +222,9 @@ export function AutomationRoomChatPane({
         },
         "DM",
         controller.signal,
+        undefined,
+        undefined,
+        routingMetadata,
       );
 
       if (response.text && response.text !== streamedText) {

@@ -58,6 +58,9 @@ export function sanitizeConversationMetadata(
   const taskId = normalizeOptionalString(record.taskId);
   if (taskId) next.taskId = taskId;
 
+  const triggerId = normalizeOptionalString(record.triggerId);
+  if (triggerId) next.triggerId = triggerId;
+
   const workflowId = normalizeOptionalString(record.workflowId);
   if (workflowId) next.workflowId = workflowId;
 
