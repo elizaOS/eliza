@@ -1396,3 +1396,19 @@ export { extractFirstSentence, hasFirstSentence } from "./utils/text-splitting";
 // Node/Bun resolves that barrel to utils.ts (this file) instead of utils/index.ts,
 // so symbols only exposed by utils/index.ts need to be explicitly re-forwarded here.
 export { extractAndParseJSONObjectFromText } from "./utils/json-llm";
+export {
+	attachAvailableContexts,
+	AVAILABLE_CONTEXTS_STATE_KEY,
+	CONTEXT_ROUTING_METADATA_KEY,
+	CONTEXT_ROUTING_STATE_KEY,
+	type ContextRoutingDecision,
+	deriveAvailableContexts,
+	getActiveRoutingContexts,
+	getContextRoutingFromMessage,
+	getContextRoutingFromState,
+	mergeContextRouting,
+	parseContextList,
+	parseContextRoutingMetadata,
+	setContextRoutingMetadata,
+	shouldIncludeByContext,
+} from "./utils/context-routing";
