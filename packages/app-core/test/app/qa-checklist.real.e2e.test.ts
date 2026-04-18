@@ -1084,6 +1084,8 @@ async function startRealStack(): Promise<StartedStack> {
         ALLOW_NO_DATABASE: "",
         CHECK_SHOULD_RESPOND: "false",
         CONVERSATION_LENGTH: "20",
+        ELIZA_DISABLE_LIFEOPS_SCHEDULER: "1",
+        ELIZA_DISABLE_PROACTIVE_AGENT: "1",
         FORCE_COLOR: "0",
         ELIZA_API_PORT: String(apiPort),
         ELIZA_PORT: String(apiPort),

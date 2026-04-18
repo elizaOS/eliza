@@ -152,6 +152,24 @@ async function ensureTaskWithRetries(args: {
   }
 }
 
+function isDisabledByEnv(disableKey: string, enableKey?: string): boolean {
+  const disableValue = (process.env[disableKey] ?? "").trim().toLowerCase();
+  if (
+    disableValue === "1" ||
+    disableValue === "true" ||
+    disableValue === "yes"
+  ) {
+    return true;
+  }
+
+  if (!enableKey) {
+    return false;
+  }
+
+  const enableValue = (process.env[enableKey] ?? "").trim().toLowerCase();
+  return enableValue === "0" || enableValue === "false";
+}
+
 function scheduleTaskEnsureAfterRuntimeInit(args: {
   runtime: IAgentRuntime;
   prefix: string;
@@ -277,24 +295,10 @@ const rawAppLifeOpsPlugin: Plugin = {
     }
 
     // Register the proactive agent (activity-profile: GM/GN/nudges)
-    const proactiveAgentDisabled = (() => {
-      const disableValue = (
-        process.env.ELIZA_DISABLE_PROACTIVE_AGENT ?? ""
-      )
-        .trim()
-        .toLowerCase();
-      if (
-        disableValue === "1" ||
-        disableValue === "true" ||
-        disableValue === "yes"
-      ) {
-        return true;
-      }
-      const enableValue = (process.env.ENABLE_PROACTIVE_AGENT ?? "")
-        .trim()
-        .toLowerCase();
-      return enableValue === "0" || enableValue === "false";
-    })();
+    const proactiveAgentDisabled = isDisabledByEnv(
+      "ELIZA_DISABLE_PROACTIVE_AGENT",
+      "ENABLE_PROACTIVE_AGENT",
+    );
     if (!proactiveAgentDisabled) {
       registerProactiveTaskWorker(runtime);
       scheduleTaskEnsureAfterRuntimeInit({
@@ -318,16 +322,25 @@ const rawAppLifeOpsPlugin: Plugin = {
     // T7g — Register the website blocker chat integration reconciler.
     registerBlockRuleReconcilerWorker(runtime);
 
-    // Register the LifeOps scheduler task worker and ensure the scheduler task exists
-    registerLifeOpsTaskWorker(runtime);
-    scheduleTaskEnsureAfterRuntimeInit({
-      runtime,
-      prefix: "[lifeops]",
-      label: "scheduler task",
-      ensure: async () => {
-        await ensureLifeOpsSchedulerTask(runtime);
-      },
-    });
+    const lifeOpsSchedulerDisabled = isDisabledByEnv(
+      "ELIZA_DISABLE_LIFEOPS_SCHEDULER",
+      "ENABLE_LIFEOPS_SCHEDULER",
+    );
+    if (!lifeOpsSchedulerDisabled) {
+      registerLifeOpsTaskWorker(runtime);
+      scheduleTaskEnsureAfterRuntimeInit({
+        runtime,
+        prefix: "[lifeops]",
+        label: "scheduler task",
+        ensure: async () => {
+          await ensureLifeOpsSchedulerTask(runtime);
+        },
+      });
+    } else {
+      runtime.logger?.info(
+        "[lifeops] Scheduler task skipped — ELIZA_DISABLE_LIFEOPS_SCHEDULER=1",
+      );
+    }
   },
   /**
    * Tear down everything `init` registered so `runtime.unloadPlugin(...)`
