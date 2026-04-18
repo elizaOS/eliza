@@ -347,7 +347,7 @@ describe("EXECUTE_CODE action", () => {
       throw new Error("expected ActionResult");
     }
     expect(allowedResult.success).toBe(true);
-    expect(dispatched).toEqual(["WALLET_ACTION:null"]);
+    expect(dispatched).toEqual(["WALLET_ACTION:{}"]);
   });
 
   it("falls through to all actions when no state is supplied", async () => {
@@ -372,7 +372,7 @@ describe("EXECUTE_CODE action", () => {
       throw new Error("expected ActionResult");
     }
     expect(result.success).toBe(true);
-    expect(dispatched).toEqual(["ACTION_B:null"]);
+    expect(dispatched).toEqual(["ACTION_B:{}"]);
   });
 
   it("context.getMemories ignores roomId override and scopes to the message room", async () => {
@@ -557,6 +557,6 @@ describe("EXECUTE_CODE action", () => {
       throw new Error("expected ActionResult");
     }
     expect(result.success).toBe(true);
-    expect(dispatched).toEqual(["ACTION_B:null"]);
+    expect(dispatched).toEqual(["ACTION_B:{}"]);
   });
 });
