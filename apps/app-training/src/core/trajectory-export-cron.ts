@@ -125,6 +125,9 @@ export async function runNightlyTrajectoryExport(
 		if (detail) trajectories.push(detail);
 	}
 
+	// Privacy filter is REQUIRED here — the downstream export writes JSONL
+	// datasets to disk, and they must not contain raw user secrets or
+	// un-anonymized handles. The filter runs before any write path below.
 	const filtered = applyPrivacyFilter(trajectories, {
 		anonymizer: options.anonymizer,
 	});
@@ -138,6 +141,7 @@ export async function runNightlyTrajectoryExport(
 	);
 	await mkdir(outputDir, { recursive: true });
 
+	// privacy filter applied above
 	// exportTrajectoryTaskDatasets expects the typed Trajectory shape from
 	// @elizaos/agent. Our FilterableTrajectory is structurally compatible
 	// for the fields the export reader uses; we cast through unknown to
