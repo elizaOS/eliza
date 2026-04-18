@@ -14,6 +14,9 @@ import {
   ContentType,
   createMessageMemory,
   type Media,
+  ModelType,
+  parseJSONObjectFromText,
+  parseKeyValueXml,
   type UUID,
 } from "@elizaos/core";
 import { normalizeCharacterLanguage } from "@elizaos/shared/onboarding-presets";
@@ -84,6 +87,7 @@ const MAX_EXPOSED_PLUGIN_NAMES = 12;
 const CHAT_KNOWLEDGE_THRESHOLD = 0.2;
 const CHAT_KNOWLEDGE_LIMIT = 4;
 const CHAT_KNOWLEDGE_SNIPPET_MAX_CHARS = 700;
+const CHAT_KNOWLEDGE_RECOVERY_QUERY_LIMIT = 3;
 
 interface CloudAuthAwarenessService {
   isAuthenticated?: () => boolean;
@@ -258,25 +262,113 @@ export async function maybeAugmentChatMessageWithKnowledge(
     createdAt: Date.now(),
   };
 
-  const loadMatches = async (scopeRoomId: UUID) =>
-    knowledge.service!.getKnowledge(searchMessage, { roomId: scopeRoomId });
+  const loadMatches = async (scopeRoomId: UUID, queryText: string) =>
+    knowledge.service!.getKnowledge(
+      {
+        ...searchMessage,
+        content: {
+          ...(searchMessage.content as Content),
+          text: queryText,
+        },
+      },
+      { roomId: scopeRoomId },
+    );
 
-  let matches = await loadMatches(roomId);
-  if (matches.length === 0 && roomId !== agentId) {
-    matches = await loadMatches(agentId);
-  }
+  const loadMatchesAcrossScopes = async (queryText: string) => {
+    let matches = await loadMatches(roomId, queryText);
+    if (matches.length === 0 && roomId !== agentId) {
+      matches = await loadMatches(agentId, queryText);
+    }
+    return matches;
+  };
 
-  const relevantMatches = matches
-    .filter((match) => {
+  const selectRelevantMatches = (
+    matches: Awaited<ReturnType<typeof loadMatchesAcrossScopes>>,
+  ) =>
+    matches.filter((match) => {
       const text = match.content?.text?.trim();
       return (
         typeof text === "string" &&
         text.length > 0 &&
         (match.similarity ?? 0) >= CHAT_KNOWLEDGE_THRESHOLD
       );
-    })
+    });
+
+  const recoverKnowledgeSearchQueriesWithLlm = async (): Promise<string[]> => {
+    const prompt = [
+      "Extract up to 3 short semantic-search queries for retrieving knowledge that answers the user's request.",
+      "Return only JSON with this shape:",
+      '  {"queries":["query one","query two"]}',
+      "",
+      "Rules:",
+      "- Preserve named entities, topics, codewords, and filenames when present.",
+      "- Remove meta instructions about reply format, such as 'answer with only the codeword'.",
+      "- If the user refers to 'the uploaded file' or a prior document without naming it, focus the queries on the fact being requested, not the phrase 'uploaded file'.",
+      "- Keep each query short and retrieval-oriented.",
+      "",
+      "Examples:",
+      '  "what is the qa codeword from the uploaded file? answer with only the codeword" -> {"queries":["qa codeword","codeword"]}',
+      '  "what is the deployment codeword? reply with only the codeword" -> {"queries":["deployment codeword","codeword"]}',
+      '  "which document mentions denver?" -> {"queries":["denver"]}',
+      "",
+      `User request: ${JSON.stringify(userPrompt)}`,
+    ].join("\n");
+
+    try {
+      const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+      const raw = typeof result === "string" ? result : "";
+      const parsed =
+        parseKeyValueXml<Record<string, unknown>>(raw) ??
+        parseJSONObjectFromText(raw);
+      if (!parsed) {
+        return [];
+      }
+      const rawQueries = Array.isArray(parsed.queries)
+        ? parsed.queries
+        : typeof parsed.queries === "string"
+          ? parsed.queries.split(/\s*\|\|\s*|,|\n/)
+          : [];
+      return [
+        ...new Set(
+          rawQueries
+            .filter((value): value is string => typeof value === "string")
+            .map((value) => value.trim())
+            .filter((value) => value.length > 0)
+            .slice(0, CHAT_KNOWLEDGE_RECOVERY_QUERY_LIMIT),
+        ),
+      ];
+    } catch (error) {
+      runtime.logger?.warn?.(
+        {
+          src: "api:chat-augmentation",
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Knowledge query recovery model call failed",
+      );
+      return [];
+    }
+  };
+
+  let relevantMatches = selectRelevantMatches(
+    await loadMatchesAcrossScopes(userPrompt),
+  )
     .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
     .slice(0, CHAT_KNOWLEDGE_LIMIT);
+
+  if (relevantMatches.length === 0) {
+    const recoveredQueries = await recoverKnowledgeSearchQueriesWithLlm();
+    for (const query of recoveredQueries) {
+      const recoveredMatches = selectRelevantMatches(
+        await loadMatchesAcrossScopes(query),
+      )
+        .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
+        .slice(0, CHAT_KNOWLEDGE_LIMIT);
+      if (recoveredMatches.length > 0) {
+        relevantMatches = recoveredMatches;
+        break;
+      }
+    }
+  }
 
   if (relevantMatches.length === 0) return message;
 

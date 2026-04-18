@@ -43,6 +43,7 @@ import {
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
 import { isPrivyWalletProvisioningEnabled } from "../services/privy-wallets.js";
+import { maybeAugmentChatMessageWithKnowledge as augmentChatMessageWithKnowledge } from "./chat-augmentation.js";
 import { extractCompatTextContent } from "./compat-utils.js";
 import { sendJsonError } from "./http-helpers.js";
 import type { ChatAttachmentWithData, ServerState } from "./server-types.js";
@@ -692,10 +693,10 @@ export function maybeAugmentChatMessageWithWalletContext(
 }
 
 export async function maybeAugmentChatMessageWithKnowledge(
-  _runtime: AgentRuntime,
+  runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
 ): Promise<ReturnType<typeof createMessageMemory>> {
-  return message;
+  return augmentChatMessageWithKnowledge(runtime, message);
 }
 
 // ---------------------------------------------------------------------------
