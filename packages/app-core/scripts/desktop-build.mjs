@@ -528,6 +528,69 @@ function stageDesktopBuild() {
   }
 }
 
+function mirrorTreePreservingSymlinks(src, dst) {
+  const srcStat = fs.lstatSync(src);
+  if (srcStat.isSymbolicLink()) {
+    const linkTarget = fs.readlinkSync(src);
+    const dstLstat = fs.lstatSync(dst, { throwIfNoEntry: false });
+    if (dstLstat) {
+      try {
+        if (dstLstat.isDirectory() && !dstLstat.isSymbolicLink()) {
+          fs.rmSync(dst, { force: true, recursive: true });
+        } else {
+          fs.unlinkSync(dst);
+        }
+      } catch {}
+    }
+    try {
+      fs.symlinkSync(linkTarget, dst);
+    } catch {
+      try {
+        fs.cpSync(src, dst, { recursive: true, force: true, dereference: true });
+      } catch {}
+    }
+    return;
+  }
+  if (srcStat.isDirectory()) {
+    const dstLstat = fs.lstatSync(dst, { throwIfNoEntry: false });
+    if (dstLstat?.isSymbolicLink()) {
+      fs.unlinkSync(dst);
+    }
+    fs.mkdirSync(dst, { recursive: true });
+    for (const entry of fs.readdirSync(src)) {
+      mirrorTreePreservingSymlinks(path.join(src, entry), path.join(dst, entry));
+    }
+    return;
+  }
+  const dstLstat = fs.lstatSync(dst, { throwIfNoEntry: false });
+  if (dstLstat) {
+    try {
+      fs.unlinkSync(dst);
+    } catch {}
+  }
+  try {
+    fs.linkSync(src, dst);
+  } catch {
+    fs.copyFileSync(src, dst);
+  }
+}
+
+function mirrorCanonicalToLegacy(name) {
+  if (LEGACY_ELECTROBUN_DIR === ELECTROBUN_DIR) return;
+  const src = path.join(ELECTROBUN_DIR, name);
+  const dst = path.join(LEGACY_ELECTROBUN_DIR, name);
+  if (!fs.existsSync(src)) return;
+  const dstLstat = fs.lstatSync(dst, { throwIfNoEntry: false });
+  if (dstLstat?.isSymbolicLink()) {
+    fs.unlinkSync(dst);
+  }
+  fs.mkdirSync(LEGACY_ELECTROBUN_DIR, { recursive: true });
+  console.log(
+    `[desktop-build] Mirroring electrobun ${name}/ from canonical to legacy compatibility path`,
+  );
+  mirrorTreePreservingSymlinks(src, dst);
+}
+
 function packageDesktopBuild() {
   ensureAppDirs();
   const packageArgs = ["run", "build"];
@@ -549,6 +612,9 @@ function packageDesktopBuild() {
       ? `Packaging Electrobun app (env=${buildEnv})`
       : "Packaging Electrobun app",
   });
+
+  mirrorCanonicalToLegacy("build");
+  mirrorCanonicalToLegacy("artifacts");
 
   if (
     process.platform === "darwin" &&
