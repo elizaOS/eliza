@@ -73,6 +73,7 @@ import {
   weekRange,
 } from "./lifeops-google-helpers.js";
 import {
+  looksLikeCodingTaskRequest,
   looksLikeGoalAdviceOnly,
   looksLikeRelationshipFollowUpRequest,
 } from "./non-actionable-request.js";
@@ -2456,14 +2457,7 @@ export const lifeAction: Action & {
   similes: [
     "MANAGE_LIFEOPS",
     "QUERY_LIFEOPS",
-    // Intentionally NOT "CREATE_TASK" / "COMPLETE_TASK" / unqualified
-    // "TASK" aliases: `CREATE_TASK` is the orchestrator's coding-task
-    // spawn action (see plugins/plugin-agent-orchestrator). Claiming it
-    // as a simile here steals the name whenever the action router sees
-    // the shorter form, and sends build-an-app prompts like "make a
-    // pinboard for this haiku" into the LifeOps handler.
-    // LIFE's own name plus the todo/habit/goal-specific aliases below
-    // cover every user intent this action should actually match.
+    "CREATE_TASK",
     "CREATE_TODO",
     "ADD_TODO",
     "LIST_TODOS",
@@ -2472,7 +2466,7 @@ export const lifeAction: Action & {
     "CREATE_GOAL",
     "LIFE_CREATE_DEFINITION",
     "TRACK_HABIT",
-    "COMPLETE_TODO",
+    "COMPLETE_TASK",
     "SET_ALARM",
     "SET_REMINDER",
     "SNOOZE_REMINDER",
@@ -2506,7 +2500,15 @@ export const lifeAction: Action & {
     const text = messageText(message);
     if (
       looksLikeGoalAdviceOnly(text) ||
-      looksLikeRelationshipFollowUpRequest(text)
+      looksLikeRelationshipFollowUpRequest(text) ||
+      // The LIFE similes list includes `CREATE_TASK` / `COMPLETE_TASK`
+      // for LifeOps users who say "add a task: pick up laundry" etc.
+      // Those names collide with the plugin-agent-orchestrator's
+      // `CREATE_TASK` (coding-task spawn action), so the LLM may emit
+      // them for a build-an-app prompt and land here by mistake. Decline
+      // so the action router falls through to the orchestrator instead
+      // of firing LifeOps for something that is not LifeOps.
+      looksLikeCodingTaskRequest(text)
     ) {
       return false;
     }
