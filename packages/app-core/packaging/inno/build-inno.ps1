@@ -115,7 +115,7 @@ if ([string]::IsNullOrWhiteSpace($normalizedChannel)) {
 
 $isccPath = Get-IsccPath -PreferredPath $CompilerPath
 $templatePath = Join-Path $PSScriptRoot "ElizaOSApp.iss"
-$iconPath = Join-Path $PSScriptRoot "..\..\apps\app\electrobun\assets\appIcon.ico"
+$iconPath = Join-Path $PSScriptRoot "..\..\platforms\electrobun\assets\appIcon.ico"
 
 if (-not (Test-Path $templatePath)) {
   throw "Inno Setup template not found: $templatePath"
