@@ -125,7 +125,7 @@ const requiredWorkflowSnippets = [
   "Start-Process -FilePath $installer",
   "Extract Windows app bundle for Inno Setup",
   '$extractDir = "C:\\m"',
-  "milady-dist/entry.js found",
+  "eliza-dist/entry.js found",
   "Build Inno Setup installer",
   "packaging/inno/build-inno.ps1",
   '-BuildDir "C:\\m"',
