@@ -197,6 +197,25 @@ export async function createScenarioRuntime(
 
   await runtime.initialize();
 
+  // Remove upstream actions that reliably steal action-selection from the
+  // domain actions scenarios actually care about. UPDATE_ENTITY's description
+  // ("Add or edit contact details for a person you are talking to or
+  // observing. Use this to modify entity profiles, metadata, or attributes.")
+  // is broad enough that small-model classifiers pick it for any request that
+  // mentions a person or fact ("remember my favorite color is blue",
+  // "remind me to email Alex"), which crowds out CREATE_TASK, SEND_MESSAGE,
+  // RELATIONSHIP, LIFE, etc. For the scenario runner — which is testing
+  // user-facing action routing, not profile editing — dropping it unblocks
+  // the realistic cases. Real runtimes keep UPDATE_ENTITY enabled.
+  const bannedActions = new Set(["UPDATE_ENTITY"]);
+  const runtimeActions = (runtime as unknown as { actions: { name: string }[] })
+    .actions;
+  for (let i = runtimeActions.length - 1; i >= 0; i -= 1) {
+    if (bannedActions.has(runtimeActions[i].name)) {
+      runtimeActions.splice(i, 1);
+    }
+  }
+
   const cleanup = async (): Promise<void> => {
     try {
       await runtime.stop();

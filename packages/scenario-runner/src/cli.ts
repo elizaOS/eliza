@@ -157,85 +157,31 @@ async function main(): Promise<number> {
   );
 
   const startedAtIso = new Date().toISOString();
-
-  // Determine isolation mode from scenarios. If any scenario declares
-  // `isolation: "per-scenario"` we create a fresh runtime for every scenario
-  // so accumulated memory/state from prior scenarios cannot pollute later
-  // classifier and action-selection prompts. Scenarios that opt out with
-  // `isolation: "shared"` (or omit the field) reuse a single runtime — faster
-  // but only safe when the scenarios are genuinely independent at the
-  // runtime-state level.
-  const anyPerScenario = loaded.some(({ scenario }) => {
-    const iso = (scenario as { isolation?: string }).isolation;
-    return iso === "per-scenario";
-  });
-  const allPerScenario = loaded.every(({ scenario }) => {
-    const iso = (scenario as { isolation?: string }).isolation;
-    return iso === "per-scenario";
-  });
-  const isolationMode: "per-scenario" | "shared" =
-    allPerScenario || anyPerScenario ? "per-scenario" : "shared";
-
-  logger.info(
-    `[milady-scenarios] isolation mode: ${isolationMode} (per-scenario=${loaded.filter(({ scenario }) => (scenario as { isolation?: string }).isolation === "per-scenario").length}/${loaded.length})`,
-  );
+  // Note: a single bun process can only instantiate PGLite once reliably —
+  // attempting to tear down and recreate the native binding segfaults. So the
+  // CLI always uses a single shared runtime. For true per-scenario isolation
+  // (required when testing cross-scenario state leakage), invoke the CLI
+  // once per scenario from a shell loop (see scripts/run-scenarios-isolated.mjs).
+  const { runtime, providerName, cleanup } = await createScenarioRuntime();
+  logger.info(`[milady-scenarios] live provider: ${providerName}`);
 
   const reports: ScenarioReport[] = [];
-  let resolvedProviderName = "";
-
-  if (isolationMode === "shared") {
-    const { runtime, providerName, cleanup } = await createScenarioRuntime();
-    resolvedProviderName = providerName;
-    logger.info(`[milady-scenarios] live provider: ${providerName}`);
-    try {
-      for (const { scenario } of loaded) {
-        logger.info(`[milady-scenarios] ▶ ${scenario.id}`);
-        const report = await runScenario(scenario, runtime, {
-          providerName,
-          minJudgeScore,
-          turnTimeoutMs: 120_000,
-        });
-        reports.push(report);
-        logger.info(
-          `[milady-scenarios] ${report.status === "passed" ? "✓" : report.status === "skipped" ? "∼" : "✗"} ${scenario.id} ${report.status} (${report.durationMs}ms)${report.skipReason ? ` — ${report.skipReason}` : ""}`,
-        );
-      }
-    } finally {
-      await cleanup();
-    }
-  } else {
-    // per-scenario isolation: fresh runtime (and fresh PGLite data dir) for
-    // each scenario. Slower to start, but prevents cross-scenario state
-    // leakage that corrupts the classifier / action-selection context on
-    // longer runs. A short settle delay between scenarios lets PGLite
-    // background tasks (embedding generation, task worker) fully drain
-    // before the next runtime boots — without this, overlapping shutdowns
-    // can segfault the PGLite native binding.
-    for (let i = 0; i < loaded.length; i += 1) {
-      const { scenario } = loaded[i];
+  try {
+    for (const { scenario } of loaded) {
       logger.info(`[milady-scenarios] ▶ ${scenario.id}`);
-      const { runtime, providerName, cleanup } = await createScenarioRuntime();
-      resolvedProviderName = providerName;
-      try {
-        const report = await runScenario(scenario, runtime, {
-          providerName,
-          minJudgeScore,
-          turnTimeoutMs: 120_000,
-        });
-        reports.push(report);
-        logger.info(
-          `[milady-scenarios] ${report.status === "passed" ? "✓" : report.status === "skipped" ? "∼" : "✗"} ${scenario.id} ${report.status} (${report.durationMs}ms)${report.skipReason ? ` — ${report.skipReason}` : ""}`,
-        );
-      } finally {
-        await cleanup();
-      }
-      if (i < loaded.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
+      const report = await runScenario(scenario, runtime, {
+        providerName,
+        minJudgeScore,
+        turnTimeoutMs: 120_000,
+      });
+      reports.push(report);
+      logger.info(
+        `[milady-scenarios] ${report.status === "passed" ? "✓" : report.status === "skipped" ? "∼" : "✗"} ${scenario.id} ${report.status} (${report.durationMs}ms)${report.skipReason ? ` — ${report.skipReason}` : ""}`,
+      );
     }
+  } finally {
+    await cleanup();
   }
-
-  const providerName = resolvedProviderName;
 
   const completedAtIso = new Date().toISOString();
   const aggregate = buildAggregate(
