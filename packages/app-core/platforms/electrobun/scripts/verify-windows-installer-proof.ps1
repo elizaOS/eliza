@@ -1,6 +1,14 @@
 param(
-  [string]$ArtifactsDir = (Join-Path $PSScriptRoot "..\\artifacts"),
-  [string]$BuildDir = (Join-Path $PSScriptRoot "..\\build"),
+  [string]$ArtifactsDir = $(
+    if ($env:MILADY_TEST_WINDOWS_ARTIFACTS_DIR) { $env:MILADY_TEST_WINDOWS_ARTIFACTS_DIR }
+    elseif ($env:ELIZA_TEST_WINDOWS_ARTIFACTS_DIR) { $env:ELIZA_TEST_WINDOWS_ARTIFACTS_DIR }
+    else { Join-Path $PSScriptRoot "..\\artifacts" }
+  ),
+  [string]$BuildDir = $(
+    if ($env:MILADY_TEST_WINDOWS_BUILD_DIR) { $env:MILADY_TEST_WINDOWS_BUILD_DIR }
+    elseif ($env:ELIZA_TEST_WINDOWS_BUILD_DIR) { $env:ELIZA_TEST_WINDOWS_BUILD_DIR }
+    else { Join-Path $PSScriptRoot "..\\build" }
+  ),
   [string]$ProofInstallDir = "C:\\mi-proof",
   [string]$OutputDir = (Join-Path $PSScriptRoot "..\\artifacts\\windows-installer-proof"),
   [int]$BackendPort = 2138,
