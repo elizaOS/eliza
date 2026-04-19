@@ -23,6 +23,12 @@ import {
 // ---------------------------------------------------------------------------
 // Wave 1+ additions — relationships, X read, screen time, scheduling,
 // dossier. All life_* prefix, text IDs, ISO timestamps.
+//
+// TODO(schema-isolation): plugin-sql warns these tables sit in the `public`
+// schema. Moving them to `pgSchema("app_lifeops")` requires a coordinated
+// migration — the same tables are also created and queried via raw SQL in
+// `repository.ts` (bootstrapSchema + 50+ queries). Do that in one atomic
+// pass or the app will split-brain between `app_lifeops.*` and `public.*`.
 // ---------------------------------------------------------------------------
 
 export const lifeRelationships = pgTable(

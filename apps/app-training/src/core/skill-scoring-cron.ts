@@ -19,6 +19,7 @@ import {
 import { join } from "node:path";
 import { resolveStateDir } from "@elizaos/core";
 import { scoreSkill, type ScoreableTrajectory } from "./replay-validator.js";
+import { waitForService } from "./wait-for-service.js";
 
 interface MinimalLogger {
   info: (message: string) => void;
@@ -237,10 +238,10 @@ export async function registerSkillScoringCron(
     warn: () => {},
     error: () => {},
   };
-  const cronService = runtime.getService("CRON") as CronServiceLike | null;
+  const cronService = await waitForService<CronServiceLike>(runtime, "CRON");
   if (!cronService || typeof cronService.createJob !== "function") {
     log.warn(
-      "[SkillScoringCron] CRON service unavailable; skill-scoring cron not scheduled",
+      "[SkillScoringCron] CRON service unavailable after 10s; skill-scoring cron not scheduled",
     );
     return;
   }
