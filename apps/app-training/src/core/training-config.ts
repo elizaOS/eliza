@@ -8,8 +8,8 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 import type { TrajectoryTrainingTask } from "./trajectory-task-datasets.js";
 
 export type TrainingBackend = "vertex" | "atropos" | "tinker" | "native";
@@ -64,14 +64,6 @@ export const DEFAULT_TRAINING_CONFIG: TrainingConfig = Object.freeze({
   // (vertex/atropos/tinker) when they want hosted training instead.
   backends: ["native"],
 }) as TrainingConfig;
-
-function resolveStateDir(): string {
-  return (
-    process.env.MILADY_STATE_DIR?.trim() ||
-    process.env.ELIZA_STATE_DIR?.trim() ||
-    join(homedir(), ".milady")
-  );
-}
 
 export function trainingStateRoot(): string {
   return join(resolveStateDir(), "training");
