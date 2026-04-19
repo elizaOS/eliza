@@ -285,21 +285,29 @@ function unwrapPlannerIdentifier(value: string): string {
 	}
 
 	const actionMatch = trimmed.match(/^<action\b[^>]*>([\s\S]*?)<\/action>$/i);
-	if (!actionMatch) {
-		return trimmed;
+	if (actionMatch) {
+		const inner = actionMatch[1].trim();
+		if (!inner) {
+			return "";
+		}
+		const nestedNameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
+		if (nestedNameMatch) {
+			return nestedNameMatch[1].trim();
+		}
+		return /<[A-Za-z][^>]*>/.test(inner) ? trimmed : inner;
 	}
 
-	const inner = actionMatch[1].trim();
-	if (!inner) {
-		return "";
+	// Lenient fallback: the LLM sometimes emits unclosed wrappers like
+	// `<action><name>REPLY</name>` (no `</action>`) or bare `<name>X</name>`
+	// with trailing noise. Recover the inner <name> content when present
+	// so these don't land in the action router as "unknown planner action"
+	// and silently drop the user's request.
+	const looseNameMatch = trimmed.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
+	if (looseNameMatch) {
+		return looseNameMatch[1].trim();
 	}
 
-	const nestedNameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
-	if (nestedNameMatch) {
-		return nestedNameMatch[1].trim();
-	}
-
-	return /<[A-Za-z][^>]*>/.test(inner) ? trimmed : inner;
+	return trimmed;
 }
 
 export function extractPlannerActionNames(
