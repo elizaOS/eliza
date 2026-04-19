@@ -2456,7 +2456,14 @@ export const lifeAction: Action & {
   similes: [
     "MANAGE_LIFEOPS",
     "QUERY_LIFEOPS",
-    "CREATE_TASK",
+    // Intentionally NOT "CREATE_TASK" / "COMPLETE_TASK" / unqualified
+    // "TASK" aliases: `CREATE_TASK` is the orchestrator's coding-task
+    // spawn action (see plugins/plugin-agent-orchestrator). Claiming it
+    // as a simile here steals the name whenever the action router sees
+    // the shorter form, and sends build-an-app prompts like "make a
+    // pinboard for this haiku" into the LifeOps handler.
+    // LIFE's own name plus the todo/habit/goal-specific aliases below
+    // cover every user intent this action should actually match.
     "CREATE_TODO",
     "ADD_TODO",
     "LIST_TODOS",
@@ -2465,7 +2472,7 @@ export const lifeAction: Action & {
     "CREATE_GOAL",
     "LIFE_CREATE_DEFINITION",
     "TRACK_HABIT",
-    "COMPLETE_TASK",
+    "COMPLETE_TODO",
     "SET_ALARM",
     "SET_REMINDER",
     "SNOOZE_REMINDER",
