@@ -1551,6 +1551,15 @@ type SynthesisTask = {
   completionSummary: string;
   status: string;
   workdir?: string;
+  /**
+   * The subagent framework that produced this task's output. `shell` sessions
+   * have no `~/.claude/projects/*.jsonl` of their own, so buildTaskLine must
+   * skip the jsonl read for them — otherwise the jsonl lookup falls through
+   * to whatever claude-code session happens to live under the encoded workdir
+   * path (e.g. a shell agent with cwd=/home/milady would end up reading the
+   * operator's own claude-code session at ~/.claude/projects/-home-milady/*).
+   */
+  agentType?: string;
 };
 
 async function buildSynthesisResultText(
@@ -1582,7 +1591,16 @@ async function buildTaskLine(
 ): Promise<string> {
   const workdir =
     task.workdir ?? resolveSessionWorkdir(runtime, task.sessionId);
-  if (workdir) {
+  // Shell subagents are raw /bin/bash sessions — they don't write a
+  // `~/.claude/projects/*.jsonl`. Reading one via the encoded workdir
+  // path can cross-contaminate with the operator's own claude-code
+  // session (e.g. a shell agent with cwd=/home/milady matches the
+  // operator's project dir at ~/.claude/projects/-home-milady/), so
+  // for shell agents we skip the jsonl lookup entirely and go
+  // straight to the completionSummary fallback below, which is
+  // populated from the coordinator's SharedDecision ledger.
+  const isShellAgent = task.agentType === "shell" || task.agentType === "pi";
+  if (workdir && !isShellAgent) {
     // The PTY task_complete hook fires as soon as claude-code stops, but
     // the session's jsonl flush can lag by a few hundred milliseconds,
     // which races against synthesis. Retry briefly so we deliver the
@@ -1602,6 +1620,21 @@ async function buildTaskLine(
       return `built and serving at http://${host}:${port}`;
     }
     return `built the files but server isn't running on port ${port} yet`;
+  }
+  // Last resort: if we have a completionSummary, use it. For reasoning
+  // subagents (claude/gemini/codex/etc) the jsonl path above normally
+  // fires first, so this doesn't revive the validator-narrative-leaks
+  // that motivated removing the completionSummary fallback — reasoning
+  // agents have already delivered their real `end_turn` text by the
+  // time we get here. For `shell` agents there's no jsonl at all
+  // (shell output goes straight to the PTY buffer, not
+  // ~/.claude/projects/*.jsonl); the coordinator's per-turn
+  // SharedDecision ledger, which feeds completionSummary, is the only
+  // recorded output. Without this fallback shell prompts like
+  // "what's the vps uptime" would silently return the honest
+  // placeholder even when the agent successfully ran the command.
+  if (task.completionSummary?.trim()) {
+    return task.completionSummary.trim();
   }
   return "task finished but no output was captured — try again.";
 }
