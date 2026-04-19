@@ -53,24 +53,16 @@ export function looksLikeRelationshipFollowUpRequest(text: string): boolean {
 }
 
 /**
- * Build-an-app / coding-task requests. These share surface vocabulary with
- * LifeOps ("make ...", "create ...", "add ...") but belong to the coding-
- * task orchestrator's CREATE_TASK, not to LIFE's todo/habit/goal handlers.
+ * Build-an-app / coding-task requests. Must stay narrow: false negatives
+ * (LIFE declines a LifeOps prompt) are worse than false positives (LIFE
+ * hands off a coding-ish request). LIFE keeps CREATE_TASK/COMPLETE_TASK as
+ * similes for LifeOps todos ("add a task: pick up laundry"); this predicate
+ * lets validate() decline when the prompt is clearly code work so the
+ * action router falls through to the orchestrator.
  *
- * LIFE's simile list keeps CREATE_TASK/COMPLETE_TASK so LifeOps users who
- * say "add a task: pick up laundry" still route correctly; this predicate
- * lets LIFE's validate() decline when the prompt is clearly about shipping
- * software so the action router falls through to the orchestrator.
- *
- * Narrow on purpose — false negatives (LIFE declines a LifeOps prompt by
- * mistake) are much worse than false positives (LIFE handles a coding-ish
- * request that the orchestrator could have handled).
- *
- * Known edge case (accepted): "add a habit to build an app every day" will
- * match and cause LIFE to decline. Rephrase as "add a habit: work out daily"
- * or drop technical-artifact nouns. Adding a LIFE-word priority check here
- * would create worse regressions on common prompts like "build a todo app"
- * or "make a habit tracker" which are legitimate coding requests.
+ * Accepted edge case: "add a habit to build an app every day" matches and
+ * LIFE declines. Priority-checking LIFE words would regress "build a todo
+ * app" and "make a habit tracker" which are legitimate coding requests.
  */
 export function looksLikeCodingTaskRequest(text: string): boolean {
   const normalized = normalizeRequestText(text);
@@ -82,7 +74,7 @@ export function looksLikeCodingTaskRequest(text: string): boolean {
   ) {
     return true;
   }
-  // Explicit code/PR/debug surfaces — never LifeOps.
+  // Explicit code/PR/debug surfaces, never LifeOps.
   if (
     /\b(pull request|merge conflict|git (push|pull|clone|rebase)|typescript error|debug (the|this|a) (bug|error|code)|fix (the|a|this) bug)\b/.test(
       normalized,
