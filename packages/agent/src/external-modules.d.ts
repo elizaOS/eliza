@@ -210,16 +210,18 @@ declare module "@elizaos/app-training/routes/trajectory" {
 }
 
 declare module "@elizaos/app-training/services" {
+  import type {
+    Trajectory,
+    TrajectoryListResult,
+  } from "@elizaos/agent/types/trajectory";
   export type BackendAvailability = Record<string, unknown>;
   export interface TrainingServiceLike {
     getStatus(): Record<string, unknown>;
     listTrajectories(options: {
       limit?: number;
       offset?: number;
-    }): Promise<Record<string, unknown>>;
-    getTrajectoryById(
-      trajectoryId: string,
-    ): Promise<Record<string, unknown> | null>;
+    }): Promise<TrajectoryListResult>;
+    getTrajectoryById(trajectoryId: string): Promise<Trajectory | null>;
     listDatasets(): Record<string, unknown>[];
     buildDataset(options: {
       limit?: number;
