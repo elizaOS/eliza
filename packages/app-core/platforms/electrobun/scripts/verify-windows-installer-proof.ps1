@@ -14,7 +14,7 @@ function Stop-MiladyProcesses() {
     Where-Object {
       $_.ProcessName -in @("launcher", "bun") -or
       $_.ProcessName -like "Milady*" -or
-      $_.ProcessName -like "Milady-Setup*"
+      $_.ProcessName -like "ElizaOSApp-Setup*"
     } |
     Stop-Process -Force
 }
@@ -71,7 +71,7 @@ try {
   Stop-MiladyProcesses
   Remove-Item $ProofInstallDir -Recurse -Force -ErrorAction SilentlyContinue
 
-  $installer = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "Milady-Setup-*.exe" -ErrorAction SilentlyContinue |
+  $installer = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "ElizaOSApp-Setup-*.exe" -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
   if (-not $installer) {
@@ -80,7 +80,7 @@ try {
       Select-Object -First 1
   }
   if (-not $installer) {
-    throw "No canonical installer found in $resolvedArtifactsDir (Milady-Setup-*.exe / Eliza-Setup-*.exe)."
+    throw "No canonical installer found in $resolvedArtifactsDir (ElizaOSApp-Setup-*.exe / Eliza-Setup-*.exe)."
   }
 
   $summary.installer = $installer.FullName

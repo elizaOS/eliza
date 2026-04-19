@@ -135,7 +135,7 @@ function Stop-MiladyProcesses() {
       (
         $_.ProcessName -in @("launcher", "bun") -or
         $_.ProcessName -like "Milady*" -or
-        $_.ProcessName -like "Milady-Setup*"
+        $_.ProcessName -like "ElizaOSApp-Setup*"
       )
     } |
     Stop-Process -Force
@@ -444,7 +444,7 @@ if (-not $requireInstaller -and -not $launcher) {
 
 # Installer-required runs skip build/tarball reuse and validate the installed package directly.
 if (-not $launcher) {
-  $installer = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "Milady-Setup-*.exe" -ErrorAction SilentlyContinue |
+  $installer = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "ElizaOSApp-Setup-*.exe" -ErrorAction SilentlyContinue |
     Select-Object -First 1
 
   if (-not $installer) {
@@ -453,7 +453,7 @@ if (-not $launcher) {
   }
 
   if (-not $installer) {
-    $installerZip = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "Milady-Setup-*.exe.zip" -ErrorAction SilentlyContinue |
+    $installerZip = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "ElizaOSApp-Setup-*.exe.zip" -ErrorAction SilentlyContinue |
       Select-Object -First 1
     if (-not $installerZip) {
       $installerZip = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "*Setup*.zip" -ErrorAction SilentlyContinue |
