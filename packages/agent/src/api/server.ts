@@ -1481,15 +1481,6 @@ function wireCodingAgentSwarmSynthesis(st: ServerState): boolean {
   coordinator.setSwarmCompleteCallback(async (payload) => {
     await handleSwarmSynthesis(st, payload);
   });
-  // Same wiring path — install the task heartbeat so sessions running past
-  // 45s emit periodic "still working" pings that report the subagent's
-  // current tool activity. Synthesis delivers the final answer; heartbeat
-  // just tells the user the task is alive and moving.
-  const ptyService = st.runtime.getService("PTY_SERVICE");
-  if (ptyService) {
-    installTaskHeartbeat(st.runtime, ptyService);
-    logger.info("[task-heartbeat] installed");
-  }
   return true;
 }
 
@@ -1576,9 +1567,14 @@ async function buildSynthesisResultText(
 /**
  * Deliver the subagent's actual final answer — the last end_turn assistant
  * text from its session jsonl. Trust the agent to already have produced
- * a coherent response; synthesis does not rewrite or trim it. Falls back
- * to completionSummary, then a port-status check, then the original
- * prompt text when no jsonl is available.
+ * a coherent response; synthesis does not rewrite or trim it.
+ *
+ * Falls back only to a port-status check (for `port NNNN`-style tasks) and
+ * finally to an honest placeholder — never to `task.completionSummary`
+ * (the validator LLM's analysis paragraph, e.g. "The agent wrote the
+ * files, verified with curl, and reported the URL") or `task.originalTask`
+ * (echoes the user's original prompt). Both of those were the source of
+ * the "why doesn't the bot paste the actual URL" complaint.
  */
 async function buildTaskLine(
   task: SynthesisTask,
@@ -1587,18 +1583,27 @@ async function buildTaskLine(
   const workdir =
     task.workdir ?? resolveSessionWorkdir(runtime, task.sessionId);
   if (workdir) {
-    const assistantText = await readLastAssistantTextFromJsonl(workdir);
-    if (assistantText) return assistantText;
+    // The PTY task_complete hook fires as soon as claude-code stops, but
+    // the session's jsonl flush can lag by a few hundred milliseconds,
+    // which races against synthesis. Retry briefly so we deliver the
+    // agent's actual end_turn text instead of the honest-fallback.
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const assistantText = await readLastAssistantTextFromJsonl(workdir);
+      if (assistantText) return assistantText;
+      if (attempt < 3) {
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
   }
-  if (task.completionSummary) return task.completionSummary;
-  const portMatch = task.originalTask.match(/port\s+(\d+)/i);
-  const port = portMatch?.[1];
-  if (!port) return task.originalTask;
-  if (await isPortServing(port)) {
-    const host = process.env.ELIZA_PUBLIC_HOST ?? "localhost";
-    return `built and serving at http://${host}:${port}`;
+  const port = task.originalTask.match(/port\s+(\d+)/i)?.[1];
+  if (port) {
+    if (await isPortServing(port)) {
+      const host = process.env.ELIZA_PUBLIC_HOST ?? "localhost";
+      return `built and serving at http://${host}:${port}`;
+    }
+    return `built the files but server isn't running on port ${port} yet`;
   }
-  return `built the files but server isn't running on port ${port} yet`;
+  return "task finished but no output was captured — try again.";
 }
 
 function resolveSessionWorkdir(
@@ -1667,7 +1672,6 @@ import {
   chunkForDiscord,
   readLastAssistantTextFromJsonl,
 } from "../runtime/subagent-output.js";
-import { installTaskHeartbeat } from "../runtime/task-heartbeat.js";
 // ── Parse Action Block from Eliza's Response ─────────────────────────
 import {
   parseActionBlock,
