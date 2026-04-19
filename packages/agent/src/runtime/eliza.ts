@@ -3313,7 +3313,7 @@ export async function startEliza(
   //
   // We keep:
   //   - agent_skills_overview  (lightweight stats, ~50 tokens)
-  //   - all actions (GET_SKILL_GUIDANCE, SEARCH_SKILLS, INSTALL_SKILL, …)
+  //   - all actions (USE_SKILL, SEARCH_SKILLS, INSTALL_SKILL, …)
   //   - the AGENT_SKILLS_SERVICE itself
   {
     const UPSTREAM_SKILL_PROVIDERS_TO_STRIP = new Set([

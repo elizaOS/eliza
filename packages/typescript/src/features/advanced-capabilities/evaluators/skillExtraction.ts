@@ -20,6 +20,7 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { logger } from "../../../logger.ts";
+import { resolveStateDir } from "../../../utils/state-dir.ts";
 import type {
 	ActionResult,
 	EvaluationExample,
@@ -103,14 +104,6 @@ Rules:
 - description MUST be a single sentence and MUST NOT exceed 200 characters.
 - body MUST be markdown without a frontmatter block.
 - Skip if the trajectory is too narrow, contains private data, or is one-off.`;
-
-function resolveStateDir(): string {
-	const stateDir =
-		process.env.MILADY_STATE_DIR?.trim() ||
-		process.env.ELIZA_STATE_DIR?.trim() ||
-		join(process.env.HOME ?? "", ".milady");
-	return stateDir;
-}
 
 function getProposedSkillsDir(): string {
 	return join(resolveStateDir(), ...PROPOSED_SUBDIR);

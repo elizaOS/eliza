@@ -338,7 +338,9 @@ export function usePluginsSkillsState({
     async (skillId: string, enabled: boolean) => {
       setSkillToggleAction(skillId);
       try {
-        const { skill } = await client.updateSkill(skillId, enabled);
+        const { skill } = enabled
+          ? await client.enableSkill(skillId)
+          : await client.disableSkill(skillId);
         setSkills((prev) =>
           prev.map((s) =>
             s.id === skillId ? { ...s, enabled: skill.enabled } : s,

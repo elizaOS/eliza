@@ -22,9 +22,9 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { logger } from "@elizaos/core";
+import { resolveStateDir } from "../config/paths.js";
 import type { RouteRequestContext } from "./route-helpers.js";
 
 const CURATED_SKILL_NAME_RE = /^[a-z0-9-]+$/;
@@ -47,14 +47,6 @@ interface CuratedSkillSummary {
   lastEvalScore?: number;
   status: "active" | "proposed" | "disabled";
   filePath: string;
-}
-
-function resolveStateDir(): string {
-  return (
-    process.env.MILADY_STATE_DIR?.trim() ||
-    process.env.ELIZA_STATE_DIR?.trim() ||
-    join(homedir(), ".milady")
-  );
 }
 
 function curatedActiveDir(): string {

@@ -3038,21 +3038,6 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "GET_SKILL_GUIDANCE",
-      "description": "Search for and get skill instructions. Use when user asks to find a skill or when you need instructions for a capability.",
-      "parameters": [],
-      "similes": [
-        "FIND_SKILL",
-        "SEARCH_SKILLS",
-        "SKILL_HELP",
-        "HOW_TO",
-        "GET_INSTRUCTIONS",
-        "LEARN_SKILL",
-        "LOOKUP_SKILL",
-        "USE_SKILL"
-      ]
-    },
-    {
       "name": "HELP_COMMAND",
       "description": "Show available commands and their descriptions. Only activates for /help, /h, or /? slash commands.",
       "parameters": [],
@@ -3426,16 +3411,6 @@ _ALL_ACTION_DOCS_JSON = """{
         "UNPAUSE",
         "UNPAUSE_MUSIC",
         "CONTINUE_MUSIC"
-      ]
-    },
-    {
-      "name": "RUN_SKILL_SCRIPT",
-      "description": "Execute a script bundled with an installed skill. Provide skill slug and script name.",
-      "parameters": [],
-      "similes": [
-        "EXECUTE_SKILL_SCRIPT",
-        "SKILL_SCRIPT",
-        "USE_SKILL"
       ]
     },
     {

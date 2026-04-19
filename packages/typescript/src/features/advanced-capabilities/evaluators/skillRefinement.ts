@@ -20,6 +20,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { logger } from "../../../logger.ts";
+import { resolveStateDir } from "../../../utils/state-dir.ts";
 import type {
 	ActionResult,
 	EvaluationExample,
@@ -100,14 +101,6 @@ interface RefinementDraft {
 	refine: boolean;
 	reason?: string;
 	newBody?: string;
-}
-
-function resolveStateDir(): string {
-	return (
-		process.env.MILADY_STATE_DIR?.trim() ||
-		process.env.ELIZA_STATE_DIR?.trim() ||
-		join(process.env.HOME ?? "", ".milady")
-	);
 }
 
 function getActiveSkillsDir(): string {
