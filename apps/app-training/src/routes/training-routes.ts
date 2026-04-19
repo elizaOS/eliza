@@ -2,6 +2,7 @@ import type {
   RouteHelpers,
   RouteRequestContext,
 } from "@elizaos/agent/api/route-helpers";
+import type { Trajectory } from "@elizaos/agent/types/trajectory";
 import { parsePositiveInteger } from "@elizaos/agent/utils/number-parsing";
 import type { AgentRuntime } from "@elizaos/core";
 import { AGENT_CONTEXTS, type AgentContext } from "../core/context-types.js";
@@ -808,18 +809,16 @@ export async function handleTrainingRoutes(
       const listedTrajectories =
         explicitIds.length > 0
           ? null
-          : ((await trainingService.listTrajectories({
+          : await trainingService.listTrajectories({
               limit: body.limit ?? 100,
               offset: 0,
-            })) as {
-              trajectories?: Array<Record<string, unknown>>;
             });
       const trajectoryIds =
         explicitIds.length > 0
           ? explicitIds
           : (listedTrajectories?.trajectories ?? [])
-              .map((item) => String(item.trajectoryId ?? item.id ?? ""))
-              .filter((id: string) => id.length > 0);
+              .map((item) => item.id)
+              .filter((id) => id.length > 0);
 
       const details = (
         await Promise.all(
@@ -827,7 +826,7 @@ export async function handleTrainingRoutes(
             trainingService.getTrajectoryById(trajectoryId),
           ),
         )
-      ).filter(Boolean);
+      ).filter((t): t is Trajectory => t !== null);
 
       let exported = 0;
       let taskDataset:
@@ -839,12 +838,7 @@ export async function handleTrainingRoutes(
           "../core/trajectory-task-datasets.js"
         );
         const dataset = await exportTrajectoryTaskDatasets(
-          // TrainingServiceLike returns loose Record<string, unknown>; cast at
-          // the boundary so the exporter can typecheck against the real
-          // Trajectory shape it was designed for.
-          details as unknown as Parameters<
-            typeof exportTrajectoryTaskDatasets
-          >[0],
+          details,
           body.outputDir ?? `.tmp/training-trajectory-export-${Date.now()}`,
           narrowTrainingTasks(body.tasks),
         );
@@ -864,18 +858,7 @@ export async function handleTrainingRoutes(
           "../core/dataset-generator.js"
         );
         exported = await exportTrajectoriesAsTraining(
-          details as Array<{
-            steps: Array<{
-              llmCalls: Array<{
-                purpose?: string;
-                systemPrompt?: string;
-                userPrompt?: string;
-                response?: string;
-                model?: string;
-              }>;
-            }>;
-            metadata?: Record<string, unknown>;
-          }>,
+          details,
           body.agentName ?? runtime?.character?.name ?? "Agent",
           outputPath,
         );
