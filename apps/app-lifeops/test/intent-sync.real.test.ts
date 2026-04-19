@@ -167,7 +167,12 @@ describe("intent-sync — real PGLite", () => {
       } as never,
       async () => {},
     );
-    expect(result?.success).toBe(false);
+    // validationTerminate returns success:true at the ActionResult level to
+    // signal the orchestrator not to retry, but values.success:false + a
+    // descriptive error code for downstream consumers.
+    expect((result as unknown as { values?: { success?: boolean } }).values?.success).toBe(
+      false,
+    );
     expect(
       (result as unknown as { data?: { error?: string } }).data?.error,
     ).toBe("UNKNOWN_KIND");

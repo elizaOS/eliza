@@ -160,8 +160,10 @@ describe("N8nSidecar", () => {
       expect(state.port).toBe(5678);
       expect(h.spawn).toHaveBeenCalledTimes(1);
       const [cmd, args] = h.spawn.mock.calls[0];
-      expect(cmd).toBe("bunx");
-      expect(args).toContain("n8n@1.70.0");
+      expect(cmd).toBe("npx");
+      // npx syntax: `--yes <pkg> start`. `--yes` auto-confirms the install
+      // prompt on first run so we don't hang waiting for stdin.
+      expect(args).toEqual(["--yes", "n8n@1.70.0", "start"]);
 
       await sidecar.stop();
       await startPromise;
@@ -270,7 +272,28 @@ describe("N8nSidecar", () => {
         if (url.endsWith("/rest/login")) {
           return new Response(null, { status: 200 });
         }
-        if (url.endsWith("/rest/me/api-keys") && init?.method === "POST") {
+        // Owner setup flow: setup creates the owner and returns an auth cookie.
+        if (url.endsWith("/rest/owner/setup") && init?.method === "POST") {
+          return new Response(JSON.stringify({ data: { id: "owner-id" } }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "set-cookie": "n8n-auth=fake-jwt; Path=/; HttpOnly",
+            },
+          });
+        }
+        // Scopes enumerate what the role can grant.
+        if (
+          url.endsWith("/rest/api-keys/scopes") &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return new Response(
+            JSON.stringify({ data: ["workflow:read", "workflow:list"] }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        // Api-key create returns rawApiKey on the authed path.
+        if (url.endsWith("/rest/api-keys") && init?.method === "POST") {
           return new Response(
             JSON.stringify({ data: { rawApiKey: "n8n_secret_abc" } }),
             { status: 200, headers: { "content-type": "application/json" } },
@@ -715,12 +738,35 @@ describe("N8nSidecar", () => {
 
       const fetchFn = vi.fn(async (url: string, init?: RequestInit) => {
         if (url.endsWith("/rest/login")) {
-          return new Response(null, { status: 200 });
+          // Two callers hit /rest/login: (a) readiness probe (no body, just
+          // a status check), (b) provisionApiKey's owner-login fallback. Both
+          // are satisfied by returning 200 with a cookie; the provision path
+          // also validates the stale key via GET /rest/api-keys first.
+          return new Response(null, {
+            status: 200,
+            headers: { "set-cookie": "n8n-auth=fake-jwt; Path=/; HttpOnly" },
+          });
         }
         if (url.endsWith("/rest/api-keys") && init?.method === "GET") {
-          return new Response(null, { status: 401 }); // stale key rejected
+          return new Response(null, { status: 401 }); // stale cached key rejected
         }
-        if (url.endsWith("/rest/me/api-keys") && init?.method === "POST") {
+        if (url.endsWith("/rest/owner/setup") && init?.method === "POST") {
+          // Owner already exists on restart — setup returns 400. Force login.
+          return new Response(
+            JSON.stringify({ code: 400, message: "already set up" }),
+            { status: 400 },
+          );
+        }
+        if (
+          url.endsWith("/rest/api-keys/scopes") &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return new Response(
+            JSON.stringify({ data: ["workflow:read", "workflow:list"] }),
+            { status: 200 },
+          );
+        }
+        if (url.endsWith("/rest/api-keys") && init?.method === "POST") {
           return new Response(
             JSON.stringify({ data: { rawApiKey: "fresh_key_xyz" } }),
             { status: 200 },

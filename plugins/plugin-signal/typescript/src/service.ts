@@ -1,5 +1,6 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
@@ -58,15 +59,30 @@ import {
 } from "./types";
 
 const execFileAsync = promisify(execFile);
-const DEFAULT_SIGNAL_HTTP_HOST = "127.0.0.1";
-const DEFAULT_SIGNAL_HTTP_PORT = 8080;
+export const DEFAULT_SIGNAL_HTTP_HOST = "127.0.0.1";
+export const DEFAULT_SIGNAL_HTTP_PORT = 8080;
 const DEFAULT_SIGNAL_DAEMON_STARTUP_TIMEOUT_MS = 30_000;
-const DEFAULT_SIGNAL_CLI_PATH = "signal-cli";
+export const DEFAULT_SIGNAL_CLI_PATH = "signal-cli";
 const BREW_OPENJDK_HOME = "/opt/homebrew/opt/openjdk";
 const COMMON_SIGNAL_CLI_PATHS = [
   "/opt/homebrew/bin/signal-cli",
   "/usr/local/bin/signal-cli",
 ];
+
+/**
+ * signal-cli uses `$HOME/.local/share/signal-cli` as its default data
+ * directory on every platform (the XDG path is hardcoded in signal-cli —
+ * it does not honour `Library/Application Support` on macOS). Matching
+ * that default here means a locally-installed signal-cli + a user who
+ * ran `signal-cli -a +1555… link` once will "just work" — no config
+ * needed beyond `SIGNAL_ACCOUNT_NUMBER`.
+ *
+ * Override with `SIGNAL_AUTH_DIR` to point at a custom install.
+ */
+export function defaultSignalAuthDir(): string {
+  const home = os.homedir();
+  return path.join(home, ".local", "share", "signal-cli");
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -334,7 +350,13 @@ export class SignalService extends Service implements ISignalService {
 
     const accountNumber = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string;
     const httpUrl = runtime.getSetting("SIGNAL_HTTP_URL") as string;
-    const authDir = runtime.getSetting("SIGNAL_AUTH_DIR") as string | undefined;
+    const rawAuthDir = runtime.getSetting("SIGNAL_AUTH_DIR") as
+      | string
+      | undefined;
+    const authDir =
+      typeof rawAuthDir === "string" && rawAuthDir.trim().length > 0
+        ? rawAuthDir.trim()
+        : defaultSignalAuthDir();
     const configuredCliPath =
       (runtime.getSetting("SIGNAL_CLI_PATH") as string | undefined) ||
       DEFAULT_SIGNAL_CLI_PATH;
@@ -382,10 +404,18 @@ export class SignalService extends Service implements ISignalService {
       : `http://${httpHost}:${httpPort}`;
 
     if (!httpUrl) {
-      if (!authDir || authDir.trim().length === 0) {
+      // authDir is now guaranteed non-empty (falls back to defaultSignalAuthDir()).
+      // If the directory does not exist, signal-cli would fail on startup with
+      // a confusing "No linked devices" error — pre-empt that with a clearer
+      // warning that points at the user's next action.
+      if (!fs.existsSync(authDir)) {
         runtime.logger.warn(
-          { src: "plugin:signal", agentId: runtime.agentId },
-          "SIGNAL_AUTH_DIR not provided, Signal service will not be able to communicate"
+          {
+            src: "plugin:signal",
+            agentId: runtime.agentId,
+            authDir,
+          },
+          "Signal auth directory does not exist yet — run `signal-cli -a <number> link` (or set SIGNAL_AUTH_DIR to a pre-existing install) before starting the plugin"
         );
         return service;
       }
@@ -393,7 +423,7 @@ export class SignalService extends Service implements ISignalService {
       try {
         await service.ensureDaemonRunning(
           configuredCliPath,
-          authDir.trim(),
+          authDir,
           baseUrl,
           startupTimeoutMs,
         );
