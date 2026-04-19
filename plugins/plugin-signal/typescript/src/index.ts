@@ -10,7 +10,7 @@ import sendReaction from "./actions/sendReaction";
 import { conversationStateProvider } from "./providers/conversationState";
 
 // Service
-import { SignalService } from "./service";
+import { DEFAULT_SIGNAL_CLI_PATH, SignalService } from "./service";
 
 // Setup routes (QR pairing / disconnect)
 import { signalSetupRoutes } from "./setup-routes";
@@ -29,6 +29,7 @@ const signalPlugin: Plugin = {
     const accountNumber = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string;
     const httpUrl = runtime.getSetting("SIGNAL_HTTP_URL") as string;
     const cliPath = runtime.getSetting("SIGNAL_CLI_PATH") as string;
+    const effectiveCliPath = (cliPath ?? "").trim() || DEFAULT_SIGNAL_CLI_PATH;
     const ignoreGroups = runtime.getSetting("SIGNAL_SHOULD_IGNORE_GROUP_MESSAGES") as string;
 
     // Log configuration status
@@ -45,7 +46,9 @@ const signalPlugin: Plugin = {
         settings: {
           accountNumber: maskNumber(accountNumber),
           httpUrl: httpUrl || "[not set]",
-          cliPath: cliPath || "[not set]",
+          cliPath: cliPath
+            ? cliPath
+            : `[default: ${DEFAULT_SIGNAL_CLI_PATH}]`,
           ignoreGroups: ignoreGroups || "false",
         },
       },
@@ -69,16 +72,18 @@ const signalPlugin: Plugin = {
       return;
     }
 
-    if (!httpUrl && !cliPath) {
-      logger.warn(
-        { src: "plugin:signal", agentId: runtime.agentId },
-        "Neither SIGNAL_HTTP_URL nor SIGNAL_CLI_PATH provided - Signal plugin will not be able to communicate"
-      );
-      return;
-    }
-
+    // When neither SIGNAL_HTTP_URL nor SIGNAL_CLI_PATH is set explicitly, we
+    // fall back to the default local signal-cli binary (name resolved via
+    // PATH + Homebrew/common paths at service start). No warning here — the
+    // service will surface a clearer error if signal-cli isn't actually
+    // available on the host.
     logger.info(
-      { src: "plugin:signal", agentId: runtime.agentId },
+      {
+        src: "plugin:signal",
+        agentId: runtime.agentId,
+        mode: httpUrl ? "http" : "local-cli",
+        cliPath: effectiveCliPath,
+      },
       "Signal plugin configuration validated successfully"
     );
   },

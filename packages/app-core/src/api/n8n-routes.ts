@@ -380,9 +380,15 @@ function resolveProxyTarget(
   };
   if (apiKey) headers["X-N8N-API-KEY"] = apiKey;
 
+  // n8n serves TWO parallel workflow APIs:
+  //   /rest/workflows   — internal UI endpoint, requires JWT cookie auth.
+  //   /api/v1/workflows — public API, accepts X-N8N-API-KEY.
+  // We provision an X-N8N-API-KEY during boot, so the public API is the
+  // only path that authenticates correctly. Hitting /rest/ was returning
+  // 401 "Unauthorized" even with a valid key — that's the wrong endpoint.
   return {
     target: {
-      url: `${host.replace(/\/+$/, "")}/rest/workflows${subpath}`,
+      url: `${host.replace(/\/+$/, "")}/api/v1/workflows${subpath}`,
       headers,
     },
   };
