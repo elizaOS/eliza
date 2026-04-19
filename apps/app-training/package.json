@@ -14,6 +14,7 @@
     "./routes/training": "./src/routes/training-routes.ts",
     "./routes/trajectory": "./src/routes/trajectory-routes.ts",
     "./services": "./src/services/index.ts",
+    "./services/training-service-like": "./src/services/training-service-like.ts",
     "./core": "./src/core/index.ts",
     "./core/*": "./src/core/*.ts",
     "./core/context-types": "./src/core/context-types.ts",
