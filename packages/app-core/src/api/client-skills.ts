@@ -156,10 +156,6 @@ declare module "./client-base" {
       skillId: string,
       autoRefresh: boolean,
     ): Promise<void>;
-    updateSkill(
-      skillId: string,
-      enabled: boolean,
-    ): Promise<{ skill: SkillInfo }>;
     enableSkill(
       skillId: string,
     ): Promise<{
@@ -741,17 +737,6 @@ ElizaClient.prototype.uninstallMarketplaceSkill = async function (
   await this.fetch("/api/skills/marketplace/uninstall", {
     method: "POST",
     body: JSON.stringify({ id: skillId, autoRefresh }),
-  });
-};
-
-ElizaClient.prototype.updateSkill = async function (
-  this: ElizaClient,
-  skillId,
-  enabled,
-) {
-  return this.fetch(`/api/skills/${encodeURIComponent(skillId)}`, {
-    method: "PUT",
-    body: JSON.stringify({ enabled }),
   });
 };
 
