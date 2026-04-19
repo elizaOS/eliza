@@ -5,25 +5,9 @@ import {
   renameSync,
   statSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-
-/**
- * Resolve the Milady per-user state directory.
- *
- * Kept inline (not imported from `@elizaos/core`) because `@elizaos/skills` is
- * a deliberately minimal seed/sync package with no runtime dep on core. The
- * precedence order matches `resolveStateDir()` in
- * `@elizaos/core/utils/state-dir` — update both together if the rule changes.
- */
-function resolveStateDir(): string {
-  return (
-    process.env.MILADY_STATE_DIR?.trim() ||
-    process.env.ELIZA_STATE_DIR?.trim() ||
-    join(homedir(), ".milady")
-  );
-}
+import { resolveStateDir } from "@elizaos/core";
 
 /**
  * Cached skills directory path

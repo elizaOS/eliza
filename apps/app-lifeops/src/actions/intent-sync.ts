@@ -166,10 +166,30 @@ function inferKindFromText(text: string): LifeOpsIntentKind | undefined {
 
 export const intentSyncAction: Action = {
   name: ACTION_NAME,
-  similes: ["BROADCAST_INTENT", "SYNC_INTENT", "CROSS_DEVICE_INTENT"],
+  similes: [
+    "BROADCAST_INTENT",
+    "SYNC_INTENT",
+    "CROSS_DEVICE_INTENT",
+    "BROADCAST_TO_DEVICE",
+    "PUSH_TO_MOBILE",
+    "PUSH_TO_PHONE",
+    "PUSH_TO_DESKTOP",
+    "ROUTINE_REMINDER",
+    "DEVICE_REMINDER",
+    "SEND_TO_DEVICE",
+  ],
   description:
-    "Broadcast intents across devices or acknowledge pending intents. " +
-    "Subactions: broadcast, list_pending, acknowledge, prune_expired.",
+    "Broadcast a structured device-level intent (routine_reminder, location_alert, " +
+    "task_nudge, focus_prompt, calendar_event, habit_check, etc.) to one or more " +
+    "of the owner's devices (mobile, desktop, watch, all, or a specific device id), " +
+    "or acknowledge/list/prune pending intents. Subactions: broadcast, list_pending, " +
+    "acknowledge, prune_expired. " +
+    "Use this for any 'broadcast/push/send <intent> to my phone/mobile/desktop/devices' " +
+    "request, or 'remind me on my phone to X' — the target is a device, not a chat " +
+    "channel. Do NOT use CROSS_CHANNEL_SEND for device-targeted reminders: " +
+    "CROSS_CHANNEL_SEND is for sending chat messages to another person on a " +
+    "messaging platform (email/discord/telegram/signal/etc.), while INTENT_SYNC " +
+    "pushes a structured intent record to the owner's own devices.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasAdminAccess(runtime, message),

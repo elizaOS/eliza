@@ -787,6 +787,123 @@ async function buildAll() {
 }
 
 /**
+ * Rewrite relative module specifiers in emitted `.d.ts` files so they carry
+ * explicit `.js` extensions.
+ *
+ * tsc is run with `moduleResolution: "bundler"` for declarations (so internal
+ * source does not need to write extensions), but that leaves barrel re-exports
+ * like `export * from "./utils/state-dir"` in the emitted `.d.ts` files.
+ * External consumers compiled under `moduleResolution: "nodenext"` (the
+ * package's own `tsconfig.base.json` default) cannot resolve those — the
+ * symbol set becomes invisible, which is why downstream packages such as
+ * `@elizaos/skills` lost access to `resolveStateDir` and had to keep an inline
+ * copy.
+ *
+ * This pass walks `dist/**\/*.d.ts`, finds relative `import`/`export`
+ * specifiers, and rewrites them:
+ *   - `"./foo"`        → `"./foo.js"`
+ *   - `"./foo.ts"`     → `"./foo.js"`
+ *   - `"./foo/index"`  → `"./foo/index.js"`
+ *   - `"./foo.js"`     → unchanged
+ *   - `"./foo.json"`   → unchanged (non-script asset)
+ * Bare-directory specifiers (e.g. `"./foo"` where `foo/` is a directory) are
+ * rewritten to `"./foo/index.js"` so NodeNext can follow them.
+ */
+async function fixDtsExtensions(rootDir: string): Promise<void> {
+	const path = await import("node:path");
+	const fs = await import("node:fs/promises");
+
+	const walk = async (dir: string): Promise<string[]> => {
+		const out: string[] = [];
+		const entries = await fs.readdir(dir, { withFileTypes: true });
+		for (const entry of entries) {
+			const full = path.join(dir, entry.name);
+			if (entry.isDirectory()) {
+				out.push(...(await walk(full)));
+			} else if (entry.isFile() && full.endsWith(".d.ts")) {
+				out.push(full);
+			}
+		}
+		return out;
+	};
+
+	// Patterns that capture `from "..."` and `import("...")` and
+	// `export * from "..."` style specifiers. We rewrite only the specifier
+	// content, preserving the surrounding syntax.
+	const specifierRegex =
+		/(\bfrom\s*['"]|\bimport\s*\(\s*['"])(\.\.?\/[^'"]+)(['"])/g;
+
+	const rewriteSpecifier = async (
+		fileDir: string,
+		spec: string,
+	): Promise<string> => {
+		// Already has a terminal script/asset extension — leave alone.
+		if (/\.(js|mjs|cjs|json)$/.test(spec)) {
+			return spec;
+		}
+		// TypeScript source extension leaked into emitted d.ts — rewrite to .js.
+		if (/\.tsx?$/.test(spec)) {
+			return spec.replace(/\.tsx?$/, ".js");
+		}
+		// `./foo.d.ts` style — rewrite to `.js`.
+		if (/\.d\.ts$/.test(spec)) {
+			return spec.replace(/\.d\.ts$/, ".js");
+		}
+		// No extension. Determine whether the target is a directory (needs
+		// `/index.js`) or a sibling file (needs `.js`). We check against the
+		// already-emitted dist tree.
+		const candidateDir = path.resolve(fileDir, spec);
+		const dirStat = await fs
+			.stat(candidateDir)
+			.then((s) => s.isDirectory())
+			.catch(() => false);
+		return dirStat ? `${spec}/index.js` : `${spec}.js`;
+	};
+
+	const files = await walk(rootDir);
+	let rewrittenFiles = 0;
+	let rewrittenSpecifiers = 0;
+
+	for (const file of files) {
+		const src = await fs.readFile(file, "utf8");
+		const fileDir = path.dirname(file);
+		const matches: Array<{ start: number; end: number; replacement: string }> =
+			[];
+
+		// Collect matches with indices — we rewrite in a second pass because
+		// `rewriteSpecifier` is async.
+		for (const m of src.matchAll(specifierRegex)) {
+			const [, prefix, spec, suffix] = m;
+			const matchStart = m.index ?? 0;
+			const newSpec = await rewriteSpecifier(fileDir, spec);
+			if (newSpec === spec) continue;
+			matches.push({
+				start: matchStart,
+				end: matchStart + prefix.length + spec.length + suffix.length,
+				replacement: `${prefix}${newSpec}${suffix}`,
+			});
+		}
+
+		if (matches.length === 0) continue;
+
+		// Apply replacements right-to-left to keep earlier indices stable.
+		let patched = src;
+		for (let i = matches.length - 1; i >= 0; i--) {
+			const { start, end, replacement } = matches[i];
+			patched = patched.slice(0, start) + replacement + patched.slice(end);
+		}
+
+		await fs.writeFile(file, patched, "utf8");
+		rewrittenFiles++;
+		rewrittenSpecifiers += matches.length;
+	}
+
+	console.log(
+		`   Rewrote ${rewrittenSpecifiers} relative specifier(s) in ${rewrittenFiles} .d.ts file(s) for NodeNext ESM`,
+	);
+}
+
+/**
  * Generate TypeScript declarations for all entry points
  */
 async function generateTypeScriptDeclarations() {
@@ -799,6 +916,10 @@ async function generateTypeScriptDeclarations() {
 	// Generate TypeScript declarations using tsc
 	console.log("   Compiling TypeScript declarations...");
 	await $`tsc --project tsconfig.declarations.json`;
+
+	// Post-process: add `.js` extensions to all relative specifiers so external
+	// consumers compiled under `moduleResolution: "nodenext"` can resolve them.
+	await fixDtsExtensions("dist");
 
 	// Ensure directories exist for conditional exports
 	await fs.mkdir("dist/node", { recursive: true });
