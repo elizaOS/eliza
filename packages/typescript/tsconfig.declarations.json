@@ -4,7 +4,7 @@
 		"outDir": "./dist",
 		"rootDir": "./src",
 		"moduleResolution": "bundler",
-		"ignoreDeprecations": "5.0",
+		"ignoreDeprecations": "6.0",
 		"types": ["node", "bun-types"],
 		"noEmit": false,
 		"emitDeclarationOnly": true,
