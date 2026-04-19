@@ -56,6 +56,15 @@ export interface N8nSidecarState {
   errorMessage: string | null;
   pid: number | null;
   retries: number;
+  /**
+   * Last ~40 lines of the child's stdout+stderr, most recent last. Surfaced
+   * so the UI / `/api/n8n/status` can show the real n8n boot output when
+   * the supervisor is stuck in "starting" or has landed in "error". Without
+   * this, the sidecar was a black box: we'd see "not ready" forever with
+   * no way to tell whether bunx was downloading, n8n was migrating, or the
+   * process had crashed on a missing binary.
+   */
+  recentOutput: string[];
 }
 
 export interface N8nSidecarConfig {
@@ -71,7 +80,16 @@ export interface N8nSidecarConfig {
   binary?: string;
   /** State directory root; owner email/password + sqlite live here. */
   stateDir?: string;
-  /** Readiness probe timeout in ms. Default 60000. */
+  /**
+   * Readiness probe timeout in ms. Default 180000 (3 minutes).
+   *
+   * First-run `bunx n8n@<pinned>` has to download the full n8n tree
+   * (~300MB) before it can boot. On a typical home connection that's
+   * 30–90s of download plus 15–30s of n8n boot. 60s was not enough —
+   * bump to 3 minutes so cold starts land inside the probe window on
+   * every desktop platform. Subsequent boots hit the bunx cache and
+   * finish in <10s, well inside this budget.
+   */
   readinessTimeoutMs?: number;
   /** Interval between readiness probes. Default 750ms. */
   readinessIntervalMs?: number;
@@ -127,12 +145,22 @@ type Listener = (state: N8nSidecarState) => void;
 
 // ── Implementation ───────────────────────────────────────────────────────────
 
-// TODO pin on release — validated via `npm view n8n version` before ship.
-const DEFAULT_N8N_VERSION = "1.70.0";
+// n8n@1.70.0 declared `engines.node: ">=18.17 <= 22"` — incompatible with
+// Node 24.x which ships with current Homebrew and with the Electrobun runtime.
+// 1.99.0+ widened to ">=20.19 <= 24.x". Pinning the last 1.x release so the
+// DB schema stays on a supported migration path and Node 24 hosts can boot.
+// Validated via `npm view n8n@<v> engines.node`. Bumping below 1.99 will break
+// every desktop whose system Node is 23+.
+const DEFAULT_N8N_VERSION = "1.108.0";
 const DEFAULT_START_PORT = 5678;
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_BINARY = "bunx";
-const DEFAULT_PROBE_TIMEOUT_MS = 60_000;
+// First-run `bunx n8n@<pinned>` downloads ~300MB before n8n can boot. A 60s
+// timeout was too aggressive — cold starts on typical home connections take
+// 60–120s just for the download. Bump to 180s so the first-run path reliably
+// lands inside the probe window on every desktop platform. Warm starts hit
+// the bunx cache and finish well under this budget.
+const DEFAULT_PROBE_TIMEOUT_MS = 180_000;
 const DEFAULT_PROBE_INTERVAL_MS = 750;
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BACKOFF_BASE_MS = 2_000;
@@ -318,7 +346,11 @@ export class N8nSidecar {
     errorMessage: null,
     pid: null,
     retries: 0,
+    recentOutput: [],
   };
+  private static readonly RECENT_OUTPUT_CAP = 40;
+  /** Ring buffer of the child's recent stdout/stderr lines (see state.recentOutput). */
+  private recentOutput: string[] = [];
   private child: ChildProcess | null = null;
   /** Cached API key — secret, never logged, never serialized via getState(). */
   private apiKey: string | null = null;
@@ -624,28 +656,60 @@ export class N8nSidecar {
     this.child = child;
     this.setState({ pid: child.pid ?? null });
 
-    child.stdout?.on("data", (buf: Buffer) => {
-      // n8n log lines are noisy; surface at debug only.
-      const line = buf.toString().trimEnd();
-      logger.debug(`[n8n-sidecar:stdout] ${line}`);
-      try {
-        this.config.onLog?.(line, "stdout");
-      } catch {
-        /* ignore */
+    const captureOutput = (chunk: Buffer, stream: "stdout" | "stderr") => {
+      const text = chunk.toString();
+      for (const line of text.split("\n")) {
+        const trimmed = line.trimEnd();
+        if (!trimmed) continue;
+        this.recordOutput(`[${stream}] ${trimmed}`);
+        // Surface n8n errors at warn so they land in the dev-server log even
+        // when debug is off — the sidecar was silent before when n8n died.
+        if (stream === "stderr") {
+          logger.warn(`[n8n-sidecar:stderr] ${trimmed}`);
+        } else {
+          logger.debug(`[n8n-sidecar:stdout] ${trimmed}`);
+        }
+        try {
+          this.config.onLog?.(trimmed, stream);
+        } catch {
+          /* ignore */
+        }
       }
-    });
-    child.stderr?.on("data", (buf: Buffer) => {
-      const line = buf.toString().trimEnd();
-      logger.debug(`[n8n-sidecar:stderr] ${line}`);
-      try {
-        this.config.onLog?.(line, "stderr");
-      } catch {
-        /* ignore */
-      }
+    };
+    child.stdout?.on("data", (buf: Buffer) => captureOutput(buf, "stdout"));
+    child.stderr?.on("data", (buf: Buffer) => captureOutput(buf, "stderr"));
+    // Pre-emptively reap the zombie: without an exit listener attached from
+    // the moment we spawn, a child that dies while we're in probeReadiness
+    // can linger as <defunct> because Node only waitpid()'s when something
+    // is listening. This handler is unconditional — waitForChildExit attaches
+    // its own once('exit') for supervisor-level signalling.
+    child.on("exit", (code, signal) => {
+      const summary =
+        code !== null
+          ? `exit code ${code}`
+          : signal !== null
+            ? `signal ${signal}`
+            : "exit (no code/signal)";
+      this.recordOutput(`[exit] n8n child ${summary}`);
     });
     child.on("error", (err: Error) => {
+      this.recordOutput(`[error] spawn error: ${err.message}`);
       logger.warn(`[n8n-sidecar] spawn error: ${err.message}`);
     });
+  }
+
+  /** Push a line into the bounded recent-output buffer and publish. */
+  private recordOutput(line: string): void {
+    this.recentOutput.push(line);
+    if (this.recentOutput.length > N8nSidecar.RECENT_OUTPUT_CAP) {
+      this.recentOutput.splice(
+        0,
+        this.recentOutput.length - N8nSidecar.RECENT_OUTPUT_CAP,
+      );
+    }
+    this.state = { ...this.state, recentOutput: [...this.recentOutput] };
+    // Don't re-emit on every line — that would spam listeners. The buffer
+    // is snapshotted on every setState() call and served by getState().
   }
 
   /**
@@ -722,6 +786,17 @@ export class N8nSidecar {
 
     while (Date.now() < deadline) {
       if (this.stopping) return false;
+      // If the child died mid-probe, keep polling is pointless — the port
+      // will never open. Fail fast so the supervisor surfaces the error and
+      // kicks off the next retry (with captured stderr in recentOutput).
+      // Uses `typeof === "number"` rather than `!== null` so this tolerates
+      // test fakes whose exitCode is undefined while still running.
+      const child = this.child;
+      if (child && typeof child.exitCode === "number") {
+        throw new Error(
+          `n8n child exited with code ${child.exitCode} before readiness probe succeeded`,
+        );
+      }
       try {
         const res = await this.deps.fetch(url, {
           method: "GET",

@@ -715,6 +715,21 @@ export async function handlePluginRoutes(
       const entries = (state.config.plugins as Record<string, unknown>)
         .entries as Record<string, Record<string, unknown>>;
       entries[pluginId] = { enabled: body.enabled };
+
+      // Keep plugins.allow aligned with entries[pluginId].enabled so the
+      // enable-state drift check in buildCoreToggleDiagnostics() stays clean.
+      state.config.plugins.allow = state.config.plugins.allow ?? [];
+      const allow = state.config.plugins.allow;
+      if (body.enabled) {
+        if (!allow.includes(pluginId) && !allow.includes(packageName)) {
+          allow.push(pluginId);
+        }
+      } else {
+        state.config.plugins.allow = allow.filter(
+          (p: string) => p !== pluginId && p !== packageName,
+        );
+      }
+
       logger.info(
         `[eliza-api] ${body.enabled ? "Enabled" : "Disabled"} plugin: ${packageName}`,
       );

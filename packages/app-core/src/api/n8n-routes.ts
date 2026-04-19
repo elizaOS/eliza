@@ -61,6 +61,15 @@ export interface N8nStatusResponse {
    * "unknown". Cached for 30s to avoid hammering the cloud on status polls.
    */
   cloudHealth: N8nCloudHealth;
+  /**
+   * Diagnostic fields from the local sidecar. Empty on cloud mode. Non-null
+   * only when a sidecar has attempted at least one boot — these let the UI
+   * show a real error panel instead of "not ready (starting)" forever.
+   */
+  errorMessage?: string | null;
+  retries?: number;
+  /** Last ~40 lines of the n8n child's stdout+stderr. */
+  recentOutput?: string[];
 }
 
 export interface N8nWorkflowNodeLike {
@@ -613,6 +622,13 @@ async function handleStatus(
     localEnabled,
     platform: native ? "mobile" : "desktop",
     cloudHealth,
+    ...(sidecarState
+      ? {
+          errorMessage: sidecarState.errorMessage,
+          retries: sidecarState.retries,
+          recentOutput: sidecarState.recentOutput,
+        }
+      : {}),
   };
 
   // Match previous behavior: 200 via ctx.json.
