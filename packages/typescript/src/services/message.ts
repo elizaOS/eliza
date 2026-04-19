@@ -442,7 +442,18 @@ function normalizePlannerActions(
 
 	const replyText =
 		typeof parsedXml.text === "string" ? parsedXml.text.trim() : "";
-	return replyText.length > 0 ? ["REPLY"] : ["IGNORE"];
+	if (replyText.length > 0) return ["REPLY"];
+
+	// Fallthrough: no valid action, no text. By the time the planner ran,
+	// the shouldRespond gate already decided the bot needed to respond, so
+	// landing on IGNORE here means the user sees silence even though the
+	// framework chose to engage. That reads as "the bot is broken" to the
+	// operator. Coerce to REPLY so the agent's reply handler emits at
+	// least a short clarifying message (e.g. "not sure what you want — can
+	// you be more specific?"). The only downside is an extra reply turn
+	// on rare cases where the LLM emitted a totally empty response; that's
+	// a better failure mode than dead silence.
+	return ["REPLY"];
 }
 
 function normalizePlannerProviders(
