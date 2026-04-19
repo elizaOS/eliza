@@ -16,8 +16,8 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 import { scoreSkill, type ScoreableTrajectory } from "./replay-validator.js";
 
 interface MinimalLogger {
@@ -69,14 +69,6 @@ interface TrajectoryServiceLike {
 
 const SCORE_EVENT_NAME = "TRACK_C_SKILL_SCORE";
 const DEFAULT_TRAJECTORY_LIMIT = 200;
-
-function resolveStateDir(): string {
-  return (
-    process.env.MILADY_STATE_DIR?.trim() ||
-    process.env.ELIZA_STATE_DIR?.trim() ||
-    join(homedir(), ".milady")
-  );
-}
 
 function curatedActiveDir(): string {
   return join(resolveStateDir(), "skills", "curated", "active");

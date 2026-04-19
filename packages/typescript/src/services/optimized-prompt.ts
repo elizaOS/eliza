@@ -29,11 +29,11 @@
 
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { logger } from "../logger.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import { Service } from "../types/service.js";
+import { resolveStateDir } from "../utils/state-dir.js";
 
 export const OPTIMIZED_PROMPT_SERVICE = "optimized_prompt";
 
@@ -105,14 +105,6 @@ export interface OptimizedPromptMetadata {
 	score: number;
 	baselineScore: number;
 	datasetSize: number;
-}
-
-function resolveStateDir(): string {
-	const candidate =
-		process.env.MILADY_STATE_DIR?.trim() ||
-		process.env.ELIZA_STATE_DIR?.trim() ||
-		join(homedir(), ".milady");
-	return candidate;
 }
 
 function defaultStoreRoot(): string {

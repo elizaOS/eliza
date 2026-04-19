@@ -10,8 +10,8 @@
  */
 
 import { mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 import {
 	exportTrajectoryTaskDatasets,
 	type TrajectoryTaskDatasetExport,
@@ -60,14 +60,6 @@ interface TrajectoryServiceLike {
 		limit?: number;
 	}) => Promise<{ trajectories: Array<{ id: string }> }>;
 	getTrajectoryDetail: (id: string) => Promise<FilterableTrajectory | null>;
-}
-
-function resolveStateDir(): string {
-	return (
-		process.env.MILADY_STATE_DIR?.trim() ||
-		process.env.ELIZA_STATE_DIR?.trim() ||
-		join(homedir(), ".milady")
-	);
 }
 
 function todaySegment(): string {
