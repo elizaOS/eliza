@@ -849,12 +849,21 @@ async function fixDtsExtensions(rootDir: string): Promise<void> {
 		if (/\.d\.ts$/.test(spec)) {
 			return spec.replace(/\.d\.ts$/, ".js");
 		}
-		// No extension. Determine whether the target is a directory (needs
-		// `/index.js`) or a sibling file (needs `.js`). We check against the
-		// already-emitted dist tree.
-		const candidateDir = path.resolve(fileDir, spec);
+		// No extension. Prefer a sibling `.js`/`.d.ts` if one exists — TypeScript
+		// resolves `utils.ts` over `utils/index.ts` when both are present, so
+		// after emit we must mirror that choice. We check `.d.ts` too because
+		// the runtime bundle may inline JS (so no sibling `.js` is emitted) but
+		// declarations are still written per file.
+		const resolved = path.resolve(fileDir, spec);
+		const siblingExists = await Promise.any([
+			fs.stat(`${resolved}.js`).then((s) => s.isFile()),
+			fs.stat(`${resolved}.d.ts`).then((s) => s.isFile()),
+		]).catch(() => false);
+		if (siblingExists) {
+			return `${spec}.js`;
+		}
 		const dirStat = await fs
-			.stat(candidateDir)
+			.stat(resolved)
 			.then((s) => s.isDirectory())
 			.catch(() => false);
 		return dirStat ? `${spec}/index.js` : `${spec}.js`;
