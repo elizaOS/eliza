@@ -17,6 +17,7 @@
 import { mkdirSync, copyFileSync, existsSync } from "node:fs";
 import { join, basename, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { resolveStateDir } from "@elizaos/core";
 
 export interface AtroposBackendOptions {
 	datasetPath: string;
@@ -38,11 +39,7 @@ function resolveDataDir(override?: string): string {
 	if (override) return override;
 	const fromEnv = process.env.ATROPOS_DATA_DIR?.trim();
 	if (fromEnv) return fromEnv;
-	const stateDir =
-		process.env.MILADY_STATE_DIR?.trim() ||
-		process.env.ELIZA_STATE_DIR?.trim() ||
-		join(process.env.HOME ?? "", ".milady");
-	return join(stateDir, "training", "atropos");
+	return join(resolveStateDir(), "training", "atropos");
 }
 
 export async function runAtroposBackend(

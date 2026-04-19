@@ -97,6 +97,11 @@ type CalendarReadSubaction =
   | "search_events"
   | "trip_window"
   | null;
+type CalendarLookupReadSubaction = "next_event" | "search_events";
+type CalendarMutationSubaction =
+  | "create_event"
+  | "update_event"
+  | "delete_event";
 
 type CalendarActionParams = {
   subaction?: CalendarSubaction;
@@ -357,6 +362,28 @@ function normalizeCalendarReadSubaction(
   return null;
 }
 
+function normalizeCalendarLookupReadSubaction(
+  value: unknown,
+): CalendarLookupReadSubaction | null {
+  if (value === "next_event" || value === "search_events") {
+    return value;
+  }
+  return null;
+}
+
+function normalizeCalendarMutationSubaction(
+  value: unknown,
+): CalendarMutationSubaction | null {
+  if (
+    value === "create_event" ||
+    value === "update_event" ||
+    value === "delete_event"
+  ) {
+    return value;
+  }
+  return null;
+}
+
 function normalizeCalendarReadResolution(
   parsed: Record<string, unknown> | null | undefined,
 ): { subaction: CalendarReadSubaction; tripLocation?: string } | null {
@@ -444,6 +471,117 @@ async function disambiguateCalendarReadPlanWithLlm(args: {
   }
 }
 
+async function resolveCalendarLookupBoundaryWithLlm(args: {
+  runtime: IAgentRuntime;
+  currentMessage: string;
+  intent: string;
+  recentConversation: string;
+  candidateSubaction: CalendarLookupReadSubaction;
+}): Promise<CalendarLookupReadSubaction | null> {
+  const prompt = [
+    "Resolve this calendar lookup intent.",
+    "The user may speak in any language.",
+    "Choose exactly one subaction: next_event or search_events.",
+    "next_event means the user wants only the single nearest upcoming meeting, appointment, or event.",
+    "search_events means the user wants to find matching calendar events by title, attendee, place, trip, keyword, or date.",
+    "If the request asks for the next upcoming meeting or appointment, prefer next_event even when the noun could also be searched.",
+    "If the request is about flights, dentists, people, trip plans, named events, or general event lookup, choose search_events.",
+    "",
+    "Examples:",
+    '  "What\'s my next meeting?" -> {"subaction":"next_event"}',
+    '  "When is my next appointment?" -> {"subaction":"next_event"}',
+    '  "次のミーティングはいつですか？" -> {"subaction":"next_event"}',
+    '  "¿Cuál es mi próxima reunión?" -> {"subaction":"next_event"}',
+    '  "find my return flight" -> {"subaction":"search_events"}',
+    '  "when is the dentist" -> {"subaction":"search_events"}',
+    '  "帰りの便を探して" -> {"subaction":"search_events"}',
+    "",
+    "Return ONLY valid JSON with exactly this field:",
+    "  subaction: next_event or search_events",
+    "",
+    `Current request: ${JSON.stringify(args.currentMessage)}`,
+    `Resolved intent: ${JSON.stringify(args.intent)}`,
+    `Recent conversation: ${JSON.stringify(args.recentConversation)}`,
+    `Current candidate: ${JSON.stringify(args.candidateSubaction)}`,
+  ].join("\n");
+
+  try {
+    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt,
+    });
+    const raw = typeof result === "string" ? result : "";
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(raw) ??
+      parseJSONObjectFromText(raw);
+    return normalizeCalendarLookupReadSubaction(parsed?.subaction);
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:calendar",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Calendar lookup boundary model call failed",
+    );
+    return null;
+  }
+}
+
+async function resolveCalendarMutationBoundaryWithLlm(args: {
+  runtime: IAgentRuntime;
+  currentMessage: string;
+  intent: string;
+  recentConversation: string;
+  candidateSubaction: CalendarSubaction | null;
+}): Promise<CalendarMutationSubaction | null> {
+  const prompt = [
+    "Resolve whether this calendar request is a mutation.",
+    "The user may speak in any language.",
+    "Choose exactly one subaction: create_event, update_event, delete_event, or null.",
+    "create_event means schedule, add, book, or put a new event on the calendar.",
+    "update_event means rename, reschedule, move, or otherwise edit an existing event.",
+    "delete_event means delete, cancel, remove, or clear an existing event.",
+    "Use null when the request is only reading the calendar, searching events, discussing plans, or asking for general help.",
+    "Prefer create_event when the user gives a time/date and asks to add or schedule a meeting or appointment, regardless of language.",
+    "",
+    "Examples:",
+    '  "Schedule a meeting with Alex at 3pm tomorrow" -> {"subaction":"create_event"}',
+    '  "Agenda una reunión con Alex mañana a las 3pm" -> {"subaction":"create_event"}',
+    '  "明日の午後3時にアレックスとのミーティングを入れて" -> {"subaction":"create_event"}',
+    '  "Reschedule the dentist to Friday" -> {"subaction":"update_event"}',
+    '  "Cambia la cita del dentista al viernes" -> {"subaction":"update_event"}',
+    '  "Delete the team meeting tomorrow" -> {"subaction":"delete_event"}',
+    '  "今日の予定は何ですか？" -> {"subaction":null}',
+    "",
+    "Return ONLY valid JSON with exactly this field:",
+    "  subaction: create_event, update_event, delete_event, or null",
+    "",
+    `Current request: ${JSON.stringify(args.currentMessage)}`,
+    `Resolved intent: ${JSON.stringify(args.intent)}`,
+    `Recent conversation: ${JSON.stringify(args.recentConversation)}`,
+    `Current candidate: ${JSON.stringify(args.candidateSubaction)}`,
+  ].join("\n");
+
+  try {
+    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt,
+    });
+    const raw = typeof result === "string" ? result : "";
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(raw) ??
+      parseJSONObjectFromText(raw);
+    return normalizeCalendarMutationSubaction(parsed?.subaction);
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:calendar",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Calendar mutation boundary model call failed",
+    );
+    return null;
+  }
+}
+
 async function finalizeCalendarPlan(args: {
   runtime: IAgentRuntime;
   currentMessage: string;
@@ -452,6 +590,31 @@ async function finalizeCalendarPlan(args: {
   plan: CalendarLlmPlan | null;
 }): Promise<CalendarLlmPlan> {
   const { runtime, currentMessage, intent, recentConversation, plan } = args;
+  if (
+    plan?.subaction !== "create_event" &&
+    plan?.subaction !== "update_event" &&
+    plan?.subaction !== "delete_event"
+  ) {
+    const mutationSubaction = await resolveCalendarMutationBoundaryWithLlm({
+      runtime,
+      currentMessage,
+      intent,
+      recentConversation,
+      candidateSubaction: plan?.subaction ?? null,
+    });
+    if (mutationSubaction) {
+      return {
+        ...(plan ?? {
+          queries: [],
+          shouldAct: null,
+        }),
+        subaction: mutationSubaction,
+        shouldAct: true,
+        response: undefined,
+      };
+    }
+  }
+
   if (!shouldDisambiguateCalendarReadPlan(plan)) {
     return (
       plan ?? {
@@ -480,10 +643,27 @@ async function finalizeCalendarPlan(args: {
     );
   }
 
+  let finalReadSubaction = resolvedReadPlan.subaction;
+  if (
+    finalReadSubaction === "next_event" ||
+    finalReadSubaction === "search_events"
+  ) {
+    const boundarySubaction = await resolveCalendarLookupBoundaryWithLlm({
+      runtime,
+      currentMessage,
+      intent,
+      recentConversation,
+      candidateSubaction: finalReadSubaction,
+    });
+    if (boundarySubaction) {
+      finalReadSubaction = boundarySubaction;
+    }
+  }
+
   if (plan) {
     return {
       ...plan,
-      subaction: resolvedReadPlan.subaction,
+      subaction: finalReadSubaction,
       tripLocation: resolvedReadPlan.tripLocation ?? plan.tripLocation,
       queries: dedupeCalendarQueries([
         ...plan.queries,
@@ -495,7 +675,7 @@ async function finalizeCalendarPlan(args: {
   }
 
   return {
-    subaction: resolvedReadPlan.subaction,
+    subaction: finalReadSubaction,
     queries: dedupeCalendarQueries([resolvedReadPlan.tripLocation]),
     shouldAct: true,
     tripLocation: resolvedReadPlan.tripLocation,
@@ -960,6 +1140,48 @@ function buildLocalDayRange(
   );
 }
 
+function formatExplicitCalendarDateLabel(args: {
+  date: LocalDateOnly;
+  timeZone: string;
+}): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: args.timeZone,
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(
+    buildUtcDateFromLocalParts(args.timeZone, {
+      year: args.date.year,
+      month: args.date.month,
+      day: args.date.day,
+      hour: 12,
+      minute: 0,
+      second: 0,
+    }),
+  );
+}
+
+function resolveExplicitCalendarDateWindow(
+  intent: string,
+  timeZone: string,
+): { timeMin: string; timeMax: string; label: string } | null {
+  const explicitDate = parseExplicitLocalDate(intent, timeZone);
+  if (!explicitDate) {
+    return null;
+  }
+  return {
+    ...buildLocalDateRange(
+      timeZone,
+      explicitDate,
+      addDaysToLocalDate(explicitDate, 1),
+    ),
+    label: `on ${formatExplicitCalendarDateLabel({
+      date: explicitDate,
+      timeZone,
+    })}`,
+  };
+}
+
 function compareLocalDates(left: LocalDateOnly, right: LocalDateOnly): number {
   if (left.year !== right.year) {
     return left.year - right.year;
@@ -1286,13 +1508,14 @@ function buildWideLookupRange(timeZone: string): {
 }
 
 function resolveCalendarWindow(
-  _intent: string,
+  intent: string,
   details: Record<string, unknown> | undefined,
   forSearch: boolean,
   llmPlan?: CalendarLlmPlan,
 ): {
   request: GetLifeOpsCalendarFeedRequest;
   label: string;
+  explicitWindow: boolean;
 } {
   const timeMin = detailString(details, "timeMin");
   const timeMax = detailString(details, "timeMax");
@@ -1309,6 +1532,7 @@ function resolveCalendarWindow(
         forceSync,
       },
       label: detailString(details, "label") ?? "for the requested window",
+      explicitWindow: true,
     };
   }
 
@@ -1323,6 +1547,22 @@ function resolveCalendarWindow(
         timeMax: llmWindow.timeMax,
       },
       label: llmWindow.label,
+      explicitWindow: true,
+    };
+  }
+
+  const explicitDateWindow = resolveExplicitCalendarDateWindow(intent, timeZone);
+  if (explicitDateWindow) {
+    return {
+      request: {
+        calendarId,
+        timeZone,
+        forceSync,
+        timeMin: explicitDateWindow.timeMin,
+        timeMax: explicitDateWindow.timeMax,
+      },
+      label: explicitDateWindow.label,
+      explicitWindow: true,
     };
   }
 
@@ -1337,6 +1577,7 @@ function resolveCalendarWindow(
         ...buildLocalDayRange(timeZone, 0, days),
       },
       label: `across the next ${days} days`,
+      explicitWindow: false,
     };
   }
 
@@ -1348,6 +1589,7 @@ function resolveCalendarWindow(
       ...buildLocalDayRange(timeZone, 0, 1),
     },
     label: "today",
+    explicitWindow: false,
   };
 }
 
@@ -1607,6 +1849,64 @@ function resolveCalendarSearchQueries(args: {
     ...(args.llmPlan?.queries ?? []),
     ...(args.fallbackQueries ?? []),
   ]);
+}
+
+async function recoverCalendarSearchQueriesWithLlm(args: {
+  runtime: IAgentRuntime;
+  currentMessage: string;
+  intent: string;
+  recentConversation: string;
+}): Promise<string[]> {
+  const prompt = [
+    "Extract up to 3 short calendar search queries from this request.",
+    "Return ONLY valid JSON with this shape:",
+    '  {"queries":["query one","query two"]}',
+    "",
+    "Rules:",
+    "- Queries should be short people, places, trip labels, flight labels, appointment names, or other event lookup phrases.",
+    "- Do not return generic filler like calendar, event, schedule, search, what, tell me, or do i have.",
+    "- When the user is only asking for the agenda on a date or date range and there is no separate search target, return an empty array.",
+    "- The user may speak in any language.",
+    "",
+    "Examples:",
+    '  "do i have any flights to denver" -> {"queries":["flights to denver","denver"]}',
+    '  "puedes buscar si tengo un vuelo a denver" -> {"queries":["vuelo a denver","denver"]}',
+    '  "what event do i have on March 5" -> {"queries":[]}',
+    "",
+    `Current request: ${JSON.stringify(args.currentMessage)}`,
+    `Resolved intent: ${JSON.stringify(args.intent)}`,
+    `Recent conversation: ${JSON.stringify(args.recentConversation)}`,
+  ].join("\n");
+
+  try {
+    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt,
+    });
+    const raw = typeof result === "string" ? result : "";
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(raw) ??
+      parseJSONObjectFromText(raw);
+    if (!parsed) {
+      return [];
+    }
+    const rawQueries = Array.isArray(parsed.queries)
+      ? parsed.queries
+      : typeof parsed.queries === "string"
+        ? parsed.queries.split(/\s*\|\|\s*|,|\n/)
+        : [];
+    return dedupeCalendarQueries(
+      rawQueries.filter((value): value is string => typeof value === "string"),
+    );
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:calendar",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Calendar search query recovery model call failed",
+    );
+    return [];
+  }
 }
 
 function normalizeIsShortPreparationFlag(value: unknown): boolean {
@@ -2403,6 +2703,16 @@ async function groundCalendarSearchMatchesWithLlm(
   }
 }
 
+function buildCalendarGroundingCandidates(
+  events: LifeOpsCalendarEvent[],
+): RankedCalendarSearchCandidate[] {
+  return events.slice(0, 24).map((event, index) => ({
+    event,
+    score: Math.max(1, 24 - index),
+    matchedQueries: [],
+  }));
+}
+
 function eventStartMs(event: LifeOpsCalendarEvent): number {
   return Date.parse(event.startAt);
 }
@@ -2605,7 +2915,8 @@ export const calendarAction: Action & {
     "DO NOT use this action when the user is only making an observation like 'my calendar has been crazy this quarter' unless they actually ask you to inspect or change calendar state. " +
     "DO NOT use this action for email inbox work, drafting or sending emails — use GMAIL_ACTION instead. " +
     "DO NOT use this action for personal habits, goals, routines, or reminders — use LIFE instead. " +
-    "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",
+    "This action provides the final grounded reply; do not pair it with a speculative REPLY action." +
+    " DO NOT use this action when the user asks to 'help schedule' / 'set up' / 'find a time for' a meeting with a person or team without a specific time — that is SCHEDULING (subaction start). DO NOT use this action to 'propose', 'suggest', or 'offer' meeting time slots — that is PROPOSE_MEETING_TIMES. Use CALENDAR_ACTION only when the user specifies (or intends to specify) a concrete date/time for the event.",
   descriptionCompressed: "Google Calendar via LifeOps: view schedule, search events, create events, query travel. Not for email or habits.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
@@ -2636,6 +2947,7 @@ export const calendarAction: Action & {
       | undefined;
     const params = rawParams ?? ({} as CalendarActionParams);
     const intent = resolveCalendarIntentInput(params.intent, message);
+    const currentMessageText = messageText(message).trim();
     const details = normalizeCalendarDetails(params.details);
     const planningTimeZone = resolveCalendarTimeZone(details);
     const llmPlan = await extractCalendarPlanWithLlm(
@@ -3379,6 +3691,7 @@ export const calendarAction: Action & {
       );
       const request = baseResolved.request;
       const label = baseResolved.label;
+      const hasExplicitWindow = baseResolved.explicitWindow;
       const feed = await service.getCalendarFeed(INTERNAL_URL, {
         mode: detailString(details, "mode") as
           | "local"
@@ -3391,8 +3704,91 @@ export const calendarAction: Action & {
       });
 
       if (subaction === "search_events") {
-        const query = searchQueries[0];
-        if (!query || searchQueries.length === 0) {
+        let queriesForSearch = searchQueries;
+        const recentConversation = (
+          await collectRecentConversationTexts({
+            runtime,
+            message,
+            state,
+            limit: 8,
+          })
+        ).join("\n");
+        if (queriesForSearch.length === 0) {
+          queriesForSearch = await recoverCalendarSearchQueriesWithLlm({
+            runtime,
+            currentMessage: currentMessageText,
+            intent,
+            recentConversation,
+          });
+          if (queriesForSearch.length === 0) {
+            const groundedFromFeed = await groundCalendarSearchMatchesWithLlm(
+              runtime,
+              state,
+              intent,
+              [],
+              buildCalendarGroundingCandidates(feed.events),
+            );
+            if (groundedFromFeed && groundedFromFeed.length > 0) {
+              const groundedIdSet = new Set(groundedFromFeed);
+              const filteredEvents = feed.events.filter((event) =>
+                groundedIdSet.has(event.id),
+              );
+              const fallback = formatCalendarSearchResults(
+                filteredEvents,
+                currentMessageText || intent || "your request",
+                label,
+              );
+              return respond({
+                success: true,
+                text: await renderReply("search_results", fallback, {
+                  query: currentMessageText || intent,
+                  queries: [],
+                  events: filteredEvents,
+                  label,
+                }),
+                data: toActionData({
+                  ...feed,
+                  query: currentMessageText || intent,
+                  queries: [],
+                  events: filteredEvents,
+                }),
+              });
+            }
+            const recoveredReadPlan =
+              await disambiguateCalendarReadPlanWithLlm({
+                runtime,
+                currentMessage: currentMessageText,
+                intent,
+                recentConversation,
+                candidateSubaction: "search_events",
+              });
+            if (recoveredReadPlan?.subaction === "feed") {
+              const fallback = formatCalendarFeed(feed, label);
+              return respond({
+                success: true,
+                text: await renderReply("feed_results", fallback, {
+                  label,
+                  events: feed.events,
+                }),
+                data: toActionData(feed),
+              });
+            }
+          }
+        }
+
+        const query = queriesForSearch[0];
+        if (!query || queriesForSearch.length === 0) {
+          if (hasExplicitWindow) {
+            const fallback = formatCalendarFeed(feed, label);
+            return respond({
+              success: true,
+              text: await renderReply("feed_results", fallback, {
+                label,
+                events: feed.events,
+              }),
+              data: toActionData(feed),
+            });
+          }
           return respond({
             success: false,
             text: await renderReply(
@@ -3408,7 +3804,7 @@ export const calendarAction: Action & {
           .map((event) => {
             const matchedQueries: string[] = [];
             let score = 0;
-            for (const candidateQuery of searchQueries) {
+            for (const candidateQuery of queriesForSearch) {
               const queryScore = scoreCalendarEvent(event, candidateQuery);
               if (queryScore > 0) {
                 matchedQueries.push(candidateQuery);
@@ -3443,7 +3839,7 @@ export const calendarAction: Action & {
             runtime,
             state,
             intent,
-            searchQueries,
+            queriesForSearch,
             rankedEvents.slice(0, 6),
           );
           if (groundedIds) {
@@ -3451,6 +3847,23 @@ export const calendarAction: Action & {
             filteredEvents = rankedEvents
               .filter((candidate) => groundedIdSet.has(candidate.event.id))
               .map((candidate) => candidate.event);
+          }
+        }
+        if (filteredEvents.length === 0 && feed.events.length > 0) {
+          const groundedIds = await groundCalendarSearchMatchesWithLlm(
+            runtime,
+            state,
+            intent,
+            queriesForSearch,
+            rankedEvents.length > 0
+              ? rankedEvents.slice(0, 12)
+              : buildCalendarGroundingCandidates(feed.events),
+          );
+          if (groundedIds && groundedIds.length > 0) {
+            const groundedIdSet = new Set(groundedIds);
+            filteredEvents = feed.events.filter((event) =>
+              groundedIdSet.has(event.id),
+            );
           }
         }
         const fallback = formatCalendarSearchResults(
@@ -3462,14 +3875,14 @@ export const calendarAction: Action & {
           success: true,
           text: await renderReply("search_results", fallback, {
             query,
-            queries: searchQueries,
+            queries: queriesForSearch,
             events: filteredEvents,
             label,
           }),
           data: toActionData({
             ...feed,
             query,
-            queries: searchQueries,
+            queries: queriesForSearch,
             events: filteredEvents,
           }),
         });

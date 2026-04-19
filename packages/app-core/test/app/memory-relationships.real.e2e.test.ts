@@ -14,12 +14,14 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { resolveLiveBrowserExecutable } from "../../../../../test/helpers/browser-executable";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
 import {
   buildIsolatedLiveProviderEnv,
   selectLiveProvider,
 } from "../../../../../test/helpers/live-provider";
 import { buildOnboardingRuntimeConfig } from "../../src/onboarding-config";
+import { resolveNodeCmd } from "../scripts/managed-test-command.mjs";
 
 const DEFAULT_UI_URL = stripTrailingSlash(
   process.env.ELIZA_LIVE_UI_URL ??
@@ -35,12 +37,11 @@ const API_TOKEN =
   process.env.ELIZA_API_TOKEN?.trim() ??
   process.env.ELIZA_API_TOKEN?.trim() ??
   "";
-const CHROME_PATH =
-  process.env.ELIZA_CHROME_PATH ??
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const LIVE_BROWSER = resolveLiveBrowserExecutable();
+const CHROME_PATH = LIVE_BROWSER.executablePath;
 const LIVE_TESTS_ENABLED =
   process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
-const CHROME_AVAILABLE = existsSync(CHROME_PATH);
+const CHROME_AVAILABLE = CHROME_PATH !== null && existsSync(CHROME_PATH);
 const LIVE_PROVIDER =
   (LIVE_TESTS_ENABLED && selectLiveProvider("openai")) ||
   (LIVE_TESTS_ENABLED ? selectLiveProvider() : null);
@@ -107,6 +108,7 @@ type StartedStack = {
 };
 
 let browser: Browser | null = null;
+let browserProfileDir: string | null = null;
 let liveStack: StartedStack | null = null;
 let uiUrl = DEFAULT_UI_URL;
 let apiUrl = DEFAULT_API_URL;
@@ -115,7 +117,7 @@ const describeLive = describeIf(LIVE_TESTS_ENABLED && CHROME_AVAILABLE);
 
 if (LIVE_TESTS_ENABLED && !CHROME_AVAILABLE) {
   console.info(
-    `[live-memory-relationships] Chrome not found at ${CHROME_PATH}; suite unavailable until a real browser is installed there or ELIZA_CHROME_PATH is set.`,
+    `[live-memory-relationships] Browser executable unavailable via ${LIVE_BROWSER.source}; suite unavailable until a real browser is installed or ELIZA_CHROME_PATH is set.`,
   );
 }
 
@@ -134,20 +136,18 @@ describeLive("Live memory + relationships browser E2E", () => {
     apiUrl = stripTrailingSlash(liveStack.apiBase);
     await ensureHttpOk(`${uiUrl}/`);
     await ensureHttpOk(`${apiUrl}/api/status`);
-    browser = await puppeteer.launch({
-      executablePath: CHROME_PATH,
-      headless: true,
-      protocolTimeout: 180_000,
-      args: [
-        "--disable-background-timer-throttling",
-        "--disable-renderer-backgrounding",
-        "--use-angle=swiftshader",
-      ],
-    });
+    browserProfileDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-memory-browser-"),
+    );
+    browser = await launchMemoryBrowser(browserProfileDir);
   }, 120_000);
 
   afterAll(async () => {
     await browser?.close();
+    if (browserProfileDir) {
+      await fs.rm(browserProfileDir, { recursive: true, force: true });
+      browserProfileDir = null;
+    }
     await stopRealStack(liveStack);
     liveStack = null;
   }, 30_000);
@@ -274,6 +274,40 @@ function ensureBrowser(current: Browser | null): Browser {
 
 function stripTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
+}
+
+async function launchMemoryBrowser(userDataDir: string): Promise<Browser> {
+  if (!CHROME_PATH) {
+    throw new Error(
+      `Memory browser executable unavailable via ${LIVE_BROWSER.source}.`,
+    );
+  }
+
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await puppeteer.launch({
+        executablePath: CHROME_PATH,
+        headless: true,
+        protocolTimeout: 180_000,
+        userDataDir,
+        args: [
+          "--disable-background-timer-throttling",
+          "--disable-renderer-backgrounding",
+          "--disable-dev-shm-usage",
+          "--use-angle=swiftshader",
+        ],
+      });
+    } catch (error) {
+      lastError = error;
+      await sleep(1000 * (attempt + 1));
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Failed to launch memory browser");
 }
 
 async function ensureHttpOk(url: string): Promise<void> {
@@ -840,10 +874,11 @@ async function startRealStack(): Promise<StartedStack> {
   const apiBase = `http://127.0.0.1:${apiPort}`;
 
   const apiChild = spawn(
-    "node",
+    resolveNodeCmd(),
     [
-      path.join(REPO_ROOT, "eliza/packages/app-core/scripts/run-node-tsx.mjs"),
-      path.join(REPO_ROOT, "eliza/packages/app-core/src/runtime/eliza.ts"),
+      "--import",
+      "tsx",
+      path.join(REPO_ROOT, "eliza/packages/app-core/src/runtime/dev-server.ts"),
     ],
     {
       cwd: REPO_ROOT,

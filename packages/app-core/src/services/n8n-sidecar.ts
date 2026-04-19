@@ -56,6 +56,15 @@ export interface N8nSidecarState {
   errorMessage: string | null;
   pid: number | null;
   retries: number;
+  /**
+   * Last ~40 lines of the child's stdout+stderr, most recent last. Surfaced
+   * so the UI / `/api/n8n/status` can show the real n8n boot output when
+   * the supervisor is stuck in "starting" or has landed in "error". Without
+   * this, the sidecar was a black box: we'd see "not ready" forever with
+   * no way to tell whether bunx was downloading, n8n was migrating, or the
+   * process had crashed on a missing binary.
+   */
+  recentOutput: string[];
 }
 
 export interface N8nSidecarConfig {
@@ -67,11 +76,35 @@ export interface N8nSidecarConfig {
   startPort?: number;
   /** Bind host for the child. Default 127.0.0.1. */
   host?: string;
-  /** Binary used to run n8n. Default "bunx". */
+  /**
+   * Binary used to run n8n. Default "npx".
+   *
+   * Why not "bunx"? bunx invokes n8n through Bun's runtime / shim, which
+   * fails two different ways depending on the n8n version:
+   *   1. n8n@1.70.x: bunx resolves `node` via $PATH before reading the
+   *      package's `engines` field. On macOS with Homebrew that's v24,
+   *      which 1.70 rejects ("Node.js version 24.5.0 is currently not
+   *      supported").
+   *   2. n8n@1.108.x: bunx runs n8n under Bun's runtime which does not
+   *      fully implement the `reflect-metadata` + TSyringe decorator
+   *      pattern n8n relies on for DI, failing at bootstrap with
+   *      "[DI] ErrorReporter is not decorated with Service".
+   * `npx --yes` uses npm's cache and execs n8n under the expected Node
+   * runtime, which works across every n8n + Node combo we care about.
+   */
   binary?: string;
   /** State directory root; owner email/password + sqlite live here. */
   stateDir?: string;
-  /** Readiness probe timeout in ms. Default 60000. */
+  /**
+   * Readiness probe timeout in ms. Default 180000 (3 minutes).
+   *
+   * First-run `bunx n8n@<pinned>` has to download the full n8n tree
+   * (~300MB) before it can boot. On a typical home connection that's
+   * 30–90s of download plus 15–30s of n8n boot. 60s was not enough —
+   * bump to 3 minutes so cold starts land inside the probe window on
+   * every desktop platform. Subsequent boots hit the bunx cache and
+   * finish in <10s, well inside this budget.
+   */
   readinessTimeoutMs?: number;
   /** Interval between readiness probes. Default 750ms. */
   readinessIntervalMs?: number;
@@ -127,12 +160,34 @@ type Listener = (state: N8nSidecarState) => void;
 
 // ── Implementation ───────────────────────────────────────────────────────────
 
-// TODO pin on release — validated via `npm view n8n version` before ship.
-const DEFAULT_N8N_VERSION = "1.70.0";
+// n8n version selection — this range is narrower than it looks.
+//
+//   1.70.x  declares `engines.node: ">=18.17 <= 22"` — rejects Node 23/24
+//           (which is what Homebrew ships). Fails at boot with
+//           "Node.js version 24.5.0 is currently not supported".
+//   1.99.0  widens to ">=20.19 <= 24.x" and boots cleanly under Node 24 ✓
+//   1.100.0 same engines range, boots cleanly ✓
+//   1.108.0 has a DI-container bootstrap regression — throws
+//           "[DI] GlobalConfig is not decorated with Service" under every
+//           launcher (npx, npm install + node, bunx). Confirmed broken on
+//           both Node 22 and Node 24. See upstream n8n issue.
+//
+// 1.100.0 is the last version I verified end-to-end against Node 24 +
+// npx --yes on 2026-04-19. Bump only with a re-run of the smoke test in
+// docs/apps/n8n-sidecar.md. Validate `engines.node` via
+// `npm view n8n@<v> engines`.
+const DEFAULT_N8N_VERSION = "1.100.0";
 const DEFAULT_START_PORT = 5678;
 const DEFAULT_HOST = "127.0.0.1";
-const DEFAULT_BINARY = "bunx";
-const DEFAULT_PROBE_TIMEOUT_MS = 60_000;
+// Spawn n8n via `npx --yes n8n@<pinned>`. See `binary?` docs for why bunx
+// is broken (Node-version mismatch + Bun runtime breaks tsyringe decorators).
+const DEFAULT_BINARY = "npx";
+// First-run `npx n8n@<pinned>` downloads ~300MB of n8n + nodes into the
+// npm cache before boot. On a typical home connection that's 60–120s of
+// download plus 15–30s of n8n boot. Keep 180s so the first-run path
+// reliably lands inside the probe window on every desktop platform.
+// Warm starts hit the npm cache and finish well under this budget.
+const DEFAULT_PROBE_TIMEOUT_MS = 180_000;
 const DEFAULT_PROBE_INTERVAL_MS = 750;
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BACKOFF_BASE_MS = 2_000;
@@ -285,6 +340,29 @@ function fingerprint(secret: string): string {
   return `${secret.slice(0, 4)}…${secret.slice(-2)} (len=${secret.length})`;
 }
 
+/**
+ * Extract the n8n-auth cookie from a `Response` for re-use on subsequent
+ * calls. Returns a ready-to-send `Cookie:` header value, or null if the
+ * response didn't set one. Tolerates fetch implementations that expose
+ * multiple Set-Cookie values through `getSetCookie()` (Node 20.18+) or
+ * a single joined `set-cookie` header (older runtimes and the test fetch
+ * mock we use in unit tests).
+ */
+function extractAuthCookie(res: Response): string | null {
+  const headers = res.headers as Headers & { getSetCookie?: () => string[] };
+  const list =
+    typeof headers.getSetCookie === "function"
+      ? headers.getSetCookie()
+      : ((headers.get("set-cookie") ?? "")
+          .split(/,(?=\s*[\w-]+=)/)
+          .filter((s) => s.length > 0));
+  for (const raw of list) {
+    const first = raw.split(";")[0]?.trim();
+    if (first?.startsWith("n8n-auth=")) return first;
+  }
+  return null;
+}
+
 type ResolvedConfig = Required<
   Omit<N8nSidecarConfig, "onStatusChange" | "onLog">
 > &
@@ -318,7 +396,15 @@ export class N8nSidecar {
     errorMessage: null,
     pid: null,
     retries: 0,
+    recentOutput: [],
   };
+  // 40 was too small — n8n's migration output alone is ~60 stdout lines on a
+  // cold boot, which evicts every preceding error/log from the buffer before
+  // the UI can read it. Sized to comfortably hold migrations + the api-key
+  // provisioning trace + a reasonable error tail.
+  private static readonly RECENT_OUTPUT_CAP = 200;
+  /** Ring buffer of the child's recent stdout/stderr lines (see state.recentOutput). */
+  private recentOutput: string[] = [];
   private child: ChildProcess | null = null;
   /** Cached API key — secret, never logged, never serialized via getState(). */
   private apiKey: string | null = null;
@@ -593,8 +679,10 @@ export class N8nSidecar {
   private async spawnChild(port: number): Promise<void> {
     // n8n reads N8N_USER_MANAGEMENT_DISABLED to skip the owner-setup flow
     // on first boot; we pair it with a random owner email so no real user
-    // data is needed. Using `bunx n8n@<pinned>` avoids adding n8n as a
-    // package.json dep — bun caches the install globally.
+    // data is needed. Using `npx n8n@<pinned>` pulls from the shared npm
+    // cache and runs under the native Node runtime, which n8n's DI stack
+    // depends on (bunx breaks both the Node version check for 1.70 and the
+    // tsyringe decorator handling for 1.100+ — see `binary?` docs above).
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       N8N_PORT: String(port),
@@ -611,41 +699,80 @@ export class N8nSidecar {
     };
 
     const versioned = `n8n@${this.config.version}`;
-    const child = this.deps.spawn(
-      this.config.binary,
-      ["--", versioned, "start"],
-      {
-        env,
-        stdio: ["ignore", "pipe", "pipe"],
-        detached: false,
-      },
-    );
+    // Arg style depends on the launcher:
+    //   npx:  --yes <pkg> <args...>   (auto-confirm install prompt)
+    //   bunx: -- <pkg> <args...>       (still supported for manual overrides)
+    // Anything else is passed through as <pkg> <args...>.
+    const binaryBase = this.config.binary.split("/").pop() ?? this.config.binary;
+    const launcherArgs =
+      binaryBase === "npx"
+        ? ["--yes", versioned, "start"]
+        : binaryBase === "bunx"
+          ? ["--", versioned, "start"]
+          : [versioned, "start"];
+    const child = this.deps.spawn(this.config.binary, launcherArgs, {
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: false,
+    });
 
     this.child = child;
     this.setState({ pid: child.pid ?? null });
 
-    child.stdout?.on("data", (buf: Buffer) => {
-      // n8n log lines are noisy; surface at debug only.
-      const line = buf.toString().trimEnd();
-      logger.debug(`[n8n-sidecar:stdout] ${line}`);
-      try {
-        this.config.onLog?.(line, "stdout");
-      } catch {
-        /* ignore */
+    const captureOutput = (chunk: Buffer, stream: "stdout" | "stderr") => {
+      const text = chunk.toString();
+      for (const line of text.split("\n")) {
+        const trimmed = line.trimEnd();
+        if (!trimmed) continue;
+        this.recordOutput(`[${stream}] ${trimmed}`);
+        // Surface n8n errors at warn so they land in the dev-server log even
+        // when debug is off — the sidecar was silent before when n8n died.
+        if (stream === "stderr") {
+          logger.warn(`[n8n-sidecar:stderr] ${trimmed}`);
+        } else {
+          logger.debug(`[n8n-sidecar:stdout] ${trimmed}`);
+        }
+        try {
+          this.config.onLog?.(trimmed, stream);
+        } catch {
+          /* ignore */
+        }
       }
-    });
-    child.stderr?.on("data", (buf: Buffer) => {
-      const line = buf.toString().trimEnd();
-      logger.debug(`[n8n-sidecar:stderr] ${line}`);
-      try {
-        this.config.onLog?.(line, "stderr");
-      } catch {
-        /* ignore */
-      }
+    };
+    child.stdout?.on("data", (buf: Buffer) => captureOutput(buf, "stdout"));
+    child.stderr?.on("data", (buf: Buffer) => captureOutput(buf, "stderr"));
+    // Pre-emptively reap the zombie: without an exit listener attached from
+    // the moment we spawn, a child that dies while we're in probeReadiness
+    // can linger as <defunct> because Node only waitpid()'s when something
+    // is listening. This handler is unconditional — waitForChildExit attaches
+    // its own once('exit') for supervisor-level signalling.
+    child.on("exit", (code, signal) => {
+      const summary =
+        code !== null
+          ? `exit code ${code}`
+          : signal !== null
+            ? `signal ${signal}`
+            : "exit (no code/signal)";
+      this.recordOutput(`[exit] n8n child ${summary}`);
     });
     child.on("error", (err: Error) => {
+      this.recordOutput(`[error] spawn error: ${err.message}`);
       logger.warn(`[n8n-sidecar] spawn error: ${err.message}`);
     });
+  }
+
+  /** Push a line into the bounded recent-output buffer and publish. */
+  private recordOutput(line: string): void {
+    this.recentOutput.push(line);
+    if (this.recentOutput.length > N8nSidecar.RECENT_OUTPUT_CAP) {
+      this.recentOutput.splice(
+        0,
+        this.recentOutput.length - N8nSidecar.RECENT_OUTPUT_CAP,
+      );
+    }
+    this.state = { ...this.state, recentOutput: [...this.recentOutput] };
+    // Don't re-emit on every line — that would spam listeners. The buffer
+    // is snapshotted on every setState() call and served by getState().
   }
 
   /**
@@ -722,6 +849,17 @@ export class N8nSidecar {
 
     while (Date.now() < deadline) {
       if (this.stopping) return false;
+      // If the child died mid-probe, keep polling is pointless — the port
+      // will never open. Fail fast so the supervisor surfaces the error and
+      // kicks off the next retry (with captured stderr in recentOutput).
+      // Uses `typeof === "number"` rather than `!== null` so this tolerates
+      // test fakes whose exitCode is undefined while still running.
+      const child = this.child;
+      if (child && typeof child.exitCode === "number") {
+        throw new Error(
+          `n8n child exited with code ${child.exitCode} before readiness probe succeeded`,
+        );
+      }
       try {
         const res = await this.deps.fetch(url, {
           method: "GET",
@@ -808,22 +946,66 @@ export class N8nSidecar {
   }
 
   /**
-   * Provision a personal API key via n8n's internal REST endpoint. With
-   * user management disabled, n8n accepts unauthenticated calls to
-   * `/rest/me/api-keys`. If the pinned version rejects this flow (newer
-   * n8n versions moved to an auth-required flow), we return null and
-   * the caller must fall back to the JWT path documented in-file.
+   * Provision an API key by driving n8n's owner-setup → login → api-key flow.
+   *
+   * n8n ≥ 1.90-ish removed the anonymous `/rest/me/api-keys` endpoint. The
+   * supported path now requires:
+   *   1. POST /rest/owner/setup   { email, firstName, lastName, password }
+   *      – returns `Set-Cookie: n8n-auth=<JWT>` when no owner exists yet.
+   *   2. POST /rest/login         { emailOrLdapLoginId, password }
+   *      – returns the same cookie on restarts, once the owner is set.
+   *   3. GET  /rest/api-keys/scopes
+   *      – enumerates the scopes the current role is allowed to grant.
+   *   4. POST /rest/api-keys      { label, scopes, expiresAt: null }
+   *      – returns `data.rawApiKey` which stays valid across restarts until
+   *        explicitly revoked.
+   *
+   * Credentials are persisted to `{stateDir}/owner.json` (mode-600) so the
+   * same login works on every subsequent boot; we never re-generate. Password
+   * is random per install — there's no user-facing n8n UI flow in Milady, so
+   * storing it here is safe for a local single-user sidecar.
    */
   private async provisionApiKey(host: string): Promise<string | null> {
+    const log = (msg: string) => {
+      // Route through both the central logger and the sidecar's recentOutput
+      // ring so operators can see the failure in /api/n8n/status even if the
+      // dev-server log rotates or gets lost. The strings never contain the
+      // raw API key (that's fingerprinted at the ensureApiKey callsite).
+      logger.warn(`[n8n-sidecar] ${msg}`);
+      this.recordOutput(`[provisionApiKey] ${msg}`);
+    };
     try {
-      const res = await this.deps.fetch(`${host}/rest/me/api-keys`, {
+      const owner = await this.loadOrCreateOwnerCreds();
+      const cookie = await this.acquireOwnerCookie(host, owner, log);
+      if (!cookie) {
+        log("acquireOwnerCookie returned null — cannot create api key");
+        return null;
+      }
+
+      const scopes = await this.fetchApiKeyScopes(host, cookie);
+      if (!scopes || scopes.length === 0) {
+        log("/rest/api-keys/scopes returned no scopes");
+        return null;
+      }
+
+      const res = await this.deps.fetch(`${host}/rest/api-keys`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ label: "milady-sidecar" }),
+        headers: {
+          "content-type": "application/json",
+          cookie,
+        },
+        body: JSON.stringify({
+          label: "milady-sidecar",
+          scopes,
+          expiresAt: null,
+        }),
         signal: AbortSignal.timeout(5_000),
       });
       if (!res.ok) {
-        // 401/403/404 → endpoint disabled or moved; caller falls back.
+        const bodyText = await res.text().catch(() => "");
+        log(
+          `api-key create failed: ${res.status} ${res.statusText}${bodyText ? ` — ${bodyText.slice(0, 200)}` : ""}`,
+        );
         return null;
       }
       const body = (await res.json()) as {
@@ -831,16 +1013,185 @@ export class N8nSidecar {
         rawApiKey?: string;
         apiKey?: string;
       };
-      return (
+      const key =
         body.data?.rawApiKey ??
         body.data?.apiKey ??
         body.rawApiKey ??
         body.apiKey ??
-        null
+        null;
+      if (!key) {
+        log("api-key create returned no rawApiKey in body");
+      }
+      return key;
+    } catch (err) {
+      log(
+        `provisionApiKey threw: ${err instanceof Error ? err.message : String(err)}`,
       );
+      return null;
+    }
+  }
+
+  /**
+   * Load owner credentials from `{stateDir}/owner.json`, or generate a fresh
+   * pair and persist them mode-600. The email is deterministic (matches the
+   * label we show to the user); the password is a long random token.
+   */
+  private async loadOrCreateOwnerCreds(): Promise<{
+    email: string;
+    firstName: string;
+    lastName: string;
+    password: string;
+  }> {
+    const ownerPath = path.join(this.config.stateDir, "owner.json");
+    try {
+      const raw = await fs.readFile(ownerPath, "utf-8");
+      const parsed = JSON.parse(raw) as {
+        email?: unknown;
+        firstName?: unknown;
+        lastName?: unknown;
+        password?: unknown;
+      };
+      if (
+        typeof parsed.email === "string" &&
+        typeof parsed.password === "string" &&
+        parsed.email.length > 0 &&
+        parsed.password.length > 0
+      ) {
+        return {
+          email: parsed.email,
+          firstName:
+            typeof parsed.firstName === "string" ? parsed.firstName : "Milady",
+          lastName:
+            typeof parsed.lastName === "string" ? parsed.lastName : "Local",
+          password: parsed.password,
+        };
+      }
+    } catch {
+      /* fall through to generate fresh */
+    }
+
+    const password = this.generateRandomPassword();
+    const creds = {
+      email: "milady@milady.local",
+      firstName: "Milady",
+      lastName: "Local",
+      password,
+    };
+    try {
+      await fs.mkdir(this.config.stateDir, { recursive: true });
+      await fs.writeFile(ownerPath, JSON.stringify(creds, null, 2), {
+        mode: 0o600,
+      });
+      await fs.chmod(ownerPath, 0o600).catch(() => undefined);
+    } catch (err) {
+      logger.warn(
+        `[n8n-sidecar] failed to persist owner creds: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return creds;
+  }
+
+  /**
+   * Returns a `Cookie: n8n-auth=<jwt>` string by either creating the owner
+   * (first boot) or logging in (subsequent boots). Returns null if both
+   * fail so the caller can back off gracefully.
+   */
+  private async acquireOwnerCookie(
+    host: string,
+    owner: {
+      email: string;
+      firstName: string;
+      lastName: string;
+      password: string;
+    },
+    log: (msg: string) => void = () => undefined,
+  ): Promise<string | null> {
+    // First boot: owner does not exist yet, /rest/owner/setup returns 200.
+    // Subsequent boots: returns 400 "instance owner already setup"; we fall
+    // through to /rest/login.
+    const setup = await this.deps
+      .fetch(`${host}/rest/owner/setup`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: owner.email,
+          firstName: owner.firstName,
+          lastName: owner.lastName,
+          password: owner.password,
+        }),
+        signal: AbortSignal.timeout(10_000),
+      })
+      .catch((err: unknown) => {
+        log(
+          `owner/setup fetch threw: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return null;
+      });
+    if (setup?.ok) {
+      const cookie = extractAuthCookie(setup);
+      if (cookie) return cookie;
+      log("owner/setup 200 but no n8n-auth cookie in response");
+    } else if (setup) {
+      const text = await setup.text().catch(() => "");
+      log(
+        `owner/setup ${setup.status}${text ? ` — ${text.slice(0, 160)}` : ""}`,
+      );
+    }
+
+    const login = await this.deps
+      .fetch(`${host}/rest/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          emailOrLdapLoginId: owner.email,
+          password: owner.password,
+        }),
+        signal: AbortSignal.timeout(10_000),
+      })
+      .catch((err: unknown) => {
+        log(
+          `login fetch threw: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return null;
+      });
+    if (login?.ok) {
+      const cookie = extractAuthCookie(login);
+      if (cookie) return cookie;
+      log("login 200 but no n8n-auth cookie in response");
+    } else if (login) {
+      const text = await login.text().catch(() => "");
+      log(`login ${login.status}${text ? ` — ${text.slice(0, 160)}` : ""}`);
+    }
+
+    return null;
+  }
+
+  /** List scopes the current role may grant when creating an API key. */
+  private async fetchApiKeyScopes(
+    host: string,
+    cookie: string,
+  ): Promise<string[] | null> {
+    try {
+      const res = await this.deps.fetch(`${host}/rest/api-keys/scopes`, {
+        method: "GET",
+        headers: { cookie },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!res.ok) return null;
+      const body = (await res.json()) as { data?: string[] };
+      return Array.isArray(body.data) ? body.data : null;
     } catch {
       return null;
     }
+  }
+
+  /** 48 bytes of base64url entropy — ~64 chars, far above n8n's min length. */
+  private generateRandomPassword(): string {
+    // crypto is Node 20+ global; fallback to Math.random if unavailable is
+    // intentionally not provided — insecure passwords are worse than a crash.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const nodeCrypto = require("node:crypto") as typeof import("node:crypto");
+    return nodeCrypto.randomBytes(48).toString("base64url");
   }
 
   /** Stop the sidecar. Idempotent. */

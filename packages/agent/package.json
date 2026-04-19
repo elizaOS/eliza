@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/agent",
-  "version": "2.0.0-alpha.200",
+  "version": "2.0.0-alpha.210",
   "description": "Standalone elizaOS-based agent and backend server package.",
   "type": "module",
   "license": "MIT",
@@ -44,6 +44,7 @@
     "./api": "./src/api/index.ts",
     "./api/*": "./src/api/*.ts",
     "./api/server": "./src/api/server.ts",
+    "./api/server-auth": "./src/api/server-auth.ts",
     "./auth": "./src/auth/index.ts",
     "./auth/*": "./src/auth/*.ts",
     "./autonomy": "./src/autonomy/index.ts",

@@ -473,7 +473,7 @@ describe("n8n list workflows", () => {
     const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } })
       .mock.calls;
     const [calledUrl, calledInit] = calls[0] as [string, RequestInit];
-    expect(calledUrl).toBe("http://127.0.0.1:5678/rest/workflows");
+    expect(calledUrl).toBe("http://127.0.0.1:5678/api/v1/workflows");
     const headers = (calledInit.headers ?? {}) as Record<string, string>;
     expect(headers["X-N8N-API-KEY"]).toBe("n8n-api-key");
     // Must not send Authorization: Bearer for local-mode (that's cloud convention).
@@ -594,7 +594,7 @@ describe("n8n toggle workflow", () => {
     const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } })
       .mock.calls;
     const [calledUrl, init] = calls[0] as [string, RequestInit];
-    expect(calledUrl).toBe("http://127.0.0.1:5678/rest/workflows/w1/activate");
+    expect(calledUrl).toBe("http://127.0.0.1:5678/api/v1/workflows/w1/activate");
     expect(init.method).toBe("POST");
   });
 
@@ -656,7 +656,7 @@ describe("n8n delete workflow", () => {
     const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } })
       .mock.calls;
     const [calledUrl, init] = calls[0] as [string, RequestInit];
-    expect(calledUrl).toBe("http://127.0.0.1:5678/rest/workflows/w9");
+    expect(calledUrl).toBe("http://127.0.0.1:5678/api/v1/workflows/w9");
     expect(init.method).toBe("DELETE");
   });
 

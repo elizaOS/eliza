@@ -15,10 +15,11 @@ describe("Agent chat no-heuristics contracts", () => {
 
     for (const source of [serverHelpers, chatAugmentation]) {
       expect(source).not.toContain("shouldAugmentChatMessageWithKnowledge");
-      expect(source).not.toContain("Relevant uploaded knowledge snippets:");
-      expect(source).not.toContain('"uploaded"');
-      expect(source).not.toContain('"codeword"');
-      expect(source).toContain("return message;");
+      expect(source).not.toContain("uploaded knowledge snippets");
+      expect(source).not.toContain("knowledge keyword");
     }
+
+    expect(chatAugmentation).toContain("getKnowledgeService");
+    expect(chatAugmentation).toContain("<contextual_knowledge>");
   });
 });

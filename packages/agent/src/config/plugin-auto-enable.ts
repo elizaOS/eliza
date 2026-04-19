@@ -523,6 +523,25 @@ export function applyPluginAutoEnable(
     }
   }
 
+  // Heal entries→allow drift: anything user-enabled via plugins.entries should
+  // also appear in the allowlist. Covers plugins that were toggled on via the
+  // API before the entries↔allow sync existed, so the persisted config
+  // stabilises after one boot instead of warning forever.
+  for (const [entryId, entry] of Object.entries(pluginsConfig.entries)) {
+    if (!entry || entry.enabled !== true) continue;
+    const connectorPackage = CONNECTOR_PLUGINS[entryId];
+    const featurePackage = FEATURE_PLUGINS[entryId];
+    const pluginName =
+      connectorPackage ?? featurePackage ?? `@elizaos/plugin-${entryId}`;
+    addToAllowlist(
+      pluginsConfig.allow,
+      pluginName,
+      entryId,
+      changes,
+      `entries: ${entryId}`,
+    );
+  }
+
   // Hooks: webhooks + gmail
   const hooksConfig = updatedConfig.hooks;
   if (hooksConfig && hooksConfig.enabled !== false && hooksConfig.token) {

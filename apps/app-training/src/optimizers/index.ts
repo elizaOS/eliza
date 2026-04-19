@@ -10,7 +10,9 @@ export type {
 export {
 	createPromptScorer,
 	createRuntimeAdapter,
+	extractPlannerAction,
 	scoreAgreement,
+	scorePlannerAction,
 	subsample,
 	type UseModelHandler,
 } from "./scoring.js";

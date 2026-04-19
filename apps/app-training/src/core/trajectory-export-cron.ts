@@ -10,8 +10,8 @@
  */
 
 import { mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 import {
 	exportTrajectoryTaskDatasets,
 	type TrajectoryTaskDatasetExport,
@@ -21,6 +21,7 @@ import {
 	type AnonymizerLookup,
 	type FilterableTrajectory,
 } from "./privacy-filter.js";
+import { waitForService } from "./wait-for-service.js";
 
 const EXPORT_EVENT_NAME = "TRACK_C_TRAJECTORY_EXPORT";
 const DEFAULT_TRAJECTORY_LIMIT = 500;
@@ -60,14 +61,6 @@ interface TrajectoryServiceLike {
 		limit?: number;
 	}) => Promise<{ trajectories: Array<{ id: string }> }>;
 	getTrajectoryDetail: (id: string) => Promise<FilterableTrajectory | null>;
-}
-
-function resolveStateDir(): string {
-	return (
-		process.env.MILADY_STATE_DIR?.trim() ||
-		process.env.ELIZA_STATE_DIR?.trim() ||
-		join(homedir(), ".milady")
-	);
 }
 
 function todaySegment(): string {
@@ -183,10 +176,10 @@ export async function registerTrajectoryExportCron(
 		warn: () => {},
 		error: () => {},
 	};
-	const cronService = runtime.getService("CRON") as CronServiceLike | null;
+	const cronService = await waitForService<CronServiceLike>(runtime, "CRON");
 	if (!cronService || typeof cronService.createJob !== "function") {
 		log.warn(
-			"[TrajectoryExportCron] CRON service unavailable; export cron not scheduled",
+			"[TrajectoryExportCron] CRON service unavailable after 10s; export cron not scheduled",
 		);
 		return;
 	}

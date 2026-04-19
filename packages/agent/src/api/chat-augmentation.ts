@@ -14,12 +14,16 @@ import {
   ContentType,
   createMessageMemory,
   type Media,
+  ModelType,
+  parseJSONObjectFromText,
+  parseKeyValueXml,
   type UUID,
 } from "@elizaos/core";
 import { normalizeCharacterLanguage } from "@elizaos/shared/onboarding-presets";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { extractCompatTextContent } from "./compat-utils.js";
+import { getKnowledgeService } from "./knowledge-service-loader.js";
 import { getWalletAddresses } from "./wallet.js";
 import { resolvePluginEvmLoaded } from "./wallet-capability.js";
 
@@ -80,6 +84,10 @@ const AGENT_AWARENESS_INTENT_RE =
 
 const AGENT_AWARENESS_CLOUD_CREDITS_TIMEOUT_MS = 1_500;
 const MAX_EXPOSED_PLUGIN_NAMES = 12;
+const CHAT_KNOWLEDGE_THRESHOLD = 0.2;
+const CHAT_KNOWLEDGE_LIMIT = 4;
+const CHAT_KNOWLEDGE_SNIPPET_MAX_CHARS = 700;
+const CHAT_KNOWLEDGE_RECOVERY_QUERY_LIMIT = 3;
 
 interface CloudAuthAwarenessService {
   isAuthenticated?: () => boolean;
@@ -224,10 +232,201 @@ export async function maybeAugmentChatMessageWithAgentAwareness(
 }
 
 export async function maybeAugmentChatMessageWithKnowledge(
-  _runtime: AgentRuntime,
+  runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
 ): Promise<ReturnType<typeof createMessageMemory>> {
-  return message;
+  const userPrompt = extractCompatTextContent(message.content)?.trim();
+  if (!userPrompt || !runtime.agentId) return message;
+
+  const knowledge = await getKnowledgeService(runtime);
+  if (!knowledge.service) return message;
+
+  const agentId = runtime.agentId as UUID;
+  const roomId =
+    typeof message.roomId === "string" && message.roomId.trim().length > 0
+      ? (message.roomId as UUID)
+      : agentId;
+  const searchMessage = {
+    ...message,
+    id: crypto.randomUUID() as UUID,
+    agentId,
+    entityId:
+      typeof message.entityId === "string" && message.entityId.length > 0
+        ? message.entityId
+        : agentId,
+    roomId,
+    content: {
+      ...(message.content as Content),
+      text: userPrompt,
+    },
+    createdAt: Date.now(),
+  };
+
+  const loadMatches = async (scopeRoomId: UUID, queryText: string) =>
+    knowledge.service!.getKnowledge(
+      {
+        ...searchMessage,
+        content: {
+          ...(searchMessage.content as Content),
+          text: queryText,
+        },
+      },
+      { roomId: scopeRoomId },
+    );
+
+  const loadMatchesAcrossScopes = async (queryText: string) => {
+    let matches = await loadMatches(roomId, queryText);
+    if (matches.length === 0 && roomId !== agentId) {
+      matches = await loadMatches(agentId, queryText);
+    }
+    return matches;
+  };
+
+  const selectRelevantMatches = (
+    matches: Awaited<ReturnType<typeof loadMatchesAcrossScopes>>,
+  ) =>
+    matches.filter((match) => {
+      const text = match.content?.text?.trim();
+      return (
+        typeof text === "string" &&
+        text.length > 0 &&
+        (match.similarity ?? 0) >= CHAT_KNOWLEDGE_THRESHOLD
+      );
+    });
+
+  const recoverKnowledgeSearchQueriesWithLlm = async (): Promise<string[]> => {
+    const prompt = [
+      "Extract up to 3 short semantic-search queries for retrieving knowledge that answers the user's request.",
+      "Return only JSON with this shape:",
+      '  {"queries":["query one","query two"]}',
+      "",
+      "Rules:",
+      "- Preserve named entities, topics, codewords, and filenames when present.",
+      "- Remove meta instructions about reply format, such as 'answer with only the codeword'.",
+      "- If the user refers to 'the uploaded file' or a prior document without naming it, focus the queries on the fact being requested, not the phrase 'uploaded file'.",
+      "- Keep each query short and retrieval-oriented.",
+      "",
+      "Examples:",
+      '  "what is the qa codeword from the uploaded file? answer with only the codeword" -> {"queries":["qa codeword","codeword"]}',
+      '  "what is the deployment codeword? reply with only the codeword" -> {"queries":["deployment codeword","codeword"]}',
+      '  "which document mentions denver?" -> {"queries":["denver"]}',
+      "",
+      `User request: ${JSON.stringify(userPrompt)}`,
+    ].join("\n");
+
+    try {
+      const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+      const raw = typeof result === "string" ? result : "";
+      const parsed =
+        parseKeyValueXml<Record<string, unknown>>(raw) ??
+        parseJSONObjectFromText(raw);
+      if (!parsed) {
+        return [];
+      }
+      const rawQueries = Array.isArray(parsed.queries)
+        ? parsed.queries
+        : typeof parsed.queries === "string"
+          ? parsed.queries.split(/\s*\|\|\s*|,|\n/)
+          : [];
+      return [
+        ...new Set(
+          rawQueries
+            .filter((value): value is string => typeof value === "string")
+            .map((value) => value.trim())
+            .filter((value) => value.length > 0)
+            .slice(0, CHAT_KNOWLEDGE_RECOVERY_QUERY_LIMIT),
+        ),
+      ];
+    } catch (error) {
+      runtime.logger?.warn?.(
+        {
+          src: "api:chat-augmentation",
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Knowledge query recovery model call failed",
+      );
+      return [];
+    }
+  };
+
+  let relevantMatches: Awaited<ReturnType<typeof loadMatchesAcrossScopes>> = [];
+  try {
+    relevantMatches = selectRelevantMatches(await loadMatchesAcrossScopes(userPrompt))
+      .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
+      .slice(0, CHAT_KNOWLEDGE_LIMIT);
+
+    if (relevantMatches.length === 0) {
+      const recoveredQueries = await recoverKnowledgeSearchQueriesWithLlm();
+      for (const query of recoveredQueries) {
+        const recoveredMatches = selectRelevantMatches(
+          await loadMatchesAcrossScopes(query),
+        )
+          .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
+          .slice(0, CHAT_KNOWLEDGE_LIMIT);
+        if (recoveredMatches.length > 0) {
+          relevantMatches = recoveredMatches;
+          break;
+        }
+      }
+    }
+  } catch (error) {
+    runtime.logger?.warn?.(
+      {
+        src: "api:chat-augmentation",
+        agentId,
+        roomId,
+        error: getErrorMessage(error, "knowledge lookup failed"),
+      },
+      "Knowledge augmentation skipped after retrieval failure",
+    );
+    return message;
+  }
+
+  if (relevantMatches.length === 0) return message;
+
+  const contextualKnowledge = relevantMatches
+    .map((match, index) => {
+      const metadata = match.metadata as Record<string, unknown> | undefined;
+      const title =
+        typeof metadata?.filename === "string" && metadata.filename.trim().length > 0
+          ? metadata.filename.trim()
+          : typeof metadata?.title === "string" && metadata.title.trim().length > 0
+            ? metadata.title.trim()
+            : `source-${index + 1}`;
+      const text = (match.content?.text ?? "").trim();
+      const snippet =
+        text.length > CHAT_KNOWLEDGE_SNIPPET_MAX_CHARS
+          ? `${text.slice(0, CHAT_KNOWLEDGE_SNIPPET_MAX_CHARS)}...`
+          : text;
+      return [
+        `<source title=${JSON.stringify(title)} similarity=${JSON.stringify(
+          (match.similarity ?? 0).toFixed(3),
+        )}>`,
+        snippet,
+        "</source>",
+      ].join("\n");
+    })
+    .join("\n\n");
+
+  return {
+    ...message,
+    content: {
+      ...(message.content as Content),
+      text: [
+        "Answer the user request using the contextual knowledge below as the source of truth when it contains the answer.",
+        "If the answer appears verbatim in the contextual knowledge, repeat it exactly.",
+        "Do not ask follow-up questions or invoke tools/actions when the contextual knowledge already answers the request.",
+        "",
+        "<contextual_knowledge>",
+        contextualKnowledge,
+        "</contextual_knowledge>",
+        "",
+        "<user_request>",
+        userPrompt,
+        "</user_request>",
+      ].join("\n"),
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------

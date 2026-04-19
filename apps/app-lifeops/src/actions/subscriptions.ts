@@ -13,6 +13,38 @@ import type { LifeOpsSubscriptionExecutor } from "../lifeops/subscriptions-types
 
 type SubscriptionSubaction = "audit" | "cancel" | "status";
 
+type KnownSubscriptionService = {
+  slug: string;
+  displayName: string;
+  cancelUrl?: string;
+};
+
+// Pre-seeded catalog of common subscription services so the cancel flow can
+// resolve a user-friendly name like "Netflix" to a slug even when the live
+// candidate audit has not populated the catalog yet.
+const KNOWN_SUBSCRIPTION_SERVICES: Record<string, KnownSubscriptionService> = {
+  netflix:        { slug: "netflix",          displayName: "Netflix",         cancelUrl: "https://www.netflix.com/cancelplan" },
+  hulu:           { slug: "hulu",             displayName: "Hulu",            cancelUrl: "https://www.hulu.com/account/cancel" },
+  disneyplus:     { slug: "disney-plus",      displayName: "Disney+",         cancelUrl: "https://www.disneyplus.com/account/subscription" },
+  spotify:        { slug: "spotify",          displayName: "Spotify",         cancelUrl: "https://www.spotify.com/account/subscription/" },
+  appletv:        { slug: "apple-tv",         displayName: "Apple TV+",       cancelUrl: "https://tv.apple.com/account" },
+  youtubepremium: { slug: "youtube-premium",  displayName: "YouTube Premium", cancelUrl: "https://www.youtube.com/paid_memberships" },
+  amazonprime:    { slug: "amazon-prime",     displayName: "Amazon Prime",    cancelUrl: "https://www.amazon.com/gp/help/customer/display.html?nodeId=GKTRKLHHK7AJBJXE" },
+  applemusic:     { slug: "apple-music",      displayName: "Apple Music",     cancelUrl: "https://music.apple.com/account/manage" },
+  hbomax:         { slug: "hbo-max",          displayName: "HBO Max",         cancelUrl: "https://help.hbomax.com/us/article/cancellation-help" },
+  max:            { slug: "hbo-max",          displayName: "Max",             cancelUrl: "https://help.hbomax.com/us/article/cancellation-help" },
+  paramountplus:  { slug: "paramount-plus",   displayName: "Paramount+",      cancelUrl: "https://www.paramountplus.com/account/" },
+  peacock:        { slug: "peacock",          displayName: "Peacock",         cancelUrl: "https://www.peacocktv.com/account/plan" },
+};
+
+function lookupKnownService(
+  name: string | null | undefined,
+): KnownSubscriptionService | null {
+  if (!name) return null;
+  const normalized = name.toLowerCase().replace(/[\s+\-_]+/g, "");
+  return KNOWN_SUBSCRIPTION_SERVICES[normalized] ?? null;
+}
+
 type SubscriptionActionParams = {
   mode?: SubscriptionSubaction;
   serviceName?: string;
@@ -143,24 +175,55 @@ async function runSubscriptionsAction(
       };
     }
     case "cancel": {
-      const summary = await service.cancelSubscription({
-        candidateId: params.candidateId ?? null,
-        serviceName,
-        serviceSlug,
-        executor: params.executor ?? inferred.executor ?? null,
-        confirmed: parseConfirmed(text, params),
-      });
-      return {
-        success:
-          summary.cancellation.status !== "failed" &&
-          summary.cancellation.status !== "unsupported_surface",
-        text: service.summarizeSubscriptionCancellation(summary),
-        data: {
-          cancellation: summary.cancellation,
-          candidate: summary.candidate,
-          browserTask: browserTaskData(summary),
-        },
-      };
+      const known = lookupKnownService(serviceName ?? serviceSlug);
+      const resolvedSlug = serviceSlug ?? known?.slug ?? null;
+      const resolvedName = serviceName ?? known?.displayName ?? null;
+      try {
+        const summary = await service.cancelSubscription({
+          candidateId: params.candidateId ?? null,
+          serviceName: resolvedName,
+          serviceSlug: resolvedSlug,
+          executor: params.executor ?? inferred.executor ?? null,
+          confirmed: parseConfirmed(text, params),
+        });
+        return {
+          success:
+            summary.cancellation.status !== "failed" &&
+            summary.cancellation.status !== "unsupported_surface",
+          text: service.summarizeSubscriptionCancellation(summary),
+          data: {
+            cancellation: summary.cancellation,
+            candidate: summary.candidate,
+            browserTask: browserTaskData(summary),
+          },
+        };
+      } catch (err) {
+        // If the service catalog can't resolve the candidate, fall back to
+        // the pre-seeded known-service map and hand off to computer-use.
+        const msg = err instanceof Error ? err.message : String(err);
+        if (known && /candidate|serviceName|serviceSlug/i.test(msg)) {
+          return {
+            success: true,
+            text:
+              `I don't have an active subscription record for ${known.displayName} yet, but I know the cancellation URL ` +
+              `(${known.cancelUrl ?? "not on file"}). I'll need to drive the browser to cancel it — ` +
+              `shall I continue with LIFEOPS_COMPUTER_USE?`,
+            values: {
+              success: false,
+              handoff: "LIFEOPS_COMPUTER_USE",
+              service: known.slug,
+              cancelUrl: known.cancelUrl ?? null,
+            },
+            data: {
+              handoff: "LIFEOPS_COMPUTER_USE",
+              service: known.slug,
+              displayName: known.displayName,
+              cancelUrl: known.cancelUrl ?? null,
+            },
+          };
+        }
+        throw err;
+      }
     }
     case "status": {
       const summary = await service.getSubscriptionCancellationStatus({

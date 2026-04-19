@@ -124,7 +124,7 @@ export const skillCommandAction: Action = {
     const maxChars = 3000;
     const body =
       instructions.body.length > maxChars
-        ? `${instructions.body.substring(0, maxChars)}\n\n...[truncated — full instructions available via GET_SKILL_GUIDANCE]`
+        ? `${instructions.body.substring(0, maxChars)}\n\n...[truncated — full instructions available via USE_SKILL]`
         : instructions.body;
 
     // Find the skill name for display

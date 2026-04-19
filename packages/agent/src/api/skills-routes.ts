@@ -939,9 +939,8 @@ export async function handleSkillsRoutes(
   }
 
   // ── POST /api/skills/:id/enable ─────────────────────────────────────────
-  // Convenience verb endpoint that mirrors PUT /api/skills/:id { enabled: true }.
-  // Honors scan acknowledgment requirements; returns 409 when an unack'd
-  // scan blocks enabling.
+  // Canonical verb endpoint for enabling a skill. Honors scan acknowledgment
+  // requirements; returns 409 when an unack'd scan blocks enabling.
   if (method === "POST" && pathname.match(/^\/api\/skills\/[^/]+\/enable$/)) {
     const skillId = validateSkillId(
       decodeURIComponent(pathname.split("/")[3]),
@@ -1005,7 +1004,7 @@ export async function handleSkillsRoutes(
   }
 
   // ── POST /api/skills/:id/disable ────────────────────────────────────────
-  // Convenience verb endpoint that mirrors PUT /api/skills/:id { enabled: false }.
+  // Canonical verb endpoint for disabling a skill.
   if (method === "POST" && pathname.match(/^\/api\/skills\/[^/]+\/disable$/)) {
     const skillId = validateSkillId(
       decodeURIComponent(pathname.split("/")[3]),
@@ -1445,69 +1444,6 @@ export async function handleSkillsRoutes(
     (state.config.env as Record<string, string>).SKILLSMP_API_KEY = apiKey;
     saveElizaConfig(state.config);
     json(res, { ok: true, keySet: true });
-    return true;
-  }
-
-  // ── PUT /api/skills/:id ────────────────────────────────────────────────
-  // IMPORTANT: This wildcard route MUST be after all /api/skills/<specific-path> routes
-  if (method === "PUT" && pathname.startsWith("/api/skills/")) {
-    const skillId = validateSkillId(
-      decodeURIComponent(pathname.slice("/api/skills/".length)),
-      res,
-      error,
-    );
-    if (!skillId) return true;
-    const body = await readJsonBody<{ enabled?: boolean }>(req, res);
-    if (!body) return true;
-
-    const skill = state.skills.find((s) => s.id === skillId);
-    if (!skill) {
-      error(res, `Skill "${skillId}" not found`, 404);
-      return true;
-    }
-
-    // Block enabling skills with unacknowledged scan findings
-    if (body.enabled === true) {
-      const workspaceDir =
-        state.config.agents?.defaults?.workspace ??
-        resolveDefaultAgentWorkspaceDir();
-      const report = await loadScanReportFromDisk(
-        skillId,
-        workspaceDir,
-        state.runtime,
-      );
-      if (
-        report &&
-        (report.status === "critical" || report.status === "warning")
-      ) {
-        const acks = await loadSkillAcknowledgments(state.runtime);
-        const ack = acks[skillId];
-        const findings = report.findings as Array<Record<string, unknown>>;
-        const manifestFindings = report.manifestFindings as Array<
-          Record<string, unknown>
-        >;
-        const totalFindings = findings.length + manifestFindings.length;
-        if (!ack || ack.findingCount !== totalFindings) {
-          error(
-            res,
-            `Skill "${skillId}" has ${totalFindings} security finding(s) that must be acknowledged first. Use POST /api/skills/${skillId}/acknowledge.`,
-            409,
-          );
-          return true;
-        }
-      }
-    }
-
-    if (body.enabled !== undefined) {
-      skill.enabled = body.enabled;
-      if (state.runtime) {
-        const prefs = await loadSkillPreferences(state.runtime);
-        prefs[skillId] = body.enabled;
-        await saveSkillPreferences(state.runtime, prefs);
-      }
-    }
-
-    json(res, { ok: true, skill });
     return true;
   }
 

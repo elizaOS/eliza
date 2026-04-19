@@ -15,11 +15,13 @@ import { config as loadDotenv } from "dotenv";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
+import { resolveLiveBrowserExecutable } from "../../../../../test/helpers/browser-executable";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
 import {
   buildIsolatedLiveProviderEnv,
   selectLiveProvider,
 } from "../../../../../test/helpers/live-provider";
+import { resolveNodeCmd } from "../scripts/managed-test-command.mjs";
 
 const envPath = path.resolve(
   import.meta.dirname,
@@ -46,12 +48,11 @@ const API_TOKEN =
   process.env.ELIZA_API_TOKEN?.trim() ??
   "";
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY?.trim() ?? "";
-const CHROME_PATH =
-  process.env.ELIZA_CHROME_PATH ??
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const LIVE_BROWSER = resolveLiveBrowserExecutable();
+const CHROME_PATH = LIVE_BROWSER.executablePath;
 const LIVE_TESTS_ENABLED =
   process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
-const CHROME_AVAILABLE = existsSync(CHROME_PATH);
+const CHROME_AVAILABLE = CHROME_PATH !== null && existsSync(CHROME_PATH);
 const LIVE_PROVIDER =
   (LIVE_TESTS_ENABLED && selectLiveProvider("openai")) ||
   (LIVE_TESTS_ENABLED ? selectLiveProvider() : null);
@@ -78,6 +79,10 @@ const PROFILE_FILTER = new Set(
 const EXPECTED_SARAH_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
 const KNOWLEDGE_CODEWORD = "VELVET-MOON-4821";
 const QA_ARTIFACT_DIR = path.join(os.tmpdir(), "eliza-live-qa");
+const QA_ONBOARDING_TRACE_FILE = path.join(
+  QA_ARTIFACT_DIR,
+  "onboarding-trace.log",
+);
 const REPO_ROOT = path.resolve(
   import.meta.dirname,
   "..",
@@ -272,6 +277,7 @@ function actionableQaRequestFailures(failures: QaRequestFailure[]): string[] {
 }
 
 let browser: Browser | null = null;
+let browserProfileDir: string | null = null;
 let UI_URL = DEFAULT_UI_URL;
 let liveStack: StartedStack | null = null;
 
@@ -289,23 +295,20 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
     console.log("[live-qa][setup] ui reachable");
     await ensureHttpOk(`${API_URL}/api/status`);
     console.log("[live-qa][setup] api reachable");
-    browser = await puppeteer.launch({
-      executablePath: CHROME_PATH,
-      headless: true,
-      protocolTimeout: 300_000,
-      args: [
-        "--autoplay-policy=no-user-gesture-required",
-        "--disable-background-timer-throttling",
-        "--disable-renderer-backgrounding",
-        "--use-angle=swiftshader",
-      ],
-    });
+    browserProfileDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-qa-browser-"),
+    );
+    browser = await launchQaBrowser(browserProfileDir);
     console.log("[live-qa][setup] browser launched");
   }, 120_000);
 
   afterAll(async () => {
     if (!CAN_RUN) return;
     await browser?.close();
+    if (browserProfileDir) {
+      await fs.rm(browserProfileDir, { recursive: true, force: true });
+      browserProfileDir = null;
+    }
     await stopRealStack(liveStack);
     liveStack = null;
   }, 30_000);
@@ -356,8 +359,12 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
       });
 
       await installQaInstrumentation(page);
+      await fs.mkdir(QA_ARTIFACT_DIR, { recursive: true });
+      await fs.writeFile(QA_ONBOARDING_TRACE_FILE, "", "utf8");
+      await appendQaOnboardingTrace(`profile ${profile.id}: reset agent`);
       logQaStep(profile, "reset agent");
       await resetAgentViaApi();
+      await appendQaOnboardingTrace(`profile ${profile.id}: reset complete`);
 
       const knowledgeFile = await writeKnowledgeFile(profile.id);
       const knowledgeUploadName = path.basename(knowledgeFile);
@@ -366,16 +373,23 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
         path.parse(knowledgeUploadName).name,
       ];
       try {
+        await appendQaOnboardingTrace(`profile ${profile.id}: open onboarding`);
         logQaStep(profile, "open onboarding");
         await navigate(page, `${UI_URL}/?test_force_vrm=1`);
 
+        await appendQaOnboardingTrace(
+          `profile ${profile.id}: complete local provider onboarding`,
+        );
         logQaStep(profile, "complete local provider onboarding");
         await completeLocalProviderOnboarding(page);
 
         expect(await onboardingComplete()).toBe(true);
+        await appendQaOnboardingTrace("enter companion mode");
         logQaStep(profile, "enter companion mode");
         await enterCompanionMode(page);
+        await appendQaOnboardingTrace("wait for companion ready");
         await waitForCompanionReady(page, 120_000);
+        await appendQaOnboardingTrace("companion ready");
         logQaStep(profile, "companion shell ready");
 
         if (REQUIRE_STRICT_TTS_ASSERTIONS) {
@@ -393,12 +407,16 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
           }, 60_000);
           expect(voiceConfig.elevenlabs?.voiceId).toBe(EXPECTED_SARAH_VOICE_ID);
         }
+        await appendQaOnboardingTrace("dispatch teleport complete");
         await page.evaluate(() => {
           window.dispatchEvent(new Event("eliza:vrm-teleport-complete"));
         });
+        await appendQaOnboardingTrace("wait for chat composer");
         await page.waitForSelector('[data-testid="chat-composer-textarea"]');
+        await appendQaOnboardingTrace("chat composer ready");
         await page.mouse.click(24, 24);
 
+        await appendQaOnboardingTrace("create new chat");
         logQaStep(profile, "create new chat");
         const conversationsBefore = await listConversations();
         const greetingVoiceSignals = await qaVoiceStats(page);
@@ -410,6 +428,7 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
             ? conversations[0]
             : null;
         }, 30_000);
+        await appendQaOnboardingTrace("new chat created");
 
         const greetingMessage = await waitFor(async () => {
           const messages = await listMessages(activeConversation.id);
@@ -417,20 +436,26 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
             messages.find((message) => message.role === "assistant") ?? null
           );
         }, 30_000);
+        await appendQaOnboardingTrace("greeting message ready");
 
         expectValidGreetingMessage(greetingMessage.text);
         logQaStep(profile, "wait for greeting voice playback");
         await maybeWaitForVoicePlayback(page, greetingVoiceSignals, 45_000);
+        await appendQaOnboardingTrace("greeting voice playback observed");
         logQaStep(profile, "verify greeting text is visible");
         await waitForText(page, greetingMessage.text);
+        await appendQaOnboardingTrace("greeting text visible");
 
         const responseVoiceSignals = await qaVoiceStats(page);
         logQaStep(profile, "send user message");
+        await appendQaOnboardingTrace("send first user message");
         await typeComposerAndSend(
           page,
           "reply with exactly these two words: hello there",
         );
+        await appendQaOnboardingTrace("first user message sent");
 
+        await appendQaOnboardingTrace("wait for first assistant reply");
         const replyMessage = await waitFor(async () => {
           const messages = await listMessages(activeConversation.id);
           const assistants = messages.filter(
@@ -440,6 +465,7 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
           const latest = assistants[assistants.length - 1];
           return latest.text !== greetingMessage.text ? latest : null;
         }, 90_000);
+        await appendQaOnboardingTrace("first assistant reply ready");
 
         expect(normalizeText(replyMessage.text)).toContain("hello there");
         logQaStep(profile, "wait for assistant reply voice playback");
@@ -759,8 +785,8 @@ function contentTypeFor(filePath: string): string {
   }
 }
 
-function injectQaBootScript(html: string, apiBase: string): string {
-  const bootScript = `<script>window.__ELIZA_API_BASE__=${JSON.stringify(apiBase)};${API_TOKEN ? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${JSON.stringify(API_TOKEN)},configurable:true,writable:true,enumerable:false});` : ""}</script>`;
+function injectQaBootScript(html: string): string {
+  const bootScript = `<script>window.__ELIZA_API_BASE__=window.location.origin;${API_TOKEN ? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${JSON.stringify(API_TOKEN)},configurable:true,writable:true,enumerable:false});` : ""}</script>`;
   if (html.includes("</head>")) {
     return html.replace("</head>", `${bootScript}</head>`);
   }
@@ -855,10 +881,7 @@ async function proxyUiRequest(args: {
     path.basename(filePath ?? path.join(APP_DIST_DIR, "index.html")) ===
     "index.html"
   ) {
-    body = Buffer.from(
-      injectQaBootScript(body.toString("utf8"), args.apiBase),
-      "utf8",
-    );
+    body = Buffer.from(injectQaBootScript(body.toString("utf8")), "utf8");
   }
 
   args.response.writeHead(200, {
@@ -951,6 +974,12 @@ async function startUiProxyServer(args: {
         response,
       });
     } catch (error) {
+      if (response.headersSent || response.writableEnded || response.destroyed) {
+        if (!response.destroyed) {
+          response.destroy();
+        }
+        return;
+      }
       response.writeHead(500, {
         "Content-Type": "application/json; charset=utf-8",
       });
@@ -1077,10 +1106,11 @@ async function startRealStack(): Promise<StartedStack> {
   const apiBase = `http://127.0.0.1:${apiPort}`;
 
   const apiChild = spawn(
-    "node",
+    resolveNodeCmd(),
     [
-      path.join(REPO_ROOT, "eliza/packages/app-core/scripts/run-node-tsx.mjs"),
-      path.join(REPO_ROOT, "eliza/packages/app-core/src/runtime/eliza.ts"),
+      "--import",
+      "tsx",
+      path.join(REPO_ROOT, "eliza/packages/app-core/src/runtime/dev-server.ts"),
     ],
     {
       cwd: REPO_ROOT,
@@ -1135,12 +1165,15 @@ async function restartLiveStack(): Promise<void> {
     throw new Error("Cannot restart QA live stack before it exists");
   }
 
+  await appendQaOnboardingTrace("restart live stack: stop current");
   console.log("[live-qa][setup] restart live stack: stop current");
   await stopRealStack(liveStack);
+  await appendQaOnboardingTrace("restart live stack: start new");
   console.log("[live-qa][setup] restart live stack: start new");
   liveStack = await startRealStack();
   API_URL = stripTrailingSlash(liveStack.apiBase);
   UI_URL = stripTrailingSlash(liveStack.uiBase);
+  await appendQaOnboardingTrace(`restart live stack: ready ui=${UI_URL} api=${API_URL}`);
   console.log(
     `[live-qa][setup] restart live stack: ready ui=${UI_URL} api=${API_URL}`,
   );
@@ -1209,18 +1242,18 @@ async function smokeTabs(page: Page, profile: Profile) {
       path: "/chat",
       name: "chat",
       waitForReady: () =>
-        page.waitForSelector('[data-testid="chat-messages-scroll"]'),
+        waitForVisibleSelector(page, '[data-testid="chat-messages-scroll"]'),
     },
     {
       path: "/stream",
       name: "stream",
-      waitForReady: () => page.waitForSelector("[data-stream-view]"),
+      waitForReady: () => waitForVisibleSelector(page, "[data-stream-view]"),
     },
     {
       path: "/wallets",
       name: "wallets",
       waitForReady: () =>
-        page.waitForSelector('[data-testid="wallet-rpc-popup"]'),
+        waitForVisibleSelector(page, '[data-testid="wallet-rpc-popup"]'),
     },
     {
       path: "/connectors",
@@ -1239,7 +1272,7 @@ async function smokeTabs(page: Page, profile: Profile) {
       path: "/settings",
       name: "settings",
       waitForReady: () =>
-        page.waitForSelector('[data-testid="settings-shell"]'),
+        waitForVisibleSelector(page, '[data-testid="settings-shell"]'),
     },
     {
       path: "/triggers",
@@ -1269,7 +1302,8 @@ async function smokeTabs(page: Page, profile: Profile) {
     {
       path: "/runtime",
       name: "runtime",
-      waitForReady: () => page.waitForSelector('[data-testid="runtime-view"]'),
+      waitForReady: () =>
+        waitForVisibleSelector(page, '[data-testid="runtime-view"]'),
     },
     {
       path: "/database",
@@ -1366,7 +1400,7 @@ async function qaWalletRpcRoundtrip(page: Page, profile: Profile) {
   expect(savedConfig.selectedRpcProviders).toMatchObject(expectedSelections);
 
   await navigate(page, `${UI_URL}/chat`);
-  await page.waitForSelector('[data-testid="chat-messages-scroll"]');
+  await waitForVisibleSelector(page, '[data-testid="chat-messages-scroll"]');
   await navigate(page, `${UI_URL}/wallets`);
   await waitForText(page, "Tokens", 30_000);
   await openWalletRpcSettings(page, profile);
@@ -1694,41 +1728,46 @@ async function waitForAnyText(
 }
 
 async function waitForOnboardingEntry(page: Page, timeout = 45_000) {
-  const overlay = await page
-    .waitForSelector('[data-testid="onboarding-ui-overlay"]', {
-      visible: true,
-      timeout,
-    })
-    .catch(() => null);
-  if (overlay) {
-    return;
+  const deadline = Date.now() + timeout;
+  const onboardingTexts = [
+    "Choose your setup",
+    "Create Local Agent",
+    "Connect to Remote Agent",
+    "Choose your AI provider",
+  ];
+
+  while (Date.now() < deadline) {
+    if (
+      await isSelectorVisible(page, '[data-testid="onboarding-ui-overlay"]')
+    ) {
+      return;
+    }
+
+    for (const text of onboardingTexts) {
+      if (await pageContainsText(page, text)) {
+        return;
+      }
+    }
+
+    await sleep(250);
   }
 
-  await waitForAnyText(
-    page,
-    [
-      "Choose your setup",
-      "Create Local Agent",
-      "Connect to Remote Agent",
-      "Choose your AI provider",
-    ],
-    timeout,
+  throw new Error(
+    `Timed out waiting for onboarding entry after ${timeout}ms.`,
   );
 }
 
 async function waitForCompanionReady(page: Page, timeout = 90_000) {
-  await page.waitForSelector('[data-testid="companion-root"]', {
-    visible: true,
+  await waitForVisibleSelector(
+    page,
+    '[data-testid="companion-root"]',
     timeout,
-  });
-  await page.waitForSelector('[data-testid="companion-header-shell"]', {
-    visible: true,
+  );
+  await waitForVisibleSelector(
+    page,
+    '[data-testid="companion-header-shell"]',
     timeout,
-  });
-  await page.waitForSelector('[data-testid="chat-composer-textarea"]', {
-    visible: true,
-    timeout,
-  });
+  );
 }
 
 async function pageContainsText(page: Page, text: string): Promise<boolean> {
@@ -1904,25 +1943,33 @@ async function clickByTextWithin(page: Page, text: string, timeout = 45_000) {
     (expected) => {
       const normalizedExpected = String(expected).toLowerCase();
       return Array.from(
-        document.querySelectorAll<HTMLElement>("button,[role='button']"),
+        document.querySelectorAll<HTMLElement>(
+          "button,[role='button'],a,[data-radix-collection-item]",
+        ),
       ).some((element) => {
         const position = window.getComputedStyle(element).position;
         const visible =
           element.offsetParent !== null ||
           position === "fixed" ||
           position === "sticky";
+        const disabled =
+          (element instanceof HTMLButtonElement && element.disabled) ||
+          element.getAttribute("aria-disabled") === "true" ||
+          element.getAttribute("data-disabled") === "true";
         const label = (element.innerText ?? "").toLowerCase();
-        return visible && label.includes(normalizedExpected);
+        return visible && !disabled && label.includes(normalizedExpected);
       });
     },
     { timeout },
     text,
   );
 
-  const clicked = await page.evaluate((expected) => {
+  const targetBox = await page.evaluate((expected) => {
     const normalizedExpected = String(expected).toLowerCase();
     const elements = Array.from(
-      document.querySelectorAll<HTMLElement>("button,[role='button']"),
+      document.querySelectorAll<HTMLElement>(
+        "button,[role='button'],a,[data-radix-collection-item]",
+      ),
     );
     const target = elements.find((element) => {
       const position = window.getComputedStyle(element).position;
@@ -1930,13 +1977,31 @@ async function clickByTextWithin(page: Page, text: string, timeout = 45_000) {
         element.offsetParent !== null ||
         position === "fixed" ||
         position === "sticky";
+      const disabled =
+        (element instanceof HTMLButtonElement && element.disabled) ||
+        element.getAttribute("aria-disabled") === "true" ||
+        element.getAttribute("data-disabled") === "true";
       const label = (element.innerText ?? "").toLowerCase();
-      return visible && label.includes(normalizedExpected);
+      return visible && !disabled && label.includes(normalizedExpected);
     });
-    target?.click();
-    return Boolean(target);
+    if (!target) {
+      return null;
+    }
+    target.scrollIntoView({ block: "center", inline: "center" });
+    const rect = target.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
   }, text);
-  expect(clicked).toBe(true);
+  expect(targetBox).not.toBeNull();
+  if (!targetBox) {
+    throw new Error(`Unable to resolve clickable target for text: ${text}`);
+  }
+  await page.mouse.click(targetBox.x, targetBox.y);
 }
 
 async function clickAnyText(
@@ -1956,7 +2021,7 @@ async function clickAnyText(
         lastError = error;
       }
     }
-    await page.waitForTimeout(250);
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
 
   throw lastError instanceof Error
@@ -2073,14 +2138,54 @@ async function clickSelector(
 }
 
 async function typeInto(page: Page, selector: string, value: string) {
-  const input = await page.waitForSelector(selector, { visible: true });
-  expect(input).toBeTruthy();
-  if (!input) {
-    throw new Error(`Input not found for selector: ${selector}`);
-  }
-  await input.click({ clickCount: 3 });
-  await page.keyboard.press("Backspace");
-  await input.type(value, { delay: 5 });
+  await setInputValue(page, selector, value);
+  await page.waitForFunction(
+    (expectedSelector, expectedValue) => {
+      const element = document.querySelector(expectedSelector);
+      return (
+        (element instanceof HTMLInputElement ||
+          element instanceof HTMLTextAreaElement) &&
+        element.value === expectedValue
+      );
+    },
+    { timeout: 45_000 },
+    selector,
+    value,
+  );
+}
+
+async function setInputValue(page: Page, selector: string, value: string) {
+  await page.waitForSelector(selector, { visible: true, timeout: 45_000 });
+  const updated = await page.evaluate(
+    (expectedSelector, expectedValue) => {
+      const element = document.querySelector(expectedSelector);
+      if (
+        !(
+          element instanceof HTMLInputElement ||
+          element instanceof HTMLTextAreaElement
+        )
+      ) {
+        return false;
+      }
+
+      const prototype =
+        element instanceof HTMLTextAreaElement
+          ? HTMLTextAreaElement.prototype
+          : HTMLInputElement.prototype;
+      const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+      descriptor?.set?.call(element, expectedValue);
+      if (!descriptor?.set) {
+        element.value = expectedValue;
+      }
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+      element.blur();
+      return true;
+    },
+    selector,
+    value,
+  );
+  expect(updated).toBe(true);
 }
 
 async function isSelectorVisible(
@@ -2106,22 +2211,62 @@ async function isSelectorVisible(
     .catch(() => false);
 }
 
+async function waitForVisibleSelector(
+  page: Page,
+  selector: string,
+  timeout = 45_000,
+) {
+  await waitFor(async () => {
+    return (await isSelectorVisible(page, selector)) ? true : null;
+  }, timeout);
+}
+
 async function typeComposerAndSend(page: Page, value: string) {
-  await typeInto(page, '[data-testid="chat-composer-textarea"]', value);
-  await page.keyboard.press("Enter");
+  const textareaSelector = '[data-testid="chat-composer-textarea"]';
+  const sendButtonSelector = '[data-testid="chat-composer-action"]';
+
+  await setInputValue(page, textareaSelector, value);
+  await page.waitForFunction(
+    (selector, expectedValue) => {
+      const element = document.querySelector(selector);
+      return (
+        element instanceof HTMLTextAreaElement &&
+        element.value === expectedValue
+      );
+    },
+    { timeout: 45_000 },
+    textareaSelector,
+    value,
+  );
+  await page.waitForFunction(
+    (selector) => {
+      const element = document.querySelector(selector);
+      return element instanceof HTMLButtonElement && !element.disabled;
+    },
+    { timeout: 45_000 },
+    sendButtonSelector,
+  );
+  await clickSelector(page, sendButtonSelector);
 }
 
 async function completeLocalProviderOnboarding(page: Page) {
   if (!LIVE_PROVIDER || !LIVE_PROVIDER_LABEL) {
     throw new Error("A live LLM provider is required for QA onboarding.");
   }
+  const providerOptionSelector = `[data-testid="onboarding-provider-option-${LIVE_PROVIDER.name}"]`;
 
+  await fs.mkdir(QA_ARTIFACT_DIR, { recursive: true });
+  await fs.writeFile(QA_ONBOARDING_TRACE_FILE, "", "utf8");
+  await appendQaOnboardingTrace("wait for onboarding entry");
+  console.log("[live-qa][onboarding] wait for onboarding entry");
   await waitForOnboardingEntry(page, 180_000);
 
   if (await pageContainsText(page, "Choose your setup")) {
     if (await pageContainsText(page, "Create Local Agent")) {
+      await appendQaOnboardingTrace("choose setup: create local agent");
       await clickAnyText(page, ["Create Local Agent"]);
     } else {
+      await appendQaOnboardingTrace("choose setup: connect remote agent");
       await clickAnyText(page, ["Connect to Remote Agent"]);
       await page.waitForSelector(
         'input[placeholder*="your-agent.example.com"]',
@@ -2130,11 +2275,13 @@ async function completeLocalProviderOnboarding(page: Page) {
           timeout: 30_000,
         },
       );
-      await typeInto(
+      await appendQaOnboardingTrace("fill remote agent url");
+      await setInputValue(
         page,
         'input[placeholder*="your-agent.example.com"]',
         UI_URL,
       );
+      await appendQaOnboardingTrace("submit remote agent connect");
       await clickButtonLabel(page, "Connect");
 
       const connectionRemoteApiBase = await page
@@ -2144,45 +2291,56 @@ async function completeLocalProviderOnboarding(page: Page) {
         })
         .catch(() => null);
       if (connectionRemoteApiBase) {
-        await typeInto(page, "#remote-api-base", UI_URL);
+        await appendQaOnboardingTrace("fill remote api base");
+        await setInputValue(page, "#remote-api-base", UI_URL);
+        await appendQaOnboardingTrace("submit remote backend connect");
         await clickButtonLabel(page, "Connect remote backend");
-        await waitFor(async () => {
-          const remote = await qaRemoteSnapshot(page);
-          if (remote.remoteError) {
-            throw new Error(
-              `Remote backend connect failed: ${remote.remoteError}`,
-            );
-          }
-          const bodyText = remote.bodyText.toLowerCase();
-          return bodyText.includes("choose your ai provider") ||
-            bodyText.includes("groq")
-            ? true
-            : null;
-        }, 60_000);
+        await appendQaOnboardingTrace(
+          "wait for provider option after remote backend connect",
+        );
+        await waitForProviderOption(page, providerOptionSelector, 60_000);
       }
     }
   } else {
-    if (await pageContainsText(page, "Create Local Agent")) {
-      await clickAnyText(page, ["Create Local Agent"]);
-    } else {
-      await clickAnyText(page, ["Get Started"]);
+    const alreadyOnProviderGrid =
+      (await isSelectorVisible(page, providerOptionSelector)) ||
+      (await pageContainsText(page, "Choose your AI provider")) ||
+      (await pageContainsText(page, LIVE_PROVIDER_LABEL));
+    if (!alreadyOnProviderGrid) {
+      await appendQaOnboardingTrace("wait for entry text before provider grid");
+      await waitForAnyText(
+        page,
+        ["Create Local Agent", "Get Started", "Choose your AI provider"],
+        60_000,
+      );
+      if (await pageContainsText(page, "Create Local Agent")) {
+        await appendQaOnboardingTrace("entry text path: create local agent");
+        await clickAnyText(page, ["Create Local Agent"], 30_000);
+      } else if (await pageContainsText(page, "Get Started")) {
+        await appendQaOnboardingTrace("entry text path: get started");
+        await clickAnyText(page, ["Get Started"], 30_000);
+      }
     }
   }
 
   const alreadyOnProviderGrid =
+    (await isSelectorVisible(page, providerOptionSelector)) ||
     (await pageContainsText(page, "Choose your AI provider")) ||
     (await pageContainsText(page, LIVE_PROVIDER_LABEL));
 
   if (!alreadyOnProviderGrid) {
+    await appendQaOnboardingTrace("wait for continue step before provider grid");
     await waitForAnyText(page, ["Continue", "Chen"], 60_000);
-    await clickAnyText(page, ["Continue"]);
+    await appendQaOnboardingTrace("click continue before provider grid");
+    await clickAnyText(page, ["Continue"], 30_000);
   }
-  await waitForAnyText(
-    page,
-    ["Choose your AI provider", LIVE_PROVIDER_LABEL],
-    60_000,
+  await appendQaOnboardingTrace("wait for provider option");
+  await waitForProviderOption(page, providerOptionSelector, 60_000);
+  console.log(
+    `[live-qa][onboarding] select provider ${LIVE_PROVIDER_LABEL.toLowerCase()}`,
   );
-  await clickAnyText(page, [LIVE_PROVIDER_LABEL]);
+  await appendQaOnboardingTrace(`select provider ${LIVE_PROVIDER.name}`);
+  await clickSelector(page, providerOptionSelector);
 
   const providerApiKeyInput = await page
     .waitForSelector("#provider-api-key", {
@@ -2192,37 +2350,80 @@ async function completeLocalProviderOnboarding(page: Page) {
     .catch(() => null);
 
   if (providerApiKeyInput) {
-    await typeInto(page, "#provider-api-key", LIVE_PROVIDER.apiKey);
+    console.log("[live-qa][onboarding] fill provider api key");
+    await appendQaOnboardingTrace("fill provider api key primary input");
+    await setInputValue(page, "#provider-api-key", LIVE_PROVIDER.apiKey);
   } else {
-    await typeInto(page, 'input[type="password"]', LIVE_PROVIDER.apiKey);
+    console.log("[live-qa][onboarding] fill provider api key fallback input");
+    await appendQaOnboardingTrace("fill provider api key fallback input");
+    await setInputValue(page, 'input[type="password"]', LIVE_PROVIDER.apiKey);
   }
 
-  await clickAnyText(page, ["Confirm"]);
+  console.log("[live-qa][onboarding] confirm provider");
+  await appendQaOnboardingTrace("confirm provider");
+  await clickSelector(
+    page,
+    '[data-testid="onboarding-provider-confirm"]:not([disabled])',
+  );
+  console.log("[live-qa][onboarding] wait for features step");
+  await appendQaOnboardingTrace("wait for features step");
   await waitForAnyText(page, ["Enable features", "Skip for now"], 60_000);
-  await clickAnyText(page, ["Skip for now", "Continue without features"]);
+  console.log("[live-qa][onboarding] continue without features");
+  await appendQaOnboardingTrace("continue without features");
+  await clickSelector(page, '[data-testid="onboarding-features-continue"]');
+  console.log("[live-qa][onboarding] wait for onboarding completion");
+  await appendQaOnboardingTrace("wait for onboarding completion");
   await waitFor(async () => (await onboardingComplete()) || null, 120_000);
+  await appendQaOnboardingTrace("onboarding complete");
+}
+
+async function waitForProviderOption(
+  page: Page,
+  selector: string,
+  timeout = 60_000,
+) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    if (await isSelectorVisible(page, selector)) {
+      return;
+    }
+    await sleep(250);
+  }
+  throw new Error(`Provider option did not become visible: ${selector}`);
+}
+
+async function appendQaOnboardingTrace(step: string) {
+  await fs.mkdir(QA_ARTIFACT_DIR, { recursive: true });
+  await fs.appendFile(
+    QA_ONBOARDING_TRACE_FILE,
+    `${new Date().toISOString()} ${step}\n`,
+    "utf8",
+  );
 }
 
 async function enterCompanionMode(page: Page) {
   if (
     await isSelectorVisible(page, '[data-testid="ui-shell-toggle-companion"]')
   ) {
+    await appendQaOnboardingTrace("enter companion mode: click shell toggle");
     await clickSelector(page, '[data-testid="ui-shell-toggle-companion"]');
   } else {
-    await navigate(page, `${UI_URL}/apps/companion`);
+    await appendQaOnboardingTrace("enter companion mode: navigate to apps companion");
+    await page.goto(`${UI_URL}/apps/companion`, {
+      waitUntil: "networkidle2",
+    });
+    await page.waitForFunction(() => document.readyState !== "loading", {
+      timeout: 30_000,
+    });
   }
-  await page.waitForFunction(
-    () => {
-      return (
-        window.location.pathname.endsWith("/apps/companion") &&
-        Boolean(document.querySelector('[data-testid="companion-root"]')) &&
-        Boolean(
-          document.querySelector('[data-testid="companion-header-shell"]'),
-        )
-      );
-    },
-    { timeout: 30_000 },
+  await appendQaOnboardingTrace("enter companion mode: wait for shell");
+  await waitForVisibleSelector(page, '[data-testid="companion-root"]', 30_000);
+  await waitForVisibleSelector(
+    page,
+    '[data-testid="companion-header-shell"]',
+    30_000,
   );
+  await appendQaOnboardingTrace("enter companion mode: shell ready");
 }
 
 async function qaCharacterSwitchAndDance(page: Page, profile?: Profile) {
@@ -2361,8 +2562,10 @@ async function onboardingComplete(): Promise<boolean> {
 
 async function resetAgentViaApi() {
   if (liveStack) {
+    await appendQaOnboardingTrace("reset via live stack restart");
     console.log("[live-qa][setup] reset via live stack restart");
     await restartLiveStack();
+    await appendQaOnboardingTrace("reset via live stack restart complete");
     console.log("[live-qa][setup] reset via live stack restart complete");
     if (await onboardingComplete()) {
       throw new Error(
@@ -2565,7 +2768,16 @@ async function navigate(page: Page, url: string) {
 async function saveScreenshot(page: Page, profile: Profile, step: string) {
   const filename = path.join(QA_ARTIFACT_DIR, `${profile.id}-${step}.png`);
   try {
-    await page.screenshot({ path: filename, fullPage: true });
+    await Promise.race([
+      page.screenshot({
+        path: filename,
+        fullPage: false,
+        captureBeyondViewport: false,
+      }),
+      sleep(15_000).then(() => {
+        throw new Error("Screenshot timed out after 15s");
+      }),
+    ]);
   } catch (error) {
     const noteFile = path.join(QA_ARTIFACT_DIR, `${profile.id}-${step}.txt`);
     await fs.writeFile(
@@ -2680,6 +2892,41 @@ async function waitFor<T>(
 
 function stripTrailingSlash(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+async function launchQaBrowser(userDataDir: string): Promise<Browser> {
+  if (!CHROME_PATH) {
+    throw new Error(
+      `QA browser executable unavailable via ${LIVE_BROWSER.source}.`,
+    );
+  }
+
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await puppeteer.launch({
+        executablePath: CHROME_PATH,
+        headless: true,
+        protocolTimeout: 300_000,
+        userDataDir,
+        args: [
+          "--autoplay-policy=no-user-gesture-required",
+          "--disable-background-timer-throttling",
+          "--disable-renderer-backgrounding",
+          "--disable-dev-shm-usage",
+          "--use-angle=swiftshader",
+        ],
+      });
+    } catch (error) {
+      lastError = error;
+      await sleep(1000 * (attempt + 1));
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Failed to launch QA browser");
 }
 
 function normalizeText(value: string): string {
