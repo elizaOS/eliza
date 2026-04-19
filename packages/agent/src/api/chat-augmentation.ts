@@ -349,25 +349,37 @@ export async function maybeAugmentChatMessageWithKnowledge(
     }
   };
 
-  let relevantMatches = selectRelevantMatches(
-    await loadMatchesAcrossScopes(userPrompt),
-  )
-    .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
-    .slice(0, CHAT_KNOWLEDGE_LIMIT);
+  let relevantMatches: Awaited<ReturnType<typeof loadMatchesAcrossScopes>> = [];
+  try {
+    relevantMatches = selectRelevantMatches(await loadMatchesAcrossScopes(userPrompt))
+      .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
+      .slice(0, CHAT_KNOWLEDGE_LIMIT);
 
-  if (relevantMatches.length === 0) {
-    const recoveredQueries = await recoverKnowledgeSearchQueriesWithLlm();
-    for (const query of recoveredQueries) {
-      const recoveredMatches = selectRelevantMatches(
-        await loadMatchesAcrossScopes(query),
-      )
-        .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
-        .slice(0, CHAT_KNOWLEDGE_LIMIT);
-      if (recoveredMatches.length > 0) {
-        relevantMatches = recoveredMatches;
-        break;
+    if (relevantMatches.length === 0) {
+      const recoveredQueries = await recoverKnowledgeSearchQueriesWithLlm();
+      for (const query of recoveredQueries) {
+        const recoveredMatches = selectRelevantMatches(
+          await loadMatchesAcrossScopes(query),
+        )
+          .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
+          .slice(0, CHAT_KNOWLEDGE_LIMIT);
+        if (recoveredMatches.length > 0) {
+          relevantMatches = recoveredMatches;
+          break;
+        }
       }
     }
+  } catch (error) {
+    runtime.logger?.warn?.(
+      {
+        src: "api:chat-augmentation",
+        agentId,
+        roomId,
+        error: getErrorMessage(error, "knowledge lookup failed"),
+      },
+      "Knowledge augmentation skipped after retrieval failure",
+    );
+    return message;
   }
 
   if (relevantMatches.length === 0) return message;

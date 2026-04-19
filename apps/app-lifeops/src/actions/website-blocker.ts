@@ -264,9 +264,6 @@ export const blockWebsitesAction: Action & {
     "START_FOCUS_BLOCK",
     "BLOCK_SITE",
     "BLOCK_DISTRACTING_SITES",
-    "FOCUS_BLOCK",
-    "BLOCK_SOCIAL_MEDIA",
-    "SOCIAL_MEDIA_BLOCK",
   ],
   description:
     "Admin-only. Start a local website block by editing the system hosts file. " +
@@ -274,7 +271,8 @@ export const blockWebsitesAction: Action & {
     "Use recent conversation context to block public websites like x.com for a fixed duration or until manually unblocked. " +
     "Do not use this when the unblock condition is finishing a task, workout, or todo; that is BLOCK_UNTIL_TASK_COMPLETE. " +
     "Always drafts first; the owner must pass confirmed: true (e.g. by replying 'confirm') to actually edit the hosts file. " +
-    "If the user confirms a block in a follow-up message without repeating the hostnames, reuse that context through the action planner.",
+    "If the user confirms a block in a follow-up message without repeating the hostnames, reuse that context through the action planner." +
+    " DO NOT use this action when the user references apps, games, or things 'on my phone' / 'on my device' — use BLOCK_APPS for those. Do not pair this action with a speculative REPLY; this action provides the final reply itself.",
   descriptionCompressed: "Admin: block websites via hosts file for set duration.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {

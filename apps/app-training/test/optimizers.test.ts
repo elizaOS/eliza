@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	createPromptScorer,
+	extractPlannerAction,
 	type LlmAdapter,
 	type OptimizationExample,
 	renderDemonstrations,
@@ -8,6 +9,7 @@ import {
 	runInstructionSearch,
 	runPromptEvolution,
 	scoreAgreement,
+	scorePlannerAction,
 	withDemonstrations,
 } from "../src/optimizers/index.js";
 
@@ -84,6 +86,75 @@ describe("scoring", () => {
 		expect(score).toBe(1);
 		const wrongScore = await scorer("BAD_PROMPT", dataset);
 		expect(wrongScore).toBe(0);
+	});
+
+	it("extractPlannerAction pulls name from nested <name> tag", () => {
+		const xml = `<response><actions><action><name>BLOCK_APPS</name></action></actions></response>`;
+		expect(extractPlannerAction(xml)).toBe("BLOCK_APPS");
+	});
+
+	it("extractPlannerAction pulls name from flat <action>NAME</action>", () => {
+		expect(extractPlannerAction("<action>REPLY</action>")).toBe("REPLY");
+	});
+
+	it("extractPlannerAction prefers nested over flat when both present", () => {
+		const xml =
+			"<action>WRAPPER</action>…<action><name>CALENDAR_ACTION</name></action>";
+		expect(extractPlannerAction(xml)).toBe("CALENDAR_ACTION");
+	});
+
+	it("extractPlannerAction falls back to first uppercase identifier", () => {
+		expect(extractPlannerAction("chose BLOCK_APPS as best fit")).toBe(
+			"BLOCK_APPS",
+		);
+	});
+
+	it("extractPlannerAction returns null on empty input", () => {
+		expect(extractPlannerAction("")).toBeNull();
+	});
+
+	it("scorePlannerAction scores 1 on matching action name", () => {
+		const actual = "<action><name>BLOCK_APPS</name></action>";
+		const expected = "<action><name>BLOCK_APPS</name></action>";
+		expect(scorePlannerAction(actual, expected)).toBe(1);
+	});
+
+	it("scorePlannerAction scores 0 on different action names", () => {
+		const actual = "<action><name>BLOCK_WEBSITES</name></action>";
+		const expected = "<action><name>BLOCK_APPS</name></action>";
+		expect(scorePlannerAction(actual, expected)).toBe(0);
+	});
+
+	it("scorePlannerAction scores 0 when actual lacks a name", () => {
+		expect(
+			scorePlannerAction("no action here", "<action><name>REPLY</name></action>"),
+		).toBe(0);
+	});
+
+	it("createPromptScorer uses custom comparator when provided", async () => {
+		const adapter: LlmAdapter = {
+			async complete() {
+				return "<action><name>REPLY</name></action>";
+			},
+		};
+		const scorer = createPromptScorer(adapter, {
+			compare: scorePlannerAction,
+		});
+		const dataset: OptimizationExample[] = [
+			{
+				id: "1",
+				input: { user: "x" },
+				expectedOutput: "<action><name>REPLY</name></action>",
+				reward: 1,
+			},
+			{
+				id: "2",
+				input: { user: "y" },
+				expectedOutput: "<action><name>IGNORE</name></action>",
+				reward: 1,
+			},
+		];
+		expect(await scorer("sys", dataset)).toBe(0.5);
 	});
 });
 
