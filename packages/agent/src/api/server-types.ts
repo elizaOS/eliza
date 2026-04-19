@@ -15,6 +15,10 @@ import type { ConnectorHealthMonitor } from "./connector-health.js";
 // PluginEntry and PluginParamDef are defined here to avoid a circular dependency
 // with plugin-discovery-helpers.ts (which imports from server-helpers.ts).
 import type { RegistryService } from "./registry-service.js";
+import type {
+  Trajectory,
+  TrajectoryListResult,
+} from "../types/trajectory.js";
 
 // ---------------------------------------------------------------------------
 // Conversation metadata
@@ -130,10 +134,8 @@ export interface TrainingServiceLike {
   listTrajectories(options: {
     limit?: number;
     offset?: number;
-  }): Promise<Record<string, unknown>>;
-  getTrajectoryById(
-    trajectoryId: string,
-  ): Promise<Record<string, unknown> | null>;
+  }): Promise<TrajectoryListResult>;
+  getTrajectoryById(trajectoryId: string): Promise<Trajectory | null>;
   listDatasets(): Record<string, unknown>[];
   buildDataset(options: {
     limit?: number;
