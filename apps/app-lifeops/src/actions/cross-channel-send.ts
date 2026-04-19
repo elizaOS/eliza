@@ -494,6 +494,9 @@ export const crossChannelSendAction: Action & {
     "Use this for any 'post <msg> to <channel>', 'send <msg> on <platform>', " +
     "or 'dm <person> on <platform>' request — the channel name in the sentence " +
     "(discord, telegram, signal, etc.) is the strongest signal. " +
+    "Do NOT use this for 'broadcast/push/send <X> to all my devices' or " +
+    "'broadcast a reminder to my phone/desktop/watch' — device-targeted " +
+    "reminders belong to INTENT_SYNC, not CROSS_CHANNEL_SEND. " +
     "Do NOT use SCHEDULING for channel-send requests even if the message " +
     "mentions a meeting-like word (e.g. 'standup', 'sync'); SCHEDULING is for " +
     "negotiating calendar proposals, not relaying chat messages.",

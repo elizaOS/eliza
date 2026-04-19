@@ -193,8 +193,6 @@ const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BACKOFF_BASE_MS = 2_000;
 /** Uptime after which a ready sidecar is considered healthy and retries reset. */
 const RETRY_RESET_AFTER_MS = 5 * 60 * 1_000;
-/** Hard cap on how long we wait for a child to exit during supervision. */
-const CHILD_EXIT_WAIT_TIMEOUT_MS = 2 * 60 * 1_000;
 /** Grace period between SIGTERM and SIGKILL when reaping an orphan. */
 const ORPHAN_SIGTERM_GRACE_MS = 5_000;
 
@@ -578,7 +576,27 @@ export class N8nSidecar {
       retries: 0,
     });
 
-    await this.runSupervisor();
+    // Resolve when the supervisor first transitions to a terminal steady
+    // state ("ready" or "error") — not when the supervisor loop itself
+    // exits. The loop keeps running for the full lifetime of the child,
+    // so awaiting it here would block callers forever on a healthy sidecar.
+    // The supervisor continues to run in the background after this resolves;
+    // stop() is the canonical way to terminate it.
+    const supervisorPromise = this.runSupervisor();
+    await new Promise<void>((resolve) => {
+      if (this.state.status === "ready" || this.state.status === "error") {
+        resolve();
+        return;
+      }
+      const unsubscribe = this.subscribe((state) => {
+        if (state.status === "ready" || state.status === "error") {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+    // Don't leave an unhandled rejection if the supervisor later errors.
+    supervisorPromise.catch(() => undefined);
   }
 
   /**
@@ -685,6 +703,18 @@ export class N8nSidecar {
     // tsyringe decorator handling for 1.100+ — see `binary?` docs above).
     const env: NodeJS.ProcessEnv = {
       ...process.env,
+      // Force NODE_ENV=production for the child.
+      //
+      // Reason: when the parent process has NODE_ENV=test (vitest sets this
+      // by default, and CI pipelines set it for similar reasons), `npx`
+      // spawned under Bun silently exits with code 1 before producing any
+      // stdout/stderr. Setting NODE_ENV=test also causes `npm install` to
+      // skip devDependencies, which can leave n8n's dep graph incomplete
+      // when npx runs it through the npm cache. Overriding to `production`
+      // gives the child the environment n8n was actually tested against
+      // and unblocks the sidecar inside vitest's live-e2e suite. The parent
+      // process's NODE_ENV is untouched — this only shapes the child env.
+      NODE_ENV: "production",
       N8N_PORT: String(port),
       N8N_HOST: this.config.host,
       N8N_PROTOCOL: "http",
@@ -696,6 +726,14 @@ export class N8nSidecar {
       N8N_USER_FOLDER: this.config.stateDir,
       DB_TYPE: "sqlite",
       DB_SQLITE_DATABASE: path.join(this.config.stateDir, "database.sqlite"),
+      // Opt out of the Enterprise-Edition modules. n8n's module-registry
+      // tries to `require()` an `.ee` variant of each enabled module at
+      // boot; both `insights.ee` and `external-secrets.ee` only ship with
+      // the EE build and are missing from the public npm/bunx install, so
+      // the child crashes with "Failed to load module 'insights'" before
+      // the HTTP server even binds. Disabling both here means the sidecar
+      // boots cleanly on the OSS build.
+      N8N_DISABLED_MODULES: "insights,external-secrets",
     };
 
     const versioned = `n8n@${this.config.version}`;
@@ -710,6 +748,9 @@ export class N8nSidecar {
         : binaryBase === "bunx"
           ? ["--", versioned, "start"]
           : [versioned, "start"];
+    this.recordOutput(
+      `[spawn] ${this.config.binary} ${launcherArgs.join(" ")} (port ${port}, stateDir ${this.config.stateDir}, NODE_ENV=${env.NODE_ENV ?? "(unset)"}, PATH len=${(env.PATH ?? "").length})`,
+    );
     const child = this.deps.spawn(this.config.binary, launcherArgs, {
       env,
       stdio: ["ignore", "pipe", "pipe"],
@@ -746,7 +787,14 @@ export class N8nSidecar {
     // can linger as <defunct> because Node only waitpid()'s when something
     // is listening. This handler is unconditional — waitForChildExit attaches
     // its own once('exit') for supervisor-level signalling.
-    child.on("exit", (code, signal) => {
+    //
+    // Use `close` instead of `exit` so the final chunks from stdout/stderr
+    // are flushed into recentOutput before we log the exit summary. Node
+    // emits `exit` as soon as the process terminates but `close` only fires
+    // after all stdio streams have drained — which is the ordering we want
+    // so the supervisor / UI see the *reason* for the exit, not just the
+    // bare exit code line.
+    child.on("close", (code, signal) => {
       const summary =
         code !== null
           ? `exit code ${code}`
@@ -776,10 +824,12 @@ export class N8nSidecar {
   }
 
   /**
-   * Wait for the current child to exit. Returns early if the child is null.
-   * Capped at CHILD_EXIT_WAIT_TIMEOUT_MS — beyond that we assume the child
-   * is hung, send SIGKILL, and treat it as exited so the supervisor can
-   * make forward progress instead of blocking forever.
+   * Block until the current child exits. Returns early if the child is null
+   * or if `stop()` has flipped `stopping`. No timeout — n8n is a long-running
+   * service, so timing out here would SIGKILL a healthy child and bounce the
+   * supervisor into a "child exited unexpectedly" → retry loop that ends in
+   * the `max retries exceeded` error state. Shutdown-side timeouts live in
+   * `killChild()` (SIGTERM with a 5s SIGKILL fallback).
    */
   private waitForChildExitWithTimeout(): Promise<void> {
     return new Promise((resolve) => {
@@ -788,28 +838,16 @@ export class N8nSidecar {
         resolve();
         return;
       }
-      let settled = false;
+      if (this.stopping) {
+        resolve();
+        return;
+      }
       const settle = () => {
-        if (settled) return;
-        settled = true;
         child.removeListener("exit", onExit);
-        this.deps.clearTimer(timer);
         resolve();
       };
       const onExit = () => settle();
       child.once("exit", onExit);
-      const timer = this.deps.setTimer(() => {
-        if (settled) return;
-        logger.warn(
-          `[n8n-sidecar] child did not exit within ${CHILD_EXIT_WAIT_TIMEOUT_MS}ms; forcing kill`,
-        );
-        try {
-          child.kill("SIGKILL");
-        } catch {
-          /* no-op */
-        }
-        settle();
-      }, CHILD_EXIT_WAIT_TIMEOUT_MS);
     });
   }
 
@@ -849,13 +887,17 @@ export class N8nSidecar {
 
     while (Date.now() < deadline) {
       if (this.stopping) return false;
-      // If the child died mid-probe, keep polling is pointless — the port
-      // will never open. Fail fast so the supervisor surfaces the error and
-      // kicks off the next retry (with captured stderr in recentOutput).
-      // Uses `typeof === "number"` rather than `!== null` so this tolerates
-      // test fakes whose exitCode is undefined while still running.
+      // If the child died mid-probe AND left no zombie descendants, keep
+      // polling is pointless. We only fail fast on a NON-ZERO exit code —
+      // npx itself cleanly handoffs to n8n and its own exit code is 0 in
+      // some spawn topologies (bun's child_process.spawn in particular),
+      // so a 0 here is not a real failure.
       const child = this.child;
-      if (child && typeof child.exitCode === "number") {
+      if (
+        child &&
+        typeof child.exitCode === "number" &&
+        child.exitCode !== 0
+      ) {
         throw new Error(
           `n8n child exited with code ${child.exitCode} before readiness probe succeeded`,
         );
@@ -929,12 +971,19 @@ export class N8nSidecar {
   }
 
   /**
-   * Validate a cached API key by listing keys through n8n's public API.
-   * A 2xx means the key is still live; 401/403 means it was revoked.
+   * Validate a cached API key by calling the public REST API that accepts
+   * the X-N8N-API-KEY header. A 2xx means the key is still live; 401/403
+   * means it was revoked.
+   *
+   * Important: /rest/api-keys is the internal endpoint that requires the
+   * JWT cookie and will always 401 for an X-N8N-API-KEY regardless of
+   * whether the key itself is valid. Using /api/v1/workflows instead —
+   * the same endpoint the proxy hits, so "valid for probe" = "valid for
+   * real traffic".
    */
   private async validateApiKey(host: string, key: string): Promise<boolean> {
     try {
-      const res = await this.deps.fetch(`${host}/rest/api-keys`, {
+      const res = await this.deps.fetch(`${host}/api/v1/workflows?limit=1`, {
         method: "GET",
         headers: { "X-N8N-API-KEY": key },
         signal: AbortSignal.timeout(5_000),
@@ -988,25 +1037,41 @@ export class N8nSidecar {
         return null;
       }
 
-      const res = await this.deps.fetch(`${host}/rest/api-keys`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          cookie,
-        },
-        body: JSON.stringify({
-          label: "milady-sidecar",
-          scopes,
-          expiresAt: null,
-        }),
-        signal: AbortSignal.timeout(5_000),
-      });
+      const label = "milady-sidecar";
+      const createKey = async (): Promise<Response> =>
+        this.deps.fetch(`${host}/rest/api-keys`, {
+          method: "POST",
+          headers: { "content-type": "application/json", cookie },
+          body: JSON.stringify({ label, scopes, expiresAt: null }),
+          signal: AbortSignal.timeout(5_000),
+        });
+
+      let res = await createKey();
       if (!res.ok) {
+        // 500 "There is already an entry with this name" means a prior
+        // provisioning run created the label but we lost the rawApiKey
+        // (n8n only returns it at creation time). Drop the stale row and
+        // re-create so the caller gets a usable key instead of null.
         const bodyText = await res.text().catch(() => "");
-        log(
-          `api-key create failed: ${res.status} ${res.statusText}${bodyText ? ` — ${bodyText.slice(0, 200)}` : ""}`,
-        );
-        return null;
+        if (
+          res.status === 500 &&
+          /already\s+an?\s+entry\s+with\s+this\s+name/i.test(bodyText)
+        ) {
+          log(
+            "api-key label already exists in n8n — deleting and re-creating",
+          );
+          const deleted = await this.deleteApiKeysByLabel(host, cookie, label);
+          if (deleted > 0) {
+            res = await createKey();
+          }
+        }
+        if (!res.ok) {
+          const finalBody = bodyText || (await res.text().catch(() => ""));
+          log(
+            `api-key create failed: ${res.status} ${res.statusText}${finalBody ? ` — ${finalBody.slice(0, 200)}` : ""}`,
+          );
+          return null;
+        }
       }
       const body = (await res.json()) as {
         data?: { rawApiKey?: string; apiKey?: string };
@@ -1182,6 +1247,52 @@ export class N8nSidecar {
       return Array.isArray(body.data) ? body.data : null;
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Delete every api-key row with a matching label. Used to recover from the
+   * "already exists" case when a previous provisioning run created the label
+   * but lost the `rawApiKey` (n8n only returns the raw key at creation time,
+   * so a partially-persisted state wedges the next boot unless we can delete
+   * and re-create). Returns the number of rows deleted.
+   */
+  private async deleteApiKeysByLabel(
+    host: string,
+    cookie: string,
+    label: string,
+  ): Promise<number> {
+    try {
+      const listRes = await this.deps.fetch(`${host}/rest/api-keys`, {
+        method: "GET",
+        headers: { cookie },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!listRes.ok) return 0;
+      const body = (await listRes.json()) as {
+        data?: Array<{ id?: unknown; label?: unknown }>;
+      };
+      const matches = (body.data ?? []).filter(
+        (row): row is { id: string; label: string } =>
+          typeof row.id === "string" &&
+          typeof row.label === "string" &&
+          row.label === label,
+      );
+      let deleted = 0;
+      for (const row of matches) {
+        const delRes = await this.deps.fetch(
+          `${host}/rest/api-keys/${encodeURIComponent(row.id)}`,
+          {
+            method: "DELETE",
+            headers: { cookie },
+            signal: AbortSignal.timeout(5_000),
+          },
+        );
+        if (delRes.ok) deleted += 1;
+      }
+      return deleted;
+    } catch {
+      return 0;
     }
   }
 

@@ -145,9 +145,37 @@ function sleep(ms: number): Promise<void> {
 
 function isRetryableCaseError(error: string | undefined): boolean {
   if (!error) return false;
-  return /rate limit|too many requests|tokens per minute|please try again in/i.test(
-    error,
-  );
+  // Rate limits and explicit "try again" hints.
+  if (
+    /rate limit|too many requests|tokens per minute|please try again in/i.test(
+      error,
+    )
+  ) {
+    return true;
+  }
+  // Harness-layer timeouts are almost always rate-limit-induced in the
+  // benchmark (the real cause was an upstream 429 that consumed the whole
+  // 90s budget through internal SDK retries). Treat them as retryable too —
+  // the retry gives the TPM window time to drain before the next attempt.
+  if (/timed out after/i.test(error)) return true;
+  return false;
+}
+
+/**
+ * Inter-case pause to prevent the benchmark from saturating TPM limits on
+ * throughput-constrained providers (e.g. GROQ llama-3.1-8b-instant has a
+ * 250k TPM ceiling that a 69-case run will otherwise wipe out). Override
+ * with `MILADY_BENCHMARK_CASE_PAUSE_MS`. Default is off for local non-TPM
+ * providers; opt-in for rate-limited providers.
+ */
+function caseThrottleMs(): number {
+  const raw =
+    typeof process !== "undefined"
+      ? process.env.MILADY_BENCHMARK_CASE_PAUSE_MS
+      : undefined;
+  if (!raw) return 0;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
 function caseMatches(
@@ -843,9 +871,13 @@ export async function runActionSelectionBenchmark(
   };
 
   const results: ActionBenchmarkResult[] = [];
+  const throttleMs = caseThrottleMs();
 
   if (concurrency === 1) {
+    let first = true;
     for (const tc of opts.cases) {
+      if (!first && throttleMs > 0) await sleep(throttleMs);
+      first = false;
       results.push(await runOneWithRetries(tc));
     }
   } else {
