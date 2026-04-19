@@ -2454,19 +2454,26 @@ export const lifeAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: "LIFE",
+  // CREATE_TASK and COMPLETE_TASK are deliberately NOT listed here even
+  // though LIFE handles LifeOps todos. Those names are the orchestrator's
+  // primary action aliases; listing them as LIFE similes made the
+  // action-selector LLM route ops/coding prompts ("check disk usage",
+  // "fix this bug") to LIFE because it saw the name-level collision and
+  // picked the first match alphabetically. LIFE-specific intent is still
+  // covered by the todo/habit/goal/reminder simile names below plus the
+  // description text.
   similes: [
     "MANAGE_LIFEOPS",
     "QUERY_LIFEOPS",
-    "CREATE_TASK",
     "CREATE_TODO",
     "ADD_TODO",
     "LIST_TODOS",
     "TODO_LIST",
+    "COMPLETE_TODO",
     "CREATE_HABIT",
     "CREATE_GOAL",
     "LIFE_CREATE_DEFINITION",
     "TRACK_HABIT",
-    "COMPLETE_TASK",
     "SET_ALARM",
     "SET_REMINDER",
     "SNOOZE_REMINDER",
@@ -4189,3 +4196,4 @@ export const lifeAction: Action & {
     ],
   ],
 };
+

@@ -65,6 +65,12 @@ export function looksLikeRelationshipFollowUpRequest(text: string): boolean {
  * Narrow on purpose — false negatives (LIFE declines a LifeOps prompt by
  * mistake) are much worse than false positives (LIFE handles a coding-ish
  * request that the orchestrator could have handled).
+ *
+ * Known edge case (accepted): "add a habit to build an app every day" will
+ * match and cause LIFE to decline. Rephrase as "add a habit: work out daily"
+ * or drop technical-artifact nouns. Adding a LIFE-word priority check here
+ * would create worse regressions on common prompts like "build a todo app"
+ * or "make a habit tracker" which are legitimate coding requests.
  */
 export function looksLikeCodingTaskRequest(text: string): boolean {
   const normalized = normalizeRequestText(text);
