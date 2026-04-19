@@ -2898,8 +2898,6 @@ export const calendarAction: Action & {
   tags: [
     "always-include",
     "calendar",
-    "schedule",
-    "meeting",
     "event",
     "recurring block",
     "time block",
@@ -2916,7 +2914,7 @@ export const calendarAction: Action & {
     "DO NOT use this action for email inbox work, drafting or sending emails — use GMAIL_ACTION instead. " +
     "DO NOT use this action for personal habits, goals, routines, or reminders — use LIFE instead. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action." +
-    " DO NOT use this action when the user asks to 'help schedule' / 'set up' / 'find a time for' a meeting with a person or team without a specific time — that is SCHEDULING (subaction start). DO NOT use this action to 'propose', 'suggest', or 'offer' meeting time slots — that is PROPOSE_MEETING_TIMES. Use CALENDAR_ACTION only when the user specifies (or intends to specify) a concrete date/time for the event.",
+    " DO NOT use this action when the user asks to 'help schedule', 'help me schedule', 'set up a meeting with', 'find a time with', 'find us a time', 'find a slot with', or otherwise wants to negotiate a meeting with a person or team WITHOUT naming a concrete date or time — that is SCHEDULING (subaction: start). Any time the request mentions a person/team AND no specific time, route it to SCHEDULING, not here. DO NOT use this action to 'propose', 'suggest', or 'offer' meeting time slots — that is PROPOSE_MEETING_TIMES. Use CALENDAR_ACTION only when the user specifies (or intends to specify) a concrete date/time for the event.",
   descriptionCompressed: "Google Calendar via LifeOps: view schedule, search events, create events, query travel. Not for email or habits.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {

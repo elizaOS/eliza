@@ -244,9 +244,30 @@ function formatSummary(summary: {
 
 export const healthAction: Action = {
   name: "HEALTH",
-  similes: ["FITNESS", "HEALTHKIT", "GOOGLE_FIT", "WELLNESS"],
+  similes: [
+    "FITNESS",
+    "HEALTHKIT",
+    "GOOGLE_FIT",
+    "WELLNESS",
+    "SLEEP",
+    "SLEEP_DATA",
+    "SLEEP_STATS",
+    "STEPS",
+    "STEP_COUNT",
+    "HEART_RATE",
+    "WORKOUT",
+    "EXERCISE",
+    "CALORIES",
+    "ACTIVITY_METRICS",
+  ],
   description:
-    "Query health and fitness data from HealthKit or Google Fit. Subactions: today, trend, by_metric, status.",
+    "Query health and fitness telemetry from HealthKit or Google Fit — sleep " +
+    "(duration, quality, stages), steps, heart rate, workouts, calories, and " +
+    "other body/activity metrics. Subactions: today, trend, by_metric, status. " +
+    "Use this for questions like 'how did I sleep last night', 'how many steps " +
+    "today', 'what was my resting heart rate', 'show my sleep trend this week'. " +
+    "Do NOT route health-metric questions through LIFE (LIFE is for tasks/goals/" +
+    "habits lifecycle, not wearable/quantified-self data).",
   validate: async (runtime: IAgentRuntime, message: Memory) =>
     hasLifeOpsAccess(runtime, message),
   handler: async (

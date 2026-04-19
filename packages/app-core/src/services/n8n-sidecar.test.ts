@@ -582,32 +582,27 @@ describe("N8nSidecar", () => {
     });
   });
 
-  describe("waitForChildExit timeout (Bug 5)", () => {
-    it("forces kill + unblocks supervisor when child hangs past the cap", async () => {
-      const CHILD_EXIT_TIMEOUT = 2 * 60 * 1_000;
-      // Only fire the exit-wait timer (2-minute schedule). Leave the
-      // retry-reset timer (5-minute schedule) as a no-op.
-      const setTimer = vi.fn((fn: () => void, ms: number) => {
-        if (ms === CHILD_EXIT_TIMEOUT) queueMicrotask(fn);
-        return { id: ms };
-      });
-      const clearTimer = vi.fn();
-
-      // Spawn a child whose SIGTERM does not emit exit (simulates a hung
-      // child), but whose SIGKILL does. The supervisor's watchdog should
-      // escalate to SIGKILL after the timeout fires.
+  describe("waitForChildExit during ready (regression from Bug 5 fix)", () => {
+    it("blocks indefinitely on a healthy ready child and does NOT force-kill it", async () => {
+      // The original Bug-5 fix installed a 2-minute watchdog that SIGKILLed
+      // the child when it "hadn't exited yet". That was exactly wrong for a
+      // long-running service — it bounced every healthy boot into
+      // `child exited unexpectedly` → retry → `max retries exceeded`.
+      // This test pins the new behavior: while the child stays alive, the
+      // supervisor stays parked in waitForChildExit and never calls kill().
+      let killCount = 0;
       const spawnFn = vi.fn(() => {
         const child = new EventEmitter() as FakeChild;
         child.stdout = new EventEmitter();
         child.stderr = new EventEmitter();
-        child.pid = 7777;
+        child.pid = 9999;
         child.killed = false;
         child.kill = (signal?: string) => {
-          if (signal === "SIGKILL") {
+          killCount += 1;
+          if (signal === "SIGTERM" || signal === "SIGKILL") {
             child.killed = true;
             queueMicrotask(() => child.emit("exit", 0, signal));
           }
-          // Ignore SIGTERM — simulate hung child.
           return true;
         };
         return child as unknown as ReturnType<
@@ -616,27 +611,29 @@ describe("N8nSidecar", () => {
       });
 
       const h = makeHarness({ spawn: spawnFn });
-      const sidecar = new N8nSidecar(
-        baseConfig({ maxRetries: 0, backoffBaseMs: 1 }),
-        { ...h.deps, setTimer, clearTimer },
-      );
+      const sidecar = new N8nSidecar(baseConfig(), h.deps);
 
-      const terminalPromise = new Promise<N8nSidecarState>((resolve) => {
+      const readyPromise = new Promise<void>((resolve) => {
         const unsub = sidecar.subscribe((s) => {
-          if (s.status === "error") {
+          if (s.status === "ready") {
             unsub();
-            resolve(s);
+            resolve();
           }
         });
       });
       const startPromise = sidecar.start();
-      const finalState = await terminalPromise;
+      await readyPromise;
 
-      expect(finalState.status).toBe("error");
-      expect(setTimer).toHaveBeenCalled();
+      // Give the event loop plenty of chances to run a rogue watchdog timer.
+      for (let i = 0; i < 10; i++) {
+        await new Promise((r) => setImmediate(r));
+      }
+      expect(killCount).toBe(0);
+      expect(sidecar.getState().status).toBe("ready");
 
       await sidecar.stop();
       await startPromise;
+      expect(killCount).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -693,15 +690,21 @@ describe("N8nSidecar", () => {
         if (url.endsWith("/rest/login")) {
           return new Response(null, { status: 200 });
         }
-        if (url.endsWith("/rest/api-keys") && init?.method === "GET") {
-          const key = (init.headers as Record<string, string>)["X-N8N-API-KEY"];
+        // validateApiKey() now probes /api/v1/workflows (the same endpoint
+        // the proxy hits) because /rest/api-keys always 401's for an
+        // X-N8N-API-KEY regardless of whether the key itself is valid.
+        if (
+          url.includes("/api/v1/workflows") &&
+          (!init?.method || init.method === "GET")
+        ) {
+          const key = (init?.headers as Record<string, string>)["X-N8N-API-KEY"];
           if (key === "cached_key_abc") {
             return new Response(JSON.stringify({ data: [] }), { status: 200 });
           }
           return new Response(null, { status: 401 });
         }
-        // Explicit guard: if provisionApiKey were called, fail loudly.
-        if (url.endsWith("/rest/me/api-keys")) {
+        // Explicit guards: if provisionApiKey were called, fail loudly.
+        if (url.endsWith("/rest/owner/setup")) {
           throw new Error(
             "provisionApiKey should not be called when cache is valid",
           );
