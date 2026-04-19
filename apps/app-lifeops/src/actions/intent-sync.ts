@@ -88,6 +88,82 @@ function fail(
   };
 }
 
+// Validation terminates the turn cleanly: success: true at the ActionResult
+// level (so the orchestrator does not retry), but values.success: false so
+// downstream consumers see the logical failure. Carries descriptive text.
+function validationTerminate(
+  error: string,
+  text: string,
+  extra: Record<string, unknown> = {},
+): ActionResult {
+  return {
+    text,
+    success: true,
+    values: { success: false, error, ...extra },
+    data: { actionName: ACTION_NAME, error, ...extra },
+  };
+}
+
+// Parse flat key=value params that arrive as a raw string instead of nested
+// XML/JSON. Handles quoted and unquoted values.
+function parseFlatParams(raw: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const re = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s]+))/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw)) !== null) {
+    out[m[1]] = m[2] ?? m[3] ?? m[4] ?? "";
+  }
+  return out;
+}
+
+// Tolerate a wider shape: if `params` is a string (or carries a rawParams
+// blob), attempt flat parsing and merge into a typed object.
+function normalizeParams(
+  raw: unknown,
+): IntentSyncParameters & Record<string, unknown> {
+  if (typeof raw === "string") {
+    return parseFlatParams(raw);
+  }
+  if (raw && typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    const merged: Record<string, unknown> = { ...obj };
+    const rawParams = obj.rawParams ?? obj.raw;
+    if (typeof rawParams === "string") {
+      const parsed = parseFlatParams(rawParams);
+      for (const [k, v] of Object.entries(parsed)) {
+        if (merged[k] === undefined) merged[k] = v;
+      }
+    }
+    return merged as IntentSyncParameters & Record<string, unknown>;
+  }
+  return {} as IntentSyncParameters & Record<string, unknown>;
+}
+
+function inferSubactionFromText(text: string): Subaction | undefined {
+  const t = text.toLowerCase();
+  if (/\b(broadcast|send|publish|push|ping)\b/.test(t)) return "broadcast";
+  if (/\b(list|show|what.*pending)\b/.test(t)) return "list_pending";
+  if (/\b(acknowledge|ack|mark\s+done)\b/.test(t)) return "acknowledge";
+  if (/\b(prune|expire|clean)\b/.test(t)) return "prune_expired";
+  return undefined;
+}
+
+function inferKindFromText(text: string): LifeOpsIntentKind | undefined {
+  const t = text.toLowerCase();
+  if (/\b(reminder|stretch|break|vitamin|hydrate|water|walk)\b/.test(t)) {
+    if (isKind("routine_reminder")) return "routine_reminder" as LifeOpsIntentKind;
+  }
+  if (/\b(urgent|help|need)\b/.test(t)) {
+    if (isKind("attention_request")) return "attention_request" as LifeOpsIntentKind;
+  }
+  if (/\b(request|ask|please)\b/.test(t)) {
+    if (isKind("user_action_requested")) {
+      return "user_action_requested" as LifeOpsIntentKind;
+    }
+  }
+  return undefined;
+}
+
 export const intentSyncAction: Action = {
   name: ACTION_NAME,
   similes: ["BROADCAST_INTENT", "SYNC_INTENT", "CROSS_DEVICE_INTENT"],
@@ -219,26 +295,69 @@ export const intentSyncAction: Action = {
       return fail("PERMISSION_DENIED");
     }
 
-    const params =
-      ((options as HandlerOptions | undefined)?.parameters as
-        | IntentSyncParameters
-        | undefined) ?? {};
+    const rawParams = (options as HandlerOptions | undefined)?.parameters;
+    const params = normalizeParams(rawParams);
+    const messageText =
+      typeof message.content?.text === "string" ? message.content.text : "";
 
-    const subactionRaw = coerceString(params.subaction);
-    if (!subactionRaw) return fail("MISSING_SUBACTION");
+    let subactionRaw = coerceString(params.subaction);
+    if (!subactionRaw) {
+      // Tolerate LLMs that emit the verb in `intent` / `mode` / plain text.
+      subactionRaw =
+        coerceString((params as Record<string, unknown>).mode) ??
+        coerceString((params as Record<string, unknown>).action) ??
+        inferSubactionFromText(messageText);
+    }
+    if (!subactionRaw) {
+      return validationTerminate(
+        "MISSING_SUBACTION",
+        "I couldn't tell whether you wanted to broadcast, list, acknowledge, or prune an intent. Please say which.",
+      );
+    }
     if (!isSubaction(subactionRaw)) {
-      return fail("UNKNOWN_SUBACTION", { subaction: subactionRaw });
+      return validationTerminate(
+        "UNKNOWN_SUBACTION",
+        `Unknown INTENT_SYNC subaction "${subactionRaw}". Expected one of: ${SUBACTIONS.join(", ")}.`,
+        { subaction: subactionRaw },
+      );
     }
     const subaction: Subaction = subactionRaw;
 
     if (subaction === "broadcast") {
-      const kindRaw = coerceString(params.kind);
+      let kindRaw = coerceString(params.kind);
+      if (!kindRaw || !isKind(kindRaw)) {
+        // Only infer when the current value is clearly wrong/missing — not
+        // when it's already a valid kind.
+        const inferred = inferKindFromText(messageText);
+        if (inferred) kindRaw = inferred;
+      }
       const title = coerceString(params.title);
       const body = coerceString(params.body);
-      if (!kindRaw) return fail("MISSING_KIND");
-      if (!isKind(kindRaw)) return fail("UNKNOWN_KIND", { kind: kindRaw });
-      if (!title) return fail("MISSING_TITLE");
-      if (!body) return fail("MISSING_BODY");
+      if (!kindRaw) {
+        return validationTerminate(
+          "MISSING_KIND",
+          `I need an intent kind to broadcast (one of: ${LIFE_INTENT_KINDS.join(", ")}).`,
+        );
+      }
+      if (!isKind(kindRaw)) {
+        return validationTerminate(
+          "UNKNOWN_KIND",
+          `Unknown intent kind "${kindRaw}". Expected one of: ${LIFE_INTENT_KINDS.join(", ")}.`,
+          { kind: kindRaw },
+        );
+      }
+      if (!title) {
+        return validationTerminate(
+          "MISSING_TITLE",
+          "I need a short title for the intent before I can broadcast it.",
+        );
+      }
+      if (!body) {
+        return validationTerminate(
+          "MISSING_BODY",
+          "I need a body for the intent before I can broadcast it.",
+        );
+      }
 
       const targetRaw = coerceString(params.target) ?? "all";
       if (!isTarget(targetRaw)) {

@@ -2915,7 +2915,8 @@ export const calendarAction: Action & {
     "DO NOT use this action when the user is only making an observation like 'my calendar has been crazy this quarter' unless they actually ask you to inspect or change calendar state. " +
     "DO NOT use this action for email inbox work, drafting or sending emails — use GMAIL_ACTION instead. " +
     "DO NOT use this action for personal habits, goals, routines, or reminders — use LIFE instead. " +
-    "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",
+    "This action provides the final grounded reply; do not pair it with a speculative REPLY action." +
+    " DO NOT use this action when the user asks to 'help schedule' / 'set up' / 'find a time for' a meeting with a person or team without a specific time — that is SCHEDULING (subaction start). DO NOT use this action to 'propose', 'suggest', or 'offer' meeting time slots — that is PROPOSE_MEETING_TIMES. Use CALENDAR_ACTION only when the user specifies (or intends to specify) a concrete date/time for the event.",
   descriptionCompressed: "Google Calendar via LifeOps: view schedule, search events, create events, query travel. Not for email or habits.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {

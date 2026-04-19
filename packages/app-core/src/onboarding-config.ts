@@ -103,6 +103,8 @@ export function buildOnboardingRuntimeConfig(
   args: BuildOnboardingConnectionArgs,
 ): BuildOnboardingRuntimeConfigResult {
   const serverTarget = resolveArgsServerTarget(args);
+  const persistRuntimeOnConnectedRemote =
+    serverTarget === "remote" && args.onboardingRemoteConnected;
   const nanoModel = trimToUndefined(args.onboardingNanoModel);
   const smallModel = trimToUndefined(args.onboardingSmallModel);
   const mediumModel = trimToUndefined(args.onboardingMediumModel);
@@ -135,7 +137,9 @@ export function buildOnboardingRuntimeConfig(
   }
 
   const deploymentTarget: DeploymentTargetConfig =
-    serverTarget === "remote"
+    persistRuntimeOnConnectedRemote
+      ? { runtime: "local" }
+      : serverTarget === "remote"
       ? {
           runtime: "remote",
           provider: "remote",
@@ -177,7 +181,7 @@ export function buildOnboardingRuntimeConfig(
       onboardingOpenRouterModel: args.onboardingOpenRouterModel,
     });
     llmTextRoute =
-      serverTarget === "remote"
+      serverTarget === "remote" && !persistRuntimeOnConnectedRemote
         ? {
             backend: localProviderId,
             transport: "remote",
