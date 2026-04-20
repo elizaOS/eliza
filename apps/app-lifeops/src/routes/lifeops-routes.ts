@@ -1596,10 +1596,12 @@ export async function handleLifeOpsRoutes(
       );
       return true;
     }
+    const validatedTarget =
+      body.target as (typeof LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS)[number];
     return runStatelessRoute(ctx, async () => {
       json(
         res,
-        await openLifeOpsBrowserCompanionPackagePath(body.target, {
+        await openLifeOpsBrowserCompanionPackagePath(validatedTarget, {
           revealOnly: body.revealOnly === true,
         }),
       );
