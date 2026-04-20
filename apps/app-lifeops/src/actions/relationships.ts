@@ -547,9 +547,16 @@ export const relationshipAction: Action & {
         await callback?.({ text });
         return {
           text,
-          success: true,
+          success: false,
+          values: {
+            success: false,
+            error: "PLANNER_SHOULDACT_FALSE",
+            noop: true,
+            suggestedSubaction: subaction,
+          },
           data: {
             noop: true,
+            error: "PLANNER_SHOULDACT_FALSE",
             suggestedSubaction: subaction,
           },
         };

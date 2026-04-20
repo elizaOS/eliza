@@ -3191,13 +3191,20 @@ export const lifeAction: Action & {
             !supportStrategy
           ) {
             return {
-              success: true,
+              success: false,
               text:
                 llmPlan.response ??
                 "What would count as success for that goal, and over what time window?",
+              values: {
+                success: false,
+                error: "NOOP_GOAL_UNGROUNDED",
+                noop: true,
+                suggestedOperation: "create_goal",
+              },
               data: {
                 actionName: "LIFE",
                 noop: true,
+                error: "NOOP_GOAL_UNGROUNDED",
                 suggestedOperation: "create_goal",
               },
             };
