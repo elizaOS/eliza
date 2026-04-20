@@ -9,7 +9,7 @@
  * of truth for managed entitlements (Commandment 4).
  *
  * Travel features (`travel.*`, `cloud.duffel`) get a Cloud-aware UX:
- *  - Cloud-linked, Cloud-managed row → "Enabled via Eliza Cloud · 5%
+ *  - Cloud-linked, Cloud-managed row → "Enabled via Eliza Cloud · 20%
  *    service fee" badge and a disabled switch (managed upstream).
  *  - Not Cloud-linked → "Sign in to Eliza Cloud to enable, or toggle on
  *    locally (requires your own Duffel API key)" hint, and the Sync
@@ -262,7 +262,7 @@ export function FeatureTogglesSection() {
                     </span>
                     {showCloudFeeTag && (
                       <span className="rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
-                        Enabled via Eliza Cloud · 5% service fee
+                        Enabled via Eliza Cloud · 20% service fee
                       </span>
                     )}
                     {feature.costsMoney && !showCloudFeeTag && (
