@@ -58,6 +58,26 @@ function matchesActionName(
   return toArray(accepted).includes(value);
 }
 
+function normalizeChannel(value: string): string {
+  return value.trim().toLowerCase().replace(/[-\s]+/g, "_");
+}
+
+function matchesChannel(
+  value: string | undefined,
+  accepted: string | string[] | undefined,
+): boolean {
+  if (accepted === undefined) {
+    return true;
+  }
+  if (typeof value !== "string" || value.length === 0) {
+    return false;
+  }
+  const normalizedValue = normalizeChannel(value);
+  return toArray(accepted).some(
+    (candidate) => normalizeChannel(candidate) === normalizedValue,
+  );
+}
+
 function toRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -134,6 +154,84 @@ function actionArtifactsPresent(action: ScenarioContext["actionsCalled"][number]
     Array.isArray(raw?.attachments) ||
     Array.isArray(nestedArtifacts) && nestedArtifacts.length > 0
   );
+}
+
+function actionResultData(
+  action: ScenarioContext["actionsCalled"][number],
+): Record<string, unknown> | null {
+  return toRecord(action.result?.data) ?? toRecord(action.result?.raw);
+}
+
+function channelMatches(
+  value: string | undefined,
+  accepted: string | string[] | undefined,
+): boolean {
+  return matchesChannel(value, accepted);
+}
+
+function actionBlob(action: ScenarioContext["actionsCalled"][number]): string {
+  const parts = [action.actionName];
+  if (action.parameters) {
+    parts.push(JSON.stringify(action.parameters));
+  }
+  if (action.result?.text) {
+    parts.push(action.result.text);
+  }
+  const data = actionResultData(action);
+  if (data) {
+    parts.push(JSON.stringify(data));
+  }
+  return parts.join(" ").toLowerCase();
+}
+
+function actionMatchesChannelExpectation(
+  action: ScenarioContext["actionsCalled"][number],
+  channels: string[],
+): boolean {
+  if (channels.length === 0) {
+    return true;
+  }
+  const data = actionResultData(action);
+  if (!data) {
+    return false;
+  }
+  if (data.gmailDraft && channelMatches("gmail", channels)) {
+    return true;
+  }
+  const channelValue =
+    typeof data.channel === "string"
+      ? data.channel
+      : typeof data.transport === "string"
+        ? data.transport
+        : undefined;
+  return channelMatches(channelValue, channels);
+}
+
+function actionDraftCandidate(
+  action: ScenarioContext["actionsCalled"][number],
+): boolean {
+  const data = actionResultData(action);
+  if (!data) {
+    return false;
+  }
+  if (data.gmailDraft) {
+    return true;
+  }
+  return data.draft === true || data.status === "drafted";
+}
+
+function actionDeliveredCandidate(
+  action: ScenarioContext["actionsCalled"][number],
+): boolean {
+  const data = actionResultData(action);
+  const status =
+    data && typeof data.status === "string" ? data.status.toLowerCase() : "";
+  if (["sent", "delivered", "completed"].includes(status)) {
+    return true;
+  }
+  const text =
+    typeof action.result?.text === "string" ? action.result.text.toLowerCase() : "";
+  return text.includes("sent") || text.includes("delivered");
 }
 
 // ---------------------------------------------------------------------------
@@ -304,6 +402,31 @@ registerFinalCheckHandler(
   },
 );
 
+registerFinalCheckHandler("approvalStateTransition", (check, { ctx }) => {
+  const { from, to, actionName } = check as {
+    from: string;
+    to: string;
+    actionName?: string | string[];
+  };
+  const matched = (ctx.stateTransitions ?? []).filter(
+    (transition) =>
+      transition.subject === "approval" &&
+      transition.from === from &&
+      transition.to === to &&
+      matchesActionName(transition.actionName ?? "", actionName),
+  );
+  if (matched.length === 0) {
+    return {
+      status: "failed",
+      detail: `no approval transition ${from} -> ${to} matched [${toArray(actionName).join(",") || "*"}]`,
+    };
+  }
+  return {
+    status: "passed",
+    detail: `${matched.length} approval transition(s) ${from} -> ${to}`,
+  };
+});
+
 registerFinalCheckHandler("pushSent", (check, { ctx }) => {
   if (ctx.connectorDispatches === undefined) {
     return {
@@ -323,6 +446,62 @@ registerFinalCheckHandler("pushSent", (check, { ctx }) => {
     };
   }
   return { status: "passed", detail: `${hit.length} push(es)` };
+});
+
+registerFinalCheckHandler("pushEscalationOrder", (check, { ctx }) => {
+  if (ctx.connectorDispatches === undefined) {
+    return {
+      status: "skipped-dependency-missing",
+      detail: "no connector dispatcher registered",
+    };
+  }
+  const { channelOrder } = check as { channelOrder: string[] };
+  const seenChannels = ctx.connectorDispatches
+    .map((dispatch) => dispatch.channel)
+    .filter((channel): channel is string => typeof channel === "string")
+    .map(normalizeChannel);
+  let searchStart = 0;
+  for (const channel of channelOrder) {
+    const normalizedChannel = normalizeChannel(channel);
+    const nextIndex = seenChannels.indexOf(normalizedChannel, searchStart);
+    if (nextIndex === -1) {
+      return {
+        status: "failed",
+        detail: `missing ${channel} in escalation order [${channelOrder.join(" -> ")}]`,
+      };
+    }
+    searchStart = nextIndex + 1;
+  }
+  return {
+    status: "passed",
+    detail: `dispatches followed [${channelOrder.join(" -> ")}]`,
+  };
+});
+
+registerFinalCheckHandler("pushAcknowledgedSync", (check, { ctx }) => {
+  const { expected } = check as { expected?: boolean };
+  const any = ctx.actionsCalled.some((action) => {
+    if (action.actionName !== "INTENT_SYNC" || action.result?.success !== true) {
+      return false;
+    }
+    const parameters = toRecord(action.parameters);
+    const data = actionResultData(action);
+    return (
+      parameters?.subaction === "acknowledge" ||
+      typeof data?.intentId === "string"
+    );
+  });
+  const want = expected ?? true;
+  if (any === want) {
+    return {
+      status: "passed",
+      detail: `pushAcknowledgedSync=${want}`,
+    };
+  }
+  return {
+    status: "failed",
+    detail: `expected pushAcknowledgedSync=${want}, saw ${any}`,
+  };
 });
 
 registerFinalCheckHandler("clarificationRequested", (check, { ctx }) => {
@@ -460,6 +639,108 @@ registerFinalCheckHandler("uploadedAssetExists", (check, { ctx }) => {
   return {
     status: "failed",
     detail: `expected uploadedAssetExists=${want}, saw ${any}`,
+  };
+});
+
+registerFinalCheckHandler("draftExists", (check, { ctx }) => {
+  const { channel, expected } = check as {
+    channel?: string | string[];
+    expected?: boolean;
+  };
+  const any = ctx.actionsCalled.some((action) => {
+    const data = actionResultData(action);
+    if (!data) {
+      return false;
+    }
+    if (data.gmailDraft && matchesChannel("gmail", channel)) {
+      return true;
+    }
+    return (
+      data.draft === true &&
+      matchesChannel(data.channel as string | undefined, channel)
+    );
+  });
+  const want = expected ?? true;
+  if (any === want) {
+    return {
+      status: "passed",
+      detail: `draftExists=${want}`,
+    };
+  }
+  return {
+    status: "failed",
+    detail: `expected draftExists=${want}, saw ${any}`,
+  };
+});
+
+registerFinalCheckHandler("messageDelivered", (check, { ctx }) => {
+  const { channel, expected } = check as {
+    channel?: string | string[];
+    expected?: boolean;
+  };
+  const dispatchDelivered = (ctx.connectorDispatches ?? []).some(
+    (dispatch) =>
+      dispatch.delivered === true && matchesChannel(dispatch.channel, channel),
+  );
+  const actionDelivered = ctx.actionsCalled.some((action) => {
+    const data = actionResultData(action);
+    if (!data) {
+      return false;
+    }
+    const status = typeof data.status === "string" ? data.status : "";
+    return (
+      matchesChannel(data.channel as string | undefined, channel) &&
+      ["sent", "delivered", "completed"].includes(status.toLowerCase())
+    );
+  });
+  const any = dispatchDelivered || actionDelivered;
+  const want = expected ?? true;
+  if (any === want) {
+    return {
+      status: "passed",
+      detail: `messageDelivered=${want}`,
+    };
+  }
+  return {
+    status: "failed",
+    detail: `expected messageDelivered=${want}, saw ${any}`,
+  };
+});
+
+registerFinalCheckHandler("connectorDispatchOccurred", (check, { ctx }) => {
+  const { channel, actionName, minCount } = check as {
+    channel: string | string[];
+    actionName?: string | string[];
+    minCount?: number;
+  };
+  const dispatchCount = (ctx.connectorDispatches ?? []).filter(
+    (dispatch) => matchesChannel(dispatch.channel, channel),
+  ).length;
+  const actionFallbackCount = ctx.actionsCalled.filter((action) => {
+    if (!matchesActionName(action.actionName, actionName)) {
+      return false;
+    }
+    const data = actionResultData(action);
+    if (!data) {
+      return false;
+    }
+    const status = typeof data.status === "string" ? data.status : "";
+    return (
+      matchesChannel(data.channel as string | undefined, channel) &&
+      ["sent", "delivered", "completed"].includes(status.toLowerCase())
+    );
+  }).length;
+  const total = dispatchCount + actionFallbackCount;
+  const want = typeof minCount === "number" ? minCount : 1;
+  if (total < want) {
+    return {
+      status: "failed",
+      detail: `expected ${want} connector dispatch(es) on [${toArray(channel).join(",")}], saw ${total}`,
+    };
+  }
+  return {
+    status: "passed",
+    detail: `${total} connector dispatch(es) on [${toArray(channel).join(",")}]`,
   };
 });
 
