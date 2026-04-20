@@ -90,6 +90,7 @@ describe("LifeOps executive-assistant prompt benchmark contracts", () => {
     const actionNames = new Set(
       (appLifeOpsPlugin.actions ?? []).map((action) => action.name),
     );
+    expect(actionNames.has("PUBLISH_DEVICE_INTENT")).toBe(true);
     const cases = await buildExecutiveAssistantPromptBenchmarkCases();
     for (const testCase of cases) {
       const acceptedAnchors = [
@@ -107,5 +108,16 @@ describe("LifeOps executive-assistant prompt benchmark contracts", () => {
       );
       expect(hasCompatibleSurfaceAction).toBe(true);
     }
+  });
+
+  it("honors explicit benchmark prompt overrides when a transcript turn is not the canonical owner prompt", async () => {
+    const cases = await buildExecutiveAssistantPromptBenchmarkCases();
+    const bookAfterApproval = cases.find(
+      (testCase) => testCase.caseId === "ea.travel.book-after-approval__direct",
+    );
+
+    expect(bookAfterApproval?.basePrompt).toContain(
+      "hold it for my approval before you book anything",
+    );
   });
 });

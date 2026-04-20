@@ -63,6 +63,8 @@ describe("resolvePlannerActionName", () => {
 				{ name: "UPDATE_OWNER_PROFILE" },
 				{ name: "PUBLISH_DEVICE_INTENT" },
 				{ name: "LIFEOPS_COMPUTER_USE" },
+				{ name: "BOOK_TRAVEL" },
+				{ name: "CALL_EXTERNAL" },
 			],
 			logger: {
 				info: vi.fn(),
@@ -102,6 +104,9 @@ describe("resolvePlannerActionName", () => {
 		).toEqual(["PUBLISH_DEVICE_INTENT"]);
 		expect(resolvePlannerActionName(runtime, actionLookup, "UPLOAD_PORTAL")).toEqual(
 			["LIFEOPS_COMPUTER_USE"],
+		);
+		expect(resolvePlannerActionName(runtime, actionLookup, "BOOK_TRAVEL")).toEqual(
+			["BOOK_TRAVEL"],
 		);
 	});
 });

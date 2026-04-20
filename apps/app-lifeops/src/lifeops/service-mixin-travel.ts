@@ -56,6 +56,10 @@ export interface TravelConnectorStatus {
   provider: "travel";
   connected: boolean;
   adapter: "duffel" | null;
+  /** "cloud" when routing through Eliza Cloud relay (default), "direct"
+   *  when MILADY_DUFFEL_DIRECT=1 + DUFFEL_API_KEY are set. null when the
+   *  travel connector is unconfigured. */
+  mode: "cloud" | "direct" | null;
   lastCheckedAt: string;
 }
 
@@ -196,11 +200,12 @@ export function withTravel<TBase extends Constructor<LifeOpsServiceBase>>(
   class LifeOpsTravelServiceMixin extends Base {
     getTravelConnectorStatus(): TravelConnectorStatus {
       try {
-        readDuffelConfigFromEnv();
+        const config = readDuffelConfigFromEnv();
         return {
           provider: "travel",
           connected: true,
           adapter: "duffel",
+          mode: config.mode,
           lastCheckedAt: new Date().toISOString(),
         };
       } catch {
@@ -208,6 +213,7 @@ export function withTravel<TBase extends Constructor<LifeOpsServiceBase>>(
           provider: "travel",
           connected: false,
           adapter: null,
+          mode: null,
           lastCheckedAt: new Date().toISOString(),
         };
       }

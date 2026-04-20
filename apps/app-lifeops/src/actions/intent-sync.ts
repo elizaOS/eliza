@@ -165,25 +165,19 @@ export const intentSyncAction: Action & {
     "SYNC_INTENT",
     "CROSS_DEVICE_INTENT",
     "BROADCAST_TO_DEVICE",
-    "PUSH_TO_MOBILE",
-    "PUSH_TO_PHONE",
-    "PUSH_TO_DESKTOP",
-    "ROUTINE_REMINDER",
-    "DEVICE_REMINDER",
-    "SEND_TO_DEVICE",
+    "LIST_PENDING_INTENTS",
+    "ACKNOWLEDGE_DEVICE_INTENT",
+    "PRUNE_DEVICE_INTENTS",
   ],
   description:
-    "Broadcast a structured device-level intent (routine_reminder, location_alert, " +
-    "task_nudge, focus_prompt, calendar_event, habit_check, etc.) to one or more " +
-    "of the owner's devices (mobile, desktop, watch, all, or a specific device id), " +
-    "or acknowledge/list/prune pending intents. Subactions: broadcast, list_pending, " +
-    "acknowledge, prune_expired. " +
-    "Use this for any 'broadcast/push/send <intent> to my phone/mobile/desktop/devices' " +
-    "request, or 'remind me on my phone to X' — the target is a device, not a chat " +
-    "channel. Do NOT use CROSS_CHANNEL_SEND for device-targeted reminders: " +
-    "CROSS_CHANNEL_SEND is for sending chat messages to another person on a " +
-    "messaging platform (email/discord/telegram/signal/etc.), while INTENT_SYNC " +
-    "pushes a structured intent record to the owner's own devices.",
+    "Compatibility-only low-level device-intent management. Broadcast, list, acknowledge, " +
+    "or prune raw device intents for the owner's devices. Subactions: broadcast, list_pending, " +
+    "acknowledge, prune_expired. Use this for explicit device-intent administration like " +
+    "'broadcast a raw reminder to my mobile', 'list pending device intents', or 'acknowledge that intent'. " +
+    "Do not use this for new owner-facing reminder ladders, updated-ID interventions, document-signing nudges, " +
+    "or cancellation-fee warnings — those belong to PUBLISH_DEVICE_INTENT. Do NOT use CROSS_CHANNEL_SEND " +
+    "for device-targeted reminders: CROSS_CHANNEL_SEND is for sending chat messages to another person on a " +
+    "messaging platform, while INTENT_SYNC manages raw structured intents on the owner's own devices.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasAdminAccess(runtime, message),

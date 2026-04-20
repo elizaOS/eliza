@@ -28,6 +28,7 @@ type ExecutiveAssistantCatalogScenario = {
   id: string;
   suite: string;
   examplePrompt: string;
+  benchmarkPrompt?: string;
   actions: string[];
 };
 
@@ -392,12 +393,13 @@ function buildPromptBenchmarkContext(args: {
 }
 
 function buildPromptBenchmarkCasesForScenario(args: {
+  basePromptOverride?: string;
   expectation: BenchmarkExpectation;
   scenario: ScenarioLike;
   suiteId: PromptBenchmarkSuiteId;
 }): PromptBenchmarkCase[] {
   const { expectation, scenario, suiteId } = args;
-  const basePrompt = firstMessageTurnText(scenario);
+  const basePrompt = (args.basePromptOverride ?? firstMessageTurnText(scenario)).trim();
   const scenarioTags = scenario.tags ?? [];
 
   return PROMPT_BENCHMARK_VARIANTS.map((variant) => {
@@ -517,9 +519,16 @@ export async function loadSelfCareScenarios(): Promise<ScenarioLike[]> {
 export async function buildExecutiveAssistantPromptBenchmarkCases(): Promise<
   PromptBenchmarkCase[]
 > {
-  const scenarios = await loadExecutiveAssistantScenarios();
+  const [catalog, scenarios] = await Promise.all([
+    loadExecutiveAssistantCatalog(),
+    loadExecutiveAssistantScenarios(),
+  ]);
+  const promptsByScenarioId = new Map(
+    catalog.scenarios.map((entry) => [entry.id, entry.benchmarkPrompt]),
+  );
   return scenarios.flatMap((scenario) =>
     buildPromptBenchmarkCasesForScenario({
+      basePromptOverride: promptsByScenarioId.get(scenario.id) ?? undefined,
       expectation: deriveExecutiveAssistantExpectation(scenario),
       scenario,
       suiteId: "lifeops-executive-assistant",

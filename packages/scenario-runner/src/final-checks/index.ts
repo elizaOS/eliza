@@ -146,6 +146,23 @@ function actionBlob(action: ScenarioContext["actionsCalled"][number]): string {
   return parts.join(" | ").toLowerCase();
 }
 
+function normalizeChannelKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function channelMatches(candidate: string | undefined, channels: string[]): boolean {
+  if (channels.length === 0) {
+    return true;
+  }
+  if (!candidate) {
+    return false;
+  }
+  const normalizedCandidate = normalizeChannelKey(candidate);
+  return channels.some(
+    (channel) => normalizeChannelKey(channel) === normalizedCandidate,
+  );
+}
+
 function actionDraftCandidate(
   action: ScenarioContext["actionsCalled"][number],
 ): boolean {
@@ -183,8 +200,10 @@ function actionMatchesChannelExpectation(
   if (channels.length === 0) {
     return true;
   }
-  const blob = actionBlob(action);
-  return channels.some((channel) => blob.includes(channel.toLowerCase()));
+  const blob = normalizeChannelKey(actionBlob(action));
+  return channels.some((channel) =>
+    blob.includes(normalizeChannelKey(channel)),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -529,7 +548,7 @@ registerFinalCheckHandler("messageDelivered", (check, { ctx }) => {
     if (dispatch.delivered !== true) {
       return false;
     }
-    return channels.length === 0 || channels.includes(dispatch.channel);
+    return channelMatches(dispatch.channel, channels);
   });
   const actionDelivered = ctx.actionsCalled.some(
     (action) =>
@@ -555,7 +574,7 @@ registerFinalCheckHandler("connectorDispatchOccurred", (check, { ctx }) => {
   };
   const channels = toArray(channel);
   const matchedDispatches = (ctx.connectorDispatches ?? []).filter((dispatch) => {
-    if (channels.length > 0 && !channels.includes(dispatch.channel)) {
+    if (!channelMatches(dispatch.channel, channels)) {
       return false;
     }
     return matchesActionName(dispatch.actionName ?? "", actionName);
