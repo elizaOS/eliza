@@ -6,6 +6,26 @@
  * pattern used across this test directory.
  *
  * Unit-level tests (config parsing, error paths) always run.
+ *
+ * ---------------------------------------------------------------------------
+ * AlwaysSkipped in CI
+ * ---------------------------------------------------------------------------
+ * The `sendPush — live Ntfy` describe block at the bottom of this file is
+ * `describe.skipIf(!LIVE_BASE_URL)`. NTFY_BASE_URL is not configured in any
+ * GitHub Actions workflow (see .github/workflows/*.yml — no match for
+ * NTFY_BASE_URL), so the live block is always skipped in CI today. It is
+ * kept here to document the live contract and to run locally when a
+ * developer points the suite at a real Ntfy server.
+ *
+ * To run locally:
+ *   NTFY_BASE_URL=https://ntfy.sh \
+ *   NTFY_DEFAULT_TOPIC=milady-test \
+ *     bunx vitest run apps/app-lifeops/test/notifications-push.integration.test.ts
+ *
+ * Do NOT enable this suite in CI by injecting NTFY_BASE_URL — it publishes
+ * real notifications to a public broker. If we want CI coverage for the
+ * HTTP layer, convert this into an offline harness with a local HTTP
+ * server stub (nock / msw / `http.createServer`) in a follow-up.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

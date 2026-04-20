@@ -350,12 +350,21 @@ describe("background-job-parity: lifeops scheduler", () => {
     // hardcoded jobKind and an empty snapshot, wasting tokens for a result
     // that was never used. The call was removed. This test guards against
     // that regression.
+    //
+    // The mock harness here does not back a real runtime database adapter,
+    // so `processScheduledWork` (invoked inside the scheduler task) will
+    // reject with "runtime database adapter unavailable". That is expected —
+    // we still require that NO planner dispatch was logged and no approvals
+    // enqueued. An uncaught reject of anything other than the DB-adapter
+    // error would be a real regression and fail the test.
     const { runtime, queue } = makeRuntime({
       plannerResponse: noopPlannerResponse("no reminders due"),
     });
     resetPlannerDispatchLog(runtime);
 
-    await executeLifeOpsSchedulerTask(runtime);
+    await expect(executeLifeOpsSchedulerTask(runtime)).rejects.toThrow(
+      /runtime database adapter unavailable/,
+    );
 
     const log = readPlannerDispatchLog(runtime);
     const scheduler = log.filter((d) => d.jobKind === "meeting_reminder");
@@ -371,18 +380,19 @@ describe("background-job-parity: lifeops scheduler", () => {
     // integration arrives, it MUST first populate a meaningful snapshot —
     // callers adding `useModel` usage back here should update this test
     // only after that snapshot exists, not by reverting the guard.
+    //
+    // Same DB-adapter-unavailable caveat as the test above: the scheduler
+    // reaches `processScheduledWork`, which rejects because the mock runtime
+    // has no real adapter. That rejection is expected and asserted; the
+    // load-bearing check is that `useModel` was never called en route.
     const fixedNow = "2026-04-19T20:45:00.000Z";
     const { runtime, useModelCalls } = makeRuntime({
       plannerResponse: noopPlannerResponse("no reminders due"),
     });
 
-    try {
-      await executeLifeOpsSchedulerTask(runtime, { now: fixedNow });
-    } catch {
-      // The mock harness does not implement the full LifeOps persistence
-      // stack; `processScheduledWork` may throw. We still require that no
-      // LLM call has been made by the time we got here.
-    }
+    await expect(
+      executeLifeOpsSchedulerTask(runtime, { now: fixedNow }),
+    ).rejects.toThrow(/runtime database adapter unavailable/);
 
     expect(useModelCalls).toHaveLength(0);
   });
