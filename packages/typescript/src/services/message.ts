@@ -5022,10 +5022,10 @@ Output ONLY the continuation, starting immediately after the last character abov
 				}
 			}
 
-			if (
-				!overrides?.providerFollowup &&
-				shouldAttemptActionRescue(runtime, message, state, responseContent)
-			) {
+				if (
+					!overrides?.providerFollowup &&
+					shouldAttemptActionRescue(runtime, message, state, responseContent)
+				) {
 				const actionRescuePrompt = buildActionRescuePrompt(
 					prompt,
 					String(responseContent.text || ""),
@@ -5177,12 +5177,12 @@ Output ONLY the continuation, starting immediately after the last character abov
 							"Recovered primary action after passive reply draft",
 						);
 						responseContent.actions = rescuedActions;
+						}
 					}
 				}
-			}
 
-			// Action parameter repair (Python parity):
-			// If the model selected actions with missing or invalid params, do a
+				// Action parameter repair (Python parity):
+				// If the model selected actions with missing or invalid params, do a
 			// second pass asking for ONLY a corrected <params> block.
 			const actionByName = new Map<string, Action>();
 			for (const action of runtime.actions) {

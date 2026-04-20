@@ -1,5 +1,6 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 
 // Match any speaker prefix pattern: "word:" or "word word:" at the start of a line.
 // This is language-agnostic — strips any short prefix label followed by a colon,
@@ -35,16 +36,6 @@ export function recentConversationTextsFromState(
   state: State | undefined,
   limit = 6,
 ): string[] {
-  if (!state || typeof state !== "object") {
-    return [];
-  }
-
-  const stateRecord = state as Record<string, unknown>;
-  const values =
-    stateRecord.values && typeof stateRecord.values === "object"
-      ? (stateRecord.values as Record<string, unknown>)
-      : undefined;
-
   const collected: string[] = [];
   const pushText = (value: unknown) => {
     if (typeof value === "string" && value.trim().length > 0) {
@@ -52,20 +43,12 @@ export function recentConversationTextsFromState(
     }
   };
 
-  pushText(values?.recentMessages);
-  pushText(stateRecord.text);
+  pushText(state?.values?.recentMessages);
+  pushText((state as { text?: unknown })?.text);
 
-  const recentMessagesData =
-    stateRecord.recentMessagesData ?? stateRecord.recentMessages;
-  if (Array.isArray(recentMessagesData)) {
-    for (const item of recentMessagesData) {
-      if (!item || typeof item !== "object") {
-        continue;
-      }
-      const content = (item as Record<string, unknown>).content;
-      if (!content || typeof content !== "object") {
-        continue;
-      }
+  for (const item of getRecentMessagesData(state)) {
+    const content = item?.content;
+    if (content && typeof content === "object") {
       pushText((content as Record<string, unknown>).text);
     }
   }

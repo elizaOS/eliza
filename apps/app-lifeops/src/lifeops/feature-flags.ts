@@ -22,12 +22,26 @@ import {
 /**
  * SQL-backed FeatureFlagService.
  *
- * Reads & writes the `lifeops_features` table from `@elizaos/plugin-sql`.
+ * Reads & writes the `lifeops_features` table. Schema is bootstrapped lazily
+ * the first time a method runs against a given runtime, so callers do not
+ * need to depend on the upstream plugin migration order.
+ *
  * Compile-time defaults (`FEATURE_DEFAULTS`) are the authority when no row
  * exists. The runtime never writes a row with `source = 'default'` —
  * absence is the canonical representation of an unmodified default
  * (Commandment 7).
  */
+
+const ENSURE_SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS lifeops_features (
+  feature_key TEXT PRIMARY KEY,
+  enabled BOOLEAN NOT NULL,
+  source TEXT NOT NULL,
+  enabled_at TIMESTAMPTZ,
+  enabled_by UUID,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)`;
 
 const SELECT_COLUMNS =
   "feature_key, enabled, source, enabled_at, enabled_by, metadata, created_at, updated_at";
@@ -96,9 +110,16 @@ function defaultState(key: LifeOpsFeatureKey): FeatureFlagState {
 class PgFeatureFlagService implements FeatureFlagService {
   private readonly runtime: IAgentRuntime;
   private readonly listeners = new Set<FeatureFlagChangeListener>();
+  private bootstrapped = false;
 
   constructor(runtime: IAgentRuntime) {
     this.runtime = runtime;
+  }
+
+  private async ensureSchema(): Promise<void> {
+    if (this.bootstrapped) return;
+    await executeRawSql(this.runtime, ENSURE_SCHEMA_SQL);
+    this.bootstrapped = true;
   }
 
   async isEnabled(key: LifeOpsFeatureKey): Promise<boolean> {
@@ -107,6 +128,7 @@ class PgFeatureFlagService implements FeatureFlagService {
   }
 
   async get(key: LifeOpsFeatureKey): Promise<FeatureFlagState> {
+    await this.ensureSchema();
     const sql = `SELECT ${SELECT_COLUMNS} FROM lifeops_features
       WHERE feature_key = ${sqlText(key)}
       LIMIT 1`;
@@ -118,6 +140,7 @@ class PgFeatureFlagService implements FeatureFlagService {
   }
 
   async list(): Promise<ReadonlyArray<FeatureFlagState>> {
+    await this.ensureSchema();
     const sql = `SELECT ${SELECT_COLUMNS} FROM lifeops_features`;
     const rows = await executeRawSql(this.runtime, sql);
     const byKey = new Map<LifeOpsFeatureKey, FeatureFlagState>();
@@ -165,6 +188,7 @@ class PgFeatureFlagService implements FeatureFlagService {
         "[FeatureFlags] refusing to write a row with source='default'",
       );
     }
+    await this.ensureSchema();
     const enabledAtSql = enabled
       ? `(${sqlText(new Date().toISOString())}::timestamptz)`
       : "NULL";

@@ -263,18 +263,6 @@ const rawAppLifeOpsPlugin: Plugin = {
     pluginConfig: Record<string, unknown>,
     runtime: IAgentRuntime,
   ) => {
-    // Bootstrap LifeOps database tables before anything else runs.
-    try {
-      await LifeOpsRepository.bootstrapSchema(runtime);
-      logger.info("[lifeops] Database schema bootstrapped");
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      logger.error(
-        `[lifeops] Failed to bootstrap database schema: ${msg}`,
-      );
-      throw error instanceof Error ? error : new Error(msg);
-    }
-
     setSelfControlPluginConfig(pluginConfig as SelfControlPluginConfig);
     const status = await getSelfControlStatus();
 

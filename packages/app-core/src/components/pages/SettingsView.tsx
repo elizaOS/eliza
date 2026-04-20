@@ -42,6 +42,7 @@ import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
 import { LearnedSkillsPanel } from "../settings/LearnedSkills";
 import { MediaSettingsSection } from "../settings/MediaSettingsSection";
+import { FeatureTogglesSection } from "../settings/FeatureTogglesSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
 import { TrainingSettingsPanel } from "../settings/TrainingSettings";
@@ -182,6 +183,25 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "feature",
     ],
     keywordKeys: ["settings.keyword.wallet", "settings.keyword.browser"],
+  },
+  {
+    id: "feature-toggles",
+    label: "Features",
+    description: "Opt in to LifeOps capabilities like flight booking, push, and browser automation.",
+    keywords: [
+      "feature",
+      "toggle",
+      "flight",
+      "booking",
+      "duffel",
+      "push",
+      "notification",
+      "browser",
+      "automation",
+      "opt in",
+      "opt out",
+    ],
+    keywordKeys: ["settings.keyword.features"],
   },
   {
     id: "permissions",
@@ -1143,6 +1163,17 @@ export function SettingsView({
           ref={registerContentItem("permissions")}
         >
           <PermissionsSection />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("feature-toggles") && (
+        <SettingsSection
+          id="feature-toggles"
+          title="Features"
+          description="Opt in to LifeOps capabilities like flight booking, push, and browser automation."
+          ref={registerContentItem("feature-toggles")}
+        >
+          <FeatureTogglesSection />
         </SettingsSection>
       )}
 

@@ -195,12 +195,15 @@ export const ownerScheduleAction: Action = {
     // cannot statically prove the inspection schema is JSON-safe. Cast
     // through unknown — these fields are produced by LifeOpsService and
     // never contain non-serializable values.
-    const dataForCallback = data as unknown as ActionResult["data"];
-    await callback?.({ text, data: dataForCallback });
+    type CallbackData = Parameters<NonNullable<typeof callback>>[0]["data"];
+    await callback?.({
+      text,
+      data: data as unknown as CallbackData,
+    });
     return {
       text,
       success: true,
-      data: dataForCallback,
+      data: data as unknown as ActionResult["data"],
     };
   },
 };
