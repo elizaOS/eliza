@@ -1,3 +1,4 @@
+import { asNonEmptyString, asRecord } from "@elizaos/shared/type-guards";
 import {
   dispatchLifeOpsGithubCallback,
   type LifeOpsGithubCallbackDetail,
@@ -12,18 +13,8 @@ declare global {
   }
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
 function readTrimmedString(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
+  return asNonEmptyString(value) ?? null;
 }
 
 function readOptionalBoolean(value: unknown): boolean | undefined {

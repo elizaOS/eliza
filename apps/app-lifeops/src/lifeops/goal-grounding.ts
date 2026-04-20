@@ -1,4 +1,5 @@
 import type { LifeOpsGoalReviewState } from "@elizaos/shared/contracts/lifeops";
+import { asRecord } from "@elizaos/shared/type-guards";
 
 export const GOAL_GROUNDING_STATES = [
   "grounded",
@@ -35,13 +36,6 @@ export interface GoalSemanticReviewMetadata {
   evidenceSummary: string | null;
   missingEvidence: string[];
   suggestions: GoalSemanticSuggestionMetadata[];
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
 }
 
 function asText(value: unknown): string | null {

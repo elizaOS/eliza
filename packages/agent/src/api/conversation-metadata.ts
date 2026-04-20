@@ -1,4 +1,5 @@
 import type { JsonValue, Room } from "@elizaos/core";
+import { asNonEmptyString, asRecord } from "@elizaos/shared/type-guards";
 import type {
   ConversationMeta,
   ConversationMetadata,
@@ -20,20 +21,7 @@ const VALID_SCOPES = new Set<ConversationScope>([
 
 const VALID_AUTOMATION_TYPES = new Set(["coordinator_text", "n8n_workflow"]);
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
-}
-
-function normalizeOptionalString(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
+const normalizeOptionalString = asNonEmptyString;
 
 export function sanitizeConversationMetadata(
   value: unknown,

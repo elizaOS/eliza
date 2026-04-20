@@ -7,6 +7,7 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
+import { asRecordOrUndefined } from "./type-guards";
 
 // Vendored elizaOS roles helpers for published core builds that do not expose
 // the @elizaos/shared/eliza-core-roles subpath yet.
@@ -100,12 +101,7 @@ function normalizeRoleGrantSource(
   return null;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  return value as Record<string, unknown>;
-}
+const asRecord = asRecordOrUndefined;
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

@@ -1464,7 +1464,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return createdPlan;
     }
 
-    private serializeScheduleObservationForSync(
+    /** @internal — public to satisfy TS4094 on exported anonymous mixin class */
+    serializeScheduleObservationForSync(
       observation: LifeOpsScheduleObservationRecord,
     ): SyncLifeOpsScheduleObservationInput {
       const metadata = isRecord(observation.metadata) ? observation.metadata : null;

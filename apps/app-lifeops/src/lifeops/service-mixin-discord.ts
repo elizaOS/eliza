@@ -15,6 +15,7 @@ import type {
   LifeOpsOwnerBrowserNextAction,
   LifeOpsOwnerBrowserTabState,
 } from "@elizaos/shared/contracts/lifeops";
+import { asRecord } from "@elizaos/shared/type-guards";
 import {
   capabilitiesForSide,
   LIFEOPS_DISCORD_CAPABILITIES,
@@ -38,13 +39,6 @@ import { fail } from "./service-normalize.js";
 import { normalizeOptionalConnectorSide } from "./service-normalize-connector.js";
 
 const DISCORD_CONNECTOR_SESSION_TITLE = "Open Discord for LifeOps";
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
-}
 
 function identityFromProbe(
   probe: DiscordTabProbe | null,
