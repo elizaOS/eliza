@@ -443,6 +443,16 @@ export const ownerInboxAction: Action & {
             callback,
           );
         }
+        case "digest":
+          return delegateTo(
+            gmailAction,
+            runtime,
+            message,
+            state,
+            { subaction: "triage", intent: params.intent },
+            options,
+            callback,
+          );
         case "read_message":
           return delegateTo(
             gmailAction,
@@ -487,22 +497,15 @@ export const ownerInboxAction: Action & {
             options,
             callback,
           );
-        case "digest":
         case "respond":
-          // Digest / respond are cross-channel concepts — delegate to the
-          // unified inbox even when the caller scoped channel=gmail.
           return delegateTo(
-            inboxAction,
+            gmailAction,
             runtime,
             message,
             state,
             {
-              subaction,
+              subaction: "needs_response",
               intent: params.intent,
-              target: params.target,
-              entryId: params.entryId,
-              messageText: params.replyBody,
-              confirmed: params.confirmed,
             },
             options,
             callback,
