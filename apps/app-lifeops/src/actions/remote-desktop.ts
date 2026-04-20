@@ -41,43 +41,6 @@ function coerceSubaction(value: unknown): RemoteDesktopSubaction | undefined {
   return undefined;
 }
 
-/**
- * Infer a subaction from natural-language intent when the planner did not
- * pass one. This is strictly additive — `coerceSubaction` still wins if the
- * planner did pass a valid value.
- */
-function inferSubactionFromText(
-  text: string | undefined,
-): RemoteDesktopSubaction | undefined {
-  if (!text) return undefined;
-  const h = text.toLowerCase();
-  if (
-    /\b(start|open|launch|begin|initiate|connect\s+to|spin\s*up)\b/.test(h) &&
-    /\b(remote|session|desktop|screen\s*share)\b/.test(h)
-  ) {
-    return "start";
-  }
-  if (
-    /\b(end|stop|close|terminate|shut\s*down|tear\s*down|revoke)\b/.test(h) &&
-    /\b(remote|session|desktop)\b/.test(h)
-  ) {
-    return "end";
-  }
-  if (/\b(status|check)\b.*\b(remote|session|desktop)\b/.test(h)) {
-    return "status";
-  }
-  if (/\b(list|show|view)\b.*\b(remote|session|desktop)\b/.test(h)) {
-    return "list";
-  }
-  // Fallback for bare phrases like "start a remote desktop session".
-  if (/\bremote\s+desktop\b/.test(h) || /\bvnc\b/.test(h)) {
-    if (/\bstart|open|launch|begin|initiate|connect\b/.test(h)) return "start";
-    if (/\bend|stop|close|terminate|shut|revoke\b/.test(h)) return "end";
-    if (/\blist|show|view\b/.test(h)) return "list";
-  }
-  return undefined;
-}
-
 function formatSession(session: RemoteDesktopSession): string {
   const lines = [
     `Session ${session.id}`,
@@ -191,14 +154,7 @@ export const remoteDesktopAction: Action = {
     const params = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as RemoteDesktopParameters;
 
-    const messageText =
-      typeof (message?.content as { text?: unknown } | undefined)?.text === "string"
-        ? ((message.content as { text: string }).text)
-        : undefined;
-    const subaction =
-      coerceSubaction(params.subaction) ??
-      inferSubactionFromText(params.intent) ??
-      inferSubactionFromText(messageText);
+    const subaction = coerceSubaction(params.subaction);
     if (!subaction) {
       return {
         text: "Missing or invalid subaction. Use one of: start, status, end, list.",

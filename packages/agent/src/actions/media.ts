@@ -13,7 +13,7 @@
  * @module actions/media
  */
 
-import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
+import type { Action, ActionExample, HandlerOptions, IAgentRuntime } from "@elizaos/core";
 import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared/contracts";
 import { loadElizaConfig } from "../config/config.js";
 import {
@@ -159,6 +159,36 @@ export const generateImageAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Can you make a picture of a cozy library at sunset?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Here's the generated image based on a cozy library at sunset.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "I'd love a watercolor-style portrait of a fox in the snow.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Here's the generated image.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 // ============================================================================
@@ -268,6 +298,36 @@ export const generateVideoAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Make a short clip of a spaceship drifting past Saturn.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Here's the generated video.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Animate this still into a 5-second scene of waves rolling in.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Here's the generated video.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 // ============================================================================
@@ -383,6 +443,36 @@ export const generateAudioAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Compose a mellow lo-fi track for studying, about 90 seconds long.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Here\'s the generated audio: "Rainy Afternoon Study".',
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Put together an upbeat synthwave loop, instrumental only.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Here\'s the generated audio: "Neon Drive".',
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 // ============================================================================
@@ -485,6 +575,36 @@ export const analyzeImageAction: Action = {
       schema: { type: "number" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "What's in this screenshot I just sent?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "It's a dashboard showing weekly sales metrics with three line charts.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Read the receipt in the photo and tell me the total.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "The receipt is from Blue Bottle Coffee, total $14.75.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 export const mediaActions = [

@@ -544,6 +544,36 @@ export const checkAvailabilityAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Am I free tomorrow between 2pm and 4pm?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "You're free from Tue, Apr 20, 2:00 PM to Tue, Apr 20, 4:00 PM.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Do I have anything on my calendar Friday afternoon?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "You have 1 conflict in that window: Design review with the team.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 export const updateMeetingPreferencesAction: Action & {

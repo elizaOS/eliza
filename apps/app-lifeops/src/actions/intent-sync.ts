@@ -139,31 +139,6 @@ function normalizeParams(
   return {} as IntentSyncParameters & Record<string, unknown>;
 }
 
-function inferSubactionFromText(text: string): Subaction | undefined {
-  const t = text.toLowerCase();
-  if (/\b(broadcast|send|publish|push|ping)\b/.test(t)) return "broadcast";
-  if (/\b(list|show|what.*pending)\b/.test(t)) return "list_pending";
-  if (/\b(acknowledge|ack|mark\s+done)\b/.test(t)) return "acknowledge";
-  if (/\b(prune|expire|clean)\b/.test(t)) return "prune_expired";
-  return undefined;
-}
-
-function inferKindFromText(text: string): LifeOpsIntentKind | undefined {
-  const t = text.toLowerCase();
-  if (/\b(reminder|stretch|break|vitamin|hydrate|water|walk)\b/.test(t)) {
-    if (isKind("routine_reminder")) return "routine_reminder" as LifeOpsIntentKind;
-  }
-  if (/\b(urgent|help|need)\b/.test(t)) {
-    if (isKind("attention_request")) return "attention_request" as LifeOpsIntentKind;
-  }
-  if (/\b(request|ask|please)\b/.test(t)) {
-    if (isKind("user_action_requested")) {
-      return "user_action_requested" as LifeOpsIntentKind;
-    }
-  }
-  return undefined;
-}
-
 export const intentSyncAction: Action = {
   name: ACTION_NAME,
   similes: [
@@ -317,16 +292,14 @@ export const intentSyncAction: Action = {
 
     const rawParams = (options as HandlerOptions | undefined)?.parameters;
     const params = normalizeParams(rawParams);
-    const messageText =
-      typeof message.content?.text === "string" ? message.content.text : "";
 
     let subactionRaw = coerceString(params.subaction);
     if (!subactionRaw) {
-      // Tolerate LLMs that emit the verb in `intent` / `mode` / plain text.
+      // Tolerate LLMs that emit the verb in `mode` / `action` field name
+      // variants (parameter-key normalization only — not free-text inference).
       subactionRaw =
         coerceString((params as Record<string, unknown>).mode) ??
-        coerceString((params as Record<string, unknown>).action) ??
-        inferSubactionFromText(messageText);
+        coerceString((params as Record<string, unknown>).action);
     }
     if (!subactionRaw) {
       return validationTerminate(
@@ -344,13 +317,7 @@ export const intentSyncAction: Action = {
     const subaction: Subaction = subactionRaw;
 
     if (subaction === "broadcast") {
-      let kindRaw = coerceString(params.kind);
-      if (!kindRaw || !isKind(kindRaw)) {
-        // Only infer when the current value is clearly wrong/missing — not
-        // when it's already a valid kind.
-        const inferred = inferKindFromText(messageText);
-        if (inferred) kindRaw = inferred;
-      }
+      const kindRaw = coerceString(params.kind);
       const title = coerceString(params.title);
       const body = coerceString(params.body);
       if (!kindRaw) {

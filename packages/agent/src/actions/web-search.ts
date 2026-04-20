@@ -306,6 +306,15 @@ export const webSearchAction: Action = {
     }
   },
 
+  parameters: [
+    {
+      name: "query",
+      description:
+        "The search query to run against the web. Supply what the user wants to learn about.",
+      required: true,
+      schema: { type: "string" as const },
+    },
+  ],
   examples: [
     [
       {
