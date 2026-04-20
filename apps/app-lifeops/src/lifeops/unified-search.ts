@@ -435,18 +435,8 @@ async function resolvePerson(
           baseService.getMemoriesForCluster ??
           ((args) =>
             getClusterMemories(runtime, args.primaryEntityId, {
-              tableName: args.tableName,
-              roomId: args.roomId,
               worldId: args.worldId,
               count: args.count,
-              limit: args.limit,
-              offset: args.offset,
-              unique: args.unique,
-              start: args.start,
-              end: args.end,
-              metadata: args.metadata,
-              orderBy: args.orderBy,
-              orderDirection: args.orderDirection,
             })),
       } satisfies RelationshipsGraphServiceWithCluster)
     : null;
