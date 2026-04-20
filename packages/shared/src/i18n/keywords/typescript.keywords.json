@@ -1,13 +1,6 @@
 {
   "$schema": "./keywords.schema.json",
-  "locales": [
-    "es",
-    "ko",
-    "pt",
-    "tl",
-    "vi",
-    "zh-CN"
-  ],
+  "locales": ["es", "ko", "pt", "tl", "vi", "zh-CN"],
   "entries": {
     "action.createTask.request": {
       "base": [
@@ -428,18 +421,8 @@
         "remove from relationships",
         "forget contact"
       ],
-      "zh-CN": [
-        "移除联系人",
-        "删除联系人",
-        "从关系中移除",
-        "忘记联系人"
-      ],
-      "ko": [
-        "연락처 제거",
-        "연락처 삭제",
-        "관계에서 제거",
-        "연락처 잊어"
-      ],
+      "zh-CN": ["移除联系人", "删除联系人", "从关系中移除", "忘记联系人"],
+      "ko": ["연락처 제거", "연락처 삭제", "관계에서 제거", "연락처 잊어"],
       "es": [
         "elimina contacto",
         "eliminar contacto",
@@ -480,14 +463,7 @@
         "schedule follow-up",
         "schedule a reminder"
       ],
-      "zh-CN": [
-        "跟进",
-        "提醒我",
-        "回访",
-        "联系一下",
-        "安排提醒",
-        "安排跟进"
-      ],
+      "zh-CN": ["跟进", "提醒我", "回访", "联系一下", "安排提醒", "安排跟进"],
       "ko": [
         "후속 조치",
         "팔로업",
@@ -540,12 +516,7 @@
         "join this room",
         "take interest"
       ],
-      "zh-CN": [
-        "关注这个房间",
-        "参与这里",
-        "加入这个房间",
-        "听这个房间"
-      ],
+      "zh-CN": ["关注这个房间", "参与这里", "加入这个房间", "听这个房间"],
       "ko": [
         "이 방을 팔로우해",
         "여기에 참여해",
@@ -595,20 +566,8 @@
         "shh",
         "no more"
       ],
-      "zh-CN": [
-        "静音",
-        "安静",
-        "闭嘴",
-        "别说话",
-        "不要再说了"
-      ],
-      "ko": [
-        "음소거",
-        "조용히",
-        "입 다물어",
-        "말하지 마",
-        "그만 말해"
-      ],
+      "zh-CN": ["静音", "安静", "闭嘴", "别说话", "不要再说了"],
+      "ko": ["음소거", "조용히", "입 다물어", "말하지 마", "그만 말해"],
       "es": [
         "silencia",
         "ponte en silencio",
@@ -651,19 +610,8 @@
         "enable",
         "resume"
       ],
-      "zh-CN": [
-        "取消静音",
-        "恢复说话",
-        "再说话",
-        "继续",
-        "恢复"
-      ],
-      "ko": [
-        "음소거 해제",
-        "다시 말해",
-        "다시 듣기",
-        "재개"
-      ],
+      "zh-CN": ["取消静音", "恢复说话", "再说话", "继续", "恢复"],
+      "ko": ["음소거 해제", "다시 말해", "다시 듣기", "재개"],
       "es": [
         "activa el sonido",
         "quitar silencio",
@@ -687,12 +635,7 @@
         "tiếp tục",
         "tiep tuc"
       ],
-      "tl": [
-        "i-unmute",
-        "magsalita ulit",
-        "ipagpatuloy",
-        "makinig ulit"
-      ]
+      "tl": ["i-unmute", "magsalita ulit", "ipagpatuloy", "makinig ulit"]
     },
     "action.sendToAdmin.request": {
       "base": [
@@ -915,23 +858,8 @@
         "picture of",
         "photo of"
       ],
-      "zh-CN": [
-        "生成图片",
-        "创建图片",
-        "画",
-        "绘制",
-        "插画",
-        "图片",
-        "照片"
-      ],
-      "ko": [
-        "이미지 생성",
-        "그림 그려",
-        "그려줘",
-        "그림",
-        "일러스트",
-        "사진"
-      ],
+      "zh-CN": ["生成图片", "创建图片", "画", "绘制", "插画", "图片", "照片"],
+      "ko": ["이미지 생성", "그림 그려", "그려줘", "그림", "일러스트", "사진"],
       "es": [
         "genera imagen",
         "crear imagen",
@@ -986,24 +914,8 @@
         "sketch",
         "portrait"
       ],
-      "zh-CN": [
-        "图片",
-        "图像",
-        "视觉",
-        "艺术",
-        "设计",
-        "素描",
-        "肖像"
-      ],
-      "ko": [
-        "이미지",
-        "사진",
-        "비주얼",
-        "아트",
-        "디자인",
-        "스케치",
-        "초상화"
-      ],
+      "zh-CN": ["图片", "图像", "视觉", "艺术", "设计", "素描", "肖像"],
+      "ko": ["이미지", "사진", "비주얼", "아트", "디자인", "스케치", "초상화"],
       "es": [
         "imagen",
         "foto",
@@ -1040,14 +952,7 @@
         "thiết kế",
         "thiet ke"
       ],
-      "tl": [
-        "larawan",
-        "biswal",
-        "sining",
-        "disenyo",
-        "sketch",
-        "retrato"
-      ]
+      "tl": ["larawan", "biswal", "sining", "disenyo", "sketch", "retrato"]
     }
   }
 }

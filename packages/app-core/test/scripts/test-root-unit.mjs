@@ -23,10 +23,7 @@ const unitShards = [
   },
   {
     label: "unit:app-core",
-    patterns: [
-      "eliza/packages/app-core/src",
-      "eliza/packages/shared/src",
-    ],
+    patterns: ["eliza/packages/app-core/src", "eliza/packages/shared/src"],
   },
   {
     label: "unit:plugins",

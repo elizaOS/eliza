@@ -15,7 +15,6 @@ import {
 import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider as selectSharedLiveProvider } from "../../../../test/helpers/live-provider";
 import { saveEnv, sleep, withTimeout } from "../../../../test/helpers/test-utils";
 import { resolveOAuthDir } from "@elizaos/agent/config/paths";
 import {
@@ -23,6 +22,13 @@ import {
   buildUtcDateFromLocalParts,
   getZonedDateParts,
 } from "../src/lifeops/time.js";
+import {
+  LIVE_PROVIDER_ENV_KEYS,
+  LIVE_TESTS_ENABLED,
+  getLifeOpsLiveSetupWarnings,
+  getSelectedLiveProviderEnv,
+  selectLifeOpsLiveProvider,
+} from "./helpers/lifeops-live-harness.ts";
 import {
   createLifeOpsCalendarSyncState,
   createLifeOpsConnectorGrant,
@@ -43,216 +49,10 @@ const packageRoot = path.resolve(testDir, "..");
 dotenv.config({ path: path.resolve(packageRoot, ".env") });
 dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
-const LIVE_TESTS_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
 const TEST_TIME_ZONE = "America/Los_Angeles";
 const GOOGLE_CLIENT_ID = "assistant-user-journeys-google-client";
-const PROVIDER_ENV_KEYS = [
-  "OPENAI_API_KEY",
-  "OPENAI_BASE_URL",
-  "OPENAI_SMALL_MODEL",
-  "OPENAI_LARGE_MODEL",
-  "GROQ_API_KEY",
-  "GROQ_SMALL_MODEL",
-  "GROQ_LARGE_MODEL",
-  "OPENROUTER_API_KEY",
-  "OPENROUTER_SMALL_MODEL",
-  "OPENROUTER_LARGE_MODEL",
-  "GOOGLE_API_KEY",
-  "GOOGLE_GENERATIVE_AI_API_KEY",
-  "GOOGLE_SMALL_MODEL",
-  "GOOGLE_LARGE_MODEL",
-  "ANTHROPIC_API_KEY",
-  "ANTHROPIC_SMALL_MODEL",
-  "ANTHROPIC_LARGE_MODEL",
-] as const;
-
-const LIVE_PROVIDER_CANDIDATES = [
-  {
-    name: "groq",
-    plugin: "@elizaos/plugin-groq",
-    keys: ["GROQ_API_KEY"],
-    predicate: () =>
-      /groq/i.test(process.env.OPENAI_BASE_URL ?? "") ||
-      !process.env.OPENAI_API_KEY?.trim(),
-  },
-  {
-    name: "openai",
-    plugin: "@elizaos/plugin-openai",
-    keys: ["OPENAI_API_KEY"],
-    predicate: () => true,
-  },
-  {
-    name: "groq",
-    plugin: "@elizaos/plugin-groq",
-    keys: ["GROQ_API_KEY"],
-    predicate: () => true,
-  },
-  {
-    name: "openrouter",
-    plugin: "@elizaos/plugin-openrouter",
-    keys: ["OPENROUTER_API_KEY"],
-    predicate: () => true,
-  },
-  {
-    name: "google",
-    plugin: "@elizaos/plugin-google-genai",
-    keys: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
-    predicate: () => true,
-  },
-  {
-    name: "anthropic",
-    plugin: "@elizaos/plugin-anthropic",
-    keys: ["ANTHROPIC_API_KEY"],
-    predicate: () => true,
-  },
-] as const;
-
-const LIVE_PROVIDER_CHEAP_MODELS = {
-  anthropic: {
-    smallKey: "ANTHROPIC_SMALL_MODEL",
-    smallModel: "claude-haiku-4-5-20251001",
-    largeKey: "ANTHROPIC_LARGE_MODEL",
-    largeModel: "claude-haiku-4-5-20251001",
-  },
-  google: {
-    smallKey: "GOOGLE_SMALL_MODEL",
-    smallModel: "gemini-2.0-flash-001",
-    largeKey: "GOOGLE_LARGE_MODEL",
-    largeModel: "gemini-2.0-flash-001",
-  },
-  groq: {
-    smallKey: "GROQ_SMALL_MODEL",
-    smallModel: "llama-3.1-8b-instant",
-    largeKey: "GROQ_LARGE_MODEL",
-    largeModel: "llama-3.1-8b-instant",
-  },
-  openai: {
-    smallKey: "OPENAI_SMALL_MODEL",
-    smallModel: "gpt-5.4-mini",
-    largeKey: "OPENAI_LARGE_MODEL",
-    largeModel: "gpt-5.4-mini",
-  },
-  openrouter: {
-    smallKey: "OPENROUTER_SMALL_MODEL",
-    smallModel: "google/gemini-2.0-flash-001",
-    largeKey: "OPENROUTER_LARGE_MODEL",
-    largeModel: "google/gemini-2.0-flash-001",
-  },
-} as const;
-
-type SelectedLiveProvider = {
-  name: keyof typeof LIVE_PROVIDER_CHEAP_MODELS;
-  env: Record<string, string>;
-  plugin: string;
-};
-
 function normalizeText(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
-}
-
-function resolveLiveProviderModelEnv(
-  providerName: keyof typeof LIVE_PROVIDER_CHEAP_MODELS,
-): Record<string, string> {
-  const defaults = LIVE_PROVIDER_CHEAP_MODELS[providerName];
-  const smallModel =
-    process.env[defaults.smallKey]?.trim() || defaults.smallModel;
-  const largeModel =
-    process.env[defaults.largeKey]?.trim() ||
-    process.env[defaults.smallKey]?.trim() ||
-    defaults.largeModel;
-
-  return {
-    [defaults.smallKey]: smallModel,
-    [defaults.largeKey]: largeModel,
-    SMALL_MODEL: process.env.SMALL_MODEL?.trim() || smallModel,
-    LARGE_MODEL: process.env.LARGE_MODEL?.trim() || largeModel,
-  };
-}
-
-async function canImportPlugin(pluginName: string): Promise<boolean> {
-  try {
-    await import(pluginName);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function selectLiveProvider(): Promise<SelectedLiveProvider | null> {
-  const preferredProvider = (
-    process.env.ELIZA_LIVE_PROVIDER?.trim() ||
-    process.env.ELIZA_LIVE_PROVIDER?.trim() ||
-    ""
-  ).toLowerCase();
-  const candidates =
-    preferredProvider.length > 0
-      ? [
-          ...LIVE_PROVIDER_CANDIDATES.filter(
-            (candidate) => candidate.name === preferredProvider,
-          ),
-          ...LIVE_PROVIDER_CANDIDATES.filter(
-            (candidate) => candidate.name !== preferredProvider,
-          ),
-        ]
-      : LIVE_PROVIDER_CANDIDATES;
-
-  for (const candidate of candidates) {
-    if (!candidate.predicate()) {
-      continue;
-    }
-
-    const env: Record<string, string> = {};
-    for (const key of candidate.keys) {
-      const value = process.env[key]?.trim();
-      if (value) {
-        env[key] = value;
-      }
-    }
-    if (Object.keys(env).length === 0) {
-      continue;
-    }
-    if (!(await canImportPlugin(candidate.plugin))) {
-      continue;
-    }
-
-    Object.assign(
-      env,
-      resolveLiveProviderModelEnv(
-        candidate.name as keyof typeof LIVE_PROVIDER_CHEAP_MODELS,
-      ),
-    );
-    if (candidate.name === "openai") {
-      env.OPENAI_BASE_URL = "";
-    }
-
-    return {
-      name: candidate.name as keyof typeof LIVE_PROVIDER_CHEAP_MODELS,
-      env,
-      plugin: candidate.plugin,
-    };
-  }
-
-  const sharedProvider = selectSharedLiveProvider(
-    preferredProvider.length > 0
-      ? (preferredProvider as
-          | "anthropic"
-          | "google"
-          | "groq"
-          | "openai"
-          | "openrouter")
-      : undefined,
-  );
-  if (sharedProvider && (await canImportPlugin(sharedProvider.pluginPackage))) {
-    return {
-      name: sharedProvider.name,
-      env: sharedProvider.env,
-      plugin: sharedProvider.pluginPackage,
-    };
-  }
-
-  return null;
 }
 
 async function loadPlugin(name: string): Promise<Plugin | null> {
@@ -988,14 +788,10 @@ function expectContainsAtLeast(
   expect(matches.length).toBeGreaterThanOrEqual(minimumMatches);
 }
 
-function containsAllFragments(text: string, fragments: string[]): boolean {
-  const normalized = normalizeText(text);
-  return fragments.every((fragment) =>
-    normalized.includes(normalizeText(fragment)),
-  );
-}
-
-const selectedLiveProvider = await selectLiveProvider();
+const selectedLiveProvider = await selectLifeOpsLiveProvider();
+const selectedProviderEnv = getSelectedLiveProviderEnv(selectedLiveProvider, {
+  omitOpenAiBaseUrl: true,
+});
 const SUPPORTED_PROVIDER_NAMES = new Set(["openai", "openrouter", "google"]);
 const LIVE_SUITE_ENABLED =
   LIVE_TESTS_ENABLED &&
@@ -1004,10 +800,7 @@ const LIVE_SUITE_ENABLED =
 
 if (!LIVE_SUITE_ENABLED) {
   const warnings = [
-    !LIVE_TESTS_ENABLED ? "set ELIZA_LIVE_TEST=1 or ELIZA_LIVE_TEST=1" : null,
-    !selectedLiveProvider
-      ? "provide a live provider key for OpenAI, OpenRouter, or Google"
-      : null,
+    ...getLifeOpsLiveSetupWarnings(selectedLiveProvider),
     selectedLiveProvider &&
     !SUPPORTED_PROVIDER_NAMES.has(selectedLiveProvider.name)
       ? `selected provider "${selectedLiveProvider.name}" does not support this suite; use OpenAI, OpenRouter, or Google`
@@ -1038,57 +831,35 @@ describeIf(LIVE_SUITE_ENABLED)(
 
     beforeAll(async () => {
       envBackup = saveEnv(
-        ...PROVIDER_ENV_KEYS,
+        ...LIVE_PROVIDER_ENV_KEYS,
         "PGLITE_DATA_DIR",
-        "ELIZA_STATE_DIR",
         "ELIZA_STATE_DIR",
         "ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID",
         "ENABLE_TRAJECTORIES",
         "ELIZA_TRAJECTORY_LOGGING",
-        "ELIZA_TRAJECTORY_LOGGING",
       );
       process.env.PGLITE_DATA_DIR = pgliteDir;
-      process.env.ELIZA_STATE_DIR = stateDir;
       process.env.ELIZA_STATE_DIR = stateDir;
       process.env.ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID = GOOGLE_CLIENT_ID;
       process.env.ENABLE_TRAJECTORIES = "false";
       process.env.ELIZA_TRAJECTORY_LOGGING = "false";
-      process.env.ELIZA_TRAJECTORY_LOGGING = "false";
       process.env.LOG_LEVEL = process.env.ELIZA_E2E_LOG_LEVEL ?? "error";
 
-      for (const key of PROVIDER_ENV_KEYS) {
+      for (const key of LIVE_PROVIDER_ENV_KEYS) {
         delete process.env[key];
       }
-      for (const [key, value] of Object.entries(
-        selectedLiveProvider?.env ?? {},
-      )) {
-        if (value.trim().length > 0) {
-          process.env[key] = value;
-        }
-      }
-      if (selectedLiveProvider?.name === "openai") {
-        delete process.env.OPENAI_BASE_URL;
-      }
+      Object.assign(process.env, selectedProviderEnv);
 
       ownerId = crypto.randomUUID() as UUID;
       dmRoomId = crypto.randomUUID() as UUID;
       const dmWorldId = crypto.randomUUID() as UUID;
 
       const character = buildCharacterFromConfig({});
-      process.env.ENABLE_TRAJECTORIES = "false";
-      process.env.ELIZA_TRAJECTORY_LOGGING = "false";
-      process.env.ELIZA_TRAJECTORY_LOGGING = "false";
-      const providerSecrets = {
-        ...(selectedLiveProvider?.env ?? {}),
-      };
-      if (selectedLiveProvider?.name === "openai") {
-        delete providerSecrets.OPENAI_BASE_URL;
-      }
       character.settings = {
         ...(character.settings ?? {}),
         ELIZA_ADMIN_ENTITY_ID: ownerId,
       };
-      character.secrets = providerSecrets;
+      character.secrets = selectedProviderEnv;
 
       const sqlPlugin = await loadPlugin("@elizaos/plugin-sql");
       const localEmbeddingPlugin = await loadPlugin(
@@ -1171,8 +942,8 @@ describeIf(LIVE_SUITE_ENABLED)(
       fs.rmSync(workspaceDir, { recursive: true, force: true });
     }, 30_000);
 
-    it("summarizes multi-platform messages and separates urgent follow-ups from waitable items", async () => {
-      let response = await sendUserTurn({
+    it("summarizes multi-platform messages and separates urgent follow-ups from waitable items on the first answer", async () => {
+      const response = await sendUserTurn({
         runtime,
         entityId: ownerId,
         roomId: dmRoomId,
@@ -1184,21 +955,6 @@ describeIf(LIVE_SUITE_ENABLED)(
           "Give me a short summary with these sections: reply now, can wait, urgent or high-priority.",
         ].join(" "),
       });
-
-      if (
-        /(channel|platform|search term|keyword|which messages|which conversation)/i.test(
-          response,
-        ) ||
-        !containsAllFragments(response, ["kentucky derby"])
-      ) {
-        response = await sendUserTurn({
-          runtime,
-          entityId: ownerId,
-          roomId: dmRoomId,
-          source: "telegram",
-          text: "No follow-up questions. Use only the recent cross-platform messages already in your context and summarize them now.",
-        });
-      }
 
       expectContainsAtLeast(
         response,
@@ -1234,8 +990,8 @@ describeIf(LIVE_SUITE_ENABLED)(
       expectContainsAll(response, ["permit inspection", "4pm"]);
     }, 180_000);
 
-    it("grounds today's schedule from the seeded calendar cache", async () => {
-      let response = await sendUserTurn({
+    it("grounds today's schedule from the seeded calendar cache on the first answer", async () => {
+      const response = await sendUserTurn({
         runtime,
         entityId: ownerId,
         roomId: dmRoomId,
@@ -1243,21 +999,11 @@ describeIf(LIVE_SUITE_ENABLED)(
         text: "Use my connected calendar. Morning. List today's actual events by name, time, and where I'm supposed to be. Do not give me just a heading.",
       });
 
-      if (!containsAllFragments(response, ["dentist", "lunch with mike"])) {
-        response = await sendUserTurn({
-          runtime,
-          entityId: ownerId,
-          roomId: dmRoomId,
-          source: "telegram",
-          text: "You only gave me a heading. Use the calendar results you already have and list the actual events for today by name.",
-        });
-      }
-
       expectContainsAll(response, ["dentist", "lunch with mike"]);
     }, 180_000);
 
-    it("lists the weekend events from the seeded calendar cache", async () => {
-      let response = await sendUserTurn({
+    it("lists the weekend events from the seeded calendar cache on the first answer", async () => {
+      const response = await sendUserTurn({
         runtime,
         entityId: ownerId,
         roomId: dmRoomId,
@@ -1269,19 +1015,6 @@ describeIf(LIVE_SUITE_ENABLED)(
           "Do not give me just a heading.",
         ].join(" "),
       });
-
-      if (
-        !containsAllFragments(response, ["rowan soccer game"]) ||
-        !containsAllFragments(response, ["mason birthday party"])
-      ) {
-        response = await sendUserTurn({
-          runtime,
-          entityId: ownerId,
-          roomId: dmRoomId,
-          source: "telegram",
-          text: "You only gave me a partial answer. Use the calendar results you already have and list the actual weekend events by name.",
-        });
-      }
 
       expectContainsAtLeast(
         response,
@@ -1296,27 +1029,14 @@ describeIf(LIVE_SUITE_ENABLED)(
       );
     }, 180_000);
 
-    it("surfaces the lunch reminder detail from the cached calendar event", async () => {
-      let response = await sendUserTurn({
+    it("surfaces the lunch reminder detail from the cached calendar event on the first answer", async () => {
+      const response = await sendUserTurn({
         runtime,
         entityId: ownerId,
         roomId: dmRoomId,
         source: "telegram",
         text: "Use my connected calendar. What does the note on my lunch with Mike event today say I need to remember?",
       });
-
-      if (
-        !containsAllFragments(response, ["kentucky derby"]) &&
-        !containsAllFragments(response, ["gin"])
-      ) {
-        response = await sendUserTurn({
-          runtime,
-          entityId: ownerId,
-          roomId: dmRoomId,
-          source: "telegram",
-          text: "Use the lunch event description you already have on my calendar and answer directly.",
-        });
-      }
 
       expectContainsAtLeast(
         response,
@@ -1325,36 +1045,14 @@ describeIf(LIVE_SUITE_ENABLED)(
       );
     }, 180_000);
 
-    it("finds the most overdue bill from email context", async () => {
-      let response = await sendUserTurn({
+    it("finds the most overdue bill from email context on the first answer", async () => {
+      const response = await sendUserTurn({
         runtime,
         entityId: ownerId,
         roomId: dmRoomId,
         source: "telegram",
         text: "Use my connected email. Check my email and tell me which bill is the most overdue, and say why.",
       });
-
-      if (
-        !containsAllFragments(response, ["electric"]) &&
-        !containsAllFragments(response, ["march 28"])
-      ) {
-        response = await sendUserTurn({
-          runtime,
-          entityId: ownerId,
-          roomId: dmRoomId,
-          source: "telegram",
-          text: "Yes. Search my connected email for bill or invoice messages and tell me the exact bill, who sent it, and the overdue date.",
-        });
-      }
-
-      if (
-        !containsAllFragments(response, ["electric"]) &&
-        !containsAllFragments(response, ["march 28"])
-      ) {
-        console.info(
-          `[assistant-user-journeys-live] overdue bill response: ${response}`,
-        );
-      }
 
       expectContainsAtLeast(
         response,
@@ -1363,8 +1061,8 @@ describeIf(LIVE_SUITE_ENABLED)(
       );
     }, 180_000);
 
-    it("creates a recurring morning-news heartbeat from natural language", async () => {
-      let response = await sendUserTurn({
+    it("creates a recurring morning-news heartbeat from natural language on the first request", async () => {
+      const response = await sendUserTurn({
         runtime,
         entityId: ownerId,
         roomId: dmRoomId,
@@ -1387,34 +1085,13 @@ describeIf(LIVE_SUITE_ENABLED)(
         );
       };
 
-      let triggerTask = await findNewsTrigger();
-      if (!triggerTask) {
-        try {
-          triggerTask = await waitForValue(
-            "news trigger",
-            findNewsTrigger,
-            (value) => value !== null,
-            15_000,
-            1_000,
-          );
-        } catch {
-          response = await sendUserTurn({
-            runtime,
-            entityId: ownerId,
-            roomId: dmRoomId,
-            source: "telegram",
-            text: "Actually create that recurring 9am financial and international news heartbeat now. Do not just describe it.",
-          });
-
-          triggerTask = await waitForValue(
-            "news trigger",
-            findNewsTrigger,
-            (value) => value !== null,
-            60_000,
-            1_000,
-          );
-        }
-      }
+      const triggerTask = await waitForValue(
+        "news trigger",
+        findNewsTrigger,
+        (value) => value !== null,
+        60_000,
+        1_000,
+      );
 
       const trigger = readTriggerConfig(triggerTask);
       expect(trigger).not.toBeNull();

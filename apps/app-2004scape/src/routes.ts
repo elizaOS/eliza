@@ -1537,6 +1537,38 @@ export async function refreshRunSession(
   return record ? buildSessionState(record) : ctx.session;
 }
 
+/**
+ * Called by the host app-manager when the user stops the 2004scape run.
+ * Tears down the embedded gateway WebSocket server, bot-SDK connection,
+ * and the autonomous-loop timer so the game actually stops server-side
+ * instead of just unmounting the viewer iframe.
+ *
+ * Idempotent: if the service isn't running or already stopped this is a
+ * no-op.
+ */
+export async function stopRun(ctx: {
+  runtime: unknown | null;
+}): Promise<void> {
+  const runtime = ctx.runtime as
+    | { getService?: (name: string) => unknown }
+    | null;
+  const service = runtime?.getService?.("rs_2004scape") as
+    | { stop?: () => Promise<void> | void }
+    | null
+    | undefined;
+  if (!service || typeof service.stop !== "function") {
+    return;
+  }
+  try {
+    await service.stop();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[app-2004scape] stopRun: game service stop failed: ${message}`,
+    );
+  }
+}
+
 export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   if (ctx.method === "GET" && ctx.pathname === VIEWER_ROUTE_PATH) {
     try {

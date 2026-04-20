@@ -12,6 +12,43 @@
     "noEmit": true,
     "baseUrl": "../../",
     "paths": {
+      "@elizaos/app-lifeops": ["./apps/app-lifeops/src/index.ts"],
+      "@elizaos/app-lifeops/*": ["./apps/app-lifeops/src/*"],
+      "@elizaos/app-lifeops/types": ["./apps/app-lifeops/src/types/index.ts"],
+      "@elizaos/app-task-coordinator": [
+        "./apps/app-task-coordinator/src/index.ts"
+      ],
+      "@elizaos/app-task-coordinator/*": [
+        "./apps/app-task-coordinator/src/*"
+      ],
+      "@elizaos/app-steward": ["./apps/app-steward/src/index.ts"],
+      "@elizaos/app-steward/*": ["./apps/app-steward/src/*"],
+      "@elizaos/app-shopify": ["./apps/app-shopify/src/index.ts"],
+      "@elizaos/app-shopify/*": ["./apps/app-shopify/src/*"],
+      "@elizaos/app-training": ["./apps/app-training/src/index.ts"],
+      "@elizaos/app-training/*": ["./apps/app-training/src/*"],
+      "@elizaos/app-vincent": ["./apps/app-vincent/src/index.ts"],
+      "@elizaos/app-vincent/*": ["./apps/app-vincent/src/*"],
+      "@elizaos/plugin-lifeops-browser": [
+        "./plugins/plugin-lifeops-browser/src/index.ts"
+      ],
+      "@elizaos/plugin-lifeops-browser/*": [
+        "./plugins/plugin-lifeops-browser/src/*"
+      ],
+      "@elizaos/app-core": ["./packages/app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["./packages/app-core/src/*"],
+      "@elizaos/agent": ["./packages/agent/src/index.ts"],
+      "@elizaos/agent/*": ["./packages/agent/src/*"],
+      "@elizaos/app-companion": ["./apps/app-companion/src/index.ts"],
+      "@elizaos/app-companion/*": ["./apps/app-companion/src/*"],
+      "@elizaos/app-elizamaker": ["./apps/app-elizamaker/src/index.ts"],
+      "@elizaos/app-elizamaker/*": ["./apps/app-elizamaker/src/*"],
+      "@elizaos/shared": ["./packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["./packages/shared/src/*"],
+      "@elizaos/skills": ["./packages/skills/src/index.ts"],
+      "@elizaos/skills/*": ["./packages/skills/src/*"],
+      "@elizaos/core": ["./packages/typescript/src/index.ts"],
+      "@elizaos/core/*": ["./packages/typescript/src/*"],
       "@elizaos/ui": ["./packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["./packages/ui/src/*"],
       "react": ["./packages/app-core/node_modules/@types/react/index.d.ts"],
@@ -27,6 +64,18 @@
       "@elizaos/*": ["./node_modules/@elizaos/*"]
     }
   },
-  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"],
-  "include": ["src"]
+  "exclude": [
+    "src/**/*.stories.ts",
+    "src/**/*.stories.tsx",
+    "../../apps/app-companion/src/**/*.stories.tsx",
+    "../../apps/app-companion/src/**/*.stories.ts",
+    "../../apps/app-companion/src/**/*.test.ts",
+    "../../apps/app-companion/src/**/*.test.tsx"
+  ],
+  "include": [
+    "src",
+    "../app-core/src/ambient-modules.d.ts",
+    "../agent/src/external-modules.d.ts",
+    "../../apps/app-companion/src"
+  ]
 }

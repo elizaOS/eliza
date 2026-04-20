@@ -6,7 +6,6 @@
  */
 
 import { useCallback, useState } from "react";
-import { client } from "../api";
 import type {
   CreateTriggerRequest,
   TriggerHealthSnapshot,
@@ -14,6 +13,7 @@ import type {
   TriggerSummary,
   UpdateTriggerRequest,
 } from "../api";
+import { client } from "../api";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 

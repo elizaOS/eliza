@@ -23,6 +23,7 @@ export const inventoryProvider: Provider = {
   name: "SCAPE_INVENTORY",
   description:
     "Agent's current inventory and equipped items. Empty slots elided.",
+  descriptionCompressed: "Inventory and equipped items.",
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,

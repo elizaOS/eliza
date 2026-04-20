@@ -4,7 +4,8 @@ import { extractParam } from "./param-parser.js";
 
 export const talkToNpc: Action = {
   name: "TALK_TO_NPC",
-  description: "Talk to a nearby NPC by name",
+  description: "Talk to a nearby NPC by name"
+  descriptionCompressed: "Talk to nearby NPC.",
   similes: ["SPEAK_TO_NPC", "CHAT_WITH_NPC"],
   examples: [],
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {

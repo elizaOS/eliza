@@ -1,0 +1,149 @@
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+
+const { broadcastIntent } = vi.hoisted(() => ({
+  broadcastIntent: vi.fn(async () => ({ id: "intent-local-1" })),
+}));
+
+vi.mock("../src/lifeops/intent-sync.js", () => ({
+  broadcastIntent,
+}));
+
+import { publishDeviceIntentAction, __internal } from "../src/actions/device-bus.js";
+
+const ORIGINAL_ENV = { ...process.env };
+
+function makeMessage() {
+  return {
+    entityId: "00000000-0000-0000-0000-000000000003",
+    roomId: "00000000-0000-0000-0000-000000000002",
+    content: { text: "publish", ownerAccess: true },
+  } as unknown as Parameters<
+    NonNullable<typeof publishDeviceIntentAction.handler>
+  >[1];
+}
+
+function makeRuntime(settings: Record<string, string> = {}) {
+  return {
+    agentId: "00000000-0000-0000-0000-000000000003",
+    getSetting: (key: string) => settings[key],
+  } as unknown as Parameters<
+    NonNullable<typeof publishDeviceIntentAction.handler>
+  >[0];
+}
+
+beforeEach(() => {
+  delete process.env.MILADY_DEVICE_BUS_URL;
+  delete process.env.MILADY_DEVICE_BUS_TOKEN;
+});
+
+afterEach(() => {
+  process.env = { ...ORIGINAL_ENV };
+  vi.restoreAllMocks();
+  broadcastIntent.mockClear();
+});
+
+describe("normalizeKind", () => {
+  test("lowercases and trims known kinds", () => {
+    expect(__internal.normalizeKind(" Alarm ")).toBe("alarm");
+    expect(__internal.normalizeKind("REMINDER")).toBe("reminder");
+  });
+  test("accepts custom kinds", () => {
+    expect(__internal.normalizeKind("custom_thing")).toBe("custom_thing");
+  });
+  test("rejects blank/missing", () => {
+    expect(__internal.normalizeKind(undefined)).toBeNull();
+    expect(__internal.normalizeKind("")).toBeNull();
+    expect(__internal.normalizeKind("   ")).toBeNull();
+  });
+});
+
+describe("PUBLISH_DEVICE_INTENT graceful degradation", () => {
+  test("falls back to the local intent store when URL missing", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const result = await publishDeviceIntentAction.handler!(
+      makeRuntime(),
+      makeMessage(),
+      undefined,
+      { parameters: { kind: "alarm", payload: { time: "07:00" } } },
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const r = result as { success: boolean; data?: Record<string, unknown> };
+    expect(r.success).toBe(true);
+    const data = r.data ?? {};
+    expect(data.reason).toBe("device-bus-local-fallback");
+    expect(data.transport).toBe("local-fallback");
+    expect(broadcastIntent).toHaveBeenCalledTimes(1);
+  });
+
+  test("missing kind defaults cleanly through the local fallback", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const result = await publishDeviceIntentAction.handler!(
+      makeRuntime(),
+      makeMessage(),
+      undefined,
+      { parameters: {} },
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const r = result as { success: boolean; data?: Record<string, unknown> };
+    expect(r.success).toBe(true);
+    expect(r.data?.kind).toBe("reminder");
+    expect(broadcastIntent).toHaveBeenCalledTimes(1);
+  });
+
+  test("uses the configured cloud device bus and returns deliveredTo targets", async () => {
+    process.env.MILADY_DEVICE_BUS_URL = "https://device-bus.example/";
+    process.env.MILADY_DEVICE_BUS_TOKEN = "secret-token";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        intentId: "intent-cloud-1",
+        deliveredTo: ["desktop:mac-1", "mobile:ios-1"],
+      }),
+    } as Response);
+
+    const result = await publishDeviceIntentAction.handler!(
+      makeRuntime(),
+      makeMessage(),
+      undefined,
+      {
+        parameters: {
+          kind: "reminder",
+          payload: {
+            title: "Board meeting",
+            body: "1 hour warning",
+            ladderId: "meeting-123",
+            rungIndex: 0,
+          },
+        },
+      },
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] ?? [];
+    expect(url).toBe("https://device-bus.example/api/v1/device-bus/intents");
+    expect(init).toMatchObject({
+      method: "POST",
+      headers: expect.objectContaining({
+        "Content-Type": "application/json",
+        Authorization: "Bearer secret-token",
+      }),
+    });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      kind: "reminder",
+      payload: {
+        title: "Board meeting",
+        body: "1 hour warning",
+        ladderId: "meeting-123",
+        rungIndex: 0,
+      },
+    });
+    expect(broadcastIntent).not.toHaveBeenCalled();
+
+    const data = (result as { success: boolean; data?: Record<string, unknown> })
+      .data;
+    expect(result?.success).toBe(true);
+    expect(data?.intentId).toBe("intent-cloud-1");
+    expect(data?.deliveredTo).toEqual(["desktop:mac-1", "mobile:ios-1"]);
+  });
+});

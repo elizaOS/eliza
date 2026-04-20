@@ -1,5 +1,13 @@
-
-
+import {
+  Button,
+  PagePanel,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  StatusBadge,
+} from "@elizaos/ui";
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, type RefCallback, useState } from "react";
 import { type CloudCompatAgent, client, type PluginInfo } from "../../api";
@@ -13,9 +21,8 @@ import {
   resolveManagedDiscordAgentChoice,
 } from "./cloud-dashboard-utils";
 import { PluginConfigForm, TelegramPluginConfig } from "./PluginConfigForm";
-import { connectorDisplayName } from "./plugin-list-utils";
-import { PagePanel, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, StatusBadge } from "@elizaos/ui";
 import {
+  connectorDisplayName,
   getPluginResourceLinks,
   pluginResourceLinkLabel,
   SUBGROUP_LABELS,
@@ -201,7 +208,7 @@ function ConnectorPluginCard({
     draftConfig: pluginConfigs[plugin.id],
   });
   const openCloudAgentsView = () => {
-    setState("cloudDashboardView", "agents");
+    setState("cloudDashboardView", "overview");
     setTab("settings");
   };
   const ensureManagedDiscordGatewayProvisioned = async (
@@ -491,9 +498,7 @@ function ConnectorPluginCard({
         expanded={isExpanded}
         expandOnCollapsedSurfaceClick
         className={`border-transparent transition-all ${
-          isSelected
-            ? "shadow-[0_18px_40px_rgba(3,5,10,0.16)]"
-            : ""
+          isSelected ? "shadow-[0_18px_40px_rgba(3,5,10,0.16)]" : ""
         }`}
         onExpandedChange={(nextExpanded) =>
           handleConnectorExpandedChange(plugin.id, nextExpanded)

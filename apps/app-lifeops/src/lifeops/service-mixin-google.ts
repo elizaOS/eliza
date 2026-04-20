@@ -75,15 +75,16 @@ function sameNormalizedStringSet(
 // Google mixin
 // ---------------------------------------------------------------------------
 
+/** @internal */
 export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {
-  return class extends Base {
+  class LifeOpsGoogleServiceMixin extends Base {
     // -----------------------------------------------------------------
     // Internal Google grant operations
     // -----------------------------------------------------------------
 
-    protected async withGoogleGrantOperation<T>(
+    public async withGoogleGrantOperation<T>(
       grant: LifeOpsConnectorGrant,
       operation: () => Promise<T>,
     ): Promise<T> {
@@ -96,7 +97,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    protected async rethrowGoogleServiceError(
+    public async rethrowGoogleServiceError(
       grant: LifeOpsConnectorGrant,
       error: unknown,
     ): Promise<never> {
@@ -159,7 +160,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       throw error;
     }
 
-    protected async clearGoogleConnectorData(
+    public async clearGoogleConnectorData(
       side?: LifeOpsConnectorSide,
     ): Promise<void> {
       const calendarEvents = await this.repository.listCalendarEvents(
@@ -202,7 +203,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
      * This is a helper used by clearGoogleConnectorData. Subclasses that
      * add calendar functionality may override or extend this.
      */
-    protected async deleteCalendarReminderPlansForEvents(
+    public async deleteCalendarReminderPlansForEvents(
       eventIds: string[],
     ): Promise<void> {
       if (eventIds.length === 0) {
@@ -218,7 +219,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    protected async setPreferredGoogleConnectorMode(
+    public async setPreferredGoogleConnectorMode(
       preferredMode: LifeOpsConnectorMode | null,
       preferredSide?: LifeOpsConnectorSide | null,
     ): Promise<LifeOpsConnectorGrant | null> {
@@ -226,31 +227,36 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         await this.repository.listConnectorGrants(this.agentId())
       ).filter((grant) => grant.provider === "google");
 
-      const resolvedPreferredGrant =
-        (preferredMode && preferredSide
-          ? (googleGrants.find(
-              (grant) =>
-                grant.mode === preferredMode && grant.side === preferredSide,
-            ) ?? null)
-          : null) ??
-        (preferredMode
-          ? ([...googleGrants]
-              .filter((grant) => grant.mode === preferredMode)
-              .sort((left, right) =>
-                right.updatedAt.localeCompare(left.updatedAt),
-              )[0] ?? null)
-          : null) ??
-        (preferredSide
-          ? ([...googleGrants]
-              .filter((grant) => grant.side === preferredSide)
-              .sort((left, right) =>
-                right.updatedAt.localeCompare(left.updatedAt),
-              )[0] ?? null)
-          : null) ??
-        [...googleGrants].sort((left, right) =>
-          right.updatedAt.localeCompare(left.updatedAt),
-        )[0] ??
-        null;
+      let resolvedPreferredGrant: LifeOpsConnectorGrant | null = null;
+      if (preferredMode && preferredSide) {
+        resolvedPreferredGrant =
+          googleGrants.find(
+            (grant) =>
+              grant.mode === preferredMode && grant.side === preferredSide,
+          ) ?? null;
+      }
+      if (resolvedPreferredGrant === null && preferredMode) {
+        resolvedPreferredGrant =
+          [...googleGrants]
+            .filter((grant) => grant.mode === preferredMode)
+            .sort((left, right) =>
+              right.updatedAt.localeCompare(left.updatedAt),
+            )[0] ?? null;
+      }
+      if (resolvedPreferredGrant === null && preferredSide) {
+        resolvedPreferredGrant =
+          [...googleGrants]
+            .filter((grant) => grant.side === preferredSide)
+            .sort((left, right) =>
+              right.updatedAt.localeCompare(left.updatedAt),
+            )[0] ?? null;
+      }
+      if (resolvedPreferredGrant === null) {
+        resolvedPreferredGrant =
+          [...googleGrants].sort((left, right) =>
+            right.updatedAt.localeCompare(left.updatedAt),
+          )[0] ?? null;
+      }
 
       for (const grant of googleGrants) {
         const shouldPrefer =
@@ -268,7 +274,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       return resolvedPreferredGrant;
     }
 
-    protected async upsertManagedGoogleGrant(
+    public async upsertManagedGoogleGrant(
       status: ManagedGoogleConnectorStatusResponse,
       side: LifeOpsConnectorSide,
     ): Promise<LifeOpsConnectorGrant | null> {
@@ -378,7 +384,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       return nextGrant;
     }
 
-    protected async runManagedGoogleOperation<T>(
+    public async runManagedGoogleOperation<T>(
       grant: LifeOpsConnectorGrant,
       operation: () => Promise<T>,
     ): Promise<T> {
@@ -418,7 +424,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
     // Google grant requirement helpers
     // -----------------------------------------------------------------
 
-    protected async requireGoogleCalendarGrant(
+    public async requireGoogleCalendarGrant(
       requestUrl: URL,
       requestedMode?: LifeOpsConnectorMode,
       requestedSide?: LifeOpsConnectorSide,
@@ -443,7 +449,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       return grant;
     }
 
-    protected async requireGoogleCalendarWriteGrant(
+    public async requireGoogleCalendarWriteGrant(
       requestUrl: URL,
       requestedMode?: LifeOpsConnectorMode,
       requestedSide?: LifeOpsConnectorSide,
@@ -464,7 +470,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       return grant;
     }
 
-    protected async requireGoogleGmailGrant(
+    public async requireGoogleGmailGrant(
       requestUrl: URL,
       requestedMode?: LifeOpsConnectorMode,
       requestedSide?: LifeOpsConnectorSide,
@@ -489,7 +495,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       return grant;
     }
 
-    protected async requireGoogleGmailSendGrant(
+    public async requireGoogleGmailSendGrant(
       requestUrl: URL,
       requestedMode?: LifeOpsConnectorMode,
       requestedSide?: LifeOpsConnectorSide,
@@ -1184,5 +1190,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       );
       return this.getGoogleConnectorStatus(requestUrl, mode, side);
     }
-  };
+  }
+
+  return LifeOpsGoogleServiceMixin;
 }

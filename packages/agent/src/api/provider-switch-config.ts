@@ -430,6 +430,12 @@ const PROVIDER_DEFAULT_MODELS: Record<
     largeKey: "GOOGLE_LARGE_MODEL",
     largeVal: "gemini-2.5-pro-preview-03-25",
   },
+  groq: {
+    smallKey: "GROQ_SMALL_MODEL",
+    smallVal: "llama-3.1-8b-instant",
+    largeKey: "GROQ_LARGE_MODEL",
+    largeVal: "llama-3.1-8b-instant",
+  },
 };
 
 function applyDefaultModelNames(

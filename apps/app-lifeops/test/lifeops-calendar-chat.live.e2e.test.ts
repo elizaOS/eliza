@@ -16,10 +16,11 @@ import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  createRealTestRuntime,
+  createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../../test/helpers/real-runtime";
+} from "./helpers/runtime.js";
 import { selectLiveProvider } from "../../../../test/helpers/live-provider";
+import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import { saveEnv } from "../../../../test/helpers/test-utils";
 import { calendarAction } from "../src/actions/calendar.js";
 import { resolveOAuthDir } from "@elizaos/agent/config/paths";
@@ -362,6 +363,81 @@ function responseContainsEvent(
   return false;
 }
 
+async function expectTomorrowScheduleResult(
+  runtime: AgentRuntime,
+): Promise<void> {
+  const result = await callCalendarAction(
+    runtime,
+    "can you tell me whats on my schedule tomorrow",
+  );
+
+  expect(result).toBeTruthy();
+  expect(result?.success).toBe(true);
+  expect(
+    responseContainsEvent(
+      result,
+      "Stay at Fairfield by Marriott Inn & Suites Boulder",
+    ),
+  ).toBe(true);
+  expect(responseContainsEvent(result, "Flight to Denver (WN 3677)")).toBe(
+    true,
+  );
+  expect(responseContainsEvent(result, "Meeting")).toBe(true);
+  expect(responseContainsEvent(result, "Dentist appointment")).toBe(false);
+}
+
+async function expectFlightSearchResult(runtime: AgentRuntime): Promise<void> {
+  const result = await callCalendarAction(
+    runtime,
+    "can you search my calendar and tell me if i have any flights to denver?",
+  );
+
+  expect(result).toBeTruthy();
+  expect(result?.success).toBe(true);
+  expect(responseContainsEvent(result, "Flight to Denver (WN 3677)")).toBe(
+    true,
+  );
+  expect(responseContainsEvent(result, "Dentist appointment")).toBe(false);
+}
+
+async function expectNonEnglishFlightSearchResult(
+  runtime: AgentRuntime,
+): Promise<void> {
+  const result = await callCalendarAction(
+    runtime,
+    "puedes buscar en mi calendario y decirme si tengo un vuelo a denver",
+  );
+
+  expect(result).toBeTruthy();
+  expect(result?.success).toBe(true);
+  expect(responseContainsEvent(result, "Flight to Denver (WN 3677)")).toBe(
+    true,
+  );
+  expect(responseContainsEvent(result, "Dentist appointment")).toBe(false);
+}
+
+async function expectExactDateResult(runtime: AgentRuntime): Promise<void> {
+  const dateLabel = localMonthDayLabel(1);
+  const result = await callCalendarAction(
+    runtime,
+    `what event do i have on ${dateLabel}`,
+  );
+
+  expect(result).toBeTruthy();
+  expect(result?.success).toBe(true);
+  expect(responseContainsEvent(result, "Flight to Denver (WN 3677)")).toBe(
+    true,
+  );
+  expect(responseContainsEvent(result, "Meeting")).toBe(true);
+  expect(
+    responseContainsEvent(
+      result,
+      "Stay at Fairfield by Marriott Inn & Suites Boulder",
+    ),
+  ).toBe(true);
+  expect(responseContainsEvent(result, "Dentist appointment")).toBe(false);
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -384,7 +460,7 @@ describeWithLLM("life-ops calendar chat (real LLM)", () => {
     process.env.ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID =
       "lifeops-calendar-chat-client";
 
-    testResult = await createRealTestRuntime({
+    testResult = await createLifeOpsTestRuntime({
       withLLM: true,
       characterName: AGENT_ID,
     });
@@ -404,84 +480,59 @@ describeWithLLM("life-ops calendar chat (real LLM)", () => {
     envBackup.restore();
   });
 
-  it("returns tomorrow's events and excludes today's dentist appointment", async () => {
-    const result = await callCalendarAction(
-      runtime,
-      "can you tell me whats on my schedule tomorrow",
+  describe("strict single-attempt", () => {
+    it(
+      "returns tomorrow's events and excludes today's dentist appointment on the first attempt",
+      async () => {
+        await expectTomorrowScheduleResult(runtime);
+      },
+      120_000,
     );
 
-    console.log("[CAL-DEBUG] result:", JSON.stringify(result, null, 2));
-
-    expect(result).toBeTruthy();
-    expect(result?.success).toBe(true);
-
-    // Tomorrow's events should be present (titles from DB, not LLM)
-    expect(
-      responseContainsEvent(
-        result,
-        "Stay at Fairfield by Marriott Inn & Suites Boulder",
-      ),
-    ).toBe(true);
-    expect(
-      responseContainsEvent(result, "Flight to Denver (WN 3677)"),
-    ).toBe(true);
-    expect(responseContainsEvent(result, "Meeting")).toBe(true);
-
-    // Today's dentist should NOT be in tomorrow's results
-    expect(responseContainsEvent(result, "Dentist appointment")).toBe(false);
-  }, 120_000);
-
-  it("finds flights matching a search query", async () => {
-    const result = await callCalendarAction(
-      runtime,
-      "can you search my calendar and tell me if i have any flights to denver?",
+    it(
+      "finds flights matching a search query on the first attempt",
+      async () => {
+        await expectFlightSearchResult(runtime);
+      },
+      120_000,
     );
 
-    expect(result).toBeTruthy();
-    expect(result?.success).toBe(true);
-    expect(
-      responseContainsEvent(result, "Flight to Denver (WN 3677)"),
-    ).toBe(true);
-    expect(responseContainsEvent(result, "Dentist appointment")).toBe(false);
-  }, 120_000);
-
-  it("handles a non-English calendar search question", async () => {
-    const result = await callCalendarAction(
-      runtime,
-      "puedes buscar en mi calendario y decirme si tengo un vuelo a denver",
+    it(
+      "handles a non-English calendar search question on the first attempt",
+      async () => {
+        await expectNonEnglishFlightSearchResult(runtime);
+      },
+      120_000,
     );
 
-    expect(result).toBeTruthy();
-    expect(result?.success).toBe(true);
-    expect(
-      responseContainsEvent(result, "Flight to Denver (WN 3677)"),
-    ).toBe(true);
-    expect(responseContainsEvent(result, "Dentist appointment")).toBe(false);
-  }, 120_000);
+    it(
+      "answers an exact date query with the correct events on the first attempt",
+      async () => {
+        await expectExactDateResult(runtime);
+      },
+      120_000,
+    );
+  });
 
-  it("answers an exact date query with the correct events", async () => {
-    const dateLabel = localMonthDayLabel(1);
-    const result = await callCalendarAction(
-      runtime,
-      `what event do i have on ${dateLabel}`,
+  describe("stability coverage", () => {
+    stochasticTest(
+      "returns tomorrow's events and excludes today's dentist appointment",
+      async () => {
+        await expectTomorrowScheduleResult(runtime);
+      },
+      { perRunTimeoutMs: 120_000 },
     );
 
-    expect(result).toBeTruthy();
-    expect(result?.success).toBe(true);
+    stochasticTest("finds flights matching a search query", async () => {
+      await expectFlightSearchResult(runtime);
+    }, { perRunTimeoutMs: 120_000 });
 
-    // All tomorrow's events should appear
-    expect(
-      responseContainsEvent(result, "Flight to Denver (WN 3677)"),
-    ).toBe(true);
-    expect(responseContainsEvent(result, "Meeting")).toBe(true);
-    expect(
-      responseContainsEvent(
-        result,
-        "Stay at Fairfield by Marriott Inn & Suites Boulder",
-      ),
-    ).toBe(true);
+    stochasticTest("handles a non-English calendar search question", async () => {
+      await expectNonEnglishFlightSearchResult(runtime);
+    }, { perRunTimeoutMs: 120_000 });
 
-    // Today's event should not
-    expect(responseContainsEvent(result, "Dentist appointment")).toBe(false);
-  }, 120_000);
+    stochasticTest("answers an exact date query with the correct events", async () => {
+      await expectExactDateResult(runtime);
+    }, { perRunTimeoutMs: 120_000 });
+  });
 });

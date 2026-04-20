@@ -1,6 +1,6 @@
-const format = require('../format-lines');
-const { capitalize } = require('../../helpers');
-const { OPTS } = require('./Checkpoints.opts.js');
+const format = require("../format-lines");
+const { capitalize } = require("../../helpers");
+const { OPTS } = require("./Checkpoints.opts.js");
 
 // TEMPLATE
 const header = `\
@@ -11,7 +11,7 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Checkpoints} from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 `;
 
-const template = opts => `\
+const template = (opts) => `\
 using Checkpoints for Checkpoints.${opts.historyTypeName};
 
 // Maximum gap between keys used during the fuzzing tests: the \`_prepareKeys\` function will make sure that
@@ -25,8 +25,8 @@ function _bound${capitalize(opts.keyTypeName)}(${opts.keyTypeName} x, ${opts.key
   opts.keyTypeName
 } max) internal pure returns (${opts.keyTypeName}) {
     return ${
-      opts.keyTypeName === 'uint256'
-        ? 'bound(x, min, max)'
+      opts.keyTypeName === "uint256"
+        ? "bound(x, min, max)"
         : `SafeCast.to${capitalize(opts.keyTypeName)}(bound(uint256(x), uint256(min), uint256(max)))`
     };
 }
@@ -132,10 +132,10 @@ function testLookup(${opts.keyTypeName}[] memory keys, ${opts.valueTypeName}[] m
 // GENERATE
 module.exports = format(
   header,
-  ...OPTS.flatMap(opts => [
+  ...OPTS.flatMap((opts) => [
     `contract Checkpoints${opts.historyTypeName}Test is Test {`,
     [template(opts).trimEnd()],
-    '}',
-    '',
+    "}",
+    "",
   ]),
 );

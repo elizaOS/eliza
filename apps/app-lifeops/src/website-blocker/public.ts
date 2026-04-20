@@ -33,10 +33,10 @@ export {
 export {
   getSelfControlPermissionState,
   getSelfControlStatus,
-  hasWebsiteBlockDeferralIntent,
-  hasWebsiteBlockIntent,
   openSelfControlPermissionLocation,
   parseSelfControlBlockRequest,
+  registerNativeWebsiteBlockerBackend,
+  getNativeWebsiteBlockerBackend,
   requestSelfControlPermission,
   setSelfControlPluginConfig,
   startSelfControlBlock,
@@ -44,6 +44,7 @@ export {
 } from "./engine.ts";
 
 export type {
+  NativeWebsiteBlockerBackend,
   SelfControlBlockRequest,
   SelfControlElevationMethod,
   SelfControlPermissionState,

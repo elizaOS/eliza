@@ -37,5 +37,5 @@ export function useChatAvatarVoiceBridge({
         detail,
       }),
     );
-  }, [mouthOpen, isSpeaking, usingAudioAnalysis]);
+  }, [mouthOpen, isSpeaking]);
 }

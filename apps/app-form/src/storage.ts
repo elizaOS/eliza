@@ -516,11 +516,8 @@ export async function getStaleSessions(
   runtime: IAgentRuntime,
   _afterInactiveMs: number
 ): Promise<FormSession[]> {
-  // TODO: Implement proper querying across all entities
-  // This would require either:
-  // 1. A database index on component data
-  // 2. A separate tracking table
-  // 3. Periodic full scan (expensive)
+  // Proper querying across all entities would require either a database index
+  // on component data, a separate tracking table, or a periodic full scan.
 
   runtime.logger.warn("getStaleSessions requires entity iteration - not implemented");
   return [];

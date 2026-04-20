@@ -13,7 +13,7 @@ export type ConnectorStatus = "ok" | "missing" | "unknown";
 export interface ConnectorHealthMonitorOptions {
   runtime: AgentRuntime;
   config: { connectors?: Record<string, unknown> };
-  broadcastWs: (payload: Record<string, unknown>) => void;
+  broadcastWs: (payload: object) => void;
   intervalMs?: number;
 }
 
@@ -59,7 +59,7 @@ const CONNECTOR_PLUGIN_MAP_NORMALIZED = Object.fromEntries(
 export class ConnectorHealthMonitor {
   private runtime: AgentRuntime;
   private config: { connectors?: Record<string, unknown> };
-  private broadcastWs: (payload: Record<string, unknown>) => void;
+  private broadcastWs: (payload: object) => void;
   private intervalMs: number;
   private timer: ReturnType<typeof setInterval> | null = null;
   private statuses: Map<string, ConnectorStatus> = new Map();

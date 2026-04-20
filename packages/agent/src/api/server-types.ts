@@ -5,26 +5,56 @@
  */
 
 import type http from "node:http";
+import type { DropService } from "@elizaos/app-elizamaker";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import type { AppManager } from "../services/app-manager.js";
 import type { SandboxManager } from "../services/sandbox-manager.js";
 import type { CloudRouteState } from "./cloud-routes.js";
 import type { ConnectorHealthMonitor } from "./connector-health.js";
-import type { DropService } from "./drop-service.js";
 // PluginEntry and PluginParamDef are defined here to avoid a circular dependency
 // with plugin-discovery-helpers.ts (which imports from server-helpers.ts).
 import type { RegistryService } from "./registry-service.js";
 
+// Canonical TrainingServiceLike / TrainingServiceWithRuntime live in
+// @elizaos/app-training. Re-export here so existing callers that imported from
+// server-types keep working without duplicating the interface.
+export type {
+  TrainingServiceLike,
+  TrainingServiceWithRuntime,
+} from "@elizaos/app-training/services/training-service-like";
+import type { TrainingServiceWithRuntime } from "@elizaos/app-training/services/training-service-like";
+
 // ---------------------------------------------------------------------------
 // Conversation metadata
 // ---------------------------------------------------------------------------
+
+export type ConversationScope =
+  | "general"
+  | "automation-coordinator"
+  | "automation-workflow"
+  | "automation-workflow-draft";
+
+export type ConversationAutomationType = "coordinator_text" | "n8n_workflow";
+
+export interface ConversationMetadata {
+  scope?: ConversationScope;
+  automationType?: ConversationAutomationType;
+  taskId?: string;
+  triggerId?: string;
+  workflowId?: string;
+  workflowName?: string;
+  draftId?: string;
+  sourceConversationId?: string;
+  terminalBridgeConversationId?: string;
+}
 
 /** Metadata for a web-chat conversation. */
 export interface ConversationMeta {
   id: string;
   title: string;
   roomId: UUID;
+  metadata?: ConversationMetadata;
   createdAt: string;
   updatedAt: string;
 }
@@ -103,11 +133,6 @@ export type AgentAutomationMode = "connectors-only" | "full";
 
 export type TradePermissionMode =
   import("./trade-safety.js").TradePermissionMode;
-
-export interface TrainingServiceLike {
-  subscribe(listener: (event: unknown) => void): () => void;
-  initialize(): Promise<void>;
-}
 
 // ---------------------------------------------------------------------------
 // Plugin entry types (canonical definitions — re-exported by plugin-discovery-helpers)
@@ -220,7 +245,7 @@ export interface ServerState {
   /** App manager for launching and managing elizaOS apps. */
   appManager: AppManager;
   /** Fine-tuning/training orchestration service. */
-  trainingService: TrainingServiceLike | null;
+  trainingService: TrainingServiceWithRuntime | null;
   /** ERC-8004 registry service (null when not configured). */
   registryService: RegistryService | null;
   /** Drop/mint service (null when not configured). */
@@ -230,11 +255,9 @@ export interface ServerState {
   /** Broadcast current agent status to all WebSocket clients. Set by startApiServer. */
   broadcastStatus: (() => void) | null;
   /** Broadcast an arbitrary JSON message to all WebSocket clients. Set by startApiServer. */
-  broadcastWs: ((data: Record<string, unknown>) => void) | null;
+  broadcastWs: ((data: object) => void) | null;
   /** Broadcast a JSON payload to WebSocket clients bound to a specific client id. */
-  broadcastWsToClientId:
-    | ((clientId: string, data: Record<string, unknown>) => number)
-    | null;
+  broadcastWsToClientId: ((clientId: string, data: object) => number) | null;
   /** Currently active conversation ID from the frontend (sent via WS). */
   activeConversationId: string | null;
   /** Transient OAuth flow state for subscription auth. */
@@ -258,6 +281,25 @@ export interface ServerState {
   connectorRouteHandlers: ConnectorRouteHandler[];
   /** Connector health monitor for detecting dead connectors. */
   connectorHealthMonitor: ConnectorHealthMonitor | null;
+  /** Active WhatsApp pairing sessions (QR code flow). */
+  whatsappPairingSessions?: Map<
+    string,
+    import("../services/whatsapp-pairing.js").WhatsAppPairingSession
+  >;
+  /** Active Signal pairing sessions (device linking flow). */
+  signalPairingSessions?: Map<
+    string,
+    import("../services/signal-pairing.js").SignalPairingSession
+  >;
+  /** Last known Signal pairing snapshots, including terminal failures. */
+  signalPairingSnapshots?: Map<
+    string,
+    import("../services/signal-pairing.js").SignalPairingSnapshot
+  >;
+  /** Active Telegram account auth session (user-account login flow). */
+  telegramAccountAuthSession?:
+    | import("../services/telegram-account-auth.js").TelegramAccountAuthSessionLike
+    | null;
 }
 
 /**

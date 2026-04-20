@@ -1,9 +1,7 @@
-
-
+import { Button, PagePanel } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
 import { useApp } from "../../state";
-import { PagePanel, Button } from "@elizaos/ui";
 
 type IMessageStatus = {
   available: boolean;

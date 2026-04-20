@@ -121,10 +121,26 @@ interface SessionContext {
   apiBaseUrl: string;
   apiKey?: string;
   agentName: string;
+  /**
+   * Stable per-runtime identifier — preferred over `agentName` for keying
+   * per-session state. Null when no runtime is attached (e.g. background
+   * health probes). Two runtimes that happen to share a character name
+   * must not share a cache entry.
+   */
+  agentId: string | null;
   preferredGameId?: number;
   defaultHeroClass: HeroClass;
   defaultLane: HeroLane;
   runtime: IAgentRuntime | null;
+}
+
+/**
+ * Cache key for per-session state. Prefers `agentId` so concurrent runtimes
+ * sharing a character name (test fixtures, multi-agent setups) get isolated
+ * cache entries; falls back to `agentName` when no runtime is attached.
+ */
+function sessionCacheKey(ctx: SessionContext): string {
+  return ctx.agentId ?? `name:${ctx.agentName}`;
 }
 
 interface LocatedHeroState {
@@ -400,6 +416,7 @@ function resolveSessionContext(
   runtime: IAgentRuntime | null,
   explicitSessionId?: string | null,
 ): SessionContext {
+  const agentId = asRuntimeLike(runtime)?.agentId;
   return {
     apiBaseUrl: (
       resolveSettingLike(runtime, "DEFENSE_OF_THE_AGENTS_API_URL") ??
@@ -407,6 +424,7 @@ function resolveSessionContext(
     ).replace(/\/+$/, ""),
     apiKey: resolveSettingLike(runtime, "DEFENSE_OF_THE_AGENTS_API_KEY"),
     agentName: resolveAgentName(runtime, explicitSessionId),
+    agentId: typeof agentId === "string" && agentId.length > 0 ? agentId : null,
     preferredGameId: normalizeGameId(
       resolveSettingLike(runtime, "DEFENSE_OF_THE_AGENTS_GAME_ID"),
     ),
@@ -1433,6 +1451,21 @@ function stopGameLoop(runtime: IAgentRuntime | null): void {
   persistSetting(runtime, AUTOPLAY_SETTING, "0");
 }
 
+/**
+ * Flush every per-agent in-memory cache for a stopped run. Called from
+ * `stopRun` so a relaunch starts from a clean slate instead of inheriting
+ * 15s of stale session state or a stale launch-failure marker. The
+ * shared `gameStateCache` (keyed by API + gameId) is left alone — it
+ * benefits other agents pointed at the same game.
+ */
+function clearAgentRunState(ctx: SessionContext): void {
+  if (ctx.agentId) {
+    recentActivity.delete(ctx.agentId);
+  }
+  sessionStateCache.delete(sessionCacheKey(ctx));
+  recentLaunchFailures.delete(ctx.agentName);
+}
+
 function isAutoPlayActive(runtime: IAgentRuntime | null): boolean {
   const agentId = asRuntimeLike(runtime)?.agentId;
   if (!agentId) return false;
@@ -1897,7 +1930,7 @@ async function readSessionState(
   autoJoin = false,
 ): Promise<AppSessionState> {
   const ctx = resolveSessionContext(runtime, sessionId);
-  const cacheKey = ctx.agentName;
+  const cacheKey = sessionCacheKey(ctx);
 
   // Return fresh cache if within TTL (prevents hammering remote API on UI polls)
   const cached = sessionStateCache.get(cacheKey);
@@ -2008,6 +2041,37 @@ export async function refreshRunSession(
       degradedSession.summary ?? "Defense refresh degraded.",
     );
     return degradedSession;
+  }
+}
+
+/**
+ * Called by the host app-manager when a Defense of the Agents run is
+ * stopped — explicitly via the Stop button, or implicitly by the
+ * stale-run sweeper when the UI heartbeat goes silent. Stops the
+ * auto-play game loop, the strategy-review timer, and flushes every
+ * per-agent cache so a relaunch starts clean.
+ *
+ * Idempotent: every step is a no-op if the resource is already gone.
+ */
+export async function stopRun(ctx: {
+  runtime: unknown | null;
+}): Promise<void> {
+  const runtime = ctx.runtime as IAgentRuntime | null;
+  try {
+    stopGameLoop(runtime);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[app-defense-of-the-agents] stopRun: stopGameLoop failed: ${msg}`,
+    );
+  }
+  try {
+    clearAgentRunState(resolveSessionContext(runtime, null));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[app-defense-of-the-agents] stopRun: clearAgentRunState failed: ${msg}`,
+    );
   }
 }
 
@@ -2284,7 +2348,9 @@ export async function handleAppRoutes(ctx: {
 // ---------------------------------------------------------------------------
 
 export {
+  activeLoops,
   buildReviewSummary,
+  clearAgentRunState,
   DEFAULT_STRATEGY,
   executeStrategyTick,
   findWeakestAlliedLane,
@@ -2294,10 +2360,14 @@ export {
   persistBestStrategy,
   persistStrategy,
   pickAbility,
+  recentActivity,
   resetInMemoryStateForTests,
   resolveBestStrategy,
+  resolveSessionContext,
   resolveStrategy,
   runStrategyReview,
+  sessionCacheKey,
+  sessionStateCache,
   type StrategyMetrics,
   scoreStrategy,
   startGameLoop,

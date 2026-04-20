@@ -30,6 +30,14 @@ export {
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
+// Keep evaluator runtime symbols explicit in the node entrypoint. Bun has
+// dropped some of these when they were only re-exported transitively through
+// the basic-capabilities barrel, which leaves dangling exports in dist.
+export {
+	factRefinementEvaluator,
+	skillExtractionEvaluator,
+	skillRefinementEvaluator,
+} from "./features/advanced-capabilities/evaluators/index";
 export * from "./features/advanced-memory";
 // Export capabilities and plugin creation
 export * from "./features/basic-capabilities/index";
@@ -44,6 +52,7 @@ export * from "./media";
 export * from "./memory";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";
+export { getOptimizationRootDir } from "./optimization-root-dir";
 export * from "./plugin";
 export * from "./plugins";
 
@@ -89,6 +98,7 @@ export {
 	unregisterTaskSchedulerRuntime,
 } from "./services/task-scheduler";
 export * from "./services/tool-policy";
+export * from "./services/optimized-prompt";
 export * from "./services/trajectories";
 // Export sessions utilities
 export * from "./sessions";
@@ -123,6 +133,8 @@ export * from "./utils/channel-utils";
 export * from "./utils/environment";
 // Export Node-specific utilities
 export * from "./utils/server-health";
+// Milady state-dir resolution (MILADY_STATE_DIR → ELIZA_STATE_DIR → ~/.milady)
+export * from "./utils/state-dir";
 // Export streaming utilities
 export * from "./utils/streaming";
 // Export validation utilities

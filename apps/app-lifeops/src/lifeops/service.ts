@@ -18,24 +18,62 @@ import { withWorkflows } from "./service-mixin-workflows.js";
 import { withDefinitions } from "./service-mixin-definitions.js";
 import { withGoals } from "./service-mixin-goals.js";
 import { withX } from "./service-mixin-x.js";
+import { withXRead } from "./service-mixin-x-read.js";
+import { withTelegram } from "./service-mixin-telegram.js";
+import { withDiscord } from "./service-mixin-discord.js";
+import { withSignal } from "./service-mixin-signal.js";
+import { withIMessage } from "./service-mixin-imessage.js";
+import { withRelationships } from "./service-mixin-relationships.js";
+import { withWhatsApp } from "./service-mixin-whatsapp.js";
+import { withScreenTime } from "./service-mixin-screentime.js";
+import { withScheduling } from "./service-mixin-scheduling.js";
+import { withDossier } from "./service-mixin-dossier.js";
+import { withHealth } from "./service-mixin-health.js";
+import { withDrive } from "./service-mixin-drive.js";
+import { withSubscriptions } from "./service-mixin-subscriptions.js";
+import { withEmailUnsubscribe } from "./service-mixin-email-unsubscribe.js";
+import { withTravel } from "./service-mixin-travel.js";
 
 /**
  * Main LifeOps service — assembled from domain mixins layered on top of
  * {@link LifeOpsServiceBase}.
  *
  * Mixin order follows dependency direction: Google auth → data layers
- * (Calendar, Gmail) → business logic (Reminders, Browser, Workflows,
- * Definitions, Goals) → connectors (X).
+ * (Calendar, Gmail, Drive) → business logic (Reminders, Browser, Workflows,
+ * Definitions, Goals) → connectors (X, Telegram, Discord, Signal).
  */
-export class LifeOpsService extends withX(
-  withGoals(
-    withDefinitions(
-      withWorkflows(
-        withBrowser(
-          withReminders(
-            withGmail(
-              withCalendar(
-                withGoogle(LifeOpsServiceBase),
+export class LifeOpsServiceComposedBase extends withHealth(
+  withDossier(
+  withScheduling(
+  withScreenTime(
+  withWhatsApp(
+  withRelationships(
+  withIMessage(
+  withSignal(
+    withDiscord(
+      withTelegram(
+        withXRead(
+          withX(
+            withGoals(
+            withDefinitions(
+              withWorkflows(
+                withSubscriptions(
+                  withEmailUnsubscribe(
+                  withBrowser(
+                  withReminders(
+                    withGmail(
+                      withDrive(
+                        withTravel(
+                          withCalendar(
+                            withGoogle(LifeOpsServiceBase),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -43,4 +81,13 @@ export class LifeOpsService extends withX(
       ),
     ),
   ),
+  ),
+  ),
+  ),
+  ),
+  ),
+  ),
+  ),
 ) {}
+
+export class LifeOpsService extends LifeOpsServiceComposedBase {}

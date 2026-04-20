@@ -1,10 +1,4 @@
-
-
-import {
-  OnboardingSecondaryActionButton,
-  onboardingBodyTextShadowStyle,
-  onboardingTextShadowStyle,
-} from "./onboarding-step-chrome";
+import { Button, Card, CardContent, Input, Spinner } from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
@@ -17,13 +11,17 @@ import {
   gatewayEndpointToApiBase,
 } from "../../bridge/gateway-discovery";
 import { isDesktopPlatform } from "../../platform/init";
-import { Button, Card, CardContent, Input, Spinner } from "@elizaos/ui";
 import {
   addAgentProfile,
   clearPersistedActiveServer,
   savePersistedActiveServer,
   useApp,
 } from "../../state";
+import {
+  OnboardingSecondaryActionButton,
+  onboardingBodyTextShadowStyle,
+  onboardingTextShadowStyle,
+} from "./onboarding-step-chrome";
 
 const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 

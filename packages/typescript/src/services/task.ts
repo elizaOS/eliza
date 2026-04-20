@@ -391,7 +391,11 @@ export class TaskService extends Service {
 			const result = await worker.execute(this.runtime, taskOptions, task);
 
 			if (task.tags?.includes("repeat")) {
-				const meta = task.metadata as TaskMetadata | undefined;
+				const latestTask = await this.runtime.getTask(task.id);
+				if (!latestTask) {
+					return;
+				}
+				const meta = latestTask.metadata as TaskMetadata | undefined;
 				const baseInterval = meta?.baseInterval ?? meta?.updateInterval;
 				const newMeta: TaskMetadata = {
 					...meta,
@@ -425,13 +429,17 @@ export class TaskService extends Service {
 			}
 		} catch (error) {
 			if (task.tags?.includes("repeat")) {
-				const failureCount =
-					((task.metadata as TaskMetadata)?.failureCount ?? 0) + 1;
-				const rawMax = (task.metadata as TaskMetadata)?.maxFailures;
+				const latestTask = await this.runtime.getTask(task.id);
+				if (!latestTask) {
+					return;
+				}
+				const meta = latestTask.metadata as TaskMetadata | undefined;
+				const failureCount = (meta?.failureCount ?? 0) + 1;
+				const rawMax = meta?.maxFailures;
 				const neverPause = rawMax === Infinity || rawMax === -1;
 				const maxFailures = neverPause ? Infinity : (rawMax ?? 5);
 				const newMeta: TaskMetadata & Record<string, unknown> = {
-					...(task.metadata as TaskMetadata),
+					...(meta ?? {}),
 					updatedAt: Date.now(),
 					failureCount,
 					lastError: error instanceof Error ? error.message : String(error),
@@ -448,9 +456,7 @@ export class TaskService extends Service {
 					);
 				} else {
 					const baseInterval =
-						(task.metadata as TaskMetadata)?.baseInterval ??
-						(task.metadata as TaskMetadata)?.updateInterval ??
-						1000;
+						meta?.baseInterval ?? meta?.updateInterval ?? 1000;
 					newMeta.updateInterval = Math.min(
 						baseInterval * 2 ** failureCount,
 						300_000,

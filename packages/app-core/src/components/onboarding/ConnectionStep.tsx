@@ -1,8 +1,7 @@
 import type { ProviderOption } from "@elizaos/shared/contracts/onboarding";
-import { useBranding } from "../../config/branding";
-import { isNative } from "../../platform/init";
 import { ONBOARDING_PROVIDER_CATALOG } from "@elizaos/shared/contracts/onboarding";
 import { useCallback, useEffect, useMemo } from "react";
+import { useBranding } from "../../config/branding";
 import {
   applyConnectionTransition,
   CONNECTION_RECOMMENDED_PROVIDER_IDS,
@@ -11,6 +10,7 @@ import {
   type ConnectionStatePatch,
   resolveConnectionUiSpec,
 } from "../../onboarding/connection-flow";
+import { isNative } from "../../platform/init";
 import { useApp } from "../../state";
 import type { AppState } from "../../state/types";
 import { ConnectionProviderDetailScreen } from "./connection/ConnectionProviderDetailScreen";
@@ -331,12 +331,14 @@ export function ConnectionStep() {
   };
 
   return (
-    <ConnectionUiRoot
-      spec={spec}
-      shared={shared}
-      providerDetail={
-        <ConnectionProviderDetailScreen dispatch={dispatchConnection} />
-      }
-    />
+    <div className="relative h-full w-full">
+      <ConnectionUiRoot
+        spec={spec}
+        shared={shared}
+        providerDetail={
+          <ConnectionProviderDetailScreen dispatch={dispatchConnection} />
+        }
+      />
+    </div>
   );
 }

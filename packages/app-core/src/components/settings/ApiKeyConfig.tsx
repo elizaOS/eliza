@@ -1,4 +1,4 @@
-
+import { Button, useTimeout } from "@elizaos/ui";
 import { useCallback, useState } from "react";
 import { client, type PluginParamDef } from "../../api";
 import {
@@ -6,11 +6,9 @@ import {
   defaultRegistry,
   type JsonSchemaObject,
 } from "../../config";
-import { useTimeout } from "@elizaos/ui";
 import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { autoLabel } from "../../utils/labels";
-import { Button } from "@elizaos/ui";
 
 interface ProviderPlugin {
   id: string;
@@ -104,7 +102,7 @@ export function ApiKeyConfig({
   const isSaving = pluginSaving.has(selectedProvider.id);
   const saveSuccess = pluginSaveSuccess.has(selectedProvider.id);
   const params = selectedProvider.parameters;
-  const setCount = params.filter((p: PluginParamDef) => p.isSet).length;
+  const configured = selectedProvider.configured;
 
   const properties: Record<string, Record<string, unknown>> = {};
   const required: string[] = [];
@@ -143,29 +141,25 @@ export function ApiKeyConfig({
   }
 
   return (
-    <div className="mt-4 pt-4">
-      <div className="flex justify-between items-center mb-3">
-        <div className="text-xs font-semibold">
-          {selectedProvider.name} {t("nav.settings")}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs-tight text-muted">
-            {setCount}/{params.length} {t("apikeyconfig.configured")}
-          </span>
+    <div className="border-t border-border/40 pt-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="text-xs font-semibold text-txt">
+          {selectedProvider.name}
+        </h3>
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-2xs font-medium ${
+            configured
+              ? "border-ok/30 bg-ok/10 text-ok"
+              : "border-warn/30 bg-warn/10 text-warn"
+          }`}
+        >
           <span
-            className="text-xs-tight px-2 py-[3px] border"
-            style={{
-              borderColor: selectedProvider.configured
-                ? "var(--ok)"
-                : "var(--warn)",
-              color: selectedProvider.configured ? "var(--ok)" : "var(--warn)",
-            }}
-          >
-            {selectedProvider.configured
-              ? t("config-field.Configured")
-              : t("mediasettingssection.NeedsSetup")}
-          </span>
-        </div>
+            className={`h-1.5 w-1.5 rounded-full ${configured ? "bg-ok" : "bg-warn"}`}
+          />
+          {configured
+            ? t("config-field.Configured")
+            : t("mediasettingssection.NeedsSetup")}
+        </span>
       </div>
 
       <ConfigRenderer
@@ -180,11 +174,12 @@ export function ApiKeyConfig({
         }
       />
 
-      <div className="flex justify-between items-center mt-3">
-        <div className="flex items-center gap-2 min-h-8">
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
           <Button
             variant="outline"
             size="sm"
+            className="h-9 rounded-lg"
             onClick={() => void handleFetchModels(selectedProvider.id)}
             disabled={modelsFetching}
           >
@@ -192,25 +187,23 @@ export function ApiKeyConfig({
               ? t("apikeyconfig.fetching")
               : t("apikeyconfig.fetchModels")}
           </Button>
-          <span
-            className={`text-xs-tight min-h-4 flex items-center max-w-[min(100%,16rem)] ${
-              modelsFetchResult
-                ? modelsFetchResult.tone === "error"
-                  ? "text-danger"
-                  : "text-ok"
-                : "text-transparent select-none"
-            }`}
-            aria-live="polite"
-          >
-            {modelsFetchResult?.message ?? "\u00a0"}
-          </span>
+          {modelsFetchResult && (
+            <span
+              aria-live="polite"
+              className={`truncate text-xs-tight ${
+                modelsFetchResult.tone === "error" ? "text-danger" : "text-ok"
+              }`}
+            >
+              {modelsFetchResult.message}
+            </span>
+          )}
         </div>
         <Button
           variant="default"
           size="sm"
+          className="h-9 rounded-lg font-semibold"
           onClick={() => handlePluginSave(selectedProvider.id)}
           disabled={isSaving}
-          className={saveSuccess ? "bg-ok border-ok" : ""}
         >
           {isSaving
             ? t("apikeyconfig.saving")

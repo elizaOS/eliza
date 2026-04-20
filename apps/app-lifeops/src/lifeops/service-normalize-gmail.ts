@@ -259,7 +259,7 @@ export function normalizeGmailSearchQueryMatches(
       return isNegated ? !groupMatched : groupMatched;
     }
     const operatorMatch = tokenBody.match(/^([a-z_]+):(.*)$/i);
-    const rawValue = operatorMatch ? operatorMatch[2] : tokenBody;
+    const rawValue = operatorMatch?.[2] ?? tokenBody;
     const value = rawValue.replace(/^"|"$/g, "").trim().toLowerCase();
     if (value.length === 0) {
       return true;
@@ -277,7 +277,7 @@ export function normalizeGmailSearchQueryMatches(
         return all.includes(value);
       }
 
-      const operator = operatorMatch[1].toLowerCase();
+      const operator = (operatorMatch[1] ?? "").toLowerCase();
       switch (operator) {
         case "from":
           if (value === "me") {
@@ -350,12 +350,10 @@ export function normalizeGmailSearchQueryMatches(
       return true;
     }
     const operatorMatch = normalizedToken.match(/^([a-z_]+):(.*)$/i);
-    if (
-      operatorMatch &&
-      operatorMatch[1].toLowerCase() === "or" &&
-      operatorMatch[2]
-    ) {
-      return matchesToken(operatorMatch[2]);
+    const operator = operatorMatch?.[1]?.toLowerCase();
+    const operatorValue = operatorMatch?.[2];
+    if (operator === "or" && operatorValue) {
+      return matchesToken(operatorValue);
     }
     return matchesToken(normalizedToken);
   });
@@ -375,12 +373,23 @@ export function filterGmailMessagesBySearch(args: {
   const replyNeededOnly = args.replyNeededOnly === true;
   return filtered
     .filter((message) => !replyNeededOnly || message.likelyReplyNeeded)
-    .sort((left, right) => {
-      if (right.triageScore !== left.triageScore) {
-        return right.triageScore - left.triageScore;
-      }
-      return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
-    });
+    .sort(compareGmailMessagePriority);
+}
+
+export function compareGmailMessagePriority(
+  left: LifeOpsGmailMessageSummary,
+  right: LifeOpsGmailMessageSummary,
+): number {
+  if (left.isImportant !== right.isImportant) {
+    return right.isImportant ? 1 : -1;
+  }
+  if (left.likelyReplyNeeded !== right.likelyReplyNeeded) {
+    return right.likelyReplyNeeded ? 1 : -1;
+  }
+  if (left.isUnread !== right.isUnread) {
+    return right.isUnread ? 1 : -1;
+  }
+  return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
 }
 
 export function normalizeGmailDraftTone(value: unknown): "brief" | "neutral" | "warm" {
@@ -513,7 +522,7 @@ export function findLinkedMailForCalendarEvent(
       if (receivedDelta !== 0) {
         return receivedDelta;
       }
-      return right.triageScore - left.triageScore;
+      return compareGmailMessagePriority(left, right);
     })
     .slice(0, 3);
 }

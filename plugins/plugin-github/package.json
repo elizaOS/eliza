@@ -1,0 +1,40 @@
+{
+  "name": "@elizaos/plugin-github",
+  "version": "2.0.0-alpha.1",
+  "description": "GitHub integration plugin for elizaOS agents — PRs, issues, notifications via the GitHub REST API",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@octokit/rest": "^22.0.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.12.2",
+    "tsup": "8.4.0",
+    "typescript": "6.0.3",
+    "vitest": "3.0.5"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

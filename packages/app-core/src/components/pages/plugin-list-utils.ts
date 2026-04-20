@@ -12,7 +12,6 @@ import {
   BrickWall,
   Briefcase,
   Calendar,
-  Chrome,
   Circle,
   CircleDashed,
   CircleDot,
@@ -31,7 +30,8 @@ import {
   Fingerprint,
   Gamepad,
   Gamepad2,
-  Github,
+  GitBranch,
+  Globe,
   Handshake,
   Hash,
   Layers,
@@ -69,7 +69,7 @@ import {
   Tornado,
   TrendingDown,
   Triangle,
-  Twitter,
+  Bird,
   Video,
   Volume2,
   Wallet,
@@ -162,7 +162,10 @@ export const CONNECTOR_DISPLAY_NAMES: Record<string, string> = {
 };
 
 /** Returns a display-ready name for a plugin, falling back to `plugin.name`. */
-export function connectorDisplayName(plugin: { id: string; name: string }): string {
+export function connectorDisplayName(plugin: {
+  id: string;
+  name: string;
+}): string {
   return CONNECTOR_DISPLAY_NAMES[plugin.id] ?? plugin.name;
 }
 
@@ -540,7 +543,7 @@ export const DEFAULT_ICONS: Record<string, LucideIcon> = {
   discord: MessageCircle,
   telegram: Send,
   slack: Briefcase,
-  twitter: Twitter,
+  twitter: Bird,
   whatsapp: Smartphone,
   signal: Lock,
   imessage: MessageSquare,
@@ -580,10 +583,10 @@ export const DEFAULT_ICONS: Record<string, LucideIcon> = {
   cli: Hash,
   code: Puzzle,
   shell: Shell,
-  github: Github,
+  github: GitBranch,
   linear: Square,
   mcp: Puzzle,
-  browser: Chrome,
+  browser: Globe,
   computeruse: MousePointer2,
   n8n: Settings,
   webhooks: Webhook,
@@ -976,7 +979,9 @@ export function buildPluginListState(options: {
     (plugin) =>
       plugin.category !== "database" &&
       !ALWAYS_ON_PLUGIN_IDS.has(plugin.id) &&
-      (!isConnectorLikeMode || (plugin.category === "connector" && VISIBLE_CONNECTOR_IDS.has(plugin.id))) &&
+      (!isConnectorLikeMode ||
+        (plugin.category === "connector" &&
+          VISIBLE_CONNECTOR_IDS.has(plugin.id))) &&
       (mode !== "streaming" || plugin.category === "streaming"),
   );
   const nonDbPlugins = [SHOWCASE_PLUGIN, ...categoryPlugins];

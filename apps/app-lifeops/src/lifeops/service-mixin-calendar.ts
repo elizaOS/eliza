@@ -68,10 +68,11 @@ import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 const DEFAULT_GMAIL_TRIAGE_MAX_RESULTS = 12;
 
+/** @internal */
 export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
-  return class extends Base {
+  class LifeOpsCalendarServiceMixin extends Base {
 
-    protected async recordCalendarEventAudit(
+    public async recordCalendarEventAudit(
       ownerId: string,
       reason: string,
       inputs: Record<string, unknown>,
@@ -95,7 +96,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
       );
     }
 
-    protected async syncCalendarReminderPlans(
+    public async syncCalendarReminderPlans(
       events: LifeOpsCalendarEvent[],
     ): Promise<void> {
       const eventIds = events.map((event) => event.id);
@@ -137,7 +138,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
       }
     }
 
-    protected async deleteCalendarReminderPlansForEvents(
+    public async deleteCalendarReminderPlansForEvents(
       eventIds: string[],
     ): Promise<void> {
       if (eventIds.length === 0) {
@@ -153,7 +154,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
       }
     }
 
-    protected async syncGoogleCalendarFeed(args: {
+    public async syncGoogleCalendarFeed(args: {
       requestUrl: URL;
       requestedMode?: LifeOpsConnectorMode;
       requestedSide?: LifeOpsConnectorSide;
@@ -346,19 +347,57 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
         };
       }
 
-      return this.syncGoogleCalendarFeed({
-        requestUrl,
-        requestedMode: mode,
-        requestedSide: effectiveSide,
-        grantId: grant.id,
-        calendarId,
-        timeMin,
-        timeMax,
-        timeZone,
-      });
+      try {
+        return await this.syncGoogleCalendarFeed({
+          requestUrl,
+          requestedMode: mode,
+          requestedSide: effectiveSide,
+          grantId: grant.id,
+          calendarId,
+          timeMin,
+          timeMax,
+          timeZone,
+        });
+      } catch (error) {
+        if (
+          error instanceof LifeOpsServiceError &&
+          (error.status === 401 || error.status === 403)
+        ) {
+          const cachedEvents = await this.repository.listCalendarEvents(
+            this.agentId(),
+            "google",
+            timeMin,
+            timeMax,
+            effectiveSide,
+          );
+          if (cachedEvents.length > 0) {
+            this.logLifeOpsWarn(
+              "calendar_feed_cache_fallback",
+              "Using cached calendar events after Google sync failed.",
+              {
+                statusCode: error.status,
+                calendarId,
+                timeMin,
+                timeMax,
+                side: effectiveSide,
+                cachedEventCount: cachedEvents.length,
+              },
+            );
+            return {
+              calendarId,
+              events: cachedEvents,
+              source: "cache",
+              timeMin,
+              timeMax,
+              syncedAt: syncState?.syncedAt ?? null,
+            };
+          }
+        }
+        throw error;
+      }
     }
 
-    private async aggregateCalendarFeeds(
+    public async aggregateCalendarFeeds(
       requestUrl: URL,
       grants: readonly LifeOpsConnectorGrant[],
       calendarId: string,
@@ -865,5 +904,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(Base
         linkedMailError,
       );
     }
-  };
+  }
+
+  return LifeOpsCalendarServiceMixin;
 }

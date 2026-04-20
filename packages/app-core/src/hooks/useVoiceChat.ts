@@ -895,10 +895,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           const cloudTarget = resolveApiUrl("/api/tts/cloud");
           try {
             const cloudRes = await fetch(cloudTarget, makeProxyRequestInit());
-            if (
-              cloudRes.ok ||
-              !shouldFallbackFromCloudProxy(cloudRes.status)
-            ) {
+            if (cloudRes.ok || !shouldFallbackFromCloudProxy(cloudRes.status)) {
               return cloudRes;
             }
 

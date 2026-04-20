@@ -1,10 +1,17 @@
-
-
+import {
+  Button,
+  Input,
+  PagePanel,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@elizaos/ui";
 import { useEffect, useMemo, useState } from "react";
 import type { LogEntry } from "../../api";
 import { useApp } from "../../state";
 import { formatTime } from "../../utils/format";
-import { PagePanel, Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@elizaos/ui";
 
 export function LogsView() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -228,9 +235,9 @@ export function LogsView() {
               <span>{t("logsview.Tags")}</span>
               <span>{t("logsview.Message")}</span>
             </div>
-            {filteredLogs.map((entry: LogEntry) => (
+            {filteredLogs.map((entry: LogEntry, idx: number) => (
               <div
-                key={`${entry.timestamp}-${entry.source}-${entry.level}-${entry.message}`}
+                key={`${idx}-${entry.timestamp}-${entry.source}-${entry.level}`}
                 className="flex items-start gap-3 px-3 py-3 text-sm"
                 data-testid="log-entry"
               >

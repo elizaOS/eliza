@@ -1,1 +1,74 @@
-{"abi":[{"type":"receive","stateMutability":"payable"},{"type":"function","name":"setAcceptEther","inputs":[{"name":"acceptEther","type":"bool","internalType":"bool"}],"outputs":[],"stateMutability":"nonpayable"}],"bytecode":{"object":"0x608060405234801561000f575f80fd5b5060b68061001c5f395ff3fe608060405260043610601e575f3560e01c80634fea120c146034575f80fd5b366030575f5460ff16602e575f80fd5b005b5f80fd5b348015603e575f80fd5b50602e604a366004605c565b5f805460ff1916911515919091179055565b5f60208284031215606b575f80fd5b813580151581146079575f80fd5b939250505056fea26469706673582212203510e3baba451d35bc4818ab3c3d51a9a6b2621aeb15588fd4c0a3e2a41bf51864736f6c63430008140033","sourceMap":"58:260:95:-:0;;;;;;;;;;;;;;;;;;;","linkReferences":{}},"deployedBytecode":{"object":"0x608060405260043610601e575f3560e01c80634fea120c146034575f80fd5b366030575f5460ff16602e575f80fd5b005b5f80fd5b348015603e575f80fd5b50602e604a366004605c565b5f805460ff1916911515919091179055565b5f60208284031215606b575f80fd5b813580151581146079575f80fd5b939250505056fea26469706673582212203510e3baba451d35bc4818ab3c3d51a9a6b2621aeb15588fd4c0a3e2a41bf51864736f6c63430008140033","sourceMap":"58:260:95:-:0;;;;;;;;;;;;;;;;;;;;;;;;263:12;;;;258:52;;291:8;;;258:52;58:260;;;;;123:92;;;;;;;;;;-1:-1:-1;123:92:95;;;;;:::i;:::-;182:12;:26;;-1:-1:-1;;182:26:95;;;;;;;;;;123:92;14:273:310;70:6;123:2;111:9;102:7;98:23;94:32;91:52;;;139:1;136;129:12;91:52;178:9;165:23;231:5;224:13;217:21;210:5;207:32;197:60;;253:1;250;243:12;197:60;276:5;14:273;-1:-1:-1;;;14:273:310:o","linkReferences":{}},"methodIdentifiers":{"setAcceptEther(bool)":"4fea120c"},"rawMetadata":"{\"compiler\":{\"version\":\"0.8.20+commit.a1b79de6\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"bool\",\"name\":\"acceptEther\",\"type\":\"bool\"}],\"name\":\"setAcceptEther\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"stateMutability\":\"payable\",\"type\":\"receive\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"lib/openzeppelin-contracts/contracts/mocks/EtherReceiverMock.sol\":\"EtherReceiverMock\"},\"evmVersion\":\"shanghai\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\",\":openzeppelin/=lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"lib/openzeppelin-contracts/contracts/mocks/EtherReceiverMock.sol\":{\"keccak256\":\"0x2b2eac73b765fa6205a9b1febca804b28c0eba82a2fd7f020058cbe08e93b550\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://a00aadb085d43625d9dd5c001fc59693fab691c971d71f0a113f45f01427f447\",\"dweb:/ipfs/QmVkZxkBEZAiK3aYcLRjEmF2VFapJhZLKgWvMwF6AXb583\"]}},\"version\":1}","metadata":{"compiler":{"version":"0.8.20+commit.a1b79de6"},"language":"Solidity","output":{"abi":[{"inputs":[{"internalType":"bool","name":"acceptEther","type":"bool"}],"stateMutability":"nonpayable","type":"function","name":"setAcceptEther"},{"inputs":[],"stateMutability":"payable","type":"receive"}],"devdoc":{"kind":"dev","methods":{},"version":1},"userdoc":{"kind":"user","methods":{},"version":1}},"settings":{"remappings":["@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/","ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/","erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/","forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/","openzeppelin-contracts/=lib/openzeppelin-contracts/","openzeppelin/=lib/openzeppelin-contracts/contracts/"],"optimizer":{"enabled":true,"runs":200},"metadata":{"bytecodeHash":"ipfs"},"compilationTarget":{"lib/openzeppelin-contracts/contracts/mocks/EtherReceiverMock.sol":"EtherReceiverMock"},"evmVersion":"shanghai","libraries":{}},"sources":{"lib/openzeppelin-contracts/contracts/mocks/EtherReceiverMock.sol":{"keccak256":"0x2b2eac73b765fa6205a9b1febca804b28c0eba82a2fd7f020058cbe08e93b550","urls":["bzz-raw://a00aadb085d43625d9dd5c001fc59693fab691c971d71f0a113f45f01427f447","dweb:/ipfs/QmVkZxkBEZAiK3aYcLRjEmF2VFapJhZLKgWvMwF6AXb583"],"license":"MIT"}},"version":1},"id":95}
+{
+  "abi": [
+    { "type": "receive", "stateMutability": "payable" },
+    {
+      "type": "function",
+      "name": "setAcceptEther",
+      "inputs": [
+        { "name": "acceptEther", "type": "bool", "internalType": "bool" }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    }
+  ],
+  "bytecode": {
+    "object": "0x608060405234801561000f575f80fd5b5060b68061001c5f395ff3fe608060405260043610601e575f3560e01c80634fea120c146034575f80fd5b366030575f5460ff16602e575f80fd5b005b5f80fd5b348015603e575f80fd5b50602e604a366004605c565b5f805460ff1916911515919091179055565b5f60208284031215606b575f80fd5b813580151581146079575f80fd5b939250505056fea26469706673582212203510e3baba451d35bc4818ab3c3d51a9a6b2621aeb15588fd4c0a3e2a41bf51864736f6c63430008140033",
+    "sourceMap": "58:260:95:-:0;;;;;;;;;;;;;;;;;;;",
+    "linkReferences": {}
+  },
+  "deployedBytecode": {
+    "object": "0x608060405260043610601e575f3560e01c80634fea120c146034575f80fd5b366030575f5460ff16602e575f80fd5b005b5f80fd5b348015603e575f80fd5b50602e604a366004605c565b5f805460ff1916911515919091179055565b5f60208284031215606b575f80fd5b813580151581146079575f80fd5b939250505056fea26469706673582212203510e3baba451d35bc4818ab3c3d51a9a6b2621aeb15588fd4c0a3e2a41bf51864736f6c63430008140033",
+    "sourceMap": "58:260:95:-:0;;;;;;;;;;;;;;;;;;;;;;;;263:12;;;;258:52;;291:8;;;258:52;58:260;;;;;123:92;;;;;;;;;;-1:-1:-1;123:92:95;;;;;:::i;:::-;182:12;:26;;-1:-1:-1;;182:26:95;;;;;;;;;;123:92;14:273:310;70:6;123:2;111:9;102:7;98:23;94:32;91:52;;;139:1;136;129:12;91:52;178:9;165:23;231:5;224:13;217:21;210:5;207:32;197:60;;253:1;250;243:12;197:60;276:5;14:273;-1:-1:-1;;;14:273:310:o",
+    "linkReferences": {}
+  },
+  "methodIdentifiers": { "setAcceptEther(bool)": "4fea120c" },
+  "rawMetadata": "{\"compiler\":{\"version\":\"0.8.20+commit.a1b79de6\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"bool\",\"name\":\"acceptEther\",\"type\":\"bool\"}],\"name\":\"setAcceptEther\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"stateMutability\":\"payable\",\"type\":\"receive\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"lib/openzeppelin-contracts/contracts/mocks/EtherReceiverMock.sol\":\"EtherReceiverMock\"},\"evmVersion\":\"shanghai\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\",\":openzeppelin/=lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"lib/openzeppelin-contracts/contracts/mocks/EtherReceiverMock.sol\":{\"keccak256\":\"0x2b2eac73b765fa6205a9b1febca804b28c0eba82a2fd7f020058cbe08e93b550\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://a00aadb085d43625d9dd5c001fc59693fab691c971d71f0a113f45f01427f447\",\"dweb:/ipfs/QmVkZxkBEZAiK3aYcLRjEmF2VFapJhZLKgWvMwF6AXb583\"]}},\"version\":1}",
+  "metadata": {
+    "compiler": { "version": "0.8.20+commit.a1b79de6" },
+    "language": "Solidity",
+    "output": {
+      "abi": [
+        {
+          "inputs": [
+            { "internalType": "bool", "name": "acceptEther", "type": "bool" }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "setAcceptEther"
+        },
+        { "inputs": [], "stateMutability": "payable", "type": "receive" }
+      ],
+      "devdoc": { "kind": "dev", "methods": {}, "version": 1 },
+      "userdoc": { "kind": "user", "methods": {}, "version": 1 }
+    },
+    "settings": {
+      "remappings": [
+        "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+        "ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/",
+        "erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+        "forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/",
+        "openzeppelin-contracts/=lib/openzeppelin-contracts/",
+        "openzeppelin/=lib/openzeppelin-contracts/contracts/"
+      ],
+      "optimizer": { "enabled": true, "runs": 200 },
+      "metadata": { "bytecodeHash": "ipfs" },
+      "compilationTarget": {
+        "lib/openzeppelin-contracts/contracts/mocks/EtherReceiverMock.sol": "EtherReceiverMock"
+      },
+      "evmVersion": "shanghai",
+      "libraries": {}
+    },
+    "sources": {
+      "lib/openzeppelin-contracts/contracts/mocks/EtherReceiverMock.sol": {
+        "keccak256": "0x2b2eac73b765fa6205a9b1febca804b28c0eba82a2fd7f020058cbe08e93b550",
+        "urls": [
+          "bzz-raw://a00aadb085d43625d9dd5c001fc59693fab691c971d71f0a113f45f01427f447",
+          "dweb:/ipfs/QmVkZxkBEZAiK3aYcLRjEmF2VFapJhZLKgWvMwF6AXb583"
+        ],
+        "license": "MIT"
+      }
+    },
+    "version": 1
+  },
+  "id": 95
+}

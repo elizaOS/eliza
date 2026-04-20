@@ -5,6 +5,7 @@ import type {
   PermissionStatus,
   SystemPermissionId,
 } from "../api/client";
+export type * from "./types";
 
 // ── Onboarding permissions ──────────────────────────────────────────────
 
@@ -37,11 +38,6 @@ export function hasRequiredOnboardingPermissions(
 export { applyLaunchConnectionFromUrl } from "./browser-launch";
 export * from "./cloud-preference-patch";
 export * from "./desktop-permissions-client";
-export type {
-  CloudPreferenceClientLike,
-  OnboardingClientLike,
-  PermissionsClientLike,
-} from "./types";
 export {
   type DeepLinkHandlers,
   dispatchShareTarget,
@@ -58,6 +54,10 @@ export {
   type ShareTargetPayload,
   setupPlatformStyles,
 } from "./init";
-export * from "./lifeops-github";
 export * from "./onboarding-reset";
+export type {
+  CloudPreferenceClientLike,
+  OnboardingClientLike,
+  PermissionsClientLike,
+} from "./types";
 export * from "./window-shell";

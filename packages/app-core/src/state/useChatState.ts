@@ -14,10 +14,7 @@ import type {
   ImageAttachment,
   StreamEventEnvelope,
 } from "../api";
-import type {
-  AutonomyEventStore,
-  AutonomyRunHealthMap,
-} from "../autonomy";
+import type { AutonomyEventStore, AutonomyRunHealthMap } from "../autonomy";
 import {
   loadChatAvatarVisible,
   loadChatMode,

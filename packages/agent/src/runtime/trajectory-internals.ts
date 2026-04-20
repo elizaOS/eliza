@@ -6,6 +6,7 @@
  * and trajectory-export modules. Not intended for direct external consumption.
  */
 
+import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
@@ -18,7 +19,11 @@ import {
   ModelType,
 } from "@elizaos/core";
 
-import type { TrajectoryStatus } from "../types/trajectory.js";
+import {
+  TRAJECTORY_STEP_SCRIPT_MAX_CHARS,
+  type TrajectoryStatus,
+  type TrajectoryStepKind,
+} from "../types/trajectory.js";
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -74,6 +79,19 @@ export type PersistedStep = {
   timestamp: number;
   llmCalls: PersistedLlmCall[];
   providerAccesses: PersistedProviderAccess[];
+  /**
+   * Optional discriminator. Legacy rows without this field are treated as
+   * `"llm"` by readers.
+   */
+  kind?: TrajectoryStepKind;
+  /** Step IDs of nested steps (used by `executeCode`). */
+  childSteps?: string[];
+  /** Inline script source for `executeCode` steps (capped). */
+  script?: string;
+  /** sha256 hex digest of the original script when it exceeded the cap. */
+  scriptHash?: string;
+  /** Skill names the step relied on (populated by Track C). */
+  usedSkills?: string[];
 };
 
 export type PersistedTrajectory = {
@@ -421,6 +439,30 @@ export function truncateRecord(
 }
 
 // ---------------------------------------------------------------------------
+// Script capture helpers (used by executeCode trajectory steps)
+// ---------------------------------------------------------------------------
+
+/**
+ * Cap a script source for inline persistence on a trajectory step. When the
+ * source exceeds `TRAJECTORY_STEP_SCRIPT_MAX_CHARS`, returns a truncated
+ * prefix together with the sha256 hex digest of the full source so callers
+ * can store the digest alongside.
+ */
+export function capScriptForPersistence(script: string): {
+  script: string;
+  scriptHash?: string;
+} {
+  if (script.length <= TRAJECTORY_STEP_SCRIPT_MAX_CHARS) {
+    return { script };
+  }
+  const scriptHash = createHash("sha256").update(script, "utf8").digest("hex");
+  return {
+    script: script.slice(0, TRAJECTORY_STEP_SCRIPT_MAX_CHARS),
+    scriptHash,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Insight extraction
 // ---------------------------------------------------------------------------
 
@@ -434,13 +476,19 @@ export function extractInsightsFromResponse(
   let match: RegExpExecArray | null;
   match = decisionPattern.exec(response);
   while (match !== null) {
-    insights.push(match[1].trim());
+    const decision = match[1];
+    if (decision) {
+      insights.push(decision.trim());
+    }
     match = decisionPattern.exec(response);
   }
   const keyDecisionPattern = /"keyDecision"\s*:\s*"([^"]+)"/g;
   match = keyDecisionPattern.exec(response);
   while (match !== null) {
-    insights.push(match[1].trim());
+    const keyDecision = match[1];
+    if (keyDecision) {
+      insights.push(keyDecision.trim());
+    }
     match = keyDecisionPattern.exec(response);
   }
   if (
@@ -448,7 +496,8 @@ export function extractInsightsFromResponse(
     insights.length === 0
   ) {
     const reasoningMatch = response.match(/"reasoning"\s*:\s*"([^"]{20,200})"/);
-    if (reasoningMatch) insights.push(reasoningMatch[1].trim());
+    const reasoning = reasoningMatch?.[1];
+    if (reasoning) insights.push(reasoning.trim());
   }
   return insights;
 }
@@ -612,6 +661,9 @@ export async function flushObservationBuffer(
 
     // Write observations to the most recent trajectory in the batch
     const lastExchange = exchanges[exchanges.length - 1];
+    if (!lastExchange) {
+      return observations;
+    }
     const trajectory = await loadTrajectoryById(
       runtime,
       lastExchange.trajectoryId,
@@ -1702,29 +1754,23 @@ export async function writeCompressedJsonlRows(
   await once(outStream, "finish");
 }
 
-function isCloudProvisionedContainer(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  return env.ELIZA_CLOUD_PROVISIONED === "1";
-}
-
+/**
+ * Trajectory persistence is unconditionally on. The only paths that disable it:
+ *
+ *   1. `NODE_ENV === "test"` — keeps the test runner free of background DB writes.
+ *   2. `ELIZA_DISABLE_TRAJECTORY_LOGGING=1` — explicit operator opt-out.
+ *
+ * We deliberately stopped honoring the legacy `ENABLE_TRAJECTORIES`,
+ * `ELIZA_TRAJECTORY_LOGGING`, `TRAJECTORY_LOGGING_ENABLED`, and
+ * `ELIZA_CLOUD_PROVISIONED` knobs: each represented a different historical
+ * attempt to gate persistence, and shipping multiple opt-in paths produced
+ * silent gaps where debugging and training data went missing. One opt-out,
+ * otherwise on.
+ */
 export function shouldEnableTrajectoryLoggingByDefault(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  if (isCloudProvisionedContainer(env)) {
-    return true;
-  }
-
-  const explicit = toOptionalBoolean(
-    env.ENABLE_TRAJECTORIES ??
-      env.ELIZA_TRAJECTORY_LOGGING ??
-      env.TRAJECTORY_LOGGING_ENABLED ??
-      env.ELIZA_TRAJECTORY_LOGGING,
-  );
-  if (explicit !== undefined) return explicit;
-
-  // Trajectory capture underpins debugging, export, and training workflows.
-  // Keep it on by default and require an explicit opt-out instead of silently
-  // disabling it in production builds.
+  if (env.NODE_ENV === "test") return false;
+  if (env.ELIZA_DISABLE_TRAJECTORY_LOGGING === "1") return false;
   return true;
 }

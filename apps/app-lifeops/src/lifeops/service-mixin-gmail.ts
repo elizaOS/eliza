@@ -64,6 +64,7 @@ import {
 import {
   buildFallbackGmailReplyDraftBody,
   buildGmailReplyDraft,
+  compareGmailMessagePriority,
   createGmailMessageId,
   filterGmailMessagesBySearch,
   materializeGmailMessageSummary,
@@ -87,10 +88,11 @@ const DEFAULT_GMAIL_TRIAGE_MAX_RESULTS = 12;
 const DEFAULT_GMAIL_SEARCH_SCAN_LIMIT = 50;
 const DEFAULT_GMAIL_SEARCH_CACHE_SCAN_LIMIT = 200;
 
+/** @internal */
 export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
-  return class extends Base {
+  class LifeOpsGmailServiceMixin extends Base {
 
-    protected async recordGmailAudit(
+    public async recordGmailAudit(
       eventType:
         | "gmail_triage_synced"
         | "gmail_reply_drafted"
@@ -119,7 +121,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       );
     }
 
-    protected async syncGoogleGmailTriage(args: {
+    public async syncGoogleGmailTriage(args: {
       requestUrl: URL;
       requestedMode?: LifeOpsConnectorMode;
       requestedSide?: LifeOpsConnectorSide;
@@ -290,7 +292,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       });
     }
 
-    private async aggregateGmailTriageFeeds(
+    public async aggregateGmailTriageFeeds(
       requestUrl: URL,
       grants: readonly LifeOpsConnectorGrant[],
       maxResults: number,
@@ -709,12 +711,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       const triage = await this.getGmailTriage(requestUrl, request, now);
       const messages = triage.messages
         .filter((message) => message.likelyReplyNeeded)
-        .sort((left, right) => {
-          if (right.triageScore !== left.triageScore) {
-            return right.triageScore - left.triageScore;
-          }
-          return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
-        });
+        .sort(compareGmailMessagePriority);
       return {
         messages,
         source: triage.source,
@@ -723,7 +720,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       };
     }
 
-    protected async resolveGmailMessagesForBatchDrafts(args: {
+    public async resolveGmailMessagesForBatchDrafts(args: {
       requestUrl: URL;
       request: CreateLifeOpsGmailBatchReplyDraftsRequest;
       now?: Date;
@@ -820,12 +817,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
         }
         messages = messages
           .filter((message) => messageIds.includes(message.id))
-          .sort((left, right) => {
-            if (right.triageScore !== left.triageScore) {
-              return right.triageScore - left.triageScore;
-            }
-            return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
-          });
+          .sort(compareGmailMessagePriority);
         return {
           grant,
           query: null,
@@ -934,7 +926,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       };
     }
 
-    protected async renderGmailReplyDraft(args: {
+    public async renderGmailReplyDraft(args: {
       message: LifeOpsGmailMessageSummary;
       tone: "brief" | "neutral" | "warm";
       intent?: string;
@@ -1036,7 +1028,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       });
     }
 
-    protected async renderGmailReplyDrafts(args: {
+    public async renderGmailReplyDrafts(args: {
       messages: LifeOpsGmailMessageSummary[];
       tone: "brief" | "neutral" | "warm";
       intent?: string;
@@ -1180,7 +1172,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       return draft;
     }
 
-    protected async sendGmailReplyWithGrant(args: {
+    public async sendGmailReplyWithGrant(args: {
       grant: LifeOpsConnectorGrant;
       message: LifeOpsGmailMessageSummary;
       to?: string[];
@@ -1540,5 +1532,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       }
       return { ok: true, sentCount };
     }
-  };
+  }
+
+  return LifeOpsGmailServiceMixin;
 }

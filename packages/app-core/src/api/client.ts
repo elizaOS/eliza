@@ -7,7 +7,7 @@
  * The ElizaClient class is defined in client-base.ts and re-exported here.
  * Domain methods are defined via declaration merging + prototype augmentation
  * in the companion files: client-agent, client-chat, client-wallet,
- * client-cloud, client-skills.
+ * client-cloud, client-skills, client-computeruse.
  */
 
 import type {
@@ -36,6 +36,29 @@ import type {
 } from "@elizaos/agent/contracts/permissions";
 import type { VerificationResult } from "@elizaos/agent/contracts/verification";
 import type {
+  BrowserWorkspaceSnapshot,
+  BrowserWorkspaceTab,
+} from "@elizaos/agent/services/browser-workspace";
+import type {
+  StewardApprovalActionResponse,
+  StewardApprovalInfo,
+  StewardBalanceResponse,
+  StewardHistoryResponse,
+  StewardPendingApproval,
+  StewardPendingResponse,
+  StewardPolicyResult,
+  StewardSignRequest,
+  StewardSignResponse,
+  StewardStatusResponse,
+  StewardTokenBalancesResponse,
+  StewardTxRecord,
+  StewardTxStatus,
+  StewardWalletAddressesResponse,
+  StewardWebhookEvent,
+  StewardWebhookEventsResponse,
+  StewardWebhookEventType,
+} from "@elizaos/app-steward/types";
+import type {
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
   BscTradePreflightResponse,
@@ -49,18 +72,6 @@ import type {
   EvmTokenBalance,
   SolanaNft,
   SolanaTokenBalance,
-  StewardApprovalActionResponse,
-  StewardApprovalInfo,
-  StewardBalanceResponse,
-  StewardHistoryResponse,
-  StewardPendingResponse,
-  StewardPolicyResult,
-  StewardStatusResponse,
-  StewardTokenBalancesResponse,
-  StewardWalletAddressesResponse,
-  StewardWebhookEvent,
-  StewardWebhookEventsResponse,
-  StewardWebhookEventType,
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
@@ -72,17 +83,13 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/agent/contracts/wallet";
+} from "@elizaos/shared/contracts";
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
   normalizeWalletRpcProviderId,
   normalizeWalletRpcSelections,
   WALLET_RPC_PROVIDER_OPTIONS,
-} from "@elizaos/agent/contracts/wallet";
-import type {
-  BrowserWorkspaceSnapshot,
-  BrowserWorkspaceTab,
-} from "@elizaos/agent/services/browser-workspace";
+} from "@elizaos/shared/contracts";
 import type {
   CloudProviderOption,
   OnboardingConnectorConfig as ConnectorConfig,
@@ -100,16 +107,23 @@ import type {
   SubscriptionProviderStatus,
   SubscriptionStatusResponse,
 } from "@elizaos/shared/contracts/onboarding";
-import type {
-  StewardPendingApproval,
-  StewardSignRequest,
-  StewardSignResponse,
-  StewardTxRecord,
-  StewardTxStatus,
-} from "@elizaos/shared/contracts/wallet";
 
 // Re-export the class from client-base (no circular dependency issues)
 export { ElizaClient } from "./client-base";
+export type {
+  ComputerUseApprovalMode,
+  ComputerUseApprovalResolution,
+  ComputerUseApprovalSnapshot,
+  ComputerUsePendingApproval,
+} from "./client-computeruse";
+export type {
+  ActiveModelState,
+  CatalogModel,
+  DownloadJob,
+  HardwareProbe,
+  InstalledModel,
+  ModelHubSnapshot,
+} from "./client-local-inference";
 export * from "./client-types";
 export type {
   AllPermissionsState,
@@ -206,11 +220,15 @@ export {
 // ---------------------------------------------------------------------------
 
 import "./client-agent";
+import "./client-automations";
 import "./client-browser-workspace";
 import "./client-chat";
+import "./client-n8n";
 import "./client-wallet";
 import "./client-cloud";
 import "./client-skills";
+import "./client-computeruse";
+import "./client-local-inference";
 import "@elizaos/app-vincent/client";
 
 // ---------------------------------------------------------------------------

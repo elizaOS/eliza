@@ -1,3 +1,6 @@
+import { promises as fs } from "node:fs";
+import type http from "node:http";
+import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   type AppRunActionResult,
@@ -19,6 +22,89 @@ import {
   toSearchResults,
 } from "../services/registry-client-queries.js";
 import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
+
+const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
+  ".webp": "image/webp",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".avif": "image/avif",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+};
+
+async function streamAppHero(
+  res: http.ServerResponse,
+  absolutePath: string,
+  contentType: string,
+  error: (
+    response: http.ServerResponse,
+    message: string,
+    status?: number,
+  ) => void,
+): Promise<void> {
+  let data: Buffer;
+  try {
+    data = await fs.readFile(absolutePath);
+  } catch {
+    error(res, "Hero image not found", 404);
+    return;
+  }
+  const response = res as {
+    writeHead?: (
+      status: number,
+      headers: Record<string, string | number>,
+    ) => void;
+    setHeader?: (name: string, value: string | number) => void;
+    end?: (chunk?: unknown) => void;
+  };
+  if (typeof response.writeHead === "function") {
+    response.writeHead(200, {
+      "Content-Type": contentType,
+      "Content-Length": data.byteLength,
+      "Cache-Control": "public, max-age=300",
+    });
+  } else if (typeof response.setHeader === "function") {
+    response.setHeader("Content-Type", contentType);
+    response.setHeader("Content-Length", data.byteLength);
+    response.setHeader("Cache-Control", "public, max-age=300");
+  }
+  response.end?.(data);
+}
+
+/**
+ * Resolve the absolute on-disk path for an app's declared hero image.
+ * Returns null if the slug doesn't match a known app, the app doesn't
+ * declare a heroImage, the declared path escapes the package, or the
+ * declared extension isn't an allowed image type.
+ */
+async function resolveAppHeroPath(
+  pluginManager: PluginManagerLike,
+  slug: string,
+): Promise<{ absolutePath: string; contentType: string } | null> {
+  const registry = await pluginManager.refreshRegistry();
+  for (const entry of registry.values()) {
+    if (packageNameToAppRouteSlug(entry.name) !== slug) continue;
+    const heroImage = entry.appMeta?.heroImage;
+    const localPath = entry.localPath;
+    if (!heroImage || !localPath) continue;
+    if (
+      /^(https?:|data:image\/|blob:|file:|capacitor:|electrobun:|app:|\/)/i.test(
+        heroImage,
+      )
+    ) {
+      continue;
+    }
+    const extension = path.extname(heroImage).toLowerCase();
+    const contentType = HERO_IMAGE_CONTENT_TYPES[extension];
+    if (!contentType) continue;
+    const absolute = path.resolve(localPath, heroImage);
+    const packageRoot = `${path.resolve(localPath)}${path.sep}`;
+    if (!absolute.startsWith(packageRoot)) continue;
+    return { absolutePath: absolute, contentType };
+  }
+  return null;
+}
 
 export interface AppManagerLike {
   listAvailable: (pluginManager: PluginManagerLike) => Promise<unknown>;
@@ -45,7 +131,9 @@ export interface AppManagerLike {
     pluginManager: PluginManagerLike,
     name: string,
     runId?: string,
+    runtime?: IAgentRuntime | null,
   ) => Promise<unknown>;
+  recordHeartbeat: (runId: string) => unknown;
   getInfo: (pluginManager: PluginManagerLike, name: string) => Promise<unknown>;
 }
 
@@ -429,6 +517,29 @@ export async function handleAppsRoutes(
     return true;
   }
 
+  if (method === "GET" && pathname.startsWith("/api/apps/hero/")) {
+    const slug = decodeURIComponent(
+      pathname.slice("/api/apps/hero/".length),
+    ).trim();
+    if (!slug) {
+      error(res, "app slug is required", 400);
+      return true;
+    }
+    const pluginManager = getPluginManager();
+    const resolved = await resolveAppHeroPath(pluginManager, slug);
+    if (!resolved) {
+      error(res, `Hero image for "${slug}" is not available`, 404);
+      return true;
+    }
+    await streamAppHero(
+      res,
+      resolved.absolutePath,
+      resolved.contentType,
+      error as (response: unknown, message: string, status?: number) => void,
+    );
+    return true;
+  }
+
   if (method === "GET" && pathname === "/api/apps/search") {
     const query = url.searchParams.get("q") ?? "";
     if (!query.trim()) {
@@ -585,8 +696,32 @@ export async function handleAppsRoutes(
 
     if (subroute === "stop") {
       const pluginManager = getPluginManager();
-      const result = await appManager.stop(pluginManager, "", runId);
+      const result = await appManager.stop(
+        pluginManager,
+        "",
+        runId,
+        ctx.runtime as IAgentRuntime | null,
+      );
       json(res, result as object);
+      return true;
+    }
+
+    if (subroute === "heartbeat") {
+      // Cheap liveness ping from the UI — does not invoke any plugin route
+      // or talk to the upstream game API. The stale-run sweeper relies on
+      // this so the moment a tab closes the heartbeat dries up and the
+      // run gets reaped via the same `stopRun` hook the Stop button uses.
+      //
+      // Returns 200 + the refreshed run so the client can also use this as
+      // a low-cost confirmation that the run still exists; returns 404 if
+      // the run has already been stopped (so the UI can detect a Stop
+      // initiated from another window or by the sweeper).
+      const refreshed = appManager.recordHeartbeat(runId);
+      if (!refreshed) {
+        error(res, `App run "${runId}" not found`, 404);
+        return true;
+      }
+      json(res, { ok: true, run: refreshed } as object);
       return true;
     }
   }
@@ -613,6 +748,84 @@ export async function handleAppsRoutes(
     return true;
   }
 
+  if (method === "POST" && pathname === "/api/apps/install") {
+    try {
+      const body = await readJsonBody<{ name?: string; version?: string }>(
+        req,
+        res,
+      );
+      if (!body) return true;
+      const name = body.name?.trim();
+      if (!name) {
+        error(res, "name is required");
+        return true;
+      }
+      const progressEvents: InstallProgressLike[] = [];
+      const recordProgress = (progress: InstallProgressLike) => {
+        progressEvents.push(progress);
+      };
+      const pluginManager = getPluginManager();
+      let result = await pluginManager
+        .installPlugin(
+          name,
+          recordProgress,
+          body.version ? { version: body.version } : undefined,
+        )
+        .catch((err: unknown) => ({
+          success: false as const,
+          pluginName: name,
+          version: "",
+          installPath: "",
+          requiresRestart: false,
+          error: err instanceof Error ? err.message : String(err),
+        }));
+      if (
+        !result.success &&
+        result.error?.includes("requires a running agent runtime")
+      ) {
+        // Fall back to the app-core installer which writes directly to
+        // ~/.eliza/plugins/installed without depending on a plugin-manager
+        // service. The runtime plugin resolver already searches that dir.
+        const { installPlugin: installPluginDirect } = (await import(
+          /* webpackIgnore: true */ "@elizaos/app-core/services/plugin-installer"
+        )) as {
+          installPlugin: (
+            name: string,
+            onProgress?: (progress: InstallProgressLike) => void,
+            version?: string,
+          ) => Promise<{
+            success: boolean;
+            pluginName: string;
+            version: string;
+            installPath: string;
+            requiresRestart: boolean;
+            error?: string;
+          }>;
+        };
+        result = await installPluginDirect(name, recordProgress, body.version);
+      }
+      if (!result.success) {
+        json(
+          res,
+          { success: false, error: result.error, progress: progressEvents },
+          422,
+        );
+        return true;
+      }
+      json(res, {
+        success: true,
+        pluginName: result.pluginName ?? name,
+        version: result.version,
+        installPath: result.installPath,
+        requiresRestart: result.requiresRestart,
+        progress: progressEvents,
+      });
+    } catch (e) {
+      error(res, e instanceof Error ? e.message : "Failed to install app", 500);
+    }
+    return true;
+  }
+
   if (method === "POST" && pathname === "/api/apps/stop") {
     const body = await readJsonBody<{ name?: string; runId?: string }>(
       req,
@@ -626,7 +839,12 @@ export async function handleAppsRoutes(
     const appName = body.name?.trim() ?? "";
     const runId = body.runId?.trim();
     const pluginManager = getPluginManager();
-    const result = await appManager.stop(pluginManager, appName, runId);
+    const result = await appManager.stop(
+      pluginManager,
+      appName,
+      runId,
+      ctx.runtime as IAgentRuntime | null,
+    );
     json(res, result as object);
     return true;
   }

@@ -18,7 +18,15 @@
  *
  * @module first-time-setup
  */
+
+import { getStylePresets } from "@elizaos/shared/onboarding-presets";
 import { persistConfigEnv } from "../api/config-env.js";
+import {
+  CLOUD_EVM_ADDRESS_ENV_KEY,
+  CLOUD_SOLANA_ADDRESS_ENV_KEY,
+  WALLET_SOURCE_EVM_ENV_KEY,
+  WALLET_SOURCE_SOLANA_ENV_KEY,
+} from "../api/wallet.js";
 import { type ElizaConfig, saveElizaConfig } from "../config/config.js";
 import { isCloudWalletEnabled } from "../config/feature-flags.js";
 import type { AgentConfig } from "../config/types.agents.js";
@@ -28,7 +36,6 @@ import {
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
 } from "../contracts/service-routing.js";
-import { getStylePresets } from "../onboarding-presets.js";
 import { pickRandomNames } from "./onboarding-names.js";
 
 // ---------------------------------------------------------------------------
@@ -139,10 +146,6 @@ function cancelOnboarding(): never {
   process.exit(0);
 }
 
-// ---------------------------------------------------------------------------
-// Main function
-// ---------------------------------------------------------------------------
-
 /**
  * Read whether the runtime config holds cached cloud-wallet descriptors.
  * Uses defensive accessors because `wallet.cloud` is introduced by the
@@ -232,29 +235,32 @@ export async function bindCloudProvider(config: ElizaConfig): Promise<void> {
   if (
     shouldBindEvm &&
     evmAddress &&
-    process.env.MILADY_CLOUD_EVM_ADDRESS !== evmAddress
+    process.env[CLOUD_EVM_ADDRESS_ENV_KEY] !== evmAddress
   ) {
-    await persistConfigEnv("MILADY_CLOUD_EVM_ADDRESS", evmAddress);
+    await persistConfigEnv(CLOUD_EVM_ADDRESS_ENV_KEY, evmAddress);
   }
   if (
     shouldBindSolana &&
     solanaAddress &&
-    process.env.MILADY_CLOUD_SOLANA_ADDRESS !== solanaAddress
+    process.env[CLOUD_SOLANA_ADDRESS_ENV_KEY] !== solanaAddress
   ) {
-    await persistConfigEnv("MILADY_CLOUD_SOLANA_ADDRESS", solanaAddress);
+    await persistConfigEnv(CLOUD_SOLANA_ADDRESS_ENV_KEY, solanaAddress);
   }
 
-  // Only bind WALLET_SOURCE_* to cloud if:
-  //   1. User has explicitly set it to "cloud", OR
-  //   2. User has NOT made an explicit choice yet (null = auto-bind as default)
-  // DO NOT bind if user has explicitly set it to "local".
-  if (shouldBindEvm && process.env.WALLET_SOURCE_EVM !== "cloud") {
-    await persistConfigEnv("WALLET_SOURCE_EVM", "cloud");
+  if (shouldBindEvm && process.env[WALLET_SOURCE_EVM_ENV_KEY] !== "cloud") {
+    await persistConfigEnv(WALLET_SOURCE_EVM_ENV_KEY, "cloud");
   }
-  if (shouldBindSolana && process.env.WALLET_SOURCE_SOLANA !== "cloud") {
-    await persistConfigEnv("WALLET_SOURCE_SOLANA", "cloud");
+  if (
+    shouldBindSolana &&
+    process.env[WALLET_SOURCE_SOLANA_ENV_KEY] !== "cloud"
+  ) {
+    await persistConfigEnv(WALLET_SOURCE_SOLANA_ENV_KEY, "cloud");
   }
 }
+
+// ---------------------------------------------------------------------------
+// Main function
+// ---------------------------------------------------------------------------
 
 export async function runFirstTimeSetup(
   config: ElizaConfig,

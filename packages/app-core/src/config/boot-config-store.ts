@@ -8,8 +8,18 @@
  * React context lives in `boot-config-react.tsx` so Bun/Node can import this
  * module without loading `react` runtime (avoids Bun parsing @types/react).
  */
-import type { ComponentType } from "react";
-import type { WebsiteBlockerSettingsCardProps } from "@elizaos/app-lifeops/types";
+
+import type {
+  AppBlockerSettingsCardProps,
+  WebsiteBlockerSettingsCardProps,
+} from "@elizaos/shared/contracts/lifeops";
+import type {
+  StewardApprovalActionResponse,
+  StewardPendingApproval,
+  StewardTxRecord,
+} from "@elizaos/app-steward/types/steward";
+import type { ComponentType, ReactNode } from "react";
+import type { CodingAgentSession } from "../api/client-types-cloud";
 import type { Tab } from "../navigation";
 import type { ActionNotice } from "../state/action-notice";
 import type { BrandingConfig } from "./branding";
@@ -73,6 +83,108 @@ export interface CompanionShellComponentProps {
   actionNotice: ActionNotice | null;
 }
 
+export type CompanionInferenceNotice =
+  | { kind: "cloud"; variant: "danger" | "warn"; tooltip: string }
+  | { kind: "settings"; variant: "warn"; tooltip: string };
+
+export interface ResolveCompanionInferenceNoticeArgs {
+  elizaCloudConnected: boolean;
+  elizaCloudAuthRejected: boolean;
+  elizaCloudCreditsError: string | null | undefined;
+  elizaCloudEnabled: boolean;
+  chatLastUsageModel?: string;
+  hasInterruptedAssistant: boolean;
+  t: (key: string) => string;
+}
+
+export interface CompanionSceneStatus {
+  avatarReady: boolean;
+  teleportKey: string;
+}
+
+export interface CompanionVectorBrowserRuntime {
+  THREE: unknown;
+  createVectorBrowserRenderer: () => Promise<unknown>;
+}
+
+export interface CodingAgentTasksPanelProps {
+  fullPage?: boolean;
+}
+
+export interface PtyConsoleDrawerProps {
+  activeSessionId: string | null;
+  sessions: CodingAgentSession[];
+  onSessionClick: (sessionId: string) => void;
+  onNewSession: () => void;
+  onClose: () => void;
+}
+
+export interface FineTuningViewProps {
+  contentHeader?: ReactNode;
+}
+
+export interface VincentStateHookArgs {
+  setActionNotice: (
+    text: string,
+    tone?: "info" | "success" | "error",
+    ttlMs?: number,
+  ) => void;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}
+
+export interface VincentStateHookResult {
+  vincentConnected: boolean;
+  vincentLoginBusy: boolean;
+  vincentLoginError: string | null;
+  vincentConnectedAt: number | null;
+  handleVincentLogin: () => Promise<void>;
+  handleVincentDisconnect: () => Promise<void>;
+  pollVincentStatus: () => Promise<boolean>;
+}
+
+export interface StewardLogoProps {
+  size?: number;
+  className?: string;
+}
+
+export interface StewardApprovalQueueProps {
+  embedded?: boolean;
+  refreshKey?: number | string;
+  getStewardPending: () => Promise<StewardPendingApproval[]>;
+  approveStewardTx: (txId: string) => Promise<StewardApprovalActionResponse>;
+  rejectStewardTx: (
+    txId: string,
+    reason?: string,
+  ) => Promise<StewardApprovalActionResponse>;
+  copyToClipboard: (text: string) => Promise<void>;
+  setActionNotice: (
+    text: string,
+    tone?: "info" | "success" | "error",
+    ttlMs?: number,
+  ) => void;
+  onPendingCountChange?: (count: number) => void;
+}
+
+export interface StewardTransactionHistoryProps {
+  embedded?: boolean;
+  getStewardHistory: (opts?: {
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }) => Promise<{
+    records: StewardTxRecord[];
+    total: number;
+    offset: number;
+    limit: number;
+  }>;
+  copyToClipboard: (text: string) => Promise<void>;
+  setActionNotice: (
+    text: string,
+    tone?: "info" | "success" | "error",
+    ttlMs?: number,
+  ) => void;
+}
+
 export interface AppBootConfig {
   /** Branding overrides (product name, URLs, etc.). */
   branding: Partial<BrandingConfig>;
@@ -92,12 +204,50 @@ export interface AppBootConfig {
   characterEditor?: ComponentType<Record<string, unknown>>;
   /** Companion shell implementation provided by the host app. */
   companionShell?: ComponentType<CompanionShellComponentProps>;
+  /** Companion cloud/settings warning resolver provided by the host app. */
+  resolveCompanionInferenceNotice?: (
+    args: ResolveCompanionInferenceNoticeArgs,
+  ) => CompanionInferenceNotice | null;
+  /** Companion warning button implementation provided by the host app. */
+  companionInferenceAlertButton?: ComponentType<{
+    notice: CompanionInferenceNotice;
+    onClick: () => void;
+    onPointerDown?: (...args: unknown[]) => unknown;
+  }>;
+  /** Companion global overlay implementation provided by the host app. */
+  companionGlobalOverlay?: ComponentType<Record<string, never>>;
+  /** Companion scene state hook provided by the host app. */
+  useCompanionSceneStatus?: () => CompanionSceneStatus;
+  /** Optional VRM prefetch hook provided by the host app. */
+  prefetchVrmToCache?: (url: string) => Promise<void> | void;
+  /** Optional vector browser runtime owned by the host app. */
+  companionVectorBrowser?: CompanionVectorBrowserRuntime;
+  /** Coding-agent tasks panel provided by the host app. */
+  codingAgentTasksPanel?: ComponentType<CodingAgentTasksPanelProps>;
+  /** Coding-agent settings panel provided by the host app. */
+  codingAgentSettingsSection?: ComponentType<Record<string, never>>;
+  /** Coding-agent chat control chip provided by the host app. */
+  codingAgentControlChip?: ComponentType<Record<string, never>>;
+  /** Coding-agent PTY drawer provided by the host app. */
+  ptyConsoleDrawer?: ComponentType<PtyConsoleDrawerProps>;
+  /** Fine-tuning view provided by the host app. */
+  fineTuningView?: ComponentType<FineTuningViewProps>;
+  /** Vincent UI state hook provided by the host app. */
+  useVincentState?: (args: VincentStateHookArgs) => VincentStateHookResult;
   /** LifeOps page implementation provided by the host app. */
   lifeOpsPageView?: ComponentType<Record<string, never>>;
   /** LifeOps browser setup panel provided by the host app. */
   lifeOpsBrowserSetupPanel?: ComponentType<Record<string, never>>;
+  /** App blocker settings card provided by the host app. */
+  appBlockerSettingsCard?: ComponentType<AppBlockerSettingsCardProps>;
   /** Website blocker settings card provided by the host app. */
   websiteBlockerSettingsCard?: ComponentType<WebsiteBlockerSettingsCardProps>;
+  /** Steward brand mark provided by the host app. */
+  stewardLogo?: ComponentType<StewardLogoProps>;
+  /** Steward approval queue provided by the host app. */
+  stewardApprovalQueue?: ComponentType<StewardApprovalQueueProps>;
+  /** Steward transaction history provided by the host app. */
+  stewardTransactionHistory?: ComponentType<StewardTransactionHistoryProps>;
   /** Character catalog data — replaces cross-package import of catalog.json. */
   characterCatalog?: CharacterCatalogData;
   /**

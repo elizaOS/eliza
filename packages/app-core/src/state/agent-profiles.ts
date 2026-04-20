@@ -7,6 +7,7 @@
 
 import type { AgentProfile, AgentProfileRegistry } from "./agent-profile-types";
 import type { PersistedActiveServer } from "./persistence";
+
 export type { AgentProfile, AgentProfileRegistry } from "./agent-profile-types";
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */

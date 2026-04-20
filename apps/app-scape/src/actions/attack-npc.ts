@@ -32,6 +32,7 @@ export const attackNpc: Action = {
   name: "ATTACK_NPC",
   description:
     "Engage a nearby NPC in combat by its instance id. The server pathfinds the agent into attack range automatically.",
+  descriptionCompressed: "Attack nearby NPC by name.",
   similes: ["FIGHT_NPC", "KILL_NPC", "ENGAGE"],
   examples: [],
   validate: async (

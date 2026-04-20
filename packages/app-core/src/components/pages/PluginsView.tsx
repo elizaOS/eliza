@@ -1,5 +1,3 @@
-
-
 import { Package } from "lucide-react";
 import {
   type ReactNode,
@@ -31,6 +29,16 @@ import {
 
 export { paramsToSchema } from "./plugin-list-utils";
 
+import {
+  Button,
+  PageLayoutHeader,
+  PagePanel,
+  Sidebar,
+  SidebarContent,
+  SidebarPanel,
+  SidebarScrollRegion,
+  useLinkedSidebarSelection,
+} from "@elizaos/ui";
 import { PluginCard } from "./PluginCard";
 import {
   ConnectorPluginGroups,
@@ -39,7 +47,6 @@ import {
 import { PluginSettingsDialog } from "./plugin-view-dialogs";
 import { PluginGameModal } from "./plugin-view-modal";
 import { ConnectorSidebar } from "./plugin-view-sidebar";
-import { PagePanel, SidebarContent, SidebarPanel, Sidebar, SidebarScrollRegion, Button, useLinkedSidebarSelection, PageLayout, PageLayoutHeader } from "@elizaos/ui";
 
 /* ── Shared PluginListView ─────────────────────────────────────────── */
 
@@ -884,7 +891,8 @@ function PluginListView({
             src={imageSrc}
             alt=""
             className={
-              options?.className ?? "w-5 h-5 rounded-[var(--radius-sm)] object-contain"
+              options?.className ??
+              "w-5 h-5 rounded-[var(--radius-sm)] object-contain"
             }
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = "none";
@@ -1129,7 +1137,7 @@ function PluginListView({
         : "This workspace will list plugins here as they become available.";
     const hasActivePluginFilters =
       pluginSearch.trim().length > 0 || subgroupFilter !== "all";
-    const desktopSidebar = (
+    const _desktopSidebar = (
       <ConnectorSidebar
         collapseLabel={collapseLabel}
         connectorExpandedIds={connectorExpandedIds}

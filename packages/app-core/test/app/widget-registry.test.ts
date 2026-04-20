@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+// Side-effect import registers lifeops widgets into the app-core registry.
+import "@elizaos/app-lifeops/widgets";
 import { resolveWidgetsForSlot } from "../../src/widgets/registry";
 import type { PluginWidgetDeclaration } from "../../src/widgets/types";
 
@@ -15,7 +17,6 @@ describe("resolveWidgetsForSlot", () => {
     expect(widgetIds).toEqual(
       expect.arrayContaining([
         "lifeops/lifeops.overview",
-        "lifeops/lifeops.google",
         "agent-orchestrator/agent-orchestrator.apps",
         "agent-orchestrator/agent-orchestrator.tasks",
         "agent-orchestrator/agent-orchestrator.activity",
@@ -38,9 +39,11 @@ describe("resolveWidgetsForSlot", () => {
       },
     };
 
-    const resolved = resolveWidgetsForSlot("chat-sidebar", [
-      { id: "todo", enabled: true, isActive: true },
-    ], [serverWidget]);
+    const resolved = resolveWidgetsForSlot(
+      "chat-sidebar",
+      [{ id: "todo", enabled: true, isActive: true }],
+      [serverWidget],
+    );
 
     expect(
       resolved.some(
@@ -51,35 +54,32 @@ describe("resolveWidgetsForSlot", () => {
     ).toBe(true);
   });
 
-  it(
-    "does not enable server-only widgets when the owning plugin is missing",
-    () => {
-      const serverWidget: PluginWidgetDeclaration = {
-        id: "custom.sidebar",
-        pluginId: "custom",
-        slot: "chat-sidebar",
-        label: "Custom sidebar",
-        defaultEnabled: true,
-        uiSpec: {
-          type: "section",
-          title: "Custom",
-          body: [],
-        },
-      };
+  it("does not enable server-only widgets when the owning plugin is missing", () => {
+    const serverWidget: PluginWidgetDeclaration = {
+      id: "custom.sidebar",
+      pluginId: "custom",
+      slot: "chat-sidebar",
+      label: "Custom sidebar",
+      defaultEnabled: true,
+      uiSpec: {
+        type: "section",
+        title: "Custom",
+        body: [],
+      },
+    };
 
-      const resolved = resolveWidgetsForSlot(
-        "chat-sidebar",
-        [{ id: "openai", enabled: true, isActive: true }],
-        [serverWidget],
-      );
+    const resolved = resolveWidgetsForSlot(
+      "chat-sidebar",
+      [{ id: "openai", enabled: true, isActive: true }],
+      [serverWidget],
+    );
 
-      expect(
-        resolved.some(
-          (widget) =>
-            widget.declaration.pluginId === "custom" &&
-            widget.declaration.id === "custom.sidebar",
-        ),
-      ).toBe(false);
-    },
-  );
+    expect(
+      resolved.some(
+        (widget) =>
+          widget.declaration.pluginId === "custom" &&
+          widget.declaration.id === "custom.sidebar",
+      ),
+    ).toBe(false);
+  });
 });

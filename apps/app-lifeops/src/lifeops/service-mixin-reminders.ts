@@ -34,13 +34,13 @@ import {
   startSelfControlBlock,
   stopSelfControlBlock,
 } from "../website-blocker/engine.js";
-import { readProfileFromMetadata } from "@elizaos/agent/activity-profile/service";
+import { readProfileFromMetadata } from "../activity-profile/service.js";
 import {
   loadOwnerContactRoutingHints,
   loadOwnerContactsConfig,
   type OwnerContactRoutingHint,
   resolveOwnerContactWithFallback,
-} from "@elizaos/agent/config/owner-contacts";
+} from "@elizaos/agent/config";
 import { registerEscalationChannel } from "@elizaos/agent/services/escalation";
 import {
   buildNativeAppleReminderMetadata,
@@ -52,15 +52,38 @@ import {
 import {
   computeAdaptiveWindowPolicy,
   windowPolicyMatchesDefaults,
+  resolveDefaultTimeZone,
 } from "./defaults.js";
 import { materializeDefinitionOccurrences } from "./engine.js";
+import { refreshLifeOpsScheduleInsight } from "./schedule-insight.js";
+import {
+  deriveLocalScheduleObservations,
+  isFreshCloudMergedState,
+  mergeScheduleObservations,
+  preferEffectiveMergedState,
+  recordsFromSyncRequest,
+  resolveScheduleDeviceIdentity,
+  SCHEDULE_CLOUD_SYNC_TTL_MS,
+  SCHEDULE_OBSERVATION_LOOKBACK_MS,
+} from "./schedule-state.js";
+import { computeDefinitionPerformance } from "./service-helpers-occurrence.js";
 import {
   createLifeOpsActivitySignal,
   createLifeOpsChannelPolicy,
   createLifeOpsReminderAttempt,
   createLifeOpsReminderPlan,
   createLifeOpsWebsiteAccessGrant,
+  type LifeOpsScheduleMergedStateRecord,
+  type LifeOpsScheduleObservationRecord,
 } from "./repository.js";
+import {
+  LIFEOPS_SCHEDULE_DEVICE_KINDS,
+  LIFEOPS_SCHEDULE_OBSERVATION_STATES,
+  type LifeOpsScheduleMergedState,
+  type SyncLifeOpsScheduleObservationInput,
+  type SyncLifeOpsScheduleObservationsRequest,
+  type SyncLifeOpsScheduleObservationsResponse,
+} from "./schedule-sync-contracts.js";
 import {
   fail,
   lifeOpsErrorMessage,
@@ -69,12 +92,101 @@ import {
   requireNonEmptyString,
 } from "./service-normalize.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
-import { addMinutes } from "./time.js";
+import type { ReminderActivityProfileSnapshot } from "./service-types.js";
+import { addMinutes, getZonedDateParts } from "./time.js";
 import {
   readTwilioCredentialsFromEnv,
   sendTwilioSms,
   sendTwilioVoiceCall,
 } from "./twilio.js";
+import {
+  DEFAULT_MORNING_WINDOW,
+  DEFAULT_NIGHT_WINDOW,
+  getCurrentEnforcementWindow,
+  minutesPastWindowStart,
+  type EnforcementWindow,
+} from "./enforcement-windows.js";
+
+/**
+ * State computed once per reminder dispatch cycle describing whether
+ * the owner is inside a morning/night routine enforcement window and
+ * how far past the window start we are. Used to shorten escalation
+ * gaps and force alarm-level channels for routine occurrences.
+ */
+export interface ReminderEnforcementState {
+  window: EnforcementWindow;
+  minutesPastStart: number;
+  /** True if the definition represents a morning/night routine. */
+  definitionIsRoutine: boolean;
+  /** True if Twilio voice credentials are available for alarm escalation. */
+  twilioVoiceAvailable: boolean;
+}
+
+/**
+ * Given a "normal" delay in minutes between reminder steps and the
+ * current enforcement state, return the effective delay. Inside an
+ * active enforcement window for a routine definition, once more than
+ * 10 minutes have elapsed past the window start, the gap is halved.
+ */
+export function applyEnforcementOverrides(
+  normalDelayMinutes: number,
+  state: ReminderEnforcementState | null,
+): { delayMinutes: number; forceVoice: boolean } {
+  if (!state || state.window.kind === "none" || !state.definitionIsRoutine) {
+    return { delayMinutes: normalDelayMinutes, forceVoice: false };
+  }
+  let delay = normalDelayMinutes;
+  if (state.minutesPastStart > 10) {
+    delay = Math.max(1, Math.floor(normalDelayMinutes / 2));
+  }
+  const forceVoice =
+    state.twilioVoiceAvailable && state.minutesPastStart > 20;
+  return { delayMinutes: delay, forceVoice };
+}
+
+/**
+ * Determine whether a task/routine definition should trigger enforcement
+ * overrides inside a morning/night window.
+ */
+export function definitionTriggersEnforcement(
+  definition: Pick<LifeOpsTaskDefinition, "kind" | "metadata"> | null | undefined,
+): boolean {
+  if (!definition) return false;
+  if (definition.kind === "morning_routine" || definition.kind === "night_routine") {
+    return true;
+  }
+  const metadata = definition.metadata as
+    | Record<string, unknown>
+    | null
+    | undefined;
+  if (metadata && metadata.enforceRoutineWindow === true) return true;
+  return false;
+}
+
+/**
+ * Build the enforcement state for a dispatch. Callers pass the relevant
+ * definition (may be null for calendar events) and the owner's timezone.
+ */
+export function buildReminderEnforcementState(
+  now: Date,
+  timezone: string,
+  definition: Pick<LifeOpsTaskDefinition, "kind" | "metadata"> | null | undefined,
+  twilioVoiceAvailable: boolean,
+  windows?: EnforcementWindow[],
+): ReminderEnforcementState {
+  const window = getCurrentEnforcementWindow(
+    now,
+    timezone,
+    windows ?? [DEFAULT_MORNING_WINDOW, DEFAULT_NIGHT_WINDOW],
+  );
+  const minutesPast = minutesPastWindowStart(now, timezone, window);
+  return {
+    window,
+    minutesPastStart: minutesPast,
+    definitionIsRoutine: definitionTriggersEnforcement(definition),
+    twilioVoiceAvailable,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Local types
@@ -82,14 +194,6 @@ import {
 
 type RuntimeMessageTarget = Parameters<IAgentRuntime["sendMessageToTarget"]>[0];
 type ReminderAttemptLifecycle = "plan" | "escalation";
-type ReminderActivityProfileSnapshot = {
-  primaryPlatform: string | null;
-  secondaryPlatform: string | null;
-  lastSeenPlatform: string | null;
-  isCurrentlyActive: boolean;
-  /** Epoch ms when owner was last seen active across any platform. */
-  lastSeenAt: number | null;
-};
 
 type RuntimeOwnerContactResolution = {
   sourceOfTruth: "config" | "relationships" | "config+relationships";
@@ -120,6 +224,80 @@ type LifeOpsReminderPreferenceSetting = {
   updatedAt: string | null;
   note: string | null;
 };
+
+function zonedDecimalHour(
+  value: string | null | undefined,
+  timeZone: string,
+  wrapAfterMidnight = false,
+): number | null {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) {
+    return null;
+  }
+  const parts = getZonedDateParts(parsed, timeZone);
+  let hour = parts.hour + parts.minute / 60;
+  if (wrapAfterMidnight && hour < 12) {
+    hour += 24;
+  }
+  return Math.round(hour * 100) / 100;
+}
+
+function buildAdaptiveWindowProfile(args: {
+  profile: Pick<
+    Parameters<typeof computeAdaptiveWindowPolicy>[0],
+    | "typicalWakeHour"
+    | "typicalFirstActiveHour"
+    | "typicalLastActiveHour"
+    | "typicalSleepHour"
+  > | null;
+  schedule: {
+    wakeAt: string | null;
+    firstActiveAt: string | null;
+    lastActiveAt: string | null;
+    currentSleepStartedAt: string | null;
+    lastSleepStartedAt: string | null;
+    typicalWakeHour: number | null;
+    typicalSleepHour: number | null;
+  } | null;
+  timeZone: string;
+}): Parameters<typeof computeAdaptiveWindowPolicy>[0] | null {
+  const scheduleWakeHour =
+    zonedDecimalHour(args.schedule?.wakeAt, args.timeZone) ??
+    args.schedule?.typicalWakeHour ??
+    null;
+  const scheduleFirstActiveHour = zonedDecimalHour(
+    args.schedule?.firstActiveAt,
+    args.timeZone,
+  );
+  const scheduleLastActiveHour = zonedDecimalHour(
+    args.schedule?.lastActiveAt,
+    args.timeZone,
+  );
+  const scheduleSleepHour =
+    zonedDecimalHour(
+      args.schedule?.currentSleepStartedAt ?? args.schedule?.lastSleepStartedAt,
+      args.timeZone,
+      true,
+    ) ??
+    args.schedule?.typicalSleepHour ??
+    null;
+  const adaptiveProfile = {
+    typicalWakeHour:
+      scheduleWakeHour ?? args.profile?.typicalWakeHour ?? null,
+    typicalFirstActiveHour:
+      scheduleFirstActiveHour ?? args.profile?.typicalFirstActiveHour ?? null,
+    typicalLastActiveHour:
+      scheduleLastActiveHour ?? args.profile?.typicalLastActiveHour ?? null,
+    typicalSleepHour:
+      scheduleSleepHour ?? args.profile?.typicalSleepHour ?? null,
+  };
+  return Object.values(adaptiveProfile).some((value) => value !== null)
+    ? adaptiveProfile
+    : null;
+}
 
 // ---------------------------------------------------------------------------
 // Local constants
@@ -782,25 +960,16 @@ function isWebsiteAccessGrantActive(
   return true;
 }
 
-// Imported from service.ts for computeDefinitionPerformance stub
-function computeDefinitionPerformance(
-  _definition: LifeOpsTaskDefinition,
-  _occurrences: LifeOpsOccurrence[],
-  _now: Date,
-): Record<string, unknown> {
-  // This is a type stub — the real implementation is in the service.
-  return {};
-}
-
 // ---------------------------------------------------------------------------
 // Reminders mixin
 // ---------------------------------------------------------------------------
 
+/** @internal */
 export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {
-  return class extends Base {
-    protected emitInAppReminderNudge(args: {
+  class LifeOpsRemindersServiceMixin extends Base {
+    public emitInAppReminderNudge(args: {
       text: string;
       ownerType: "occurrence" | "calendar_event";
       ownerId: string;
@@ -817,7 +986,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       });
     }
 
-    protected async readRecentReminderConversation(args: {
+    public async readRecentReminderConversation(args: {
       subjectType: LifeOpsSubjectType;
       limit?: number;
     }): Promise<string[]> {
@@ -874,7 +1043,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    protected async renderReminderBody(args: {
+    public async renderReminderBody(args: {
       title: string;
       scheduledFor: string;
       dueAt: string | null;
@@ -950,7 +1119,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    protected async renderWorkflowRunBody(args: {
+    public async renderWorkflowRunBody(args: {
       workflow: Pick<LifeOpsWorkflowDefinition, "title" | "subjectType">;
       run: Pick<LifeOpsWorkflowRun, "status">;
     }): Promise<string> {
@@ -1010,7 +1179,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    protected async emitWorkflowRunNudge(
+    public async emitWorkflowRunNudge(
       workflow: LifeOpsWorkflowDefinition,
       run: LifeOpsWorkflowRun,
     ): Promise<void> {
@@ -1030,7 +1199,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       });
     }
 
-    protected withNativeAppleReminderId(
+    public withNativeAppleReminderId(
       definition: LifeOpsTaskDefinition,
       reminderId: string | null,
     ): LifeOpsTaskDefinition {
@@ -1052,7 +1221,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
-    protected async syncNativeAppleReminderForDefinition(args: {
+    public async syncNativeAppleReminderForDefinition(args: {
       definition: LifeOpsTaskDefinition | null;
       previousDefinition?: LifeOpsTaskDefinition | null;
     }): Promise<LifeOpsTaskDefinition | null> {
@@ -1155,7 +1324,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       );
     }
 
-    protected async getDefinitionRecord(
+    public async getDefinitionRecord(
       definitionId: string,
       now = new Date(),
     ): Promise<LifeOpsDefinitionRecord> {
@@ -1183,7 +1352,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
-    protected async getGoalRecord(goalId: string): Promise<LifeOpsGoalRecord> {
+    public async getGoalRecord(goalId: string): Promise<LifeOpsGoalRecord> {
       const goal = await this.repository.getGoal(this.agentId(), goalId);
       if (!goal) {
         fail(404, "life-ops goal not found");
@@ -1195,7 +1364,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return { goal, links };
     }
 
-    protected async ensureGoalExists(
+    public async ensureGoalExists(
       goalId: string | null,
       ownership?: Pick<LifeOpsOwnership, "domain" | "subjectType" | "subjectId">,
     ): Promise<string | null> {
@@ -1218,7 +1387,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return goal.id;
     }
 
-    protected async syncGoalLink(definition: LifeOpsTaskDefinition): Promise<void> {
+    public async syncGoalLink(definition: LifeOpsTaskDefinition): Promise<void> {
       await this.repository.deleteGoalLinksForLinked(
         definition.agentId,
         "definition",
@@ -1235,7 +1404,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       });
     }
 
-    protected async syncReminderPlan(
+    public async syncReminderPlan(
       definition: LifeOpsTaskDefinition,
       draft:
         | {
@@ -1295,14 +1464,376 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return createdPlan;
     }
 
+    private serializeScheduleObservationForSync(
+      observation: LifeOpsScheduleObservationRecord,
+    ): SyncLifeOpsScheduleObservationInput {
+      const metadata = isRecord(observation.metadata) ? observation.metadata : null;
+      const rawSnapshot = metadata?.snapshot;
+      const snapshot = isRecord(rawSnapshot)
+        ? { ...rawSnapshot }
+        : undefined;
+      const extraMetadata =
+        metadata && typeof metadata === "object"
+          ? Object.fromEntries(
+              Object.entries(metadata).filter(
+                ([key]) => key !== "snapshot" && key !== "source",
+              ),
+            )
+          : {};
+      return {
+        state: observation.state,
+        windowStartAt: observation.windowStartAt,
+        windowEndAt: observation.windowEndAt,
+        phase: observation.phase,
+        mealLabel: observation.mealLabel,
+        confidence: observation.confidence,
+        snapshot,
+        metadata:
+          Object.keys(extraMetadata).length > 0 ? extraMetadata : undefined,
+      };
+    }
+
+    public async refreshLocalMergedScheduleState(args?: {
+      timezone?: string | null;
+      now?: Date;
+    }): Promise<LifeOpsScheduleMergedStateRecord | null> {
+      const timezone =
+        normalizeOptionalString(args?.timezone) ?? resolveDefaultTimeZone();
+      const now = args?.now ?? new Date();
+      const insight = await refreshLifeOpsScheduleInsight({
+        runtime: this.runtime,
+        repository: this.repository,
+        agentId: this.agentId(),
+        timezone,
+        now,
+      });
+      const deviceIdentity = resolveScheduleDeviceIdentity();
+      const observations = deriveLocalScheduleObservations({
+        agentId: this.agentId(),
+        deviceId: deviceIdentity.deviceId,
+        deviceKind: deviceIdentity.deviceKind,
+        timezone,
+        observedAt: now.toISOString(),
+        insight,
+      });
+      for (const observation of observations) {
+        await this.repository.upsertScheduleObservation(observation);
+      }
+      const sinceAt = new Date(
+        now.getTime() - SCHEDULE_OBSERVATION_LOOKBACK_MS,
+      ).toISOString();
+      const recentObservations = await this.repository.listScheduleObservations(
+        this.agentId(),
+        sinceAt,
+        {
+          origin: "local_inference",
+          deviceId: deviceIdentity.deviceId,
+        },
+      );
+      const merged = mergeScheduleObservations({
+        agentId: this.agentId(),
+        scope: "local",
+        timezone,
+        now,
+        observations: recentObservations,
+      });
+      if (!merged) {
+        return await this.repository.getScheduleMergedState(
+          this.agentId(),
+          "local",
+          timezone,
+        );
+      }
+      await this.repository.upsertScheduleMergedState(merged);
+      return (
+        (await this.repository.getScheduleMergedState(
+          this.agentId(),
+          "local",
+          timezone,
+        )) ?? merged
+      );
+    }
+
+    public async ingestScheduleObservations(
+      request: SyncLifeOpsScheduleObservationsRequest,
+    ): Promise<SyncLifeOpsScheduleObservationsResponse> {
+      const deviceId = requireNonEmptyString(request?.deviceId, "deviceId");
+      const deviceKind = normalizeEnumValue(
+        request?.deviceKind,
+        "deviceKind",
+        LIFEOPS_SCHEDULE_DEVICE_KINDS,
+      );
+      const timezone = requireNonEmptyString(request?.timezone, "timezone");
+      const observedAt =
+        normalizeOptionalIsoString(request?.observedAt, "observedAt") ??
+        new Date().toISOString();
+      if (!Array.isArray(request?.observations) || request.observations.length === 0) {
+        fail(400, "observations must be a non-empty array");
+      }
+      const observations = request.observations.map((input, index) => {
+        const record = requireRecord(input, `observations[${index}]`);
+        const confidence =
+          typeof record.confidence === "string"
+            ? Number(record.confidence)
+            : record.confidence;
+        if (typeof confidence !== "number" || !Number.isFinite(confidence)) {
+          fail(400, `observations[${index}].confidence must be a number`);
+        }
+        return {
+          state: normalizeEnumValue(
+            record.state,
+            `observations[${index}].state`,
+            LIFEOPS_SCHEDULE_OBSERVATION_STATES,
+          ),
+          windowStartAt: normalizeIsoString(
+            record.windowStartAt,
+            `observations[${index}].windowStartAt`,
+          ),
+          windowEndAt: normalizeOptionalIsoString(
+            record.windowEndAt,
+            `observations[${index}].windowEndAt`,
+          ),
+          phase:
+            record.phase === undefined || record.phase === null
+              ? null
+              : requireNonEmptyString(
+                  record.phase,
+                  `observations[${index}].phase`,
+                ),
+          mealLabel:
+            record.mealLabel === undefined || record.mealLabel === null
+              ? null
+              : requireNonEmptyString(
+                  record.mealLabel,
+                  `observations[${index}].mealLabel`,
+                ),
+          confidence,
+          snapshot:
+            record.snapshot === undefined
+              ? undefined
+              : normalizeOptionalRecord(
+                  record.snapshot,
+                  `observations[${index}].snapshot`,
+                ) ?? null,
+          metadata:
+            record.metadata === undefined
+              ? undefined
+              : normalizeOptionalRecord(
+                  record.metadata,
+                  `observations[${index}].metadata`,
+                ),
+        } satisfies SyncLifeOpsScheduleObservationInput;
+      });
+      const normalizedRequest = {
+        deviceId,
+        deviceKind,
+        timezone,
+        observedAt,
+        observations,
+      } satisfies SyncLifeOpsScheduleObservationsRequest;
+      const records = recordsFromSyncRequest({
+        agentId: this.agentId(),
+        origin: "device_sync",
+        request: normalizedRequest,
+      });
+      for (const record of records) {
+        await this.repository.upsertScheduleObservation(record);
+      }
+      const now = new Date(observedAt);
+      const recentObservations = await this.repository.listScheduleObservations(
+        this.agentId(),
+        new Date(now.getTime() - SCHEDULE_OBSERVATION_LOOKBACK_MS).toISOString(),
+      );
+      const merged = mergeScheduleObservations({
+        agentId: this.agentId(),
+        scope: "cloud",
+        timezone,
+        now,
+        observations: recentObservations,
+      });
+      if (!merged) {
+        fail(409, "unable to merge schedule observations");
+      }
+      await this.repository.upsertScheduleMergedState(merged);
+      return {
+        acceptedCount: records.length,
+        mergedState: merged,
+      };
+    }
+
+    public async fetchCloudMergedScheduleState(args?: {
+      timezone?: string | null;
+    }): Promise<LifeOpsScheduleMergedStateRecord | null> {
+      const timezone =
+        normalizeOptionalString(args?.timezone) ?? resolveDefaultTimeZone();
+      const cached = await this.repository.getScheduleMergedState(
+        this.agentId(),
+        "cloud",
+        timezone,
+      );
+      if (!this.scheduleSyncClient.configured) {
+        return cached;
+      }
+      try {
+        const response = await this.scheduleSyncClient.getMergedState(
+          timezone,
+          "cloud",
+        );
+        if (!response.mergedState) {
+          return cached;
+        }
+        await this.repository.upsertScheduleMergedState(response.mergedState);
+        return (
+          (await this.repository.getScheduleMergedState(
+            this.agentId(),
+            "cloud",
+            timezone,
+          )) ?? response.mergedState
+        );
+      } catch (error) {
+        this.logLifeOpsWarn(
+          "schedule_fetch_cloud_state",
+          "[lifeops] Failed to fetch merged cloud schedule state; using cached state.",
+          { error: lifeOpsErrorMessage(error) },
+        );
+        return cached;
+      }
+    }
+
+    public async readEffectiveScheduleState(args?: {
+      timezone?: string | null;
+      now?: Date;
+    }): Promise<LifeOpsScheduleMergedStateRecord | null> {
+      const timezone =
+        normalizeOptionalString(args?.timezone) ?? resolveDefaultTimeZone();
+      const now = args?.now ?? new Date();
+      const local = await this.repository.getScheduleMergedState(
+        this.agentId(),
+        "local",
+        timezone,
+      );
+      const cloud = await this.repository.getScheduleMergedState(
+        this.agentId(),
+        "cloud",
+        timezone,
+      );
+      return preferEffectiveMergedState({
+        now,
+        local,
+        cloud,
+      });
+    }
+
+    public async refreshEffectiveScheduleState(args?: {
+      timezone?: string | null;
+      now?: Date;
+    }): Promise<LifeOpsScheduleMergedStateRecord | null> {
+      const timezone =
+        normalizeOptionalString(args?.timezone) ?? resolveDefaultTimeZone();
+      const now = args?.now ?? new Date();
+      const local = await this.refreshLocalMergedScheduleState({
+        timezone,
+        now,
+      });
+      let cloud = await this.repository.getScheduleMergedState(
+        this.agentId(),
+        "cloud",
+        timezone,
+      );
+      if (!this.scheduleSyncClient.configured) {
+        return preferEffectiveMergedState({ now, local, cloud });
+      }
+      if (!isFreshCloudMergedState(cloud, now)) {
+        const deviceIdentity = resolveScheduleDeviceIdentity();
+        const localObservations = await this.repository.listScheduleObservations(
+          this.agentId(),
+          new Date(
+            now.getTime() - SCHEDULE_OBSERVATION_LOOKBACK_MS,
+          ).toISOString(),
+          {
+            origin: "local_inference",
+            deviceId: deviceIdentity.deviceId,
+          },
+        );
+        try {
+          if (localObservations.length > 0) {
+            const response = await this.scheduleSyncClient.syncObservations({
+              deviceId: deviceIdentity.deviceId,
+              deviceKind: deviceIdentity.deviceKind,
+              timezone,
+              observedAt: now.toISOString(),
+              observations: localObservations.map((observation) =>
+                this.serializeScheduleObservationForSync(observation),
+              ),
+            });
+            await this.repository.upsertScheduleMergedState(response.mergedState);
+            cloud =
+              (await this.repository.getScheduleMergedState(
+                this.agentId(),
+                "cloud",
+                timezone,
+              )) ?? response.mergedState;
+          } else {
+            cloud = await this.fetchCloudMergedScheduleState({ timezone });
+          }
+        } catch (error) {
+          this.logLifeOpsWarn(
+            "schedule_sync",
+            "[lifeops] Failed to sync coarse schedule observations; using local state.",
+            { error: lifeOpsErrorMessage(error) },
+          );
+          if (
+            !cloud ||
+            now.getTime() - Date.parse(cloud.updatedAt) > SCHEDULE_CLOUD_SYNC_TTL_MS
+          ) {
+            cloud = await this.fetchCloudMergedScheduleState({ timezone });
+          }
+        }
+      }
+      return preferEffectiveMergedState({ now, local, cloud });
+    }
+
+    public async getScheduleMergedState(args?: {
+      timezone?: string | null;
+      scope?: "local" | "cloud" | "effective";
+      refresh?: boolean;
+      now?: Date;
+    }): Promise<LifeOpsScheduleMergedStateRecord | null> {
+      const timezone =
+        normalizeOptionalString(args?.timezone) ?? resolveDefaultTimeZone();
+      const scope = args?.scope ?? "effective";
+      if (scope === "effective") {
+        return args?.refresh
+          ? await this.refreshEffectiveScheduleState({
+              timezone,
+              now: args?.now,
+            })
+          : await this.readEffectiveScheduleState({
+              timezone,
+              now: args?.now,
+            });
+      }
+      if (scope === "local" && args?.refresh) {
+        return await this.refreshLocalMergedScheduleState({
+          timezone,
+          now: args?.now,
+        });
+      }
+      return await this.repository.getScheduleMergedState(
+        this.agentId(),
+        scope,
+        timezone,
+      );
+    }
+
     /** Max age for the cached adaptive window policy (30 minutes). */
-    protected static readonly ADAPTIVE_POLICY_TTL_MS = 30 * 60 * 1000;
+    public static readonly ADAPTIVE_POLICY_TTL_MS = 30 * 60 * 1000;
 
     /**
      * Read the activity profile from the proactive task metadata and return
      * an adaptive window policy.  Result is cached for up to 30 minutes.
      */
-    protected async resolveAdaptiveWindowPolicy(
+    public async resolveAdaptiveWindowPolicy(
       timezone: string,
       now: Date,
     ): Promise<ReturnType<typeof computeAdaptiveWindowPolicy> | null> {
@@ -1334,11 +1865,20 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
                 : null,
             )
           : null;
-        if (!profile) {
+        const schedule = await this.refreshEffectiveScheduleState({
+          timezone,
+          now,
+        });
+        const adaptiveProfile = buildAdaptiveWindowProfile({
+          profile,
+          schedule,
+          timeZone: timezone,
+        });
+        if (!adaptiveProfile) {
           this.adaptiveWindowPolicyCache = null;
           return null;
         }
-        const policy = computeAdaptiveWindowPolicy(profile, timezone);
+        const policy = computeAdaptiveWindowPolicy(adaptiveProfile, timezone);
         this.adaptiveWindowPolicyCache = { policy, computedAt: now.getTime() };
         return policy;
       } catch (error) {
@@ -1352,7 +1892,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    protected async refreshDefinitionOccurrences(
+    public async refreshDefinitionOccurrences(
       definition: LifeOpsTaskDefinition,
       now = new Date(),
     ): Promise<LifeOpsOccurrence[]> {
@@ -1391,7 +1931,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return materialized;
     }
 
-    protected async getFreshOccurrence(
+    public async getFreshOccurrence(
       occurrenceId: string,
       now = new Date(),
     ): Promise<{
@@ -1428,7 +1968,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
-    protected async resolvePrimaryChannelPolicy(
+    public async resolvePrimaryChannelPolicy(
       channelType: LifeOpsChannelPolicy["channelType"],
     ): Promise<LifeOpsChannelPolicy | null> {
       const policies = (
@@ -1441,7 +1981,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       );
     }
 
-    protected async resolveRuntimeReminderTarget(
+    public async resolveRuntimeReminderTarget(
       channel: Exclude<
         LifeOpsReminderStep["channel"],
         "in_app" | "sms" | "voice"
@@ -1534,8 +2074,11 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
-    protected async readReminderActivityProfileSnapshot(): Promise<ReminderActivityProfileSnapshot | null> {
+    public async readReminderActivityProfileSnapshot(): Promise<ReminderActivityProfileSnapshot | null> {
       try {
+        const schedule = await this.refreshEffectiveScheduleState({
+          timezone: resolveDefaultTimeZone(),
+        });
         const tasks = await this.runtime.getTasks({
           agentIds: [this.runtime.agentId],
           tags: [...PROACTIVE_TASK_QUERY_TAGS],
@@ -1548,23 +2091,38 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             metadata.proactiveAgent.kind === "runtime_runner"
           );
         });
-        if (!proactiveTask || !isRecord(proactiveTask.metadata)) {
-          return null;
-        }
-        const profile = proactiveTask.metadata.activityProfile;
-        if (!isRecord(profile)) {
+        const profile =
+          proactiveTask && isRecord(proactiveTask.metadata)
+            ? proactiveTask.metadata.activityProfile
+            : null;
+        if (!isRecord(profile) && !schedule) {
           return null;
         }
         return {
           primaryPlatform:
-            normalizeOptionalString(profile.primaryPlatform) ?? null,
+            isRecord(profile)
+              ? (normalizeOptionalString(profile.primaryPlatform) ?? null)
+              : null,
           secondaryPlatform:
-            normalizeOptionalString(profile.secondaryPlatform) ?? null,
+            isRecord(profile)
+              ? (normalizeOptionalString(profile.secondaryPlatform) ?? null)
+              : null,
           lastSeenPlatform:
-            normalizeOptionalString(profile.lastSeenPlatform) ?? null,
-          isCurrentlyActive: profile.isCurrentlyActive === true,
+            isRecord(profile)
+              ? (normalizeOptionalString(profile.lastSeenPlatform) ?? null)
+              : null,
+          isCurrentlyActive: isRecord(profile) && profile.isCurrentlyActive === true,
           lastSeenAt:
-            typeof profile.lastSeenAt === "number" ? profile.lastSeenAt : null,
+            isRecord(profile) && typeof profile.lastSeenAt === "number"
+              ? profile.lastSeenAt
+              : (schedule?.lastActiveAt ? Date.parse(schedule.lastActiveAt) : null),
+          isProbablySleeping: schedule?.isProbablySleeping ?? false,
+          sleepConfidence: schedule?.sleepConfidence ?? 0,
+          schedulePhase: schedule?.phase ?? null,
+          lastSleepEndedAt: schedule?.lastSleepEndedAt ?? null,
+          nextMealLabel: schedule?.nextMealLabel ?? null,
+          nextMealWindowStartAt: schedule?.nextMealWindowStartAt ?? null,
+          nextMealWindowEndAt: schedule?.nextMealWindowEndAt ?? null,
         };
       } catch (error) {
         this.logLifeOpsWarn(
@@ -1583,7 +2141,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
      * owner was seen active after the reminder was sent. This gives escalation
      * better signal about whether the owner is reachable.
      */
-    protected async scanReadReceipts(
+    public async scanReadReceipts(
       attempts: LifeOpsReminderAttempt[],
       activityProfile: ReminderActivityProfileSnapshot | null,
       now: Date,
@@ -1626,7 +2184,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    protected buildReminderPlanSchedule(args: {
+    public buildReminderPlanSchedule(args: {
       ownerType: "occurrence" | "calendar_event";
       ownerId: string;
       occurrenceId: string | null;
@@ -1699,7 +2257,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return rows;
     }
 
-    protected async resolveReminderEscalationChannels(args: {
+    public async resolveReminderEscalationChannels(args: {
       activityProfile: ReminderActivityProfileSnapshot | null;
       policies: LifeOpsChannelPolicy[];
       urgency: LifeOpsReminderUrgency;
@@ -1798,7 +2356,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return ordered;
     }
 
-    protected async markReminderEscalationStarted(args: {
+    public async markReminderEscalationStarted(args: {
       ownerType: "occurrence" | "calendar_event";
       ownerId: string;
       attemptedAt: string;
@@ -1874,7 +2432,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       });
     }
 
-    protected async resolveReminderEscalation(args: {
+    public async resolveReminderEscalation(args: {
       ownerType: "occurrence" | "calendar_event";
       ownerId: string;
       resolvedAt: string;
@@ -1974,7 +2532,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       );
     }
 
-    protected async dispatchDueReminderEscalation(args: {
+    public async dispatchDueReminderEscalation(args: {
       plan: LifeOpsReminderPlan;
       ownerType: "occurrence" | "calendar_event";
       ownerId: string;
@@ -2096,6 +2654,12 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       if (delayMinutes === null) {
         return null;
       }
+      // TODO: wire enforcement overrides here — call
+      // buildReminderEnforcementState(now, timezone, definition, twilioVoiceAvailable)
+      // and applyEnforcementOverrides(delayMinutes, state) to shorten the gap
+      // for morning/night routine occurrences, and force a voice channel
+      // when state.forceVoice is true. Pipe the timezone + definition in via
+      // dispatchReminderAttempt args before enabling this path.
       const scheduledFor = addMinutes(
         new Date(previousAttempt.attemptedAt ?? previousAttempt.scheduledFor),
         delayMinutes,
@@ -2157,7 +2721,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return attempt;
     }
 
-    protected async awardWebsiteAccessGrant(
+    public async awardWebsiteAccessGrant(
       definition: LifeOpsTaskDefinition,
       occurrenceId: string,
       now = new Date(),
@@ -2199,7 +2763,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       await this.repository.upsertWebsiteAccessGrant(grant);
     }
 
-    protected async syncWebsiteAccessState(now = new Date()): Promise<void> {
+    public async syncWebsiteAccessState(now = new Date()): Promise<void> {
       const definitions = (
         await this.repository.listDefinitions(this.agentId())
       ).filter(
@@ -2316,7 +2880,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    protected async dispatchReminderAttempt(args: {
+    public async dispatchReminderAttempt(args: {
       plan: LifeOpsReminderPlan;
       ownerType: "occurrence" | "calendar_event";
       ownerId: string;
@@ -2394,6 +2958,14 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       ) {
         outcome = "blocked_urgency";
         deliveryMetadata.reason = "urgency_gate";
+      } else if (
+        args.activityProfile?.isProbablySleeping
+      ) {
+        outcome = "blocked_quiet_hours";
+        deliveryMetadata.reason = "probable_sleep";
+        deliveryMetadata.sleepConfidence =
+          args.activityProfile.sleepConfidence;
+        deliveryMetadata.schedulePhase = args.activityProfile.schedulePhase;
       } else if (
         args.channel !== "in_app" &&
         isWithinQuietHours({
@@ -2608,7 +3180,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return attempt;
     }
 
-    protected resolveGlobalReminderPreferencePolicy(
+    public resolveGlobalReminderPreferencePolicy(
       policies: LifeOpsChannelPolicy[],
     ): LifeOpsChannelPolicy | null {
       const candidates = policies.filter(
@@ -2624,7 +3196,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       );
     }
 
-    protected buildReminderPreferenceResponse(
+    public buildReminderPreferenceResponse(
       definition: LifeOpsTaskDefinition | null,
       policies: LifeOpsChannelPolicy[],
     ): LifeOpsReminderPreference {
@@ -2653,7 +3225,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
-    protected resolveEffectiveReminderPlan(
+    public resolveEffectiveReminderPlan(
       plan: LifeOpsReminderPlan | null,
       preference: LifeOpsReminderPreference,
     ): LifeOpsReminderPlan | null {
@@ -3365,10 +3937,14 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         now: now.toISOString(),
         limit: workflowLimit,
       });
+      const eventWorkflowRuns = await (this as any).runDueEventWorkflows({
+        now: now.toISOString(),
+        limit: workflowLimit,
+      });
       return {
         now: now.toISOString(),
         reminderAttempts: reminderResult.attempts,
-        workflowRuns,
+        workflowRuns: [...workflowRuns, ...eventWorkflowRuns],
       };
     }
 
@@ -3499,5 +4075,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       });
       return { ok: true };
     }
-  };
+  }
+
+  return LifeOpsRemindersServiceMixin;
 }

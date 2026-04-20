@@ -193,8 +193,11 @@ function formatActionExampleSummary(action: Action): string | null {
 
 		const userMessage = example[0]?.content?.text?.trim();
 		const actionHints = getExampleActionHints(example);
-		if (!userMessage || actionHints.length === 0) {
+		if (!userMessage) {
 			continue;
+		}
+		if (actionHints.length === 0) {
+			return `User: ${JSON.stringify(userMessage)} -> actions: ${action.name}`;
 		}
 
 		return `User: ${JSON.stringify(userMessage)} -> actions: ${actionHints.join(", ")}`;
@@ -205,6 +208,29 @@ function formatActionExampleSummary(action: Action): string | null {
 
 function shuffleActions<T>(items: T[], seed = "actions"): T[] {
 	return deterministicShuffle(items, seed);
+}
+
+function formatActionSimiles(action: Action): string | null {
+	const similes = [...new Set((action.similes ?? []).map((simile) => simile.trim()))]
+		.filter((simile) => simile.length > 0);
+
+	if (similes.length === 0) {
+		return null;
+	}
+
+	return `  aliases[${similes.length}]: ${similes.join(", ")}`;
+}
+
+function formatActionTags(action: Action): string | null {
+	const tags = [...new Set((action.tags ?? []).map((tag) => tag.trim()))].filter(
+		(tag) => tag.length > 0 && tag !== "always-include",
+	);
+
+	if (tags.length === 0) {
+		return null;
+	}
+
+	return `  tags[${tags.length}]: ${tags.join(", ")}`;
 }
 
 export function formatActionNames(actions: Action[], seed = "actions"): string {
@@ -227,6 +253,16 @@ export function formatActions(actions: Action[], seed = "actions"): string {
 				`- ${action.name}: ${action.description || "No description available"}`,
 			];
 			const exampleSummary = formatActionExampleSummary(action);
+			const similes = formatActionSimiles(action);
+			const tags = formatActionTags(action);
+
+			if (similes) {
+				lines.push(similes);
+			}
+
+			if (tags) {
+				lines.push(tags);
+			}
 
 			if (action.parameters && action.parameters.length > 0) {
 				lines.push(
@@ -467,11 +503,13 @@ function extractXmlChildren(
 }
 
 function toActionParameterValue(value: unknown): ActionParameters[string] {
+	if (value === null || value === undefined) {
+		return null;
+	}
 	if (
 		typeof value === "string" ||
 		typeof value === "number" ||
-		typeof value === "boolean" ||
-		value === null
+		typeof value === "boolean"
 	) {
 		return value as ActionParameterValue;
 	}

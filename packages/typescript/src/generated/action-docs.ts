@@ -20,6 +20,7 @@ export type ActionDocParameterSchema = {
 export type ActionDocParameter = {
 	name: string;
 	description: string;
+	descriptionCompressed?: string;
 	required?: boolean;
 	schema: ActionDocParameterSchema;
 	examples?: readonly ActionDocParameterExampleValue[];
@@ -42,6 +43,7 @@ export type ActionDocExampleMessage = {
 export type ActionDoc = {
 	name: string;
 	description: string;
+	descriptionCompressed?: string;
 	similes?: readonly string[];
 	parameters?: readonly ActionDocParameter[];
 	examples?: readonly (readonly ActionDocExampleMessage[])[];
@@ -51,6 +53,7 @@ export type ActionDoc = {
 export type ProviderDoc = {
 	name: string;
 	description: string;
+	descriptionCompressed?: string;
 	position?: number;
 	dynamic?: boolean;
 };
@@ -92,11 +95,9 @@ export const coreActionsSpec = {
 		{
 			name: "REPLY",
 			description:
-				"Replies to the current conversation with the text from the generated message. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response.",
+				"Sends a direct chat reply in the current conversation/thread using the generated message text. This is not an email reply, inbox workflow, or external-channel send. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final chat response.",
 			similes: [
 				"GREET",
-				"REPLY_TO_MESSAGE",
-				"SEND_REPLY",
 				"RESPOND",
 				"RESPONSE",
 			],
@@ -163,6 +164,8 @@ export const coreActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed:
+				"Reply with generated msg. Default when responding with no other action. Use first as ack, last as final response.",
 		},
 		{
 			name: "IGNORE",
@@ -265,6 +268,8 @@ export const coreActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed:
+				"Ignore user. Use when aggressive, creepy, conversation ended, or both sides said goodbye. Don't use if user engaged directly or needs error info.",
 		},
 		{
 			name: "NONE",
@@ -336,6 +341,8 @@ export const coreActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed:
+				"Respond without additional action. Default when speaking only.",
 		},
 		{
 			name: "SEND_MESSAGE",
@@ -359,6 +366,7 @@ export const coreActionsSpec = {
 						enum: ["user", "room"],
 					},
 					examples: ["user", "room"],
+					descriptionCompressed: "user or room target.",
 				},
 				{
 					name: "source",
@@ -369,6 +377,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["telegram", "discord"],
+					descriptionCompressed: "Platform (telegram, discord, x).",
 				},
 				{
 					name: "target",
@@ -379,6 +388,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["dev_guru", "announcements"],
+					descriptionCompressed: "Target name/handle/id.",
 				},
 				{
 					name: "text",
@@ -388,6 +398,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["Hello!", "Important announcement!"],
+					descriptionCompressed: "Message content.",
 				},
 			],
 			examples: [
@@ -451,6 +462,7 @@ export const coreActionsSpec = {
 					},
 				},
 			],
+			descriptionCompressed: "Send msg to another user or room (not current).",
 		},
 		{
 			name: "ADD_CONTACT",
@@ -483,6 +495,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["Sarah Chen", "John Smith"],
+					descriptionCompressed: "Contact name.",
 				},
 				{
 					name: "notes",
@@ -493,6 +506,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["Met at the AI meetup; interested in agents"],
+					descriptionCompressed: "Optional notes/context.",
 				},
 			],
 			examples: [
@@ -539,6 +553,8 @@ export const coreActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed:
+				"Add contact to relationships with category/preferences.",
 		},
 		{
 			name: "UPDATE_CONTACT",
@@ -554,6 +570,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["Sarah Chen"],
+					descriptionCompressed: "Contact name (must match existing).",
 				},
 				{
 					name: "updates",
@@ -563,6 +580,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ['{"notes":"prefers email","tags":["friend"]}'],
+					descriptionCompressed: "Fields to update (JSON).",
 				},
 			],
 			examples: [
@@ -581,6 +599,7 @@ export const coreActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed: "Update existing contact details.",
 		},
 		{
 			name: "REMOVE_CONTACT",
@@ -601,6 +620,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["Sarah Chen"],
+					descriptionCompressed: "Contact name.",
 				},
 			],
 			examples: [
@@ -631,6 +651,7 @@ export const coreActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed: "Remove contact from relationships.",
 		},
 		{
 			name: "SEARCH_CONTACTS",
@@ -656,6 +677,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["sarah", "AI meetup"],
+					descriptionCompressed: "Search query (name/handle/free-text).",
 				},
 			],
 			examples: [
@@ -674,6 +696,7 @@ export const coreActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed: "Search/list contacts by name or query.",
 		},
 		{
 			name: "SCHEDULE_FOLLOW_UP",
@@ -699,6 +722,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["Sarah Chen"],
+					descriptionCompressed: "Contact name.",
 				},
 				{
 					name: "when",
@@ -708,6 +732,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["2026-02-01T09:00:00Z"],
+					descriptionCompressed: "ISO-8601 datetime.",
 				},
 				{
 					name: "reason",
@@ -717,6 +742,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["Check in about the agent framework demo"],
+					descriptionCompressed: "Optional reason/context.",
 				},
 			],
 			examples: [
@@ -735,6 +761,7 @@ export const coreActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed: "Schedule follow-up reminder for contact.",
 		},
 		{
 			name: "CHOOSE_OPTION",
@@ -758,6 +785,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["c0a8012e"],
+					descriptionCompressed: "Pending task id.",
 				},
 				{
 					name: "option",
@@ -767,6 +795,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["APPROVE", "ABORT"],
+					descriptionCompressed: "Option name exactly as listed.",
 				},
 			],
 			examples: [
@@ -786,6 +815,7 @@ export const coreActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed: "Select option for pending multi-choice task.",
 		},
 		{
 			name: "FOLLOW_ROOM",
@@ -810,6 +840,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["00000000-0000-0000-0000-000000000000"],
+					descriptionCompressed: "Room id to follow.",
 				},
 			],
 			examples: [
@@ -844,6 +875,8 @@ export const coreActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed:
+				"Start following channel, chiming in without @mention. Only when explicitly asked.",
 		},
 		{
 			name: "UNFOLLOW_ROOM",
@@ -868,6 +901,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["00000000-0000-0000-0000-000000000000"],
+					descriptionCompressed: "Room id to unfollow.",
 				},
 			],
 			examples: [
@@ -887,6 +921,7 @@ export const coreActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed: "Stop following room, cease updates.",
 		},
 		{
 			name: "MUTE_ROOM",
@@ -911,6 +946,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["00000000-0000-0000-0000-000000000000"],
+					descriptionCompressed: "Room id to mute.",
 				},
 			],
 			examples: [
@@ -945,6 +981,8 @@ export const coreActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed:
+				"Mute room, ignore msgs unless @mentioned. Only when asked or annoying.",
 		},
 		{
 			name: "UNMUTE_ROOM",
@@ -969,6 +1007,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["00000000-0000-0000-0000-000000000000"],
+					descriptionCompressed: "Room id to unmute.",
 				},
 			],
 			examples: [
@@ -988,6 +1027,7 @@ export const coreActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed: "Unmute room, resume responding.",
 		},
 		{
 			name: "UPDATE_SETTINGS",
@@ -1014,6 +1054,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ['[{"key":"model","value":"gpt-5"}]'],
+					descriptionCompressed: "JSON array of {key, value} updates.",
 				},
 			],
 			examples: [
@@ -1033,6 +1074,7 @@ export const coreActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed: "Update agent settings via key/value pairs.",
 		},
 		{
 			name: "UPDATE_ROLE",
@@ -1056,6 +1098,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["00000000-0000-0000-0000-000000000000"],
+					descriptionCompressed: "Entity id.",
 				},
 				{
 					name: "role",
@@ -1065,6 +1108,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["admin", "member"],
+					descriptionCompressed: "Role to assign.",
 				},
 			],
 			examples: [
@@ -1084,6 +1128,8 @@ export const coreActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed:
+				"Assign role (Admin/Owner/None) to user(s) in channel.",
 		},
 		{
 			name: "UPDATE_ENTITY",
@@ -1105,6 +1151,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["00000000-0000-0000-0000-000000000000"],
+					descriptionCompressed: "Entity id.",
 				},
 				{
 					name: "updates",
@@ -1115,6 +1162,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ['[{"name":"bio","value":"Loves Rust"}]'],
+					descriptionCompressed: "JSON array of {name, value} updates.",
 				},
 			],
 			examples: [
@@ -1134,6 +1182,7 @@ export const coreActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed: "Edit contact details for person in conversation.",
 		},
 		{
 			name: "THINK",
@@ -1212,6 +1261,8 @@ export const coreActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed:
+				"Deep reasoning for complex/ambiguous questions. Re-processes full context through larger model. Use when careful reasoning needed, not for simple lookups.",
 		},
 		{
 			name: "GENERATE_IMAGE",
@@ -1235,6 +1286,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["A futuristic cityscape at sunset, cinematic lighting"],
+					descriptionCompressed: "Image prompt.",
 				},
 			],
 			examples: [
@@ -1284,6 +1336,8 @@ export const coreActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed:
+				"Generate image from conversation context. Use to visualize or illustrate.",
 		},
 	],
 } as const satisfies { version: string; actions: readonly ActionDoc[] };
@@ -1293,11 +1347,9 @@ export const allActionsSpec = {
 		{
 			name: "REPLY",
 			description:
-				"Replies to the current conversation with the text from the generated message. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response.",
+				"Sends a direct chat reply in the current conversation/thread using the generated message text. This is not an email reply, inbox workflow, or external-channel send. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final chat response.",
 			similes: [
 				"GREET",
-				"REPLY_TO_MESSAGE",
-				"SEND_REPLY",
 				"RESPOND",
 				"RESPONSE",
 			],
@@ -1364,6 +1416,8 @@ export const allActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed:
+				"Reply with generated msg. Default when responding with no other action. Use first as ack, last as final response.",
 		},
 		{
 			name: "IGNORE",
@@ -1466,6 +1520,8 @@ export const allActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed:
+				"Ignore user. Use when aggressive, creepy, conversation ended, or both sides said goodbye. Don't use if user engaged directly or needs error info.",
 		},
 		{
 			name: "NONE",
@@ -1537,6 +1593,8 @@ export const allActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed:
+				"Respond without additional action. Default when speaking only.",
 		},
 		{
 			name: "SEND_MESSAGE",
@@ -1560,6 +1618,7 @@ export const allActionsSpec = {
 						enum: ["user", "room"],
 					},
 					examples: ["user", "room"],
+					descriptionCompressed: "user or room target.",
 				},
 				{
 					name: "source",
@@ -1570,6 +1629,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["telegram", "discord"],
+					descriptionCompressed: "Platform (telegram, discord, x).",
 				},
 				{
 					name: "target",
@@ -1580,6 +1640,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["dev_guru", "announcements"],
+					descriptionCompressed: "Target name/handle/id.",
 				},
 				{
 					name: "text",
@@ -1589,6 +1650,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["Hello!", "Important announcement!"],
+					descriptionCompressed: "Message content.",
 				},
 			],
 			examples: [
@@ -1652,6 +1714,7 @@ export const allActionsSpec = {
 					},
 				},
 			],
+			descriptionCompressed: "Send msg to another user or room (not current).",
 		},
 		{
 			name: "ADD_CONTACT",
@@ -1684,6 +1747,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["Sarah Chen", "John Smith"],
+					descriptionCompressed: "Contact name.",
 				},
 				{
 					name: "notes",
@@ -1694,6 +1758,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["Met at the AI meetup; interested in agents"],
+					descriptionCompressed: "Optional notes/context.",
 				},
 			],
 			examples: [
@@ -1740,6 +1805,8 @@ export const allActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed:
+				"Add contact to relationships with category/preferences.",
 		},
 		{
 			name: "UPDATE_CONTACT",
@@ -1755,6 +1822,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["Sarah Chen"],
+					descriptionCompressed: "Contact name (must match existing).",
 				},
 				{
 					name: "updates",
@@ -1764,6 +1832,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ['{"notes":"prefers email","tags":["friend"]}'],
+					descriptionCompressed: "Fields to update (JSON).",
 				},
 			],
 			examples: [
@@ -1782,6 +1851,7 @@ export const allActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed: "Update existing contact details.",
 		},
 		{
 			name: "REMOVE_CONTACT",
@@ -1802,6 +1872,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["Sarah Chen"],
+					descriptionCompressed: "Contact name.",
 				},
 			],
 			examples: [
@@ -1832,6 +1903,7 @@ export const allActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed: "Remove contact from relationships.",
 		},
 		{
 			name: "SEARCH_CONTACTS",
@@ -1857,6 +1929,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["sarah", "AI meetup"],
+					descriptionCompressed: "Search query (name/handle/free-text).",
 				},
 			],
 			examples: [
@@ -1875,6 +1948,7 @@ export const allActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed: "Search/list contacts by name or query.",
 		},
 		{
 			name: "SCHEDULE_FOLLOW_UP",
@@ -1900,6 +1974,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["Sarah Chen"],
+					descriptionCompressed: "Contact name.",
 				},
 				{
 					name: "when",
@@ -1909,6 +1984,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["2026-02-01T09:00:00Z"],
+					descriptionCompressed: "ISO-8601 datetime.",
 				},
 				{
 					name: "reason",
@@ -1918,6 +1994,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["Check in about the agent framework demo"],
+					descriptionCompressed: "Optional reason/context.",
 				},
 			],
 			examples: [
@@ -1936,6 +2013,7 @@ export const allActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed: "Schedule follow-up reminder for contact.",
 		},
 		{
 			name: "CHOOSE_OPTION",
@@ -1959,6 +2037,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["c0a8012e"],
+					descriptionCompressed: "Pending task id.",
 				},
 				{
 					name: "option",
@@ -1968,6 +2047,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["APPROVE", "ABORT"],
+					descriptionCompressed: "Option name exactly as listed.",
 				},
 			],
 			examples: [
@@ -1987,6 +2067,7 @@ export const allActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed: "Select option for pending multi-choice task.",
 		},
 		{
 			name: "FOLLOW_ROOM",
@@ -2011,6 +2092,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["00000000-0000-0000-0000-000000000000"],
+					descriptionCompressed: "Room id to follow.",
 				},
 			],
 			examples: [
@@ -2045,6 +2127,8 @@ export const allActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed:
+				"Start following channel, chiming in without @mention. Only when explicitly asked.",
 		},
 		{
 			name: "UNFOLLOW_ROOM",
@@ -2069,6 +2153,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["00000000-0000-0000-0000-000000000000"],
+					descriptionCompressed: "Room id to unfollow.",
 				},
 			],
 			examples: [
@@ -2088,6 +2173,7 @@ export const allActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed: "Stop following room, cease updates.",
 		},
 		{
 			name: "MUTE_ROOM",
@@ -2112,6 +2198,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["00000000-0000-0000-0000-000000000000"],
+					descriptionCompressed: "Room id to mute.",
 				},
 			],
 			examples: [
@@ -2146,6 +2233,8 @@ export const allActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed:
+				"Mute room, ignore msgs unless @mentioned. Only when asked or annoying.",
 		},
 		{
 			name: "UNMUTE_ROOM",
@@ -2170,6 +2259,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["00000000-0000-0000-0000-000000000000"],
+					descriptionCompressed: "Room id to unmute.",
 				},
 			],
 			examples: [
@@ -2189,6 +2279,7 @@ export const allActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed: "Unmute room, resume responding.",
 		},
 		{
 			name: "UPDATE_SETTINGS",
@@ -2215,6 +2306,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ['[{"key":"model","value":"gpt-5"}]'],
+					descriptionCompressed: "JSON array of {key, value} updates.",
 				},
 			],
 			examples: [
@@ -2234,6 +2326,7 @@ export const allActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed: "Update agent settings via key/value pairs.",
 		},
 		{
 			name: "UPDATE_ROLE",
@@ -2257,6 +2350,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["00000000-0000-0000-0000-000000000000"],
+					descriptionCompressed: "Entity id.",
 				},
 				{
 					name: "role",
@@ -2266,6 +2360,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["admin", "member"],
+					descriptionCompressed: "Role to assign.",
 				},
 			],
 			examples: [
@@ -2285,6 +2380,8 @@ export const allActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed:
+				"Assign role (Admin/Owner/None) to user(s) in channel.",
 		},
 		{
 			name: "UPDATE_ENTITY",
@@ -2306,6 +2403,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["00000000-0000-0000-0000-000000000000"],
+					descriptionCompressed: "Entity id.",
 				},
 				{
 					name: "updates",
@@ -2316,6 +2414,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ['[{"name":"bio","value":"Loves Rust"}]'],
+					descriptionCompressed: "JSON array of {name, value} updates.",
 				},
 			],
 			examples: [
@@ -2335,6 +2434,7 @@ export const allActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed: "Edit contact details for person in conversation.",
 		},
 		{
 			name: "THINK",
@@ -2413,6 +2513,8 @@ export const allActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed:
+				"Deep reasoning for complex/ambiguous questions. Re-processes full context through larger model. Use when careful reasoning needed, not for simple lookups.",
 		},
 		{
 			name: "GENERATE_IMAGE",
@@ -2436,6 +2538,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["A futuristic cityscape at sunset, cinematic lighting"],
+					descriptionCompressed: "Image prompt.",
 				},
 			],
 			examples: [
@@ -2485,6 +2588,8 @@ export const allActionsSpec = {
 					},
 				],
 			],
+			descriptionCompressed:
+				"Generate image from conversation context. Use to visualize or illustrate.",
 		},
 		{
 			name: "ADD_TO_PLAYLIST",
@@ -2503,6 +2608,21 @@ export const allActionsSpec = {
 			description: "Add or remove a reaction on a message via BlueBubbles",
 			parameters: [],
 			similes: ["BLUEBUBBLES_REACT", "BB_REACTION", "IMESSAGE_REACT"],
+		},
+		{
+			name: "BROWSER_ACTION",
+			description:
+				"Control a Chromium-based browser through the local runtime. This action opens or connects to a browser session, navigates pages, clicks elements, types into forms, reads DOM state, executes JavaScript, waits for conditions, and manages tabs.\n\n",
+			parameters: [],
+			similes: [
+				"CONTROL_BROWSER",
+				"WEB_BROWSER",
+				"OPEN_BROWSER",
+				"BROWSE_WEB",
+				"NAVIGATE_BROWSER",
+				"BROWSER_CLICK",
+				"BROWSER_TYPE",
+			],
 		},
 		{
 			name: "CHECK_CLOUD_CREDITS",
@@ -2586,6 +2706,60 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "FETCH_FEED_TOP",
+			description:
+				"Fetch the home timeline from X and return the top-N tweets ranked by engagement (likes + retweets * 2).",
+			parameters: [],
+			similes: ["GET_X_FEED", "TOP_TWEETS", "FEED_TOP"],
+		},
+		{
+			name: "FILE_ACTION",
+			description:
+				"Perform local filesystem operations through the computer-use service. This includes read, write, edit, append, delete, exists, list, delete_directory, upload, download, and list_downloads actions.\n\n",
+			parameters: [],
+			similes: [
+				"READ_FILE",
+				"WRITE_FILE",
+				"EDIT_FILE",
+				"DELETE_FILE",
+				"LIST_DIRECTORY",
+				"FILE_OPERATION",
+			],
+		},
+		{
+			name: "FINALIZE_WORKSPACE",
+			description:
+				"Finalize workspace changes by committing, pushing, and optionally creating a pull request. ",
+			parameters: [
+				{
+					name: "codingWorkspace",
+					description: "The coding workspace to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+				},
+			],
+			similes: [
+				"COMMIT_AND_PR",
+				"CREATE_PR",
+				"SUBMIT_CHANGES",
+				"FINISH_WORKSPACE",
+			],
+			exampleCalls: [
+				{
+					user: "Use FINALIZE_WORKSPACE with the provided parameters.",
+					actions: ["FINALIZE_WORKSPACE"],
+					params: {
+						FINALIZE_WORKSPACE: {
+							codingWorkspace: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "FREEZE_CLOUD_AGENT",
 			description:
 				"Freeze a cloud agent: snapshot state, disconnect bridge, stop container.",
@@ -2603,21 +2777,6 @@ export const allActionsSpec = {
 				"Get detailed information about a specific skill including version, owner, and stats.",
 			parameters: [],
 			similes: ["SKILL_INFO", "SKILL_DETAILS"],
-		},
-		{
-			name: "GET_SKILL_GUIDANCE",
-			description:
-				"Search for and get skill instructions. Use when user asks to find a skill or when you need instructions for a capability.",
-			parameters: [],
-			similes: [
-				"FIND_SKILL",
-				"SEARCH_SKILLS",
-				"SKILL_HELP",
-				"HOW_TO",
-				"GET_INSTRUCTIONS",
-				"LEARN_SKILL",
-				"LOOKUP_SKILL",
-			],
 		},
 		{
 			name: "HELP_COMMAND",
@@ -2638,6 +2797,22 @@ export const allActionsSpec = {
 				"Install a skill from the ClawHub registry. The skill will be security-scanned before activation. ",
 			parameters: [],
 			similes: ["DOWNLOAD_SKILL", "ADD_SKILL", "GET_SKILL"],
+		},
+		{
+			name: "LIST_AGENTS",
+			description:
+				"List active task agents together with current task progress so the main agent can keep the user updated while work continues asynchronously.",
+			parameters: [],
+			similes: [
+				"LIST_CODING_AGENTS",
+				"SHOW_CODING_AGENTS",
+				"GET_ACTIVE_AGENTS",
+				"LIST_SESSIONS",
+				"SHOW_CODING_SESSIONS",
+				"SHOW_TASK_AGENTS",
+				"LIST_SUB_AGENTS",
+				"SHOW_TASK_STATUS",
+			],
 		},
 		{
 			name: "LIST_PLAYLISTS",
@@ -2706,6 +2881,19 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "MANAGE_ISSUES",
+			description: "Manage GitHub issues for a repository. ",
+			parameters: [],
+			similes: [
+				"CREATE_ISSUE",
+				"LIST_ISSUES",
+				"CLOSE_ISSUE",
+				"COMMENT_ISSUE",
+				"UPDATE_ISSUE",
+				"GET_ISSUE",
+			],
+		},
+		{
 			name: "MANAGE_SHOPIFY_CUSTOMERS",
 			description: "List and search customers in a connected Shopify store.",
 			parameters: [],
@@ -2740,6 +2928,21 @@ export const allActionsSpec = {
 				"CREATE_PRODUCT",
 				"UPDATE_PRODUCT",
 				"SEARCH_PRODUCTS",
+			],
+		},
+		{
+			name: "MANAGE_WINDOW",
+			description:
+				"Manage desktop windows through the local runtime. This includes listing visible windows, focusing or switching windows, minimizing, maximizing, restoring, closing, and parity no-op arrange/move commands.\n\n",
+			parameters: [],
+			similes: [
+				"LIST_WINDOWS",
+				"FOCUS_WINDOW",
+				"SWITCH_WINDOW",
+				"MINIMIZE_WINDOW",
+				"MAXIMIZE_WINDOW",
+				"CLOSE_WINDOW",
+				"WINDOW_MANAGEMENT",
 			],
 		},
 		{
@@ -2789,6 +2992,18 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "POST_TWEET",
+			description: "Post a tweet on Twitter",
+			parameters: [],
+			similes: [
+				"TWEET",
+				"SEND_TWEET",
+				"TWITTER_POST",
+				"POST_ON_TWITTER",
+				"SHARE_ON_TWITTER",
+			],
+		},
+		{
 			name: "PROVISION_CLOUD_AGENT",
 			description:
 				"Deploy an ElizaOS agent to ElizaCloud. Provisions a container, waits for deployment, connects the bridge, and starts auto-backup.",
@@ -2798,6 +3013,38 @@ export const allActionsSpec = {
 				"launch cloud agent",
 				"start remote agent",
 				"provision container",
+			],
+		},
+		{
+			name: "PROVISION_WORKSPACE",
+			description: "Create a git workspace for coding tasks. ",
+			parameters: [
+				{
+					name: "codingWorkspace",
+					description: "The coding workspace to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+				},
+			],
+			similes: [
+				"CREATE_WORKSPACE",
+				"CLONE_REPO",
+				"SETUP_WORKSPACE",
+				"PREPARE_WORKSPACE",
+			],
+			exampleCalls: [
+				{
+					user: "Use PROVISION_WORKSPACE with the provided parameters.",
+					actions: ["PROVISION_WORKSPACE"],
+					params: {
+						PROVISION_WORKSPACE: {
+							codingWorkspace: "example",
+						},
+					},
+				},
 			],
 		},
 		{
@@ -2828,6 +3075,19 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "READ_UNREAD_X_DMS",
+			description: "List unread Twitter/X direct messages.",
+			parameters: [],
+			similes: ["READ_X_DMS", "GET_X_UNREAD_DMS", "CHECK_X_DMS"],
+		},
+		{
+			name: "REPLY_X_DM",
+			description:
+				"Reply to a Twitter/X direct message. Two-stage: without `confirmed: true` this returns a preview and requires confirmation; with `confirmed: true` the DM is sent.",
+			parameters: [],
+			similes: ["SEND_X_DM", "REPLY_TWITTER_DM", "X_DM_REPLY"],
+		},
+		{
 			name: "RESUME_CLOUD_AGENT",
 			description:
 				"Resume a frozen cloud agent from snapshot. Re-provisions, restores state, reconnects bridge.",
@@ -2852,13 +3112,6 @@ export const allActionsSpec = {
 				"UNPAUSE_MUSIC",
 				"CONTINUE_MUSIC",
 			],
-		},
-		{
-			name: "RUN_SKILL_SCRIPT",
-			description:
-				"Execute a script bundled with an installed skill. Provide skill slug and script name.",
-			parameters: [],
-			similes: ["EXECUTE_SKILL_SCRIPT", "SKILL_SCRIPT"],
 		},
 		{
 			name: "SAVE_PLAYLIST",
@@ -2903,9 +3156,16 @@ export const allActionsSpec = {
 		{
 			name: "SEARCH_SKILLS",
 			description:
-				"Search the skill registry for available skills by keyword or category.",
+				"Search the skill registry for available skills by keyword or category. Returns each result with action chips (use/enable/disable/install/copy/details).",
 			parameters: [],
 			similes: ["BROWSE_SKILLS", "LIST_SKILLS", "FIND_SKILLS"],
+		},
+		{
+			name: "SEARCH_X",
+			description:
+				"Search X recent tweets using the v2 recent search endpoint. Parameters: query (required), maxResults (optional, default 10).",
+			parameters: [],
+			similes: ["SEARCH_TWITTER", "SEARCH_TWEETS", "X_SEARCH"],
 		},
 		{
 			name: "SEARCH_YOUTUBE",
@@ -2932,6 +3192,49 @@ export const allActionsSpec = {
 				"BLUEBUBBLES_SEND",
 				"APPLE_MESSAGE",
 			],
+		},
+		{
+			name: "SEND_TO_AGENT",
+			description:
+				"Send text input or key presses to a running task-agent session. ",
+			parameters: [
+				{
+					name: "codingSession",
+					description: "The coding session to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+				},
+			],
+			similes: [
+				"SEND_TO_CODING_AGENT",
+				"MESSAGE_CODING_AGENT",
+				"INPUT_TO_AGENT",
+				"RESPOND_TO_AGENT",
+				"TELL_CODING_AGENT",
+				"MESSAGE_AGENT",
+				"TELL_TASK_AGENT",
+			],
+			exampleCalls: [
+				{
+					user: "Use SEND_TO_AGENT with the provided parameters.",
+					actions: ["SEND_TO_AGENT"],
+					params: {
+						SEND_TO_AGENT: {
+							codingSession: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "SEND_X_POST",
+			description:
+				"Publish a tweet on Twitter/X with a confirmation gate. Two-stage: without `confirmed: true` this returns a preview; with `confirmed: true` the tweet is posted.",
+			parameters: [],
+			similes: ["POST_X", "TWEET_WITH_CONFIRMATION", "PUBLISH_TWEET"],
 		},
 		{
 			name: "SETUP_CREDENTIALS",
@@ -2993,6 +3296,18 @@ export const allActionsSpec = {
 				"SHOW_GROUPS",
 				"GET_GROUPS",
 				"SIGNAL_GROUPS",
+			],
+		},
+		{
+			name: "SIGNAL_READ_RECENT_MESSAGES",
+			description:
+				"Read the most recent Signal messages across active conversations",
+			parameters: [],
+			similes: [
+				"READ_SIGNAL_MESSAGES",
+				"CHECK_SIGNAL_MESSAGES",
+				"SHOW_SIGNAL_MESSAGES",
+				"SIGNAL_INBOX",
 			],
 		},
 		{
@@ -3067,11 +3382,84 @@ export const allActionsSpec = {
 			similes: ["SKIP", "NEXT_TRACK", "SKIP_SONG", "NEXT_SONG"],
 		},
 		{
+			name: "SPAWN_AGENT",
+			description:
+				"Spawn a specific task agent inside an existing workspace when you need direct control. ",
+			parameters: [
+				{
+					name: "codingWorkspace",
+					description: "The coding workspace to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+				},
+			],
+			similes: [
+				"SPAWN_CODING_AGENT",
+				"START_CODING_AGENT",
+				"LAUNCH_CODING_AGENT",
+				"CREATE_CODING_AGENT",
+				"SPAWN_CODER",
+				"RUN_CODING_AGENT",
+				"SPAWN_SUB_AGENT",
+				"START_TASK_AGENT",
+				"CREATE_AGENT",
+			],
+			exampleCalls: [
+				{
+					user: "Use SPAWN_AGENT with the provided parameters.",
+					actions: ["SPAWN_AGENT"],
+					params: {
+						SPAWN_AGENT: {
+							codingWorkspace: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "STATUS_COMMAND",
 			description:
 				"Show session directive settings via /status slash command. Only activates for /status or /s prefix.",
 			parameters: [],
 			similes: ["/status", "/s"],
+		},
+		{
+			name: "STOP_AGENT",
+			description: "Stop a running task-agent session. ",
+			parameters: [
+				{
+					name: "codingSession",
+					description: "The coding session to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+				},
+			],
+			similes: [
+				"STOP_CODING_AGENT",
+				"KILL_CODING_AGENT",
+				"TERMINATE_AGENT",
+				"END_CODING_SESSION",
+				"CANCEL_AGENT",
+				"CANCEL_TASK_AGENT",
+				"STOP_SUB_AGENT",
+			],
+			exampleCalls: [
+				{
+					user: "Use STOP_AGENT with the provided parameters.",
+					actions: ["STOP_AGENT"],
+					params: {
+						STOP_AGENT: {
+							codingSession: "example",
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "STOP_COMMAND",
@@ -3095,11 +3483,72 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "SUMMARIZE_FEED",
+			description:
+				"Fetch the top-N X tweets and produce a concise natural-language summary using the runtime's small text model.",
+			parameters: [],
+			similes: ["X_FEED_SUMMARY", "SUMMARIZE_TWITTER", "SUMMARIZE_X_FEED"],
+		},
+		{
 			name: "SYNC_SKILL_CATALOG",
 			description:
 				"Sync the skill catalog from the registry to discover new skills.",
 			parameters: [],
 			similes: ["REFRESH_SKILLS", "UPDATE_CATALOG"],
+		},
+		{
+			name: "TASK_CONTROL",
+			description:
+				"Pause, stop, resume, continue, archive, or reopen a coordinator task thread while preserving the durable thread history.",
+			parameters: [],
+			similes: [
+				"CONTROL_TASK",
+				"PAUSE_TASK",
+				"RESUME_TASK",
+				"STOP_TASK",
+				"CONTINUE_TASK",
+				"ARCHIVE_TASK",
+				"REOPEN_TASK",
+			],
+		},
+		{
+			name: "TASK_HISTORY",
+			description:
+				"Query coordinator task history without stuffing raw transcripts into model context. Use this for active work, yesterday/last-week summaries, topic search, counts, and thread detail lookup.",
+			parameters: [],
+			similes: [
+				"LIST_TASK_HISTORY",
+				"GET_TASK_HISTORY",
+				"SHOW_TASKS",
+				"COUNT_TASKS",
+				"TASK_STATUS_HISTORY",
+			],
+		},
+		{
+			name: "TASK_SHARE",
+			description:
+				"Discover the best available way to view or share a task result, including artifacts, live preview URLs, workspace paths, and environment share capabilities.",
+			parameters: [],
+			similes: [
+				"SHARE_TASK_RESULT",
+				"SHOW_TASK_ARTIFACT",
+				"VIEW_TASK_OUTPUT",
+				"CAN_I_SEE_IT",
+				"PULL_IT_UP",
+			],
+		},
+		{
+			name: "TERMINAL_ACTION",
+			description:
+				"Execute terminal commands and manage lightweight terminal sessions through the computer-use service. This includes connect, execute, read, type, clear, close, and the upstream execute_command alias.\n\n",
+			parameters: [],
+			similes: [
+				"RUN_COMMAND",
+				"EXECUTE_COMMAND",
+				"SHELL_COMMAND",
+				"TERMINAL",
+				"RUN_SHELL",
+			],
 		},
 		{
 			name: "TOGGLE_SKILL",
@@ -3122,6 +3571,40 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["REMOVE_SKILL", "DELETE_SKILL"],
 		},
+		{
+			name: "USE_COMPUTER",
+			description:
+				"Control the local desktop. This action can inspect the current screen, move the mouse, click, drag, type, press keys, scroll, and perform modified clicks. It is intended for real application interaction when the agent needs to operate the user's computer directly.\n\n",
+			parameters: [],
+			similes: [
+				"CONTROL_COMPUTER",
+				"COMPUTER_ACTION",
+				"DESKTOP_ACTION",
+				"CLICK",
+				"CLICK_SCREEN",
+				"TYPE_TEXT",
+				"PRESS_KEY",
+				"KEY_COMBO",
+				"SCROLL_SCREEN",
+				"MOVE_MOUSE",
+				"DRAG",
+				"MOUSE_CLICK",
+				"TAKE_SCREENSHOT",
+				"CAPTURE_SCREEN",
+				"SCREEN_CAPTURE",
+				"GET_SCREENSHOT",
+				"SEE_SCREEN",
+				"LOOK_AT_SCREEN",
+				"VIEW_SCREEN",
+			],
+		},
+		{
+			name: "USE_SKILL",
+			description:
+				"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
+			parameters: [],
+			similes: ["INVOKE_SKILL", "EXECUTE_SKILL", "RUN_SKILL", "CALL_SKILL"],
+		},
 	],
 } as const satisfies { version: string; actions: readonly ActionDoc[] };
 export const coreProvidersSpec = {
@@ -3132,12 +3615,15 @@ export const coreProvidersSpec = {
 			description: "Possible response actions",
 			position: -1,
 			dynamic: false,
+			descriptionCompressed: "Available response actions.",
 		},
 		{
 			name: "CHARACTER",
 			description:
 				"Provides the agent's character definition and personality information including bio, topics, adjectives, style directions, and example conversations",
 			dynamic: false,
+			descriptionCompressed:
+				"Agent character: bio, topics, adjectives, style, example conversations.",
 		},
 		{
 			name: "RECENT_MESSAGES",
@@ -3145,105 +3631,126 @@ export const coreProvidersSpec = {
 				"Provides recent message history from the current conversation including formatted messages, posts, action results, and recent interactions",
 			position: 100,
 			dynamic: true,
+			descriptionCompressed:
+				"Recent conversation messages, posts, action results.",
 		},
 		{
 			name: "ACTION_STATE",
 			description:
 				"Provides information about the current action state and available actions",
 			dynamic: true,
+			descriptionCompressed: "Current action state and available actions.",
 		},
 		{
 			name: "ATTACHMENTS",
 			description: "Media attachments in the current message",
 			dynamic: true,
+			descriptionCompressed: "Media attachments in current message.",
 		},
 		{
 			name: "CAPABILITIES",
 			description:
 				"Agent capabilities including models, services, and features",
 			dynamic: false,
+			descriptionCompressed: "Agent capabilities: models, services, features.",
 		},
 		{
 			name: "CHOICE",
 			description:
 				"Available choice options for selection when there are pending tasks or decisions",
 			dynamic: true,
+			descriptionCompressed: "Pending choice options for multi-option tasks.",
 		},
 		{
 			name: "CONTACTS",
 			description:
 				"Provides contact information from the relationships including categories and preferences",
 			dynamic: true,
+			descriptionCompressed: "Contact info from relationships with categories.",
 		},
 		{
 			name: "CONTEXT_BENCH",
 			description: "Benchmark/task context injected by a benchmark harness",
 			position: 5,
 			dynamic: true,
+			descriptionCompressed: "Benchmark/task context from harness.",
 		},
 		{
 			name: "ENTITIES",
 			description:
 				"Provides information about entities in the current context including users, agents, and participants",
 			dynamic: true,
+			descriptionCompressed:
+				"Entities in context: users, agents, participants.",
 		},
 		{
 			name: "EVALUATORS",
 			description: "Available evaluators for assessing agent behavior",
 			dynamic: false,
+			descriptionCompressed: "Available evaluators for agent behavior.",
 		},
 		{
 			name: "FACTS",
 			description:
 				"Provides known facts about entities learned through conversation",
 			dynamic: true,
+			descriptionCompressed: "Known facts about entities from conversation.",
 		},
 		{
 			name: "FOLLOW_UPS",
 			description:
 				"Provides information about upcoming follow-ups and reminders scheduled for contacts",
 			dynamic: true,
+			descriptionCompressed: "Upcoming follow-ups/reminders for contacts.",
 		},
 		{
 			name: "KNOWLEDGE",
 			description:
 				"Provides relevant knowledge from the agent's knowledge base based on semantic similarity",
 			dynamic: true,
+			descriptionCompressed: "Relevant knowledge from KB via semantic search.",
 		},
 		{
 			name: "PROVIDERS",
 			description: "Available context providers",
 			dynamic: false,
+			descriptionCompressed: "Available context providers.",
 		},
 		{
 			name: "RELATIONSHIPS",
 			description:
 				"Relationships between entities observed by the agent including tags and metadata",
 			dynamic: true,
+			descriptionCompressed: "Entity relationships with tags/metadata.",
 		},
 		{
 			name: "ROLES",
 			description:
 				"Roles assigned to entities in the current context (Admin, Owner, Member, None)",
 			dynamic: true,
+			descriptionCompressed:
+				"Entity roles in context (Admin/Owner/Member/None).",
 		},
 		{
 			name: "SETTINGS",
 			description:
 				"Current settings for the agent/server (filtered for security, excludes sensitive keys)",
 			dynamic: true,
+			descriptionCompressed: "Agent/server settings (security-filtered).",
 		},
 		{
 			name: "TIME",
 			description:
 				"Provides the current date and time in UTC for time-based operations or responses",
 			dynamic: true,
+			descriptionCompressed: "Current UTC date/time.",
 		},
 		{
 			name: "WORLD",
 			description:
 				"Provides information about the current world context including settings and members",
 			dynamic: true,
+			descriptionCompressed: "World context: settings and members.",
 		},
 		{
 			name: "LONG_TERM_MEMORY",
@@ -3251,6 +3758,8 @@ export const coreProvidersSpec = {
 				"Persistent facts and preferences about the user learned and remembered across conversations",
 			position: 50,
 			dynamic: false,
+			descriptionCompressed:
+				"Persistent user facts/preferences across conversations.",
 		},
 		{
 			name: "SUMMARIZED_CONTEXT",
@@ -3258,18 +3767,21 @@ export const coreProvidersSpec = {
 				"Provides summarized context from previous conversations for optimized context usage",
 			position: 96,
 			dynamic: false,
+			descriptionCompressed: "Summarized context from prior conversations.",
 		},
 		{
 			name: "AGENT_SETTINGS",
 			description:
 				"Provides the agent's current configuration settings (filtered for security)",
 			dynamic: true,
+			descriptionCompressed: "Agent config settings (security-filtered).",
 		},
 		{
 			name: "CURRENT_TIME",
 			description:
 				"Provides current time and date information in various formats",
 			dynamic: true,
+			descriptionCompressed: "Current time/date in various formats.",
 		},
 	],
 } as const satisfies { version: string; providers: readonly ProviderDoc[] };
@@ -3281,12 +3793,15 @@ export const allProvidersSpec = {
 			description: "Possible response actions",
 			position: -1,
 			dynamic: false,
+			descriptionCompressed: "Available response actions.",
 		},
 		{
 			name: "CHARACTER",
 			description:
 				"Provides the agent's character definition and personality information including bio, topics, adjectives, style directions, and example conversations",
 			dynamic: false,
+			descriptionCompressed:
+				"Agent character: bio, topics, adjectives, style, example conversations.",
 		},
 		{
 			name: "RECENT_MESSAGES",
@@ -3294,105 +3809,126 @@ export const allProvidersSpec = {
 				"Provides recent message history from the current conversation including formatted messages, posts, action results, and recent interactions",
 			position: 100,
 			dynamic: true,
+			descriptionCompressed:
+				"Recent conversation messages, posts, action results.",
 		},
 		{
 			name: "ACTION_STATE",
 			description:
 				"Provides information about the current action state and available actions",
 			dynamic: true,
+			descriptionCompressed: "Current action state and available actions.",
 		},
 		{
 			name: "ATTACHMENTS",
 			description: "Media attachments in the current message",
 			dynamic: true,
+			descriptionCompressed: "Media attachments in current message.",
 		},
 		{
 			name: "CAPABILITIES",
 			description:
 				"Agent capabilities including models, services, and features",
 			dynamic: false,
+			descriptionCompressed: "Agent capabilities: models, services, features.",
 		},
 		{
 			name: "CHOICE",
 			description:
 				"Available choice options for selection when there are pending tasks or decisions",
 			dynamic: true,
+			descriptionCompressed: "Pending choice options for multi-option tasks.",
 		},
 		{
 			name: "CONTACTS",
 			description:
 				"Provides contact information from the relationships including categories and preferences",
 			dynamic: true,
+			descriptionCompressed: "Contact info from relationships with categories.",
 		},
 		{
 			name: "CONTEXT_BENCH",
 			description: "Benchmark/task context injected by a benchmark harness",
 			position: 5,
 			dynamic: true,
+			descriptionCompressed: "Benchmark/task context from harness.",
 		},
 		{
 			name: "ENTITIES",
 			description:
 				"Provides information about entities in the current context including users, agents, and participants",
 			dynamic: true,
+			descriptionCompressed:
+				"Entities in context: users, agents, participants.",
 		},
 		{
 			name: "EVALUATORS",
 			description: "Available evaluators for assessing agent behavior",
 			dynamic: false,
+			descriptionCompressed: "Available evaluators for agent behavior.",
 		},
 		{
 			name: "FACTS",
 			description:
 				"Provides known facts about entities learned through conversation",
 			dynamic: true,
+			descriptionCompressed: "Known facts about entities from conversation.",
 		},
 		{
 			name: "FOLLOW_UPS",
 			description:
 				"Provides information about upcoming follow-ups and reminders scheduled for contacts",
 			dynamic: true,
+			descriptionCompressed: "Upcoming follow-ups/reminders for contacts.",
 		},
 		{
 			name: "KNOWLEDGE",
 			description:
 				"Provides relevant knowledge from the agent's knowledge base based on semantic similarity",
 			dynamic: true,
+			descriptionCompressed: "Relevant knowledge from KB via semantic search.",
 		},
 		{
 			name: "PROVIDERS",
 			description: "Available context providers",
 			dynamic: false,
+			descriptionCompressed: "Available context providers.",
 		},
 		{
 			name: "RELATIONSHIPS",
 			description:
 				"Relationships between entities observed by the agent including tags and metadata",
 			dynamic: true,
+			descriptionCompressed: "Entity relationships with tags/metadata.",
 		},
 		{
 			name: "ROLES",
 			description:
 				"Roles assigned to entities in the current context (Admin, Owner, Member, None)",
 			dynamic: true,
+			descriptionCompressed:
+				"Entity roles in context (Admin/Owner/Member/None).",
 		},
 		{
 			name: "SETTINGS",
 			description:
 				"Current settings for the agent/server (filtered for security, excludes sensitive keys)",
 			dynamic: true,
+			descriptionCompressed: "Agent/server settings (security-filtered).",
 		},
 		{
 			name: "TIME",
 			description:
 				"Provides the current date and time in UTC for time-based operations or responses",
 			dynamic: true,
+			descriptionCompressed: "Current UTC date/time.",
 		},
 		{
 			name: "WORLD",
 			description:
 				"Provides information about the current world context including settings and members",
 			dynamic: true,
+			descriptionCompressed: "World context: settings and members.",
 		},
 		{
 			name: "LONG_TERM_MEMORY",
@@ -3400,6 +3936,8 @@ export const allProvidersSpec = {
 				"Persistent facts and preferences about the user learned and remembered across conversations",
 			position: 50,
 			dynamic: false,
+			descriptionCompressed:
+				"Persistent user facts/preferences across conversations.",
 		},
 		{
 			name: "SUMMARIZED_CONTEXT",
@@ -3407,18 +3945,21 @@ export const allProvidersSpec = {
 				"Provides summarized context from previous conversations for optimized context usage",
 			position: 96,
 			dynamic: false,
+			descriptionCompressed: "Summarized context from prior conversations.",
 		},
 		{
 			name: "AGENT_SETTINGS",
 			description:
 				"Provides the agent's current configuration settings (filtered for security)",
 			dynamic: true,
+			descriptionCompressed: "Agent config settings (security-filtered).",
 		},
 		{
 			name: "CURRENT_TIME",
 			description:
 				"Provides current time and date information in various formats",
 			dynamic: true,
+			descriptionCompressed: "Current time/date in various formats.",
 		},
 	],
 } as const satisfies { version: string; providers: readonly ProviderDoc[] };

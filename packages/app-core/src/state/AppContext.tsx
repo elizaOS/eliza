@@ -5,7 +5,6 @@
  */
 
 import { useVincentState } from "@elizaos/app-vincent/useVincentState";
-import { ONBOARDING_PROVIDER_CATALOG } from "@elizaos/shared/contracts/onboarding";
 import {
   ConfirmDialog,
   PromptDialog,
@@ -20,51 +19,10 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  type AgentStartupDiagnostics,
-  type AgentStatus,
-  type CatalogSkill,
-  type CharacterData,
-  type CodingAgentSession,
-  type Conversation,
-  type ConversationChannelType,
-  type ConversationMessage,
-  type ConversationMode,
-  type CreateTriggerRequest,
-  type CustomActionDef,
-  client,
-  type ImageAttachment,
-  type McpMarketplaceResult,
-  type McpRegistryServerDetail,
-  type McpServerConfig,
-  type McpServerStatus,
-  type OnboardingOptions,
-  type PluginInfo,
-  type RegistryPlugin,
-  type SkillInfo,
-  type SkillMarketplaceResult,
-  type SkillScanReportSummary,
-  type StreamEventEnvelope,
-  type TriggerHealthSnapshot,
-  type TriggerRunRecord,
-  type TriggerSummary,
-  type UpdateTriggerRequest,
-} from "../api";
-import {
-  getBackendStartupTimeoutMs,
-  inspectExistingElizaInstall,
-  invokeDesktopBridgeRequest,
-  invokeDesktopBridgeRequestWithTimeout,
-  isElectrobunRuntime,
-} from "../bridge";
-import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
+import { client } from "../api";
 import { AppBootContext } from "../config/boot-config-react";
 import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
-import {
-  dispatchAppEmoteEvent,
-  dispatchElizaCloudStatusUpdated,
-} from "../events";
 import type { UiLanguage } from "../i18n";
 import {
   COMPANION_ENABLED,
@@ -73,78 +31,15 @@ import {
   type Tab,
   tabFromPath,
 } from "../navigation";
-import {
-  alertDesktopMessage,
-  confirmDesktopAction,
-  copyTextToClipboard,
-  openExternalUrl,
-  resolveApiUrl,
-  yieldHttpAfterNativeMessageBox,
-} from "../utils";
+import { copyTextToClipboard } from "../utils";
 import {
   getActiveProfile,
   loadAgentProfileRegistry,
   setActiveProfileId,
 } from "./agent-profiles";
-import {
-  computeAgentDeadlineExtensions,
-  getAgentReadyTimeoutMs,
-} from "./agent-startup-timing";
 import { ChatComposerCtx, ChatInputRefCtx } from "./ChatComposerContext";
 import { CompanionSceneConfigCtx } from "./CompanionSceneConfigContext";
-import {
-  AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
-  AppContext,
-  type AppContextValue,
-  type AppState,
-  applyUiTheme,
-  asApiLikeError,
-  type CompanionHalfFramerateMode,
-  type CompanionVrmPowerMode,
-  clearAvatarIndex,
-  formatSearchBullet,
-  formatStartupErrorDetail,
-  type GamePostMessageAuthPayload,
-  inferOnboardingResumeStep,
-  LIFECYCLE_MESSAGES,
-  type LoadConversationMessagesResult,
-  loadActiveConversationId,
-  loadAvatarIndex,
-  loadCompanionAnimateWhenHidden,
-  loadCompanionHalfFramerateMode,
-  loadCompanionVrmPowerMode,
-  loadPersistedOnboardingComplete,
-  loadPersistedOnboardingStep,
-  loadUiTheme,
-  mergeStreamingText,
-  normalizeAvatarIndex,
-  normalizeCompanionHalfFramerateMode,
-  normalizeCompanionVrmPowerMode,
-  normalizeCustomActionName,
-  normalizeUiShellMode,
-  normalizeUiTheme,
-  type OnboardingNextOptions,
-  type OnboardingStep,
-  parseAgentStatusEvent,
-  parseAgentStatusFromMainMenuResetPayload,
-  parseCustomActionParams,
-  parseProactiveMessageEvent,
-  parseSlashCommandInput,
-  parseStreamEventEnvelopeEvent,
-  type ShellView,
-  type StartupErrorState,
-  saveAvatarIndex,
-  saveCompanionAnimateWhenHidden,
-  saveCompanionHalfFramerateMode,
-  saveCompanionVrmPowerMode,
-  saveUiShellMode,
-  saveUiTheme,
-  shouldApplyFinalStreamText,
-  type TabCommittedDetail,
-  type UiShellMode,
-  type UiTheme,
-} from "./internal";
-import { detectExistingOnboardingConnection } from "./onboarding-bootstrap";
+import { AppContext, type AppContextValue, type AppState } from "./internal";
 import { PtySessionsCtx } from "./PtySessionsContext";
 import {
   createPersistedActiveServer,
@@ -155,7 +50,6 @@ import {
 import { deriveUiShellModeForTab } from "./shell-routing";
 import type { RuntimeTarget } from "./startup-coordinator";
 import { TranslationProvider, useTranslation } from "./TranslationContext";
-import type { InventoryChainFilters } from "./types";
 import { useCharacterState } from "./useCharacterState";
 import { useChatCallbacks } from "./useChatCallbacks";
 import { useChatState } from "./useChatState";
@@ -441,7 +335,7 @@ function AppProviderInner({
     lifecycle.retryStartup();
     coordinatorRetryRef.current?.();
   }, [lifecycle.retryStartup]);
-  const resetToSplash = useCallback(() => {
+  const _resetToSplash = useCallback(() => {
     lifecycle.retryStartup();
     coordinatorResetRef.current?.();
   }, [lifecycle.retryStartup]);
@@ -527,7 +421,7 @@ function AppProviderInner({
     autonomousReplayInFlightRef,
     addUnread,
   } = chatState;
-  const chatComposerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const _chatComposerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   // addUnread / removeUnread wrappers for old setUnreadConversations patterns.
   // Read current unreadConversations through a ref so this callback stays
   // stable across renders — otherwise it cascades into handleChatClear /
@@ -643,6 +537,9 @@ function AppProviderInner({
     installSkillFromMarketplace,
     installSkillFromGithubUrl,
     uninstallMarketplaceSkill,
+    enableMarketplaceSkill,
+    disableMarketplaceSkill,
+    copyMarketplaceSkillSource,
     storePlugins,
     setStorePlugins,
     storeSearch,
@@ -746,9 +643,9 @@ function AppProviderInner({
   // elizaCloud* state, refs, and callbacks are now provided by useCloudState (cloudHook above).
 
   const [ownerName, setOwnerNameState] = useState<string | null>(null);
-  const [ownerNameHydrated, setOwnerNameHydrated] = useState(false);
-  const [pendingOwnerNamePrompt, setPendingOwnerNamePrompt] = useState(false);
-  const [showOwnerNamePrompt, setShowOwnerNamePrompt] = useState(false);
+  const [_ownerNameHydrated, _setOwnerNameHydrated] = useState(false);
+  const [_pendingOwnerNamePrompt, _setPendingOwnerNamePrompt] = useState(false);
+  const [_showOwnerNamePrompt, _setShowOwnerNamePrompt] = useState(false);
 
   // Updates, Extension, and Workbench state are now in useDataLoaders (dataLoaders).
 
@@ -1003,8 +900,8 @@ function AppProviderInner({
   // elizaCloudPreferDisconnectedUntilLoginRef, lastElizaCloudPollConnectedRef,
   // elizaCloudLoginPollTimer are now in useCloudState (cloudHook)
   const prevAgentStateRef = useRef<string | null>(null);
-  const restartNotificationSignatureRef = useRef<string | null>(null);
-  const heartbeatNotificationKeyRef = useRef<string | null>(null);
+  const _restartNotificationSignatureRef = useRef<string | null>(null);
+  const _heartbeatNotificationKeyRef = useRef<string | null>(null);
   // Onboarding refs now come from useOnboardingState
   const onboardingCompletionCommittedRef =
     onboardingCompletionCommittedRefFromHook;
@@ -1455,7 +1352,7 @@ function AppProviderInner({
       const setterMap: Partial<{
         [S in keyof AppState]: (v: AppState[S]) => void;
       }> = {
-        tab: setTabRaw,
+        tab: setTab,
         onboardingStep: setOnboardingStep,
         chatInput: setChatInput,
         chatAvatarVisible: setChatAvatarVisible,
@@ -1655,7 +1552,100 @@ function AppProviderInner({
       setOnboardingComplete,
       setStartupError,
       setFavoriteApps,
-      setTabRaw,
+      setTab,
+      setStoreUninstalling,
+      setStoreSubTab,
+      setCatalogSort,
+      setCatalogTotal,
+      setActiveOverlayApp,
+      setCatalogUninstalling,
+      setCloudDashboardView,
+      setCommandActiveIndex,
+      setCommandQuery,
+      setComputerUseEnabled,
+      setCustomBackgroundUrl,
+      setCustomCatchphrase,
+      setCustomVoicePresetId,
+      setCustomVrmPreviewUrl,
+      setCustomVrmUrl,
+      setCustomWorldUrl,
+      setDroppedFiles,
+      setElizaCloudEnabled,
+      setElizaCloudVoiceProxyAvailable,
+      setEmotePickerOpen,
+      setExportError,
+      setExportIncludeLogs,
+      setExportPassword,
+      setExportSuccess,
+      setGameOverlayEnabled,
+      setImportError,
+      setImportFile,
+      setImportPassword,
+      setImportSuccess,
+      setInventoryChainFilters,
+      setInventorySort,
+      setInventorySortDirection,
+      setInventoryView,
+      setLogLevelFilter,
+      setLogSourceFilter,
+      setLogTagFilter,
+      setMcpAction,
+      setMcpAddingResult,
+      setMcpAddingServer,
+      setMcpConfiguredServers,
+      setMcpEnvInputs,
+      setMcpHeaderInputs,
+      setMcpMarketplaceLoading,
+      setMcpMarketplaceQuery,
+      setMcpMarketplaceResults,
+      setMcpServerStatuses,
+      setOnboardingCloudApiKey,
+      setOnboardingFeatureBrowser,
+      setOnboardingFeatureComputerUse,
+      setOnboardingFeatureCrypto,
+      setOnboardingFeatureDiscord,
+      setOnboardingFeatureOAuthPending,
+      setOnboardingFeaturePhone,
+      setOnboardingFeatureTelegram,
+      setOnboardingVoiceApiKey,
+      setOnboardingVoiceProvider,
+      setPairingCodeInput,
+      setPluginAdvancedOpen,
+      setPluginFilter,
+      setPluginSearch,
+      setPluginSettingsOpen,
+      setPluginStatusFilter,
+      setShareIngestNotice,
+      setSkillCreateDescription,
+      setSkillCreateFormOpen,
+      setSkillCreateName,
+      setSkillReviewId,
+      setSkillReviewReport,
+      setSkillsMarketplaceManualGithubUrl,
+      setSkillsMarketplaceQuery,
+      setSkillsSubTab,
+      setStoreDetailPlugin,
+      setStoreError,
+      setStoreFilter,
+      setStoreInstalling,
+      setStoreLoading,
+      setStorePlugins,
+      setStoreSearch,
+      setCatalogTotalPages,
+      setWalletEnabled,
+      setCatalogSkills,
+      setCatalogSearch,
+      setCatalogPage,
+      setCatalogLoading,
+      setCatalogInstalling,
+      setBrowserEnabled,
+      setCatalogError,
+      setAppsSubTab,
+      setActiveInboxChat,
+      setCatalogDetailSkill,
+      setAppRuns,
+      setActivePackId,
+      setActiveGameRunId,
     ],
   );
 
@@ -1850,6 +1840,8 @@ function AppProviderInner({
     conversationMessages.length,
     chatSending,
     fetchGreeting,
+    greetingInFlightConversationRef.current,
+    greetingFiredRef.current,
   ]);
 
   // Empty thread + running agent: ensure a first assistant message is requested
@@ -1888,6 +1880,10 @@ function AppProviderInner({
     chatSending,
     conversationMessages.length,
     fetchGreeting,
+    activeConversationIdRef.current,
+    greetingFiredRef.current,
+    greetingInFlightConversationRef.current,
+    conversationMessagesRef.current.length,
   ]);
 
   // ── Context value ──────────────────────────────────────────────────
@@ -2305,6 +2301,9 @@ function AppProviderInner({
       installSkillFromMarketplace,
       uninstallMarketplaceSkill,
       installSkillFromGithubUrl,
+      enableMarketplaceSkill,
+      disableMarketplaceSkill,
+      copyMarketplaceSkillSource,
       loadLogs,
       loadInventory,
       loadBalances,
@@ -2709,6 +2708,9 @@ function AppProviderInner({
       installSkillFromMarketplace,
       uninstallMarketplaceSkill,
       installSkillFromGithubUrl,
+      enableMarketplaceSkill,
+      disableMarketplaceSkill,
+      copyMarketplaceSkillSource,
       loadLogs,
       loadInventory,
       loadBalances,
@@ -2768,6 +2770,11 @@ function AppProviderInner({
       setActionNotice,
       setState,
       copyToClipboard,
+      chatPendingImages,
+      setChatPendingImages,
+      chatSending,
+      ptySessions, // chatInput/chatSending/chatPendingImages are stale here — read via useChatComposer()
+      chatInput,
     ],
   );
 

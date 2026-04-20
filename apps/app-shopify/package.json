@@ -6,12 +6,17 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./plugin": "./src/plugin.ts",
     "./register": "./src/register.ts",
     "./*": "./src/*"
   },
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "lucide-react": "^0.575.0"
+    "lucide-react": "^1.0.0"
+  },
+  "elizaos": {
+    "app": {
+      "heroImage": "assets/hero.png"
+    }
   }
 }

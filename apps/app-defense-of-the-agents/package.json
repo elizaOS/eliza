@@ -8,12 +8,16 @@
   "exports": {
     "./package.json": "./package.json",
     ".": "./src/index.ts",
-    "./routes": "./src/routes.ts"
+    "./routes": "./src/routes.ts",
+    "./ui": "./src/ui/index.ts"
   },
   "homepage": "https://www.defenseoftheagents.com/",
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaos/eliza.git"
+  },
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts"
   },
   "keywords": [
     "game",
@@ -22,14 +26,17 @@
     "strategy"
   ],
   "dependencies": {
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*"
   },
   "elizaos": {
     "kind": "app",
     "app": {
       "displayName": "Defense of the Agents",
       "category": "game",
+    "heroImage": "assets/hero.png",
       "launchType": "connect",
       "launchUrl": "https://www.defenseoftheagents.com/",
       "capabilities": [

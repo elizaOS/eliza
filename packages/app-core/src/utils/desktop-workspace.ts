@@ -19,6 +19,7 @@ export interface DesktopClickAuditItem {
 
 export type DesktopWorkspaceSurface =
   | "chat"
+  | "browser"
   | "release"
   | "triggers"
   | "plugins"
@@ -176,12 +177,17 @@ export async function openDesktopSettingsWindow(
 
 export async function openDesktopSurfaceWindow(
   surface: DesktopWorkspaceSurface,
-  _options?: { browse?: string },
+  options?: { browse?: string },
 ): Promise<void> {
   await requestDesktopBridge<void>(
     "desktopOpenSurfaceWindow",
     "desktop:openSurfaceWindow",
-    { surface },
+    {
+      surface,
+      ...(surface === "browser" && options?.browse?.trim()
+        ? { browse: options.browse.trim() }
+        : {}),
+    },
   );
 }
 

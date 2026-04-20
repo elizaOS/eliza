@@ -123,6 +123,22 @@ type RawPermissions = {
     | undefined;
 };
 
+type RawScriptingExecutionResult = {
+  result?: unknown;
+};
+
+type RawScripting = {
+  executeScript?: (
+    injection: {
+      target: { tabId: number };
+      world?: "ISOLATED" | "MAIN";
+      func: (...args: unknown[]) => unknown;
+      args?: unknown[];
+    },
+    callback?: Callback<RawScriptingExecutionResult[]>,
+  ) => Promise<RawScriptingExecutionResult[]> | undefined;
+};
+
 type RawDeclarativeNetRequestRule = {
   id: number;
   priority: number;
@@ -154,6 +170,7 @@ type RawApi = {
     getURL?: (path: string) => string;
   };
   storage?: { local?: RawStorageArea };
+  scripting?: RawScripting;
   tabs?: RawTabs;
   windows?: RawWindows;
   alarms?: RawAlarms;
@@ -183,7 +200,16 @@ function getRawApi(): RawApi {
     browser?: RawApi;
     chrome?: RawApi;
   };
-  const api = globalWithApi.browser ?? globalWithApi.chrome;
+  const candidates = [globalWithApi.chrome, globalWithApi.browser].filter(
+    (candidate): candidate is RawApi => Boolean(candidate),
+  );
+  const api =
+    candidates.find(
+      (candidate) =>
+        Boolean(candidate.runtime?.sendMessage) ||
+        Boolean(candidate.tabs?.query) ||
+        Boolean(candidate.storage?.local?.get),
+    ) ?? candidates[0];
   if (!api) {
     throw new Error("Browser extension API is unavailable.");
   }
@@ -337,6 +363,30 @@ export async function sendRuntimeMessage<T>(message: unknown): Promise<T> {
     runtime.sendMessage?.(message, callback),
   );
   return result as T;
+}
+
+export async function executeScriptInMainWorld<T>(
+  tabId: number,
+  func: (...args: unknown[]) => T | Promise<T>,
+  args: unknown[] = [],
+): Promise<T> {
+  const scripting = getRawApi().scripting;
+  if (!scripting?.executeScript) {
+    throw new Error("scripting.executeScript is unavailable");
+  }
+  const results = await invokeAsync<RawScriptingExecutionResult[]>(
+    (callback) =>
+      scripting.executeScript?.(
+        {
+          target: { tabId },
+          world: "MAIN",
+          func,
+          args,
+        },
+        callback,
+      ),
+  );
+  return (results[0]?.result as T | undefined) as T;
 }
 
 export function addRuntimeMessageListener(

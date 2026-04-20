@@ -4,7 +4,6 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import {
   isNullOriginAllowed,
   resolveAllowedHosts,
@@ -14,7 +13,8 @@ import {
   resolveApiToken,
   setApiToken,
   stripOptionalHostPort,
-} from "../config/runtime-env.js";
+} from "@elizaos/shared/runtime-env";
+import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { sweepExpiredEntries } from "./memory-bounds.js";
 
 // ---------------------------------------------------------------------------
@@ -153,7 +153,7 @@ export function applyCors(
     );
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-Eliza-Token, X-Api-Key, X-Eliza-Export-Token, X-Eliza-Client-Id, X-Eliza-Terminal-Token, X-Eliza-UI-Language, X-Eliza-Browser-Companion-Id",
+      "Content-Type, Authorization, X-Eliza-Token, X-Api-Key, X-Eliza-Export-Token, X-Eliza-Client-Id, X-Eliza-Terminal-Token, X-Eliza-UI-Language, X-LifeOps-Browser-Companion-Id, X-Eliza-Browser-Companion-Id",
     );
   }
 

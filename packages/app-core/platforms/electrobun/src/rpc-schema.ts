@@ -468,9 +468,6 @@ export interface DesktopBugReportBundleInfo {
 // RPC Schema
 // ============================================================================
 
-/** @deprecated Use ElizaDesktopRPCSchema instead. */
-export type ElizaDesktopRPCSchema = ElizaDesktopRPCSchema;
-
 export type ElizaDesktopRPCSchema = {
   bun: RPCSchema<{
     requests: {

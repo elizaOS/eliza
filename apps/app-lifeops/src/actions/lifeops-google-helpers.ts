@@ -15,7 +15,7 @@ import type {
 } from "@elizaos/shared/contracts/lifeops";
 import type { LifeOpsService } from "../lifeops/service.js";
 import { getLocalDateKey, getZonedDateParts } from "../lifeops/time.js";
-import { hasPrivateAccess } from "@elizaos/agent/security/access";
+import { hasPrivateAccess } from "@elizaos/agent/security";
 
 export const INTERNAL_URL = new URL("http://127.0.0.1/");
 
@@ -414,13 +414,21 @@ function describeEmailSearchQuery(query: string): string {
     if (!match) {
       return value;
     }
+    const unitToken = match[2];
+    if (!unitToken) {
+      return value;
+    }
     const unit =
-      match[2].toLowerCase() === "d"
+      unitToken.toLowerCase() === "d"
         ? "day"
-        : match[2].toLowerCase() === "m"
+        : unitToken.toLowerCase() === "m"
           ? "month"
           : "year";
-    const amount = Number(match[1]);
+    const amountToken = match[1];
+    if (!amountToken) {
+      return value;
+    }
+    const amount = Number(amountToken);
     return `${amount} ${unit}${amount === 1 ? "" : "s"}`;
   };
   if (sender) {
@@ -558,6 +566,25 @@ export function formatOverview(overview: LifeOpsOverview): string {
     `- ${summary.activeGoalCount} active goals`,
     `- ${summary.activeReminderCount} pending reminders`,
   ];
+  if (overview.schedule) {
+    const schedule = overview.schedule;
+    const sleepLine = schedule.isProbablySleeping
+      ? schedule.currentSleepStartedAt
+        ? `Likely asleep since ${schedule.currentSleepStartedAt}`
+        : "Likely asleep now"
+      : schedule.lastSleepEndedAt
+        ? `Last wake ${schedule.lastSleepEndedAt}${schedule.lastSleepDurationMinutes ? ` after ${schedule.lastSleepDurationMinutes} minutes asleep` : ""}`
+        : `Sleep status ${schedule.sleepStatus}`;
+    lines.push(`- Schedule phase: ${schedule.phase}`);
+    lines.push(`- ${sleepLine}`);
+    if (schedule.nextMealLabel && schedule.nextMealWindowStartAt) {
+      lines.push(
+        `- Next ${schedule.nextMealLabel} window starts ${schedule.nextMealWindowStartAt} (${Math.round(schedule.nextMealConfidence * 100)}% confidence)`,
+      );
+    } else if (schedule.lastMealAt) {
+      lines.push(`- Last inferred meal ${schedule.lastMealAt}`);
+    }
+  }
   if (overview.owner.occurrences.length > 0) {
     lines.push("\nCurrent items:");
     for (const occurrence of overview.owner.occurrences.slice(0, 5)) {

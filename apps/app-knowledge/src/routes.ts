@@ -869,6 +869,7 @@ export async function handleKnowledgeRoutes(
     filename: string;
     contentType?: string;
     metadata?: Record<string, unknown>;
+    roomId?: string;
   };
 
   async function addKnowledgeDocument(
@@ -927,7 +928,10 @@ export async function handleKnowledgeRoutes(
     const result = await service.addKnowledge({
       agentId,
       worldId: agentId,
-      roomId: agentId,
+      roomId:
+        typeof document.roomId === "string" && document.roomId.trim().length > 0
+          ? (document.roomId.trim() as UUID)
+          : agentId,
       entityId: agentId,
       clientDocumentId: "" as UUID, // Will be generated
       contentType,

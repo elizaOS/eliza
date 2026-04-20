@@ -1,10 +1,10 @@
 import process from "node:process";
-import { getLogPrefix } from "../utils/log-prefix";
-import { getPrimaryCommand, hasHelpOrVersion } from "./argv";
 import {
   formatUncaughtError,
   shouldIgnoreUnhandledRejection,
 } from "../runtime/error-handlers";
+import { getLogPrefix } from "../utils/log-prefix";
+import { getPrimaryCommand, hasHelpOrVersion } from "./argv";
 import { registerSubCliByName } from "./program/register.subclis";
 
 async function loadDotEnv(): Promise<void> {

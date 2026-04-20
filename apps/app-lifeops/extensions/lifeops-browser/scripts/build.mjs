@@ -17,11 +17,11 @@ const release = resolveLifeOpsBrowserReleaseVersion();
 const extensionVersion = buildChromeExtensionVersion(release);
 
 export function resolveLifeOpsBrowserIconSources(root = extensionRoot) {
-  const appPublicDir = path.resolve(root, "..", "..", "app", "public");
+  const iconDir = path.join(root, "public", "icons");
   return [
-    ["icon16.png", path.join(appPublicDir, "favicon-16x16.png")],
-    ["icon32.png", path.join(appPublicDir, "favicon-32x32.png")],
-    ["icon128.png", path.join(appPublicDir, "android-chrome-192x192.png")],
+    ["icon16.png", path.join(iconDir, "icon16.png")],
+    ["icon32.png", path.join(iconDir, "icon32.png")],
+    ["icon128.png", path.join(iconDir, "icon128.png")],
   ];
 }
 

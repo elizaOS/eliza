@@ -12,10 +12,6 @@ import type {
   OwnerContactEntry,
   OwnerContactsConfig,
 } from "../config/types.agent-defaults.js";
-import {
-  type LifeOpsEscalationStateRow,
-  LifeOpsRepository,
-} from "../lifeops/repository.js";
 import { resolveOwnerEntityId } from "../runtime/owner-entity.js";
 import {
   hasRuntimeSendHandler,
@@ -37,77 +33,48 @@ export interface EscalationState {
 const DEFAULT_CHANNELS: string[] = ["client_chat"];
 const DEFAULT_WAIT_MINUTES = 5;
 const DEFAULT_MAX_RETRIES = 3;
+const ESCALATION_CACHE_KEY_PREFIX = "agent:escalation:active";
 
 const activeEscalations = new Map<string, EscalationState>();
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 // ---------------------------------------------------------------------------
-// DB persistence helpers -- write-through cache
+// Persistence helpers -- owned by agent state instead of app-lifeops storage.
 // ---------------------------------------------------------------------------
 
-function stateToDbRow(
-  agentId: string,
-  state: EscalationState,
-): Parameters<LifeOpsRepository["upsertEscalationState"]>[0] {
-  return {
-    id: state.id,
-    agentId,
-    reason: state.reason,
-    text: state.text,
-    currentStep: state.currentStep,
-    channelsSent: state.channelsSent,
-    startedAt: new Date(state.startedAt).toISOString(),
-    lastSentAt: new Date(state.lastSentAt).toISOString(),
-    resolved: state.resolved,
-    resolvedAt: state.resolvedAt
-      ? new Date(state.resolvedAt).toISOString()
-      : null,
-  };
+function escalationCacheKey(runtime: IAgentRuntime): string {
+  return `${ESCALATION_CACHE_KEY_PREFIX}:${runtime.agentId as string}`;
 }
 
-function dbRowToState(row: LifeOpsEscalationStateRow): EscalationState {
-  return {
-    id: row.id,
-    reason: row.reason,
-    text: row.text,
-    currentStep: row.currentStep,
-    channelsSent: row.channelsSent,
-    startedAt: new Date(row.startedAt).getTime(),
-    lastSentAt: new Date(row.lastSentAt).getTime(),
-    resolved: row.resolved,
-    resolvedAt: row.resolvedAt ? new Date(row.resolvedAt).getTime() : undefined,
-  };
-}
-
-/** Best-effort persist -- never let DB failures break the escalation flow. */
 async function persistState(
   runtime: IAgentRuntime,
   state: EscalationState,
 ): Promise<void> {
   try {
-    const repo = new LifeOpsRepository(runtime);
-    await repo.upsertEscalationState(
-      stateToDbRow(runtime.agentId as string, state),
-    );
+    if (state.resolved) {
+      await runtime.deleteCache(escalationCacheKey(runtime));
+      return;
+    }
+    await runtime.setCache(escalationCacheKey(runtime), state);
   } catch (err) {
     logger.debug(
-      "[escalation] Failed to persist escalation state to DB",
+      "[escalation] Failed to persist escalation state to cache",
       err instanceof Error ? err.message : String(err),
     );
   }
 }
 
-/** Best-effort load from DB. Returns null on any error. */
-async function loadActiveFromDb(
+async function loadActiveFromCache(
   runtime: IAgentRuntime,
 ): Promise<EscalationState | null> {
   try {
-    const repo = new LifeOpsRepository(runtime);
-    const row = await repo.getActiveEscalationState(runtime.agentId as string);
-    return row ? dbRowToState(row) : null;
+    const state = await runtime.getCache<EscalationState>(
+      escalationCacheKey(runtime),
+    );
+    return state ?? null;
   } catch (err) {
     logger.debug(
-      "[escalation] Failed to load escalation state from DB",
+      "[escalation] Failed to load escalation state from cache",
       err instanceof Error ? err.message : String(err),
     );
     return null;
@@ -549,8 +516,7 @@ export class EscalationService {
     const cached = EscalationService.getActiveEscalationSync();
     if (cached) return cached;
 
-    // Cache miss -- try DB (handles post-restart case)
-    const persisted = await loadActiveFromDb(runtime);
+    const persisted = await loadActiveFromCache(runtime);
     if (persisted) {
       activeEscalations.set(persisted.id, persisted);
       return persisted;
@@ -558,22 +524,12 @@ export class EscalationService {
     return null;
   }
 
-  /**
-   * Rehydrate unresolved escalations from DB into the in-memory cache.
-   *
-   * Call during agent startup so that escalations created before a restart
-   * are visible to `getActiveEscalationSync()` and can be detected by
-   * the next `processReminders` cycle.
-   *
-   * Timers are intentionally NOT recreated -- the periodic reminder loop
-   * will pick up stale unresolved escalations and advance them.
-   */
   static async rehydrateFromDb(runtime: IAgentRuntime): Promise<void> {
-    const persisted = await loadActiveFromDb(runtime);
+    const persisted = await loadActiveFromCache(runtime);
     if (persisted && !activeEscalations.has(persisted.id)) {
       activeEscalations.set(persisted.id, persisted);
       logger.info(
-        `[escalation] Rehydrated unresolved escalation ${persisted.id} from DB`,
+        `[escalation] Rehydrated unresolved escalation ${persisted.id} from cache`,
       );
     }
   }
@@ -585,13 +541,11 @@ export class EscalationService {
     idCounter = 0;
   }
 
-  /** Clear DB state for a given agent. Use in tests alongside `_reset()`. */
   static async _resetDb(runtime: IAgentRuntime): Promise<void> {
     try {
-      const repo = new LifeOpsRepository(runtime);
-      await repo.deleteAllEscalationStates(runtime.agentId as string);
+      await runtime.deleteCache(escalationCacheKey(runtime));
     } catch {
-      // Best-effort -- test runtimes may not have a real DB
+      // Best-effort -- test runtimes may not have a real cache adapter
     }
   }
 }

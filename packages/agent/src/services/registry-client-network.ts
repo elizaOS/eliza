@@ -65,6 +65,7 @@ export async function fetchFromNetwork(params: {
               launchType: string;
               launchUrl: string | null;
               icon: string | null;
+              heroImage?: string | null;
               capabilities: string[];
               minPlayers: number | null;
               maxPlayers: number | null;
@@ -124,6 +125,7 @@ export async function fetchFromNetwork(params: {
             launchType: e.app.launchType,
             launchUrl: e.app.launchUrl,
             icon: e.app.icon,
+            heroImage: e.app.heroImage ?? null,
             capabilities: e.app.capabilities || [],
             minPlayers: e.app.minPlayers ?? null,
             maxPlayers: e.app.maxPlayers ?? null,

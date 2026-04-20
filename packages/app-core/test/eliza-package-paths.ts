@@ -20,10 +20,7 @@ function getRepoLocalWorkspaceRoot(
   }
 
   const relativeRoots: Record<string, string[]> = {
-    "@elizaos/agent": [
-      "eliza/packages/agent",
-      "../eliza/packages/agent",
-    ],
+    "@elizaos/agent": ["eliza/packages/agent", "../eliza/packages/agent"],
     "@elizaos/app-core": [
       "eliza/packages/app-core",
       "../eliza/packages/app-core",
@@ -414,5 +411,7 @@ export function getUiSourceRoot(repoRoot: string): string | undefined {
   }
 
   const sourceRoot = path.join(packageRoot, "src");
-  return existsSync(path.join(sourceRoot, "index.ts")) ? sourceRoot : packageRoot;
+  return existsSync(path.join(sourceRoot, "index.ts"))
+    ? sourceRoot
+    : packageRoot;
 }

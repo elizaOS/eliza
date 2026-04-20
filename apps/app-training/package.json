@@ -14,6 +14,7 @@
     "./routes/training": "./src/routes/training-routes.ts",
     "./routes/trajectory": "./src/routes/trajectory-routes.ts",
     "./services": "./src/services/index.ts",
+    "./services/training-service-like": "./src/services/training-service-like.ts",
     "./core": "./src/core/index.ts",
     "./core/*": "./src/core/*.ts",
     "./core/context-types": "./src/core/context-types.ts",
@@ -27,13 +28,27 @@
     "./core/trajectory-task-datasets": "./src/core/trajectory-task-datasets.ts",
     "./core/vertex-tuning": "./src/core/vertex-tuning.ts",
     "./core/cli": "./src/core/cli.ts",
+    "./core/privacy-filter": "./src/core/privacy-filter.ts",
+    "./core/skill-scoring-cron": "./src/core/skill-scoring-cron.ts",
+    "./core/training-config": "./src/core/training-config.ts",
+    "./core/training-orchestrator": "./src/core/training-orchestrator.ts",
+    "./services/training-trigger": "./src/services/training-trigger.ts",
+    "./cli/train": "./src/cli/train.ts",
+    "./backends/atropos": "./src/backends/atropos.ts",
+    "./backends/tinker": "./src/backends/tinker.ts",
+    "./backends/native": "./src/backends/native.ts",
+    "./optimizers": "./src/optimizers/index.ts",
+    "./optimizers/*": "./src/optimizers/*.ts",
     "./package.json": "./package.json"
   },
+  "scripts": {
+    "train": "bun run src/cli/train.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/agent": "workspace:*"
+    "@elizaos/core": "workspace:*"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

@@ -1,5 +1,6 @@
 import type { Memory } from "../../../types/memory.ts";
 import type { State } from "../../../types/state.ts";
+import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 import {
 	validateActionKeywords as coreValidateActionKeywords,
 	validateActionRegex as coreValidateActionRegex,
@@ -210,12 +211,7 @@ function getRecentMessageTexts(state: State | undefined): string[] {
 }
 
 function getRecentMessages(state: State | undefined): Memory[] {
-	if (!state || typeof state !== "object") return [];
-
-	const recentMessagesData = (state as { recentMessagesData?: Memory[] })
-		.recentMessagesData;
-	if (!Array.isArray(recentMessagesData)) return [];
-	return recentMessagesData;
+	return getRecentMessagesData(state);
 }
 
 function validateKeywords(

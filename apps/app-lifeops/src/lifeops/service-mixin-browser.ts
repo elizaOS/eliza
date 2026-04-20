@@ -1,8 +1,11 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import crypto from "node:crypto";
 import type {
+  CreateLifeOpsBrowserCompanionAutoPairRequest,
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,
+  LifeOpsBrowserCompanionAutoPairResponse,
+  LifeOpsBrowserCompanionConfig,
   CreateLifeOpsBrowserCompanionPairingRequest,
   CreateLifeOpsBrowserSessionRequest,
   LifeOpsBrowserCompanionPairingResponse,
@@ -25,6 +28,7 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
+import { recordBrowserFocusWindow } from "./browser-extension-store.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 // ---------------------------------------------------------------------------
@@ -162,6 +166,8 @@ function selectRememberedBrowserTabs(
   return sorted.slice(0, maxRememberedTabs);
 }
 
+const MAX_BROWSER_FOCUS_WINDOW_MS = 2 * 60 * 1000;
+
 function browserUrlAllowedBySettings(
   url: string,
   settings: LifeOpsBrowserSettings,
@@ -179,6 +185,19 @@ function browserUrlAllowedBySettings(
     return true;
   } catch {
     return false;
+  }
+}
+
+function browserDomainFromUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    const hostname = parsed.hostname.trim().toLowerCase().replace(/\.+$/, "");
+    return hostname.length > 0 ? hostname : null;
+  } catch {
+    return null;
   }
 }
 
@@ -273,7 +292,10 @@ function resolveAwaitingBrowserActionId(
   actions: readonly any[],
 ): string | null {
   for (const action of actions) {
-    if (action.requireConfirmation === true) {
+    if (
+      action.requireConfirmation === true ||
+      action.requiresConfirmation === true
+    ) {
       return action.id ?? null;
     }
   }
@@ -287,6 +309,10 @@ import {
   createLifeOpsBrowserTabSummary,
 } from "./repository.js";
 import {
+  mergeBrowserTaskLifecycle,
+  summarizeBrowserTaskLifecycle,
+} from "./browser-session-lifecycle.js";
+import {
   DEFAULT_BROWSER_PERMISSION_STATE,
 } from "./service-constants.js";
 
@@ -294,11 +320,12 @@ import {
 // Browser mixin
 // ---------------------------------------------------------------------------
 
+/** @internal */
 export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {
-  return class extends Base {
-    protected async createBrowserSessionInternal(
+  class LifeOpsBrowserServiceMixin extends Base {
+    public async createBrowserSessionInternal(
       request: CreateLifeOpsBrowserSessionRequest,
     ): Promise<LifeOpsBrowserSession> {
       const workflowId = normalizeOptionalString(request.workflowId) ?? null;
@@ -333,28 +360,37 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
         metadata: {},
         finishedAt: null,
       });
-      await this.repository.createBrowserSession(session);
+      const lifecycle = mergeBrowserTaskLifecycle({
+        session,
+        now: new Date().toISOString(),
+      });
+      const initializedSession: LifeOpsBrowserSession = {
+        ...session,
+        result: lifecycle.result,
+        metadata: lifecycle.metadata,
+      };
+      await this.repository.createBrowserSession(initializedSession);
       await this.recordBrowserAudit(
         "browser_session_created",
-        session.id,
+        initializedSession.id,
         "browser session created",
         {
-          workflowId: session.workflowId,
-          title: session.title,
-          browser: session.browser,
-          profileId: session.profileId,
-          windowId: session.windowId,
-          tabId: session.tabId,
+          workflowId: initializedSession.workflowId,
+          title: initializedSession.title,
+          browser: initializedSession.browser,
+          profileId: initializedSession.profileId,
+          windowId: initializedSession.windowId,
+          tabId: initializedSession.tabId,
         },
         {
-          status: session.status,
-          actionCount: session.actions.length,
+          status: initializedSession.status,
+          actionCount: initializedSession.actions.length,
         },
       );
-      return session;
+      return initializedSession;
     }
 
-    protected async requireBrowserCompanion(
+    public async requireBrowserCompanion(
       companionId: string,
       pairingToken: string,
     ): Promise<LifeOpsBrowserCompanionStatus> {
@@ -426,7 +462,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
-    protected async claimQueuedBrowserSession(
+    public async claimQueuedBrowserSession(
       companion: LifeOpsBrowserCompanionStatus,
     ): Promise<LifeOpsBrowserSession | null> {
       const claimable = (await this.listBrowserSessions())
@@ -477,7 +513,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       return nextSession;
     }
 
-    protected async requireBrowserSessionForCompanion(
+    public async requireBrowserSessionForCompanion(
       companion: LifeOpsBrowserCompanionStatus,
       sessionId: string,
     ): Promise<LifeOpsBrowserSession> {
@@ -601,8 +637,46 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
         };
       }
 
-      const nowIso = new Date().toISOString();
+      const nowIso =
+        normalizeOptionalIsoString(
+          companionInput.lastSeenAt,
+          "companion.lastSeenAt",
+        ) ?? new Date().toISOString();
       const existingTabs = await this.repository.listBrowserTabs(this.agentId());
+      const currentSyncMs = Date.parse(nowIso);
+      const previouslyFocusedTab =
+        existingTabs.find((tab) => tab.focusedActive) ?? null;
+      if (previouslyFocusedTab && Number.isFinite(currentSyncMs)) {
+        const previousSeenMs = Date.parse(previouslyFocusedTab.lastSeenAt);
+        if (Number.isFinite(previousSeenMs) && currentSyncMs > previousSeenMs) {
+          const cappedStartMs = Math.max(
+            previousSeenMs,
+            currentSyncMs - MAX_BROWSER_FOCUS_WINDOW_MS,
+          );
+          await recordBrowserFocusWindow(this.runtime, {
+            deviceId: companion.id,
+            url: previouslyFocusedTab.url,
+            windowStart: new Date(cappedStartMs).toISOString(),
+            windowEnd: nowIso,
+          });
+          const domain = browserDomainFromUrl(previouslyFocusedTab.url);
+          if (domain) {
+            await this.recordScreenTimeEvent({
+              source: "website",
+              identifier: domain,
+              displayName: domain,
+              startAt: new Date(cappedStartMs).toISOString(),
+              endAt: nowIso,
+              metadata: {
+                url: previouslyFocusedTab.url,
+                browser: previouslyFocusedTab.browser,
+                profileId: previouslyFocusedTab.profileId,
+                companionId: companion.id,
+              },
+            });
+          }
+        }
+      }
       const existingTabsByKey = new Map(
         existingTabs.map((tab) => [browserTabIdentityKey(tab), tab]),
       );
@@ -977,6 +1051,42 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
+    async autoPairBrowserCompanion(
+      request: CreateLifeOpsBrowserCompanionAutoPairRequest,
+      apiBaseUrl: string,
+    ): Promise<LifeOpsBrowserCompanionAutoPairResponse> {
+      const profileId = normalizeOptionalString(request.profileId) ?? "default";
+      const profileLabel =
+        normalizeOptionalString(request.profileLabel) ?? "Default";
+      const label =
+        normalizeOptionalString(request.label) ??
+        `LifeOps Browser ${normalizeEnumValue(request.browser, "browser", LIFEOPS_BROWSER_KINDS)} ${profileLabel}`;
+      const pairing = await this.createBrowserCompanionPairing({
+        browser: request.browser,
+        profileId,
+        profileLabel,
+        label,
+        extensionVersion: request.extensionVersion ?? null,
+        metadata: request.metadata,
+      });
+      const config: LifeOpsBrowserCompanionConfig = {
+        apiBaseUrl: requireNonEmptyString(apiBaseUrl, "apiBaseUrl").replace(
+          /\/+$/,
+          "",
+        ),
+        companionId: pairing.companion.id,
+        pairingToken: pairing.pairingToken,
+        browser: pairing.companion.browser,
+        profileId: pairing.companion.profileId,
+        profileLabel: pairing.companion.profileLabel,
+        label: pairing.companion.label,
+      };
+      return {
+        companion: pairing.companion,
+        config,
+      };
+    }
+
     async syncBrowserCompanion(
       companionId: string,
       pairingToken: string,
@@ -1063,13 +1173,82 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
             finishedAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           };
+      const lifecycle = mergeBrowserTaskLifecycle({
+        session: nextSession,
+        now: nextSession.updatedAt,
+        approvalSatisfied: confirmed,
+        completed: !confirmed ? false : undefined,
+      });
+      const finalizedSession: LifeOpsBrowserSession = {
+        ...nextSession,
+        result: lifecycle.result,
+        metadata: lifecycle.metadata,
+      };
+      await this.repository.updateBrowserSession(finalizedSession);
+      await this.recordBrowserAudit(
+        "browser_session_updated",
+        finalizedSession.id,
+        confirmed ? "browser session confirmed" : "browser session cancelled",
+        {
+          confirmed,
+        },
+        {
+          status: finalizedSession.status,
+        },
+      );
+      return finalizedSession;
+    }
+
+    async updateBrowserSessionProgress(
+      sessionId: string,
+      request: UpdateLifeOpsBrowserSessionProgressRequest,
+    ): Promise<LifeOpsBrowserSession> {
+      const session = await this.getBrowserSession(sessionId);
+      if (
+        session.status !== "queued" &&
+        session.status !== "running" &&
+        session.status !== "awaiting_confirmation"
+      ) {
+        fail(
+          409,
+          `browser session cannot update progress from status ${session.status}`,
+        );
+      }
+      const updatedAt = new Date().toISOString();
+      const lifecycle = mergeBrowserTaskLifecycle({
+        session,
+        resultPatch:
+          request.result === undefined
+            ? undefined
+            : requireRecord(request.result, "result"),
+        metadataPatch:
+          request.metadata === undefined
+            ? undefined
+            : requireRecord(request.metadata, "metadata"),
+        now: updatedAt,
+      });
+      const nextSession: LifeOpsBrowserSession = {
+        ...session,
+        status: "running",
+        currentActionIndex:
+          request.currentActionIndex === undefined
+            ? session.currentActionIndex
+            : normalizeBrowserSessionActionIndex(
+                request.currentActionIndex,
+                session.actions.length,
+              ),
+        result: lifecycle.result,
+        metadata: lifecycle.metadata,
+        updatedAt,
+      };
       await this.repository.updateBrowserSession(nextSession);
       await this.recordBrowserAudit(
         "browser_session_updated",
         nextSession.id,
-        confirmed ? "browser session confirmed" : "browser session cancelled",
+        "browser session progress updated",
         {
-          confirmed,
+          currentActionIndex: nextSession.currentActionIndex,
+          browserTask: summarizeBrowserTaskLifecycle(nextSession),
         },
         {
           status: nextSession.status,
@@ -1102,6 +1281,19 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
           "Browser session requires explicit confirmation before execution.",
         );
       }
+      const updatedAt = new Date().toISOString();
+      const lifecycle = mergeBrowserTaskLifecycle({
+        session,
+        resultPatch:
+          request.result === undefined
+            ? undefined
+            : requireRecord(request.result, "result"),
+        now: updatedAt,
+        completed:
+          request.status === "failed"
+            ? false
+            : request.status === "done" || request.status === undefined,
+      });
       const nextSession: LifeOpsBrowserSession = {
         ...session,
         status:
@@ -1112,15 +1304,10 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
                 "failed",
               ] as const),
         currentActionIndex: Math.max(0, session.actions.length - 1),
-        result:
-          request.result === undefined
-            ? session.result
-            : {
-                ...session.result,
-                ...requireRecord(request.result, "result"),
-              },
+        result: lifecycle.result,
+        metadata: lifecycle.metadata,
         finishedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        updatedAt,
       };
       await this.repository.updateBrowserSession(nextSession);
       await this.recordBrowserAudit(
@@ -1163,34 +1350,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
           `browser session cannot update progress from status ${session.status}`,
         );
       }
-      const nextSession: LifeOpsBrowserSession = {
-        ...session,
-        status: "running",
-        currentActionIndex:
-          request.currentActionIndex === undefined
-            ? session.currentActionIndex
-            : normalizeBrowserSessionActionIndex(
-                request.currentActionIndex,
-                session.actions.length,
-              ),
-        result:
-          request.result === undefined
-            ? session.result
-            : {
-                ...session.result,
-                ...requireRecord(request.result, "result"),
-              },
-        metadata:
-          request.metadata === undefined
-            ? session.metadata
-            : mergeMetadata(
-                session.metadata,
-                requireRecord(request.metadata, "metadata"),
-              ),
-        updatedAt: new Date().toISOString(),
-      };
-      await this.repository.updateBrowserSession(nextSession);
-      return nextSession;
+      return this.updateBrowserSessionProgress(session.id, request);
     }
 
     async completeBrowserSessionFromCompanion(
@@ -1206,5 +1366,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       await this.requireBrowserSessionForCompanion(companion, sessionId);
       return this.completeBrowserSession(sessionId, request);
     }
-  };
+  }
+
+  return LifeOpsBrowserServiceMixin;
 }

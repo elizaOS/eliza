@@ -1,6 +1,6 @@
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import Handlebars from "handlebars";
-import { z } from "zod";
+import z from "zod";
 
 import logger from "./logger";
 import type {
@@ -1390,5 +1390,25 @@ export const getContentTypeFromMimeType = (
 	return undefined;
 };
 
+// `export * from "./utils"` (in index.node.ts etc.) resolves to this file, not
+// to a `./utils/index.ts`. Any helper in the `utils/` directory that needs to be
+// reachable from `@elizaos/core` must be re-exported here.
 export { getLocalServerUrl } from "./utils/node";
 export { extractFirstSentence, hasFirstSentence } from "./utils/text-splitting";
+export { extractAndParseJSONObjectFromText } from "./utils/json-llm";
+export {
+	attachAvailableContexts,
+	AVAILABLE_CONTEXTS_STATE_KEY,
+	CONTEXT_ROUTING_METADATA_KEY,
+	CONTEXT_ROUTING_STATE_KEY,
+	type ContextRoutingDecision,
+	deriveAvailableContexts,
+	getActiveRoutingContexts,
+	getContextRoutingFromMessage,
+	getContextRoutingFromState,
+	mergeContextRouting,
+	parseContextList,
+	parseContextRoutingMetadata,
+	setContextRoutingMetadata,
+	shouldIncludeByContext,
+} from "./utils/context-routing";

@@ -1,5 +1,17 @@
-
-
+import {
+  Button,
+  FieldLabel,
+  NewActionButton,
+  PageLayout,
+  PagePanel,
+  Sidebar,
+  SidebarCollapsedActionButton,
+  SidebarContent,
+  SidebarHeader,
+  SidebarPanel,
+  SidebarScrollRegion,
+  StatusBadge,
+} from "@elizaos/ui";
 import { Plus } from "lucide-react";
 import {
   createContext,
@@ -13,11 +25,10 @@ import {
 } from "react";
 import type { TriggerSummary } from "../../api/client";
 import { useApp } from "../../state";
-import { WidgetHost } from "../../widgets";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
+import { WidgetHost } from "../../widgets";
 import { HeartbeatForm } from "./HeartbeatForm";
-import { PagePanel, SidebarCollapsedActionButton, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, FieldLabel, NewActionButton, StatusBadge, StatusDot, PageLayout } from "@elizaos/ui";
 import {
   BUILT_IN_TEMPLATES,
   buildCreateRequest,
@@ -32,9 +43,8 @@ import {
   railMonogram,
   saveUserTemplates,
   scheduleLabel,
-  toneForLastStatus,
-  type TranslateFn,
   type TriggerFormState,
+  toneForLastStatus,
   validateForm,
 } from "./heartbeat-utils";
 

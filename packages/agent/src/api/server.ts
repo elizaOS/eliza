@@ -31,13 +31,17 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+// Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
+import { DropService, handleDropRoutes } from "@elizaos/app-elizamaker";
 import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
+import { TxService } from "@elizaos/app-steward/api/tx-service";
 import type {
   SwarmEvent,
   TaskCompletionSummary,
   TaskContext,
 } from "@elizaos/app-task-coordinator/api/coordinator-types";
 import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator/api/coordinator-wiring";
+import { routeTaskAgentTextToConnector } from "@elizaos/app-task-coordinator/api/task-agent-message-routing";
 // Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
 // import { handleWalletTradeExecuteRoute } from "./wallet-trade-routes.js";
 // import {
@@ -52,20 +56,11 @@ import {
   type AgentRuntime,
   ChannelType,
   createMessageMemory,
+  type IAgentRuntime,
   logger,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { type WebSocket, WebSocketServer } from "ws";
-import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
-import { CharacterSchema } from "../config/character-schema.js";
-import {
-  type ElizaConfig,
-  loadElizaConfig,
-  saveElizaConfig,
-} from "../config/config.js";
-import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
-import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.js";
 import {
   isNullOriginAllowed,
   resolveAllowedHosts,
@@ -76,7 +71,17 @@ import {
   resolveServerOnlyPort,
   setApiToken,
   stripOptionalHostPort,
-} from "../config/runtime-env.js";
+} from "@elizaos/shared/runtime-env";
+import { type WebSocket, WebSocketServer } from "ws";
+import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
+import { CharacterSchema } from "../config/character-schema.js";
+import {
+  type ElizaConfig,
+  loadElizaConfig,
+  saveElizaConfig,
+} from "../config/config.js";
+import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
+import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.js";
 import {
   ONBOARDING_CLOUD_PROVIDER_OPTIONS,
   ONBOARDING_PROVIDER_CATALOG,
@@ -123,6 +128,13 @@ import {
 // signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout extracted to @elizaos/plugin-signal
 import { signalAuthExists } from "../services/signal-pairing.js";
 import { streamManager } from "../services/stream-manager.js";
+import {
+  clearTelegramAccountAuthState,
+  clearTelegramAccountSession,
+  TelegramAccountAuthSession,
+  telegramAccountAuthStateExists,
+  telegramAccountSessionExists,
+} from "../services/telegram-account-auth.js";
 // Telegram account auth: moved to @elizaos/plugin-telegram (account-setup-routes + account-auth-service).
 // WhatsApp pairing: route handlers moved to @elizaos/plugin-whatsapp.
 import {
@@ -168,21 +180,22 @@ import {
   initSse as initSseFromChatRoutes,
   writeSseJson as writeSseJsonFromChatRoutes,
 } from "./chat-routes.js";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.js";
 import { handleCloudBillingRoute } from "./cloud-billing-routes.js";
 import { handleCloudCompatRoute } from "./cloud-compat-routes.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { handleCloudRelayRoute } from "./cloud-relay-routes.js";
 import { type CloudRouteState, handleCloudRoute } from "./cloud-routes.js";
+import { handleDuffelRelayRoute } from "./duffel-relay-routes.js";
 import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
+import { extractConversationMetadataFromRoom } from "./conversation-metadata.js";
 import { handleConversationRoutes } from "./conversation-routes.js";
+import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
 import { handleDatabaseRoute } from "./database.js";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.js";
-// Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
-import { handleDropRoutes } from "./drop-routes.js";
-import { DropService } from "./drop-service.js";
 import { handleHealthRoutes } from "./health-routes.js";
 import {
   readJsonBody as parseJsonBody,
@@ -229,10 +242,9 @@ import { applySignalQrOverride } from "./signal-routes.js";
 import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
-import { routeTaskAgentTextToConnector } from "./task-agent-message-routing.js";
+import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
 import { handleTriggerRoutes } from "./trigger-routes.js";
 import { handleTtsRoutes } from "./tts-routes.js";
-import { TxService } from "./tx-service.js";
 import { handleUpdateRoutes } from "./update-routes.js";
 import {
   // Balance/import/generate helpers moved to @elizaos/app-steward plugin routes.
@@ -252,7 +264,6 @@ import {
 } from "./wallet-capability.js";
 import { handleWalletRoutes } from "./wallet-routes.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
-import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
 // handleWhatsAppRoute moved to @elizaos/plugin-whatsapp setup-routes.
 // applyWhatsAppQrOverride is still used by plugin-status routes.
 import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
@@ -342,9 +353,12 @@ import {
 } from "./plugin-discovery-helpers.js";
 
 const nodeRequire = createRequire(import.meta.url);
+// Dynamic import (not require) because the plugin is ESM-only and bun's
+// createRequire cannot load ESM packages. Top-level await is settled before
+// any consumer reads the binding.
 let agentOrchestratorCompat: unknown = null;
 try {
-  agentOrchestratorCompat = nodeRequire("@elizaos/plugin-agent-orchestrator");
+  agentOrchestratorCompat = await import("@elizaos/plugin-agent-orchestrator");
 } catch {
   agentOrchestratorCompat = null;
 }
@@ -534,30 +548,24 @@ function initializeOGCodeInState(): void {
   });
 }
 
-// ConversationMeta re-exported from server-types.ts
-export type { ConversationMeta } from "./server-types.js";
-
-import type { ConversationMeta } from "./server-types.js";
-
-// resolveAppUserName, patchTouchesProviderSelection, resolveConversationGreetingText
-// moved to server-helpers.ts; imported in the consolidated import at the top
-
-// AgentStartupDiagnostics, ServerState re-exported from server-types.ts
-export type { AgentStartupDiagnostics, ServerState } from "./server-types.js";
-
-import type { AgentStartupDiagnostics, ServerState } from "./server-types.js";
-
-// ShareIngestItem, SkillEntry, LogEntry, StreamEventType, StreamEventEnvelope
-// re-exported from server-types.ts
+// Canonical server surface types (single source in server-types.ts).
 export type {
+  AgentStartupDiagnostics,
+  ConversationMeta,
   LogEntry,
+  ServerState,
   ShareIngestItem,
   SkillEntry,
   StreamEventEnvelope,
   StreamEventType,
 } from "./server-types.js";
 
-import type { StreamEventEnvelope } from "./server-types.js";
+import type {
+  AgentStartupDiagnostics,
+  ConversationMeta,
+  ServerState,
+  StreamEventEnvelope,
+} from "./server-types.js";
 
 // ---------------------------------------------------------------------------
 // Package root resolution (for reading bundled plugins.json)
@@ -787,7 +795,11 @@ function isModuleResolutionFailure(err: unknown): boolean {
     return false;
   }
   const code = "code" in err ? (err as NodeJS.ErrnoException).code : undefined;
-  if (code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND") {
+  if (
+    code === "MODULE_NOT_FOUND" ||
+    code === "ERR_MODULE_NOT_FOUND" ||
+    code === "ERR_PACKAGE_PATH_NOT_EXPORTED"
+  ) {
     return true;
   }
   if (!("message" in err) || typeof err.message !== "string") {
@@ -796,7 +808,8 @@ function isModuleResolutionFailure(err: unknown): boolean {
   return (
     err.message.includes("Cannot find module") ||
     err.message.includes("Cannot find package") ||
-    err.message.includes("ERR_MODULE_NOT_FOUND")
+    err.message.includes("ERR_MODULE_NOT_FOUND") ||
+    err.message.includes('is not defined by "exports"')
   );
 }
 
@@ -886,7 +899,7 @@ import {
   getStylePresets,
   normalizeCharacterLanguage,
   resolveStylePresetByAvatarIndex,
-} from "../onboarding-presets.js";
+} from "@elizaos/shared/onboarding-presets";
 import { pickRandomNames } from "../runtime/onboarding-names.js";
 
 import {
@@ -1104,13 +1117,13 @@ interface RequestContext {
   onRuntimeSwapped?: () => void;
 }
 
-import type { TrainingServiceLike } from "./server-types.js";
+import type { TrainingServiceWithRuntime } from "./server-types.js";
 
 type TrainingServiceCtor = new (options: {
   getRuntime: () => AgentRuntime | null;
   getConfig: () => ElizaConfig;
   setConfig: (nextConfig: ElizaConfig) => void;
-}) => TrainingServiceLike;
+}) => TrainingServiceWithRuntime;
 
 async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null> {
   const candidates = [
@@ -1253,13 +1266,9 @@ const _WORKBENCH_TODO_TAG = WORKBENCH_TODO_TAG;
 
 // ── Autonomy / swarm / coding-agent helpers — extracted to server-helpers-swarm.ts ──
 
-import {
-  routeAutonomyTextToUser as _routeAutonomyTextToUser,
-} from "./server-helpers-swarm.js";
+import { routeAutonomyTextToUser as _routeAutonomyTextToUser } from "./server-helpers-swarm.js";
 
-export {
-  routeAutonomyTextToUser,
-} from "./server-helpers-swarm.js";
+export { routeAutonomyTextToUser } from "./server-helpers-swarm.js";
 
 const routeAutonomyTextToUser = _routeAutonomyTextToUser;
 
@@ -1377,7 +1386,6 @@ function getCoordinatorFromRuntime(runtime: AgentRuntime): {
   getTaskThread?: (
     threadId: string,
   ) => Promise<{ roomId?: string | null } | null>;
-  sourceRoomId?: string | null;
 } | null {
   const coordinator = runtime.getService("SWARM_COORDINATOR");
   if (coordinator) {
@@ -1464,16 +1472,16 @@ function wireCodingAgentWsBridge(st: ServerState): boolean {
  * persisted message in the conversation.
  */
 function wireCodingAgentSwarmSynthesis(st: ServerState): boolean {
-  // Same rationale as wireCodingAgentChatBridge: synthesis is generated
-  // from task metadata (originalTask = user's text), not from the
-  // subagent's actual output. The task-progress-streamer + jsonl watcher
-  // deliver the real answer. Install a no-op callback so the upstream
-  // wiring check considers this bridge wired.
+  // The task-progress-streamer was removed from this tree but the callback
+  // was left as a no-op, so subagent completions never reached the user.
+  // Invoke handleSwarmSynthesis directly so the synthesis LLM routes the
+  // final answer back to the conversation. The task jsonl is already the
+  // source of truth for per-task completionSummary.
   if (!st.runtime) return false;
   const coordinator = getCoordinatorFromRuntime(st.runtime);
   if (!coordinator?.setSwarmCompleteCallback) return false;
-  coordinator.setSwarmCompleteCallback(async () => {
-    // Deliberately no-op — synthesis happens via the streamer instead.
+  coordinator.setSwarmCompleteCallback(async (payload) => {
+    await handleSwarmSynthesis(st, payload);
   });
   return true;
 }
@@ -1496,6 +1504,8 @@ export async function handleSwarmSynthesis(
       originalTask: string;
       status: string;
       completionSummary: string;
+      workdir?: string;
+      roomId?: string;
     }>;
     total: number;
     completed: number;
@@ -1517,10 +1527,19 @@ export async function handleSwarmSynthesis(
     `[swarm-synthesis] Generating synthesis for ${payload.total} tasks (${payload.completed} completed, ${payload.stopped} stopped, ${payload.errored} errored)`,
   );
 
-  const resultText = await buildSynthesisResultText(payload);
-  logger.info("[swarm-synthesis] Synthesis generated, routing to user");
-  await routeMessage(resultText, "swarm_synthesis");
-  await routeSynthesisToConnector(runtime, resultText);
+  const resultText = await buildSynthesisResultText(payload, runtime);
+  logger.info(
+    `[swarm-synthesis] Synthesis generated (${resultText.length} chars), routing to user — preview: ${resultText.slice(0, 200).replace(/\n/g, " | ")}`,
+  );
+  // Route back to the originating chat channel via the roomId captured on
+  // the incoming user message (propagated through the task payload).
+  const roomId = payload.tasks.find((t) => t.roomId)?.roomId ?? null;
+  // Discord's per-message limit is 2000 chars. Deliver long answers as
+  // sequential chunks so the subagent's full output reaches the user.
+  for (const chunk of chunkForDiscord(resultText, 1900)) {
+    await routeMessage(chunk, "swarm_synthesis");
+    await routeSynthesisToConnector(runtime, chunk, roomId);
+  }
 }
 
 /**
@@ -1528,33 +1547,108 @@ export async function handleSwarmSynthesis(
  * For port-bound tasks, verifies the server is actually listening.
  * No LLM call required — task data already has what we need.
  */
-async function buildSynthesisResultText(payload: {
-  tasks: Array<{
-    originalTask: string;
-    completionSummary: string;
-    status: string;
-  }>;
-  total: number;
-}): Promise<string> {
-  const parts = await Promise.all(payload.tasks.map(buildTaskResultLine));
-  return parts.length === 1
-    ? `done — ${parts[0]}`
-    : `done — ${payload.total} tasks:\n${parts.map((p) => `• ${p}`).join("\n")}`;
-}
-
-async function buildTaskResultLine(task: {
+type SynthesisTask = {
+  sessionId: string;
   originalTask: string;
   completionSummary: string;
-}): Promise<string> {
-  if (task.completionSummary) return task.completionSummary;
-  const portMatch = task.originalTask.match(/port\s+(\d+)/i);
-  const port = portMatch?.[1];
-  if (!port) return task.originalTask;
-  if (await isPortServing(port)) {
-    const host = process.env.ELIZA_PUBLIC_HOST ?? "localhost";
-    return `built and serving at http://${host}:${port}`;
+  status: string;
+  workdir?: string;
+  /**
+   * The subagent framework that produced this task's output. `shell` sessions
+   * have no `~/.claude/projects/*.jsonl` of their own, so buildTaskLine must
+   * skip the jsonl read for them — otherwise the jsonl lookup falls through
+   * to whatever claude-code session happens to live under the encoded workdir
+   * path (e.g. a shell agent with cwd=/home/milady would end up reading the
+   * operator's own claude-code session at ~/.claude/projects/-home-milady/*).
+   */
+  agentType?: string;
+};
+
+async function buildSynthesisResultText(
+  payload: { tasks: SynthesisTask[]; total: number },
+  runtime: AgentRuntime,
+): Promise<string> {
+  const parts = await Promise.all(
+    payload.tasks.map((task) => buildTaskLine(task, runtime)),
+  );
+  if (parts.length === 1) return parts[0];
+  return `done — ${parts.length} tasks:\n${parts.map((p) => `• ${p}`).join("\n")}`;
+}
+
+/**
+ * Deliver the subagent's actual final answer — the last end_turn assistant
+ * text from its session jsonl. Trust the agent to already have produced
+ * a coherent response; synthesis does not rewrite or trim it.
+ *
+ * Falls back only to a port-status check (for `port NNNN`-style tasks) and
+ * finally to an honest placeholder — never to `task.completionSummary`
+ * (the validator LLM's analysis paragraph, e.g. "The agent wrote the
+ * files, verified with curl, and reported the URL") or `task.originalTask`
+ * (echoes the user's original prompt). Both of those were the source of
+ * the "why doesn't the bot paste the actual URL" complaint.
+ */
+async function buildTaskLine(
+  task: SynthesisTask,
+  runtime: AgentRuntime,
+): Promise<string> {
+  const workdir =
+    task.workdir ?? resolveSessionWorkdir(runtime, task.sessionId);
+  // Shell subagents are raw /bin/bash sessions — they don't write a
+  // `~/.claude/projects/*.jsonl`. Reading one via the encoded workdir
+  // path can cross-contaminate with the operator's own claude-code
+  // session (e.g. a shell agent with cwd=/home/milady matches the
+  // operator's project dir at ~/.claude/projects/-home-milady/), so
+  // for shell agents we skip the jsonl lookup entirely and go
+  // straight to the completionSummary fallback below, which is
+  // populated from the coordinator's SharedDecision ledger.
+  const isShellAgent = task.agentType === "shell" || task.agentType === "pi";
+  if (workdir && !isShellAgent) {
+    // The PTY task_complete hook fires as soon as claude-code stops, but
+    // the session's jsonl flush can lag by a few hundred milliseconds,
+    // which races against synthesis. Retry briefly so we deliver the
+    // agent's actual end_turn text instead of the honest-fallback.
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const assistantText = await readLastAssistantTextFromJsonl(workdir);
+      if (assistantText) return assistantText;
+      if (attempt < 3) {
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
   }
-  return `built the files but server isn't running on port ${port} yet`;
+  const port = task.originalTask.match(/port\s+(\d+)/i)?.[1];
+  if (port) {
+    if (await isPortServing(port)) {
+      const host = process.env.ELIZA_PUBLIC_HOST ?? "localhost";
+      return `built and serving at http://${host}:${port}`;
+    }
+    return `built the files but server isn't running on port ${port} yet`;
+  }
+  // Last resort: if we have a completionSummary, use it. For reasoning
+  // subagents (claude/gemini/codex/etc) the jsonl path above normally
+  // fires first, so this doesn't revive the validator-narrative-leaks
+  // that motivated removing the completionSummary fallback — reasoning
+  // agents have already delivered their real `end_turn` text by the
+  // time we get here. For `shell` agents there's no jsonl at all
+  // (shell output goes straight to the PTY buffer, not
+  // ~/.claude/projects/*.jsonl); the coordinator's per-turn
+  // SharedDecision ledger, which feeds completionSummary, is the only
+  // recorded output. Without this fallback shell prompts like
+  // "what's the vps uptime" would silently return the honest
+  // placeholder even when the agent successfully ran the command.
+  if (task.completionSummary?.trim()) {
+    return task.completionSummary.trim();
+  }
+  return "task finished but no output was captured — try again.";
+}
+
+function resolveSessionWorkdir(
+  runtime: AgentRuntime,
+  sessionId: string,
+): string | null {
+  const ptyService = runtime.getService("PTY_SERVICE") as {
+    getSession?: (id: string) => { workdir?: string } | undefined;
+  } | null;
+  return ptyService?.getSession?.(sessionId)?.workdir ?? null;
 }
 
 async function isPortServing(port: string): Promise<boolean> {
@@ -1576,13 +1670,22 @@ async function isPortServing(port: string): Promise<boolean> {
 async function routeSynthesisToConnector(
   runtime: AgentRuntime,
   resultText: string,
+  roomId: string | null,
 ): Promise<void> {
-  const coordinator = getCoordinatorFromRuntime(runtime);
-  const sourceRoomId = coordinator?.sourceRoomId;
-  if (!sourceRoomId) return;
+  if (!roomId) {
+    logger.debug(
+      "[swarm-synthesis] No roomId available — cannot route to connector",
+    );
+    return;
+  }
   try {
-    const room = await runtime.getRoom(sourceRoomId as UUID);
-    if (!room?.source) return;
+    const room = await runtime.getRoom(roomId as UUID);
+    if (!room?.source) {
+      logger.debug(
+        `[swarm-synthesis] Room ${roomId} has no source connector — cannot route`,
+      );
+      return;
+    }
     await runtime.sendMessageToTarget(
       {
         source: room.source,
@@ -1596,10 +1699,14 @@ async function routeSynthesisToConnector(
       `[swarm-synthesis] Routed result to ${room.source} room ${room.id}`,
     );
   } catch (err) {
-    logger.debug(`[swarm-synthesis] Connector routing failed: ${err}`);
+    logger.warn(`[swarm-synthesis] Connector routing failed: ${err}`);
   }
 }
 
+import {
+  chunkForDiscord,
+  readLastAssistantTextFromJsonl,
+} from "../runtime/subagent-output.js";
 // ── Parse Action Block from Eliza's Response ─────────────────────────
 import {
   parseActionBlock,
@@ -1660,9 +1767,7 @@ function wireCoordinatorEventRouting(st: ServerState): boolean {
             ? await runtime.getRoom(st.chatRoomId).catch(() => null)
             : null;
           if (!st.chatUserId || !st.chatRoomId || !existingLegacyChatRoom) {
-            const adminId =
-              st.adminEntityId ??
-              (stringToUuid(`${st.agentName}-admin-entity`) as UUID);
+            const adminId = resolveClientChatAdminEntityId(st);
             st.adminEntityId = adminId;
             st.chatUserId = adminId;
             st.chatRoomId =
@@ -1797,7 +1902,7 @@ async function handleCodingAgentsFallback(
     installed?: boolean;
     installCommand?: string;
     docsUrl?: string;
-    auth?: import("./coding-agents-preflight-normalize").NormalizedPreflightAuth;
+    auth?: import("@elizaos/app-task-coordinator/api/coding-agents-preflight-normalize").NormalizedPreflightAuth;
   };
   /** CLI login hook on adapter instances — union `.d.ts` omits it even when runtime provides it. */
   type CodingAgentAdapterAuthHook = {
@@ -2068,7 +2173,7 @@ async function handleCodingAgentsFallback(
         }
       }
       const { normalizePreflightAuth } = await import(
-        "./coding-agents-preflight-normalize"
+        "@elizaos/app-task-coordinator/api/coding-agents-preflight-normalize"
       );
       const normalized = rows.flatMap((item): AgentPreflightRecord[] => {
         if (!item || typeof item !== "object") return [];
@@ -2395,7 +2500,7 @@ async function handleCodingAgentsFallback(
         // Whitelist + URL-scheme-validate before forwarding to the
         // browser. See `coding-agents-auth-sanitize.ts` for rationale.
         const { sanitizeAuthResult } = await import(
-          "./coding-agents-auth-sanitize"
+          "@elizaos/app-task-coordinator/api/coding-agents-auth-sanitize"
         );
         json(res, sanitizeAuthResult(triggered));
       }
@@ -2827,17 +2932,17 @@ async function handleRequest(
     readJsonBody,
     json,
     error,
-    executeTriggerTask: executeTriggerTask as never,
+    executeTriggerTask,
     getTriggerHealthSnapshot,
-    getTriggerLimit: getTriggerLimit as never,
-    listTriggerTasks: listTriggerTasks as never,
+    getTriggerLimit,
+    listTriggerTasks,
     readTriggerConfig,
     readTriggerRuns,
-    taskToTriggerSummary: taskToTriggerSummary as never,
+    taskToTriggerSummary,
     triggersFeatureEnabled,
-    buildTriggerConfig: buildTriggerConfig as never,
-    buildTriggerMetadata: buildTriggerMetadata as never,
-    normalizeTriggerDraft: normalizeTriggerDraft as never,
+    buildTriggerConfig,
+    buildTriggerMetadata,
+    normalizeTriggerDraft,
     DISABLED_TRIGGER_INTERVAL_MS,
     TRIGGER_TASK_NAME,
     TRIGGER_TASK_TAGS: [...TRIGGER_TASK_TAGS],
@@ -3085,7 +3190,25 @@ async function handleRequest(
 
   // ═══════════════════════════════════════════════════════════════════════
   // Skills routes (extracted to skills-routes.ts)
+  // Curated-skills routes live at /api/skills/curated/* and must be dispatched
+  // before the generic skills routes (which reject "/" in skill IDs).
   // ═══════════════════════════════════════════════════════════════════════
+  if (pathname.startsWith("/api/skills/curated")) {
+    if (
+      await handleCuratedSkillsRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        json,
+        error,
+        readJsonBody,
+      })
+    ) {
+      return;
+    }
+  }
   if (pathname.startsWith("/api/skills")) {
     if (
       await handleSkillsRoutes({
@@ -3122,7 +3245,27 @@ async function handleRequest(
       auditEventTypes: AUDIT_EVENT_TYPES,
       auditSeverities: AUDIT_SEVERITIES,
       getAuditFeedSize,
-      queryAuditFeed: (query) => queryAuditFeed(query as never) as never,
+      queryAuditFeed: (query) =>
+        queryAuditFeed({
+          type: (AUDIT_EVENT_TYPES as readonly string[]).includes(
+            query.type ?? "",
+          )
+            ? (query.type as (typeof AUDIT_EVENT_TYPES)[number])
+            : undefined,
+          severity: (AUDIT_SEVERITIES as readonly string[]).includes(
+            query.severity ?? "",
+          )
+            ? (query.severity as (typeof AUDIT_SEVERITIES)[number])
+            : undefined,
+          sinceMs: query.sinceMs,
+          limit: query.limit,
+        }).map((entry) => ({
+          timestamp: entry.timestamp,
+          type: entry.type,
+          summary: entry.summary,
+          severity: entry.severity,
+          metadata: entry.metadata,
+        })),
       subscribeAuditFeed,
     })
   ) {
@@ -3382,9 +3525,46 @@ async function handleRequest(
   // Telegram setup routes: now handled by @elizaos/plugin-telegram via
   // runtime plugin routes (rawPath: true). See plugin-telegram/src/setup-routes.ts.
 
-  // Telegram account routes (/api/telegram-account/*): now handled by
-  // @elizaos/plugin-telegram via runtime plugin routes (rawPath: true).
-  // See plugin-telegram/src/account-setup-routes.ts.
+  // ── Telegram account routes (/api/telegram-account/*) ────────────────
+  if (pathname.startsWith("/api/telegram-account")) {
+    const routeState = {
+      config: state.config,
+      saveConfig: () => saveElizaConfig(state.config),
+      runtime: state.runtime
+        ? {
+            getService: (type: string) =>
+              (
+                state.runtime as { getService: (t: string) => unknown }
+              ).getService(type),
+            getSetting: (key: string) =>
+              (
+                state.runtime as {
+                  getSetting: (k: string) => string | undefined;
+                }
+              ).getSetting(key),
+          }
+        : undefined,
+      telegramAccountAuthSession: state.telegramAccountAuthSession,
+    };
+    const handled = await handleTelegramAccountRoute(
+      req,
+      res,
+      pathname,
+      method,
+      routeState,
+      { json, error, readJsonBody },
+      {
+        createAuthSession: (options) => new TelegramAccountAuthSession(options),
+        authStateExists: telegramAccountAuthStateExists,
+        sessionExists: telegramAccountSessionExists,
+        clearAuthState: clearTelegramAccountAuthState,
+        clearSession: clearTelegramAccountSession,
+      },
+    );
+    state.telegramAccountAuthSession =
+      routeState.telegramAccountAuthSession ?? null;
+    if (handled) return;
+  }
 
   // ── Discord Local routes (/api/discord-local/*) — extracted to @elizaos/plugin-discord (setup-routes.ts) ──
 
@@ -3530,21 +3710,6 @@ async function handleRequest(
   }
 
   if (
-    await handleWebsiteBlockerRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      runtime: state.runtime ?? undefined,
-      readJsonBody,
-      json,
-      error,
-    })
-  ) {
-    return;
-  }
-
-  if (
     await handleBrowserWorkspaceRoutes({
       req,
       res,
@@ -3577,6 +3742,18 @@ async function handleRequest(
 
   // ── Cloud routes (/api/cloud/*) ─────────────────────────────────────────
   if (pathname.startsWith("/api/cloud/")) {
+    // Duffel travel relay — must run before the generic cloud passthrough
+    // so the upstream Duffel + billing path is hit, not the bare cloud
+    // proxy that would land on /api/v1/duffel/* with no markup logic.
+    const duffelHandled = await handleDuffelRelayRoute(
+      req,
+      res,
+      pathname,
+      method,
+      { config: state.config, runtime: state.runtime },
+    );
+    if (duffelHandled) return;
+
     const billingHandled = await handleCloudBillingRoute(
       req,
       res,
@@ -3845,8 +4022,57 @@ async function handleRequest(
       method,
       pathname,
       url,
-      appManager: state.appManager as never,
-      getPluginManager: () => getPluginManagerForState(state) as never,
+      appManager: {
+        listAvailable: (pluginManager) =>
+          state.appManager.listAvailable(pluginManager),
+        search: (pluginManager, query, limit) =>
+          state.appManager.search(pluginManager, query, limit),
+        listInstalled: (pluginManager) =>
+          state.appManager.listInstalled(pluginManager),
+        listRuns: (runtime) =>
+          state.appManager.listRuns(
+            runtime && typeof runtime === "object"
+              ? (runtime as IAgentRuntime)
+              : null,
+          ),
+        getRun: (runId, runtime) =>
+          state.appManager.getRun(
+            runId,
+            runtime && typeof runtime === "object"
+              ? (runtime as IAgentRuntime)
+              : null,
+          ),
+        attachRun: (runId, runtime) =>
+          state.appManager.attachRun(
+            runId,
+            runtime && typeof runtime === "object"
+              ? (runtime as IAgentRuntime)
+              : null,
+          ),
+        detachRun: (runId) => state.appManager.detachRun(runId),
+        launch: (pluginManager, name, onProgress, runtime) =>
+          state.appManager.launch(
+            pluginManager,
+            name,
+            onProgress,
+            runtime && typeof runtime === "object"
+              ? (runtime as IAgentRuntime)
+              : null,
+          ),
+        stop: (pluginManager, name, runId, runtime) =>
+          state.appManager.stop(
+            pluginManager,
+            name,
+            runId,
+            runtime && typeof runtime === "object"
+              ? (runtime as IAgentRuntime)
+              : null,
+          ),
+        recordHeartbeat: (runId) => state.appManager.recordHeartbeat(runId),
+        getInfo: (pluginManager, name) =>
+          state.appManager.getInfo(pluginManager, name),
+      },
+      getPluginManager: () => getPluginManagerForState(state),
       parseBoundedLimit,
       readJsonBody,
       json,
@@ -4231,6 +4457,14 @@ export async function startApiServer(opts?: {
     // AppManager doesn't need a runtime reference — it just installs plugins
   }
 
+  // Start the periodic stale-run sweeper that stops app runs whose UI
+  // heartbeat has gone silent (e.g. the user closed the tab without
+  // pressing Stop). Without this, plugins that own a setInterval — like
+  // the Defense-of-the-Agents game loop — would tick forever after the
+  // browser disappeared. The sweeper invokes the same `stopRun` route
+  // hook the Stop button uses so plugins have one shutdown path.
+  state.appManager.startStaleRunSweeper(() => state.runtime);
+
   const addLog = (
     level: string,
     message: string,
@@ -4313,7 +4547,10 @@ export async function startApiServer(opts?: {
     defaultSource: string,
     defaultTags: string[],
   ): boolean => {
-    if ((target as unknown as Record<string, unknown>)[PATCHED_MARKER]) {
+    const patchedTarget = target as typeof logger & {
+      [PATCHED_MARKER]?: boolean;
+    };
+    if (patchedTarget[PATCHED_MARKER]) {
       return false;
     }
 
@@ -4352,7 +4589,7 @@ export async function startApiServer(opts?: {
       target[lvl] = patched;
     }
 
-    (target as unknown as Record<string, unknown>)[PATCHED_MARKER] = true;
+    patchedTarget[PATCHED_MARKER] = true;
     return true;
   };
 
@@ -5110,7 +5347,7 @@ export async function startApiServer(opts?: {
   state.broadcastStatus = broadcastStatus;
 
   // Generic broadcast — sends an arbitrary JSON payload to all WS clients.
-  state.broadcastWs = (data: Record<string, unknown>) => {
+  state.broadcastWs = (data: object) => {
     const message = JSON.stringify(data);
     for (const client of wsClients) {
       if (client.readyState === 1) {
@@ -5125,10 +5362,7 @@ export async function startApiServer(opts?: {
     }
   };
 
-  state.broadcastWsToClientId = (
-    clientId: string,
-    data: Record<string, unknown>,
-  ) => {
+  state.broadcastWsToClientId = (clientId: string, data: object) => {
     const message = JSON.stringify(data);
     let delivered = 0;
     for (const client of wsClients) {
@@ -5203,10 +5437,16 @@ export async function startApiServer(opts?: {
           // non-fatal — use current time
         }
 
+        const conversationMetadata = extractConversationMetadataFromRoom(
+          room,
+          convId,
+        );
+
         state.conversations.set(convId, {
           id: convId,
           title: room.name || "Chat",
           roomId: room.id as UUID,
+          ...(conversationMetadata ? { metadata: conversationMetadata } : {}),
           createdAt: updatedAt,
           updatedAt,
         });
@@ -5248,7 +5488,10 @@ export async function startApiServer(opts?: {
   ): Promise<void> => {
     try {
       const dbAgent = await rt.getAgent(rt.agentId);
-      const agentRecord = dbAgent as unknown as Record<string, unknown> | null;
+      const agentRecord =
+        dbAgent && typeof dbAgent === "object" && !Array.isArray(dbAgent)
+          ? Object.fromEntries(Object.entries(dbAgent))
+          : null;
       const saved = agentRecord?.character as
         | Record<string, unknown>
         | undefined;
@@ -5433,24 +5676,14 @@ export async function startApiServer(opts?: {
         port: actualPort,
         close: async () =>
           await new Promise<void>((r) => {
-            const closeAllConnections = (
-              server as { closeAllConnections?: () => void }
-            ).closeAllConnections;
-            const closeIdleConnections = (
-              server as { closeIdleConnections?: () => void }
-            ).closeIdleConnections;
-            const resolved = { done: false };
-            const finalize = () => {
-              if (!resolved.done) {
-                resolved.done = true;
-                r();
-              }
-            };
-            const closeTimeout = setTimeout(() => {
-              clearTimeout(closeTimeout);
-              finalize();
-            }, 5_000);
             void (async () => {
+              const closeAllConnections = (
+                server as { closeAllConnections?: () => void }
+              ).closeAllConnections;
+              const closeIdleConnections = (
+                server as { closeIdleConnections?: () => void }
+              ).closeIdleConnections;
+
               clearInterval(statusInterval);
               if (state.connectorHealthMonitor) {
                 state.connectorHealthMonitor.stop();
@@ -5470,13 +5703,46 @@ export async function startApiServer(opts?: {
                 }
               }
               wsClients.clear();
-              // WhatsApp pairing session cleanup now handled by
-              // @elizaos/plugin-whatsapp (stopAllPairingSessions).
-              // Signal pairing session cleanup now handled by
-              // @elizaos/plugin-signal (setup-routes module state).
-              // Telegram account auth session cleanup now handled by
-              // @elizaos/plugin-telegram (stopTelegramAccountAuthSession).
+              // Clean up WhatsApp pairing sessions
+              if (state.whatsappPairingSessions) {
+                for (const s of state.whatsappPairingSessions.values()) {
+                  try {
+                    s.stop();
+                  } catch {
+                    /* non-fatal */
+                  }
+                }
+                state.whatsappPairingSessions.clear();
+              }
+              // Clean up Signal pairing sessions
+              if (state.signalPairingSessions) {
+                for (const s of state.signalPairingSessions.values()) {
+                  try {
+                    s.stop();
+                  } catch {
+                    /* non-fatal */
+                  }
+                }
+                state.signalPairingSessions.clear();
+              }
+              if (state.telegramAccountAuthSession) {
+                try {
+                  await state.telegramAccountAuthSession.stop();
+                } catch {
+                  /* non-fatal */
+                }
+                state.telegramAccountAuthSession = null;
+              }
               wss.close();
+              const closeTimeout = setTimeout(() => r(), 5_000);
+              const resolved = { done: false };
+              const finalize = () => {
+                if (!resolved.done) {
+                  resolved.done = true;
+                  clearTimeout(closeTimeout);
+                  r();
+                }
+              };
               if (typeof closeAllConnections === "function") {
                 try {
                   closeAllConnections();
@@ -5492,7 +5758,7 @@ export async function startApiServer(opts?: {
                 }
               }
               server.close(finalize);
-            })().catch(() => finalize());
+            })();
           }),
         updateRuntime,
         updateStartup,

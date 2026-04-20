@@ -75,18 +75,26 @@ try {
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
   if (-not $installer) {
-    throw "No canonical installer found in $resolvedArtifactsDir (Milady-Setup-*.exe)."
+    $installer = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "Eliza-Setup-*.exe" -ErrorAction SilentlyContinue |
+      Sort-Object LastWriteTime -Descending |
+      Select-Object -First 1
+  }
+  if (-not $installer) {
+    throw "No canonical installer found in $resolvedArtifactsDir (Milady-Setup-*.exe / Eliza-Setup-*.exe)."
   }
 
   $summary.installer = $installer.FullName
   $summary.installerSizeBytes = [int64]$installer.Length
 
+  $env:ELIZA_WINDOWS_SMOKE_REQUIRE_INSTALLER = "1"
   $env:MILADY_WINDOWS_SMOKE_REQUIRE_INSTALLER = "1"
   $env:MILADY_TEST_WINDOWS_INSTALL_DIR = $ProofInstallDir
   $env:MILADY_TEST_WINDOWS_LAUNCHER_DIR = Join-Path $env:RUNNER_TEMP "milady-windows-proof-launcher"
+  $env:ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE = Join-Path $env:RUNNER_TEMP "milady-windows-proof-launcher.txt"
   $env:MILADY_TEST_WINDOWS_LAUNCHER_PATH_FILE = Join-Path $env:RUNNER_TEMP "milady-windows-proof-launcher.txt"
 
   Remove-Item $env:MILADY_TEST_WINDOWS_LAUNCHER_DIR -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item $env:ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE -Force -ErrorAction SilentlyContinue
   Remove-Item $env:MILADY_TEST_WINDOWS_LAUNCHER_PATH_FILE -Force -ErrorAction SilentlyContinue
 
   pwsh -File (Join-Path $PSScriptRoot "smoke-test-windows.ps1") `

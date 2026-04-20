@@ -13,15 +13,155 @@
  */
 
 import {
+  canonicalKeyName,
   commandExists,
   currentPlatform,
   escapeAppleScript,
   runCommand,
   safeXdotoolKey,
+  toCliclickKeyName,
+  toWindowsSendKey,
+  toXdotoolKeyName,
   validateInt,
   validateKeypress,
   validateText,
 } from "./helpers.js";
+
+function toAppleScriptModifier(key: string): string {
+  const normalized = key.trim().toLowerCase();
+  const mapping: Record<string, string> = {
+    cmd: "command",
+    command: "command",
+    meta: "command",
+    super: "command",
+    ctrl: "control",
+    control: "control",
+    alt: "option",
+    option: "option",
+    shift: "shift",
+    fn: "function",
+  };
+  const modifier = mapping[normalized];
+  if (!modifier) {
+    throw new Error(`Unsupported modifier key: "${key}"`);
+  }
+  return modifier;
+}
+
+function toAppleScriptKeyCode(key: string): number | null {
+  const canonical = canonicalKeyName(key);
+  const keyCodes: Record<string, number> = {
+    enter: 36,
+    return: 36,
+    tab: 48,
+    space: 49,
+    escape: 53,
+    delete: 51,
+    backspace: 51,
+    left: 123,
+    right: 124,
+    down: 125,
+    up: 126,
+    home: 115,
+    end: 119,
+    pageup: 116,
+    pagedown: 121,
+    f1: 122,
+    f2: 120,
+    f3: 99,
+    f4: 118,
+    f5: 96,
+    f6: 97,
+    f7: 98,
+    f8: 100,
+    f9: 101,
+    f10: 109,
+    f11: 103,
+    f12: 111,
+  };
+  return keyCodes[canonical] ?? null;
+}
+
+function runDarwinJxa(script: string, timeoutMs = 5000): void {
+  runCommand("osascript", ["-l", "JavaScript", "-e", script], timeoutMs);
+}
+
+function moveMouseDarwin(x: number, y: number): void {
+  runDarwinJxa(
+    `
+ObjC.import("ApplicationServices");
+const point = $.CGPointMake(${x}, ${y});
+const event = $.CGEventCreateMouseEvent(
+  null,
+  $.kCGEventMouseMoved,
+  point,
+  $.kCGMouseButtonLeft
+);
+$.CGEventPost($.kCGHIDEventTap, event);
+`,
+  );
+}
+
+function clickDarwinWithCoreGraphics(
+  x: number,
+  y: number,
+  button: "left" | "right",
+  clickCount = 1,
+): void {
+  const downEvent =
+    button === "right" ? "$.kCGEventRightMouseDown" : "$.kCGEventLeftMouseDown";
+  const upEvent =
+    button === "right" ? "$.kCGEventRightMouseUp" : "$.kCGEventLeftMouseUp";
+  const mouseButton =
+    button === "right" ? "$.kCGMouseButtonRight" : "$.kCGMouseButtonLeft";
+  runDarwinJxa(
+    `
+ObjC.import("ApplicationServices");
+const point = $.CGPointMake(${x}, ${y});
+for (let clickIndex = 1; clickIndex <= ${clickCount}; clickIndex += 1) {
+  const down = $.CGEventCreateMouseEvent(null, ${downEvent}, point, ${mouseButton});
+  $.CGEventSetIntegerValueField(down, $.kCGMouseEventClickState, clickIndex);
+  $.CGEventPost($.kCGHIDEventTap, down);
+  const up = $.CGEventCreateMouseEvent(null, ${upEvent}, point, ${mouseButton});
+  $.CGEventSetIntegerValueField(up, $.kCGMouseEventClickState, clickIndex);
+  $.CGEventPost($.kCGHIDEventTap, up);
+}
+`,
+  );
+}
+
+function scrollDarwin(
+  x: number,
+  y: number,
+  direction: "up" | "down" | "left" | "right",
+  amount: number,
+): void {
+  const vertical =
+    direction === "up" ? amount : direction === "down" ? -amount : 0;
+  const horizontal =
+    direction === "left" ? amount : direction === "right" ? -amount : 0;
+  runDarwinJxa(
+    `
+ObjC.import("ApplicationServices");
+const point = $.CGPointMake(${x}, ${y});
+const moveEvent = $.CGEventCreateMouseEvent(
+  null,
+  $.kCGEventMouseMoved,
+  point,
+  $.kCGMouseButtonLeft
+);
+$.CGEventPost($.kCGHIDEventTap, moveEvent);
+const scrollEvent = $.CGEventCreateScrollWheelEvent(
+  null,
+  $.kCGScrollEventUnitLine,
+  2,
+  ${vertical},
+  ${horizontal}
+);
+$.CGEventPost($.kCGHIDEventTap, scrollEvent);
+`,
+  );
+}
 
 // ── Mouse Click ─────────────────────────────────────────────────────────────
 
@@ -54,6 +194,116 @@ export function desktopClick(x: number, y: number): void {
   }
 }
 
+export function desktopClickWithModifiers(
+  x: number,
+  y: number,
+  modifiers: string[],
+  button: "left" | "middle" | "right" = "left",
+  clicks = 1,
+): void {
+  const sx = validateInt(x);
+  const sy = validateInt(y);
+  const safeClicks = Math.max(1, Math.min(validateInt(clicks), 5));
+  const os = currentPlatform();
+  const normalizedModifiers = modifiers.map((modifier) =>
+    validateKeypress(modifier),
+  );
+
+  if (os === "darwin") {
+    const modifierLines = normalizedModifiers.flatMap((modifier) => {
+      const appleModifier = toAppleScriptModifier(modifier);
+      return [`key down ${appleModifier}`];
+    });
+    const releaseLines = [...normalizedModifiers]
+      .reverse()
+      .map((modifier) => `key up ${toAppleScriptModifier(modifier)}`);
+    const clickLine =
+      button === "right"
+        ? `key down control\nrepeat ${safeClicks} times\nclick at {${sx}, ${sy}}\nend repeat\nkey up control`
+        : `repeat ${safeClicks} times\nclick at {${sx}, ${sy}}\nend repeat`;
+    runCommand(
+      "osascript",
+      [
+        "-e",
+        [
+          'tell application "System Events"',
+          ...modifierLines,
+          clickLine,
+          ...releaseLines,
+          "end tell",
+        ].join("\n"),
+      ],
+      5000,
+    );
+    return;
+  }
+
+  if (os === "linux") {
+    requireXdotool();
+    const args = [
+      ...normalizedModifiers.flatMap((modifier) => [
+        "keydown",
+        safeXdotoolKey(modifier),
+      ]),
+      "mousemove",
+      String(sx),
+      String(sy),
+      "click",
+      "--repeat",
+      String(safeClicks),
+      button === "right" ? "3" : button === "middle" ? "2" : "1",
+      ...[...normalizedModifiers].reverse().flatMap((modifier) => [
+        "keyup",
+        safeXdotoolKey(modifier),
+      ]),
+    ];
+    runCommand("xdotool", args, 7000);
+    return;
+  }
+
+  if (os === "win32") {
+    const vkCodes: Record<string, number> = {
+      shift: 0x10,
+      ctrl: 0x11,
+      control: 0x11,
+      alt: 0x12,
+      option: 0x12,
+      cmd: 0x5b,
+      command: 0x5b,
+      meta: 0x5b,
+      super: 0x5b,
+    };
+    const downFlags = button === "right" ? "0x0008" : "0x0002";
+    const upFlags = button === "right" ? "0x0010" : "0x0004";
+    const lines = [
+      "Add-Type -AssemblyName System.Windows.Forms",
+      `Add-Type -MemberDefinition '[DllImport(\"user32.dll\")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo); [DllImport(\"user32.dll\")] public static extern void mouse_event(int dwFlags, int dx, int dy, int dwData, int dwExtraInfo);' -Name Win32Input -Namespace Win32`,
+      `[System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${sx},${sy})`,
+      ...normalizedModifiers.map((modifier) => {
+        const vk = vkCodes[modifier.trim().toLowerCase()];
+        if (!vk) {
+          throw new Error(`Unsupported modifier key: "${modifier}"`);
+        }
+        return `[Win32.Win32Input]::keybd_event(${vk}, 0, 0, 0)`;
+      }),
+    ];
+    for (let index = 0; index < safeClicks; index += 1) {
+      lines.push(`[Win32.Win32Input]::mouse_event(${downFlags}, 0, 0, 0, 0)`);
+      lines.push(`[Win32.Win32Input]::mouse_event(${upFlags}, 0, 0, 0, 0)`);
+    }
+    lines.push(
+      ...[...normalizedModifiers].reverse().map((modifier) => {
+        const vk = vkCodes[modifier.trim().toLowerCase()];
+        if (!vk) {
+          throw new Error(`Unsupported modifier key: "${modifier}"`);
+        }
+        return `[Win32.Win32Input]::keybd_event(${vk}, 0, 0x0002, 0)`;
+      }),
+    );
+    runCommand("powershell", ["-Command", lines.join("; ")], 7000);
+  }
+}
+
 // ── Double Click ────────────────────────────────────────────────────────────
 
 export function desktopDoubleClick(x: number, y: number): void {
@@ -65,11 +315,7 @@ export function desktopDoubleClick(x: number, y: number): void {
     if (commandExists("cliclick")) {
       runCommand("cliclick", [`dc:${sx},${sy}`], 5000);
     } else {
-      runCommand(
-        "osascript",
-        ["-e", `tell application "System Events" to click at {${sx}, ${sy}}\ntell application "System Events" to click at {${sx}, ${sy}}`],
-        5000,
-      );
+      clickDarwinWithCoreGraphics(sx, sy, "left", 2);
     }
   } else if (os === "linux") {
     requireXdotool();
@@ -97,11 +343,7 @@ export function desktopRightClick(x: number, y: number): void {
     if (commandExists("cliclick")) {
       runCommand("cliclick", [`rc:${sx},${sy}`], 5000);
     } else {
-      runCommand(
-        "osascript",
-        ["-e", `tell application "System Events" to click at {${sx}, ${sy}} using {control down}`],
-        5000,
-      );
+      clickDarwinWithCoreGraphics(sx, sy, "right");
     }
   } else if (os === "linux") {
     requireXdotool();
@@ -128,12 +370,7 @@ export function desktopMouseMove(x: number, y: number): void {
     if (commandExists("cliclick")) {
       runCommand("cliclick", [`m:${sx},${sy}`], 5000);
     } else {
-      // AppleScript doesn't have a native mouse-move; use cliclick if available
-      runCommand(
-        "osascript",
-        ["-e", `do shell script "cliclick m:${sx},${sy}" & `],
-        5000,
-      );
+      moveMouseDarwin(sx, sy);
     }
   } else if (os === "linux") {
     requireXdotool();
@@ -213,46 +450,11 @@ export function desktopScroll(
 ): void {
   const sx = validateInt(x);
   const sy = validateInt(y);
-  const clicks = Math.max(1, Math.min(validateInt(amount), 100));
+  const clicks = Math.max(1, Math.min(validateInt(amount), 20));
   const os = currentPlatform();
 
   if (os === "darwin") {
-    // Move mouse first, then scroll
-    if (commandExists("cliclick")) {
-      runCommand("cliclick", [`m:${sx},${sy}`], 3000);
-    }
-    // AppleScript scroll using System Events
-    const scrollDir = direction === "up" || direction === "left" ? -1 : 1;
-    const axis = direction === "left" || direction === "right" ? "horizontal" : "vertical";
-    if (axis === "vertical") {
-      const script = `tell application "System Events" to scroll area 1 of scroll area 1`;
-      // Use cliclick scroll if available, otherwise AppleScript key presses
-      if (commandExists("cliclick")) {
-        // cliclick doesn't have scroll — use key arrows
-        const key = direction === "up" ? "arrow-up" : "arrow-down";
-        for (let i = 0; i < clicks; i++) {
-          runCommand("cliclick", [`kp:${key}`], 2000);
-        }
-      } else {
-        const keyCode = direction === "up" ? 126 : 125; // up=126 down=125
-        for (let i = 0; i < clicks; i++) {
-          runCommand(
-            "osascript",
-            ["-e", `tell application "System Events" to key code ${keyCode}`],
-            2000,
-          );
-        }
-      }
-    } else {
-      const keyCode = direction === "left" ? 123 : 124; // left=123 right=124
-      for (let i = 0; i < clicks; i++) {
-        runCommand(
-          "osascript",
-          ["-e", `tell application "System Events" to key code ${keyCode}`],
-          2000,
-        );
-      }
-    }
+    scrollDarwin(sx, sy, direction, clicks);
   } else if (os === "linux") {
     requireXdotool();
     // Move to position first
@@ -325,21 +527,10 @@ export function desktopKeyPress(key: string): void {
 
   if (os === "darwin") {
     if (commandExists("cliclick")) {
-      runCommand("cliclick", [`kp:${safeKey}`], 5000);
+      runCommand("cliclick", [`kp:${toCliclickKeyName(safeKey)}`], 5000);
     } else {
-      // Map common key names to macOS key codes
-      const keyCodes: Record<string, number> = {
-        return: 36, enter: 36, tab: 48, space: 49,
-        escape: 53, esc: 53,
-        delete: 51, backspace: 51, forwarddelete: 117,
-        left: 123, right: 124, down: 125, up: 126,
-        home: 115, end: 119, pageup: 116, pagedown: 121,
-        f1: 122, f2: 120, f3: 99, f4: 118, f5: 96, f6: 97,
-        f7: 98, f8: 100, f9: 101, f10: 109, f11: 103, f12: 111,
-      };
-      const normalized = safeKey.trim().toLowerCase();
-      const code = keyCodes[normalized];
-      if (code !== undefined) {
+      const code = toAppleScriptKeyCode(safeKey);
+      if (code !== null) {
         runCommand(
           "osascript",
           ["-e", `tell application "System Events" to key code ${code}`],
@@ -355,10 +546,10 @@ export function desktopKeyPress(key: string): void {
     }
   } else if (os === "linux") {
     requireXdotool();
-    const xKey = safeXdotoolKey(safeKey);
+    const xKey = safeXdotoolKey(toXdotoolKeyName(safeKey));
     runCommand("xdotool", ["key", xKey], 5000);
   } else if (os === "win32") {
-    const escaped = safeKey.replace(/'/g, "''");
+    const escaped = toWindowsSendKey(safeKey).replace(/'/g, "''");
     runCommand(
       "powershell",
       [
@@ -403,19 +594,27 @@ export function desktopKeyCombo(combo: string): void {
     const using = modifiers.length > 0
       ? ` using {${modifiers.join(", ")}}`
       : "";
+    const keyCode = toAppleScriptKeyCode(key);
     runCommand(
       "osascript",
-      ["-e", `tell application "System Events" to keystroke ${escapeAppleScript(key)}${using}`],
+      [
+        "-e",
+        keyCode === null
+          ? `tell application "System Events" to keystroke ${escapeAppleScript(key)}${using}`
+          : `tell application "System Events" to key code ${keyCode}${using}`,
+      ],
       5000,
     );
   } else if (os === "linux") {
     requireXdotool();
-    // xdotool key combo: "ctrl+c" → "ctrl+c" (xdotool understands this directly)
-    const xParts = parts.map((p) => {
+    const xParts = parts.map((p, index) => {
       const xMap: Record<string, string> = {
         cmd: "super", command: "super", meta: "super",
         ctrl: "ctrl", control: "ctrl",
       };
+      if (index === parts.length - 1) {
+        return safeXdotoolKey(toXdotoolKeyName(p));
+      }
       return xMap[p] ?? p;
     });
     runCommand("xdotool", ["key", xParts.join("+")], 5000);
@@ -436,7 +635,7 @@ export function desktopKeyCombo(combo: string): void {
         key = part;
       }
     }
-    const sendKey = `${prefix}${key}`.replace(/'/g, "''");
+    const sendKey = `${prefix}${toWindowsSendKey(key)}`.replace(/'/g, "''");
     runCommand(
       "powershell",
       [

@@ -1,4 +1,4 @@
-/** Fast stable-ish fingerprint for template and trace keys. */
+/** Fast stable-ish fingerprint for template / trace keys (not cryptographic). */
 export function simpleHash(s: string): string {
 	return s
 		.split("")

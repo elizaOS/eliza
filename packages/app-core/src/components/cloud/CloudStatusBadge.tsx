@@ -1,7 +1,6 @@
-
+import { Button } from "@elizaos/ui";
 import { AlertTriangle } from "lucide-react";
 import type { CSSProperties } from "react";
-import { Button } from "@elizaos/ui";
 
 type CloudHeaderStatusKind =
   | "error"

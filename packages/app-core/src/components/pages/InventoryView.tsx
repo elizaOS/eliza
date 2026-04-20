@@ -1,19 +1,34 @@
-import type { StewardStatusResponse } from "@elizaos/shared/contracts/wallet";
-import { useApp } from "../../state/useApp";
-import { WidgetHost } from "../../widgets";
-
+import { ApprovalQueue } from "@elizaos/app-steward/ApprovalQueue";
+import { TransactionHistory } from "@elizaos/app-steward/TransactionHistory";
+import type { StewardStatusResponse } from "@elizaos/app-steward/types/steward";
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  PageLayout,
+  PagePanel,
+  SegmentedControl,
+  Sidebar,
+  SidebarContent,
+  SidebarFilterBar,
+  SidebarHeader,
+  SidebarPanel,
+  SidebarScrollRegion,
+  TooltipHint,
+} from "@elizaos/ui";
 import {
   AlertTriangle,
   ChevronDown,
   Copy,
-  Link,
-  RefreshCw,
   Settings,
   Shield,
-  Unlink,
   Wallet,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useApp } from "../../state/useApp";
+import { WidgetHost } from "../../widgets";
 import {
   BSC_GAS_READY_THRESHOLD,
   loadTrackedBscTokens,
@@ -39,10 +54,7 @@ import { NftGrid } from "../inventory/NftGrid";
 import { TokensTable } from "../inventory/TokensTable";
 import { useInventoryData } from "../inventory/useInventoryData";
 import { PolicyControlsView } from "../settings/PolicyControlsView";
-import { ApprovalQueue } from "@elizaos/app-steward/ApprovalQueue";
-import { TransactionHistory } from "@elizaos/app-steward/TransactionHistory";
 import { ConfigPageView } from "./ConfigPageView";
-import { PagePanel, SidebarContent, SidebarFilterBar, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Dialog, DialogContent, DialogHeader, DialogTitle, SegmentedControl, TooltipHint, PageLayout } from "@elizaos/ui";
 
 /* ── Component ─────────────────────────────────────────────────────── */
 
@@ -245,6 +257,7 @@ export function InventoryView() {
     walletNfts,
     walletLoading,
     walletNftsLoading,
+    cloudRefreshing,
     inventoryView,
     inventorySort,
     inventorySortDirection,
@@ -298,16 +311,20 @@ export function InventoryView() {
   // ── Steward status ────────────────────────────────────────────────
   const [stewardStatus, setStewardStatus] =
     useState<StewardStatusResponse | null>(null);
+  const cloudRefreshPendingStewardSyncRef = useRef(false);
+
+  const loadStewardStatus = useCallback(async () => {
+    if (typeof getStewardStatus !== "function") {
+      return null;
+    }
+    return await getStewardStatus();
+  }, [getStewardStatus]);
 
   useEffect(() => {
-    if (typeof getStewardStatus !== "function") {
-      return;
-    }
-
     let cancelled = false;
-    getStewardStatus()
+    loadStewardStatus()
       .then((s) => {
-        if (!cancelled) setStewardStatus(s);
+        if (!cancelled && s) setStewardStatus(s);
       })
       .catch(() => {
         /* steward not available — ignore */
@@ -315,7 +332,34 @@ export function InventoryView() {
     return () => {
       cancelled = true;
     };
-  }, [getStewardStatus]);
+  }, [loadStewardStatus]);
+
+  useEffect(() => {
+    if (cloudRefreshing) {
+      cloudRefreshPendingStewardSyncRef.current = true;
+      return;
+    }
+
+    if (!cloudRefreshPendingStewardSyncRef.current) {
+      return;
+    }
+
+    cloudRefreshPendingStewardSyncRef.current = false;
+    let cancelled = false;
+    loadStewardStatus()
+      .then((status) => {
+        if (!cancelled && status) {
+          setStewardStatus(status);
+        }
+      })
+      .catch(() => {
+        /* steward not available — ignore */
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cloudRefreshing, loadStewardStatus]);
 
   useEffect(() => {
     if (autoLoadedInventoryViewRef.current === inventoryView) {

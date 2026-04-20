@@ -1,4 +1,8 @@
-import type { AgentRuntime } from "@elizaos/core";
+import type { RouteHelpers, RouteRequestContext } from "@elizaos/agent/api";
+import {
+  type TriggerRouteContext as AutonomousTriggerRouteContext,
+  handleTriggerRoutes as handleAutonomousTriggerRoutes,
+} from "@elizaos/agent/api/trigger-routes";
 import {
   buildTriggerConfig,
   buildTriggerMetadata,
@@ -15,11 +19,7 @@ import {
   taskToTriggerSummary,
   triggersFeatureEnabled,
 } from "@elizaos/agent/triggers";
-import type { RouteHelpers, RouteRequestContext } from "@elizaos/agent/api";
-import {
-  type TriggerRouteContext as AutonomousTriggerRouteContext,
-  handleTriggerRoutes as handleAutonomousTriggerRoutes,
-} from "@elizaos/agent/api/trigger-routes";
+import type { AgentRuntime } from "@elizaos/core";
 
 export type TriggerRouteHelpers = RouteHelpers;
 
@@ -32,17 +32,17 @@ function toAutonomousContext(
 ): AutonomousTriggerRouteContext {
   return {
     ...ctx,
-    executeTriggerTask: executeTriggerTask as never,
+    executeTriggerTask,
     getTriggerHealthSnapshot,
-    getTriggerLimit: getTriggerLimit as never,
-    listTriggerTasks: listTriggerTasks as never,
+    getTriggerLimit,
+    listTriggerTasks,
     readTriggerConfig,
     readTriggerRuns,
-    taskToTriggerSummary: taskToTriggerSummary as never,
+    taskToTriggerSummary,
     triggersFeatureEnabled,
-    buildTriggerConfig: buildTriggerConfig as never,
-    buildTriggerMetadata: buildTriggerMetadata as never,
-    normalizeTriggerDraft: normalizeTriggerDraft as never,
+    buildTriggerConfig,
+    buildTriggerMetadata,
+    normalizeTriggerDraft,
     DISABLED_TRIGGER_INTERVAL_MS,
     TRIGGER_TASK_NAME,
     TRIGGER_TASK_TAGS: [...TRIGGER_TASK_TAGS],

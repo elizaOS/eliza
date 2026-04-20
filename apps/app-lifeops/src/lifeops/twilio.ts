@@ -1,5 +1,5 @@
 import { logger } from "@elizaos/core";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
 
 export interface TwilioCredentials {
   accountSid: string;
@@ -40,6 +40,10 @@ export function readTwilioCredentialsFromEnv(
   };
 }
 
+function getTwilioBaseUrl(): string {
+  return process.env.MILADY_MOCK_TWILIO_BASE ?? "https://api.twilio.com";
+}
+
 /** Maximum number of retries for transient (5xx / network) failures. */
 const MAX_RETRIES = 2;
 /** Base delay in ms for exponential backoff between retries. */
@@ -61,7 +65,7 @@ async function sendTwilioRequest(args: {
   payload: URLSearchParams;
 }): Promise<TwilioDeliveryResult> {
   const { credentials, path, payload } = args;
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(credentials.accountSid)}${path}`;
+  const url = `${getTwilioBaseUrl()}/2010-04-01/Accounts/${encodeURIComponent(credentials.accountSid)}${path}`;
   const operation = twilioOperation(path);
 
   let lastResult: TwilioDeliveryResult | null = null;

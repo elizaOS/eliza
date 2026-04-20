@@ -9,7 +9,7 @@
 
 import type { ActivityEvent } from "../../hooks/useActivityEvents";
 import { WidgetHost } from "../../widgets";
-import { FavoriteAppsBar } from "./FavoriteAppsBar";
+import { AppsSection } from "./AppsSection";
 
 interface TasksEventsPanelProps {
   open: boolean;
@@ -35,7 +35,7 @@ export function TasksEventsPanel({
   return (
     <aside className={rootClassName} data-testid="chat-widgets-bar">
       <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-3 py-3">
-        <FavoriteAppsBar />
+        <AppsSection />
         <WidgetHost
           slot="chat-sidebar"
           events={events}

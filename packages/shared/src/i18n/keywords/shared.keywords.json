@@ -1,13 +1,6 @@
 {
   "$schema": "./keywords.schema.json",
-  "locales": [
-    "es",
-    "ko",
-    "pt",
-    "tl",
-    "vi",
-    "zh-CN"
-  ],
+  "locales": ["es", "ko", "pt", "tl", "vi", "zh-CN"],
   "entries": {
     "contextSignal.gmail.strong": {
       "base": [
@@ -32,21 +25,8 @@
         "new mail",
         "shoot me an email"
       ],
-      "zh-CN": [
-        "邮件",
-        "电子邮件",
-        "邮箱",
-        "收件箱",
-        "消息"
-      ],
-      "ko": [
-        "이메일",
-        "메일",
-        "지메일",
-        "받은편지함",
-        "메시지",
-        "메세지"
-      ],
+      "zh-CN": ["邮件", "电子邮件", "邮箱", "收件箱", "消息"],
+      "ko": ["이메일", "메일", "지메일", "받은편지함", "메시지", "메세지"],
       "es": [
         "correo",
         "correos",
@@ -65,18 +45,8 @@
         "mensagem",
         "mensagens"
       ],
-      "vi": [
-        "thư điện tử",
-        "thu dien tu",
-        "hộp thư",
-        "hop thu",
-        "tin nhắn"
-      ],
-      "tl": [
-        "koreo",
-        "liham",
-        "mensahe"
-      ]
+      "vi": ["thư điện tử", "thu dien tu", "hộp thư", "hop thu", "tin nhắn"],
+      "tl": ["koreo", "liham", "mensahe"]
     },
     "contextSignal.gmail.weak": {
       "base": [
@@ -408,14 +378,7 @@
         "google",
         "百度"
       ],
-      "ko": [
-        "검색",
-        "찾아봐",
-        "찾아봐줘",
-        "웹 검색",
-        "구글",
-        "google"
-      ],
+      "ko": ["검색", "찾아봐", "찾아봐줘", "웹 검색", "구글", "google"],
       "es": [
         "buscar",
         "busca",
@@ -433,21 +396,8 @@
         "procura na web",
         "procura online"
       ],
-      "vi": [
-        "tìm",
-        "tìm kiếm",
-        "tra cứu",
-        "tra cuu",
-        "google",
-        "tìm trên web"
-      ],
-      "tl": [
-        "hanapin",
-        "maghanap",
-        "i-google",
-        "google",
-        "hanap sa web"
-      ]
+      "vi": ["tìm", "tìm kiếm", "tra cứu", "tra cuu", "google", "tìm trên web"],
+      "tl": ["hanapin", "maghanap", "i-google", "google", "hanap sa web"]
     },
     "contextSignal.web_search.weak": {
       "base": [
@@ -466,26 +416,8 @@
         "research",
         "check"
       ],
-      "zh-CN": [
-        "最新",
-        "最近",
-        "新闻",
-        "当前",
-        "今天",
-        "价格",
-        "研究",
-        "查"
-      ],
-      "ko": [
-        "최신",
-        "최근",
-        "뉴스",
-        "현재",
-        "오늘",
-        "가격",
-        "조사",
-        "확인"
-      ],
+      "zh-CN": ["最新", "最近", "新闻", "当前", "今天", "价格", "研究", "查"],
+      "ko": ["최신", "최근", "뉴스", "현재", "오늘", "가격", "조사", "확인"],
       "es": [
         "ultimo",
         "última",
@@ -545,13 +477,7 @@
         "post to",
         "post in"
       ],
-      "zh-CN": [
-        "发消息",
-        "发送消息",
-        "私信",
-        "通知",
-        "提醒"
-      ],
+      "zh-CN": ["发消息", "发送消息", "私信", "通知", "提醒"],
       "ko": [
         "메시지 보내",
         "메세지 보내",
@@ -618,16 +544,7 @@
         "频道",
         "房间"
       ],
-      "ko": [
-        "보내",
-        "메시지",
-        "알림",
-        "관리자",
-        "owner",
-        "긴급",
-        "채널",
-        "방"
-      ],
+      "ko": ["보내", "메시지", "알림", "관리자", "owner", "긴급", "채널", "방"],
       "es": [
         "enviar",
         "mensaje",
@@ -652,14 +569,7 @@
         "canal",
         "sala"
       ],
-      "vi": [
-        "gửi",
-        "tin nhắn",
-        "thông báo",
-        "khẩn cấp",
-        "kênh",
-        "phòng"
-      ],
+      "vi": ["gửi", "tin nhắn", "thông báo", "khẩn cấp", "kênh", "phòng"],
       "tl": [
         "padala",
         "mensahe",
@@ -681,12 +591,7 @@
         "tell owner",
         "escalate"
       ],
-      "zh-CN": [
-        "通知管理员",
-        "告诉管理员",
-        "通知 owner",
-        "升级处理"
-      ],
+      "zh-CN": ["通知管理员", "告诉管理员", "通知 owner", "升级处理"],
       "ko": [
         "관리자에게 알려",
         "관리자한테 말해",
@@ -705,17 +610,8 @@
         "falar com o admin",
         "escalar"
       ],
-      "vi": [
-        "báo admin",
-        "bao admin",
-        "báo owner",
-        "leo thang"
-      ],
-      "tl": [
-        "sabihan ang admin",
-        "abisuhan ang owner",
-        "i-escalate"
-      ]
+      "vi": ["báo admin", "bao admin", "báo owner", "leo thang"],
+      "tl": ["sabihan ang admin", "abisuhan ang owner", "i-escalate"]
     },
     "contextSignal.send_admin_message.weak": {
       "base": [
@@ -727,23 +623,8 @@
         "escalate",
         "important"
       ],
-      "zh-CN": [
-        "管理员",
-        "owner",
-        "通知",
-        "提醒",
-        "紧急",
-        "升级",
-        "重要"
-      ],
-      "ko": [
-        "관리자",
-        "owner",
-        "알림",
-        "긴급",
-        "중요",
-        "에스컬레이션"
-      ],
+      "zh-CN": ["管理员", "owner", "通知", "提醒", "紧急", "升级", "重要"],
+      "ko": ["관리자", "owner", "알림", "긴급", "중요", "에스컬레이션"],
       "es": [
         "admin",
         "owner",
@@ -762,21 +643,8 @@
         "escalar",
         "importante"
       ],
-      "vi": [
-        "admin",
-        "owner",
-        "báo",
-        "khẩn cấp",
-        "quan trọng"
-      ],
-      "tl": [
-        "admin",
-        "owner",
-        "abiso",
-        "urgent",
-        "importante",
-        "escalate"
-      ]
+      "vi": ["admin", "owner", "báo", "khẩn cấp", "quan trọng"],
+      "tl": ["admin", "owner", "abiso", "urgent", "importante", "escalate"]
     },
     "contextSignal.search_conversations.strong": {
       "base": [
@@ -786,18 +654,8 @@
         "find messages",
         "find conversation"
       ],
-      "zh-CN": [
-        "搜索对话",
-        "搜索聊天",
-        "搜索消息",
-        "查找消息"
-      ],
-      "ko": [
-        "대화 검색",
-        "채팅 검색",
-        "메시지 검색",
-        "메시지 찾기"
-      ],
+      "zh-CN": ["搜索对话", "搜索聊天", "搜索消息", "查找消息"],
+      "ko": ["대화 검색", "채팅 검색", "메시지 검색", "메시지 찾기"],
       "es": [
         "buscar conversaciones",
         "buscar chats",
@@ -810,16 +668,8 @@
         "buscar mensagens",
         "encontrar mensagens"
       ],
-      "vi": [
-        "tìm cuộc trò chuyện",
-        "tìm tin nhắn",
-        "tra cứu cuộc trò chuyện"
-      ],
-      "tl": [
-        "hanapin ang usapan",
-        "hanapin ang chat",
-        "hanapin ang mensahe"
-      ]
+      "vi": ["tìm cuộc trò chuyện", "tìm tin nhắn", "tra cứu cuộc trò chuyện"],
+      "tl": ["hanapin ang usapan", "hanapin ang chat", "hanapin ang mensahe"]
     },
     "contextSignal.search_conversations.weak": {
       "base": [
@@ -835,24 +685,8 @@
         "previously",
         "conversation"
       ],
-      "zh-CN": [
-        "搜索",
-        "查找",
-        "记得",
-        "提到",
-        "聊过",
-        "之前",
-        "对话"
-      ],
-      "ko": [
-        "검색",
-        "찾기",
-        "기억",
-        "말했",
-        "언급",
-        "이전",
-        "대화"
-      ],
+      "zh-CN": ["搜索", "查找", "记得", "提到", "聊过", "之前", "对话"],
+      "ko": ["검색", "찾기", "기억", "말했", "언급", "이전", "대화"],
       "es": [
         "buscar",
         "encontrar",
@@ -872,22 +706,8 @@
         "antes",
         "conversa"
       ],
-      "vi": [
-        "tìm",
-        "nhớ",
-        "nói",
-        "nhắc",
-        "trước đó",
-        "cuộc trò chuyện"
-      ],
-      "tl": [
-        "hanap",
-        "tandaan",
-        "sinabi",
-        "nabanggit",
-        "dati",
-        "usapan"
-      ]
+      "vi": ["tìm", "nhớ", "nói", "nhắc", "trước đó", "cuộc trò chuyện"],
+      "tl": ["hanap", "tandaan", "sinabi", "nabanggit", "dati", "usapan"]
     },
     "contextSignal.read_channel.strong": {
       "base": [
@@ -901,20 +721,8 @@
         "scroll back",
         "read room"
       ],
-      "zh-CN": [
-        "读取频道",
-        "查看聊天",
-        "查看消息记录",
-        "频道历史",
-        "聊天记录"
-      ],
-      "ko": [
-        "채널 읽기",
-        "채팅 읽기",
-        "메시지 기록",
-        "채널 기록",
-        "채팅 기록"
-      ],
+      "zh-CN": ["读取频道", "查看聊天", "查看消息记录", "频道历史", "聊天记录"],
+      "ko": ["채널 읽기", "채팅 읽기", "메시지 기록", "채널 기록", "채팅 기록"],
       "es": [
         "leer canal",
         "leer chat",
@@ -929,12 +737,7 @@
         "histórico do chat",
         "registro do chat"
       ],
-      "vi": [
-        "đọc kênh",
-        "đọc chat",
-        "lịch sử kênh",
-        "lịch sử chat"
-      ],
+      "vi": ["đọc kênh", "đọc chat", "lịch sử kênh", "lịch sử chat"],
       "tl": [
         "basahin ang channel",
         "basahin ang chat",
@@ -1035,16 +838,8 @@
         "show messages with",
         "check messages with"
       ],
-      "zh-CN": [
-        "查看与某人的消息",
-        "与某人的对话",
-        "查看私信记录"
-      ],
-      "ko": [
-        "누군가와의 메시지 보기",
-        "누군가와의 대화",
-        "dm 기록 보기"
-      ],
+      "zh-CN": ["查看与某人的消息", "与某人的对话", "查看私信记录"],
+      "ko": ["누군가와의 메시지 보기", "누군가와의 대화", "dm 기록 보기"],
       "es": [
         "leer mensajes con",
         "conversación con",
@@ -1052,17 +847,8 @@
         "mensajes con",
         "chat con"
       ],
-      "pt": [
-        "ler mensagens com",
-        "conversa com",
-        "mensagens com",
-        "chat com"
-      ],
-      "vi": [
-        "đọc tin nhắn với",
-        "cuộc trò chuyện với",
-        "tin nhắn với"
-      ],
+      "pt": ["ler mensagens com", "conversa com", "mensagens com", "chat com"],
+      "vi": ["đọc tin nhắn với", "cuộc trò chuyện với", "tin nhắn với"],
       "tl": [
         "basahin ang mga mensahe kasama si",
         "usapan kasama si",
@@ -1080,43 +866,12 @@
         "chat with",
         "history with"
       ],
-      "zh-CN": [
-        "消息",
-        "对话",
-        "私信",
-        "联系人"
-      ],
-      "ko": [
-        "메시지",
-        "대화",
-        "dm",
-        "연락처"
-      ],
-      "es": [
-        "mensajes",
-        "conversación",
-        "conversacion",
-        "dm",
-        "contacto"
-      ],
-      "pt": [
-        "mensagens",
-        "conversa",
-        "dm",
-        "contato"
-      ],
-      "vi": [
-        "tin nhắn",
-        "cuộc trò chuyện",
-        "dm",
-        "liên hệ"
-      ],
-      "tl": [
-        "mensahe",
-        "usapan",
-        "dm",
-        "contact"
-      ]
+      "zh-CN": ["消息", "对话", "私信", "联系人"],
+      "ko": ["메시지", "대화", "dm", "연락처"],
+      "es": ["mensajes", "conversación", "conversacion", "dm", "contacto"],
+      "pt": ["mensagens", "conversa", "dm", "contato"],
+      "vi": ["tin nhắn", "cuộc trò chuyện", "dm", "liên hệ"],
+      "tl": ["mensahe", "usapan", "dm", "contact"]
     },
     "contextSignal.stream_control.strong": {
       "base": [
@@ -1129,18 +884,8 @@
         "begin stream",
         "end stream"
       ],
-      "zh-CN": [
-        "开播",
-        "下播",
-        "开始直播",
-        "停止直播"
-      ],
-      "ko": [
-        "방송 시작",
-        "방송 종료",
-        "라이브 시작",
-        "라이브 종료"
-      ],
+      "zh-CN": ["开播", "下播", "开始直播", "停止直播"],
+      "ko": ["방송 시작", "방송 종료", "라이브 시작", "라이브 종료"],
       "es": [
         "salir en vivo",
         "terminar stream",
@@ -1178,15 +923,7 @@
         "offline",
         "online"
       ],
-      "zh-CN": [
-        "直播",
-        "开播",
-        "下播",
-        "在线",
-        "离线",
-        "twitch",
-        "youtube"
-      ],
+      "zh-CN": ["直播", "开播", "下播", "在线", "离线", "twitch", "youtube"],
       "ko": [
         "라이브",
         "스트림",
@@ -1252,13 +989,7 @@
         "view person",
         "get contact"
       ],
-      "zh-CN": [
-        "查找联系人",
-        "查人",
-        "搜索联系人",
-        "谁是",
-        "查看资料"
-      ],
+      "zh-CN": ["查找联系人", "查人", "搜索联系人", "谁是", "查看资料"],
       "ko": [
         "사람 찾기",
         "연락처 검색",
@@ -1309,23 +1040,8 @@
         "rolodex",
         "details"
       ],
-      "zh-CN": [
-        "联系人",
-        "用户",
-        "谁",
-        "档案",
-        "身份",
-        "详情"
-      ],
-      "ko": [
-        "사람",
-        "연락처",
-        "사용자",
-        "누구",
-        "프로필",
-        "신원",
-        "정보"
-      ],
+      "zh-CN": ["联系人", "用户", "谁", "档案", "身份", "详情"],
+      "ko": ["사람", "연락처", "사용자", "누구", "프로필", "신원", "정보"],
       "es": [
         "persona",
         "contacto",
@@ -1355,15 +1071,7 @@
         "danh tính",
         "chi tiết"
       ],
-      "tl": [
-        "tao",
-        "contact",
-        "user",
-        "sino",
-        "profile",
-        "identity",
-        "details"
-      ]
+      "tl": ["tao", "contact", "user", "sino", "profile", "identity", "details"]
     },
     "contextSignal.lifeops.strong": {
       "base": [
@@ -3266,16 +2974,7 @@
         "ainda não",
         "ainda nao"
       ],
-      "vi": [
-        "không",
-        "đừng",
-        "hủy",
-        "chờ",
-        "thôi",
-        "dừng",
-        "chưa",
-        "bỏ đi"
-      ],
+      "vi": ["không", "đừng", "hủy", "chờ", "thôi", "dừng", "chưa", "bỏ đi"],
       "tl": [
         "hindi",
         "huwag",
@@ -3378,45 +3077,12 @@
         "coming up",
         "after this"
       ],
-      "zh-CN": [
-        "下一个",
-        "即将",
-        "马上",
-        "接下来",
-        "快到了"
-      ],
-      "ko": [
-        "다음",
-        "곧",
-        "다가오는",
-        "이제",
-        "곧 있을"
-      ],
-      "es": [
-        "próximo",
-        "proximo",
-        "siguiente",
-        "pronto",
-        "a punto de"
-      ],
-      "pt": [
-        "próximo",
-        "proximo",
-        "seguinte",
-        "logo",
-        "em breve"
-      ],
-      "vi": [
-        "tiếp theo",
-        "sắp tới",
-        "sớm",
-        "sắp"
-      ],
-      "tl": [
-        "susunod",
-        "malapit na",
-        "mamaya"
-      ]
+      "zh-CN": ["下一个", "即将", "马上", "接下来", "快到了"],
+      "ko": ["다음", "곧", "다가오는", "이제", "곧 있을"],
+      "es": ["próximo", "proximo", "siguiente", "pronto", "a punto de"],
+      "pt": ["próximo", "proximo", "seguinte", "logo", "em breve"],
+      "vi": ["tiếp theo", "sắp tới", "sớm", "sắp"],
+      "tl": ["susunod", "malapit na", "mamaya"]
     },
     "contextSignal.temporal_followup.strong": {
       "base": [
@@ -3631,24 +3297,8 @@
         "chat",
         "message"
       ],
-      "zh-CN": [
-        "最近",
-        "对话",
-        "说过",
-        "提到",
-        "之前",
-        "聊天",
-        "消息"
-      ],
-      "ko": [
-        "최근",
-        "대화",
-        "말했",
-        "언급",
-        "이전",
-        "채팅",
-        "메시지"
-      ],
+      "zh-CN": ["最近", "对话", "说过", "提到", "之前", "聊天", "消息"],
+      "ko": ["최근", "대화", "말했", "언급", "이전", "채팅", "메시지"],
       "es": [
         "reciente",
         "conversación",
@@ -3700,22 +3350,8 @@
         "talked about",
         "mentioned"
       ],
-      "zh-CN": [
-        "搜索",
-        "查找",
-        "记得",
-        "谁说过",
-        "提到",
-        "聊过"
-      ],
-      "ko": [
-        "검색",
-        "찾기",
-        "기억",
-        "누가 말했어",
-        "언급",
-        "이야기했던"
-      ],
+      "zh-CN": ["搜索", "查找", "记得", "谁说过", "提到", "聊过"],
+      "ko": ["검색", "찾기", "기억", "누가 말했어", "언급", "이야기했던"],
       "es": [
         "buscar",
         "encontrar",
@@ -3764,24 +3400,8 @@
         "friend",
         "user"
       ],
-      "zh-CN": [
-        "谁",
-        "联系人",
-        "联络",
-        "关系",
-        "人",
-        "朋友",
-        "用户"
-      ],
-      "ko": [
-        "누구",
-        "연락처",
-        "연락",
-        "관계",
-        "사람",
-        "친구",
-        "사용자"
-      ],
+      "zh-CN": ["谁", "联系人", "联络", "关系", "人", "朋友", "用户"],
+      "ko": ["누구", "연락처", "연락", "관계", "사람", "친구", "사용자"],
       "es": [
         "quién",
         "quien",
@@ -4033,26 +3653,9 @@
       ]
     },
     "action.restart.request": {
-      "base": [
-        "restart",
-        "reboot",
-        "reload",
-        "refresh",
-        "respawn"
-      ],
-      "zh-CN": [
-        "重启",
-        "重开",
-        "重新加载",
-        "刷新"
-      ],
-      "ko": [
-        "재시작",
-        "다시 시작",
-        "재부팅",
-        "다시 불러와",
-        "새로고침"
-      ],
+      "base": ["restart", "reboot", "reload", "refresh", "respawn"],
+      "zh-CN": ["重启", "重开", "重新加载", "刷新"],
+      "ko": ["재시작", "다시 시작", "재부팅", "다시 불러와", "새로고침"],
       "es": [
         "reinicia",
         "reiniciar",
@@ -4080,13 +3683,7 @@
         "làm mới",
         "lam moi"
       ],
-      "tl": [
-        "i-restart",
-        "restart",
-        "i-reboot",
-        "i-reload",
-        "i-refresh"
-      ]
+      "tl": ["i-restart", "restart", "i-reboot", "i-reload", "i-refresh"]
     },
     "action.setUserName.recentContext": {
       "base": [
@@ -4100,15 +3697,7 @@
         "change my name",
         "rename me"
       ],
-      "zh-CN": [
-        "名字",
-        "我的名字",
-        "我叫",
-        "我是",
-        "叫我",
-        "称呼我",
-        "改名字"
-      ],
+      "zh-CN": ["名字", "我的名字", "我叫", "我是", "叫我", "称呼我", "改名字"],
       "ko": [
         "이름",
         "내 이름",
@@ -4249,43 +3838,11 @@
       ]
     },
     "action.appControl.launchVerb": {
-      "base": [
-        "launch",
-        "open",
-        "start",
-        "run",
-        "show"
-      ],
-      "zh-CN": [
-        "启动",
-        "打开",
-        "运行",
-        "开启",
-        "显示"
-      ],
-      "ko": [
-        "실행",
-        "열어",
-        "시작",
-        "켜",
-        "보여줘"
-      ],
-      "es": [
-        "abre",
-        "abrir",
-        "inicia",
-        "iniciar",
-        "ejecuta",
-        "mostrar"
-      ],
-      "pt": [
-        "abre",
-        "abrir",
-        "inicia",
-        "iniciar",
-        "executa",
-        "mostrar"
-      ],
+      "base": ["launch", "open", "start", "run", "show"],
+      "zh-CN": ["启动", "打开", "运行", "开启", "显示"],
+      "ko": ["실행", "열어", "시작", "켜", "보여줘"],
+      "es": ["abre", "abrir", "inicia", "iniciar", "ejecuta", "mostrar"],
+      "pt": ["abre", "abrir", "inicia", "iniciar", "executa", "mostrar"],
       "vi": [
         "mở",
         "mo",
@@ -4296,239 +3853,52 @@
         "bắt đầu",
         "bat dau"
       ],
-      "tl": [
-        "buksan",
-        "simulan",
-        "patakbuhin",
-        "ipakita"
-      ]
+      "tl": ["buksan", "simulan", "patakbuhin", "ipakita"]
     },
     "action.appControl.stopVerb": {
-      "base": [
-        "stop",
-        "close",
-        "shut down",
-        "kill",
-        "quit",
-        "exit"
-      ],
-      "zh-CN": [
-        "停止",
-        "关闭",
-        "关掉",
-        "退出"
-      ],
-      "ko": [
-        "중지",
-        "멈춰",
-        "종료",
-        "닫아",
-        "끄기"
-      ],
-      "es": [
-        "detén",
-        "detener",
-        "cierra",
-        "cerrar",
-        "apaga",
-        "salir"
-      ],
-      "pt": [
-        "parar",
-        "pare",
-        "fechar",
-        "fecha",
-        "desliga",
-        "sair"
-      ],
-      "vi": [
-        "dừng",
-        "dung",
-        "tắt",
-        "tat",
-        "đóng",
-        "dong",
-        "thoát",
-        "thoat"
-      ],
-      "tl": [
-        "ihinto",
-        "itigil",
-        "isara",
-        "patayin",
-        "lumabas"
-      ]
+      "base": ["stop", "close", "shut down", "kill", "quit", "exit"],
+      "zh-CN": ["停止", "关闭", "关掉", "退出"],
+      "ko": ["중지", "멈춰", "종료", "닫아", "끄기"],
+      "es": ["detén", "detener", "cierra", "cerrar", "apaga", "salir"],
+      "pt": ["parar", "pare", "fechar", "fecha", "desliga", "sair"],
+      "vi": ["dừng", "dung", "tắt", "tat", "đóng", "dong", "thoát", "thoat"],
+      "tl": ["ihinto", "itigil", "isara", "patayin", "lumabas"]
     },
     "action.appControl.genericTarget": {
-      "base": [
-        "app",
-        "application"
-      ],
-      "zh-CN": [
-        "应用",
-        "应用程序",
-        "程序"
-      ],
-      "ko": [
-        "앱",
-        "애플리케이션"
-      ],
-      "es": [
-        "app",
-        "aplicación",
-        "aplicacion",
-        "programa"
-      ],
-      "pt": [
-        "app",
-        "aplicativo",
-        "aplicação",
-        "aplicacao",
-        "programa"
-      ],
-      "vi": [
-        "ứng dụng",
-        "ung dung"
-      ],
-      "tl": [
-        "app",
-        "aplikasyon",
-        "programa"
-      ]
+      "base": ["app", "application"],
+      "zh-CN": ["应用", "应用程序", "程序"],
+      "ko": ["앱", "애플리케이션"],
+      "es": ["app", "aplicación", "aplicacion", "programa"],
+      "pt": ["app", "aplicativo", "aplicação", "aplicacao", "programa"],
+      "vi": ["ứng dụng", "ung dung"],
+      "tl": ["app", "aplikasyon", "programa"]
     },
     "action.appControl.knownApp": {
-      "base": [
-        "shopify",
-        "vincent",
-        "companion",
-        "hyperscape",
-        "babylon"
-      ],
-      "zh-CN": [
-        "shopify",
-        "vincent",
-        "companion",
-        "hyperscape",
-        "babylon"
-      ],
-      "ko": [
-        "shopify",
-        "vincent",
-        "companion",
-        "hyperscape",
-        "babylon"
-      ],
-      "es": [
-        "shopify",
-        "vincent",
-        "companion",
-        "hyperscape",
-        "babylon"
-      ],
-      "pt": [
-        "shopify",
-        "vincent",
-        "companion",
-        "hyperscape",
-        "babylon"
-      ],
-      "vi": [
-        "shopify",
-        "vincent",
-        "companion",
-        "hyperscape",
-        "babylon"
-      ],
-      "tl": [
-        "shopify",
-        "vincent",
-        "companion",
-        "hyperscape",
-        "babylon"
-      ]
+      "base": ["shopify", "vincent", "companion", "hyperscape", "babylon"],
+      "zh-CN": ["shopify", "vincent", "companion", "hyperscape", "babylon"],
+      "ko": ["shopify", "vincent", "companion", "hyperscape", "babylon"],
+      "es": ["shopify", "vincent", "companion", "hyperscape", "babylon"],
+      "pt": ["shopify", "vincent", "companion", "hyperscape", "babylon"],
+      "vi": ["shopify", "vincent", "companion", "hyperscape", "babylon"],
+      "tl": ["shopify", "vincent", "companion", "hyperscape", "babylon"]
     },
     "action.terminal.commandVerb": {
-      "base": [
-        "run",
-        "execute",
-        "start",
-        "do"
-      ],
-      "zh-CN": [
-        "运行",
-        "执行",
-        "开始"
-      ],
-      "ko": [
-        "실행",
-        "돌려",
-        "시작",
-        "해줘"
-      ],
-      "es": [
-        "ejecuta",
-        "ejecutar",
-        "corre",
-        "correr",
-        "inicia"
-      ],
-      "pt": [
-        "executa",
-        "executar",
-        "roda",
-        "rodar",
-        "inicia"
-      ],
-      "vi": [
-        "chạy",
-        "chay",
-        "thực hiện",
-        "thuc hien",
-        "bắt đầu",
-        "bat dau"
-      ],
-      "tl": [
-        "patakbuhin",
-        "isagawa",
-        "simulan",
-        "gawin"
-      ]
+      "base": ["run", "execute", "start", "do"],
+      "zh-CN": ["运行", "执行", "开始"],
+      "ko": ["실행", "돌려", "시작", "해줘"],
+      "es": ["ejecuta", "ejecutar", "corre", "correr", "inicia"],
+      "pt": ["executa", "executar", "roda", "rodar", "inicia"],
+      "vi": ["chạy", "chay", "thực hiện", "thuc hien", "bắt đầu", "bat dau"],
+      "tl": ["patakbuhin", "isagawa", "simulan", "gawin"]
     },
     "action.terminal.commandFiller": {
-      "base": [
-        "command",
-        "shell command",
-        "terminal command"
-      ],
-      "zh-CN": [
-        "命令",
-        "终端命令",
-        "shell 命令"
-      ],
-      "ko": [
-        "명령",
-        "명령어",
-        "터미널 명령"
-      ],
-      "es": [
-        "comando",
-        "comando de terminal"
-      ],
-      "pt": [
-        "comando",
-        "comando do terminal"
-      ],
-      "vi": [
-        "lệnh",
-        "lenh",
-        "lệnh terminal",
-        "lenh terminal"
-      ],
-      "tl": [
-        "utos",
-        "command",
-        "utos sa terminal"
-      ]
+      "base": ["command", "shell command", "terminal command"],
+      "zh-CN": ["命令", "终端命令", "shell 命令"],
+      "ko": ["명령", "명령어", "터미널 명령"],
+      "es": ["comando", "comando de terminal"],
+      "pt": ["comando", "comando do terminal"],
+      "vi": ["lệnh", "lenh", "lệnh terminal", "lenh terminal"],
+      "tl": ["utos", "command", "utos sa terminal"]
     },
     "action.terminal.utility": {
       "base": [
@@ -4544,38 +3914,10 @@
         "head",
         "log"
       ],
-      "zh-CN": [
-        "价格",
-        "余额",
-        "状态",
-        "检查",
-        "日志"
-      ],
-      "ko": [
-        "가격",
-        "잔액",
-        "상태",
-        "확인",
-        "로그"
-      ],
-      "es": [
-        "precio",
-        "costo",
-        "balance",
-        "saldo",
-        "estado",
-        "revisar",
-        "log"
-      ],
-      "pt": [
-        "preço",
-        "preco",
-        "custo",
-        "saldo",
-        "estado",
-        "verificar",
-        "log"
-      ],
+      "zh-CN": ["价格", "余额", "状态", "检查", "日志"],
+      "ko": ["가격", "잔액", "상태", "확인", "로그"],
+      "es": ["precio", "costo", "balance", "saldo", "estado", "revisar", "log"],
+      "pt": ["preço", "preco", "custo", "saldo", "estado", "verificar", "log"],
       "vi": [
         "giá",
         "gia",
@@ -4587,128 +3929,41 @@
         "kiem tra",
         "log"
       ],
-      "tl": [
-        "presyo",
-        "balanse",
-        "status",
-        "check",
-        "log"
-      ]
+      "tl": ["presyo", "balanse", "status", "check", "log"]
     },
     "action.terminal.cryptoBitcoin": {
-      "base": [
-        "bitcoin",
-        "btc"
-      ],
-      "zh-CN": [
-        "比特币"
-      ],
-      "ko": [
-        "비트코인"
-      ],
-      "es": [
-        "bitcóin",
-        "bitcoín",
-        "bitcoin"
-      ],
-      "pt": [
-        "bitcóin",
-        "bitcoin"
-      ],
-      "vi": [
-        "đồng bitcoin",
-        "dong bitcoin",
-        "bitcoin"
-      ],
-      "tl": [
-        "bitcoin",
-        "barya ng bitcoin"
-      ]
+      "base": ["bitcoin", "btc"],
+      "zh-CN": ["比特币"],
+      "ko": ["비트코인"],
+      "es": ["bitcóin", "bitcoín", "bitcoin"],
+      "pt": ["bitcóin", "bitcoin"],
+      "vi": ["đồng bitcoin", "dong bitcoin", "bitcoin"],
+      "tl": ["bitcoin", "barya ng bitcoin"]
     },
     "action.terminal.cryptoEthereum": {
-      "base": [
-        "ethereum",
-        "eth"
-      ],
-      "zh-CN": [
-        "以太坊"
-      ],
-      "ko": [
-        "이더리움"
-      ],
-      "es": [
-        "ethereum",
-        "etéreo",
-        "etereo"
-      ],
-      "pt": [
-        "ethereum",
-        "ether"
-      ],
-      "vi": [
-        "ethereum",
-        "đồng ethereum",
-        "dong ethereum"
-      ],
-      "tl": [
-        "ethereum",
-        "ether"
-      ]
+      "base": ["ethereum", "eth"],
+      "zh-CN": ["以太坊"],
+      "ko": ["이더리움"],
+      "es": ["ethereum", "etéreo", "etereo"],
+      "pt": ["ethereum", "ether"],
+      "vi": ["ethereum", "đồng ethereum", "dong ethereum"],
+      "tl": ["ethereum", "ether"]
     },
     "action.terminal.cryptoSolana": {
-      "base": [
-        "solana",
-        "sol"
-      ],
-      "zh-CN": [
-        "索拉纳"
-      ],
-      "ko": [
-        "솔라나"
-      ],
-      "es": [
-        "solana"
-      ],
-      "pt": [
-        "solana"
-      ],
-      "vi": [
-        "solana",
-        "đồng solana",
-        "dong solana"
-      ],
-      "tl": [
-        "solana"
-      ]
+      "base": ["solana", "sol"],
+      "zh-CN": ["索拉纳"],
+      "ko": ["솔라나"],
+      "es": ["solana"],
+      "pt": ["solana"],
+      "vi": ["solana", "đồng solana", "dong solana"],
+      "tl": ["solana"]
     },
     "action.terminal.disk": {
-      "base": [
-        "disk",
-        "space",
-        "storage",
-        "disk usage"
-      ],
-      "zh-CN": [
-        "磁盘",
-        "空间",
-        "存储"
-      ],
-      "ko": [
-        "디스크",
-        "저장공간",
-        "저장소"
-      ],
-      "es": [
-        "disco",
-        "espacio",
-        "almacenamiento"
-      ],
-      "pt": [
-        "disco",
-        "espaço",
-        "espaco",
-        "armazenamento"
-      ],
+      "base": ["disk", "space", "storage", "disk usage"],
+      "zh-CN": ["磁盘", "空间", "存储"],
+      "ko": ["디스크", "저장공간", "저장소"],
+      "es": ["disco", "espacio", "almacenamiento"],
+      "pt": ["disco", "espaço", "espaco", "armazenamento"],
       "vi": [
         "ổ đĩa",
         "o dia",
@@ -4717,99 +3972,31 @@
         "lưu trữ",
         "luu tru"
       ],
-      "tl": [
-        "disk",
-        "espasyo",
-        "storage"
-      ]
+      "tl": ["disk", "espasyo", "storage"]
     },
     "action.terminal.uptime": {
-      "base": [
-        "uptime",
-        "load"
-      ],
-      "zh-CN": [
-        "运行时间",
-        "负载"
-      ],
-      "ko": [
-        "업타임",
-        "부하"
-      ],
-      "es": [
-        "tiempo activo",
-        "carga"
-      ],
-      "pt": [
-        "uptime",
-        "tempo ativo",
-        "carga"
-      ],
-      "vi": [
-        "thời gian hoạt động",
-        "thoi gian hoat dong",
-        "tải",
-        "tai"
-      ],
-      "tl": [
-        "uptime",
-        "load"
-      ]
+      "base": ["uptime", "load"],
+      "zh-CN": ["运行时间", "负载"],
+      "ko": ["업타임", "부하"],
+      "es": ["tiempo activo", "carga"],
+      "pt": ["uptime", "tempo ativo", "carga"],
+      "vi": ["thời gian hoạt động", "thoi gian hoat dong", "tải", "tai"],
+      "tl": ["uptime", "load"]
     },
     "action.terminal.memory": {
-      "base": [
-        "memory",
-        "ram"
-      ],
-      "zh-CN": [
-        "内存"
-      ],
-      "ko": [
-        "메모리",
-        "램"
-      ],
-      "es": [
-        "memoria",
-        "ram"
-      ],
-      "pt": [
-        "memória",
-        "memoria",
-        "ram"
-      ],
-      "vi": [
-        "bộ nhớ",
-        "bo nho",
-        "ram"
-      ],
-      "tl": [
-        "memory",
-        "ram"
-      ]
+      "base": ["memory", "ram"],
+      "zh-CN": ["内存"],
+      "ko": ["메모리", "램"],
+      "es": ["memoria", "ram"],
+      "pt": ["memória", "memoria", "ram"],
+      "vi": ["bộ nhớ", "bo nho", "ram"],
+      "tl": ["memory", "ram"]
     },
     "action.terminal.process": {
-      "base": [
-        "process",
-        "processes",
-        "top",
-        "memory usage"
-      ],
-      "zh-CN": [
-        "进程",
-        "进程列表",
-        "内存占用"
-      ],
-      "ko": [
-        "프로세스",
-        "top",
-        "메모리 사용"
-      ],
-      "es": [
-        "proceso",
-        "procesos",
-        "top",
-        "uso de memoria"
-      ],
+      "base": ["process", "processes", "top", "memory usage"],
+      "zh-CN": ["进程", "进程列表", "内存占用"],
+      "ko": ["프로세스", "top", "메모리 사용"],
+      "es": ["proceso", "procesos", "top", "uso de memoria"],
       "pt": [
         "processo",
         "processos",
@@ -4817,270 +4004,85 @@
         "uso de memória",
         "uso de memoria"
       ],
-      "vi": [
-        "tiến trình",
-        "tien trinh",
-        "top",
-        "dùng bộ nhớ",
-        "dung bo nho"
-      ],
-      "tl": [
-        "process",
-        "mga proseso",
-        "top",
-        "gamit ng memory"
-      ]
+      "vi": ["tiến trình", "tien trinh", "top", "dùng bộ nhớ", "dung bo nho"],
+      "tl": ["process", "mga proseso", "top", "gamit ng memory"]
     },
     "action.logLevel.command": {
-      "base": [
-        "/loglevel",
-        "log level",
-        "logging level"
-      ],
-      "zh-CN": [
-        "日志级别",
-        "日志等级"
-      ],
-      "ko": [
-        "로그 레벨",
-        "로깅 레벨"
-      ],
-      "es": [
-        "nivel de log",
-        "nivel de registro"
-      ],
+      "base": ["/loglevel", "log level", "logging level"],
+      "zh-CN": ["日志级别", "日志等级"],
+      "ko": ["로그 레벨", "로깅 레벨"],
+      "es": ["nivel de log", "nivel de registro"],
       "pt": [
         "nível de log",
         "nivel de log",
         "nível de registro",
         "nivel de registro"
       ],
-      "vi": [
-        "mức log",
-        "muc log",
-        "mức ghi log",
-        "muc ghi log"
-      ],
-      "tl": [
-        "antas ng log",
-        "antas ng pag-log"
-      ]
+      "vi": ["mức log", "muc log", "mức ghi log", "muc ghi log"],
+      "tl": ["antas ng log", "antas ng pag-log"]
     },
     "action.logLevel.setVerb": {
-      "base": [
-        "set",
-        "change",
-        "switch"
-      ],
-      "zh-CN": [
-        "设置",
-        "调成",
-        "改成",
-        "切换"
-      ],
-      "ko": [
-        "설정",
-        "바꿔",
-        "변경",
-        "전환"
-      ],
-      "es": [
-        "pon",
-        "poner",
-        "cambia",
-        "cambiar",
-        "ajusta"
-      ],
-      "pt": [
-        "define",
-        "definir",
-        "muda",
-        "mudar",
-        "ajusta"
-      ],
-      "vi": [
-        "đặt",
-        "dat",
-        "đổi",
-        "doi",
-        "chuyển",
-        "chuyen"
-      ],
-      "tl": [
-        "itakda",
-        "palitan",
-        "ilipat"
-      ]
+      "base": ["set", "change", "switch"],
+      "zh-CN": ["设置", "调成", "改成", "切换"],
+      "ko": ["설정", "바꿔", "변경", "전환"],
+      "es": ["pon", "poner", "cambia", "cambiar", "ajusta"],
+      "pt": ["define", "definir", "muda", "mudar", "ajusta"],
+      "vi": ["đặt", "dat", "đổi", "doi", "chuyển", "chuyen"],
+      "tl": ["itakda", "palitan", "ilipat"]
     },
     "action.logLevel.domain": {
-      "base": [
-        "log",
-        "logging",
-        "verbosity"
-      ],
-      "zh-CN": [
-        "日志",
-        "详细程度"
-      ],
-      "ko": [
-        "로그",
-        "로깅",
-        "상세도"
-      ],
-      "es": [
-        "log",
-        "registro",
-        "verbosidad"
-      ],
-      "pt": [
-        "log",
-        "registro",
-        "verbosidade"
-      ],
-      "vi": [
-        "log",
-        "ghi log",
-        "độ chi tiết",
-        "do chi tiet"
-      ],
-      "tl": [
-        "log",
-        "pag-log",
-        "verbosity"
-      ]
+      "base": ["log", "logging", "verbosity"],
+      "zh-CN": ["日志", "详细程度"],
+      "ko": ["로그", "로깅", "상세도"],
+      "es": ["log", "registro", "verbosidad"],
+      "pt": ["log", "registro", "verbosidade"],
+      "vi": ["log", "ghi log", "độ chi tiết", "do chi tiet"],
+      "tl": ["log", "pag-log", "verbosity"]
     },
     "action.logLevel.level.trace": {
-      "base": [
-        "trace"
-      ],
-      "zh-CN": [
-        "跟踪"
-      ],
-      "ko": [
-        "추적"
-      ],
-      "es": [
-        "rastreo"
-      ],
-      "pt": [
-        "rastreamento"
-      ],
-      "vi": [
-        "theo dõi",
-        "theo doi"
-      ],
-      "tl": [
-        "bakas",
-        "trace"
-      ]
+      "base": ["trace"],
+      "zh-CN": ["跟踪"],
+      "ko": ["추적"],
+      "es": ["rastreo"],
+      "pt": ["rastreamento"],
+      "vi": ["theo dõi", "theo doi"],
+      "tl": ["bakas", "trace"]
     },
     "action.logLevel.level.debug": {
-      "base": [
-        "debug"
-      ],
-      "zh-CN": [
-        "调试"
-      ],
-      "ko": [
-        "디버그"
-      ],
-      "es": [
-        "depuración",
-        "depuracion"
-      ],
-      "pt": [
-        "depuração",
-        "depuracao"
-      ],
-      "vi": [
-        "gỡ lỗi",
-        "go loi"
-      ],
-      "tl": [
-        "debug",
-        "pag-debug"
-      ]
+      "base": ["debug"],
+      "zh-CN": ["调试"],
+      "ko": ["디버그"],
+      "es": ["depuración", "depuracion"],
+      "pt": ["depuração", "depuracao"],
+      "vi": ["gỡ lỗi", "go loi"],
+      "tl": ["debug", "pag-debug"]
     },
     "action.logLevel.level.info": {
-      "base": [
-        "info",
-        "information"
-      ],
-      "zh-CN": [
-        "信息"
-      ],
-      "ko": [
-        "정보"
-      ],
-      "es": [
-        "información",
-        "informacion"
-      ],
-      "pt": [
-        "informação",
-        "informacao"
-      ],
-      "vi": [
-        "thông tin",
-        "thong tin"
-      ],
-      "tl": [
-        "impormasyon"
-      ]
+      "base": ["info", "information"],
+      "zh-CN": ["信息"],
+      "ko": ["정보"],
+      "es": ["información", "informacion"],
+      "pt": ["informação", "informacao"],
+      "vi": ["thông tin", "thong tin"],
+      "tl": ["impormasyon"]
     },
     "action.logLevel.level.warn": {
-      "base": [
-        "warn",
-        "warning"
-      ],
-      "zh-CN": [
-        "警告"
-      ],
-      "ko": [
-        "경고"
-      ],
-      "es": [
-        "advertencia"
-      ],
-      "pt": [
-        "aviso",
-        "advertência",
-        "advertencia"
-      ],
-      "vi": [
-        "cảnh báo",
-        "canh bao"
-      ],
-      "tl": [
-        "babala"
-      ]
+      "base": ["warn", "warning"],
+      "zh-CN": ["警告"],
+      "ko": ["경고"],
+      "es": ["advertencia"],
+      "pt": ["aviso", "advertência", "advertencia"],
+      "vi": ["cảnh báo", "canh bao"],
+      "tl": ["babala"]
     },
     "action.logLevel.level.error": {
-      "base": [
-        "error",
-        "errors"
-      ],
-      "zh-CN": [
-        "错误"
-      ],
-      "ko": [
-        "오류"
-      ],
-      "es": [
-        "error",
-        "errores"
-      ],
-      "pt": [
-        "erro"
-      ],
-      "vi": [
-        "lỗi",
-        "loi"
-      ],
-      "tl": [
-        "error",
-        "mga error"
-      ]
+      "base": ["error", "errors"],
+      "zh-CN": ["错误"],
+      "ko": ["오류"],
+      "es": ["error", "errores"],
+      "pt": ["erro"],
+      "vi": ["lỗi", "loi"],
+      "tl": ["error", "mga error"]
     },
     "action.updateRole.intent": {
       "base": [

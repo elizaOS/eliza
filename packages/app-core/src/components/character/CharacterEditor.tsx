@@ -1,5 +1,3 @@
-
-
 import { getStylePresets } from "@elizaos/shared/onboarding-presets";
 import type { CharacterData } from "../../api/client";
 import { client } from "../../api/client";
@@ -84,7 +82,20 @@ const UploadIcon = ({ className }: { className?: string }) => (
   />
 );
 
-import { SidebarContent, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, PageLayout } from "@elizaos/ui";
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  PageLayout,
+  Sidebar,
+  SidebarContent,
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "@elizaos/ui";
 import {
   type ChangeEvent,
   type ReactNode,
@@ -124,6 +135,32 @@ const CHARACTER_EDITOR_PAGES = [
   "examples",
   "knowledge",
 ] as const;
+
+/**
+ * Cheap structural check — returns true when value already has the
+ * { examples: { name, content: { text } }[] }[] shape the UI expects.
+ * Used to skip `normalizeCharacterMessageExamples`, which strips empty
+ * turns that the user is actively composing.
+ */
+function hasValidMessageExamplesShape(value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  return value.every((convo) => {
+    if (!convo || typeof convo !== "object") return false;
+    const examples = (convo as { examples?: unknown }).examples;
+    if (!Array.isArray(examples)) return false;
+    return examples.every((msg) => {
+      if (!msg || typeof msg !== "object") return false;
+      const name = (msg as { name?: unknown }).name;
+      const content = (msg as { content?: unknown }).content;
+      return (
+        typeof name === "string" &&
+        !!content &&
+        typeof content === "object" &&
+        typeof (content as { text?: unknown }).text === "string"
+      );
+    });
+  });
+}
 
 /* ── Component ─────────────────────────────────────────────────────── */
 
@@ -389,10 +426,14 @@ export function CharacterEditor({
     (typeof characterData?.name === "string" && characterData.name.trim()) ||
     "Agent";
   const normalizedMessageExamples = Array.isArray(d.messageExamples)
-    ? normalizeCharacterMessageExamples(
-        d.messageExamples,
-        fallbackCharacterName,
-      )
+    ? hasValidMessageExamplesShape(d.messageExamples)
+      ? (d.messageExamples as ReturnType<
+          typeof normalizeCharacterMessageExamples
+        >)
+      : normalizeCharacterMessageExamples(
+          d.messageExamples,
+          fallbackCharacterName,
+        )
     : [];
   const bioText =
     typeof d.bio === "string"
@@ -453,6 +494,11 @@ export function CharacterEditor({
     if (!Array.isArray(d.messageExamples) || d.messageExamples.length === 0) {
       return;
     }
+
+    // Skip normalization when the draft already has the expected shape —
+    // otherwise empty turns the user just added (blank text) get stripped
+    // out before they can type into them.
+    if (hasValidMessageExamplesShape(d.messageExamples)) return;
 
     const normalized = normalizeCharacterMessageExamples(
       d.messageExamples,
@@ -1180,6 +1226,13 @@ export function CharacterEditor({
     [d.style, handleStyleEdit],
   );
 
+  const handleReorderStyleEntries = useCallback(
+    (key: string, items: string[]) => {
+      handleStyleEdit(key as "all" | "chat" | "post", items.join("\n"));
+    },
+    [handleStyleEdit],
+  );
+
   const handleStyleEntryDraftChange = useCallback(
     (key: string, index: number, value: string) => {
       setStyleEntryDrafts((prev) => {
@@ -1413,6 +1466,7 @@ export function CharacterEditor({
                     handleRemoveStyleEntry={handleRemoveStyleEntry}
                     handleStyleEntryDraftChange={handleStyleEntryDraftChange}
                     handleCommitStyleEntry={handleCommitStyleEntry}
+                    handleReorderStyleEntries={handleReorderStyleEntries}
                     t={t}
                   />
                 </div>
@@ -1445,7 +1499,6 @@ export function CharacterEditor({
           <PageLayout
             className="h-full"
             contentInnerClassName="mx-auto flex w-full max-w-8xl min-h-0 flex-1 flex-col"
-            contentHeader={standaloneContentHeader}
             footer={<WidgetHost slot="character" className="pt-4" />}
             footerClassName="lg:px-8"
             sidebar={
@@ -1458,8 +1511,8 @@ export function CharacterEditor({
                 collapseButtonAriaLabel="Collapse character editor"
                 expandButtonAriaLabel="Expand character editor"
               >
-                <SidebarScrollRegion>
-                  <SidebarPanel className="space-y-6">
+                <SidebarScrollRegion className="!pt-0">
+                  <SidebarPanel className="!px-0 !pt-3 !pb-0 !shadow-none">
                     <nav
                       className="space-y-1"
                       aria-label="Character editor sections"
@@ -1538,6 +1591,9 @@ export function CharacterEditor({
                 e.target.value = "";
               }}
             />
+            {standaloneContentHeader ? (
+              <div className="mb-3 shrink-0">{standaloneContentHeader}</div>
+            ) : null}
             <div className="flex min-h-0 flex-1 min-w-0 flex-col">
               {activePage === "personality" && (
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -1577,12 +1633,13 @@ export function CharacterEditor({
                     handleRemoveStyleEntry={handleRemoveStyleEntry}
                     handleStyleEntryDraftChange={handleStyleEntryDraftChange}
                     handleCommitStyleEntry={handleCommitStyleEntry}
+                    handleReorderStyleEntries={handleReorderStyleEntries}
                     t={t}
                   />
                 </div>
               )}
               {activePage === "examples" && (
-                <div className="flex flex-col gap-5">
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8 lg:items-start xl:gap-12">
                   <CharacterExamplesPanel
                     d={d}
                     normalizedMessageExamples={normalizedMessageExamples}

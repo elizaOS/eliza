@@ -23,6 +23,8 @@
     "paths": {
       "@elizaos/app-lifeops": ["./apps/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["./apps/app-lifeops/src/*"],
+      "@elizaos/app-elizamaker": ["./apps/app-elizamaker/src/index.ts"],
+      "@elizaos/app-elizamaker/*": ["./apps/app-elizamaker/src/*"],
       "@elizaos/app-task-coordinator": ["./apps/app-task-coordinator/src/index.ts"],
       "@elizaos/app-task-coordinator/*": ["./apps/app-task-coordinator/src/*"],
       "@elizaos/app-steward": ["./apps/app-steward/src/index.ts"],
@@ -49,8 +51,13 @@
       "@elizaos/app-companion/*": ["./apps/app-companion/src/*"],
       "@elizaos/shared": ["./packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["./packages/shared/src/*"],
+      "@elizaos/skills": ["./packages/skills/src/index.ts"],
+      "@elizaos/skills/*": ["./packages/skills/src/*"],
       "@elizaos/core": ["./packages/typescript/src/index.ts"],
       "@elizaos/core/*": ["./packages/typescript/src/*"],
+      "@elizaos/native-activity-tracker": [
+        "./packages/native-plugins/activity-tracker/src/index.ts"
+      ],
       "react": ["./packages/app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [
         "./packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"
@@ -61,10 +68,13 @@
       "react-dom": [
         "./packages/app-core/node_modules/@types/react-dom/index.d.ts"
       ],
-      "@elizaos/*": ["./node_modules/@elizaos/*"]
+      "@elizaos/*": ["./node_modules/@elizaos/*"],
+      "lucide-react": ["./packages/app-core/node_modules/lucide-react"]
     }
   },
   "exclude": [
+    "src/cli/**",
+    "src/benchmark/**",
     "src/**/*.stories.ts",
     "src/**/*.stories.tsx",
     "src/**/*.test.ts",

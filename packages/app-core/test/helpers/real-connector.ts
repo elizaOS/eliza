@@ -1,21 +1,8 @@
-/**
- * Real connector helpers for integration tests.
- *
- * These helpers create real Discord/Telegram bot connections for testing
- * connector functionality against your own accounts.
- *
- * Usage:
- *   import { createDiscordTestClient, sendDiscordDM } from "./real-connector";
- *
- *   const discord = await createDiscordTestClient();
- *   await sendDiscordDM(discord.client, discord.userId, "test message");
- *   const reply = await waitForDiscordMessage(discord.client, channelId, 30_000);
- */
+/** Real Discord, Telegram, and SMTP helpers for integration tests. */
 
 import path from "node:path";
-import { setTimeout as sleep } from "node:timers/promises";
 
-// Load .env
+// Load `.env` from the repo root when `dotenv` is available.
 const REPO_ROOT = path.resolve(
   import.meta.dirname,
   "..",
@@ -30,10 +17,6 @@ try {
 } catch {
   // dotenv optional
 }
-
-// ---------------------------------------------------------------------------
-// Discord
-// ---------------------------------------------------------------------------
 
 export interface DiscordTestClient {
   client: unknown; // Discord.js Client - typed loosely to avoid hard dep
@@ -63,7 +46,7 @@ export async function createDiscordTestClient(): Promise<DiscordTestClient | nul
 
     await client.login(token);
 
-    // Wait for ready
+    // Wait for the bot connection before returning the client.
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(
         () => reject(new Error("Discord client ready timeout")),
@@ -102,7 +85,13 @@ export async function sendDiscordDM(
   userId: string,
   content: string,
 ): Promise<void> {
-  const c = client as { users: { fetch: (id: string) => Promise<{ send: (content: string) => Promise<void> }> } };
+  const c = client as {
+    users: {
+      fetch: (
+        id: string,
+      ) => Promise<{ send: (content: string) => Promise<void> }>;
+    };
+  };
   const user = await c.users.fetch(userId);
   await user.send(content);
 }
@@ -115,7 +104,13 @@ export async function sendDiscordChannelMessage(
   channelId: string,
   content: string,
 ): Promise<void> {
-  const c = client as { channels: { fetch: (id: string) => Promise<{ send: (content: string) => Promise<void> }> } };
+  const c = client as {
+    channels: {
+      fetch: (
+        id: string,
+      ) => Promise<{ send: (content: string) => Promise<void> }>;
+    };
+  };
   const channel = await c.channels.fetch(channelId);
   await channel.send(content);
 }
@@ -131,7 +126,14 @@ export async function waitForDiscordMessage(
   fromBotOnly = true,
 ): Promise<string | null> {
   const c = client as {
-    on: (event: string, handler: (msg: { channelId: string; content: string; author: { bot: boolean } }) => void) => void;
+    on: (
+      event: string,
+      handler: (msg: {
+        channelId: string;
+        content: string;
+        author: { bot: boolean };
+      }) => void,
+    ) => void;
     off: (event: string, handler: (...args: unknown[]) => void) => void;
   };
 
@@ -141,7 +143,11 @@ export async function waitForDiscordMessage(
       resolve(null);
     }, timeoutMs);
 
-    const handler = (msg: { channelId: string; content: string; author: { bot: boolean } }) => {
+    const handler = (msg: {
+      channelId: string;
+      content: string;
+      author: { bot: boolean };
+    }) => {
       if (msg.channelId !== channelId) return;
       if (fromBotOnly && !msg.author.bot) return;
       clearTimeout(timeout);
@@ -152,10 +158,6 @@ export async function waitForDiscordMessage(
     c.on("messageCreate", handler);
   });
 }
-
-// ---------------------------------------------------------------------------
-// Telegram
-// ---------------------------------------------------------------------------
 
 export interface TelegramTestBot {
   token: string;
@@ -174,7 +176,7 @@ export async function createTelegramTestBot(): Promise<TelegramTestBot | null> {
   if (!token) return null;
 
   try {
-    // Use raw HTTP API to avoid telegraf/grammY dependency
+    // Use the raw HTTP API to avoid adding a Telegram SDK dependency.
     const baseUrl = `https://api.telegram.org/bot${token}`;
 
     const meResponse = await fetch(`${baseUrl}/getMe`);
@@ -195,7 +197,7 @@ export async function createTelegramTestBot(): Promise<TelegramTestBot | null> {
         });
       },
       destroy: () => {
-        // No persistent connection to clean up with raw HTTP
+        // Raw HTTP has no persistent connection to close.
       },
     };
   } catch (err) {
@@ -203,10 +205,6 @@ export async function createTelegramTestBot(): Promise<TelegramTestBot | null> {
     return null;
   }
 }
-
-// ---------------------------------------------------------------------------
-// Email (SMTP)
-// ---------------------------------------------------------------------------
 
 /**
  * Send a test email using real SMTP credentials.

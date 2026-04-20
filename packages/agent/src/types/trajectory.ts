@@ -28,9 +28,9 @@ export interface TrajectoryListItem {
   startTime: number;
   endTime: number | null;
   durationMs: number | null;
-  stepCount?: number;
+  stepCount: number;
   llmCallCount: number;
-  providerAccessCount?: number;
+  providerAccessCount: number;
   totalPromptTokens: number;
   totalCompletionTokens: number;
   scenarioId?: string;
@@ -74,12 +74,56 @@ export interface TrajectoryProviderAccess {
   timestamp?: number;
 }
 
+/**
+ * Discriminator for the kind of work a trajectory step represents.
+ *
+ * - `"llm"`: a model call step (the historical default — emitted whenever an
+ *   LLM call is logged against a step that has no other classification).
+ * - `"action"`: a single action handler invocation step.
+ * - `"executeCode"`: a code-execution wrapper step that may have child steps
+ *   under `childSteps` (each child action dispatched from within the script
+ *   inherits `parentStepId` via `TrajectoryContext`).
+ */
+export type TrajectoryStepKind = "llm" | "action" | "executeCode";
+
+export type TrajectoryStepId = string;
+
 export interface TrajectoryStep {
-  stepId?: string;
+  stepId?: TrajectoryStepId;
   timestamp: number;
   llmCalls?: TrajectoryLlmCall[];
   providerAccesses?: TrajectoryProviderAccess[];
+  /**
+   * Discriminator for what produced this step. Defaults to `"llm"` for legacy
+   * rows that predate the field. Persisted in `steps_json`.
+   */
+  kind?: TrajectoryStepKind;
+  /**
+   * Step IDs of child steps spawned underneath this step (used by
+   * `executeCode` steps to enumerate the action calls dispatched from the
+   * script). Order is significant — earliest dispatch first.
+   */
+  childSteps?: TrajectoryStepId[];
+  /**
+   * Source script for `executeCode` steps. Capped at 4096 characters; if the
+   * original script exceeds the cap, `script` holds the truncated prefix and
+   * `scriptHash` carries the sha256 of the full source.
+   */
+  script?: string;
+  /**
+   * sha256 hex digest of the full script source when the script exceeded the
+   * inline cap and was truncated into `script`. Optional otherwise.
+   */
+  scriptHash?: string;
+  /**
+   * Names of skills the step relied on (populated by Track C). Empty/undefined
+   * when no skill annotation is available.
+   */
+  usedSkills?: string[];
 }
+
+/** Maximum bytes of script source persisted inline on a trajectory step. */
+export const TRAJECTORY_STEP_SCRIPT_MAX_CHARS = 4096;
 
 export interface Trajectory {
   trajectoryId: string;

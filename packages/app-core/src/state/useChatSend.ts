@@ -6,20 +6,21 @@
  */
 
 import { type MutableRefObject, useCallback, useRef } from "react";
+import type { Conversation, CustomActionDef } from "../api";
 import {
+  type CodingAgentSession,
   type ConversationChannelType,
   type ConversationMessage,
   type ConversationMode,
-  type ImageAttachment,
-  type CodingAgentSession,
   client,
+  type ImageAttachment,
 } from "../api";
 import {
   expandSavedCustomCommand,
   loadSavedCustomCommands,
   normalizeSlashCommandName,
 } from "../chat";
-import type { Conversation } from "../api";
+import { isConversationRecord } from "./chat-conversation-guards";
 import {
   formatSearchBullet,
   type LoadConversationMessagesResult,
@@ -29,8 +30,6 @@ import {
   parseSlashCommandInput,
   shouldApplyFinalStreamText,
 } from "./internal";
-import { isConversationRecord } from "./chat-conversation-guards";
-import type { CustomActionDef } from "../api";
 
 // ── Types ────────────────────────────────────────────────────────────
 

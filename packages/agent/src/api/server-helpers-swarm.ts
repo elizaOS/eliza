@@ -3,7 +3,12 @@
  */
 
 import crypto from "node:crypto";
-import type http from "node:http";
+import type {
+  SwarmEvent,
+  TaskCompletionSummary,
+  TaskContext,
+} from "@elizaos/app-task-coordinator/api/coordinator-types";
+import { routeTaskAgentTextToConnector } from "@elizaos/app-task-coordinator/api/task-agent-message-routing";
 import {
   type AgentRuntime,
   ChannelType,
@@ -12,11 +17,8 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import type {
-  SwarmEvent,
-  TaskCompletionSummary,
-  TaskContext,
-} from "@elizaos/app-task-coordinator/api/coordinator-types";
+import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.js";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.js";
 import type {
   CoordinationLLMResponse,
   PTYService,
@@ -25,8 +27,6 @@ import {
   parseActionBlock,
   stripActionBlockFromDisplay,
 } from "./parse-action-block.js";
-import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.js";
-import { routeTaskAgentTextToConnector } from "./task-agent-message-routing.js";
 import { resolveAppUserName } from "./server-helpers.js";
 import type { ConversationMeta, ServerState } from "./server-types.js";
 
@@ -359,9 +359,7 @@ export function wireCoordinatorEventRouting(st: ServerState): boolean {
             ? await runtime.getRoom(st.chatRoomId).catch(() => null)
             : null;
           if (!st.chatUserId || !st.chatRoomId || !existingLegacyChatRoom) {
-            const adminId =
-              st.adminEntityId ??
-              (stringToUuid(`${st.agentName}-admin-entity`) as UUID);
+            const adminId = resolveClientChatAdminEntityId(st);
             st.adminEntityId = adminId;
             st.chatUserId = adminId;
             st.chatRoomId =

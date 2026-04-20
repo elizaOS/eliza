@@ -17,7 +17,7 @@ import {
   CORE_PLUGINS,
   OPTIONAL_CORE_PLUGINS,
 } from "../runtime/core-plugins.js";
-import type { ResolvedPlugin } from "../runtime/plugin-types.js";
+import type { ResolvedPlugin } from "../runtime/eliza.js";
 import type {
   CoreManagerLike,
   InstallProgressLike,
@@ -124,6 +124,9 @@ interface CoreToggleDriftDiagnostic {
   drift_flags: CoreToggleDriftFlag[];
 }
 
+type PluginHealthResult = { ok: boolean; message?: string };
+type PluginHealthProbe = () => Promise<PluginHealthResult>;
+
 export interface PluginRouteContext {
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -134,7 +137,7 @@ export interface PluginRouteContext {
     runtime: AgentRuntime | null;
     config: ElizaConfig;
     plugins: PluginEntry[];
-    broadcastWs: ((data: Record<string, unknown>) => void) | null;
+    broadcastWs: ((data: object) => void) | null;
   };
   // Helpers from server.ts
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
@@ -185,6 +188,18 @@ const pluginsListInFlight = new WeakMap<
   PluginRouteContext["state"],
   Promise<PluginEntry[]>
 >();
+
+function getPluginHealthProbe(plugin: object): PluginHealthProbe | null {
+  const testConnection = Reflect.get(plugin, "testConnection");
+  if (typeof testConnection === "function") {
+    return testConnection as PluginHealthProbe;
+  }
+
+  const healthCheck = Reflect.get(plugin, "healthCheck");
+  return typeof healthCheck === "function"
+    ? (healthCheck as PluginHealthProbe)
+    : null;
+}
 
 function readCompatEnabledFromConfig(
   config: ElizaConfig,
@@ -700,6 +715,21 @@ export async function handlePluginRoutes(
       const entries = (state.config.plugins as Record<string, unknown>)
         .entries as Record<string, Record<string, unknown>>;
       entries[pluginId] = { enabled: body.enabled };
+
+      // Keep plugins.allow aligned with entries[pluginId].enabled so the
+      // enable-state drift check in buildCoreToggleDiagnostics() stays clean.
+      state.config.plugins.allow = state.config.plugins.allow ?? [];
+      const allow = state.config.plugins.allow;
+      if (body.enabled) {
+        if (!allow.includes(pluginId) && !allow.includes(packageName)) {
+          allow.push(pluginId);
+        }
+      } else {
+        state.config.plugins.allow = allow.filter(
+          (p: string) => p !== pluginId && p !== packageName,
+        );
+      }
+
       logger.info(
         `[eliza-api] ${body.enabled ? "Enabled" : "Disabled"} plugin: ${packageName}`,
       );
@@ -887,12 +917,9 @@ export async function handlePluginRoutes(
       }
 
       // Check if plugin exposes a test/health method
-      const pluginRecord = plugin as unknown as Record<string, unknown>;
-      const testFn = pluginRecord.testConnection ?? pluginRecord.healthCheck;
+      const testFn = getPluginHealthProbe(plugin);
       if (typeof testFn === "function") {
-        const result = await (
-          testFn as () => Promise<{ ok: boolean; message?: string }>
-        )();
+        const result = await testFn();
         json(res, {
           success: result.ok !== false,
           pluginId,

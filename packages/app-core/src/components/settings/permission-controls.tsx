@@ -1,5 +1,4 @@
-
-
+import { Button, StatusBadge, Switch } from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AllPermissionsState,
@@ -16,7 +15,6 @@ import {
 import { useApp } from "../../state";
 import { PermissionIcon } from "../permissions/PermissionIcon";
 import type { CapabilityDef, PermissionDef } from "./permission-types";
-import { Button, StatusBadge, Switch } from "@elizaos/ui";
 import {
   getPermissionAction,
   getPermissionBadge,

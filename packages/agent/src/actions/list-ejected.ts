@@ -1,23 +1,32 @@
-import type { Action, IAgentRuntime } from "@elizaos/core";
+import type { Action, ActionExample, IAgentRuntime } from "@elizaos/core";
+import {
+  isPluginManagerLike,
+  type PluginManagerLike,
+} from "../services/plugin-manager-types.js";
 
-interface EjectedPluginInfo {
-  name: string;
-  path: string;
-  upstream?: { branch?: string };
-}
-
-function getPluginManager(runtime: IAgentRuntime) {
-  return runtime.getService("plugin_manager") as unknown as {
-    listEjectedPlugins(): Promise<EjectedPluginInfo[]>;
-  } | null;
+function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
+  const svc = runtime.getService("plugin_manager");
+  return isPluginManagerLike(svc) ? svc : null;
 }
 
 export const listEjectedAction: Action = {
   name: "LIST_EJECTED_PLUGINS",
 
-  similes: ["SHOW_EJECTED", "EJECTED_PLUGINS", "LIST_LOCAL_PLUGIN_FORKS"],
+  similes: [
+    "SHOW_EJECTED",
+    "EJECTED_PLUGINS",
+    "LIST_LOCAL_PLUGIN_FORKS",
+    "SHOW_FORKED_PLUGINS",
+    "LIST_CUSTOMIZED_PLUGINS",
+  ],
 
-  description: "List all ejected plugins and their upstream metadata.",
+  description:
+    "List every plugin that has been ejected from its npm upstream into a " +
+    "local fork in this agent's workspace, together with the fork's upstream " +
+    "name, version, and local path. Use this when the owner asks 'which " +
+    "plugins have I ejected', 'show my forked plugins', or 'list local plugin " +
+    "customizations'. Pairs with EJECT_PLUGIN, REINJECT_PLUGIN, and " +
+    "SYNC_PLUGIN for managing the lifecycle of forked plugins.",
 
   validate: async () => true,
 
@@ -40,8 +49,8 @@ export const listEjectedAction: Action = {
     }
 
     const lines = plugins.map((p) => {
-      const branch = p.upstream?.branch ? `@${p.upstream.branch}` : "";
-      return `- ${p.name}${branch} (${p.path})`;
+      const ver = p.version ? `@${p.version}` : "";
+      return `- ${p.name}${ver}`;
     });
     return {
       text: [`Ejected plugins (${plugins.length}):`, ...lines].join("\n"),
@@ -49,4 +58,35 @@ export const listEjectedAction: Action = {
       data: { count: plugins.length, plugins },
     };
   },
+  parameters: [],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Which plugins have I forked locally so far?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Ejected plugins (2):\n- @elizaos/plugin-discord@1.4.0\n- @elizaos/plugin-telegram@1.2.1",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Show me my local plugin customizations.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "No ejected plugins found.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

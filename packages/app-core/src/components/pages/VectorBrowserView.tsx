@@ -1,5 +1,23 @@
-
-
+import {
+  createVectorBrowserRenderer,
+  THREE,
+} from "@elizaos/app-companion/components/avatar/vector-browser-three";
+import {
+  Button,
+  Input,
+  MetaPill,
+  PageLayout,
+  PagePanel,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Sidebar,
+  SidebarContent,
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "@elizaos/ui";
 import type { ReactNode } from "react";
 import {
   useCallback,
@@ -11,12 +29,7 @@ import {
 } from "react";
 import { client, type QueryResult, type TableInfo } from "../../api";
 import { useApp } from "../../state";
-import {
-  createVectorBrowserRenderer,
-  THREE,
-} from "@elizaos/app-companion/components/avatar/vector-browser-three";
 import { MemoryDetailPanel } from "./MemoryDetailPanel";
-import { PagePanel, MetaPill, SidebarContent, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, PageLayout } from "@elizaos/ui";
 import {
   buildVectorGraph2DLayout,
   DIM_COLUMNS,

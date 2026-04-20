@@ -74,7 +74,7 @@ jobs:
 
       - name: Checkout code
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         if: steps.check.outputs.should_publish == 'true'
@@ -84,7 +84,7 @@ jobs:
 
       - name: Cache cargo registry
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -178,7 +178,7 @@ jobs:
 
       - name: Checkout code
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         if: steps.check.outputs.should_publish == 'true'
@@ -188,7 +188,7 @@ jobs:
 
       - name: Cache cargo registry
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -268,7 +268,7 @@ jobs:
 
       - name: Checkout code
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         if: steps.check.outputs.should_publish == 'true'
@@ -278,7 +278,7 @@ jobs:
 
       - name: Cache cargo registry
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -351,7 +351,7 @@ jobs:
 
       - name: Checkout code
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         if: steps.check.outputs.should_publish == 'true'
@@ -361,7 +361,7 @@ jobs:
 
       - name: Cache cargo registry
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -435,7 +435,7 @@ jobs:
 
       - name: Checkout code
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         if: steps.check.outputs.should_publish == 'true'
@@ -445,7 +445,7 @@ jobs:
 
       - name: Cache cargo registry
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -527,7 +527,7 @@ jobs:
 
       - name: Checkout code
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         if: steps.check.outputs.should_publish == 'true'
@@ -537,7 +537,7 @@ jobs:
 
       - name: Cache cargo registry
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry

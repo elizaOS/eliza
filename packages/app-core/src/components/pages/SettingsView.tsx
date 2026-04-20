@@ -1,5 +1,30 @@
-
-
+import { CodingAgentSettingsSection } from "@elizaos/app-task-coordinator";
+import {
+  Button,
+  Checkbox,
+  cn,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  PageLayout,
+  PagePanel,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarPanel,
+  SidebarScrollRegion,
+  Spinner,
+  Switch,
+  useLinkedSidebarSelection,
+} from "@elizaos/ui";
 import { AlertTriangle, Download, Upload } from "lucide-react";
 import {
   type ComponentPropsWithoutRef,
@@ -10,16 +35,18 @@ import {
   useRef,
   useState,
 } from "react";
+import { type ComputerUseApprovalMode, client } from "../../api/client";
 import { useApp } from "../../state";
 import { WidgetHost } from "../../widgets";
-import { CodingAgentSettingsSection } from "@elizaos/app-task-coordinator";
+import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
+import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
+import { LearnedSkillsPanel } from "../settings/LearnedSkills";
 import { MediaSettingsSection } from "../settings/MediaSettingsSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
-import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
+import { TrainingSettingsPanel } from "../settings/TrainingSettings";
 import { CloudDashboard } from "./ElizaCloudDashboard";
 import { ReleaseCenterView } from "./ReleaseCenterView";
-import { PagePanel, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Checkbox, Dialog, DialogContent, DialogHeader, DialogTitle, Input, Label, Spinner, Switch, useLinkedSidebarSelection, PageLayout, cn } from "@elizaos/ui";
 
 interface SettingsSectionDef {
   id: string;
@@ -43,6 +70,10 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     keywordKeys: ["settings.keyword.cloud", "settings.keyword.billing"],
   },
   {
+    // One section for every model source — cloud providers, local llama.cpp
+    // engine, and paired-device bridge all live here. Multiple can be
+    // enabled simultaneously; the runtime dispatches each ModelType to the
+    // highest-priority handler that claimed it.
     id: "ai-model",
     label: "settings.sections.aimodel.label",
     description: "settings.sections.aimodel.desc",
@@ -56,6 +87,16 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "api key",
       "inference",
       "llm",
+      "local",
+      "llama",
+      "llama.cpp",
+      "gguf",
+      "download",
+      "offline",
+      "gpu",
+      "vram",
+      "device",
+      "phone",
     ],
     keywordKeys: [
       "settings.keyword.model",
@@ -130,6 +171,12 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "capabilities",
       "wallet",
       "browser",
+      "computer use",
+      "computeruse",
+      "desktop control",
+      "screen recording",
+      "accessibility",
+      "approval mode",
       "enable",
       "disable",
       "feature",
@@ -150,6 +197,43 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "file access",
     ],
     keywordKeys: ["settings.keyword.permissions", "settings.keyword.security"],
+  },
+  {
+    id: "learned-skills",
+    label: "settings.sections.learnedSkills.label",
+    description: "settings.sections.learnedSkills.desc",
+    keywords: [
+      "learned",
+      "skills",
+      "curated",
+      "trajectory",
+      "training",
+      "agent",
+      "promote",
+      "disable",
+    ],
+    keywordKeys: ["settings.keyword.skills", "settings.keyword.training"],
+  },
+  {
+    id: "auto-training",
+    label: "settings.sections.autoTraining.label",
+    description: "settings.sections.autoTraining.desc",
+    keywords: [
+      "auto",
+      "training",
+      "auto-train",
+      "trigger",
+      "threshold",
+      "cooldown",
+      "vertex",
+      "atropos",
+      "tinker",
+      "native",
+      "trajectory",
+      "fine-tune",
+      "fine tune",
+    ],
+    keywordKeys: ["settings.keyword.training"],
   },
   {
     id: "updates",
@@ -249,7 +333,75 @@ const SettingsSection = forwardRef<HTMLElement, SettingsSectionProps>(
 /* ── Capabilities Section ────────────────────────────────────────────── */
 
 function CapabilitiesSection() {
-  const { walletEnabled, browserEnabled, computerUseEnabled, setState, t } = useApp();
+  const {
+    walletEnabled,
+    browserEnabled,
+    computerUseEnabled,
+    setActionNotice,
+    setState,
+    t,
+  } = useApp();
+  const [computerUseApprovalMode, setComputerUseApprovalMode] =
+    useState<ComputerUseApprovalMode>("full_control");
+  const [computerUseModeBusy, setComputerUseModeBusy] = useState(false);
+
+  useEffect(() => {
+    if (!computerUseEnabled) {
+      return;
+    }
+
+    let cancelled = false;
+    void client
+      .getComputerUseApprovals()
+      .then((snapshot) => {
+        if (!cancelled) {
+          setComputerUseApprovalMode(snapshot.mode);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setComputerUseApprovalMode("full_control");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [computerUseEnabled]);
+
+  const handleComputerUseApprovalModeChange = useCallback(
+    async (nextMode: string) => {
+      setComputerUseApprovalMode(nextMode as ComputerUseApprovalMode);
+      setComputerUseModeBusy(true);
+      try {
+        const result = await client.setComputerUseApprovalMode(
+          nextMode as ComputerUseApprovalMode,
+        );
+        setComputerUseApprovalMode(result.mode);
+        setActionNotice(
+          t("settings.sections.capabilities.computerUseModeSaved", {
+            defaultValue: `Computer use approval mode set to ${result.mode}.`,
+          }),
+          "success",
+          2600,
+        );
+      } catch (error) {
+        setActionNotice(
+          error instanceof Error
+            ? error.message
+            : t("settings.sections.capabilities.computerUseModeFailed", {
+                defaultValue: "Failed to update computer use approval mode.",
+              }),
+          "error",
+          3600,
+        );
+      } finally {
+        setComputerUseModeBusy(false);
+      }
+    },
+    [setActionNotice, t],
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
@@ -268,7 +420,9 @@ function CapabilitiesSection() {
         </div>
         <Switch
           checked={walletEnabled}
-          onCheckedChange={(checked: boolean | "indeterminate") => setState("walletEnabled", !!checked)}
+          onCheckedChange={(checked: boolean | "indeterminate") =>
+            setState("walletEnabled", !!checked)
+          }
           aria-label={t("settings.sections.capabilities.walletLabel", {
             defaultValue: "Enable Wallet",
           })}
@@ -290,7 +444,9 @@ function CapabilitiesSection() {
         </div>
         <Switch
           checked={browserEnabled}
-          onCheckedChange={(checked: boolean | "indeterminate") => setState("browserEnabled", !!checked)}
+          onCheckedChange={(checked: boolean | "indeterminate") =>
+            setState("browserEnabled", !!checked)
+          }
           aria-label={t("settings.sections.capabilities.browserLabel", {
             defaultValue: "Enable Browser",
           })}
@@ -312,7 +468,9 @@ function CapabilitiesSection() {
         </div>
         <Switch
           checked={computerUseEnabled}
-          onCheckedChange={(checked: boolean | "indeterminate") => setState("computerUseEnabled", !!checked)}
+          onCheckedChange={(checked: boolean | "indeterminate") =>
+            setState("computerUseEnabled", !!checked)
+          }
           aria-label={t("settings.sections.capabilities.computerUseLabel", {
             defaultValue: "Enable Computer Use",
           })}
@@ -325,6 +483,43 @@ function CapabilitiesSection() {
               defaultValue:
                 "Computer Use requires Accessibility and Screen Recording permissions on macOS. On Linux, install xdotool. Configure fine-grained permissions in the Permissions section below.",
             })}
+          </div>
+          <div className="space-y-2">
+            <div className="font-medium text-sm">
+              {t("settings.sections.capabilities.computerUseModeLabel", {
+                defaultValue: "Approval Mode",
+              })}
+            </div>
+            <div className="text-xs text-muted">
+              {t("settings.sections.capabilities.computerUseModeHint", {
+                defaultValue:
+                  "Choose whether computer actions run automatically, only safe reads auto-run, every action requires review, or all actions are paused.",
+              })}
+            </div>
+            <Select
+              value={computerUseApprovalMode}
+              onValueChange={(value) => {
+                void handleComputerUseApprovalModeChange(value);
+              }}
+              disabled={computerUseModeBusy}
+            >
+              <SelectTrigger className="max-w-xs">
+                <SelectValue
+                  placeholder={t(
+                    "settings.sections.capabilities.computerUseModeLabel",
+                    {
+                      defaultValue: "Approval Mode",
+                    },
+                  )}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="full_control">Full Control</SelectItem>
+                <SelectItem value="smart_approve">Smart Approve</SelectItem>
+                <SelectItem value="approve_all">Review Every Action</SelectItem>
+                <SelectItem value="off">Pause Computer Use</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       )}
@@ -869,7 +1064,22 @@ export function SettingsView({
           description={t("settings.sections.aimodel.desc")}
           ref={registerContentItem("ai-model")}
         >
+          {/*
+            Cloud providers + subscriptions (Eliza Cloud, Anthropic, OpenAI,
+            Grok, Claude/ChatGPT subscriptions). Sets API keys and small /
+            large tier defaults.
+          */}
           <ProviderSwitcher />
+
+          {/*
+            Local llama.cpp engine + paired-device bridge. Lives in the same
+            section because "what's running inference?" is one mental
+            question — multiple providers can coexist and the runtime
+            dispatches each ModelType to the highest-priority handler.
+          */}
+          <div className="mt-8 border-t border-border/40 pt-6">
+            <LocalInferencePanel />
+          </div>
         </SettingsSection>
       )}
 
@@ -933,6 +1143,33 @@ export function SettingsView({
           ref={registerContentItem("permissions")}
         >
           <PermissionsSection />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("learned-skills") && (
+        <SettingsSection
+          id="learned-skills"
+          title={t("settings.sections.learnedSkills.label")}
+          description={t("settings.sections.learnedSkills.desc")}
+          ref={registerContentItem("learned-skills")}
+        >
+          <LearnedSkillsPanel />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("auto-training") && (
+        <SettingsSection
+          id="auto-training"
+          title={t("settings.sections.autoTraining.label", {
+            defaultValue: "Auto-training",
+          })}
+          description={t("settings.sections.autoTraining.desc", {
+            defaultValue:
+              "Counts completed trajectories per task and fires a training run when the threshold is hit.",
+          })}
+          ref={registerContentItem("auto-training")}
+        >
+          <TrainingSettingsPanel />
         </SettingsSection>
       )}
 

@@ -1,18 +1,12 @@
-import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
+import type { Action, ActionExample, HandlerOptions, IAgentRuntime } from "@elizaos/core";
+import {
+  isPluginManagerLike,
+  type PluginManagerLike,
+} from "../services/plugin-manager-types.js";
 
-function getPluginManager(runtime: IAgentRuntime) {
-  return runtime.getService("plugin_manager") as unknown as {
-    installPlugin(
-      name: string,
-      onProgress?: (progress: { stage: string; message: string }) => void,
-    ): Promise<{
-      success: boolean;
-      pluginName: string;
-      version: string;
-      requiresRestart: boolean;
-      error?: string;
-    }>;
-  } | null;
+function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
+  const svc = runtime.getService("plugin_manager");
+  return isPluginManagerLike(svc) ? svc : null;
 }
 
 export const installPluginAction: Action = {
@@ -89,4 +83,34 @@ export const installPluginAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "I'd like to connect Telegram — can you set that up?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Plugin @elizaos/plugin-telegram@1.4.0 installed successfully. The agent will restart to load it.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Add the polymarket integration for me.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Plugin @elizaos/plugin-polymarket@0.9.2 installed successfully.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

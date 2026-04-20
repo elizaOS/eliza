@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { canRunLocal } from "../../platform/init";
+import { inferOnboardingResumeStep } from "../../state/onboarding-resume";
 import {
   canRevertOnboardingTo,
   getOnboardingNavMetas,
@@ -6,7 +8,6 @@ import {
   resolveOnboardingNextStep,
   resolveOnboardingPreviousStep,
 } from "../flow";
-import { inferOnboardingResumeStep } from "../../state/onboarding-resume";
 
 describe("onboarding flow", () => {
   it("uses the centered three-step onboarding order", () => {
@@ -38,10 +39,14 @@ describe("onboarding flow", () => {
     ).toBe(false);
   });
 
-  it("omits setup from the nav only for cloud-only branding", () => {
+  it("omits deployment from the nav for cloud-only branding and local-capable runtimes", () => {
     expect(
       getOnboardingNavMetas("providers", false).map((step) => step.id),
-    ).toEqual(["deployment", "providers", "features"]);
+    ).toEqual(
+      canRunLocal()
+        ? ["providers", "features"]
+        : ["deployment", "providers", "features"],
+    );
     expect(
       getOnboardingNavMetas("providers", true).map((step) => step.id),
     ).toEqual(["providers", "features"]);

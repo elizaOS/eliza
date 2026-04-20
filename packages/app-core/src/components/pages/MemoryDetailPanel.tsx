@@ -1,7 +1,6 @@
-
+import { PagePanel } from "@elizaos/ui";
 import { useApp } from "../../state";
 import type { MemoryRecord } from "./vector-browser-utils";
-import { PagePanel } from "@elizaos/ui";
 
 export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
   const { t } = useApp();

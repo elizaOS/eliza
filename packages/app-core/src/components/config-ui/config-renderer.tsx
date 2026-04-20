@@ -1,4 +1,3 @@
-
 import React, {
   forwardRef,
   useCallback,
@@ -6,8 +5,6 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { useApp } from "../../state";
-import type { ConfigUiHint, PluginUiTheme } from "../../types";
 import type {
   FieldRegistry,
   FieldRenderer,
@@ -23,6 +20,8 @@ import {
   resolveFields,
   runValidation,
 } from "../../config/config-catalog";
+import { useApp } from "../../state";
+import type { ConfigUiHint, PluginUiTheme } from "../../types";
 import { ConfigField } from "./config-field";
 
 // ── Props ──────────────────────────────────────────────────────────────
@@ -689,9 +688,9 @@ function AdvancedSectionToggle({
 
 // ── Default registry ───────────────────────────────────────────────────
 
+import { Button } from "@elizaos/ui";
 // Import actual field renderers
 import { defaultRenderers } from "./config-field";
-import { Button } from "@elizaos/ui";
 
 /** The default registry wiring defaultCatalog → defaultRenderers. */
 export const defaultRegistry = defineRegistry(defaultCatalog, defaultRenderers);

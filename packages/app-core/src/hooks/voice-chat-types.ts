@@ -5,7 +5,6 @@
 import type { VoiceConfig, VoiceMode } from "../api/client";
 import { resolveApiUrl } from "../utils";
 import { ttsDebug } from "../utils/tts-debug";
-import { hasConfiguredApiKey as _hasConfiguredApiKey } from "../voice";
 
 // ── Speech Recognition types ──────────────────────────────────────────
 

@@ -51,6 +51,16 @@ for (const entry of readdirSync(bunCacheDir)) {
   // publishes only ship dist/testing/ (and old partial patches only added dist/node/)
   if (existsSync(join(nestedDist, "index.js"))) continue; // already complete
 
+  if (
+    !existsSync(localCoreDist) ||
+    !existsSync(join(localCoreDist, "node", "index.node.js"))
+  ) {
+    console.warn(
+      "[patch-nested-core-dist] Local @elizaos/core dist missing — skipping nested repair.",
+    );
+    continue;
+  }
+
   console.log(
     `[patch-nested-core-dist] Replacing dist/ in ${nestedCore}`,
   );

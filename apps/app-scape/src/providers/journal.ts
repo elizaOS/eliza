@@ -24,6 +24,7 @@ export const journalProvider: Provider = {
   name: "SCAPE_JOURNAL",
   description:
     "Recent Scape Journal memories — observations, combat events, level-ups, and decisions from the last few steps or sessions.",
+  descriptionCompressed: "Recent journal: observations, combat, level-ups, decisions.",
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,

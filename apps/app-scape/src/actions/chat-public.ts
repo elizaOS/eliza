@@ -29,6 +29,7 @@ export const chatPublic: Action = {
   name: "CHAT_PUBLIC",
   description:
     "Say something in public chat so nearby players and agents can see it. Use to narrate, socialize, or respond to operator prompts.",
+  descriptionCompressed: "Say something in public chat.",
   similes: ["SAY", "SPEAK", "TALK", "BROADCAST"],
   examples: [],
   validate: async (

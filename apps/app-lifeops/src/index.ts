@@ -1,3 +1,9 @@
+import "./client.ts";
+
+export type {
+  AppBlockerSettingsCardProps,
+  AppBlockerSettingsMode,
+} from "./types/index.ts";
 export type {
   WebsiteBlockerSettingsCardProps,
   WebsiteBlockerSettingsMode,
@@ -10,9 +16,8 @@ export {
   LifeOpsBrowserPluginService,
   lifeOpsBrowserProvider,
   manageLifeOpsBrowserAction,
-  calendarAction,
-  gmailAction,
-  inboxAction,
+  ownerCalendarAction,
+  ownerInboxAction,
   lifeAction,
   lifeOpsProvider,
   updateOwnerProfileAction,
@@ -32,6 +37,7 @@ export type { LifeOpsRouteContext } from "./plugin.ts";
 export type { WebsiteBlockerRouteContext } from "./plugin.ts";
 
 export { lifeopsPlugin } from "./routes/plugin.ts";
+export { getLifeOpsBrowserCompanionPackageStatus } from "./routes/lifeops-browser-packaging.ts";
 
 export * from "./website-blocker/public.ts";
 
@@ -42,5 +48,6 @@ export * from "./components/LifeOpsPageSections.tsx";
 export * from "./components/LifeOpsSettingsSection.tsx";
 export * from "./components/LifeOpsWorkspaceView.tsx";
 export * from "./components/WebsiteBlockerSettingsCard.tsx";
+export * from "./components/AppBlockerSettingsCard.tsx";
 
 export { appLifeOpsPlugin as default } from "./plugin.ts";

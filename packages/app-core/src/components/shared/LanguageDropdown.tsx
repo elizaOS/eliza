@@ -1,9 +1,13 @@
-
-
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@elizaos/ui";
 import { Check, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import type { UiLanguage } from "../../i18n/messages";
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@elizaos/ui";
 
 /** Minimal translator function type. Receive key, return string. */
 export type TranslatorFn = (key: string) => string;
@@ -18,6 +22,9 @@ export const LANGUAGES: { id: UiLanguage; flag: string; label: string }[] = [
   { id: "vi", flag: "\u{1F1FB}\u{1F1F3}", label: "Ti\u1EBFng Vi\u1EC7t" },
   { id: "tl", flag: "\u{1F1F5}\u{1F1ED}", label: "Tagalog" },
 ];
+
+export const LANGUAGE_DROPDOWN_TRIGGER_CLASSNAME =
+  "!h-11 !min-h-11 !rounded-xl !px-3.5";
 
 export interface LanguageDropdownProps {
   uiLanguage: UiLanguage;
@@ -90,7 +97,9 @@ export function LanguageDropdown({
             <DropdownMenuItem
               key={lang.id}
               className={`flex min-h-[40px] items-center justify-between px-3 py-2 text-sm transition-colors cursor-pointer ${lang.id === uiLanguage ? "bg-accent/10 text-txt font-medium" : "text-txt"}`}
-              onPointerDown={(event: React.PointerEvent) => event.stopPropagation()}
+              onPointerDown={(event: React.PointerEvent) =>
+                event.stopPropagation()
+              }
               onSelect={() => {
                 setUiLanguage(lang.id);
               }}

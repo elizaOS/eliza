@@ -3,8 +3,6 @@ import fs from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { type AgentRuntime, logger } from "@elizaos/core";
 import { handleCloudBillingRoute } from "@elizaos/agent/api/cloud-billing-routes";
 import { handleCloudCompatRoute } from "@elizaos/agent/api/cloud-compat-routes";
 import { clearPersistedOnboardingConfig } from "@elizaos/agent/api/provider-switch-config";
@@ -38,27 +36,30 @@ import {
 } from "@elizaos/agent/config/config";
 import { resolveUserPath } from "@elizaos/agent/config/paths";
 import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
+import { type AgentRuntime, logger } from "@elizaos/core";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/onboarding";
-import type { PolicyResult } from "@stwd/sdk";
 import {
   ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,
   getCompatApiToken,
 } from "./auth";
+import { handleAutomationsCompatRoutes } from "./automations-compat-routes";
 import {
-  sendJsonError as sendJsonErrorResponse,
-  sendJson as sendJsonResponse,
-} from "./response";
-import {
-  DATABASE_UNAVAILABLE_MESSAGE,
+  type CompatRuntimeState,
   clearCompatRuntimeRestart,
+  getConfiguredCompatAgentName,
+} from "./compat-route-shared";
+import { sendJson as sendJsonResponse } from "./response";
+
+export { resolveWalletExportRejection } from "@elizaos/app-steward/routes/server-wallet-trade";
+export {
+  type CompatRuntimeState,
+  DATABASE_UNAVAILABLE_MESSAGE,
   getConfiguredCompatAgentName,
   hasCompatPersistedOnboardingState,
   isLoopbackRemoteAddress,
   readCompatJsonBody,
-  type CompatRuntimeState,
 } from "./compat-route-shared";
-
 export {
   __resetCloudBaseUrlCache,
   ensureCloudTtsApiKeyAlias,
@@ -69,12 +70,12 @@ export {
   filterConfigEnvForResponse,
   SENSITIVE_ENV_RESPONSE_KEYS,
 } from "./server-config-filter";
-export { injectApiBaseIntoHtml } from "./server-html";
 export {
   buildCorsAllowedPorts,
   invalidateCorsAllowedPorts,
   isAllowedLocalOrigin,
 } from "./server-cors";
+export { injectApiBaseIntoHtml } from "./server-html";
 // Re-export helpers from split-out modules so tests can import from "./server"
 export {
   ensureApiTokenForBindHost,
@@ -88,7 +89,6 @@ export {
   isSafeResetStateDir,
   resolveCorsOrigin,
 } from "./server-startup";
-export { resolveWalletExportRejection } from "@elizaos/app-steward/routes/server-wallet-trade";
 export {
   AGENT_EVENT_ALLOWED_STREAMS,
   CONFIG_WRITE_ALLOWED_TOP_KEYS,
@@ -108,54 +108,38 @@ export {
   streamResponseBodyWithByteLimit,
   validateMcpServerConfig,
 };
-export {
-  DATABASE_UNAVAILABLE_MESSAGE,
-  getConfiguredCompatAgentName,
-  hasCompatPersistedOnboardingState,
-  isLoopbackRemoteAddress,
-  readCompatJsonBody,
-  type CompatRuntimeState,
-} from "./compat-route-shared";
 
-import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
 import {
   isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
+import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
+import { deviceBridge } from "../services/local-inference/device-bridge";
 import {
   ensureRuntimeSqlCompatibility,
   executeRawSql,
-  quoteIdent,
   sanitizeIdentifier,
   sqlLiteral,
 } from "../utils/sql-compat";
+import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
 import { handleCloudRoute } from "./cloud-routes";
 import { handleCloudStatusRoutes } from "./cloud-status-routes";
-import {
-  buildCorsAllowedPorts,
-  getCorsAllowedPorts,
-  isAllowedLocalOrigin,
-} from "./server-cors";
-// Phase 2 extraction: Vincent routes → app-vincent/src/plugin.ts (vincentPlugin)
-// Phase 2 extraction: Shopify routes → app-shopify/src/plugin.ts (shopifyPlugin)
-import {
-  isAllowedDevConsoleLogPath,
-  readDevConsoleLogTail,
-} from "./dev-console-log";
-import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
-import { isCloudProvisioned as _isCloudProvisioned } from "./server-onboarding-compat";
+import { handleComputerUseCompatRoutes } from "./computer-use-compat-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
+import { handleLocalInferenceCompatRoutes } from "./local-inference-compat-routes";
+import { handleN8nRoutes } from "./n8n-routes";
 import { handleOnboardingCompatRoute } from "./onboarding-compat-routes";
 import { handlePluginsCompatRoutes } from "./plugins-compat-routes";
+import { getCorsAllowedPorts, isAllowedLocalOrigin } from "./server-cors";
+import { isCloudProvisioned as _isCloudProvisioned } from "./server-onboarding-compat";
 // Phase 2 extraction: Steward compat routes → app-steward/src/plugin.ts (stewardPlugin)
 // Includes: handleWalletBrowserCompatRoutes, handleWalletTradeCompatRoutes,
 //           handleStewardCompatRoutes, handleWalletCompatRoutes
 import { handleWorkbenchCompatRoutes } from "./workbench-compat-routes";
-import { resolveDevStackFromEnv } from "./dev-stack";
 
-const require = createRequire(import.meta.url);
+const _require = createRequire(import.meta.url);
 
 import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
 
@@ -165,9 +149,9 @@ const lazyEnsureTTS = () =>
     (m) => m.ensureTextToSpeechHandler,
   );
 
-import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
 import { hydrateWalletKeysFromNodePlatformSecureStore } from "@elizaos/app-steward/security/hydrate-wallet-keys-from-platform-store";
 import { deleteWalletSecretsFromOsStore } from "@elizaos/app-steward/security/wallet-os-store-actions";
+import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
 import { clearCloudSecrets, getCloudSecret } from "./cloud-secrets";
 
 // ---------------------------------------------------------------------------
@@ -180,6 +164,7 @@ import {
   mirrorCompatHeaders,
 } from "./server-cloud-tts";
 import { filterConfigEnvForResponse as _filterConfigEnvForResponse } from "./server-config-filter";
+
 // ---------------------------------------------------------------------------
 // Module-level constants and types that stay in server.ts
 // ---------------------------------------------------------------------------
@@ -323,7 +308,7 @@ function resolveCompatLoopbackApiBase(
 }
 
 function buildCompatLoopbackHeaders(
-  req: Pick<http.IncomingMessage, "headers">,
+  _req: Pick<http.IncomingMessage, "headers">,
   init?: RequestInit,
 ): Headers {
   const headers = new Headers(init?.headers ?? {});
@@ -751,6 +736,28 @@ async function handleCompatRoute(
 
   // Auth / pairing / onboarding status — extracted to auth-pairing-compat-routes.ts
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;
+  if (await handleComputerUseCompatRoutes(req, res, state)) return true;
+  if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
+  if (await handleAutomationsCompatRoutes(req, res, state)) return true;
+
+  // n8n routes — status surface (read-only), sidecar start (fire-and-forget),
+  // and workflow CRUD proxy. Auth sits in front of every n8n route. The
+  // handler reads the sidecar singleton from services/n8n-sidecar via
+  // peekN8nSidecar(), so no construction happens just from a status probe.
+  if (url.pathname.startsWith("/api/n8n/")) {
+    if (!ensureCompatApiAuthorized(req, res)) return true;
+    return handleN8nRoutes({
+      req,
+      res,
+      method,
+      pathname: url.pathname,
+      config: loadElizaConfig(),
+      runtime: state.current,
+      json: (_res, body, status = 200) => {
+        sendJsonResponse(res, status, body);
+      },
+    });
+  }
 
   if (method === "POST" && url.pathname === "/api/tts/cloud") {
     if (!ensureCompatApiAuthorized(req, res)) return true;
@@ -939,9 +946,7 @@ async function handleCompatRoute(
     );
     const { buildPluginListResponse } = await import("./plugins-compat-routes");
     const pluginList = buildPluginListResponse(state.current);
-    const plugin = pluginList.plugins.find(
-      (p) => p.id === pluginId,
-    );
+    const plugin = pluginList.plugins.find((p) => p.id === pluginId);
     if (!plugin) {
       sendJsonResponse(res, 404, { error: `Plugin "${pluginId}" not found` });
       return true;
@@ -1112,11 +1117,23 @@ export function patchHttpCreateServerForCompat(
       });
     };
 
-    if (typeof firstArg === "function") {
-      return originalCreateServer(wrappedListener);
-    }
+    const created =
+      typeof firstArg === "function"
+        ? originalCreateServer(wrappedListener)
+        : originalCreateServer(firstArg, wrappedListener);
 
-    return originalCreateServer(firstArg, wrappedListener);
+    // Attach the local-inference device-bridge WS upgrade handler to every
+    // HTTP server created through this patched factory. Safe to call on
+    // every server — `attachToHttpServer` is idempotent and only installs
+    // the upgrade listener once.
+    void deviceBridge.attachToHttpServer(created).catch((err) => {
+      logger.warn(
+        "[compat] Failed to attach device-bridge WS handler:",
+        err instanceof Error ? err.message : String(err),
+      );
+    });
+
+    return created;
   }) as typeof http.createServer;
 
   return () => {

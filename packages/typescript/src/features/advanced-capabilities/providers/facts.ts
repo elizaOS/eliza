@@ -11,23 +11,78 @@ import { ModelType } from "../../../types/index.ts";
 const spec = requireProviderSpec("FACTS");
 
 /**
- * Formats an array of memories into a single string with each memory content text separated by a new line.
- *
- * @param {Memory[]} facts - An array of Memory objects to be formatted.
- * @returns {string} A single string containing all memory content text with new lines separating each text.
+ * Half-life in milliseconds used to decay a fact's recency weight when ranking
+ * facts for the prompt. 30 days is short enough to deprioritize stale facts
+ * but long enough to keep durable preferences front-and-center.
  */
-/**
- * Formats an array of Memory objects into a string, joining them with newlines.
- *
- * @param {Memory[]} facts - An array of Memory objects to format.
- * @returns {string} The formatted string with each Memory object's text joined by newlines.
- */
-function formatFacts(facts: Memory[]) {
-	const result: string[] = [];
-	for (let i = facts.length - 1; i >= 0; i -= 1) {
-		result.push(facts[i]?.content.text ?? "");
+const RECENCY_HALF_LIFE_MS = 30 * 24 * 60 * 60 * 1000;
+const DEFAULT_FACT_CONFIDENCE = 0.6;
+
+function readMetadataRecord(memory: Memory): Record<string, unknown> {
+	const meta = memory.metadata;
+	if (!meta || typeof meta !== "object" || Array.isArray(meta)) return {};
+	return meta as Record<string, unknown>;
+}
+
+function readFactConfidence(memory: Memory): number {
+	const value = readMetadataRecord(memory).confidence;
+	if (typeof value !== "number" || !Number.isFinite(value)) {
+		return DEFAULT_FACT_CONFIDENCE;
 	}
-	return result.join("\n");
+	if (value < 0) return 0;
+	if (value > 1) return 1;
+	return value;
+}
+
+function readLastReinforcedMs(memory: Memory): number | null {
+	const meta = readMetadataRecord(memory);
+	const explicit = meta.lastReinforced;
+	if (typeof explicit === "string") {
+		const parsed = Date.parse(explicit);
+		if (Number.isFinite(parsed)) return parsed;
+	}
+	if (
+		typeof memory.createdAt === "number" &&
+		Number.isFinite(memory.createdAt)
+	) {
+		return memory.createdAt;
+	}
+	return null;
+}
+
+function recencyWeight(lastReinforcedMs: number | null, nowMs: number): number {
+	if (lastReinforcedMs === null) return 0.5;
+	const ageMs = Math.max(0, nowMs - lastReinforcedMs);
+	return 0.5 ** (ageMs / RECENCY_HALF_LIFE_MS);
+}
+
+function rankFacts(facts: Memory[]): Memory[] {
+	const nowMs = Date.now();
+	const ranked = [...facts].sort((left, right) => {
+		const leftScore =
+			readFactConfidence(left) *
+			recencyWeight(readLastReinforcedMs(left), nowMs);
+		const rightScore =
+			readFactConfidence(right) *
+			recencyWeight(readLastReinforcedMs(right), nowMs);
+		return rightScore - leftScore;
+	});
+	return ranked;
+}
+
+/**
+ * Formats facts as `[conf=0.93] <text>` lines so the LLM can weigh
+ * conflicting information against the recorded confidence.
+ */
+function formatFacts(facts: Memory[]): string {
+	const lines: string[] = [];
+	for (const fact of facts) {
+		const text = fact.content.text ?? "";
+		if (!text) continue;
+		const confidence = readFactConfidence(fact).toFixed(2);
+		lines.push(`[conf=${confidence}] ${text}`);
+	}
+	return lines.join("\n");
 }
 
 /**
@@ -87,14 +142,17 @@ const factsProvider: Provider = {
 
 		// join the two and deduplicate
 		const seenIds = new Set<string>();
-		const allFacts: Memory[] = [];
+		const dedupedFacts: Memory[] = [];
 		for (const fact of [...relevantFacts, ...recentFactsData]) {
 			const factId = fact.id ?? "";
 			if (factId && !seenIds.has(factId)) {
 				seenIds.add(factId);
-				allFacts.push(fact);
+				dedupedFacts.push(fact);
 			}
 		}
+		// Re-order by confidence * recency-decay so the LLM sees the most
+		// trustworthy, recently-reinforced facts first.
+		const allFacts = rankFacts(dedupedFacts);
 
 		if (allFacts.length === 0) {
 			return {

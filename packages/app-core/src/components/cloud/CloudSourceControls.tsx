@@ -1,7 +1,5 @@
-
-
-import { useApp } from "../../state";
 import { Button, ConnectionStatus } from "@elizaos/ui";
+import { useApp } from "../../state";
 
 export type CloudSourceMode = "cloud" | "own-key";
 

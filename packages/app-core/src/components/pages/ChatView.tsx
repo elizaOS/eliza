@@ -1,15 +1,16 @@
-import type {
-  ConversationMessage,
-  ImageAttachment,
-} from "../../api/client-types-chat";
-import { client } from "../../api/client";
-import { isRoutineCodingAgentMessage } from "../../chat";
-import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
-import { useChatComposer } from "../../state/ChatComposerContext";
-import { usePtySessions } from "../../state/PtySessionsContext";
-import { useApp } from "../../state/useApp";
-import { getVrmPreviewUrl } from "../../state/vrm";
-
+import {
+  CodingAgentControlChip,
+  PtyConsoleDrawer,
+} from "@elizaos/app-task-coordinator";
+import {
+  ChatAttachmentStrip,
+  ChatComposer,
+  ChatComposerShell,
+  ChatSourceIcon,
+  ChatThreadLayout,
+  ChatTranscript,
+  TypingIndicator,
+} from "@elizaos/ui";
 import {
   type ChangeEvent,
   type DragEvent,
@@ -21,11 +22,19 @@ import {
   useRef,
   useState,
 } from "react";
+import { client } from "../../api/client";
+import type {
+  ConversationMessage,
+  ImageAttachment,
+} from "../../api/client-types-chat";
+import { isRoutineCodingAgentMessage } from "../../chat";
+import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
+import { useChatComposer } from "../../state/ChatComposerContext";
+import { usePtySessions } from "../../state/PtySessionsContext";
+import { useApp } from "../../state/useApp";
+import { getVrmPreviewUrl } from "../../state/vrm";
 import { AgentActivityBox } from "../chat/AgentActivityBox";
 import { MessageContent } from "../chat/MessageContent";
-import { CodingAgentControlChip } from "@elizaos/app-task-coordinator";
-import { PtyConsoleDrawer } from "@elizaos/app-task-coordinator";
-import { ChatAttachmentStrip, ChatComposer, ChatComposerShell, ChatSourceIcon, ChatThreadLayout, ChatTranscript, TypingIndicator } from "@elizaos/ui";
 import {
   useChatVoiceController,
   useGameModalMessages,
@@ -51,6 +60,8 @@ interface ChatViewProps {
   variant?: ChatViewVariant;
   /** Override click handler for agent activity box sessions. */
   onPtySessionClick?: (sessionId: string) => void;
+  /** Hide the always-visible terminal/PTY panel (used in embedded overlays). */
+  hideTerminalPanel?: boolean;
 }
 
 function normalizeInboxChatSelection(
@@ -95,11 +106,9 @@ function normalizeInboxChatSelection(
 export function ChatView({
   variant = "default",
   onPtySessionClick,
+  hideTerminalPanel = false,
 }: ChatViewProps) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  if (!app) {
-    return null;
-  }
+  const app = useApp();
   const isGameModal = variant === "game-modal";
   const showComposerVoiceToggle = false;
   const {
@@ -171,6 +180,16 @@ export function ChatView({
   const [ptyDrawerSessionId, setPtyDrawerSessionId] = useState<string | null>(
     null,
   );
+
+  // Auto-expand terminal when a session hits error or blocked status
+  useEffect(() => {
+    const problemSession = ptySessions.find(
+      (s) => s.status === "error" || s.status === "blocked",
+    );
+    if (problemSession && ptyDrawerSessionId !== problemSession.sessionId) {
+      setPtyDrawerSessionId(problemSession.sessionId);
+    }
+  }, [ptySessions, ptyDrawerSessionId]);
 
   // ── Coding agent preflight ──────────────────────────────────────
   const [codingAgentsAvailable, setCodingAgentsAvailable] = useState(false);
@@ -481,32 +500,31 @@ export function ChatView({
       />
     );
 
-  const activityNode = isGameModal ? (
+  const handleNewShellSession = useCallback(async () => {
+    try {
+      const { sessionId } = await client.spawnShellSession();
+      setPtyDrawerSessionId(sessionId);
+    } catch (err) {
+      console.error("[ChatView] Failed to spawn shell session:", err);
+    }
+  }, []);
+
+  const drawerProps = {
+    activeSessionId: ptyDrawerSessionId,
+    sessions: ptySessions,
+    onSessionClick: (id: string) =>
+      setPtyDrawerSessionId((prev) => (prev === id ? null : id)),
+    onNewSession: handleNewShellSession,
+    onClose: () => setPtyDrawerSessionId(null),
+  };
+
+  const terminalPanelNode = isGameModal ? (
     <div className="pointer-events-auto">
-      <AgentActivityBox
-        sessions={ptySessions}
-        onSessionClick={(id) =>
-          setPtyDrawerSessionId((prev) => (prev === id ? null : id))
-        }
-      />
+      <PtyConsoleDrawer {...drawerProps} />
     </div>
   ) : (
-    <AgentActivityBox
-      sessions={ptySessions}
-      onSessionClick={(id) =>
-        setPtyDrawerSessionId((prev) => (prev === id ? null : id))
-      }
-    />
+    <PtyConsoleDrawer {...drawerProps} />
   );
-
-  const drawerNode =
-    ptyDrawerSessionId && ptySessions.length > 0 ? (
-      <PtyConsoleDrawer
-        activeSessionId={ptyDrawerSessionId}
-        sessions={ptySessions}
-        onClose={() => setPtyDrawerSessionId(null)}
-      />
-    ) : null;
 
   const auxiliaryNode = (
     <>
@@ -679,9 +697,8 @@ export function ChatView({
       messagesRef={messagesRef}
       footerStack={
         <>
-          {activityNode}
-          {drawerNode}
           {auxiliaryNode}
+          {hideTerminalPanel ? null : terminalPanelNode}
         </>
       }
       composer={composerNode}
@@ -845,10 +862,7 @@ function InboxChatPanel({
   );
 
   return (
-    <div
-      className="flex flex-1 min-h-0 min-w-0 flex-col"
-      aria-label={t("inboxview.Title", { defaultValue: "Inbox" })}
-    >
+    <div className="flex flex-1 min-h-0 min-w-0 flex-col">
       <div className="flex items-center justify-between px-5 py-3">
         <div className="min-w-0">
           <div className="text-sm font-bold text-txt truncate">
@@ -927,7 +941,7 @@ function InboxChatPanel({
                   ? replyError
                   : t("inboxview.ReplyHint", {
                       defaultValue:
-                        "Sent through the connected {{source}} account on this Mac.",
+                        "Sent through the connected {{source}} account on this device.",
                       source: sourceLabel,
                     })}
               </div>
