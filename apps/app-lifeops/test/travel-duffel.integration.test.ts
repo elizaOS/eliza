@@ -26,6 +26,11 @@ const ORIGINAL_ENV = { ...process.env };
 
 beforeEach(() => {
   delete process.env.DUFFEL_API_KEY;
+  delete process.env.MILADY_DUFFEL_DIRECT;
+  // Force direct mode for the existing fetch-mocking tests below; the
+  // cloud-relay path is exercised in duffel-cloud-relay.test.ts at the
+  // route layer.
+  process.env.MILADY_DUFFEL_DIRECT = "1";
 });
 
 afterEach(() => {
@@ -37,22 +42,46 @@ afterEach(() => {
 // Config parsing — always runs
 // ---------------------------------------------------------------------------
 
-describe("readDuffelConfigFromEnv", () => {
-  it("throws DuffelConfigError when DUFFEL_API_KEY is absent", () => {
+describe("readDuffelConfigFromEnv (direct mode)", () => {
+  it("throws DuffelConfigError when MILADY_DUFFEL_DIRECT=1 but DUFFEL_API_KEY is absent", () => {
+    delete process.env.DUFFEL_API_KEY;
     expect(() => readDuffelConfigFromEnv()).toThrow(DuffelConfigError);
     expect(() => readDuffelConfigFromEnv()).toThrow(/DUFFEL_API_KEY/);
   });
 
-  it("returns config with apiKey when env var is set", () => {
+  it("returns direct-mode config with apiKey when env var is set", () => {
     process.env.DUFFEL_API_KEY = "duffel_live_test_key";
     const config = readDuffelConfigFromEnv();
+    expect(config.mode).toBe("direct");
     expect(config.apiKey).toBe("duffel_live_test_key");
+    expect(config.cloudRelayBaseUrl).toBeNull();
   });
 
   it("trims whitespace from apiKey", () => {
     process.env.DUFFEL_API_KEY = "  duffel_key_trimmed  ";
     const config = readDuffelConfigFromEnv();
     expect(config.apiKey).toBe("duffel_key_trimmed");
+  });
+});
+
+describe("readDuffelConfigFromEnv (cloud mode default)", () => {
+  it("returns cloud-mode config when MILADY_DUFFEL_DIRECT is unset", () => {
+    delete process.env.MILADY_DUFFEL_DIRECT;
+    delete process.env.DUFFEL_API_KEY;
+    const config = readDuffelConfigFromEnv();
+    expect(config.mode).toBe("cloud");
+    expect(config.apiKey).toBeNull();
+    expect(config.cloudRelayBaseUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+  });
+
+  it("honours MILADY_API_PORT for the local relay base URL", () => {
+    delete process.env.MILADY_DUFFEL_DIRECT;
+    delete process.env.DUFFEL_API_KEY;
+    const config = readDuffelConfigFromEnv({
+      MILADY_API_PORT: "31999",
+    } as NodeJS.ProcessEnv);
+    expect(config.mode).toBe("cloud");
+    expect(config.cloudRelayBaseUrl).toBe("http://127.0.0.1:31999");
   });
 });
 
@@ -420,7 +449,7 @@ describe.skipIf(!LIVE_API_KEY)("searchFlights — live Duffel", () => {
       passengers: 1,
     };
 
-    const result = await searchFlights(request, { apiKey: LIVE_API_KEY! });
+    const result = await searchFlights(request, { mode: "direct", apiKey: LIVE_API_KEY!, cloudRelayBaseUrl: null });
 
     expect(typeof result.offerRequestId).toBe("string");
     expect(result.offers.length).toBeGreaterThan(0);
@@ -442,10 +471,10 @@ describe.skipIf(!LIVE_API_KEY)("searchFlights — live Duffel", () => {
       })(),
     };
 
-    const { offers } = await searchFlights(request, { apiKey: LIVE_API_KEY! });
+    const { offers } = await searchFlights(request, { mode: "direct", apiKey: LIVE_API_KEY!, cloudRelayBaseUrl: null });
     expect(offers.length).toBeGreaterThan(0);
 
-    const retrieved = await getOffer(offers[0].id, { apiKey: LIVE_API_KEY! });
+    const retrieved = await getOffer(offers[0].id, { mode: "direct", apiKey: LIVE_API_KEY!, cloudRelayBaseUrl: null });
     expect(retrieved.id).toBe(offers[0].id);
     expect(retrieved.totalAmount).toBeDefined();
   });
