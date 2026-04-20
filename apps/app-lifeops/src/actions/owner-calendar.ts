@@ -18,8 +18,14 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import {
+  ModelType,
+  parseJSONObjectFromText,
+  parseKeyValueXml,
+} from "@elizaos/core";
 import { hasAdminAccess } from "@elizaos/agent/security/access";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
+import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import { calendarAction } from "./calendar.js";
 import {
   checkAvailabilityAction,
@@ -55,6 +61,8 @@ type OwnerCalendarSubaction =
   | "negotiate_finalize"
   | "negotiate_list"
   | "negotiate_cancel";
+
+const ACTION_NAME = "OWNER_CALENDAR";
 
 interface OwnerCalendarParameters {
   subaction?: OwnerCalendarSubaction | string;
@@ -197,6 +205,104 @@ function normalizeSubaction(
     : null;
 }
 
+function normalizeShouldAct(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (["true", "yes", "1"].includes(normalized)) return true;
+  if (["false", "no", "0"].includes(normalized)) return false;
+  return null;
+}
+
+function normalizePlannerResponse(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function messageText(message: Memory): string {
+  return typeof message.content?.text === "string" ? message.content.text : "";
+}
+
+type OwnerCalendarLlmPlan = {
+  subaction: OwnerCalendarSubaction | null;
+  shouldAct: boolean | null;
+  response?: string;
+};
+
+async function resolveOwnerCalendarPlanWithLlm(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+  intent: string;
+  params: OwnerCalendarParameters;
+}): Promise<OwnerCalendarLlmPlan> {
+  if (typeof args.runtime.useModel !== "function") {
+    return { subaction: null, shouldAct: null };
+  }
+
+  const recentConversation = (
+    await collectRecentConversationTexts({
+      runtime: args.runtime,
+      message: args.message,
+      state: args.state,
+      limit: 6,
+    })
+  ).join("\n");
+
+  const prompt = [
+    "Plan the OWNER_CALENDAR subaction for this request.",
+    "Return ONLY valid JSON with exactly these fields:",
+    `{"subaction":"${VALID_SUBACTIONS.join('"|"')}"|null,"shouldAct":true|false,"response":"string|null"}`,
+    "",
+    "OWNER_CALENDAR is the owner's single umbrella for Google Calendar, Calendly, availability, scheduling preferences, and scheduling negotiation.",
+    "Choose view_today / view_week / next_event / search_events for calendar lookups.",
+    "Choose create_event for creating a concrete event at a concrete date/time.",
+    "Choose travel_itinerary for calendar-backed travel or itinerary lookups.",
+    "Choose recurring_block for recurring protected time blocks.",
+    "Choose check_availability for free/busy questions over a specific window.",
+    "Choose propose_times for requests to suggest or offer a few candidate meeting slots.",
+    "Choose update_preferences for durable rules like no-call hours, blackout windows, preferred hours, sleep windows, and travel buffer.",
+    "Choose calendly_availability / calendly_list_event_types / calendly_upcoming / calendly_single_use_link when the request mentions Calendly by name or includes a calendly.com URL or eventTypeUri.",
+    "Choose negotiate_start / negotiate_propose / negotiate_respond / negotiate_finalize / negotiate_list / negotiate_cancel for multi-turn scheduling coordination with another person or team.",
+    "Set shouldAct=false only when this is not a calendar/scheduling request and another action should handle it.",
+    "When shouldAct=false, response must be a short clarifying sentence in the user's language.",
+    "",
+    `Current request: ${JSON.stringify(messageText(args.message))}`,
+    `Resolved intent: ${JSON.stringify(args.intent)}`,
+    `Structured parameters: ${JSON.stringify(args.params)}`,
+    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+  ].join("\n");
+
+  try {
+    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+    });
+    const rawResponse = typeof result === "string" ? result : "";
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
+      parseJSONObjectFromText(rawResponse);
+    if (!parsed) {
+      return { subaction: null, shouldAct: null };
+    }
+    const subaction = normalizeSubaction(parsed.subaction);
+    return {
+      subaction,
+      shouldAct: subaction ? true : normalizeShouldAct(parsed.shouldAct),
+      response: normalizePlannerResponse(parsed.response),
+    };
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:owner-calendar",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Owner calendar planning model call failed",
+    );
+    return { subaction: null, shouldAct: null };
+  }
+}
+
 async function route(
   subaction: OwnerCalendarSubaction,
   runtime: IAgentRuntime,
@@ -207,12 +313,21 @@ async function route(
 ): Promise<ActionResult> {
   const params = getParams(options);
   const { target, innerSubaction } = translateSubaction(subaction);
+  const delegatedCallback: HandlerCallback | undefined = callback
+    ? async (content, files) =>
+        callback(
+          content && typeof content === "object"
+            ? { ...content, action: ACTION_NAME }
+            : content,
+          files,
+        )
+    : undefined;
 
   const forwardedOptions: HandlerOptions = {
     ...(options ?? {}),
     parameters: innerSubaction
-      ? ({ ...params, subaction: innerSubaction } as Record<string, unknown>)
-      : (params as unknown as Record<string, unknown>),
+      ? (({ ...params, subaction: innerSubaction } as unknown) as HandlerOptions["parameters"])
+      : ((params as unknown) as HandlerOptions["parameters"]),
   };
 
   switch (target) {
@@ -222,7 +337,7 @@ async function route(
         message,
         state,
         forwardedOptions,
-        callback,
+        delegatedCallback,
       )) as ActionResult;
     case "propose_times":
       return (await proposeMeetingTimesAction.handler!(
@@ -230,7 +345,7 @@ async function route(
         message,
         state,
         forwardedOptions,
-        callback,
+        delegatedCallback,
       )) as ActionResult;
     case "check_availability":
       return (await checkAvailabilityAction.handler!(
@@ -238,7 +353,7 @@ async function route(
         message,
         state,
         forwardedOptions,
-        callback,
+        delegatedCallback,
       )) as ActionResult;
     case "update_preferences":
       return (await updateMeetingPreferencesAction.handler!(
@@ -246,7 +361,7 @@ async function route(
         message,
         state,
         forwardedOptions,
-        callback,
+        delegatedCallback,
       )) as ActionResult;
     case "calendly":
       return (await calendlyAction.handler!(
@@ -254,7 +369,7 @@ async function route(
         message,
         state,
         forwardedOptions,
-        callback,
+        delegatedCallback,
       )) as ActionResult;
     case "scheduling":
       return (await schedulingAction.handler!(
@@ -262,7 +377,7 @@ async function route(
         message,
         state,
         forwardedOptions,
-        callback,
+        delegatedCallback,
       )) as ActionResult;
   }
 }
@@ -270,7 +385,7 @@ async function route(
 export const ownerCalendarAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
-  name: "OWNER_CALENDAR",
+  name: ACTION_NAME,
   similes: [
     // Legacy action names (for back-compat inbound routing).
     "CALENDAR_ACTION",
@@ -379,15 +494,25 @@ export const ownerCalendarAction: Action & {
     const params = getParams(options);
     const subaction = normalizeSubaction(params.subaction);
     if (!subaction) {
+      const intent = (params.intent ?? messageText(message)).trim();
+      const plan = await resolveOwnerCalendarPlanWithLlm({
+        runtime,
+        message,
+        state,
+        intent,
+        params,
+      });
+      if (plan.subaction) {
+        return route(plan.subaction, runtime, message, state, options, callback);
+      }
       const text =
-        "OWNER_CALENDAR requires a `subaction` parameter (e.g. view_today, " +
-        "search_events, create_event, check_availability, propose_times, " +
-        "update_preferences, calendly_availability, negotiate_start, ...).";
+        plan.response ??
+        "Tell me whether you want to view your calendar, create an event, check availability, propose times, adjust scheduling preferences, use Calendly, or manage a scheduling negotiation.";
       await callback?.({ text });
       return {
         text,
-        success: false,
-        data: { error: "MISSING_SUBACTION" },
+        success: true,
+        data: { error: "MISSING_SUBACTION", noop: true },
       };
     }
     return route(subaction, runtime, message, state, options, callback);
@@ -397,7 +522,7 @@ export const ownerCalendarAction: Action & {
       name: "subaction",
       description:
         "Which calendar operation to run. Google Calendar: view_today, view_week, next_event, search_events, create_event, travel_itinerary, recurring_block. Availability: check_availability, propose_times. Preferences: update_preferences. Calendly: calendly_availability, calendly_list_event_types, calendly_upcoming, calendly_single_use_link. Negotiation: negotiate_start, negotiate_propose, negotiate_respond, negotiate_finalize, negotiate_list, negotiate_cancel.",
-      required: true,
+      required: false,
       schema: {
         type: "string" as const,
         enum: [...VALID_SUBACTIONS],

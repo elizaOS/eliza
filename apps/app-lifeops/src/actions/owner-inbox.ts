@@ -8,9 +8,15 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import {
+  ModelType,
+  parseJSONObjectFromText,
+  parseKeyValueXml,
+} from "@elizaos/core";
 import { hasAdminAccess } from "@elizaos/agent/security/access";
 import { gmailAction } from "./gmail.js";
 import { inboxAction } from "./inbox.js";
+import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import { searchAcrossChannelsAction } from "./search-across-channels.js";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 
@@ -54,6 +60,144 @@ type OwnerInboxParams = {
 };
 
 const ACTION_NAME = "OWNER_INBOX";
+const VALID_SUBACTIONS: readonly OwnerInboxSubaction[] = [
+  "triage",
+  "digest",
+  "respond",
+  "search",
+  "read_message",
+  "draft_reply",
+  "send_reply",
+  "cross_channel_search",
+];
+const VALID_CHANNELS: readonly OwnerInboxChannel[] = [
+  "all",
+  "gmail",
+  "slack",
+  "discord",
+  "sms",
+  "telegram",
+  "whatsapp",
+  "imessage",
+];
+
+function normalizeSubaction(value: unknown): OwnerInboxSubaction | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return (VALID_SUBACTIONS as readonly string[]).includes(normalized)
+    ? (normalized as OwnerInboxSubaction)
+    : null;
+}
+
+function normalizeChannel(value: unknown): OwnerInboxChannel | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return (VALID_CHANNELS as readonly string[]).includes(normalized)
+    ? (normalized as OwnerInboxChannel)
+    : null;
+}
+
+function normalizeShouldAct(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (["true", "yes", "1"].includes(normalized)) return true;
+  if (["false", "no", "0"].includes(normalized)) return false;
+  return null;
+}
+
+function normalizePlannerResponse(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function messageText(message: Memory): string {
+  return typeof message.content?.text === "string" ? message.content.text : "";
+}
+
+type OwnerInboxLlmPlan = {
+  subaction: OwnerInboxSubaction | null;
+  channel: OwnerInboxChannel | null;
+  shouldAct: boolean | null;
+  response?: string;
+};
+
+async function resolveOwnerInboxPlanWithLlm(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+  intent: string;
+  params: OwnerInboxParams;
+}): Promise<OwnerInboxLlmPlan> {
+  if (typeof args.runtime.useModel !== "function") {
+    return { subaction: null, channel: null, shouldAct: null };
+  }
+
+  const recentConversation = (
+    await collectRecentConversationTexts({
+      runtime: args.runtime,
+      message: args.message,
+      state: args.state,
+      limit: 6,
+    })
+  ).join("\n");
+
+  const prompt = [
+    "Plan the OWNER_INBOX subaction for this request.",
+    "Return ONLY valid JSON with exactly these fields:",
+    '{"subaction":"triage"|"digest"|"respond"|"search"|"read_message"|"draft_reply"|"send_reply"|"cross_channel_search"|null,"channel":"all"|"gmail"|"slack"|"discord"|"sms"|"telegram"|"whatsapp"|"imessage"|null,"shouldAct":true|false,"response":"string|null"}',
+    "",
+    "OWNER_INBOX is the OWNER's single umbrella for inbox/email work.",
+    "Choose channel=gmail whenever the request explicitly names Gmail or email, or when the request is about a specific email by sender, subject, unread status, drafting an email reply, or sending an email reply.",
+    "Choose channel=all for generic phrases like 'my inbox', 'inbox digest', 'daily brief', 'triage my inbox', 'what needs my attention', or replying to inbox items across channels.",
+    "Choose triage for scanning and prioritizing new items.",
+    "Choose digest for a summary / daily brief / unread overview.",
+    "Choose respond for replying to inbox items across channels when the request is not a Gmail-thread-specific draft/send.",
+    "Choose search for searching messages, especially Gmail/email search by sender / subject / label / keyword.",
+    "Choose read_message for reading a specific Gmail message body by message id.",
+    "Choose draft_reply for drafting a reply to a specific Gmail thread or latest email from someone.",
+    "Choose send_reply for actually sending a Gmail reply.",
+    "Choose cross_channel_search when the user wants everything about a person/topic across all channels.",
+    "Set shouldAct=false only when the request is not an inbox/email operation and a different action should handle it.",
+    "When shouldAct=false, response must be a short clarifying sentence in the user's language.",
+    "",
+    `Current request: ${JSON.stringify(messageText(args.message))}`,
+    `Resolved intent: ${JSON.stringify(args.intent)}`,
+    `Structured parameters: ${JSON.stringify(args.params)}`,
+    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+  ].join("\n");
+
+  try {
+    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+    });
+    const rawResponse = typeof result === "string" ? result : "";
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
+      parseJSONObjectFromText(rawResponse);
+    if (!parsed) {
+      return { subaction: null, channel: null, shouldAct: null };
+    }
+    const subaction = normalizeSubaction(parsed.subaction);
+    const channel = normalizeChannel(parsed.channel);
+    return {
+      subaction,
+      channel,
+      shouldAct: subaction ? true : normalizeShouldAct(parsed.shouldAct),
+      response: normalizePlannerResponse(parsed.response),
+    };
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:owner-inbox",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Owner inbox planning model call failed",
+    );
+    return { subaction: null, channel: null, shouldAct: null };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -110,8 +254,17 @@ function delegateTo(
       ...parameters,
     },
   } as HandlerOptions;
+  const delegatedCallback: HandlerCallback | undefined = callback
+    ? async (content, files) =>
+        callback(
+          content && typeof content === "object"
+            ? { ...content, action: ACTION_NAME }
+            : content,
+          files,
+        )
+    : undefined;
   return Promise.resolve(
-    action.handler(runtime, message, state, delegated, callback),
+    action.handler(runtime, message, state, delegated, delegatedCallback),
   ) as Promise<ActionResult>;
 }
 
@@ -182,9 +335,12 @@ export const ownerInboxAction: Action & {
     "send_reply; senderQuery / subjectQuery / labelQuery for search). " +
     "Route here when the user says 'my inbox', 'inbox digest', 'daily brief', " +
     "'unified inbox', 'what needs my attention', 'triage my messages' — use " +
-    "channel=all. When the user explicitly says 'Gmail' or 'email', route " +
-    "here with channel=gmail. When the user asks for cross-channel search " +
-    "('find everything about X across my channels'), use " +
+    "channel=all. When the user explicitly says 'Gmail' or 'email', or asks " +
+    "to search/read/draft/send a specific email reply, route here with " +
+    "channel=gmail. Requests like 'draft a reply to the latest email from Sarah' " +
+    "and 'send a reply to the last email from finance confirming receipt' " +
+    "belong here, not in generic REPLY. When the user asks for cross-channel " +
+    "search ('find everything about X across my channels'), use " +
     "subaction=cross_channel_search. " +
     "DO NOT use this action for the agent's own mailbox — that is AGENT_INBOX. " +
     "Admin/owner only.",
@@ -207,11 +363,38 @@ export const ownerInboxAction: Action & {
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const params = ((options?.parameters ?? {}) as OwnerInboxParams) ?? {};
-    const subaction = params.subaction;
-    const channel: OwnerInboxChannel = params.channel ?? "all";
+    const body = messageText(message);
+    let subaction = normalizeSubaction(params.subaction);
+    let channel = normalizeChannel(params.channel) ?? "all";
 
     if (!subaction) {
-      return missingSubactionResult();
+      const intent = (params.intent ?? body).trim();
+      const plan = await resolveOwnerInboxPlanWithLlm({
+        runtime,
+        message,
+        state,
+        intent,
+        params,
+      });
+      subaction = plan.subaction;
+      if (plan.channel) {
+        channel = plan.channel;
+      }
+      if (plan.shouldAct === false || !subaction) {
+        const text =
+          plan.response ??
+          "Tell me whether you want me to triage, summarize, search, read, draft, or send something from your inbox.";
+        await callback?.({ text });
+        return {
+          text,
+          success: true,
+          data: {
+            noop: true,
+            suggestedSubaction: subaction,
+            suggestedChannel: plan.channel,
+          },
+        };
+      }
     }
 
     // Cross-channel search is its own delegate regardless of channel.
@@ -390,19 +573,10 @@ export const ownerInboxAction: Action & {
         "draft_reply (Gmail-only: draft a threaded reply), send_reply " +
         "(Gmail-only: send a threaded reply), cross_channel_search (search " +
         "every connected channel + memory).",
-      required: true,
+      required: false,
       schema: {
         type: "string" as const,
-        enum: [
-          "triage",
-          "digest",
-          "respond",
-          "search",
-          "read_message",
-          "draft_reply",
-          "send_reply",
-          "cross_channel_search",
-        ],
+        enum: [...VALID_SUBACTIONS],
       },
     },
     {
@@ -546,6 +720,20 @@ export const ownerInboxAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "Cross-channel search for \"Frontier Tower\" — 12 hits across Gmail, Telegram, and Calendar.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Send a reply to the last email from finance confirming receipt.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Sent a reply on the most recent finance thread confirming receipt.",
         },
       },
     ],

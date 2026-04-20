@@ -333,7 +333,7 @@ async function resolveRelationshipPlanWithLlm(args: {
       ? args.message.content.text
       : "";
   const prompt = [
-    "Plan the RELATIONSHIP (Rolodex) subaction for this request.",
+    "Plan the OWNER_RELATIONSHIP (Rolodex) subaction for this request.",
     "The user may speak in any language.",
     "Return ONLY valid JSON with exactly these fields:",
     '{"subaction":"list_contacts"|"add_contact"|"log_interaction"|"add_follow_up"|"complete_follow_up"|"follow_up_list"|"days_since"|null,"shouldAct":true|false,"response":"string|null"}',
@@ -431,7 +431,7 @@ export const relationshipAction: Action & {
     "list_overdue_followups; 'mark the <person> follow-up done' → " +
     "mark_followup_done; 'bump the overdue threshold to N days' → " +
     "set_followup_threshold. " +
-    "Do NOT split this request across RELATIONSHIP and any LIST_OVERDUE_FOLLOWUPS " +
+    "Do NOT split this request across OWNER_RELATIONSHIP and any LIST_OVERDUE_FOLLOWUPS " +
     "/ MARK_FOLLOWUP_DONE / SET_FOLLOWUP_THRESHOLD action — OWNER_RELATIONSHIP is " +
     "the single entry point for the entire contacts + follow-up surface.",
   suppressPostActionContinuation: true,
@@ -486,7 +486,7 @@ export const relationshipAction: Action & {
         contacts.length === 0
           ? "You have no contacts in your Rolodex yet."
           : `You have ${contacts.length} contact${contacts.length === 1 ? "" : "s"}:\n${contacts.map(formatRelationshipLine).join("\n")}`;
-      await callback?.({ text, source: "action", action: "RELATIONSHIP" });
+      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
       return {
         text,
         success: true,
@@ -530,7 +530,7 @@ export const relationshipAction: Action & {
         metadata: {},
       });
       const text = `Added ${rel.name} (${rel.primaryChannel}: ${rel.primaryHandle}) to your Rolodex.`;
-      await callback?.({ text, source: "action", action: "RELATIONSHIP" });
+      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
       return {
         text,
         success: true,
@@ -569,7 +569,7 @@ export const relationshipAction: Action & {
         metadata: {},
       });
       const text = `Logged interaction with ${rel.name} on ${channel}.`;
-      await callback?.({ text, source: "action", action: "RELATIONSHIP" });
+      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
       return {
         text,
         success: true,
@@ -603,7 +603,7 @@ export const relationshipAction: Action & {
         metadata: {},
       });
       const text = `Scheduled follow-up for ${dueAt}: ${reason || "(no reason)"}.`;
-      await callback?.({ text, source: "action", action: "RELATIONSHIP" });
+      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
       return {
         text,
         success: true,
@@ -624,7 +624,7 @@ export const relationshipAction: Action & {
       }
       await service.completeFollowUp(followUpId);
       const text = `Marked follow-up ${followUpId} as completed.`;
-      await callback?.({ text, source: "action", action: "RELATIONSHIP" });
+      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
       return {
         text,
         success: true,
@@ -640,7 +640,7 @@ export const relationshipAction: Action & {
           : `You have ${queue.length} follow-up${queue.length === 1 ? "" : "s"} due:\n${queue
               .map((fu) => `- ${fu.dueAt} — ${fu.reason} (id: ${fu.id})`)
               .join("\n")}`;
-      await callback?.({ text, source: "action", action: "RELATIONSHIP" });
+      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
       return {
         text,
         success: true,
@@ -665,7 +665,7 @@ export const relationshipAction: Action & {
         days === null
           ? `No contact has been logged with ${rel?.name ?? relationshipId}.`
           : `It has been ${days} day${days === 1 ? "" : "s"} since you contacted ${rel?.name ?? relationshipId}.`;
-      await callback?.({ text, source: "action", action: "RELATIONSHIP" });
+      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
       return {
         text,
         success: true,
@@ -763,7 +763,7 @@ export const relationshipAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "You have 3 contacts: ...",
-          action: "RELATIONSHIP",
+          action: "OWNER_RELATIONSHIP",
         },
       },
     ],
@@ -778,7 +778,7 @@ export const relationshipAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "Added Alice (telegram: @alice) to your Rolodex.",
-          action: "RELATIONSHIP",
+          action: "OWNER_RELATIONSHIP",
         },
       },
     ],
@@ -793,7 +793,7 @@ export const relationshipAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "Logged interaction with Bob on telegram.",
-          action: "RELATIONSHIP",
+          action: "OWNER_RELATIONSHIP",
         },
       },
     ],
@@ -808,7 +808,7 @@ export const relationshipAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "Scheduled follow-up for 2026-04-20T09:00:00Z: the contract.",
-          action: "RELATIONSHIP",
+          action: "OWNER_RELATIONSHIP",
         },
       },
     ],
@@ -821,7 +821,7 @@ export const relationshipAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "You have 2 follow-ups due: ...",
-          action: "RELATIONSHIP",
+          action: "OWNER_RELATIONSHIP",
         },
       },
     ],
@@ -834,7 +834,7 @@ export const relationshipAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "It has been 14 days since you contacted Dan.",
-          action: "RELATIONSHIP",
+          action: "OWNER_RELATIONSHIP",
         },
       },
     ],

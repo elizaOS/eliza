@@ -89,9 +89,6 @@ import {
 // Follow-up tracker (T7c — plan §6.4)
 import {
   FOLLOWUP_TRACKER_TASK_NAME,
-  listOverdueFollowupsAction,
-  markFollowupDoneAction,
-  setFollowupThresholdAction,
   registerFollowupTrackerWorker,
 } from "./followup/index.js";
 
@@ -196,9 +193,6 @@ const rawAppLifeOpsPlugin: Plugin = {
     requestFieldFillAction,
     addAutofillWhitelistAction,
     listAutofillWhitelistAction,
-    listOverdueFollowupsAction,
-    markFollowupDoneAction,
-    setFollowupThresholdAction,
     dossierAction,
     generateDossierAction,
     computeTravelBufferAction,
