@@ -73,7 +73,7 @@ import {
 } from "./service-normalize.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import type { ReminderActivityProfileSnapshot } from "./service-types.js";
-import { addMinutes } from "./time.js";
+import { addMinutes, getZonedDateParts } from "./time.js";
 import {
   readTwilioCredentialsFromEnv,
   sendTwilioSms,
@@ -204,6 +204,80 @@ type LifeOpsReminderPreferenceSetting = {
   updatedAt: string | null;
   note: string | null;
 };
+
+function zonedDecimalHour(
+  value: string | null | undefined,
+  timeZone: string,
+  wrapAfterMidnight = false,
+): number | null {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) {
+    return null;
+  }
+  const parts = getZonedDateParts(parsed, timeZone);
+  let hour = parts.hour + parts.minute / 60;
+  if (wrapAfterMidnight && hour < 12) {
+    hour += 24;
+  }
+  return Math.round(hour * 100) / 100;
+}
+
+function buildAdaptiveWindowProfile(args: {
+  profile: Pick<
+    Parameters<typeof computeAdaptiveWindowPolicy>[0],
+    | "typicalWakeHour"
+    | "typicalFirstActiveHour"
+    | "typicalLastActiveHour"
+    | "typicalSleepHour"
+  > | null;
+  schedule: {
+    wakeAt: string | null;
+    firstActiveAt: string | null;
+    lastActiveAt: string | null;
+    currentSleepStartedAt: string | null;
+    lastSleepStartedAt: string | null;
+    typicalWakeHour: number | null;
+    typicalSleepHour: number | null;
+  } | null;
+  timeZone: string;
+}): Parameters<typeof computeAdaptiveWindowPolicy>[0] | null {
+  const scheduleWakeHour =
+    zonedDecimalHour(args.schedule?.wakeAt, args.timeZone) ??
+    args.schedule?.typicalWakeHour ??
+    null;
+  const scheduleFirstActiveHour = zonedDecimalHour(
+    args.schedule?.firstActiveAt,
+    args.timeZone,
+  );
+  const scheduleLastActiveHour = zonedDecimalHour(
+    args.schedule?.lastActiveAt,
+    args.timeZone,
+  );
+  const scheduleSleepHour =
+    zonedDecimalHour(
+      args.schedule?.currentSleepStartedAt ?? args.schedule?.lastSleepStartedAt,
+      args.timeZone,
+      true,
+    ) ??
+    args.schedule?.typicalSleepHour ??
+    null;
+  const adaptiveProfile = {
+    typicalWakeHour:
+      scheduleWakeHour ?? args.profile?.typicalWakeHour ?? null,
+    typicalFirstActiveHour:
+      scheduleFirstActiveHour ?? args.profile?.typicalFirstActiveHour ?? null,
+    typicalLastActiveHour:
+      scheduleLastActiveHour ?? args.profile?.typicalLastActiveHour ?? null,
+    typicalSleepHour:
+      scheduleSleepHour ?? args.profile?.typicalSleepHour ?? null,
+  };
+  return Object.values(adaptiveProfile).some((value) => value !== null)
+    ? adaptiveProfile
+    : null;
+}
 
 // ---------------------------------------------------------------------------
 // Local constants
@@ -1409,11 +1483,23 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
                 : null,
             )
           : null;
-        if (!profile) {
+        const schedule = await refreshLifeOpsScheduleInsight({
+          runtime: this.runtime,
+          repository: this.repository,
+          agentId: this.agentId(),
+          timezone,
+          now,
+        });
+        const adaptiveProfile = buildAdaptiveWindowProfile({
+          profile,
+          schedule,
+          timeZone: timezone,
+        });
+        if (!adaptiveProfile) {
           this.adaptiveWindowPolicyCache = null;
           return null;
         }
-        const policy = computeAdaptiveWindowPolicy(profile, timezone);
+        const policy = computeAdaptiveWindowPolicy(adaptiveProfile, timezone);
         this.adaptiveWindowPolicyCache = { policy, computedAt: now.getTime() };
         return policy;
       } catch (error) {

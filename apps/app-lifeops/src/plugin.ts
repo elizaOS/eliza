@@ -25,6 +25,7 @@ import {
 // LifeOps core actions (calendar, gmail, life/tasks, goals, inbox, owner profile)
 import { ownerCalendarAction } from "./actions/owner-calendar.js";
 import { ownerInboxAction } from "./actions/owner-inbox.js";
+import { ownerScheduleAction } from "./actions/owner-schedule.js";
 import { xReadAction } from "./actions/x-read.js";
 import { lifeAction } from "./actions/life.js";
 import { updateOwnerProfileAction } from "./actions/update-owner-profile.js";
@@ -174,6 +175,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     ownerAppBlockAction,
     ownerCalendarAction,
     ownerInboxAction,
+    ownerScheduleAction,
     xReadAction,
     lifeAction,
     updateOwnerProfileAction,
@@ -364,6 +366,7 @@ export {
 // LifeOps core exports
 export { ownerCalendarAction } from "./actions/owner-calendar.js";
 export { ownerInboxAction } from "./actions/owner-inbox.js";
+export { ownerScheduleAction } from "./actions/owner-schedule.js";
 export { lifeAction } from "./actions/life.js";
 export { updateOwnerProfileAction } from "./actions/update-owner-profile.js";
 export { inboxTriageProvider } from "./providers/inbox-triage.js";

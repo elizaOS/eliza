@@ -3,7 +3,10 @@ import type {
   LifeOpsOverview,
 } from "@elizaos/shared/contracts/lifeops";
 import { describe, expect, it } from "vitest";
-import { formatOverviewForQuery } from "../src/actions/lifeops-google-helpers.js";
+import {
+  formatOverview,
+  formatOverviewForQuery,
+} from "../src/actions/lifeops-google-helpers.js";
 
 function buildOccurrence(args: {
   id: string;
@@ -116,5 +119,40 @@ describe("formatOverviewForQuery", () => {
     expect(text).toContain("Brush teeth (morning and night)");
     expect(text).toContain("Pay rent");
     expect(text).not.toContain("Brush teeth, Brush teeth");
+  });
+
+  it("includes schedule context in the overview summary", () => {
+    const overview = buildOverview([]);
+    overview.schedule = {
+      effectiveDayKey: "2026-04-19",
+      localDate: "2026-04-19",
+      timezone: "UTC",
+      inferredAt: "2026-04-19T13:00:00.000Z",
+      phase: "afternoon",
+      sleepStatus: "slept",
+      isProbablySleeping: false,
+      sleepConfidence: 0.81,
+      currentSleepStartedAt: null,
+      lastSleepStartedAt: "2026-04-18T23:30:00.000Z",
+      lastSleepEndedAt: "2026-04-19T07:30:00.000Z",
+      lastSleepDurationMinutes: 480,
+      typicalWakeHour: 7.5,
+      typicalSleepHour: 23.5,
+      wakeAt: "2026-04-19T07:30:00.000Z",
+      firstActiveAt: "2026-04-19T07:35:00.000Z",
+      lastActiveAt: "2026-04-19T12:15:00.000Z",
+      meals: [],
+      lastMealAt: null,
+      nextMealLabel: "lunch",
+      nextMealWindowStartAt: "2026-04-19T13:00:00.000Z",
+      nextMealWindowEndAt: "2026-04-19T15:00:00.000Z",
+      nextMealConfidence: 0.55,
+    };
+
+    const text = formatOverview(overview);
+
+    expect(text).toContain("Schedule phase: afternoon");
+    expect(text).toContain("Last wake 2026-04-19T07:30:00.000Z");
+    expect(text).toContain("Next lunch window starts 2026-04-19T13:00:00.000Z");
   });
 });
