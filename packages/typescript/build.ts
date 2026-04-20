@@ -127,6 +127,7 @@ export async function createElizaBuildConfig(
 		"@elizaos/server",
 		"@elizaos/client",
 		"@elizaos/api-client",
+		"@elizaos/shared",
 		"@elizaos/plugin-*",
 	].filter((pkg) => pkg !== selfPackageName);
 
