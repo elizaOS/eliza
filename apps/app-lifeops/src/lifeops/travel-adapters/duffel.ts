@@ -155,7 +155,7 @@ export interface DuffelCallCost {
   creatorMarkupUsd: number;
   /** Eliza Cloud platform fee portion, in USD. */
   platformFeeUsd: number;
-  /** Display-only ratio of platform fee to total (e.g. 0.05 for 5%).
+  /** Display-only ratio of platform fee to total (e.g. 0.2 for 20%).
    *  Derived from server values, never used for pricing. Null when
    *  totalUsd is zero (direct mode or free call). */
   markupPercent: number | null;
