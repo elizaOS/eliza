@@ -94,6 +94,12 @@ describe("CheckinService", () => {
     expect(report.todaysMeetings).toEqual([]);
     expect(report.yesterdaysWins).toEqual([]);
     expect(report.reportId).toMatch(/.+/);
+    // overdue + wins share life_task_* tables (bootstrapped), so no error.
+    expect(report.collectorErrors.overdueTodos).toBeNull();
+    expect(report.collectorErrors.yesterdaysWins).toBeNull();
+    // life_calendar_events is NOT bootstrapped in this harness, so the
+    // meetings collector must surface an error rather than silently [] .
+    expect(report.collectorErrors.todaysMeetings).toMatch(/.+/);
   });
 
   it("recordCheckinAcknowledgement clears unack count so next escalation returns to 0", async () => {

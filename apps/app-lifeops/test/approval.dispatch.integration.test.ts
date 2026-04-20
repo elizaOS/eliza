@@ -1,12 +1,25 @@
+/**
+ * APPROVAL EXECUTOR ARGUMENT-ROUTING TEST (not a dispatch integration test).
+ *
+ * `LifeOpsService.prototype.sendTelegramMessage` / `sendGmailReply` are
+ * mocked. The assertions verify the shape of the arguments passed into
+ * those methods when an ApprovalPayload is approved — NOT that the real
+ * Telegram MTProto or Gmail HTTP dispatch works. For a real dispatch
+ * integration test, use a live credentials harness or a local HTTP
+ * stub and exercise the actual client.
+ */
 import crypto from "node:crypto";
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { approveRequestAction } from "../src/actions/approval.js";
-import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
+import {
+  createApprovalQueue,
+  PgApprovalQueue,
+} from "../src/lifeops/approval-queue.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
 import { createLifeOpsTestRuntime, type RealTestRuntimeResult } from "./helpers/runtime.js";
 
-describe("approval dispatch integration", () => {
+describe("approval executor — argument routing to LifeOpsService methods (dispatch mocked)", () => {
   let runtime: AgentRuntime;
   let testRuntime: RealTestRuntimeResult;
 
@@ -53,6 +66,8 @@ describe("approval dispatch integration", () => {
     const sendSpy = vi
       .spyOn(LifeOpsService.prototype, "sendTelegramMessage")
       .mockResolvedValue({ ok: true });
+    const markExecutingSpy = vi.spyOn(PgApprovalQueue.prototype, "markExecuting");
+    const markDoneSpy = vi.spyOn(PgApprovalQueue.prototype, "markDone");
     vi.spyOn(runtime, "useModel").mockResolvedValue(
       JSON.stringify({
         requestId: request.id,
@@ -74,6 +89,12 @@ describe("approval dispatch integration", () => {
         target: "telegram-room-frontier",
         message: "Sorry I missed you earlier. Thursday at 2pm works if that helps.",
       }),
+    );
+    // State-machine assertions — the part this test can honestly verify.
+    expect(markExecutingSpy).toHaveBeenCalledWith(request.id);
+    expect(markDoneSpy).toHaveBeenCalledWith(request.id);
+    expect(markExecutingSpy.mock.invocationCallOrder[0]).toBeLessThan(
+      markDoneSpy.mock.invocationCallOrder[0],
     );
     expect((await queue.byId(request.id))?.state).toBe("done");
   });
@@ -102,6 +123,8 @@ describe("approval dispatch integration", () => {
     const sendReplySpy = vi
       .spyOn(LifeOpsService.prototype, "sendGmailReply")
       .mockResolvedValue({ ok: true });
+    const markExecutingSpy = vi.spyOn(PgApprovalQueue.prototype, "markExecuting");
+    const markDoneSpy = vi.spyOn(PgApprovalQueue.prototype, "markDone");
     vi.spyOn(runtime, "useModel").mockResolvedValue(
       JSON.stringify({
         requestId: request.id,
@@ -125,6 +148,12 @@ describe("approval dispatch integration", () => {
         bodyText: "Sorry I missed your call. Thursday at 2pm works if that helps.",
         confirmSend: true,
       }),
+    );
+    // State-machine assertions — the part this test can honestly verify.
+    expect(markExecutingSpy).toHaveBeenCalledWith(request.id);
+    expect(markDoneSpy).toHaveBeenCalledWith(request.id);
+    expect(markExecutingSpy.mock.invocationCallOrder[0]).toBeLessThan(
+      markDoneSpy.mock.invocationCallOrder[0],
     );
     expect((await queue.byId(request.id))?.state).toBe("done");
   });
