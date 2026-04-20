@@ -522,12 +522,6 @@ export const ownerWebsiteBlockAction: Action & {
     }
     return (await requireDelegatedHandler(
       requestWebsiteBlockingPermissionAction,
-    )(
-      runtime,
-      message,
-      state,
-      options,
-      callback,
-    )) as ActionResult;
+    )(runtime, message, state, options, callback)) as ActionResult;
   },
 };
