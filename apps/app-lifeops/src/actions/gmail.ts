@@ -900,7 +900,7 @@ function shouldExtractGmailPayload(subaction: GmailSubaction): boolean {
 async function runGmailPlanningModel(args: {
   runtime: IAgentRuntime;
   prompt: string;
-  modelType: ModelType;
+  modelType: (typeof ModelType)[keyof typeof ModelType];
   failureMessage: string;
 }): Promise<Record<string, unknown> | null> {
   if (typeof args.runtime.useModel !== "function") {

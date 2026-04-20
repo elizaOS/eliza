@@ -40,6 +40,11 @@ import {
   sendPush,
   NtfyConfigError,
 } from "../lifeops/notifications-push.js";
+import { requireFeatureEnabled } from "../lifeops/feature-flags.js";
+import {
+  FeatureNotEnabledError,
+  type LifeOpsFeatureKey,
+} from "../lifeops/feature-flags.types.js";
 
 const ACTION_NAME = "OWNER_SEND_MESSAGE";
 
@@ -643,6 +648,39 @@ export const crossChannelSendAction: Action & {
           subject: subject ?? null,
         },
       };
+    }
+
+    const requiredFeatures: LifeOpsFeatureKey[] = [];
+    if (channel === "sms" || channel === "twilio_voice") {
+      requiredFeatures.push("cross_channel.escalate");
+    }
+    if (channel === "notifications") {
+      requiredFeatures.push("notifications.push");
+    }
+    for (const featureKey of requiredFeatures) {
+      try {
+        await requireFeatureEnabled(runtime, featureKey);
+      } catch (error) {
+        if (error instanceof FeatureNotEnabledError) {
+          return {
+            text: error.message,
+            success: false,
+            values: {
+              success: false,
+              error: error.code,
+              featureKey: error.featureKey,
+              channel,
+            },
+            data: {
+              actionName: ACTION_NAME,
+              error: error.code,
+              featureKey: error.featureKey,
+              channel,
+            },
+          };
+        }
+        throw error;
+      }
     }
 
     const service = new LifeOpsService(runtime);

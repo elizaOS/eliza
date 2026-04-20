@@ -186,7 +186,7 @@ import { handleCloudCompatRoute } from "./cloud-compat-routes.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { handleCloudRelayRoute } from "./cloud-relay-routes.js";
 import { type CloudRouteState, handleCloudRoute } from "./cloud-routes.js";
-import { handleDuffelRelayRoute } from "./duffel-relay-routes.js";
+import { handleCloudFeaturesRoute } from "./cloud-features-routes.js";
 import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
 import { handleDuffelRelayRoute } from "./duffel-relay-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
@@ -3743,6 +3743,17 @@ async function handleRequest(
 
   // ── Cloud routes (/api/cloud/*) ─────────────────────────────────────────
   if (pathname.startsWith("/api/cloud/")) {
+    // Cloud-managed feature flag sync — must run before the generic
+    // cloud passthrough so /api/cloud/features hits the local upserter.
+    const featuresHandled = await handleCloudFeaturesRoute(
+      req,
+      res,
+      pathname,
+      method,
+      { config: state.config, runtime: state.runtime },
+    );
+    if (featuresHandled) return;
+
     // Duffel travel relay — must run before the generic cloud passthrough
     // so the upstream Duffel + billing path is hit, not the bare cloud
     // proxy that would land on /api/v1/duffel/* with no markup logic.

@@ -34,6 +34,8 @@ import {
   isUrlWhitelisted,
   normalizeAutofillDomain,
 } from "../lifeops/autofill-whitelist.js";
+import { requireFeatureEnabled } from "../lifeops/feature-flags.js";
+import { FeatureNotEnabledError } from "../lifeops/feature-flags.types.js";
 
 const FIELD_PURPOSES = ["email", "password", "name", "phone", "custom"] as const;
 type FieldPurpose = (typeof FIELD_PURPOSES)[number];
@@ -187,6 +189,18 @@ export const requestFieldFillAction: Action = {
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
       return failure("REQUEST_FIELD_FILL", "PERMISSION_DENIED");
+    }
+
+    try {
+      await requireFeatureEnabled(runtime, "browser.automation");
+    } catch (error) {
+      if (error instanceof FeatureNotEnabledError) {
+        return failure("REQUEST_FIELD_FILL", error.code, {
+          featureKey: error.featureKey,
+          message: error.message,
+        });
+      }
+      throw error;
     }
 
     const params =

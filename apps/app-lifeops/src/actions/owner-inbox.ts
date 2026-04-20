@@ -412,7 +412,7 @@ export const ownerInboxAction: Action & {
     options: HandlerOptions | undefined,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const params = ((options?.parameters ?? {}) as OwnerInboxParams) ?? {};
+    const params = (options?.parameters ?? {}) as OwnerInboxParams;
     const body = messageText(message);
     let subaction = normalizeSubaction(params.subaction);
     let channel = normalizeChannel(params.channel);

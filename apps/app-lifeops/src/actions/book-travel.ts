@@ -15,6 +15,8 @@ import type {
   ApprovalQueue,
   ApprovalRequest,
 } from "../lifeops/approval-queue.types.js";
+import { requireFeatureEnabled } from "../lifeops/feature-flags.js";
+import { FeatureNotEnabledError } from "../lifeops/feature-flags.types.js";
 import { INTERNAL_URL } from "./lifeops-google-helpers.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import { LifeOpsService } from "../lifeops/service.js";
@@ -370,6 +372,32 @@ export const bookTravelAction: Action = {
         values: { success: false, error: "PERMISSION_DENIED" },
         data: { actionName: "BOOK_TRAVEL", error: "PERMISSION_DENIED" },
       };
+    }
+
+    try {
+      await requireFeatureEnabled(runtime, "travel.book_flight");
+    } catch (error) {
+      if (error instanceof FeatureNotEnabledError) {
+        const text = error.message;
+        if (callback) {
+          await callback({ text });
+        }
+        return {
+          text,
+          success: false,
+          values: {
+            success: false,
+            error: error.code,
+            featureKey: error.featureKey,
+          },
+          data: {
+            actionName: "BOOK_TRAVEL",
+            error: error.code,
+            featureKey: error.featureKey,
+          },
+        };
+      }
+      throw error;
     }
 
     const params = getParams(options as HandlerOptions | undefined);
