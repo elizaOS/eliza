@@ -82,6 +82,8 @@ import {
   getNodeIcon,
   NODE_CLASS_ORDER,
 } from "./node-catalog-icons";
+import { WorkflowGraphViewer } from "./WorkflowGraphViewer";
+import { useWorkflowGenerationState } from "../../hooks/useWorkflowGenerationState";
 
 type AutomationFilter = "all" | "coordinator" | "workflows" | "scheduled";
 type SelectionKind = "trigger" | "task" | "workflow" | null;

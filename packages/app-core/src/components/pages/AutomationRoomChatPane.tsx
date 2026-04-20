@@ -28,6 +28,7 @@ import {
   buildAutomationResponseRoutingMetadata,
   resolveAutomationConversation,
 } from "./automation-conversations";
+import { emitWorkflowGenerating } from "../../hooks/useWorkflowGenerationState";
 
 interface AutomationRoomChatPaneProps {
   assistantLabel: string;
@@ -40,6 +41,12 @@ interface AutomationRoomChatPaneProps {
   placeholder: string;
   systemAddendum?: string;
   title: string;
+  /**
+   * The n8n workflow ID or draft ID this chat pane is attached to.
+   * When provided, generation start/end events are emitted so the
+   * WorkflowGraphViewer can show a live "building" state.
+   */
+  workflowId?: string | null;
 }
 
 const WORKFLOW_ACTION_KEYWORDS =
@@ -56,6 +63,7 @@ export function AutomationRoomChatPane({
   placeholder,
   systemAddendum,
   title,
+  workflowId,
 }: AutomationRoomChatPaneProps) {
   const { t } = useApp();
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -197,6 +205,7 @@ export function AutomationRoomChatPane({
     setInput("");
     setSending(true);
     setFirstTokenReceived(false);
+    if (workflowId) emitWorkflowGenerating(workflowId, true);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -254,6 +263,7 @@ export function AutomationRoomChatPane({
     } finally {
       setSending(false);
       abortRef.current = null;
+      if (workflowId) emitWorkflowGenerating(workflowId, false);
     }
   }, [
     conversationId,
@@ -263,6 +273,7 @@ export function AutomationRoomChatPane({
     sending,
     systemAddendum,
     t,
+    workflowId,
   ]);
 
   const handleStop = useCallback(() => {
