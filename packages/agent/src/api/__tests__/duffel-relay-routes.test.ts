@@ -218,6 +218,55 @@ describe("duffel relay route", () => {
     expect(readBody<{ error: string }>().error).toBe("insufficient_credits");
   });
 
+  it("forwards 402 verbatim with WWW-Authenticate x402 header for adapter parsing", async () => {
+    const fetchMock = makeFetchMock(async () => {
+      return new Response(
+        JSON.stringify({
+          paymentRequirements: [
+            {
+              amount: "1500000",
+              asset: "USDC",
+              network: "base",
+              payTo: "0xabc",
+              scheme: "exact",
+              description: "Top up for flight booking",
+            },
+          ],
+        }),
+        {
+          status: 402,
+          headers: {
+            "Content-Type": "application/json",
+            "WWW-Authenticate":
+              'x402 {"paymentRequirements":[{"amount":"1500000","asset":"USDC","network":"base","payTo":"0xabc","scheme":"exact"}]}',
+          },
+        },
+      );
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const { res, headers, readBody, getStatus } = makeResponseCollector();
+    const state: DuffelRelayRouteState = {
+      config: { cloud: { baseUrl: "https://www.elizacloud.ai" } },
+      runtime: makeRuntimeWithCloudAuth("k"),
+    };
+    const handled = await handleDuffelRelayRoute(
+      makeReq("/api/cloud/duffel/offers/off_pay", undefined),
+      res,
+      "/api/cloud/duffel/offers/off_pay",
+      "GET",
+      state,
+    );
+
+    expect(handled).toBe(true);
+    expect(getStatus()).toBe(402);
+    expect(headers.get("www-authenticate")).toMatch(/^x402 /);
+    const body = readBody<{
+      paymentRequirements: Array<{ asset: string }>;
+    }>();
+    expect(body.paymentRequirements[0]?.asset).toBe("USDC");
+  });
+
   it("returns false (does not handle) for unrelated cloud paths", async () => {
     const { res } = makeResponseCollector();
     const state: DuffelRelayRouteState = {
