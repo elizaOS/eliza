@@ -3068,17 +3068,29 @@ export const lifeAction: Action & {
             data: toActionData(ctx),
           };
         }
-        const timeRangeHint = intent.toLowerCase();
-        const range = /\btomorrow\b/.test(timeRangeHint)
-          ? dayRange(1)
-          : /\b(this week|week)\b/.test(timeRangeHint)
-            ? weekRange()
-            : dayRange(0);
-        const label = /\btomorrow\b/.test(timeRangeHint)
-          ? "tomorrow"
-          : /\b(this week|week)\b/.test(timeRangeHint)
-            ? "this week"
-            : "today";
+        // The planner extracts the time window as a structured `when` param
+        // ("today" | "tomorrow" | "this_week"), so we never re-parse the
+        // free-form `intent` string at runtime. Default to "today" when the
+        // caller omits it.
+        const whenRaw = detailString(details, "when")?.toLowerCase().trim();
+        const when: "today" | "tomorrow" | "this_week" =
+          whenRaw === "tomorrow"
+            ? "tomorrow"
+            : whenRaw === "this_week" || whenRaw === "this week" || whenRaw === "week"
+              ? "this_week"
+              : "today";
+        const range =
+          when === "tomorrow"
+            ? dayRange(1)
+            : when === "this_week"
+              ? weekRange()
+              : dayRange(0);
+        const label =
+          when === "tomorrow"
+            ? "tomorrow"
+            : when === "this_week"
+              ? "this week"
+              : "today";
         const feed = await service.getCalendarFeed(INTERNAL_URL, {
           timeMin: range.timeMin,
           timeMax: range.timeMax,

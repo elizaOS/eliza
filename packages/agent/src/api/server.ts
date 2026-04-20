@@ -1115,13 +1115,13 @@ interface RequestContext {
   onRuntimeSwapped?: () => void;
 }
 
-import type { TrainingServiceLike } from "./server-types.js";
+import type { TrainingServiceWithRuntime } from "./server-types.js";
 
 type TrainingServiceCtor = new (options: {
   getRuntime: () => AgentRuntime | null;
   getConfig: () => ElizaConfig;
   setConfig: (nextConfig: ElizaConfig) => void;
-}) => TrainingServiceLike;
+}) => TrainingServiceWithRuntime;
 
 async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null> {
   const candidates = [

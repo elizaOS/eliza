@@ -515,7 +515,11 @@ export interface AutomationNodeDescriptor {
   label: string;
   description: string;
   class: AutomationNodeClass;
-  source: "runtime_action" | "runtime_provider" | "lifeops";
+  source:
+    | "runtime_action"
+    | "runtime_provider"
+    | "lifeops"
+    | "lifeops_event";
   backingCapability: string;
   ownerScoped: boolean;
   requiresSetup: boolean;

@@ -276,6 +276,7 @@ export function FeaturesStep() {
           type="button"
           className={onboardingPrimaryActionClass}
           style={onboardingPrimaryActionTextShadowStyle}
+          data-testid="onboarding-features-continue"
           onClick={(e) => {
             spawnOnboardingRipple(e.currentTarget, {
               x: e.clientX,

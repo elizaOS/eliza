@@ -1,5 +1,6 @@
 import type {
   Action,
+  ActionExample,
   ActionResult,
   Content,
   HandlerOptions,
@@ -480,4 +481,34 @@ export const sendMessageAction: Action = {
       },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Tell Jill I'm running 10 minutes late.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Message sent to Jill Park on telegram.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Drop a quick note in the #announcements room that the release is out.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Message sent to room announcements on discord.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

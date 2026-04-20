@@ -26,10 +26,6 @@ type SubscriptionActionParams = {
 
 const ACTION_NAME = "SUBSCRIPTIONS";
 
-function messageText(message: Memory): string {
-  return typeof message.content?.text === "string" ? message.content.text : "";
-}
-
 function mergeParams(
   message: Memory,
   options?: HandlerOptions,
@@ -65,11 +61,8 @@ function normalizeMode(value: unknown): SubscriptionSubaction | null {
   return null;
 }
 
-function parseConfirmed(text: string, params: SubscriptionActionParams): boolean {
-  if (typeof params.confirmed === "boolean") {
-    return params.confirmed;
-  }
-  return /\b(go ahead|confirm|yes cancel|do it now|proceed)\b/i.test(text);
+function parseConfirmed(params: SubscriptionActionParams): boolean {
+  return typeof params.confirmed === "boolean" ? params.confirmed : false;
 }
 
 function browserTaskData(
@@ -103,11 +96,10 @@ async function runSubscriptionsAction(
   options?: HandlerOptions,
 ): Promise<ActionResult> {
   void state;
-  const text = messageText(message);
+  void message;
   const params = mergeParams(message, options);
   const service = new LifeOpsService(runtime);
-  const inferred = service.resolveSubscriptionIntent(text);
-  const mode = normalizeMode(params.mode) ?? inferred.mode;
+  const mode = normalizeMode(params.mode);
 
   if (!mode) {
     return {
@@ -118,8 +110,8 @@ async function runSubscriptionsAction(
     };
   }
 
-  const serviceName = params.serviceName ?? inferred.serviceName ?? null;
-  const serviceSlug = params.serviceSlug ?? inferred.serviceSlug ?? null;
+  const serviceName = params.serviceName ?? null;
+  const serviceSlug = params.serviceSlug ?? null;
 
   switch (mode) {
     case "audit": {
@@ -145,10 +137,10 @@ async function runSubscriptionsAction(
     case "cancel": {
       const summary = await service.cancelSubscription({
         candidateId: params.candidateId ?? null,
-        serviceName,
-        serviceSlug,
-        executor: params.executor ?? inferred.executor ?? null,
-        confirmed: parseConfirmed(text, params),
+        serviceName: serviceName ?? null,
+        serviceSlug: serviceSlug ?? null,
+        executor: params.executor ?? null,
+        confirmed: parseConfirmed(params),
       });
       return {
         success:

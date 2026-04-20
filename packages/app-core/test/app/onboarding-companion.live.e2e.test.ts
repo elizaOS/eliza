@@ -26,6 +26,7 @@ import {
   selectLiveProvider,
 } from "../../../../../test/helpers/live-provider";
 import { buildOnboardingRuntimeConfig } from "../../src/onboarding-config";
+import { resolveNodeCmd } from "../scripts/managed-test-command.mjs";
 
 const LIVE_TESTS_ENABLED =
   process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
@@ -503,10 +504,11 @@ async function startRealStack(): Promise<StartedStack> {
   const apiBase = `http://127.0.0.1:${apiPort}`;
 
   const apiChild = spawn(
-    "node",
+    resolveNodeCmd(),
     [
-      path.join(REPO_ROOT, "eliza/packages/app-core/scripts/run-node-tsx.mjs"),
-      path.join(REPO_ROOT, "eliza/packages/app-core/src/runtime/eliza.ts"),
+      "--import",
+      "tsx",
+      path.join(REPO_ROOT, "eliza/packages/app-core/src/runtime/dev-server.ts"),
     ],
     {
       cwd: REPO_ROOT,

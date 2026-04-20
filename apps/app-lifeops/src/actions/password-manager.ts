@@ -43,40 +43,6 @@ type PasswordManagerParameters = {
   limit?: number;
 };
 
-/**
- * Infer a subaction from natural-language intent when the planner did not
- * pass one. Keeps the benchmark/common-path green without a planner-round-trip.
- */
-function inferPasswordManagerSubaction(
-  intent: string | undefined,
-  messageText: string,
-): PasswordManagerSubaction | "" {
-  const haystack = `${intent ?? ""}\n${messageText ?? ""}`.toLowerCase();
-  if (!haystack.trim()) return "";
-  if (/\b(copy|paste|fill)\s+(the\s+)?password\b/.test(haystack)) {
-    return "inject_password";
-  }
-  if (/\b(copy|paste|fill)\s+(the\s+)?username\b/.test(haystack)) {
-    return "inject_username";
-  }
-  if (
-    /\b(list|show|view|what\s+are\s+my)\b.*\b(logins|passwords|credentials|saved)\b/.test(
-      haystack,
-    ) ||
-    /\b(saved\s+logins|all\s+logins)\b/.test(haystack)
-  ) {
-    return "list";
-  }
-  if (
-    /\b(look\s*up|find|search|what(?:'s|\s+is)?|where\s+is)\b.*\b(login|password|credential)\b/.test(
-      haystack,
-    ) ||
-    /\b(password\s+for|login\s+for|credential\s+for)\b/.test(haystack)
-  ) {
-    return "search";
-  }
-  return "";
-}
 
 function readConfig(
   runtime: { getSetting?: (key: string) => unknown } | undefined,
@@ -186,15 +152,7 @@ export const passwordManagerAction: Action = {
         | PasswordManagerParameters
         | undefined) ?? {};
 
-    const messageText =
-      typeof (message?.content as { text?: unknown } | undefined)?.text === "string"
-        ? ((message.content as { text: string }).text)
-        : "";
-    const explicitSubaction = (params.subaction ?? "").toString().trim().toLowerCase();
-    const inferredSubaction = explicitSubaction
-      ? ""
-      : inferPasswordManagerSubaction(params.intent, messageText);
-    const subaction = explicitSubaction || inferredSubaction;
+    const subaction = (params.subaction ?? "").toString().trim().toLowerCase();
     const config = readConfig(runtime);
 
     if (subaction === "search") {

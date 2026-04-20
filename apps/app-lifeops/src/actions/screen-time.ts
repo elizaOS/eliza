@@ -56,27 +56,6 @@ function formatSeconds(seconds: number): string {
   return `${m}m`;
 }
 
-function inferSubaction(
-  intent: string | undefined,
-  messageBody: string,
-): Subaction {
-  const text = `${intent ?? ""} ${messageBody}`.toLowerCase();
-  if (/\btoday\b/.test(text)) return "today";
-  if (/\b(this week|weekly|past (7|seven) days|last week)\b/.test(text)) {
-    return "weekly";
-  }
-  if (/\b(on|at|in|spent)\b.*\b(website|site|domain|url)\b/.test(text)) {
-    return "by_website";
-  }
-  if (/\b(in|on|using|app)\b/.test(text) && /\b(app|application)\b/.test(text)) {
-    return "by_app";
-  }
-  if (/\b(top|most used|top apps|top websites)\b/.test(text)) {
-    return "summary";
-  }
-  return "summary";
-}
-
 export const screenTimeAction: Action = {
   name: "SCREEN_TIME",
   similes: ["SCREENTIME", "APP_USAGE", "WEBSITE_USAGE", "DWELL_TIME"],
@@ -102,8 +81,7 @@ export const screenTimeAction: Action = {
     }
 
     const params = getParams(options);
-    const body = messageText(message);
-    const subaction = params.subaction ?? inferSubaction(params.intent, body);
+    const subaction: Subaction = params.subaction ?? "summary";
     const service = new LifeOpsService(runtime);
 
     if (subaction === "today") {

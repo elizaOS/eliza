@@ -3,7 +3,8 @@
     "target": "ES2022",
     "module": "ES2022",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
+    "ignoreDeprecations": "5.0",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -17,10 +18,10 @@
     "strict": true,
     "jsx": "react-jsx",
     "paths": {
-      "@elizaos/ui": ["packages/ui/src/index.ts"],
-      "@elizaos/ui/*": ["packages/ui/src/*"],
-      "@elizaos/core": ["packages/typescript/src/index.node.ts"],
-      "@elizaos/core/*": ["packages/typescript/src/*"]
+      "@elizaos/ui": ["./packages/ui/src/index.ts"],
+      "@elizaos/ui/*": ["./packages/ui/src/*"],
+      "@elizaos/core": ["./packages/typescript/src/index.node.ts"],
+      "@elizaos/core/*": ["./packages/typescript/src/*"]
     }
   },
   "exclude": [

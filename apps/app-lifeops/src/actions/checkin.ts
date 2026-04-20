@@ -1,4 +1,4 @@
-import type { Action, ProviderDataRecord } from "@elizaos/core";
+import type { Action, ActionExample, ProviderDataRecord } from "@elizaos/core";
 import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import { CheckinService } from "../lifeops/checkin/checkin-service.js";
 import type { CheckinReport } from "../lifeops/checkin/types.js";
@@ -51,6 +51,36 @@ export const runMorningCheckinAction: Action = {
     };
   },
   parameters: [],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Let's do my morning check-in.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Here's your morning review: 2 overdue todos, 3 meetings today, and yesterday you closed out the onboarding draft.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "What's on my plate this morning?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Morning check-in ready: 1 overdue todo, 2 meetings today, and yesterday's wins included the PR review.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 export const runNightCheckinAction: Action = {
@@ -79,4 +109,34 @@ export const runNightCheckinAction: Action = {
     };
   },
   parameters: [],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Ready to wrap up for the day.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Here's your night check-in: 3 meetings done, 2 wins captured, 1 todo still open for tomorrow.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "How did today go?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Night recap ready: you closed 2 meetings and shipped the release notes; 1 todo rolls over.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

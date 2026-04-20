@@ -296,10 +296,6 @@ export function AppsView() {
   // Auto-launch from URL slug on first load (e.g. /apps/babylon after refresh)
   useEffect(() => {
     if (slugAutoLaunchDone.current || apps.length === 0) return;
-    slugAutoLaunchDone.current = true;
-
-    // Skip if a game run is already restored from sessionStorage
-    if (activeGameRunId) return;
 
     const slug = getAppSlugFromPath(
       window.location.protocol === "file:"
@@ -309,9 +305,14 @@ export function AppsView() {
     if (!slug) return;
 
     const app = findAppBySlug(apps, slug);
-    if (app) {
-      void handleLaunch(app);
-    }
+    slugAutoLaunchDone.current = true;
+    if (!app) return;
+
+    // Restored game runs should not block direct overlay-app routes like
+    // /apps/companion, which are expected to take over immediately.
+    if (activeGameRunId && !isOverlayApp(app.name)) return;
+
+    void handleLaunch(app);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time on first apps load
   }, [apps, handleLaunch, activeGameRunId]);
 

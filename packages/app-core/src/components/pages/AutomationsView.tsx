@@ -232,6 +232,9 @@ function getNodeClassLabel(className: AutomationNodeDescriptor["class"]): string
 }
 
 function getNodeIcon(node: AutomationNodeDescriptor) {
+  if (node.source === "lifeops_event") {
+    return <Zap className="h-3.5 w-3.5" />;
+  }
   if (node.source === "lifeops") {
     if (node.id === "lifeops:gmail") return <Mail className="h-3.5 w-3.5" />;
     if (node.id === "lifeops:signal") return <Signal className="h-3.5 w-3.5" />;

@@ -110,6 +110,7 @@ export function ConnectionProviderGridScreen({
             <Button
               type="button"
               key={p.id}
+              data-testid={`onboarding-provider-option-${p.id}`}
               className={`${getOnboardingChoiceCardClassName({
                 detected: Boolean(detectedLabel),
                 recommended: isRecommended,

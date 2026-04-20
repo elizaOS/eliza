@@ -1,4 +1,4 @@
-import type { Action, HandlerOptions, IAgentRuntime, Memory, State } from "@elizaos/core";
+import type { Action, ActionExample, HandlerOptions, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { hasRoleAccess } from "../security/access.js";
 import {
@@ -273,4 +273,34 @@ export const browserSessionAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Open elizaos.ai in a new browser tab.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "open completed in desktop mode.\nelizaOS\nhttps://elizaos.ai",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Click the sign-in button on that page.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "click completed in desktop mode.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

@@ -27,6 +27,11 @@ interface ScorerOptions {
 	temperature?: number;
 	/** Max tokens for each completion. Defaults to 512. */
 	maxTokens?: number;
+	/**
+	 * Per-example comparator. Defaults to Jaccard token overlap.
+	 * Returning 1.0 means a perfect match, 0.0 means no credit.
+	 */
+	compare?: (actual: string, expected: string) => number;
 }
 
 /**
@@ -47,6 +52,7 @@ export function createPromptScorer(
 ): PromptScorer {
 	const temperature = options.temperature ?? 0;
 	const maxTokens = options.maxTokens ?? 512;
+	const compare = options.compare ?? scoreAgreement;
 	return async (prompt, examples) => {
 		if (examples.length === 0) return 0;
 		const cap = options.maxExamples ?? examples.length;
@@ -59,10 +65,40 @@ export function createPromptScorer(
 				temperature,
 				maxTokens,
 			});
-			total += scoreAgreement(completion, example.expectedOutput);
+			total += compare(completion, example.expectedOutput);
 		}
 		return total / limited.length;
 	};
+}
+
+/**
+ * Extract the first action name from a planner XML blob. The planner emits
+ * `<action><name>NAME</name>...` (nested) — older/flatter dialects used
+ * `<action>NAME</action>`. Both are accepted. Falls back to the first
+ * all-caps identifier on truncated completions.
+ */
+export function extractPlannerAction(text: string): string | null {
+	if (!text) return null;
+	const nestedMatch = text.match(/<name>\s*([A-Z0-9_]+)\s*<\/name>/i);
+	if (nestedMatch?.[1]) return nestedMatch[1].toUpperCase();
+	const flatMatch = text.match(/<action>\s*([A-Z0-9_]+)\s*<\/action>/i);
+	if (flatMatch?.[1]) return flatMatch[1].toUpperCase();
+	const nameMatch = text.match(/\b([A-Z][A-Z0-9_]{2,})\b/);
+	return nameMatch?.[1] ?? null;
+}
+
+/**
+ * Action-name comparator: returns 1.0 when both outputs resolve to the same
+ * planner action name, 0.0 otherwise. This is the right primitive for
+ * optimizing the `action_planner` task — Jaccard over XML tokens under-credits
+ * correct choices whose surrounding XML varies stochastically.
+ */
+export function scorePlannerAction(actual: string, expected: string): number {
+	const actualAction = extractPlannerAction(actual);
+	const expectedAction = extractPlannerAction(expected);
+	if (!expectedAction) return 0;
+	if (!actualAction) return 0;
+	return actualAction === expectedAction ? 1 : 0;
 }
 
 /**

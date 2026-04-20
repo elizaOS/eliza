@@ -295,17 +295,15 @@ export const proposeMeetingTimesAction: Action & {
     "BUNDLE_MEETINGS_WHILE_TRAVELING",
   ],
   tags: [
-    "always-include",
     "meeting slots",
-    "bundle meetings",
-    "travel scheduling",
     "reschedule options",
   ],
   description:
     "Propose candidate meeting time slots to offer to another person. " +
     "Reads the owner's calendar busy times and meeting preferences " +
     "(preferred hours, blackout windows, travel buffer) and returns " +
-    "three available slots by default over the next seven days. Use this for bundled scheduling while traveling or when you need concrete reschedule options.",
+    "three available slots by default over the next seven days. Use this for bundled scheduling while traveling or when you need concrete reschedule options." +
+    " DO NOT use for small talk, weather, general conversation, or vague mentions of travel. Only fire when the user explicitly asks to propose / suggest / offer time slots to another person (e.g. 'propose three times for a meeting with Marco').",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (runtime, message, _state, options, callback) => {
@@ -546,6 +544,36 @@ export const checkAvailabilityAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Am I free tomorrow between 2pm and 4pm?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "You're free from Tue, Apr 20, 2:00 PM to Tue, Apr 20, 4:00 PM.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Do I have anything on my calendar Friday afternoon?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "You have 1 conflict in that window: Design review with the team.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 export const updateMeetingPreferencesAction: Action & {
@@ -881,7 +909,8 @@ export const schedulingAction: Action = {
     "Do not use this for first-turn calendar requests, recurring blocks, " +
     "travel-time bundling, missed-call repair, or fresh candidate-slot " +
     "searches; those belong to CALENDAR_ACTION, PROPOSE_MEETING_TIMES, INBOX, " +
-    "or CROSS_CHANNEL_SEND.",
+    "or CROSS_CHANNEL_SEND." +
+    " Use for 'help me schedule a meeting with <person/team>', 'set up a sync with <person>', 'find a time with <team>' — subaction: start. Use for 'propose N times for a sync with <person>' — subaction: propose.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasAdminAccess(runtime, message),
   handler: async (

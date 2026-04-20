@@ -645,6 +645,27 @@ function buildLifeOpsNode(
   };
 }
 
+function buildLifeOpsEventNode(
+  eventKind: string,
+  label: string,
+  description: string,
+  enabled: boolean,
+  disabledReason: string,
+): AutomationNodeDescriptor {
+  return {
+    id: `event:${eventKind}`,
+    label,
+    description,
+    class: "trigger",
+    source: "lifeops_event",
+    backingCapability: eventKind,
+    ownerScoped: true,
+    requiresSetup: !enabled,
+    availability: enabled ? "enabled" : "disabled",
+    ...(enabled ? {} : { disabledReason }),
+  };
+}
+
 async function buildAutomationNodeCatalog(
   state: CompatRuntimeState,
 ): Promise<AutomationNodeCatalogResponse> {
@@ -759,10 +780,27 @@ async function buildAutomationNodeCatalog(
     ),
   ];
 
+  const calendarConnected = Boolean(
+    googleStatus?.connected &&
+      [...googleCapabilities].some((capability) =>
+        capability.includes("calendar"),
+      ),
+  );
+  const lifeOpsEventNodes: AutomationNodeDescriptor[] = [
+    buildLifeOpsEventNode(
+      "calendar.event.ended",
+      "Calendar event ended",
+      "Fires a workflow after a synced calendar event's end time has passed.",
+      calendarConnected,
+      "Connect the owner Google account with Calendar access.",
+    ),
+  ];
+
   const nodes = [
     ...runtimeActionNodes,
     ...runtimeProviderNodes,
     ...lifeOpsNodes,
+    ...lifeOpsEventNodes,
   ].sort((left, right) => {
     if (left.class !== right.class) {
       return left.class.localeCompare(right.class);
