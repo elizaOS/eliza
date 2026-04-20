@@ -1,12 +1,6 @@
 import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
 import { logger, runPluginMigrations, stringToUuid } from "@elizaos/core";
 import { loadLifeOpsAppState } from "./app-state.js";
-import {
-  BackgroundPlannerError,
-  planJob,
-  type BackgroundJobContext,
-} from "./background-planner.js";
-import { enqueueIfSensitive } from "./background-planner-dispatch.js";
 import { LifeOpsService } from "./service.js";
 import { readTwilioCredentialsFromEnv } from "./twilio.js";
 
@@ -163,31 +157,27 @@ export async function executeLifeOpsSchedulerTask(
     ReturnType<LifeOpsService["processScheduledWork"]>
   >["workflowRuns"];
 }> {
-  // WS5: route this scheduler tick through the shared LLM planner so
-  // reminder / workflow dispatch decisions are LLM-extracted, not hardcoded.
+  // Real dispatch runs unconditionally via `processScheduledWork` below.
+  //
+  // NOTE: This method previously also called `planJob(runtime, {
+  //   jobKind: "meeting_reminder", snapshot: { now, scheduler } })` per tick
+  // as "WS5 routing through the shared LLM planner". That call was a LARP:
+  //   - `jobKind` was hardcoded to "meeting_reminder" regardless of context.
+  //   - The snapshot carried only `{ now, scheduler }` — no pending
+  //     occurrences, no calendar events, no overdue follow-ups.
+  //   - The planner's returned `plan` was never used by
+  //     `processScheduledWork`; the enqueue-if-sensitive path only ran when
+  //     the LLM happened to return a sensitive action, which it couldn't
+  //     meaningfully do given the empty snapshot.
+  //   - Net effect: wasted LLM tokens per minute, zero influence on
+  //     dispatch.
+  //
+  // When this scheduler wants real planner integration, the caller must
+  // first build a populated `BackgroundJobContext.snapshot` with the
+  // relevant state, and the plan must actually gate dispatch. Until that
+  // happens, do NOT reintroduce the empty-snapshot call here — that would
+  // just regress this fix.
   const now = resolveSchedulerNowIso(options);
-  const plannerContext: BackgroundJobContext = {
-    jobKind: "meeting_reminder",
-    subjectUserId: runtime.agentId,
-    snapshot: {
-      now: now ?? new Date().toISOString(),
-      scheduler: "LIFEOPS_SCHEDULER",
-    },
-    availableChannels: ["sms", "phone", "internal"],
-    trigger: "lifeops_scheduler_tick",
-  };
-  try {
-    const plan = await planJob(runtime, plannerContext);
-    await enqueueIfSensitive(runtime, plannerContext, plan);
-  } catch (error) {
-    if (error instanceof BackgroundPlannerError) {
-      logger.warn(
-        `[lifeops] background planner unavailable — ${error.message}`,
-      );
-    } else {
-      throw error;
-    }
-  }
 
   const service = new LifeOpsService(runtime);
   const scheduledWork = await service.processScheduledWork({ now });
@@ -212,7 +202,12 @@ export function registerLifeOpsTaskWorker(runtime: IAgentRuntime): void {
       try {
         const state = await loadLifeOpsAppState(rt as IAgentRuntime);
         return state.enabled;
-      } catch {
+      } catch (error) {
+        logger.warn(
+          `[lifeops-scheduler] loadLifeOpsAppState failed; defaulting shouldRun=true (scheduler runs even though LifeOps toggle state is unknown): ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
         return true;
       }
     },

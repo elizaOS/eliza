@@ -364,22 +364,26 @@ describe("background-job-parity: lifeops scheduler", () => {
     expect(queue.enqueued).toHaveLength(0);
   });
 
-  test("executeLifeOpsSchedulerTask forwards explicit now into planner input", async () => {
+  test("executeLifeOpsSchedulerTask does NOT call useModel (planner is gone until snapshot is populated)", async () => {
+    // Pre-fix: the scheduler ticked the LLM planner with an empty snapshot
+    // every minute, burning tokens without influencing dispatch. Post-fix:
+    // the scheduler does NOT talk to the LLM at all. When a real planner
+    // integration arrives, it MUST first populate a meaningful snapshot —
+    // callers adding `useModel` usage back here should update this test
+    // only after that snapshot exists, not by reverting the guard.
     const fixedNow = "2026-04-19T20:45:00.000Z";
     const { runtime, useModelCalls } = makeRuntime({
       plannerResponse: noopPlannerResponse("no reminders due"),
     });
 
     try {
-      const result = await executeLifeOpsSchedulerTask(runtime, { now: fixedNow });
-      expect(result.now).toBe(fixedNow);
+      await executeLifeOpsSchedulerTask(runtime, { now: fixedNow });
     } catch {
-      // The mock harness does not implement the full LifeOps persistence stack.
-      // Even when scheduled work crashes, the planner prompt must still carry
-      // the explicit logical clock.
+      // The mock harness does not implement the full LifeOps persistence
+      // stack; `processScheduledWork` may throw. We still require that no
+      // LLM call has been made by the time we got here.
     }
 
-    expect(useModelCalls.length).toBeGreaterThan(0);
-    expect(JSON.stringify(useModelCalls)).toContain(fixedNow);
+    expect(useModelCalls).toHaveLength(0);
   });
 });
