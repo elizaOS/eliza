@@ -398,8 +398,9 @@ function formatRelationshipLine(rel: {
 export const relationshipAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
-  name: "RELATIONSHIP",
+  name: "OWNER_RELATIONSHIP",
   similes: [
+    "RELATIONSHIP",
     "RELATIONSHIPS",
     "CONTACT",
     "CONTACTS",
@@ -410,10 +411,29 @@ export const relationshipAction: Action & {
     "ADD_CONTACT",
     "DAYS_SINCE",
     "LAST_CONTACTED",
+    "LIST_OVERDUE_FOLLOWUPS",
+    "MARK_FOLLOWUP_DONE",
+    "SET_FOLLOWUP_THRESHOLD",
+    "OVERDUE_FOLLOWUPS",
   ],
   description:
-    "Manage contacts, relationships, and follow-ups. Subactions: list_contacts, add_contact, log_interaction, add_follow_up, complete_follow_up, follow_up_list, days_since." +
-    " Use for 'remind me to follow up with <person> [when]', 'add a follow-up with <person>', 'schedule a check-in with <person>' — subaction: add_follow_up. Use for 'how long since I talked to <person>' — subaction: days_since. Use for 'who do I need to follow up with' — subaction: follow_up_list.",
+    "OWNER-scoped contacts / rolodex / follow-up tracker. Single umbrella for " +
+    "everything to do with the owner's people graph: listing or adding " +
+    "contacts, logging an interaction, asking how long since the owner " +
+    "talked to someone, creating or completing a follow-up, listing overdue " +
+    "follow-ups, and tuning the overdue threshold. " +
+    "Subactions: list_contacts | add_contact | log_interaction | days_since | " +
+    "add_follow_up | complete_follow_up | follow_up_list | list_overdue_followups | " +
+    "mark_followup_done | set_followup_threshold. " +
+    "Positive triggers: 'how long since I talked to <person>' → days_since; " +
+    "'remind me to follow up with <person> [when]' → add_follow_up; " +
+    "'who do I need to follow up with' / 'show overdue follow-ups' → " +
+    "list_overdue_followups; 'mark the <person> follow-up done' → " +
+    "mark_followup_done; 'bump the overdue threshold to N days' → " +
+    "set_followup_threshold. " +
+    "Do NOT split this request across RELATIONSHIP and any LIST_OVERDUE_FOLLOWUPS " +
+    "/ MARK_FOLLOWUP_DONE / SET_FOLLOWUP_THRESHOLD action — OWNER_RELATIONSHIP is " +
+    "the single entry point for the entire contacts + follow-up surface.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (

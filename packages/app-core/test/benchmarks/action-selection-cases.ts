@@ -254,7 +254,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "rel-list-contacts",
     userMessage: "who are my closest contacts?",
-    expectedAction: "RELATIONSHIP",
+    expectedAction: "OWNER_RELATIONSHIP",
     acceptableActions: ["LIST_CONTACTS", "RELATIONSHIPS"],
     expectedParams: { intent: "list_contacts" },
     tags: ["relationships", "standard"],
@@ -263,7 +263,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "rel-follow-up",
     userMessage:
       "remind me to follow up with David next week about the project",
-    expectedAction: "RELATIONSHIP",
+    expectedAction: "OWNER_RELATIONSHIP",
     acceptableActions: ["ADD_FOLLOW_UP", "SCHEDULE_FOLLOW_UP"],
     expectedParams: { intent: "add_follow_up" },
     tags: ["relationships", "standard"],
@@ -271,7 +271,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "rel-days-since",
     userMessage: "how long has it been since I talked to David?",
-    expectedAction: "RELATIONSHIP",
+    expectedAction: "OWNER_RELATIONSHIP",
     acceptableActions: ["DAYS_SINCE"],
     expectedParams: { intent: "days_since" },
     tags: ["relationships", "standard"],
