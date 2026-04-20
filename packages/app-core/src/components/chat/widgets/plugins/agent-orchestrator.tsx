@@ -14,8 +14,8 @@ import {
   OctagonAlert,
   Play,
   Square,
-  SquarePause,
   SquareArrowOutUpRight,
+  SquarePause,
   Trash2,
   Workflow,
   Wrench,
@@ -172,10 +172,11 @@ function ActivityItemsContent({ events }: { events: ActivityEvent[] }) {
             </span>
             <span
               className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md ${eventTypeMeta.toneClass}`}
-              aria-label={eventTypeMeta.label}
+              role="img"
               title={eventTypeMeta.label}
             >
               <EventIcon className="h-3 w-3" />
+              <span className="sr-only">{eventTypeMeta.label}</span>
             </span>
             <span className="min-w-0 flex-1 break-words pt-0.5 text-xs-tight leading-4 text-txt">
               {event.summary}
@@ -215,13 +216,11 @@ function AppRunCard({
         <div className="mt-1 flex flex-wrap items-center gap-1.5 text-3xs text-muted">
           <span
             className={`inline-block h-1.5 w-1.5 rounded-full ${healthDot}`}
+            role="img"
             aria-label={run.health.state}
             title={run.health.state}
           />
-          <ViewerIcon
-            className="h-3 w-3"
-            aria-label={run.viewerAttachment}
-          />
+          <ViewerIcon className="h-3 w-3" aria-label={run.viewerAttachment} />
           <span>{formatIsoTime(run.lastHeartbeatAt ?? run.updatedAt)}</span>
         </div>
       </div>
@@ -230,7 +229,10 @@ function AppRunCard({
       </div>
       {attentionReasons.length > 0 ? (
         <div className="mt-1.5 flex items-center gap-1.5 text-3xs text-warn">
-          <AlertTriangle className="h-3 w-3 shrink-0" aria-label="Needs attention" />
+          <AlertTriangle
+            className="h-3 w-3 shrink-0"
+            aria-label="Needs attention"
+          />
           <span className="truncate">{attentionReasons[0]}</span>
         </div>
       ) : null}
@@ -381,10 +383,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
               <Eye className="h-3 w-3" />
               {attachedCount}
             </span>
-            <span
-              className="inline-flex items-center gap-1"
-              title="Background"
-            >
+            <span className="inline-flex items-center gap-1" title="Background">
               <EyeOff className="h-3 w-3" />
               {backgroundCount}
             </span>

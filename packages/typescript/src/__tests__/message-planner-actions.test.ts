@@ -93,6 +93,13 @@ describe("resolvePlannerActionName", () => {
 				"HANDLE_CANCELLATION_FEE",
 			),
 		).toEqual(["PUBLISH_DEVICE_INTENT"]);
+		expect(
+			resolvePlannerActionName(
+				runtime,
+				actionLookup,
+				"SET_MULTI_DEVICE_REMINDER",
+			),
+		).toEqual(["PUBLISH_DEVICE_INTENT"]);
 		expect(resolvePlannerActionName(runtime, actionLookup, "UPLOAD_PORTAL")).toEqual(
 			["LIFEOPS_COMPUTER_USE"],
 		);

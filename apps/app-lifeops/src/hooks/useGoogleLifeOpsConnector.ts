@@ -18,6 +18,8 @@ import { useApp } from "@elizaos/app-core/state";
 import { openExternalUrl } from "@elizaos/app-core/utils";
 
 const DEFAULT_GOOGLE_CONNECTOR_POLL_INTERVAL_MS = 15_000;
+const GOOGLE_CONNECTOR_SILENT_REFRESH_DEBOUNCE_MS = 150;
+const GOOGLE_CONNECTOR_SILENT_REFRESH_COOLDOWN_MS = 1_000;
 const DEFAULT_VISIBLE_GOOGLE_MODES: readonly LifeOpsConnectorMode[] = [
   "cloud_managed",
   "local",
@@ -175,6 +177,7 @@ function parseRefreshEnvelope(rawValue: string): {
 }
 
 export interface UseGoogleLifeOpsConnectorOptions {
+  includeAccounts?: boolean;
   pollIntervalMs?: number;
   pollWhileDisconnected?: boolean;
   side?: LifeOpsConnectorSide;
@@ -184,6 +187,7 @@ export function useGoogleLifeOpsConnector(
   options: UseGoogleLifeOpsConnectorOptions = {},
 ) {
   const { agentStatus, backendConnection, startupPhase } = useApp();
+  const includeAccounts = options.includeAccounts ?? false;
   const pollIntervalMs =
     options.pollIntervalMs ?? DEFAULT_GOOGLE_CONNECTOR_POLL_INTERVAL_MS;
   const pollWhileDisconnected = options.pollWhileDisconnected ?? true;
@@ -191,7 +195,12 @@ export function useGoogleLifeOpsConnector(
   const instanceIdRef = useRef(
     `google-connector-hook-${googleConnectorHookInstanceSeed++}`,
   );
+  const pendingSilentRefreshModeRef = useRef<
+    LifeOpsConnectorMode | null | undefined
+  >(undefined);
   const selectedModeRef = useRef<LifeOpsConnectorMode | null>(null);
+  const silentRefreshTimerRef = useRef<number | null>(null);
+  const lastSilentRefreshAtRef = useRef(0);
   const [selectedMode, setSelectedMode] = useState<LifeOpsConnectorMode | null>(
     null,
   );
@@ -229,14 +238,15 @@ export function useGoogleLifeOpsConnector(
       try {
         const requestedMode =
           mode === undefined ? selectedModeRef.current : mode;
-        const nextStatus = await client.getGoogleLifeOpsConnectorStatus(
-          requestedMode ?? undefined,
-          side,
-        );
-        const nextAccounts = await client.getGoogleLifeOpsConnectorAccounts(
-          undefined,
-          side,
-        );
+        const [nextStatus, nextAccounts] = await Promise.all([
+          client.getGoogleLifeOpsConnectorStatus(
+            requestedMode ?? undefined,
+            side,
+          ),
+          includeAccounts
+            ? client.getGoogleLifeOpsConnectorAccounts(undefined, side)
+            : Promise.resolve<LifeOpsGoogleConnectorStatus[]>([]),
+        ]);
         const nextSelectedMode = requestedMode ?? nextStatus.mode;
         selectedModeRef.current = nextSelectedMode;
         setSelectedMode(nextSelectedMode);
@@ -261,8 +271,48 @@ export function useGoogleLifeOpsConnector(
         setLoading(false);
       }
     },
-    [runtimeReady, side],
+    [includeAccounts, runtimeReady, side],
   );
+
+  const queueSilentRefresh = useCallback(
+    (mode?: LifeOpsConnectorMode | null) => {
+      if (!runtimeReady) {
+        return;
+      }
+      if (mode !== undefined) {
+        pendingSilentRefreshModeRef.current = mode;
+      }
+      if (silentRefreshTimerRef.current !== null) {
+        return;
+      }
+      const elapsed = Date.now() - lastSilentRefreshAtRef.current;
+      const delay =
+        elapsed >= GOOGLE_CONNECTOR_SILENT_REFRESH_COOLDOWN_MS
+          ? GOOGLE_CONNECTOR_SILENT_REFRESH_DEBOUNCE_MS
+          : GOOGLE_CONNECTOR_SILENT_REFRESH_COOLDOWN_MS - elapsed;
+      silentRefreshTimerRef.current = globalThis.setTimeout(() => {
+        silentRefreshTimerRef.current = null;
+        const nextMode = pendingSilentRefreshModeRef.current;
+        pendingSilentRefreshModeRef.current = undefined;
+        lastSilentRefreshAtRef.current = Date.now();
+        void refresh({
+          silent: true,
+          mode: nextMode,
+        });
+      }, delay);
+    },
+    [refresh, runtimeReady],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (silentRefreshTimerRef.current === null) {
+        return;
+      }
+      globalThis.clearTimeout(silentRefreshTimerRef.current);
+      silentRefreshTimerRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!runtimeReady) {
@@ -321,10 +371,7 @@ export function useGoogleLifeOpsConnector(
       if (detail?.side && detail.side !== side) {
         return;
       }
-      void refresh({
-        silent: true,
-        mode: detail?.mode ?? undefined,
-      });
+      queueSilentRefresh(detail?.mode);
     };
 
     const handleConnectorRefresh = (event: Event) => {
@@ -423,7 +470,7 @@ export function useGoogleLifeOpsConnector(
       broadcastChannel?.removeEventListener("message", handleBroadcastMessage);
       broadcastChannel?.close();
     };
-  }, [refresh, runtimeReady, side]);
+  }, [queueSilentRefresh, runtimeReady, side]);
 
   const selectMode = useCallback(
     async (mode: LifeOpsConnectorMode) => {

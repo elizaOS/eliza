@@ -414,8 +414,14 @@ export function LifeOpsSettingsSection({
   githubError = null,
   cloudAction = null,
 }: LifeOpsSettingsSectionProps = {}) {
-  const ownerConnector = useGoogleLifeOpsConnector({ side: "owner" });
-  const agentConnector = useGoogleLifeOpsConnector({ side: "agent" });
+  const ownerConnector = useGoogleLifeOpsConnector({
+    includeAccounts: true,
+    side: "owner",
+  });
+  const agentConnector = useGoogleLifeOpsConnector({
+    includeAccounts: true,
+    side: "agent",
+  });
 
   return (
     <section className="space-y-4">
