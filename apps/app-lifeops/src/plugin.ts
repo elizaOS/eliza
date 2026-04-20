@@ -195,6 +195,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     lifeOpsComputerUseAction,
     crossChannelSendAction,
     bookTravelAction,
+    publishDeviceIntentAction,
     intentSyncAction,
     approveRequestAction,
     rejectRequestAction,

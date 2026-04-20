@@ -260,10 +260,13 @@ async function resolveOwnerCalendarPlanWithLlm(args: {
     "Choose create_event for creating a concrete event at a concrete date/time.",
     "Choose travel_itinerary for calendar-backed travel or itinerary lookups.",
     "Choose recurring_block for recurring protected time blocks.",
+    "Recurring daily or weekly time blocks like 'book 1 hour per day for time with Jill' still belong to recurring_block even when the owner only gives a soft preference like 'before sleep' or says any time is fine.",
     "Choose check_availability for free/busy questions over a specific window.",
     "Choose propose_times for requests to suggest or offer a few candidate meeting slots.",
+    "When the owner is temporarily in a city and wants to bundle multiple people into the same window, choose propose_times or another calendar subaction with shouldAct=true even if exact dates still need a follow-up.",
     "Choose update_preferences for durable rules like no-call hours, blackout windows, preferred hours, sleep windows, and travel buffer.",
     "Requests that define when meetings or calls may happen, even if phrased as a standing policy like 'no calls between 11pm and 8am unless I explicitly say it's okay', are update_preferences.",
+    "If the owner asks you to flag a conflict before a flight and help rebook the other thing, keep shouldAct=true. OWNER_CALENDAR still owns the conflict detection and reschedule path even when you still need itinerary details.",
     "Do not use OWNER_CALENDAR for reminder-only or bump-me-later policies about unanswered event decisions; those belong to reminder, inbox, or escalation actions instead.",
     "Do not use OWNER_CALENDAR for device ringing, push-notification, or cross-device reminder behavior. Those belong to device-intent actions.",
     "Choose calendly_availability / calendly_list_event_types / calendly_upcoming / calendly_single_use_link when the request mentions Calendly by name or includes a calendly.com URL or eventTypeUri.",
@@ -271,6 +274,10 @@ async function resolveOwnerCalendarPlanWithLlm(args: {
     "Do not use OWNER_CALENDAR for morning briefs, night briefs, operating pictures, command-center views, or broad day-start/day-end reviews. Those belong to RUN_MORNING_CHECKIN / RUN_NIGHT_CHECKIN even when they include meeting context.",
     "Set shouldAct=false only when this is not a calendar/scheduling request and another action should handle it.",
     "When shouldAct=false, response must be a short clarifying sentence in the user's language.",
+    "",
+    'Example: "need to book 1 hour per day for time with Jill, any time is fine, ideally before sleep" -> {"subaction":"recurring_block","shouldAct":true,"response":null}',
+    'Example: "I\'m in Tokyo for limited time so let\'s schedule PendingReality and Ryan at the same time if possible" -> {"subaction":"propose_times","shouldAct":true,"response":null}',
+    'Example: "flag the conflict before my flight later and help rebook the other thing" -> {"subaction":"travel_itinerary","shouldAct":true,"response":null}',
     "",
     `Current request: ${JSON.stringify(messageText(args.message))}`,
     `Resolved intent: ${JSON.stringify(args.intent)}`,
@@ -446,8 +453,10 @@ export const ownerCalendarAction: Action & {
     "event",
     "recurring block",
     "time block",
+    "daily time with Jill",
     "travel itinerary",
     "meeting slots",
+    "bundle meetings while traveling",
     "reschedule options",
     "sleep window",
     "no-call hours",
@@ -484,6 +493,7 @@ export const ownerCalendarAction: Action & {
     "means device alerts or ringing behavior. If the user is asking to remind " +
     "or bump them later about an unanswered decision rather than changing the " +
     "calendar itself, another action should own it. " +
+    "Choose this action even when the owner has not supplied the exact time window yet, as long as the request is clearly calendar-owned. Recurring daily time blocks, travel-window meeting bundling, and flight-conflict rebooking all belong here and may ask the minimum follow-up inside the action. " +
     "Do NOT use this action for morning briefs, night briefs, operating pictures, command-center views, " +
     "or broad day-start/day-end reviews that combine inbox, calendar, and tasks — those belong to RUN_MORNING_CHECKIN / RUN_NIGHT_CHECKIN. " +
     "This action provides the final grounded reply; do not pair it with a " +
@@ -827,6 +837,48 @@ export const ownerCalendarAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "Updated your meeting preferences to block calls from 11:00 PM to 8:00 AM unless you override it.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Need to book 1 hour per day for time with Jill. Any time is fine, ideally before sleep.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll set up a recurring daily one-hour block with Jill and keep it biased toward the evening before your sleep window.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "I'm in Tokyo for limited time so let's schedule PendingReality and Ryan at the same time if possible.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll look for Tokyo-time options that bundle PendingReality and Ryan into the same window and flag the best slots.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Flag the conflict before my flight later and, if needed, help rebook the other thing.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll check the flight conflict, surface the conflicting event, and hold any rebooking behind your approval.",
         },
       },
     ],

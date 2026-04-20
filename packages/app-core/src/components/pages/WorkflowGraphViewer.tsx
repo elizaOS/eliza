@@ -215,7 +215,7 @@ function GraphPanel({
       edges={isGenerating ? generatingEdges(edges) : edges}
       nodesDraggable={!isGenerating}
       nodesConnectable={false}
-      edgesUpdatable={false}
+      edgesReconnectable={false}
       fitView
       fitViewOptions={{ padding: 0.2, maxZoom: 1.2 }}
       proOptions={{ hideAttribution: true }}
@@ -340,7 +340,7 @@ export function WorkflowGraphViewer({
               edges={isGenerating ? generatingEdges(edges) : edges}
               nodesDraggable={!isGenerating}
               nodesConnectable={false}
-              edgesUpdatable={false}
+              edgesReconnectable={false}
               onNodeClick={handleNodeClick}
               fitView
               fitViewOptions={{ padding: 0.2, maxZoom: 1.2 }}

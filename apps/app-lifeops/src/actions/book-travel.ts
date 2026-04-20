@@ -357,9 +357,10 @@ export const bookTravelAction: Action = {
     "BOOK_TRIP",
     "LOCK_IT_IN",
     "HOLD_AND_BOOK_FLIGHT",
+    "QUEUE_TRAVEL_FOR_APPROVAL",
   ],
   description:
-    "Search, prepare, and approval-gate real travel booking. Use for flight booking requests that should become a real Duffel booking after explicit approval, with calendar sync once completed.",
+    "Search, prepare, and approval-gate real travel booking. Use for flight or hotel booking requests that should become a real booking after explicit approval, with calendar sync once completed. This action still owns the turn when the owner is asking you to prepare the booking package now and hold it for approval, or when some itinerary details still need a follow-up before the approval queue entry can be finalized.",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, state, options, callback) => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -542,6 +543,20 @@ export const bookTravelAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "I queued the booking behind approval. Once you approve, I'll complete payment and add the itinerary to your calendar.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Jill confirmed it will just be me for LA and Toronto. Put together the flights and hotel and hold it for my approval before you book anything.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll prepare the flights and hotel for LA and Toronto and queue the booking behind your approval before anything gets finalized.",
         },
       },
     ],

@@ -1084,7 +1084,6 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["SCHEDULE_RECURRING_EVENT", "OWNER_CALENDAR"],
 		["SCHEDULE_RECURRING_MEETING", "OWNER_CALENDAR"],
 		["SCHEDULE_RECURRING", "OWNER_CALENDAR"],
-		["BOOK_TRAVEL", "CALL_EXTERNAL"],
 		["CAPTURE_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
 		["CAPTURE_BOOKING_PREFERENCES", "UPDATE_OWNER_PROFILE"],
 		["CREATE_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
@@ -1118,6 +1117,8 @@ const PLANNER_PROVIDER_ALIASES = new Map(
 	[
 		["DOCUMENT_LOOKUP", "ATTACHMENTS"],
 		["INBOX_TRIAGE", "inboxTriage"],
+		["PENDING_DRAFTS_PROVIDER", "inboxTriage"],
+		["PENDING_DRAFTS", "inboxTriage"],
 	].map(([from, to]) => [normalizeActionIdentifier(from), to]),
 );
 
@@ -1224,7 +1225,8 @@ function buildActionRescuePrompt(basePrompt: string, draftReply: string): string
 The previous draft stayed in prose-only mode or selected only passive reply actions.
 Re-evaluate the turn using the same available actions and providers already in context above.
 If a listed non-REPLY action owns the user's request, choose it now even when the text still needs to ask a follow-up question.
-Prefer the owning action for requests to create, store, remember, schedule, remind, upload, follow up, route, escalate, set a standing policy, bulk-reschedule a cohort, run a morning brief, or call the owner when blocked.
+Prefer the owning action for requests to create, store, remember, schedule, remind, upload, follow up, route, escalate, set a standing policy, delegate a future workflow, bulk-reschedule a cohort, run a morning brief, or call the owner when blocked.
+Missing details like the exact time, participant list, portal login, file arrival, or itinerary specifics are not a reason to fall back to REPLY when a listed action can own the follow-up.
 Keep REPLY/NONE only when no listed action actually owns the request.${draftSection}`;
 }
 
@@ -1239,23 +1241,27 @@ function buildActionOnlyRescuePrompt(draftReply: string): string {
 
 Rules:
 - Choose a listed non-REPLY action when the user is asking to create, store, remember, schedule, remind, upload, follow up, route, escalate, or set a standing policy.
+- If the request delegates a future workflow or approval-gated workflow, still choose the owning action even before every detail is present.
 - If the right action still needs clarification, choose that action anyway.
 - Choose REPLY only when no listed action owns the request.
 - Do not invent action names.
 
 Examples:
+- "need to book 1 hour per day for time with Jill, any time is fine, ideally before sleep" -> OWNER_CALENDAR
+- "I'm in Tokyo for limited time so let's schedule PendingReality and Ryan at the same time if possible" -> OWNER_CALENDAR
 - "repair that missed call and hold the note for approval" -> OWNER_INBOX
+- "if I still haven't answered about those three events, bump me again with context instead of starting over" -> OWNER_INBOX
 - "if direct relaying gets messy, suggest a group chat handoff" -> OWNER_INBOX
 - "tell me what slides, bio, title, or portal assets I still owe before the event" -> OWNER_INBOX
-- "in the morning brief, add a Pending Drafts section that lists what still needs my sign-off" -> RUN_MORNING_CHECKIN
+- "in the morning brief, add a Pending Drafts section that lists what still needs my sign-off" -> OWNER_INBOX
 - "we're gonna cancel some stuff and push everything back until next month, all partnership meetings" -> OWNER_CALENDAR
 - "capture my reusable flight and hotel preferences" -> UPDATE_OWNER_PROFILE
 - "flag the conflict before my flight later and help rebook the other thing" -> OWNER_CALENDAR
 - "start booking the trip once I approve" -> BOOK_TRAVEL
-- "when I send the deck, upload it to the portal" -> LIFEOPS_COMPUTER_USE
+- "when I'm done with the PPT, upload it to the speaker portal for me" -> LIFEOPS_COMPUTER_USE
 - "if the only ID on file is expired, ask me for an updated copy" -> PUBLISH_DEVICE_INTENT
 - "for important meetings, remind me an hour before, ten minutes before, and at start on my Mac and phone" -> PUBLISH_DEVICE_INTENT
-- "if missing this could trigger a cancellation fee, warn me clearly" -> PUBLISH_DEVICE_INTENT
+- "warn me now if missing this will cost money" -> PUBLISH_DEVICE_INTENT
 - "if you get stuck in the browser or on my computer, call me" -> CALL_USER
 
 ${draftSection}Return XML only:

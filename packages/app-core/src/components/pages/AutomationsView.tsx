@@ -1635,6 +1635,32 @@ function WorkflowAutomationDetailPane({
   const busy =
     workflowOpsBusy || (automation.workflowId != null && workflowBusyId === automation.workflowId);
 
+  // Generation state — set by milady:automations:workflow-generating events
+  // emitted from AutomationRoomChatPane when the agent is streaming a response.
+  const chatWorkflowId = automation.workflowId ?? automation.draftId ?? null;
+  const isGenerating = useWorkflowGenerationState(chatWorkflowId);
+
+  // Poll the single-workflow endpoint every 2s while generating so the graph
+  // updates as the agent incrementally creates nodes. When generation ends,
+  // call onWorkflowMutated once to trigger a full sidebar refresh.
+  const prevGeneratingRef = useRef(false);
+  useEffect(() => {
+    if (!automation.workflowId || automation.isDraft) return;
+    if (!isGenerating) {
+      if (prevGeneratingRef.current) {
+        // Generation just finished — refresh to pull the completed workflow.
+        onWorkflowMutated();
+      }
+      prevGeneratingRef.current = false;
+      return;
+    }
+    prevGeneratingRef.current = true;
+    const id = setInterval(() => {
+      onWorkflowMutated();
+    }, 2000);
+    return () => clearInterval(id);
+  }, [isGenerating, automation.workflowId, automation.isDraft, onWorkflowMutated]);
+
   useEffect(() => {
     setChatCollapsed(false);
   }, [automation.id]);
@@ -1664,6 +1690,7 @@ function WorkflowAutomationDetailPane({
         }
         systemAddendum={WORKFLOW_SYSTEM_ADDENDUM}
         title={automation.title || WORKFLOW_DRAFT_TITLE}
+        workflowId={chatWorkflowId}
       />
 
       <PagePanel variant="padded" className="space-y-5">
@@ -1806,28 +1833,16 @@ function WorkflowAutomationDetailPane({
           </div>
         )}
 
-        {automation.workflow?.nodes && automation.workflow.nodes.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted">
-              Backing Workflow Graph
-            </div>
-            <div className="space-y-2">
-              {automation.workflow.nodes.map((node) => (
-                <div
-                  key={node.id ?? `${node.name}-${node.type}`}
-                  className="flex items-center justify-between rounded-lg border border-border/30 bg-bg/20 px-4 py-3 text-sm"
-                >
-                  <span className="font-medium text-txt">
-                    {node.name ?? "Unnamed node"}
-                  </span>
-                  <span className="font-mono text-xs text-muted">
-                    {node.type?.split(".").pop() ?? "node"}
-                  </span>
-                </div>
-              ))}
-            </div>
+        <div className="space-y-2">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted">
+            Backing Workflow Graph
           </div>
-        )}
+          <WorkflowGraphViewer
+            workflow={automation.workflow ?? null}
+            isGenerating={isGenerating}
+            composerRef={composerRef}
+          />
+        </div>
       </PagePanel>
 
       <AutomationNodePalette
