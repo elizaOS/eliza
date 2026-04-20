@@ -50,6 +50,15 @@ function isUmbrellaDelegatePair(left: string, right: string): boolean {
 	return rightDelegates?.has(left) ?? false;
 }
 
+function shareUmbrellaDelegateFamily(left: string, right: string): boolean {
+	for (const delegates of ACTION_UMBRELLA_DELEGATES.values()) {
+		if (delegates.has(left) && delegates.has(right)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 export function actionsAreScenarioEquivalent(
 	left: string | null | undefined,
 	right: string | null | undefined,
@@ -62,7 +71,10 @@ export function actionsAreScenarioEquivalent(
 	if (normalizedLeft === normalizedRight) {
 		return true;
 	}
-	return isUmbrellaDelegatePair(normalizedLeft, normalizedRight);
+	return (
+		isUmbrellaDelegatePair(normalizedLeft, normalizedRight) ||
+		shareUmbrellaDelegateFamily(normalizedLeft, normalizedRight)
+	);
 }
 
 export function actionMatchesScenarioExpectation(

@@ -676,12 +676,39 @@ export function extractPlannerProviderNames(
 	}
 
 	if (Array.isArray(rawProviders)) {
-		return rawProviders
-			.map((providerName) => String(providerName).trim())
-			.filter(
-				(providerName): providerName is string =>
-					providerName.length > 0 && isStructuredPlannerIdentifier(providerName),
-			);
+		return rawProviders.flatMap((providerName) => {
+			if (typeof providerName !== "string") {
+				const normalized = String(providerName).trim();
+				return normalized.length > 0 && isStructuredPlannerIdentifier(normalized)
+					? [normalized]
+					: [];
+			}
+
+			const trimmedProvider = providerName.trim();
+			if (!trimmedProvider) {
+				return [];
+			}
+			if (
+				(trimmedProvider.startsWith("[") && trimmedProvider.endsWith("]")) ||
+				(trimmedProvider.startsWith("{") && trimmedProvider.endsWith("}"))
+			) {
+				try {
+					const parsedJson = JSON.parse(trimmedProvider) as unknown;
+					if (Array.isArray(parsedJson)) {
+						return parsedJson
+							.map((entry) => String(entry).trim())
+							.filter(
+								(entry): entry is string =>
+									entry.length > 0 && isStructuredPlannerIdentifier(entry),
+							);
+					}
+				} catch {
+					// Fall through to structured token parsing below.
+				}
+			}
+
+			return extractStructuredProviderList(trimmedProvider);
+		});
 	}
 
 	return [];
@@ -1099,6 +1126,9 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["ADD_MORNING_BRIEF_SECTION", "RUN_MORNING_CHECKIN"],
 		["CREATE_REMINDER", "LIFE"],
 		["SET_REMINDER_RULE", "LIFE"],
+		["CREATE_REMINDER_RULE", "PUBLISH_DEVICE_INTENT"],
+		["CREATE_DEVICE_WARNING", "PUBLISH_DEVICE_INTENT"],
+		["REQUEST_UPDATED_ID", "PUBLISH_DEVICE_INTENT"],
 		["CREATE_PREFERENCE_PROFILE", "UPDATE_OWNER_PROFILE"],
 		["FLAG_CONFLICT", "OWNER_CALENDAR"],
 		["SET_MULTI_DEVICE_MEETING_REMINDER", "PUBLISH_DEVICE_INTENT"],
@@ -1226,7 +1256,9 @@ The previous draft stayed in prose-only mode or selected only passive reply acti
 Re-evaluate the turn using the same available actions and providers already in context above.
 If a listed non-REPLY action owns the user's request, choose it now even when the text still needs to ask a follow-up question.
 Prefer the owning action for requests to create, store, remember, schedule, remind, upload, follow up, route, escalate, set a standing policy, delegate a future workflow, bulk-reschedule a cohort, run a morning brief, or call the owner when blocked.
-Missing details like the exact time, participant list, portal login, file arrival, or itinerary specifics are not a reason to fall back to REPLY when a listed action can own the follow-up.
+Missing details like the exact time, participant list, channel, platform, portal login, file arrival, itinerary specifics, or which item is at risk are not a reason to fall back to REPLY when a listed action can own the follow-up.
+When the user is defining a durable policy or future-condition workflow such as missed-call repair, contextual bumping, group-chat handoff, travel booking after approval, portal upload after file arrival, updated-ID collection, multi-device meeting ladders, cancellation-fee warnings, or calling the owner if the agent gets stuck, picking only REPLY is wrong if a listed action can store or queue that behavior.
+If the draft reply merely acknowledges the task or asks for details before selecting an owning action, treat that draft as incomplete and repair it.
 Keep REPLY/NONE only when no listed action actually owns the request.${draftSection}`;
 }
 
@@ -1243,6 +1275,8 @@ Rules:
 - Choose a listed non-REPLY action when the user is asking to create, store, remember, schedule, remind, upload, follow up, route, escalate, or set a standing policy.
 - If the request delegates a future workflow or approval-gated workflow, still choose the owning action even before every detail is present.
 - If the right action still needs clarification, choose that action anyway.
+- A reply that only says "tell me more", "which one?", "send it over", "I can do that", or "let me know the details" is wrong when an owning action can store or queue the workflow.
+- Durable requests like missed-call repair, contextual bump rules, group-chat handoff, travel booking after approval, portal upload after file arrival, updated-ID collection, device reminder ladders, cancellation-fee warnings, and call-me-if-stuck escalations must choose the owning action on this turn.
 - Choose REPLY only when no listed action owns the request.
 - Do not invent action names.
 

@@ -2657,7 +2657,7 @@ function AutomationsLayout() {
             />
 
             {/* Primary CTA: New Workflow */}
-            {n8nStatus?.mode === "disabled" || n8nStatus?.mode === "error" ? (
+            {n8nStatus?.mode === "disabled" ? (
               <TooltipHint
                 content={t("automations.newWorkflowDisabled", { defaultValue: "Enable Automations in Settings to create workflows" })}
                 side="right"

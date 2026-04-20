@@ -9,29 +9,45 @@
  */
 
 import {
-  Background,
-  Controls,
-  MiniMap,
-  ReactFlow,
-  type Edge,
-  type Node,
-} from "@xyflow/react";
-import { Maximize2, X } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import {
+  Button,
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   Spinner,
+  StatusBadge,
 } from "@elizaos/ui";
-import type { N8nConnectionMap, N8nWorkflow } from "../../api/client-types-chat";
+import {
+  Background,
+  Controls,
+  type Edge,
+  MiniMap,
+  type Node,
+  ReactFlow,
+} from "@xyflow/react";
+import {
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  Maximize2,
+  X,
+} from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type {
+  N8nConnectionMap,
+  N8nStatusResponse,
+  N8nWorkflow,
+  N8nWorkflowNode,
+} from "../../api/client-types-chat";
+import { getBootConfig } from "../../config/boot-config";
+import { useApp } from "../../state";
 
 // ── Node type colour families ─────────────────────────────────────────────────
 
@@ -125,7 +141,8 @@ function workflowToReactFlow(workflow: N8nWorkflow | null): {
   const autoPos = autoLayoutPositions(missing);
 
   const nodes: Node[] = rawNodes.map((n) => {
-    const pos = posOverrides.get(n.name) ?? autoPos.get(n.name) ?? { x: 0, y: 0 };
+    const pos = posOverrides.get(n.name) ??
+      autoPos.get(n.name) ?? { x: 0, y: 0 };
     const colors = resolveNodeColor(n.type ?? "");
     const typeLabel = (n.type ?? "node").split(".").pop() ?? "node";
     return {
@@ -196,6 +213,313 @@ function generatingEdges(edges: Edge[]): Edge[] {
   }));
 }
 
+// ── Node detail drawer ────────────────────────────────────────────────────────
+
+const PARAM_TRUNCATE_LENGTH = 200;
+
+function ParamValue({ value }: { value: unknown }) {
+  const { t } = useApp();
+  const [expanded, setExpanded] = useState(false);
+
+  if (typeof value === "string") {
+    if (value.length > PARAM_TRUNCATE_LENGTH && !expanded) {
+      return (
+        <span>
+          <pre className="inline font-mono whitespace-pre-wrap break-all text-xs text-txt/80">
+            {value.slice(0, PARAM_TRUNCATE_LENGTH)}…
+          </pre>
+          <button
+            type="button"
+            className="ml-1 text-xs text-blue-400 hover:underline"
+            onClick={() => setExpanded(true)}
+          >
+            {t("workflowGraph.nodeDrawer.showMore")}
+          </button>
+        </span>
+      );
+    }
+    if (value.length > PARAM_TRUNCATE_LENGTH && expanded) {
+      return (
+        <span>
+          <pre className="inline font-mono whitespace-pre-wrap break-all text-xs text-txt/80">
+            {value}
+          </pre>
+          <button
+            type="button"
+            className="ml-1 text-xs text-blue-400 hover:underline"
+            onClick={() => setExpanded(false)}
+          >
+            {t("workflowGraph.nodeDrawer.showLess")}
+          </button>
+        </span>
+      );
+    }
+    return (
+      <pre className="font-mono whitespace-pre-wrap break-all text-xs text-txt/80">
+        {value}
+      </pre>
+    );
+  }
+
+  if (typeof value === "object" && value !== null) {
+    const json = JSON.stringify(value, null, 2);
+    if (json.length > PARAM_TRUNCATE_LENGTH && !expanded) {
+      return (
+        <span>
+          <pre className="inline font-mono whitespace-pre-wrap break-all text-xs text-txt/80">
+            {json.slice(0, PARAM_TRUNCATE_LENGTH)}…
+          </pre>
+          <button
+            type="button"
+            className="ml-1 text-xs text-blue-400 hover:underline"
+            onClick={() => setExpanded(true)}
+          >
+            {t("workflowGraph.nodeDrawer.showMore")}
+          </button>
+        </span>
+      );
+    }
+    if (json.length > PARAM_TRUNCATE_LENGTH && expanded) {
+      return (
+        <span>
+          <pre className="font-mono whitespace-pre-wrap break-all text-xs text-txt/80">
+            {json}
+          </pre>
+          <button
+            type="button"
+            className="ml-1 text-xs text-blue-400 hover:underline"
+            onClick={() => setExpanded(false)}
+          >
+            {t("workflowGraph.nodeDrawer.showLess")}
+          </button>
+        </span>
+      );
+    }
+    return (
+      <pre className="font-mono whitespace-pre-wrap break-all text-xs text-txt/80">
+        {json}
+      </pre>
+    );
+  }
+
+  return (
+    <pre className="font-mono whitespace-pre-wrap break-all text-xs text-txt/80">
+      {String(value)}
+    </pre>
+  );
+}
+
+function buildEditorUrl(
+  workflow: N8nWorkflow,
+  status: N8nStatusResponse,
+  cloudAgentId: string | null | undefined,
+): string | null {
+  if (status.mode === "local" && status.host) {
+    return `${status.host}/workflow/${encodeURIComponent(workflow.id)}`;
+  }
+  if (status.mode === "cloud" && cloudAgentId) {
+    const cloudBase =
+      getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
+    return `${cloudBase}/agents/${encodeURIComponent(cloudAgentId)}/n8n/workflow/${encodeURIComponent(workflow.id)}`;
+  }
+  return null;
+}
+
+interface NodeDetailDrawerProps {
+  node: N8nWorkflowNode | null;
+  workflow: N8nWorkflow | null;
+  status: N8nStatusResponse | null | undefined;
+  onClose: () => void;
+  labelId: string;
+}
+
+function NodeDetailDrawer({
+  node,
+  workflow,
+  status,
+  onClose,
+  labelId,
+}: NodeDetailDrawerProps) {
+  const { t, activeAgentProfile } = useApp();
+  const [rawJsonOpen, setRawJsonOpen] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  const isOpen = node !== null;
+
+  // Reset raw JSON section when node changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on node identity change
+  useEffect(() => {
+    setRawJsonOpen(false);
+  }, [node?.id, node?.name]);
+
+  // Focus the close button when drawer opens
+  useEffect(() => {
+    if (isOpen) {
+      // Defer so the CSS transition can begin first
+      const id = setTimeout(() => closeButtonRef.current?.focus(), 60);
+      return () => clearTimeout(id);
+    }
+  }, [isOpen]);
+
+  // Derive display values from the current node (may be stale during close transition — that's fine)
+  const colors = resolveNodeColor(node?.type ?? "");
+  const typeLabel = (node?.type ?? "node").split(".").pop() ?? "node";
+  const hasParams = node?.parameters && Object.keys(node.parameters).length > 0;
+
+  const editorDisabled =
+    !status || status.mode === "disabled" || status.status === "error";
+
+  const editorUrl =
+    !editorDisabled && workflow && status && node
+      ? buildEditorUrl(workflow, status, activeAgentProfile?.cloudAgentId)
+      : null;
+
+  // Map color families to StatusBadge variants (success | warning | danger | muted)
+  // amber=trigger→warning, slate=flow-control→muted, violet=integration→danger, blue=action→muted
+  const badgeVariant: "warning" | "muted" | "danger" =
+    colors.badge === "#f59e0b"
+      ? "warning"
+      : colors.badge === "#8b5cf6"
+        ? "danger"
+        : "muted";
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby={isOpen ? labelId : undefined}
+      aria-hidden={!isOpen}
+      className={[
+        "absolute inset-y-0 right-0 z-30 flex w-72 flex-col",
+        "border-l border-border/40 bg-bg shadow-xl backdrop-blur-[2px]",
+        "transition-transform duration-200 ease-out",
+        isOpen ? "translate-x-0" : "translate-x-full",
+      ].join(" ")}
+    >
+      {/* Header */}
+      <div className="flex shrink-0 items-start gap-2 border-b border-border/30 px-4 py-3">
+        <div className="flex-1 min-w-0 space-y-1">
+          <h2
+            id={labelId}
+            className="text-sm font-semibold text-txt leading-tight truncate"
+          >
+            {node?.name ?? ""}
+          </h2>
+          {/* Type badge */}
+          <div className="flex items-center gap-1.5">
+            <StatusBadge label={typeLabel} variant={badgeVariant} />
+          </div>
+        </div>
+        <button
+          ref={closeButtonRef}
+          type="button"
+          aria-label={t("workflowGraph.closeDrawer")}
+          tabIndex={isOpen ? 0 : -1}
+          className="shrink-0 flex h-6 w-6 items-center justify-center rounded text-muted hover:text-txt transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={onClose}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {/* Scrollable body — only meaningful content when open */}
+      <div className="flex-1 overflow-y-auto space-y-4 px-4 py-3">
+        {node && (
+          <>
+            {/* Internal name */}
+            <div className="space-y-1">
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted">
+                Name
+              </div>
+              <pre className="font-mono text-xs text-txt/80 break-all whitespace-pre-wrap">
+                {node.name}
+              </pre>
+            </div>
+
+            {/* Parameters */}
+            <div className="space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted">
+                {t("workflowGraph.nodeDrawer.parametersLabel")}
+              </div>
+              {hasParams ? (
+                <div className="space-y-2">
+                  {Object.entries(node.parameters ?? {}).map(([key, val]) => (
+                    <div key={key} className="space-y-0.5">
+                      <div className="text-xs font-medium text-muted/80 font-mono">
+                        {key}
+                      </div>
+                      <div className="rounded bg-bg/40 border border-border/20 px-2 py-1">
+                        <ParamValue value={val} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted/60 italic">
+                  {t("workflowGraph.nodeDrawer.noParameters")}
+                </p>
+              )}
+            </div>
+
+            {/* Raw JSON — collapsible */}
+            <div className="space-y-1">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wider text-muted hover:text-txt transition-colors"
+                onClick={() => setRawJsonOpen((v) => !v)}
+                aria-expanded={rawJsonOpen}
+              >
+                <span>{t("workflowGraph.nodeDrawer.rawJsonLabel")}</span>
+                {rawJsonOpen ? (
+                  <ChevronUp className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                )}
+              </button>
+              {rawJsonOpen && (
+                <div className="rounded border border-border/20 bg-bg/40 p-2 overflow-auto max-h-64">
+                  <pre className="font-mono text-xs text-txt/70 whitespace-pre-wrap break-all">
+                    {JSON.stringify(node, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Footer — open in editor */}
+      <div className="shrink-0 border-t border-border/30 px-4 py-3">
+        {editorUrl ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full h-8 text-xs gap-1.5"
+            tabIndex={isOpen ? 0 : -1}
+            onClick={() => window.open(editorUrl, "_blank", "noopener")}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            {t("workflowGraph.nodeDrawer.openInEditor")}
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full h-8 text-xs"
+            disabled
+            tabIndex={isOpen ? 0 : -1}
+            title={t("workflowGraph.nodeDrawer.editorDisabled")}
+          >
+            {t("workflowGraph.nodeDrawer.openInEditor")}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Graph panel (shared between inline and full-screen modal) ─────────────────
 
 function GraphPanel({
@@ -203,11 +527,13 @@ function GraphPanel({
   edges,
   isGenerating,
   ariaLabel,
+  onNodeClick,
 }: {
   nodes: Node[];
   edges: Edge[];
   isGenerating: boolean;
   ariaLabel: string;
+  onNodeClick?: (e: React.MouseEvent, node: Node) => void;
 }) {
   return (
     <ReactFlow
@@ -216,6 +542,7 @@ function GraphPanel({
       nodesDraggable={!isGenerating}
       nodesConnectable={false}
       edgesReconnectable={false}
+      onNodeClick={onNodeClick}
       fitView
       fitViewOptions={{ padding: 0.2, maxZoom: 1.2 }}
       proOptions={{ hideAttribution: true }}
@@ -242,6 +569,8 @@ interface WorkflowGraphViewerProps {
   loading?: boolean;
   isGenerating?: boolean;
   onNodeClick?: (nodeName: string) => void;
+  /** n8n status — drives the "Open in editor" button URL and enabled state. */
+  status?: N8nStatusResponse | null;
   /** Ref to the chat composer textarea, used by the empty-state CTA. */
   composerRef?: React.RefObject<HTMLTextAreaElement | null>;
 }
@@ -251,10 +580,15 @@ export function WorkflowGraphViewer({
   loading = false,
   isGenerating = false,
   onNodeClick,
+  status,
   composerRef,
 }: WorkflowGraphViewerProps) {
   const [fullScreen, setFullScreen] = useState(false);
+  const [selectedNode, setSelectedNode] = useState<N8nWorkflowNode | null>(
+    null,
+  );
   const containerRef = useRef<HTMLDivElement>(null);
+  const drawerLabelId = useId();
 
   const { nodes, edges } = useMemo(
     () => workflowToReactFlow(workflow),
@@ -263,23 +597,53 @@ export function WorkflowGraphViewer({
 
   const ariaLabel = `Workflow graph with ${nodes.length} nodes and ${edges.length} connections`;
 
+  // Clear selected node when workflow changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset drawer on workflow identity change
+  useEffect(() => {
+    setSelectedNode(null);
+  }, [workflow?.id]);
+
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
       const label = (node.data as { label?: string })?.label ?? node.id;
+      const found =
+        workflow?.nodes?.find((n) => n.id === node.id || n.name === label) ??
+        null;
+      setSelectedNode(found);
       onNodeClick?.(label);
     },
-    [onNodeClick],
+    [onNodeClick, workflow],
   );
 
-  // Trap focus in full-screen modal with Escape to close
+  const handleCloseDrawer = useCallback(() => {
+    setSelectedNode(null);
+  }, []);
+
+  // Escape key closes drawer (only active when drawer is open and full-screen is closed)
   useEffect(() => {
-    if (!fullScreen) return;
+    if (!selectedNode || fullScreen) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setFullScreen(false);
+      if (e.key === "Escape") setSelectedNode(null);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [fullScreen]);
+  }, [selectedNode, fullScreen]);
+
+  // Trap focus in full-screen modal with Escape to close (when drawer not open)
+  useEffect(() => {
+    if (!fullScreen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (selectedNode) {
+          setSelectedNode(null);
+        } else {
+          setFullScreen(false);
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [fullScreen, selectedNode]);
 
   const hasNodes = nodes.length > 0;
 
@@ -289,6 +653,7 @@ export function WorkflowGraphViewer({
 
   return (
     <>
+      {/* ── Embedded viewer ─────────────────────────────────────────────── */}
       <div
         ref={containerRef}
         role="img"
@@ -352,7 +717,8 @@ export function WorkflowGraphViewer({
               {hasNodes && (
                 <MiniMap
                   nodeColor={(n) => {
-                    const colors = (n.data as { colors?: { border: string } })?.colors;
+                    const colors = (n.data as { colors?: { border: string } })
+                      ?.colors;
                     return colors?.border ?? "#475569";
                   }}
                   maskColor="rgba(2, 8, 23, 0.7)"
@@ -366,20 +732,35 @@ export function WorkflowGraphViewer({
           </div>
         )}
 
-        {/* Full-screen toggle button */}
+        {/* Full-screen toggle button — shift left when drawer is open */}
         {hasNodes && !isGenerating && (
           <button
             type="button"
             aria-label="Full screen"
-            className="absolute right-3 top-3 z-20 flex h-7 w-7 items-center justify-center rounded border border-border/40 bg-bg/80 text-muted hover:text-txt transition-colors"
+            className={[
+              "absolute top-3 z-20 flex h-7 w-7 items-center justify-center",
+              "rounded border border-border/40 bg-bg/80 text-muted hover:text-txt transition-all duration-200",
+              selectedNode ? "right-[calc(18rem+0.75rem)]" : "right-3",
+            ].join(" ")}
             onClick={() => setFullScreen(true)}
           >
             <Maximize2 className="h-3.5 w-3.5" />
           </button>
         )}
+
+        {/* Node detail drawer — embedded mode */}
+        {!fullScreen && (
+          <NodeDetailDrawer
+            node={selectedNode}
+            workflow={workflow}
+            status={status}
+            onClose={handleCloseDrawer}
+            labelId={drawerLabelId}
+          />
+        )}
       </div>
 
-      {/* Full-screen dialog */}
+      {/* ── Full-screen dialog ───────────────────────────────────────────── */}
       <Dialog open={fullScreen} onOpenChange={setFullScreen}>
         <DialogContent
           className="h-[90dvh] w-[90vw] !max-w-none !max-h-none flex flex-col p-0 gap-0"
@@ -398,12 +779,22 @@ export function WorkflowGraphViewer({
               <X className="h-4 w-4" />
             </button>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-hidden bg-[#020817]">
+          {/* Graph + drawer share a relative container so the drawer overlays the graph */}
+          <div className="relative flex-1 min-h-0 overflow-hidden bg-[#020817]">
             <GraphPanel
               nodes={nodes}
               edges={edges}
               isGenerating={isGenerating}
               ariaLabel={ariaLabel}
+              onNodeClick={handleNodeClick}
+            />
+            {/* Node detail drawer — full-screen mode (mounts inside the Dialog portal) */}
+            <NodeDetailDrawer
+              node={selectedNode}
+              workflow={workflow}
+              status={status}
+              onClose={handleCloseDrawer}
+              labelId={drawerLabelId}
             />
           </div>
         </DialogContent>

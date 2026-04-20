@@ -139,6 +139,11 @@ export async function executeApprovedRequest(args: {
 
   if (args.request.action === "send_email") {
     const payload = args.request.payload;
+    if (payload.action !== "send_email") {
+      throw new Error(
+        `[approval] action/payload mismatch: action=send_email, payload.action=${payload.action}`,
+      );
+    }
     await args.queue.markExecuting(args.request.id);
     if (payload.replyToMessageId) {
       await service.sendGmailReply(INTERNAL_URL, {
@@ -181,13 +186,19 @@ export async function executeApprovedRequest(args: {
     if (!channel) {
       return denied("UNSUPPORTED_APPROVAL_CHANNEL");
     }
+    const payload = args.request.payload;
+    if (payload.action !== "send_message") {
+      throw new Error(
+        `[approval] action/payload mismatch: action=send_message, payload.action=${payload.action}`,
+      );
+    }
     await args.queue.markExecuting(args.request.id);
     const dispatch = await dispatchCrossChannelSend({
       runtime: args.runtime,
       service,
       channel,
-      target: args.request.payload.recipient,
-      body: args.request.payload.body,
+      target: payload.recipient,
+      body: payload.body,
     });
     if (!dispatch.success) {
       return dispatch;
@@ -277,10 +288,7 @@ async function resolveApprovalRequest(
     logger.info(
       `[ApprovalAction] ${intent} ${updated.id} by ${subjectUserId}`,
     );
-    const text =
-      intent === "approve"
-        ? `Approved request ${updated.id}.`
-        : `Rejected request ${updated.id}.`;
+    const text = `Rejected request ${updated.id}.`;
     if (callback) await callback({ text });
     return {
       text,

@@ -55,6 +55,7 @@ import {
 } from "./actions/autofill.js";
 import { dossierAction } from "./actions/dossier.js";
 import { bookTravelAction } from "./actions/book-travel.js";
+import { toggleLifeOpsFeatureAction } from "./actions/feature-toggle.js";
 // T7f — meeting dossier (plan §6.7).
 import { generateDossierAction } from "./dossier/action.js";
 // T8a — travel-time awareness (plan §6.9).
@@ -230,6 +231,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     lifeOpsComputerUseAction,
     crossChannelSendAction,
     bookTravelAction,
+    toggleLifeOpsFeatureAction,
     publishDeviceIntentAction,
     intentSyncAction,
     approveRequestAction,

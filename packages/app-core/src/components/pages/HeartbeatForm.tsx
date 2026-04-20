@@ -618,8 +618,8 @@ function CronInputSection({
           <Button
             key={expr}
             variant="outline"
-            size="xs"
-            className="h-6 px-2 text-xs font-mono"
+            size="sm"
+            className="h-6 px-2 py-0 text-xs font-mono"
             onClick={() => setField("cronExpression", expr)}
           >
             {t(labelKey)}

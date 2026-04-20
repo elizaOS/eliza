@@ -3,7 +3,6 @@ import type { PromptBenchmarkResult } from "./helpers/lifeops-prompt-benchmark-r
 import {
   buildAxOptimizationRows,
   buildPromptBenchmarkReport,
-  casePasses,
   formatPromptBenchmarkReportMarkdown,
   promptBenchmarkCasePasses,
   serializeAxOptimizationRows,
@@ -99,7 +98,7 @@ describe("LifeOps prompt benchmark reporting", () => {
       pass: false,
     } satisfies PromptBenchmarkResult;
 
-    expect(casePasses(equivalent)).toBe(true);
+    expect(promptBenchmarkCasePasses(equivalent)).toBe(true);
   });
 
   it("computes weighted accuracy, null false positives, and trajectory coverage", () => {
