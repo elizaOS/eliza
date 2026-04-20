@@ -51,7 +51,6 @@ import {
   messageText,
   toActionData,
 } from "./lifeops-google-helpers.js";
-import { looksLikeEmailVenting } from "./non-actionable-request.js";
 
 type GmailSubaction =
   | "triage"
@@ -143,6 +142,26 @@ type GmailActionParams = {
   bodyText?: string;
   details?: Record<string, unknown>;
 };
+
+type GmailPlanningContext = {
+  recentConversation: string;
+  latestReplyDraft: GmailReplyDraftContext | null;
+  latestMessageTarget: GmailMessageTargetContext | null;
+  currentMessage: string;
+  timeZone: string;
+  nowIso: string;
+  localNow: string;
+};
+
+type GmailIntentPlan = Pick<
+  GmailLlmPlan,
+  "subaction" | "shouldAct" | "response"
+>;
+
+type GmailPayloadPlan = Omit<
+  GmailLlmPlan,
+  "subaction" | "shouldAct" | "response"
+>;
 
 const GMAIL_CONTEXT_WINDOW = 12;
 const GMAIL_DETAIL_ALIASES = {
@@ -776,195 +795,91 @@ function mergeComposeDrafts(
   });
 }
 
-export async function extractGmailPlanWithLlm(
-  runtime: IAgentRuntime,
-  message: Memory,
-  state: State | undefined,
-  intent: string,
-  activeComposeDraft?: GmailComposeDraft | null,
-): Promise<GmailLlmPlan> {
+async function buildGmailPlanningContext(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+}): Promise<GmailPlanningContext> {
   const recentConversation = (
-    await collectGmailConversationContext({ runtime, message, state })
+    await collectGmailConversationContext(args)
   ).join("\n");
-  const latestReplyDraft = latestGmailReplyDraftContext(state);
-  const latestMessageTarget = latestGmailMessageTargetContext(state);
-  const currentMessage = messageText(message).trim();
+  const currentMessage = messageText(args.message).trim();
   const timeZone = resolveDefaultTimeZone();
   const now = new Date();
-  const nowIso = now.toISOString();
-  const localNow = new Intl.DateTimeFormat(undefined, {
+  return {
+    recentConversation,
+    latestReplyDraft: latestGmailReplyDraftContext(args.state),
+    latestMessageTarget: latestGmailMessageTargetContext(args.state),
+    currentMessage,
     timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(now);
-  const prompt = [
-    "Plan the Gmail action for this request.",
-    "The user may speak in any language.",
-    "Use the current request plus recent conversation context.",
-    "If the current request is vague or a follow-up, recover the subject from recent conversation and apply the new constraint from the current request.",
-    "You are allowed to decide that the assistant should reply naturally without acting yet.",
-    "Set shouldAct=false when the user is vague, only acknowledging, brainstorming, or asking for email help without enough specifics to safely act.",
-    "When shouldAct=false, provide a short natural response that asks only for what is missing.",
-    "When shouldAct=false, write that response in the user's language unless they clearly asked to switch languages.",
-    "For clear reply-workflow commands like 'draft a reply to John's email' or 'send that reply now', still choose the intent-level subaction even if the exact Gmail message id is not known yet. Downstream Gmail logic can clarify the target email.",
-    "Mailbox ownership (OWNER vs AGENT) is selected outside this planner. This planner only decides the Gmail subaction for the mailbox already in scope.",
-    "",
-    "Return a JSON object with exactly these fields:",
-    "  subaction: one of the allowed subactions below, or null when this should be reply-only/no-op",
-    "  shouldAct: boolean",
-    "  response: short natural-language reply when shouldAct is false, otherwise empty or null",
-    "  queries: array or ||-delimited string of up to 3 Gmail search queries",
-    "  messageId: optional Gmail message id",
-    "  replyNeededOnly: optional boolean",
-    "  to: optional array of recipient email addresses when subaction is send_message",
-    "  cc: optional array of cc email addresses when subaction is send_message",
-    "  bcc: optional array of bcc email addresses when subaction is send_message",
-    "  subject: optional subject line when subaction is send_message",
-    "  bodyText: optional email body when subaction is send_message",
-    "",
-    "Subactions and when to use each:",
-    "  triage — general inbox overview, unread count, email summary (e.g. 'check my inbox', 'any new emails')",
-    "  needs_response — specifically about emails that need a reply (e.g. 'which emails need a response', 'any reply-needed emails')",
-    "  search — find emails by sender, subject, keyword, date, label (e.g. 'emails from John', 'who emailed me today', 'find the invoice email')",
-    "  read — read a specific email body by message ID (e.g. 'read that email', 'show me the full message')",
-    "  draft_reply — compose a reply to a specific email (e.g. 'draft a reply to John', 'write a response to that email')",
-    "  draft_batch_replies — compose replies to multiple emails at once (e.g. 'draft replies to all of those', 'respond to each one')",
-    "  send_reply — send a confirmed reply to an email (e.g. 'send that reply', 'email them back now')",
-    "  send_batch_replies — send confirmed replies to multiple emails (e.g. 'send all those replies')",
-    "  send_message — compose and send a brand-new outbound email (e.g. 'send an email to zo@iqlabs.dev, subject hello, body how are you doing today?')",
-    "Use triage only for broad inbox overviews. Use search whenever the request includes a specific sender, subject, keyword, label, or time filter.",
-    "Use needs_response only when the user is specifically asking about emails that need a reply.",
-    "",
-    "For search or read, extract up to 3 short Gmail-compatible queries using Gmail search operators.",
-    "For draft_reply, send_reply, and draft_batch_replies, also extract Gmail-compatible queries whenever the target email is described by sender, subject, keyword, or timeframe but no explicit Gmail message id is known.",
-    "Return Gmail operators in Gmail syntax even if the user speaks another language, and preserve names, addresses, and subject keywords in their original language or script when useful.",
-    "For send_message, preserve the exact recipient addresses and keep the user's intended subject/body wording as close as possible.",
-    "When the user writes in another language, still infer the correct Gmail action and keep extracted subject/body wording in that language unless the user asked to translate.",
-    "If the user asks whether a specific person emailed within a time window, that is search, not triage and not null.",
-    "",
-    "Useful Gmail search operators:",
-    "  Sender/recipient: from:name  to:name  cc:name  bcc:name",
-    '  Content: subject:word  "exact phrase"  has:attachment  filename:report.pdf',
-    "  Status/location: is:unread  is:read  is:starred  is:important  in:inbox  in:sent  label:work  category:primary",
-    "  Date/time: newer_than:7d  older_than:30d  after:2025/01/01  before:2025/12/31",
-    "  Negation/boolean: -from:name  -subject:word  {term1 term2}",
-    "",
-    "Preserve sender names, email addresses, subject keywords, unread/starred/important status, attachment mentions, and time windows.",
-    "Use the current local datetime to convert relative time references like today, yesterday, this week, and this month into Gmail-compatible operators.",
-    "Set replyNeededOnly to true only when the request is specifically about emails that need a reply.",
-    "",
-    "Examples:",
-    '  "who emailed me today" → {"subaction":"search","shouldAct":true,"response":null,"queries":["newer_than:1d"]}',
-    '  "did suran email me" → {"subaction":"search","shouldAct":true,"response":null,"queries":["from:suran"]}',
-    '  "did Sarah email me this week" → {"subaction":"search","shouldAct":true,"response":null,"queries":["from:sarah newer_than:7d"]}',
-    '  "draft a reply to John" → {"subaction":"draft_reply","shouldAct":true,"response":null,"queries":["from:john"]}',
-    '  "draft a reply to John\'s email" → {"subaction":"draft_reply","shouldAct":true,"response":null,"queries":["from:john"]}',
-    '  "what about unread ones?" with recent context about a Suran email search → {"subaction":"search","shouldAct":true,"response":null,"queries":["from:suran is:unread"]}',
-    '  "rewrite that reply to say I\'m in San Francisco, not NYC" with recent context about an existing Suran draft → {"subaction":"draft_reply","shouldAct":true,"response":null}',
-    '  "send that reply now" with recent context about an existing drafted reply → {"subaction":"send_reply","shouldAct":true,"response":null}',
-    '  "check my inbox" → {"subaction":"triage","shouldAct":true,"response":null}',
-    '  "any emails from Sarah about the report" → {"subaction":"search","shouldAct":true,"response":null,"queries":["from:sarah subject:report"]}',
-    '  "busca en mi correo si Suran me escribio hoy" → {"subaction":"search","shouldAct":true,"response":null,"queries":["from:suran newer_than:1d"]}',
-    '  "envíale un correo a maria@example.com con asunto hola y cuerpo nos vemos mañana" → {"subaction":"send_message","shouldAct":true,"response":null,"queries":[],"to":["maria@example.com"],"subject":"hola","bodyText":"nos vemos mañana"}',
-    '  "send an email to zo@iqlabs.dev, subject hello anon, body how are you doing today?" → {"subaction":"send_message","shouldAct":true,"response":null,"queries":[],"to":["zo@iqlabs.dev"],"subject":"hello anon","bodyText":"how are you doing today?"}',
-    '  "can you help me with my email?" → {"subaction":null,"shouldAct":false,"response":"What do you want to do in Gmail — check inbox, search, read, or draft a reply?","queries":[]}',
-    '  "send an email like \'test\'" with active draft having to=["shaw@gmail.com"] → {"subaction":"send_message","shouldAct":true,"response":null,"queries":[],"to":["shaw@gmail.com"],"subject":"test","bodyText":"test"}',
-    ...(activeComposeDraft
-      ? [
-          "",
-          "Active compose draft (fields already established in this conversation):",
-          `  ${JSON.stringify({ to: activeComposeDraft.to, cc: activeComposeDraft.cc, bcc: activeComposeDraft.bcc, subject: activeComposeDraft.subject, bodyText: activeComposeDraft.bodyText })}`,
-          "If the active compose draft already has a recipient, subject, or body, do NOT ask for those again.",
-          "Set shouldAct=true and subaction=send_message when the user provides missing fields, confirms sending, or provides a short payload like 'test' to use as subject and body.",
-          "Only set shouldAct=false when genuinely no information is available from conversation context or active draft.",
-        ]
-      : []),
-    ...(latestReplyDraft || latestMessageTarget
-      ? [
-          "",
-          "Recent reply-draft context:",
-          `  ${JSON.stringify({
-            latestReplyDraft,
-            latestMessageTarget,
-          })}`,
-          "If there is a recent drafted reply or known target email and the user says rewrite, edit, revise, change, update, or 'send that reply', keep working on that same reply workflow even if they do not restate the sender or subject.",
-        ]
-      : []),
-    "",
-    "Return ONLY valid JSON. No prose. No markdown. No XML. No <think>.",
-    "",
-    `Current timezone: ${timeZone}`,
-    `Current local datetime: ${localNow}`,
-    `Current ISO datetime: ${nowIso}`,
-    `Current request: ${JSON.stringify(currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(intent)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation)}`,
-  ].join("\n");
+    nowIso: now.toISOString(),
+    localNow: new Intl.DateTimeFormat(undefined, {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).format(now),
+  };
+}
 
-  let rawResponse = "";
-  try {
-    const result = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
-    rawResponse = typeof result === "string" ? result : "";
-  } catch (error) {
-    runtime.logger?.warn?.(
-      {
-        src: "action:gmail",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Gmail action planning model call failed",
-    );
-    return {
-      subaction: null,
-      queries: [],
-      shouldAct: null,
-    };
-  }
-
-  const parsed =
+function parseGmailPlannerRecord(
+  rawResponse: string,
+): Record<string, unknown> | null {
+  return (
     parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-    parseJSONObjectFromText(rawResponse);
-  if (!parsed) {
-    return {
-      subaction: null,
-      queries: [],
-      shouldAct: null,
-    };
-  }
+    parseJSONObjectFromText(rawResponse)
+  );
+}
 
-  // Extract queries from multiple possible shapes:
-  // - TOON string: "from:john || subject:report" (split on ||)
-  // - TOON single: "from:john" (no delimiter)
-  // - JSON array: ["from:john", "subject:report"]
-  // - Numbered fallbacks: query1, query2, query3
+function extractPlannerQueries(
+  parsed: Record<string, unknown>,
+): Array<string | undefined> {
   const rawQueries: Array<string | undefined> = [];
   if (typeof parsed.queries === "string" && parsed.queries.trim().length > 0) {
-    // TOON path: split on || delimiter
-    for (const q of parsed.queries.split(/\s*\|\|\s*/)) {
-      if (q.trim().length > 0) rawQueries.push(q.trim());
+    for (const query of parsed.queries.split(/\s*\|\|\s*/)) {
+      if (query.trim().length > 0) {
+        rawQueries.push(query.trim());
+      }
     }
   } else if (Array.isArray(parsed.queries)) {
-    // JSON path: array of strings
     for (const value of parsed.queries) {
-      if (typeof value === "string") rawQueries.push(value);
+      if (typeof value === "string") {
+        rawQueries.push(value);
+      }
     }
   }
   if (typeof parsed.query === "string") rawQueries.push(parsed.query);
   if (typeof parsed.query1 === "string") rawQueries.push(parsed.query1);
   if (typeof parsed.query2 === "string") rawQueries.push(parsed.query2);
   if (typeof parsed.query3 === "string") rawQueries.push(parsed.query3);
+  return rawQueries;
+}
 
+function normalizeGmailIntentPlan(
+  parsed: Record<string, unknown> | null,
+): GmailIntentPlan {
+  if (!parsed) {
+    return { subaction: null, shouldAct: null };
+  }
   return {
     subaction: normalizeGmailSubaction(parsed.subaction),
-    queries: dedupeQueries(rawQueries),
-    response: normalizePlannerResponse(parsed.response),
     shouldAct: normalizeShouldAct(parsed.shouldAct),
+    response: normalizePlannerResponse(parsed.response),
+  };
+}
+
+function normalizeGmailPayloadPlan(
+  parsed: Record<string, unknown> | null,
+): GmailPayloadPlan {
+  if (!parsed) {
+    return { queries: [] };
+  }
+  return {
+    queries: dedupeQueries(extractPlannerQueries(parsed)),
     messageId:
       typeof parsed.messageId === "string" && parsed.messageId.trim().length > 0
         ? parsed.messageId.trim()
@@ -975,6 +890,266 @@ export async function extractGmailPlanWithLlm(
     bcc: normalizePlannerStringArray(parsed.bcc),
     subject: normalizePlannerString(parsed.subject),
     bodyText: normalizePlannerString(parsed.bodyText ?? parsed.body),
+  };
+}
+
+function shouldExtractGmailPayload(subaction: GmailSubaction): boolean {
+  return subaction !== "triage" && subaction !== "send_batch_replies";
+}
+
+async function runGmailPlanningModel(args: {
+  runtime: IAgentRuntime;
+  prompt: string;
+  modelType: ModelType;
+  failureMessage: string;
+}): Promise<Record<string, unknown> | null> {
+  if (typeof args.runtime.useModel !== "function") {
+    return null;
+  }
+  try {
+    const result = await args.runtime.useModel(args.modelType, {
+      prompt: args.prompt,
+    });
+    const rawResponse = typeof result === "string" ? result : "";
+    return parseGmailPlannerRecord(rawResponse);
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:gmail",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      args.failureMessage,
+    );
+    return null;
+  }
+}
+
+async function resolveGmailIntentPlanWithLlm(args: {
+  runtime: IAgentRuntime;
+  intent: string;
+  context: GmailPlanningContext;
+  activeComposeDraft?: GmailComposeDraft | null;
+}): Promise<GmailIntentPlan> {
+  const { context } = args;
+  const prompt = [
+    "Choose the Gmail subaction for this request.",
+    "The user may speak in any language.",
+    "You are ONLY choosing the Gmail subaction and whether the assistant should act now.",
+    "Mailbox ownership (OWNER vs AGENT) is selected outside this planner.",
+    "If the current request is vague or a follow-up, use recent conversation to recover the target.",
+    "When shouldAct=false, provide a short natural-language response that asks only for what is missing.",
+    "When shouldAct=false, write that response in the user's language unless they clearly asked to switch languages.",
+    "",
+    "Return ONLY valid JSON with exactly these fields:",
+    '{"subaction":"triage"|"needs_response"|"search"|"read"|"draft_reply"|"draft_batch_replies"|"send_reply"|"send_batch_replies"|"send_message"|null,"shouldAct":true|false,"response":"string|null"}',
+    "",
+    "Subactions and when to use each:",
+    "  triage — broad inbox overview only",
+    "  needs_response — specifically about emails that need a reply",
+    "  search — search by sender, subject, keyword, label, or time window",
+    "  read — read a specific email body",
+    "  draft_reply — draft a reply to one email thread",
+    "  draft_batch_replies — draft replies to multiple emails",
+    "  send_reply — send a confirmed reply to one email thread",
+    "  send_batch_replies — send confirmed replies to multiple emails",
+    "  send_message — compose or send a brand-new outbound email",
+    "Use triage only for broad inbox overviews.",
+    "Use search whenever the request includes a specific sender, subject, keyword, label, or time filter.",
+    "Use needs_response only when the user is specifically asking about emails that need a reply.",
+    "Use send_message only for brand-new outbound email, not for replies to an existing thread.",
+    "If there is an active compose draft and the user is filling in fields or confirming the send, choose send_message.",
+    "",
+    "Examples:",
+    '  "check my inbox" -> {"subaction":"triage","shouldAct":true,"response":null}',
+    '  "which emails need a response" -> {"subaction":"needs_response","shouldAct":true,"response":null}',
+    '  "did Sarah email me this week" -> {"subaction":"search","shouldAct":true,"response":null}',
+    '  "read that email" with recent target context -> {"subaction":"read","shouldAct":true,"response":null}',
+    '  "draft a reply to John" -> {"subaction":"draft_reply","shouldAct":true,"response":null}',
+    '  "send that reply now" with recent draft context -> {"subaction":"send_reply","shouldAct":true,"response":null}',
+    '  "send an email to zo@iqlabs.dev" -> {"subaction":"send_message","shouldAct":true,"response":null}',
+    '  "can you help me with my email?" -> {"subaction":null,"shouldAct":false,"response":"What do you want to do in Gmail — check inbox, search, read, or draft a reply?"}',
+    ...(args.activeComposeDraft
+      ? [
+          "",
+          "Active compose draft:",
+          `  ${JSON.stringify({
+            to: args.activeComposeDraft.to,
+            cc: args.activeComposeDraft.cc,
+            bcc: args.activeComposeDraft.bcc,
+            subject: args.activeComposeDraft.subject,
+            bodyText: args.activeComposeDraft.bodyText,
+          })}`,
+        ]
+      : []),
+    ...(context.latestReplyDraft || context.latestMessageTarget
+      ? [
+          "",
+          "Recent reply context:",
+          `  ${JSON.stringify({
+            latestReplyDraft: context.latestReplyDraft,
+            latestMessageTarget: context.latestMessageTarget,
+          })}`,
+        ]
+      : []),
+    "",
+    `Current timezone: ${context.timeZone}`,
+    `Current local datetime: ${context.localNow}`,
+    `Current ISO datetime: ${context.nowIso}`,
+    `Current request: ${JSON.stringify(context.currentMessage)}`,
+    `Resolved intent: ${JSON.stringify(args.intent)}`,
+    `Recent conversation: ${JSON.stringify(context.recentConversation)}`,
+  ].join("\n");
+
+  const parsed = await runGmailPlanningModel({
+    runtime: args.runtime,
+    prompt,
+    modelType: ModelType.TEXT_SMALL,
+    failureMessage: "Gmail intent planning model call failed",
+  });
+  return normalizeGmailIntentPlan(parsed);
+}
+
+async function extractGmailPayloadWithLlm(args: {
+  runtime: IAgentRuntime;
+  intent: string;
+  subaction: GmailSubaction;
+  context: GmailPlanningContext;
+  activeComposeDraft?: GmailComposeDraft | null;
+}): Promise<GmailPayloadPlan> {
+  const { context, subaction } = args;
+  const searchLikeSubaction =
+    subaction === "needs_response" ||
+    subaction === "search" ||
+    subaction === "read" ||
+    subaction === "draft_reply" ||
+    subaction === "draft_batch_replies" ||
+    subaction === "send_reply";
+  const prompt = [
+    `Extract Gmail parameters for the fixed subaction ${subaction}.`,
+    "The user may speak in any language.",
+    "Do NOT change the subaction. Only extract the supporting fields.",
+    "",
+    "Return ONLY valid JSON with exactly these fields:",
+    '{"queries":[],"messageId":null,"replyNeededOnly":null,"to":[],"cc":[],"bcc":[],"subject":null,"bodyText":null}',
+    "",
+    searchLikeSubaction
+      ? "For this subaction, use queries for sender, subject, keyword, label, and time filters. Use Gmail search syntax even when the user speaks another language."
+      : "For this subaction, leave queries, messageId, and replyNeededOnly empty unless the user explicitly provides them.",
+    searchLikeSubaction
+      ? "If the request already relies on recent context like 'that email' or 'send that reply', leave messageId and queries empty rather than inventing them."
+      : "Preserve existing compose-draft fields unless the current user message clearly overrides them.",
+    subaction === "needs_response" || subaction === "draft_batch_replies"
+      ? "Set replyNeededOnly=true only when the request is specifically about emails that need a reply."
+      : "Set replyNeededOnly only when it is genuinely required by the fixed subaction.",
+    subaction === "send_message"
+      ? "Extract to, cc, bcc, subject, and bodyText for a brand-new outbound email."
+      : "Leave to, cc, bcc, subject, and bodyText empty unless they are explicitly part of this fixed subaction.",
+    "",
+    "Examples:",
+    ...(searchLikeSubaction
+      ? [
+          '  fixed subaction search, request "did Sarah email me this week" -> {"queries":["from:sarah newer_than:7d"],"messageId":null,"replyNeededOnly":null,"to":[],"cc":[],"bcc":[],"subject":null,"bodyText":null}',
+          '  fixed subaction needs_response, request "which emails need a reply about venue" -> {"queries":["venue"],"messageId":null,"replyNeededOnly":true,"to":[],"cc":[],"bcc":[],"subject":null,"bodyText":null}',
+          '  fixed subaction read, request "read the latest email from finance" -> {"queries":["from:finance"],"messageId":null,"replyNeededOnly":null,"to":[],"cc":[],"bcc":[],"subject":null,"bodyText":null}',
+          '  fixed subaction send_reply, request "send that reply now" with recent draft context -> {"queries":[],"messageId":null,"replyNeededOnly":null,"to":[],"cc":[],"bcc":[],"subject":null,"bodyText":null}',
+        ]
+      : [
+          '  fixed subaction send_message, request "send an email to zo@iqlabs.dev, subject hello, body test" -> {"queries":[],"messageId":null,"replyNeededOnly":null,"to":["zo@iqlabs.dev"],"cc":[],"bcc":[],"subject":"hello","bodyText":"test"}',
+          '  fixed subaction send_message, active draft to=["shaw@gmail.com"], request "send an email like \\"test\\"" -> {"queries":[],"messageId":null,"replyNeededOnly":null,"to":["shaw@gmail.com"],"cc":[],"bcc":[],"subject":"test","bodyText":"test"}',
+        ]),
+    ...(args.activeComposeDraft && subaction === "send_message"
+      ? [
+          "",
+          "Active compose draft:",
+          `  ${JSON.stringify({
+            to: args.activeComposeDraft.to,
+            cc: args.activeComposeDraft.cc,
+            bcc: args.activeComposeDraft.bcc,
+            subject: args.activeComposeDraft.subject,
+            bodyText: args.activeComposeDraft.bodyText,
+          })}`,
+        ]
+      : []),
+    ...(context.latestReplyDraft || context.latestMessageTarget
+      ? [
+          "",
+          "Recent reply context:",
+          `  ${JSON.stringify({
+            latestReplyDraft: context.latestReplyDraft,
+            latestMessageTarget: context.latestMessageTarget,
+          })}`,
+        ]
+      : []),
+    "",
+    `Current timezone: ${context.timeZone}`,
+    `Current local datetime: ${context.localNow}`,
+    `Current ISO datetime: ${context.nowIso}`,
+    `Current request: ${JSON.stringify(context.currentMessage)}`,
+    `Resolved intent: ${JSON.stringify(args.intent)}`,
+    `Recent conversation: ${JSON.stringify(context.recentConversation)}`,
+  ].join("\n");
+
+  const parsed = await runGmailPlanningModel({
+    runtime: args.runtime,
+    prompt,
+    modelType: ModelType.TEXT_LARGE,
+    failureMessage: "Gmail parameter extraction model call failed",
+  });
+  const payload = normalizeGmailPayloadPlan(parsed);
+  if (subaction === "needs_response" && payload.replyNeededOnly === undefined) {
+    return { ...payload, replyNeededOnly: true };
+  }
+  return payload;
+}
+
+export async function extractGmailPlanWithLlm(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  intent: string,
+  activeComposeDraft?: GmailComposeDraft | null,
+): Promise<GmailLlmPlan> {
+  const context = await buildGmailPlanningContext({
+    runtime,
+    message,
+    state,
+  });
+  const intentPlan = await resolveGmailIntentPlanWithLlm({
+    runtime,
+    intent,
+    context,
+    activeComposeDraft,
+  });
+  if (!intentPlan.subaction || intentPlan.shouldAct === false) {
+    return {
+      subaction: intentPlan.subaction,
+      queries: [],
+      response: intentPlan.response,
+      shouldAct: intentPlan.shouldAct,
+    };
+  }
+  if (!shouldExtractGmailPayload(intentPlan.subaction)) {
+    return {
+      subaction: intentPlan.subaction,
+      queries: [],
+      response: intentPlan.response,
+      shouldAct: intentPlan.shouldAct,
+      replyNeededOnly:
+        intentPlan.subaction === "needs_response" ? true : undefined,
+    };
+  }
+  const payloadPlan = await extractGmailPayloadWithLlm({
+    runtime,
+    intent,
+    subaction: intentPlan.subaction,
+    context,
+    activeComposeDraft,
+  });
+  return {
+    subaction: intentPlan.subaction,
+    shouldAct: intentPlan.shouldAct,
+    response: intentPlan.response,
+    ...payloadPlan,
   };
 }
 
@@ -1288,9 +1463,6 @@ export const gmailAction: Action & {
     "Gmail execution layer under OWNER_INBOX or AGENT_INBOX: triage, search, read, and draft/send replies.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message, state) => {
-    if (looksLikeEmailVenting(messageText(message))) {
-      return false;
-    }
     if (!(await hasLifeOpsAccess(runtime, message))) return false;
     return hasContextSignalForKey(runtime, message, state, "gmail", {
       contextLimit: GMAIL_CONTEXT_WINDOW,

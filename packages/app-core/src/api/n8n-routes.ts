@@ -76,6 +76,8 @@ export interface N8nWorkflowNodeLike {
   id?: string;
   name?: string;
   type?: string;
+  position?: [number, number];
+  parameters?: Record<string, unknown>;
 }
 
 export interface N8nWorkflow {
@@ -85,6 +87,8 @@ export interface N8nWorkflow {
   description?: string;
   nodes?: N8nWorkflowNodeLike[];
   nodeCount: number;
+  /** Connection graph — only present on single-workflow GET, not on list. */
+  connections?: Record<string, { main?: Array<Array<{ node: string; type: "main"; index: number }>> }>;
 }
 
 /**
@@ -271,6 +275,38 @@ function sanitizeNode(n: unknown): N8nWorkflowNodeLike {
   };
 }
 
+/**
+ * Full node sanitizer for single-workflow GET — includes position and
+ * parameters (needed by the graph viewer). Credentials are still stripped.
+ */
+function sanitizeNodeFull(n: unknown): N8nWorkflowNodeLike {
+  if (!n || typeof n !== "object") return {};
+  const obj = n as Record<string, unknown>;
+  const base = sanitizeNode(n);
+
+  // position: n8n stores it as [x, y] on the node object
+  const pos = obj.position;
+  const position: [number, number] | undefined =
+    Array.isArray(pos) &&
+    pos.length >= 2 &&
+    typeof pos[0] === "number" &&
+    typeof pos[1] === "number"
+      ? [pos[0], pos[1]]
+      : undefined;
+
+  // parameters: pass through as-is (no credentials inside this field)
+  const parameters =
+    obj.parameters && typeof obj.parameters === "object"
+      ? (obj.parameters as Record<string, unknown>)
+      : undefined;
+
+  return {
+    ...base,
+    ...(position !== undefined ? { position } : {}),
+    ...(parameters !== undefined ? { parameters } : {}),
+  };
+}
+
 /** Normalize an n8n workflow payload to our client-facing shape. */
 function normalizeWorkflow(raw: unknown): N8nWorkflow | null {
   if (!raw || typeof raw !== "object") return null;
@@ -289,6 +325,44 @@ function normalizeWorkflow(raw: unknown): N8nWorkflow | null {
       : {}),
     nodes,
     nodeCount: nodes.length,
+  };
+}
+
+/**
+ * Full normalizer for single-workflow GET responses.
+ *
+ * Tradeoff: the list endpoint stays shallow (id/name/type only) to keep
+ * sidebar payloads small — n8n workflows can have hundreds of nodes with
+ * large parameter blobs. The single-workflow endpoint passes through
+ * position, parameters, and connections so the graph viewer has everything
+ * it needs without a second request.
+ */
+function normalizeWorkflowFull(raw: unknown): N8nWorkflow | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const id = typeof obj.id === "string" ? obj.id : String(obj.id ?? "");
+  const name = typeof obj.name === "string" ? obj.name : "";
+  if (!id) return null;
+  const nodesRaw = Array.isArray(obj.nodes) ? obj.nodes : [];
+  const nodes = nodesRaw.map(sanitizeNodeFull);
+
+  // connections: n8n's connection map is a plain object keyed by source node
+  // name. We pass it through as-is — it contains no credential material.
+  const connections =
+    obj.connections && typeof obj.connections === "object"
+      ? (obj.connections as N8nWorkflow["connections"])
+      : undefined;
+
+  return {
+    id,
+    name,
+    active: Boolean(obj.active),
+    ...(typeof obj.description === "string"
+      ? { description: obj.description }
+      : {}),
+    nodes,
+    nodeCount: nodes.length,
+    ...(connections !== undefined ? { connections } : {}),
   };
 }
 
@@ -574,6 +648,10 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
       const sidecar = await resolveSidecarForRequest(ctx, native);
       return handleToggleWorkflow(ctx, parsed.id, false, sidecar, native);
     }
+    if (method === "GET" && parsed.action === "get") {
+      const sidecar = await resolveSidecarForRequest(ctx, native);
+      return handleGetWorkflow(ctx, parsed.id, sidecar, native);
+    }
     if (method === "DELETE" && parsed.action === "get") {
       const sidecar = await resolveSidecarForRequest(ctx, native);
       return handleDeleteWorkflow(ctx, parsed.id, sidecar, native);
@@ -670,6 +748,53 @@ async function handleListWorkflows(
     .filter((w): w is N8nWorkflow => w !== null);
 
   sendJson(ctx, 200, { workflows });
+  return true;
+}
+
+/**
+ * GET /api/n8n/workflows/:id — single-workflow fetch with full graph payload.
+ *
+ * Unlike the list endpoint (which stays shallow for sidebar performance),
+ * this response includes node `position`, `parameters`, and the `connections`
+ * map so the graph viewer can render nodes and edges without a second request.
+ * Credentials are still stripped from node descriptors.
+ */
+async function handleGetWorkflow(
+  ctx: N8nRouteContext,
+  id: string,
+  sidecar: N8nSidecar | null,
+  native: boolean,
+): Promise<boolean> {
+  if (!id) {
+    sendJson(ctx, 400, { error: "workflow id required" });
+    return true;
+  }
+
+  const subpath = `/${encodeURIComponent(id)}`;
+  const resolved = resolveProxyTarget(ctx, subpath, sidecar, native);
+  if (!resolved.target) {
+    sendJson(ctx, 503, {
+      error: resolved.reason?.message ?? "n8n not ready",
+      status: resolved.reason?.status ?? "stopped",
+    });
+    return true;
+  }
+
+  const upstream = await fetchTargetAsJson(ctx, resolved.target, {
+    method: "GET",
+  });
+  if (!upstream.ok) {
+    propagateError(ctx, upstream);
+    return true;
+  }
+
+  const single = extractWorkflowSingle(upstream.body);
+  const normalized = normalizeWorkflowFull(single);
+  if (!normalized) {
+    sendJson(ctx, 502, { error: "unexpected upstream shape" });
+    return true;
+  }
+  sendJson(ctx, 200, normalized);
   return true;
 }
 

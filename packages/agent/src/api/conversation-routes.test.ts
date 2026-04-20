@@ -68,9 +68,16 @@ describe("conversation callback history persistence", () => {
         "Searching for track...",
         "Now playing: **Track**",
       ]),
-    ).toBe(
-      "Looking up track...\nSearching for track...\n\nNow playing: **Track**",
-    );
+    ).toBe("Now playing: **Track**");
+  });
+
+  it("uses callback history only when the assistant turn has no final text", () => {
+    expect(
+      formatConversationMessageText("", [
+        "Looking up track...",
+        "Searching for track...",
+      ]),
+    ).toBe("Looking up track...\nSearching for track...");
   });
 
   it("stores callback history on persisted assistant content", () => {
@@ -81,10 +88,12 @@ describe("conversation callback history persistence", () => {
           "Now playing: **Track**",
         ],
         responseContent: {
+          action: "BLOCK_WEBSITES",
           text: "Now playing: **Track**",
         },
       }),
     ).toMatchObject({
+      action: "BLOCK_WEBSITES",
       text: "Now playing: **Track**",
       actionCallbackHistory: ["Looking up track...", "Now playing: **Track**"],
     });

@@ -200,7 +200,16 @@ function getRawApi(): RawApi {
     browser?: RawApi;
     chrome?: RawApi;
   };
-  const api = globalWithApi.browser ?? globalWithApi.chrome;
+  const candidates = [globalWithApi.chrome, globalWithApi.browser].filter(
+    (candidate): candidate is RawApi => Boolean(candidate),
+  );
+  const api =
+    candidates.find(
+      (candidate) =>
+        Boolean(candidate.runtime?.sendMessage) ||
+        Boolean(candidate.tabs?.query) ||
+        Boolean(candidate.storage?.local?.get),
+    ) ?? candidates[0];
   if (!api) {
     throw new Error("Browser extension API is unavailable.");
   }

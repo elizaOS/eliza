@@ -27,8 +27,12 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-schema";
 import { runFinalCheck } from "./final-checks/index.ts";
-import { attachInterceptor } from "./interceptor.ts";
+import {
+  attachInterceptor,
+  ensureInterceptorRuntimeHooks,
+} from "./interceptor.ts";
 import { judgeTextWithLlm } from "./judge.ts";
+import { applyScenarioSeedStep } from "./seeds.ts";
 import type {
   FinalCheckReport,
   RunnerContext,
@@ -173,6 +177,151 @@ type SeedRunResult = {
   error?: string;
 };
 
+type ScenarioRoomRuntime = {
+  key: string;
+  roomId: UUID;
+  source: string;
+  channelType: ChannelType;
+  title: string;
+};
+
+function parseChannelType(value: unknown): ChannelType {
+  return value === ChannelType.GROUP ||
+    value === ChannelType.FORUM ||
+    value === ChannelType.API ||
+    value === ChannelType.FEED ||
+    value === ChannelType.SELF
+    ? value
+    : ChannelType.DM;
+}
+
+function buildScenarioRooms(scenario: ScenarioDefinition): ScenarioRoomRuntime[] {
+  const declaredRooms = (scenario as { rooms?: unknown }).rooms;
+  if (!Array.isArray(declaredRooms) || declaredRooms.length === 0) {
+    return [
+      {
+        key: "main",
+        roomId: crypto.randomUUID() as UUID,
+        source: "scenario-runner",
+        channelType: ChannelType.DM,
+        title: "Scenario Room",
+      },
+    ];
+  }
+
+  const rooms: ScenarioRoomRuntime[] = [];
+  for (const entry of declaredRooms) {
+    if (!entry || typeof entry !== "object") continue;
+    const room = entry as Record<string, unknown>;
+    const key =
+      typeof room.id === "string" && room.id.trim().length > 0
+        ? room.id.trim()
+        : `room-${rooms.length + 1}`;
+    rooms.push({
+      key,
+      roomId: crypto.randomUUID() as UUID,
+      source:
+        typeof room.source === "string" && room.source.trim().length > 0
+          ? room.source.trim()
+          : "scenario-runner",
+      channelType: parseChannelType(room.channelType),
+      title:
+        typeof room.title === "string" && room.title.trim().length > 0
+          ? room.title.trim()
+          : key,
+    });
+  }
+
+  return rooms.length > 0
+    ? rooms
+    : [
+        {
+          key: "main",
+          roomId: crypto.randomUUID() as UUID,
+          source: "scenario-runner",
+          channelType: ChannelType.DM,
+          title: "Scenario Room",
+        },
+      ];
+}
+
+function resolveTurnRoom(
+  turn: ScenarioTurn,
+  rooms: readonly ScenarioRoomRuntime[],
+): ScenarioRoomRuntime {
+  const requestedKey =
+    typeof (turn as { room?: unknown }).room === "string"
+      ? (turn as { room: string }).room
+      : "main";
+  return rooms.find((room) => room.key === requestedKey) ?? rooms[0]!;
+}
+
+async function ensureScenarioWorldOwnership(
+  runtime: AgentRuntime,
+  worldId: UUID,
+  ownerId: UUID,
+  worldName: string,
+): Promise<void> {
+  const metadata = {
+    ownership: { ownerId },
+    roles: { [ownerId]: "OWNER" },
+    roleSources: { [ownerId]: "owner" },
+  };
+  const runtimeWithWorldBootstrap = runtime as AgentRuntime & {
+    ensureWorldExists?: (world: {
+      id: UUID;
+      name: string;
+      agentId: UUID;
+      messageServerId: UUID;
+      metadata: typeof metadata;
+    }) => Promise<void>;
+    getWorld?: (id: UUID) => Promise<{
+      id: UUID;
+      metadata?: Record<string, unknown>;
+    } | null>;
+    updateWorld?: (world: {
+      id: UUID;
+      metadata?: Record<string, unknown>;
+    }) => Promise<void>;
+  };
+
+  if (typeof runtimeWithWorldBootstrap.ensureWorldExists === "function") {
+    await runtimeWithWorldBootstrap.ensureWorldExists({
+      id: worldId,
+      name: worldName,
+      agentId: runtime.agentId,
+      messageServerId: ownerId,
+      metadata,
+    });
+    return;
+  }
+
+  if (
+    typeof runtimeWithWorldBootstrap.getWorld !== "function" ||
+    typeof runtimeWithWorldBootstrap.updateWorld !== "function"
+  ) {
+    return;
+  }
+
+  const world = await runtimeWithWorldBootstrap.getWorld(worldId);
+  if (!world) return;
+  const currentMetadata =
+    world.metadata && typeof world.metadata === "object" ? world.metadata : {};
+  world.metadata = {
+    ...currentMetadata,
+    ownership: { ownerId },
+    roles: {
+      ...(currentMetadata.roles as Record<string, string> | undefined),
+      [ownerId]: "OWNER",
+    },
+    roleSources: {
+      ...(currentMetadata.roleSources as Record<string, string> | undefined),
+      [ownerId]: "owner",
+    },
+  };
+  await runtimeWithWorldBootstrap.updateWorld(world);
+}
+
 async function runSeedSteps(
   scenario: ScenarioDefinition,
   runtime: AgentRuntime,
@@ -187,14 +336,15 @@ async function runSeedSteps(
   let currentNow = new Date(initialNow.getTime());
   for (const seed of seeds) {
     if (seed === null || typeof seed !== "object") continue;
-    const { type, name, apply } = seed as {
+    const resolvedSeed = resolveScenarioTemplates(seed, currentNow) as typeof seed;
+    const { type, name, apply } = resolvedSeed as {
       type?: unknown;
       name?: unknown;
       apply?: unknown;
       by?: unknown;
     };
     if (type === "advanceClock") {
-      if (typeof (seed as { by?: unknown }).by !== "string") {
+      if (typeof (resolvedSeed as { by?: unknown }).by !== "string") {
         return {
           now: currentNow,
           error: `seed ${name ?? "(unnamed)"} missing string 'by' offset`,
@@ -203,7 +353,7 @@ async function runSeedSteps(
       try {
         currentNow = addClockOffset(
           currentNow,
-          (seed as { by: string }).by,
+          (resolvedSeed as { by: string }).by,
         );
         ctx.now = currentNow.toISOString();
       } catch (err) {
@@ -214,15 +364,32 @@ async function runSeedSteps(
       }
       continue;
     }
-    if (type !== "custom" || typeof apply !== "function") continue;
     const scenarioCtx: ScenarioContext = {
       ...ctx,
       runtime,
       now: currentNow.toISOString(),
     };
+    if (type === "custom" && typeof apply === "function") {
+      try {
+        const result = await (apply as (c: ScenarioContext) => unknown)(
+          scenarioCtx,
+        );
+        if (typeof result === "string" && result.length > 0) {
+          return { now: currentNow, error: `seed ${name ?? "(unnamed)"}: ${result}` };
+        }
+      } catch (err) {
+        return {
+          now: currentNow,
+          error: `seed ${name ?? "(unnamed)"} threw: ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
+      continue;
+    }
+
     try {
-      const result = await (apply as (c: ScenarioContext) => unknown)(
+      const result = await applyScenarioSeedStep(
         scenarioCtx,
+        resolvedSeed as Exclude<ScenarioDefinition["seed"], undefined>[number],
       );
       if (typeof result === "string" && result.length > 0) {
         return { now: currentNow, error: `seed ${name ?? "(unnamed)"}: ${result}` };
@@ -241,7 +408,7 @@ async function runSeedSteps(
 async function executeMessageTurn(
   runtime: AgentRuntime,
   turn: ScenarioTurn,
-  roomId: UUID,
+  room: ScenarioRoomRuntime,
   userId: UUID,
   currentNow: Date,
 ): Promise<{ responseText: string; durationMs: number }> {
@@ -256,11 +423,11 @@ async function executeMessageTurn(
   const message: Memory = createMessageMemory({
     id: crypto.randomUUID() as UUID,
     entityId: userId,
-    roomId,
+    roomId: room.roomId,
     content: {
       text,
-      source: "scenario-runner",
-      channelType: ChannelType.DM,
+      source: room.source,
+      channelType: room.channelType,
     },
   });
 
@@ -548,6 +715,30 @@ async function executeTickTurn(
   };
 }
 
+async function executeWaitTurn(
+  turn: ScenarioTurn,
+): Promise<{
+  responseText: string;
+  responseBody: unknown;
+  statusCode: number;
+  durationMs: number;
+}> {
+  const durationMs =
+    typeof (turn as { durationMs?: unknown }).durationMs === "number"
+      ? Math.max(0, (turn as { durationMs: number }).durationMs)
+      : 0;
+  const startedAt = Date.now();
+  if (durationMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, durationMs));
+  }
+  return {
+    responseText: "",
+    responseBody: { waitedMs: durationMs },
+    statusCode: 200,
+    durationMs: Date.now() - startedAt,
+  };
+}
+
 async function runTurnAssertions(
   turn: ScenarioTurn,
   execution: ScenarioTurnExecution,
@@ -724,20 +915,33 @@ export async function runScenario(
   };
 
   let interceptor = attachInterceptor(runtime);
-  const roomId = crypto.randomUUID() as UUID;
   const userId = crypto.randomUUID() as UUID;
   const worldId = stringToUuid("scenario-runner-world");
+  const rooms = buildScenarioRooms(scenario);
+  const worldName = rooms[0]?.title ?? `${scenario.title} World`;
 
   try {
-    await runtime.ensureConnection({
-      entityId: userId,
-      roomId,
-      worldId,
-      userName: "ScenarioUser",
-      source: "scenario-runner",
-      channelId: roomId,
-      type: ChannelType.DM,
-    });
+    await ensureInterceptorRuntimeHooks();
+    await ensureScenarioWorldOwnership(runtime, worldId, userId, worldName);
+    for (const room of rooms) {
+      await runtime.ensureConnection({
+        entityId: userId,
+        roomId: room.roomId,
+        worldId,
+        worldName,
+        userName: "ScenarioUser",
+        name: "ScenarioUser",
+        source: room.source,
+        channelId: room.roomId,
+        type: room.channelType,
+        messageServerId: userId,
+        metadata: {
+          ownership: { ownerId: userId },
+          roles: { [userId]: "OWNER" },
+          roleSources: { [userId]: "owner" },
+        },
+      });
+    }
 
     const seedResult = await runSeedSteps(scenario, runtime, ctx, logicalNow);
     logicalNow = seedResult.now;
@@ -800,10 +1004,11 @@ export async function runScenario(
       let statusCode: number | undefined = undefined;
       let durationMs = 0;
       if (kind === "message") {
+        const room = resolveTurnRoom(turn, rooms);
         const result = await executeMessageTurn(
           runtime,
           turn,
-          roomId,
+          room,
           userId,
           logicalNow,
         );
@@ -817,6 +1022,12 @@ export async function runScenario(
         durationMs = result.durationMs;
       } else if (kind === "tick") {
         const result = await executeTickTurn(runtime, turn, logicalNow);
+        responseText = result.responseText;
+        responseBody = result.responseBody;
+        statusCode = result.statusCode;
+        durationMs = result.durationMs;
+      } else if (kind === "wait") {
+        const result = await executeWaitTurn(turn);
         responseText = result.responseText;
         responseBody = result.responseBody;
         statusCode = result.statusCode;
@@ -893,7 +1104,10 @@ export async function runScenario(
     }
 
     ctx.actionsCalled = interceptor.actions;
+    ctx.approvalRequests = interceptor.approvalRequests;
+    ctx.connectorDispatches = interceptor.connectorDispatches;
     ctx.memoryWrites = interceptor.memoryWrites;
+    ctx.stateTransitions = interceptor.stateTransitions;
     ctx.artifacts = interceptor.artifacts;
     report.actionsCalled = [...interceptor.actions];
 

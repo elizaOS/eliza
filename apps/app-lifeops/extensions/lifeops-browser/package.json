@@ -11,6 +11,6 @@
     "package:safari": "bun scripts/package-safari.mjs",
     "package:stores": "bun scripts/package-store-assets.mjs",
     "package:release": "bun scripts/package-release.mjs",
-    "test": "bun test --preload ./src/test-dom-setup.ts scripts/ src/"
+    "test": "bunx vitest run --config ./vitest.config.ts"
   }
 }

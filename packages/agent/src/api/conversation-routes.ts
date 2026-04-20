@@ -441,18 +441,11 @@ export function formatConversationMessageText(
   }
 
   const trimmedText = text.trim();
-  const visibleHistory =
-    trimmedText.length > 0 && history.at(-1) === trimmedText
-      ? history.slice(0, -1)
-      : history;
-
-  if (visibleHistory.length === 0) {
+  if (trimmedText.length > 0) {
     return text;
   }
 
-  return trimmedText.length > 0
-    ? `${visibleHistory.join("\n")}\n\n${text}`
-    : visibleHistory.join("\n");
+  return history.join("\n");
 }
 
 export function buildPersistedAssistantContent(
@@ -599,6 +592,8 @@ type ConversationRouteMessageRecord = {
   text: string;
   timestamp: number;
   source?: string;
+  actionName?: string;
+  actionCallbackHistory?: string[];
   from?: string;
   fromUserName?: string;
   avatarUrl?: string;
@@ -898,6 +893,10 @@ export async function handleConversationRoutes(
             contentSource !== "client_chat"
               ? contentSource
               : undefined;
+          const actionName =
+            typeof content.action === "string" && content.action.length > 0
+              ? content.action
+              : undefined;
           const actionCallbackHistory = normalizeActionCallbackHistory(
             content.actionCallbackHistory,
           );
@@ -910,6 +909,11 @@ export async function handleConversationRoutes(
             ),
             timestamp: m.createdAt ?? 0,
             source: normalizedSource,
+            actionName,
+            actionCallbackHistory:
+              actionCallbackHistory.length > 0
+                ? [...actionCallbackHistory]
+                : undefined,
             from:
               typeof entityName === "string" && entityName.length > 0
                 ? entityName

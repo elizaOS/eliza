@@ -25,5 +25,9 @@ const globals: Record<string, unknown> = {
 };
 
 for (const [key, value] of Object.entries(globals)) {
-  (globalThis as Record<string, unknown>)[key] = value;
+  Object.defineProperty(globalThis, key, {
+    configurable: true,
+    writable: true,
+    value,
+  });
 }
