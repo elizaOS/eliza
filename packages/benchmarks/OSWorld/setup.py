@@ -49,7 +49,7 @@ setup(
         "accelerate",
         "opencv-python-headless~=4.8.1.78",
         "matplotlib~=3.7.4",
-        "pynput~=1.7.6",
+        "pynput~=1.8.1",
         "pyautogui~=0.9.54",
         "psutil~=7.2.2",
         "tqdm~=4.66.3",
