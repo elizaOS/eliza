@@ -12,6 +12,7 @@ import type {
   RelationshipsPersonDetail,
   RelationshipsPersonSummary,
 } from "../services/relationships-graph.js";
+import { resolveRelationshipsGraphService } from "../services/relationships-graph.js";
 import { hasContextSignalSyncForKey } from "./context-signal.js";
 
 // ---------------------------------------------------------------------------
@@ -129,12 +130,10 @@ function formatPersonDetail(detail: RelationshipsPersonDetail): string {
   return sections.join("\n");
 }
 
-function getGraphService(
+async function getGraphService(
   runtime: IAgentRuntime,
-): RelationshipsGraphService | null {
-  return runtime.getService(
-    "RELATIONSHIPS_GRAPH",
-  ) as unknown as RelationshipsGraphService | null;
+): Promise<RelationshipsGraphService | null> {
+  return resolveRelationshipsGraphService(runtime);
 }
 
 // ---------------------------------------------------------------------------
@@ -190,7 +189,7 @@ export const searchEntityAction: Action = {
       };
     }
 
-    const graphService = getGraphService(runtime);
+    const graphService = await getGraphService(runtime);
     if (!graphService) {
       return {
         text: "Relationships service not available.",
@@ -366,7 +365,7 @@ export const readEntityAction: Action = {
       };
     }
 
-    const graphService = getGraphService(runtime);
+    const graphService = await getGraphService(runtime);
     if (!graphService) {
       return {
         text: "Relationships service not available.",
@@ -614,7 +613,7 @@ export const linkEntityAction: Action = {
       };
     }
 
-    const graphService = getGraphService(runtime);
+    const graphService = await getGraphService(runtime);
     if (!graphService) {
       return {
         text: "Relationships service not available.",

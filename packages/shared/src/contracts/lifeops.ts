@@ -93,8 +93,10 @@ export interface LifeOpsCalendarEventEndedFilters {
   attendeeEmailIncludesAny?: string[];
 }
 
-export type LifeOpsEventFilters =
-  | { kind: "calendar.event.ended"; filters?: LifeOpsCalendarEventEndedFilters };
+export type LifeOpsEventFilters = {
+  kind: "calendar.event.ended";
+  filters?: LifeOpsCalendarEventEndedFilters;
+};
 
 export const LIFEOPS_NEGOTIATION_STATES = [
   "initiated",
@@ -191,6 +193,7 @@ export const LIFEOPS_GOOGLE_CAPABILITIES = [
   "google.calendar.write",
   "google.gmail.triage",
   "google.gmail.send",
+  "google.gmail.manage",
 ] as const;
 export type LifeOpsGoogleCapability =
   (typeof LIFEOPS_GOOGLE_CAPABILITIES)[number];
@@ -916,6 +919,17 @@ export interface LifeOpsBrowserCompanionSyncResponse {
   session: LifeOpsBrowserSession | null;
 }
 
+export const LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS = [
+  "extension_root",
+  "chrome_build",
+  "chrome_package",
+  "safari_web_extension",
+  "safari_app",
+  "safari_package",
+] as const;
+export type LifeOpsBrowserPackagePathTarget =
+  (typeof LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS)[number];
+
 export interface LifeOpsBrowserCompanionPackageStatus {
   extensionPath: string | null;
   chromeBuildPath: string | null;
@@ -955,6 +969,21 @@ export interface LifeOpsBrowserCompanionReleaseManifest {
   chrome: LifeOpsBrowserCompanionReleaseTarget;
   safari: LifeOpsBrowserCompanionReleaseTarget;
   generatedAt: string;
+}
+
+export interface OpenLifeOpsBrowserCompanionPackagePathRequest {
+  target: LifeOpsBrowserPackagePathTarget;
+  revealOnly?: boolean;
+}
+
+export interface OpenLifeOpsBrowserCompanionPackagePathResponse {
+  target: LifeOpsBrowserPackagePathTarget;
+  path: string;
+  revealOnly: boolean;
+}
+
+export interface OpenLifeOpsBrowserCompanionManagerResponse {
+  browser: LifeOpsBrowserKind;
 }
 
 export interface LifeOpsWorkflowActionBase {
@@ -1194,6 +1223,61 @@ export interface LifeOpsOverviewSummary {
   activeGoalCount: number;
 }
 
+export type LifeOpsSchedulePhase =
+  | "sleeping"
+  | "waking"
+  | "morning"
+  | "afternoon"
+  | "evening"
+  | "winding_down"
+  | "offline";
+
+export type LifeOpsScheduleSleepStatus =
+  | "sleeping_now"
+  | "slept"
+  | "likely_missed"
+  | "unknown";
+
+export type LifeOpsScheduleMealLabel = "breakfast" | "lunch" | "dinner";
+
+export type LifeOpsScheduleMealSource =
+  | "activity_gap"
+  | "expected_window"
+  | "health";
+
+export interface LifeOpsScheduleMealInsight {
+  label: LifeOpsScheduleMealLabel;
+  detectedAt: string;
+  confidence: number;
+  source: LifeOpsScheduleMealSource;
+}
+
+export interface LifeOpsScheduleInsight {
+  effectiveDayKey: string;
+  localDate: string;
+  timezone: string;
+  inferredAt: string;
+  phase: LifeOpsSchedulePhase;
+  sleepStatus: LifeOpsScheduleSleepStatus;
+  isProbablySleeping: boolean;
+  sleepConfidence: number;
+  currentSleepStartedAt: string | null;
+  lastSleepStartedAt: string | null;
+  lastSleepEndedAt: string | null;
+  lastSleepDurationMinutes: number | null;
+  typicalWakeHour: number | null;
+  typicalSleepHour: number | null;
+  wakeAt: string | null;
+  firstActiveAt: string | null;
+  lastActiveAt: string | null;
+  meals: LifeOpsScheduleMealInsight[];
+  lastMealAt: string | null;
+  nextMealLabel: LifeOpsScheduleMealLabel | null;
+  nextMealWindowStartAt: string | null;
+  nextMealWindowEndAt: string | null;
+  nextMealConfidence: number;
+}
+
 export interface LifeOpsOverviewSection {
   occurrences: LifeOpsOccurrenceView[];
   goals: LifeOpsGoalDefinition[];
@@ -1208,6 +1292,7 @@ export interface LifeOpsOverview {
   summary: LifeOpsOverviewSummary;
   owner: LifeOpsOverviewSection;
   agentOps: LifeOpsOverviewSection;
+  schedule: LifeOpsScheduleInsight | null;
 }
 
 export interface LifeOpsCalendarEventAttendee {
@@ -1523,6 +1608,29 @@ export const LIFEOPS_GOOGLE_CONNECTOR_REASONS = [
 export type LifeOpsGoogleConnectorReason =
   (typeof LIFEOPS_GOOGLE_CONNECTOR_REASONS)[number];
 
+export const LIFEOPS_CONNECTOR_DEGRADATION_AXES = [
+  "missing-scope",
+  "rate-limited",
+  "disconnected",
+  "auth-expired",
+  "session-revoked",
+  "delivery-degraded",
+  "helper-disconnected",
+  "retry-idempotent",
+  "hold-expired",
+  "transport-offline",
+  "blocked-resume",
+] as const;
+export type LifeOpsConnectorDegradationAxis =
+  (typeof LIFEOPS_CONNECTOR_DEGRADATION_AXES)[number];
+
+export interface LifeOpsConnectorDegradation {
+  axis: LifeOpsConnectorDegradationAxis;
+  code: string;
+  message: string;
+  retryable: boolean;
+}
+
 export interface LifeOpsGoogleConnectorStatus {
   provider: "google";
   side: LifeOpsConnectorSide;
@@ -1542,6 +1650,7 @@ export interface LifeOpsGoogleConnectorStatus {
   expiresAt: string | null;
   hasRefreshToken: boolean;
   grant: LifeOpsConnectorGrant | null;
+  degradations?: LifeOpsConnectorDegradation[];
 }
 
 export interface LifeOpsXConnectorStatus {
@@ -1556,9 +1665,10 @@ export interface LifeOpsXConnectorStatus {
    * DM inbound read is supported when `x.read` capability is granted.
    * Use `syncXDms()` to pull and persist, then `getXDms()` or
    * `readXInboundDms()` to retrieve.
-   */
+  */
   dmInbound: boolean;
   grant: LifeOpsConnectorGrant | null;
+  degradations?: LifeOpsConnectorDegradation[];
 }
 
 // ---------------------------------------------------------------------------
@@ -1586,6 +1696,30 @@ export interface LifeOpsSignalConnectorStatus {
   grantedCapabilities: LifeOpsSignalCapability[];
   pairing: LifeOpsSignalPairingStatus | null;
   grant: LifeOpsConnectorGrant | null;
+  degradations?: LifeOpsConnectorDegradation[];
+}
+
+/**
+ * A single inbound Signal message as returned by {@link readSignalInbound} and
+ * the signal-local-client reader.
+ */
+export interface LifeOpsSignalInboundMessage {
+  /** Stable message ID (from the Signal service memory store or signal-cli). */
+  id: string;
+  /** elizaOS room ID this message was placed into. */
+  roomId: string;
+  /** Signal channel ID (typically the sender's phone number or group ID). */
+  channelId: string;
+  /** Display name of the sender. */
+  speakerName: string;
+  /** Plain-text body of the message. */
+  text: string;
+  /** Unix millisecond timestamp of the message. */
+  createdAt: number;
+  /** True when the message was sent by a contact (not by the agent's account). */
+  isInbound: boolean;
+  /** True when the message was received in a group conversation. */
+  isGroup: boolean;
 }
 
 export interface LifeOpsDiscordDmPreview {
@@ -1684,6 +1818,7 @@ export interface LifeOpsDiscordConnectorStatus {
   /** Owner-side browser options for reaching the user's real Discord session. */
   browserAccess?: LifeOpsOwnerBrowserAccessStatus[];
   grant: LifeOpsConnectorGrant | null;
+  degradations?: LifeOpsConnectorDegradation[];
 }
 
 export const LIFEOPS_TELEGRAM_AUTH_STATES = [
@@ -1713,6 +1848,7 @@ export interface LifeOpsWhatsAppConnectorStatus {
   inbound: true;
   phoneNumberId?: string;
   lastCheckedAt: string;
+  degradations?: LifeOpsConnectorDegradation[];
 }
 
 export interface LifeOpsTelegramConnectorStatus {
@@ -1733,6 +1869,7 @@ export interface LifeOpsTelegramConnectorStatus {
   managedCredentialsAvailable: boolean;
   storedCredentialsAvailable: boolean;
   grant: LifeOpsConnectorGrant | null;
+  degradations?: LifeOpsConnectorDegradation[];
 }
 
 export interface LifeOpsTelegramDialogSummary {

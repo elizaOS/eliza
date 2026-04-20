@@ -5,6 +5,7 @@ import {
 	formatActions,
 	parseActionParams,
 } from "../actions";
+import { allActionDocs } from "../generated/action-docs";
 import type { Action } from "../types";
 import { ACTION_BENCHMARK_CASES } from "../../../app-core/test/benchmarks/action-selection-cases.ts";
 
@@ -306,7 +307,7 @@ describe("Actions", () => {
 
 			expect(casesById.has("cross-send-slack")).toBe(false);
 			expect(casesById.get("cross-send-signal")).toMatchObject({
-				expectedAction: "CROSS_CHANNEL_SEND",
+				expectedAction: "OWNER_SEND_MESSAGE",
 				userMessage: "send a Signal message to Priya saying thanks for the review",
 			});
 
@@ -331,7 +332,7 @@ describe("Actions", () => {
 
 			expect(casesById.has("calendly-list-slots")).toBe(false);
 			expect(casesById.get("calendly-check-availability")).toMatchObject({
-				expectedAction: "CALENDLY",
+				expectedAction: "OWNER_CALENDAR",
 				expectedParams: {
 					subaction: "availability",
 					eventTypeUri: "https://api.calendly.com/event_types/abc",
@@ -340,7 +341,7 @@ describe("Actions", () => {
 				},
 			});
 			expect(casesById.get("calendly-create-single-use-link")).toMatchObject({
-				expectedAction: "CALENDLY",
+				expectedAction: "OWNER_CALENDAR",
 				expectedParams: {
 					subaction: "single_use_link",
 					eventTypeUri: "https://api.calendly.com/event_types/abc",
@@ -364,6 +365,19 @@ describe("Actions", () => {
 	});
 
 	describe("Action Structure", () => {
+		it("keeps REPLY scoped to chat replies in the current conversation", () => {
+			const replyDoc = allActionDocs.find((doc) => doc.name === "REPLY");
+			expect(replyDoc).toBeDefined();
+			expect(replyDoc?.description).toContain(
+				"direct chat reply in the current conversation/thread",
+			);
+			expect(replyDoc?.description).toContain(
+				"not an email reply, inbox workflow, or external-channel send",
+			);
+			expect(replyDoc?.similes ?? []).not.toContain("REPLY_TO_MESSAGE");
+			expect(replyDoc?.similes ?? []).not.toContain("SEND_REPLY");
+		});
+
 		it("should validate action structure", () => {
 			for (const action of mockActions) {
 				expect(action).toHaveProperty("name");

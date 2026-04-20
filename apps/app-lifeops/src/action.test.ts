@@ -10,7 +10,7 @@ const createBrowserSession = vi.fn(async (request: Record<string, unknown>) => (
   tabId: null,
 }));
 
-vi.mock("@elizaos/agent/security/access", () => ({
+vi.mock("@elizaos/agent/security", () => ({
   hasAdminAccess: vi.fn(async () => true),
 }));
 

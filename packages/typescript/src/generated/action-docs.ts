@@ -95,11 +95,9 @@ export const coreActionsSpec = {
 		{
 			name: "REPLY",
 			description:
-				"Replies to the current conversation with the text from the generated message. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response.",
+				"Sends a direct chat reply in the current conversation/thread using the generated message text. This is not an email reply, inbox workflow, or external-channel send. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final chat response.",
 			similes: [
 				"GREET",
-				"REPLY_TO_MESSAGE",
-				"SEND_REPLY",
 				"RESPOND",
 				"RESPONSE",
 			],
@@ -1349,11 +1347,9 @@ export const allActionsSpec = {
 		{
 			name: "REPLY",
 			description:
-				"Replies to the current conversation with the text from the generated message. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response.",
+				"Sends a direct chat reply in the current conversation/thread using the generated message text. This is not an email reply, inbox workflow, or external-channel send. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final chat response.",
 			similes: [
 				"GREET",
-				"REPLY_TO_MESSAGE",
-				"SEND_REPLY",
 				"RESPOND",
 				"RESPONSE",
 			],

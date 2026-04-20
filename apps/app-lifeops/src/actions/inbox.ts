@@ -9,6 +9,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 import { loadInboxTriageConfig } from "../inbox/config.js";
 import { fetchAllMessages } from "../inbox/message-fetcher.js";
 import {
@@ -24,10 +25,13 @@ import type {
   TriageEntry,
   TriageResult,
 } from "../inbox/types.js";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess } from "@elizaos/agent/security";
 import { resolveAdminEntityId } from "@elizaos/agent/actions/send-message";
 import { INTERNAL_URL } from "./lifeops-google-helpers.js";
 import { looksLikeEmailVenting } from "./non-actionable-request.js";
+import { createApprovalQueue } from "../lifeops/approval-queue.js";
+import type { ApprovalChannel } from "../lifeops/approval-queue.types.js";
+import { executeApprovedRequest } from "./approval.js";
 
 // ---------------------------------------------------------------------------
 // Subaction types & params
@@ -62,26 +66,11 @@ type InboxSubactionPlan = {
 };
 
 function inboxRecentConversation(state: State | undefined, limit = 10): string[] {
-  if (!state || typeof state !== "object") {
-    return [];
-  }
-
-  const stateRecord = state as Record<string, unknown>;
-  const recentMessagesData =
-    stateRecord.recentMessagesData ?? stateRecord.recentMessages;
-  if (!Array.isArray(recentMessagesData)) {
-    return [];
-  }
-
   const texts: string[] = [];
-  for (const item of recentMessagesData) {
-    if (!item || typeof item !== "object") {
-      continue;
-    }
+  for (const item of getRecentMessagesData(state)) {
     const content =
-      (item as Record<string, unknown>).content &&
-      typeof (item as Record<string, unknown>).content === "object"
-        ? ((item as Record<string, unknown>).content as Record<string, unknown>)
+      item.content && typeof item.content === "object"
+        ? (item.content as Record<string, unknown>)
         : null;
     const text = typeof content?.text === "string" ? content.text.trim() : "";
     if (text) {
@@ -235,7 +224,6 @@ export const inboxAction: Action & {
     "SCAN_MESSAGES",
     "CHECK_MESSAGES",
     "DAILY_DIGEST",
-    "DAILY_BRIEF",
     "INBOX_SUMMARY",
     "REPLY_INBOX",
     "RESPOND_TO_MESSAGE",
@@ -252,15 +240,25 @@ export const inboxAction: Action & {
     "unread summary",
   ],
   description:
-    "Unified inbox management: triage new messages across all channels, " +
-    "generate a daily digest summary, or draft/send a response to a triaged " +
-    "item. Use this for executive-assistant daily briefs, urgent-vs-low " +
-    "priority inbox ranking, unread summaries, drafts awaiting sign-off, " +
-    "missed-call repair follow-up, and group-chat handoff coordination. " +
-    "Examples: 'triage my inbox', 'give me my inbox digest', or 'respond to the messages that need an answer in my inbox'. " +
-    "DO NOT use this action when the user is only complaining about email or messages without asking for triage, a digest, or a reply workflow. " +
-    "If the request is explicitly Gmail or email-specific, about unread emails, or about drafting or sending a reply to a specific email, use GMAIL_ACTION instead. " +
-    "Subactions: triage, digest, respond. Admin/owner only.",
+    "Legacy compatibility delegate for the owner's cross-channel unified inbox — aggregates Gmail + Slack + Discord + SMS + " +
+    "Telegram + iMessage + WhatsApp into ONE inbox view. Use this for: triage " +
+    "across all channels at once, inbox-only executive-assistant digests, urgent-" +
+    "vs-low priority ranking across ALL messaging surfaces, unread summaries " +
+    "across multiple channels, drafts awaiting owner sign-off, missed-call " +
+    "repair follow-up, group-chat handoff coordination. " +
+    "Use this action for inbox-specific requests that say 'my inbox', 'inbox digest', " +
+    "'daily digest', 'triage my inbox', 'unread summary', or " +
+    "'what needs my attention' — unless the user explicitly names Gmail / " +
+    "email / a specific email, in which case use OWNER_INBOX with channel=gmail " +
+    "(which may delegate to GMAIL_ACTION). The word " +
+    "'inbox' alone (without 'Gmail' or 'email') belongs here, not in the Gmail-specific path. " +
+    "Do NOT use this action for morning briefs, night briefs, operating pictures, or broad day-start/day-end reviews — those belong to RUN_MORNING_CHECKIN / RUN_NIGHT_CHECKIN. " +
+    "DO NOT use this when the user is only venting or complaining about messages " +
+    "without asking for triage / digest / response workflow. " +
+    "DO NOT use this when the request is explicitly Gmail-only, about a specific " +
+    "email by sender / subject / body, or about drafting / sending a single email " +
+    "reply — route to OWNER_INBOX with channel=gmail instead. " +
+    "Subactions: triage, digest, respond. Prefer OWNER_INBOX as the planner-facing umbrella. Admin/owner only.",
   descriptionCompressed:
     "Unified inbox: triage messages, daily digest, draft/send responses. Admin only.",
   suppressPostActionContinuation: true,
@@ -913,17 +911,47 @@ async function handleRespond(
     senderName: entry.senderName ?? "Unknown",
   };
 
+  const approvalQueue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+  const approvalRequest = await approvalQueue.enqueue({
+    requestedBy: `inbox:${entry.id}`,
+    subjectUserId: String(message.entityId ?? runtime.agentId),
+    action: draft.source === "gmail" ? "send_email" : "send_message",
+    payload:
+      draft.source === "gmail" && draft.gmailMessageId
+        ? {
+            action: "send_email",
+            to: [],
+            cc: [],
+            bcc: [],
+            subject: entry.channelName,
+            body: draft.draftText,
+            threadId: entry.sourceMessageId,
+            replyToMessageId: draft.gmailMessageId,
+          }
+        : {
+            action: "send_message",
+            recipient: String(draft.targetRoomId ?? draft.targetEntityId ?? ""),
+            body: draft.draftText,
+            replyToMessageId: entry.sourceMessageId,
+          },
+    channel: approvalChannelForInboxSource(entry.source),
+    reason: `Reply draft for ${draft.senderName} on ${draft.channelName}`,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  });
+  draft.approvalRequestId = approvalRequest.id;
+
   return {
     text:
       `I'll send this to **${draft.senderName}** on **${draft.channelName}** (${draft.source}):\n\n` +
       `> ${draftText}\n\n` +
-      `Say **"send it"** to confirm, or tell me what to change.`,
+      `It's queued for approval as **${approvalRequest.id}**. Say **"send it"** or explicitly approve it to dispatch, or tell me what to change.`,
     success: true,
     values: { success: true, awaitingConfirmation: true },
     data: {
       actionName: ACTION_NAME,
       subaction: "respond",
       inboxDraft: draft,
+      approvalRequestId: approvalRequest.id,
     },
   };
 }
@@ -1071,7 +1099,7 @@ async function draftResponse(
 
 async function handleConfirmation(
   runtime: IAgentRuntime,
-  _message: Memory,
+  message: Memory,
   draft: DeferredInboxDraft,
   userText: string,
   repo: InboxTriageRepository,
@@ -1098,37 +1126,62 @@ async function handleConfirmation(
   }
 
   // Send the message through the original channel
-  try {
-    if (draft.source === "gmail" && draft.gmailMessageId) {
-      const { LifeOpsService } = await import("../lifeops/service.js");
-      const service = new LifeOpsService(runtime);
-      await service.sendGmailReply(INTERNAL_URL, {
-        messageId: draft.gmailMessageId,
-        bodyText: draft.draftText,
+  if (draft.approvalRequestId) {
+    try {
+      const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+      const approved = await queue.approve(draft.approvalRequestId, {
+        resolvedBy: String(message.entityId ?? runtime.agentId),
+        resolutionReason: userText.trim() || "user confirmed inbox draft",
       });
-    } else if (draft.targetRoomId) {
-      await runtime.sendMessageToTarget(
-        {
-          source: draft.source,
-          roomId: draft.targetRoomId,
-        } as Parameters<typeof runtime.sendMessageToTarget>[0],
-        { text: draft.draftText, source: draft.source },
-      );
-    } else {
+      const executed = await executeApprovedRequest({
+        runtime,
+        queue,
+        request: approved,
+      });
+      if (!executed.success) {
+        return executed;
+      }
+    } catch (err) {
       return {
-        text: "Cannot send: no target room or message ID available for this channel.",
+        text: `Failed to send message: ${String(err)}`,
         success: false,
-        values: { success: false, error: "NO_TARGET" },
+        values: { success: false, error: "SEND_FAILED" },
         data: { actionName: ACTION_NAME, subaction: "respond" },
       };
     }
-  } catch (err) {
-    return {
-      text: `Failed to send message: ${String(err)}`,
-      success: false,
-      values: { success: false, error: "SEND_FAILED" },
-      data: { actionName: ACTION_NAME, subaction: "respond" },
-    };
+  } else {
+    try {
+      if (draft.source === "gmail" && draft.gmailMessageId) {
+        const { LifeOpsService } = await import("../lifeops/service.js");
+        const service = new LifeOpsService(runtime);
+        await service.sendGmailReply(INTERNAL_URL, {
+          messageId: draft.gmailMessageId,
+          bodyText: draft.draftText,
+        });
+      } else if (draft.targetRoomId) {
+        await runtime.sendMessageToTarget(
+          {
+            source: draft.source,
+            roomId: draft.targetRoomId,
+          } as Parameters<typeof runtime.sendMessageToTarget>[0],
+          { text: draft.draftText, source: draft.source },
+        );
+      } else {
+        return {
+          text: "Cannot send: no target room or message ID available for this channel.",
+          success: false,
+          values: { success: false, error: "NO_TARGET" },
+          data: { actionName: ACTION_NAME, subaction: "respond" },
+        };
+      }
+    } catch (err) {
+      return {
+        text: `Failed to send message: ${String(err)}`,
+        success: false,
+        values: { success: false, error: "SEND_FAILED" },
+        data: { actionName: ACTION_NAME, subaction: "respond" },
+      };
+    }
   }
 
   // Mark resolved and store as example
@@ -1201,27 +1254,41 @@ function latestPendingDraft(
   }
 
   // Check recent messages
-  const recentMessagesData =
-    stateRecord.recentMessagesData ?? stateRecord.recentMessages;
-  if (Array.isArray(recentMessagesData)) {
-    for (let i = recentMessagesData.length - 1; i >= 0; i--) {
-      const item = recentMessagesData[i] as Record<string, unknown> | null;
-      if (!item) continue;
-      const content = item.content as Record<string, unknown> | undefined;
-      if (!content) continue;
+  const recentMessagesData = getRecentMessagesData(state);
+  for (let i = recentMessagesData.length - 1; i >= 0; i--) {
+    const item = recentMessagesData[i];
+    if (!item) continue;
+    const content =
+      item.content && typeof item.content === "object"
+        ? (item.content as Record<string, unknown>)
+        : null;
+    if (!content) continue;
 
-      const draft =
-        (content.inboxDraft as DeferredInboxDraft | undefined) ??
-        ((content.data as Record<string, unknown> | undefined)?.inboxDraft as
-          | DeferredInboxDraft
-          | undefined);
-      if (draft?.triageEntryId && draft?.draftText) {
-        return draft;
-      }
+    const draft =
+      (content.inboxDraft as DeferredInboxDraft | undefined) ??
+      ((content.data as Record<string, unknown> | undefined)?.inboxDraft as
+        | DeferredInboxDraft
+        | undefined);
+    if (draft?.triageEntryId && draft?.draftText) {
+      return draft;
     }
   }
 
   return null;
+}
+
+function approvalChannelForInboxSource(source: string): ApprovalChannel {
+  switch (source) {
+    case "gmail":
+      return "email";
+    case "telegram":
+    case "discord":
+    case "imessage":
+    case "sms":
+      return source;
+    default:
+      return "internal";
+  }
 }
 
 function findBestMatch(

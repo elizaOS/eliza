@@ -11,11 +11,13 @@ import { AgentEventService } from "@elizaos/core";
 import { launchAppAction, stopAppAction } from "../actions/app-control.js";
 import { browserSessionAction } from "../actions/browser-session.js";
 import {
+  linkEntityAction,
   readEntityAction,
   searchEntityAction,
 } from "../actions/entity-actions.js";
 import { extractPageAction } from "../actions/extract-page.js";
 import { manageTasksAction } from "../actions/manage-tasks.js";
+import { readMessagesAction } from "../actions/read-messages.js";
 import { readChannelAction } from "../actions/read-channel.js";
 import { restartAction } from "../actions/restart.js";
 import { searchConversationsAction } from "../actions/search-conversations.js";
@@ -212,7 +214,9 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       readChannelAction,
       searchConversationsAction,
       searchEntityAction,
+      linkEntityAction,
       readEntityAction,
+      readMessagesAction,
     ],
   };
 

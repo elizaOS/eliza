@@ -37,6 +37,8 @@ export interface TurnReport {
   kind: string;
   text?: string;
   responseText: string;
+  statusCode?: number;
+  responseBody?: unknown;
   actionsCalled: CapturedAction[];
   durationMs: number;
   failedAssertions: string[];

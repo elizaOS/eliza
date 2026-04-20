@@ -20,6 +20,7 @@ import {
   type LifeOpsBrowserCompanionPairingResponse,
   type LifeOpsBrowserCompanionReleaseManifest,
   type LifeOpsBrowserKind,
+  type LifeOpsBrowserPackagePathTarget,
   type LifeOpsBrowserSettings,
   type LifeOpsBrowserSiteAccessMode,
   type LifeOpsBrowserTrackingMode,
@@ -242,7 +243,11 @@ function releaseTargetForBrowser(
 function installButtonLabel(
   browser: LifeOpsBrowserKind,
   releaseManifest: LifeOpsBrowserCompanionReleaseManifest | null | undefined,
+  hasLocalArtifact: boolean,
 ): string {
+  if (hasLocalArtifact) {
+    return browser === "chrome" ? "Install in Chrome" : "Install in Safari";
+  }
   const target = releaseTargetForBrowser(browser, releaseManifest);
   if (target?.installKind === "chrome_web_store") {
     return "Open Chrome Web Store";
@@ -336,7 +341,8 @@ function BrowserCompanionRow({
   onCreatePairing,
   onCopyPairing,
   onDownload,
-  onOpenPath,
+  onOpenTarget,
+  onOpenManager,
 }: {
   browser: LifeOpsBrowserKind;
   buildPath: string | null | undefined;
@@ -350,12 +356,20 @@ function BrowserCompanionRow({
   onCreatePairing: (browser: LifeOpsBrowserKind) => Promise<unknown>;
   onCopyPairing: (browser: LifeOpsBrowserKind) => Promise<void>;
   onDownload: (browser: LifeOpsBrowserKind) => Promise<unknown>;
-  onOpenPath: (path: string, revealOnly?: boolean) => Promise<void>;
+  onOpenTarget: (
+    target: LifeOpsBrowserPackagePathTarget,
+    revealOnly?: boolean,
+  ) => Promise<void>;
+  onOpenManager: (browser: LifeOpsBrowserKind) => Promise<void>;
 }) {
   const browserLabel = browser === "chrome" ? "Chrome" : "Safari";
-  const installLabel = installButtonLabel(browser, releaseManifest);
   const distributionLabel = releaseBadgeLabel(browser, releaseManifest);
   const hasLocalArtifact = Boolean(buildPath || packagePath || appPath);
+  const installLabel = installButtonLabel(
+    browser,
+    releaseManifest,
+    hasLocalArtifact,
+  );
 
   return (
     <div className="space-y-2 rounded-2xl bg-card/16 p-3">
@@ -402,6 +416,27 @@ function BrowserCompanionRow({
         >
           Manual Fallback
         </Button>
+        {browser === "chrome" && buildPath ? (
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => void onOpenTarget("chrome_build", true)}
+            >
+              <FolderOpen className="mr-1.5 h-3 w-3" />
+              Open Folder
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => void onOpenManager("chrome")}
+            >
+              Open Extensions
+            </Button>
+          </>
+        ) : null}
         {pairing ? (
           <Button
             size="sm"
@@ -432,54 +467,59 @@ function BrowserCompanionRow({
             <div className="flex items-center gap-2">
               <span className="font-semibold text-txt">Build:</span>
               <span className="min-w-0 truncate font-mono">{buildPath}</span>
-              {isElectrobunRuntime() ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void onOpenPath(buildPath, true)}
-                >
-                  <FolderOpen className="h-3 w-3" />
-                </Button>
-              ) : null}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  void onOpenTarget(
+                    browser === "chrome"
+                      ? "chrome_build"
+                      : "safari_web_extension",
+                    true,
+                  )
+                }
+              >
+                Open Folder
+              </Button>
             </div>
           ) : null}
           {packagePath ? (
             <div className="flex items-center gap-2">
               <span className="font-semibold text-txt">Pkg:</span>
               <span className="min-w-0 truncate font-mono">{packagePath}</span>
-              {isElectrobunRuntime() ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void onOpenPath(packagePath, true)}
-                >
-                  <FolderOpen className="h-3 w-3" />
-                </Button>
-              ) : null}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  void onOpenTarget(
+                    browser === "chrome" ? "chrome_package" : "safari_package",
+                    true,
+                  )
+                }
+              >
+                Reveal Zip
+              </Button>
             </div>
           ) : null}
           {appPath ? (
             <div className="flex items-center gap-2">
               <span className="font-semibold text-txt">App:</span>
               <span className="min-w-0 truncate font-mono">{appPath}</span>
-              {isElectrobunRuntime() ? (
-                <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void onOpenPath(appPath)}
-                  >
-                    Open
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void onOpenPath(appPath, true)}
-                  >
-                    <FolderOpen className="h-3 w-3" />
-                  </Button>
-                </>
-              ) : null}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void onOpenTarget("safari_app")}
+              >
+                Open
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void onOpenTarget("safari_app", true)}
+              >
+                <FolderOpen className="mr-1.5 h-3 w-3" />
+                Show in Folder
+              </Button>
             </div>
           ) : null}
         </div>
@@ -624,7 +664,9 @@ export function LifeOpsBrowserSetupPanel() {
 
   const connectionSummary = useMemo(() => {
     const trackingEnabled = draft ? draft.trackingMode !== "off" : false;
-    const paused = draft ? isFutureLocalDateTimeValue(draft.pauseUntilLocal) : false;
+    const paused = draft
+      ? isFutureLocalDateTimeValue(draft.pauseUntilLocal)
+      : false;
     const browserReady =
       Boolean(draft?.enabled) &&
       trackingEnabled &&
@@ -708,7 +750,7 @@ export function LifeOpsBrowserSetupPanel() {
           "Install the extension in the exact browser profile where you are logged into your real accounts, then open the popup once to auto-connect.",
         steps: [
           "Install Chrome or Safari extension from the card on the right.",
-          "Open Milady or Eliza in that same browser profile.",
+          "Open LifeOps in that same browser profile.",
           "Open the extension popup once so it can auto-connect.",
         ],
       };
@@ -721,7 +763,7 @@ export function LifeOpsBrowserSetupPanel() {
       detail:
         "Reopen the extension popup in the correct browser profile and let it sync again.",
       steps: [
-        "Make sure the popup points at the live Milady/Eliza app origin.",
+        "Make sure the popup points at the live LifeOps app origin.",
         "Use the same browser profile that contains your logged-in accounts.",
       ],
     };
@@ -872,18 +914,106 @@ export function LifeOpsBrowserSetupPanel() {
     }
   };
 
-  const openPath = async (pathValue: string, revealOnly = false) => {
-    try {
-      if (isElectrobunRuntime()) {
-        await openDesktopPath(pathValue, revealOnly);
-        setError(null);
-        return;
+  const resolvePackageTargetPath = useCallback(
+    (target: LifeOpsBrowserPackagePathTarget): string | null => {
+      switch (target) {
+        case "extension_root":
+          return packageStatus?.extensionPath ?? null;
+        case "chrome_build":
+          return packageStatus?.chromeBuildPath ?? null;
+        case "chrome_package":
+          return packageStatus?.chromePackagePath ?? null;
+        case "safari_web_extension":
+          return packageStatus?.safariWebExtensionPath ?? null;
+        case "safari_app":
+          return packageStatus?.safariAppPath ?? null;
+        case "safari_package":
+          return packageStatus?.safariPackagePath ?? null;
+        default:
+          return null;
       }
-      await copyTextToClipboard(pathValue);
-      setStatusMessage("Copied the local path to the clipboard.");
+    },
+    [packageStatus],
+  );
+
+  const openPackageTarget = async (
+    target: LifeOpsBrowserPackagePathTarget,
+    revealOnly = false,
+    options?: { silent?: boolean },
+  ): Promise<{ path: string | null; opened: boolean }> => {
+    try {
+      const knownPath = resolvePackageTargetPath(target);
+      if (isElectrobunRuntime()) {
+        if (!knownPath) {
+          throw new Error("The requested extension path is not available yet");
+        }
+        await openDesktopPath(knownPath, revealOnly);
+        if (!options?.silent) {
+          setStatusMessage(
+            revealOnly
+              ? "Revealed the local LifeOps Browser path."
+              : "Opened the local LifeOps Browser path.",
+          );
+        }
+        setError(null);
+        return { path: knownPath, opened: true };
+      }
+      const response = await client.openLifeOpsBrowserCompanionPackagePath({
+        target,
+        revealOnly,
+      });
+      if (!options?.silent) {
+        setStatusMessage(
+          revealOnly
+            ? "Revealed the local LifeOps Browser path."
+            : "Opened the local LifeOps Browser path.",
+        );
+      }
       setError(null);
+      return { path: response.path, opened: true };
     } catch (cause) {
+      const fallbackPath = resolvePackageTargetPath(target);
+      if (fallbackPath) {
+        await copyTextToClipboard(fallbackPath);
+        if (!options?.silent) {
+          setStatusMessage(
+            "Copied the local LifeOps Browser path to the clipboard.",
+          );
+        }
+        setError(null);
+        return { path: fallbackPath, opened: false };
+      }
       setError(cause instanceof Error ? cause.message : String(cause));
+      throw cause;
+    }
+  };
+
+  const openBrowserManager = async (
+    browser: LifeOpsBrowserKind,
+    options?: { silent?: boolean },
+  ): Promise<boolean> => {
+    try {
+      await client.openLifeOpsBrowserCompanionManager(browser);
+      if (!options?.silent) {
+        setStatusMessage(
+          browser === "chrome"
+            ? "Asked Chrome to open chrome://extensions."
+            : "Opened the browser manager.",
+        );
+      }
+      setError(null);
+      return true;
+    } catch (cause) {
+      if (browser === "chrome") {
+        await copyTextToClipboard(CHROME_EXTENSIONS_URL);
+        if (!options?.silent) {
+          setStatusMessage("Copied chrome://extensions/ to the clipboard.");
+        }
+        setError(null);
+        return false;
+      }
+      setError(cause instanceof Error ? cause.message : String(cause));
+      throw cause;
     }
   };
 
@@ -895,6 +1025,59 @@ export function LifeOpsBrowserSetupPanel() {
         browser,
         packageStatus?.releaseManifest,
       );
+
+      const needsBuild =
+        browser === "chrome"
+          ? !packageStatus?.chromeBuildPath
+          : isElectrobunRuntime()
+            ? !packageStatus?.safariAppPath
+            : !packageStatus?.safariPackagePath;
+      const hasLocalWorkspace = Boolean(packageStatus?.extensionPath);
+
+      const nextStatus =
+        hasLocalWorkspace && needsBuild
+          ? await buildPackage(browser, { silent: true })
+          : packageStatus;
+
+      if (hasLocalWorkspace) {
+        if (browser === "chrome") {
+          if (!nextStatus?.chromeBuildPath) {
+            throw new Error("Chrome build folder is not available");
+          }
+          const folderResult = await openPackageTarget("chrome_build", true, {
+            silent: true,
+          });
+          const managerOpened = await openBrowserManager("chrome", {
+            silent: true,
+          });
+          setStatusMessage(
+            managerOpened
+              ? folderResult.opened
+                ? "Chrome install is prepared. We revealed the built LifeOps extension folder and asked Chrome to open its extensions page. Click Load unpacked and choose that folder, then open the popup once to auto-pair."
+                : "Chrome install is prepared. We asked Chrome to open its extensions page and copied the build folder path. Click Load unpacked, choose that folder, then open the popup once to auto-pair."
+              : folderResult.opened
+                ? "Chrome build folder is ready. In Chrome, open chrome://extensions, click Load unpacked, and choose the revealed LifeOps extension folder."
+                : "Chrome install still needs one manual step. We copied both the build folder path and chrome://extensions/, so you can load the unpacked LifeOps extension manually.",
+          );
+          return;
+        }
+
+        if (nextStatus?.safariAppPath) {
+          await openPackageTarget("safari_app", false, { silent: true });
+          setStatusMessage(
+            "Safari install is prepared. We opened the LifeOps Browser app bundle. Run it once, enable the Safari extension, then open the popup once to auto-pair.",
+          );
+          return;
+        }
+
+        if (nextStatus?.safariPackagePath) {
+          await openPackageTarget("safari_package", true, { silent: true });
+          setStatusMessage(
+            "Safari install is prepared. We revealed the packaged LifeOps Browser Safari build. Install it, enable the Safari extension, then open the popup once to auto-pair.",
+          );
+          return;
+        }
+      }
 
       if (releaseTarget?.installUrl) {
         await openExternalUrl(releaseTarget.installUrl);
@@ -908,47 +1091,10 @@ export function LifeOpsBrowserSetupPanel() {
         return;
       }
 
-      const needsBuild =
-        browser === "chrome"
-          ? isElectrobunRuntime()
-            ? !packageStatus?.chromeBuildPath
-            : !packageStatus?.chromePackagePath
-          : isElectrobunRuntime()
-            ? !packageStatus?.safariAppPath
-            : !packageStatus?.safariPackagePath;
-
-      const nextStatus = needsBuild
-        ? await buildPackage(browser, { silent: true })
-        : packageStatus;
-
-      if (browser === "chrome") {
-        if (isElectrobunRuntime()) {
-          const buildPath = nextStatus?.chromeBuildPath;
-          if (!buildPath) {
-            throw new Error("Chrome build folder is not available");
-          }
-          await openDesktopPath(buildPath, true);
-        } else {
-          await downloadPackage(browser, { silent: true });
-        }
-        await openExternalUrl(CHROME_EXTENSIONS_URL);
-        setStatusMessage(
-          "Chrome install is prepared. We opened the extension manager. In Chrome, click Load unpacked and select the built LifeOps Browser folder, then open the popup once to auto-pair.",
-        );
-      } else {
-        if (isElectrobunRuntime()) {
-          const appPath = nextStatus?.safariAppPath;
-          if (!appPath) {
-            throw new Error("Safari app bundle is not available");
-          }
-          await openDesktopPath(appPath);
-        } else {
-          await downloadPackage(browser, { silent: true });
-        }
-        setStatusMessage(
-          "Safari install is prepared. We opened the LifeOps Browser app or package. Run the app once, enable the extension in Safari Settings, then open the popup once to auto-pair.",
-        );
-      }
+      await downloadPackage(browser, { silent: true });
+      setStatusMessage(
+        `${browser === "chrome" ? "Chrome" : "Safari"} package downloaded. Install it manually, then open the extension popup once so it can auto-pair.`,
+      );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -1121,7 +1267,8 @@ export function LifeOpsBrowserSetupPanel() {
             onCreatePairing={createPairing}
             onCopyPairing={copyPairing}
             onDownload={downloadPackage}
-            onOpenPath={openPath}
+            onOpenTarget={openPackageTarget}
+            onOpenManager={openBrowserManager}
           />
           <BrowserCompanionRow
             browser="safari"
@@ -1140,7 +1287,8 @@ export function LifeOpsBrowserSetupPanel() {
             onCreatePairing={createPairing}
             onCopyPairing={copyPairing}
             onDownload={downloadPackage}
-            onOpenPath={openPath}
+            onOpenTarget={openPackageTarget}
+            onOpenManager={openBrowserManager}
           />
 
           {(["chrome", "safari"] as const).map((browser) => {

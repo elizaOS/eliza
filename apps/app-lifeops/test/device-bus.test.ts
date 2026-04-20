@@ -89,4 +89,61 @@ describe("PUBLISH_DEVICE_INTENT graceful degradation", () => {
     expect(r.data?.kind).toBe("reminder");
     expect(broadcastIntent).toHaveBeenCalledTimes(1);
   });
+
+  test("uses the configured cloud device bus and returns deliveredTo targets", async () => {
+    process.env.MILADY_DEVICE_BUS_URL = "https://device-bus.example/";
+    process.env.MILADY_DEVICE_BUS_TOKEN = "secret-token";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        intentId: "intent-cloud-1",
+        deliveredTo: ["desktop:mac-1", "mobile:ios-1"],
+      }),
+    } as Response);
+
+    const result = await publishDeviceIntentAction.handler!(
+      makeRuntime(),
+      makeMessage(),
+      undefined,
+      {
+        parameters: {
+          kind: "reminder",
+          payload: {
+            title: "Board meeting",
+            body: "1 hour warning",
+            ladderId: "meeting-123",
+            rungIndex: 0,
+          },
+        },
+      },
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] ?? [];
+    expect(url).toBe("https://device-bus.example/api/v1/device-bus/intents");
+    expect(init).toMatchObject({
+      method: "POST",
+      headers: expect.objectContaining({
+        "Content-Type": "application/json",
+        Authorization: "Bearer secret-token",
+      }),
+    });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      kind: "reminder",
+      payload: {
+        title: "Board meeting",
+        body: "1 hour warning",
+        ladderId: "meeting-123",
+        rungIndex: 0,
+      },
+    });
+    expect(broadcastIntent).not.toHaveBeenCalled();
+
+    const data = (result as { success: boolean; data?: Record<string, unknown> })
+      .data;
+    expect(result?.success).toBe(true);
+    expect(data?.intentId).toBe("intent-cloud-1");
+    expect(data?.deliveredTo).toEqual(["desktop:mac-1", "mobile:ios-1"]);
+  });
 });

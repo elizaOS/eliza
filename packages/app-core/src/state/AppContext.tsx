@@ -1352,7 +1352,7 @@ function AppProviderInner({
       const setterMap: Partial<{
         [S in keyof AppState]: (v: AppState[S]) => void;
       }> = {
-        tab: setTabRaw,
+        tab: setTab,
         onboardingStep: setOnboardingStep,
         chatInput: setChatInput,
         chatAvatarVisible: setChatAvatarVisible,
@@ -1552,7 +1552,7 @@ function AppProviderInner({
       setOnboardingComplete,
       setStartupError,
       setFavoriteApps,
-      setTabRaw,
+      setTab,
       setStoreUninstalling,
       setStoreSubTab,
       setCatalogSort,

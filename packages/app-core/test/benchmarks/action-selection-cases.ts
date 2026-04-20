@@ -115,11 +115,32 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     tags: ["goals", "standard"],
   },
 
-  // ─── Calendar (CALENDAR_ACTION) ───────────────────────────────────────
+  // ─── Check-ins / owner profile ────────────────────────────────────────
+  {
+    id: "checkin-morning",
+    userMessage: "run my morning check-in",
+    expectedAction: "RUN_MORNING_CHECKIN",
+    tags: ["checkin", "standard"],
+  },
+  {
+    id: "checkin-night",
+    userMessage: "give me my night check-in",
+    expectedAction: "RUN_NIGHT_CHECKIN",
+    tags: ["checkin", "standard"],
+  },
+  {
+    id: "owner-profile-travel-prefs",
+    userMessage:
+      "remember that I prefer aisle seats, carry-on only, and moderate hotels close to the venue",
+    expectedAction: "UPDATE_OWNER_PROFILE",
+    tags: ["profile", "standard"],
+  },
+
+  // ─── Calendar (OWNER_CALENDAR) ────────────────────────────────────────
   {
     id: "cal-next-event",
     userMessage: "what's my next meeting?",
-    expectedAction: "CALENDAR_ACTION",
+    expectedAction: "OWNER_CALENDAR",
     acceptableActions: ["NEXT_EVENT"],
     expectedParams: { intent: "next_event" },
     tags: ["calendar", "standard"],
@@ -127,14 +148,14 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "cal-today",
     userMessage: "show me my calendar for today",
-    expectedAction: "CALENDAR_ACTION",
+    expectedAction: "OWNER_CALENDAR",
     acceptableActions: ["FEED", "CALENDAR_FEED"],
     tags: ["calendar", "standard"],
   },
   {
     id: "cal-create-event",
     userMessage: "schedule a dentist appointment next Tuesday at 3pm",
-    expectedAction: "CALENDAR_ACTION",
+    expectedAction: "OWNER_CALENDAR",
     acceptableActions: ["CREATE_EVENT"],
     expectedParams: { intent: "create_event" },
     tags: ["calendar", "critical"],
@@ -143,31 +164,31 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "cal-create-event-meeting",
     userMessage:
       "create a calendar event titled '1:1 with Alex' this Thursday at 10am for 30 minutes",
-    expectedAction: "CALENDAR_ACTION",
+    expectedAction: "OWNER_CALENDAR",
     acceptableActions: ["CREATE_EVENT"],
     tags: ["calendar", "critical"],
   },
   {
     id: "cal-week-ahead",
     userMessage: "what does my week look like?",
-    expectedAction: "CALENDAR_ACTION",
+    expectedAction: "OWNER_CALENDAR",
     acceptableActions: ["FEED"],
     tags: ["calendar", "standard"],
   },
 
-  // ─── Email triage (GMAIL_ACTION) ──────────────────────────────────────
+  // ─── Email triage (OWNER_INBOX, channel=gmail) ────────────────────────
   {
     id: "email-triage-inbox",
     userMessage: "triage my gmail inbox",
-    expectedAction: "GMAIL_ACTION",
-    acceptableActions: ["TRIAGE", "INBOX"],
+    expectedAction: "OWNER_INBOX",
+    acceptableActions: ["TRIAGE", "OWNER_INBOX"],
     expectedParams: { intent: "triage" },
     tags: ["email", "critical"],
   },
   {
     id: "email-unread",
     userMessage: "summarize my unread emails",
-    expectedAction: "GMAIL_ACTION",
+    expectedAction: "OWNER_INBOX",
     acceptableActions: ["TRIAGE", "DIGEST"],
     tags: ["email", "standard"],
   },
@@ -175,7 +196,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "email-draft-reply",
     userMessage:
       "draft a reply to the latest email from Sarah saying I'll review it tomorrow",
-    expectedAction: "GMAIL_ACTION",
+    expectedAction: "OWNER_INBOX",
     acceptableActions: ["DRAFT_REPLY"],
     expectedParams: { intent: "draft_reply" },
     tags: ["email", "critical"],
@@ -184,17 +205,23 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "email-send-reply",
     userMessage:
       "send a reply to the last email from finance confirming receipt",
-    expectedAction: "GMAIL_ACTION",
+    expectedAction: "OWNER_INBOX",
     acceptableActions: ["SEND_REPLY"],
     expectedParams: { intent: "send_reply" },
     tags: ["email", "critical"],
+  },
+  {
+    id: "email-unsubscribe-sender",
+    userMessage: "unsubscribe me from newsletters@medium.com and block them",
+    expectedAction: "EMAIL_UNSUBSCRIBE",
+    tags: ["email", "standard"],
   },
 
   // ─── Inbox (generic INBOX) ────────────────────────────────────────────
   {
     id: "inbox-triage",
     userMessage: "triage my inbox",
-    expectedAction: "INBOX",
+    expectedAction: "OWNER_INBOX",
     acceptableActions: ["TRIAGE"],
     expectedParams: { intent: "triage" },
     tags: ["inbox", "critical"],
@@ -202,7 +229,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "inbox-digest",
     userMessage: "give me my inbox digest",
-    expectedAction: "INBOX",
+    expectedAction: "OWNER_INBOX",
     acceptableActions: ["DIGEST"],
     expectedParams: { intent: "digest" },
     tags: ["inbox", "standard"],
@@ -210,7 +237,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "inbox-respond",
     userMessage: "respond to the messages that need an answer in my inbox",
-    expectedAction: "INBOX",
+    expectedAction: "OWNER_INBOX",
     acceptableActions: ["RESPOND"],
     expectedParams: { intent: "respond" },
     tags: ["inbox", "standard"],
@@ -220,19 +247,19 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "block-sites-focus",
     userMessage: "block twitter and reddit for the next 2 hours",
-    expectedAction: "BLOCK_WEBSITES",
+    expectedAction: "OWNER_WEBSITE_BLOCK",
     tags: ["focus", "blocking", "critical"],
   },
   {
     id: "block-sites-social",
     userMessage: "turn on a focus block for all social media sites",
-    expectedAction: "BLOCK_WEBSITES",
+    expectedAction: "OWNER_WEBSITE_BLOCK",
     tags: ["focus", "blocking", "standard"],
   },
   {
     id: "block-sites-youtube",
     userMessage: "I keep getting distracted by youtube, block it",
-    expectedAction: "BLOCK_WEBSITES",
+    expectedAction: "OWNER_WEBSITE_BLOCK",
     tags: ["focus", "blocking", "standard"],
   },
 
@@ -240,13 +267,13 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "block-apps-games",
     userMessage: "block all games on my phone until 6pm",
-    expectedAction: "BLOCK_APPS",
+    expectedAction: "OWNER_APP_BLOCK",
     tags: ["focus", "blocking", "standard"],
   },
   {
     id: "block-apps-slack",
     userMessage: "block the slack app while I focus on deep work",
-    expectedAction: "BLOCK_APPS",
+    expectedAction: "OWNER_APP_BLOCK",
     tags: ["focus", "blocking", "standard"],
   },
 
@@ -254,7 +281,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "rel-list-contacts",
     userMessage: "who are my closest contacts?",
-    expectedAction: "RELATIONSHIP",
+    expectedAction: "OWNER_RELATIONSHIP",
     acceptableActions: ["LIST_CONTACTS", "RELATIONSHIPS"],
     expectedParams: { intent: "list_contacts" },
     tags: ["relationships", "standard"],
@@ -263,7 +290,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "rel-follow-up",
     userMessage:
       "remind me to follow up with David next week about the project",
-    expectedAction: "RELATIONSHIP",
+    expectedAction: "OWNER_RELATIONSHIP",
     acceptableActions: ["ADD_FOLLOW_UP", "SCHEDULE_FOLLOW_UP"],
     expectedParams: { intent: "add_follow_up" },
     tags: ["relationships", "standard"],
@@ -271,7 +298,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "rel-days-since",
     userMessage: "how long has it been since I talked to David?",
-    expectedAction: "RELATIONSHIP",
+    expectedAction: "OWNER_RELATIONSHIP",
     acceptableActions: ["DAYS_SINCE"],
     expectedParams: { intent: "days_since" },
     tags: ["relationships", "standard"],
@@ -282,19 +309,19 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "cross-send-telegram",
     userMessage:
       "send a telegram message to Jane saying I'm running 10 minutes late",
-    expectedAction: "CROSS_CHANNEL_SEND",
+    expectedAction: "OWNER_SEND_MESSAGE",
     tags: ["messaging", "critical"],
   },
   {
     id: "cross-send-discord",
     userMessage: "post 'standup in 5' to the engineering discord channel",
-    expectedAction: "CROSS_CHANNEL_SEND",
+    expectedAction: "OWNER_SEND_MESSAGE",
     tags: ["messaging", "standard"],
   },
   {
     id: "cross-send-signal",
     userMessage: "send a Signal message to Priya saying thanks for the review",
-    expectedAction: "CROSS_CHANNEL_SEND",
+    expectedAction: "OWNER_SEND_MESSAGE",
     tags: ["messaging", "standard"],
   },
 
@@ -328,7 +355,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "screentime-today",
     userMessage: "how much screen time have I used today?",
-    expectedAction: "SCREEN_TIME",
+    expectedAction: "OWNER_SCREEN_TIME",
     acceptableActions: ["TODAY"],
     expectedParams: { intent: "today" },
     tags: ["screen-time", "standard"],
@@ -336,7 +363,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "screentime-by-app",
     userMessage: "break down my screen time by app this week",
-    expectedAction: "SCREEN_TIME",
+    expectedAction: "OWNER_SCREEN_TIME",
     acceptableActions: ["BY_APP"],
     expectedParams: { intent: "by_app" },
     tags: ["screen-time", "standard"],
@@ -346,7 +373,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "sched-start-flow",
     userMessage: "help me schedule a meeting with the design team",
-    expectedAction: "SCHEDULING",
+    expectedAction: "OWNER_CALENDAR",
     acceptableActions: ["START"],
     expectedParams: { intent: "start" },
     tags: ["scheduling", "standard"],
@@ -355,8 +382,8 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "sched-propose-times",
     userMessage:
       "propose three times for a 30 minute sync with Marco next week",
-    expectedAction: "SCHEDULING",
-    acceptableActions: ["PROPOSE", "PROPOSE_MEETING_TIMES"],
+    expectedAction: "OWNER_CALENDAR",
+    acceptableActions: ["PROPOSE", "OWNER_CALENDAR"],
     expectedParams: { intent: "propose" },
     tags: ["scheduling", "critical"],
   },
@@ -390,6 +417,38 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     expectedAction: "CALL_EXTERNAL",
     acceptableActions: ["TWILIO_VOICE_CALL"],
     tags: ["voice", "standard"],
+  },
+  {
+    id: "book-travel-flight",
+    userMessage:
+      "book travel for me from San Francisco to New York next Thursday and Friday",
+    expectedAction: "BOOK_TRAVEL",
+    tags: ["travel", "standard"],
+  },
+  {
+    id: "browser-manage-settings",
+    userMessage: "show me my LifeOps browser settings",
+    expectedAction: "MANAGE_LIFEOPS_BROWSER",
+    tags: ["browser", "standard"],
+  },
+  {
+    id: "autofill-password-field",
+    userMessage:
+      "fill the password field on github.com using my password manager",
+    expectedAction: "REQUEST_FIELD_FILL",
+    tags: ["browser", "standard"],
+  },
+  {
+    id: "approval-approve-request",
+    userMessage: "approve the pending travel booking request",
+    expectedAction: "APPROVE_REQUEST",
+    tags: ["approval", "standard"],
+  },
+  {
+    id: "approval-reject-request",
+    userMessage: "reject that pending approval request and say it needs changes",
+    expectedAction: "REJECT_REQUEST",
+    tags: ["approval", "standard"],
   },
 
   // ─── Computer use ─────────────────────────────────────────────────────
@@ -497,16 +556,16 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "remote-desktop-start-session",
     userMessage: "start a remote desktop session for my phone; confirmed: true",
-    expectedAction: "REMOTE_DESKTOP",
-    acceptableActions: ["START_REMOTE_SESSION"],
+    expectedAction: "OWNER_REMOTE_DESKTOP",
+    acceptableActions: ["OWNER_REMOTE_DESKTOP"],
     tags: ["remote-desktop", "standard"],
   },
   {
     id: "remote-desktop-connect-from-phone",
     userMessage:
       "start a remote desktop session so I can connect to this machine from my phone; confirmed: true",
-    expectedAction: "REMOTE_DESKTOP",
-    acceptableActions: ["START_REMOTE_SESSION"],
+    expectedAction: "OWNER_REMOTE_DESKTOP",
+    acceptableActions: ["OWNER_REMOTE_DESKTOP"],
     tags: ["remote-desktop", "standard"],
   },
 
@@ -515,7 +574,6 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "intent-sync-broadcast-reminder",
     userMessage: "broadcast a reminder to all my devices",
     expectedAction: "INTENT_SYNC",
-    acceptableActions: ["PUBLISH_DEVICE_INTENT"],
     tags: ["intent-sync", "standard"],
   },
   {
@@ -523,7 +581,6 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     userMessage:
       "broadcast a routine reminder to my mobile titled 'Stretch break' saying 'Get up and stretch for five minutes'",
     expectedAction: "INTENT_SYNC",
-    acceptableActions: ["PUBLISH_DEVICE_INTENT"],
     expectedParams: {
       subaction: "broadcast",
       kind: "routine_reminder",
@@ -539,7 +596,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "calendly-check-availability",
     userMessage:
       "check my Calendly availability for https://api.calendly.com/event_types/abc from 2026-04-20 to 2026-04-24",
-    expectedAction: "CALENDLY",
+    expectedAction: "OWNER_CALENDAR",
     expectedParams: {
       subaction: "availability",
       eventTypeUri: "https://api.calendly.com/event_types/abc",
@@ -552,7 +609,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "calendly-create-single-use-link",
     userMessage:
       "create a single-use Calendly booking link for https://api.calendly.com/event_types/abc",
-    expectedAction: "CALENDLY",
+    expectedAction: "OWNER_CALENDAR",
     expectedParams: {
       subaction: "single_use_link",
       eventTypeUri: "https://api.calendly.com/event_types/abc",

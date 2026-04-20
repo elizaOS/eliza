@@ -59,6 +59,7 @@ function makeReq(
     },
   } as unknown as http.IncomingMessage;
 
+  // Defer body emission to next tick so handlers attach first.
   setImmediate(() => {
     if (body !== undefined) {
       const buf = Buffer.from(JSON.stringify(body), "utf-8");

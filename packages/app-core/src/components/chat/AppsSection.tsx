@@ -5,11 +5,11 @@
  * that are not currently running. Clicking an app launches / focuses it.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { client, type AppRunSummary, type RegistryAppInfo } from "../../api";
-import { useApp } from "../../state";
 import { Button } from "@elizaos/ui";
 import { LayoutGrid, SquareArrowOutUpRight } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
+import { useApp } from "../../state";
 import { getAppEmoji, getAppShortName } from "../apps/helpers";
 import {
   getInternalToolApps,
@@ -41,6 +41,7 @@ export function AppsSection() {
   const {
     favoriteApps: favoriteAppsValue,
     appRuns,
+    setTab,
     setState,
     setActionNotice,
     t,
@@ -52,8 +53,7 @@ export function AppsSection() {
 
   const [catalogApps, setCatalogApps] = useState<RegistryAppInfo[]>([]);
 
-  // Fetch the full catalog once (or whenever favorites length changes, matching
-  // the existing FavoriteAppsBar pattern).
+  // Fetch the full catalog once for sidebar launch targets.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -79,7 +79,7 @@ export function AppsSection() {
     return () => {
       cancelled = true;
     };
-  }, [favoriteApps.length]);
+  }, []);
 
   // -------------------------------------------------------------------------
   // Derive the ordered button list:
@@ -95,9 +95,7 @@ export function AppsSection() {
     }
 
     // Running apps (deduplicated by appName, stable order)
-    const runningAppNames = [
-      ...new Set(appRuns.map((r) => r.appName)),
-    ];
+    const runningAppNames = [...new Set(appRuns.map((r) => r.appName))];
     const runningItems = runningAppNames
       .map((name) => catalogByName.get(name))
       .filter((app): app is RegistryAppInfo => app !== undefined);
@@ -105,8 +103,7 @@ export function AppsSection() {
     // Favorite apps not already running
     const runningSet = new Set(runningAppNames);
     const favOnlyItems = catalogApps.filter(
-      (app) =>
-        favoriteApps.includes(app.name) && !runningSet.has(app.name),
+      (app) => favoriteApps.includes(app.name) && !runningSet.has(app.name),
     );
 
     return {
@@ -123,7 +120,7 @@ export function AppsSection() {
     async (app: RegistryAppInfo) => {
       const internalToolTab = getInternalToolAppTargetTab(app.name);
       if (internalToolTab) {
-        setState("tab", internalToolTab);
+        setTab(internalToolTab);
         return;
       }
       if (isOverlayApp(app.name)) {
@@ -135,12 +132,12 @@ export function AppsSection() {
         const primaryRun = result.run;
         if (primaryRun?.viewer?.url) {
           setState("activeGameRunId", primaryRun.runId);
-          setState("tab", "apps");
+          setTab("apps");
           setState("appsSubTab", "games");
           return;
         }
         if (primaryRun) {
-          setState("tab", "apps");
+          setTab("apps");
           setState("appsSubTab", "running");
         }
       } catch (err) {
@@ -154,7 +151,7 @@ export function AppsSection() {
         );
       }
     },
-    [setState, setActionNotice, t],
+    [setActionNotice, setState, setTab, t],
   );
 
   // Nothing to show
@@ -166,9 +163,10 @@ export function AppsSection() {
       icon={<LayoutGrid className="h-4 w-4" />}
       action={
         <Button
+          type="button"
           variant="ghost"
           size="sm"
-          onClick={() => setState("tab", "apps")}
+          onClick={() => setTab("apps")}
           aria-label={t("chatsidebar.OpenView", { defaultValue: "Open View" })}
           className="h-6 w-6 p-0"
         >

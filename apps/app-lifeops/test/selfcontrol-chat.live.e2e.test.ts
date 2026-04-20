@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../packages/app-core/test/helpers/live-provider";
 import {
@@ -272,6 +273,76 @@ async function startLiveRuntime(options?: {
   };
 }
 
+async function runChatContextWebsiteBlockFlow(
+  runtime: StartedRuntime,
+): Promise<void> {
+  const pluginsResponse = await req(runtime.port, "GET", "/api/plugins");
+  expect(pluginsResponse.status).toBe(200);
+
+  const { conversationId } = await createConversation(runtime.port, {
+    title: "Live SelfControl",
+  });
+
+  const firstTurn = await postConversationMessage(
+    runtime.port,
+    conversationId,
+    {
+      text: "The websites distracting me are x.com and twitter.com. Do not block them yet.",
+    },
+  );
+  expect(firstTurn.status).toBe(200);
+  assertNoProviderIssue(
+    "first turn",
+    String(firstTurn.data.text ?? ""),
+    runtime,
+  );
+  expect(await readFile(runtime.hostsFilePath, "utf8")).toBe(
+    "127.0.0.1 localhost\n",
+  );
+  const firstTurnStatus = await req(
+    runtime.port,
+    "GET",
+    "/api/website-blocker",
+  );
+  expect(firstTurnStatus.status).toBe(200);
+  expect(firstTurnStatus.data).toMatchObject({
+    active: false,
+    websites: [],
+  });
+
+  const secondTurn = await postConversationMessage(
+    runtime.port,
+    conversationId,
+    {
+      text: "Use self control now. Actually block the websites for 1 minute instead of giving advice.",
+    },
+  );
+  expect(secondTurn.status).toBe(200);
+
+  const secondText = String(secondTurn.data.text ?? "");
+  assertNoProviderIssue("second turn", secondText, runtime);
+  expect(secondText).not.toMatch(
+    /Provide at least one public website hostname/i,
+  );
+
+  const status = await waitForWebsiteBlockStatus(runtime, [
+    "x.com",
+    "twitter.com",
+  ]);
+  expect(status).toMatchObject({
+    active: true,
+    websites: expect.arrayContaining(["x.com", "twitter.com"]),
+  });
+  const hosts = await waitForHostsBlock(runtime.hostsFilePath, [
+    "x.com",
+    "twitter.com",
+    "api.x.com",
+  ]);
+  expect(hosts).toContain("x.com");
+  expect(hosts).toContain("twitter.com");
+  expect(hosts).toContain("api.x.com");
+}
+
 function assertNoProviderIssue(
   turnName: string,
   text: string,
@@ -352,82 +423,37 @@ describeIf(LIVE_TESTS_ENABLED)("Live: website blocker API roundtrip", () => {
 describeIf(liveSelfcontrolChatEnabled)(
   "Live: website blocker chat roundtrip",
   () => {
-    let runtime: StartedRuntime | undefined;
-
-    beforeAll(async () => {
-      runtime = await startLiveRuntime({ includeProviderPlugin: true });
-    }, 180_000);
-
-    afterAll(async () => {
-      if (runtime) {
-        await runtime.close();
-      }
+    describe("strict single-attempt", () => {
+      it("uses prior chat context to block websites through the real runtime on the first attempt", async () => {
+        const runtime = await startLiveRuntime({
+          includeProviderPlugin: true,
+        });
+        try {
+          await runChatContextWebsiteBlockFlow(runtime);
+        } finally {
+          await runtime.close();
+        }
+      }, 180_000);
     });
 
-    it("uses prior chat context to block websites through the real runtime", async () => {
-      const pluginsResponse = await req(runtime.port, "GET", "/api/plugins");
-      expect(pluginsResponse.status).toBe(200);
-
-      const { conversationId } = await createConversation(runtime.port, {
-        title: "Live SelfControl",
-      });
-
-      const firstTurn = await postConversationMessage(
-        runtime.port,
-        conversationId,
+    describe("stability coverage", () => {
+      stochasticTest(
+        "uses prior chat context to block websites through the real runtime",
+        async () => {
+          const runtime = await startLiveRuntime({
+            includeProviderPlugin: true,
+          });
+          try {
+            await runChatContextWebsiteBlockFlow(runtime);
+          } finally {
+            await runtime.close();
+          }
+        },
         {
-          text: "The websites distracting me are x.com and twitter.com. Do not block them yet.",
+          perRunTimeoutMs: 180_000,
+          label: "selfcontrol-chat/block-after-context",
         },
       );
-      expect(firstTurn.status).toBe(200);
-      assertNoProviderIssue(
-        "first turn",
-        String(firstTurn.data.text ?? ""),
-        runtime,
-      );
-      expect(await readFile(runtime.hostsFilePath, "utf8")).toBe(
-        "127.0.0.1 localhost\n",
-      );
-      const firstTurnStatus = await req(
-        runtime.port,
-        "GET",
-        "/api/website-blocker",
-      );
-      expect(firstTurnStatus.status).toBe(200);
-      expect(firstTurnStatus.data).toMatchObject({
-        active: false,
-        websites: [],
-      });
-
-      const secondTurn = await postConversationMessage(
-        runtime.port,
-        conversationId,
-        {
-          text: "Use self control now. Actually block the websites for 1 minute instead of giving advice.",
-        },
-      );
-      expect(secondTurn.status).toBe(200);
-
-      const secondText = String(secondTurn.data.text ?? "");
-      assertNoProviderIssue("second turn", secondText, runtime);
-      expect(secondText).not.toMatch(
-        /Provide at least one public website hostname/i,
-      );
-
-      const status = await waitForWebsiteBlockStatus(runtime, [
-        "x.com",
-        "twitter.com",
-      ]);
-      expect(status).toMatchObject({
-        active: true,
-        websites: expect.arrayContaining(["x.com", "twitter.com"]),
-      });
-      const hosts = await waitForHostsBlock(runtime.hostsFilePath, [
-        "x.com",
-        "twitter.com",
-      ]);
-      expect(hosts).toContain("x.com");
-      expect(hosts).toContain("twitter.com");
-    }, 180_000);
+    });
   },
 );

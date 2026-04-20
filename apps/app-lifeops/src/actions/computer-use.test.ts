@@ -45,7 +45,7 @@ const pluginActions: Action[] = [
   },
 ] as Action[];
 
-vi.mock("@elizaos/agent/security/access", () => ({
+vi.mock("@elizaos/agent/security", () => ({
   hasOwnerAccess: vi.fn(async () => true),
 }));
 

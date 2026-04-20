@@ -29,7 +29,7 @@ export { inboxAction } from "./inbox.js";
 export const inboxTriageAction: Action = {
   name: "INBOX_TRIAGE_GMAIL",
   description:
-    "Triage the Gmail inbox specifically. Delegates to the cross-platform TRIAGE_MESSAGES action with sources=['gmail'].",
+    "Compatibility-only Gmail triage shim. Delegates to the cross-platform TRIAGE_MESSAGES action with sources=['gmail']; new planner-facing inbox/email routing should use OWNER_INBOX instead.",
   similes: ["TRIAGE_GMAIL", "GMAIL_TRIAGE", "CHECK_GMAIL"],
   examples: [],
 

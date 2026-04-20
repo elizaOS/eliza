@@ -7,7 +7,7 @@ import {
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import { hasAdminAccess, hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess, hasOwnerAccess } from "@elizaos/agent/security";
 import {
   readTwilioCredentialsFromEnv,
   sendTwilioVoiceCall,
@@ -382,9 +382,11 @@ export const callUserAction: Action & {
     "phone me",
     "stuck in browser",
     "unblock computer",
+    "standing escalation policy",
+    "call if stuck",
   ],
   description:
-    "Place an outbound phone call to the agent owner via Twilio. Use this when the assistant is blocked and needs real-time help from the owner, or when the owner explicitly asks to be called. This action can be selected on a standing escalation policy or first-turn draft; without confirmation it returns a confirmation request instead of dialing.",
+    "Place an outbound phone call to the agent owner via Twilio. Use this when the assistant is blocked and needs real-time help from the owner, or when the owner explicitly asks to be called. Standing policies like 'if you get stuck in the browser or on my computer, call me' belong here on the first turn; this action can record the escalation path and return a confirmation/intervention request instead of dialing immediately when confirmation is still required.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
@@ -534,7 +536,7 @@ export const callExternalAction: Action & {
     "reschedule appointment",
   ],
   description:
-    "Place an outbound phone call to a third party via Twilio. Use this for approved booking, reschedule, outage, support, or escalation calls to vendors or counterparties. Examples: 'call the dentist and reschedule my appointment', 'phone my cable company and ask about the outage', 'call the airline', or 'call the hotel to rebook'. This action can draft the call, ask which saved contact to use, and then require confirmation before dialing. If the user wants a real phone call to a third party, prefer this action over CALENDAR_ACTION, LIFE, or CROSS_CHANNEL_SEND. The recipient must appear in the configured allow-list before the actual call is placed.",
+    "Place an outbound phone call to a third party via Twilio. Use this for approved booking, reschedule, outage, support, or escalation calls to vendors or counterparties. Examples: 'call the dentist and reschedule my appointment', 'phone my cable company and ask about the outage', 'call the airline', or 'call the hotel to rebook'. This action can draft the call, ask which saved contact to use, and then require confirmation before dialing. If the user wants a real phone call to a third party, prefer this action over OWNER_CALENDAR, LIFE, or OWNER_SEND_MESSAGE. The recipient must appear in the configured allow-list before the actual call is placed.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {

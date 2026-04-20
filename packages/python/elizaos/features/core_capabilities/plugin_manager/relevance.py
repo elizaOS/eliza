@@ -251,13 +251,32 @@ def _get_memory_text(memory: object | None) -> str:
     return text.lower() if isinstance(text, str) else ""
 
 
+def _get_attr_or_key(value: object | None, key: str) -> object | None:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return value.get(key)
+    return getattr(value, key, None)
+
+
 def _get_recent_messages(state: object | None) -> list[object]:
     if state is None:
         return []
-    recent = getattr(state, "recentMessagesData", None)
-    if not isinstance(recent, list):
-        return []
-    return recent
+    data = _get_attr_or_key(state, "data")
+    providers = _get_attr_or_key(data, "providers")
+    recent_provider = _get_attr_or_key(providers, "RECENT_MESSAGES")
+    recent_provider_data = _get_attr_or_key(recent_provider, "data")
+
+    for candidate in (
+        _get_attr_or_key(recent_provider_data, "recentMessages"),
+        _get_attr_or_key(data, "recentMessages"),
+        _get_attr_or_key(state, "recentMessagesData"),
+        _get_attr_or_key(state, "recentMessages"),
+    ):
+        if isinstance(candidate, list):
+            return candidate
+
+    return []
 
 
 def _get_recent_message_texts(state: object | None) -> list[str]:

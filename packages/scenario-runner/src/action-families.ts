@@ -1,59 +1,75 @@
-const OWNER_PREFIX = "OWNER_";
+const ACTION_UMBRELLA_DELEGATES = new Map<string, ReadonlySet<string>>([
+	[
+		"OWNER_INBOX",
+		new Set(["INBOX", "GMAIL_ACTION"]),
+	],
+	[
+		"OWNER_CALENDAR",
+		new Set([
+			"CALENDAR_ACTION",
+			"PROPOSE_MEETING_TIMES",
+			"CHECK_AVAILABILITY",
+			"UPDATE_MEETING_PREFERENCES",
+			"CALENDLY",
+			"SCHEDULING",
+		]),
+	],
+	[
+		"OWNER_SEND_MESSAGE",
+		new Set(["CROSS_CHANNEL_SEND"]),
+	],
+	[
+		"OWNER_RELATIONSHIP",
+		new Set([
+			"RELATIONSHIP",
+			"RELATIONSHIPS",
+			"ADD_CONTACT",
+			"UPDATE_CONTACT",
+			"SEARCH_CONTACTS",
+			"LIST_OVERDUE_FOLLOWUPS",
+			"MARK_FOLLOWUP_DONE",
+			"SET_FOLLOWUP_THRESHOLD",
+			"DAYS_SINCE",
+		]),
+	],
+]);
 
-const ACTION_FAMILIES = [
-  ["SEND_MESSAGE", "OWNER_SEND_MESSAGE", "CROSS_CHANNEL_SEND"],
-  ["INBOX", "OWNER_INBOX"],
-  ["SCREEN_TIME", "OWNER_SCREEN_TIME"],
-  ["CALENDAR_ACTION", "OWNER_CALENDAR"],
-  ["INTENT_SYNC", "PUBLISH_DEVICE_INTENT"],
-];
-
-function normalizeActionName(value: string | undefined): string {
-  return String(value ?? "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+export function normalizeScenarioActionName(
+	actionName: string | null | undefined,
+): string | null {
+	const normalized = String(actionName ?? "").trim().toUpperCase();
+	return normalized.length > 0 ? normalized : null;
 }
 
-function withoutOwnerPrefix(value: string): string {
-  return value.startsWith(OWNER_PREFIX) ? value.slice(OWNER_PREFIX.length) : value;
-}
-
-function actionFamily(value: string): Set<string> {
-  const normalized = normalizeActionName(value);
-  const base = withoutOwnerPrefix(normalized);
-  const family = new Set<string>([normalized, base]);
-  for (const members of ACTION_FAMILIES) {
-    if (members.includes(normalized) || members.includes(base)) {
-      for (const member of members) {
-        family.add(member);
-        family.add(withoutOwnerPrefix(member));
-      }
-    }
-  }
-  return family;
+function isUmbrellaDelegatePair(left: string, right: string): boolean {
+	const leftDelegates = ACTION_UMBRELLA_DELEGATES.get(left);
+	if (leftDelegates?.has(right)) {
+		return true;
+	}
+	const rightDelegates = ACTION_UMBRELLA_DELEGATES.get(right);
+	return rightDelegates?.has(left) ?? false;
 }
 
 export function actionsAreScenarioEquivalent(
-  left: string | undefined,
-  right: string | undefined,
+	left: string | null | undefined,
+	right: string | null | undefined,
 ): boolean {
-  const leftFamily = actionFamily(left ?? "");
-  const rightFamily = actionFamily(right ?? "");
-  for (const member of leftFamily) {
-    if (rightFamily.has(member)) {
-      return true;
-    }
-  }
-  return false;
+	const normalizedLeft = normalizeScenarioActionName(left);
+	const normalizedRight = normalizeScenarioActionName(right);
+	if (!normalizedLeft || !normalizedRight) {
+		return false;
+	}
+	if (normalizedLeft === normalizedRight) {
+		return true;
+	}
+	return isUmbrellaDelegatePair(normalizedLeft, normalizedRight);
 }
 
 export function actionMatchesScenarioExpectation(
-  candidate: string | undefined,
-  acceptedActions: string[],
+	candidate: string | null | undefined,
+	accepted: readonly string[],
 ): boolean {
-  return acceptedActions.some((acceptedAction) =>
-    actionsAreScenarioEquivalent(candidate, acceptedAction),
-  );
+	return accepted.some((expected) =>
+		actionsAreScenarioEquivalent(candidate, expected),
+	);
 }

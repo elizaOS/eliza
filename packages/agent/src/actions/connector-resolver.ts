@@ -15,6 +15,7 @@ import type {
   RelationshipsGraphService,
   RelationshipsPersonSummary,
 } from "../services/relationships-graph.js";
+import { resolveRelationshipsGraphService } from "../services/relationships-graph.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -52,12 +53,10 @@ export type CrossPlatformConversationView = {
 // Service access
 // ---------------------------------------------------------------------------
 
-export function getGraphService(
+export async function getGraphService(
   runtime: IAgentRuntime,
-): RelationshipsGraphService | null {
-  return runtime.getService(
-    "RELATIONSHIPS_GRAPH",
-  ) as unknown as RelationshipsGraphService | null;
+): Promise<RelationshipsGraphService | null> {
+  return resolveRelationshipsGraphService(runtime);
 }
 
 /** Returns the set of connector source names that have active send handlers. */
@@ -93,7 +92,7 @@ export async function resolveContact(
   name: string,
   preferredPlatform?: string,
 ): Promise<ResolvedContact | null> {
-  const graphService = getGraphService(runtime);
+  const graphService = await getGraphService(runtime);
   if (!graphService) {
     logger.warn("[connector-resolver] Relationships service not available");
     return null;
@@ -164,7 +163,7 @@ export async function resolveContactCandidates(
   name: string,
   limit = 5,
 ): Promise<RelationshipsPersonSummary[]> {
-  const graphService = getGraphService(runtime);
+  const graphService = await getGraphService(runtime);
   if (!graphService) return [];
 
   const snapshot = await graphService.getGraphSnapshot({

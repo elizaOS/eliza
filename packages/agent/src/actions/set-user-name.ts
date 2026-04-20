@@ -15,6 +15,7 @@ import {
   persistConfiguredOwnerName,
 } from "../services/owner-name.js";
 import type { Action, ActionExample, HandlerOptions, State } from "@elizaos/core";
+import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 import {
   getValidationKeywordTerms,
   textIncludesKeywordTerm,
@@ -29,16 +30,10 @@ const SET_USER_NAME_CONTEXT_TERMS = getValidationKeywordTerms(
 );
 
 function recentMessagesMentionName(state: State): boolean {
-  const recent =
-    (state as Record<string, unknown>).recentMessages ??
-    (state as Record<string, unknown>).recentMessagesData ??
-    [];
-  if (!Array.isArray(recent)) return false;
-
-  const lastTwo = recent.slice(-2);
-  return lastTwo.some((m: Record<string, unknown>) => {
-    const content = m.content as Record<string, unknown> | undefined;
-    const text = (content?.text as string) ?? "";
+  const lastTwo = getRecentMessagesData(state).slice(-2);
+  return lastTwo.some((message) => {
+    const text =
+      typeof message.content?.text === "string" ? message.content.text : "";
     return SET_USER_NAME_CONTEXT_TERMS.some((term) =>
       textIncludesKeywordTerm(text, term),
     );

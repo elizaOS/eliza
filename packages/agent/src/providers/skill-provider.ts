@@ -19,6 +19,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
+import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 import { hasAdminAccess } from "../security/access.js";
 
 // ── Stopwords ────────────────────────────────────────────────────────────────
@@ -283,20 +284,13 @@ function scoreQuery(index: BM25Index, queryText: string): ScoredSkill[] {
 // ── Recent context helper ────────────────────────────────────────────────────
 
 function getRecentContext(state: State): string {
-  const recentMessages =
-    (state as Record<string, unknown>).recentMessages ??
-    (state as Record<string, unknown>).recentMessagesData ??
-    [];
-  if (Array.isArray(recentMessages)) {
-    return recentMessages
-      .slice(-5)
-      .map((m: Record<string, unknown>) => {
-        const content = m.content as Record<string, unknown> | undefined;
-        return (content?.text as string) ?? "";
-      })
-      .join(" ");
-  }
-  return "";
+  return getRecentMessagesData(state)
+    .slice(-5)
+    .map((message) => {
+      const content = message.content as Record<string, unknown> | undefined;
+      return (content?.text as string) ?? "";
+    })
+    .join(" ");
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

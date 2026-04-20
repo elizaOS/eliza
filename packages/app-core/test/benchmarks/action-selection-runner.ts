@@ -2,14 +2,9 @@
  * Action selection benchmark runner.
  *
  * Given a real `AgentRuntime` and a list of `ActionBenchmarkCase`s, send each
- * user message through the runtime, capture the action the agent chose (via
- * the `outgoing_before_deliver` pipeline hook, which surfaces `actionName`
- * for every delivered action), score each case, and produce a report.
- *
- * Designed to be dependency-free beyond the runtime itself — does not assume
- * the Wave 1A action-spy / Wave 1B conversation-harness helpers have landed.
- * If/when they do, this runner can be refactored to use them directly without
- * changing its public API.
+ * user message through the runtime, capture the actions the agent actually
+ * starts/completes via the shared ActionSpy / ConversationHarness path, score
+ * each case, and produce a report.
  */
 
 import crypto from "node:crypto";
@@ -29,6 +24,7 @@ import {
   RecordingHarness,
   type TrajectoryRecord,
 } from "../helpers/trajectory-harness.ts";
+import { ConversationHarness } from "../helpers/conversation-harness.ts";
 import type { ActionBenchmarkCase } from "./action-selection-cases.ts";
 
 export type ActionFailureMode =
@@ -250,10 +246,6 @@ function pickObservedAction(
     names[0] ??
     null
   );
-}
-
-interface TurnCapture {
-  firstAction: string | null;
 }
 
 /**
@@ -660,44 +652,22 @@ async function runSingleCase(
   registeredActions: string[],
 ): Promise<ActionBenchmarkResult> {
   const started = Date.now();
-  const roomId = crypto.randomUUID() as UUID;
   const entityId = resolveBenchmarkOwnerEntityId(runtime);
-  const worldId = crypto.randomUUID() as UUID;
-
-  const capture: TurnCapture = { firstAction: null };
-  const hookId = `action-benchmark-${tc.id}-${roomId}`;
+  const harness = new ConversationHarness(runtime, {
+    userId: entityId,
+    userName: BENCHMARK_USER_NAME,
+    source: BENCHMARK_SOURCE,
+  });
 
   try {
     runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", entityId, false);
     await seedBenchmarkCaseFixtures(runtime, entityId);
-    await runtime.ensureConnection({
-      entityId,
-      roomId,
-      worldId,
-      userName: BENCHMARK_USER_NAME,
-      source: BENCHMARK_SOURCE,
-      channelId: roomId,
-      type: ChannelType.DM,
-    });
-
-    runtime.registerPipelineHook({
-      id: hookId,
-      phase: "outgoing_before_deliver",
-      handler: (_runtime, ctx) => {
-        if (ctx.phase !== "outgoing_before_deliver") return;
-        if (ctx.roomId !== roomId) return;
-        if (capture.firstAction !== null) return;
-        const name = ctx.actionName;
-        if (typeof name === "string" && name.trim().length > 0) {
-          capture.firstAction = name;
-        }
-      },
-    });
+    await harness.setup();
 
     const message = createMessageMemory({
       id: crypto.randomUUID() as UUID,
       entityId,
-      roomId,
+      roomId: harness.roomId,
       content: {
         text: tc.userMessage,
         source: BENCHMARK_SOURCE,
@@ -707,48 +677,42 @@ async function runSingleCase(
 
     const filteredActions = await computeFilteredActions(runtime, message);
 
-    const handlePromise = Promise.resolve(
-      runtime.messageService?.handleMessage(runtime, message, async () => []),
+    const turn = await harness.send(tc.userMessage, { timeoutMs });
+    const startedAction = pickObservedAction(
+      turn.actions,
+      "started",
+      tc.expectedAction,
+      tc.acceptableActions,
     );
-
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(
-          new Error(`benchmark case ${tc.id} exceeded timeout ${timeoutMs}ms`),
-        );
-      }, timeoutMs);
-      handlePromise
-        .then(() => {
-          clearTimeout(timer);
-          resolve();
-        })
-        .catch((err) => {
-          clearTimeout(timer);
-          reject(err as Error);
-        });
-    });
-
+    const completedAction = pickObservedAction(
+      turn.actions,
+      "completed",
+      tc.expectedAction,
+      tc.acceptableActions,
+      { requireSuccessfulCompletion: true },
+    );
+    const actualAction = completedAction ?? startedAction;
     const pass = caseMatches(
-      capture.firstAction,
+      actualAction,
       tc.expectedAction,
       tc.acceptableActions,
     );
     const failureMode = determineFailureMode({
       pass,
       expected: tc.expectedAction,
-      actual: capture.firstAction,
-      planned: capture.firstAction,
+      actual: actualAction,
+      planned: actualAction,
       filtered: filteredActions,
       hadError: false,
     });
 
     return {
       case: tc,
-      plannedAction: capture.firstAction,
-      plannedActions: capture.firstAction ? [capture.firstAction] : [],
-      startedAction: capture.firstAction,
-      completedAction: capture.firstAction,
-      actualAction: capture.firstAction,
+      plannedAction: actualAction,
+      plannedActions: actualAction ? [actualAction] : [],
+      startedAction,
+      completedAction,
+      actualAction,
       selectionPass: pass,
       executionPass: pass,
       pass,
@@ -756,16 +720,20 @@ async function runSingleCase(
       failureMode,
       filteredActions,
       registeredActions,
+      responseText:
+        typeof turn.responseText === "string"
+          ? turn.responseText.slice(0, 200)
+          : undefined,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return {
       case: tc,
-      plannedAction: capture.firstAction,
-      plannedActions: capture.firstAction ? [capture.firstAction] : [],
-      startedAction: capture.firstAction,
-      completedAction: capture.firstAction,
-      actualAction: capture.firstAction,
+      plannedAction: null,
+      plannedActions: [],
+      startedAction: null,
+      completedAction: null,
+      actualAction: null,
       selectionPass: false,
       executionPass: false,
       pass: false,
@@ -775,11 +743,7 @@ async function runSingleCase(
       registeredActions,
     };
   } finally {
-    try {
-      runtime.unregisterPipelineHook(hookId);
-    } catch {
-      // Hook removal is best-effort; benchmark progress must not block on it.
-    }
+    await harness.cleanup();
   }
 }
 

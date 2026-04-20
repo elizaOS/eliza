@@ -59,6 +59,9 @@ import {
 } from "./goal-grounding.js";
 import { evaluateGoalProgressWithLlm } from "./goal-semantic-evaluator.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
+import {
+  inspectLifeOpsSchedule,
+} from "./schedule-insight.js";
 import { addMinutes } from "./time.js";
 import { getZonedDateParts } from "./time.js";
 import {
@@ -72,6 +75,20 @@ import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 /** @internal */
 export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
   class LifeOpsGoalsServiceMixin extends Base {
+    async inspectSchedule(args?: {
+      now?: Date;
+      timezone?: string | null;
+    }) {
+      return inspectLifeOpsSchedule({
+        runtime: this.runtime,
+        repository: this.repository,
+        agentId: this.agentId(),
+        timezone:
+          normalizeOptionalString(args?.timezone) ?? resolveDefaultTimeZone(),
+        now: args?.now,
+      });
+    }
+
     async deleteGoal(goalId: string): Promise<void> {
       const goal = await this.repository.getGoal(this.agentId(), goalId);
       if (!goal) {
@@ -913,6 +930,10 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
     }
 
     async getOverview(now = new Date()): Promise<LifeOpsOverview> {
+      const schedule = await this.refreshEffectiveScheduleState({
+        timezone: resolveDefaultTimeZone(),
+        now,
+      });
       const definitions = await this.repository.listActiveDefinitions(
         this.agentId(),
       );
@@ -1061,6 +1082,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
         summary: owner.summary,
         owner,
         agentOps,
+        schedule,
       };
     }
 

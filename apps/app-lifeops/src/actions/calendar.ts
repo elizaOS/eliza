@@ -28,7 +28,7 @@ import {
   getWeekdayForLocalDate,
   getZonedDateParts,
 } from "../lifeops/time.js";
-import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
+import { renderGroundedActionReply } from "@elizaos/agent/actions";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import {
   calendarReadUnavailableMessage,
@@ -413,6 +413,13 @@ function shouldDisambiguateCalendarReadPlan(
   );
 }
 
+const CALENDAR_READ_DISAMBIGUATION_RULES = [
+  "If the request combines a time window with a specific attendee, title, flight, appointment, or keyword, choose search_events, not feed.",
+  "If the request asks what is happening while the user is in a place, choose trip_window, not search_events.",
+  "If the request asks for the next or upcoming single meeting or appointment, choose next_event.",
+  "If the request asks for a schedule, agenda, or list of events over a time window, choose feed.",
+] as const;
+
 async function disambiguateCalendarReadPlanWithLlm(args: {
   runtime: IAgentRuntime;
   currentMessage: string;
@@ -428,16 +435,15 @@ async function disambiguateCalendarReadPlanWithLlm(args: {
     "next_event means only the single next upcoming meeting or appointment.",
     "search_events means find calendar events by title, attendee, location, date, or keyword, including flights and appointments.",
     "trip_window means show what is happening while the user is in a place or during a trip/stay in that place.",
+    ...CALENDAR_READ_DISAMBIGUATION_RULES,
     "Use null only when the request is not asking for a calendar read lookup.",
     "If you choose trip_window, also return tripLocation when the place is recoverable from the request or recent conversation.",
     "",
     "Examples:",
     '  "What\'s on my calendar today?" -> {"subaction":"feed"}',
-    '  "今日の予定は何ですか？" -> {"subaction":"feed"}',
     '  "What\'s my next meeting?" -> {"subaction":"next_event"}',
-    '  "¿Cuál es mi próxima reunión?" -> {"subaction":"next_event"}',
-    '  "find my return flight" -> {"subaction":"search_events"}',
-    '  "東京にいる間、何がありますか？" -> {"subaction":"trip_window","tripLocation":"東京"}',
+    '  "meetings with Sarah this week" -> {"subaction":"search_events"}',
+    '  "What\'s happening while I\'m in Tokyo?" -> {"subaction":"trip_window","tripLocation":"Tokyo"}',
     '  "Can you help me with my calendar?" -> {"subaction":null}',
     "",
     "Return ONLY valid JSON with exactly these fields:",
@@ -484,16 +490,13 @@ async function resolveCalendarLookupBoundaryWithLlm(args: {
     "Choose exactly one subaction: next_event or search_events.",
     "next_event means the user wants only the single nearest upcoming meeting, appointment, or event.",
     "search_events means the user wants to find matching calendar events by title, attendee, place, trip, keyword, or date.",
-    "If the request asks for the next upcoming meeting or appointment, prefer next_event even when the noun could also be searched.",
-    "If the request is about flights, dentists, people, trip plans, named events, or general event lookup, choose search_events.",
+    CALENDAR_READ_DISAMBIGUATION_RULES[2],
+    "If the request contains a specific attendee, title, flight, dentist, place, date constraint, or other lookup key, choose search_events, even when it also names a time window like today, tomorrow, or this week.",
     "",
     "Examples:",
     '  "What\'s my next meeting?" -> {"subaction":"next_event"}',
-    '  "When is my next appointment?" -> {"subaction":"next_event"}',
     '  "次のミーティングはいつですか？" -> {"subaction":"next_event"}',
-    '  "¿Cuál es mi próxima reunión?" -> {"subaction":"next_event"}',
-    '  "find my return flight" -> {"subaction":"search_events"}',
-    '  "when is the dentist" -> {"subaction":"search_events"}',
+    '  "meetings with Sarah this week" -> {"subaction":"search_events"}',
     '  "帰りの便を探して" -> {"subaction":"search_events"}',
     "",
     "Return ONLY valid JSON with exactly this field:",
@@ -1690,6 +1693,30 @@ export async function extractCalendarPlanWithLlm(
     dateStyle: "full",
     timeStyle: "long",
   }).format(now);
+  // Derive "today/tomorrow/yesterday" explicitly in the user's timezone so the
+  // LLM does not have to do date arithmetic across the UTC/local boundary.
+  // Without this anchor we have observed the planner shift "tomorrow" by one
+  // day whenever local-midnight crosses the UTC day line.
+  const localDateParts = getZonedDateParts(now, timeZone);
+  const todayLocal = addDaysToLocalDate(
+    { year: localDateParts.year, month: localDateParts.month, day: localDateParts.day },
+    0,
+  );
+  const tomorrowLocal = addDaysToLocalDate(
+    { year: localDateParts.year, month: localDateParts.month, day: localDateParts.day },
+    1,
+  );
+  const yesterdayLocal = addDaysToLocalDate(
+    { year: localDateParts.year, month: localDateParts.month, day: localDateParts.day },
+    -1,
+  );
+  const formatLocalDate = (parts: { year: number; month: number; day: number }) =>
+    `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+  const localDateAnchors = [
+    `yesterday = ${formatLocalDate(yesterdayLocal)}`,
+    `today = ${formatLocalDate(todayLocal)}`,
+    `tomorrow = ${formatLocalDate(tomorrowLocal)}`,
+  ].join(", ");
   const prompt = [
     "Plan the calendar action for this request.",
     "The user may speak in any language.",
@@ -1720,8 +1747,10 @@ export async function extractCalendarPlanWithLlm(
     "  trip_window — query what's happening during a trip or stay in a specific place (e.g. 'what's happening while I'm in Denver', 'my Tokyo itinerary')",
     "Use only the exact subaction literals listed above.",
     "Do not invent aliases like edit_event, modify_event, reschedule_event, move_event, cancel_event, remove_event, agenda, or itinerary_window.",
+    ...CALENDAR_READ_DISAMBIGUATION_RULES,
     "",
     "For feed, search_events, trip_window, update_event, or delete_event, infer an exact timeMin/timeMax window when the request names or implies a date or date range.",
+    "For search_events specifically: only set timeMin/timeMax when the user's literal words name a date, day, week, or month. Leave them null for timeless queries like 'find my flight' or 'meetings with Sarah' so the search does not silently narrow away the target event.",
     "timeMin and timeMax must be ISO 8601 datetimes that the API can use directly.",
     "windowLabel should be a short natural-language label like on monday, this weekend, next month, or tonight.",
     "For search_events, update_event, delete_event, or trip_window, extract up to 3 short search queries.",
@@ -1736,11 +1765,12 @@ export async function extractCalendarPlanWithLlm(
     "Examples:",
     '  "what\'s on my calendar tomorrow" → {"subaction":"feed","shouldAct":true,"response":null}',
     '  "今日の予定は何ですか？" → {"subaction":"feed","shouldAct":true,"response":null}',
+    '  "what\'s my next meeting" → {"subaction":"next_event","shouldAct":true,"response":null}',
     '  "schedule a meeting with Alex at 3pm" → {"subaction":"create_event","shouldAct":true,"response":null,"title":"Meeting with Alex"}',
+    '  "meetings with Sarah this week" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["Sarah","this week"]}',
     '  "find my return flight" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["return flight"]}',
     '  "what do I have while I\'m in Tokyo" → {"subaction":"trip_window","shouldAct":true,"response":null,"queries":["tokyo"],"tripLocation":"Tokyo"}',
     '  "rename my meeting to standup" → {"subaction":"update_event","shouldAct":true,"response":null,"queries":["meeting"],"title":"standup"}',
-    '  "Cambia la cita del dentista al viernes" → {"subaction":"update_event","shouldAct":true,"response":null,"queries":["cita del dentista"],"windowLabel":"el viernes"}',
     '  "delete the team meeting tomorrow" → {"subaction":"delete_event","shouldAct":true,"response":null,"queries":["team meeting"]}',
     '  "can you help me with my calendar?" → {"subaction":null,"shouldAct":false,"response":"What do you want to do on your calendar — check your schedule, find an event, or create one?","queries":[]}',
     "",
@@ -1750,8 +1780,10 @@ export async function extractCalendarPlanWithLlm(
     "Return ONLY valid JSON. No prose. No markdown. No XML. No <think>.",
     "",
     `Current timezone: ${timeZone}`,
+    `LOCAL DATE ANCHORS (authoritative — IGNORE UTC day for date arithmetic): ${localDateAnchors}.`,
     `Current local datetime: ${localNow}`,
-    `Current ISO datetime: ${nowIso}`,
+    `Current ISO datetime (informational only — do NOT use for 'today/tomorrow/yesterday'): ${nowIso}`,
+    "When the user says 'today', 'tomorrow', 'yesterday', or similar, resolve the calendar day from the LOCAL DATE ANCHORS above (not from the UTC datetime) and build timeMin/timeMax as a full local-day window in the current timezone.",
     "",
     "<current_request>",
     currentMessage,
@@ -2911,11 +2943,13 @@ export const calendarAction: Action & {
     "querying travel itineraries, flights, hotel stays, trip windows, reserving recurring time blocks, and rebooking or moving calendar-backed commitments. " +
     "These are live calendar reads and writes, so do not answer them from provider context alone and do not fall back to NONE or REPLY when this action is available. " +
     "DO NOT use this action when the user is only making an observation like 'my calendar has been crazy this quarter' unless they actually ask you to inspect or change calendar state. " +
-    "DO NOT use this action for email inbox work, drafting or sending emails — use GMAIL_ACTION instead. " +
+    "DO NOT use this action for email inbox work, drafting or sending emails — use OWNER_INBOX (channel=gmail for Gmail-specific work) instead. " +
     "DO NOT use this action for personal habits, goals, routines, or reminders — use LIFE instead. " +
     "DO NOT use this action for Calendly — any request that mentions Calendly by name, or passes a calendly.com / api.calendly.com URL (including an eventTypeUri), belongs to the CALENDLY action, which is a separate product from Google Calendar. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action." +
-    " DO NOT use this action when the user asks to 'help schedule', 'help me schedule', 'set up a meeting with', 'find a time with', 'find us a time', 'find a slot with', or otherwise wants to negotiate a meeting with a person or team WITHOUT naming a concrete date or time — that is SCHEDULING (subaction: start). Any time the request mentions a person/team AND no specific time, route it to SCHEDULING, not here. DO NOT use this action to 'propose', 'suggest', or 'offer' meeting time slots — that is PROPOSE_MEETING_TIMES. Use CALENDAR_ACTION only when the user specifies (or intends to specify) a concrete date/time for the event.",
+    " DO NOT use this action when the user asks to 'help schedule', 'help me schedule', 'set up a meeting with', 'find a time with', 'find us a time', 'find a slot with', or otherwise wants to negotiate a meeting with a person or team WITHOUT naming a concrete date or time — that is SCHEDULING (subaction: start). Any time the request mentions a person/team AND no specific time, route it to SCHEDULING, not here. " +
+    "DO NOT use this action for any 'propose N times', 'suggest N times', 'offer N slots', 'find me N slots', 'give me a few times', 'find three options' request — those go to PROPOSE_MEETING_TIMES unconditionally, even when the request mentions a meeting duration, a person's name, or a week window (those details feed PROPOSE_MEETING_TIMES's params, they are not a signal to use CALENDAR_ACTION). " +
+    "Use CALENDAR_ACTION only when the user specifies (or intends to specify) a concrete date/time for the event.",
   descriptionCompressed: "Google Calendar via LifeOps: view schedule, search events, create events, query travel. Not for email or habits.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
@@ -3029,7 +3063,7 @@ export const calendarAction: Action & {
       await callback?.({
         text: payload.text,
         source: "action",
-        action: "CALENDAR_ACTION",
+        action: "OWNER_CALENDAR",
       });
       return payload;
     };

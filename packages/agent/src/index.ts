@@ -40,6 +40,7 @@ export * from "./services/index.js";
 export {
   createNativeRelationshipsGraphService,
   getMemoriesForCluster,
+  resolveRelationshipsGraphService,
   searchMemoriesForCluster,
   type ClusterMemoriesQuery,
   type ClusterSearchQuery,

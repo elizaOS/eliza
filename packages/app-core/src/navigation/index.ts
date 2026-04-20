@@ -6,6 +6,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Clock3,
   Gamepad2,
+  Grid3x3,
   MessageSquare,
   Monitor,
   PencilLine,
@@ -54,7 +55,8 @@ export type BuiltinTab =
   | "database"
   | "desktop"
   | "settings"
-  | "logs";
+  | "logs"
+  | "node-catalog";
 
 /**
  * Tab identifier — includes all built-in tabs plus arbitrary strings
@@ -133,6 +135,12 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     tabs: ["automations"],
     icon: Clock3,
     description: "Tasks, scheduled tasks, and recurring workflows",
+  },
+  {
+    label: "Nodes",
+    tabs: ["node-catalog"],
+    icon: Grid3x3,
+    description: "All actions, integrations, triggers, and context providers the agent can use",
   },
   {
     label: "Settings",
@@ -225,6 +233,7 @@ const TAB_PATHS: Record<BuiltinTab, string> = {
   desktop: "/desktop",
   settings: "/settings",
   logs: "/apps/logs",
+  "node-catalog": "/node-catalog",
 };
 
 /** Legacy path redirects — old paths that now map to new tabs. */
@@ -452,6 +461,8 @@ export function titleForTab(tab: Tab): string {
       return "Logs";
     case "stream":
       return "Stream";
+    case "node-catalog":
+      return "Nodes";
     default:
       // Dynamic plugin tabs — capitalize the tab ID as a fallback title.
       return tab.charAt(0).toUpperCase() + tab.slice(1).replace(/-/g, " ");

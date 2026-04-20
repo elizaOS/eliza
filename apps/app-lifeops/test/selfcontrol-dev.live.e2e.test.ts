@@ -294,9 +294,11 @@ describeIf(LIVE_TESTS_ENABLED)("Live: website blocker dev launcher", () => {
     const hosts = await waitForHostsBlock(stack.hostsFilePath, [
       "x.com",
       "twitter.com",
+      "api.x.com",
     ]);
     expect(hosts).toContain("0.0.0.0 x.com");
     expect(hosts).toContain("0.0.0.0 twitter.com");
+    expect(hosts).toContain("0.0.0.0 api.x.com");
 
     const stopResponse = await req(
       stack.apiPort,

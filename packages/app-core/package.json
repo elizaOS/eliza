@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-core",
-  "version": "2.0.0-alpha.214",
+  "version": "2.0.0-alpha.218",
   "description": "Shared application core for elizaOS white-label agent apps.",
   "type": "module",
   "license": "MIT",
@@ -167,6 +167,7 @@
     "@stwd/sdk": "^0.3.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
+    "@xyflow/react": "^12.10.2",
     "chalk": "^5.3.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

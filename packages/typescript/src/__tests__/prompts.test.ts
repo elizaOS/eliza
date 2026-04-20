@@ -63,6 +63,9 @@ describe("Prompts", () => {
 			expect(messageHandlerTemplate).toContain("fenced code blocks");
 			expect(messageHandlerTemplate).toContain("inline backticks");
 			expect(messageHandlerTemplate).toContain("XML only.");
+			expect(messageHandlerTemplate).toContain(
+				"REPLY means a direct chat reply in the current conversation only",
+			);
 		});
 
 		it("postCreationTemplate should contain required placeholders and examples", () => {
@@ -118,6 +121,9 @@ describe("Prompts", () => {
 			expect(reflectionEvaluatorTemplate).toContain("facts[0]:");
 			expect(reflectionEvaluatorTemplate).toContain("relationships[0]:");
 			expect(reflectionEvaluatorTemplate).toContain("tags[0]: dm_interaction");
+			expect(reflectionEvaluatorTemplate).toContain(
+				"Use exact UUIDs from the entities-in-room list only.",
+			);
 			expect(reflectionEvaluatorTemplate).toContain(
 				"Always include `task_completed` and `task_completion_reason`.",
 			);

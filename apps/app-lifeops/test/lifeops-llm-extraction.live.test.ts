@@ -16,12 +16,13 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect } from "vitest";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "./helpers/runtime.js";
 import { selectLiveProvider } from "../../../../test/helpers/live-provider";
+import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import { extractCalendarPlanWithLlm } from "../src/actions/calendar.js";
 import { extractGmailPlanWithLlm } from "../src/actions/gmail.js";
 import { extractLifeOperationWithLlm } from "../src/actions/life.extractor.js";
@@ -118,7 +119,7 @@ describeIfLive("LLM plan extraction (live)", () => {
     ] as const;
 
     for (const { intent, expected } of cases) {
-      it(
+      stochasticTest(
         `classifies "${intent}" as ${expected}`,
         async () => {
           const result = await extractLifeOperationWithLlm({
@@ -130,7 +131,7 @@ describeIfLive("LLM plan extraction (live)", () => {
           expect(result.operation).toBe(expected);
           expect(result.confidence).toBeGreaterThan(0);
         },
-        TEST_TIMEOUT,
+        { perRunTimeoutMs: TEST_TIMEOUT },
       );
     }
   });
@@ -166,7 +167,7 @@ describeIfLive("LLM plan extraction (live)", () => {
     ] as const;
 
     for (const testCase of cases) {
-      it(
+      stochasticTest(
         `extracts a task-create plan for "${testCase.intent}"`,
         async () => {
           const plan = await extractTaskCreatePlanWithLlm({
@@ -190,13 +191,13 @@ describeIfLive("LLM plan extraction (live)", () => {
           }
           expect(String(plan?.title ?? "").trim().length).toBeGreaterThan(0);
         },
-        TEST_TIMEOUT,
+        { perRunTimeoutMs: TEST_TIMEOUT },
       );
     }
   });
 
   describe("extractGoalCreatePlanWithLlm", () => {
-    it(
+    stochasticTest(
       "asks for clarification on a title-only goal",
       async () => {
         const intent = "I want a goal called Stabilize sleep schedule.";
@@ -211,7 +212,7 @@ describeIfLive("LLM plan extraction (live)", () => {
         expect(plan.response).toBeTruthy();
         expect(plan.missingCriticalFields.length).toBeGreaterThan(0);
       },
-      TEST_TIMEOUT,
+      { perRunTimeoutMs: TEST_TIMEOUT },
     );
   });
 
@@ -270,7 +271,7 @@ describeIfLive("LLM plan extraction (live)", () => {
       expectedTo,
       recentMessages,
     } of cases) {
-      it(
+      stochasticTest(
         `classifies "${intent}" as ${expectedSubaction}`,
         async () => {
           const plan = await extractGmailPlanWithLlm(
@@ -287,7 +288,7 @@ describeIfLive("LLM plan extraction (live)", () => {
             expect(plan.to ?? []).toContain(expectedTo);
           }
         },
-        TEST_TIMEOUT,
+        { perRunTimeoutMs: TEST_TIMEOUT },
       );
     }
   });
@@ -324,7 +325,7 @@ describeIfLive("LLM plan extraction (live)", () => {
     ] as const;
 
     for (const testCase of cases) {
-      it(
+      stochasticTest(
         `classifies "${testCase.intent}" as ${testCase.expectedSubaction}`,
         async () => {
           const plan = await extractCalendarPlanWithLlm(
@@ -341,7 +342,7 @@ describeIfLive("LLM plan extraction (live)", () => {
             expect(plan.tripLocation).toBeTruthy();
           }
         },
-        TEST_TIMEOUT,
+        { perRunTimeoutMs: TEST_TIMEOUT },
       );
     }
   });

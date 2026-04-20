@@ -5,6 +5,7 @@ import { fail } from "./service-normalize.js";
 import {
   drainWhatsAppInboundBuffer,
   parseAndBufferWhatsAppWebhookMessages,
+  peekWhatsAppInboundBuffer,
   readWhatsAppCredentialsFromEnv,
   sendWhatsAppMessage as sendWhatsAppMessageRequest,
   WhatsAppError,
@@ -76,6 +77,30 @@ export function withWhatsApp<TBase extends Constructor<LifeOpsServiceBase>>(
     syncWhatsAppInbound(): { drained: number; messages: WhatsAppMessage[] } {
       const messages = drainWhatsAppInboundBuffer();
       return { drained: messages.length, messages };
+    }
+
+    /**
+     * Return the current set of buffered inbound WhatsApp messages without
+     * clearing the buffer (peek semantics).
+     *
+     * Use this for periodic inspection — e.g. to surface recent messages to
+     * the agent without consuming them from the buffer.  Messages are
+     * deduplicated by ID inside the buffer, so repeated calls return the
+     * same set until the buffer is drained by {@link syncWhatsAppInbound}.
+     *
+     * Mirrors the webhook-parser shape: every returned message has the same
+     * {@link WhatsAppMessage} structure as those produced by
+     * {@link ingestWhatsAppWebhook}.
+     *
+     * @param limit Maximum number of messages to return (newest first). Default: 25.
+     */
+    pullWhatsAppRecent(limit = 25): { count: number; messages: WhatsAppMessage[] } {
+      const clampedLimit = Math.min(Math.max(1, Math.floor(limit)), 500);
+      const all = peekWhatsAppInboundBuffer();
+      // Buffer is insertion-ordered (Map preserves insertion order); return
+      // the most recently inserted messages by taking from the tail.
+      const recent = all.slice(-clampedLimit);
+      return { count: recent.length, messages: recent };
     }
   }
 

@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/core",
-	"version": "2.0.0-alpha.214",
+	"version": "2.0.0-alpha.218",
 	"description": "",
 	"type": "module",
 	"main": "./dist/index.node.js",
@@ -80,7 +80,7 @@
 	"author": "elizaOS",
 	"license": "MIT",
 	"devDependencies": {
-		"@elizaos/plugin-elizacloud": "alpha",
+		"@elizaos/plugin-elizacloud": "workspace:*",
 		"@elizaos/plugin-sql": "workspace:*",
 		"@elizaos/schemas": "workspace:*",
 		"@playwright/test": "^1.52.0",
