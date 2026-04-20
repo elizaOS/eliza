@@ -23,11 +23,11 @@ describe("selectLiveProvider", () => {
     expect(selectLiveProvider()?.name).toBe("groq");
   });
 
-  it("accepts MILADY_E2E_GROQ_API_KEY alias and propagates it under GROQ_API_KEY", async () => {
-    // CI-only scoped alias: scenario-matrix.yml sets MILADY_E2E_GROQ_API_KEY
+  it("accepts ELIZA_E2E_GROQ_API_KEY alias and propagates it under GROQ_API_KEY", async () => {
+    // CI-only scoped alias: scenario-matrix.yml sets ELIZA_E2E_GROQ_API_KEY
     // but the runtime plugin reads GROQ_API_KEY.
     vi.stubEnv("GROQ_API_KEY", "");
-    vi.stubEnv("MILADY_E2E_GROQ_API_KEY", "gsk_test_valid_for_groq");
+    vi.stubEnv("ELIZA_E2E_GROQ_API_KEY", "gsk_test_valid_for_groq");
 
     const { selectLiveProvider, availableProviderNames } = await import(
       "./live-provider.ts"
@@ -42,7 +42,7 @@ describe("selectLiveProvider", () => {
 
   it("prefers canonical GROQ_API_KEY over alias when both are set", async () => {
     vi.stubEnv("GROQ_API_KEY", "gsk_canonical");
-    vi.stubEnv("MILADY_E2E_GROQ_API_KEY", "gsk_alias");
+    vi.stubEnv("ELIZA_E2E_GROQ_API_KEY", "gsk_alias");
 
     const { selectLiveProvider } = await import("./live-provider.ts");
 
