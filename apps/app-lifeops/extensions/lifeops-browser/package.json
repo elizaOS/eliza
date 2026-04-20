@@ -11,6 +11,8 @@
     "package:safari": "bun scripts/package-safari.mjs",
     "package:stores": "bun scripts/package-store-assets.mjs",
     "package:release": "bun scripts/package-release.mjs",
-    "test": "bunx vitest run --config ./vitest.config.ts"
+    "test": "bunx vitest run --config ./vitest.extension.config.ts",
+    "test:smoke": "node scripts/extension-smoke.mjs",
+    "test:ci": "bun run test && bun run test:smoke"
   }
 }
