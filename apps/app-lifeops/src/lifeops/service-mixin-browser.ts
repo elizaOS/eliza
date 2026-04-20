@@ -188,6 +188,19 @@ function browserUrlAllowedBySettings(
   }
 }
 
+function browserDomainFromUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    const hostname = parsed.hostname.trim().toLowerCase().replace(/\.+$/, "");
+    return hostname.length > 0 ? hostname : null;
+  } catch {
+    return null;
+  }
+}
+
 function redactSecretLikeText(value: unknown): string | null {
   if (value === undefined || value === null) return null;
   if (typeof value !== "string") return null;
@@ -630,6 +643,22 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
             windowStart: new Date(cappedStartMs).toISOString(),
             windowEnd: nowIso,
           });
+          const domain = browserDomainFromUrl(previouslyFocusedTab.url);
+          if (domain) {
+            await this.recordScreenTimeEvent({
+              source: "website",
+              identifier: domain,
+              displayName: domain,
+              startAt: new Date(cappedStartMs).toISOString(),
+              endAt: nowIso,
+              metadata: {
+                url: previouslyFocusedTab.url,
+                browser: previouslyFocusedTab.browser,
+                profileId: previouslyFocusedTab.profileId,
+                companionId: companion.id,
+              },
+            });
+          }
         }
       }
       const existingTabsByKey = new Map(

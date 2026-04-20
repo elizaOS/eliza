@@ -5223,6 +5223,35 @@ export class LifeOpsRepository {
     return rows.map(parseScreenTimeSession);
   }
 
+  async listScreenTimeSessionsOverlapping(
+    agentId: string,
+    start: string,
+    end: string,
+    opts?: { source?: string; limit?: number },
+  ): Promise<LifeOpsScreenTimeSession[]> {
+    const clauses = [
+      `agent_id = ${sqlQuote(agentId)}`,
+      `start_at < ${sqlQuote(end)}`,
+      `(end_at IS NULL OR end_at > ${sqlQuote(start)})`,
+    ];
+    if (opts?.source) {
+      clauses.push(`source = ${sqlQuote(opts.source)}`);
+    }
+    const limitClause =
+      typeof opts?.limit === "number"
+        ? `LIMIT ${sqlInteger(opts.limit)}`
+        : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_screen_time_sessions
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY start_at ASC
+        ${limitClause}`,
+    );
+    return rows.map(parseScreenTimeSession);
+  }
+
   async upsertScreenTimeDaily(row: LifeOpsScreenTimeDaily): Promise<void> {
     await executeRawSql(
       this.runtime,

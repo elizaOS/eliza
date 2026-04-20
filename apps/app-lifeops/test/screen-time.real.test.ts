@@ -11,6 +11,7 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../../test/helpers/real-runtime";
+import { insertActivityEvent } from "../src/activity-profile/activity-tracker-repo.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
 import { screenTimeAction } from "../src/actions/screen-time.js";
@@ -91,32 +92,37 @@ describe("screen-time handler — real PGLite", () => {
 
   it("getScreenTimeSummary returns top apps in descending order", async () => {
     const baseMs = Date.now() - 3 * 3_600_000;
-    await service.recordScreenTimeEvent({
-      source: "app",
-      identifier: "com.summary.SafariX",
-      displayName: "SafariX",
-      startAt: new Date(baseMs).toISOString(),
-      endAt: new Date(baseMs + 600_000).toISOString(),
-      durationSeconds: 600,
-      metadata: {},
+    await insertActivityEvent(runtime, {
+      agentId: String(runtime.agentId),
+      observedAt: new Date(baseMs).toISOString(),
+      eventKind: "activate",
+      bundleId: "com.summary.SafariX",
+      appName: "SafariX",
+      windowTitle: null,
     });
-    await service.recordScreenTimeEvent({
-      source: "app",
-      identifier: "com.summary.ChromeX",
-      displayName: "ChromeX",
-      startAt: new Date(baseMs + 700_000).toISOString(),
-      endAt: new Date(baseMs + 1_000_000).toISOString(),
-      durationSeconds: 300,
-      metadata: {},
+    await insertActivityEvent(runtime, {
+      agentId: String(runtime.agentId),
+      observedAt: new Date(baseMs + 600_000).toISOString(),
+      eventKind: "activate",
+      bundleId: "com.summary.ChromeX",
+      appName: "ChromeX",
+      windowTitle: null,
     });
-    await service.recordScreenTimeEvent({
-      source: "app",
-      identifier: "com.summary.VSCodeX",
-      displayName: "VSCodeX",
-      startAt: new Date(baseMs + 1_100_000).toISOString(),
-      endAt: new Date(baseMs + 2_300_000).toISOString(),
-      durationSeconds: 1200,
-      metadata: {},
+    await insertActivityEvent(runtime, {
+      agentId: String(runtime.agentId),
+      observedAt: new Date(baseMs + 900_000).toISOString(),
+      eventKind: "activate",
+      bundleId: "com.summary.VSCodeX",
+      appName: "VSCodeX",
+      windowTitle: null,
+    });
+    await insertActivityEvent(runtime, {
+      agentId: String(runtime.agentId),
+      observedAt: new Date(baseMs + 2_100_000).toISOString(),
+      eventKind: "deactivate",
+      bundleId: "com.summary.VSCodeX",
+      appName: "VSCodeX",
+      windowTitle: null,
     });
     const since = new Date(baseMs - 60_000).toISOString();
     const until = new Date().toISOString();
@@ -131,6 +137,100 @@ describe("screen-time handler — real PGLite", () => {
     // VSCode (1200) should rank above Chrome (300); top-2 must include VSCode first.
     expect(summary.items[0].identifier).toBe("com.summary.VSCodeX");
     expect(summary.items.length).toBe(2);
+  });
+
+  it("syncBrowserState persists website focus windows into screen time summaries", async () => {
+    const startAt = new Date(Date.now() - 10 * 60_000).toISOString();
+    const endAt = new Date(Date.now() - 6 * 60_000).toISOString();
+
+    await service.updateBrowserSettings({
+      enabled: true,
+      allowBrowserControl: true,
+    });
+
+    await service.syncBrowserState({
+      companion: {
+        browser: "chrome",
+        profileId: "screen-time-profile",
+        label: "LifeOps Browser",
+        connectionState: "connected",
+        lastSeenAt: startAt,
+        permissions: {
+          tabs: true,
+          scripting: true,
+          activeTab: true,
+          allOrigins: true,
+          grantedOrigins: ["https://github.com"],
+          incognitoEnabled: false,
+        },
+      },
+      tabs: [
+        {
+          browser: "chrome",
+          profileId: "screen-time-profile",
+          windowId: "window-1",
+          tabId: "tab-1",
+          url: "https://github.com/elizaos/elizaos",
+          title: "elizaOS",
+          activeInWindow: true,
+          focusedWindow: true,
+          focusedActive: true,
+          lastSeenAt: startAt,
+          lastFocusedAt: startAt,
+        },
+      ],
+      pageContexts: [],
+    });
+
+    await service.syncBrowserState({
+      companion: {
+        browser: "chrome",
+        profileId: "screen-time-profile",
+        label: "LifeOps Browser",
+        connectionState: "connected",
+        lastSeenAt: endAt,
+        permissions: {
+          tabs: true,
+          scripting: true,
+          activeTab: true,
+          allOrigins: true,
+          grantedOrigins: ["https://github.com"],
+          incognitoEnabled: false,
+        },
+      },
+      tabs: [
+        {
+          browser: "chrome",
+          profileId: "screen-time-profile",
+          windowId: "window-1",
+          tabId: "tab-2",
+          url: "https://news.ycombinator.com",
+          title: "Hacker News",
+          activeInWindow: true,
+          focusedWindow: true,
+          focusedActive: true,
+          lastSeenAt: endAt,
+          lastFocusedAt: endAt,
+        },
+      ],
+      pageContexts: [],
+    });
+
+    const summary = await service.getScreenTimeSummary({
+      since: new Date(Date.now() - 30 * 60_000).toISOString(),
+      until: new Date().toISOString(),
+      source: "website",
+      topN: 5,
+    });
+
+    expect(summary.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "website",
+          identifier: "github.com",
+        }),
+      ]),
+    );
   });
 
   it("screenTimeAction today handler returns text and data", async () => {
