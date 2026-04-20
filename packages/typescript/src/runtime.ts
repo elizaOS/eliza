@@ -250,6 +250,8 @@ export function resolveDefaultOutputFormat(
 			return "XML";
 		case "json":
 			return "JSON";
+		case "toon":
+			return "TOON";
 		default:
 			return "TOON";
 	}
