@@ -139,7 +139,7 @@ try {
     }
 
     $candidate = Get-ChildItem -Path $root -Recurse -File -Filter "*.lnk" -ErrorAction SilentlyContinue |
-      Where-Object { $_.Name -match "Milady" } |
+      Where-Object { $_.Name -match "Milady|Eliza" } |
       Sort-Object LastWriteTime -Descending |
       Select-Object -First 1
     if ($candidate) {
@@ -149,7 +149,7 @@ try {
   }
 
   if (-not $shortcut) {
-    throw "Start Menu shortcut containing 'Milady' was not found."
+    throw "Start Menu shortcut containing 'Milady' or 'Eliza' was not found."
   }
 
   $summary.startMenuShortcut = $shortcut.FullName
