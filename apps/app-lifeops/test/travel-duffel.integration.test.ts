@@ -6,6 +6,27 @@
  * this test directory.
  *
  * Unit-level tests (config parsing, error paths, response mapping) always run.
+ *
+ * ---------------------------------------------------------------------------
+ * AlwaysSkipped in CI
+ * ---------------------------------------------------------------------------
+ * The `searchFlights — live Duffel` describe block at the bottom of this
+ * file is `describe.skipIf(!LIVE_API_KEY)`. DUFFEL_API_KEY is not
+ * configured in any GitHub Actions workflow (see .github/workflows/*.yml —
+ * no match for DUFFEL_API_KEY), so the live block is always skipped in CI
+ * today. It is kept here to document the live contract and to run locally
+ * against the Duffel test environment.
+ *
+ * To run locally:
+ *   DUFFEL_API_KEY=duffel_test_xxx MILADY_DUFFEL_DIRECT=1 \
+ *     bunx vitest run apps/app-lifeops/test/travel-duffel.integration.test.ts
+ *
+ * Use a Duffel TEST-mode key (prefix `duffel_test_`). Do NOT wire a live
+ * API key into CI — search requests count against account quota and
+ * order/payment endpoints touch real booking infrastructure. For CI
+ * coverage of the HTTP layer, rely on the fetch-mocked tests in this
+ * file (covering search, order, payment mapping) and/or add an offline
+ * harness with a local HTTP server stub in a follow-up.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
