@@ -184,10 +184,10 @@ function N8nStatusBanner({
         </div>
         <Button
           type="button"
-          variant="ghost"
-          size="icon"
+          variant="link"
+          size="sm"
           aria-busy={retrying}
-          className="shrink-0 text-warning underline hover:no-underline h-auto w-auto p-0 text-xs"
+          className="shrink-0 h-auto w-auto p-0 text-xs text-warning"
           onClick={onRetry}
           disabled={retrying}
         >
@@ -199,7 +199,7 @@ function N8nStatusBanner({
           size="icon"
           aria-label={t("automations.n8n.bannerDismiss")}
           onClick={onDismiss}
-          className="shrink-0 text-muted hover:text-txt h-5 w-5"
+          className="shrink-0 h-5 w-5 text-muted hover:text-txt"
         >
           <X className="h-3 w-3" />
         </Button>
@@ -249,10 +249,10 @@ function N8nStatusBanner({
       {mode === "local" && sidecarStatus === "error" && (
         <Button
           type="button"
-          variant="ghost"
-          size="icon"
+          variant="link"
+          size="sm"
           aria-busy={retrying}
-          className="text-danger underline hover:no-underline h-auto w-auto p-0 text-xs"
+          className="h-auto w-auto p-0 text-xs text-danger"
           onClick={onRetry}
           disabled={retrying}
         >
@@ -265,7 +265,7 @@ function N8nStatusBanner({
         size="icon"
         aria-label={t("automations.n8n.bannerDismiss")}
         onClick={onDismiss}
-        className="text-muted hover:text-txt h-5 w-5"
+        className="h-5 w-5 text-muted hover:text-txt"
       >
         <X className="h-3 w-3" />
       </Button>
@@ -406,7 +406,7 @@ function WorkflowDetailPane({
             <div className="flex flex-wrap items-center gap-2 mb-1">
               <FieldLabel variant="kicker">
                 <Workflow className="mr-1.5 inline h-3.5 w-3.5" />
-                Workflow
+                {t("automations.workflow.workflowKicker")}
               </FieldLabel>
               <StatusBadge
                 label={
@@ -418,9 +418,13 @@ function WorkflowDetailPane({
                 withDot
               />
             </div>
-            <h2 className="text-2xl font-semibold text-txt">{workflow.name}</h2>
+            <h2 className="text-2xl font-semibold text-txt break-words">
+              {workflow.name}
+            </h2>
             {workflow.description && (
-              <p className="text-sm text-muted mt-1">{workflow.description}</p>
+              <p className="text-sm text-muted mt-1 break-words">
+                {workflow.description}
+              </p>
             )}
           </div>
         </div>
@@ -447,34 +451,23 @@ function WorkflowDetailPane({
       </div>
 
       {/* Node list */}
-      {nodeCount > 0 && (
+      {nodeCount > 0 && nodes.length > 0 && (
         <div className="rounded-xl border border-border/40 bg-card/50 p-4 space-y-2">
           <div className="text-xs font-semibold uppercase tracking-wider text-muted">
             {t("automations.n8n.nodeCount", { count: nodeCount })}
           </div>
           <div className="space-y-1">
-            {nodes.length > 0
-              ? nodes.map((node) => (
-                  <div
-                    key={node.id}
-                    className="text-sm text-txt flex items-center gap-2 py-1 border-b border-border/20 last:border-b-0"
-                  >
-                    <span className="flex-1">{node.name}</span>
-                    <span className="text-xs text-muted font-mono">
-                      {node.type.split(".").pop()}
-                    </span>
-                  </div>
-                ))
-              : Array.from({ length: nodeCount }, (_, index) => index + 1).map(
-                  (nodeNumber) => (
-                    <div
-                      key={`workflow-node-${nodeNumber}`}
-                      className="text-sm text-muted py-1"
-                    >
-                      Node {nodeNumber}
-                    </div>
-                  ),
-                )}
+            {nodes.map((node) => (
+              <div
+                key={node.id}
+                className="text-sm text-txt flex items-center gap-2 py-1 border-b border-border/20 last:border-b-0"
+              >
+                <span className="flex-1 min-w-0 truncate">{node.name}</span>
+                <span className="shrink-0 text-xs text-muted font-mono">
+                  {node.type.split(".").pop()}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -553,7 +546,8 @@ export function N8nWorkflowsPanel({
     activeConversationId,
     conversations,
   );
-  const conversationTitle = selectedWorkflow?.name ?? "New Workflow Draft";
+  const conversationTitle =
+    selectedWorkflow?.name ?? t("automations.workflow.draftTitle");
   const conversationMetadata = selectedWorkflow
     ? buildWorkflowConversationMetadata(
         selectedWorkflow.id,
@@ -736,23 +730,39 @@ export function N8nWorkflowsPanel({
   const handleRetry = useCallback(async () => {
     setRetrying(true);
     try {
-      await client.startN8nSidecar().catch(() => {});
+      try {
+        await client.startN8nSidecar();
+      } catch (err) {
+        pushError(
+          t("automations.n8n.errorStartSidecar", {
+            message: err instanceof Error ? err.message : "start failed",
+          }),
+        );
+      }
       await loadStatus();
     } finally {
       setRetrying(false);
     }
-  }, [loadStatus]);
+  }, [loadStatus, pushError, t]);
 
   // User-initiated local sidecar start (from the CTA block on desktop disabled mode).
   const handleStartLocal = useCallback(async () => {
     setRetrying(true);
     try {
-      await client.startN8nSidecar().catch(() => {});
+      try {
+        await client.startN8nSidecar();
+      } catch (err) {
+        pushError(
+          t("automations.n8n.errorStartSidecar", {
+            message: err instanceof Error ? err.message : "start failed",
+          }),
+        );
+      }
       await loadStatus();
     } finally {
       setRetrying(false);
     }
-  }, [loadStatus]);
+  }, [loadStatus, pushError, t]);
 
   const handleToggleActive = useCallback(
     async (wf: N8nWorkflow) => {
