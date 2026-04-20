@@ -47,7 +47,7 @@ setup(
         "transformers~=5.0.0rc3",
         "torch~=2.8.0",
         "accelerate",
-        "opencv-python-headless~=4.8.1.78",
+        "opencv-python-headless~=4.13.0.92",
         "matplotlib~=3.7.4",
         "pynput~=1.7.6",
         "pyautogui~=0.9.54",
