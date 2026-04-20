@@ -17,6 +17,10 @@ import type {
 } from "../lifeops/approval-queue.types.js";
 import { requireFeatureEnabled } from "../lifeops/feature-flags.js";
 import { FeatureNotEnabledError } from "../lifeops/feature-flags.types.js";
+import {
+  PaymentRequiredError,
+  type X402PaymentRequirement,
+} from "../lifeops/x402-payment-handler.js";
 import { INTERNAL_URL } from "./lifeops-google-helpers.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import { LifeOpsService } from "../lifeops/service.js";
@@ -440,20 +444,92 @@ export const bookTravelAction: Action = {
     }
 
     const service = new LifeOpsService(runtime);
-    const prepared = await service.prepareFlightBooking({
-      offerId: merged.offerId,
-      search: merged.offerId
-        ? null
-        : {
-            origin: merged.origin!,
-            destination: merged.destination!,
-            departureDate: merged.departureDate!,
-            returnDate: merged.returnDate ?? undefined,
-            passengers: merged.passengerCount ?? merged.passengers.length,
+    let prepared: Awaited<ReturnType<typeof service.prepareFlightBooking>>;
+    try {
+      prepared = await service.prepareFlightBooking({
+        offerId: merged.offerId,
+        search: merged.offerId
+          ? null
+          : {
+              origin: merged.origin!,
+              destination: merged.destination!,
+              departureDate: merged.departureDate!,
+              returnDate: merged.returnDate ?? undefined,
+              passengers: merged.passengerCount ?? merged.passengers.length,
+            },
+        passengers: merged.passengers,
+        calendarSync: merged.calendarSync,
+      });
+    } catch (err) {
+      if (!(err instanceof PaymentRequiredError) || err.requirements.length === 0) {
+        throw err;
+      }
+      // Surface the x402 payment-required signal as part of the approval
+      // entry rather than a hard failure: the user sees the booking
+      // intent and the top-up prompt together and can approve once they
+      // have credit. We bail out here because we don't have a quoted
+      // offer yet — the next BOOK_TRAVEL invocation after top-up will
+      // re-quote.
+      const paymentRequired: X402PaymentRequirement = err.requirements[0];
+      const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+      const subjectUserId =
+        typeof message.entityId === "string"
+          ? message.entityId
+          : String(runtime.agentId);
+      const request = await queue.enqueue({
+        requestedBy: "BOOK_TRAVEL",
+        subjectUserId,
+        action: "book_travel",
+        payload: {
+          action: "book_travel",
+          kind: "flight",
+          provider: "duffel",
+          itineraryRef: merged.offerId ?? "pending-quote",
+          totalCents: 0,
+          currency: "USD",
+          offerId: merged.offerId,
+          summary: merged.offerId
+            ? `Booking for offer ${merged.offerId}`
+            : `${merged.origin ?? "?"} → ${merged.destination ?? "?"}`,
+          cost: null,
+          paymentRequired: {
+            amount: paymentRequired.amount,
+            asset: paymentRequired.asset,
+            network: paymentRequired.network,
+            payTo: paymentRequired.payTo,
+            scheme: paymentRequired.scheme,
+            expiresAt: paymentRequired.expiresAt,
+            description: paymentRequired.description,
           },
-      passengers: merged.passengers,
-      calendarSync: merged.calendarSync,
-    });
+        },
+        channel: "internal",
+        reason: `Top up ${paymentRequired.amount} ${paymentRequired.asset} on ${paymentRequired.network} to book travel`,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      });
+      const text = `Eliza Cloud needs a top-up before I can quote this trip: ${paymentRequired.amount} ${paymentRequired.asset} on ${paymentRequired.network}. Queued approval ${request.id} so you can review and pay together.`;
+      if (callback) {
+        await callback({ text });
+      }
+      return {
+        text,
+        success: false,
+        values: {
+          success: false,
+          error: err.code,
+          requestId: request.id,
+        },
+        data: {
+          actionName: "BOOK_TRAVEL",
+          error: err.code,
+          requestId: request.id,
+          paymentRequired: {
+            asset: paymentRequired.asset,
+            network: paymentRequired.network,
+            amount: paymentRequired.amount,
+          },
+        },
+      };
+    }
 
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
     const subjectUserId =

@@ -113,6 +113,28 @@ export type ApprovalPayload =
       passengers?: TravelBookingPayloadFields["passengers"];
       calendarSync?: TravelBookingPayloadFields["calendarSync"];
       summary?: string | null;
+      /** Server-side cost breakdown surfaced to the user alongside any
+       *  payment-required prompt. Mirrors `DuffelCallCost`; held as a
+       *  loose record here so the approval-queue type doesn't have to
+       *  depend on the travel-adapter package. */
+      cost?: {
+        readonly totalUsd: number;
+        readonly creatorMarkupUsd: number;
+        readonly platformFeeUsd: number;
+        readonly markupPercent: number | null;
+      } | null;
+      /** Set when an x402 PaymentRequiredError fired before the booking
+       *  could be quoted. The user sees both the booking intent and the
+       *  top-up prompt in a single approval entry. */
+      paymentRequired?: {
+        readonly amount: string;
+        readonly asset: string;
+        readonly network: string;
+        readonly payTo: string;
+        readonly scheme: string;
+        readonly expiresAt: string | null;
+        readonly description: string | null;
+      } | null;
     }
   | {
       action: "make_call";
