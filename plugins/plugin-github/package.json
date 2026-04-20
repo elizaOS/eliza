@@ -32,7 +32,7 @@
     "@types/node": "24.12.2",
     "tsup": "8.4.0",
     "typescript": "6.0.3",
-    "vitest": "3.0.5"
+    "vitest": "3.2.4"
   },
   "publishConfig": {
     "access": "public"
