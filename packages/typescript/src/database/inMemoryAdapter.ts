@@ -852,10 +852,21 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			const merged: Memory = { ...existing, ...memory };
 			this.memoriesById.set(String(memory.id), merged);
 			// Update reference in memoriesByRoom to keep consistency
-			for (const [, list] of this.memoriesByRoom) {
+			const oldRoomId = existing.roomId ?? DEFAULT_UUID;
+			const newRoomId = merged.roomId ?? DEFAULT_UUID;
+			for (const [key, list] of this.memoriesByRoom) {
 				const idx = list.findIndex((m) => String(m.id) === String(memory.id));
 				if (idx !== -1) {
-					list[idx] = merged;
+					if (String(oldRoomId) !== String(newRoomId)) {
+						const tableName = key.split(":")[0];
+						list.splice(idx, 1);
+						const newKey = roomTableKey(tableName, newRoomId);
+						const newList = this.memoriesByRoom.get(newKey) ?? [];
+						newList.push(merged);
+						this.memoriesByRoom.set(newKey, newList);
+					} else {
+						list[idx] = merged;
+					}
 					break;
 				}
 			}
