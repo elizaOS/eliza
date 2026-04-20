@@ -303,9 +303,17 @@ export const searchAcrossChannelsAction: Action = {
         text:
           plan.clarification ??
           "What do you want me to search for across your channels?",
-        success: true,
-        values: { success: true, noop: true },
-        data: { actionName: ACTION_NAME, noop: true },
+        success: false,
+        values: {
+          success: false,
+          error: "PLANNER_SHOULDACT_FALSE",
+          noop: true,
+        },
+        data: {
+          actionName: ACTION_NAME,
+          noop: true,
+          error: "PLANNER_SHOULDACT_FALSE",
+        },
       };
     }
 
