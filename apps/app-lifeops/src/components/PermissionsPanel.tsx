@@ -135,6 +135,11 @@ function statusBadge(status: PermissionStatus) {
 }
 
 function PermissionRow({ entry }: { entry: PermissionEntry }) {
+  const canOpenSystemPreferences =
+    typeof window !== "undefined" &&
+    typeof (window as unknown as Record<string, unknown>)
+      .openSystemPreferences === "function";
+
   const handleGrant = () => {
     if (typeof window !== "undefined") {
       const win = window as unknown as Record<string, unknown>;
@@ -151,6 +156,15 @@ function PermissionRow({ entry }: { entry: PermissionEntry }) {
         ? "bg-red-500"
         : "bg-muted/40";
 
+  const statusText =
+    entry.status === "granted"
+      ? "Enabled"
+      : entry.status === "denied"
+        ? "Denied"
+        : "Check in System Settings";
+  const buttonLabel =
+    entry.status === "unknown" ? "Open Settings" : "Enable";
+
   return (
     <div className="flex items-center justify-between gap-4 py-3">
       <div className="flex items-center gap-3">
@@ -162,17 +176,15 @@ function PermissionRow({ entry }: { entry: PermissionEntry }) {
       </div>
       <div className="flex items-center gap-2">
         <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`} />
-        <span className="text-xs text-muted">
-          {entry.status === "granted" ? "Enabled" : entry.status === "denied" ? "Denied" : "Not set"}
-        </span>
-        {entry.status !== "granted" ? (
+        <span className="text-xs text-muted">{statusText}</span>
+        {entry.status !== "granted" && canOpenSystemPreferences ? (
           <Button
             size="sm"
             variant="default"
             className="h-7 rounded-lg px-3 text-[11px] font-semibold"
             onClick={handleGrant}
           >
-            Enable
+            {buttonLabel}
           </Button>
         ) : null}
       </div>
@@ -201,6 +213,10 @@ export function PermissionsPanel() {
     <section className="space-y-1">
       <div className="pb-1 text-xs font-semibold uppercase tracking-wide text-muted">
         Permissions
+      </div>
+      <div className="pb-2 text-xs leading-5 text-muted">
+        LifeOps cannot read system permissions directly. Use Open Settings on
+        each row and confirm the toggle in System Settings.
       </div>
       <div className="divide-y divide-border/12">
         {permissions.map((entry) => (

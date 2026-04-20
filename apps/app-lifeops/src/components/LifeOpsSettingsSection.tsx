@@ -86,6 +86,12 @@ function modeLabel(mode: LifeOpsConnectorMode): string {
   return mode === "local" ? "Local" : "Cloud";
 }
 
+function modeDescription(mode: VisibleConnectorMode): string {
+  return mode === "local"
+    ? "Tokens stay on this device. LifeOps can only access Google while the app is running."
+    : "Tokens live in Eliza Cloud. The agent can check Google on your behalf even when the app is closed.";
+}
+
 function sideTitle(side: LifeOpsConnectorSide): string {
   return side === "owner" ? "User" : "Agent";
 }
@@ -354,6 +360,10 @@ function GoogleConnectorSideCard({
         className={status?.connected ? "text-xs text-ok" : "text-xs text-muted"}
       >
         {currentStatusLabel}
+      </div>
+
+      <div className="text-xs leading-5 text-muted">
+        {modeDescription(visibleMode)}
       </div>
 
       {connectedAccounts.length > 0 ? (
