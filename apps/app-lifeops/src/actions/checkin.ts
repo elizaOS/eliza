@@ -21,6 +21,27 @@ function reportToActionData(report: CheckinReport): ProviderDataRecord {
   };
 }
 
+/**
+ * Deterministic human-readable summary of a CheckinReport. Callers that want
+ * an LLM-rendered briefing should feed this plus the raw report into
+ * `runtime.useModel(TEXT_LARGE, ...)` — this helper is the minimum truthful
+ * text so the action no longer returns `text: ""` while its examples promise
+ * a rich summary.
+ */
+function formatCheckinReportText(report: CheckinReport): string {
+  const overdue = report.overdueTodos.length;
+  const meetings = report.todaysMeetings.length;
+  const wins = report.yesterdaysWins.length;
+  const prefix =
+    report.kind === "morning" ? "Morning check-in" : "Night check-in";
+  const parts = [
+    `${overdue} overdue todo${overdue === 1 ? "" : "s"}`,
+    `${meetings} meeting${meetings === 1 ? "" : "s"} ${report.kind === "morning" ? "today" : "logged today"}`,
+    `${wins} win${wins === 1 ? "" : "s"} ${report.kind === "morning" ? "from yesterday" : "to carry forward"}`,
+  ];
+  return `${prefix}: ${parts.join(", ")}.`;
+}
+
 export const runMorningCheckinAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
@@ -65,7 +86,7 @@ export const runMorningCheckinAction: Action & {
         typeof message.roomId === "string" ? message.roomId : undefined,
     });
     return {
-      text: "",
+      text: formatCheckinReportText(report),
       success: true,
       data: reportToActionData(report),
     };
@@ -146,7 +167,7 @@ export const runNightCheckinAction: Action & {
         typeof message.roomId === "string" ? message.roomId : undefined,
     });
     return {
-      text: "",
+      text: formatCheckinReportText(report),
       success: true,
       data: reportToActionData(report),
     };
