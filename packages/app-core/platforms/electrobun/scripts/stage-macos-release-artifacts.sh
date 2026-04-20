@@ -147,7 +147,7 @@ wait_for_notary_acceptance() {
   return 1
 }
 
-TARBALL_PATH="$(find "$ARTIFACTS_DIR" -maxdepth 1 -type f -name "*-macos-*.app.tar.zst" | sort | head -1)"
+TARBALL_PATH="$(find -L "$ARTIFACTS_DIR" -maxdepth 1 -type f -name "*-macos-*.app.tar.zst" | sort | head -1)"
 if [[ -z "$TARBALL_PATH" ]]; then
   echo "stage-macos-release-artifacts: no macOS updater tarball found in $ARTIFACTS_DIR"
   exit 1
