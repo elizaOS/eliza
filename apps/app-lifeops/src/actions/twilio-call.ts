@@ -534,7 +534,7 @@ export const callExternalAction: Action & {
     "reschedule appointment",
   ],
   description:
-    "Place an outbound phone call to a third party via Twilio. Use this for approved booking, reschedule, outage, support, or escalation calls to vendors or counterparties. Examples: 'call the dentist and reschedule my appointment', 'phone my cable company and ask about the outage', 'call the airline', or 'call the hotel to rebook'. This action can draft the call, ask which saved contact to use, and then require confirmation before dialing. If the user wants a real phone call to a third party, prefer this action over CALENDAR_ACTION, LIFE, or CROSS_CHANNEL_SEND. The recipient must appear in the configured allow-list before the actual call is placed.",
+    "Place an outbound phone call to a third party via Twilio. Use this for approved booking, reschedule, outage, support, or escalation calls to vendors or counterparties. Examples: 'call the dentist and reschedule my appointment', 'phone my cable company and ask about the outage', 'call the airline', or 'call the hotel to rebook'. This action can draft the call, ask which saved contact to use, and then require confirmation before dialing. If the user wants a real phone call to a third party, prefer this action over OWNER_CALENDAR, LIFE, or OWNER_SEND_MESSAGE. The recipient must appear in the configured allow-list before the actual call is placed.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {

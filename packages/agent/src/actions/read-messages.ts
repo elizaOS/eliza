@@ -212,7 +212,7 @@ export const readMessagesAction: Action = {
 
       const footer =
         `\nReachable platforms: ${reachable.join(", ") || "none"}` +
-        "\nUse SEND_MESSAGE with recipient name to reply on the best platform." +
+        "\nUse AGENT_SEND_MESSAGE with recipient name to reply on the best platform." +
         "\nTo save to clipboard, use CLIPBOARD_WRITE.";
 
       return {

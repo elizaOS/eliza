@@ -428,6 +428,10 @@ async function disambiguateCalendarReadPlanWithLlm(args: {
     "next_event means only the single next upcoming meeting or appointment.",
     "search_events means find calendar events by title, attendee, location, date, or keyword, including flights and appointments.",
     "trip_window means show what is happening while the user is in a place or during a trip/stay in that place.",
+    "If the request combines a time window with a specific attendee, title, flight, appointment, place, or keyword, choose search_events, not feed.",
+    "If the request asks what is happening while the user is in a place, choose trip_window, not search_events, even though the place looks like a search key.",
+    "If the request asks for the next or upcoming single meeting or appointment, choose next_event.",
+    "If the request asks for a schedule, agenda, or list of events over a time window, choose feed.",
     "Use null only when the request is not asking for a calendar read lookup.",
     "If you choose trip_window, also return tripLocation when the place is recoverable from the request or recent conversation.",
     "",
@@ -436,7 +440,9 @@ async function disambiguateCalendarReadPlanWithLlm(args: {
     '  "今日の予定は何ですか？" -> {"subaction":"feed"}',
     '  "What\'s my next meeting?" -> {"subaction":"next_event"}',
     '  "¿Cuál es mi próxima reunión?" -> {"subaction":"next_event"}',
+    '  "meetings with Sarah this week" -> {"subaction":"search_events"}',
     '  "find my return flight" -> {"subaction":"search_events"}',
+    '  "What\'s happening while I\'m in Tokyo?" -> {"subaction":"trip_window","tripLocation":"Tokyo"}',
     '  "東京にいる間、何がありますか？" -> {"subaction":"trip_window","tripLocation":"東京"}',
     '  "Can you help me with my calendar?" -> {"subaction":null}',
     "",
@@ -484,14 +490,15 @@ async function resolveCalendarLookupBoundaryWithLlm(args: {
     "Choose exactly one subaction: next_event or search_events.",
     "next_event means the user wants only the single nearest upcoming meeting, appointment, or event.",
     "search_events means the user wants to find matching calendar events by title, attendee, place, trip, keyword, or date.",
-    "If the request asks for the next upcoming meeting or appointment, prefer next_event even when the noun could also be searched.",
-    "If the request is about flights, dentists, people, trip plans, named events, or general event lookup, choose search_events.",
+    "If the request asks for the next upcoming single meeting or appointment, prefer next_event even when the noun could also be searched.",
+    "If the request contains a specific attendee, title, flight, dentist, place, date constraint, or other lookup key, choose search_events, even when it also names a time window like today, tomorrow, or this week.",
     "",
     "Examples:",
     '  "What\'s my next meeting?" -> {"subaction":"next_event"}',
     '  "When is my next appointment?" -> {"subaction":"next_event"}',
     '  "次のミーティングはいつですか？" -> {"subaction":"next_event"}',
     '  "¿Cuál es mi próxima reunión?" -> {"subaction":"next_event"}',
+    '  "meetings with Sarah this week" -> {"subaction":"search_events"}',
     '  "find my return flight" -> {"subaction":"search_events"}',
     '  "when is the dentist" -> {"subaction":"search_events"}',
     '  "帰りの便を探して" -> {"subaction":"search_events"}',
@@ -1690,6 +1697,30 @@ export async function extractCalendarPlanWithLlm(
     dateStyle: "full",
     timeStyle: "long",
   }).format(now);
+  // Derive "today/tomorrow/yesterday" explicitly in the user's timezone so the
+  // LLM does not have to do date arithmetic across the UTC/local boundary.
+  // Without this anchor we have observed the planner shift "tomorrow" by one
+  // day whenever local-midnight crosses the UTC day line.
+  const localDateParts = getZonedDateParts(now, timeZone);
+  const todayLocal = addDaysToLocalDate(
+    { year: localDateParts.year, month: localDateParts.month, day: localDateParts.day },
+    0,
+  );
+  const tomorrowLocal = addDaysToLocalDate(
+    { year: localDateParts.year, month: localDateParts.month, day: localDateParts.day },
+    1,
+  );
+  const yesterdayLocal = addDaysToLocalDate(
+    { year: localDateParts.year, month: localDateParts.month, day: localDateParts.day },
+    -1,
+  );
+  const formatLocalDate = (parts: { year: number; month: number; day: number }) =>
+    `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+  const localDateAnchors = [
+    `yesterday = ${formatLocalDate(yesterdayLocal)}`,
+    `today = ${formatLocalDate(todayLocal)}`,
+    `tomorrow = ${formatLocalDate(tomorrowLocal)}`,
+  ].join(", ");
   const prompt = [
     "Plan the calendar action for this request.",
     "The user may speak in any language.",
@@ -1711,17 +1742,21 @@ export async function extractCalendarPlanWithLlm(
     "  windowLabel: optional natural-language window label",
     "",
     "Subactions and when to use each:",
-    "  feed — view today's, tomorrow's, or this week's schedule (e.g. 'what's on my calendar', 'what do I have today', 'this week's agenda')",
-    "  next_event — check the next upcoming event only (e.g. 'what's my next meeting', 'when is my next appointment')",
-    "  search_events — find events by title, attendee, location, or date range (e.g. 'find my flight', 'when is the dentist', 'meetings with John')",
+    "  feed — time-window agenda view. Use this whenever the user is asking for what's on their calendar over a day, week, or other time window — with NO specific person/title/object to search for. Bare dates like 'April 20', 'today', 'tomorrow', 'this week' are time windows, NOT criteria — they go with feed. Examples: 'what's on my calendar', 'what do I have today', 'this week's agenda', 'what event do I have on April 20'.",
+    "  next_event — check the single next upcoming event only (e.g. 'what's my next meeting', 'when is my next appointment'). Singular.",
+    "  search_events — find events that match a NON-TIME criterion: a person name, event title, location, object (flight, meeting, call, dentist, etc.), or keyword. Use this even when a time window is also given (e.g. 'meetings with Sarah this week'). Examples: 'find my flight', 'when is the dentist', 'meetings with John', 'flights to Denver'.",
     "  create_event — schedule a new event (e.g. 'schedule a meeting tomorrow at 3pm', 'add lunch with Sarah on Friday')",
     "  update_event — rename, reschedule, move, or edit an existing event (e.g. 'rename my meeting to standup', 'reschedule the dentist to Friday', 'move the call to 3pm')",
     "  delete_event — remove or cancel an existing event (e.g. 'delete the team meeting', 'cancel my appointment', 'remove the duplicate event')",
     "  trip_window — query what's happening during a trip or stay in a specific place (e.g. 'what's happening while I'm in Denver', 'my Tokyo itinerary')",
     "Use only the exact subaction literals listed above.",
     "Do not invent aliases like edit_event, modify_event, reschedule_event, move_event, cancel_event, remove_event, agenda, or itinerary_window.",
+    "If a request combines a time window with a specific attendee, title, flight, appointment, or keyword, choose search_events, not feed.",
+    "If a request asks what is happening while the user is in a place, choose trip_window, not search_events, even though the place may also look like a search query.",
+    "If a request asks for the next or upcoming single event, choose next_event. If it asks for a schedule, agenda, or list over a time window, choose feed.",
     "",
-    "For feed, search_events, trip_window, update_event, or delete_event, infer an exact timeMin/timeMax window when the request names or implies a date or date range.",
+    "For feed, trip_window, update_event, or delete_event, infer an exact timeMin/timeMax window when the request names or implies a date or date range.",
+    "For search_events specifically: DO NOT set timeMin or timeMax unless the user NAMED a time in the request (e.g. 'tomorrow', 'this week', 'on April 20', 'next month'). Phrases like 'find my flight', 'meetings with Sarah', 'flights to Denver', 'when is the dentist' do NOT name a time — leave timeMin and timeMax null so the search spans the full calendar. Never infer 'today' from a timeless search question.",
     "timeMin and timeMax must be ISO 8601 datetimes that the API can use directly.",
     "windowLabel should be a short natural-language label like on monday, this weekend, next month, or tonight.",
     "For search_events, update_event, delete_event, or trip_window, extract up to 3 short search queries.",
@@ -1733,10 +1768,15 @@ export async function extractCalendarPlanWithLlm(
     "For update_event or delete_event, use queries to identify the existing target event and title for the new title only when the user is renaming it.",
     "For requests like all events, full schedule, everything on my calendar, or a broad itinerary sweep, return a broad timeMin/timeMax window instead of relying on downstream heuristics.",
     "",
+    "Disambiguation rule: a bare date (e.g. 'April 20', 'today', 'this week') is a TIME, not a criterion — that alone means feed. Only switch to search_events when the query also names a person, title, location, object (flight/meeting/call/dentist), or keyword to filter by.",
+    "",
     "Examples:",
     '  "what\'s on my calendar tomorrow" → {"subaction":"feed","shouldAct":true,"response":null}',
     '  "今日の予定は何ですか？" → {"subaction":"feed","shouldAct":true,"response":null}',
+    '  "what\'s my next meeting" → {"subaction":"next_event","shouldAct":true,"response":null}',
     '  "schedule a meeting with Alex at 3pm" → {"subaction":"create_event","shouldAct":true,"response":null,"title":"Meeting with Alex"}',
+    '  "meetings with Sarah this week" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["Sarah","this week"]}',
+    '  "flights to Denver next month" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["Denver flight","next month"]}',
     '  "find my return flight" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["return flight"]}',
     '  "what do I have while I\'m in Tokyo" → {"subaction":"trip_window","shouldAct":true,"response":null,"queries":["tokyo"],"tripLocation":"Tokyo"}',
     '  "rename my meeting to standup" → {"subaction":"update_event","shouldAct":true,"response":null,"queries":["meeting"],"title":"standup"}',
@@ -1750,8 +1790,10 @@ export async function extractCalendarPlanWithLlm(
     "Return ONLY valid JSON. No prose. No markdown. No XML. No <think>.",
     "",
     `Current timezone: ${timeZone}`,
+    `LOCAL DATE ANCHORS (authoritative — IGNORE UTC day for date arithmetic): ${localDateAnchors}.`,
     `Current local datetime: ${localNow}`,
-    `Current ISO datetime: ${nowIso}`,
+    `Current ISO datetime (informational only — do NOT use for 'today/tomorrow/yesterday'): ${nowIso}`,
+    "When the user says 'today', 'tomorrow', 'yesterday', or similar, resolve the calendar day from the LOCAL DATE ANCHORS above (not from the UTC datetime) and build timeMin/timeMax as a full local-day window in the current timezone.",
     "",
     "<current_request>",
     currentMessage,

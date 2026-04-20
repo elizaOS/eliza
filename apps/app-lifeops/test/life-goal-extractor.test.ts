@@ -72,6 +72,41 @@ describe("life-goal-extractor", () => {
     expect(plan.missingCriticalFields.length).toBeGreaterThan(0);
   });
 
+  it("normalizes title-bearing clarification plans to partial grounding", async () => {
+    const plan = await extractGoalCreatePlanWithLlm({
+      runtime: {
+        useModel: async () =>
+          JSON.stringify({
+            mode: "respond",
+            response: "What would a stabilized sleep schedule look like for you?",
+            title: "Stabilize sleep schedule",
+            description: "Build a more consistent sleep schedule.",
+            cadence: { kind: "weekly" },
+            successCriteria: null,
+            supportStrategy: null,
+            groundingState: "ungrounded",
+            missingCriticalFields: ["title"],
+            confidence: 0.62,
+            evaluationSummary: null,
+            targetDomain: "sleep",
+          }),
+      } as AgentRuntime,
+      intent: "I want a goal called Stabilize sleep schedule.",
+      state: undefined,
+    });
+
+    expect(plan.mode).toBe("respond");
+    expect(plan.groundingState).toBe("partial");
+    expect(plan.title).toBe("Stabilize sleep schedule");
+    expect(plan.missingCriticalFields).toEqual([
+      "target_state",
+      "success_metric",
+      "time_horizon",
+      "evidence_source",
+      "support_plan",
+    ]);
+  });
+
   it("returns a structured clarification plan when no model is available for update", async () => {
     const plan = await extractGoalUpdatePlanWithLlm({
       runtime: {} as AgentRuntime,

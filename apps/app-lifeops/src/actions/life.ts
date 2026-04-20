@@ -2486,12 +2486,12 @@ export const lifeAction: Action & {
     "ALWAYS use LIFE for dynamic status questions like 'what's still left for today', 'what do i still need to do today', or 'anything else in my LifeOps list', even when the conversation already mentioned tasks, because their status may have changed after a completion, snooze, or reminder. " +
     "Do not fall back to REPLY, UPDATE_ENTITY, or UPDATE_OWNER_PROFILE when the user is asking to create or inspect a todo, habit, goal, reminder, or alarm. " +
     "DO NOT use this action for generic coaching or advice questions like 'any tips on setting better goals?' unless the user is also asking you to create, update, review, or track a concrete goal, task, reminder, or routine. " +
-    "DO NOT use this action for person-specific follow-ups like 'remind me to follow up with David next week about the project' — use RELATIONSHIP instead. " +
-    "DO NOT use this action for Gmail inbox triage, email search, drafting or sending emails — use GMAIL_ACTION instead. " +
-    "DO NOT use this action for daily briefs, unread summaries, drafts awaiting sign-off, or cross-channel inbox review — use INBOX, GMAIL_ACTION, or SEARCH_ACROSS_CHANNELS instead. " +
-    "DO NOT use this action for calendar lookups, scheduling meetings, searching events, or travel itineraries — use CALENDAR_ACTION instead. " +
+    "DO NOT use this action for person-specific follow-ups like 'remind me to follow up with David next week about the project' — use OWNER_RELATIONSHIP instead. " +
+    "DO NOT use this action for Gmail inbox triage, email search, drafting or sending emails — use OWNER_INBOX with channel=gmail instead. " +
+    "DO NOT use this action for daily briefs, unread summaries, drafts awaiting sign-off, or cross-channel inbox review — use OWNER_INBOX instead. " +
+    "DO NOT use this action for calendar lookups, scheduling meetings, availability, Calendly, or travel itineraries — use OWNER_CALENDAR instead. " +
     "DO NOT use this action for multi-device push ladders or device-wide reminder delivery — use PUBLISH_DEVICE_INTENT instead. " +
-    "DO NOT use this action for pre-event asset checklists, document-signing workflows, collecting updated ID copies, or cancellation-fee warning/escalation policies — use INBOX, PUBLISH_DEVICE_INTENT, CALENDAR_ACTION, or LIFEOPS_COMPUTER_USE instead. " +
+    "DO NOT use this action for pre-event asset checklists, document-signing workflows, collecting updated ID copies, or cancellation-fee warning/escalation policies — use OWNER_INBOX, PUBLISH_DEVICE_INTENT, OWNER_CALENDAR, or LIFEOPS_COMPUTER_USE instead. " +
     "DO NOT use this action for browser/portal/file workflows on the owner's machine — use LIFEOPS_COMPUTER_USE instead. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action or fall back to advice-only chat when the user wants real LifeOps follow-through.",
   descriptionCompressed: "LifeOps: manage habits, goals, reminders, alarms, escalation. Create/edit/complete/snooze items. Query active status.",

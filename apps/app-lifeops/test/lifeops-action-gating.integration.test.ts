@@ -3,16 +3,15 @@
  *
  * Two invariants the agent relies on:
  *
- *   1. LifeOps actions (Gmail, calendar, etc.) are visible to the LLM in any
+ *   1. LifeOps umbrella actions (OWNER_INBOX, OWNER_CALENDAR, etc.) are visible to the LLM in any
  *      channel — no `gatePluginSessionForHostedApp` wrapper that hides them
  *      when the LifeOps UI isn't foregrounded. Previously the plugin wrapped
  *      every action's validate() to return false unless an AppManager run or
  *      dashboard overlay heartbeat existed, which meant Discord/Telegram users
- *      could not trigger Gmail at all.
+ *      could not trigger owner inbox/calendar work at all.
  *
- *   2. The three follow-up actions (LIST_OVERDUE_FOLLOWUPS, MARK_FOLLOWUP_DONE,
- *      SET_FOLLOWUP_THRESHOLD) enforce owner-only access. They previously had
- *      `validate: async () => true`, a gap now closed with `hasOwnerAccess`.
+ *   2. OWNER_RELATIONSHIP is the single registered entry point for the
+ *      follow-up surface, and it enforces owner-only access.
  *
  * Uses a real AgentRuntime with PGLite (plugin-sql) — no SQL mocks — so the
  * access helpers (`resolveCanonicalOwnerIdForMessage`, `checkSenderRole`) and
@@ -74,15 +73,15 @@ function findAction(name: string) {
 }
 
 describe("LifeOps plugin action gating", () => {
-  it("registers GMAIL_ACTION so the LLM can see it without a LifeOps UI session", async () => {
+  it("registers OWNER_INBOX so the LLM can see owner inbox/email work without a LifeOps UI session", async () => {
     // The previous `gatePluginSessionForHostedApp` wrapper made every action's
     // validate() return false unless an AppManager run or overlay heartbeat
     // existed for @elizaos/app-lifeops. Neither is set up in this test, so if
     // the wrapper were still in place validate() would return false here.
-    const gmail = findAction("GMAIL_ACTION");
+    const ownerInbox = findAction("OWNER_INBOX");
     const message = ownerMessage("what emails do i have that i need to respond to");
 
-    const result = await gmail.validate(runtime, message, emptyState);
+    const result = await ownerInbox.validate(runtime, message, emptyState);
 
     expect(result).toBe(true);
   });
@@ -91,25 +90,30 @@ describe("LifeOps plugin action gating", () => {
     const actionNames = (appLifeOpsPlugin.actions ?? []).map((a) => a.name);
     // Spot-check a mix of categories: email, calendar, inbox, scheduling, followups.
     for (const expected of [
-      "GMAIL_ACTION",
-      "CALENDAR_ACTION",
+      "OWNER_INBOX",
+      "OWNER_CALENDAR",
       "LIFE",
+      "OWNER_RELATIONSHIP",
+      "OWNER_SEND_MESSAGE",
+    ]) {
+      expect(actionNames).toContain(expected);
+    }
+
+    for (const removed of [
+      "GMAIL_ACTION",
       "INBOX",
+      "CALENDAR_ACTION",
       "SCHEDULING",
       "LIST_OVERDUE_FOLLOWUPS",
       "MARK_FOLLOWUP_DONE",
       "SET_FOLLOWUP_THRESHOLD",
     ]) {
-      expect(actionNames).toContain(expected);
+      expect(actionNames).not.toContain(removed);
     }
   });
 });
 
-describe.each([
-  "LIST_OVERDUE_FOLLOWUPS",
-  "MARK_FOLLOWUP_DONE",
-  "SET_FOLLOWUP_THRESHOLD",
-])("%s owner-only access gate", (actionName) => {
+describe.each(["OWNER_RELATIONSHIP"])("%s owner-only access gate", (actionName) => {
   it("validate() rejects non-owner senders", async () => {
     const action = findAction(actionName);
     const result = await action.validate(
