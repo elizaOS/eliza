@@ -63,9 +63,38 @@ export const LIFEOPS_WORKFLOW_RUN_STATUSES = [
 export type LifeOpsWorkflowRunStatus =
   (typeof LIFEOPS_WORKFLOW_RUN_STATUSES)[number];
 
-export const LIFEOPS_WORKFLOW_TRIGGER_TYPES = ["manual", "schedule"] as const;
+export const LIFEOPS_WORKFLOW_TRIGGER_TYPES = [
+  "manual",
+  "schedule",
+  "event",
+] as const;
 export type LifeOpsWorkflowTriggerType =
   (typeof LIFEOPS_WORKFLOW_TRIGGER_TYPES)[number];
+
+/**
+ * Registry of event kinds that can fire a LifeOps workflow.
+ *
+ * Each entry is a stable identifier ("namespace.subject.verb") emitted by a
+ * detector inside the engine. Adding a new entry means adding a detector that
+ * publishes matching occurrences to `runDueEventWorkflows`, and — optionally —
+ * a filter shape under {@link LifeOpsEventFilters}.
+ */
+export const LIFEOPS_EVENT_KINDS = ["calendar.event.ended"] as const;
+export type LifeOpsEventKind = (typeof LIFEOPS_EVENT_KINDS)[number];
+
+export interface LifeOpsCalendarEventEndedFilters {
+  /** Only fire for events on these calendar ids (e.g. "primary"). */
+  calendarIds?: string[];
+  /** Only fire when event title matches one of these case-insensitive substrings. */
+  titleIncludesAny?: string[];
+  /** Only fire when the event lasted at least this many minutes. */
+  minDurationMinutes?: number;
+  /** Only fire when one attendee email contains one of these substrings. */
+  attendeeEmailIncludesAny?: string[];
+}
+
+export type LifeOpsEventFilters =
+  | { kind: "calendar.event.ended"; filters?: LifeOpsCalendarEventEndedFilters };
 
 export const LIFEOPS_NEGOTIATION_STATES = [
   "initiated",
@@ -617,6 +646,11 @@ export type LifeOpsWorkflowSchedule =
       kind: "cron";
       cronExpression: string;
       timezone: string;
+    }
+  | {
+      kind: "event";
+      eventKind: LifeOpsEventKind;
+      filters?: LifeOpsEventFilters;
     };
 
 export interface LifeOpsWorkflowPermissionPolicy {

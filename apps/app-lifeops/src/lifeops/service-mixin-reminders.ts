@@ -3451,10 +3451,14 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         now: now.toISOString(),
         limit: workflowLimit,
       });
+      const eventWorkflowRuns = await (this as any).runDueEventWorkflows({
+        now: now.toISOString(),
+        limit: workflowLimit,
+      });
       return {
         now: now.toISOString(),
         reminderAttempts: reminderResult.attempts,
-        workflowRuns,
+        workflowRuns: [...workflowRuns, ...eventWorkflowRuns],
       };
     }
 

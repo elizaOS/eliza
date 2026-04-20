@@ -504,13 +504,13 @@ export function configureLocalEmbeddingPlugin(
     "GROQ_SMALL_MODEL",
     currentSharedSmallModel && !isLikelyOpenAiTextModel(currentSharedSmallModel)
       ? currentSharedSmallModel
-      : "llama-3.1-8b-instant",
+      : "openai/gpt-oss-20b",
   );
   setEnvIfMissing(
     "GROQ_LARGE_MODEL",
     currentSharedLargeModel && !isLikelyOpenAiTextModel(currentSharedLargeModel)
       ? currentSharedLargeModel
-      : "qwen/qwen3-32b",
+      : "openai/gpt-oss-120b",
   );
 
   logger.info(

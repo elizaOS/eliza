@@ -111,11 +111,11 @@ function applyProviderSettings(
 			runtime.setSetting("GROQ_API_KEY", process.env.GROQ_API_KEY ?? "", true);
 			runtime.setSetting(
 				"GROQ_SMALL_MODEL",
-				process.env.GROQ_SMALL_MODEL ?? "llama-3.1-8b-instant",
+				process.env.GROQ_SMALL_MODEL ?? "openai/gpt-oss-20b",
 			);
 			runtime.setSetting(
 				"GROQ_LARGE_MODEL",
-				process.env.GROQ_LARGE_MODEL ?? "llama-3.3-70b-versatile",
+				process.env.GROQ_LARGE_MODEL ?? "openai/gpt-oss-120b",
 			);
 			break;
 	}
