@@ -56,7 +56,7 @@ setup(
         "pandas>=3,<3.1",
         "flask~=3.1.3",
         "requests-toolbelt~=1.0.0",
-        "ag2~=0.9.7",
+        "ag2~=0.12.0",
         "lxml",
         "cssselect",
         "xmltodict",
