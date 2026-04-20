@@ -10,6 +10,7 @@ import type {
   LifeOpsOccurrenceView,
   LifeOpsOverview,
   LifeOpsOverviewSection,
+  LifeOpsScheduleInsight,
 } from "@elizaos/shared/contracts/lifeops";
 import {
   Bell,
@@ -900,6 +901,55 @@ function ReminderSection({
   );
 }
 
+function ScheduleSection({
+  schedule,
+}: {
+  schedule: LifeOpsScheduleInsight | null | undefined;
+}) {
+  if (!schedule) {
+    return null;
+  }
+
+  const sleepLine = schedule.isProbablySleeping
+    ? schedule.currentSleepStartedAt
+      ? `Likely asleep since ${formatDateTime(schedule.currentSleepStartedAt)}`
+      : "Likely asleep now"
+    : schedule.lastSleepEndedAt
+      ? `Last wake ${formatDateTime(schedule.lastSleepEndedAt)}${schedule.lastSleepDurationMinutes ? ` • ${schedule.lastSleepDurationMinutes}m asleep` : ""}`
+      : `Sleep ${humanize(schedule.sleepStatus)}`;
+  const mealLine =
+    schedule.nextMealLabel && schedule.nextMealWindowStartAt
+      ? `Next ${schedule.nextMealLabel} window ${formatDateTime(schedule.nextMealWindowStartAt)}`
+      : schedule.lastMealAt
+        ? `Last meal ${formatDateTime(schedule.lastMealAt)}`
+        : "Meal pattern calibrating";
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2 px-0.5">
+        <span className="text-muted">
+          <Moon className="h-3.5 w-3.5" />
+        </span>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+          Schedule
+        </span>
+        <Badge variant="secondary" className="text-[10px]">
+          {humanize(schedule.phase)}
+        </Badge>
+      </div>
+      <div className="rounded-lg border border-border/50 bg-bg/70 p-2">
+        <div className="text-xs font-semibold text-txt">{sleepLine}</div>
+        <div className="mt-1 text-xs text-muted">{mealLine}</div>
+        {schedule.nextMealLabel && schedule.nextMealConfidence > 0 ? (
+          <div className="mt-2 text-[11px] uppercase tracking-[0.08em] text-muted/80">
+            {Math.round(schedule.nextMealConfidence * 100)}% confidence
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function AgentOpsSection({
   section,
   actionState,
@@ -1295,6 +1345,7 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
               expandedGoalId={expandedGoalId}
               onReviewGoal={onReviewGoal}
             />
+            <ScheduleSection schedule={overview?.schedule} />
             <ReminderSection reminders={ownerSection?.reminders ?? []} />
             {agentOpsSection ? (
               <AgentOpsSection

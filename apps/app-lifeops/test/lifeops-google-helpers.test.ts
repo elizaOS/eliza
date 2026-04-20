@@ -60,6 +60,7 @@ function buildOverview(occurrences: LifeOpsOccurrenceView[]): LifeOpsOverview {
     goals: [],
     reminders: [],
     summary,
+    schedule: null,
     owner: {
       occurrences,
       goals: [],

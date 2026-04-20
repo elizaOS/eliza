@@ -166,6 +166,41 @@ export const lifeScreenTimeDaily = pgTable(
   (t) => [unique().on(t.agentId, t.source, t.identifier, t.date)],
 );
 
+export const lifeScheduleInsights = pgTable(
+  "life_schedule_insights",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    effectiveDayKey: text("effective_day_key").notNull(),
+    localDate: text("local_date").notNull(),
+    timezone: text("timezone").notNull(),
+    inferredAt: text("inferred_at").notNull(),
+    phase: text("phase").notNull(),
+    sleepStatus: text("sleep_status").notNull(),
+    isProbablySleeping: boolean("is_probably_sleeping").notNull().default(false),
+    sleepConfidence: real("sleep_confidence").notNull().default(0),
+    currentSleepStartedAt: text("current_sleep_started_at"),
+    lastSleepStartedAt: text("last_sleep_started_at"),
+    lastSleepEndedAt: text("last_sleep_ended_at"),
+    lastSleepDurationMinutes: integer("last_sleep_duration_minutes"),
+    typicalWakeHour: real("typical_wake_hour"),
+    typicalSleepHour: real("typical_sleep_hour"),
+    wakeAt: text("wake_at"),
+    firstActiveAt: text("first_active_at"),
+    lastActiveAt: text("last_active_at"),
+    lastMealAt: text("last_meal_at"),
+    nextMealLabel: text("next_meal_label"),
+    nextMealWindowStartAt: text("next_meal_window_start_at"),
+    nextMealWindowEndAt: text("next_meal_window_end_at"),
+    nextMealConfidence: real("next_meal_confidence").notNull().default(0),
+    mealsJson: text("meals_json").notNull().default("[]"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [unique().on(t.agentId, t.effectiveDayKey)],
+);
+
 export const lifeSchedulingNegotiations = pgTable(
   "life_scheduling_negotiations",
   {
@@ -258,6 +293,7 @@ export const lifeOpsSchema = {
   lifeXSyncStates,
   lifeScreenTimeSessions,
   lifeScreenTimeDaily,
+  lifeScheduleInsights,
   lifeActivityEvents,
   lifeSchedulingNegotiations,
   lifeSchedulingProposals,

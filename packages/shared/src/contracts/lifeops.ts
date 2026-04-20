@@ -1195,6 +1195,61 @@ export interface LifeOpsOverviewSummary {
   activeGoalCount: number;
 }
 
+export type LifeOpsSchedulePhase =
+  | "sleeping"
+  | "waking"
+  | "morning"
+  | "afternoon"
+  | "evening"
+  | "winding_down"
+  | "offline";
+
+export type LifeOpsScheduleSleepStatus =
+  | "sleeping_now"
+  | "slept"
+  | "likely_missed"
+  | "unknown";
+
+export type LifeOpsScheduleMealLabel = "breakfast" | "lunch" | "dinner";
+
+export type LifeOpsScheduleMealSource =
+  | "activity_gap"
+  | "expected_window"
+  | "health";
+
+export interface LifeOpsScheduleMealInsight {
+  label: LifeOpsScheduleMealLabel;
+  detectedAt: string;
+  confidence: number;
+  source: LifeOpsScheduleMealSource;
+}
+
+export interface LifeOpsScheduleInsight {
+  effectiveDayKey: string;
+  localDate: string;
+  timezone: string;
+  inferredAt: string;
+  phase: LifeOpsSchedulePhase;
+  sleepStatus: LifeOpsScheduleSleepStatus;
+  isProbablySleeping: boolean;
+  sleepConfidence: number;
+  currentSleepStartedAt: string | null;
+  lastSleepStartedAt: string | null;
+  lastSleepEndedAt: string | null;
+  lastSleepDurationMinutes: number | null;
+  typicalWakeHour: number | null;
+  typicalSleepHour: number | null;
+  wakeAt: string | null;
+  firstActiveAt: string | null;
+  lastActiveAt: string | null;
+  meals: LifeOpsScheduleMealInsight[];
+  lastMealAt: string | null;
+  nextMealLabel: LifeOpsScheduleMealLabel | null;
+  nextMealWindowStartAt: string | null;
+  nextMealWindowEndAt: string | null;
+  nextMealConfidence: number;
+}
+
 export interface LifeOpsOverviewSection {
   occurrences: LifeOpsOccurrenceView[];
   goals: LifeOpsGoalDefinition[];
@@ -1209,6 +1264,7 @@ export interface LifeOpsOverview {
   summary: LifeOpsOverviewSummary;
   owner: LifeOpsOverviewSection;
   agentOps: LifeOpsOverviewSection;
+  schedule: LifeOpsScheduleInsight | null;
 }
 
 export interface LifeOpsCalendarEventAttendee {

@@ -59,6 +59,7 @@ import {
 } from "./goal-grounding.js";
 import { evaluateGoalProgressWithLlm } from "./goal-semantic-evaluator.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
+import { refreshLifeOpsScheduleInsight } from "./schedule-insight.js";
 import { addMinutes } from "./time.js";
 import { getZonedDateParts } from "./time.js";
 import {
@@ -913,6 +914,13 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
     }
 
     async getOverview(now = new Date()): Promise<LifeOpsOverview> {
+      const schedule = await refreshLifeOpsScheduleInsight({
+        runtime: this.runtime,
+        repository: this.repository,
+        agentId: this.agentId(),
+        timezone: resolveDefaultTimeZone(),
+        now,
+      });
       const definitions = await this.repository.listActiveDefinitions(
         this.agentId(),
       );
@@ -1061,6 +1069,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
         summary: owner.summary,
         owner,
         agentOps,
+        schedule,
       };
     }
 

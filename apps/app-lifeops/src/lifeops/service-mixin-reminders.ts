@@ -52,8 +52,10 @@ import {
 import {
   computeAdaptiveWindowPolicy,
   windowPolicyMatchesDefaults,
+  resolveDefaultTimeZone,
 } from "./defaults.js";
 import { materializeDefinitionOccurrences } from "./engine.js";
+import { refreshLifeOpsScheduleInsight } from "./schedule-insight.js";
 import { computeDefinitionPerformance } from "./service-helpers-occurrence.js";
 import {
   createLifeOpsActivitySignal,
@@ -70,6 +72,7 @@ import {
   requireNonEmptyString,
 } from "./service-normalize.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type { ReminderActivityProfileSnapshot } from "./service-types.js";
 import { addMinutes } from "./time.js";
 import {
   readTwilioCredentialsFromEnv,
@@ -171,14 +174,6 @@ export function buildReminderEnforcementState(
 
 type RuntimeMessageTarget = Parameters<IAgentRuntime["sendMessageToTarget"]>[0];
 type ReminderAttemptLifecycle = "plan" | "escalation";
-type ReminderActivityProfileSnapshot = {
-  primaryPlatform: string | null;
-  secondaryPlatform: string | null;
-  lastSeenPlatform: string | null;
-  isCurrentlyActive: boolean;
-  /** Epoch ms when owner was last seen active across any platform. */
-  lastSeenAt: number | null;
-};
 
 type RuntimeOwnerContactResolution = {
   sourceOfTruth: "config" | "relationships" | "config+relationships";
@@ -1616,6 +1611,12 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
 
     public async readReminderActivityProfileSnapshot(): Promise<ReminderActivityProfileSnapshot | null> {
       try {
+        const schedule = await refreshLifeOpsScheduleInsight({
+          runtime: this.runtime,
+          repository: this.repository,
+          agentId: this.agentId(),
+          timezone: resolveDefaultTimeZone(),
+        });
         const tasks = await this.runtime.getTasks({
           agentIds: [this.runtime.agentId],
           tags: [...PROACTIVE_TASK_QUERY_TAGS],
@@ -1628,23 +1629,38 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             metadata.proactiveAgent.kind === "runtime_runner"
           );
         });
-        if (!proactiveTask || !isRecord(proactiveTask.metadata)) {
-          return null;
-        }
-        const profile = proactiveTask.metadata.activityProfile;
-        if (!isRecord(profile)) {
+        const profile =
+          proactiveTask && isRecord(proactiveTask.metadata)
+            ? proactiveTask.metadata.activityProfile
+            : null;
+        if (!isRecord(profile) && !schedule) {
           return null;
         }
         return {
           primaryPlatform:
-            normalizeOptionalString(profile.primaryPlatform) ?? null,
+            isRecord(profile)
+              ? (normalizeOptionalString(profile.primaryPlatform) ?? null)
+              : null,
           secondaryPlatform:
-            normalizeOptionalString(profile.secondaryPlatform) ?? null,
+            isRecord(profile)
+              ? (normalizeOptionalString(profile.secondaryPlatform) ?? null)
+              : null,
           lastSeenPlatform:
-            normalizeOptionalString(profile.lastSeenPlatform) ?? null,
-          isCurrentlyActive: profile.isCurrentlyActive === true,
+            isRecord(profile)
+              ? (normalizeOptionalString(profile.lastSeenPlatform) ?? null)
+              : null,
+          isCurrentlyActive: isRecord(profile) && profile.isCurrentlyActive === true,
           lastSeenAt:
-            typeof profile.lastSeenAt === "number" ? profile.lastSeenAt : null,
+            isRecord(profile) && typeof profile.lastSeenAt === "number"
+              ? profile.lastSeenAt
+              : (schedule?.lastActiveAt ? Date.parse(schedule.lastActiveAt) : null),
+          isProbablySleeping: schedule?.isProbablySleeping ?? false,
+          sleepConfidence: schedule?.sleepConfidence ?? 0,
+          schedulePhase: schedule?.phase ?? null,
+          lastSleepEndedAt: schedule?.lastSleepEndedAt ?? null,
+          nextMealLabel: schedule?.nextMealLabel ?? null,
+          nextMealWindowStartAt: schedule?.nextMealWindowStartAt ?? null,
+          nextMealWindowEndAt: schedule?.nextMealWindowEndAt ?? null,
         };
       } catch (error) {
         this.logLifeOpsWarn(
@@ -2480,6 +2496,14 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       ) {
         outcome = "blocked_urgency";
         deliveryMetadata.reason = "urgency_gate";
+      } else if (
+        args.activityProfile?.isProbablySleeping
+      ) {
+        outcome = "blocked_quiet_hours";
+        deliveryMetadata.reason = "probable_sleep";
+        deliveryMetadata.sleepConfidence =
+          args.activityProfile.sleepConfidence;
+        deliveryMetadata.schedulePhase = args.activityProfile.schedulePhase;
       } else if (
         args.channel !== "in_app" &&
         isWithinQuietHours({
