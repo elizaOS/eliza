@@ -33,7 +33,7 @@ jobs:
       matrix: ${{ steps.discover.outputs.matrix }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Discover Python packages
         id: discover
@@ -91,13 +91,13 @@ jobs:
 
       - name: Checkout code
         if: steps.check.outputs.should_build == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
         if: steps.check.outputs.should_build == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.14"
 
       - name: Install build dependencies
         if: steps.check.outputs.should_build == 'true'

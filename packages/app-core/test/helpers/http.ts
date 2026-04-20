@@ -36,9 +36,7 @@ export function req(
   method: string,
   path: string,
   body?: Record<string, unknown> | string,
-  headersOrContentType?:
-    | Record<string, string>
-    | string,
+  headersOrContentType?: Record<string, string> | string,
   options?: HttpRequestOptions,
 ): Promise<HttpResponse> {
   return new Promise((resolve, reject) => {
@@ -117,9 +115,7 @@ export function req(
 export async function createConversation(
   port: number,
   options?: { title?: string; includeGreeting?: boolean; lang?: string },
-  headersOrContentType?:
-    | Record<string, string>
-    | string,
+  headersOrContentType?: Record<string, string> | string,
   requestOptions?: HttpRequestOptions,
 ): Promise<HttpResponse & { conversationId: string }> {
   const response = await req(
@@ -140,9 +136,7 @@ export function postConversationMessage(
   port: number,
   conversationId: string,
   body?: Record<string, unknown> | string,
-  headersOrContentType?:
-    | Record<string, string>
-    | string,
+  headersOrContentType?: Record<string, string> | string,
   requestOptions?: HttpRequestOptions,
 ): Promise<HttpResponse> {
   return req(

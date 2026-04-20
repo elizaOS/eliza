@@ -6,7 +6,7 @@
  * @module actions/stream-control
  */
 
-import type { Action } from "@elizaos/core";
+import type { Action, ActionExample } from "@elizaos/core";
 import { hasOwnerAccess } from "../security/access.js";
 import { hasContextSignalSyncForKey } from "./context-signal.js";
 
@@ -82,6 +82,36 @@ export const goLiveAction: Action = {
     }
   },
   parameters: [],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Let's start the stream now.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Stream is now live!",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Kick off the broadcast for tonight's session.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Stream is now live!",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 // ---------------------------------------------------------------------------
@@ -90,8 +120,19 @@ export const goLiveAction: Action = {
 
 export const goOfflineAction: Action = {
   name: "GO_OFFLINE",
-  similes: ["STOP_STREAM", "END_STREAM", "END_BROADCAST", "STOP_BROADCASTING"],
-  description: "Stop the live stream and go offline.",
+  similes: [
+    "STOP_STREAM",
+    "END_STREAM",
+    "END_BROADCAST",
+    "STOP_BROADCASTING",
+    "SHUT_DOWN_STREAM",
+    "TAKE_OFFLINE",
+  ],
+  description:
+    "Stop any active live stream and take the agent offline. Use this when the " +
+    "owner says 'go offline', 'end the stream', 'stop streaming', or 'shut down " +
+    "the broadcast'. The paired action GO_LIVE starts a new stream; this one " +
+    "tears it down and releases the capture and RTMP resources.",
   validate: async (runtime, message, state) => {
     if (!(await hasOwnerAccess(runtime, message))) return false;
     return hasContextSignalSyncForKey(message, state, "stream_control");
@@ -122,4 +163,34 @@ export const goOfflineAction: Action = {
     }
   },
   parameters: [],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Wrap it up — we're done for today.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Stream stopped. Now offline.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Take us offline, please.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Stream stopped. Now offline.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

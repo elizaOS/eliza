@@ -4,10 +4,6 @@
  * Safety-first scope:
  * - No execution/signing here.
  * - Validate wallet/rpc/chain/gas/token before producing a quote.
- *
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/api/bsc-trade`.
- * New development should target the app-steward package.
  */
 
 import { logger } from "@elizaos/core";

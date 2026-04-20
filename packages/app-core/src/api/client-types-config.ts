@@ -4,6 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import type { ReleaseChannel } from "@elizaos/agent/contracts/config";
+import type { ConversationScope } from "@elizaos/agent/api/server-types";
 import type {
   CreateTriggerRequest as _CreateTriggerRequest,
   TriggerHealthSnapshot as _TriggerHealthSnapshot,
@@ -11,10 +12,6 @@ import type {
   TriggerSummary as _TriggerSummary,
   UpdateTriggerRequest as _UpdateTriggerRequest,
 } from "@elizaos/agent/triggers/types";
-import type {
-  LifeOpsOccurrenceView,
-  LifeOpsOverview,
-} from "@elizaos/shared/contracts/lifeops";
 import type { MessageExampleContent } from "@elizaos/shared/contracts/onboarding";
 import type { ConfigUiHint } from "../types";
 
@@ -439,7 +436,6 @@ export interface WorkbenchOverview {
   tasks: WorkbenchTask[];
   triggers: TriggerSummary[];
   todos: WorkbenchTodo[];
-  lifeops?: LifeOpsOverview;
   autonomy?: {
     enabled: boolean;
     thinking: boolean;
@@ -447,9 +443,100 @@ export interface WorkbenchOverview {
   };
 }
 
-export interface LifeOpsOccurrenceActionResult {
-  occurrence: LifeOpsOccurrenceView;
+export type AutomationType = "coordinator_text" | "n8n_workflow";
+export type AutomationSource =
+  | "workbench_task"
+  | "trigger"
+  | "n8n_workflow"
+  | "workflow_draft"
+  | "workflow_shadow";
+export type AutomationStatus =
+  | "active"
+  | "paused"
+  | "completed"
+  | "draft"
+  | "system";
+export type AutomationNodeClass =
+  | "trigger"
+  | "action"
+  | "context"
+  | "integration"
+  | "agent"
+  | "flow-control";
+
+export interface AutomationRoomBinding {
+  conversationId: string | null;
+  roomId: string;
+  scope: ConversationScope;
+  sourceConversationId?: string;
+  terminalBridgeConversationId?: string;
 }
+
+export interface AutomationItem {
+  id: string;
+  type: AutomationType;
+  source: AutomationSource;
+  title: string;
+  description: string;
+  status: AutomationStatus;
+  enabled: boolean;
+  system: boolean;
+  isDraft: boolean;
+  hasBackingWorkflow: boolean;
+  updatedAt: string | null;
+  taskId?: string;
+  triggerId?: string;
+  workflowId?: string;
+  draftId?: string;
+  task?: WorkbenchTask;
+  trigger?: TriggerSummary;
+  workflow?: import("./client-types-chat").N8nWorkflow;
+  schedules: TriggerSummary[];
+  room?: AutomationRoomBinding | null;
+}
+
+export interface AutomationSummary {
+  total: number;
+  coordinatorCount: number;
+  workflowCount: number;
+  scheduledCount: number;
+  draftCount: number;
+}
+
+export interface AutomationListResponse {
+  automations: AutomationItem[];
+  summary: AutomationSummary;
+  n8nStatus: import("./client-types-chat").N8nStatusResponse | null;
+  workflowFetchError: string | null;
+}
+
+export interface AutomationNodeDescriptor {
+  id: string;
+  label: string;
+  description: string;
+  class: AutomationNodeClass;
+  source:
+    | "runtime_action"
+    | "runtime_provider"
+    | "lifeops"
+    | "lifeops_event";
+  backingCapability: string;
+  ownerScoped: boolean;
+  requiresSetup: boolean;
+  availability: "enabled" | "disabled";
+  disabledReason?: string;
+}
+
+export interface AutomationNodeCatalogResponse {
+  nodes: AutomationNodeDescriptor[];
+  summary: {
+    total: number;
+    enabled: number;
+    disabled: number;
+  };
+}
+
+export type { LifeOpsOccurrenceActionResult } from "@elizaos/shared/contracts/lifeops";
 
 // Voice / TTS config
 export type VoiceProvider = "elevenlabs" | "simple-voice" | "edge";

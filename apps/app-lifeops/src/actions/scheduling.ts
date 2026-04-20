@@ -1,0 +1,1205 @@
+/**
+ * LifeOps scheduling-with-others actions.
+ *
+ * Adds three actions on top of the existing CALENDAR_ACTION CRUD path:
+ *
+ *  - PROPOSE_MEETING_TIMES: reads the owner's busy calendar + meeting
+ *    preferences (preferred hours, blackout windows, travel buffer) and
+ *    returns candidate slots that can be offered to another party.
+ *  - CHECK_AVAILABILITY: given an ISO start/end window, reports whether
+ *    the owner is free or busy and lists overlapping events.
+ *  - UPDATE_MEETING_PREFERENCES: persist the owner's preferred meeting
+ *    hours, blackout windows, and travel buffer to the LifeOps profile
+ *    (stored alongside the existing owner profile in scheduler task
+ *    metadata — no new table).
+ */
+
+import type {
+  Action,
+  ActionExample,
+  ActionResult,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
+import {
+  ModelType,
+  parseJSONObjectFromText,
+  parseKeyValueXml,
+} from "@elizaos/core";
+import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
+import { hasAdminAccess } from "@elizaos/agent/security";
+import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
+import {
+  LifeOpsService,
+  LifeOpsServiceError,
+} from "../lifeops/service.js";
+import {
+  normalizeLifeOpsMeetingPreferencesPatch,
+  readLifeOpsMeetingPreferences,
+  updateLifeOpsMeetingPreferences,
+  type LifeOpsMeetingPreferences,
+  type LifeOpsMeetingPreferencesBlackout,
+  type LifeOpsMeetingPreferencesPatch,
+} from "../lifeops/owner-profile.js";
+import { getZonedDateParts } from "../lifeops/time.js";
+import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
+
+const MS_PER_MINUTE = 60_000;
+const MAX_DAYS_LOOKAHEAD = 60;
+const DEFAULT_DAYS_LOOKAHEAD = 7;
+const DEFAULT_SLOTS_COUNT = 3;
+const SLOT_STEP_MINUTES = 15;
+
+export type ProposedMeetingSlot = {
+  startAt: string;
+  endAt: string;
+  durationMinutes: number;
+  localStart: string;
+  localEnd: string;
+  timeZone: string;
+};
+
+export type ProposeMeetingTimesParameters = {
+  durationMinutes?: number;
+  daysAhead?: number;
+  slotCount?: number;
+  windowStart?: string;
+  windowEnd?: string;
+};
+
+export type CheckAvailabilityParameters = {
+  startAt?: string;
+  endAt?: string;
+};
+
+function parseTimeOfDayToMinutes(value: string): number {
+  const [h, m] = value.split(":");
+  return Number(h) * 60 + Number(m);
+}
+
+function formatLocalForDisplay(iso: string, timeZone: string): string {
+  const date = new Date(iso);
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+  }).format(date);
+}
+
+function dayOfWeekInTz(date: Date, timeZone: string): number {
+  // Compute the local Y/M/D in the target IANA zone, then derive day-of-week
+  // from a UTC anchor. Avoids any reliance on locale-specific weekday strings.
+  const parts = getZonedDateParts(date, timeZone);
+  return new Date(
+    Date.UTC(parts.year, Math.max(0, parts.month - 1), parts.day, 12, 0, 0),
+  ).getUTCDay();
+}
+
+function buildBusyIntervals(
+  events: readonly LifeOpsCalendarEvent[],
+  travelBufferMinutes: number,
+): Array<{ start: number; end: number }> {
+  const bufferMs = travelBufferMinutes * MS_PER_MINUTE;
+  const intervals = events
+    .filter((e) => e.status !== "cancelled")
+    .map((e) => ({
+      start: Date.parse(e.startAt) - bufferMs,
+      end: Date.parse(e.endAt) + bufferMs,
+    }))
+    .filter((i) => Number.isFinite(i.start) && Number.isFinite(i.end))
+    .sort((a, b) => a.start - b.start);
+
+  const merged: Array<{ start: number; end: number }> = [];
+  for (const interval of intervals) {
+    const last = merged[merged.length - 1];
+    if (last && interval.start <= last.end) {
+      last.end = Math.max(last.end, interval.end);
+    } else {
+      merged.push({ ...interval });
+    }
+  }
+  return merged;
+}
+
+function overlapsBusy(
+  slotStart: number,
+  slotEnd: number,
+  busy: Array<{ start: number; end: number }>,
+): boolean {
+  for (const interval of busy) {
+    if (slotStart < interval.end && slotEnd > interval.start) return true;
+  }
+  return false;
+}
+
+function getZonedMinuteOfDay(date: Date, timeZone: string): number {
+  const parts = getZonedDateParts(date, timeZone);
+  return parts.hour * 60 + parts.minute;
+}
+
+function overlapsBlackout(
+  slotStart: Date,
+  slotEnd: Date,
+  timeZone: string,
+  blackouts: readonly LifeOpsMeetingPreferencesBlackout[],
+): boolean {
+  if (blackouts.length === 0) return false;
+  const slotStartMin = getZonedMinuteOfDay(slotStart, timeZone);
+  const slotEndMin = getZonedMinuteOfDay(slotEnd, timeZone);
+  const dow = dayOfWeekInTz(slotStart, timeZone);
+
+  for (const window of blackouts) {
+    if (window.daysOfWeek && window.daysOfWeek.length > 0) {
+      if (!window.daysOfWeek.includes(dow)) continue;
+    }
+    const bStart = parseTimeOfDayToMinutes(window.startLocal);
+    const bEnd = parseTimeOfDayToMinutes(window.endLocal);
+    if (slotStartMin < bEnd && slotEndMin > bStart) return true;
+  }
+  return false;
+}
+
+function endOfLocalDayMs(date: Date, timeZone: string): number {
+  const parts = getZonedDateParts(date, timeZone);
+  const remainingMinutes = 24 * 60 - (parts.hour * 60 + parts.minute);
+  return date.getTime() + remainingMinutes * MS_PER_MINUTE;
+}
+
+export function computeProposedSlots(args: {
+  now: Date;
+  windowStart: Date;
+  windowEnd: Date;
+  durationMinutes: number;
+  slotCount: number;
+  preferences: LifeOpsMeetingPreferences;
+  events: readonly LifeOpsCalendarEvent[];
+}): ProposedMeetingSlot[] {
+  const {
+    now,
+    windowStart,
+    windowEnd,
+    durationMinutes,
+    slotCount,
+    preferences,
+    events,
+  } = args;
+  const tz = preferences.timeZone;
+  const busy = buildBusyIntervals(events, preferences.travelBufferMinutes);
+
+  const preferredStart = parseTimeOfDayToMinutes(preferences.preferredStartLocal);
+  const preferredEnd = parseTimeOfDayToMinutes(preferences.preferredEndLocal);
+
+  const results: ProposedMeetingSlot[] = [];
+  const seenDays = new Set<string>();
+
+  const step = SLOT_STEP_MINUTES * MS_PER_MINUTE;
+  const cursor =
+    Math.ceil(Math.max(windowStart.getTime(), now.getTime()) / step) * step;
+  const endMs = windowEnd.getTime();
+  const durationMs = durationMinutes * MS_PER_MINUTE;
+
+  for (let pass = 0; pass < 2 && results.length < slotCount; pass++) {
+    const onePerDay = pass === 0;
+    let t = cursor;
+    while (t + durationMs <= endMs && results.length < slotCount) {
+      const slotStart = new Date(t);
+      const slotEnd = new Date(t + durationMs);
+
+      const slotStartMin = getZonedMinuteOfDay(slotStart, tz);
+      const slotEndMin = getZonedMinuteOfDay(slotEnd, tz);
+      const parts = getZonedDateParts(slotStart, tz);
+      const endParts = getZonedDateParts(slotEnd, tz);
+      const sameLocalDay =
+        parts.year === endParts.year &&
+        parts.month === endParts.month &&
+        parts.day === endParts.day;
+      const withinPreferred =
+        sameLocalDay &&
+        slotStartMin >= preferredStart &&
+        slotEndMin <= preferredEnd;
+
+      if (
+        withinPreferred &&
+        !overlapsBusy(slotStart.getTime(), slotEnd.getTime(), busy) &&
+        !overlapsBlackout(slotStart, slotEnd, tz, preferences.blackoutWindows)
+      ) {
+        const dayKey = `${parts.year}-${parts.month}-${parts.day}`;
+        if (!onePerDay || !seenDays.has(dayKey)) {
+          seenDays.add(dayKey);
+          results.push({
+            startAt: slotStart.toISOString(),
+            endAt: slotEnd.toISOString(),
+            durationMinutes,
+            localStart: formatLocalForDisplay(slotStart.toISOString(), tz),
+            localEnd: formatLocalForDisplay(slotEnd.toISOString(), tz),
+            timeZone: tz,
+          });
+          if (onePerDay) {
+            t = endOfLocalDayMs(slotStart, tz);
+            continue;
+          }
+        }
+      }
+      t += step;
+    }
+  }
+
+  return results;
+}
+
+function formatSlotsText(slots: readonly ProposedMeetingSlot[]): string {
+  if (slots.length === 0) {
+    return "I couldn't find any open slots matching your preferences in that window.";
+  }
+  const lines = slots.map(
+    (slot, idx) =>
+      `${idx + 1}. ${slot.localStart} – ${slot.localEnd} (${slot.durationMinutes} min)`,
+  );
+  return `Here ${slots.length === 1 ? "is an available option" : `are ${slots.length} options`} you can offer:\n${lines.join("\n")}`;
+}
+
+function parseOptionalIso(value: unknown): Date | null {
+  if (typeof value !== "string") return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getParams<T>(options: HandlerOptions | undefined): Partial<T> {
+  const params = (options as HandlerOptions | undefined)?.parameters as
+    | Partial<T>
+    | undefined;
+  return params ?? {};
+}
+
+async function denyIfNoAccess(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<boolean> {
+  return !(await hasLifeOpsAccess(runtime, message));
+}
+
+export const proposeMeetingTimesAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
+  name: "PROPOSE_MEETING_TIMES",
+  similes: [
+    "SUGGEST_MEETING_TIMES",
+    "OFFER_MEETING_SLOTS",
+    "FIND_MEETING_SLOTS",
+    "PROPOSE_SLOTS",
+    "BUNDLE_MEETINGS_WHILE_TRAVELING",
+  ],
+  tags: [
+    "meeting slots",
+    "reschedule options",
+  ],
+  description:
+    "Propose concrete meeting time slots to offer to another person. This is " +
+    "the dedicated action for any 'propose N times', 'suggest N slots', " +
+    "'offer three times', 'find me three slots', 'give me a few times' request " +
+    "targeted at another person or team. It reads the owner's calendar busy " +
+    "times and meeting preferences (preferred hours, blackout windows, travel " +
+    "buffer) and returns three available slots by default over the next seven " +
+    "days. Also correct for bundled scheduling while traveling or concrete " +
+    "reschedule options. " +
+    "STRONG POSITIVE TRIGGERS — route HERE, not to CALENDAR_ACTION or SCHEDULING: " +
+    "'propose three times for a sync with <person>', 'suggest a few times for " +
+    "<person>', 'offer Marco three 30-minute slots', 'find us three options " +
+    "next week', 'give me slots to send <person>'. " +
+    "DO NOT use this for small talk, weather, or vague conversation. " +
+    "DO NOT use this to check the owner's calendar, create a calendar event, " +
+    "or view upcoming events — that is CALENDAR_ACTION. " +
+    "DO NOT use this to start a multi-turn scheduling negotiation record — " +
+    "that is SCHEDULING (subaction: start). This action just generates the " +
+    "candidate slots; SCHEDULING tracks the negotiation lifecycle around them.",
+  suppressPostActionContinuation: true,
+  validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
+  handler: async (runtime, message, _state, options, callback) => {
+    if (await denyIfNoAccess(runtime, message)) {
+      const text =
+        "Scheduling actions are restricted to the owner and authorized users.";
+      await callback?.({ text });
+      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+    }
+
+    const params = getParams<ProposeMeetingTimesParameters>(options);
+    const preferences = await readLifeOpsMeetingPreferences(runtime);
+    const durationMinutes =
+      typeof params.durationMinutes === "number" &&
+      params.durationMinutes >= 5 &&
+      params.durationMinutes <= 480
+        ? Math.floor(params.durationMinutes)
+        : preferences.defaultDurationMinutes;
+    const slotCount =
+      typeof params.slotCount === "number" &&
+      params.slotCount >= 1 &&
+      params.slotCount <= 10
+        ? Math.floor(params.slotCount)
+        : DEFAULT_SLOTS_COUNT;
+    const daysAhead =
+      typeof params.daysAhead === "number" &&
+      params.daysAhead >= 1 &&
+      params.daysAhead <= MAX_DAYS_LOOKAHEAD
+        ? Math.floor(params.daysAhead)
+        : DEFAULT_DAYS_LOOKAHEAD;
+
+    const now = new Date();
+    const explicitStart = parseOptionalIso(params.windowStart);
+    const explicitEnd = parseOptionalIso(params.windowEnd);
+    const windowStart = explicitStart ?? now;
+    const windowEnd =
+      explicitEnd ??
+      new Date(windowStart.getTime() + daysAhead * 24 * 60 * 60_000);
+
+    const service = new LifeOpsService(runtime);
+    let events: readonly LifeOpsCalendarEvent[] = [];
+    try {
+      const feed = await service.getCalendarFeed(INTERNAL_URL, {
+        timeMin: windowStart.toISOString(),
+        timeMax: windowEnd.toISOString(),
+        timeZone: preferences.timeZone,
+      });
+      events = feed.events;
+    } catch (error) {
+      if (error instanceof LifeOpsServiceError) {
+        const text =
+          error.status === 403
+            ? "I can't propose times yet — Google Calendar isn't connected. Connect your calendar and try again."
+            : `I couldn't read your calendar (${error.message}).`;
+        await callback?.({ text });
+        return {
+          text,
+          success: false,
+          data: {
+            error: "CALENDAR_UNAVAILABLE",
+            status: error.status,
+            detail: error.message,
+          },
+        };
+      }
+      throw error;
+    }
+
+    const slots = computeProposedSlots({
+      now,
+      windowStart,
+      windowEnd,
+      durationMinutes,
+      slotCount,
+      preferences,
+      events,
+    });
+
+    const text = formatSlotsText(slots);
+    await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
+    return {
+      text,
+      success: true,
+      data: {
+        slots,
+        durationMinutes,
+        windowStart: windowStart.toISOString(),
+        windowEnd: windowEnd.toISOString(),
+        timeZone: preferences.timeZone,
+        preferences,
+      },
+    };
+  },
+  parameters: [
+    {
+      name: "durationMinutes",
+      description:
+        "Meeting length in minutes. Defaults to the owner's configured default duration.",
+      schema: { type: "number" as const },
+    },
+    {
+      name: "daysAhead",
+      description:
+        "Number of days ahead to search. Defaults to 7. Ignored when windowStart/windowEnd are supplied.",
+      schema: { type: "number" as const },
+    },
+    {
+      name: "slotCount",
+      description: "Number of candidate slots to return. Defaults to 3.",
+      schema: { type: "number" as const },
+    },
+    {
+      name: "windowStart",
+      description: "Optional ISO-8601 earliest start for the search window.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "windowEnd",
+      description: "Optional ISO-8601 latest end for the search window.",
+      schema: { type: "string" as const },
+    },
+  ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "While I'm traveling, try to bundle meetings with PendingReality and Ryan on the same day if possible.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll propose bundled meeting slots that cluster those meetings together while you're traveling.",
+        },
+      },
+    ],
+  ],
+};
+
+export const checkAvailabilityAction: Action = {
+  name: "CHECK_AVAILABILITY",
+  similes: ["AM_I_FREE", "AVAILABILITY_CHECK", "FREE_BUSY"],
+  description:
+    "Check whether the owner is free or busy across a specific ISO-8601 " +
+    "time window. Returns a free/busy summary and any overlapping events.",
+  validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
+  handler: async (runtime, message, _state, options, callback) => {
+    if (await denyIfNoAccess(runtime, message)) {
+      const text =
+        "Scheduling actions are restricted to the owner and authorized users.";
+      await callback?.({ text });
+      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+    }
+
+    const params = getParams<CheckAvailabilityParameters>(options);
+    const windowStart = parseOptionalIso(params.startAt);
+    const windowEnd = parseOptionalIso(params.endAt);
+    if (!windowStart || !windowEnd || windowEnd <= windowStart) {
+      const text =
+        "I need a valid ISO start and end time to check availability (end must be after start).";
+      await callback?.({ text });
+      return { text, success: false, data: { error: "INVALID_WINDOW" } };
+    }
+
+    const preferences = await readLifeOpsMeetingPreferences(runtime);
+    const service = new LifeOpsService(runtime);
+    let events: readonly LifeOpsCalendarEvent[] = [];
+    try {
+      const feed = await service.getCalendarFeed(INTERNAL_URL, {
+        timeMin: windowStart.toISOString(),
+        timeMax: windowEnd.toISOString(),
+        timeZone: preferences.timeZone,
+      });
+      events = feed.events;
+    } catch (error) {
+      if (error instanceof LifeOpsServiceError) {
+        const text =
+          error.status === 403
+            ? "I can't check availability — Google Calendar isn't connected."
+            : `I couldn't read your calendar (${error.message}).`;
+        await callback?.({ text });
+        return {
+          text,
+          success: false,
+          data: {
+            error: "CALENDAR_UNAVAILABLE",
+            status: error.status,
+            detail: error.message,
+          },
+        };
+      }
+      throw error;
+    }
+
+    const windowStartMs = windowStart.getTime();
+    const windowEndMs = windowEnd.getTime();
+    const conflicts = events.filter((event) => {
+      const s = Date.parse(event.startAt);
+      const e = Date.parse(event.endAt);
+      return s < windowEndMs && e > windowStartMs;
+    });
+
+    const isFree = conflicts.length === 0;
+    const text = isFree
+      ? `You're free from ${formatLocalForDisplay(windowStart.toISOString(), preferences.timeZone)} to ${formatLocalForDisplay(windowEnd.toISOString(), preferences.timeZone)}.`
+      : `You have ${conflicts.length} conflict${conflicts.length === 1 ? "" : "s"} in that window: ${conflicts.map((c) => c.title || "Untitled").join(", ")}.`;
+
+    await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
+    return {
+      text,
+      success: true,
+      data: {
+        isFree,
+        windowStart: windowStart.toISOString(),
+        windowEnd: windowEnd.toISOString(),
+        conflicts: conflicts.map((c) => ({
+          id: c.id,
+          title: c.title,
+          startAt: c.startAt,
+          endAt: c.endAt,
+        })),
+        timeZone: preferences.timeZone,
+      },
+    };
+  },
+  parameters: [
+    {
+      name: "startAt",
+      description: "ISO-8601 start of the window to check.",
+      required: true,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "endAt",
+      description: "ISO-8601 end of the window to check.",
+      required: true,
+      schema: { type: "string" as const },
+    },
+  ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Am I free tomorrow between 2pm and 4pm?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "You're free from Tue, Apr 20, 2:00 PM to Tue, Apr 20, 4:00 PM.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Do I have anything on my calendar Friday afternoon?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "You have 1 conflict in that window: Design review with the team.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
+};
+
+export const updateMeetingPreferencesAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
+  name: "UPDATE_MEETING_PREFERENCES",
+  similes: [
+    "SET_MEETING_PREFERENCES",
+    "SAVE_MEETING_PREFERENCES",
+    "SET_PREFERRED_TIMES",
+    "SET_BLACKOUT_WINDOWS",
+    "SLEEP_WINDOW",
+    "NO_CALL_HOURS",
+    "PROTECT_SLEEP",
+  ],
+  tags: [
+    "always-include",
+    "sleep window",
+    "no-call hours",
+    "protected hours",
+    "blackout window",
+  ],
+  description:
+    "Persist the owner's meeting scheduling preferences: preferred start/end " +
+    "of day (24h HH:MM local), blackout windows, default meeting duration, " +
+    "and travel buffer. These drive PROPOSE_MEETING_TIMES. Use this for durable " +
+    "sleep windows, no-call hours, and other recurring scheduling rules.",
+  suppressPostActionContinuation: true,
+  validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
+  handler: async (runtime, message, _state, options, callback) => {
+    if (await denyIfNoAccess(runtime, message)) {
+      const text =
+        "Scheduling actions are restricted to the owner and authorized users.";
+      await callback?.({ text });
+      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+    }
+
+    const params = getParams<Record<string, unknown>>(options);
+    const patch: LifeOpsMeetingPreferencesPatch =
+      normalizeLifeOpsMeetingPreferencesPatch(params);
+
+    if (Object.keys(patch).length === 0) {
+      const text =
+        "No valid preference fields were provided. Supply preferredStartLocal/preferredEndLocal as HH:MM, numeric defaultDurationMinutes/travelBufferMinutes, or a blackoutWindows array.";
+      await callback?.({ text });
+      return { text, success: false, data: { error: "NO_FIELDS" } };
+    }
+
+    const updated = await updateLifeOpsMeetingPreferences(runtime, patch);
+    if (!updated) {
+      const text = "Could not persist meeting preferences.";
+      await callback?.({ text });
+      return {
+        text,
+        success: false,
+        data: { error: "PREFERENCES_UPDATE_FAILED" },
+      };
+    }
+
+    const text = `Updated meeting preferences (${updated.preferredStartLocal}–${updated.preferredEndLocal} ${updated.timeZone}, default ${updated.defaultDurationMinutes} min, travel buffer ${updated.travelBufferMinutes} min, ${updated.blackoutWindows.length} blackout window${updated.blackoutWindows.length === 1 ? "" : "s"}).`;
+    await callback?.({
+      text,
+      source: "action",
+      action: "OWNER_CALENDAR",
+    });
+    return {
+      text,
+      success: true,
+      data: { preferences: updated, updatedFields: Object.keys(patch) },
+    };
+  },
+  parameters: [
+    {
+      name: "timeZone",
+      description: "IANA time zone used to interpret preferred hours.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "preferredStartLocal",
+      description:
+        "Earliest preferred meeting start time-of-day (local HH:MM, 24h).",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "preferredEndLocal",
+      description:
+        "Latest preferred meeting end time-of-day (local HH:MM, 24h).",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "defaultDurationMinutes",
+      description: "Default meeting duration in minutes (5–480).",
+      schema: { type: "number" as const },
+    },
+    {
+      name: "travelBufferMinutes",
+      description: "Minutes to reserve before/after each meeting (0–240).",
+      schema: { type: "number" as const },
+    },
+    {
+      name: "blackoutWindows",
+      description:
+        "Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
+      schema: { type: "array" as const },
+    },
+  ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "No calls between 11pm and 8am unless I explicitly say it's okay.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Updated your meeting preferences to block calls from 11:00 PM to 8:00 AM unless you override it.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Keep my mornings protected for deep work and don't schedule meetings before 10am.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Stored your meeting preferences so mornings stay protected and meetings start at 10:00 AM or later.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
+};
+
+// ── Multi-turn scheduling negotiation action ─────────────────────────────
+
+type SchedulingSubaction =
+  | "start"
+  | "propose"
+  | "respond"
+  | "finalize"
+  | "cancel"
+  | "list_active"
+  | "list_proposals";
+
+type SchedulingActionParameters = {
+  subaction?: SchedulingSubaction;
+  intent?: string;
+  negotiationId?: string;
+  proposalId?: string;
+  subject?: string;
+  startAt?: string;
+  endAt?: string;
+  durationMinutes?: number;
+  response?: "accepted" | "declined" | "expired";
+  confirmed?: boolean;
+  relationshipId?: string;
+  timezone?: string;
+  proposedBy?: "agent" | "owner" | "counterparty";
+  reason?: string;
+};
+
+type SchedulingLlmPlan = {
+  subaction: SchedulingSubaction | null;
+  shouldAct?: boolean | null;
+  response?: string;
+};
+
+function normalizeSchedulingSubaction(
+  value: unknown,
+): SchedulingSubaction | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  switch (normalized) {
+    case "start":
+    case "propose":
+    case "respond":
+    case "finalize":
+    case "cancel":
+    case "list_active":
+    case "list_proposals":
+      return normalized;
+    default:
+      return null;
+  }
+}
+
+function normalizeShouldAct(value: unknown): boolean | null {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") {
+      return true;
+    }
+    if (normalized === "false") {
+      return false;
+    }
+  }
+  return null;
+}
+
+function normalizePlannerResponse(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+async function resolveSchedulingPlanWithLlm(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+  intent: string;
+  params: SchedulingActionParameters;
+}): Promise<SchedulingLlmPlan> {
+  const recentConversation = (
+    await collectRecentConversationTexts({
+      runtime: args.runtime,
+      message: args.message,
+      state: args.state,
+      limit: 8,
+    })
+  ).join("\n");
+  const currentMessage =
+    typeof args.message.content?.text === "string" ? args.message.content.text : "";
+  const prompt = [
+    "Plan the scheduling negotiation action for this request.",
+    "The user may speak in any language.",
+    "Use the current request, the structured parameters, and recent conversation context.",
+    "Return a JSON object with exactly these fields:",
+    "  subaction: one of start, propose, respond, finalize, cancel, list_active, list_proposals, or null",
+    "  shouldAct: boolean",
+    "  response: short natural-language reply when shouldAct is false or clarification is needed",
+    "",
+    "Use start when beginning a new negotiation.",
+    "Use propose when submitting a concrete proposed slot for an existing negotiation.",
+    "Use respond when recording accepted, declined, or expired against a proposal.",
+    "Use finalize when confirming the winning proposal.",
+    "Use cancel when stopping an active negotiation.",
+    "Use list_active for listing negotiations.",
+    "Use list_proposals for listing proposals in one negotiation.",
+    "If the user is making a first-turn calendar request, asking for recurring time, asking to bundle meetings while traveling, or asking for missed-call repair, this action is the wrong tool. Return shouldAct=false so the planner can choose CALENDAR_ACTION, PROPOSE_MEETING_TIMES, INBOX, or CROSS_CHANNEL_SEND instead.",
+    "Set shouldAct=false when the user is vague or only asks for general scheduling help.",
+    "",
+    "Examples:",
+    '  "start scheduling lunch with Jill" -> {"subaction":"start","shouldAct":true,"response":null}',
+    '  "propose Tuesday at 3" with negotiationId/startAt/endAt params -> {"subaction":"propose","shouldAct":true,"response":null}',
+    '  "mark that proposal accepted" with proposalId/response params -> {"subaction":"respond","shouldAct":true,"response":null}',
+    '  "confirm that slot" with proposalId/confirmed params -> {"subaction":"finalize","shouldAct":true,"response":null}',
+    '  "list my scheduling negotiations" -> {"subaction":"list_active","shouldAct":true,"response":null}',
+    '  "help me schedule something" -> {"subaction":null,"shouldAct":false,"response":"Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?"}',
+    "",
+    "Return ONLY valid JSON.",
+    `Current request: ${JSON.stringify(currentMessage)}`,
+    `Resolved intent: ${JSON.stringify(args.intent)}`,
+    `Structured parameters: ${JSON.stringify(args.params)}`,
+    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+  ].join("\n");
+
+  try {
+    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+    });
+    const rawResponse = typeof result === "string" ? result : "";
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
+      parseJSONObjectFromText(rawResponse);
+    if (!parsed) {
+      return {
+        subaction: null,
+        shouldAct: null,
+      };
+    }
+    return {
+      subaction: normalizeSchedulingSubaction(parsed.subaction),
+      shouldAct: normalizeShouldAct(parsed.shouldAct),
+      response: normalizePlannerResponse(parsed.response),
+    };
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:scheduling",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Scheduling planning model call failed",
+    );
+    return {
+      subaction: null,
+      shouldAct: null,
+    };
+  }
+}
+
+function formatNegotiationSummary(
+  n: { id: string; subject: string; state: string; durationMinutes: number },
+): string {
+  return `Negotiation ${n.id} — "${n.subject}" (${n.durationMinutes} min, state=${n.state})`;
+}
+
+function formatProposalSummary(p: {
+  id: string;
+  startAt: string;
+  endAt: string;
+  status: string;
+  proposedBy: string;
+}): string {
+  return `Proposal ${p.id}: ${p.startAt} → ${p.endAt} by ${p.proposedBy} (status=${p.status})`;
+}
+
+export const schedulingAction: Action = {
+  name: "SCHEDULING",
+  similes: [
+    "NEGOTIATE_MEETING",
+    "MULTI_TURN_SCHEDULING",
+    "MANAGE_SCHEDULING_NEGOTIATION",
+    "RESPOND_TO_MEETING_PROPOSAL",
+    "FINALIZE_SCHEDULING_NEGOTIATION",
+  ],
+  description:
+    "Multi-turn scheduling negotiation coordinator. Use this only for an " +
+    "existing proposal workflow: start a negotiation record, submit a concrete " +
+    "proposal for that negotiation, record accepted/declined responses, " +
+    "finalize the winning proposal, cancel, or list negotiations/proposals. " +
+    "Do not use this for first-turn calendar requests, recurring blocks, " +
+    "travel-time bundling, missed-call repair, or fresh candidate-slot " +
+    "searches; those belong to CALENDAR_ACTION, PROPOSE_MEETING_TIMES, INBOX, " +
+    "or CROSS_CHANNEL_SEND." +
+    " Use for 'help me schedule a meeting with <person/team>', 'set up a sync with <person>', 'find a time with <team>' — subaction: start. Use for 'propose N times for a sync with <person>' — subaction: propose.",
+  suppressPostActionContinuation: true,
+  validate: async (runtime, message) => hasAdminAccess(runtime, message),
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state,
+    options,
+    callback,
+  ): Promise<ActionResult> => {
+    if (!(await hasAdminAccess(runtime, message))) {
+      const text = "Scheduling negotiation is restricted to admins.";
+      await callback?.({ text });
+      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+    }
+
+    const params =
+      ((options as HandlerOptions | undefined)?.parameters as
+        | SchedulingActionParameters
+        | undefined) ?? {};
+    const messageBody =
+      typeof message.content?.text === "string" ? message.content.text : "";
+    const intent = (params.intent ?? messageBody).trim();
+    const explicitSubaction = normalizeSchedulingSubaction(params.subaction);
+    const llmPlan = await resolveSchedulingPlanWithLlm({
+      runtime,
+      message,
+      state,
+      intent,
+      params,
+    });
+    const subaction = explicitSubaction ?? llmPlan.subaction;
+
+    if (llmPlan.shouldAct === false && !explicitSubaction) {
+      const text =
+        llmPlan.response ??
+        "Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?";
+      await callback?.({ text });
+      return { text, success: true, data: { noop: true } };
+    }
+
+    if (!subaction) {
+      const text =
+        llmPlan.response ??
+        "Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?";
+      await callback?.({ text });
+      return { text, success: false, data: { error: "MISSING_SUBACTION" } };
+    }
+
+    const service = new LifeOpsService(runtime);
+    try {
+      if (subaction === "start") {
+        const subject = params.subject ?? params.intent ?? messageBody.trim();
+        if (!subject) {
+          const text =
+            "I need a subject (what the meeting is about) to start a negotiation.";
+          await callback?.({ text });
+          return { text, success: false, data: { error: "MISSING_SUBJECT" } };
+        }
+        const neg = await service.startNegotiation({
+          subject,
+          relationshipId: params.relationshipId ?? null,
+          durationMinutes: params.durationMinutes,
+          timezone: params.timezone,
+        });
+        const text = `Started ${formatNegotiationSummary(neg)}.`;
+        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
+        return { text, success: true, data: { negotiation: neg } };
+      }
+
+      if (subaction === "propose") {
+        if (!params.negotiationId || !params.startAt || !params.endAt) {
+          const text =
+            "Propose needs negotiationId, startAt, and endAt (ISO-8601).";
+          await callback?.({ text });
+          return {
+            text,
+            success: false,
+            data: { error: "MISSING_PROPOSAL_FIELDS" },
+          };
+        }
+        const proposal = await service.proposeTime({
+          negotiationId: params.negotiationId,
+          startAt: params.startAt,
+          endAt: params.endAt,
+          proposedBy: params.proposedBy ?? "agent",
+        });
+        const text = `Recorded ${formatProposalSummary(proposal)}.`;
+        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
+        return { text, success: true, data: { proposal } };
+      }
+
+      if (subaction === "respond") {
+        if (!params.proposalId || !params.response) {
+          const text = "Respond needs proposalId and response.";
+          await callback?.({ text });
+          return {
+            text,
+            success: false,
+            data: { error: "MISSING_RESPONSE_FIELDS" },
+          };
+        }
+        const proposal = await service.respondToProposal(
+          params.proposalId,
+          params.response,
+        );
+        const text = `Proposal ${proposal.id} is now ${proposal.status}.`;
+        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
+        return { text, success: true, data: { proposal } };
+      }
+
+      if (subaction === "finalize") {
+        if (!params.negotiationId || !params.proposalId) {
+          const text = "Finalize needs negotiationId and proposalId.";
+          await callback?.({ text });
+          return {
+            text,
+            success: false,
+            data: { error: "MISSING_FINALIZE_FIELDS" },
+          };
+        }
+        const neg = await service.finalizeNegotiation(
+          params.negotiationId,
+          params.proposalId,
+        );
+        const text = `Confirmed ${formatNegotiationSummary(neg)}.`;
+        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
+        return { text, success: true, data: { negotiation: neg } };
+      }
+
+      if (subaction === "cancel") {
+        if (!params.negotiationId) {
+          const text = "Cancel needs negotiationId.";
+          await callback?.({ text });
+          return {
+            text,
+            success: false,
+            data: { error: "MISSING_NEGOTIATION_ID" },
+          };
+        }
+        await service.cancelNegotiation(params.negotiationId, params.reason);
+        const text = `Cancelled negotiation ${params.negotiationId}.`;
+        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
+        return {
+          text,
+          success: true,
+          data: { negotiationId: params.negotiationId },
+        };
+      }
+
+      if (subaction === "list_proposals") {
+        if (!params.negotiationId) {
+          const text = "list_proposals needs negotiationId.";
+          await callback?.({ text });
+          return {
+            text,
+            success: false,
+            data: { error: "MISSING_NEGOTIATION_ID" },
+          };
+        }
+        const proposals = await service.listProposals(params.negotiationId);
+        const text = proposals.length
+          ? `Proposals for ${params.negotiationId}:\n${proposals.map(formatProposalSummary).join("\n")}`
+          : `No proposals for ${params.negotiationId}.`;
+        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
+        return { text, success: true, data: { proposals } };
+      }
+
+      // list_active
+      const active = await service.listActiveNegotiations({ limit: 20 });
+      const text = active.length
+        ? `Active negotiations:\n${active.map(formatNegotiationSummary).join("\n")}`
+        : "No active scheduling negotiations.";
+      await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
+      return { text, success: true, data: { negotiations: active } };
+    } catch (error) {
+      if (error instanceof LifeOpsServiceError) {
+        const text = `Scheduling error: ${error.message}`;
+        await callback?.({ text });
+        return {
+          text,
+          success: false,
+          data: { error: "SERVICE_ERROR", status: error.status, detail: error.message },
+        };
+      }
+      throw error;
+    }
+  },
+  parameters: [
+    {
+      name: "subaction",
+      description:
+        "Which step of the negotiation to run: start, propose, respond, finalize, cancel, list_active, list_proposals.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "intent",
+      description: "Free-text description of what the scheduling turn is trying to do.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "negotiationId",
+      description: "Target negotiation ID for proposal, finalize, cancel, or list_proposals.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "proposalId",
+      description: "Target proposal ID for respond or finalize.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "subject",
+      description: "Subject of the meeting (used when starting a negotiation).",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "startAt",
+      description: "ISO-8601 proposed start time.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "endAt",
+      description: "ISO-8601 proposed end time.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "durationMinutes",
+      description: "Meeting duration in minutes (defaults to 30 when starting).",
+      schema: { type: "number" as const },
+    },
+    {
+      name: "response",
+      description: "Proposal response: accepted, declined, or expired.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "confirmed",
+      description: "Set true alongside a proposalId to finalize.",
+      schema: { type: "boolean" as const },
+    },
+  ],
+  examples: [
+    [
+      { name: "{{name1}}", content: { text: "Start a scheduling negotiation with Alice about the quarterly review" } },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Started negotiation — "quarterly review with Alice" (30 min, state=initiated).',
+        },
+      },
+    ],
+    [
+      { name: "{{name1}}", content: { text: "Propose Tuesday 2-3pm for negotiation abc-123" } },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Recorded proposal: 2026-04-21T14:00:00Z → 2026-04-21T15:00:00Z (status=pending).",
+        },
+      },
+    ],
+    [
+      { name: "{{name1}}", content: { text: "Alice accepted proposal xyz-789" } },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Proposal xyz-789 is now accepted.",
+        },
+      },
+    ],
+    [
+      { name: "{{name1}}", content: { text: "Finalize negotiation abc-123 with proposal xyz-789" } },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Confirmed negotiation — "quarterly review with Alice" (state=confirmed).',
+        },
+      },
+    ],
+  ],
+};

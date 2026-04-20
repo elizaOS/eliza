@@ -128,12 +128,12 @@ function TaskCard({ session }: { session: CodingAgentSession }) {
         </span>
       </div>
       {session.originalTask ? (
-        <p className="mb-1 line-clamp-2 text-xs-tight text-muted">
+        <p className="mb-1 line-clamp-2 text-xs text-muted">
           {session.originalTask}
         </p>
       ) : null}
       <p
-        className={`truncate text-xs-tight ${
+        className={`truncate text-[11px] ${
           session.status === "blocked" ? "text-warn" : "text-muted"
         }`}
       >
@@ -504,8 +504,10 @@ export function CodingAgentTasksPanel({
   useEffect(() => {
     let cancelled = false;
 
-    const refreshThreads = async () => {
-      setLoading(true);
+    const refreshThreads = async (silent = false) => {
+      if (!silent) {
+        setLoading(true);
+      }
       try {
         const nextThreads = await client.listCodingAgentTaskThreads({
           includeArchived: showArchived,
@@ -525,22 +527,27 @@ export function CodingAgentTasksPanel({
         });
       } catch (error) {
         if (cancelled) return;
-        setLoadError(
-          getClientErrorMessage(error, "Failed to load task threads."),
-        );
-        setThreads([]);
-        setSelectedThreadId(null);
-        setSelectedThread(null);
+        if (!silent) {
+          setLoadError(
+            getClientErrorMessage(error, "Failed to load task threads."),
+          );
+        }
+        if (!silent) {
+          setThreads([]);
+          setSelectedThreadId(null);
+          setSelectedThread(null);
+        }
       } finally {
-        if (!cancelled) {
+        if (!cancelled && !silent) {
           setLoading(false);
         }
       }
     };
 
-    void refreshThreads();
+    void refreshThreads(false);
     const timer = setInterval(() => {
-      void refreshThreads();
+      // Poll in the background without toggling loading UI to avoid flicker.
+      void refreshThreads(true);
     }, 5_000);
 
     return () => {
@@ -654,11 +661,11 @@ export function CodingAgentTasksPanel({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 gap-1 px-2 text-2xs"
+            className="h-6 w-6 p-0"
             onClick={() => setTab("tasks")}
+            aria-label={t("taskseventspanel.OpenView", { defaultValue: "Open Tasks view" })}
           >
-            <SquareArrowOutUpRight className="h-3 w-3" />
-            Open View
+            <SquareArrowOutUpRight className="h-3.5 w-3.5" />
           </Button>
         ) : null
       }
@@ -669,23 +676,23 @@ export function CodingAgentTasksPanel({
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search tasks"
-          className="h-8 w-full rounded-md border border-border/50 bg-bg px-2 text-xs-tight text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/50"
+          className="h-8 w-full rounded-md border border-border/50 bg-bg px-2 text-xs text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/50"
         />
       </div>
       {loadError ? (
-        <div className="mb-2 rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs-tight text-danger">
+        <div className="mb-2 rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
           Failed to load task threads: {loadError}
         </div>
       ) : null}
       {mutationError ? (
-        <div className="mb-2 rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs-tight text-danger">
+        <div className="mb-2 rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
           {mutationError}
         </div>
       ) : null}
       {threads.length > 0 ? (
         <div className="flex flex-col gap-2.5">
           {detailError ? (
-            <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs-tight text-danger">
+            <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
               Failed to load task detail: {detailError}
             </div>
           ) : null}
@@ -708,7 +715,7 @@ export function CodingAgentTasksPanel({
           </div>
         </div>
       ) : loading ? (
-        <div className="text-xs-tight text-muted">Loading tasks...</div>
+        <div className="text-xs text-muted">Loading tasks...</div>
       ) : (
         <div className="flex flex-col gap-2.5">
           <TaskItemsContent sessions={activeSessions} />

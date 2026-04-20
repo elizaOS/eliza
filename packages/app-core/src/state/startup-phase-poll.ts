@@ -6,9 +6,15 @@
  * or an appropriate error/auth event.
  */
 
+import { getStylePresets } from "@elizaos/shared/onboarding-presets";
+import type { OnboardingOptions } from "../api";
 import { client } from "../api";
-import { getBackendStartupTimeoutMs } from "../bridge";
-import { isElectrobunRuntime, scanProviderCredentials } from "../bridge";
+import {
+  getBackendStartupTimeoutMs,
+  isElectrobunRuntime,
+  scanProviderCredentials,
+} from "../bridge";
+import type { UiLanguage } from "../i18n";
 import {
   asApiLikeError,
   clearPersistedOnboardingStep,
@@ -21,12 +27,9 @@ import {
   loadPersistedOnboardingStep,
   savePersistedActiveServer,
 } from "./persistence";
-import { getStylePresets } from "@elizaos/shared/onboarding-presets";
-import type { StartupEvent, PlatformPolicy } from "./startup-coordinator";
+import type { PlatformPolicy, StartupEvent } from "./startup-coordinator";
 import type { RestoringSessionCtx } from "./startup-phase-restore";
-import type { OnboardingOptions } from "../api";
 import type { OnboardingStep } from "./types";
-import type { UiLanguage } from "../i18n";
 
 export interface PollingBackendDeps {
   setStartupError: (v: StartupErrorState | null) => void;

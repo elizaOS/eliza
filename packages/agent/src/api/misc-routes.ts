@@ -4,10 +4,13 @@ import {
   EMOTE_BY_ID,
   EMOTE_CATALOG,
 } from "@elizaos/app-companion/emotes/catalog";
-import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
+import { type AgentRuntime, logger, ModelType, type UUID } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
-import type { CustomActionDef } from "../config/types.eliza.js";
+import type {
+  CustomActionDef,
+  CustomActionHandler,
+} from "../config/types.eliza.js";
 import {
   buildTestHandler,
   registerCustomActionLive,
@@ -40,6 +43,51 @@ type TerminalRunRequestBody = {
   terminalToken?: string;
 };
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function toTerminalRunRequestBody(
+  body: Record<string, unknown>,
+): TerminalRunRequestBody {
+  return {
+    command: typeof body.command === "string" ? body.command : undefined,
+    clientId: body.clientId,
+    terminalToken:
+      typeof body.terminalToken === "string" ? body.terminalToken : undefined,
+  };
+}
+
+function isCustomActionHandler(value: unknown): value is CustomActionHandler {
+  const handler = asRecord(value);
+  if (!handler || typeof handler.type !== "string") {
+    return false;
+  }
+
+  if (handler.type === "http") {
+    return (
+      typeof handler.method === "string" &&
+      typeof handler.url === "string" &&
+      (handler.headers === undefined || asRecord(handler.headers) !== null) &&
+      (handler.bodyTemplate === undefined ||
+        typeof handler.bodyTemplate === "string")
+    );
+  }
+
+  if (handler.type === "shell") {
+    return typeof handler.command === "string";
+  }
+
+  if (handler.type === "code") {
+    return typeof handler.code === "string";
+  }
+
+  return false;
+}
+
 export interface MiscRouteContext {
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -52,11 +100,8 @@ export interface MiscRouteContext {
     agentState: string;
     agentName: string;
     shellEnabled: boolean | undefined;
-    broadcastWs?: ((data: Record<string, unknown>) => void) | null;
-    broadcastWsToClientId?: (
-      clientId: string,
-      data: Record<string, unknown>,
-    ) => void;
+    broadcastWs?: ((data: object) => void) | null;
+    broadcastWsToClientId?: (clientId: string, data: object) => void;
     nextEventId: number;
     eventBuffer: StreamEventEnvelope[];
     shareIngestQueue: Array<{
@@ -221,7 +266,7 @@ export async function handleMiscRoutes(
     if (state.eventBuffer.length > 1500) {
       state.eventBuffer.splice(0, state.eventBuffer.length - 1500);
     }
-    state.broadcastWs?.(envelope as unknown as Record<string, unknown>);
+    state.broadcastWs?.({ ...envelope });
     json(res, { ok: true });
     return true;
   }
@@ -281,7 +326,7 @@ export async function handleMiscRoutes(
       return true;
     }
 
-    const emitTerminalEvent = (payload: Record<string, unknown>) => {
+    const emitTerminalEvent = (payload: object) => {
       if (ctx.isSharedTerminalClientId(targetClientId)) {
         state.broadcastWs?.(payload);
         return;
@@ -470,7 +515,7 @@ export async function handleMiscRoutes(
     if (handler.type === "shell" || handler.type === "code") {
       const terminalRejection = ctx.resolveTerminalRunRejection(
         req,
-        body as TerminalRunRequestBody,
+        toTerminalRunRequestBody(body),
       );
       if (terminalRejection) {
         error(
@@ -623,7 +668,7 @@ export async function handleMiscRoutes(
     if (def.handler.type === "shell" || def.handler.type === "code") {
       const terminalRejection = ctx.resolveTerminalRunRejection(
         req,
-        body as TerminalRunRequestBody,
+        toTerminalRunRequestBody(body),
       );
       if (terminalRejection) {
         error(
@@ -673,19 +718,23 @@ export async function handleMiscRoutes(
 
     let newHandler = existing.handler;
     if (body.handler != null) {
-      const h = body.handler as Record<string, unknown>;
+      const h = asRecord(body.handler);
       const hValidTypes = new Set(["http", "shell", "code"]);
-      if (!h.type || !hValidTypes.has(h.type as string)) {
+      if (!h || !h.type || !hValidTypes.has(String(h.type))) {
         error(res, "handler.type must be http, shell, or code", 400);
         return true;
       }
-      newHandler = h as unknown as CustomActionDef["handler"];
+      if (!isCustomActionHandler(h)) {
+        error(res, "handler payload is invalid", 400);
+        return true;
+      }
+      newHandler = h;
     }
 
     if (newHandler.type === "shell" || newHandler.type === "code") {
       const terminalRejection = ctx.resolveTerminalRunRejection(
         req,
-        body as TerminalRunRequestBody,
+        toTerminalRunRequestBody(body),
       );
       if (terminalRejection) {
         error(

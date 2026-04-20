@@ -1,0 +1,885 @@
+/**
+ * n8n routes — status surface + workflow CRUD proxy + sidecar lifecycle.
+ *
+ * Exposes:
+ *   GET    /api/n8n/status                          — mode + sidecar state
+ *   POST   /api/n8n/sidecar/start                   — fire-and-forget sidecar boot
+ *   GET    /api/n8n/workflows                       — list workflows
+ *   POST   /api/n8n/workflows/{id}/activate         — activate workflow
+ *   POST   /api/n8n/workflows/{id}/deactivate       — deactivate workflow
+ *   DELETE /api/n8n/workflows/{id}                  — delete workflow
+ *
+ * Status is the only read-only surface. The workflow CRUD handlers proxy
+ * to the actual n8n backend:
+ *   - Cloud mode  → `${cloudBaseUrl}/api/v1/agents/${agentId}/n8n/workflows/...`
+ *                   with `Authorization: Bearer ${cloud.apiKey}`
+ *   - Local mode  → `${sidecar.host}/rest/workflows/...`
+ *                   with `X-N8N-API-KEY: ${sidecar.getApiKey()}` (n8n native)
+ *   - Disabled / sidecar not ready → 503 `{ error, status }`
+ *
+ * The provisioned API key is never returned to the UI.
+ *
+ * Context shape matches other app-core compat routes
+ * (cloud-status-routes.ts): `{ req, res, method, pathname, config, runtime,
+ * json }`. The sidecar instance is read from the module-level singleton in
+ * services/n8n-sidecar.ts rather than being threaded through state.
+ */
+
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/agent/api";
+import type { AgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { isNativeServerPlatform } from "../platform/is-native-server";
+import { type N8nMode, resolveN8nMode } from "../services/n8n-mode";
+import type { N8nSidecar, N8nSidecarStatus } from "../services/n8n-sidecar";
+
+export type { N8nMode } from "../services/n8n-mode";
+
+/**
+ * Host platform for the n8n status surface. On mobile (iOS / Android) the
+ * local n8n sidecar cannot run because `node:child_process` is unavailable
+ * inside the Capacitor runtime. The status surface still reports state so
+ * the UI can render a cloud-only view.
+ */
+export type N8nHostPlatform = "desktop" | "mobile";
+
+/**
+ * Result of the cloud-gateway health probe. Reflects reachability of
+ * `${cloudBaseUrl}/api/v1/health` — `unknown` means we did not probe
+ * (mode !== "cloud" or probe failed before HTTP resolved).
+ */
+export type N8nCloudHealth = "ok" | "degraded" | "unknown";
+
+export interface N8nStatusResponse {
+  mode: N8nMode;
+  host: string | null;
+  status: N8nSidecarStatus;
+  cloudConnected: boolean;
+  localEnabled: boolean;
+  platform: N8nHostPlatform;
+  /**
+   * Cloud gateway health. Present whenever mode === "cloud"; otherwise
+   * "unknown". Cached for 30s to avoid hammering the cloud on status polls.
+   */
+  cloudHealth: N8nCloudHealth;
+  /**
+   * Diagnostic fields from the local sidecar. Empty on cloud mode. Non-null
+   * only when a sidecar has attempted at least one boot — these let the UI
+   * show a real error panel instead of "not ready (starting)" forever.
+   */
+  errorMessage?: string | null;
+  retries?: number;
+  /** Last ~40 lines of the n8n child's stdout+stderr. */
+  recentOutput?: string[];
+}
+
+export interface N8nWorkflowNodeLike {
+  id?: string;
+  name?: string;
+  type?: string;
+  position?: [number, number];
+  parameters?: Record<string, unknown>;
+}
+
+export interface N8nWorkflow {
+  id: string;
+  name: string;
+  active: boolean;
+  description?: string;
+  nodes?: N8nWorkflowNodeLike[];
+  nodeCount: number;
+  /** Connection graph — only present on single-workflow GET, not on list. */
+  connections?: Record<string, { main?: Array<Array<{ node: string; type: "main"; index: number }>> }>;
+}
+
+/**
+ * Minimal shape of the relevant config slice. Narrow read-only view so this
+ * route does not take a hard dependency on the full ElizaConfig type landing
+ * here. `n8n` maps 1:1 to the canonical N8nConfig fields used by the sidecar.
+ */
+export interface N8nRoutesConfigLike {
+  cloud?: {
+    enabled?: boolean;
+    apiKey?: string;
+    baseUrl?: string;
+  };
+  n8n?: {
+    localEnabled?: boolean;
+    host?: string | null;
+    enabled?: boolean;
+    version?: string;
+    startPort?: number;
+    apiKey?: string;
+    status?: N8nSidecarStatus;
+  };
+}
+
+// Back-compat aliases for the previous module export names.
+export type N8nStatusConfigLike = N8nRoutesConfigLike;
+export type N8nStatusRouteContext = N8nRouteContext;
+
+export interface N8nRouteContext
+  extends RouteRequestMeta,
+    Pick<RouteHelpers, "json"> {
+  config: N8nRoutesConfigLike;
+  runtime: AgentRuntime | null;
+  /**
+   * Optional sidecar override. When absent, the handler reads the
+   * module-level singleton via `peekN8nSidecar()`. Tests inject a stub.
+   */
+  n8nSidecar?: N8nSidecar | null;
+  /**
+   * Optional fetch override for tests / future proxy interception.
+   * Defaults to global `fetch`.
+   */
+  fetchImpl?: typeof fetch;
+  /**
+   * Optional agent id override. Otherwise pulled from `runtime.agentId`
+   * or character id. Used in the cloud-mode proxy URL.
+   */
+  agentId?: string;
+  /**
+   * Override for native-platform detection. When absent, the handler
+   * calls `isNativeServerPlatform()`. Tests inject a deterministic value.
+   * On mobile the sidecar lifecycle is disabled — the route reports cloud
+   * mode or the `"disabled"` mode without importing the sidecar module.
+   */
+  isNativePlatform?: boolean;
+  /**
+   * Override for the cached cloud-health probe. When present, the handler
+   * uses this instead of running the live fetch (used by tests to assert
+   * degraded / ok / unknown paths deterministically).
+   */
+  cloudHealthOverride?: N8nCloudHealth;
+}
+
+// ── Cloud health probe ──────────────────────────────────────────────────────
+//
+// Probes `${cloudBaseUrl}/api/v1/health` with a 2s timeout and caches the
+// result for 30s. Any non-2xx or network failure maps to "degraded"; a 2xx
+// maps to "ok". Before the first probe completes we report "unknown".
+
+const CLOUD_HEALTH_CACHE_TTL_MS = 30_000;
+const CLOUD_HEALTH_PROBE_TIMEOUT_MS = 2_000;
+
+interface CloudHealthCacheEntry {
+  health: N8nCloudHealth;
+  expiresAt: number;
+}
+
+const cloudHealthCache = new Map<string, CloudHealthCacheEntry>();
+
+/** Exported for tests; wipes the health-probe cache between cases. */
+export function __resetCloudHealthCacheForTests(): void {
+  cloudHealthCache.clear();
+}
+
+async function probeCloudHealth(
+  baseUrl: string,
+  fetchImpl: typeof fetch,
+): Promise<N8nCloudHealth> {
+  const url = `${normalizeBaseUrl(baseUrl)}/api/v1/health`;
+  try {
+    const res = await fetchImpl(url, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(CLOUD_HEALTH_PROBE_TIMEOUT_MS),
+    });
+    return res.ok ? "ok" : "degraded";
+  } catch (err) {
+    logger.debug(
+      `[n8n-routes] cloud health probe failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return "degraded";
+  }
+}
+
+async function getCloudHealth(
+  baseUrl: string,
+  fetchImpl: typeof fetch,
+): Promise<N8nCloudHealth> {
+  const key = normalizeBaseUrl(baseUrl);
+  const now = Date.now();
+  const cached = cloudHealthCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.health;
+  }
+  const health = await probeCloudHealth(key, fetchImpl);
+  cloudHealthCache.set(key, {
+    health,
+    expiresAt: now + CLOUD_HEALTH_CACHE_TTL_MS,
+  });
+  return health;
+}
+
+/**
+ * Dynamically import the sidecar module. Keeps `node:child_process` out of
+ * the module graph for mobile bundles — `isNativeServerPlatform()` is true
+ * on Capacitor-hosted iOS / Android, in which case the sidecar code path
+ * is never reached.
+ */
+async function loadSidecarModule(): Promise<
+  typeof import("../services/n8n-sidecar") | null
+> {
+  if (isNativeServerPlatform()) return null;
+  return await import("../services/n8n-sidecar");
+}
+
+// Cloud base URL default — mirrors `resolveCloudApiBaseUrl()` without
+// pulling the validator in (avoids an async-validation dep on a hot path).
+const DEFAULT_CLOUD_API_BASE_URL = "https://api.eliza.how";
+
+function normalizeBaseUrl(raw: string | undefined | null): string {
+  const trimmed = (raw ?? "").trim();
+  const base = trimmed.length > 0 ? trimmed : DEFAULT_CLOUD_API_BASE_URL;
+  return base.replace(/\/+$/, "");
+}
+
+function resolveAgentId(ctx: N8nRouteContext): string {
+  if (ctx.agentId?.trim()) return ctx.agentId.trim();
+  const runtimeAny = ctx.runtime as unknown as {
+    agentId?: string;
+    character?: { id?: string };
+  } | null;
+  return (
+    runtimeAny?.agentId ??
+    runtimeAny?.character?.id ??
+    "00000000-0000-0000-0000-000000000000"
+  );
+}
+
+function sendJson(
+  ctx: Pick<N8nRouteContext, "res" | "json">,
+  status: number,
+  body: unknown,
+): void {
+  // The compat `json` helper signature in app-core is
+  // `(res, body, status?) => void`; status defaults to 200 upstream.
+  const json = ctx.json as unknown as (
+    res: typeof ctx.res,
+    body: unknown,
+    status?: number,
+  ) => void;
+  json(ctx.res, body, status);
+}
+
+/** Strip any credential material from node descriptors before forwarding. */
+function sanitizeNode(n: unknown): N8nWorkflowNodeLike {
+  if (!n || typeof n !== "object") return {};
+  const obj = n as Record<string, unknown>;
+  return {
+    ...(typeof obj.id === "string" ? { id: obj.id } : {}),
+    ...(typeof obj.name === "string" ? { name: obj.name } : {}),
+    ...(typeof obj.type === "string" ? { type: obj.type } : {}),
+  };
+}
+
+/**
+ * Full node sanitizer for single-workflow GET — includes position and
+ * parameters (needed by the graph viewer). Credentials are still stripped.
+ */
+function sanitizeNodeFull(n: unknown): N8nWorkflowNodeLike {
+  if (!n || typeof n !== "object") return {};
+  const obj = n as Record<string, unknown>;
+  const base = sanitizeNode(n);
+
+  // position: n8n stores it as [x, y] on the node object
+  const pos = obj.position;
+  const position: [number, number] | undefined =
+    Array.isArray(pos) &&
+    pos.length >= 2 &&
+    typeof pos[0] === "number" &&
+    typeof pos[1] === "number"
+      ? [pos[0], pos[1]]
+      : undefined;
+
+  // parameters: pass through as-is (no credentials inside this field)
+  const parameters =
+    obj.parameters && typeof obj.parameters === "object"
+      ? (obj.parameters as Record<string, unknown>)
+      : undefined;
+
+  return {
+    ...base,
+    ...(position !== undefined ? { position } : {}),
+    ...(parameters !== undefined ? { parameters } : {}),
+  };
+}
+
+/** Normalize an n8n workflow payload to our client-facing shape. */
+function normalizeWorkflow(raw: unknown): N8nWorkflow | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const id = typeof obj.id === "string" ? obj.id : String(obj.id ?? "");
+  const name = typeof obj.name === "string" ? obj.name : "";
+  if (!id) return null;
+  const nodesRaw = Array.isArray(obj.nodes) ? obj.nodes : [];
+  const nodes = nodesRaw.map(sanitizeNode);
+  return {
+    id,
+    name,
+    active: Boolean(obj.active),
+    ...(typeof obj.description === "string"
+      ? { description: obj.description }
+      : {}),
+    nodes,
+    nodeCount: nodes.length,
+  };
+}
+
+/**
+ * Full normalizer for single-workflow GET responses.
+ *
+ * Tradeoff: the list endpoint stays shallow (id/name/type only) to keep
+ * sidebar payloads small — n8n workflows can have hundreds of nodes with
+ * large parameter blobs. The single-workflow endpoint passes through
+ * position, parameters, and connections so the graph viewer has everything
+ * it needs without a second request.
+ */
+function normalizeWorkflowFull(raw: unknown): N8nWorkflow | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const id = typeof obj.id === "string" ? obj.id : String(obj.id ?? "");
+  const name = typeof obj.name === "string" ? obj.name : "";
+  if (!id) return null;
+  const nodesRaw = Array.isArray(obj.nodes) ? obj.nodes : [];
+  const nodes = nodesRaw.map(sanitizeNodeFull);
+
+  // connections: n8n's connection map is a plain object keyed by source node
+  // name. We pass it through as-is — it contains no credential material.
+  const connections =
+    obj.connections && typeof obj.connections === "object"
+      ? (obj.connections as N8nWorkflow["connections"])
+      : undefined;
+
+  return {
+    id,
+    name,
+    active: Boolean(obj.active),
+    ...(typeof obj.description === "string"
+      ? { description: obj.description }
+      : {}),
+    nodes,
+    nodeCount: nodes.length,
+    ...(connections !== undefined ? { connections } : {}),
+  };
+}
+
+interface ProxyTarget {
+  url: string;
+  headers: Record<string, string>;
+}
+
+/**
+ * Resolve the backend target for a workflow-CRUD call. Returns null target
+ * if the n8n backend is not currently available; caller emits a 503.
+ *
+ * `sidecar` is passed in so the caller can either skip the sidecar module
+ * import on mobile (where it is unsupported) or inject a test stub. When
+ * `sidecar` is undefined, the handler treats that as "no sidecar singleton
+ * yet" — identical to the old `peekN8nSidecar()` → `null` case.
+ */
+function resolveProxyTarget(
+  ctx: N8nRouteContext,
+  subpath: string,
+  sidecar: N8nSidecar | null,
+  native: boolean,
+): {
+  target: ProxyTarget | null;
+  reason?: {
+    message: string;
+    status: N8nSidecarStatus;
+  };
+} {
+  const { cloudConnected, localEnabled } = resolveN8nMode({
+    config: ctx.config,
+    runtime: ctx.runtime,
+    native,
+  });
+  if (cloudConnected) {
+    const apiKey = ctx.config.cloud?.apiKey?.trim();
+    if (!apiKey) {
+      return {
+        target: null,
+        reason: { message: "cloud api key missing", status: "error" },
+      };
+    }
+    const baseUrl = normalizeBaseUrl(ctx.config.cloud?.baseUrl);
+    const agentId = resolveAgentId(ctx);
+    const url = `${baseUrl}/api/v1/agents/${encodeURIComponent(agentId)}/n8n/workflows${subpath}`;
+    return {
+      target: {
+        url,
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: "application/json",
+        },
+      },
+    };
+  }
+
+  // Mobile has no local sidecar path — treat as disabled when cloud is not
+  // authenticated so the UI gets a 503 with a clear reason rather than
+  // probing a sidecar that does not exist. resolveN8nMode already applied
+  // the mobile override above.
+  if (!localEnabled) {
+    return {
+      target: null,
+      reason: { message: "n8n disabled", status: "stopped" },
+    };
+  }
+
+  const sidecarState = sidecar?.getState();
+  const status: N8nSidecarStatus = sidecarState?.status ?? "stopped";
+
+  if (status !== "ready") {
+    return {
+      target: null,
+      reason: { message: `n8n not ready (${status})`, status },
+    };
+  }
+
+  const host = sidecarState?.host ?? ctx.config.n8n?.host ?? null;
+  if (!host) {
+    return {
+      target: null,
+      reason: { message: "n8n host unknown", status: "error" },
+    };
+  }
+
+  const apiKey = sidecar?.getApiKey() ?? ctx.config.n8n?.apiKey ?? null;
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+  };
+  if (apiKey) headers["X-N8N-API-KEY"] = apiKey;
+
+  // n8n serves TWO parallel workflow APIs:
+  //   /rest/workflows   — internal UI endpoint, requires JWT cookie auth.
+  //   /api/v1/workflows — public API, accepts X-N8N-API-KEY.
+  // We provision an X-N8N-API-KEY during boot, so the public API is the
+  // only path that authenticates correctly. Hitting /rest/ was returning
+  // 401 "Unauthorized" even with a valid key — that's the wrong endpoint.
+  return {
+    target: {
+      url: `${host.replace(/\/+$/, "")}/api/v1/workflows${subpath}`,
+      headers,
+    },
+  };
+}
+
+async function fetchTargetAsJson(
+  ctx: N8nRouteContext,
+  target: ProxyTarget,
+  init: { method: string; body?: string },
+): Promise<{
+  ok: boolean;
+  status: number;
+  body: unknown;
+}> {
+  const fetchImpl = ctx.fetchImpl ?? fetch;
+  const headers: Record<string, string> = { ...target.headers };
+  if (init.body != null) headers["content-type"] = "application/json";
+
+  let res: Response;
+  try {
+    res = await fetchImpl(target.url, {
+      method: init.method,
+      headers,
+      ...(init.body != null ? { body: init.body } : {}),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn(`[n8n-routes] proxy fetch failed: ${message}`);
+    return { ok: false, status: 502, body: { error: message } };
+  }
+
+  let parsed: unknown = null;
+  const contentType = res.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    try {
+      parsed = await res.json();
+    } catch {
+      parsed = null;
+    }
+  } else {
+    try {
+      parsed = await res.text();
+    } catch {
+      parsed = null;
+    }
+  }
+  return { ok: res.ok, status: res.status, body: parsed };
+}
+
+/**
+ * Extracts a workflows array from an n8n or cloud-gateway list response.
+ * n8n returns `{ data: [...] }`; our cloud gateway may return `{ workflows }`
+ * or `{ data }`. We accept both.
+ */
+function extractWorkflowList(body: unknown): unknown[] {
+  if (!body || typeof body !== "object") return [];
+  const obj = body as Record<string, unknown>;
+  if (Array.isArray(obj.workflows)) return obj.workflows;
+  if (Array.isArray(obj.data)) return obj.data;
+  return [];
+}
+
+function extractWorkflowSingle(body: unknown): unknown {
+  if (!body || typeof body !== "object") return null;
+  const obj = body as Record<string, unknown>;
+  if (obj.data && typeof obj.data === "object") return obj.data;
+  if (obj.workflow && typeof obj.workflow === "object") return obj.workflow;
+  return body;
+}
+
+function propagateError(
+  ctx: N8nRouteContext,
+  upstream: { status: number; body: unknown },
+): void {
+  const status =
+    upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502;
+  let message = `upstream responded with ${upstream.status}`;
+  if (upstream.body && typeof upstream.body === "object") {
+    const b = upstream.body as Record<string, unknown>;
+    const candidate = b.error ?? b.message;
+    if (typeof candidate === "string" && candidate.length > 0) {
+      message = candidate;
+    }
+  } else if (typeof upstream.body === "string" && upstream.body.length > 0) {
+    message = upstream.body;
+  }
+  sendJson(ctx, status, { error: message });
+}
+
+/**
+ * Parse `/api/n8n/workflows/{id}[/activate|/deactivate]` into (id, action).
+ * Returns null if pathname doesn't match.
+ */
+function parseWorkflowPath(
+  pathname: string,
+): { id: string; action: "get" | "activate" | "deactivate" } | null {
+  const prefix = "/api/n8n/workflows/";
+  if (!pathname.startsWith(prefix)) return null;
+  const rest = pathname.slice(prefix.length);
+  if (!rest) return null;
+  const parts = rest.split("/").filter(Boolean);
+  if (parts.length === 1) {
+    return { id: decodeURIComponent(parts[0] ?? ""), action: "get" };
+  }
+  if (parts.length === 2) {
+    const action = parts[1];
+    if (action === "activate" || action === "deactivate") {
+      return { id: decodeURIComponent(parts[0] ?? ""), action };
+    }
+  }
+  return null;
+}
+
+/**
+ * Resolve the sidecar singleton for this request. On mobile the sidecar
+ * module is never imported; callers receive `null` and the downstream
+ * resolver treats that as "no local backend available". Tests inject a
+ * concrete stub via `ctx.n8nSidecar`.
+ */
+async function resolveSidecarForRequest(
+  ctx: N8nRouteContext,
+  native: boolean,
+): Promise<N8nSidecar | null> {
+  if (ctx.n8nSidecar !== undefined) return ctx.n8nSidecar;
+  if (native) return null;
+  const mod = await loadSidecarModule();
+  return mod?.peekN8nSidecar() ?? null;
+}
+
+export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
+  const { method, pathname, config } = ctx;
+  const native = ctx.isNativePlatform ?? isNativeServerPlatform();
+
+  // --- Status ---------------------------------------------------------------
+  if (method === "GET" && pathname === "/api/n8n/status") {
+    const sidecar = await resolveSidecarForRequest(ctx, native);
+    return handleStatus(ctx, sidecar, native);
+  }
+
+  // --- Sidecar start (fire-and-forget) --------------------------------------
+  if (method === "POST" && pathname === "/api/n8n/sidecar/start") {
+    if (native) {
+      sendJson(ctx, 409, {
+        error: "Local n8n not supported on mobile. Use Eliza Cloud.",
+        platform: "mobile" satisfies N8nHostPlatform,
+      });
+      return true;
+    }
+    const mod = await loadSidecarModule();
+    const sidecar =
+      ctx.n8nSidecar ??
+      mod?.getN8nSidecar({
+        enabled: config.n8n?.localEnabled ?? true,
+        ...(config.n8n?.version ? { version: config.n8n.version } : {}),
+        ...(config.n8n?.startPort ? { startPort: config.n8n.startPort } : {}),
+      });
+    if (!sidecar) {
+      // Desktop path with no sidecar module reachable — treat as a hard
+      // failure rather than pretending the boot succeeded.
+      sendJson(ctx, 500, { error: "n8n sidecar module unavailable" });
+      return true;
+    }
+    void sidecar.start();
+    sendJson(ctx, 202, { ok: true });
+    return true;
+  }
+
+  // --- Workflows list -------------------------------------------------------
+  if (method === "GET" && pathname === "/api/n8n/workflows") {
+    const sidecar = await resolveSidecarForRequest(ctx, native);
+    return handleListWorkflows(ctx, sidecar, native);
+  }
+
+  // --- Workflow CRUD --------------------------------------------------------
+  const parsed = parseWorkflowPath(pathname);
+  if (parsed) {
+    if (method === "POST" && parsed.action === "activate") {
+      const sidecar = await resolveSidecarForRequest(ctx, native);
+      return handleToggleWorkflow(ctx, parsed.id, true, sidecar, native);
+    }
+    if (method === "POST" && parsed.action === "deactivate") {
+      const sidecar = await resolveSidecarForRequest(ctx, native);
+      return handleToggleWorkflow(ctx, parsed.id, false, sidecar, native);
+    }
+    if (method === "GET" && parsed.action === "get") {
+      const sidecar = await resolveSidecarForRequest(ctx, native);
+      return handleGetWorkflow(ctx, parsed.id, sidecar, native);
+    }
+    if (method === "DELETE" && parsed.action === "get") {
+      const sidecar = await resolveSidecarForRequest(ctx, native);
+      return handleDeleteWorkflow(ctx, parsed.id, sidecar, native);
+    }
+  }
+
+  return false;
+}
+
+// Backwards-compat named export so the old import symbol still works for any
+// out-of-tree caller that imports it. Prefer `handleN8nRoutes` in new code.
+export const handleN8nStatusRoutes = handleN8nRoutes;
+
+async function handleStatus(
+  ctx: N8nRouteContext,
+  sidecar: N8nSidecar | null,
+  native: boolean,
+): Promise<boolean> {
+  const { config, runtime } = ctx;
+
+  const { mode, localEnabled, cloudConnected } = resolveN8nMode({
+    config,
+    runtime,
+    native,
+  });
+  const sidecarState = sidecar?.getState();
+  const status: N8nSidecarStatus = sidecarState?.status ?? "stopped";
+
+  const host =
+    mode === "local" ? (sidecarState?.host ?? config.n8n?.host ?? null) : null;
+
+  // Cloud health — only probed when we are actually in cloud mode. The
+  // probe is cached for 30s (see getCloudHealth) so rapid status polls
+  // don't hammer the gateway. Tests inject cloudHealthOverride to bypass.
+  let cloudHealth: N8nCloudHealth = "unknown";
+  if (mode === "cloud") {
+    if (ctx.cloudHealthOverride !== undefined) {
+      cloudHealth = ctx.cloudHealthOverride;
+    } else {
+      cloudHealth = await getCloudHealth(
+        config.cloud?.baseUrl ?? DEFAULT_CLOUD_API_BASE_URL,
+        ctx.fetchImpl ?? fetch,
+      );
+    }
+  }
+
+  const payload: N8nStatusResponse = {
+    mode,
+    host,
+    status,
+    cloudConnected,
+    localEnabled,
+    platform: native ? "mobile" : "desktop",
+    cloudHealth,
+    ...(sidecarState
+      ? {
+          errorMessage: sidecarState.errorMessage,
+          retries: sidecarState.retries,
+          recentOutput: sidecarState.recentOutput,
+        }
+      : {}),
+  };
+
+  // Match previous behavior: 200 via ctx.json.
+  ctx.json(ctx.res, payload);
+  return true;
+}
+
+async function handleListWorkflows(
+  ctx: N8nRouteContext,
+  sidecar: N8nSidecar | null,
+  native: boolean,
+): Promise<boolean> {
+  const resolved = resolveProxyTarget(ctx, "", sidecar, native);
+  if (!resolved.target) {
+    sendJson(ctx, 503, {
+      error: resolved.reason?.message ?? "n8n not ready",
+      status: resolved.reason?.status ?? "stopped",
+    });
+    return true;
+  }
+
+  const upstream = await fetchTargetAsJson(ctx, resolved.target, {
+    method: "GET",
+  });
+  if (!upstream.ok) {
+    propagateError(ctx, upstream);
+    return true;
+  }
+
+  const list = extractWorkflowList(upstream.body);
+  const workflows = list
+    .map(normalizeWorkflow)
+    .filter((w): w is N8nWorkflow => w !== null);
+
+  sendJson(ctx, 200, { workflows });
+  return true;
+}
+
+/**
+ * GET /api/n8n/workflows/:id — single-workflow fetch with full graph payload.
+ *
+ * Unlike the list endpoint (which stays shallow for sidebar performance),
+ * this response includes node `position`, `parameters`, and the `connections`
+ * map so the graph viewer can render nodes and edges without a second request.
+ * Credentials are still stripped from node descriptors.
+ */
+async function handleGetWorkflow(
+  ctx: N8nRouteContext,
+  id: string,
+  sidecar: N8nSidecar | null,
+  native: boolean,
+): Promise<boolean> {
+  if (!id) {
+    sendJson(ctx, 400, { error: "workflow id required" });
+    return true;
+  }
+
+  const subpath = `/${encodeURIComponent(id)}`;
+  const resolved = resolveProxyTarget(ctx, subpath, sidecar, native);
+  if (!resolved.target) {
+    sendJson(ctx, 503, {
+      error: resolved.reason?.message ?? "n8n not ready",
+      status: resolved.reason?.status ?? "stopped",
+    });
+    return true;
+  }
+
+  const upstream = await fetchTargetAsJson(ctx, resolved.target, {
+    method: "GET",
+  });
+  if (!upstream.ok) {
+    propagateError(ctx, upstream);
+    return true;
+  }
+
+  const single = extractWorkflowSingle(upstream.body);
+  const normalized = normalizeWorkflowFull(single);
+  if (!normalized) {
+    sendJson(ctx, 502, { error: "unexpected upstream shape" });
+    return true;
+  }
+  sendJson(ctx, 200, normalized);
+  return true;
+}
+
+async function handleToggleWorkflow(
+  ctx: N8nRouteContext,
+  id: string,
+  activate: boolean,
+  sidecar: N8nSidecar | null,
+  native: boolean,
+): Promise<boolean> {
+  if (!id) {
+    sendJson(ctx, 400, { error: "workflow id required" });
+    return true;
+  }
+
+  const subpath = `/${encodeURIComponent(id)}/${activate ? "activate" : "deactivate"}`;
+  const resolved = resolveProxyTarget(ctx, subpath, sidecar, native);
+  if (!resolved.target) {
+    sendJson(ctx, 503, {
+      error: resolved.reason?.message ?? "n8n not ready",
+      status: resolved.reason?.status ?? "stopped",
+    });
+    return true;
+  }
+
+  const upstream = await fetchTargetAsJson(ctx, resolved.target, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  if (!upstream.ok) {
+    propagateError(ctx, upstream);
+    return true;
+  }
+
+  const single = extractWorkflowSingle(upstream.body);
+  const normalized = normalizeWorkflow(single);
+  if (!normalized) {
+    // Upstream returned 2xx with an unrecognized shape — synthesize a
+    // minimal response so the UI can still toggle optimistic state.
+    sendJson(ctx, 200, {
+      id,
+      name: "",
+      active: activate,
+      nodes: [],
+      nodeCount: 0,
+    } satisfies N8nWorkflow);
+    return true;
+  }
+  sendJson(ctx, 200, normalized);
+  return true;
+}
+
+async function handleDeleteWorkflow(
+  ctx: N8nRouteContext,
+  id: string,
+  sidecar: N8nSidecar | null,
+  native: boolean,
+): Promise<boolean> {
+  if (!id) {
+    sendJson(ctx, 400, { error: "workflow id required" });
+    return true;
+  }
+
+  const resolved = resolveProxyTarget(
+    ctx,
+    `/${encodeURIComponent(id)}`,
+    sidecar,
+    native,
+  );
+  if (!resolved.target) {
+    sendJson(ctx, 503, {
+      error: resolved.reason?.message ?? "n8n not ready",
+      status: resolved.reason?.status ?? "stopped",
+    });
+    return true;
+  }
+
+  const upstream = await fetchTargetAsJson(ctx, resolved.target, {
+    method: "DELETE",
+  });
+  if (!upstream.ok) {
+    propagateError(ctx, upstream);
+    return true;
+  }
+
+  sendJson(ctx, 200, { ok: true });
+  return true;
+}

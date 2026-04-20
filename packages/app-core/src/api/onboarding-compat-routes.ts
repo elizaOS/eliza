@@ -1,20 +1,20 @@
-import http from "node:http";
-import { logger } from "@elizaos/core";
+import type http from "node:http";
+import { applyCanonicalOnboardingConfig } from "@elizaos/agent/api/provider-switch-config";
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
-import { ensureCompatApiAuthorized } from "./auth";
-import { type CompatRuntimeState } from "./compat-route-shared";
-import { getCloudSecret } from "./cloud-secrets";
-import { sendJson as sendJsonResponse } from "./response";
+import { logger } from "@elizaos/core";
 import {
-  normalizeOnboardingProviderId,
   migrateLegacyRuntimeConfig,
+  normalizeOnboardingProviderId,
 } from "@elizaos/shared/contracts/onboarding";
 import {
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountsConfig,
   normalizeServiceRoutingConfig,
 } from "@elizaos/shared/contracts/service-routing";
-import { applyCanonicalOnboardingConfig } from "@elizaos/agent/api/provider-switch-config";
+import { ensureCompatApiAuthorized } from "./auth";
+import { getCloudSecret } from "./cloud-secrets";
+import type { CompatRuntimeState } from "./compat-route-shared";
+import { sendJson as sendJsonResponse } from "./response";
 import {
   deriveCompatOnboardingReplayBody,
   extractAndPersistOnboardingApiKey,

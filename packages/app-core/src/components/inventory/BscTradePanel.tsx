@@ -1,3 +1,4 @@
+import { StewardLogo } from "@elizaos/app-steward/StewardLogo";
 import type {
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
@@ -7,13 +8,10 @@ import type {
   BscTradeTxStatusResponse,
   StewardPolicyResult,
 } from "@elizaos/shared/contracts/wallet";
-import { useApp } from "../../state/useApp";
-
-import { useCallback, useState } from "react";
-import { HEX_ADDRESS_RE } from "./constants";
-import { formatBalance, type TrackedToken } from "./constants";
-import { StewardLogo } from "@elizaos/app-steward/StewardLogo";
 import { Button, Input } from "@elizaos/ui";
+import { useCallback, useState } from "react";
+import { useApp } from "../../state/useApp";
+import { formatBalance, HEX_ADDRESS_RE, type TrackedToken } from "./constants";
 
 /* ── Constants ─────────────────────────────────────────────────────── */
 
@@ -163,6 +161,7 @@ export function TradePanel({
       quickAmount,
       quickTokenAddress,
       setActionNotice,
+      t,
     ],
   );
 
@@ -207,7 +206,7 @@ export function TradePanel({
         text: message,
       });
     }
-  }, [getBscTradePreflight, quickTokenAddress, setActionNotice]);
+  }, [getBscTradePreflight, quickTokenAddress, setActionNotice, t]);
 
   const handleQuickBuy = useCallback(
     async () => requestQuote("buy"),
@@ -288,7 +287,7 @@ export function TradePanel({
         4600,
       );
     }
-  }, [executeBscTrade, pendingTrade, latestQuote, setActionNotice]);
+  }, [executeBscTrade, pendingTrade, latestQuote, setActionNotice, t]);
 
   const handleCancelExecute = useCallback(() => {
     setPendingTrade(null);
@@ -311,7 +310,7 @@ export function TradePanel({
     };
     onAddToken(newToken);
     setActionNotice(t("bsctradepanel.TokenAddedToWatchlist"), "success", 2600);
-  }, [quickTokenAddress, onAddToken, setActionNotice]);
+  }, [quickTokenAddress, onAddToken, setActionNotice, t]);
 
   // ── Render helpers ──────────────────────────────────────────────────
 

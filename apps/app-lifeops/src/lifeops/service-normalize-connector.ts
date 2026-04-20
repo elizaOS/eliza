@@ -19,12 +19,13 @@ import {
   LIFEOPS_BROWSER_TRACKING_MODES,
   LIFEOPS_CONNECTOR_MODES,
   LIFEOPS_CONNECTOR_SIDES,
+  LIFEOPS_EVENT_KINDS,
   LIFEOPS_GOOGLE_CAPABILITIES,
   LIFEOPS_REMINDER_CHANNELS,
   LIFEOPS_TIME_WINDOW_NAMES,
   LIFEOPS_WORKFLOW_TRIGGER_TYPES,
 } from "@elizaos/shared/contracts/lifeops";
-import { parseCronExpression } from "@elizaos/agent/triggers/scheduling";
+import { parseCronExpression } from "@elizaos/agent/triggers";
 import { LifeOpsServiceError } from "./service-types.js";
 import {
   fail,
@@ -160,6 +161,9 @@ export function normalizeWorkflowSchedule(
     return { kind: "manual" };
   }
   const schedule = requireRecord(value, "schedule");
+  if (triggerType === "event") {
+    return normalizeEventTrigger(schedule);
+  }
   const kind = normalizeEnumValue(schedule.kind, "schedule.kind", [
     "once",
     "interval",
@@ -197,6 +201,82 @@ export function normalizeWorkflowSchedule(
     cronExpression,
     timezone: normalizeValidTimeZone(schedule.timezone, "schedule.timezone"),
   };
+}
+
+function normalizeEventTrigger(
+  schedule: Record<string, unknown>,
+): LifeOpsWorkflowSchedule {
+  const kind = normalizeEnumValue(schedule.kind, "schedule.kind", [
+    "event",
+  ] as const);
+  const eventKind = normalizeEnumValue(
+    schedule.eventKind,
+    "schedule.eventKind",
+    LIFEOPS_EVENT_KINDS,
+  );
+  const rawFilters = schedule.filters;
+  if (rawFilters === undefined || rawFilters === null) {
+    return { kind, eventKind };
+  }
+  const filtersRecord = requireRecord(rawFilters, "schedule.filters");
+  if (eventKind === "calendar.event.ended") {
+    return {
+      kind,
+      eventKind,
+      filters: {
+        kind: "calendar.event.ended",
+        filters: normalizeCalendarEventEndedFilters(filtersRecord),
+      },
+    };
+  }
+  return { kind, eventKind };
+}
+
+function normalizeCalendarEventEndedFilters(
+  input: Record<string, unknown>,
+) {
+  const filters: {
+    calendarIds?: string[];
+    titleIncludesAny?: string[];
+    minDurationMinutes?: number;
+    attendeeEmailIncludesAny?: string[];
+  } = {};
+  if (input.calendarIds !== undefined) {
+    filters.calendarIds = normalizeStringArray(
+      input.calendarIds,
+      "schedule.filters.calendarIds",
+    );
+  }
+  if (input.titleIncludesAny !== undefined) {
+    filters.titleIncludesAny = normalizeStringArray(
+      input.titleIncludesAny,
+      "schedule.filters.titleIncludesAny",
+    );
+  }
+  if (input.minDurationMinutes !== undefined) {
+    filters.minDurationMinutes = normalizePositiveInteger(
+      input.minDurationMinutes,
+      "schedule.filters.minDurationMinutes",
+    );
+  }
+  if (input.attendeeEmailIncludesAny !== undefined) {
+    filters.attendeeEmailIncludesAny = normalizeStringArray(
+      input.attendeeEmailIncludesAny,
+      "schedule.filters.attendeeEmailIncludesAny",
+    );
+  }
+  return filters;
+}
+
+function normalizeStringArray(value: unknown, field: string): string[] {
+  if (!Array.isArray(value)) {
+    fail(400, `${field} must be an array of strings`);
+  }
+  const out: string[] = [];
+  for (const entry of value) {
+    out.push(requireNonEmptyString(entry, `${field}[]`));
+  }
+  return out;
 }
 
 export function normalizeWorkflowPermissionPolicy(

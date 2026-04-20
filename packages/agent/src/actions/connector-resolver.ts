@@ -15,6 +15,7 @@ import type {
   RelationshipsGraphService,
   RelationshipsPersonSummary,
 } from "../services/relationships-graph.js";
+import { resolveRelationshipsGraphService } from "../services/relationships-graph.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -52,12 +53,10 @@ export type CrossPlatformConversationView = {
 // Service access
 // ---------------------------------------------------------------------------
 
-export function getGraphService(
+export async function getGraphService(
   runtime: IAgentRuntime,
-): RelationshipsGraphService | null {
-  return runtime.getService(
-    "RELATIONSHIPS_GRAPH",
-  ) as unknown as RelationshipsGraphService | null;
+): Promise<RelationshipsGraphService | null> {
+  return resolveRelationshipsGraphService(runtime);
 }
 
 /** Returns the set of connector source names that have active send handlers. */
@@ -93,7 +92,7 @@ export async function resolveContact(
   name: string,
   preferredPlatform?: string,
 ): Promise<ResolvedContact | null> {
-  const graphService = getGraphService(runtime);
+  const graphService = await getGraphService(runtime);
   if (!graphService) {
     logger.warn("[connector-resolver] Relationships service not available");
     return null;
@@ -110,6 +109,9 @@ export async function resolveContact(
 
   // Take the best match (first result — the graph service ranks by relevance)
   const person = snapshot.people[0];
+  if (!person) {
+    return null;
+  }
   const activeConnectors = getActiveConnectors(runtime);
 
   // Build a map of platform → entity ID for each reachable identity
@@ -139,7 +141,10 @@ export async function resolveContact(
     recommendedPlatform = person.preferredCommunicationChannel;
   } else if (reachablePlatforms.length > 0) {
     // Pick the first reachable platform (the graph service orders by interaction recency)
-    recommendedPlatform = reachablePlatforms[0];
+    const fallbackPlatform = reachablePlatforms[0];
+    if (fallbackPlatform) {
+      recommendedPlatform = fallbackPlatform;
+    }
   }
 
   return {
@@ -158,7 +163,7 @@ export async function resolveContactCandidates(
   name: string,
   limit = 5,
 ): Promise<RelationshipsPersonSummary[]> {
-  const graphService = getGraphService(runtime);
+  const graphService = await getGraphService(runtime);
   if (!graphService) return [];
 
   const snapshot = await graphService.getGraphSnapshot({
@@ -289,15 +294,17 @@ export function formatConversationView(
     );
     sections.push("─".repeat(40));
 
-    for (let i = 0; i < convo.messages.length; i++) {
-      const mem = convo.messages[i];
+    for (const [index, mem] of convo.messages.entries()) {
+      if (!mem) {
+        continue;
+      }
       const speaker = formatSpeakerLabel(runtime, mem);
       const ts = mem.createdAt
         ? new Date(mem.createdAt).toISOString().slice(0, 19)
         : "";
       const text = (mem.content?.text ?? "").slice(0, 500);
       sections.push(
-        `${String(i + 1).padStart(3, " ")} | ${ts} ${speaker}: ${text}`,
+        `${String(index + 1).padStart(3, " ")} | ${ts} ${speaker}: ${text}`,
       );
     }
   }
@@ -312,13 +319,15 @@ export function formatContactCandidates(
   candidates: RelationshipsPersonSummary[],
 ): string {
   const lines: string[] = [];
-  for (let i = 0; i < candidates.length; i++) {
-    const p = candidates[i];
+  for (const [index, p] of candidates.entries()) {
+    if (!p) {
+      continue;
+    }
     const platforms = p.platforms.join(", ") || "no platforms";
     const aliases =
       p.aliases.length > 0 ? ` (aka ${p.aliases.slice(0, 2).join(", ")})` : "";
     lines.push(
-      `${i + 1}. ${p.displayName}${aliases} — ${platforms} — entityId: ${p.primaryEntityId}`,
+      `${index + 1}. ${p.displayName}${aliases} — ${platforms} — entityId: ${p.primaryEntityId}`,
     );
   }
   return lines.join("\n");

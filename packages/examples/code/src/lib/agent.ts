@@ -66,17 +66,7 @@ The current working directory is dynamically provided.`,
   }
 };
 
-/**
- * Initialize the Eliza runtime with coding capabilities
- */
-import {
-  AgentOrchestratorService,
-  agentOrchestratorPlugin,
-  configureAgentOrchestratorPlugin,
-  createSubAgentProvider,
-} from "@elizaos/plugin-agent-orchestrator";
-
-// ... previous imports ...
+import { agentOrchestratorPlugin } from "@elizaos/plugin-agent-orchestrator";
 
 /**
  * Initialize the Eliza runtime with coding capabilities
@@ -123,21 +113,6 @@ export async function initializeAgent(): Promise<AgentRuntime> {
     plugins,
   });
 
-  // Configure orchestrator providers
-  // We configure standard sub-agents available in the plugin
-  configureAgentOrchestratorPlugin({
-    providers: [
-      createSubAgentProvider(runtime, "eliza", "eliza", "Standard Eliza Worker"),
-      createSubAgentProvider(runtime, "claude-code", "claude-code", "Claude Code Worker"),
-      createSubAgentProvider(runtime, "codex", "codex", "Codex Worker"),
-      createSubAgentProvider(runtime, "sweagent", "sweagent", "SWE-Agent Worker"),
-      createSubAgentProvider(runtime, "elizaos-native", "elizaos-native", "ElizaOS Native Worker"),
-    ],
-    defaultProviderId: process.env.ELIZA_CODE_ACTIVE_SUB_AGENT || "eliza",
-    getWorkingDirectory: () => process.cwd(),
-  });
-
-  await runtime.registerService(AgentOrchestratorService as any);
   await runtime.initialize();
 
   return runtime;

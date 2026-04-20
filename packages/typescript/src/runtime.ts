@@ -275,6 +275,13 @@ function isTextStreamResult(
 	);
 }
 
+function callbackContentHasVisibleOutput(content: Content): boolean {
+	if (typeof content.text === "string" && content.text.trim().length > 0) {
+		return true;
+	}
+	return Array.isArray(content.attachments) && content.attachments.length > 0;
+}
+
 export class AgentRuntime implements IAgentRuntime {
 	#conversationLength = 100 as number;
 	readonly agentId: UUID;
@@ -2502,9 +2509,16 @@ export class AgentRuntime implements IAgentRuntime {
 								action: action.name,
 								errors: validation.errors,
 							},
-							"Action parameter validation incomplete; continuing to handler",
+							"Skipping action with invalid parameters",
 						);
-						options.parameterErrors = validation.errors;
+						if (actionPlan?.steps?.[actionIndex]) {
+							actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+								status: "failed",
+								error: validation.errors.join("; "),
+							});
+						}
+						actionIndex++;
+						continue;
 					}
 
 					if (validation.params) options.parameters = validation.params;
@@ -2589,10 +2603,20 @@ export class AgentRuntime implements IAgentRuntime {
 				});
 
 				const storedCallbackData: Content[] = [];
+				let visibleCallbackIndex: number | null = null;
 
 				const storageCallback = async (response: Content) => {
 					// Use responseMessageId for the text response (separate from action badge)
 					response.responseId = responseMessageId;
+					if (callbackContentHasVisibleOutput(response)) {
+						if (visibleCallbackIndex === null) {
+							visibleCallbackIndex = storedCallbackData.length;
+							storedCallbackData.push(response);
+						} else {
+							storedCallbackData[visibleCallbackIndex] = response;
+						}
+						return [];
+					}
 					storedCallbackData.push(response);
 					return [];
 				};
@@ -2827,10 +2851,8 @@ export class AgentRuntime implements IAgentRuntime {
 				if (
 					callback &&
 					actionText &&
-					!storedCallbackData.some(
-						(content) =>
-							typeof content?.text === "string" &&
-							content.text.trim().length > 0,
+					!storedCallbackData.some((content) =>
+						callbackContentHasVisibleOutput(content),
 					)
 				) {
 					storedCallbackData.push({
@@ -4169,31 +4191,45 @@ export class AgentRuntime implements IAgentRuntime {
 				: typeof response === "string"
 					? response
 					: undefined;
-		this.adapter.createLogs([
-			{
-				entityId: this.agentId,
-				roomId: this.currentRoomId ?? this.agentId,
-				body: {
-					modelType,
-					modelKey,
-					prompt: promptContent ?? undefined,
-					systemPrompt: this.character.system ?? undefined,
-					runId: this.getCurrentRunId(),
-					timestamp: Date.now(),
-					executionTime: elapsedTime,
-					provider:
-						provider || this.models.get(modelKey)?.[0]?.provider || "unknown",
-					actionContext: this.currentActionContext
-						? {
-								actionName: this.currentActionContext.actionName,
-								actionId: this.currentActionContext.actionId,
-							}
-						: undefined,
-					response: responseValue,
+		void this.adapter
+			.createLogs([
+				{
+					entityId: this.agentId,
+					roomId: this.currentRoomId ?? this.agentId,
+					body: {
+						modelType,
+						modelKey,
+						prompt: promptContent ?? undefined,
+						systemPrompt: this.character.system ?? undefined,
+						runId: this.getCurrentRunId(),
+						timestamp: Date.now(),
+						executionTime: elapsedTime,
+						provider:
+							provider ||
+							this.models.get(modelKey)?.[0]?.provider ||
+							"unknown",
+						actionContext: this.currentActionContext
+							? {
+									actionName: this.currentActionContext.actionName,
+									actionId: this.currentActionContext.actionId,
+								}
+							: undefined,
+						response: responseValue,
+					},
+					type: `useModel:${modelKey}`,
 				},
-				type: `useModel:${modelKey}`,
-			},
-		]);
+			])
+			.catch((error) => {
+				this.logger.debug(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						model: modelKey,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"Model call log write failed",
+				);
+			});
 	}
 
 	async useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
@@ -6988,6 +7024,28 @@ ${section_end}`;
 		}
 	}
 
+	unregisterEvent<T extends keyof EventPayloadMap>(
+		event: T,
+		handler: EventHandler<T>,
+	): void;
+	unregisterEvent<P extends EventPayload = EventPayload>(
+		event: string,
+		handler: (params: P) => Promise<void>,
+	): void;
+	unregisterEvent(
+		event: string,
+		handler: (params: EventPayload) => Promise<void>,
+	): void {
+		const handlers = this.events?.[event];
+		if (!handlers) return;
+		const filtered = handlers.filter((h) => h !== handler);
+		if (filtered.length > 0) {
+			this.events[event] = filtered;
+		} else {
+			delete this.events[event];
+		}
+	}
+
 	getEvent(
 		event: string,
 	):
@@ -7069,6 +7127,10 @@ ${section_end}`;
 
 	getTaskWorker(name: string): TaskWorker | undefined {
 		return this.taskWorkers.get(name);
+	}
+
+	unregisterTaskWorker(name: string): boolean {
+		return this.taskWorkers.delete(name);
 	}
 
 	get db(): object {
@@ -7883,7 +7945,7 @@ ${section_end}`;
 		});
 	}
 
-	// Deprecated entity wrapper
+	// Single-item entity wrapper
 	async updateEntity(entity: Entity): Promise<void> {
 		return await this.adapter.updateEntities([entity]);
 	}
@@ -7905,7 +7967,7 @@ ${section_end}`;
 		return await this.adapter.deleteComponents(componentIds);
 	}
 
-	// Deprecated component wrappers
+	// Single-item component wrappers
 	async createComponent(component: Component): Promise<boolean> {
 		const ids = await this.adapter.createComponents([component]);
 		return ids.length > 0;
@@ -8056,7 +8118,7 @@ ${section_end}`;
 		return await this.adapter.deleteRelationships(relationshipIds);
 	}
 
-	// Deprecated relationship wrappers
+	// Single-item relationship wrappers
 	async createRelationship(params: {
 		sourceEntityId: UUID;
 		targetEntityId: UUID;
@@ -8189,7 +8251,7 @@ ${section_end}`;
 		return await this.adapter.deleteRooms(roomIds);
 	}
 
-	// Deprecated room wrappers
+	// Single-item room wrappers
 	async updateRoom(room: Room): Promise<void> {
 		return await this.adapter.updateRooms([room]);
 	}
@@ -8368,7 +8430,7 @@ ${section_end}`;
 		return await this.adapter.deletePairingAllowlistEntries(ids);
 	}
 
-	// Deprecated pairing wrappers
+	// Single-item pairing wrappers
 	async createPairingRequest(request: PairingRequest): Promise<UUID> {
 		const ids = await this.adapter.createPairingRequests([request]);
 		return ids[0];

@@ -8,7 +8,13 @@
 
 import { execSync } from "node:child_process";
 import type { ScreenSize, WindowInfo } from "../types.js";
-import { commandExists, currentPlatform, runCommand } from "./helpers.js";
+import {
+  commandExists,
+  currentPlatform,
+  escapeAppleScript,
+  runCommand,
+  validateWindowId,
+} from "./helpers.js";
 
 // ── List Windows ────────────────────────────────────────────────────────────
 
@@ -118,36 +124,94 @@ function listWindowsWindows(): WindowInfo[] {
 // ── Focus Window ────────────────────────────────────────────────────────────
 
 export function focusWindow(windowId: string): void {
+  const safeId = validateWindowId(windowId);
   const os = currentPlatform();
 
   if (os === "darwin") {
-    // Use AppleScript to bring window to front by process name
+    // Use AppleScript to bring window to front by process id
     const script = `
       tell application "System Events"
-        set frontmost of (first process whose id is ${windowId}) to true
+        set frontmost of (first process whose id is ${safeId}) to true
       end tell`;
-    try {
-      runCommand("osascript", ["-e", script], 5000);
-    } catch {
-      // Fallback: try by name
-      runCommand(
-        "osascript",
-        ["-e", `tell application "${windowId}" to activate`],
-        5000,
-      );
-    }
+    runCommand("osascript", ["-e", script], 5000);
   } else if (os === "linux") {
     if (commandExists("wmctrl")) {
-      runCommand("wmctrl", ["-i", "-a", windowId], 5000);
+      runCommand("wmctrl", ["-i", "-a", safeId], 5000);
     } else if (commandExists("xdotool")) {
-      runCommand("xdotool", ["windowactivate", windowId], 5000);
+      runCommand("xdotool", ["windowactivate", safeId], 5000);
     }
   } else if (os === "win32") {
     const ps = `
       Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);' -Name Win32 -Namespace Win32
-      $proc = Get-Process -Id ${windowId} -ErrorAction SilentlyContinue
+      $proc = Get-Process -Id ${safeId} -ErrorAction SilentlyContinue
       if ($proc) { [Win32.Win32]::SetForegroundWindow($proc.MainWindowHandle) }
     `;
+    runCommand("powershell", ["-Command", ps], 5000);
+  }
+}
+
+function isWindowId(target: string): boolean {
+  return /^[0-9]+$/.test(target) || /^0x[0-9a-f]+$/i.test(target);
+}
+
+function escapePowerShellSingleQuoted(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
+export function switchWindow(target: string): void {
+  const os = currentPlatform();
+  const trimmed = target.trim();
+  const byId = isWindowId(trimmed);
+
+  if (os === "darwin") {
+    const script = byId
+      ? [
+          'tell application "System Events"',
+          `set frontmost of (first process whose unix id is ${trimmed}) to true`,
+          "end tell",
+        ].join("\n")
+      : [
+          `set targetName to ${escapeAppleScript(trimmed)}`,
+          'tell application "System Events"',
+          "set targetProcess to first process whose visible is true and (name contains targetName or exists (first window whose name contains targetName))",
+          "set frontmost of targetProcess to true",
+          "end tell",
+        ].join("\n");
+    runCommand("osascript", ["-e", script], 5000);
+    return;
+  }
+
+  if (os === "linux") {
+    if (commandExists("wmctrl")) {
+      const args = byId ? ["-i", "-a", trimmed] : ["-a", trimmed];
+      runCommand("wmctrl", args, 5000);
+      return;
+    }
+    if (commandExists("xdotool")) {
+      const args = byId
+        ? ["windowactivate", trimmed]
+        : ["search", "--name", trimmed, "windowactivate"];
+      runCommand("xdotool", args, 5000);
+      return;
+    }
+    throw new Error("No supported window activation tool available");
+  }
+
+  if (os === "win32") {
+    const ps = byId
+      ? [
+          "Add-Type -MemberDefinition '[DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr hWnd);' -Name Win32 -Namespace Win32",
+          `$proc = Get-Process -Id ${trimmed} -ErrorAction SilentlyContinue`,
+          "if (-not $proc) { throw 'Window not found' }",
+          "[Win32.Win32]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null",
+        ].join("; ")
+      : [
+          "Add-Type -AssemblyName Microsoft.VisualBasic",
+          `$target = '${escapePowerShellSingleQuoted(trimmed)}'`,
+          '$proc = Get-Process | Where-Object { $_.MainWindowTitle -like ("*" + $target + "*") } | Select-Object -First 1',
+          "if (-not $proc) { throw 'Window not found' }",
+          "[Microsoft.VisualBasic.Interaction]::AppActivate($proc.Id) | Out-Null",
+        ].join("; ");
     runCommand("powershell", ["-Command", ps], 5000);
   }
 }
@@ -155,21 +219,22 @@ export function focusWindow(windowId: string): void {
 // ── Minimize Window ─────────────────────────────────────────────────────────
 
 export function minimizeWindow(windowId: string): void {
+  const safeId = validateWindowId(windowId);
   const os = currentPlatform();
 
   if (os === "darwin") {
-    const script = `tell application "System Events" to set miniaturized of window 1 of (first process whose id is ${windowId}) to true`;
+    const script = `tell application "System Events" to set miniaturized of window 1 of (first process whose id is ${safeId}) to true`;
     try {
       runCommand("osascript", ["-e", script], 5000);
     } catch { /* ignore */ }
   } else if (os === "linux") {
     if (commandExists("xdotool")) {
-      runCommand("xdotool", ["windowminimize", windowId], 5000);
+      runCommand("xdotool", ["windowminimize", safeId], 5000);
     }
   } else if (os === "win32") {
     const ps = `
       Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);' -Name Win32 -Namespace Win32
-      $proc = Get-Process -Id ${windowId} -ErrorAction SilentlyContinue
+      $proc = Get-Process -Id ${safeId} -ErrorAction SilentlyContinue
       if ($proc) { [Win32.Win32]::ShowWindow($proc.MainWindowHandle, 6) }
     `;
     runCommand("powershell", ["-Command", ps], 5000);
@@ -179,12 +244,13 @@ export function minimizeWindow(windowId: string): void {
 // ── Maximize Window ─────────────────────────────────────────────────────────
 
 export function maximizeWindow(windowId: string): void {
+  const safeId = validateWindowId(windowId);
   const os = currentPlatform();
 
   if (os === "darwin") {
     const script = `
       tell application "System Events"
-        tell (first process whose id is ${windowId})
+        tell (first process whose id is ${safeId})
           set value of attribute "AXFullScreen" of window 1 to true
         end tell
       end tell`;
@@ -193,14 +259,83 @@ export function maximizeWindow(windowId: string): void {
     } catch { /* ignore */ }
   } else if (os === "linux") {
     if (commandExists("wmctrl")) {
-      runCommand("wmctrl", ["-i", "-r", windowId, "-b", "add,maximized_vert,maximized_horz"], 5000);
+      runCommand("wmctrl", ["-i", "-r", safeId, "-b", "add,maximized_vert,maximized_horz"], 5000);
     }
   } else if (os === "win32") {
     const ps = `
       Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);' -Name Win32 -Namespace Win32
-      $proc = Get-Process -Id ${windowId} -ErrorAction SilentlyContinue
+      $proc = Get-Process -Id ${safeId} -ErrorAction SilentlyContinue
       if ($proc) { [Win32.Win32]::ShowWindow($proc.MainWindowHandle, 3) }
     `;
+    runCommand("powershell", ["-Command", ps], 5000);
+  }
+}
+
+export function restoreWindow(target: string): void {
+  const os = currentPlatform();
+  const trimmed = target.trim();
+  const byId = isWindowId(trimmed);
+
+  if (os === "darwin") {
+    const script = byId
+      ? [
+          'tell application "System Events"',
+          `tell (first process whose unix id is ${trimmed})`,
+          "set miniaturized of window 1 to false",
+          "set frontmost to true",
+          "end tell",
+          "end tell",
+        ].join("\n")
+      : [
+          `set targetName to ${escapeAppleScript(trimmed)}`,
+          'tell application "System Events"',
+          "tell (first process whose visible is true and (name contains targetName or exists (first window whose name contains targetName)))",
+          "set miniaturized of window 1 to false",
+          "set frontmost to true",
+          "end tell",
+          "end tell",
+        ].join("\n");
+    runCommand("osascript", ["-e", script], 5000);
+    return;
+  }
+
+  if (os === "linux") {
+    if (commandExists("wmctrl")) {
+      if (byId) {
+        runCommand("wmctrl", ["-i", "-r", trimmed, "-b", "remove,hidden"], 5000);
+        runCommand("wmctrl", ["-i", "-a", trimmed], 5000);
+      } else {
+        runCommand("wmctrl", ["-r", trimmed, "-b", "remove,hidden"], 5000);
+        runCommand("wmctrl", ["-a", trimmed], 5000);
+      }
+      return;
+    }
+    if (commandExists("xdotool")) {
+      const args = byId
+        ? ["windowmap", trimmed, "windowactivate", trimmed]
+        : ["search", "--name", trimmed, "windowmap", "%@", "windowactivate", "%@"];
+      runCommand("xdotool", args, 5000);
+      return;
+    }
+    throw new Error("No supported window restore tool available");
+  }
+
+  if (os === "win32") {
+    const ps = byId
+      ? [
+          "Add-Type -MemberDefinition '[DllImport(\"user32.dll\")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow); [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr hWnd);' -Name Win32 -Namespace Win32",
+          `$proc = Get-Process -Id ${trimmed} -ErrorAction SilentlyContinue`,
+          "if (-not $proc) { throw 'Window not found' }",
+          "[Win32.Win32]::ShowWindow($proc.MainWindowHandle, 9) | Out-Null",
+          "[Win32.Win32]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null",
+        ].join("; ")
+      : [
+          "Add-Type -AssemblyName Microsoft.VisualBasic",
+          `$target = '${escapePowerShellSingleQuoted(trimmed)}'`,
+          '$proc = Get-Process | Where-Object { $_.MainWindowTitle -like ("*" + $target + "*") } | Select-Object -First 1',
+          "if (-not $proc) { throw 'Window not found' }",
+          "[Microsoft.VisualBasic.Interaction]::AppActivate($proc.Id) | Out-Null",
+        ].join("; ");
     runCommand("powershell", ["-Command", ps], 5000);
   }
 }
@@ -208,12 +343,13 @@ export function maximizeWindow(windowId: string): void {
 // ── Close Window ────────────────────────────────────────────────────────────
 
 export function closeWindow(windowId: string): void {
+  const safeId = validateWindowId(windowId);
   const os = currentPlatform();
 
   if (os === "darwin") {
     const script = `
       tell application "System Events"
-        tell (first process whose id is ${windowId})
+        tell (first process whose id is ${safeId})
           click button 1 of window 1
         end tell
       end tell`;
@@ -222,12 +358,12 @@ export function closeWindow(windowId: string): void {
     } catch { /* ignore */ }
   } else if (os === "linux") {
     if (commandExists("wmctrl")) {
-      runCommand("wmctrl", ["-i", "-c", windowId], 5000);
+      runCommand("wmctrl", ["-i", "-c", safeId], 5000);
     } else if (commandExists("xdotool")) {
-      runCommand("xdotool", ["windowclose", windowId], 5000);
+      runCommand("xdotool", ["windowclose", safeId], 5000);
     }
   } else if (os === "win32") {
-    const ps = `Stop-Process -Id ${windowId} -ErrorAction SilentlyContinue`;
+    const ps = `Stop-Process -Id ${safeId} -ErrorAction SilentlyContinue`;
     runCommand("powershell", ["-Command", ps], 5000);
   }
 }

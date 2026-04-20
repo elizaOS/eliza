@@ -42,6 +42,7 @@ export interface BuildOnboardingConnectionArgs {
   onboardingFeaturePhone?: boolean;
   onboardingFeatureCrypto?: boolean;
   onboardingFeatureBrowser?: boolean;
+  onboardingFeatureComputerUse?: boolean;
 }
 
 /** Feature selections from the onboarding features step. */
@@ -53,6 +54,7 @@ export interface OnboardingFeatureSetup {
   capabilities: {
     crypto?: boolean;
     browser?: boolean;
+    computeruse?: boolean;
   };
 }
 
@@ -101,6 +103,8 @@ export function buildOnboardingRuntimeConfig(
   args: BuildOnboardingConnectionArgs,
 ): BuildOnboardingRuntimeConfigResult {
   const serverTarget = resolveArgsServerTarget(args);
+  const persistRuntimeOnConnectedRemote =
+    serverTarget === "remote" && args.onboardingRemoteConnected;
   const nanoModel = trimToUndefined(args.onboardingNanoModel);
   const smallModel = trimToUndefined(args.onboardingSmallModel);
   const mediumModel = trimToUndefined(args.onboardingMediumModel);
@@ -133,7 +137,9 @@ export function buildOnboardingRuntimeConfig(
   }
 
   const deploymentTarget: DeploymentTargetConfig =
-    serverTarget === "remote"
+    persistRuntimeOnConnectedRemote
+      ? { runtime: "local" }
+      : serverTarget === "remote"
       ? {
           runtime: "remote",
           provider: "remote",
@@ -175,7 +181,7 @@ export function buildOnboardingRuntimeConfig(
       onboardingOpenRouterModel: args.onboardingOpenRouterModel,
     });
     llmTextRoute =
-      serverTarget === "remote"
+      serverTarget === "remote" && !persistRuntimeOnConnectedRemote
         ? {
             backend: localProviderId,
             transport: "remote",
@@ -240,7 +246,8 @@ export function buildOnboardingRuntimeConfig(
     args.onboardingFeatureTelegram ||
     args.onboardingFeatureDiscord ||
     args.onboardingFeatureCrypto ||
-    args.onboardingFeatureBrowser;
+    args.onboardingFeatureBrowser ||
+    args.onboardingFeatureComputerUse;
 
   const featureSetup: OnboardingFeatureSetup | undefined = hasFeatures
     ? {
@@ -255,6 +262,7 @@ export function buildOnboardingRuntimeConfig(
         capabilities: {
           ...(args.onboardingFeatureCrypto ? { crypto: true } : {}),
           ...(args.onboardingFeatureBrowser ? { browser: true } : {}),
+          ...(args.onboardingFeatureComputerUse ? { computeruse: true } : {}),
         },
       }
     : undefined;

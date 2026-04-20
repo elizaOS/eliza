@@ -8,12 +8,18 @@
  * Each session uses a temp user data directory to prevent conflicts.
  */
 
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { currentPlatform } from "./helpers.js";
-import type { BrowserState, BrowserTab, ClickableElement } from "../types.js";
+import type {
+  BrowserInfo,
+  BrowserState,
+  BrowserTab,
+  ClickableElement,
+} from "../types.js";
 
 // Lazy-load puppeteer-core so the plugin still loads if it's not installed
 let puppeteer: typeof import("puppeteer-core") | null = null;
@@ -38,6 +44,16 @@ async function getPuppeteer() {
 let browser: Browser | null = null;
 let activePage: Page | null = null;
 let tempUserDataDir: string | null = null;
+let browserHeadless = false;
+const BROWSER_LAUNCH_ATTEMPTS = 3;
+
+export function setBrowserRuntimeOptions(options: {
+  headless?: boolean;
+}): void {
+  if (typeof options.headless === "boolean") {
+    browserHeadless = options.headless;
+  }
+}
 
 // ── Browser Detection ───────────────────────────────────────────────────────
 
@@ -81,6 +97,35 @@ function detectBrowserPath(): string | null {
       return path;
     }
   }
+
+  const lookup = os === "win32" ? "where" : "which";
+  for (const candidate of [
+    "google-chrome",
+    "google-chrome-stable",
+    "chromium-browser",
+    "chromium",
+    "microsoft-edge",
+    "brave-browser",
+    "chrome.exe",
+    "msedge.exe",
+  ]) {
+    try {
+      const output = execFileSync(lookup, [candidate], {
+        encoding: "utf8",
+        timeout: 3000,
+      });
+      const match = output
+        .split(/\r?\n/)
+        .map((value) => value.trim())
+        .find((value) => value && existsSync(value));
+      if (match) {
+        return match;
+      }
+    } catch {
+      // Ignore PATH misses.
+    }
+  }
+
   return null;
 }
 
@@ -121,33 +166,68 @@ export async function openBrowser(url?: string): Promise<BrowserState> {
     await closeBrowser();
   }
 
-  // Create temp user data directory to prevent conflicts
-  tempUserDataDir = await mkdtemp(join(tmpdir(), "computeruse-browser-"));
+  const isCi =
+    process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
+  const launchArgs = [
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-infobars",
+    `--window-size=1280,900`,
+  ];
+  if (isCi) {
+    launchArgs.push(
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+    );
+  }
+  let lastError: unknown = null;
 
-  browser = await pup.default.launch({
-    executablePath,
-    headless: false,
-    userDataDir: tempUserDataDir,
-    args: [
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-infobars",
-      `--window-size=1280,900`,
-    ],
-    defaultViewport: { width: 1280, height: 900 },
-  });
+  for (
+    let attempt = 1;
+    attempt <= BROWSER_LAUNCH_ATTEMPTS;
+    attempt += 1
+  ) {
+    tempUserDataDir = await mkdtemp(join(tmpdir(), "computeruse-browser-"));
 
-  const pages = await browser.pages();
-  activePage = pages[0] ?? (await browser.newPage());
+    try {
+      browser = await pup.default.launch({
+        executablePath,
+        headless: browserHeadless,
+        userDataDir: tempUserDataDir,
+        args: launchArgs,
+        defaultViewport: { width: 1280, height: 900 },
+      });
 
-  if (url) {
-    await activePage.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+      const pages = await browser.pages();
+      activePage = pages[0] ?? (await browser.newPage());
+
+      if (url) {
+        await activePage.goto(url, {
+          waitUntil: "domcontentloaded",
+          timeout: 30000,
+        });
+      }
+
+      return {
+        url: activePage.url(),
+        title: await activePage.title(),
+        isOpen: true,
+        is_open: true,
+      };
+    } catch (error) {
+      lastError = error;
+      await closeBrowser();
+      if (attempt < BROWSER_LAUNCH_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+      }
+    }
   }
 
-  return {
-    url: activePage.url(),
-    title: await activePage.title(),
-  };
+  const message =
+    lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`Failed to launch browser after retries: ${message}`);
 }
 
 export async function closeBrowser(): Promise<void> {
@@ -172,7 +252,12 @@ export async function closeBrowser(): Promise<void> {
 export async function navigateBrowser(url: string): Promise<BrowserState> {
   const page = await ensureBrowser();
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-  return { url: page.url(), title: await page.title() };
+  return {
+    url: page.url(),
+    title: await page.title(),
+    isOpen: true,
+    is_open: true,
+  };
 }
 
 // ── Click ───────────────────────────────────────────────────────────────────
@@ -189,18 +274,28 @@ export async function clickBrowser(
   } else if (coordinate) {
     await page.mouse.click(coordinate[0], coordinate[1]);
   } else if (text) {
-    // Find element by text content
     const el = await page.evaluateHandle((t) => {
-      const elements = document.querySelectorAll("a, button, input, [role='button']");
-      for (const el of elements) {
-        if (el.textContent?.includes(t)) return el;
+      const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT,
+      );
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (node.textContent?.includes(t)) {
+          return node.parentElement;
+        }
       }
       return null;
     }, text);
-    if (el) {
-      await (el as import("puppeteer-core").ElementHandle).click();
+    const element = el.asElement() as import("puppeteer-core").ElementHandle<Element> | null;
+    if (!element) {
       await el.dispose();
+      throw new Error(`Element with text "${text}" not found`);
     }
+    await element.click();
+    await el.dispose();
+  } else {
+    throw new Error("selector, coordinate, or text is required for browser click");
   }
 }
 
@@ -235,7 +330,37 @@ export async function scrollBrowser(
 
 export async function getBrowserState(): Promise<BrowserState> {
   const page = await ensureBrowser();
-  return { url: page.url(), title: await page.title() };
+  return {
+    url: page.url(),
+    title: await page.title(),
+    isOpen: true,
+    is_open: true,
+  };
+}
+
+export async function getBrowserContext(): Promise<BrowserState> {
+  return getBrowserState();
+}
+
+export async function getBrowserInfo(): Promise<BrowserInfo> {
+  try {
+    const state = await getBrowserState();
+    return {
+      success: true,
+      isOpen: true,
+      is_open: true,
+      ...state,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      isOpen: false,
+      is_open: false,
+      url: "",
+      title: "",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 // ── DOM ─────────────────────────────────────────────────────────────────────
@@ -297,10 +422,21 @@ export async function screenshotBrowser(): Promise<string> {
 export async function executeBrowser(code: string): Promise<string> {
   const page = await ensureBrowser();
   try {
-    const result = await page.evaluate(code);
+    const result = await page.evaluate(
+      async (script) => {
+        const AsyncFunction = Object.getPrototypeOf(
+          async function placeholder() {
+            // noop
+          },
+        ).constructor as new (...args: string[]) => (...fnArgs: unknown[]) => Promise<unknown>;
+        const fn = new AsyncFunction(script);
+        return await fn();
+      },
+      code,
+    );
     return JSON.stringify(result, null, 2);
   } catch (err) {
-    return `Error: ${String(err)}`;
+    throw err instanceof Error ? err : new Error(String(err));
   }
 }
 
@@ -380,5 +516,10 @@ export async function switchBrowserTab(tabId: string): Promise<BrowserState> {
   if (!page) throw new Error(`Tab ${tabId} not found.`);
   activePage = page;
   await page.bringToFront();
-  return { url: page.url(), title: await page.title() };
+  return {
+    url: page.url(),
+    title: await page.title(),
+    isOpen: true,
+    is_open: true,
+  };
 }

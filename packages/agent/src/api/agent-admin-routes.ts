@@ -1,11 +1,11 @@
 import path from "node:path";
 import type { AgentRuntime, UUID } from "@elizaos/core";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
-import { resolveUserPath } from "../config/paths.js";
 import {
   getDefaultStylePreset,
   normalizeCharacterLanguage,
-} from "../onboarding-presets.js";
+} from "@elizaos/shared/onboarding-presets";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
+import { resolveUserPath } from "../config/paths.js";
 import { detectRuntimeModel } from "./agent-model.js";
 import { clearPersistedOnboardingConfig } from "./provider-switch-config.js";
 import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";

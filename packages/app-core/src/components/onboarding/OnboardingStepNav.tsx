@@ -1,23 +1,25 @@
-import { useApp } from "../../state/useApp";
-
+import { useApp } from "@elizaos/app-core/state";
 import { useBranding } from "../../config/branding";
 import { getOnboardingNavMetas } from "../../onboarding/flow";
-import { Button } from "@elizaos/ui";
+import type { OnboardingStep, OnboardingStepMeta } from "../../state/types";
 
-export function OnboardingStepNav() {
-  const { onboardingStep, handleOnboardingJumpToStep, t } = useApp();
-  const branding = useBranding();
+function PureOnboardingStepNav(props: {
+  currentStep: OnboardingStep;
+  onboardingNavMetas: OnboardingStepMeta[];
+  handleOnboardingJumpToStep: (step: OnboardingStep) => void;
+  t: (key: any, params?: any) => string;
+}) {
+  const { currentStep, onboardingNavMetas, handleOnboardingJumpToStep, t } =
+    props;
 
-  const isCloudOnly = Boolean(branding.cloudOnly);
-  const activeSteps = getOnboardingNavMetas(onboardingStep, isCloudOnly);
-  const currentIndex = activeSteps.findIndex(
-    (step) => step.id === onboardingStep,
+  const currentIndex = onboardingNavMetas.findIndex(
+    (step) => step.id === currentStep,
   );
 
   return (
     <nav className="w-full" aria-label={t("onboarding.stepNavigation")}>
       <ol className="mx-auto flex w-full max-w-[46rem] flex-col gap-2 sm:flex-row">
-        {activeSteps.map((step, index) => {
+        {onboardingNavMetas.map((step, index) => {
           const isDone = index < currentIndex;
           const isActive = index === currentIndex;
           const isClickable = isDone;
@@ -38,35 +40,35 @@ export function OnboardingStepNav() {
             <>
               <div
                 aria-hidden="true"
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-xs font-semibold tracking-[0.18em] ${
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-xs font-semibold tracking-[0.18em] transition-colors duration-200 ${
                   isActive
-                    ? "border-[rgba(255,248,220,0.92)] bg-[rgba(240,185,11,0.2)] text-[var(--onboarding-text-strong)]"
+                    ? "border-accent/80 bg-accent/20 text-accent font-bold"
                     : isDone
-                      ? "border-[rgba(240,185,11,0.34)] bg-[rgba(240,185,11,0.12)] text-[var(--onboarding-link)]"
-                      : "border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.04)] text-[var(--onboarding-text-faint)]"
+                      ? "border-accent/40 bg-accent/10 text-accent/70"
+                      : "border-white/12 bg-white/4 text-white/30"
                 }`}
               >
                 {stepNumber}
               </div>
               <div className="min-w-0 flex-1">
                 <div
-                  className={`text-sm font-medium tracking-[0.08em] ${
+                  className={`text-sm font-medium tracking-[0.08em] transition-colors duration-200 ${
                     isActive
-                      ? "text-[var(--onboarding-text-strong)]"
+                      ? "text-white"
                       : isDone
-                        ? "text-[var(--onboarding-link)]"
-                        : "text-[var(--onboarding-text-subtle)]"
+                        ? "text-accent/80"
+                        : "text-white/40"
                   }`}
                 >
                   {t(step.name)}
                 </div>
                 <div
-                  className={`mt-1 text-xs leading-relaxed ${
+                  className={`mt-1 text-xs leading-relaxed transition-colors duration-200 ${
                     isActive
-                      ? "text-[var(--onboarding-text-muted)]"
+                      ? "text-white/60"
                       : isDone
-                        ? "text-[var(--onboarding-text-subtle)]"
-                        : "text-[var(--onboarding-text-faint)]"
+                        ? "text-white/40"
+                        : "text-white/20"
                   }`}
                 >
                   {t(step.subtitle)}
@@ -75,33 +77,52 @@ export function OnboardingStepNav() {
             </>
           );
 
-          return (
-            <li key={step.id} className="flex-1 list-none">
-              {isClickable ? (
-                <Button
-                  variant="ghost"
+          if (isClickable) {
+            return (
+              <li key={step.id} className="flex-1 list-none">
+                <button
                   type="button"
                   className={shellClass}
                   title={t(step.name)}
-                  aria-label={`${t(step.name)} — ${t("onboarding.stepLabel", { current: index + 1, total: activeSteps.length })} (${t("onboarding.completed")})`}
+                  aria-label={`${t(step.name)} — ${t("onboarding.stepLabel", { current: index + 1, total: onboardingNavMetas.length })} (${t("onboarding.completed")})`}
                   onClick={() => handleOnboardingJumpToStep(step.id)}
                 >
                   {content}
-                </Button>
-              ) : (
-                <div
-                  className={shellClass}
-                  title={t(step.name)}
-                  aria-label={`${t(step.name)} — ${t("onboarding.stepLabel", { current: index + 1, total: activeSteps.length })}`}
-                  {...(isActive ? { "aria-current": "step" as const } : {})}
-                >
-                  {content}
-                </div>
-              )}
+                </button>
+              </li>
+            );
+          }
+
+          return (
+            <li key={step.id} className="flex-1 list-none">
+              <div
+                className={shellClass}
+                title={t(step.name)}
+                {...(isActive ? { "aria-current": "step" as const } : {})}
+              >
+                {content}
+              </div>
             </li>
           );
         })}
       </ol>
     </nav>
+  );
+}
+
+export function OnboardingStepNav() {
+  const { onboardingStep, handleOnboardingJumpToStep, t } = useApp();
+  const branding = useBranding();
+
+  const isCloudOnly = Boolean(branding.cloudOnly);
+  const onboardingNavMetas = getOnboardingNavMetas(onboardingStep, isCloudOnly);
+
+  return (
+    <PureOnboardingStepNav
+      currentStep={onboardingStep}
+      onboardingNavMetas={onboardingNavMetas}
+      handleOnboardingJumpToStep={handleOnboardingJumpToStep}
+      t={t}
+    />
   );
 }

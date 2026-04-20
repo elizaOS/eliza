@@ -28,11 +28,14 @@ import {
   type UUID,
 } from "@elizaos/core";
 import dotenv from "dotenv";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect } from "vitest";
 import { itIf } from "../../../../../test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
-import { withTimeout, sleep } from "../../../../../test/helpers/test-utils";
-import { USER_PREFS_TABLE } from "../../../typescript/src/advanced-capabilities/personality/types.ts";
+import { sleep, withTimeout } from "../../../../../test/helpers/test-utils";
+
+/** Matches the table name used by @elizaos/core personality module. */
+const USER_PREFS_TABLE = "user_personality_preferences";
+
 import { startApiServer } from "@elizaos/agent/api/server";
 import { ensureAgentWorkspace } from "@elizaos/agent/providers/workspace";
 import { configureLocalEmbeddingPlugin } from "@elizaos/agent/runtime/eliza";
@@ -51,8 +54,7 @@ dotenv.config({ path: path.resolve(packageRoot, ".env") });
 dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
 const liveModelTestsEnabled =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;
@@ -215,7 +217,7 @@ async function shouldSkipDueModelProviderUnavailable(
   return false;
 }
 
-function readSerializedProperty(
+function _readSerializedProperty(
   value: unknown,
   key: string,
 ): unknown | undefined {
@@ -232,7 +234,7 @@ function readSerializedProperty(
   return (properties as Record<string, unknown>)[key];
 }
 
-function readSerializedArray(value: unknown): Array<Record<string, unknown>> {
+function _readSerializedArray(value: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(value)) return value as Array<Record<string, unknown>>;
   if (!value || typeof value !== "object") return [];
   const items = (value as Record<string, unknown>).items;

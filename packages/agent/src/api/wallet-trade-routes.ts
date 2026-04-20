@@ -1,9 +1,3 @@
-/**
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/api/wallet-trade-routes`.
- * New development should target the app-steward package.
- */
-
 import type { ethers } from "ethers";
 import type { ElizaConfig } from "../config/config.js";
 import type {

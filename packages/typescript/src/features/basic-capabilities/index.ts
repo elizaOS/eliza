@@ -20,6 +20,11 @@ import {
 	postCreationTemplate,
 } from "../../prompts.ts";
 import { EmbeddingGenerationService } from "../../services/embedding.ts";
+import {
+	OPTIMIZED_PROMPT_SERVICE,
+	type OptimizedPromptService,
+} from "../../services/optimized-prompt.ts";
+import { resolveOptimizedPrompt } from "../../services/optimized-prompt-resolver.ts";
 import { TaskService } from "../../services/task.ts";
 import { isExplicitSelfModificationRequest } from "../../should-respond.ts";
 import type { Role } from "../../types/environment.ts";
@@ -253,8 +258,15 @@ export async function processAttachments(
 
 			let response: string | object | undefined;
 			try {
+				const optimizedMediaService =
+					runtime.getService<OptimizedPromptService>(OPTIMIZED_PROMPT_SERVICE);
+				const resolvedImageDescriptionPrompt = resolveOptimizedPrompt(
+					optimizedMediaService,
+					"media_description",
+					imageDescriptionTemplate,
+				);
 				response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
-					prompt: imageDescriptionTemplate,
+					prompt: resolvedImageDescriptionPrompt,
 					imageUrl,
 				});
 			} catch (err) {
@@ -610,11 +622,19 @@ const postGeneratedHandler = async ({
 			metadataX?.userName || metadata?.userName || undefined;
 	}
 
+	const optimizedResponseService = runtime.getService<OptimizedPromptService>(
+		OPTIMIZED_PROMPT_SERVICE,
+	);
+	const baselineResponseTemplate =
+		runtime.character.templates?.messageHandlerTemplate ||
+		messageHandlerTemplate;
 	const prompt = composePromptFromState({
 		state,
-		template:
-			runtime.character.templates?.messageHandlerTemplate ||
-			messageHandlerTemplate,
+		template: resolveOptimizedPrompt(
+			optimizedResponseService,
+			"response",
+			baselineResponseTemplate,
+		),
 	});
 
 	let responseContent: Content | null = null;

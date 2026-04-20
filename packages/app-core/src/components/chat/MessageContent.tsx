@@ -1,17 +1,16 @@
+import { Button } from "@elizaos/ui";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { client } from "../../api/client";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
-import { client } from "../../api/client";
-import { paramsToSchema } from "../pages/plugin-list-utils";
-import { ConfigRenderer, defaultRegistry } from "../config-ui/config-renderer";
-import { UiRenderer } from "../config-ui/ui-renderer";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import type { PatchOp, UiSpec } from "../../config/ui-spec";
 import { useApp } from "../../state/useApp";
 import type { ConfigUiHint } from "../../types";
 import { stripAssistantStageDirections } from "../../utils/assistant-text";
-
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "@elizaos/ui";
+import { ConfigRenderer, defaultRegistry } from "../config-ui/config-renderer";
+import { UiRenderer } from "../config-ui/ui-renderer";
+import { paramsToSchema } from "../pages/plugin-list-utils";
 
 /** Reject prototype-pollution keys that should never be traversed or rendered. */
 const BLOCKED_IDS = new Set(["__proto__", "constructor", "prototype"]);

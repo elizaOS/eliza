@@ -166,7 +166,18 @@ async function persistOnboardingStyleVoice(args: {
   });
 }
 
-function buildOnboardingFeatureSubmitPayload(args: {
+async function ensureOnboardedAgentRunning(
+  clientRef: ElizaClient,
+): Promise<void> {
+  const status = await clientRef.startAndWait(120_000);
+  if (status.state !== "running") {
+    throw new Error(
+      `Agent failed to reach running state after onboarding (state: ${status.state}).`,
+    );
+  }
+}
+
+export function buildOnboardingFeatureSubmitPayload(args: {
   onboardingFeatureTelegram: boolean;
   onboardingFeatureDiscord: boolean;
   onboardingFeatureBrowser: boolean;
@@ -187,9 +198,12 @@ function buildOnboardingFeatureSubmitPayload(args: {
         }
       : undefined;
   const featureEntries: Record<string, { enabled: true }> = {};
-  if (args.onboardingFeatureBrowser) featureEntries.browser = { enabled: true as const };
-  if (args.onboardingFeatureComputerUse) featureEntries.computeruse = { enabled: true as const };
-  const features = Object.keys(featureEntries).length > 0 ? featureEntries : undefined;
+  if (args.onboardingFeatureBrowser)
+    featureEntries.browser = { enabled: true as const };
+  if (args.onboardingFeatureComputerUse)
+    featureEntries.computeruse = { enabled: true as const };
+  const features =
+    Object.keys(featureEntries).length > 0 ? featureEntries : undefined;
 
   return {
     ...(connectors ? { connectors } : {}),
@@ -446,6 +460,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
               err,
             );
           }
+          await ensureOnboardedAgentRunning(client);
 
           applySelectedLocalCapabilities();
           completeOnboarding();
@@ -506,8 +521,8 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
           const cloudApiBase =
             getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
           const authToken = String(
-            (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ ??
-              "",
+            (globalThis as Record<string, unknown>)
+              .__ELIZA_CLOUD_AUTH_TOKEN__ ?? "",
           );
 
           if (!authToken) {
@@ -642,6 +657,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
           completeOnboarding("settings");
           return;
         }
+        await ensureOnboardedAgentRunning(client);
 
         completeOnboarding();
       } catch (err) {

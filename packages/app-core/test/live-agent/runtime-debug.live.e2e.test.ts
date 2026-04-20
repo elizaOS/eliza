@@ -1,25 +1,24 @@
-import dotenv from "dotenv";
-import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it, expect } from "vitest";
-import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
 import {
   AgentRuntime,
   createCharacter,
   logger,
   type Plugin,
 } from "@elizaos/core";
+import dotenv from "dotenv";
+import { expect, it } from "vitest";
+import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");
 dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
 const liveModelTestsEnabled =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;

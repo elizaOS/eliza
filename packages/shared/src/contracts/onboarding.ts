@@ -95,7 +95,11 @@ export type OnboardingProviderAuthMode =
   | "subscription"
   | (string & {});
 
-export type OnboardingProviderGroup = "cloud" | "local" | "subscription" | (string & {});
+export type OnboardingProviderGroup =
+  | "cloud"
+  | "local"
+  | "subscription"
+  | (string & {});
 
 export interface ProviderOption {
   id: OnboardingProviderId;
@@ -199,10 +203,6 @@ export const SUBSCRIPTION_PROVIDER_SELECTIONS = [
   labelKey: string;
 }>;
 
-// TODO: These hardcoded provider entries should eventually be populated by
-// plugins at runtime via a registry pattern. Each LLM plugin would call
-// registerProviderOption() during initialization to add itself to the catalog.
-// The hardcoded entries below serve as defaults until all plugins are migrated.
 export const ONBOARDING_PROVIDER_CATALOG = [
   {
     id: "elizacloud",
@@ -676,6 +676,9 @@ export function normalizeOnboardingProviderId(
     const preferredMatch =
       pluginMatches.find((provider) => provider.authMode === "api-key") ??
       pluginMatches[0];
+    if (!preferredMatch) {
+      continue;
+    }
     return preferredMatch.id;
   }
 
@@ -942,7 +945,10 @@ function resolveLegacyServiceRoutingInConfig(
   const models = asConfigRecord(config?.models);
 
   if (!next.llmText) {
-    if (deploymentTarget.runtime === "remote" && deploymentTarget.remoteApiBase) {
+    if (
+      deploymentTarget.runtime === "remote" &&
+      deploymentTarget.remoteApiBase
+    ) {
       const remotePrimaryModel = readPrimaryModelFromConfig(config);
       next.llmText = {
         backend: "remote",
@@ -1128,7 +1134,10 @@ export function resolveServiceRoutingInConfig(
   const deploymentTarget = resolveDeploymentTargetInConfig(config);
 
   if (!next.llmText) {
-    if (deploymentTarget.runtime === "remote" && deploymentTarget.remoteApiBase) {
+    if (
+      deploymentTarget.runtime === "remote" &&
+      deploymentTarget.remoteApiBase
+    ) {
       const remotePrimaryModel = readPrimaryModelFromConfig(config);
       next.llmText = {
         backend: "remote",

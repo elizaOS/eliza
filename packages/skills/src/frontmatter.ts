@@ -1,8 +1,9 @@
-import { parse } from "yaml";
+import { parse, stringify } from "yaml";
 import type {
   SkillFrontmatter,
   SkillInvocationPolicy,
   SkillMetadata,
+  SkillProvenance,
 } from "./types.js";
 
 /**
@@ -146,4 +147,67 @@ export function resolveSkillInvocationPolicy(
   }
 
   return policy;
+}
+
+/**
+ * Best-effort provenance parsing from a frontmatter block. Returns `undefined`
+ * when the block is missing or malformed (we do not fail loading on bad
+ * provenance — it is informational metadata).
+ */
+export function resolveSkillProvenance(
+  frontmatter: SkillFrontmatter,
+): SkillProvenance | undefined {
+  const raw = frontmatter.provenance;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return undefined;
+  }
+  const record = raw as unknown as Record<string, unknown>;
+  const source = record.source;
+  if (
+    source !== "human" &&
+    source !== "agent-generated" &&
+    source !== "agent-refined"
+  ) {
+    return undefined;
+  }
+  const createdAt =
+    typeof record.createdAt === "string" ? record.createdAt : undefined;
+  if (!createdAt) {
+    return undefined;
+  }
+  const refinedCountRaw = record.refinedCount;
+  const refinedCount =
+    typeof refinedCountRaw === "number" && Number.isFinite(refinedCountRaw)
+      ? Math.max(0, Math.floor(refinedCountRaw))
+      : 0;
+  const provenance: SkillProvenance = {
+    source,
+    createdAt,
+    refinedCount,
+  };
+  if (typeof record.derivedFromTrajectory === "string") {
+    provenance.derivedFromTrajectory = record.derivedFromTrajectory;
+  }
+  if (
+    typeof record.lastEvalScore === "number" &&
+    Number.isFinite(record.lastEvalScore)
+  ) {
+    const score = record.lastEvalScore;
+    provenance.lastEvalScore = Math.max(0, Math.min(1, score));
+  }
+  return provenance;
+}
+
+/**
+ * Serialize a SKILL.md file with updated frontmatter, preserving body content.
+ * Used by the closed learning loop to rewrite provenance after refinement and
+ * scoring.
+ */
+export function serializeSkillFile(
+  frontmatter: SkillFrontmatter,
+  body: string,
+): string {
+  const yaml = stringify(frontmatter).trimEnd();
+  const trimmedBody = body.replace(/^\n+/, "");
+  return `---\n${yaml}\n---\n\n${trimmedBody}`;
 }

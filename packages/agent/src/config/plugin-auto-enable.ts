@@ -17,6 +17,14 @@ export interface ApplyPluginAutoEnableParams {
    * conditions no longer need entries in the central map.
    */
   loadedPlugins?: Plugin[];
+  /**
+   * True when the runtime is hosted inside a Capacitor native shell
+   * (iOS / Android). Mobile cannot spawn a local n8n sidecar via
+   * `node:child_process`, so the n8n plugin is only auto-enabled when the
+   * Eliza Cloud gateway is authenticated. Desktop / server / web leave this
+   * undefined.
+   */
+  isNativePlatform?: boolean;
 }
 
 export const CONNECTOR_PLUGINS: Record<string, string> = {
@@ -120,6 +128,7 @@ const FEATURE_PLUGINS: Record<string, string> = {
   obsidian: "@elizaos/plugin-obsidian",
   cron: "@elizaos/plugin-cron",
   shell: "@elizaos/plugin-shell",
+  executeCode: "@elizaos/plugin-executecode",
   imageGen: "@elizaos/plugin-image-generation",
   tts: "@elizaos/plugin-edge-tts",
   stt: "@elizaos/plugin-stt",
@@ -514,6 +523,25 @@ export function applyPluginAutoEnable(
     }
   }
 
+  // Heal entries→allow drift: anything user-enabled via plugins.entries should
+  // also appear in the allowlist. Covers plugins that were toggled on via the
+  // API before the entries↔allow sync existed, so the persisted config
+  // stabilises after one boot instead of warning forever.
+  for (const [entryId, entry] of Object.entries(pluginsConfig.entries)) {
+    if (!entry || entry.enabled !== true) continue;
+    const connectorPackage = CONNECTOR_PLUGINS[entryId];
+    const featurePackage = FEATURE_PLUGINS[entryId];
+    const pluginName =
+      connectorPackage ?? featurePackage ?? `@elizaos/plugin-${entryId}`;
+    addToAllowlist(
+      pluginsConfig.allow,
+      pluginName,
+      entryId,
+      changes,
+      `entries: ${entryId}`,
+    );
+  }
+
   // Hooks: webhooks + gmail
   const hooksConfig = updatedConfig.hooks;
   if (hooksConfig && hooksConfig.enabled !== false && hooksConfig.token) {
@@ -613,6 +641,46 @@ export function applyPluginAutoEnable(
           `media.vision.provider=${mediaConfig.vision.provider}`,
         );
       }
+    }
+  }
+
+  // n8n workflow plugin — auto-enable when EITHER Eliza Cloud is authenticated
+  // (cloud supplies N8N_HOST + N8N_API_KEY via its gateway) OR the local n8n
+  // sidecar is permitted (config.n8n.localEnabled !== false, default true).
+  // The authoritative boot-config shape is `config.n8n` (N8nConfig in
+  // types.eliza.ts); the sidecar lifecycle writes `config.n8n.host` and
+  // `config.n8n.apiKey` once ready. The plugin's init() refuses to activate
+  // when neither is resolved, so this is safe to auto-enable eagerly.
+  //
+  // On mobile (iOS / Android), the local sidecar cannot spawn a child
+  // process, so auto-enable is gated on `cloudAuthed` alone regardless of
+  // `localEnabled`.
+  {
+    const n8nPluginName = "@elizaos/plugin-n8n-workflow";
+    const n8nPluginId = "n8n-workflow";
+    const n8nConfig = updatedConfig.n8n;
+    const n8nMasterEnabled = n8nConfig?.enabled !== false;
+    const cloudAuthed = Boolean(
+      updatedConfig.cloud?.apiKey && updatedConfig.cloud?.enabled !== false,
+    );
+    // Default is "local sidecar allowed" — only disable if explicitly set to
+    // false. Mobile forces this to false regardless of user setting.
+    const localN8nEnabled =
+      params.isNativePlatform === true ? false : n8nConfig?.localEnabled !== false;
+    const n8nExplicitlyDisabled =
+      pluginsConfig.entries[n8nPluginId]?.enabled === false;
+    if (
+      n8nMasterEnabled &&
+      !n8nExplicitlyDisabled &&
+      (cloudAuthed || localN8nEnabled)
+    ) {
+      addToAllowlist(
+        pluginsConfig.allow,
+        n8nPluginName,
+        n8nPluginId,
+        changes,
+        cloudAuthed ? "cloud: n8n gateway" : "n8n.localEnabled",
+      );
     }
   }
 

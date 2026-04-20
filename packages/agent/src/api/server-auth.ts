@@ -5,13 +5,13 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import path from "node:path";
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, UUID } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   resolveApiSecurityConfig,
   resolveApiToken,
   setApiToken,
-} from "../config/runtime-env.js";
+} from "@elizaos/shared/runtime-env";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { sendJsonError } from "./http-helpers.js";
 import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.js";

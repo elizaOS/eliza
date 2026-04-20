@@ -57,11 +57,7 @@ export function ConfirmDelete({
 
   return (
     <span className={cn("inline-flex items-center gap-1.5", className)}>
-      <span
-        className={
-          promptClassName ?? "text-xs-tight text-destructive"
-        }
-      >
+      <span className={promptClassName ?? "text-xs-tight text-destructive"}>
         {promptText}
       </span>
       <button

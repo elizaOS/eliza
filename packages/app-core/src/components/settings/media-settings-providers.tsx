@@ -1,6 +1,15 @@
-
-
+import {
+  Button,
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectValue,
+  SettingsControls,
+} from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { MediaConfig } from "../../api";
 import {
   getPlugins,
   invokeDesktopBridgeRequest,
@@ -9,8 +18,6 @@ import {
 import { useApp } from "../../state";
 import type { MediaCategory } from "./media-settings-types";
 import { getNestedValue } from "./media-settings-types";
-import type { MediaConfig } from "../../api";
-import { Button, Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectValue, SettingsControls } from "@elizaos/ui";
 
 type CameraPluginLike = {
   getDevices?: () => Promise<{

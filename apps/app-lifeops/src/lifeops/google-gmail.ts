@@ -316,12 +316,6 @@ function classifyReplyNeed(args: {
   const precedence = args.precedence?.trim().toLowerCase();
   const autoSubmitted = args.autoSubmitted?.trim().toLowerCase();
   const automated =
-    Boolean(
-      fromEmail &&
-        /(?:^|\b)(?:no-?reply|noreply-|donotreply|do-not-reply|notifications?|alerts?|mailer-daemon|postmaster|bounce|system|auto|daemon|news|updates?)(?:\b|[.@-])/i.test(
-          fromEmail,
-        ),
-    ) ||
     Boolean(args.listId) ||
     precedence === "bulk" ||
     precedence === "list" ||
@@ -329,43 +323,24 @@ function classifyReplyNeed(args: {
     precedence === "auto-reply" ||
     (autoSubmitted !== undefined && autoSubmitted !== "no");
 
-  let triageScore = 0;
-  const reasons: string[] = [];
-
-  if (isUnread) {
-    triageScore += 30;
-    reasons.push("unread");
-  }
-  if (explicitlyImportant) {
-    triageScore += 35;
-    reasons.push("important label");
-  }
-  if (directlyAddressed) {
-    triageScore += 25;
-    reasons.push("directly addressed");
-  }
-  if (!automated && !fromSelf && isUnread && directlyAddressed) {
-    triageScore += 30;
-    reasons.push("likely needs reply");
-  }
-  if (automated) {
-    triageScore -= 25;
-    reasons.push("automated sender");
-  }
-  if (fromSelf) {
-    triageScore -= 60;
-    reasons.push("sent by self");
-  }
-
   const likelyReplyNeeded =
     !automated && !fromSelf && isUnread && directlyAddressed;
   const isImportant = explicitlyImportant || likelyReplyNeeded;
-  const triageReason = reasons.join(", ") || "recent inbox message";
+  const triageSignals = [
+    explicitlyImportant ? "gmail-important-label" : null,
+    likelyReplyNeeded ? "direct-unread-reply-needed" : null,
+    isUnread ? "unread" : null,
+    automated ? "automated-header" : null,
+    fromSelf ? "sent-by-self" : null,
+  ].filter((value): value is string => Boolean(value));
+
+  const triageScore = isImportant ? 2 : isUnread ? 1 : 0;
+  const triageReason = triageSignals.join(", ") || "recent inbox message";
 
   return {
     likelyReplyNeeded,
     isImportant,
-    triageScore: Math.max(0, triageScore),
+    triageScore,
     triageReason,
   };
 }
@@ -587,9 +562,14 @@ async function fetchGoogleGmailMessages(args: {
       (message): message is SyncedGoogleGmailMessageSummary => message !== null,
     )
     .sort((left, right) => {
-      const scoreDelta = right.triageScore - left.triageScore;
-      if (scoreDelta !== 0) {
-        return scoreDelta;
+      if (left.isImportant !== right.isImportant) {
+        return right.isImportant ? 1 : -1;
+      }
+      if (left.likelyReplyNeeded !== right.likelyReplyNeeded) {
+        return right.likelyReplyNeeded ? 1 : -1;
+      }
+      if (left.isUnread !== right.isUnread) {
+        return right.isUnread ? 1 : -1;
       }
       return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
     });

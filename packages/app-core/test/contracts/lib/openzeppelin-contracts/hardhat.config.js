@@ -8,65 +8,65 @@
 // - COINMARKETCAP: coinmarketcap api key for USD value in gas report
 // - CI:            output gas report to file instead of stdout
 
-const fs = require('fs');
-const path = require('path');
+const fs = require("node:fs");
+const path = require("node:path");
 
-const { argv } = require('yargs/yargs')()
-  .env('')
+const { argv } = require("yargs/yargs")()
+  .env("")
   .options({
     // Compilation settings
     compiler: {
-      alias: 'compileVersion',
-      type: 'string',
-      default: '0.8.31',
+      alias: "compileVersion",
+      type: "string",
+      default: "0.8.31",
     },
     src: {
-      alias: 'source',
-      type: 'string',
-      default: 'contracts',
+      alias: "source",
+      type: "string",
+      default: "contracts",
     },
     runs: {
-      alias: 'optimizationRuns',
-      type: 'number',
+      alias: "optimizationRuns",
+      type: "number",
       default: 200,
     },
     ir: {
-      alias: 'enableIR',
-      type: 'boolean',
+      alias: "enableIR",
+      type: "boolean",
       default: false,
     },
     evm: {
-      alias: 'evmVersion',
-      type: 'string',
-      default: 'osaka',
+      alias: "evmVersion",
+      type: "string",
+      default: "osaka",
     },
     // Extra modules
     coverage: {
-      type: 'boolean',
+      type: "boolean",
       default: false,
     },
     gas: {
-      alias: 'enableGasReport',
-      type: 'boolean',
+      alias: "enableGasReport",
+      type: "boolean",
       default: false,
     },
     coinmarketcap: {
-      alias: 'coinmarketcapApiKey',
-      type: 'string',
+      alias: "coinmarketcapApiKey",
+      type: "string",
     },
   });
 
-require('@nomicfoundation/hardhat-chai-matchers');
-require('@nomicfoundation/hardhat-ethers');
-require('hardhat-exposed');
-require('hardhat-gas-reporter');
-require('hardhat-ignore-warnings');
-require('hardhat-predeploy');
-require('solidity-coverage');
-require('solidity-docgen');
+require("@nomicfoundation/hardhat-chai-matchers");
+require("@nomicfoundation/hardhat-ethers");
+require("hardhat-exposed");
+require("hardhat-gas-reporter");
+require("hardhat-ignore-warnings");
+require("hardhat-predeploy");
+require("solidity-coverage");
+require("solidity-docgen");
 
-for (const f of fs.readdirSync(path.join(__dirname, 'hardhat'))) {
-  require(path.join(__dirname, 'hardhat', f));
+for (const f of fs.readdirSync(path.join(__dirname, "hardhat"))) {
+  require(path.join(__dirname, "hardhat", f));
 }
 
 /**
@@ -82,18 +82,18 @@ module.exports = {
       },
       evmVersion: argv.evm,
       viaIR: argv.ir,
-      outputSelection: { '*': { '*': ['storageLayout'] } },
+      outputSelection: { "*": { "*": ["storageLayout"] } },
     },
   },
   warnings: {
-    'contracts-exposed/**/*': {
-      'code-size': 'off',
-      'initcode-size': 'off',
+    "contracts-exposed/**/*": {
+      "code-size": "off",
+      "initcode-size": "off",
     },
-    '*': {
-      'unused-param': !argv.coverage, // coverage causes unused-param warnings
-      'transient-storage': false,
-      default: 'error',
+    "*": {
+      "unused-param": !argv.coverage, // coverage causes unused-param warnings
+      "transient-storage": false,
+      default: "error",
     },
   },
   networks: {
@@ -108,17 +108,17 @@ module.exports = {
   exposed: {
     imports: true,
     initializers: true,
-    exclude: ['vendor/**/*', '**/*WithInit.sol'],
+    exclude: ["vendor/**/*", "**/*WithInit.sol"],
   },
   gasReporter: {
     enabled: argv.gas,
     showMethodSig: true,
     includeBytecodeInJSON: true,
-    currency: 'USD',
+    currency: "USD",
     coinmarketcap: argv.coinmarketcap,
   },
   paths: {
     sources: argv.src,
   },
-  docgen: require('./docs/config'),
+  docgen: require("./docs/config"),
 };

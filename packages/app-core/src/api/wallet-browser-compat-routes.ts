@@ -3,7 +3,7 @@ import type http from "node:http";
 import { deriveSolanaAddress } from "@elizaos/agent/api/wallet";
 import { resolveWalletRpcReadiness } from "@elizaos/agent/api/wallet-rpc";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
-import type { StewardSignRequest } from "@elizaos/shared/contracts/wallet";
+import type { StewardSignRequest } from "@elizaos/app-steward/types";
 import { ethers } from "ethers";
 
 /** @internal Exported for testing. Parse a transaction value string to BigInt. */
@@ -17,6 +17,10 @@ export function safeParseBigInt(value: string): bigint {
   }
 }
 
+import {
+  isStewardConfigured,
+  signViaSteward,
+} from "@elizaos/app-steward/routes/steward-bridge";
 import { ensureCompatApiAuthorized } from "./auth";
 import {
   type CompatRuntimeState,
@@ -26,7 +30,6 @@ import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
-import { isStewardConfigured, signViaSteward } from "@elizaos/app-steward/routes/steward-bridge";
 
 function normalizeHexData(value: unknown): string | undefined {
   if (typeof value !== "string") {

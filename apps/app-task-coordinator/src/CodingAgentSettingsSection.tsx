@@ -1,8 +1,4 @@
-import {
-  client,
-  useApp,
-  type AgentPreflightResult,
-} from "@elizaos/app-core";
+import { type AgentPreflightResult, client, useApp } from "@elizaos/app-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AgentTabsSection } from "./AgentTabsSection";
 import {
@@ -144,8 +140,14 @@ export function CodingAgentSettingsSection() {
           setPreflightByAgent(mapped);
           setPreflightLoaded(true);
         }
-      } catch {
-        // Fall back to built-in defaults when config or model fetches fail.
+      } catch (err) {
+        // Fall back to built-in defaults when config or model fetches fail —
+        // the panel still renders with FALLBACK_MODELS so the user isn't
+        // blocked. Log so a real failure isn't completely silent.
+        console.warn(
+          "[coding-agents] Failed to load config/models on mount",
+          err,
+        );
       }
       if (!controller.signal.aborted) setLoading(false);
     })();
@@ -260,23 +262,21 @@ export function CodingAgentSettingsSection() {
   const refreshPreflight = useCallback(async () => {
     try {
       const preflightRes = await fetch("/api/coding-agents/preflight");
-      if (preflightRes.ok) {
-        const results = await preflightRes.json();
-        if (Array.isArray(results)) {
-          const mapped: Partial<Record<AgentTab, AgentPreflightResult>> = {};
-          for (const item of results as AgentPreflightResult[]) {
-            const raw = item.adapter?.toLowerCase();
-            const key = raw ? ADAPTER_NAME_TO_TAB[raw] : undefined;
-            if (key) mapped[key] = item;
-          }
-          setPreflightByAgent(mapped);
-          return mapped;
-        }
+      if (!preflightRes.ok) return null;
+      const results = await preflightRes.json();
+      if (!Array.isArray(results)) return null;
+      const mapped: Partial<Record<AgentTab, AgentPreflightResult>> = {};
+      for (const item of results as AgentPreflightResult[]) {
+        const raw = item.adapter?.toLowerCase();
+        const key = raw ? ADAPTER_NAME_TO_TAB[raw] : undefined;
+        if (key) mapped[key] = item;
       }
-    } catch {
-      /* ignore */
+      setPreflightByAgent(mapped);
+      return mapped;
+    } catch (err) {
+      console.warn("[coding-agents] Failed to refresh preflight", err);
+      return null;
     }
-    return null;
   }, []);
 
   // Ref to any in-flight auth-polling interval so we can cancel it on
@@ -305,33 +305,40 @@ export function CodingAgentSettingsSection() {
         const res = await fetch(`/api/coding-agents/auth/${agent}`, {
           method: "POST",
         });
-        if (res.ok) {
-          const data = await res.json();
-          setAuthResult({ agent, ...data });
-          let attempts = 0;
-          const maxAttempts = 40;
-          const poll = setInterval(async () => {
-            attempts++;
-            const mapped = await refreshPreflight();
-            if (
-              mapped?.[agent]?.auth?.status === "authenticated" ||
-              attempts >= maxAttempts
-            ) {
-              clearInterval(poll);
-              if (authPollRef.current === poll) {
-                authPollRef.current = null;
-              }
-              setAuthInProgress(null);
-              if (mapped?.[agent]?.auth?.status === "authenticated") {
-                setAuthResult(null);
-              }
-            }
-          }, 3000);
-          authPollRef.current = poll;
-        } else {
+        if (!res.ok) {
+          setAuthResult({
+            agent,
+            launched: false,
+            instructions: `Failed to start auth (${res.status}). Try again, or run the CLI's login command directly.`,
+          });
           setAuthInProgress(null);
+          return;
         }
-      } catch {
+        const data = await res.json();
+        setAuthResult({ agent, ...data });
+        let attempts = 0;
+        const maxAttempts = 40;
+        const poll = setInterval(async () => {
+          attempts++;
+          const mapped = await refreshPreflight();
+          const authed = mapped?.[agent]?.auth?.status === "authenticated";
+          if (authed || attempts >= maxAttempts) {
+            clearInterval(poll);
+            if (authPollRef.current === poll) authPollRef.current = null;
+            setAuthInProgress(null);
+            if (authed) setAuthResult(null);
+          }
+        }, 3000);
+        authPollRef.current = poll;
+      } catch (err) {
+        setAuthResult({
+          agent,
+          launched: false,
+          instructions:
+            err instanceof Error
+              ? `Auth request failed: ${err.message}`
+              : "Auth request failed. Try again, or run the CLI's login command directly.",
+        });
         setAuthInProgress(null);
       }
     },

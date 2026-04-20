@@ -1,5 +1,5 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
-import { ModelType, type ModelTypeName } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { renderGroundedActionReply } from "./grounded-action-reply.js";
 

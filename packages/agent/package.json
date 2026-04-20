@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/agent",
-  "version": "2.0.0-alpha.174",
+  "version": "2.0.0-alpha.222",
   "description": "Standalone elizaOS-based agent and backend server package.",
   "type": "module",
   "license": "MIT",
@@ -34,7 +34,7 @@
     "format:fix": "bunx @biomejs/biome format --write src",
     "training:cli": "bun run src/training/cli.ts",
     "pack:dry-run": "cd dist && npm pack --dry-run",
-    "test": "cd ../../.. && vitest run eliza/packages/agent/src/runtime/plugin-collector.optional-bundled.test.ts eliza/packages/agent/src/actions/grounded-action-reply.test.ts eliza/apps/app-lifeops/src/lifeops-plugin.test.ts eliza/apps/app-lifeops/test/lifeops-google-helpers.test.ts eliza/apps/app-lifeops/test/life-goal-extractor.test.ts eliza/apps/app-lifeops/test/lifeops-app-state.test.ts"
+    "test": "vitest run --config vitest.config.ts"
   },
   "exports": {
     ".": "./src/index.ts",
@@ -44,6 +44,7 @@
     "./api": "./src/api/index.ts",
     "./api/*": "./src/api/*.ts",
     "./api/server": "./src/api/server.ts",
+    "./api/server-auth": "./src/api/server-auth.ts",
     "./auth": "./src/auth/index.ts",
     "./auth/*": "./src/auth/*.ts",
     "./autonomy": "./src/autonomy/index.ts",
@@ -69,8 +70,6 @@
     "./diagnostics/*": "./src/diagnostics/*.ts",
     "./hooks": "./src/hooks/index.ts",
     "./hooks/*": "./src/hooks/*.ts",
-    "./lifeops": "./src/lifeops/index.ts",
-    "./lifeops/*": "./src/lifeops/*.ts",
     "./onboarding-presets": "./src/onboarding-presets.ts",
     "./plugins/custom-rtmp": "./src/plugins/custom-rtmp/index.ts",
     "./plugins/*": "./src/plugins/*/index.ts",
@@ -90,6 +89,7 @@
     "./test-support": "./src/test-support/index.ts",
     "./test-support/*": "./src/test-support/*.ts",
     "./testing": "./src/testing/index.ts",
+    "./types/trajectory": "./src/types/trajectory.ts",
     "./triggers": "./src/triggers/index.ts",
     "./triggers/*": "./src/triggers/*.ts",
     "./utils": "./src/utils/index.ts",
@@ -120,7 +120,9 @@
     "./actions/restart": "./src/actions/restart.ts",
     "./actions/send-message": "./src/actions/send-message.ts",
     "./runtime/release-plugin-policy": "./src/runtime/release-plugin-policy.ts",
-    "./activity-profile/*": "./src/activity-profile/*.ts"
+    "./types/*": "./src/types/*.ts",
+    "./test-utils/*": "./src/test-utils/*.ts",
+    "./evals/*": "./src/evals/*.ts"
   },
   "publishConfig": {
     "access": "public",
@@ -129,6 +131,7 @@
   "dependencies": {
     "@clack/prompts": "^1.0.0",
     "@elizaos/app-companion": "workspace:*",
+    "@elizaos/app-elizamaker": "workspace:*",
     "@elizaos/app-knowledge": "workspace:*",
     "@elizaos/app-lifeops": "workspace:*",
     "@elizaos/app-steward": "workspace:*",
@@ -138,9 +141,8 @@
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-ollama": "workspace:*",
     "@elizaos/plugin-pdf": "workspace:*",
-    "@elizaos/plugin-solana": "1.2.6",
+    "@elizaos/plugin-solana": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/plugin-wechat": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/skills": "workspace:*",
     "@hapi/boom": "^10.0.1",
@@ -152,14 +154,14 @@
     "drizzle-orm": "0.45.2",
     "ethers": "^6.16.0",
     "git-workspace-service": "0.4.5",
-    "jsdom": "^28.1.0",
+    "jsdom": "^29.0.0",
     "json5": "^2.2.3",
     "pg": "^8.16.3",
     "pino": "^10.3.1",
     "pty-manager": "1.11.0",
     "puppeteer-core": "^24.37.5",
     "qrcode": "^1.5.4",
-    "telegram": "2.17.4",
+    "telegram": "2.26.22",
     "viem": "^2.21.0",
     "ws": "^8.19.0",
     "zod": "^4.3.6"
@@ -175,8 +177,10 @@
   "devDependencies": {
     "@ai-sdk/openai": "^3.0.47",
     "@types/bun": "^1.3.12",
+    "@types/jsdom": "^28.0.0",
     "@types/node": "^25.2.0",
     "@types/pg": "^8.15.2",
+    "@types/qrcode": "^1.5.5",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.18.1",
@@ -184,7 +188,7 @@
     "bun-types": "^1.3.12",
     "canvas": "^3.0.1",
     "sharp": "^0.34.5",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.0",
     "vite": "^8.0.8",
     "vitest": "^4.0.18"
   }

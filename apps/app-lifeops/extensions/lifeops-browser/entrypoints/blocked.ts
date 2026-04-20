@@ -29,14 +29,14 @@ const apiBase = params.get("api") || "http://localhost:31337";
 
 const blockedSiteEl = document.getElementById("blockedSite");
 const taskListEl = document.getElementById("taskList");
-const openElizaEl = document.getElementById("openEliza");
+const openLifeOpsEl = document.getElementById("openLifeOps");
 
 if (blockedSiteEl) {
   blockedSiteEl.textContent = blockedHost;
 }
 
-if (openElizaEl) {
-  openElizaEl.setAttribute("href", apiBase.replace(/:\d+$/, ":2138"));
+if (openLifeOpsEl) {
+  openLifeOpsEl.setAttribute("href", apiBase.replace(/:\d+$/, ":2138"));
 }
 
 function escapeHtml(text: string): string {

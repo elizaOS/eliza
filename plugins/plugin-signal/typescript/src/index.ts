@@ -1,6 +1,7 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import listContacts from "./actions/listContacts";
 import listGroups from "./actions/listGroups";
+import readRecentMessages from "./actions/readRecentMessages";
 // Actions
 import sendMessage from "./actions/sendMessage";
 import sendReaction from "./actions/sendReaction";
@@ -9,7 +10,7 @@ import sendReaction from "./actions/sendReaction";
 import { conversationStateProvider } from "./providers/conversationState";
 
 // Service
-import { SignalService } from "./service";
+import { DEFAULT_SIGNAL_CLI_PATH, SignalService } from "./service";
 
 // Setup routes (QR pairing / disconnect)
 import { signalSetupRoutes } from "./setup-routes";
@@ -21,13 +22,14 @@ const signalPlugin: Plugin = {
   name: "signal",
   description: "Signal messaging integration plugin for ElizaOS with end-to-end encryption",
   services: [SignalService],
-  actions: [sendMessage, sendReaction, listContacts, listGroups],
+  actions: [sendMessage, sendReaction, listContacts, listGroups, readRecentMessages],
   providers: [conversationStateProvider],
   routes: signalSetupRoutes,
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     const accountNumber = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string;
     const httpUrl = runtime.getSetting("SIGNAL_HTTP_URL") as string;
     const cliPath = runtime.getSetting("SIGNAL_CLI_PATH") as string;
+    const effectiveCliPath = (cliPath ?? "").trim() || DEFAULT_SIGNAL_CLI_PATH;
     const ignoreGroups = runtime.getSetting("SIGNAL_SHOULD_IGNORE_GROUP_MESSAGES") as string;
 
     // Log configuration status
@@ -44,7 +46,9 @@ const signalPlugin: Plugin = {
         settings: {
           accountNumber: maskNumber(accountNumber),
           httpUrl: httpUrl || "[not set]",
-          cliPath: cliPath || "[not set]",
+          cliPath: cliPath
+            ? cliPath
+            : `[default: ${DEFAULT_SIGNAL_CLI_PATH}]`,
           ignoreGroups: ignoreGroups || "false",
         },
       },
@@ -68,16 +72,18 @@ const signalPlugin: Plugin = {
       return;
     }
 
-    if (!httpUrl && !cliPath) {
-      logger.warn(
-        { src: "plugin:signal", agentId: runtime.agentId },
-        "Neither SIGNAL_HTTP_URL nor SIGNAL_CLI_PATH provided - Signal plugin will not be able to communicate"
-      );
-      return;
-    }
-
+    // When neither SIGNAL_HTTP_URL nor SIGNAL_CLI_PATH is set explicitly, we
+    // fall back to the default local signal-cli binary (name resolved via
+    // PATH + Homebrew/common paths at service start). No warning here — the
+    // service will surface a clearer error if signal-cli isn't actually
+    // available on the host.
     logger.info(
-      { src: "plugin:signal", agentId: runtime.agentId },
+      {
+        src: "plugin:signal",
+        agentId: runtime.agentId,
+        mode: httpUrl ? "http" : "local-cli",
+        cliPath: effectiveCliPath,
+      },
       "Signal plugin configuration validated successfully"
     );
   },
@@ -103,6 +109,7 @@ export {
 } from "./accounts";
 export { listContacts } from "./actions/listContacts";
 export { listGroups } from "./actions/listGroups";
+export { readRecentMessages } from "./actions/readRecentMessages";
 // Export actions
 export { sendMessage } from "./actions/sendMessage";
 export { sendReaction } from "./actions/sendReaction";
@@ -163,6 +170,7 @@ export type {
   SignalMessageReceivedPayload,
   SignalMessageSendOptions,
   SignalMessageSentPayload,
+  SignalRecentMessage,
   SignalQuote,
   SignalReactionInfo,
   SignalReactionPayload,

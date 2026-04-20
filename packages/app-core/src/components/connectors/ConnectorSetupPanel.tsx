@@ -1,4 +1,5 @@
 import type React from "react";
+import { getBootConfig } from "../../config";
 import { BlueBubblesStatusPanel } from "./BlueBubblesStatusPanel";
 import { DiscordLocalConnectorPanel } from "./DiscordLocalConnectorPanel";
 import { IMessageStatusPanel } from "./IMessageStatusPanel";
@@ -6,7 +7,6 @@ import { SignalQrOverlay } from "./SignalQrOverlay";
 import { TelegramAccountConnectorPanel } from "./TelegramAccountConnectorPanel";
 import { TelegramBotSetupPanel } from "./TelegramBotSetupPanel";
 import { WhatsAppQrOverlay } from "./WhatsAppQrOverlay";
-import { getBootConfig } from "../../config";
 
 function normalizePluginId(pluginId: string): string {
   return pluginId

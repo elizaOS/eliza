@@ -1,3 +1,4 @@
+export * from "@elizaos/shared/spoken-text";
 export * from "./api/index.js";
 export {
   findPrimaryEnvKey,
@@ -26,8 +27,6 @@ export {
   validateMcpServerConfig,
 } from "./api/server.js";
 export * from "./auth/index.js";
-export * from "./autonomy";
-export * from "./autonomy/index.js";
 export type { RolesConfig } from "./config/index.js";
 export * from "./config/index.js";
 export * from "./contracts/permissions.js";
@@ -38,10 +37,25 @@ export * from "./runtime/core-plugins.js";
 export * from "./runtime/index.js";
 export * from "./security/index.js";
 export * from "./services/index.js";
+export {
+  createNativeRelationshipsGraphService,
+  getMemoriesForCluster,
+  resolveRelationshipsGraphService,
+  searchMemoriesForCluster,
+  type ClusterMemoriesQuery,
+  type ClusterSearchQuery,
+  type RelationshipsGraphEdge,
+  type RelationshipsGraphQuery,
+  type RelationshipsGraphService,
+  type RelationshipsGraphSnapshot,
+  type RelationshipsGraphStats,
+  type RelationshipsPersonDetail,
+  type RelationshipsPersonFact,
+  type RelationshipsPersonSummary,
+} from "./services/relationships-graph.js";
 export * from "./test-support/index.js";
 export * from "./triggers/action.js";
 export * from "./triggers/runtime.js";
 export * from "./triggers/scheduling.js";
 export * from "./triggers/types.js";
 export * from "./utils/number-parsing.js";
-export * from "./utils/spoken-text.js";

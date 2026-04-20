@@ -116,7 +116,7 @@ export function useMiscUiState() {
     if (!activeGameRunId) return;
     if (appRuns.some((run) => run.runId === activeGameRunId)) return;
     setActiveGameRunId("");
-  }, [activeGameRunId, appRuns]);
+  }, [activeGameRunId, appRuns, setActiveGameRunId]);
 
   // ── Unified messages sidebar ───────────────────────────────────────
   const [activeInboxChat, setActiveInboxChat] =

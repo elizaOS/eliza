@@ -1,7 +1,6 @@
-
+import { Button } from "@elizaos/ui";
 import { useApp } from "../../state";
 import type { AppState, FlaminaGuideTopic } from "../../state/types";
-import { Button } from "@elizaos/ui";
 
 type GuideContent = {
   titleKey: string;

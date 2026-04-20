@@ -64,21 +64,44 @@ async function getRelationshipsGraphService(
   );
 }
 
+type LinkRequestBody = {
+  targetEntityId?: unknown;
+  evidence?: unknown;
+};
+
+function asEvidenceRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
 export async function handleRelationshipsRoutes(
   ctx: RelationshipsRouteContext,
 ): Promise<boolean> {
-  const { req, res, method, pathname, json, error, runtime } = ctx;
+  const { req, res, method, pathname, json, error, readJsonBody, runtime } =
+    ctx;
+
+  const isCandidatesRoute =
+    pathname === "/api/relationships/candidates" ||
+    pathname.startsWith("/api/relationships/candidates/");
+  const isPersonLinkRoute =
+    pathname.startsWith("/api/relationships/people/") &&
+    pathname.endsWith("/link");
 
   if (
     pathname !== "/api/relationships/graph" &&
     pathname !== "/api/relationships/people" &&
     pathname !== "/api/relationships/activity" &&
-    !pathname.startsWith("/api/relationships/people/")
+    !pathname.startsWith("/api/relationships/people/") &&
+    !isCandidatesRoute
   ) {
     return false;
   }
 
-  if (method !== "GET") {
+  // GET routes go through the read paths below; merge/link mutations are
+  // POST-only and handled before the GET-only fast-fail.
+  if (method !== "GET" && method !== "POST") {
     return false;
   }
 
@@ -89,6 +112,70 @@ export async function handleRelationshipsRoutes(
       "Relationships graph service is not available. Make sure the native relationships feature is enabled.",
       503,
     );
+    return true;
+  }
+
+  if (method === "POST") {
+    if (pathname === "/api/relationships/candidates") {
+      // Read-only on this exact pathname; POST is reserved for nested IDs.
+      error(res, "Method not allowed.", 405);
+      return true;
+    }
+
+    if (
+      pathname.startsWith("/api/relationships/candidates/") &&
+      (pathname.endsWith("/accept") || pathname.endsWith("/reject"))
+    ) {
+      const action = pathname.endsWith("/accept") ? "accept" : "reject";
+      const idStart = "/api/relationships/candidates/".length;
+      const idEnd = pathname.lastIndexOf("/");
+      const candidateId = decodeURIComponent(pathname.slice(idStart, idEnd));
+      if (!candidateId) {
+        error(res, "Missing merge candidate id.", 400);
+        return true;
+      }
+      if (action === "accept") {
+        await relationshipsGraph.acceptMerge(candidateId as UUID);
+      } else {
+        await relationshipsGraph.rejectMerge(candidateId as UUID);
+      }
+      json(res, { data: { id: candidateId, status: action } }, 200);
+      return true;
+    }
+
+    if (isPersonLinkRoute) {
+      const idStart = "/api/relationships/people/".length;
+      const idEnd = pathname.lastIndexOf("/");
+      const sourceEntityId = decodeURIComponent(pathname.slice(idStart, idEnd));
+      if (!sourceEntityId) {
+        error(res, "Missing source entity id.", 400);
+        return true;
+      }
+      const body = await readJsonBody<LinkRequestBody>(req, res);
+      if (!body) return true;
+      const targetEntityId =
+        typeof body.targetEntityId === "string" ? body.targetEntityId : "";
+      if (!targetEntityId) {
+        error(res, "targetEntityId is required.", 400);
+        return true;
+      }
+      const evidence = asEvidenceRecord(body.evidence);
+      const candidateId = await relationshipsGraph.proposeMerge(
+        sourceEntityId as UUID,
+        targetEntityId as UUID,
+        evidence,
+      );
+      json(res, { data: { id: candidateId, status: "pending" } }, 201);
+      return true;
+    }
+
+    error(res, "Method not allowed.", 405);
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/relationships/candidates") {
+    const candidates = await relationshipsGraph.getCandidateMerges();
+    json(res, { data: candidates }, 200);
     return true;
   }
 

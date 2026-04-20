@@ -1,5 +1,8 @@
 import type {
+  CreateLifeOpsBrowserCompanionAutoPairRequest,
   CompleteLifeOpsBrowserSessionRequest,
+  LifeOpsBrowserCompanionAutoPairResponse,
+  LifeOpsBrowserCompanionConfig,
   LifeOpsBrowserKind,
   LifeOpsBrowserSession,
   LifeOpsBrowserSettings,
@@ -13,16 +16,11 @@ export type CompanionSessionProgressRequest =
   UpdateLifeOpsBrowserSessionProgressRequest;
 export type CompanionSessionCompleteRequest =
   CompleteLifeOpsBrowserSessionRequest;
-
-export type CompanionConfig = {
-  apiBaseUrl: string;
-  companionId: string;
-  pairingToken: string;
-  browser: LifeOpsBrowserKind;
-  profileId: string;
-  profileLabel: string;
-  label: string;
-};
+export type CompanionConfig = LifeOpsBrowserCompanionConfig;
+export type CompanionAutoPairRequest =
+  CreateLifeOpsBrowserCompanionAutoPairRequest;
+export type CompanionAutoPairResponse =
+  LifeOpsBrowserCompanionAutoPairResponse;
 
 export type BackgroundState = {
   config: CompanionConfig | null;
@@ -39,6 +37,7 @@ export type BackgroundState = {
 export type PopupRequest =
   | { type: "lifeops-browser:get-state" }
   | { type: "lifeops-browser:sync-now" }
+  | { type: "lifeops-browser:auto-pair" }
   | {
       type: "lifeops-browser:save-config";
       config: Partial<CompanionConfig>;

@@ -38,6 +38,9 @@ export interface TriggerExecutionResult {
   taskDeleted: boolean;
   runRecord?: TriggerRunRecord;
   trigger?: TriggerSummary | null;
+  // Present when a workflow-kind trigger dispatches to N8N_DISPATCH and
+  // the service returns an execution id.
+  executionId?: string;
 }
 
 const metricsByAgent = new Map<UUID, TriggerMetricsState>();
@@ -227,6 +230,39 @@ async function dispatchInstruction(
   // the single execution path for all autonomous instructions.
 }
 
+interface N8nDispatchServiceLike {
+  execute(
+    workflowId: string,
+  ): Promise<{ ok: boolean; error?: string; executionId?: string }>;
+}
+
+async function dispatchWorkflow(
+  runtime: IAgentRuntime,
+  trigger: TriggerConfig,
+): Promise<{ ok: true; executionId?: string } | { ok: false; error: string }> {
+  if (!trigger.workflowId) {
+    return { ok: false, error: "workflow trigger missing workflowId" };
+  }
+  const svc = runtime.getService<Service & N8nDispatchServiceLike>(
+    "N8N_DISPATCH",
+  ) as (Service & N8nDispatchServiceLike) | null;
+  if (!svc) {
+    runtime.logger.warn?.(
+      {
+        src: "trigger-runtime",
+        triggerId: trigger.triggerId,
+        workflowId: trigger.workflowId,
+      },
+      "[triggers] workflow dispatch requested but N8N_DISPATCH service not registered",
+    );
+    return { ok: false, error: "N8N_DISPATCH service not registered" };
+  }
+  const result = await svc.execute(trigger.workflowId);
+  return result.ok
+    ? { ok: true, executionId: result.executionId }
+    : { ok: false, error: result.error ?? "workflow execution failed" };
+}
+
 export async function executeTriggerTask(
   runtime: IAgentRuntime,
   task: Task,
@@ -261,7 +297,12 @@ export async function executeTriggerTask(
     };
   }
 
+  const isWorkflowKind = trigger.kind === "workflow";
+
+  // Workflow-kind triggers dispatch to an external service; they don't
+  // require the autonomy room to be ready.
   if (
+    !isWorkflowKind &&
     !(await isAutonomyServiceAvailable(runtime)) &&
     options.source !== "manual"
   ) {
@@ -280,22 +321,44 @@ export async function executeTriggerTask(
   const startedAt = Date.now();
   let status: TriggerExecutionResult["status"] = "success";
   let errorMessage = "";
+  let workflowExecutionId: string | undefined;
 
-  try {
-    await dispatchInstruction(runtime, task.id, trigger);
-  } catch (error) {
-    status = "error";
-    errorMessage = String(error);
-    runtime.logger.error(
-      {
-        src: "trigger-runtime",
-        agentId: runtime.agentId,
-        taskId: task.id,
-        triggerId: trigger.triggerId,
-        error: errorMessage,
-      },
-      "Trigger execution failed",
-    );
+  if (isWorkflowKind) {
+    const result = await dispatchWorkflow(runtime, trigger);
+    if (result.ok === true) {
+      workflowExecutionId = result.executionId;
+    } else {
+      status = "error";
+      errorMessage = result.error;
+      runtime.logger.error(
+        {
+          src: "trigger-runtime",
+          agentId: runtime.agentId,
+          taskId: task.id,
+          triggerId: trigger.triggerId,
+          workflowId: trigger.workflowId,
+          error: errorMessage,
+        },
+        "Workflow trigger dispatch failed",
+      );
+    }
+  } else {
+    try {
+      await dispatchInstruction(runtime, task.id, trigger);
+    } catch (error) {
+      status = "error";
+      errorMessage = String(error);
+      runtime.logger.error(
+        {
+          src: "trigger-runtime",
+          agentId: runtime.agentId,
+          taskId: task.id,
+          triggerId: trigger.triggerId,
+          error: errorMessage,
+        },
+        "Trigger execution failed",
+      );
+    }
   }
 
   if (status === "success") {
@@ -389,6 +452,7 @@ export async function executeTriggerTask(
       runRecord,
       taskDeleted: true,
       trigger: triggerSummary,
+      executionId: workflowExecutionId,
     };
   }
 
@@ -399,6 +463,7 @@ export async function executeTriggerTask(
     runRecord,
     taskDeleted: false,
     trigger: triggerSummary,
+    executionId: workflowExecutionId,
   };
 }
 
@@ -409,11 +474,14 @@ export function registerTriggerTaskWorker(runtime: IAgentRuntime): void {
     name: TRIGGER_TASK_NAME,
     shouldRun: async () => true,
     execute: async (rt, options, task) => {
-      await executeTriggerTask(rt, task, {
+      // Return the full result so callers (tests, dashboards) can inspect
+      // trigger-specific fields like taskDeleted and runRecord.
+      // TaskWorker.execute is typed as returning only scheduling metadata; trigger
+      // workers return TriggerExecutionResult for tests and dashboards.
+      return (await executeTriggerTask(rt, task, {
         source: options.source === "manual" ? "manual" : "scheduler",
         force: options.force === true,
-      });
-      return undefined;
+      })) as unknown as undefined | { nextInterval?: number };
     },
   });
 }
@@ -535,6 +603,9 @@ export function taskToTriggerSummary(task: Task): TriggerSummary | null {
       lastError: trigger.lastError,
       updatedAt: metadata.updatedAt,
       updateInterval: metadata.updateInterval,
+      kind: trigger.kind,
+      workflowId: trigger.workflowId,
+      workflowName: trigger.workflowName,
     };
   }
 

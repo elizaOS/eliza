@@ -424,3 +424,79 @@ export function formatQualityReport(report: DatasetQualityReport): string {
 
   return lines.join("\n");
 }
+
+// ==================== Skill scoring ====================
+
+/**
+ * Minimum metadata a Skill needs for scoring. We do not import @elizaos/skills
+ * here because app-training is downstream of the skills package and we want
+ * scoreSkill to be usable in cron-job contexts that pass loaded skills.
+ */
+export interface ScoreableSkill {
+  name: string;
+}
+
+/**
+ * Loose Trajectory shape used for scoring. Mirrors the persisted-trajectory
+ * type but kept narrow so callers can pass results from any source (the
+ * `trajectories` service, JSON exports, fixtures).
+ */
+export interface ScoreableTrajectory {
+  trajectoryId?: string;
+  metrics?: { finalStatus?: string };
+  steps?: Array<{
+    usedSkills?: string[];
+  }>;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Score a curated skill in [0, 1] based on its observed success rate across
+ * the supplied held-out trajectories.
+ *
+ * Algorithm:
+ *   1. Filter trajectories that reference the skill on any step (or via
+ *      metadata.usedSkills, for parity with the refinement evaluator).
+ *   2. Score = successCount / totalReferencingCount.
+ *   3. Returns 0 when no referencing trajectories exist (signals "no data" —
+ *      callers should treat 0 as "unscored" if they want to distinguish that
+ *      from "always failed").
+ *
+ * The scoring is deliberately simple because the source of truth is the
+ * trajectory store; richer signals (duration, retry count, user follow-ups)
+ * are easy to layer in later by extending ScoreableTrajectory.
+ */
+export async function scoreSkill(
+  skill: ScoreableSkill,
+  heldOutTrajectories: ScoreableTrajectory[],
+): Promise<number> {
+  const referencing = heldOutTrajectories.filter((trajectory) =>
+    trajectoryUsesSkill(trajectory, skill.name),
+  );
+  if (referencing.length === 0) {
+    return 0;
+  }
+  const successes = referencing.filter(
+    (trajectory) => (trajectory.metrics?.finalStatus ?? "") === "completed",
+  ).length;
+  const score = successes / referencing.length;
+  return Math.max(0, Math.min(1, score));
+}
+
+function trajectoryUsesSkill(
+  trajectory: ScoreableTrajectory,
+  skillName: string,
+): boolean {
+  const target = skillName.trim();
+  if (!target) return false;
+  for (const step of trajectory.steps ?? []) {
+    if (Array.isArray(step.usedSkills) && step.usedSkills.includes(target)) {
+      return true;
+    }
+  }
+  const metaUsed = trajectory.metadata?.usedSkills;
+  if (Array.isArray(metaUsed) && metaUsed.includes(target)) {
+    return true;
+  }
+  return false;
+}

@@ -17,12 +17,13 @@ import {
   LIFEOPS_BROWSER_COMPANION_CONNECTION_STATES,
   LIFEOPS_BROWSER_KINDS,
 } from "@elizaos/shared/contracts/lifeops";
-import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
+import { getAgentEventService } from "@elizaos/agent/runtime";
 import { resolveOwnerEntityId } from "@elizaos/agent/runtime/owner-entity";
 import { computeAdaptiveWindowPolicy } from "./defaults.js";
 import {
   GoogleManagedClient,
 } from "./google-managed-client.js";
+import { LifeOpsScheduleSyncClient } from "./schedule-sync-client.js";
 import {
   createLifeOpsAuditEvent,
   createLifeOpsBrowserCompanionStatus,
@@ -141,26 +142,28 @@ function clearGoogleGrantAuthFailureMetadata(
 // ---------------------------------------------------------------------------
 
 export class LifeOpsServiceBase {
-  protected readonly repository: LifeOpsRepository;
-  protected readonly explicitOwnerEntityIdValue: string | null;
-  protected readonly ownerEntityIdValue: string;
-  protected readonly googleManagedClient: GoogleManagedClient;
-  protected ownerRoutingEntityIdPromise: Promise<string | null> | null = null;
+  public readonly repository: LifeOpsRepository;
+  public readonly explicitOwnerEntityIdValue: string | null;
+  public readonly ownerEntityIdValue: string;
+  public readonly googleManagedClient: GoogleManagedClient;
+  public readonly scheduleSyncClient: LifeOpsScheduleSyncClient;
+  public ownerRoutingEntityIdPromise: Promise<string | null> | null = null;
 
   /** Cached adaptive window policy derived from the activity profile.
    *  Recomputed at most every 30 minutes to avoid re-reading task metadata
    *  on every occurrence refresh. */
-  protected adaptiveWindowPolicyCache: {
+  public adaptiveWindowPolicyCache: {
     policy: ReturnType<typeof computeAdaptiveWindowPolicy>;
     computedAt: number;
   } | null = null;
 
   constructor(
-    protected readonly runtime: IAgentRuntime,
+    public readonly runtime: IAgentRuntime,
     options: LifeOpsServiceOptions = {},
   ) {
     this.repository = new LifeOpsRepository(runtime);
     this.googleManagedClient = new GoogleManagedClient();
+    this.scheduleSyncClient = new LifeOpsScheduleSyncClient();
     this.explicitOwnerEntityIdValue =
       normalizeOptionalString(options.ownerEntityId) ?? null;
     this.ownerEntityIdValue =
@@ -171,15 +174,15 @@ export class LifeOpsServiceBase {
   // Identity helpers
   // -----------------------------------------------------------------------
 
-  protected agentId(): string {
+  public agentId(): string {
     return requireAgentId(this.runtime);
   }
 
-  protected ownerEntityId(): string {
+  public ownerEntityId(): string {
     return this.ownerEntityIdValue;
   }
 
-  protected async ownerRoutingEntityId(): Promise<string | null> {
+  public async ownerRoutingEntityId(): Promise<string | null> {
     if (this.explicitOwnerEntityIdValue) {
       return this.explicitOwnerEntityIdValue;
     }
@@ -193,7 +196,7 @@ export class LifeOpsServiceBase {
   // Browser helpers
   // -----------------------------------------------------------------------
 
-  protected async getBrowserSettingsInternal(): Promise<LifeOpsBrowserSettings> {
+  public async getBrowserSettingsInternal(): Promise<LifeOpsBrowserSettings> {
     const current = await this.repository.getBrowserSettings(this.agentId());
     return current
       ? {
@@ -209,7 +212,7 @@ export class LifeOpsServiceBase {
         };
   }
 
-  protected isBrowserPaused(settings: LifeOpsBrowserSettings): boolean {
+  public isBrowserPaused(settings: LifeOpsBrowserSettings): boolean {
     if (!settings.pauseUntil) {
       return false;
     }
@@ -217,7 +220,7 @@ export class LifeOpsServiceBase {
     return Number.isFinite(pauseUntilMs) && pauseUntilMs > Date.now();
   }
 
-  protected async requireBrowserAvailableForActions(
+  public async requireBrowserAvailableForActions(
     actions: readonly LifeOpsBrowserAction[],
   ): Promise<LifeOpsBrowserSettings> {
     const settings = await this.getBrowserSettingsInternal();
@@ -242,7 +245,7 @@ export class LifeOpsServiceBase {
     return settings;
   }
 
-  protected buildBrowserCompanion(
+  public buildBrowserCompanion(
     request: UpsertLifeOpsBrowserCompanionRequest,
     current: LifeOpsBrowserCompanionStatus | null,
   ): LifeOpsBrowserCompanionStatus {
@@ -319,7 +322,7 @@ export class LifeOpsServiceBase {
   // Ownership helpers
   // -----------------------------------------------------------------------
 
-  protected normalizeOwnership(
+  public normalizeOwnership(
     input: LifeOpsOwnershipInput | undefined,
     current?: LifeOpsOwnership,
   ): LifeOpsOwnership {
@@ -386,7 +389,7 @@ export class LifeOpsServiceBase {
     };
   }
 
-  protected normalizeChildOwnership(
+  public normalizeChildOwnership(
     parent: LifeOpsOwnership,
     input: LifeOpsOwnershipInput | undefined,
     field = "ownership",
@@ -406,7 +409,7 @@ export class LifeOpsServiceBase {
   // Logging
   // -----------------------------------------------------------------------
 
-  protected logLifeOpsWarn(
+  public logLifeOpsWarn(
     operation: string,
     message: string,
     context: Record<string, unknown> = {},
@@ -422,7 +425,7 @@ export class LifeOpsServiceBase {
     );
   }
 
-  protected logLifeOpsError(
+  public logLifeOpsError(
     operation: string,
     error: unknown,
     context: Record<string, unknown> = {},
@@ -443,7 +446,7 @@ export class LifeOpsServiceBase {
   // Reminder processing lock
   // -----------------------------------------------------------------------
 
-  protected async withReminderProcessingLock<T>(
+  public async withReminderProcessingLock<T>(
     operation: () => Promise<T>,
   ): Promise<T> {
     const agentId = this.agentId();
@@ -470,7 +473,7 @@ export class LifeOpsServiceBase {
   // Audit helpers
   // -----------------------------------------------------------------------
 
-  protected async recordAudit(
+  public async recordAudit(
     eventType: LifeOpsAuditEventType,
     ownerType: "definition" | "occurrence" | "goal",
     ownerId: string,
@@ -492,7 +495,7 @@ export class LifeOpsServiceBase {
     );
   }
 
-  protected async recordConnectorAudit(
+  public async recordConnectorAudit(
     ownerId: string,
     reason: string,
     inputs: Record<string, unknown>,
@@ -512,7 +515,7 @@ export class LifeOpsServiceBase {
     );
   }
 
-  protected async recordChannelPolicyAudit(
+  public async recordChannelPolicyAudit(
     ownerId: string,
     reason: string,
     inputs: Record<string, unknown>,
@@ -532,7 +535,7 @@ export class LifeOpsServiceBase {
     );
   }
 
-  protected async recordWorkflowAudit(
+  public async recordWorkflowAudit(
     eventType: "workflow_created" | "workflow_updated" | "workflow_run",
     ownerId: string,
     actor: "user" | "workflow" = "user",
@@ -554,7 +557,7 @@ export class LifeOpsServiceBase {
     return event;
   }
 
-  protected async recordReminderAudit(
+  public async recordReminderAudit(
     eventType:
       | "reminder_due"
       | "reminder_delivered"
@@ -581,7 +584,7 @@ export class LifeOpsServiceBase {
     );
   }
 
-  protected async recordBrowserAudit(
+  public async recordBrowserAudit(
     eventType: "browser_session_created" | "browser_session_updated",
     ownerId: string,
     reason: string,
@@ -602,7 +605,7 @@ export class LifeOpsServiceBase {
     );
   }
 
-  protected async recordXPostAudit(
+  public async recordXPostAudit(
     ownerId: string,
     reason: string,
     inputs: Record<string, unknown>,
@@ -626,7 +629,7 @@ export class LifeOpsServiceBase {
   // Google grant auth helpers (shared with google mixin)
   // -----------------------------------------------------------------------
 
-  protected async clearGoogleGrantAuthFailure(
+  public async clearGoogleGrantAuthFailure(
     grant: LifeOpsConnectorGrant,
   ): Promise<LifeOpsConnectorGrant> {
     if (!googleGrantHasAuthFailureMetadata(grant.metadata)) {
@@ -644,7 +647,7 @@ export class LifeOpsServiceBase {
     return nextGrant;
   }
 
-  protected async markGoogleGrantNeedsReauth(
+  public async markGoogleGrantNeedsReauth(
     grant: LifeOpsConnectorGrant,
     message: string,
   ): Promise<LifeOpsConnectorGrant> {
@@ -667,7 +670,7 @@ export class LifeOpsServiceBase {
   // Event helpers
   // -----------------------------------------------------------------------
 
-  protected emitAssistantEvent(
+  public emitAssistantEvent(
     text: string,
     source: string,
     data: Record<string, unknown> = {},
@@ -699,7 +702,7 @@ export class LifeOpsServiceBase {
   // Workflow helpers
   // -----------------------------------------------------------------------
 
-  protected async getWorkflowDefinition(
+  public async getWorkflowDefinition(
     workflowId: string,
   ): Promise<LifeOpsWorkflowDefinition> {
     const workflow = await this.repository.getWorkflow(
@@ -716,7 +719,7 @@ export class LifeOpsServiceBase {
   // X grant helper
   // -----------------------------------------------------------------------
 
-  protected async requireXGrant(
+  public async requireXGrant(
     requestedMode?: LifeOpsConnectorMode,
   ): Promise<LifeOpsConnectorGrant> {
     const mode =

@@ -6,6 +6,7 @@ export const mapAreaProvider: Provider = {
   name: "RS_SDK_MAP_AREA",
   description:
     "Identifies the bot's current map area and lists features, NPCs, and travel destinations.",
+  descriptionCompressed: "Current area: features, NPCs, travel destinations.",
 
   async get(
     runtime: IAgentRuntime,

@@ -1,6 +1,16 @@
 import fs from "node:fs";
 import type http from "node:http";
+import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
+import {
+  checkRateLimit,
+  type RateLimitConfig,
+} from "@elizaos/agent/api";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
+import {
+  LIFEOPS_ACTIVITY_SIGNAL_STATES,
+  LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS,
+} from "@elizaos/shared/contracts/lifeops";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
@@ -8,6 +18,7 @@ import type {
   CompleteLifeOpsBrowserSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
   ConfirmLifeOpsBrowserSessionRequest,
+  CreateLifeOpsBrowserCompanionAutoPairRequest,
   CreateLifeOpsBrowserCompanionPairingRequest,
   CreateLifeOpsBrowserSessionRequest,
   CreateLifeOpsCalendarEventRequest,
@@ -21,6 +32,7 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailSearchRequest,
   GetLifeOpsGmailTriageRequest,
+  GetLifeOpsIMessageMessagesRequest,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   ProcessLifeOpsRemindersRequest,
@@ -31,9 +43,12 @@ import type {
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
+  SendLifeOpsIMessageRequest,
   SetLifeOpsReminderPreferenceRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsGoogleConnectorRequest,
+  StartLifeOpsTelegramAuthRequest,
+  SubmitLifeOpsTelegramAuthRequest,
   SyncLifeOpsBrowserStateRequest,
   UpdateLifeOpsBrowserSessionProgressRequest,
   UpdateLifeOpsBrowserSettingsRequest,
@@ -42,22 +57,24 @@ import type {
   UpdateLifeOpsWorkflowRequest,
   UpsertLifeOpsChannelPolicyRequest,
   UpsertLifeOpsXConnectorRequest,
+  VerifyLifeOpsTelegramConnectorRequest,
 } from "@elizaos/shared/contracts/lifeops";
-import { LIFEOPS_ACTIVITY_SIGNAL_STATES } from "@elizaos/shared/contracts/lifeops";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
 import {
   loadLifeOpsAppState,
   saveLifeOpsAppState,
 } from "../lifeops/app-state.js";
+import {
+  LIFEOPS_SCHEDULE_STATE_SCOPES,
+  type SyncLifeOpsScheduleObservationsRequest,
+} from "../lifeops/schedule-sync-contracts.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import { isRetryableLifeOpsStorageError } from "../lifeops/sql.js";
-import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
 import {
   buildLifeOpsBrowserCompanionPackage,
   getLifeOpsBrowserCompanionDownloadFile,
   getLifeOpsBrowserCompanionPackageStatus,
+  openLifeOpsBrowserCompanionManager,
+  openLifeOpsBrowserCompanionPackagePath,
 } from "./lifeops-browser-packaging.js";
-import { checkRateLimit, type RateLimitConfig } from "@elizaos/agent/api/rate-limiter";
 
 export interface LifeOpsRouteContext {
   req: http.IncomingMessage;
@@ -96,11 +113,13 @@ function getService(ctx: LifeOpsRouteContext): LifeOpsService | null {
 function getBrowserCompanionAuth(
   ctx: LifeOpsRouteContext,
 ): { companionId: string; pairingToken: string } | null {
-  const companionHeader = ctx.req.headers["x-eliza-browser-companion-id"];
+  const companionHeader =
+    ctx.req.headers["x-lifeops-browser-companion-id"] ??
+    ctx.req.headers["x-eliza-browser-companion-id"];
   const companionId =
     typeof companionHeader === "string" ? companionHeader.trim() : "";
   if (!companionId) {
-    ctx.error(ctx.res, "Missing X-Eliza-Browser-Companion-Id header", 401);
+    ctx.error(ctx.res, "Missing X-LifeOps-Browser-Companion-Id header", 401);
     return null;
   }
   const authHeader =
@@ -119,12 +138,40 @@ function getBrowserCompanionAuth(
   };
 }
 
+function browserAutoPairOriginAllowed(ctx: LifeOpsRouteContext): boolean {
+  const originHeader =
+    typeof ctx.req.headers.origin === "string"
+      ? ctx.req.headers.origin.trim()
+      : "";
+  if (!originHeader) {
+    return true;
+  }
+  if (originHeader === ctx.url.origin) {
+    return true;
+  }
+  return (
+    originHeader.startsWith("chrome-extension://") ||
+    originHeader.startsWith("safari-web-extension://")
+  );
+}
+
+function requestIsLoopback(ctx: LifeOpsRouteContext): boolean {
+  const remoteAddress = ctx.req.socket.remoteAddress?.trim().toLowerCase();
+  return (
+    remoteAddress === "127.0.0.1" ||
+    remoteAddress === "::1" ||
+    remoteAddress === "0:0:0:0:0:0:0:1" ||
+    remoteAddress === "::ffff:127.0.0.1" ||
+    remoteAddress === "::ffff:0:127.0.0.1"
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Rate limit configuration per operation.
 // Keys are logical operation names; the "default" entry applies to any
 // operation not explicitly listed.
 // ---------------------------------------------------------------------------
-const LIFEOPS_RATE_LIMITS: Record<string, RateLimitConfig> = {
+const LIFEOPS_RATE_LIMITS = {
   google_api_read: { maxRequests: 120, windowMs: 60_000 },
   google_api_write: { maxRequests: 30, windowMs: 60_000 },
   reminders_process: { maxRequests: 10, windowMs: 60_000 },
@@ -134,7 +181,7 @@ const LIFEOPS_RATE_LIMITS: Record<string, RateLimitConfig> = {
   gmail_send: { maxRequests: 5, windowMs: 60_000 },
   calendar_create: { maxRequests: 20, windowMs: 60_000 },
   default: { maxRequests: 60, windowMs: 60_000 },
-};
+} satisfies Record<string, RateLimitConfig>;
 
 /**
  * Check rate limit for a LifeOps operation. If the limit is exceeded,
@@ -147,7 +194,36 @@ function rateLimitRequest(
 ): boolean {
   const agentId = String(ctx.state.runtime?.agentId ?? "unknown");
   const limitKey = `${agentId}:${operation}`;
-  const config = LIFEOPS_RATE_LIMITS[operation] ?? LIFEOPS_RATE_LIMITS.default;
+  let config: RateLimitConfig;
+  switch (operation) {
+    case "google_api_read":
+      config = LIFEOPS_RATE_LIMITS.google_api_read;
+      break;
+    case "google_api_write":
+      config = LIFEOPS_RATE_LIMITS.google_api_write;
+      break;
+    case "reminders_process":
+      config = LIFEOPS_RATE_LIMITS.reminders_process;
+      break;
+    case "task_create":
+      config = LIFEOPS_RATE_LIMITS.task_create;
+      break;
+    case "task_update":
+      config = LIFEOPS_RATE_LIMITS.task_update;
+      break;
+    case "gmail_draft":
+      config = LIFEOPS_RATE_LIMITS.gmail_draft;
+      break;
+    case "gmail_send":
+      config = LIFEOPS_RATE_LIMITS.gmail_send;
+      break;
+    case "calendar_create":
+      config = LIFEOPS_RATE_LIMITS.calendar_create;
+      break;
+    default:
+      config = LIFEOPS_RATE_LIMITS.default;
+      break;
+  }
   const { allowed, retryAfterMs } = checkRateLimit(limitKey, config);
   if (!allowed) {
     ctx.res.writeHead(429, {
@@ -165,6 +241,17 @@ function routeOperation(ctx: LifeOpsRouteContext): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function decodeMatchedPathComponent(
+  ctx: LifeOpsRouteContext,
+  match: RegExpMatchArray | null,
+  index: number,
+  res: http.ServerResponse,
+  label: string,
+): string | null {
+  const raw = match?.[index];
+  return raw ? ctx.decodePathComponent(raw, res, label) : null;
 }
 
 function parsePositiveIntegerQuery(
@@ -264,25 +351,6 @@ async function runRoute(
       ctx.error(ctx.res, error.message, error.status);
       return true;
     }
-    if (isRetryableLifeOpsStorageError(error)) {
-      const message =
-        "Life Ops storage is still initializing. Refresh in a moment.";
-      logger.info(
-        {
-          boundary: "lifeops",
-          operation,
-          statusCode: 503,
-        },
-        `[lifeops] Route unavailable: ${message}`,
-      );
-      span.failure({
-        statusCode: 503,
-        error,
-        errorKind: "lifeops_storage_unavailable",
-      });
-      ctx.error(ctx.res, message, 503);
-      return true;
-    }
     logger.error(
       {
         boundary: "lifeops",
@@ -295,6 +363,56 @@ async function runRoute(
       errorKind: "unhandled_error",
     });
     throw error;
+  }
+}
+
+async function runStatelessRoute(
+  ctx: LifeOpsRouteContext,
+  fn: () => Promise<void>,
+): Promise<boolean> {
+  const operation = routeOperation(ctx);
+  const span = createIntegrationTelemetrySpan({
+    boundary: "lifeops",
+    operation,
+  });
+  try {
+    await fn();
+    span.success({
+      statusCode: ctx.res.statusCode >= 400 ? ctx.res.statusCode : 200,
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof LifeOpsServiceError) {
+      logger.warn(
+        {
+          boundary: "lifeops",
+          operation,
+          statusCode: error.status,
+        },
+        `[lifeops] Route failed: ${error.message}`,
+      );
+      span.failure({
+        statusCode: error.status,
+        error,
+        errorKind: "lifeops_service_error",
+      });
+      ctx.error(ctx.res, error.message, error.status);
+      return true;
+    }
+    logger.error(
+      {
+        boundary: "lifeops",
+        operation,
+      },
+      `[lifeops] Route crashed: ${errorMessage(error)}`,
+    );
+    span.failure({
+      statusCode: 500,
+      error,
+      errorKind: "lifeops_route_crash",
+    });
+    ctx.error(ctx.res, errorMessage(error), 500);
+    return true;
   }
 }
 
@@ -410,16 +528,7 @@ function writeHtml(
 export async function handleLifeOpsRoutes(
   ctx: LifeOpsRouteContext,
 ): Promise<boolean> {
-  const {
-    req,
-    res,
-    method,
-    pathname,
-    url,
-    json,
-    readJsonBody,
-    decodePathComponent,
-  } = ctx;
+  const { req, res, method, pathname, url, json, readJsonBody } = ctx;
 
   if (method === "GET" && pathname === "/api/lifeops/app-state") {
     if (!ctx.state.runtime) {
@@ -940,10 +1049,7 @@ export async function handleLifeOpsRoutes(
     >(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.disconnectGoogleConnector(body, url),
-      );
+      json(res, await service.disconnectGoogleConnector(body, url));
     });
   }
 
@@ -978,6 +1084,238 @@ export async function handleLifeOpsRoutes(
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       json(res, await service.createXPost(body), 201);
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // iMessage connector
+  // -----------------------------------------------------------------------
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/imessage/status"
+  ) {
+    return runRoute(ctx, async (service) => {
+      json(res, await service.getIMessageConnectorStatus());
+    });
+  }
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/imessage/chats"
+  ) {
+    return runRoute(ctx, async (service) => {
+      const chats = await service.listIMessageChats();
+      json(res, { chats, count: chats.length });
+    });
+  }
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/imessage/messages"
+  ) {
+    return runRoute(ctx, async (service) => {
+      const query: GetLifeOpsIMessageMessagesRequest = {
+        chatId: url.searchParams.get("chatId")?.trim() || undefined,
+        since: url.searchParams.get("since")?.trim() || undefined,
+        limit:
+          parsePositiveIntegerQuery(url.searchParams.get("limit"), "limit") ??
+          undefined,
+      };
+      const messages = await service.readIMessages(query);
+      json(res, { messages, count: messages.length });
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/imessage/send"
+  ) {
+    const body = await readJsonBody<SendLifeOpsIMessageRequest>(req, res);
+    if (!body) return true;
+    const to = body.to?.trim();
+    const text = body.text?.trim();
+    if (!to) {
+      ctx.error(res, "to is required", 400);
+      return true;
+    }
+    if (!text) {
+      ctx.error(res, "text is required", 400);
+      return true;
+    }
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.sendIMessage({
+          to,
+          text,
+          attachmentPaths: Array.isArray(body.attachmentPaths)
+            ? body.attachmentPaths
+            : undefined,
+        }),
+        201,
+      );
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // Telegram connector
+  // -----------------------------------------------------------------------
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/telegram/status"
+  ) {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.getTelegramConnectorStatus(rawSide ?? undefined));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/telegram/start"
+  ) {
+    const body = await readJsonBody<StartLifeOpsTelegramAuthRequest>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.startTelegramAuth(body), 201);
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/telegram/submit"
+  ) {
+    const body = await readJsonBody<SubmitLifeOpsTelegramAuthRequest>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.submitTelegramAuth(body));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/telegram/cancel"
+  ) {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      const side = rawSide ?? "owner";
+      const pending = await service.getTelegramConnectorStatus(side);
+      if (pending.authState !== "idle" && pending.authState !== "connected") {
+        json(res, await service.disconnectTelegram(side));
+      } else {
+        json(res, pending);
+      }
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/telegram/disconnect"
+  ) {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.disconnectTelegram(rawSide ?? undefined));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/telegram/verify"
+  ) {
+    const body = await readJsonBody<VerifyLifeOpsTelegramConnectorRequest>(
+      req,
+      res,
+    );
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.verifyTelegramConnector(body));
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // Signal connector
+  // -----------------------------------------------------------------------
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/signal/status"
+  ) {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.getSignalConnectorStatus(rawSide ?? undefined));
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/connectors/signal/pair") {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.startSignalPairing(rawSide ?? undefined), 201);
+    });
+  }
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/signal/pairing-status"
+  ) {
+    const sessionId = url.searchParams.get("sessionId");
+    if (!sessionId) {
+      throw new LifeOpsServiceError(400, "sessionId is required");
+    }
+    return runRoute(ctx, async (service) => {
+      json(res, await service.getSignalPairingStatus(sessionId));
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/connectors/signal/stop") {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      json(res, service.stopSignalPairing(rawSide ?? undefined));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/signal/disconnect"
+  ) {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.disconnectSignal(rawSide ?? undefined));
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // Discord connector
+  // -----------------------------------------------------------------------
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/discord/status"
+  ) {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.getDiscordConnectorStatus(rawSide ?? undefined));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/discord/connect"
+  ) {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.authorizeDiscordConnector(rawSide ?? undefined));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/discord/disconnect"
+  ) {
+    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.disconnectDiscord(rawSide ?? undefined));
     });
   }
 
@@ -1092,8 +1430,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/website-access\/callbacks\/([^/]+)\/resolve$/,
   );
   if (method === "POST" && websiteAccessCallbackMatch) {
-    const callbackKey = decodePathComponent(
-      websiteAccessCallbackMatch[1],
+    const callbackKey = decodeMatchedPathComponent(
+      ctx,
+      websiteAccessCallbackMatch,
+      1,
       res,
       "website access callback key",
     );
@@ -1179,6 +1519,33 @@ export async function handleLifeOpsRoutes(
     });
   }
 
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/browser/companions/auto-pair"
+  ) {
+    if (!browserAutoPairOriginAllowed(ctx)) {
+      ctx.error(
+        res,
+        "browser auto-pair must come from the LifeOps app or a browser extension",
+        403,
+      );
+      return true;
+    }
+    const body =
+      await readJsonBody<CreateLifeOpsBrowserCompanionAutoPairRequest>(
+        req,
+        res,
+      );
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.autoPairBrowserCompanion(body, ctx.url.origin),
+        201,
+      );
+    });
+  }
+
   if (method === "GET" && pathname === "/api/lifeops/browser/companions") {
     return runRoute(ctx, async (service) => {
       json(res, { companions: await service.listBrowserCompanions() });
@@ -1186,8 +1553,48 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "GET" && pathname === "/api/lifeops/browser/packages") {
-    return runRoute(ctx, async () => {
+    return runStatelessRoute(ctx, async () => {
       json(res, { status: getLifeOpsBrowserCompanionPackageStatus() });
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/browser/packages/open-path"
+  ) {
+    if (!requestIsLoopback(ctx)) {
+      ctx.error(
+        res,
+        "Local extension install helpers can only run on the same machine as LifeOps",
+        403,
+      );
+      return true;
+    }
+    const body = await readJsonBody<{
+      target?: string;
+      revealOnly?: boolean;
+    }>(req, res);
+    if (!body) return true;
+    if (
+      typeof body.target !== "string" ||
+      !LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS.includes(
+        body.target as (typeof LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS)[number],
+      )
+    ) {
+      ctx.error(
+        res,
+        `target must be one of: ${LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS.join(", ")}`,
+        400,
+      );
+      return true;
+    }
+    return runStatelessRoute(ctx, async () => {
+      json(
+        res,
+        await openLifeOpsBrowserCompanionPackagePath(body.target, {
+          revealOnly: body.revealOnly === true,
+        }),
+      );
     });
   }
 
@@ -1223,8 +1630,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/browser\/packages\/([^/]+)\/build$/,
   );
   if (method === "POST" && browserPackageBuildMatch) {
-    const browser = decodePathComponent(
-      browserPackageBuildMatch[1],
+    const browser = decodeMatchedPathComponent(
+      ctx,
+      browserPackageBuildMatch,
+      1,
       res,
       "browser package target",
     );
@@ -1233,10 +1642,39 @@ export async function handleLifeOpsRoutes(
       ctx.error(res, "browser must be chrome or safari", 400);
       return true;
     }
-    return runRoute(ctx, async () => {
+    return runStatelessRoute(ctx, async () => {
       json(res, {
         status: await buildLifeOpsBrowserCompanionPackage(browser),
       });
+    });
+  }
+
+  const browserPackageOpenManagerMatch = pathname.match(
+    /^\/api\/lifeops\/browser\/packages\/([^/]+)\/open-manager$/,
+  );
+  if (method === "POST" && browserPackageOpenManagerMatch) {
+    if (!requestIsLoopback(ctx)) {
+      ctx.error(
+        res,
+        "Local extension install helpers can only run on the same machine as LifeOps",
+        403,
+      );
+      return true;
+    }
+    const browser = decodeMatchedPathComponent(
+      ctx,
+      browserPackageOpenManagerMatch,
+      1,
+      res,
+      "browser package target",
+    );
+    if (!browser) return true;
+    if (browser !== "chrome" && browser !== "safari") {
+      ctx.error(res, "browser must be chrome or safari", 400);
+      return true;
+    }
+    return runStatelessRoute(ctx, async () => {
+      json(res, await openLifeOpsBrowserCompanionManager(browser));
     });
   }
 
@@ -1244,8 +1682,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/browser\/packages\/([^/]+)\/download$/,
   );
   if (method === "GET" && browserPackageDownloadMatch) {
-    const browser = decodePathComponent(
-      browserPackageDownloadMatch[1],
+    const browser = decodeMatchedPathComponent(
+      ctx,
+      browserPackageDownloadMatch,
+      1,
       res,
       "browser package target",
     );
@@ -1254,7 +1694,7 @@ export async function handleLifeOpsRoutes(
       ctx.error(res, "browser must be chrome or safari", 400);
       return true;
     }
-    return runRoute(ctx, async () => {
+    return runStatelessRoute(ctx, async () => {
       const artifact = getLifeOpsBrowserCompanionDownloadFile(browser);
       res.statusCode = 200;
       res.setHeader("Content-Type", artifact.contentType);
@@ -1294,6 +1734,56 @@ export async function handleLifeOpsRoutes(
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       json(res, { session: await service.createBrowserSession(body) }, 201);
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/schedule/observations") {
+    const body = await readJsonBody<SyncLifeOpsScheduleObservationsRequest>(
+      req,
+      res,
+    );
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.ingestScheduleObservations(body));
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/schedule/merged-state") {
+    const scopeParam = url.searchParams.get("scope");
+    const scope = scopeParam?.trim() ?? "";
+    if (
+      scope.length > 0 &&
+      !LIFEOPS_SCHEDULE_STATE_SCOPES.includes(
+        scope as (typeof LIFEOPS_SCHEDULE_STATE_SCOPES)[number],
+      ) &&
+      scope !== "effective"
+    ) {
+      ctx.error(res, "scope must be local, cloud, or effective", 400);
+      return true;
+    }
+    const refreshParam = url.searchParams.get("refresh")?.trim().toLowerCase();
+    if (
+      refreshParam &&
+      refreshParam !== "1" &&
+      refreshParam !== "0" &&
+      refreshParam !== "true" &&
+      refreshParam !== "false"
+    ) {
+      ctx.error(res, "refresh must be true, false, 1, or 0", 400);
+      return true;
+    }
+    const refresh = refreshParam === "1" || refreshParam === "true";
+    return runRoute(ctx, async (service) => {
+      json(res, {
+        mergedState: await service.getScheduleMergedState({
+          timezone: url.searchParams.get("timezone"),
+          scope:
+            scope.length > 0
+              ? (scope as "local" | "cloud" | "effective")
+              : undefined,
+          refresh,
+        }),
+      });
     });
   }
 
@@ -1348,8 +1838,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/definitions\/([^/]+)$/,
   );
   if (definitionMatch) {
-    const definitionId = decodePathComponent(
-      definitionMatch[1],
+    const definitionId = decodeMatchedPathComponent(
+      ctx,
+      definitionMatch,
+      1,
       res,
       "definition id",
     );
@@ -1392,7 +1884,13 @@ export async function handleLifeOpsRoutes(
 
   const goalMatch = pathname.match(/^\/api\/lifeops\/goals\/([^/]+)$/);
   if (goalMatch) {
-    const goalId = decodePathComponent(goalMatch[1], res, "goal id");
+    const goalId = decodeMatchedPathComponent(
+      ctx,
+      goalMatch,
+      1,
+      res,
+      "goal id",
+    );
     if (!goalId) return true;
     if (method === "GET") {
       return runRoute(ctx, async (service) => {
@@ -1419,7 +1917,13 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/goals\/([^/]+)\/review$/,
   );
   if (goalReviewMatch && method === "GET") {
-    const goalId = decodePathComponent(goalReviewMatch[1], res, "goal id");
+    const goalId = decodeMatchedPathComponent(
+      ctx,
+      goalReviewMatch,
+      1,
+      res,
+      "goal id",
+    );
     if (!goalId) return true;
     return runRoute(ctx, async (service) => {
       json(res, await service.reviewGoal(goalId));
@@ -1428,8 +1932,10 @@ export async function handleLifeOpsRoutes(
 
   const workflowMatch = pathname.match(/^\/api\/lifeops\/workflows\/([^/]+)$/);
   if (workflowMatch) {
-    const workflowId = decodePathComponent(
-      workflowMatch[1],
+    const workflowId = decodeMatchedPathComponent(
+      ctx,
+      workflowMatch,
+      1,
       res,
       "workflow id",
     );
@@ -1452,8 +1958,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/workflows\/([^/]+)\/run$/,
   );
   if (method === "POST" && workflowRunMatch) {
-    const workflowId = decodePathComponent(
-      workflowRunMatch[1],
+    const workflowId = decodeMatchedPathComponent(
+      ctx,
+      workflowRunMatch,
+      1,
       res,
       "workflow id",
     );
@@ -1469,8 +1977,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/browser\/sessions\/([^/]+)$/,
   );
   if (browserSessionMatch) {
-    const sessionId = decodePathComponent(
-      browserSessionMatch[1],
+    const sessionId = decodeMatchedPathComponent(
+      ctx,
+      browserSessionMatch,
+      1,
       res,
       "browser session id",
     );
@@ -1486,8 +1996,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/browser\/sessions\/([^/]+)\/confirm$/,
   );
   if (method === "POST" && browserConfirmMatch) {
-    const sessionId = decodePathComponent(
-      browserConfirmMatch[1],
+    const sessionId = decodeMatchedPathComponent(
+      ctx,
+      browserConfirmMatch,
+      1,
       res,
       "browser session id",
     );
@@ -1504,12 +2016,38 @@ export async function handleLifeOpsRoutes(
     });
   }
 
+  const browserProgressMatch = pathname.match(
+    /^\/api\/lifeops\/browser\/sessions\/([^/]+)\/progress$/,
+  );
+  if (method === "POST" && browserProgressMatch) {
+    const sessionId = decodeMatchedPathComponent(
+      ctx,
+      browserProgressMatch,
+      1,
+      res,
+      "browser session id",
+    );
+    if (!sessionId) return true;
+    const body = await readJsonBody<UpdateLifeOpsBrowserSessionProgressRequest>(
+      req,
+      res,
+    );
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, {
+        session: await service.updateBrowserSessionProgress(sessionId, body),
+      });
+    });
+  }
+
   const browserCompleteMatch = pathname.match(
     /^\/api\/lifeops\/browser\/sessions\/([^/]+)\/complete$/,
   );
   if (method === "POST" && browserCompleteMatch) {
-    const sessionId = decodePathComponent(
-      browserCompleteMatch[1],
+    const sessionId = decodeMatchedPathComponent(
+      ctx,
+      browserCompleteMatch,
+      1,
       res,
       "browser session id",
     );
@@ -1530,8 +2068,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/browser\/companions\/sessions\/([^/]+)\/progress$/,
   );
   if (method === "POST" && browserCompanionProgressMatch) {
-    const sessionId = decodePathComponent(
-      browserCompanionProgressMatch[1],
+    const sessionId = decodeMatchedPathComponent(
+      ctx,
+      browserCompanionProgressMatch,
+      1,
       res,
       "browser session id",
     );
@@ -1561,8 +2101,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/browser\/companions\/sessions\/([^/]+)\/complete$/,
   );
   if (method === "POST" && browserCompanionCompleteMatch) {
-    const sessionId = decodePathComponent(
-      browserCompanionCompleteMatch[1],
+    const sessionId = decodeMatchedPathComponent(
+      ctx,
+      browserCompanionCompleteMatch,
+      1,
       res,
       "browser session id",
     );
@@ -1592,8 +2134,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/occurrences\/([^/]+)\/explanation$/,
   );
   if (occurrenceExplanationMatch && method === "GET") {
-    const occurrenceId = decodePathComponent(
-      occurrenceExplanationMatch[1],
+    const occurrenceId = decodeMatchedPathComponent(
+      ctx,
+      occurrenceExplanationMatch,
+      1,
       res,
       "occurrence id",
     );
@@ -1607,8 +2151,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/occurrences\/([^/]+)\/complete$/,
   );
   if (method === "POST" && completeMatch) {
-    const occurrenceId = decodePathComponent(
-      completeMatch[1],
+    const occurrenceId = decodeMatchedPathComponent(
+      ctx,
+      completeMatch,
+      1,
       res,
       "occurrence id",
     );
@@ -1626,8 +2172,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/occurrences\/([^/]+)\/skip$/,
   );
   if (method === "POST" && skipMatch) {
-    const occurrenceId = decodePathComponent(
-      skipMatch[1],
+    const occurrenceId = decodeMatchedPathComponent(
+      ctx,
+      skipMatch,
+      1,
       res,
       "occurrence id",
     );
@@ -1645,8 +2193,10 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/occurrences\/([^/]+)\/snooze$/,
   );
   if (method === "POST" && snoozeMatch) {
-    const occurrenceId = decodePathComponent(
-      snoozeMatch[1],
+    const occurrenceId = decodeMatchedPathComponent(
+      ctx,
+      snoozeMatch,
+      1,
       res,
       "occurrence id",
     );

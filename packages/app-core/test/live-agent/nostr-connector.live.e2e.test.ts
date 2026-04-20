@@ -26,11 +26,11 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { logger, type Plugin } from "@elizaos/core";
 import {
   extractPlugin,
   resolveNostrPluginImportSpecifier,
 } from "@elizaos/app-core";
+import { logger, type Plugin } from "@elizaos/core";
 import dotenv from "dotenv";
 import { describe, expect, it } from "vitest";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
@@ -46,8 +46,8 @@ dotenv.config({ path: path.resolve(packageRoot, ".env") });
 
 const NOSTR_PRIVATE_KEY = process.env.NOSTR_PRIVATE_KEY;
 const NOSTR_RELAYS = process.env.NOSTR_RELAYS ?? "wss://relay.damus.io";
-const NOSTR_DM_POLICY = process.env.NOSTR_DM_POLICY;
-const NOSTR_ALLOW_FROM = process.env.NOSTR_ALLOW_FROM;
+const _NOSTR_DM_POLICY = process.env.NOSTR_DM_POLICY;
+const _NOSTR_ALLOW_FROM = process.env.NOSTR_ALLOW_FROM;
 
 const hasNostrCreds = Boolean(NOSTR_PRIVATE_KEY);
 const liveTestsEnabled = process.env.ELIZA_LIVE_TEST === "1";
@@ -78,7 +78,6 @@ const LIVE_WRITE_TIMEOUT = 120_000;
 // ---------------------------------------------------------------------------
 // Utilities
 // ---------------------------------------------------------------------------
-
 
 /** Parse relay URLs from comma-separated string */
 function parseRelays(relayStr: string): string[] {

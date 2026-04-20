@@ -15,42 +15,42 @@
  */
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
+import { isElectrobunRuntime } from "../bridge";
+import { isNative } from "../platform";
 import { loadPersistedOnboardingComplete } from "./persistence";
 import {
-  INITIAL_STARTUP_STATE,
   createDesktopPolicy,
   createMobilePolicy,
   createWebPolicy,
+  INITIAL_STARTUP_STATE,
   isStartupLoading,
   isStartupTerminal,
-  startupReducer,
-  toLegacyStartupPhase,
   type PlatformPolicy,
   type RuntimeTarget,
   type StartupEvent,
   type StartupState,
+  startupReducer,
+  toLegacyStartupPhase,
 } from "./startup-coordinator";
-import { isElectrobunRuntime } from "../bridge";
-import { isNative } from "../platform";
 import {
-  runRestoringSession,
+  bindReadyPhase,
+  type HydratingDeps,
+  type ReadyPhaseDeps,
+  runHydrating,
+} from "./startup-phase-hydrate";
+import {
+  type PollingBackendDeps,
+  runPollingBackend,
+} from "./startup-phase-poll";
+import {
   type RestoringSessionCtx,
   type RestoringSessionDeps,
+  runRestoringSession,
 } from "./startup-phase-restore";
-import {
-  runPollingBackend,
-  type PollingBackendDeps,
-} from "./startup-phase-poll";
 import {
   runStartingRuntime,
   type StartingRuntimeDeps,
 } from "./startup-phase-runtime";
-import {
-  runHydrating,
-  bindReadyPhase,
-  type HydratingDeps,
-  type ReadyPhaseDeps,
-} from "./startup-phase-hydrate";
 
 // ── Deps interface ──────────────────────────────────────────────────
 // Composed from per-phase slices defined in each startup-phase-*.ts module.
@@ -114,7 +114,7 @@ export function useStartupCoordinator(
   const legacyPhase = toLegacyStartupPhase(state);
   useEffect(() => {
     if (!depsReady) return;
-    depsRef.current!.setStartupPhase(legacyPhase);
+    depsRef.current?.setStartupPhase(legacyPhase);
   }, [legacyPhase, depsReady]);
 
   // ── Phase: splash — auto-skip for returning users, mark loaded for new users
@@ -179,7 +179,7 @@ export function useStartupCoordinator(
       if (tidRef.current) clearTimeout(tidRef.current);
     };
     // biome-ignore lint/correctness/useExhaustiveDependencies: deps via ref
-  }, [state.phase, policy.backendTimeoutMs, depsReady]);
+  }, [state.phase, policy.backendTimeoutMs, depsReady, policy]);
 
   // ── Phase: starting-runtime ─────────────────────────────────────
   useEffect(() => {

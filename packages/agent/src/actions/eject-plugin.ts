@@ -1,15 +1,13 @@
-import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
+import type { Action, ActionExample, HandlerOptions, IAgentRuntime } from "@elizaos/core";
 import { requestRestart } from "@elizaos/shared/restart";
+import {
+  isPluginManagerLike,
+  type PluginManagerLike,
+} from "../services/plugin-manager-types.js";
 
-function getPluginManager(runtime: IAgentRuntime) {
-  return runtime.getService("plugin_manager") as unknown as {
-    ejectPlugin(id: string): Promise<{
-      success: boolean;
-      pluginName: string;
-      ejectedPath: string;
-      error?: string;
-    }>;
-  } | null;
+function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
+  const svc = runtime.getService("plugin_manager");
+  return isPluginManagerLike(svc) ? svc : null;
 }
 
 export const ejectPluginAction: Action = {
@@ -68,4 +66,34 @@ export const ejectPluginAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "I want to edit the discord plugin source — pull it local for me.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Ejected @elizaos/plugin-discord to ./plugins/plugin-discord. Restarting to load local source.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Fork the telegram plugin locally so I can patch it.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Ejected @elizaos/plugin-telegram to ./plugins/plugin-telegram. Restarting to load local source.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

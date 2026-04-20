@@ -1,15 +1,12 @@
-import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
+import type { Action, ActionExample, HandlerOptions, IAgentRuntime } from "@elizaos/core";
+import {
+  isPluginManagerLike,
+  type PluginManagerLike,
+} from "../services/plugin-manager-types.js";
 
-function getPluginManager(runtime: IAgentRuntime) {
-  return runtime.getService("plugin_manager") as unknown as {
-    syncPlugin(id: string): Promise<{
-      success: boolean;
-      pluginName: string;
-      upstreamCommits: number;
-      conflicts: string[];
-      error?: string;
-    }>;
-  } | null;
+function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
+  const svc = runtime.getService("plugin_manager");
+  return isPluginManagerLike(svc) ? svc : null;
 }
 
 export const syncPluginAction: Action = {
@@ -41,19 +38,15 @@ export const syncPluginAction: Action = {
 
     const result = await mgr.syncPlugin(pluginId);
     if (!result.success) {
-      const conflictText =
-        result.conflicts.length > 0
-          ? ` Conflicts: ${result.conflicts.join(", ")}`
-          : "";
       return {
-        text: `Failed to sync ${pluginId}: ${result.error ?? "unknown error"}.${conflictText}`,
+        text: `Failed to sync ${pluginId}: ${result.error ?? "unknown error"}.`,
         success: false,
         data: { ...result },
       };
     }
 
     return {
-      text: `Synced ${result.pluginName} (${result.upstreamCommits} upstream commits).`,
+      text: `Synced ${result.pluginName}.`,
       success: true,
       data: { ...result },
     };
@@ -68,4 +61,34 @@ export const syncPluginAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Pull the latest upstream changes into my forked discord plugin.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Synced @elizaos/plugin-discord.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Update my ejected telegram plugin from upstream.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Synced @elizaos/plugin-telegram.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

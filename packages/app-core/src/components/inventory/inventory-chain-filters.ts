@@ -1,6 +1,6 @@
 import type { InventoryChainFilters } from "../../state/types";
-import { PRIMARY_CHAIN_KEYS, resolveChainKey } from "./chainConfig";
 import type { ChainKey } from "./chainConfig";
+import { PRIMARY_CHAIN_KEYS, resolveChainKey } from "./chainConfig";
 
 export type PrimaryInventoryChainKey = keyof InventoryChainFilters;
 

@@ -47,8 +47,9 @@ import {
 } from "./seed-routines.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
+/** @internal */
 export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
-  return class extends Base {
+  class LifeOpsDefinitionsServiceMixin extends Base {
     async listDefinitions(): Promise<LifeOpsDefinitionRecord[]> {
       const definitions = await this.repository.listDefinitions(this.agentId());
       const plans = await this.repository.listReminderPlansForOwners(
@@ -609,6 +610,7 @@ export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(B
       }
       return view;
     }
-  };
-}
+  }
 
+  return LifeOpsDefinitionsServiceMixin;
+}

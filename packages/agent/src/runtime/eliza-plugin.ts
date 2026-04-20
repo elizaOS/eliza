@@ -9,11 +9,15 @@
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { AgentEventService } from "@elizaos/core";
 import { launchAppAction, stopAppAction } from "../actions/app-control.js";
+import { browserSessionAction } from "../actions/browser-session.js";
 import {
+  linkEntityAction,
   readEntityAction,
   searchEntityAction,
 } from "../actions/entity-actions.js";
+import { extractPageAction } from "../actions/extract-page.js";
 import { manageTasksAction } from "../actions/manage-tasks.js";
+import { readMessagesAction } from "../actions/read-messages.js";
 import { readChannelAction } from "../actions/read-channel.js";
 import { restartAction } from "../actions/restart.js";
 import { searchConversationsAction } from "../actions/search-conversations.js";
@@ -26,14 +30,10 @@ import {
 } from "../actions/skill-command.js";
 import { terminalAction } from "../actions/terminal.js";
 import { webSearchAction } from "../actions/web-search.js";
-import {
-  ensureProactiveAgentTask,
-  registerProactiveTaskWorker,
-} from "../activity-profile/proactive-worker.js";
 import { lateJoinWhitelistEvaluator } from "../evaluators/late-join-whitelist.js";
-import { activityProfileProvider } from "../providers/activity-profile.js";
 import { adminPanelProvider } from "../providers/admin-panel.js";
 import { adminTrustProvider } from "../providers/admin-trust.js";
+import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.js";
 import { escalationTriggerProvider } from "../providers/escalation-trigger.js";
 import { recentConversationsProvider } from "../providers/recent-conversations.js";
 import { relevantConversationsProvider } from "../providers/relevant-conversations.js";
@@ -78,7 +78,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     }),
     adminTrustProvider,
     adminPanelProvider,
-    activityProfileProvider,
 
     createSessionKeyProvider({ defaultAgentId: agentId }),
     ...getSessionProviders({ storePath: sessionStorePath }),
@@ -101,58 +100,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     init: async (_pluginConfig, runtime: IAgentRuntime) => {
       registerTriggerTaskWorker(runtime);
       setCustomActionsRuntime(runtime);
-      const proactiveAgentDisabled = (() => {
-        const disableValue = (
-          process.env.ELIZA_DISABLE_PROACTIVE_AGENT ??
-          process.env.ELIZA_DISABLE_PROACTIVE_AGENT ??
-          ""
-        )
-          .trim()
-          .toLowerCase();
-        if (
-          disableValue === "1" ||
-          disableValue === "true" ||
-          disableValue === "yes"
-        ) {
-          return true;
-        }
-        const enableValue = (process.env.ENABLE_PROACTIVE_AGENT ?? "")
-          .trim()
-          .toLowerCase();
-        return enableValue === "0" || enableValue === "false";
-      })();
-      if (!proactiveAgentDisabled) {
-        registerProactiveTaskWorker(runtime);
-      } else {
-        runtime.logger?.info(
-          "[proactive] Proactive agent task skipped — ELIZA_DISABLE_PROACTIVE_AGENT=1",
-        );
-      }
-      // LifeOps scheduler init is now handled by @elizaos/app-lifeops plugin init.
-      if (!proactiveAgentDisabled) {
-        void (async () => {
-          const DELAYS = [2_000, 5_000, 10_000];
-          for (let attempt = 0; attempt <= DELAYS.length; attempt++) {
-            try {
-              await ensureProactiveAgentTask(runtime);
-              return;
-            } catch (error) {
-              const msg =
-                error instanceof Error ? error.message : String(error);
-              if (attempt < DELAYS.length) {
-                runtime.logger?.warn?.(
-                  `[proactive] Task init failed (attempt ${attempt + 1}/${DELAYS.length + 1}), retrying in ${DELAYS[attempt]}ms: ${msg}`,
-                );
-                await new Promise((r) => setTimeout(r, DELAYS[attempt]));
-              } else {
-                runtime.logger?.error?.(
-                  `[proactive] Task init failed after ${DELAYS.length + 1} attempts — proactive agent is NOT running: ${msg}`,
-                );
-              }
-            }
-          }
-        })();
-      }
+      // Proactive agent (activity-profile) is now initialized by @elizaos/app-lifeops plugin init.
 
       // ── Auto-register skills as slash commands ───────────────────────
       // Runs after plugin-agent-skills init so getLoadedSkills() is populated.
@@ -238,6 +186,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     providers: [
       ...baseProviders,
 
+      automationTerminalBridgeProvider,
       recentConversationsProvider,
       relevantConversationsProvider,
       rolodexProvider,
@@ -260,10 +209,14 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       setUserNameAction,
       skillCommandAction,
       webSearchAction,
+      extractPageAction,
+      browserSessionAction,
       readChannelAction,
       searchConversationsAction,
       searchEntityAction,
+      linkEntityAction,
       readEntityAction,
+      readMessagesAction,
     ],
   };
 

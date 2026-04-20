@@ -147,6 +147,8 @@ export function parseConversationMessageEvent(
   const text = value.text;
   const timestamp = value.timestamp;
   const source = value.source;
+  const actionName = value.actionName;
+  const actionCallbackHistory = value.actionCallbackHistory;
   const from = value.from;
   const fromUserName = value.fromUserName;
   const avatarUrl = value.avatarUrl;
@@ -165,6 +167,18 @@ export function parseConversationMessageEvent(
   const parsed: ConversationMessage = { id, role, text, timestamp };
   if (typeof source === "string" && source.length > 0) {
     parsed.source = source;
+  }
+  if (typeof actionName === "string" && actionName.length > 0) {
+    parsed.actionName = actionName;
+  }
+  if (Array.isArray(actionCallbackHistory)) {
+    const normalized = actionCallbackHistory.filter(
+      (entry): entry is string =>
+        typeof entry === "string" && entry.trim().length > 0,
+    );
+    if (normalized.length > 0) {
+      parsed.actionCallbackHistory = normalized;
+    }
   }
   if (typeof from === "string" && from.length > 0) {
     parsed.from = from;

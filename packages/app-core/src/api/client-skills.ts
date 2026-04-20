@@ -14,6 +14,20 @@ import type {
   AppSessionControlAction,
   AppSessionState,
   AppStopResult,
+  CatalogSearchResult,
+  CatalogSkill,
+  InstalledAppInfo,
+  InstalledPlugin,
+  PluginInstallResult,
+  PluginMutationResult,
+  RegistryAppInfo,
+  RegistryPlugin,
+  RegistryPluginItem,
+  SkillInfo,
+  SkillMarketplaceResult,
+  SkillScanReportSummary,
+} from "./client-types";
+import type {
   BabylonActivityFeed,
   BabylonAgentGoal,
   BabylonAgentStats,
@@ -38,19 +52,7 @@ import type {
   BabylonToggleResponse,
   BabylonTradeResult,
   BabylonWallet,
-  CatalogSearchResult,
-  CatalogSkill,
-  InstalledAppInfo,
-  InstalledPlugin,
-  PluginInstallResult,
-  PluginMutationResult,
-  RegistryAppInfo,
-  RegistryPlugin,
-  RegistryPluginItem,
-  SkillInfo,
-  SkillMarketplaceResult,
-  SkillScanReportSummary,
-} from "./client-types";
+} from "./client-types-babylon";
 
 export type AppRunSteeringDisposition =
   | "accepted"
@@ -154,10 +156,20 @@ declare module "./client-base" {
       skillId: string,
       autoRefresh: boolean,
     ): Promise<void>;
-    updateSkill(
+    enableSkill(
       skillId: string,
-      enabled: boolean,
-    ): Promise<{ skill: SkillInfo }>;
+    ): Promise<{
+      ok: boolean;
+      skill: SkillInfo;
+      scanStatus: string | null;
+    }>;
+    disableSkill(
+      skillId: string,
+    ): Promise<{
+      ok: boolean;
+      skill: SkillInfo;
+      scanStatus: string | null;
+    }>;
     createSkill(
       name: string,
       description: string,
@@ -204,6 +216,16 @@ declare module "./client-base" {
     detachAppRun(runId: string): Promise<AppRunActionResult>;
     stopApp(name: string): Promise<AppStopResult>;
     stopAppRun(runId: string): Promise<AppStopResult>;
+    /**
+     * Cheap liveness ping for an app run. The server's stale-run sweeper
+     * uses the heartbeat to decide whether to reap a run whose UI tab has
+     * gone away. Returns the refreshed run summary on success, or throws
+     * if the run no longer exists (e.g. the sweeper already reaped it,
+     * or another window pressed Stop).
+     */
+    heartbeatAppRun(
+      runId: string,
+    ): Promise<{ ok: boolean; run: AppRunSummary }>;
     getAppInfo(name: string): Promise<RegistryAppInfo>;
     launchApp(name: string): Promise<AppLaunchResult>;
     sendAppRunMessage(
@@ -718,14 +740,21 @@ ElizaClient.prototype.uninstallMarketplaceSkill = async function (
   });
 };
 
-ElizaClient.prototype.updateSkill = async function (
+ElizaClient.prototype.enableSkill = async function (
   this: ElizaClient,
   skillId,
-  enabled,
 ) {
-  return this.fetch(`/api/skills/${encodeURIComponent(skillId)}`, {
-    method: "PUT",
-    body: JSON.stringify({ enabled }),
+  return this.fetch(`/api/skills/${encodeURIComponent(skillId)}/enable`, {
+    method: "POST",
+  });
+};
+
+ElizaClient.prototype.disableSkill = async function (
+  this: ElizaClient,
+  skillId,
+) {
+  return this.fetch(`/api/skills/${encodeURIComponent(skillId)}/disable`, {
+    method: "POST",
   });
 };
 
@@ -828,6 +857,16 @@ ElizaClient.prototype.stopAppRun = async function (this: ElizaClient, runId) {
   return this.fetch(`/api/apps/runs/${encodeURIComponent(runId)}/stop`, {
     method: "POST",
   });
+};
+
+ElizaClient.prototype.heartbeatAppRun = async function (
+  this: ElizaClient,
+  runId,
+) {
+  return this.fetch(
+    `/api/apps/runs/${encodeURIComponent(runId)}/heartbeat`,
+    { method: "POST" },
+  );
 };
 
 ElizaClient.prototype.getAppInfo = async function (this: ElizaClient, name) {
@@ -1110,8 +1149,18 @@ ElizaClient.prototype.getSignalStatus = async function (
 ElizaClient.prototype.startSignalPairing = async function (
   this: ElizaClient,
   accountId = "default",
-) {
-  return this.fetch("/api/signal/pair", {
+): Promise<{
+  ok: boolean;
+  accountId: string;
+  status: string;
+  error?: string;
+}> {
+  return this.fetch<{
+    ok: boolean;
+    accountId: string;
+    status: string;
+    error?: string;
+  }>("/api/signal/pair", {
     method: "POST",
     body: JSON.stringify({ accountId }),
   });
@@ -1120,8 +1169,16 @@ ElizaClient.prototype.startSignalPairing = async function (
 ElizaClient.prototype.stopSignalPairing = async function (
   this: ElizaClient,
   accountId = "default",
-) {
-  return this.fetch("/api/signal/pair/stop", {
+): Promise<{
+  ok: boolean;
+  accountId: string;
+  status: string;
+}> {
+  return this.fetch<{
+    ok: boolean;
+    accountId: string;
+    status: string;
+  }>("/api/signal/pair/stop", {
     method: "POST",
     body: JSON.stringify({ accountId }),
   });

@@ -1,13 +1,33 @@
-import type { AppRunSummary } from "../../../../api/client-types-cloud";
 import { CodingAgentTasksPanel as AppCodingAgentTasksPanel } from "@elizaos/app-task-coordinator";
-import { Activity } from "lucide-react";
+import { Button } from "@elizaos/ui";
+import {
+  Activity,
+  AlertTriangle,
+  BellRing,
+  Check,
+  CheckCheck,
+  Eye,
+  EyeOff,
+  HeartPulse,
+  type LucideIcon,
+  MessageSquare,
+  OctagonAlert,
+  Play,
+  Square,
+  SquareArrowOutUpRight,
+  SquarePause,
+  Trash2,
+  Workflow,
+  Wrench,
+  Zap,
+} from "lucide-react";
 import { startTransition, useEffect, useMemo, useState } from "react";
 import { client } from "../../../../api";
+import type { AppRunSummary } from "../../../../api/client-types-cloud";
 import type { ActivityEvent } from "../../../../hooks/useActivityEvents";
 import { useApp } from "../../../../state";
-import { getRunAttentionReasons } from "../../../apps/RunningAppsPanel";
+import { getRunAttentionReasons } from "../../../apps/run-attention";
 import { EmptyWidgetState, WidgetSection } from "../shared";
-import { Badge, Button } from "@elizaos/ui";
 import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
@@ -23,20 +43,94 @@ function relativeTime(ts: number): string {
   return `${hrs}h ago`;
 }
 
-const EVENT_TYPE_COLORS: Record<string, string> = {
-  task_registered: "bg-ok/20 text-ok",
-  task_complete: "bg-ok/20 text-ok",
-  stopped: "bg-muted/20 text-muted",
-  tool_running: "bg-accent/20 text-accent",
-  blocked: "bg-warn/20 text-warn",
-  blocked_auto_resolved: "bg-ok/20 text-ok",
-  escalation: "bg-warn/20 text-warn",
-  error: "bg-danger/20 text-danger",
-  "proactive-message": "bg-accent/20 text-accent",
-  reminder: "bg-warn/20 text-warn",
-  workflow: "bg-ok/20 text-ok",
-  "check-in": "bg-accent/20 text-accent",
-  nudge: "bg-accent/20 text-accent",
+function relativeDuration(ts: number): string {
+  const delta = Math.max(1, Math.floor((Date.now() - ts) / 1000));
+  if (delta < 60) return `${delta}s`;
+  const mins = Math.floor(delta / 60);
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  return `${Math.floor(hrs / 24)}d`;
+}
+
+type EventTypeMeta = {
+  icon: LucideIcon;
+  toneClass: string;
+  label: string;
+};
+
+const DEFAULT_EVENT_TYPE_META: EventTypeMeta = {
+  icon: Activity,
+  toneClass: "bg-muted/20 text-muted",
+  label: "activity",
+};
+
+const EVENT_TYPE_META: Record<string, EventTypeMeta> = {
+  task_registered: {
+    icon: Play,
+    toneClass: "bg-ok/20 text-ok",
+    label: "task started",
+  },
+  task_complete: {
+    icon: Check,
+    toneClass: "bg-ok/20 text-ok",
+    label: "task complete",
+  },
+  stopped: {
+    icon: Square,
+    toneClass: "bg-muted/20 text-muted",
+    label: "stopped",
+  },
+  tool_running: {
+    icon: Wrench,
+    toneClass: "bg-accent/20 text-accent",
+    label: "tool running",
+  },
+  blocked: {
+    icon: SquarePause,
+    toneClass: "bg-warn/20 text-warn",
+    label: "blocked",
+  },
+  blocked_auto_resolved: {
+    icon: CheckCheck,
+    toneClass: "bg-ok/20 text-ok",
+    label: "auto resolved",
+  },
+  escalation: {
+    icon: AlertTriangle,
+    toneClass: "bg-warn/20 text-warn",
+    label: "escalation",
+  },
+  error: {
+    icon: OctagonAlert,
+    toneClass: "bg-danger/20 text-danger",
+    label: "error",
+  },
+  "proactive-message": {
+    icon: MessageSquare,
+    toneClass: "bg-accent/20 text-accent",
+    label: "proactive message",
+  },
+  reminder: {
+    icon: BellRing,
+    toneClass: "bg-warn/20 text-warn",
+    label: "reminder",
+  },
+  workflow: {
+    icon: Workflow,
+    toneClass: "bg-ok/20 text-ok",
+    label: "workflow",
+  },
+  "check-in": {
+    icon: HeartPulse,
+    toneClass: "bg-accent/20 text-accent",
+    label: "check in",
+  },
+  nudge: {
+    icon: Zap,
+    toneClass: "bg-accent/20 text-accent",
+    label: "nudge",
+  },
 };
 
 const fallbackTranslate = (
@@ -63,27 +157,33 @@ function ActivityItemsContent({ events }: { events: ActivityEvent[] }) {
 
   return (
     <div className="flex flex-col gap-0.5">
-      {events.map((event) => (
-        <div
-          key={event.id}
-          className="flex items-start gap-2 rounded px-2 py-1.5 transition-colors hover:bg-bg-hover/50"
-        >
-          <span className="mt-0.5 w-12 shrink-0 whitespace-nowrap text-2xs text-muted">
-            {relativeTime(event.timestamp)}
-          </span>
-          <Badge
-            variant="secondary"
-            className={`h-4 shrink-0 px-1.5 py-0 text-3xs ${
-              EVENT_TYPE_COLORS[event.eventType] ?? ""
-            }`}
+      {events.map((event) => {
+        const eventTypeMeta =
+          EVENT_TYPE_META[event.eventType] ?? DEFAULT_EVENT_TYPE_META;
+        const EventIcon = eventTypeMeta.icon;
+
+        return (
+          <div
+            key={event.id}
+            className="flex items-start gap-1.5 rounded-md px-1.5 py-1 transition-colors hover:bg-bg-hover/40"
           >
-            {event.eventType.replace(/_/g, " ")}
-          </Badge>
-          <span className="min-w-0 flex-1 break-words text-xs-tight text-txt">
-            {event.summary}
-          </span>
-        </div>
-      ))}
+            <span className="shrink-0 whitespace-nowrap pt-0.5 text-2xs font-medium tabular-nums text-muted">
+              {relativeDuration(event.timestamp)}
+            </span>
+            <span
+              className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md ${eventTypeMeta.toneClass}`}
+              role="img"
+              title={eventTypeMeta.label}
+            >
+              <EventIcon className="h-3 w-3" />
+              <span className="sr-only">{eventTypeMeta.label}</span>
+            </span>
+            <span className="min-w-0 flex-1 break-words pt-0.5 text-xs-tight leading-4 text-txt">
+              {event.summary}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -99,44 +199,41 @@ function AppRunCard({
   run: AppRunSummary;
   attentionReasons: string[];
 }) {
-  const healthTone =
+  const healthDot =
     run.health.state === "healthy"
-      ? "bg-ok/20 text-ok"
+      ? "bg-ok"
       : run.health.state === "degraded"
-        ? "bg-warn/20 text-warn"
-        : "bg-danger/20 text-danger";
+        ? "bg-warn"
+        : "bg-danger";
+  const ViewerIcon = run.viewerAttachment === "attached" ? Eye : EyeOff;
 
   return (
-    <div className="rounded-lg border border-border/50 bg-bg-accent/30 p-3">
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-xs font-semibold text-txt">
-            {run.displayName}
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-muted">
-            <Badge variant="secondary" className={`px-1.5 py-0 ${healthTone}`}>
-              {run.health.state}
-            </Badge>
-            <span>{run.status}</span>
-            <span>{run.viewerAttachment}</span>
-            <span>{formatIsoTime(run.lastHeartbeatAt ?? run.updatedAt)}</span>
-          </div>
+    <div className="rounded-lg border border-border/50 bg-bg-accent/30 p-2">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-2xs font-semibold text-txt">
+          {run.displayName}
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-3xs text-muted">
+          <span
+            className={`inline-block h-1.5 w-1.5 rounded-full ${healthDot}`}
+            role="img"
+            aria-label={run.health.state}
+            title={run.health.state}
+          />
+          <ViewerIcon className="h-3 w-3" aria-label={run.viewerAttachment} />
+          <span>{formatIsoTime(run.lastHeartbeatAt ?? run.updatedAt)}</span>
         </div>
       </div>
-      <div className="mt-2 line-clamp-2 text-xs-tight text-muted">
+      <div className="mt-1 line-clamp-2 text-3xs text-muted">
         {run.summary || run.health.message || "Run active."}
       </div>
       {attentionReasons.length > 0 ? (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          <Badge
-            variant="secondary"
-            className="bg-warn/15 px-1.5 py-0 text-3xs text-warn"
-          >
-            Needs attention
-          </Badge>
-          <span className="inline-flex max-w-full items-center rounded-full border border-border/30 bg-bg-hover/70 px-2 py-0.5 text-2xs text-muted-strong">
-            <span className="truncate">{attentionReasons[0]}</span>
-          </span>
+        <div className="mt-1.5 flex items-center gap-1.5 text-3xs text-warn">
+          <AlertTriangle
+            className="h-3 w-3 shrink-0"
+            aria-label="Needs attention"
+          />
+          <span className="truncate">{attentionReasons[0]}</span>
         </div>
       ) : null}
     </div>
@@ -146,6 +243,7 @@ function AppRunCard({
 function AppRunsWidget(_props: ChatSidebarWidgetProps) {
   const app = useApp() as ReturnType<typeof useApp> | undefined;
   const appRuns = app?.appRuns;
+  const setTab = app?.setTab ?? (() => undefined);
   const setState = app?.setState ?? (() => undefined);
   const t = app?.t ?? fallbackTranslate;
   const [runs, setRuns] = useState<AppRunSummary[]>(() =>
@@ -225,33 +323,37 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
       title={t("appsview.Running", { defaultValue: "Apps" })}
       icon={<Activity className="h-4 w-4" />}
       action={
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           {currentRun ? (
             <Button
+              type="button"
               variant="ghost"
               size="sm"
-              className="h-6 px-2 text-2xs"
+              className="h-6 w-6 p-0"
+              aria-label="Resume viewer"
               onClick={() => {
                 setState("appRuns", runs);
                 setState("activeGameRunId", currentRun.runId);
-                setState("tab", "apps");
+                setTab("apps");
                 setState("appsSubTab", "games");
               }}
             >
-              Resume Viewer
+              <Play className="h-3.5 w-3.5" />
             </Button>
           ) : null}
           <Button
+            type="button"
             variant="ghost"
             size="sm"
-            className="h-6 px-2 text-2xs"
+            className="h-6 w-6 p-0"
+            aria-label="Open apps"
             onClick={() => {
               setState("appRuns", runs);
-              setState("tab", "apps");
+              setTab("apps");
               setState("appsSubTab", "running");
             }}
           >
-            Open Apps
+            <SquareArrowOutUpRight className="h-3.5 w-3.5" />
           </Button>
         </div>
       }
@@ -272,29 +374,34 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
           />
         )
       ) : (
-        <div className="flex flex-col gap-2.5">
-          <div className="flex flex-wrap gap-2 text-2xs text-muted">
-            <Badge variant="secondary" className="bg-bg-hover/70 text-muted">
-              Currently playing: {attachedCount}
-            </Badge>
-            <Badge variant="secondary" className="bg-bg-hover/70 text-muted">
-              Background: {backgroundCount}
-            </Badge>
-            <Badge
-              variant="secondary"
-              className={
-                needsAttentionCount > 0
-                  ? "bg-warn/15 text-warn"
-                  : "bg-ok/15 text-ok"
-              }
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-3 text-3xs text-muted">
+            <span
+              className="inline-flex items-center gap-1"
+              title="Currently playing"
             >
-              Needs attention: {needsAttentionCount}
-            </Badge>
+              <Eye className="h-3 w-3" />
+              {attachedCount}
+            </span>
+            <span className="inline-flex items-center gap-1" title="Background">
+              <EyeOff className="h-3 w-3" />
+              {backgroundCount}
+            </span>
+            <span
+              className={`inline-flex items-center gap-1 ${
+                needsAttentionCount > 0 ? "text-warn" : "text-ok"
+              }`}
+              title="Needs attention"
+            >
+              <AlertTriangle className="h-3 w-3" />
+              {needsAttentionCount}
+            </span>
           </div>
           {attentionRuns.length > 0 ? (
-            <div className="rounded-lg border border-warn/30 bg-warn/10 p-2.5">
-              <div className="mb-2 text-2xs font-semibold uppercase tracking-[0.08em] text-warn">
-                Recovery queue
+            <div className="rounded-lg border border-warn/30 bg-warn/10 p-2">
+              <div className="mb-1.5 flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-[0.08em] text-warn">
+                <AlertTriangle className="h-3 w-3" />
+                Recovery
               </div>
               <div className="flex flex-col gap-2">
                 {attentionRuns.slice(0, 3).map((run) => {
@@ -349,9 +456,10 @@ function OrchestratorActivityWidget({
           variant="ghost"
           size="sm"
           onClick={clearEvents}
-          className="h-6 px-2 text-xs text-muted"
+          aria-label="Clear activity"
+          className="h-6 w-6 p-0 text-muted"
         >
-          Clear
+          <Trash2 className="h-3.5 w-3.5" />
         </Button>
       }
       testId="chat-widget-events"

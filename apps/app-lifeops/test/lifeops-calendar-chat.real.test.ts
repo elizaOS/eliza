@@ -18,9 +18,9 @@ import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  createRealTestRuntime,
+  createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../../test/helpers/real-runtime";
+} from "./helpers/runtime.js";
 import { saveEnv } from "../../../../test/helpers/test-utils";
 import { resolveOAuthDir } from "@elizaos/agent/config/paths";
 import {
@@ -237,10 +237,10 @@ async function seedCalendarEvents(
 
 describe("life-ops calendar data layer (real PGLite)", () => {
   let runtime: AgentRuntime;
-  let testResult: RealTestRuntimeResult;
+  let testResult: RealTestRuntimeResult | null = null;
   let repository: LifeOpsRepository;
-  let stateDir: string;
-  let envBackup: { restore: () => void };
+  let stateDir = "";
+  let envBackup: { restore: () => void } | null = null;
 
   beforeAll(async () => {
     envBackup = saveEnv(
@@ -253,23 +253,28 @@ describe("life-ops calendar data layer (real PGLite)", () => {
     process.env.ELIZA_STATE_DIR = stateDir;
     process.env.ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID = "test-client";
 
-    testResult = await createRealTestRuntime({ characterName: AGENT_ID });
+    testResult = await createLifeOpsTestRuntime({ characterName: AGENT_ID });
     runtime = testResult.runtime;
     repository = new LifeOpsRepository(runtime);
 
     await seedCalendarEvents(runtime, stateDir);
-  }, 180_000);
+  }, 360_000);
 
   afterAll(async () => {
-    await testResult.cleanup();
-    await fs.promises.rm(stateDir, {
-      recursive: true,
-      force: true,
-      maxRetries: 5,
-      retryDelay: 100,
-    });
-    envBackup.restore();
-  });
+    try {
+      await testResult?.cleanup();
+    } finally {
+      if (stateDir) {
+        await fs.promises.rm(stateDir, {
+          recursive: true,
+          force: true,
+          maxRetries: 5,
+          retryDelay: 100,
+        });
+      }
+      envBackup?.restore();
+    }
+  }, 120_000);
 
   it("lists events within a time window (tomorrow only)", async () => {
     const tomorrowStart = allDayStart(1);

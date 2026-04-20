@@ -5,6 +5,10 @@ from typing import TYPE_CHECKING
 from google.protobuf.json_format import MessageToDict
 
 from elizaos.generated.spec_helpers import require_provider_spec
+from elizaos.prompt_compression import (
+    get_prompt_action_description,
+    get_prompt_parameter_description,
+)
 from elizaos.types import Provider, ProviderResult
 
 if TYPE_CHECKING:
@@ -38,14 +42,17 @@ def _get_param_schema(param: ActionParameter) -> ActionParameterSchema | None:
     return getattr(param, "schema_def", None) or getattr(param, "schema", None)  # type: ignore[return-value]
 
 
-def _format_action_parameters(parameters: list[ActionParameter]) -> str:
+def _format_action_parameters(
+    parameters: list[ActionParameter],
+    action_name: str = "",
+    runtime: IAgentRuntime | None = None,
+) -> str:
     lines: list[str] = []
     for param in parameters:
         schema = _get_param_schema(param)
+        desc = get_prompt_parameter_description(action_name, param, runtime)
         if schema is None:
-            lines.append(
-                f"{param.name}{'' if param.required else '?'}:unknown - {param.description}"
-            )
+            lines.append(f"{param.name}{'' if param.required else '?'}:unknown - {desc}")
             continue
         type_str = _format_parameter_type(schema)
         default_val = getattr(schema, "default", None) or getattr(schema, "default_value", None)
@@ -59,18 +66,17 @@ def _format_action_parameters(parameters: list[ActionParameter]) -> str:
         )
         modifiers = "; ".join(part for part in [enum_str, default_str, examples_str] if part)
         suffix = f" [{modifiers}]" if modifiers else ""
-        lines.append(
-            f"{param.name}{'' if param.required else '?'}:{type_str}{suffix} - {param.description}"
-        )
+        lines.append(f"{param.name}{'' if param.required else '?'}:{type_str}{suffix} - {desc}")
     return "; ".join(lines)
 
 
-def format_actions(actions: list[Action]) -> str:
+def format_actions(actions: list[Action], runtime: IAgentRuntime | None = None) -> str:
     lines: list[str] = []
     for action in actions:
-        line = f"- {action.name}: {action.description or 'No description'}"
+        desc = get_prompt_action_description(action, runtime)
+        line = f"- {action.name}: {desc or 'No description'}"
         if action.parameters:
-            params_text = _format_action_parameters(action.parameters)
+            params_text = _format_action_parameters(action.parameters, action.name, runtime)
             if params_text:
                 line += f"\n  params[{len(action.parameters)}]: {params_text}"
         lines.append(line)
@@ -96,7 +102,7 @@ async def get_actions(
             validated_actions.append(action)
 
     action_names = format_action_names(validated_actions)
-    actions_text = format_actions(validated_actions)
+    actions_text = format_actions(validated_actions, runtime)
 
     text_parts: list[str] = [f"Possible response actions: {action_names}"]
     if actions_text:

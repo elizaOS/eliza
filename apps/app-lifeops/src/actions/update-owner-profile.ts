@@ -1,10 +1,10 @@
-import type { Action, HandlerOptions } from "@elizaos/core";
+import type { Action, ActionExample, HandlerOptions } from "@elizaos/core";
 import {
   normalizeLifeOpsOwnerProfilePatch,
   persistConfiguredOwnerName,
   updateLifeOpsOwnerProfile,
 } from "../lifeops/owner-profile.js";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security";
 
 type OwnerProfileParameters = {
   name?: string;
@@ -14,50 +14,49 @@ type OwnerProfileParameters = {
   gender?: string;
   age?: string;
   location?: string;
+  travelBookingPreferences?: string;
 };
 
-function extractOwnerProfilePatchFromText(
-  text: string | undefined,
-): OwnerProfileParameters {
-  if (!text) {
-    return {};
-  }
-
-  const patch: OwnerProfileParameters = {};
-  const readMatch = (pattern: RegExp): string | undefined => {
-    const match = text.match(pattern);
-    return match?.[1]?.trim();
-  };
-
-  patch.name = readMatch(/\bname\s*[:=]\s*([^,.;\n]+)/i);
-  patch.relationshipStatus = readMatch(
-    /\brelationship(?:\s+status)?\s*[:=]\s*([^,.;\n]+)/i,
-  );
-  patch.partnerName = readMatch(/\bpartner(?:\s+name)?\s*[:=]\s*([^,.;\n]+)/i);
-  patch.orientation = readMatch(/\borientation\s*[:=]\s*([^,.;\n]+)/i);
-  patch.gender = readMatch(/\bgender\s*[:=]\s*([^,.;\n]+)/i);
-  patch.age =
-    readMatch(/\bage\s*[:=]\s*(\d{1,3})\b/i) ??
-    readMatch(/\bi(?: am|'m)\s+(\d{1,3})\s+years?\s+old\b/i) ??
-    readMatch(/\bmy age is\s+(\d{1,3})\b/i);
-  patch.location =
-    readMatch(/\blocation\s*[:=]\s*([^,.;\n]+)/i) ??
-    readMatch(/\bi live in\s+([^,.;\n]+)/i);
-
-  return patch;
-}
-
-export const updateOwnerProfileAction: Action = {
+export const updateOwnerProfileAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "UPDATE_OWNER_PROFILE",
   similes: [
     "SAVE_OWNER_PROFILE",
     "SET_OWNER_PROFILE",
     "UPDATE_USER_PROFILE",
     "SAVE_USER_PROFILE",
+    "REMEMBER_ABOUT_ME",
+    "SAVE_ABOUT_ME",
+    "SAVE_MY_LOCATION",
+    "SAVE_MY_NAME",
+    "SAVE_STABLE_FACTS",
+    "REMEMBER_MY_PREFERENCES",
+    "REMEMBER_TRAVEL_PREFERENCES",
+    "SAVE_TRAVEL_PREFERENCES",
+    "TRAVEL_PROFILE",
+    "BOOKING_PREFERENCES",
+  ],
+  tags: [
+    "always-include",
+    "travel preferences",
+    "flight preferences",
+    "hotel preferences",
+    "booking preferences",
+    "owner profile",
   ],
   description:
     "Silently persist stable, owner-only LifeOps profile details when the canonical owner clearly states or confirms them. " +
-    "Use only for the owner, never for other contacts, and do not ask follow-up questions just to fill these fields.",
+    "Use only for the owner, never for other contacts, and do not ask follow-up questions just to fill these fields. " +
+    "This is the canonical sink for stable owner facts like preferred name, relationship status, partner name, orientation, gender, age, location, and reusable preferences. " +
+    "Travel-booking preferences are just one subtype of this owner profile memory. Examples include 'remember my name is Shaw', 'update my location to Los Angeles', " +
+    "'remember that I'm partnered', 'save my travel preferences', or 'remember I only do carry-on and moderate hotels close to the venue'. " +
+    "When the owner asks you to remember or save these stable facts, you must call this action rather than replying with a plain acknowledgement. " +
+    "If the owner is asking you to set up a reusable travel-preference checklist for future bookings, this action still owns the turn even before every preference value is supplied; it can ask for the missing categories while remaining the owning action. " +
+    "Do not use this for todos, goals, reminders, temporary plans, or live task state.",
+  descriptionCompressed:
+    "Persist stable owner facts and reusable preferences when stated or confirmed. Owner only.",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {
     return hasOwnerAccess(runtime, message);
@@ -75,18 +74,11 @@ export const updateOwnerProfileAction: Action = {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | OwnerProfileParameters
       | undefined;
-    const content = message.content as Record<string, unknown> | undefined;
-    const extractedFromText = extractOwnerProfilePatchFromText(
-      typeof content?.text === "string" ? content.text : undefined,
-    );
-    const patch = normalizeLifeOpsOwnerProfilePatch({
-      ...extractedFromText,
-      ...(params ?? {}),
-    });
+    const patch = normalizeLifeOpsOwnerProfilePatch(params ?? {});
 
     if (Object.keys(patch).length === 0) {
       return {
-        text: "",
+        text: "Tell me the stable owner detail you want saved, such as your preferred name, location, relationship status, or reusable travel preferences.",
         success: false,
         data: { error: "NO_FIELDS" },
       };
@@ -132,38 +124,96 @@ export const updateOwnerProfileAction: Action = {
     {
       name: "name",
       description: "The owner's preferred name.",
+
       schema: { type: "string" as const },
     },
     {
       name: "relationshipStatus",
       description:
         "Relationship status such as single, partnered, married, or n/a.",
+
       schema: { type: "string" as const },
     },
     {
       name: "partnerName",
       description: "Partner's name when known, otherwise omit or use n/a.",
+
       schema: { type: "string" as const },
     },
     {
       name: "orientation",
       description: "Owner orientation when clearly stated.",
+
       schema: { type: "string" as const },
     },
     {
       name: "gender",
       description: "Owner gender when clearly stated.",
+
       schema: { type: "string" as const },
     },
     {
       name: "age",
       description: "Owner age or stable age descriptor when clearly stated.",
+
       schema: { type: "string" as const },
     },
     {
       name: "location",
       description: "Owner location when clearly stated.",
+
+      schema: { type: "string" as const },
+    },
+    {
+      name: "travelBookingPreferences",
+      description:
+        "Reusable flight and hotel preference checklist or summary to remember for future bookings.",
+
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Remember that my name is Shaw and I'm based in Los Angeles.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Stored your stable owner details so I can reuse them in future LifeOps workflows.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Set up a list of my flight and hotel preferences so you don't have to ask every time.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll store a reusable travel-preference checklist on your owner profile covering flight class, seat, luggage, hotel budget, distance tolerance, and trip-extension preference so future booking flows can reuse it.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Remember that I prefer aisle seats, carry-on only, moderate hotels close to the venue, and I'm open to staying an extra night if it makes the trip easier.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Stored your travel-booking preferences on the owner profile for future flight and hotel bookings.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

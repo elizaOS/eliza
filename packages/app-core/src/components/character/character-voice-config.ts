@@ -2,12 +2,12 @@
  * Voice-related constants and helpers extracted from CharacterEditor.
  */
 
+import type { VoiceConfig } from "../../api/client";
 import {
   EDGE_BACKUP_VOICES,
   hasConfiguredApiKey,
   PREMADE_VOICES,
 } from "../../voice/types";
-import type { VoiceConfig } from "../../api/client";
 import type { CharacterRosterEntry } from "./CharacterRoster";
 
 /* ── Constants ─────────────────────────────────────────────────────── */

@@ -1,5 +1,5 @@
-import type { Command } from "commander";
 import { isTruthyEnvValue } from "@elizaos/shared/env-utils";
+import type { Command } from "commander";
 import { setVerbose } from "../../utils/globals";
 import { getCommandPath, getVerboseFlag, hasHelpOrVersion } from "../argv";
 import { emitCliBanner } from "../banner";

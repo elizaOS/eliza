@@ -1,11 +1,10 @@
-import { client } from "../../api/client";
-import type {
-  TrajectoryDetailResult,
-  TrajectoryLlmCall,
-} from "../../api/client-types-cloud";
-import { useApp } from "../../state/useApp";
-
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  PagePanel,
+  type PipelineNode,
+  type PipelineStageId,
+  TrajectoryLlmCallCard,
+  TrajectoryPipelineGraph,
+} from "@elizaos/ui";
 import {
   Brain,
   CheckCircle,
@@ -14,12 +13,18 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { client } from "../../api/client";
+import type {
+  TrajectoryDetailResult,
+  TrajectoryLlmCall,
+} from "../../api/client-types-cloud";
+import { useApp } from "../../state/useApp";
 import {
   formatTrajectoryDuration,
   formatTrajectoryTokenCount,
 } from "../../utils/trajectory-format";
 import { estimateTokenCost } from "../conversations/conversation-utils";
-import { PagePanel, TrajectoryLlmCallCard, TrajectoryPipelineGraph, type PipelineNode, type PipelineStageId } from "@elizaos/ui";
 
 // ---------------------------------------------------------------------------
 // Pipeline stage mapping
@@ -100,6 +105,20 @@ function estimateCost(
   return estimateTokenCost(promptTokens, completionTokens, model);
 }
 
+function formatProviderPayload(value: unknown): string {
+  if (value == null) {
+    return "null";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
 export function TrajectoryDetailView({
   trajectoryId,
   onBack,
@@ -130,6 +149,7 @@ export function TrajectoryDetailView({
   }, [loadDetail]);
 
   const llmCalls = detail?.llmCalls ?? [];
+  const providerAccesses = detail?.providerAccesses ?? [];
   const trajectory = detail?.trajectory;
 
   const pipelineNodes = useMemo(
@@ -198,7 +218,7 @@ export function TrajectoryDetailView({
       ? (orchestrator as Record<string, unknown>)
       : null;
 
-  const summaryCards = [
+  const _summaryCards = [
     {
       label: t("trajectorydetailview.Source"),
       value: trajectory.source,
@@ -258,6 +278,21 @@ export function TrajectoryDetailView({
         </PagePanel>
       ) : null}
 
+      {trajectory.metadata &&
+      Object.keys(trajectory.metadata).length > 0 &&
+      formatProviderPayload(trajectory.metadata).trim().length > 0 ? (
+        <PagePanel variant="section" className="p-5">
+          <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
+            {t("trajectorydetailview.Metadata", {
+              defaultValue: "Metadata",
+            })}
+          </div>
+          <pre className="mt-4 max-h-[20rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-2xl border border-border/50 bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
+            {formatProviderPayload(trajectory.metadata)}
+          </pre>
+        </PagePanel>
+      ) : null}
+
       {llmCalls.length > 0 ? (
         <PagePanel variant="section" className="px-5 py-4">
           <div className="mb-3 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
@@ -288,6 +323,58 @@ export function TrajectoryDetailView({
               </button>
             </div>
           ) : null}
+        </PagePanel>
+      ) : null}
+
+      {providerAccesses.length > 0 ? (
+        <PagePanel variant="section" className="px-5 py-4">
+          <div className="mb-3 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
+            {t("trajectorydetailview.ProviderAccesses", {
+              defaultValue: "Provider Accesses",
+            })}
+          </div>
+          <div className="space-y-4">
+            {providerAccesses.map((access, index) => (
+              <PagePanel variant="inset" key={access.id} className="p-4">
+                <div className="flex flex-col gap-1">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+                    {t("trajectorydetailview.ProviderAccess", {
+                      defaultValue: "Provider Access",
+                    })}{" "}
+                    #{index + 1}
+                  </div>
+                  <div className="text-sm font-semibold text-txt">
+                    {access.providerName || "unknown"}
+                  </div>
+                  <div className="text-xs-tight text-muted">
+                    {access.purpose || "—"}
+                  </div>
+                </div>
+                {access.query ? (
+                  <div className="mt-4">
+                    <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
+                      {t("trajectorydetailview.Query", {
+                        defaultValue: "Query",
+                      })}
+                    </div>
+                    <pre className="mt-2 max-h-[18rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-2xl border border-border/50 bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
+                      {formatProviderPayload(access.query)}
+                    </pre>
+                  </div>
+                ) : null}
+                <div className="mt-4">
+                  <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
+                    {t("trajectorydetailview.Data", {
+                      defaultValue: "Data",
+                    })}
+                  </div>
+                  <pre className="mt-2 max-h-[18rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-2xl border border-border/50 bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
+                    {formatProviderPayload(access.data)}
+                  </pre>
+                </div>
+              </PagePanel>
+            ))}
+          </div>
         </PagePanel>
       ) : null}
 

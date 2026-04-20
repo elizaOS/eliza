@@ -1,6 +1,7 @@
 import type {
   Entity,
   IAgentRuntime,
+  Memory,
   Relationship,
   Room,
   UUID,
@@ -14,10 +15,22 @@ export type RelationshipsGraphQuery = {
   offset?: number;
 };
 
+export type RelationshipsMergeCandidate = {
+  id: UUID;
+  entityA: UUID;
+  entityB: UUID;
+  confidence: number;
+  evidence: Record<string, unknown>;
+  status: "pending" | "accepted" | "rejected";
+  proposedAt: string;
+  resolvedAt?: string;
+};
+
 export type RelationshipsGraphSnapshot = {
   people: RelationshipsPersonSummary[];
   relationships: RelationshipsGraphEdge[];
   stats: RelationshipsGraphStats;
+  candidateMerges: RelationshipsMergeCandidate[];
 };
 
 export type RelationshipsGraphStats = {
@@ -95,6 +108,10 @@ export type RelationshipsPersonFact = {
   scope?: string;
   confidence?: number;
   updatedAt?: string;
+  /** ISO8601 timestamp from the FactRefinementEvaluator metadata. */
+  lastReinforced?: string;
+  /** Message IDs that contributed evidence for this fact. */
+  evidenceMessageIds?: string[];
 };
 
 export type RelationshipsConversationMessage = {
@@ -134,6 +151,14 @@ export type RelationshipsGraphService = {
   getPersonDetail: (
     primaryEntityId: UUID,
   ) => Promise<RelationshipsPersonDetail | null>;
+  getCandidateMerges: () => Promise<RelationshipsMergeCandidate[]>;
+  acceptMerge: (candidateId: UUID) => Promise<void>;
+  rejectMerge: (candidateId: UUID) => Promise<void>;
+  proposeMerge: (
+    entityA: UUID,
+    entityB: UUID,
+    evidence: Record<string, unknown>,
+  ) => Promise<UUID>;
 };
 
 type RelationshipsContactLike = {
@@ -157,6 +182,14 @@ type RelationshipsServiceLike = {
     searchTerm?: string;
     privacyLevel?: string;
   }) => Promise<RelationshipsContactLike[]>;
+  getCandidateMerges?: () => Promise<RelationshipsMergeCandidate[]>;
+  acceptMerge?: (candidateId: UUID) => Promise<void>;
+  rejectMerge?: (candidateId: UUID) => Promise<void>;
+  proposeMerge?: (
+    entityA: UUID,
+    entityB: UUID,
+    evidence: Record<string, unknown>,
+  ) => Promise<UUID>;
 };
 
 type EntityContext = {
@@ -909,6 +942,9 @@ function buildClusters(
       continue;
     }
     const anchor = ids[0];
+    if (!anchor) {
+      continue;
+    }
     for (const entityId of ids.slice(1)) {
       union(anchor, entityId);
     }
@@ -939,7 +975,8 @@ function buildClusters(
     );
   };
 
-  return Array.from(grouped.values()).map((memberEntityIds) => {
+  const clusters: ClusterRecord[] = [];
+  for (const memberEntityIds of grouped.values()) {
     const sortedMembers = [...memberEntityIds].sort((left, right) => {
       if (ownerEntityId) {
         if (left === ownerEntityId) {
@@ -959,13 +996,17 @@ function buildClusters(
         entityNames(contexts.get(right)?.entity ?? null)[0] ?? right;
       return leftLabel.localeCompare(rightLabel);
     });
-    const primaryEntityId = sortedMembers[0] ?? memberEntityIds[0];
-    return {
+    const primaryEntityId = sortedMembers[0];
+    if (!primaryEntityId) {
+      continue;
+    }
+    clusters.push({
       groupId: primaryEntityId,
       primaryEntityId,
       memberEntityIds: sortedMembers,
-    };
-  });
+    });
+  }
+  return clusters;
 }
 
 async function countFacts(
@@ -1371,7 +1412,12 @@ async function buildConversationEdgeMap(
         ) {
           const previousMessage = relevantMessages[messageIndex - 1];
           const currentMessage = relevantMessages[messageIndex];
-          if (!previousMessage.entityId || !currentMessage.entityId) {
+          if (
+            !previousMessage ||
+            !currentMessage ||
+            !previousMessage.entityId ||
+            !currentMessage.entityId
+          ) {
             continue;
           }
           const previousCluster = clusterByEntityId.get(
@@ -1678,6 +1724,14 @@ async function buildFacts(
     });
     for (const memory of memories) {
       const metadata = asRecord(memory.metadata);
+      const lastReinforced = asString(metadata?.lastReinforced) ?? undefined;
+      const evidenceRaw = metadata?.evidenceMessageIds;
+      const evidenceMessageIds = Array.isArray(evidenceRaw)
+        ? evidenceRaw.filter(
+            (entry): entry is string =>
+              typeof entry === "string" && entry.length > 0,
+          )
+        : undefined;
       facts.push({
         id: memory.id ?? `${entityId}:fact:${facts.length}`,
         sourceType: "memory",
@@ -1687,6 +1741,8 @@ async function buildFacts(
           undefined,
         confidence: asNumber(metadata?.confidence) ?? undefined,
         updatedAt: isoFromTimestamp(memory.createdAt),
+        lastReinforced,
+        evidenceMessageIds,
       });
     }
   }
@@ -1962,6 +2018,11 @@ export function createNativeRelationshipsGraphService(
           visibleGroupIds.has(edge.targetPersonId),
       );
 
+      const candidateMerges =
+        typeof relationshipsService.getCandidateMerges === "function"
+          ? await relationshipsService.getCandidateMerges()
+          : [];
+
       return {
         people: visibleSummaries,
         relationships: visibleEdges,
@@ -1973,6 +2034,7 @@ export function createNativeRelationshipsGraphService(
             0,
           ),
         },
+        candidateMerges,
       };
     },
 
@@ -2046,5 +2108,214 @@ export function createNativeRelationshipsGraphService(
         identityEdges,
       };
     },
+
+    async getCandidateMerges(): Promise<RelationshipsMergeCandidate[]> {
+      if (typeof relationshipsService.getCandidateMerges !== "function") {
+        return [];
+      }
+      return relationshipsService.getCandidateMerges();
+    },
+
+    async acceptMerge(candidateId: UUID): Promise<void> {
+      if (typeof relationshipsService.acceptMerge !== "function") {
+        throw new Error(
+          "RelationshipsService does not support merge acceptance",
+        );
+      }
+      await relationshipsService.acceptMerge(candidateId);
+    },
+
+    async rejectMerge(candidateId: UUID): Promise<void> {
+      if (typeof relationshipsService.rejectMerge !== "function") {
+        throw new Error(
+          "RelationshipsService does not support merge rejection",
+        );
+      }
+      await relationshipsService.rejectMerge(candidateId);
+    },
+
+    async proposeMerge(
+      entityA: UUID,
+      entityB: UUID,
+      evidence: Record<string, unknown>,
+    ): Promise<UUID> {
+      if (typeof relationshipsService.proposeMerge !== "function") {
+        throw new Error(
+          "RelationshipsService does not support merge proposals",
+        );
+      }
+      return relationshipsService.proposeMerge(entityA, entityB, evidence);
+    },
   };
+}
+
+type RelationshipsFeatureRuntime = IAgentRuntime & {
+  enableRelationships?: () => Promise<void>;
+  isRelationshipsEnabled?: () => boolean;
+};
+
+/**
+ * Resolve a usable relationships graph service from the runtime.
+ *
+ * The graph may be pre-registered under either the legacy uppercase name or
+ * the lower-case route-facing name. If neither exists but the native
+ * relationships feature is available, we enable it on demand and build a
+ * graph service directly from the authoritative relationships service.
+ */
+export async function resolveRelationshipsGraphService(
+  runtime: IAgentRuntime,
+): Promise<RelationshipsGraphService | null> {
+  const registered =
+    (runtime.getService(
+      "RELATIONSHIPS_GRAPH",
+    ) as unknown as RelationshipsGraphService | null) ??
+    (runtime.getService(
+      "relationships_graph",
+    ) as unknown as RelationshipsGraphService | null);
+  if (registered) {
+    return registered;
+  }
+
+  const runtimeWithFeatures = runtime as RelationshipsFeatureRuntime;
+  if (
+    typeof runtimeWithFeatures.isRelationshipsEnabled === "function" &&
+    !runtimeWithFeatures.isRelationshipsEnabled() &&
+    typeof runtimeWithFeatures.enableRelationships === "function"
+  ) {
+    await runtimeWithFeatures.enableRelationships();
+  }
+
+  const relationshipsService = runtime.getService(
+    "relationships",
+  ) as unknown as RelationshipsServiceLike | null;
+  if (!relationshipsService) {
+    return null;
+  }
+  return createNativeRelationshipsGraphService(runtime, relationshipsService);
+}
+
+// ---------------------------------------------------------------------------
+// Cluster-aware memory helpers
+// ---------------------------------------------------------------------------
+//
+// Consumers like the LifeOps dossier service and cross-channel follow-ups
+// need to fan a memory lookup out across every entity in a person's
+// identity cluster (Jill-on-Discord, Jill-on-Telegram, jill@example.com)
+// instead of a single entityId. These helpers resolve the cluster via the
+// RelationshipsService (authoritative for cluster membership) and then
+// dispatch getMemories / searchMemories once per member, merging and
+// deduplicating the results.
+
+export type ClusterMemoriesQuery = {
+  tableName: string;
+  roomId?: UUID;
+  worldId?: UUID;
+  count?: number;
+  limit?: number;
+  offset?: number;
+  unique?: boolean;
+  start?: number;
+  end?: number;
+  metadata?: Record<string, unknown>;
+  orderBy?: "createdAt";
+  orderDirection?: "asc" | "desc";
+};
+
+export type ClusterSearchQuery = {
+  tableName: string;
+  embedding: number[];
+  match_threshold?: number;
+  limit?: number;
+  unique?: boolean;
+  query?: string;
+  roomId?: UUID;
+  worldId?: UUID;
+};
+
+type ClusterResolver = {
+  getMemberEntityIds: (primaryEntityId: UUID) => Promise<UUID[]>;
+};
+
+function getClusterResolver(runtime: IAgentRuntime): ClusterResolver | null {
+  const service = runtime.getService("relationships");
+  if (!service) return null;
+  const candidate = service as unknown as Partial<ClusterResolver>;
+  if (typeof candidate.getMemberEntityIds !== "function") {
+    return null;
+  }
+  return candidate as ClusterResolver;
+}
+
+function dedupeMemoriesById(memories: Memory[]): Memory[] {
+  const seen = new Set<string>();
+  const unique: Memory[] = [];
+  for (const memory of memories) {
+    const id = memory.id as string | undefined;
+    if (!id) {
+      unique.push(memory);
+      continue;
+    }
+    if (seen.has(id)) continue;
+    seen.add(id);
+    unique.push(memory);
+  }
+  return unique;
+}
+
+/**
+ * Return memories authored by any member of the identity cluster rooted at
+ * `primaryEntityId`. If the RelationshipsService cannot be resolved (no
+ * cluster lookup available) we fall through to the single-entity query so
+ * callers still get results — the caller is responsible for surfacing the
+ * degradation via its own `degraded` flag.
+ */
+export async function getMemoriesForCluster(
+  runtime: IAgentRuntime,
+  primaryEntityId: UUID,
+  params: ClusterMemoriesQuery,
+): Promise<Memory[]> {
+  const resolver = getClusterResolver(runtime);
+  const memberIds = resolver
+    ? await resolver.getMemberEntityIds(primaryEntityId)
+    : [primaryEntityId];
+  const ids = memberIds.length > 0 ? memberIds : [primaryEntityId];
+
+  const results = await Promise.all(
+    ids.map((entityId) =>
+      runtime.getMemories({
+        ...params,
+        entityId,
+      }),
+    ),
+  );
+  const flat = results.flat();
+  return dedupeMemoriesById(flat);
+}
+
+/**
+ * Semantic-search variant of {@link getMemoriesForCluster}. Runs one
+ * `searchMemories` per cluster member with the same embedding/query
+ * parameters and deduplicates the union on memory id.
+ */
+export async function searchMemoriesForCluster(
+  runtime: IAgentRuntime,
+  primaryEntityId: UUID,
+  params: ClusterSearchQuery,
+): Promise<Memory[]> {
+  const resolver = getClusterResolver(runtime);
+  const memberIds = resolver
+    ? await resolver.getMemberEntityIds(primaryEntityId)
+    : [primaryEntityId];
+  const ids = memberIds.length > 0 ? memberIds : [primaryEntityId];
+
+  const results = await Promise.all(
+    ids.map((entityId) =>
+      runtime.searchMemories({
+        ...params,
+        entityId,
+      }),
+    ),
+  );
+  const flat = results.flat();
+  return dedupeMemoriesById(flat);
 }

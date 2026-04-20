@@ -1,12 +1,14 @@
-import { client } from "../../api/client";
-import type {
-  RelationshipsActivityItem,
-  RelationshipsGraphQuery,
-  RelationshipsGraphSnapshot,
-  RelationshipsPersonDetail,
-  RelationshipsPersonSummary,
-} from "../../api/client-types-relationships";
-
+import {
+  Button,
+  MetaPill,
+  PageLayout,
+  PagePanel,
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "@elizaos/ui";
 import {
   type ReactNode,
   useCallback,
@@ -15,11 +17,19 @@ import {
   useRef,
   useState,
 } from "react";
+import { client } from "../../api/client";
+import type {
+  RelationshipsActivityItem,
+  RelationshipsGraphQuery,
+  RelationshipsGraphSnapshot,
+  RelationshipsMergeCandidate,
+  RelationshipsPersonDetail,
+  RelationshipsPersonSummary,
+} from "../../api/client-types-relationships";
 import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";
 import { RelationshipsGraphPanel } from "./RelationshipsGraphPanel";
 import { RelationshipsIdentityCluster } from "./RelationshipsIdentityCluster";
-import { PagePanel, MetaPill, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, PageLayout } from "@elizaos/ui";
 
 const TOOLBAR_BUTTON_BASE =
   "h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_20px_-18px_rgba(15,23,42,0.14)] backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(15,23,42,0.16)] active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong";
@@ -290,24 +300,40 @@ function FactsPanel({ person }: { person: RelationshipsPersonDetail }) {
         </p>
       ) : (
         <div className="mt-4 space-y-3">
-          {person.facts.map((fact) => (
-            <div
-              key={fact.id}
-              className="rounded-2xl border border-border/24 bg-card/32 px-3.5 py-3"
-            >
-              <div className="flex flex-wrap items-center gap-2 text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-                <span>{fact.sourceType}</span>
-                {fact.field ? <span>{fact.field}</span> : null}
-                {typeof fact.confidence === "number" ? (
-                  <span>{Math.round(fact.confidence * 100)}%</span>
-                ) : null}
+          {person.facts.map((fact) => {
+            const evidenceCount = fact.evidenceMessageIds?.length ?? 0;
+            return (
+              <div
+                key={fact.id}
+                className="rounded-2xl border border-border/24 bg-card/32 px-3.5 py-3"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <MetaPill compact>{fact.sourceType}</MetaPill>
+                  {fact.field ? (
+                    <MetaPill compact>{fact.field}</MetaPill>
+                  ) : null}
+                  {typeof fact.confidence === "number" ? (
+                    <MetaPill compact>
+                      {Math.round(fact.confidence * 100)}% confidence
+                    </MetaPill>
+                  ) : null}
+                  {evidenceCount > 0 ? (
+                    <MetaPill compact>{evidenceCount} evidence</MetaPill>
+                  ) : null}
+                </div>
+                <div className="mt-2 text-sm leading-6 text-txt">
+                  {fact.text}
+                </div>
+                <div className="mt-2 text-xs text-muted">
+                  {fact.lastReinforced
+                    ? `Reinforced ${formatDateTime(fact.lastReinforced, { fallback: "n/a" })}`
+                    : formatDateTime(fact.updatedAt, {
+                        fallback: "No timestamp",
+                      })}
+                </div>
               </div>
-              <div className="mt-2 text-sm leading-6 text-txt">{fact.text}</div>
-              <div className="mt-2 text-xs text-muted">
-                {formatDateTime(fact.updatedAt, { fallback: "No timestamp" })}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </PagePanel>
@@ -516,6 +542,199 @@ function RelationshipsActivityFeed() {
         );
       })}
     </div>
+  );
+}
+
+function personLabel(
+  graph: RelationshipsGraphSnapshot | null,
+  entityId: string,
+): string {
+  if (!graph) return entityId;
+  for (const person of graph.people) {
+    if (person.memberEntityIds.includes(entityId)) {
+      return person.displayName;
+    }
+  }
+  return entityId;
+}
+
+function evidenceSummary(candidate: RelationshipsMergeCandidate): string {
+  const parts: string[] = [];
+  const platform =
+    typeof candidate.evidence.platform === "string"
+      ? candidate.evidence.platform
+      : null;
+  const handle =
+    typeof candidate.evidence.handle === "string"
+      ? candidate.evidence.handle
+      : null;
+  if (platform && handle) {
+    parts.push(`${platform}:${handle}`);
+  } else if (platform) {
+    parts.push(platform);
+  }
+  const notes =
+    typeof candidate.evidence.notes === "string"
+      ? candidate.evidence.notes
+      : null;
+  if (notes) parts.push(notes);
+  const ids = candidate.evidence.identityIds;
+  if (Array.isArray(ids) && ids.length > 0) {
+    parts.push(`${ids.length} identity refs`);
+  }
+  return parts.join(" · ") || "no evidence summary";
+}
+
+function CandidateMergesPanel({
+  graph,
+  onResolved,
+}: {
+  graph: RelationshipsGraphSnapshot;
+  onResolved: () => void;
+}) {
+  const [pending, setPending] = useState<Set<string>>(new Set());
+  const [errors, setErrors] = useState<Map<string, string>>(new Map());
+  const candidates = graph.candidateMerges ?? [];
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const setError = (id: string, message: string | null) => {
+    setErrors((prev) => {
+      const next = new Map(prev);
+      if (message === null) {
+        next.delete(id);
+      } else {
+        next.set(id, message);
+      }
+      return next;
+    });
+  };
+
+  const setPendingState = (id: string, isPending: boolean) => {
+    setPending((prev) => {
+      const next = new Set(prev);
+      if (isPending) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  };
+
+  const onAccept = async (candidate: RelationshipsMergeCandidate) => {
+    setPendingState(candidate.id, true);
+    setError(candidate.id, null);
+    try {
+      await client.acceptRelationshipsCandidate(candidate.id);
+      onResolved();
+    } catch (err) {
+      setError(
+        candidate.id,
+        err instanceof Error ? err.message : "Failed to accept merge.",
+      );
+    } finally {
+      setPendingState(candidate.id, false);
+    }
+  };
+
+  const onReject = async (candidate: RelationshipsMergeCandidate) => {
+    setPendingState(candidate.id, true);
+    setError(candidate.id, null);
+    try {
+      await client.rejectRelationshipsCandidate(candidate.id);
+      onResolved();
+    } catch (err) {
+      setError(
+        candidate.id,
+        err instanceof Error ? err.message : "Failed to reject merge.",
+      );
+    } finally {
+      setPendingState(candidate.id, false);
+    }
+  };
+
+  return (
+    <PagePanel variant="surface" className="px-4 py-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
+            Identity merges
+          </div>
+          <div className="mt-2 text-lg font-semibold text-txt">
+            Pending merge proposals
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            Two entities look like the same person. Accept to fold them, reject
+            to leave them separate.
+          </p>
+        </div>
+        <MetaPill compact>{candidates.length}</MetaPill>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        {candidates.map((candidate) => {
+          const isPending = pending.has(candidate.id);
+          const errorMessage = errors.get(candidate.id) ?? null;
+          const evidenceCount = Array.isArray(candidate.evidence.identityIds)
+            ? candidate.evidence.identityIds.length
+            : 0;
+          return (
+            <div
+              key={candidate.id}
+              className="rounded-2xl border border-border/24 bg-card/32 px-3.5 py-3"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <MetaPill compact>
+                  {Math.round(candidate.confidence * 100)}% confidence
+                </MetaPill>
+                <MetaPill compact>{evidenceCount} evidence</MetaPill>
+                <MetaPill compact>
+                  {formatDateTime(candidate.proposedAt, { fallback: "n/a" })}
+                </MetaPill>
+              </div>
+              <div className="mt-2 text-sm font-semibold text-txt">
+                {personLabel(graph, candidate.entityA)}{" "}
+                <span className="text-muted">↔</span>{" "}
+                {personLabel(graph, candidate.entityB)}
+              </div>
+              <div className="mt-1 text-xs leading-5 text-muted">
+                {evidenceSummary(candidate)}
+              </div>
+              {errorMessage ? (
+                <div className="mt-2 text-xs text-danger">{errorMessage}</div>
+              ) : null}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="default"
+                  disabled={isPending}
+                  onClick={() => {
+                    void onAccept(candidate);
+                  }}
+                >
+                  {isPending ? "Working…" : "Accept merge"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isPending}
+                  onClick={() => {
+                    void onReject(candidate);
+                  }}
+                >
+                  Reject
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </PagePanel>
   );
 }
 
@@ -850,6 +1069,19 @@ export function RelationshipsView({
                   <ConversationsPanel person={displayDetail} />
                 </div>
               </div>
+            ) : null}
+
+            {graph ? (
+              <CandidateMergesPanel
+                graph={graph}
+                onResolved={() => {
+                  void loadGraph({
+                    search: deferredSearch.trim() || undefined,
+                    platform: platform === "all" ? undefined : platform,
+                    limit: 200,
+                  });
+                }}
+              />
             ) : null}
 
             {/* Relationship activity feed */}

@@ -9,7 +9,7 @@
  * Non-loading phases (error, pairing, onboarding) delegate to their views.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { client } from "../../api";
 import { useApp } from "../../state";
 import type { StartupErrorReason, StartupErrorState } from "../../state/types";
@@ -157,7 +157,11 @@ export function StartupShell() {
   }
 
   return (
-    <div className="flex items-center justify-center h-full w-full bg-[#ffe600] text-black overflow-hidden">
+    <div
+      data-testid="startup-shell-loading"
+      data-startup-phase={phase}
+      className="flex items-center justify-center h-full w-full bg-[#ffe600] text-black overflow-hidden"
+    >
       <img
         src={resolveAppAssetUrl("splash-bg.jpg")}
         alt=""

@@ -1,10 +1,6 @@
 /**
  * Pure trade safety utilities — no heavy dependencies.
  * Extracted so they can be unit-tested without pulling in the full server.
- *
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/api/trade-safety`.
- * New development should target the app-steward package.
  */
 
 /** Maximum number of autonomous agent trades allowed per calendar day. */

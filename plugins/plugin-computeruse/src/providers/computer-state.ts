@@ -16,8 +16,10 @@ import type { ComputerUseService } from "../services/computer-use-service.js";
 
 export const computerStateProvider: Provider = {
   name: "computerState",
-  description: "Current computer state: platform, screen size, available tools, recent desktop actions",
+  description:
+    "Current computer state: platform, screen size, available tools, recent computer-use actions, and approval queue",
 
+  descriptionCompressed: "Platform, screen size, tools, recent actions, approval queue.",
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
@@ -31,16 +33,29 @@ export const computerStateProvider: Provider = {
     const caps = service.getCapabilities();
     const screen = service.getScreenDimensions();
     const recent = service.getRecentActions();
+    const approvals = service.getApprovalSnapshot();
 
     const lines: string[] = [
       "# Computer Use",
       `Platform: ${currentPlatform()}`,
       `Screen: ${screen.width}x${screen.height}`,
+      `Approval Mode: ${approvals.mode}`,
+      `Pending Approvals: ${approvals.pendingCount}`,
       `Screenshot: ${caps.screenshot.available ? caps.screenshot.tool : "unavailable"}`,
       `Mouse/Keyboard: ${caps.computerUse.available ? caps.computerUse.tool : "unavailable"}`,
       `Browser: ${caps.browser.available ? caps.browser.tool : "unavailable"}`,
       `Window List: ${caps.windowList.available ? caps.windowList.tool : "unavailable"}`,
+      `Terminal: ${caps.terminal.available ? caps.terminal.tool : "unavailable"}`,
+      `Filesystem: ${caps.fileSystem.available ? caps.fileSystem.tool : "unavailable"}`,
     ];
+
+    if (approvals.pendingApprovals.length > 0) {
+      lines.push("");
+      lines.push("Approval queue:");
+      for (const approval of approvals.pendingApprovals.slice(0, 5)) {
+        lines.push(`  - ${approval.command}`);
+      }
+    }
 
     if (recent.length > 0) {
       lines.push("");
@@ -59,6 +74,7 @@ export const computerStateProvider: Provider = {
         screenHeight: screen.height,
       },
       data: {
+        approvals,
         capabilities: caps,
         screenSize: screen,
         recentActions: recent,

@@ -817,17 +817,16 @@ export interface FormSubmission {
 }
 
 // ============================================================================
-// TYPE HANDLER - Custom type validation & formatting (Legacy)
+// TYPE HANDLER - Custom type validation & formatting
 // ============================================================================
 
 /**
- * TypeHandler - Custom type behavior (Legacy interface)
- *
- * @deprecated Use ControlType instead for new code. TypeHandler is maintained
- * for backwards compatibility but ControlType offers more features.
+ * TypeHandler - Custom type behavior.
  *
  * Allows registering custom field types with their own validation,
- * parsing, formatting, and extraction hints.
+ * parsing, formatting, and extraction hints. Used by the validation
+ * pipeline for simple single-value types. For composite or external
+ * types, use ControlType instead.
  */
 export interface TypeHandler {
   /** Validate a value. Return { valid: true } or { valid: false, error: '...' } */

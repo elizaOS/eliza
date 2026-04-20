@@ -45,14 +45,20 @@ if ($env:GITHUB_ENV) {
   Add-Content -Path $env:GITHUB_ENV -Value "MILADY_TEST_WINDOWS_LOCALAPPDATA_PATH=$($env:LOCALAPPDATA)"
   Add-Content -Path $env:GITHUB_ENV -Value "PGLITE_DATA_DIR=$pgliteDataDir"
 }
-# Milady writes its startup log to AppData\Roaming\Milady on Windows, not the
-# Unix-style ~/.config/Milady path used on macOS/Linux.
+# Milady writes its startup log to AppData\Roaming\Milady on Windows, but the
+# release workflow still exports the legacy Eliza paths/env vars for contract
+# compatibility.
+$legacyStartupLog = Join-Path $env:APPDATA "Eliza\\eliza-startup.log"
 $startupLog = Join-Path $env:APPDATA "Milady\\milady-startup.log"
+$startupLogs = @($startupLog, $legacyStartupLog) | Select-Object -Unique
 $selfExtractionRoot = Join-Path $env:LOCALAPPDATA "com.miladyai.milady"
 $tempExtractDir = Join-Path $tempRoot ("milady-windows-smoke-" + [Guid]::NewGuid().ToString("N"))
 $persistLauncherDir = $env:MILADY_TEST_WINDOWS_LAUNCHER_DIR
-$persistLauncherPathFile = $env:MILADY_TEST_WINDOWS_LAUNCHER_PATH_FILE
-$startupSessionId = "milady-windows-smoke-" + [Guid]::NewGuid().ToString("N")
+$persistLauncherPathFile = $env:ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE
+if ([string]::IsNullOrWhiteSpace($persistLauncherPathFile)) {
+  $persistLauncherPathFile = $env:MILADY_TEST_WINDOWS_LAUNCHER_PATH_FILE
+}
+$startupSessionId = "eliza-windows-smoke-" + [Guid]::NewGuid().ToString("N")
 $startupStateFile = Join-Path $tempRoot ($startupSessionId + ".state.json")
 $startupEventsFile = Join-Path $tempRoot ($startupSessionId + ".events.jsonl")
 $startupBootstrapFile = $null
@@ -353,6 +359,7 @@ Write-Host "Smoke LOCALAPPDATA: $($env:LOCALAPPDATA)"
 Stop-MiladyProcesses
 $env:ELECTROBUN_CONSOLE = "1"
 $env:MILADY_FORCE_AUTOSTART_AGENT = "1"
+$env:ELIZA_STARTUP_SESSION_ID = $startupSessionId
 $env:MILADY_STARTUP_SESSION_ID = $startupSessionId
 $env:MILADY_STARTUP_STATE_FILE = $startupStateFile
 $env:MILADY_STARTUP_EVENTS_FILE = $startupEventsFile
@@ -367,9 +374,11 @@ if ($env:GITHUB_ENV) {
 
 # Reset stale startup logs before launch so fatal classification only applies
 # to this run.
-if (Test-Path $startupLog) {
-  Remove-Item $startupLog -Force -ErrorAction SilentlyContinue
-  Write-Host "Cleared stale startup log: $startupLog"
+foreach ($candidateLog in $startupLogs) {
+  if (Test-Path $candidateLog) {
+    Remove-Item $candidateLog -Force -ErrorAction SilentlyContinue
+    Write-Host "Cleared stale startup log: $candidateLog"
+  }
 }
 
 if (Test-Path $selfExtractionRoot) {
@@ -383,7 +392,10 @@ $installer = $null
 $installerProcess = $null
 $launcherProcess = $null
 $launcherStarted = $false
-$requireInstaller = $env:MILADY_WINDOWS_SMOKE_REQUIRE_INSTALLER -eq "1"
+$requireInstaller = $env:ELIZA_WINDOWS_SMOKE_REQUIRE_INSTALLER -eq "1"
+if (-not $requireInstaller) {
+  $requireInstaller = $env:MILADY_WINDOWS_SMOKE_REQUIRE_INSTALLER -eq "1"
+}
 $installerRoot = if ($env:MILADY_TEST_WINDOWS_INSTALL_DIR) {
   $env:MILADY_TEST_WINDOWS_INSTALL_DIR
 } else {

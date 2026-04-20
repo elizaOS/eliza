@@ -22,11 +22,11 @@ import {
   type IAgentRuntime,
   logger,
 } from "@elizaos/core";
-import { loadElizaConfig } from "../config/config.js";
 import {
   resolveApiToken,
   resolveServerOnlyPort,
-} from "../config/runtime-env.js";
+} from "@elizaos/shared/runtime-env";
+import { loadElizaConfig } from "../config/config.js";
 import type {
   CustomActionDef,
   CustomActionHandler,

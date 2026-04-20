@@ -38,8 +38,9 @@ function normalizeXCapabilityRequest(
   return [...new Set(capabilities)];
 }
 
+/** @internal */
 export function withX<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
-  return class extends Base {
+  class LifeOpsXServiceMixin extends Base {
     async getXConnectorStatus(
       requestedMode?: LifeOpsConnectorMode,
     ): Promise<LifeOpsXConnectorStatus> {
@@ -63,6 +64,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase
         identity:
           grant && Object.keys(grant.identity).length > 0 ? grant.identity : null,
         hasCredentials: Boolean(readXPosterCredentialsFromEnv()),
+        dmInbound: capabilities.includes("x.read"),
         grant,
       };
     }
@@ -188,5 +190,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase
         category: result.category,
       };
     }
-  };
+  }
+
+  return LifeOpsXServiceMixin;
 }

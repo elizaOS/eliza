@@ -832,6 +832,32 @@ export async function refreshRunSession(
   return buildScapeSessionState(ctx.runtime);
 }
 
+/**
+ * Called by the host app-manager when the user stops the Scape run.
+ * Tears down the bot-SDK WebSocket connection and the autonomous-loop
+ * timer so the game actually stops doing work server-side instead of
+ * just unmounting the viewer iframe.
+ *
+ * Idempotent: if the service isn't running this is a no-op.
+ */
+export async function stopRun(ctx: {
+  runtime: unknown | null;
+}): Promise<void> {
+  const service = getScapeService(ctx.runtime as IAgentRuntime | null);
+  if (!service) {
+    return;
+  }
+  try {
+    await service.stop();
+  } catch (err) {
+    // Swallow — app-manager logs a warning and the run is still removed.
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[app-scape] stopRun: game service stop failed: ${message}`,
+    );
+  }
+}
+
 export async function collectLaunchDiagnostics(_ctx: {
   runtime: IAgentRuntime | null;
   session: AppSessionState | null;

@@ -52,8 +52,6 @@ export class TelegramService {
   }
 
   static async stop(_runtime: unknown): Promise<void> {}
-
-  constructor(_runtime: unknown) {}
 }
 
 const telegramPlugin = {

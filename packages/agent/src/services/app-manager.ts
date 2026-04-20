@@ -12,7 +12,7 @@
 import crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   type AppLaunchDiagnostic,
@@ -55,7 +55,11 @@ import {
   mergeAppMeta as mergeRegistryAppMeta,
   resolveAppOverride,
 } from "./registry-client-app-meta.js";
-import { scoreEntries, toSearchResults } from "./registry-client-queries.js";
+import {
+  resolveAppHeroImage,
+  scoreEntries,
+  toSearchResults,
+} from "./registry-client-queries.js";
 
 const LOCAL_PLUGINS_DIR = "plugins";
 
@@ -98,6 +102,15 @@ const SAFE_APP_TEMPLATE_ENV_KEYS = new Set([
 ]);
 const RUN_REFRESH_MIN_INTERVAL_MS = 5_000;
 const MAX_RUN_EVENTS = 20;
+/**
+ * How long a run can go without a heartbeat (UI ping or session refresh)
+ * before the sweeper considers it abandoned and stops it. Tuned to comfortably
+ * tolerate the 3s session-refresh poll + a few missed ticks on a slow tab,
+ * while still reaping a closed/crashed browser within ~1.5 minutes.
+ */
+const RUN_HEARTBEAT_TIMEOUT_MS = 90_000;
+/** How often the sweeper wakes to look for stale runs. */
+const RUN_HEARTBEAT_SWEEP_INTERVAL_MS = 30_000;
 
 function isProductionRuntime(): boolean {
   return process.env.NODE_ENV === "production";
@@ -136,6 +149,19 @@ interface ActiveAppSession {
 
 interface AppManagerOptions {
   stateDir?: string;
+  /**
+   * How long a run can go without a heartbeat before the sweeper reaps it.
+   * Defaults to {@link RUN_HEARTBEAT_TIMEOUT_MS}. Tests override to a small
+   * value to exercise the sweeper deterministically.
+   */
+  heartbeatTimeoutMs?: number;
+  /**
+   * How often the sweeper wakes. Defaults to
+   * {@link RUN_HEARTBEAT_SWEEP_INTERVAL_MS}. Tests can use a small value or
+   * call {@link AppManager.reapStaleRuns} directly instead of starting the
+   * sweeper interval.
+   */
+  heartbeatSweepIntervalMs?: number;
 }
 
 function isAppRegistryPlugin(
@@ -209,6 +235,7 @@ function flattenAppInfo<T extends RegistryPluginInfo>(appInfo: T): T {
     launchUrl:
       substituteTemplateVars(meta.launchUrl ?? appInfo.launchUrl ?? "") || null,
     icon: meta.icon ?? appInfo.icon,
+    heroImage: resolveAppHeroImage(appInfo.name, meta.heroImage ?? null),
     category: meta.category ?? appInfo.category,
     capabilities: meta.capabilities ?? appInfo.capabilities,
     uiExtension: meta.uiExtension ?? appInfo.uiExtension,
@@ -464,7 +491,7 @@ function mergeLocalRegistryInfo<T extends RegistryPluginInfo>(
 }
 
 function deriveAppMetaFromPluginInfo(
-  appInfo: RegistryPluginInfo,
+  appInfo: RegistryPluginInfo & Partial<NonNullable<RegistryPluginInfo["appMeta"]>>,
 ): RegistryPluginInfo["appMeta"] | undefined {
   const hasTopLevelAppMeta =
     appInfo.displayName !== undefined ||
@@ -472,6 +499,7 @@ function deriveAppMetaFromPluginInfo(
     appInfo.launchType !== undefined ||
     appInfo.launchUrl !== undefined ||
     appInfo.icon !== undefined ||
+    appInfo.heroImage !== undefined ||
     appInfo.capabilities !== undefined ||
     appInfo.runtimePlugin !== undefined ||
     appInfo.uiExtension !== undefined ||
@@ -489,6 +517,7 @@ function deriveAppMetaFromPluginInfo(
     launchType: appInfo.launchType ?? "url",
     launchUrl: appInfo.launchUrl ?? null,
     icon: appInfo.icon ?? null,
+    heroImage: appInfo.heroImage ?? null,
     capabilities: appInfo.capabilities ?? [],
     minPlayers: null,
     maxPlayers: null,
@@ -1353,6 +1382,39 @@ async function resolveLaunchSession(
   return buildAppSession(appInfo, viewer?.authMessage, runtime);
 }
 
+/**
+ * Invoke the plugin's `stopRun` bridge hook (if defined) when an app run is
+ * removed. Plugins use this to tear down per-run resources (WebSocket
+ * connections, game-loop timers, bot sessions, embedded servers).
+ *
+ * Errors are logged but never re-thrown — removal from the app-manager
+ * registry is authoritative.
+ */
+async function invokeAppStopRunHook(
+  run: AppRunSummary,
+  runtime: IAgentRuntime | null,
+): Promise<void> {
+  try {
+    const routeModule = await importAppRouteModule(run.appName);
+    if (typeof routeModule?.stopRun !== "function") {
+      return;
+    }
+    await routeModule.stopRun({
+      appName: run.appName,
+      launchUrl: run.launchUrl,
+      runtime,
+      viewer: run.viewer,
+      runId: run.runId,
+      session: run.session,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn(
+      `[app-manager] stopRun hook for "${run.appName}" (runId=${run.runId}) failed: ${message}`,
+    );
+  }
+}
+
 function persistHyperscapeCredential(
   runtime: IAgentRuntime | null,
   key: "HYPERSCAPE_AUTH_TOKEN" | "HYPERSCAPE_CHARACTER_ID",
@@ -1760,12 +1822,27 @@ async function ensureRuntimePluginRegistered(
 
   const pluginNames = getRuntimePluginCandidates(appInfo);
   for (const pluginPackageName of pluginNames) {
-    const plugin = await importAppPlugin(pluginPackageName);
+    let plugin: Plugin | null = null;
+    try {
+      plugin = await importAppPlugin(pluginPackageName);
+    } catch (err) {
+      logger.warn(
+        `[app-manager] importAppPlugin(${pluginPackageName}) threw: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      continue;
+    }
     if (!plugin) {
       continue;
     }
 
-    await runtime.registerPlugin(plugin);
+    try {
+      await runtime.registerPlugin(plugin);
+    } catch (err) {
+      logger.warn(
+        `[app-manager] registerPlugin(${plugin.name}) threw: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      continue;
+    }
     if (isRuntimePluginReady(appInfo, runtime)) {
       return true;
     }
@@ -2144,13 +2221,120 @@ export class AppManager {
     Promise<AppRunSummary>
   >();
   private readonly stateDir?: string;
+  private readonly heartbeatTimeoutMs: number;
+  private readonly heartbeatSweepIntervalMs: number;
   private appRuns = new Map<string, AppRunSummary>();
+  private sweeperTimer: ReturnType<typeof setInterval> | null = null;
+  private sweeperRuntimeFn: (() => IAgentRuntime | null) | null = null;
+  private sweeperReapInFlight = false;
 
   constructor(options: AppManagerOptions = {}) {
     this.stateDir = options.stateDir;
+    this.heartbeatTimeoutMs =
+      options.heartbeatTimeoutMs ?? RUN_HEARTBEAT_TIMEOUT_MS;
+    this.heartbeatSweepIntervalMs =
+      options.heartbeatSweepIntervalMs ?? RUN_HEARTBEAT_SWEEP_INTERVAL_MS;
     for (const run of readAppRunStore(this.stateDir)) {
       this.appRuns.set(run.runId, run);
       this.knownAppNames.add(run.appName);
+    }
+  }
+
+  /**
+   * Bump a run's `lastHeartbeatAt` to "now" without invoking any plugin
+   * routes. Returns the updated run, or `null` if the runId is unknown.
+   *
+   * The UI calls this on a short interval while the GameView is mounted so
+   * the sweeper knows the tab is still alive. When the tab goes away the
+   * heartbeat stops and {@link reapStaleRuns} reclaims the run after
+   * `heartbeatTimeoutMs`.
+   */
+  recordHeartbeat(runId: string): AppRunSummary | null {
+    const run = this.appRuns.get(runId);
+    if (!run) return null;
+    const now = new Date().toISOString();
+    const next: AppRunSummary = {
+      ...run,
+      lastHeartbeatAt: now,
+    };
+    this.appRuns.set(runId, next);
+    this.persistRuns();
+    return next;
+  }
+
+  /**
+   * Stop and remove every run whose last heartbeat is older than
+   * `heartbeatTimeoutMs`. Runs that never received a heartbeat (no UI ever
+   * attached) are reaped only once they are also older than the timeout to
+   * avoid racing with the launch -> first-poll window.
+   *
+   * For each reaped run the route module's `stopRun` hook is invoked the
+   * same way the explicit Stop button does — so plugins get a single,
+   * uniform shutdown path regardless of why a run is going away.
+   */
+  async reapStaleRuns(
+    runtime: IAgentRuntime | null,
+    nowMs: number = Date.now(),
+  ): Promise<AppRunSummary[]> {
+    const reaped: AppRunSummary[] = [];
+    for (const run of [...this.appRuns.values()]) {
+      const heartbeat = run.lastHeartbeatAt
+        ? Date.parse(run.lastHeartbeatAt)
+        : null;
+      const startedAt = Date.parse(run.startedAt);
+      const reference = heartbeat ?? startedAt;
+      if (!Number.isFinite(reference)) continue;
+      if (nowMs - reference < this.heartbeatTimeoutMs) continue;
+      const removed = this.removeRun(run.runId);
+      if (!removed) continue;
+      reaped.push(removed);
+      await invokeAppStopRunHook(removed, runtime);
+      logger.info(
+        `[app-manager] Reaped stale app run "${removed.runId}" (${removed.appName}); ` +
+          `last heartbeat ${run.lastHeartbeatAt ?? "never"}`,
+      );
+    }
+    return reaped;
+  }
+
+  /**
+   * Start the periodic stale-run sweeper. Idempotent — calling twice does
+   * not start two timers. The runtime is resolved lazily via `getRuntime`
+   * so the sweeper picks up runtime changes (e.g. agent restart) without
+   * needing to be re-wired.
+   *
+   * The interval is wrapped in `unref()` so a stuck sweeper never keeps a
+   * Node process alive on shutdown.
+   */
+  startStaleRunSweeper(getRuntime: () => IAgentRuntime | null): void {
+    this.sweeperRuntimeFn = getRuntime;
+    if (this.sweeperTimer) return;
+    this.sweeperTimer = setInterval(() => {
+      void this.runSweeperTick();
+    }, this.heartbeatSweepIntervalMs);
+    if (typeof this.sweeperTimer.unref === "function") {
+      this.sweeperTimer.unref();
+    }
+  }
+
+  /** Stop the periodic stale-run sweeper. Safe to call multiple times. */
+  stopStaleRunSweeper(): void {
+    if (!this.sweeperTimer) return;
+    clearInterval(this.sweeperTimer);
+    this.sweeperTimer = null;
+  }
+
+  private async runSweeperTick(): Promise<void> {
+    if (this.sweeperReapInFlight) return;
+    this.sweeperReapInFlight = true;
+    try {
+      const runtime = this.sweeperRuntimeFn?.() ?? null;
+      await this.reapStaleRuns(runtime);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(`[app-manager] Stale-run sweeper failed: ${message}`);
+    } finally {
+      this.sweeperReapInFlight = false;
     }
   }
 
@@ -2513,16 +2697,43 @@ export class AppManager {
       );
     } else if (!alreadyInstalled) {
       if (isAutoInstallable(appInfo)) {
-        if (!_runtime) {
-          throw new Error(
-            `Launching "${name}" requires a running agent runtime because plugin "${pluginName}" is not installed.`,
-          );
-        }
         logger.info(`[app-manager] Installing plugin for app: ${pluginName}`);
-        const result = await pluginManager.installPlugin(
-          pluginName,
-          onProgress,
-        );
+        let result = await pluginManager
+          .installPlugin(pluginName, onProgress)
+          .catch((err: unknown) => ({
+            success: false as const,
+            pluginName,
+            version: "",
+            installPath: "",
+            requiresRestart: false,
+            error: err instanceof Error ? err.message : String(err),
+          }));
+        if (
+          !result.success &&
+          (result.error?.includes("requires a running agent runtime") ||
+            !_runtime)
+        ) {
+          // Runtime plugin manager unavailable — fall back to the app-core
+          // installer which writes to ~/.eliza/plugins/installed and can be
+          // picked up by the app-package-modules resolver without restart.
+          const { installPlugin: installPluginDirect } = (await import(
+            /* webpackIgnore: true */ "@elizaos/app-core/services/plugin-installer"
+          )) as {
+            installPlugin: (
+              name: string,
+              onProgress?: (progress: InstallProgressLike) => void,
+              version?: string,
+            ) => Promise<{
+              success: boolean;
+              pluginName: string;
+              version: string;
+              installPath: string;
+              requiresRestart: boolean;
+              error?: string;
+            }>;
+          };
+          result = await installPluginDirect(pluginName, onProgress);
+        }
         if (!result.success) {
           throw new Error(
             `Failed to install plugin "${pluginName}": ${result.error}`,
@@ -2593,14 +2804,51 @@ export class AppManager {
       pluginInstalled = true;
     }
     const viewer = await buildViewerConfig(appInfo, launchUrl, _runtime);
-    await ensureRuntimeReady(appInfo, viewer, launchUrl, _runtime ?? null);
+    const runtimeReadyDiagnostics: AppLaunchDiagnostic[] = [];
+    try {
+      await ensureRuntimeReady(appInfo, viewer, launchUrl, _runtime ?? null);
+    } catch (readyError) {
+      const message =
+        readyError instanceof Error ? readyError.message : String(readyError);
+      logger.warn(
+        `[app-manager] ensureRuntimeReady(${appInfo.name}) failed: ${message}`,
+      );
+      runtimeReadyDiagnostics.push({
+        code: "runtime-service-unavailable",
+        severity: "warning",
+        message: `${appInfo.displayName ?? appInfo.name} runtime service could not initialize: ${message}. The viewer will open but live agent control may be unavailable until the underlying service is reachable.`,
+      });
+    }
 
     // Build viewer config from registry app metadata
-    const session = viewer
-      ? await resolveLaunchSession(appInfo, viewer, launchUrl, _runtime ?? null)
-      : buildAppSession(appInfo, undefined, _runtime);
+    let session: AppSessionState | null;
+    try {
+      session = viewer
+        ? await resolveLaunchSession(
+            appInfo,
+            viewer,
+            launchUrl,
+            _runtime ?? null,
+          )
+        : buildAppSession(appInfo, undefined, _runtime);
+    } catch (sessionError) {
+      const message =
+        sessionError instanceof Error
+          ? sessionError.message
+          : String(sessionError);
+      logger.warn(
+        `[app-manager] resolveLaunchSession(${appInfo.name}) failed: ${message}`,
+      );
+      runtimeReadyDiagnostics.push({
+        code: "session-resolve-failed",
+        severity: "warning",
+        message: `Could not resolve launch session for ${appInfo.displayName ?? appInfo.name}: ${message}.`,
+      });
+      session = buildAppSession(appInfo, undefined, _runtime);
+    }
     const diagnostics = [
       ...launchPreparationDiagnostics,
+      ...runtimeReadyDiagnostics,
       ...(await collectLaunchDiagnostics(
         appInfo,
         viewer,
@@ -2675,6 +2923,7 @@ export class AppManager {
     pluginManager: PluginManagerLike,
     name: string,
     runId?: string,
+    runtime?: IAgentRuntime | null,
   ): Promise<AppStopResult> {
     const stoppedAt = new Date().toISOString();
 
@@ -2692,6 +2941,8 @@ export class AppManager {
           message: `App run "${runId}" was not found.`,
         };
       }
+
+      await invokeAppStopRunHook(removedRun, runtime ?? null);
 
       return {
         success: true,
@@ -2733,6 +2984,7 @@ export class AppManager {
 
     for (const run of runsForApp) {
       this.removeRun(run.runId);
+      await invokeAppStopRunHook(run, runtime ?? null);
     }
 
     return {

@@ -1,10 +1,13 @@
-
-
 import type { MessageExampleGroup } from "@elizaos/core";
-import type { ChangeEvent, KeyboardEvent } from "react";
+import { Button, Input, Textarea, ThemedSelect } from "@elizaos/ui";
+import {
+  type ChangeEvent,
+  type DragEvent,
+  type KeyboardEvent,
+  useState,
+} from "react";
 import type { CharacterData } from "../../api/client-types-config";
 import { EDGE_BACKUP_VOICES, PREMADE_VOICES } from "../../voice/types";
-import { Button, Input, Textarea, ThemedSelect } from "@elizaos/ui";
 
 /* ── Inline SVG icon helpers ─────────────────────────────────────── */
 const svgBase = {
@@ -39,21 +42,84 @@ const SparklesIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-/* ── Inline close icon used by multiple panels ───────────────────── */
-const CloseIconSvg = () => (
+/* ── Small plus icon used for inline "add" actions ───────────────── */
+const PlusIconSvg = ({ className }: { className?: string }) => (
   <svg
     width="10"
     height="10"
     viewBox="0 0 10 10"
     fill="none"
     stroke="currentColor"
-    strokeWidth="1.5"
+    strokeWidth="1.75"
     strokeLinecap="round"
     aria-hidden="true"
+    className={className}
   >
-    <path d="M2 2l6 6M8 2l-6 6" />
+    <path d="M5 1.25v7.5M1.25 5h7.5" />
   </svg>
 );
+
+/* ── Small trash icon used for inline "remove" actions ───────────── */
+const TrashIconSvg = ({ className }: { className?: string }) => (
+  <svg
+    width="11"
+    height="11"
+    viewBox="0 0 11 11"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.25"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    className={className}
+  >
+    <path d="M1.75 2.75h7.5M4 2.75V1.75h3v1M2.75 2.75l.4 6.75h4.7l.4-6.75" />
+  </svg>
+);
+
+/* ── Small grip icon shown as drag affordance ───────────────────── */
+const GripIconSvg = ({ className }: { className?: string }) => (
+  <svg
+    width="10"
+    height="14"
+    viewBox="0 0 10 14"
+    fill="currentColor"
+    aria-hidden="true"
+    className={className}
+  >
+    <circle cx="3" cy="3" r="1" />
+    <circle cx="3" cy="7" r="1" />
+    <circle cx="3" cy="11" r="1" />
+    <circle cx="7" cy="3" r="1" />
+    <circle cx="7" cy="7" r="1" />
+    <circle cx="7" cy="11" r="1" />
+  </svg>
+);
+
+/* ── Small duplicate/copy icon ───────────────────────────────────── */
+const CopyIconSvg = ({ className }: { className?: string }) => (
+  <svg
+    width="11"
+    height="11"
+    viewBox="0 0 11 11"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.25"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    className={className}
+  >
+    <rect x="3.25" y="3.25" width="6.5" height="6.5" rx="1" />
+    <path d="M7.5 3.25V2.25a1 1 0 0 0-1-1h-3.5a1 1 0 0 0-1 1v3.5a1 1 0 0 0 1 1h1" />
+  </svg>
+);
+
+/* ── Shared styles for inline plus/trash buttons ─────────────────── */
+const inlineAddBtn =
+  "inline-flex items-center gap-1 text-3xs font-semibold text-accent/80 hover:text-accent hover:bg-accent/10 rounded px-1.5 py-1 -mx-1.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent";
+const inlineRemoveBtn =
+  "inline-flex items-center text-muted hover:text-danger hover:bg-danger/10 rounded p-1 -m-1 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-danger/50";
 
 /* ── Style section constants ─────────────────────────────────────── */
 const STYLE_SECTION_KEYS = ["all"] as const;
@@ -118,6 +184,7 @@ export interface CharacterStylePanelProps {
     value: string,
   ) => void;
   handleCommitStyleEntry: (key: string, index: number) => void;
+  handleReorderStyleEntries: (key: string, items: string[]) => void;
   t: (key: string, opts?: { defaultValue?: string }) => string;
 }
 
@@ -251,7 +318,8 @@ export function CharacterIdentityPanel({
         </div>
       </section>
 
-      {/* Bio / About Me */}
+      {/* Bio / About Me + System Prompt — stacked on narrow, side-by-side on wide */}
+      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-2 lg:gap-6 xl:gap-10 lg:flex-1 lg:min-h-0">
       <section className="flex flex-1 min-h-[15rem] flex-col gap-3">
         <div className="flex items-center justify-between">
           <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
@@ -323,7 +391,7 @@ export function CharacterIdentityPanel({
         <Textarea
           value={d.system ?? ""}
           rows={6}
-          maxLength={10000}
+          maxLength={100000}
           placeholder={t("charactereditor.SystemPromptPlaceholder", {
             defaultValue: "Write in first person...",
           })}
@@ -333,6 +401,7 @@ export function CharacterIdentityPanel({
           className="flex-1 min-h-12 resize-none overflow-y-auto rounded-lg border-border bg-white/[0.04] px-3 py-2 font-mono text-xs leading-relaxed text-txt h-full min-h-[14rem] max-h-none"
         />
       </section>
+      </div>
     </div>
   );
 }
@@ -350,13 +419,30 @@ export function CharacterStylePanel({
   handleRemoveStyleEntry,
   handleStyleEntryDraftChange,
   handleCommitStyleEntry,
+  handleReorderStyleEntries,
   t,
 }: CharacterStylePanelProps) {
   const style = d.style;
+  const [dragStyleIndex, setDragStyleIndex] = useState<{
+    key: string;
+    index: number;
+  } | null>(null);
+
+  const reorderStyle = (list: string[], from: number, to: number): string[] => {
+    const next = [...list];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    return next;
+  };
 
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
+        <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+          {t("charactereditor.StyleRulesHeader", {
+            defaultValue: "Style Rules",
+          })}
+        </span>
         <Button
           variant="ghost"
           size="icon"
@@ -388,11 +474,54 @@ export function CharacterStylePanel({
             >
               <div className="flex flex-col gap-1">
                 {items.length > 0 ? (
-                  items.map((item, index) => (
+                  items.map((item, index) => {
+                    const isDragging =
+                      dragStyleIndex?.key === key &&
+                      dragStyleIndex.index === index;
+                    return (
                     <div
                       key={`${key}:${item}`}
-                      className="group flex items-start gap-2"
+                      draggable
+                      onDragStart={(e: DragEvent<HTMLDivElement>) => {
+                        setDragStyleIndex({ key, index });
+                        e.dataTransfer.effectAllowed = "move";
+                      }}
+                      onDragOver={(e: DragEvent<HTMLDivElement>) => {
+                        if (
+                          dragStyleIndex === null ||
+                          dragStyleIndex.key !== key ||
+                          dragStyleIndex.index === index
+                        )
+                          return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                      }}
+                      onDrop={(e: DragEvent<HTMLDivElement>) => {
+                        e.preventDefault();
+                        if (
+                          dragStyleIndex === null ||
+                          dragStyleIndex.key !== key ||
+                          dragStyleIndex.index === index
+                        )
+                          return;
+                        handleReorderStyleEntries(
+                          key,
+                          reorderStyle(items, dragStyleIndex.index, index),
+                        );
+                        setDragStyleIndex(null);
+                      }}
+                      onDragEnd={() => setDragStyleIndex(null)}
+                      className={`group flex items-start gap-2 transition-opacity ${isDragging ? "opacity-40" : ""}`}
                     >
+                      <span
+                        className="mt-1 shrink-0 text-muted opacity-30 transition-opacity group-hover:opacity-80 cursor-grab active:cursor-grabbing select-none"
+                        aria-hidden="true"
+                        title={t("charactereditor.DragToReorder", {
+                          defaultValue: "Drag to reorder",
+                        })}
+                      >
+                        <GripIconSvg />
+                      </span>
                       <span className="mt-0.5 shrink-0 text-2xs font-bold text-accent">
                         {index + 1}
                       </span>
@@ -419,7 +548,7 @@ export function CharacterStylePanel({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="mt-0.5 h-auto w-auto shrink-0 p-0 text-muted opacity-0 transition-[opacity,color,box-shadow] duration-150 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-danger/40"
+                        className="mt-0.5 h-auto w-auto shrink-0 p-0 text-muted opacity-0 transition-[opacity,color] duration-150 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
                         onClick={() => handleRemoveStyleEntry(key, index)}
                         title={t("common.remove")}
                         aria-label={`${t("common.remove")} ${t(
@@ -429,12 +558,13 @@ export function CharacterStylePanel({
                           },
                         )} ${index + 1}`}
                       >
-                        <CloseIconSvg />
+                        <TrashIconSvg />
                       </Button>
                     </div>
-                  ))
+                    );
+                  })
                 ) : (
-                  <div className="px-0 py-1 text-xs-tight text-muted">
+                  <div className="rounded-md border border-dashed border-border/40 px-3 py-4 text-center text-xs-tight text-muted">
                     {t(STYLE_SECTION_EMPTY_STATES[key].key, {
                       defaultValue:
                         STYLE_SECTION_EMPTY_STATES[key].defaultValue,
@@ -460,17 +590,20 @@ export function CharacterStylePanel({
                   }}
                   className="min-w-0 text-xs h-7 flex-1 rounded-md border border-border bg-white/[0.03] px-2 font-mono text-xs-tight text-txt outline-none focus:border-accent"
                 />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-2xs font-bold text-accent"
+                <button
+                  type="button"
+                  className={inlineAddBtn}
                   onClick={() => handleAddStyleEntry(key)}
                   disabled={!pendingStyleEntries[key].trim()}
-                >
-                  {t("charactereditor.AddInline", {
-                    defaultValue: "+ add",
+                  title={t("charactereditor.AddStyleRule", {
+                    defaultValue: "Add style rule",
                   })}
-                </Button>
+                >
+                  <PlusIconSvg />
+                  {t("charactereditor.AddInline", {
+                    defaultValue: "add",
+                  })}
+                </button>
               </div>
             </div>
           );
@@ -490,6 +623,16 @@ export function CharacterExamplesPanel({
   handleGenerate,
   t,
 }: CharacterExamplesPanelProps) {
+  const [dragConvoIndex, setDragConvoIndex] = useState<number | null>(null);
+  const [dragPostIndex, setDragPostIndex] = useState<number | null>(null);
+
+  const reorder = <T,>(list: T[], from: number, to: number): T[] => {
+    const next = [...list];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    return next;
+  };
+
   return (
     <>
       {/* Chat Examples */}
@@ -520,46 +663,58 @@ export function CharacterExamplesPanel({
             )}
           </Button>
         </div>
-        <div className="flex flex-col gap-1.5 overflow-y-auto min-h-0">
-          {normalizedMessageExamples.map((convo, ci) => (
-            <div
-              // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
-              key={`convo-${ci}`}
-              className="group py-2"
-            >
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-3xs font-bold uppercase tracking-[0.12em] text-muted">
-                  {t("charactereditor.ConversationN", {
-                    defaultValue: `Conversation ${ci + 1}`,
-                  }).replace("{n}", String(ci + 1))}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="mt-0.5 shrink-0 text-muted opacity-0 transition-opacity duration-150 p-0 h-auto w-auto hover:text-danger group-hover:opacity-100"
-                  onClick={() => {
-                    const updated = [...normalizedMessageExamples];
-                    updated.splice(ci, 1);
-                    handleFieldEdit("messageExamples", updated);
-                  }}
+        <div className="flex flex-col gap-2">
+          {normalizedMessageExamples.map((convo, ci) => {
+            const isDragging = dragConvoIndex === ci;
+            return (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
+                key={`convo-${ci}`}
+                draggable
+                onDragStart={(e) => {
+                  setDragConvoIndex(ci);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragOver={(e) => {
+                  if (dragConvoIndex === null || dragConvoIndex === ci) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragConvoIndex === null || dragConvoIndex === ci) return;
+                  handleFieldEdit(
+                    "messageExamples",
+                    reorder(normalizedMessageExamples, dragConvoIndex, ci),
+                  );
+                  setDragConvoIndex(null);
+                }}
+                onDragEnd={() => setDragConvoIndex(null)}
+                className={`group relative flex flex-col gap-1.5 rounded-md border border-border/20 bg-card/40 py-2.5 pl-6 pr-3 transition-opacity ${isDragging ? "opacity-40" : ""}`}
+              >
+                <div
+                  className="absolute left-1.5 top-2.5 text-muted opacity-30 transition-opacity group-hover:opacity-80 cursor-grab active:cursor-grabbing select-none"
+                  aria-hidden="true"
+                  title={t("charactereditor.DragToReorder", {
+                    defaultValue: "Drag to reorder",
+                  })}
                 >
-                  <CloseIconSvg />
-                </Button>
-              </div>
-              <div className="flex flex-col gap-1">
+                  <GripIconSvg />
+                </div>
                 {convo.examples.map((msg, mi) => (
                   <div
                     // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
                     key={`msg-${ci}-${mi}`}
-                    className="flex items-center gap-2"
+                    className="flex items-center gap-3"
                   >
                     <span
-                      className={`w-10 shrink-0 text-right text-3xs font-bold uppercase tracking-[0.1em] text-muted${msg.name === "{{user1}}" ? "" : " text-accent"}`}
+                      className={`w-12 shrink-0 pr-1 text-right text-[0.5rem] font-semibold uppercase tracking-[0.06em] ${msg.name === "{{user1}}" ? "text-muted" : "text-accent"}`}
                     >
                       {msg.name === "{{user1}}" ? "user" : "agent"}
                     </span>
                     <Input
                       value={msg.content?.text ?? ""}
+                      aria-label={`${msg.name === "{{user1}}" ? "User" : "Agent"} message, conversation ${ci + 1}, turn ${mi + 1}`}
                       onChange={(e) => {
                         const updated = [...normalizedMessageExamples];
                         const convoClone = {
@@ -572,21 +727,119 @@ export function CharacterExamplesPanel({
                         updated[ci] = convoClone;
                         handleFieldEdit("messageExamples", updated);
                       }}
-                      className="h-7 flex-1 rounded-md border border-border bg-white/[0.03] px-2 font-mono text-xs-tight text-txt outline-none focus:border-accent"
+                      className="h-7 flex-1 rounded-md border border-border/50 bg-white/[0.03] px-2.5 text-xs-tight leading-tight text-txt outline-none focus:border-accent"
                     />
                   </div>
                 ))}
+                <div className="mt-0.5 ml-[3.75rem] flex items-center justify-between">
+                  <button
+                    type="button"
+                    className={inlineAddBtn}
+                    onClick={() => {
+                      const agentName =
+                        typeof d.name === "string" && d.name.trim()
+                          ? d.name.trim()
+                          : "Agent";
+                      const updated = [...normalizedMessageExamples];
+                      const convoClone = {
+                        examples: [
+                          ...updated[ci].examples,
+                          { name: "{{user1}}", content: { text: "" } },
+                          { name: agentName, content: { text: "" } },
+                        ],
+                      };
+                      updated[ci] = convoClone;
+                      handleFieldEdit("messageExamples", updated);
+                    }}
+                    title={t("charactereditor.AddTurn", {
+                      defaultValue: "Add turn",
+                    })}
+                  >
+                    <PlusIconSvg />
+                    {t("charactereditor.TurnLabel", {
+                      defaultValue: "turn",
+                    })}
+                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      className={inlineRemoveBtn}
+                      onClick={() => {
+                        const updated = [...normalizedMessageExamples];
+                        const cloned = {
+                          examples: updated[ci].examples.map((m) => ({
+                            ...m,
+                            content: { ...(m.content ?? {}) },
+                          })),
+                        };
+                        updated.splice(ci + 1, 0, cloned);
+                        handleFieldEdit("messageExamples", updated);
+                      }}
+                      aria-label={t("charactereditor.DuplicateConversation", {
+                        defaultValue: "Duplicate conversation",
+                      })}
+                      title={t("charactereditor.DuplicateConversation", {
+                        defaultValue: "Duplicate conversation",
+                      })}
+                    >
+                      <CopyIconSvg />
+                    </button>
+                    <button
+                      type="button"
+                      className={inlineRemoveBtn}
+                      onClick={() => {
+                        const updated = [...normalizedMessageExamples];
+                        updated.splice(ci, 1);
+                        handleFieldEdit("messageExamples", updated);
+                      }}
+                      aria-label={`${t("common.remove")} conversation ${ci + 1}`}
+                      title={t("charactereditor.RemoveConversation", {
+                        defaultValue: "Remove conversation",
+                      })}
+                    >
+                      <TrashIconSvg />
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           {normalizedMessageExamples.length === 0 && (
-            <div className="px-0 py-1 text-xs-tight text-muted">
+            <div className="rounded-md border border-dashed border-border/40 px-3 py-4 text-center text-xs-tight text-muted">
               {t("charactereditor.NoChatExamples", {
                 defaultValue: "No chat examples yet.",
               })}
             </div>
           )}
         </div>
+        <button
+          type="button"
+          className={`${inlineAddBtn} self-start mt-1`}
+          onClick={() => {
+            const agentName =
+              typeof d.name === "string" && d.name.trim()
+                ? d.name.trim()
+                : "Agent";
+            const updated = [
+              ...normalizedMessageExamples,
+              {
+                examples: [
+                  { name: "{{user1}}", content: { text: "" } },
+                  { name: agentName, content: { text: "" } },
+                ],
+              },
+            ];
+            handleFieldEdit("messageExamples", updated);
+          }}
+          title={t("charactereditor.AddConversation", {
+            defaultValue: "Add conversation",
+          })}
+        >
+          <PlusIconSvg />
+          {t("charactereditor.ConversationLabel", {
+            defaultValue: "conversation",
+          })}
+        </button>
       </section>
 
       {/* Post Examples */}
@@ -617,56 +870,96 @@ export function CharacterExamplesPanel({
             )}
           </Button>
         </div>
-        <div className="flex flex-col gap-1.5 overflow-y-auto min-h-0">
-          {(d.postExamples ?? []).map((post, pi) => (
-            <div
-              // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
-              key={`post-${pi}`}
-              className="flex items-center gap-1.5"
-            >
-              <Input
-                value={post}
-                onChange={(e) => {
-                  const updated = [...(d.postExamples ?? [])];
-                  updated[pi] = e.target.value;
-                  handleFieldEdit("postExamples", updated);
+        <div className="flex flex-col gap-1.5">
+          {(d.postExamples ?? []).map((post, pi) => {
+            const isDragging = dragPostIndex === pi;
+            return (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
+                key={`post-${pi}`}
+                draggable
+                onDragStart={(e: DragEvent<HTMLDivElement>) => {
+                  setDragPostIndex(pi);
+                  e.dataTransfer.effectAllowed = "move";
                 }}
-                className="h-7 flex-1 rounded-md border border-border bg-white/[0.03] px-2 font-mono text-xs-tight text-txt outline-none focus:border-accent"
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="mt-0.5 h-auto w-auto shrink-0 p-0 text-muted opacity-0 transition-[opacity,color,box-shadow] duration-150 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-danger/40"
-                onClick={() => {
-                  const updated = [...(d.postExamples ?? [])];
-                  updated.splice(pi, 1);
-                  handleFieldEdit("postExamples", updated);
+                onDragOver={(e: DragEvent<HTMLDivElement>) => {
+                  if (dragPostIndex === null || dragPostIndex === pi) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
                 }}
+                onDrop={(e: DragEvent<HTMLDivElement>) => {
+                  e.preventDefault();
+                  if (dragPostIndex === null || dragPostIndex === pi) return;
+                  handleFieldEdit(
+                    "postExamples",
+                    reorder(d.postExamples ?? [], dragPostIndex, pi),
+                  );
+                  setDragPostIndex(null);
+                }}
+                onDragEnd={() => setDragPostIndex(null)}
+                className={`group flex items-center gap-1.5 transition-opacity ${isDragging ? "opacity-40" : ""}`}
               >
-                <CloseIconSvg />
-              </Button>
-            </div>
-          ))}
+                <span
+                  className="text-muted opacity-30 transition-opacity group-hover:opacity-80 cursor-grab active:cursor-grabbing select-none"
+                  aria-hidden="true"
+                  title={t("charactereditor.DragToReorder", {
+                    defaultValue: "Drag to reorder",
+                  })}
+                >
+                  <GripIconSvg />
+                </span>
+                <Input
+                  value={post}
+                  aria-label={`Post example ${pi + 1}`}
+                  onChange={(e) => {
+                    const updated = [...(d.postExamples ?? [])];
+                    updated[pi] = e.target.value;
+                    handleFieldEdit("postExamples", updated);
+                  }}
+                  className="h-7 flex-1 rounded-md border border-border/50 bg-white/[0.03] px-2.5 text-xs-tight leading-tight text-txt outline-none focus:border-accent"
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-auto w-auto shrink-0 p-0 text-muted opacity-0 transition-[opacity,color] duration-150 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
+                  onClick={() => {
+                    const updated = [...(d.postExamples ?? [])];
+                    updated.splice(pi, 1);
+                    handleFieldEdit("postExamples", updated);
+                  }}
+                  aria-label={`${t("common.remove")} post ${pi + 1}`}
+                  title={t("charactereditor.RemovePost", {
+                    defaultValue: "Remove post",
+                  })}
+                >
+                  <TrashIconSvg />
+                </Button>
+              </div>
+            );
+          })}
           {(d.postExamples ?? []).length === 0 && (
-            <div className="px-0 py-1 text-xs-tight text-muted">
+            <div className="rounded-md border border-dashed border-border/40 px-3 py-4 text-center text-xs-tight text-muted">
               {t("charactereditor.NoPostExamples", {
                 defaultValue: "No post examples yet.",
               })}
             </div>
           )}
-          <Button
-            variant="ghost"
-            className="text-2xs font-bold text-accent p-0 h-auto py-1 text-left hover:underline"
+          <button
+            type="button"
+            className={`${inlineAddBtn} self-start mt-1`}
             onClick={() => {
               const updated = [...(d.postExamples ?? []), ""];
               handleFieldEdit("postExamples", updated);
             }}
-          >
-            +{" "}
-            {t("charactereditor.AddPost", {
+            title={t("charactereditor.AddPost", {
               defaultValue: "Add Post",
             })}
-          </Button>
+          >
+            <PlusIconSvg />
+            {t("charactereditor.PostLabel", {
+              defaultValue: "post",
+            })}
+          </button>
         </div>
       </section>
     </>

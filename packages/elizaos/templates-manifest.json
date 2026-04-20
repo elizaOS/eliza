@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generatedAt": "2026-04-14T07:49:09.540Z",
+  "generatedAt": "2026-04-19T19:47:23.540Z",
   "repoUrl": "https://github.com/elizaos/eliza",
   "templates": [
     {
@@ -9,7 +9,9 @@
       "description": "Create a Milady-style fullstack app workspace backed by a local eliza checkout",
       "kind": "fullstack-app",
       "version": 1,
-      "languages": ["typescript"],
+      "languages": [
+        "typescript"
+      ],
       "upstream": {
         "path": "eliza",
         "repo": "https://github.com/elizaos/eliza.git",
@@ -35,7 +37,11 @@
       "description": "Create an elizaOS plugin starter",
       "kind": "plugin",
       "version": 1,
-      "languages": ["typescript", "python", "rust"]
+      "languages": [
+        "typescript",
+        "python",
+        "rust"
+      ]
     }
   ]
 }

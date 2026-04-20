@@ -1,21 +1,20 @@
+import { Button, PagePanel } from "@elizaos/ui";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { client } from "../../api/client";
 import type {
   KnowledgeDocument,
   KnowledgeSearchResult,
 } from "../../api/client-types-chat";
-import { client } from "../../api/client";
 import { useApp } from "../../state/useApp";
-
 import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import { formatByteSize } from "../../utils/format";
-import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   isKnowledgeImageFile,
   MAX_KNOWLEDGE_IMAGE_PROCESSING_BYTES,
   maybeCompressKnowledgeUploadImage,
 } from "../../utils/knowledge-upload-image";
+import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
 import { DocumentViewer } from "./knowledge-detail";
-import { PagePanel, Button } from "@elizaos/ui";
 import {
   BULK_UPLOAD_TARGET_BYTES,
   getKnowledgeUploadFilename,
@@ -55,9 +54,7 @@ function SearchResultListItem({
       type="button"
       aria-current={active ? "page" : undefined}
       className={`group flex w-full items-start px-0 py-3 text-left transition-colors ${
-        active
-          ? "bg-transparent"
-          : "bg-transparent hover:bg-white/[0.03]"
+        active ? "bg-transparent" : "bg-transparent hover:bg-white/[0.03]"
       }`}
     >
       <span
@@ -103,9 +100,7 @@ function DocumentListItem({
   return (
     <div
       className={`group relative flex w-full transition-colors ${
-        active
-          ? "bg-transparent"
-          : "bg-transparent hover:bg-white/[0.03]"
+        active ? "bg-transparent" : "bg-transparent hover:bg-white/[0.03]"
       }`}
     >
       <button

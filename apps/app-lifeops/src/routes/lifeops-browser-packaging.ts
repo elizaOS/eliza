@@ -6,6 +6,7 @@ import type {
   LifeOpsBrowserCompanionPackageStatus,
   LifeOpsBrowserCompanionReleaseManifest,
   LifeOpsBrowserKind,
+  LifeOpsBrowserPackagePathTarget,
 } from "@elizaos/shared/contracts/lifeops";
 import { VERSION } from "@elizaos/agent/runtime/version";
 
@@ -13,12 +14,10 @@ const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../../../",
 );
-const extensionRoot = path.join(
-  repoRoot,
-  "apps",
-  "extensions",
-  "lifeops-browser",
-);
+const extensionRootCandidates = [
+  path.join(repoRoot, "apps", "app-lifeops", "extensions", "lifeops-browser"),
+  path.join(repoRoot, "apps", "extensions", "lifeops-browser"),
+];
 const repoPackageJsonPath = path.join(repoRoot, "package.json");
 const repoBuildInfoPath = path.join(repoRoot, "dist", "build-info.json");
 const NIGHTLY_EPOCH_UTC_MS = Date.UTC(2020, 0, 1);
@@ -79,9 +78,15 @@ function parseReleaseVersion(raw: string): ReleaseVersion | null {
   if (!match) {
     return null;
   }
-  const major = Number.parseInt(match[1], 10);
-  const minor = Number.parseInt(match[2], 10);
-  const patch = Number.parseInt(match[3], 10);
+  const majorRaw = match[1];
+  const minorRaw = match[2];
+  const patchRaw = match[3];
+  if (!majorRaw || !minorRaw || !patchRaw) {
+    return null;
+  }
+  const major = Number.parseInt(majorRaw, 10);
+  const minor = Number.parseInt(minorRaw, 10);
+  const patch = Number.parseInt(patchRaw, 10);
   const prereleaseLabel = match[4] ?? null;
   const prereleaseValue = match[5] ?? null;
   return {
@@ -354,6 +359,16 @@ export function resolveLifeOpsBrowserReleaseManifest(
   );
 }
 
+function resolveLifeOpsBrowserExtensionRoot(): string | null {
+  for (const candidate of extensionRootCandidates) {
+    const resolved = existingPath(candidate);
+    if (resolved) {
+      return resolved;
+    }
+  }
+  return null;
+}
+
 function packageScriptName(browser: LifeOpsBrowserKind): string {
   return browser === "safari" ? "package-safari.mjs" : "package-chrome.mjs";
 }
@@ -390,7 +405,94 @@ function runCommand(
 }
 
 export function resolveLifeOpsBrowserExtensionPath(): string | null {
-  return existingPath(extensionRoot);
+  return resolveLifeOpsBrowserExtensionRoot();
+}
+
+export function resolveLifeOpsBrowserCompanionPackagePath(
+  status: LifeOpsBrowserCompanionPackageStatus,
+  target: LifeOpsBrowserPackagePathTarget,
+): string | null {
+  switch (target) {
+    case "extension_root":
+      return status.extensionPath;
+    case "chrome_build":
+      return status.chromeBuildPath;
+    case "chrome_package":
+      return status.chromePackagePath;
+    case "safari_web_extension":
+      return status.safariWebExtensionPath;
+    case "safari_app":
+      return status.safariAppPath;
+    case "safari_package":
+      return status.safariPackagePath;
+    default:
+      return null;
+  }
+}
+
+async function openPathInHost(
+  pathValue: string,
+  revealOnly: boolean,
+): Promise<void> {
+  const revealDirectory =
+    revealOnly &&
+    fs.existsSync(pathValue) &&
+    fs.statSync(pathValue).isDirectory()
+      ? pathValue
+      : path.dirname(pathValue);
+  switch (process.platform) {
+    case "darwin":
+      await runCommand(
+        "open",
+        revealOnly ? ["-R", pathValue] : [pathValue],
+        repoRoot,
+      );
+      return;
+    case "win32":
+      await runCommand(
+        revealOnly ? "explorer.exe" : "cmd",
+        revealOnly ? [`/select,${pathValue}`] : ["/c", "start", "", pathValue],
+        repoRoot,
+      );
+      return;
+    case "linux":
+      await runCommand(
+        "xdg-open",
+        [revealOnly ? revealDirectory : pathValue],
+        repoRoot,
+      );
+      return;
+    default:
+      throw new Error(
+        `Opening local paths is not supported on ${process.platform}`,
+      );
+  }
+}
+
+async function openChromeExtensionsManager(): Promise<void> {
+  switch (process.platform) {
+    case "darwin":
+      await runCommand(
+        "open",
+        ["-a", "Google Chrome", "chrome://extensions/"],
+        repoRoot,
+      );
+      return;
+    case "win32":
+      await runCommand(
+        "cmd",
+        ["/c", "start", "", "chrome", "chrome://extensions/"],
+        repoRoot,
+      );
+      return;
+    case "linux":
+      await runCommand("xdg-open", ["chrome://extensions/"], repoRoot);
+      return;
+    default:
+      throw new Error(
+        `Opening the Chrome extensions manager is not supported on ${process.platform}`,
+      );
+  }
 }
 
 export function getLifeOpsBrowserCompanionPackageStatus(): LifeOpsBrowserCompanionPackageStatus {
@@ -423,7 +525,9 @@ export function getLifeOpsBrowserCompanionPackageStatus(): LifeOpsBrowserCompani
     safariPackagePath: existingPath(
       path.join(artifactsDir, "lifeops-browser-safari.zip"),
     ),
-    releaseManifest: resolveLifeOpsBrowserReleaseManifest(artifactsDir),
+    releaseManifest: resolveLifeOpsBrowserReleaseManifest(artifactsDir, {
+      allowSynthesis: true,
+    }),
   };
 }
 
@@ -443,6 +547,43 @@ export function getLifeOpsBrowserCompanionDownloadFile(
     filename: path.basename(filePath),
     contentType: "application/zip",
   };
+}
+
+export async function openLifeOpsBrowserCompanionPackagePath(
+  target: LifeOpsBrowserPackagePathTarget,
+  options?: { revealOnly?: boolean },
+): Promise<{
+  target: LifeOpsBrowserPackagePathTarget;
+  path: string;
+  revealOnly: boolean;
+}> {
+  const revealOnly = options?.revealOnly ?? false;
+  const status = getLifeOpsBrowserCompanionPackageStatus();
+  const resolvedPath = resolveLifeOpsBrowserCompanionPackagePath(
+    status,
+    target,
+  );
+  if (!resolvedPath) {
+    throw new Error(`LifeOps Browser path is not available for ${target}`);
+  }
+  await openPathInHost(resolvedPath, revealOnly);
+  return {
+    target,
+    path: resolvedPath,
+    revealOnly,
+  };
+}
+
+export async function openLifeOpsBrowserCompanionManager(
+  browser: LifeOpsBrowserKind,
+): Promise<{ browser: LifeOpsBrowserKind }> {
+  if (browser !== "chrome") {
+    throw new Error(
+      "Only Chrome exposes a local extensions manager for unpacked install",
+    );
+  }
+  await openChromeExtensionsManager();
+  return { browser };
 }
 
 export async function buildLifeOpsBrowserCompanionPackage(

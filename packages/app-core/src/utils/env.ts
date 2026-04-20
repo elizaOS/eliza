@@ -43,6 +43,7 @@ export {
   syncBrandEnvToEliza,
   syncElizaEnvToBrand,
 } from "../config/boot-config.js";
+
 import {
   getBootConfig,
   syncBrandEnvToEliza,

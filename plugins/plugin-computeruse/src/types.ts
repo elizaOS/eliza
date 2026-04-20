@@ -1,15 +1,23 @@
 /**
- * Type definitions for plugin-computeruse
+ * Type definitions for plugin-computeruse.
  *
- * Ported from coasty-ai/open-computer-use (Apache 2.0)
- * Adapted for elizaOS Service/Action/Provider interfaces.
+ * Ported from coasty-ai/open-computer-use (Apache 2.0) and adapted for the
+ * elizaOS service/action/provider model.
  */
 
-// ── Desktop Action Types ────────────────────────────────────────────────────
+export type PermissionType =
+  | "accessibility"
+  | "screen_recording"
+  | "microphone"
+  | "camera"
+  | "shell";
+
+// ── Desktop Actions ───────────────────────────────────────────────────────
 
 export type DesktopActionType =
   | "screenshot"
   | "click"
+  | "click_with_modifiers"
   | "double_click"
   | "right_click"
   | "mouse_move"
@@ -17,28 +25,36 @@ export type DesktopActionType =
   | "key"
   | "key_combo"
   | "scroll"
-  | "drag";
+  | "drag"
+  | "detect_elements"
+  | "ocr";
 
 export interface DesktopActionParams {
   action: DesktopActionType;
-  /** [x, y] pixel coordinates for click, double_click, right_click, mouse_move, scroll */
   coordinate?: [number, number];
-  /** [x, y] start coordinates for drag */
   startCoordinate?: [number, number];
-  /** Text to type (for "type" action) */
   text?: string;
-  /** Key name or combo string, e.g. "Return", "ctrl+c" */
   key?: string;
-  /** Scroll direction */
+  modifiers?: string[];
+  hold_keys?: string[];
+  button?: "left" | "middle" | "right";
+  clicks?: number;
   scrollDirection?: "up" | "down" | "left" | "right";
-  /** Number of scroll ticks (default: 3) */
   scrollAmount?: number;
+  amount?: number;
+  x?: number;
+  y?: number;
+  x1?: number;
+  y1?: number;
+  x2?: number;
+  y2?: number;
 }
 
-// ── Browser Action Types ────────────────────────────────────────────────────
+// ── Browser Actions ───────────────────────────────────────────────────────
 
 export type BrowserActionType =
   | "open"
+  | "connect"
   | "close"
   | "navigate"
   | "click"
@@ -46,9 +62,14 @@ export type BrowserActionType =
   | "scroll"
   | "screenshot"
   | "dom"
+  | "get_dom"
   | "clickables"
+  | "get_clickables"
   | "execute"
   | "state"
+  | "info"
+  | "context"
+  | "wait"
   | "list_tabs"
   | "open_tab"
   | "close_tab"
@@ -56,74 +77,172 @@ export type BrowserActionType =
 
 export interface BrowserActionParams {
   action: BrowserActionType;
-  /** URL for open, navigate, open_tab */
   url?: string;
-  /** CSS selector for click, type */
   selector?: string;
-  /** [x, y] coordinates for click */
   coordinate?: [number, number];
-  /** Text for type action */
   text?: string;
-  /** JavaScript code for execute action */
   code?: string;
-  /** Scroll direction */
   direction?: "up" | "down";
-  /** Scroll amount in pixels */
   amount?: number;
-  /** Tab ID for switch_tab, close_tab */
   tabId?: string;
-  /** Wait timeout in ms */
+  tab_index?: string | number;
+  index?: string | number;
   timeout?: number;
 }
 
-// ── Window Action Types ─────────────────────────────────────────────────────
+// ── Window Actions ────────────────────────────────────────────────────────
 
 export type WindowActionType =
   | "list"
   | "focus"
+  | "switch"
+  | "arrange"
+  | "move"
   | "minimize"
   | "maximize"
+  | "restore"
   | "close";
 
 export interface WindowActionParams {
   action: WindowActionType;
-  /** Window identifier (required for focus, minimize, maximize, close) */
   windowId?: string;
+  windowTitle?: string;
+  window?: string;
+  title?: string;
+  arrangement?: string;
+  x?: number;
+  y?: number;
 }
 
-// ── Results ─────────────────────────────────────────────────────────────────
+// ── File Actions ──────────────────────────────────────────────────────────
 
-export interface ComputerActionResult {
-  success: boolean;
-  /** Base64-encoded PNG screenshot taken after the action */
-  screenshot?: string;
-  error?: string;
-}
+export type FileActionType =
+  | "read"
+  | "write"
+  | "edit"
+  | "append"
+  | "delete"
+  | "exists"
+  | "list"
+  | "delete_directory"
+  | "upload"
+  | "download"
+  | "list_downloads";
 
-export interface BrowserActionResult {
-  success: boolean;
-  /** Base64-encoded PNG for screenshot action */
-  screenshot?: string;
-  /** Text content for dom, state, clickables, execute results */
+export interface FileActionParams {
+  action: FileActionType;
+  path?: string;
+  filepath?: string;
+  dirpath?: string;
   content?: string;
-  /** Structured data (e.g. tab list, clickable elements) */
-  data?: unknown;
-  error?: string;
+  encoding?: BufferEncoding | string;
+  oldText?: string;
+  newText?: string;
+  old_text?: string;
+  new_text?: string;
+  find?: string;
+  replace?: string;
 }
 
-export interface WindowActionResult {
+// ── Terminal Actions ──────────────────────────────────────────────────────
+
+export type TerminalActionType =
+  | "connect"
+  | "execute"
+  | "read"
+  | "type"
+  | "clear"
+  | "close"
+  | "execute_command";
+
+export interface TerminalActionParams {
+  action: TerminalActionType;
+  command?: string;
+  timeout?: number;
+  timeoutSeconds?: number;
+  sessionId?: string;
+  session_id?: string;
+  cwd?: string;
+  text?: string;
+}
+
+// ── Shared Results ────────────────────────────────────────────────────────
+
+export interface BaseActionResult {
   success: boolean;
-  /** Window list for "list" action */
-  windows?: WindowInfo[];
   error?: string;
+  message?: string;
+  approvalRequired?: boolean;
+  approvalId?: string;
+  permissionDenied?: boolean;
+  permissionType?: PermissionType;
 }
 
-// ── Shared Types ────────────────────────────────────────────────────────────
+export interface ComputerActionResult extends BaseActionResult {
+  screenshot?: string;
+  data?: unknown;
+}
+
+export interface BrowserActionResult extends BaseActionResult {
+  screenshot?: string;
+  frontendScreenshot?: string;
+  content?: string;
+  data?: unknown;
+  url?: string;
+  title?: string;
+  isOpen?: boolean;
+  is_open?: boolean;
+  tabs?: BrowserTab[];
+  elements?: ClickableElement[];
+  count?: number;
+}
+
+export interface WindowActionResult extends BaseActionResult {
+  windows?: WindowInfo[];
+  count?: number;
+}
+
+export interface FileActionResult extends BaseActionResult {
+  path?: string;
+  content?: string;
+  exists?: boolean;
+  isFile?: boolean;
+  isDirectory?: boolean;
+  is_file?: boolean;
+  is_directory?: boolean;
+  size?: number;
+  items?: FileEntry[];
+  count?: number;
+}
+
+export interface TerminalActionResult extends BaseActionResult {
+  output?: string;
+  exitCode?: number;
+  exit_code?: number;
+  sessionId?: string;
+  session_id?: string;
+  cwd?: string;
+}
+
+export type ComputerUseResult =
+  | ComputerActionResult
+  | BrowserActionResult
+  | WindowActionResult
+  | FileActionResult
+  | TerminalActionResult;
+
+// ── Shared Models ─────────────────────────────────────────────────────────
 
 export interface WindowInfo {
   id: string;
   title: string;
   app: string;
+}
+
+export interface FileEntry {
+  name: string;
+  type: "file" | "directory";
+  path: string;
 }
 
 export interface ScreenRegion {
@@ -138,11 +257,18 @@ export interface ScreenSize {
   height: number;
 }
 
+export interface PlatformCapability {
+  available: boolean;
+  tool: string;
+}
+
 export interface PlatformCapabilities {
-  screenshot: { available: boolean; tool: string };
-  computerUse: { available: boolean; tool: string };
-  windowList: { available: boolean; tool: string };
-  browser: { available: boolean; tool: string };
+  screenshot: PlatformCapability;
+  computerUse: PlatformCapability;
+  windowList: PlatformCapability;
+  browser: PlatformCapability;
+  terminal: PlatformCapability;
+  fileSystem: PlatformCapability;
 }
 
 export interface ActionHistoryEntry {
@@ -152,20 +278,56 @@ export interface ActionHistoryEntry {
   success: boolean;
 }
 
-export interface ComputerUseConfig {
-  /** Auto-capture screenshot after each desktop mutation (default: true) */
-  screenshotAfterAction: boolean;
-  /** Action execution timeout in ms (default: 10000) */
-  actionTimeoutMs: number;
-  /** Max recent actions to keep for provider context (default: 10) */
-  maxRecentActions: number;
+export type ApprovalMode =
+  | "full_control"
+  | "smart_approve"
+  | "approve_all"
+  | "off";
+
+export interface PendingApproval {
+  id: string;
+  command: string;
+  parameters: Record<string, unknown>;
+  requestedAt: string;
 }
 
-// ── Browser State Types ─────────────────────────────────────────────────────
+export interface ApprovalSnapshot {
+  mode: ApprovalMode;
+  pendingCount: number;
+  pendingApprovals: PendingApproval[];
+}
+
+export interface ApprovalResolution {
+  id: string;
+  command: string;
+  approved: boolean;
+  cancelled: boolean;
+  mode: ApprovalMode;
+  requestedAt: string;
+  resolvedAt: string;
+  reason?: string;
+}
+
+export interface ComputerUseConfig {
+  screenshotAfterAction: boolean;
+  actionTimeoutMs: number;
+  maxRecentActions: number;
+  approvalMode: ApprovalMode;
+  browserHeadless?: boolean;
+}
+
+// ── Browser Models ────────────────────────────────────────────────────────
 
 export interface BrowserState {
   url: string;
   title: string;
+  isOpen?: boolean;
+  is_open?: boolean;
+}
+
+export interface BrowserInfo extends BrowserState {
+  success: boolean;
+  error?: string;
 }
 
 export interface ClickableElement {

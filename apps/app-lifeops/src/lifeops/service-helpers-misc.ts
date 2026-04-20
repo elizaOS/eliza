@@ -257,7 +257,7 @@ export function resolveUpcomingWindowStart(
   return buildWindowStartDate(
     timeZone,
     addDaysToLocalDate(baseDate, 1),
-    candidateMinutes[0],
+    candidateMinutes[0] ?? fallbackMinute,
   );
 }
 

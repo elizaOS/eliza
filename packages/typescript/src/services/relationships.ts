@@ -7,9 +7,32 @@ import type {
 	MetadataValue,
 	UUID,
 } from "../types/primitives";
+import { asUUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 import { stringToUuid } from "../utils";
+import { UnionFind } from "../utils/union-find";
+
+/**
+ * Handles on these platforms are enrichment (phone/email/website) — they
+ * identify *contact methods* a person has shared with us, not a separate
+ * identity we'd confuse with another person. Keep in sync with the runtime-
+ * level CONTACT_PLATFORM_SET in agent/src/services/relationships-graph.ts.
+ */
+const CONTACT_HANDLE_PLATFORMS = new Set(["email", "phone", "website"]);
+
+function isConfirmedIdentityLinkLike(relationship: Relationship): boolean {
+	const tags = relationship.tags;
+	if (!Array.isArray(tags) || !tags.includes("identity_link")) {
+		return false;
+	}
+	const metadata = relationship.metadata;
+	if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+		return false;
+	}
+	const status = (metadata as Record<string, unknown>).status;
+	return typeof status === "string" && status === "confirmed";
+}
 
 // Extended Relationship interface with new fields
 interface ExtendedRelationship extends Relationship {
@@ -37,6 +60,39 @@ export interface ContactPreferences {
 	[key: string]: string | boolean | undefined;
 }
 
+export interface ContactHandle {
+	id: UUID;
+	platform: string;
+	identifier: string;
+	displayLabel?: string;
+	isPrimary?: boolean;
+	addedAt: string;
+}
+
+export type InteractionDirection = "inbound" | "outbound";
+
+export interface ContactInteraction {
+	id: UUID;
+	platform: string;
+	direction: InteractionDirection;
+	summary?: string;
+	externalRef?: string;
+	occurredAt: string;
+}
+
+export interface RelationshipGoal {
+	goalText: string;
+	targetCadenceDays?: number;
+	setAt: string;
+}
+
+export type RelationshipStatus =
+	| "active"
+	| "dormant"
+	| "archived"
+	| "blocked"
+	| "unknown";
+
 export interface ContactInfo {
 	entityId: UUID;
 	categories: string[];
@@ -45,6 +101,60 @@ export interface ContactInfo {
 	customFields: Record<string, JsonValue>;
 	privacyLevel: "public" | "private" | "restricted";
 	lastModified: string;
+	handles: ContactHandle[];
+	interactions: ContactInteraction[];
+	followupThresholdDays?: number;
+	lastInteractionAt?: string;
+	relationshipGoal?: RelationshipGoal;
+	relationshipStatus: RelationshipStatus;
+}
+
+/** Max interactions kept in contact component to avoid unbounded growth. */
+const MAX_INTERACTION_HISTORY = 50;
+
+interface RecordInteractionInput {
+	contactId: UUID;
+	platform: string;
+	direction: InteractionDirection;
+	summary?: string;
+	externalRef?: string;
+	occurredAt?: string;
+}
+
+interface ListOverdueOptions {
+	asOfMs?: number;
+	defaultThresholdDays?: number;
+}
+
+export interface OverdueFollowup {
+	contact: ContactInfo;
+	daysSinceInteraction: number;
+	thresholdDays: number;
+}
+
+export interface RelationshipProgress {
+	contactId: UUID;
+	goal: RelationshipGoal | null;
+	lastInteractionAt: string | null;
+	cadenceHealth: "on-track" | "due" | "overdue" | "never-contacted" | "no-goal";
+	daysSinceInteraction: number | null;
+	targetCadenceDays: number | null;
+}
+
+export interface PlatformContactSeed {
+	platform: string;
+	identifier: string;
+	displayName?: string;
+	displayLabel?: string;
+	categories?: string[];
+	tags?: string[];
+	notes?: string;
+}
+
+export interface PlatformImportResult {
+	imported: ContactInfo[];
+	linkedToExisting: ContactInfo[];
+	skipped: Array<{ seed: PlatformContactSeed; reason: string }>;
 }
 
 function getContactDisplayName(contactInfo: ContactInfo): string | null {
@@ -64,19 +174,141 @@ function contactInfoToMetadata(contactInfo: ContactInfo): Metadata {
 		customFields: contactInfo.customFields,
 		privacyLevel: contactInfo.privacyLevel,
 		lastModified: contactInfo.lastModified,
+		handles: contactInfo.handles as unknown as MetadataValue,
+		interactions: contactInfo.interactions as unknown as MetadataValue,
+		followupThresholdDays: contactInfo.followupThresholdDays,
+		lastInteractionAt: contactInfo.lastInteractionAt,
+		relationshipGoal: contactInfo.relationshipGoal as unknown as MetadataValue,
+		relationshipStatus: contactInfo.relationshipStatus,
 	};
+}
+
+function parseHandles(value: MetadataValue | undefined): ContactHandle[] {
+	if (!Array.isArray(value)) return [];
+	const out: ContactHandle[] = [];
+	for (const item of value) {
+		if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+		const record = item as { [key: string]: MetadataValue | undefined };
+		const id = record.id;
+		const platform = record.platform;
+		const identifier = record.identifier;
+		const addedAt = record.addedAt;
+		if (
+			typeof id !== "string" ||
+			typeof platform !== "string" ||
+			typeof identifier !== "string" ||
+			typeof addedAt !== "string"
+		) {
+			continue;
+		}
+		const displayLabel =
+			typeof record.displayLabel === "string" ? record.displayLabel : undefined;
+		const isPrimary =
+			typeof record.isPrimary === "boolean" ? record.isPrimary : undefined;
+		out.push({
+			id: id as UUID,
+			platform,
+			identifier,
+			displayLabel,
+			isPrimary,
+			addedAt,
+		});
+	}
+	return out;
+}
+
+function parseInteractions(
+	value: MetadataValue | undefined,
+): ContactInteraction[] {
+	if (!Array.isArray(value)) return [];
+	const out: ContactInteraction[] = [];
+	for (const item of value) {
+		if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+		const record = item as { [key: string]: MetadataValue | undefined };
+		const id = record.id;
+		const platform = record.platform;
+		const direction = record.direction;
+		const occurredAt = record.occurredAt;
+		if (
+			typeof id !== "string" ||
+			typeof platform !== "string" ||
+			(direction !== "inbound" && direction !== "outbound") ||
+			typeof occurredAt !== "string"
+		) {
+			continue;
+		}
+		const summary =
+			typeof record.summary === "string" ? record.summary : undefined;
+		const externalRef =
+			typeof record.externalRef === "string" ? record.externalRef : undefined;
+		out.push({
+			id: id as UUID,
+			platform,
+			direction,
+			summary,
+			externalRef,
+			occurredAt,
+		});
+	}
+	return out;
+}
+
+function parseRelationshipGoal(
+	value: MetadataValue | undefined,
+): RelationshipGoal | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return undefined;
+	}
+	const record = value as { [key: string]: MetadataValue | undefined };
+	const goalText = record.goalText;
+	const setAt = record.setAt;
+	if (typeof goalText !== "string" || typeof setAt !== "string") {
+		return undefined;
+	}
+	const targetCadenceDays =
+		typeof record.targetCadenceDays === "number"
+			? record.targetCadenceDays
+			: undefined;
+	return { goalText, setAt, targetCadenceDays };
+}
+
+function parseRelationshipStatus(
+	value: MetadataValue | undefined,
+): RelationshipStatus {
+	if (
+		value === "active" ||
+		value === "dormant" ||
+		value === "archived" ||
+		value === "blocked" ||
+		value === "unknown"
+	) {
+		return value;
+	}
+	return "active";
 }
 
 /** Helper to convert Metadata back to ContactInfo */
 function metadataToContactInfo(data: Metadata): ContactInfo {
 	return {
 		entityId: data.entityId as UUID,
-		categories: data.categories as string[],
-		tags: data.tags as string[],
-		preferences: data.preferences as ContactPreferences,
+		categories: (data.categories as string[]) ?? [],
+		tags: (data.tags as string[]) ?? [],
+		preferences: (data.preferences as ContactPreferences) ?? {},
 		customFields: (data.customFields as Record<string, JsonValue>) ?? {},
 		privacyLevel: data.privacyLevel as "public" | "private" | "restricted",
 		lastModified: data.lastModified as string,
+		handles: parseHandles(data.handles),
+		interactions: parseInteractions(data.interactions),
+		followupThresholdDays:
+			typeof data.followupThresholdDays === "number"
+				? data.followupThresholdDays
+				: undefined,
+		lastInteractionAt:
+			typeof data.lastInteractionAt === "string"
+				? data.lastInteractionAt
+				: undefined,
+		relationshipGoal: parseRelationshipGoal(data.relationshipGoal),
+		relationshipStatus: parseRelationshipStatus(data.relationshipStatus),
 	};
 }
 
@@ -89,6 +321,61 @@ export interface RelationshipAnalytics {
 	sentimentScore?: number;
 	topicsDiscussed: string[];
 }
+
+/**
+ * Strengthened identity record persisted in `entity_identities`. The legacy
+ * `metadata.platformIdentities` array on the entity row is still kept in sync
+ * for backwards compatibility with existing UI code paths, but this typed
+ * record is the source of truth going forward.
+ */
+export interface EntityIdentityRecord {
+	id: UUID;
+	entityId: UUID;
+	platform: string;
+	handle: string;
+	verified: boolean;
+	confidence: number;
+	source?: string;
+	firstSeen: string;
+	lastSeen: string;
+	evidenceMessageIds: UUID[];
+}
+
+/**
+ * Lightweight payload accepted by `upsertIdentity`. Mirrors the
+ * `PlatformIdentity` shape emitted by the relationship-extraction evaluator.
+ */
+export interface PlatformIdentityInput {
+	platform: string;
+	handle: string;
+	verified?: boolean;
+	confidence: number;
+	source?: string;
+}
+
+export type MergeCandidateStatus = "pending" | "accepted" | "rejected";
+
+export interface MergeCandidateEvidence {
+	platform?: string;
+	handle?: string;
+	identityIds?: UUID[];
+	notes?: string;
+	[extra: string]: JsonValue | UUID[] | undefined;
+}
+
+export interface MergeCandidateRecord {
+	id: UUID;
+	entityA: UUID;
+	entityB: UUID;
+	confidence: number;
+	evidence: MergeCandidateEvidence;
+	status: MergeCandidateStatus;
+	proposedAt: string;
+	resolvedAt?: string;
+}
+
+const AUTO_MERGE_CONFIDENCE_THRESHOLD = 0.85;
+const AUTO_MERGE_MIN_EVIDENCE = 2;
 
 export interface FollowUpSchedule {
 	entityId: UUID;
@@ -493,6 +780,9 @@ export class RelationshipsService extends Service {
 			customFields: customFields ?? ({} as Record<string, JsonValue>),
 			privacyLevel: "private",
 			lastModified: new Date().toISOString(),
+			handles: [],
+			interactions: [],
+			relationshipStatus: "active",
 		};
 
 		// Save as component
@@ -992,4 +1282,1131 @@ export class RelationshipsService extends Service {
 				return false;
 		}
 	}
+
+	// ───────────────────────────────────────────────────────────────────────
+	// Rolodex extensions (T7b)
+	// ───────────────────────────────────────────────────────────────────────
+
+	/** Persist a ContactInfo back to its component + cache. */
+	private async persistContactInfo(contactInfo: ContactInfo): Promise<void> {
+		const stored = await this.getStoredContactComponent(contactInfo.entityId);
+		if (!stored) {
+			throw new Error(
+				`[RelationshipsService] Contact component missing for ${contactInfo.entityId}`,
+			);
+		}
+		const next: ContactInfo = {
+			...contactInfo,
+			lastModified: new Date().toISOString(),
+		};
+		await this.runtime.updateComponent({
+			...stored,
+			data: contactInfoToMetadata(next),
+		});
+		this.setCacheWithLimit(
+			this.contactInfoCache,
+			next.entityId,
+			next,
+			RelationshipsService.CONTACT_CACHE_LIMIT,
+		);
+	}
+
+	/**
+	 * Add a platform handle to a contact. Enforces uniqueness on
+	 * (platform, identifier) pairs across the contact.
+	 */
+	async addHandle(
+		contactId: UUID,
+		handle: {
+			platform: string;
+			identifier: string;
+			displayLabel?: string;
+			isPrimary?: boolean;
+		},
+	): Promise<ContactHandle> {
+		const platform = handle.platform.trim().toLowerCase();
+		const identifier = handle.identifier.trim();
+		if (platform.length === 0 || identifier.length === 0) {
+			throw new Error("Handle platform and identifier are required");
+		}
+
+		const contact = await this.getContact(contactId);
+		if (!contact) {
+			throw new Error(`Contact ${contactId} not found`);
+		}
+
+		const normalizedIdentifier = identifier.toLowerCase();
+		const duplicate = contact.handles.find(
+			(h) =>
+				h.platform === platform &&
+				h.identifier.toLowerCase() === normalizedIdentifier,
+		);
+		if (duplicate) {
+			return duplicate;
+		}
+
+		const newHandle: ContactHandle = {
+			id: stringToUuid(
+				`handle-${contactId}-${platform}-${identifier}-${Date.now()}`,
+			),
+			platform,
+			identifier,
+			displayLabel: handle.displayLabel,
+			isPrimary: handle.isPrimary,
+			addedAt: new Date().toISOString(),
+		};
+
+		let handles = [...contact.handles, newHandle];
+		if (newHandle.isPrimary === true) {
+			handles = handles.map((h) =>
+				h.platform === platform && h.id !== newHandle.id
+					? { ...h, isPrimary: false }
+					: h,
+			);
+		}
+
+		await this.persistContactInfo({ ...contact, handles });
+		logger.info(
+			`[RelationshipsService] Added handle ${platform}:${identifier} to ${contactId}`,
+		);
+		return newHandle;
+	}
+
+	async removeHandle(contactId: UUID, handleId: UUID): Promise<boolean> {
+		const contact = await this.getContact(contactId);
+		if (!contact) return false;
+
+		const filtered = contact.handles.filter((h) => h.id !== handleId);
+		if (filtered.length === contact.handles.length) {
+			return false;
+		}
+		await this.persistContactInfo({ ...contact, handles: filtered });
+		logger.info(
+			`[RelationshipsService] Removed handle ${handleId} from ${contactId}`,
+		);
+		return true;
+	}
+
+	/**
+	 * Record an interaction with a contact. Trims interaction history to
+	 * MAX_INTERACTION_HISTORY entries (most recent kept). Updates
+	 * lastInteractionAt so followup thresholds stay accurate.
+	 */
+	async recordInteraction(
+		input: RecordInteractionInput,
+	): Promise<ContactInteraction> {
+		const contact = await this.getContact(input.contactId);
+		if (!contact) {
+			throw new Error(`Contact ${input.contactId} not found`);
+		}
+
+		const platform = input.platform.trim().toLowerCase();
+		if (platform.length === 0) {
+			throw new Error("Interaction platform is required");
+		}
+
+		const occurredAt = input.occurredAt ?? new Date().toISOString();
+
+		const interaction: ContactInteraction = {
+			id: stringToUuid(
+				`interaction-${input.contactId}-${platform}-${occurredAt}-${Math.random()}`,
+			),
+			platform,
+			direction: input.direction,
+			summary: input.summary,
+			externalRef: input.externalRef,
+			occurredAt,
+		};
+
+		const appended = [...contact.interactions, interaction].sort(
+			(a, b) =>
+				new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
+		);
+		const trimmed =
+			appended.length > MAX_INTERACTION_HISTORY
+				? appended.slice(appended.length - MAX_INTERACTION_HISTORY)
+				: appended;
+
+		const latestAt = trimmed[trimmed.length - 1]?.occurredAt;
+		const currentLatest = contact.lastInteractionAt
+			? new Date(contact.lastInteractionAt).getTime()
+			: 0;
+		const nextLastInteractionAt =
+			latestAt && new Date(latestAt).getTime() >= currentLatest
+				? latestAt
+				: contact.lastInteractionAt;
+
+		await this.persistContactInfo({
+			...contact,
+			interactions: trimmed,
+			lastInteractionAt: nextLastInteractionAt,
+		});
+
+		return interaction;
+	}
+
+	/**
+	 * Find a contact by one of its platform handles. Match is case-insensitive
+	 * on identifier; platform is normalized to lowercase.
+	 */
+	async findByHandle(
+		platform: string,
+		identifier: string,
+	): Promise<ContactInfo | null> {
+		const normalizedPlatform = platform.trim().toLowerCase();
+		const normalizedIdentifier = identifier.trim().toLowerCase();
+		if (normalizedPlatform.length === 0 || normalizedIdentifier.length === 0) {
+			return null;
+		}
+
+		for (const contact of this.contactInfoCache.values()) {
+			const match = contact.handles.find(
+				(h) =>
+					h.platform === normalizedPlatform &&
+					h.identifier.toLowerCase() === normalizedIdentifier,
+			);
+			if (match) return contact;
+		}
+		return null;
+	}
+
+	/**
+	 * Merge two contacts. Handles, interactions, tags, and categories from the
+	 * secondary are folded into the primary. The secondary contact is removed.
+	 */
+	async mergeContacts(
+		primaryId: UUID,
+		secondaryId: UUID,
+	): Promise<ContactInfo> {
+		if (primaryId === secondaryId) {
+			throw new Error("Cannot merge a contact with itself");
+		}
+		const primary = await this.getContact(primaryId);
+		const secondary = await this.getContact(secondaryId);
+		if (!primary) {
+			throw new Error(`Primary contact ${primaryId} not found`);
+		}
+		if (!secondary) {
+			throw new Error(`Secondary contact ${secondaryId} not found`);
+		}
+
+		// Merge handles, dedupe on (platform, identifier)
+		const handleKey = (h: ContactHandle) =>
+			`${h.platform}:${h.identifier.toLowerCase()}`;
+		const mergedHandlesMap = new Map<string, ContactHandle>();
+		for (const h of [...primary.handles, ...secondary.handles]) {
+			if (!mergedHandlesMap.has(handleKey(h))) {
+				mergedHandlesMap.set(handleKey(h), h);
+			}
+		}
+
+		// Merge interactions (dedupe by id) and keep sorted
+		const interactionMap = new Map<UUID, ContactInteraction>();
+		for (const i of [...primary.interactions, ...secondary.interactions]) {
+			interactionMap.set(i.id, i);
+		}
+		const mergedInteractions = Array.from(interactionMap.values()).sort(
+			(a, b) =>
+				new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
+		);
+		const trimmedInteractions =
+			mergedInteractions.length > MAX_INTERACTION_HISTORY
+				? mergedInteractions.slice(
+						mergedInteractions.length - MAX_INTERACTION_HISTORY,
+					)
+				: mergedInteractions;
+
+		const mergedCategories = Array.from(
+			new Set([...primary.categories, ...secondary.categories]),
+		);
+		const mergedTags = Array.from(
+			new Set([...primary.tags, ...secondary.tags]),
+		);
+
+		const primaryLast = primary.lastInteractionAt
+			? new Date(primary.lastInteractionAt).getTime()
+			: 0;
+		const secondaryLast = secondary.lastInteractionAt
+			? new Date(secondary.lastInteractionAt).getTime()
+			: 0;
+		const latestInteractionAt =
+			primaryLast >= secondaryLast
+				? primary.lastInteractionAt
+				: secondary.lastInteractionAt;
+
+		const merged: ContactInfo = {
+			...primary,
+			categories: mergedCategories,
+			tags: mergedTags,
+			handles: Array.from(mergedHandlesMap.values()),
+			interactions: trimmedInteractions,
+			lastInteractionAt: latestInteractionAt,
+			relationshipGoal: primary.relationshipGoal ?? secondary.relationshipGoal,
+			followupThresholdDays:
+				primary.followupThresholdDays ?? secondary.followupThresholdDays,
+			customFields: { ...secondary.customFields, ...primary.customFields },
+			preferences: { ...secondary.preferences, ...primary.preferences },
+		};
+
+		await this.persistContactInfo(merged);
+		await this.removeContact(secondaryId);
+
+		logger.info(
+			`[RelationshipsService] Merged ${secondaryId} into ${primaryId}`,
+		);
+		return merged;
+	}
+
+	async setRelationshipGoal(
+		contactId: UUID,
+		goal: { goalText: string; targetCadenceDays?: number },
+	): Promise<RelationshipGoal> {
+		const contact = await this.getContact(contactId);
+		if (!contact) {
+			throw new Error(`Contact ${contactId} not found`);
+		}
+		const goalText = goal.goalText.trim();
+		if (goalText.length === 0) {
+			throw new Error("Goal text is required");
+		}
+
+		const relationshipGoal: RelationshipGoal = {
+			goalText,
+			targetCadenceDays: goal.targetCadenceDays,
+			setAt: new Date().toISOString(),
+		};
+
+		await this.persistContactInfo({
+			...contact,
+			relationshipGoal,
+			followupThresholdDays:
+				goal.targetCadenceDays ?? contact.followupThresholdDays,
+		});
+		logger.info(
+			`[RelationshipsService] Set relationship goal for ${contactId}`,
+		);
+		return relationshipGoal;
+	}
+
+	async getRelationshipProgress(
+		contactId: UUID,
+	): Promise<RelationshipProgress | null> {
+		const contact = await this.getContact(contactId);
+		if (!contact) return null;
+
+		const goal = contact.relationshipGoal ?? null;
+		const last = contact.lastInteractionAt ?? null;
+		const targetCadence =
+			goal?.targetCadenceDays ?? contact.followupThresholdDays ?? null;
+
+		let daysSinceInteraction: number | null = null;
+		if (last) {
+			daysSinceInteraction =
+				(Date.now() - new Date(last).getTime()) / (1000 * 60 * 60 * 24);
+		}
+
+		let cadenceHealth: RelationshipProgress["cadenceHealth"];
+		if (targetCadence === null) {
+			cadenceHealth = "no-goal";
+		} else if (daysSinceInteraction === null) {
+			cadenceHealth = "never-contacted";
+		} else if (daysSinceInteraction < targetCadence * 0.8) {
+			cadenceHealth = "on-track";
+		} else if (daysSinceInteraction <= targetCadence) {
+			cadenceHealth = "due";
+		} else {
+			cadenceHealth = "overdue";
+		}
+
+		return {
+			contactId,
+			goal,
+			lastInteractionAt: last,
+			cadenceHealth,
+			daysSinceInteraction,
+			targetCadenceDays: targetCadence,
+		};
+	}
+
+	/**
+	 * List all contacts whose followup threshold has lapsed. A contact is
+	 * considered overdue when:
+	 *   - followupThresholdDays is set (or defaultThresholdDays is provided), AND
+	 *   - (now - lastInteractionAt) > thresholdDays, OR lastInteractionAt is null.
+	 */
+	async listOverdueFollowups(
+		options?: ListOverdueOptions,
+	): Promise<OverdueFollowup[]> {
+		const asOf = options?.asOfMs ?? Date.now();
+		const defaultThreshold = options?.defaultThresholdDays;
+		const results: OverdueFollowup[] = [];
+
+		for (const contact of this.contactInfoCache.values()) {
+			if (contact.relationshipStatus === "archived") continue;
+			if (contact.relationshipStatus === "blocked") continue;
+
+			const threshold =
+				contact.followupThresholdDays ??
+				contact.relationshipGoal?.targetCadenceDays ??
+				defaultThreshold;
+			if (threshold === undefined) continue;
+
+			if (!contact.lastInteractionAt) {
+				results.push({
+					contact,
+					daysSinceInteraction: Number.POSITIVE_INFINITY,
+					thresholdDays: threshold,
+				});
+				continue;
+			}
+
+			const daysSince =
+				(asOf - new Date(contact.lastInteractionAt).getTime()) /
+				(1000 * 60 * 60 * 24);
+			if (daysSince > threshold) {
+				results.push({
+					contact,
+					daysSinceInteraction: daysSince,
+					thresholdDays: threshold,
+				});
+			}
+		}
+
+		results.sort((a, b) => b.daysSinceInteraction - a.daysSinceInteraction);
+		return results;
+	}
+
+	/**
+	 * Import contacts from an external platform. For each seed:
+	 *   - if an existing contact has a matching (platform, identifier) handle,
+	 *     link any new metadata and return it as linkedToExisting;
+	 *   - otherwise create a new entity + contact.
+	 */
+	async importContactsFromPlatform(
+		platform: string,
+		contacts: PlatformContactSeed[],
+	): Promise<PlatformImportResult> {
+		const normalizedPlatform = platform.trim().toLowerCase();
+		if (normalizedPlatform.length === 0) {
+			throw new Error("Platform is required for import");
+		}
+
+		const imported: ContactInfo[] = [];
+		const linkedToExisting: ContactInfo[] = [];
+		const skipped: Array<{ seed: PlatformContactSeed; reason: string }> = [];
+
+		for (const seed of contacts) {
+			const seedPlatform = (seed.platform ?? normalizedPlatform)
+				.trim()
+				.toLowerCase();
+			const identifier = seed.identifier?.trim();
+			if (!identifier) {
+				skipped.push({ seed, reason: "missing identifier" });
+				continue;
+			}
+
+			const existing = await this.findByHandle(seedPlatform, identifier);
+			if (existing) {
+				const refreshed = await this.getContact(existing.entityId);
+				if (refreshed) linkedToExisting.push(refreshed);
+				continue;
+			}
+
+			const displayName = seed.displayName?.trim() || identifier;
+			const entityId = stringToUuid(
+				`contact-import-${seedPlatform}-${identifier}-${this.runtime.agentId}`,
+			);
+
+			const existingEntity = await this.runtime.getEntityById(entityId);
+			if (!existingEntity) {
+				await this.runtime.createEntity({
+					id: entityId,
+					names: [displayName],
+					agentId: this.runtime.agentId,
+				});
+			}
+
+			const preferences: ContactPreferences = {};
+			if (seed.notes) preferences.notes = seed.notes;
+
+			const newContact = await this.addContact(
+				entityId,
+				seed.categories ?? ["acquaintance"],
+				preferences,
+				{ displayName },
+			);
+
+			if (seed.tags && seed.tags.length > 0) {
+				await this.persistContactInfo({
+					...newContact,
+					tags: Array.from(new Set([...newContact.tags, ...seed.tags])),
+				});
+			}
+
+			await this.addHandle(entityId, {
+				platform: seedPlatform,
+				identifier,
+				displayLabel: seed.displayLabel,
+				isPrimary: true,
+			});
+
+			const finalContact = await this.getContact(entityId);
+			if (finalContact) imported.push(finalContact);
+		}
+
+		logger.info(
+			`[RelationshipsService] Imported ${imported.length}, linked ${linkedToExisting.length}, skipped ${skipped.length} from ${normalizedPlatform}`,
+		);
+		return { imported, linkedToExisting, skipped };
+	}
+
+	// ───────────────────────────────────────────────────────────────────────
+	// Identity strengthening (entity_identities + entity_merge_candidates)
+	// ───────────────────────────────────────────────────────────────────────
+
+	private getRuntimeDb(): RuntimeDbExecutor | null {
+		const adapter = (
+			this.runtime as IAgentRuntime & { adapter?: { db?: unknown } }
+		).adapter;
+		const db = adapter?.db as RuntimeDbExecutor | undefined;
+		if (!db || typeof db.execute !== "function") {
+			return null;
+		}
+		return db;
+	}
+
+	private async execSql(
+		sqlText: string,
+	): Promise<{ rows: Record<string, unknown>[] }> {
+		const db = this.getRuntimeDb();
+		if (!db) {
+			throw new Error(
+				"[RelationshipsService] runtime database adapter unavailable",
+			);
+		}
+		const drizzle = (await import("drizzle-orm")) as {
+			sql: { raw: (query: string) => { queryChunks: object[] } };
+		};
+		const result = (await db.execute(drizzle.sql.raw(sqlText))) as {
+			rows?: Record<string, unknown>[];
+		};
+		return { rows: Array.isArray(result.rows) ? result.rows : [] };
+	}
+
+	/**
+	 * Insert or strengthen an `entity_identities` row. Re-observations of the
+	 * same (entity, platform, handle) triple bump confidence to the max,
+	 * append (deduped) evidence message ids, and update last_seen.
+	 *
+	 * When the same (platform, handle) pair has already been observed for a
+	 * different entity AND this observation is high-confidence with
+	 * sufficient evidence, an auto-merge candidate is proposed and accepted.
+	 */
+	async upsertIdentity(
+		entityId: UUID,
+		identity: PlatformIdentityInput,
+		evidenceMessageIds: UUID[] = [],
+	): Promise<void> {
+		const platform = identity.platform.trim().toLowerCase();
+		const handle = identity.handle.trim();
+		if (platform.length === 0 || handle.length === 0) {
+			throw new Error(
+				"[RelationshipsService] upsertIdentity requires non-empty platform and handle",
+			);
+		}
+		const confidence = clampConfidence(identity.confidence);
+		const verified = identity.verified === true;
+		const dedupedEvidence = Array.from(new Set(evidenceMessageIds));
+		const evidenceLiteral = sqlJsonbLiteral(dedupedEvidence);
+		const sourceLiteral =
+			typeof identity.source === "string" && identity.source.trim().length > 0
+				? sqlQuote(identity.source.trim())
+				: "NULL";
+		const verifiedLiteral = verified ? "TRUE" : "FALSE";
+		const platformLiteral = sqlQuote(platform);
+		const handleLiteral = sqlQuote(handle);
+		const entityLiteral = sqlQuote(entityId);
+		const agentLiteral = sqlQuote(this.runtime.agentId);
+
+		const upsertSql = `INSERT INTO entity_identities (
+				entity_id, agent_id, platform, handle, verified, confidence, source,
+				first_seen, last_seen, evidence_message_ids
+			) VALUES (
+				${entityLiteral}, ${agentLiteral}, ${platformLiteral}, ${handleLiteral},
+				${verifiedLiteral}, ${confidence}, ${sourceLiteral},
+				now(), now(), ${evidenceLiteral}
+			)
+			ON CONFLICT ON CONSTRAINT unique_entity_identity DO UPDATE SET
+				confidence = GREATEST(entity_identities.confidence, EXCLUDED.confidence),
+				verified = entity_identities.verified OR EXCLUDED.verified,
+				last_seen = now(),
+				source = COALESCE(EXCLUDED.source, entity_identities.source),
+				evidence_message_ids = (
+					SELECT to_jsonb(array_agg(DISTINCT element))
+					FROM jsonb_array_elements_text(
+						COALESCE(entity_identities.evidence_message_ids, '[]'::jsonb)
+						|| COALESCE(EXCLUDED.evidence_message_ids, '[]'::jsonb)
+					) AS element
+				)`;
+
+		await this.execSql(upsertSql);
+
+		// Auto-merge: if this (platform, handle) is already pinned to another
+		// entity, surface — and possibly accept — a merge candidate.
+		if (
+			confidence >= AUTO_MERGE_CONFIDENCE_THRESHOLD &&
+			dedupedEvidence.length >= AUTO_MERGE_MIN_EVIDENCE
+		) {
+			const collisions = await this.findEntitiesByIdentity(platform, handle);
+			for (const otherEntityId of collisions) {
+				if (otherEntityId === entityId) continue;
+				const candidate = await this.proposeMerge(entityId, otherEntityId, {
+					platform,
+					handle,
+					notes: "auto-detected high-confidence identity collision",
+				});
+				await this.acceptMerge(candidate);
+			}
+		}
+	}
+
+	async getEntityIdentities(entityId: UUID): Promise<EntityIdentityRecord[]> {
+		const result = await this.execSql(
+			`SELECT id, entity_id, platform, handle, verified, confidence, source,
+				first_seen, last_seen, evidence_message_ids
+			 FROM entity_identities
+			 WHERE entity_id = ${sqlQuote(entityId)}
+				AND agent_id = ${sqlQuote(this.runtime.agentId)}
+			 ORDER BY confidence DESC, last_seen DESC`,
+		);
+		return result.rows.map(parseEntityIdentityRow);
+	}
+
+	private async findEntitiesByIdentity(
+		platform: string,
+		handle: string,
+	): Promise<UUID[]> {
+		const result = await this.execSql(
+			`SELECT DISTINCT entity_id
+			 FROM entity_identities
+			 WHERE platform = ${sqlQuote(platform)}
+				AND handle = ${sqlQuote(handle)}
+				AND agent_id = ${sqlQuote(this.runtime.agentId)}`,
+		);
+		const ids: UUID[] = [];
+		for (const row of result.rows) {
+			const value = row.entity_id;
+			if (typeof value === "string" && value.length > 0) {
+				ids.push(asUUID(value));
+			}
+		}
+		return ids;
+	}
+
+	async proposeMerge(
+		entityA: UUID,
+		entityB: UUID,
+		evidence: MergeCandidateEvidence,
+	): Promise<UUID> {
+		if (entityA === entityB) {
+			throw new Error(
+				"[RelationshipsService] proposeMerge requires two distinct entities",
+			);
+		}
+		// entity_a is the *surviving* entity. Order is intentional and not
+		// normalized — the caller picks the canonical side, and acceptMerge
+		// folds entity_b into entity_a.
+		const evidenceLiteral = sqlJsonbLiteral(evidence);
+		const confidence = clampConfidence(
+			typeof evidence.confidence === "number" ? evidence.confidence : 1,
+		);
+		const result = await this.execSql(
+			`INSERT INTO entity_merge_candidates (
+				agent_id, entity_a, entity_b, confidence, evidence, status
+			) VALUES (
+				${sqlQuote(this.runtime.agentId)},
+				${sqlQuote(entityA)},
+				${sqlQuote(entityB)},
+				${confidence},
+				${evidenceLiteral},
+				'pending'
+			) RETURNING id`,
+		);
+		const row = result.rows[0];
+		const id = row?.id;
+		if (typeof id !== "string") {
+			throw new Error(
+				"[RelationshipsService] proposeMerge: insert did not return an id",
+			);
+		}
+		logger.info(
+			`[RelationshipsService] Proposed merge candidate ${id} (${entityA} <-> ${entityB})`,
+		);
+		return asUUID(id);
+	}
+
+	async getCandidateMerges(): Promise<MergeCandidateRecord[]> {
+		const result = await this.execSql(
+			`SELECT id, entity_a, entity_b, confidence, evidence, status,
+				proposed_at, resolved_at
+			 FROM entity_merge_candidates
+			 WHERE agent_id = ${sqlQuote(this.runtime.agentId)}
+				AND status = 'pending'
+			 ORDER BY proposed_at DESC`,
+		);
+		return result.rows.map(parseMergeCandidateRow);
+	}
+
+	async acceptMerge(candidateId: UUID): Promise<void> {
+		const result = await this.execSql(
+			`SELECT id, entity_a, entity_b, confidence, evidence, status,
+				proposed_at, resolved_at
+			 FROM entity_merge_candidates
+			 WHERE id = ${sqlQuote(candidateId)}
+				AND agent_id = ${sqlQuote(this.runtime.agentId)}
+			 LIMIT 1`,
+		);
+		const row = result.rows[0];
+		if (!row) {
+			throw new Error(
+				`[RelationshipsService] merge candidate ${candidateId} not found`,
+			);
+		}
+		const candidate = parseMergeCandidateRow(row);
+		if (candidate.status !== "pending") {
+			logger.info(
+				`[RelationshipsService] Merge candidate ${candidateId} already ${candidate.status}`,
+			);
+			return;
+		}
+
+		// Move identities + relationships from B into A, dedupe via the unique
+		// constraint, then collapse the secondary contact (if any). PGlite's
+		// prepared-statement protocol disallows multi-statement queries, so we
+		// issue each step as its own execute() inside an explicit transaction.
+		const a = sqlQuote(candidate.entityA);
+		const b = sqlQuote(candidate.entityB);
+		const agent = sqlQuote(this.runtime.agentId);
+		const candidateLiteral = sqlQuote(candidateId);
+
+		await this.execSql("BEGIN");
+		try {
+			await this.execSql(
+				`INSERT INTO entity_identities (
+					entity_id, agent_id, platform, handle, verified, confidence, source,
+					first_seen, last_seen, evidence_message_ids
+				)
+				SELECT ${a}, agent_id, platform, handle, verified, confidence, source,
+					first_seen, last_seen, evidence_message_ids
+				FROM entity_identities
+				WHERE entity_id = ${b} AND agent_id = ${agent}
+				ON CONFLICT ON CONSTRAINT unique_entity_identity DO UPDATE SET
+					confidence = GREATEST(entity_identities.confidence, EXCLUDED.confidence),
+					verified = entity_identities.verified OR EXCLUDED.verified,
+					last_seen = GREATEST(entity_identities.last_seen, EXCLUDED.last_seen)`,
+			);
+			await this.execSql(
+				`DELETE FROM entity_identities
+				 WHERE entity_id = ${b} AND agent_id = ${agent}`,
+			);
+			await this.execSql(
+				`UPDATE entity_merge_candidates
+				 SET status = 'accepted', resolved_at = now()
+				 WHERE id = ${candidateLiteral}`,
+			);
+			await this.execSql("COMMIT");
+		} catch (err) {
+			await this.execSql("ROLLBACK").catch(() => undefined);
+			throw err;
+		}
+
+		// Fold the contact rows. mergeContacts requires both sides to have a
+		// contact; if only the secondary has one we drop it so the secondary
+		// entity does not retain stale relationship rows after the merge.
+		const [contactA, contactB] = await Promise.all([
+			this.getContact(candidate.entityA),
+			this.getContact(candidate.entityB),
+		]);
+		if (contactA && contactB) {
+			await this.mergeContacts(candidate.entityA, candidate.entityB);
+		} else if (contactB) {
+			await this.removeContact(candidate.entityB);
+		}
+
+		const existingIdentityLink = (
+			await this.runtime.getRelationships({
+				entityIds: [candidate.entityA, candidate.entityB],
+			})
+		).find((relationship) => {
+			const samePair =
+				(relationship.sourceEntityId === candidate.entityA &&
+					relationship.targetEntityId === candidate.entityB) ||
+				(relationship.sourceEntityId === candidate.entityB &&
+					relationship.targetEntityId === candidate.entityA);
+			return samePair && Array.isArray(relationship.tags);
+		});
+		const identityMetadata: Metadata = {
+			...((existingIdentityLink?.metadata as Metadata | undefined) ?? {}),
+			...(candidate.evidence as Metadata),
+			status: "confirmed",
+			mergeCandidateId: candidateId,
+			mergeSurvivorEntityId: candidate.entityA,
+			mergeFoldedEntityId: candidate.entityB,
+			source: "relationships.acceptMerge",
+		};
+		const identityTags = Array.from(
+			new Set([...(existingIdentityLink?.tags ?? []), "identity_link"]),
+		);
+		if (existingIdentityLink) {
+			await this.runtime.updateRelationship({
+				...existingIdentityLink,
+				tags: identityTags,
+				metadata: identityMetadata,
+			});
+		} else {
+			await this.runtime.createRelationship({
+				sourceEntityId: candidate.entityA,
+				targetEntityId: candidate.entityB,
+				tags: identityTags,
+				metadata: identityMetadata,
+			});
+		}
+
+		logger.info(
+			`[RelationshipsService] Accepted merge ${candidateId}; folded ${candidate.entityB} into ${candidate.entityA}`,
+		);
+	}
+
+	async rejectMerge(candidateId: UUID): Promise<void> {
+		await this.execSql(
+			`UPDATE entity_merge_candidates
+			 SET status = 'rejected', resolved_at = now()
+			 WHERE id = ${sqlQuote(candidateId)}
+				AND agent_id = ${sqlQuote(this.runtime.agentId)}`,
+		);
+		logger.info(`[RelationshipsService] Rejected merge ${candidateId}`);
+	}
+
+	/**
+	 * Return every entity that belongs to the same identity cluster as
+	 * `primaryEntityId`. An identity cluster is the connected component
+	 * formed by:
+	 *   - confirmed identity-link relationships (tag `identity_link`,
+	 *     metadata.status === "confirmed"), and
+	 *   - shared entity_identities rows (same (platform, handle) on two
+	 *     different entities).
+	 *
+	 * The returned array always includes `primaryEntityId` itself.
+	 * Semantics match the runtime-level clusterer in
+	 * `@elizaos/agent/src/services/relationships-graph.ts` (buildClusters),
+	 * including contact-platform suppression (email/phone/website handles
+	 * are *not* treated as cluster-forming — they're enrichment, not
+	 * identity evidence).
+	 */
+	async getMemberEntityIds(primaryEntityId: UUID): Promise<UUID[]> {
+		const uf = await this.buildIdentityUnionFind(primaryEntityId);
+		const members = uf.componentOf(primaryEntityId);
+		if (members.length === 0) {
+			return [primaryEntityId];
+		}
+		return members;
+	}
+
+	/**
+	 * Resolve an entity to its cluster's primary entity.
+	 *
+	 * The primary is the member with a contact_info component if one
+	 * exists; otherwise the lexicographically-smallest UUID. This matches
+	 * the runtime-level clusterer's tiebreaker semantics when no scoring
+	 * data (EntityContext) is available at the service layer.
+	 *
+	 * If the entity is not part of a multi-member cluster, returns the
+	 * entity id itself.
+	 */
+	async resolvePrimaryEntityId(entityId: UUID): Promise<UUID> {
+		const members = await this.getMemberEntityIds(entityId);
+		if (members.length <= 1) {
+			return entityId;
+		}
+		const contactEntries = await Promise.all(
+			members.map(async (memberId) => {
+				const contact = await this.getContact(memberId);
+				return contact ? memberId : null;
+			}),
+		);
+		for (const candidate of contactEntries) {
+			if (candidate) {
+				return candidate;
+			}
+		}
+		const sorted = [...members].sort();
+		return sorted[0];
+	}
+
+	/**
+	 * Build a UnionFind keyed by UUID containing every entity reachable
+	 * from `seedEntityId` via confirmed identity-link relationships or
+	 * shared entity_identities rows.
+	 *
+	 * We expand iteratively so we don't have to materialise the full
+	 * graph: at each step, we query relationships/identities for the
+	 * newly-discovered frontier and union in any new neighbours.
+	 */
+	private async buildIdentityUnionFind(
+		seedEntityId: UUID,
+	): Promise<UnionFind<UUID>> {
+		const uf = new UnionFind<UUID>([seedEntityId]);
+		const visited = new Set<UUID>();
+		let frontier: UUID[] = [seedEntityId];
+
+		while (frontier.length > 0) {
+			const nextFrontier = new Set<UUID>();
+			const pending = frontier.filter((id) => !visited.has(id));
+			for (const id of pending) {
+				visited.add(id);
+			}
+			if (pending.length === 0) {
+				break;
+			}
+
+			const relationships = await this.runtime.getRelationships({
+				entityIds: pending,
+			});
+			for (const relationship of relationships) {
+				if (!isConfirmedIdentityLinkLike(relationship)) continue;
+				uf.union(
+					relationship.sourceEntityId,
+					relationship.targetEntityId,
+				);
+				if (!visited.has(relationship.sourceEntityId)) {
+					nextFrontier.add(relationship.sourceEntityId);
+				}
+				if (!visited.has(relationship.targetEntityId)) {
+					nextFrontier.add(relationship.targetEntityId);
+				}
+			}
+
+			const identityRows = await this.getIdentityRowsForEntities(pending);
+			const entitiesByHandleKey = new Map<string, Set<UUID>>();
+			for (const row of identityRows) {
+				if (CONTACT_HANDLE_PLATFORMS.has(row.platform.toLowerCase())) {
+					continue;
+				}
+				const key = `${row.platform.toLowerCase()}:${row.handle.toLowerCase()}`;
+				const bucket = entitiesByHandleKey.get(key) ?? new Set<UUID>();
+				bucket.add(row.entityId);
+				entitiesByHandleKey.set(key, bucket);
+			}
+			for (const key of entitiesByHandleKey.keys()) {
+				const matches = await this.findEntitiesSharingHandleKey(key);
+				const combined = entitiesByHandleKey.get(key) ?? new Set<UUID>();
+				for (const m of matches) combined.add(m);
+				if (combined.size < 2) continue;
+				const members = Array.from(combined);
+				const anchor = members[0];
+				for (const other of members.slice(1)) {
+					uf.union(anchor, other);
+					if (!visited.has(other)) {
+						nextFrontier.add(other);
+					}
+				}
+			}
+
+			frontier = Array.from(nextFrontier);
+		}
+
+		return uf;
+	}
+
+	private async getIdentityRowsForEntities(
+		entityIds: UUID[],
+	): Promise<Array<{ entityId: UUID; platform: string; handle: string }>> {
+		if (entityIds.length === 0) return [];
+		const quoted = entityIds.map(sqlQuote).join(", ");
+		const result = await this.execSql(
+			`SELECT entity_id, platform, handle
+			 FROM entity_identities
+			 WHERE agent_id = ${sqlQuote(this.runtime.agentId)}
+				AND entity_id IN (${quoted})`,
+		);
+		const rows: Array<{ entityId: UUID; platform: string; handle: string }> = [];
+		for (const row of result.rows) {
+			const e = row.entity_id;
+			const p = row.platform;
+			const h = row.handle;
+			if (typeof e !== "string" || typeof p !== "string" || typeof h !== "string") {
+				continue;
+			}
+			rows.push({ entityId: asUUID(e), platform: p, handle: h });
+		}
+		return rows;
+	}
+
+	private async findEntitiesSharingHandleKey(
+		handleKey: string,
+	): Promise<UUID[]> {
+		const [platform, handle] = handleKey.split(":", 2);
+		if (!platform || handle === undefined) return [];
+		const result = await this.execSql(
+			`SELECT DISTINCT entity_id
+			 FROM entity_identities
+			 WHERE agent_id = ${sqlQuote(this.runtime.agentId)}
+				AND LOWER(platform) = ${sqlQuote(platform)}
+				AND LOWER(handle) = ${sqlQuote(handle)}`,
+		);
+		const ids: UUID[] = [];
+		for (const row of result.rows) {
+			const e = row.entity_id;
+			if (typeof e === "string" && e.length > 0) {
+				ids.push(asUUID(e));
+			}
+		}
+		return ids;
+	}
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// Identity helpers (kept module-private)
+// ───────────────────────────────────────────────────────────────────────
+
+interface RuntimeDbExecutor {
+	execute: (query: { queryChunks: object[] }) => Promise<unknown>;
+}
+
+function clampConfidence(value: number): number {
+	if (!Number.isFinite(value)) return 0;
+	if (value < 0) return 0;
+	if (value > 1) return 1;
+	return value;
+}
+
+function sqlQuote(value: string): string {
+	return `'${value.replace(/'/g, "''")}'`;
+}
+
+function sqlJsonbLiteral(value: unknown): string {
+	return `${sqlQuote(JSON.stringify(value ?? null))}::jsonb`;
+}
+
+function parseEntityIdentityRow(
+	row: Record<string, unknown>,
+): EntityIdentityRecord {
+	const id = row.id;
+	const entityId = row.entity_id;
+	const platform = row.platform;
+	const handle = row.handle;
+	if (
+		typeof id !== "string" ||
+		typeof entityId !== "string" ||
+		typeof platform !== "string" ||
+		typeof handle !== "string"
+	) {
+		throw new Error(
+			"[RelationshipsService] entity_identities row missing required fields",
+		);
+	}
+	const evidenceRaw = row.evidence_message_ids;
+	const evidenceArray =
+		typeof evidenceRaw === "string"
+			? safeJsonArray(evidenceRaw)
+			: Array.isArray(evidenceRaw)
+				? evidenceRaw
+				: [];
+	const evidence: UUID[] = [];
+	for (const entry of evidenceArray) {
+		if (typeof entry === "string" && entry.length > 0) {
+			evidence.push(asUUID(entry));
+		}
+	}
+	return {
+		id: asUUID(id),
+		entityId: asUUID(entityId),
+		platform,
+		handle,
+		verified: row.verified === true,
+		confidence:
+			typeof row.confidence === "number" && Number.isFinite(row.confidence)
+				? row.confidence
+				: 0,
+		source: typeof row.source === "string" ? row.source : undefined,
+		firstSeen: toIsoString(row.first_seen),
+		lastSeen: toIsoString(row.last_seen),
+		evidenceMessageIds: evidence,
+	};
+}
+
+function parseMergeCandidateRow(
+	row: Record<string, unknown>,
+): MergeCandidateRecord {
+	const id = row.id;
+	const entityA = row.entity_a;
+	const entityB = row.entity_b;
+	if (
+		typeof id !== "string" ||
+		typeof entityA !== "string" ||
+		typeof entityB !== "string"
+	) {
+		throw new Error(
+			"[RelationshipsService] entity_merge_candidates row missing required fields",
+		);
+	}
+	const status = row.status;
+	const normalizedStatus: MergeCandidateStatus =
+		status === "accepted" || status === "rejected" ? status : "pending";
+	const evidenceRaw = row.evidence;
+	let evidence: MergeCandidateEvidence = {};
+	if (typeof evidenceRaw === "string") {
+		const parsed = safeJsonObject(evidenceRaw);
+		if (parsed) evidence = parsed as MergeCandidateEvidence;
+	} else if (
+		evidenceRaw &&
+		typeof evidenceRaw === "object" &&
+		!Array.isArray(evidenceRaw)
+	) {
+		evidence = evidenceRaw as MergeCandidateEvidence;
+	}
+	return {
+		id: asUUID(id),
+		entityA: asUUID(entityA),
+		entityB: asUUID(entityB),
+		confidence:
+			typeof row.confidence === "number" && Number.isFinite(row.confidence)
+				? row.confidence
+				: 0,
+		evidence,
+		status: normalizedStatus,
+		proposedAt: toIsoString(row.proposed_at),
+		resolvedAt:
+			row.resolved_at != null ? toIsoString(row.resolved_at) : undefined,
+	};
+}
+
+function safeJsonArray(value: string): unknown[] {
+	const trimmed = value.trim();
+	if (!trimmed) return [];
+	const parsed = JSON.parse(trimmed) as unknown;
+	return Array.isArray(parsed) ? parsed : [];
+}
+
+function safeJsonObject(value: string): Record<string, unknown> | null {
+	const trimmed = value.trim();
+	if (!trimmed) return null;
+	const parsed = JSON.parse(trimmed) as unknown;
+	if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+		return parsed as Record<string, unknown>;
+	}
+	return null;
+}
+
+function toIsoString(value: unknown): string {
+	if (value instanceof Date) return value.toISOString();
+	if (typeof value === "string") {
+		const parsed = new Date(value);
+		if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+		return value;
+	}
+	if (typeof value === "number" && Number.isFinite(value)) {
+		return new Date(value).toISOString();
+	}
+	return new Date().toISOString();
 }

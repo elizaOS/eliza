@@ -1,7 +1,6 @@
-
+import { cn } from "@elizaos/ui";
 import type { ButtonHTMLAttributes, CSSProperties } from "react";
 import { useId } from "react";
-import { cn } from "@elizaos/ui";
 import {
   onboardingReadableTextFaintClassName,
   onboardingReadableTextMutedClassName,
@@ -127,11 +126,7 @@ export function OnboardingStepHeader({
       : onboardingEyebrowClass;
 
   return (
-    <header
-      className={onboardingHeaderBlockClass}
-      aria-labelledby={headingId}
-      aria-describedby={hasBodyDescription ? descriptionId : undefined}
-    >
+    <div className={onboardingHeaderBlockClass}>
       {usesTitleHeading || usesDescriptionHeading ? (
         <p
           className={onboardingEyebrowClass}
@@ -161,7 +156,7 @@ export function OnboardingStepHeader({
           {description}
         </p>
       ) : null}
-    </header>
+    </div>
   );
 }
 

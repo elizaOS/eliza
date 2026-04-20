@@ -1,15 +1,13 @@
-import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
+import type { Action, ActionExample, HandlerOptions, IAgentRuntime } from "@elizaos/core";
 import { requestRestart } from "@elizaos/shared/restart";
+import {
+  isPluginManagerLike,
+  type PluginManagerLike,
+} from "../services/plugin-manager-types.js";
 
-function getPluginManager(runtime: IAgentRuntime) {
-  return runtime.getService("plugin_manager") as unknown as {
-    reinjectPlugin(id: string): Promise<{
-      success: boolean;
-      pluginName: string;
-      removedPath: string;
-      error?: string;
-    }>;
-  } | null;
+function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
+  const svc = runtime.getService("plugin_manager");
+  return isPluginManagerLike(svc) ? svc : null;
 }
 
 export const reinjectPluginAction: Action = {
@@ -67,4 +65,34 @@ export const reinjectPluginAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Throw away my local edits to the discord plugin and go back to the npm version.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Removed ejected plugin @elizaos/plugin-discord. Restarting to load npm version.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Reset the telegram plugin to the published release.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Removed ejected plugin @elizaos/plugin-telegram. Restarting to load npm version.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

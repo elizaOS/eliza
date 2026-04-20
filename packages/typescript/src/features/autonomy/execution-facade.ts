@@ -9,16 +9,16 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
-import { createUniqueUuid } from "../../entities";
+import { createUniqueUuid } from "../../entities.ts";
 import type {
 	Content,
 	HandlerCallback,
 	IAgentRuntime,
 	Memory,
 	State,
-} from "../../types";
-import { outgoingPipelineHookContext } from "../../types/pipeline-hooks";
-import { stringToUuid } from "../../utils";
+} from "../../types/index.ts";
+import { outgoingPipelineHookContext } from "../../types/pipeline-hooks.ts";
+import { stringToUuid } from "../../utils.ts";
 
 /**
  * Normalize batcher result fields into Content shape expected by processActions

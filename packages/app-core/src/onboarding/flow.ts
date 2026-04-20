@@ -15,6 +15,7 @@
  * Tests: tests/flow.test.ts
  */
 
+import { canRunLocal } from "../platform/init";
 import type {
   FlaminaGuideTopic,
   OnboardingStep,
@@ -74,13 +75,13 @@ export function canRevertOnboardingTo(params: {
 
 /**
  * Rows shown in OnboardingStepNav.
- * Cloud-provisioned containers skip the deployment step since the target is predetermined.
+ * Desktop, dev mode, and cloud-provisioned containers skip the deployment step.
  */
 export function getOnboardingNavMetas(
   _currentStep: OnboardingStep,
   cloudOnly: boolean,
 ): OnboardingStepMeta[] {
-  if (cloudOnly) {
+  if (cloudOnly || canRunLocal()) {
     return ONBOARDING_STEPS.filter((s) => s.id !== "deployment");
   }
   return [...ONBOARDING_STEPS];

@@ -3,18 +3,18 @@
  *
  * Handles all /api/workbench/todos routes backed by AgentRuntime tasks.
  */
-import http from "node:http";
+import type http from "node:http";
+import { WORKBENCH_TODO_TAG } from "@elizaos/agent/api/workbench-helpers";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import { ensureCompatApiAuthorized } from "./auth";
-import {
-  sendJson as sendJsonResponse,
-  sendJsonError as sendJsonErrorResponse,
-} from "./response";
 import {
   type CompatRuntimeState,
   readCompatJsonBody,
 } from "./compat-route-shared";
-import { WORKBENCH_TODO_TAG } from "@elizaos/agent/api/workbench-helpers";
+import {
+  sendJsonError as sendJsonErrorResponse,
+  sendJson as sendJsonResponse,
+} from "./response";
 
 type WorkbenchTodoResponse = {
   id: string;

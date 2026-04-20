@@ -26,6 +26,7 @@ export const goalsProvider: Provider = {
   name: "SCAPE_GOALS",
   description:
     "Current active goal (if any) plus the most recent completed / abandoned goals from the Scape Journal.",
+  descriptionCompressed: "Active + recent completed/abandoned goals.",
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,

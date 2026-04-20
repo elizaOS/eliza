@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -55,7 +55,7 @@ jobs:
           protoc --version
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -107,7 +107,7 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Check if plugin directory exists
         id: check
@@ -127,7 +127,7 @@ jobs:
 
       - name: Cache cargo
         if: steps.check.outputs.exists == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -175,15 +175,15 @@ jobs:
         python-version: ["3.11", "3.12"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Cache pip
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-elizaos-${{ matrix.python-version }}-${{ hashFiles('packages/python/pyproject.toml') }}
@@ -236,7 +236,7 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Check if plugin directory exists
         id: check
@@ -250,13 +250,13 @@ jobs:
 
       - name: Set up Python ${{ matrix.python-version }}
         if: steps.check.outputs.exists == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Cache pip
         if: steps.check.outputs.exists == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-elizaos-plugin-sql-${{ matrix.python-version }}-${{ hashFiles('plugins/plugin-sql/python/pyproject.toml') }}
@@ -310,7 +310,7 @@ jobs:
             path: plugins/plugin-sql/rust
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Check if package directory exists
         id: check-dir
@@ -341,7 +341,7 @@ jobs:
 
       - name: Cache cargo
         if: steps.check-dir.outputs.skip != 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -371,12 +371,12 @@ jobs:
     needs: [rust-tests, python-core-tests]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.14"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -384,7 +384,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.4"
+          bun-version: "1.3.12"
 
       - name: Install dependencies
         run: bun install

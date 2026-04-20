@@ -9,7 +9,13 @@
  */
 
 import { packageNameToAppRouteSlug } from "@elizaos/shared/contracts/apps";
-
+import {
+  Button,
+  Input,
+  useDocumentVisibility,
+  useIntervalWhenDocumentVisible,
+  useTimeout,
+} from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type AppRunSummary,
@@ -20,21 +26,12 @@ import {
 } from "../../api";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import { useBranding } from "../../config/branding";
-import {
-  useMediaQuery,
-} from "../../hooks";
+import { useMediaQuery } from "../../hooks";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import type { DesktopClickAuditItem } from "../../utils/desktop-workspace";
 import { formatTime } from "../../utils/format";
 import { getAppOperatorSurface } from "./surfaces/registry";
-import {
-  Button,
-  Input,
-  useDocumentVisibility,
-  useIntervalWhenDocumentVisible,
-  useTimeout,
-} from "@elizaos/ui";
 import {
   buildViewerSessionKey,
   resolveEmbeddedViewerUrl,
@@ -803,6 +800,53 @@ export function GameView() {
     Boolean(activeGameRunId || activeGameSession?.sessionId),
   );
 
+  // Cheap liveness ping — separate from the 3s session refresh so it still
+  // fires when the upstream game API is degraded. The server's stale-run
+  // sweeper uses this to decide whether to stop a run whose UI tab has
+  // gone silent. Pauses while the document is hidden; the sweeper's
+  // 90s grace window covers brief tab-switching.
+  useIntervalWhenDocumentVisible(
+    () => {
+      if (!activeGameRunId) return;
+      void client.heartbeatAppRun(activeGameRunId).catch((err: unknown) => {
+        // 404 means the run was reaped (sweeper or another window) — drop
+        // local state so the user sees the empty-state UI instead of a
+        // ghost session that no longer exists server-side.
+        const status = getApiStatus(err);
+        if (status === 404) {
+          setState("appRuns", appRunsRef.current.filter(
+            (run) => run.runId !== activeGameRunId,
+          ));
+          setState("activeGameRunId", "");
+        }
+      });
+    },
+    15_000,
+    Boolean(activeGameRunId),
+  );
+
+  // Clean up server-side state when the browser tab closes. `sendBeacon`
+  // is the only request method browsers reliably deliver during unload —
+  // a normal `fetch` would be cancelled. Falls through silently if the
+  // browser is too old or the run is already gone.
+  useEffect(() => {
+    if (!activeGameRunId) return;
+    const handleUnload = () => {
+      const beacon = navigator?.sendBeacon;
+      if (typeof beacon !== "function") return;
+      const baseUrl = client.getBaseUrl();
+      const stopPath = `/api/apps/runs/${encodeURIComponent(activeGameRunId)}/stop`;
+      const stopUrl = baseUrl ? `${baseUrl}${stopPath}` : stopPath;
+      beacon.call(navigator, stopUrl);
+    };
+    window.addEventListener("pagehide", handleUnload);
+    window.addEventListener("beforeunload", handleUnload);
+    return () => {
+      window.removeEventListener("pagehide", handleUnload);
+      window.removeEventListener("beforeunload", handleUnload);
+    };
+  }, [activeGameRunId]);
+
   const sendChatCommand = useCallback(
     async (rawContent: string) => {
       const content = rawContent.trim();
@@ -1301,9 +1345,7 @@ export function GameView() {
   const renderLogsPanel = (layout: "sidebar" | "standalone" = "sidebar") => (
     <div
       className={`flex min-h-0 flex-col bg-card ${
-        layout === "sidebar"
-          ? "w-80"
-          : "h-full"
+        layout === "sidebar" ? "w-80" : "h-full"
       }`}
     >
       <div className="flex items-center gap-2 px-3 py-2">
@@ -1612,10 +1654,7 @@ export function GameView() {
             .sort((a, b) => Number(b.timestamp ?? 0) - Number(a.timestamp ?? 0))
             .slice(0, 30)
             .map((entry) => (
-              <div
-                key={entry.id}
-                className="py-1 flex flex-col gap-0.5"
-              >
+              <div key={entry.id} className="py-1 flex flex-col gap-0.5">
                 <div className="flex items-center gap-1">
                   <span className="text-muted text-2xs">
                     {formatTime(entry.timestamp ?? 0, { fallback: "—" })}

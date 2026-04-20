@@ -1,11 +1,16 @@
 import Module from "node:module";
-import * as testRenderer from "react-test-renderer";
+import path from "node:path";
 import { afterAll, afterEach, vi } from "vitest";
 import {
   createMemoryStorage,
   hasStorageApi,
   suppressReactTestConsoleErrors,
 } from "./helpers/browser-mocks";
+
+const requireFromHere = Module.createRequire(import.meta.url);
+const testRenderer = requireFromHere(
+  "react-test-renderer",
+) as typeof import("react-test-renderer");
 
 const REACT_RESOLVE_PATCH_MARK = Symbol.for("elizaos.test.reactResolvePatched");
 const ANCHOR_CLICK_PATCH_MARK = Symbol.for("elizaos.test.anchorClickPatched");
@@ -25,7 +30,6 @@ type ResolveFilename = (
 // installation.
 // Wrapped in try/catch so CI environments without react don't crash.
 try {
-  const path = require("node:path") as typeof import("node:path");
   const rootRequire = Module.createRequire(import.meta.url);
   const rootReactDir = path.dirname(rootRequire.resolve("react/package.json"));
   const rootReactDomDir = path.dirname(

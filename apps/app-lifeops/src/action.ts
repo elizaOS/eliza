@@ -1,3 +1,4 @@
+import { hasAdminAccess } from "@elizaos/agent/security";
 import type {
   Action,
   ActionResult,
@@ -6,11 +7,6 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  LifeOpsService,
-  LifeOpsServiceError,
-} from "./lifeops/service.js";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,
@@ -19,6 +15,7 @@ import type {
   LifeOpsBrowserKind,
   UpdateLifeOpsBrowserSettingsRequest,
 } from "@elizaos/shared/contracts/lifeops";
+import { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.js";
 
 type BrowserCommand =
   | "get_settings"
@@ -41,7 +38,10 @@ type BrowserCommand =
   | "submit"
   | "read_page"
   | "extract_links"
-  | "extract_forms";
+  | "extract_forms"
+  | "start"
+  | "finder"
+  | "open_finder";
 
 type BrowserParams = {
   command?: BrowserCommand;
@@ -121,6 +121,8 @@ function commandToActionKind(
   command: BrowserCommand,
 ): LifeOpsBrowserActionKind {
   switch (command) {
+    case "start":
+      return "open";
     case "open":
     case "navigate":
     case "focus_tab":
@@ -139,11 +141,17 @@ function commandToActionKind(
   }
 }
 
+function isDesktopOnlyAlias(command: BrowserCommand): boolean {
+  return command === "finder" || command === "open_finder";
+}
+
 function actionLabel(command: BrowserCommand, params: BrowserParams): string {
   if (params.title?.trim()) {
     return params.title.trim();
   }
   switch (command) {
+    case "start":
+      return "Start browser session";
     case "open":
       return "Open URL in personal browser";
     case "navigate":
@@ -319,6 +327,18 @@ async function runCommand(
         data: { session },
       };
     }
+    case "finder":
+    case "open_finder": {
+      return {
+        success: false,
+        text: "Finder and other desktop workflows should use LIFEOPS_COMPUTER_USE, not MANAGE_LIFEOPS_BROWSER.",
+        data: {
+          error: "DESKTOP_WORKFLOW",
+          command,
+          suggestedAction: "LIFEOPS_COMPUTER_USE",
+        },
+      };
+    }
     default: {
       const actionKind = commandToActionKind(command);
       const request: CreateLifeOpsBrowserSessionRequest = {
@@ -358,7 +378,7 @@ export const manageLifeOpsBrowserAction: Action = {
   name: "MANAGE_LIFEOPS_BROWSER",
   similes: ["PERSONAL_BROWSER", "LIFEOPS_BROWSER", "MANAGE_PERSONAL_BROWSER"],
   description:
-    "Read and control the user's personal LifeOps Browser companions for Chrome and Safari. This is not the Eliza browser workspace.",
+    "Read and control the user's real Chrome and Safari browsers connected through LifeOps Browser. This is not Milady Desktop Browser. Use LIFEOPS_COMPUTER_USE instead for Finder/Desktop automation, screenshots, folder creation, or local file workflows on this machine.",
   validate: async (runtime, message) => hasAdminAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,

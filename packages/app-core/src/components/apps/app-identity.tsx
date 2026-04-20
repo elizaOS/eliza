@@ -1,20 +1,26 @@
-import type { CSSProperties } from "react";
 import {
   Bot,
   Briefcase,
   Gamepad2,
   Globe2,
+  type LucideIcon,
   Sparkles,
   Wallet,
   Wrench,
-  type LucideIcon,
 } from "lucide-react";
+import { type CSSProperties, useState } from "react";
 
 export interface AppIdentitySource {
   name: string;
   displayName?: string | null;
   category?: string | null;
   icon?: string | null;
+  /**
+   * URL to a full-card hero image for this app. Declared by the app
+   * itself in `package.json` → `elizaos.app.heroImage` and surfaced via
+   * `RegistryAppInfo.heroImage`; falls back to procedural art when absent.
+   */
+  heroImage?: string | null;
   description?: string | null;
 }
 
@@ -165,6 +171,128 @@ export function AppIdentityTile({
           {monogram}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+interface HeroBlob {
+  cx: number;
+  cy: number;
+  r: number;
+  opacity: number;
+}
+
+function getHeroBlobs(seed: number): HeroBlob[] {
+  const pick = (shift: number, mod: number) => (seed >> shift) % mod;
+  return [
+    {
+      cx: 18 + pick(1, 32),
+      cy: 22 + pick(3, 28),
+      r: 34 + pick(5, 22),
+      opacity: 0.32,
+    },
+    {
+      cx: 72 - pick(7, 26),
+      cy: 68 - pick(9, 32),
+      r: 38 + pick(11, 26),
+      opacity: 0.24,
+    },
+    {
+      cx: 45 + pick(13, 24),
+      cy: 40 + pick(15, 24),
+      r: 24 + pick(17, 18),
+      opacity: 0.18,
+    },
+  ];
+}
+
+/**
+ * Full-card hero visual for an app. Prefers an app-declared hero image
+ * (see `AppIdentitySource.heroImage`, sourced from the app's own
+ * package.json and served via `/api/apps/hero/<slug>`), then a
+ * caller-provided icon URL, then a procedurally generated gradient
+ * scene — seeded from the app name so each app looks distinct.
+ */
+export function AppHero({
+  app,
+  className = "",
+}: {
+  app: AppIdentitySource;
+  className?: string;
+}) {
+  const palette = getAppPalette(app.name);
+  const iconSrc = iconImageSource(app.icon);
+  const heroSrc = app.heroImage?.trim() || null;
+  const Icon = getAppCategoryIcon(app);
+  const monogram = getAppMonogram(app);
+  const blobs = getHeroBlobs(hashString(app.name));
+  const iconRotation = hashString(app.name) % 24;
+
+  const primarySrc = heroSrc ?? iconSrc ?? null;
+  const [imageFailed, setImageFailed] = useState(false);
+  const useImage = Boolean(primarySrc) && !imageFailed;
+
+  return (
+    <div
+      className={`relative w-full overflow-hidden ${className}`}
+      style={
+        {
+          backgroundImage: `linear-gradient(135deg, ${palette[0]} 0%, ${palette[1]} 100%)`,
+        } as CSSProperties
+      }
+      aria-hidden
+    >
+      {useImage && primarySrc ? (
+        <img
+          src={primarySrc}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={() => setImageFailed(true)}
+        />
+      ) : (
+        <>
+          <svg
+            className="absolute inset-0 h-full w-full"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            aria-hidden
+          >
+            <title>Hero backdrop</title>
+            {blobs.map((blob) => (
+              <circle
+                key={`${blob.cx}-${blob.cy}-${blob.r}`}
+                cx={blob.cx}
+                cy={blob.cy}
+                r={blob.r}
+                fill="white"
+                opacity={blob.opacity}
+                style={{ mixBlendMode: "soft-light" }}
+              />
+            ))}
+          </svg>
+          <div
+            className="absolute inset-0 opacity-[0.14]"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle, rgba(255,255,255,0.85) 1px, transparent 1px)",
+              backgroundSize: "14px 14px",
+            }}
+          />
+          <div
+            className="pointer-events-none absolute -right-6 -bottom-8 h-[68%] w-[68%] text-white/[0.22]"
+            style={{ transform: `rotate(${iconRotation - 12}deg)` }}
+          >
+            <Icon className="h-full w-full" strokeWidth={1.25} />
+          </div>
+        </>
+      )}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_-20%,rgba(255,255,255,0.22),transparent_55%)]" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+      <div className="absolute left-3 top-3 inline-flex items-center rounded-full border border-white/25 bg-white/15 px-2 py-0.5 text-[0.58rem] font-semibold uppercase tracking-[0.22em] text-white backdrop-blur-sm">
+        {monogram}
+      </div>
     </div>
   );
 }

@@ -106,7 +106,9 @@ describe("analyzePluginStateDrift", () => {
     );
 
     expect(report.summary.byFlag.entries_vs_allowlist).toBe(0);
-    expect(report.plugins[0]?.drift_flags).not.toContain("entries_vs_allowlist");
+    expect(report.plugins[0]?.drift_flags).not.toContain(
+      "entries_vs_allowlist",
+    );
   });
 
   it("flags active_but_disabled when runtime is active but UI model disabled", () => {

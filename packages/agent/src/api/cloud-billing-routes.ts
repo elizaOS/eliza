@@ -8,7 +8,7 @@ import { resolveCloudApiKey } from "./wallet-rpc.js";
 
 export interface CloudBillingRouteState {
   config: CloudProxyConfigLike;
-  runtime: AgentRuntime | null;
+  runtime?: AgentRuntime | null;
 }
 
 const PROXY_TIMEOUT_MS = 15_000;

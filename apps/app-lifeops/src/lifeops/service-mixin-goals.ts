@@ -59,6 +59,9 @@ import {
 } from "./goal-grounding.js";
 import { evaluateGoalProgressWithLlm } from "./goal-semantic-evaluator.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
+import {
+  inspectLifeOpsSchedule,
+} from "./schedule-insight.js";
 import { addMinutes } from "./time.js";
 import { getZonedDateParts } from "./time.js";
 import {
@@ -69,8 +72,23 @@ import {
 } from "./service-constants.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
+/** @internal */
 export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
-  return class extends Base {
+  class LifeOpsGoalsServiceMixin extends Base {
+    async inspectSchedule(args?: {
+      now?: Date;
+      timezone?: string | null;
+    }) {
+      return inspectLifeOpsSchedule({
+        runtime: this.runtime,
+        repository: this.repository,
+        agentId: this.agentId(),
+        timezone:
+          normalizeOptionalString(args?.timezone) ?? resolveDefaultTimeZone(),
+        now: args?.now,
+      });
+    }
+
     async deleteGoal(goalId: string): Promise<void> {
       const goal = await this.repository.getGoal(this.agentId(), goalId);
       if (!goal) {
@@ -245,7 +263,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       };
     }
 
-    protected async collectLinkedDefinitionsForGoal(
+    public async collectLinkedDefinitionsForGoal(
       goalRecord: LifeOpsGoalRecord,
     ): Promise<LifeOpsTaskDefinition[]> {
       const linkedDefinitionIds = new Set(
@@ -264,7 +282,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
         .sort((left, right) => left.title.localeCompare(right.title));
     }
 
-    protected async collectOccurrenceViewsForDefinitions(
+    public async collectOccurrenceViewsForDefinitions(
       definitions: LifeOpsTaskDefinition[],
     ): Promise<LifeOpsOccurrenceView[]> {
       const views: LifeOpsOccurrenceView[] = [];
@@ -291,7 +309,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       return views;
     }
 
-    protected deriveGoalReviewState(
+    public deriveGoalReviewState(
       goal: LifeOpsGoalDefinition,
       definitions: LifeOpsTaskDefinition[],
       activeOccurrences: LifeOpsOccurrenceView[],
@@ -340,7 +358,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       return "on_track";
     }
 
-    protected buildGoalReviewExplanation(args: {
+    public buildGoalReviewExplanation(args: {
       goal: LifeOpsGoalDefinition;
       linkedDefinitionCount: number;
       activeOccurrenceCount: number;
@@ -373,7 +391,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       return "This goal has support structure and does not currently have overdue work.";
     }
 
-    protected buildGoalSupportSuggestions(args: {
+    public buildGoalSupportSuggestions(args: {
       goal: LifeOpsGoalDefinition;
       linkedDefinitions: LifeOpsTaskDefinition[];
       activeOccurrences: LifeOpsOccurrenceView[];
@@ -439,7 +457,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       return suggestions.slice(0, 3);
     }
 
-    protected formatLocalHourMinute(
+    public formatLocalHourMinute(
       isoValue: string | null,
       timeZone: string,
     ): string | null {
@@ -456,7 +474,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       ).padStart(2, "0")}`;
     }
 
-    protected median(values: number[]): number | null {
+    public median(values: number[]): number | null {
       if (values.length === 0) {
         return null;
       }
@@ -468,7 +486,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       return (sorted[middle - 1] + sorted[middle]) / 2;
     }
 
-    protected async buildGoalSemanticEvidence(args: {
+    public async buildGoalSemanticEvidence(args: {
       activeOccurrences: LifeOpsOccurrenceView[];
       goal: LifeOpsGoalDefinition;
       lastActivityAt: string | null;
@@ -595,7 +613,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       };
     }
 
-    protected getCachedSemanticGoalReview(args: {
+    public getCachedSemanticGoalReview(args: {
       goal: LifeOpsGoalDefinition;
       now: Date;
     }) {
@@ -613,7 +631,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       return cached;
     }
 
-    protected async syncComputedGoalReviewState(
+    public async syncComputedGoalReviewState(
       goal: LifeOpsGoalDefinition,
       reviewState: LifeOpsGoalDefinition["reviewState"],
       summary: LifeOpsGoalReview["summary"],
@@ -667,7 +685,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       return nextGoal;
     }
 
-    protected async buildGoalReview(
+    public async buildGoalReview(
       goalRecord: LifeOpsGoalRecord,
       now: Date,
       options: { allowSemanticEvaluation?: boolean } = {},
@@ -887,7 +905,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       };
     }
 
-    protected async refreshGoalReviewStates(
+    public async refreshGoalReviewStates(
       now: Date,
     ): Promise<LifeOpsGoalDefinition[]> {
       const goals = (await this.repository.listGoals(this.agentId())).filter(
@@ -912,6 +930,10 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
     }
 
     async getOverview(now = new Date()): Promise<LifeOpsOverview> {
+      const schedule = await this.refreshEffectiveScheduleState({
+        timezone: resolveDefaultTimeZone(),
+        now,
+      });
       const definitions = await this.repository.listActiveDefinitions(
         this.agentId(),
       );
@@ -1060,11 +1082,14 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
         summary: owner.summary,
         owner,
         agentOps,
+        schedule,
       };
     }
 
     async listChannelPolicies(): Promise<LifeOpsChannelPolicy[]> {
       return this.repository.listChannelPolicies(this.agentId());
     }
-  };
+  }
+
+  return LifeOpsGoalsServiceMixin;
 }

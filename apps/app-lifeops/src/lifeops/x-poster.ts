@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { logger } from "@elizaos/core";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
 
 export interface XPosterCredentials {
   apiKey: string;
@@ -17,7 +17,13 @@ export interface XPostResult {
   category: "success" | "auth" | "rate_limit" | "network" | "unknown";
 }
 
-const X_POST_URL = "https://api.twitter.com/2/tweets";
+function getXBaseUrl(): string {
+  return process.env.MILADY_MOCK_X_BASE ?? "https://api.twitter.com";
+}
+
+function getXPostUrl(): string {
+  return `${getXBaseUrl()}/2/tweets`;
+}
 
 function percentEncode(value: string): string {
   return encodeURIComponent(value).replace(
@@ -33,7 +39,7 @@ function buildSignatureBaseString(
 ): string {
   const sorted = Object.keys(params)
     .sort()
-    .map((key) => `${percentEncode(key)}=${percentEncode(params[key])}`)
+    .map((key) => `${percentEncode(key)}=${percentEncode(params[key] ?? "")}`)
     .join("&");
 
   return `${method.toUpperCase()}&${percentEncode(url)}&${percentEncode(sorted)}`;
@@ -76,7 +82,10 @@ function buildOAuth1AuthorizationHeader(args: {
 
   const header = Object.keys(oauthParams)
     .sort()
-    .map((key) => `${percentEncode(key)}="${percentEncode(oauthParams[key])}"`)
+    .map(
+      (key) =>
+        `${percentEncode(key)}="${percentEncode(oauthParams[key] ?? "")}"`,
+    )
     .join(", ");
 
   return `OAuth ${header}`;
@@ -123,14 +132,14 @@ export async function postToX(args: {
   const timestamp = String(Math.floor(Date.now() / 1000));
   const authorization = buildOAuth1AuthorizationHeader({
     method: "POST",
-    url: X_POST_URL,
+    url: getXPostUrl(),
     credentials,
     nonce,
     timestamp,
   });
 
   try {
-    const response = await fetch(X_POST_URL, {
+    const response = await fetch(getXPostUrl(), {
       method: "POST",
       headers: {
         Authorization: authorization,
@@ -206,5 +215,97 @@ export async function postToX(args: {
       error: errorMessage,
       category: "network",
     };
+  }
+}
+
+export interface XDmResult {
+  ok: boolean;
+  status: number | null;
+  dmConversationId?: string;
+  dmEventId?: string;
+  error?: string;
+  category: "success" | "auth" | "rate_limit" | "network" | "unknown";
+}
+
+function getXDmUrl(participantId: string): string {
+  return `${getXBaseUrl()}/2/dm_conversations/with/${encodeURIComponent(participantId)}/messages`;
+}
+
+/**
+ * Send a Direct Message on X (Twitter) via the v2 DM API.
+ *
+ * `participantId` must be the numeric Twitter user ID of the recipient
+ * (not a @handle — the API requires the ID).
+ *
+ * Requires OAuth 1.0a access token and secret with the `dm.write` scope
+ * granted for the app.
+ */
+export async function sendXDm(args: {
+  participantId: string;
+  text: string;
+  credentials: XPosterCredentials;
+}): Promise<XDmResult> {
+  const { participantId, text, credentials } = args;
+  const url = getXDmUrl(participantId);
+  const nonce = crypto.randomBytes(16).toString("hex");
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const authorization = buildOAuth1AuthorizationHeader({
+    method: "POST",
+    url,
+    credentials,
+    nonce,
+    timestamp,
+  });
+
+  const span = createIntegrationTelemetrySpan({
+    boundary: "lifeops",
+    operation: "x_dm_send",
+    timeoutMs: 12_000,
+  });
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: authorization,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text }),
+      signal: AbortSignal.timeout(12_000),
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      data?: { dm_conversation_id?: string; dm_event_id?: string };
+      errors?: Array<{ detail?: string; message?: string }>;
+      title?: string;
+      detail?: string;
+    };
+
+    const category = classifyStatus(response.status);
+
+    if (!response.ok) {
+      const errorMessage =
+        payload.errors?.[0]?.detail ??
+        payload.errors?.[0]?.message ??
+        payload.detail ??
+        payload.title ??
+        `HTTP ${response.status}`;
+      span.failure({ statusCode: response.status, errorKind: category });
+      return { ok: false, status: response.status, error: errorMessage, category };
+    }
+
+    span.success({ statusCode: response.status });
+    return {
+      ok: true,
+      status: response.status,
+      dmConversationId: payload.data?.dm_conversation_id,
+      dmEventId: payload.data?.dm_event_id,
+      category: "success",
+    };
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : String(error);
+    span.failure({ error, errorKind: "network" });
+    return { ok: false, status: null, error: errorMessage, category: "network" };
   }
 }

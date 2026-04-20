@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequest,
@@ -6,9 +7,8 @@ import {
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { TRAY_ACTION_EVENT } from "../events";
 import { useApp } from "../state/useApp";
-import { openDesktopSettingsWindow } from "../utils/desktop-workspace";
 import type { DesktopClickAuditItem } from "../utils/desktop-workspace";
-import { useEffect } from "react";
+import { openDesktopSettingsWindow } from "../utils/desktop-workspace";
 
 interface DesktopTrayMenuItem {
   id: string;

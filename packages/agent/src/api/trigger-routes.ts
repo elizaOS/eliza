@@ -1,79 +1,85 @@
 import crypto from "node:crypto";
 import {
-  type AgentRuntime,
+  type TriggerRunRecord as CoreTriggerRunRecord,
+  type IAgentRuntime,
   stringToUuid,
   type Task,
+  type TriggerConfig,
+  type TriggerKind,
+  type TriggerType,
+  type TriggerWakeMode,
   type UUID,
 } from "@elizaos/core";
-import type { TriggerExecutionResult } from "../triggers/runtime.js";
-import type { TriggerSummary } from "../triggers/types.js";
+import type {
+  TriggerExecutionOptions,
+  TriggerExecutionResult,
+} from "../triggers/runtime.js";
+import type {
+  NormalizedTriggerDraft,
+  TriggerHealthSnapshot,
+  TriggerSummary,
+  TriggerTaskMetadata,
+} from "../triggers/types.js";
 import type { RouteHelpers, RouteRequestContext } from "./route-helpers.js";
 
 export type TriggerRouteHelpers = RouteHelpers;
 
-interface TriggerConfigLike {
-  triggerId: string;
-  displayName: string;
-  instructions: string;
-  triggerType: string;
-  wakeMode: string;
-  enabled: boolean;
-  createdBy: string;
-  dedupeKey?: string;
+interface TriggerDraftInput {
+  displayName?: string;
+  instructions?: string;
+  triggerType?: TriggerType;
+  wakeMode?: TriggerWakeMode;
+  enabled?: boolean;
+  createdBy?: string;
+  timezone?: string;
   intervalMs?: number;
   scheduledAtIso?: string;
   cronExpression?: string;
   maxRuns?: number;
-  nextRunAtMs?: number;
+  kind?: TriggerKind;
+  workflowId?: string;
+  workflowName?: string;
 }
 
-type TriggerTaskMetadataLike = Record<string, unknown> & {
-  triggerRuns?: unknown[];
-};
-
-type TriggerSummaryLike = Partial<TriggerSummary>;
-
-type TriggerDraftLike = {
+interface NormalizeTriggerDraftFallback {
   displayName: string;
   instructions: string;
-  triggerType: string;
-  wakeMode: string;
+  triggerType: TriggerType;
+  wakeMode: TriggerWakeMode;
   enabled: boolean;
   createdBy: string;
-  intervalMs?: number;
-  scheduledAtIso?: string;
-  cronExpression?: string;
-  maxRuns?: number;
-};
+}
 
 export interface TriggerRouteContext extends RouteRequestContext {
-  runtime: AgentRuntime | null;
+  runtime: IAgentRuntime | null;
   executeTriggerTask: (
-    runtime: AgentRuntime,
+    runtime: IAgentRuntime,
     task: Task,
-    options: { source: string; force: boolean },
+    options: TriggerExecutionOptions,
   ) => Promise<TriggerExecutionResult>;
-  getTriggerHealthSnapshot: (runtime: AgentRuntime) => Promise<object>;
-  getTriggerLimit: (runtime: AgentRuntime) => number;
-  listTriggerTasks: (runtime: AgentRuntime) => Promise<Task[]>;
-  readTriggerConfig: (task: Task) => TriggerConfigLike | null;
-  readTriggerRuns: (task: Task) => unknown[];
-  taskToTriggerSummary: (task: Task) => TriggerSummaryLike | null;
-  triggersFeatureEnabled: (runtime: AgentRuntime) => boolean;
+  getTriggerHealthSnapshot: (
+    runtime: IAgentRuntime,
+  ) => Promise<TriggerHealthSnapshot>;
+  getTriggerLimit: (runtime: IAgentRuntime) => number;
+  listTriggerTasks: (runtime: IAgentRuntime) => Promise<Task[]>;
+  readTriggerConfig: (task: Task) => TriggerConfig | null;
+  readTriggerRuns: (task: Task) => CoreTriggerRunRecord[];
+  taskToTriggerSummary: (task: Task) => TriggerSummary | null;
+  triggersFeatureEnabled: (runtime: IAgentRuntime) => boolean;
   buildTriggerConfig: (params: {
-    draft: TriggerDraftLike;
-    triggerId: string;
-    previous?: TriggerConfigLike;
-  }) => TriggerConfigLike;
+    draft: NormalizedTriggerDraft;
+    triggerId: UUID;
+    previous?: TriggerConfig;
+  }) => TriggerConfig;
   buildTriggerMetadata: (params: {
-    existingMetadata?: TriggerTaskMetadataLike;
-    trigger: TriggerConfigLike;
+    existingMetadata?: TriggerTaskMetadata;
+    trigger: TriggerConfig;
     nowMs: number;
-  }) => TriggerTaskMetadataLike | null;
+  }) => TriggerTaskMetadata | null;
   normalizeTriggerDraft: (params: {
-    input: Record<string, unknown>;
-    fallback: TriggerDraftLike;
-  }) => { draft?: TriggerDraftLike; error?: string };
+    input: TriggerDraftInput;
+    fallback: NormalizeTriggerDraftFallback;
+  }) => { draft?: NormalizedTriggerDraft; error?: string };
   DISABLED_TRIGGER_INTERVAL_MS: number;
   TRIGGER_TASK_NAME: string;
   TRIGGER_TASK_TAGS: string[];
@@ -81,6 +87,28 @@ export interface TriggerRouteContext extends RouteRequestContext {
 
 function trim(value: string): string {
   return value.trim().replace(/\s+/g, " ");
+}
+
+function parseTriggerKind(value: unknown): TriggerKind | undefined {
+  if (value === "text" || value === "workflow") return value;
+  return undefined;
+}
+
+type ParsedTriggerKind =
+  | { ok: true; kind: TriggerKind }
+  | { ok: false; error: string };
+
+function parseTriggerKindStrict(value: unknown): ParsedTriggerKind | undefined {
+  if (value === undefined) return undefined;
+  if (value === "text" || value === "workflow")
+    return { ok: true, kind: value };
+  return { ok: false, error: "kind must be 'text' or 'workflow'" };
+}
+
+function parseNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function normalizeTriggerPath(pathname: string): {
@@ -106,10 +134,10 @@ function normalizeTriggerPath(pathname: string): {
 }
 
 async function findTask(
-  runtime: AgentRuntime,
+  runtime: IAgentRuntime,
   id: string,
-  listTriggerTasks: (runtime: AgentRuntime) => Promise<Task[]>,
-  readTriggerConfig: (task: Task) => TriggerConfigLike | null,
+  listTriggerTasks: (runtime: IAgentRuntime) => Promise<Task[]>,
+  readTriggerConfig: (task: Task) => TriggerConfig | null,
 ): Promise<Task | null> {
   const tasks = await listTriggerTasks(runtime);
   return (
@@ -150,14 +178,14 @@ export async function handleTriggerRoutes(
 
   const { normalizedPathname, usingHeartbeatsAlias } =
     normalizeTriggerPath(pathname);
-  const listResponse = (triggers: TriggerSummaryLike[], status = 200): void => {
+  const listResponse = (triggers: TriggerSummary[], status = 200): void => {
     json(
       res,
       usingHeartbeatsAlias ? { triggers, heartbeats: triggers } : { triggers },
       status,
     );
   };
-  const itemResponse = (summary: TriggerSummaryLike, status = 200): void => {
+  const itemResponse = (summary: TriggerSummary, status = 200): void => {
     json(
       res,
       usingHeartbeatsAlias
@@ -193,7 +221,7 @@ export async function handleTriggerRoutes(
     const tasks = await listTriggerTasks(runtime);
     const triggers = tasks
       .map(taskToTriggerSummary)
-      .filter((summary): summary is TriggerSummaryLike => summary !== null)
+      .filter((summary): summary is TriggerSummary => summary !== null)
       .sort((a, b) =>
         String(a.displayName ?? "").localeCompare(String(b.displayName ?? "")),
       );
@@ -209,8 +237,56 @@ export async function handleTriggerRoutes(
       typeof body.createdBy === "string"
         ? trim(body.createdBy) || "api"
         : "api";
+    const kindParsed = parseTriggerKindStrict(body.kind);
+    if (kindParsed !== undefined && kindParsed.ok === false) {
+      error(res, kindParsed.error, 400);
+      return true;
+    }
+    const kind: TriggerKind | undefined =
+      kindParsed !== undefined && kindParsed.ok ? kindParsed.kind : undefined;
+    const workflowId = parseNonEmptyString(body.workflowId);
+    const workflowName = parseNonEmptyString(body.workflowName);
+    if (kind === "workflow" && !workflowId) {
+      error(
+        res,
+        "workflowId is required when kind is 'workflow'",
+        400,
+      );
+      return true;
+    }
+    const inputDraft: TriggerDraftInput = {
+      displayName:
+        typeof body.displayName === "string" ? body.displayName : undefined,
+      instructions:
+        typeof body.instructions === "string" ? body.instructions : undefined,
+      triggerType:
+        typeof body.triggerType === "string"
+          ? (body.triggerType as TriggerType)
+          : undefined,
+      wakeMode:
+        typeof body.wakeMode === "string"
+          ? (body.wakeMode as TriggerWakeMode)
+          : undefined,
+      enabled: (body.enabled ?? true) ? true : false,
+      createdBy: creator,
+      timezone: typeof body.timezone === "string" ? body.timezone : undefined,
+      intervalMs:
+        typeof body.intervalMs === "number" ? body.intervalMs : undefined,
+      scheduledAtIso:
+        typeof body.scheduledAtIso === "string"
+          ? body.scheduledAtIso
+          : undefined,
+      cronExpression:
+        typeof body.cronExpression === "string"
+          ? body.cronExpression
+          : undefined,
+      maxRuns: typeof body.maxRuns === "number" ? body.maxRuns : undefined,
+      kind,
+      workflowId,
+      workflowName,
+    };
     const normalized = normalizeTriggerDraft({
-      input: { ...body, enabled: body.enabled ?? true, createdBy: creator },
+      input: inputDraft,
       fallback: {
         displayName:
           typeof body.displayName === "string" && trim(body.displayName)
@@ -219,22 +295,15 @@ export async function handleTriggerRoutes(
         instructions:
           typeof body.instructions === "string" ? trim(body.instructions) : "",
         triggerType:
-          typeof body.triggerType === "string" ? body.triggerType : "interval",
+          typeof body.triggerType === "string"
+            ? (body.triggerType as TriggerType)
+            : "interval",
         wakeMode:
-          typeof body.wakeMode === "string" ? body.wakeMode : "inject_now",
+          typeof body.wakeMode === "string"
+            ? (body.wakeMode as TriggerWakeMode)
+            : "inject_now",
         enabled: body.enabled === undefined ? true : body.enabled === true,
         createdBy: creator,
-        intervalMs:
-          typeof body.intervalMs === "number" ? body.intervalMs : undefined,
-        scheduledAtIso:
-          typeof body.scheduledAtIso === "string"
-            ? body.scheduledAtIso
-            : undefined,
-        cronExpression:
-          typeof body.cronExpression === "string"
-            ? body.cronExpression
-            : undefined,
-        maxRuns: typeof body.maxRuns === "number" ? body.maxRuns : undefined,
       },
     });
     if (!normalized.draft) {
@@ -279,7 +348,7 @@ export async function handleTriggerRoutes(
             ...trigger,
             nextRunAtMs: nowMs + DISABLED_TRIGGER_INTERVAL_MS,
           },
-        } as TriggerTaskMetadataLike);
+        } as TriggerTaskMetadata);
     if (!metadata) {
       error(res, "Unable to compute trigger schedule", 400);
       return true;
@@ -416,9 +485,45 @@ export async function handleTriggerRoutes(
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
 
-    const merged = {
-      ...body,
+    const kindParsed = parseTriggerKindStrict(body.kind);
+    if (kindParsed !== undefined && kindParsed.ok === false) {
+      error(res, kindParsed.error, 400);
+      return true;
+    }
+    const parsedKind: TriggerKind | undefined =
+      kindParsed !== undefined && kindParsed.ok ? kindParsed.kind : undefined;
+    const nextKind: TriggerKind | undefined =
+      parsedKind ?? parseTriggerKind(current.kind);
+    const nextWorkflowId =
+      parseNonEmptyString(body.workflowId) ?? current.workflowId;
+    const nextWorkflowName =
+      parseNonEmptyString(body.workflowName) ?? current.workflowName;
+    if (nextKind === "workflow" && !nextWorkflowId) {
+      error(
+        res,
+        "workflowId is required when kind is 'workflow'",
+        400,
+      );
+      return true;
+    }
+
+    const mergedInput: TriggerDraftInput = {
+      displayName:
+        typeof body.displayName === "string" ? body.displayName : undefined,
+      instructions:
+        typeof body.instructions === "string" ? body.instructions : undefined,
+      triggerType:
+        typeof body.triggerType === "string"
+          ? (body.triggerType as TriggerType)
+          : undefined,
+      wakeMode:
+        typeof body.wakeMode === "string"
+          ? (body.wakeMode as TriggerWakeMode)
+          : undefined,
+      enabled:
+        body.enabled === undefined ? current.enabled : body.enabled === true,
       createdBy: current.createdBy,
+      timezone: typeof body.timezone === "string" ? body.timezone : undefined,
       intervalMs:
         typeof body.intervalMs === "number"
           ? body.intervalMs
@@ -433,9 +538,12 @@ export async function handleTriggerRoutes(
           : current.cronExpression,
       maxRuns:
         typeof body.maxRuns === "number" ? body.maxRuns : current.maxRuns,
+      kind: nextKind,
+      workflowId: nextWorkflowId,
+      workflowName: nextWorkflowName,
     };
     const normalized = normalizeTriggerDraft({
-      input: merged,
+      input: mergedInput,
       fallback: {
         displayName: current.displayName,
         instructions: current.instructions,
@@ -444,10 +552,6 @@ export async function handleTriggerRoutes(
         enabled:
           body.enabled === undefined ? current.enabled : body.enabled === true,
         createdBy: current.createdBy,
-        intervalMs: current.intervalMs,
-        scheduledAtIso: current.scheduledAtIso,
-        cronExpression: current.cronExpression,
-        maxRuns: current.maxRuns,
       },
     });
     if (!normalized.draft) {
@@ -460,10 +564,10 @@ export async function handleTriggerRoutes(
       triggerId: current.triggerId,
       previous: current,
     });
-    const existingMeta = (task.metadata ?? {}) as TriggerTaskMetadataLike;
+    const existingMeta = (task.metadata ?? {}) as TriggerTaskMetadata;
     const existingRuns = readTriggerRuns(task);
 
-    let nextMeta: TriggerTaskMetadataLike;
+    let nextMeta: TriggerTaskMetadata;
     if (!nextTrigger.enabled) {
       nextMeta = {
         ...existingMeta,

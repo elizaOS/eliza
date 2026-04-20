@@ -17,15 +17,21 @@ import {
   ensureCompatSensitiveRouteAuthorized,
   getCompatApiToken,
   isDevEnvironment,
+} from "@elizaos/app-core/api/auth";
+import {
   type CompatRuntimeState,
   isLoopbackRemoteAddress,
   readCompatJsonBody,
+} from "@elizaos/app-core/api/compat-route-shared";
+import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
-  deriveAgentVaultId,
+} from "@elizaos/app-core/api/response";
+import { deriveAgentVaultId } from "@elizaos/app-core/security/agent-vault-id";
+import {
   createNodePlatformSecureStore,
   isWalletOsStoreReadEnabled,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/security/platform-secure-store-node";
 import { logger } from "@elizaos/core";
 import { getWalletAddresses } from "../api/wallet";
 import { fetchEvmNfts } from "../api/wallet-evm-balance";

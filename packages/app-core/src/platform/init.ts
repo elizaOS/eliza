@@ -35,6 +35,11 @@ export function isDesktopPlatform(): boolean {
   return platform === "electrobun";
 }
 
+/** True when the runtime can spin up a local agent — desktop or dev server. */
+export function canRunLocal(): boolean {
+  return isDesktopPlatform() || Boolean(import.meta.env.DEV);
+}
+
 export function isWebPlatform(): boolean {
   return detected.platform === "web" && !isElectrobunRuntime();
 }

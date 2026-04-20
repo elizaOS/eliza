@@ -37,11 +37,25 @@ export interface LLMCall {
 	completionTokens?: number;
 	latencyMs?: number;
 
-	// Context
-	purpose: "action" | "reasoning" | "evaluation" | "response" | "other";
+	/**
+	 * Pipeline stage identifier. Canonical values:
+	 * "action" | "reasoning" | "evaluation" | "response" |
+	 * "should_respond" | "compose_state" | "other".
+	 * Features may extend this with their own labels (e.g. "knowledge",
+	 * "training.teacher") — the UI falls through to the "plan" stage for
+	 * any unrecognized value, and the enricher preserves the raw label as
+	 * a `purpose:*` tag.
+	 */
+	purpose: string;
 	actionType?: string;
 	stepType?: string;
 	tags?: string[];
+
+	modelSlot?: string;
+	runId?: string;
+	roomId?: string;
+	messageId?: string;
+	executionTraceId?: string;
 }
 
 export interface ProviderAccess {
@@ -57,6 +71,11 @@ export interface ProviderAccess {
 
 	// Context
 	purpose: string;
+
+	runId?: string;
+	roomId?: string;
+	messageId?: string;
+	executionTraceId?: string;
 }
 
 export interface ActionAttempt {
