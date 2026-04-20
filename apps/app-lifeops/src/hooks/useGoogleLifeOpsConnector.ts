@@ -199,7 +199,9 @@ export function useGoogleLifeOpsConnector(
     LifeOpsConnectorMode | null | undefined
   >(undefined);
   const selectedModeRef = useRef<LifeOpsConnectorMode | null>(null);
-  const silentRefreshTimerRef = useRef<number | null>(null);
+  const silentRefreshTimerRef = useRef<
+    ReturnType<typeof globalThis.setTimeout> | null
+  >(null);
   const lastSilentRefreshAtRef = useRef(0);
   const [selectedMode, setSelectedMode] = useState<LifeOpsConnectorMode | null>(
     null,
