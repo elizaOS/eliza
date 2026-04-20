@@ -1,3 +1,14 @@
+/**
+ * FIXTURE ROUTING REGRESSION TEST (not a behavioral scenario test).
+ *
+ * `resolveSubscriptionParams` is an in-file regex router that maps
+ * known test-input phrases to action parameters. The LLM (`useModel`)
+ * is intentionally disabled; this file verifies only that the fixture
+ * router + the downstream SUBSCRIPTIONS action produce the expected
+ * `ActionResult` shape for the hardcoded inputs. Do NOT read a passing
+ * run of this file as evidence that the LLM planner or the
+ * subscriptions action handle novel/unseen user phrasings.
+ */
 import { describe, expect, test } from "vitest";
 import type { Content, Memory } from "@elizaos/core";
 import { subscriptionsAction } from "../src/actions/subscriptions.js";
@@ -74,7 +85,7 @@ async function createScenarioRuntime(agentId: string) {
   return runtime;
 }
 
-describe("LifeOps subscription browser scenarios", () => {
+describe("subscriptions — fixture routing regression test (regex param extraction)", () => {
   test("google play happy-path scenario passes", async () => {
     const runtime = await createScenarioRuntime("lifeops-subscriptions-scenario-ok");
     const report = await runScenario(cancelGooglePlayScenario, runtime, {

@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
+import { runPluginMigrations, type IAgentRuntime } from "@elizaos/core";
 import type {
   LifeOpsActivitySignal,
   LifeOpsAuditEvent,

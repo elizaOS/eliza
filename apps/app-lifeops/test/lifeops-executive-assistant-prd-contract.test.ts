@@ -1,3 +1,21 @@
+/**
+ * LINT-STYLE FIXTURE INVARIANTS (not a behavioral contract).
+ *
+ * Every assertion in this file checks the SHAPE of scenario/catalog
+ * fixtures — not the BEHAVIOR of the scenarios themselves. It does not
+ * execute any scenario. It does not call any LifeOps handler. A passing
+ * run of this file only proves the fixtures have the right JSON shape
+ * at the time the assertions ran.
+ *
+ * For real behavioral contract enforcement, co-locate behavioral tests
+ * with the module they exercise and run them through the scenario
+ * runner (see packages/scenario-runner/).
+ *
+ * Do NOT rename this to drop "contract" from the filename until the
+ * tests actually enforce behavior — the grep history / imports across
+ * the tree reference this filename. Renaming the describe() block is
+ * allowed and preferred.
+ */
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -170,7 +188,7 @@ function countCheckTypes(
   return counts;
 }
 
-describe("LifeOps executive-assistant transcript contracts", () => {
+describe("LifeOps executive-assistant PRD fixture invariants (shape-only, not behavioral)", () => {
   it("keeps the transcript catalog and executable suite in lockstep", async () => {
     const [catalog, scenarioFiles] = await Promise.all([
       loadCatalog(),

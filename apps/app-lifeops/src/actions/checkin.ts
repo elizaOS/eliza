@@ -18,6 +18,11 @@ function reportToActionData(report: CheckinReport): ProviderDataRecord {
     overdueTodos: report.overdueTodos,
     todaysMeetings: report.todaysMeetings,
     yesterdaysWins: report.yesterdaysWins,
+    collectorErrors: {
+      overdueTodos: report.collectorErrors.overdueTodos,
+      todaysMeetings: report.collectorErrors.todaysMeetings,
+      yesterdaysWins: report.collectorErrors.yesterdaysWins,
+    },
   };
 }
 
@@ -27,19 +32,37 @@ function reportToActionData(report: CheckinReport): ProviderDataRecord {
  * `runtime.useModel(TEXT_LARGE, ...)` — this helper is the minimum truthful
  * text so the action no longer returns `text: ""` while its examples promise
  * a rich summary.
+ *
+ * When a collector's SQL query throws (e.g. a LifeOps table is not yet
+ * provisioned), we MUST NOT claim "0 overdue todos" — that conflates
+ * "nothing found" with "source unavailable". Those sections get an explicit
+ * "(unavailable: <reason>)" marker instead.
  */
 function formatCheckinReportText(report: CheckinReport): string {
+  const prefix =
+    report.kind === "morning" ? "Morning check-in" : "Night check-in";
+  const overdueErr = report.collectorErrors.overdueTodos;
+  const meetingsErr = report.collectorErrors.todaysMeetings;
+  const winsErr = report.collectorErrors.yesterdaysWins;
+
   const overdue = report.overdueTodos.length;
   const meetings = report.todaysMeetings.length;
   const wins = report.yesterdaysWins.length;
-  const prefix =
-    report.kind === "morning" ? "Morning check-in" : "Night check-in";
-  const parts = [
-    `${overdue} overdue todo${overdue === 1 ? "" : "s"}`,
-    `${meetings} meeting${meetings === 1 ? "" : "s"} ${report.kind === "morning" ? "today" : "logged today"}`,
-    `${wins} win${wins === 1 ? "" : "s"} ${report.kind === "morning" ? "from yesterday" : "to carry forward"}`,
-  ];
-  return `${prefix}: ${parts.join(", ")}.`;
+
+  const overduePart = overdueErr
+    ? `overdue todos (unavailable: ${overdueErr})`
+    : `${overdue} overdue todo${overdue === 1 ? "" : "s"}`;
+  const meetingsLabel = report.kind === "morning" ? "today" : "logged today";
+  const meetingsPart = meetingsErr
+    ? `meetings ${meetingsLabel} (unavailable: ${meetingsErr})`
+    : `${meetings} meeting${meetings === 1 ? "" : "s"} ${meetingsLabel}`;
+  const winsLabel =
+    report.kind === "morning" ? "from yesterday" : "to carry forward";
+  const winsPart = winsErr
+    ? `wins ${winsLabel} (unavailable: ${winsErr})`
+    : `${wins} win${wins === 1 ? "" : "s"} ${winsLabel}`;
+
+  return `${prefix}: ${[overduePart, meetingsPart, winsPart].join(", ")}.`;
 }
 
 export const runMorningCheckinAction: Action & {

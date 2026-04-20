@@ -65,9 +65,9 @@ function invalidPhoneResult(
       : `I need a valid phone number in E.164 format (e.g. +15551234567) to place the call. Please confirm the number for ${subject}.`;
   return {
     text,
-    // success: true so the agent loop treats the turn as complete and does
-    // not silently retry the handler.
-    success: true,
+    // success: false — the call was not placed because the phone number is
+    // invalid. Both top-level success and values.success reflect the failure.
+    success: false,
     values: { success: false, error: errorCode, to, contact: contact ?? null },
     data: { actionName, error: errorCode, to, contact: contact ?? null },
   };
@@ -218,9 +218,11 @@ export const twilioCallAction: Action = {
     if (!confirmed) {
       return {
         text: `Draft voice call to ${to}:\n\n"${messageBody}"\n\nSay "confirm" or re-issue with confirmed: true to place the call.`,
-        success: true,
+        // The call was NOT placed — this is just a draft awaiting confirmation.
+        success: false,
         values: {
-          success: true,
+          success: false,
+          error: "DRAFT_REQUIRES_CONFIRMATION",
           draft: true,
           to,
           message: messageBody,

@@ -29,6 +29,7 @@ import {
   Clock3,
   FileText,
   GitBranch,
+  Grid3x3,
   type LucideIcon,
   ListTodo,
   Mail,
@@ -93,6 +94,7 @@ import {
 } from "./automation-conversations";
 
 type AutomationFilter = "all" | "coordinator" | "workflows" | "scheduled";
+type AutomationSubpage = "list" | "node-catalog";
 type SelectionKind = "trigger" | "task" | "workflow" | null;
 type AutomationItem = CatalogAutomationItem;
 
@@ -124,6 +126,57 @@ const NODE_CLASS_ORDER = [
 
 function createWorkflowDraftId(): string {
   return globalThis.crypto.randomUUID();
+}
+
+function getNavigationPathFromWindow(): string {
+  if (typeof window === "undefined") return "/";
+  return window.location.protocol === "file:"
+    ? window.location.hash.replace(/^#/, "") || "/"
+    : window.location.pathname || "/";
+}
+
+function normalizeAutomationPath(pathname: string): string {
+  if (!pathname) return "/";
+  const normalized = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  return normalized.length > 1 ? normalized.replace(/\/+$/, "") : normalized;
+}
+
+function getAutomationSubpageFromPath(pathname: string): AutomationSubpage {
+  const normalized = normalizeAutomationPath(pathname);
+  if (
+    normalized === "/node-catalog" ||
+    normalized === "/automations/node-catalog"
+  ) {
+    return "node-catalog";
+  }
+  return "list";
+}
+
+function getPathForAutomationSubpage(subpage: AutomationSubpage): string {
+  return subpage === "node-catalog"
+    ? "/automations/node-catalog"
+    : "/automations";
+}
+
+function syncAutomationSubpagePath(
+  subpage: AutomationSubpage,
+  mode: "push" | "replace" = "push",
+): void {
+  if (typeof window === "undefined") return;
+  const nextPath = getPathForAutomationSubpage(subpage);
+  const currentPath = normalizeAutomationPath(getNavigationPathFromWindow());
+  if (currentPath === nextPath) return;
+
+  if (window.location.protocol === "file:") {
+    window.location.hash = nextPath;
+    return;
+  }
+
+  window.history[mode === "replace" ? "replaceState" : "pushState"](
+    null,
+    "",
+    nextPath,
+  );
 }
 
 function isSystemTask(task: WorkbenchTask): boolean {
@@ -1434,6 +1487,20 @@ function AutomationNodePalette({
   );
 }
 
+function AutomationNodeCatalogPane({
+  nodes,
+}: {
+  nodes: AutomationNodeDescriptor[];
+}) {
+  return (
+    <AutomationNodePalette
+      nodes={nodes}
+      title="Workflow Node Catalog"
+      subtitle="Runtime actions, providers, code-agent nodes, and owner-scoped LifeOps integrations are available here as workflow building blocks."
+    />
+  );
+}
+
 function TaskAutomationDetailPane({
   automation,
   nodes,
@@ -1619,6 +1686,17 @@ function TriggerAutomationDetailPane({
   const trigger = automation.trigger;
   const [chatCollapsed, setChatCollapsed] = useState(false);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const triggerId = trigger?.id;
+  const selectedRuns = triggerId ? triggerRunsById[triggerId] ?? [] : [];
+  const hasLoadedRuns = triggerId
+    ? Object.hasOwn(triggerRunsById, triggerId)
+    : false;
+
+  useEffect(() => {
+    if (triggerId && !hasLoadedRuns) {
+      void loadTriggerRuns(triggerId);
+    }
+  }, [hasLoadedRuns, loadTriggerRuns, triggerId]);
 
   if (!trigger) {
     return null;
@@ -1633,14 +1711,6 @@ function TriggerAutomationDetailPane({
     trigger.id,
     bridgeConversationId,
   );
-  const selectedRuns = triggerRunsById[trigger.id] ?? [];
-  const hasLoadedRuns = Object.hasOwn(triggerRunsById, trigger.id);
-
-  useEffect(() => {
-    if (!hasLoadedRuns) {
-      void loadTriggerRuns(trigger.id);
-    }
-  }, [hasLoadedRuns, loadTriggerRuns, trigger.id]);
 
   const { failureCount, successCount } = selectedRuns.reduce(
     (counts, run) => {
@@ -2317,6 +2387,9 @@ function AutomationsLayout() {
   const [activeWorkflowConversation, setActiveWorkflowConversation] =
     useState<Conversation | null>(null);
   const [templatesModalOpen, setTemplatesModalOpen] = useState(false);
+  const [activeSubpage, setActiveSubpage] = useState<AutomationSubpage>(() =>
+    getAutomationSubpageFromPath(getNavigationPathFromWindow()),
+  );
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
 
   const visibleItems = useMemo(() => {
@@ -2326,13 +2399,57 @@ function AutomationsLayout() {
     );
   }, [filteredItems, normalizedSearchQuery]);
 
+  const syncSubpageFromLocation = useCallback(() => {
+    const pathname = getNavigationPathFromWindow();
+    const nextSubpage = getAutomationSubpageFromPath(pathname);
+    setActiveSubpage((previous) =>
+      previous === nextSubpage ? previous : nextSubpage,
+    );
+
+    if (normalizeAutomationPath(pathname) === "/node-catalog") {
+      syncAutomationSubpagePath("node-catalog", "replace");
+    }
+  }, []);
+
+  useEffect(() => {
+    syncSubpageFromLocation();
+    window.addEventListener("popstate", syncSubpageFromLocation);
+    window.addEventListener("hashchange", syncSubpageFromLocation);
+    return () => {
+      window.removeEventListener("popstate", syncSubpageFromLocation);
+      window.removeEventListener("hashchange", syncSubpageFromLocation);
+    };
+  }, [syncSubpageFromLocation]);
+
+  const showAutomationsList = useCallback(
+    (mode: "push" | "replace" = "push") => {
+      setActiveSubpage("list");
+      syncAutomationSubpagePath("list", mode);
+    },
+    [],
+  );
+
+  const showNodeCatalog = useCallback(
+    (mode: "push" | "replace" = "push") => {
+      setEditorOpen(false);
+      setEditingId(null);
+      ctx.setEditingTaskId(null);
+      setActiveSubpage("node-catalog");
+      syncAutomationSubpagePath("node-catalog", mode);
+    },
+    [ctx, setEditingId, setEditorOpen],
+  );
+
   const mobileSidebarLabel =
-    editorOpen || editingId || editingTaskId
-      ? modalTitle
-      : (resolvedSelectedItem?.title ?? "Automations");
+    activeSubpage === "node-catalog"
+      ? "Node Catalog"
+      : editorOpen || editingId || editingTaskId
+        ? modalTitle
+        : (resolvedSelectedItem?.title ?? "Automations");
 
   const selectItem = useCallback(
     (item: AutomationItem) => {
+      showAutomationsList();
       setSelectedItemId(item.id);
       setSelectedItemKind(getSelectionKind(item));
       setEditorOpen(false);
@@ -2342,7 +2459,15 @@ function AutomationsLayout() {
         void loadTriggerRuns(item.trigger.id);
       }
     },
-    [ctx, loadTriggerRuns, setEditingId, setEditorOpen, setSelectedItemId, setSelectedItemKind],
+    [
+      ctx,
+      loadTriggerRuns,
+      setEditingId,
+      setEditorOpen,
+      setSelectedItemId,
+      setSelectedItemKind,
+      showAutomationsList,
+    ],
   );
 
   const findAutomationForConversation = useCallback(
@@ -2415,6 +2540,7 @@ function AutomationsLayout() {
   const createWorkflowDraft = useCallback(
     async (options?: { initialPrompt?: string; title?: string }) => {
       setPageNotice(null);
+      showAutomationsList();
       const draftId = createWorkflowDraftId();
       const bridgeConversationId = getAutomationBridgeIdForItem(
         resolvedSelectedItem,
@@ -2482,6 +2608,7 @@ function AutomationsLayout() {
       setFilter,
       setSelectedItemId,
       setSelectedItemKind,
+      showAutomationsList,
     ],
   );
 
@@ -2513,19 +2640,32 @@ function AutomationsLayout() {
 
   // Open templates modal — disabled when n8n is not configured.
   const handleNewWorkflowCTA = useCallback(() => {
+    showAutomationsList();
     setTemplatesModalOpen(true);
-  }, []);
+  }, [showAutomationsList]);
 
   // Zero-state: open trigger or task forms, switching filter first.
   const handleZeroStateNewTrigger = useCallback(() => {
+    showAutomationsList();
     setFilter("scheduled");
     openCreateTrigger();
-  }, [setFilter, openCreateTrigger]);
+  }, [openCreateTrigger, setFilter, showAutomationsList]);
 
   const handleZeroStateNewTask = useCallback(() => {
+    showAutomationsList();
     setFilter("coordinator");
     openCreateTask();
-  }, [setFilter, openCreateTask]);
+  }, [openCreateTask, setFilter, showAutomationsList]);
+
+  const handleOpenCreateTask = useCallback(() => {
+    showAutomationsList();
+    openCreateTask();
+  }, [openCreateTask, showAutomationsList]);
+
+  const handleOpenCreateTrigger = useCallback(() => {
+    showAutomationsList();
+    openCreateTrigger();
+  }, [openCreateTrigger, showAutomationsList]);
 
   const handleWorkflowMutated = useCallback(() => {
     void refreshAutomationsWithDraftBinding(activeWorkflowConversation);
