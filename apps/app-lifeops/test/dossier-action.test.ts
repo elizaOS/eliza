@@ -1,3 +1,32 @@
+/**
+ * MOCK-HEAVY UNIT TEST — this file does NOT exercise real dossier generation.
+ *
+ * Scope verified:
+ *   - `dossierAction.validate` returns true when `entityId === agentId`
+ *     (the isAgentSelf fast-path in hasAdminAccess) and false for an unknown
+ *     entity with no owner record.
+ *   - The handler returns `MISSING_SUBJECT` when both `subject` and `intent`
+ *     are absent.
+ *   - The handler coerces its parameters (`subject`, `calendarEventId`,
+ *     `attendeeHandles`) and forwards them to `LifeOpsService#generateDossier`.
+ *   - The handler does not swallow errors thrown by `generateDossier`.
+ *
+ * How the mocking works (LARP caveat):
+ *   - `LifeOpsService` is replaced with a stub via `vi.spyOn(...).mockImplementation`,
+ *     so `generateDossier` is a `vi.fn()`. This means the real dossier
+ *     pipeline (LLM prompting, repository upserts, source aggregation,
+ *     attachment handling, etc.) is NEVER executed by this file.
+ *   - The assertion "generateDossier was called with { subject, calendarEventId,
+ *     attendeeHandles }" only validates the parameter-extraction layer of the
+ *     action handler, not whether the downstream service actually uses those
+ *     params correctly.
+ *
+ * Regressions that would slip past this file (add a real-integration test
+ * elsewhere with `createLifeOpsTestRuntime` if you care about these):
+ *   - `LifeOpsService#generateDossier` silently dropping `attendeeHandles`.
+ *   - The dossier persistence path writing a malformed row.
+ *   - The LLM prompt contract drifting away from the ActionResult shape.
+ */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import * as serviceModule from "../src/lifeops/service.js";
 import { dossierAction } from "../src/actions/dossier.js";

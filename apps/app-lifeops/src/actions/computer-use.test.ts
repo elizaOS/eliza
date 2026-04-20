@@ -1,3 +1,31 @@
+/**
+ * MOCK-HEAVY ROUTING TEST — this file does NOT execute any real computer-use
+ * action. It verifies only the LifeOps-side routing logic that decides which
+ * underlying plugin-computeruse Action to delegate to.
+ *
+ * Scope verified:
+ *   - Request-shape heuristics route browser/file/terminal/desktop surfaces to
+ *     the corresponding mock handler.
+ *   - Finder aliases (`open_finder`) resolve to the desktop action.
+ *   - `lifeOpsComputerUseAction.similes` advertises `FINDER` and `OPEN_FINDER`.
+ *
+ * How the mocking works (LARP caveat):
+ *   - `@elizaos/plugin-computeruse` is mocked with five fake Actions
+ *     (`USE_COMPUTER`, `BROWSER_ACTION`, `MANAGE_WINDOW`, `FILE_ACTION`,
+ *     `TERMINAL_ACTION`). Every action's handler is a `vi.fn()` that returns
+ *     `{ success: true, surface: ... }`.
+ *   - `@elizaos/agent/security.hasOwnerAccess` is mocked to always return true.
+ *   - The similes-presence assertion (line ~166) verifies the STRING
+ *     `"FINDER"` exists in the array; it does NOT verify the planner/LLM
+ *     actually treats that simile as an alias.
+ *
+ * Regressions that would slip past this file:
+ *   - A real computer-use handler crashing on a valid browser request.
+ *   - A permission regression where a non-owner can invoke the action.
+ *   - The planner failing to pick this action for "open Finder" because of
+ *     description drift (only the simile array is asserted here, not the
+ *     routing prompt).
+ */
 import type { Action, Memory } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
