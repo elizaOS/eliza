@@ -788,13 +788,6 @@ function expectContainsAtLeast(
   expect(matches.length).toBeGreaterThanOrEqual(minimumMatches);
 }
 
-function containsAllFragments(text: string, fragments: string[]): boolean {
-  const normalized = normalizeText(text);
-  return fragments.every((fragment) =>
-    normalized.includes(normalizeText(fragment)),
-  );
-}
-
 const selectedLiveProvider = await selectLifeOpsLiveProvider();
 const selectedProviderEnv = getSelectedLiveProviderEnv(selectedLiveProvider, {
   omitOpenAiBaseUrl: true,
@@ -949,8 +942,8 @@ describeIf(LIVE_SUITE_ENABLED)(
       fs.rmSync(workspaceDir, { recursive: true, force: true });
     }, 30_000);
 
-    it("summarizes multi-platform messages and separates urgent follow-ups from waitable items", async () => {
-      let response = await sendUserTurn({
+    it("summarizes multi-platform messages and separates urgent follow-ups from waitable items on the first answer", async () => {
+      const response = await sendUserTurn({
         runtime,
         entityId: ownerId,
         roomId: dmRoomId,
@@ -962,21 +955,6 @@ describeIf(LIVE_SUITE_ENABLED)(
           "Give me a short summary with these sections: reply now, can wait, urgent or high-priority.",
         ].join(" "),
       });
-
-      if (
-        /(channel|platform|search term|keyword|which messages|which conversation)/i.test(
-          response,
-        ) ||
-        !containsAllFragments(response, ["kentucky derby"])
-      ) {
-        response = await sendUserTurn({
-          runtime,
-          entityId: ownerId,
-          roomId: dmRoomId,
-          source: "telegram",
-          text: "No follow-up questions. Use only the recent cross-platform messages already in your context and summarize them now.",
-        });
-      }
 
       expectContainsAtLeast(
         response,
@@ -1012,8 +990,8 @@ describeIf(LIVE_SUITE_ENABLED)(
       expectContainsAll(response, ["permit inspection", "4pm"]);
     }, 180_000);
 
-    it("grounds today's schedule from the seeded calendar cache", async () => {
-      let response = await sendUserTurn({
+    it("grounds today's schedule from the seeded calendar cache on the first answer", async () => {
+      const response = await sendUserTurn({
         runtime,
         entityId: ownerId,
         roomId: dmRoomId,
@@ -1021,21 +999,11 @@ describeIf(LIVE_SUITE_ENABLED)(
         text: "Use my connected calendar. Morning. List today's actual events by name, time, and where I'm supposed to be. Do not give me just a heading.",
       });
 
-      if (!containsAllFragments(response, ["dentist", "lunch with mike"])) {
-        response = await sendUserTurn({
-          runtime,
-          entityId: ownerId,
-          roomId: dmRoomId,
-          source: "telegram",
-          text: "You only gave me a heading. Use the calendar results you already have and list the actual events for today by name.",
-        });
-      }
-
       expectContainsAll(response, ["dentist", "lunch with mike"]);
     }, 180_000);
 
-    it("lists the weekend events from the seeded calendar cache", async () => {
-      let response = await sendUserTurn({
+    it("lists the weekend events from the seeded calendar cache on the first answer", async () => {
+      const response = await sendUserTurn({
         runtime,
         entityId: ownerId,
         roomId: dmRoomId,
@@ -1047,19 +1015,6 @@ describeIf(LIVE_SUITE_ENABLED)(
           "Do not give me just a heading.",
         ].join(" "),
       });
-
-      if (
-        !containsAllFragments(response, ["rowan soccer game"]) ||
-        !containsAllFragments(response, ["mason birthday party"])
-      ) {
-        response = await sendUserTurn({
-          runtime,
-          entityId: ownerId,
-          roomId: dmRoomId,
-          source: "telegram",
-          text: "You only gave me a partial answer. Use the calendar results you already have and list the actual weekend events by name.",
-        });
-      }
 
       expectContainsAtLeast(
         response,
@@ -1074,27 +1029,14 @@ describeIf(LIVE_SUITE_ENABLED)(
       );
     }, 180_000);
 
-    it("surfaces the lunch reminder detail from the cached calendar event", async () => {
-      let response = await sendUserTurn({
+    it("surfaces the lunch reminder detail from the cached calendar event on the first answer", async () => {
+      const response = await sendUserTurn({
         runtime,
         entityId: ownerId,
         roomId: dmRoomId,
         source: "telegram",
         text: "Use my connected calendar. What does the note on my lunch with Mike event today say I need to remember?",
       });
-
-      if (
-        !containsAllFragments(response, ["kentucky derby"]) &&
-        !containsAllFragments(response, ["gin"])
-      ) {
-        response = await sendUserTurn({
-          runtime,
-          entityId: ownerId,
-          roomId: dmRoomId,
-          source: "telegram",
-          text: "Use the lunch event description you already have on my calendar and answer directly.",
-        });
-      }
 
       expectContainsAtLeast(
         response,
@@ -1103,36 +1045,14 @@ describeIf(LIVE_SUITE_ENABLED)(
       );
     }, 180_000);
 
-    it("finds the most overdue bill from email context", async () => {
-      let response = await sendUserTurn({
+    it("finds the most overdue bill from email context on the first answer", async () => {
+      const response = await sendUserTurn({
         runtime,
         entityId: ownerId,
         roomId: dmRoomId,
         source: "telegram",
         text: "Use my connected email. Check my email and tell me which bill is the most overdue, and say why.",
       });
-
-      if (
-        !containsAllFragments(response, ["electric"]) &&
-        !containsAllFragments(response, ["march 28"])
-      ) {
-        response = await sendUserTurn({
-          runtime,
-          entityId: ownerId,
-          roomId: dmRoomId,
-          source: "telegram",
-          text: "Yes. Search my connected email for bill or invoice messages and tell me the exact bill, who sent it, and the overdue date.",
-        });
-      }
-
-      if (
-        !containsAllFragments(response, ["electric"]) &&
-        !containsAllFragments(response, ["march 28"])
-      ) {
-        console.info(
-          `[assistant-user-journeys-live] overdue bill response: ${response}`,
-        );
-      }
 
       expectContainsAtLeast(
         response,
@@ -1141,8 +1061,8 @@ describeIf(LIVE_SUITE_ENABLED)(
       );
     }, 180_000);
 
-    it("creates a recurring morning-news heartbeat from natural language", async () => {
-      let response = await sendUserTurn({
+    it("creates a recurring morning-news heartbeat from natural language on the first request", async () => {
+      const response = await sendUserTurn({
         runtime,
         entityId: ownerId,
         roomId: dmRoomId,
@@ -1165,34 +1085,13 @@ describeIf(LIVE_SUITE_ENABLED)(
         );
       };
 
-      let triggerTask = await findNewsTrigger();
-      if (!triggerTask) {
-        try {
-          triggerTask = await waitForValue(
-            "news trigger",
-            findNewsTrigger,
-            (value) => value !== null,
-            15_000,
-            1_000,
-          );
-        } catch {
-          response = await sendUserTurn({
-            runtime,
-            entityId: ownerId,
-            roomId: dmRoomId,
-            source: "telegram",
-            text: "Actually create that recurring 9am financial and international news heartbeat now. Do not just describe it.",
-          });
-
-          triggerTask = await waitForValue(
-            "news trigger",
-            findNewsTrigger,
-            (value) => value !== null,
-            60_000,
-            1_000,
-          );
-        }
-      }
+      const triggerTask = await waitForValue(
+        "news trigger",
+        findNewsTrigger,
+        (value) => value !== null,
+        60_000,
+        1_000,
+      );
 
       const trigger = readTriggerConfig(triggerTask);
       expect(trigger).not.toBeNull();

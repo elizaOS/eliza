@@ -256,6 +256,13 @@ function isTextStreamResult(
 	);
 }
 
+function callbackContentHasVisibleOutput(content: Content): boolean {
+	if (typeof content.text === "string" && content.text.trim().length > 0) {
+		return true;
+	}
+	return Array.isArray(content.attachments) && content.attachments.length > 0;
+}
+
 export class AgentRuntime implements IAgentRuntime {
 	#conversationLength = 100 as number;
 	readonly agentId: UUID;
@@ -2483,9 +2490,16 @@ export class AgentRuntime implements IAgentRuntime {
 								action: action.name,
 								errors: validation.errors,
 							},
-							"Action parameter validation incomplete; continuing to handler",
+							"Skipping action with invalid parameters",
 						);
-						options.parameterErrors = validation.errors;
+						if (actionPlan?.steps?.[actionIndex]) {
+							actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+								status: "failed",
+								error: validation.errors.join("; "),
+							});
+						}
+						actionIndex++;
+						continue;
 					}
 
 					if (validation.params) options.parameters = validation.params;
@@ -2570,10 +2584,20 @@ export class AgentRuntime implements IAgentRuntime {
 				});
 
 				const storedCallbackData: Content[] = [];
+				let visibleCallbackIndex: number | null = null;
 
 				const storageCallback = async (response: Content) => {
 					// Use responseMessageId for the text response (separate from action badge)
 					response.responseId = responseMessageId;
+					if (callbackContentHasVisibleOutput(response)) {
+						if (visibleCallbackIndex === null) {
+							visibleCallbackIndex = storedCallbackData.length;
+							storedCallbackData.push(response);
+						} else {
+							storedCallbackData[visibleCallbackIndex] = response;
+						}
+						return [];
+					}
 					storedCallbackData.push(response);
 					return [];
 				};
@@ -2808,10 +2832,8 @@ export class AgentRuntime implements IAgentRuntime {
 				if (
 					callback &&
 					actionText &&
-					!storedCallbackData.some(
-						(content) =>
-							typeof content?.text === "string" &&
-							content.text.trim().length > 0,
+					!storedCallbackData.some((content) =>
+						callbackContentHasVisibleOutput(content),
 					)
 				) {
 					storedCallbackData.push({

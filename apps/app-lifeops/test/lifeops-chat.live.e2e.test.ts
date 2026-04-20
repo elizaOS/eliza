@@ -133,7 +133,7 @@ function requireStartedRuntime(
 }
 
 describeIf(LIVE_CHAT_SUITE_ENABLED)(
-  "Live: LifeOps seeded brush-teeth chat roundtrip",
+  "Live: LifeOps seeded brush-teeth chat roundtrip (strict single-attempt)",
   () => {
     let runtime: StartedRuntime | undefined;
 

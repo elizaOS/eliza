@@ -7,6 +7,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 import type {
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGoalRequest,
@@ -37,7 +38,7 @@ import {
   getZonedDateParts,
 } from "../lifeops/time.js";
 import { gmailAction } from "./gmail.js";
-import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
+import { renderGroundedActionReply } from "@elizaos/agent/actions";
 import {
   type ExtractedLifeMissingField,
   type ExtractedLifeOperation,
@@ -503,42 +504,9 @@ function stateMessageDrafts(state: State | undefined): DeferredLifeDraft[] {
     return [];
   }
 
-  const stateRecord = state as Record<string, unknown>;
-  const data =
-    stateRecord.data && typeof stateRecord.data === "object"
-      ? (stateRecord.data as Record<string, unknown>)
-      : undefined;
-  const providerResults =
-    data?.providers && typeof data.providers === "object"
-      ? (data.providers as Record<string, unknown>)
-      : undefined;
-  const providerRecentMessages =
-    providerResults?.RECENT_MESSAGES &&
-    typeof providerResults.RECENT_MESSAGES === "object"
-      ? (providerResults.RECENT_MESSAGES as Record<string, unknown>)
-      : undefined;
-  const providerRecentMessagesData =
-    providerRecentMessages?.data &&
-    typeof providerRecentMessages.data === "object"
-      ? (providerRecentMessages.data as Record<string, unknown>)
-      : undefined;
-
-  const recentMessagesData = [
-    stateRecord.recentMessagesData,
-    stateRecord.recentMessages,
-    providerRecentMessagesData?.recentMessages,
-  ].find(Array.isArray);
-
-  if (!Array.isArray(recentMessagesData)) {
-    return [];
-  }
-
   const drafts: DeferredLifeDraft[] = [];
-  for (const item of recentMessagesData) {
-    if (!item || typeof item !== "object") {
-      continue;
-    }
-    const content = (item as Record<string, unknown>).content;
+  for (const item of getRecentMessagesData(state)) {
+    const content = item.content;
     if (!content || typeof content !== "object") {
       continue;
     }
@@ -560,49 +528,16 @@ function stateMessageDrafts(state: State | undefined): DeferredLifeDraft[] {
 
 function stateRecentMessageEntries(
   state: State | undefined,
-): Record<string, unknown>[] {
+) : Memory[] {
   if (!state || typeof state !== "object") {
     return [];
   }
 
-  const stateRecord = state as Record<string, unknown>;
-  const data =
-    stateRecord.data && typeof stateRecord.data === "object"
-      ? (stateRecord.data as Record<string, unknown>)
-      : undefined;
-  const providerResults =
-    data?.providers && typeof data.providers === "object"
-      ? (data.providers as Record<string, unknown>)
-      : undefined;
-  const providerRecentMessages =
-    providerResults?.RECENT_MESSAGES &&
-    typeof providerResults.RECENT_MESSAGES === "object"
-      ? (providerResults.RECENT_MESSAGES as Record<string, unknown>)
-      : undefined;
-  const providerRecentMessagesData =
-    providerRecentMessages?.data &&
-    typeof providerRecentMessages.data === "object"
-      ? (providerRecentMessages.data as Record<string, unknown>)
-      : undefined;
-
-  const recentMessagesData = [
-    stateRecord.recentMessagesData,
-    stateRecord.recentMessages,
-    providerRecentMessagesData?.recentMessages,
-  ].find(Array.isArray);
-
-  if (!Array.isArray(recentMessagesData)) {
-    return [];
-  }
-
-  return recentMessagesData.filter(
-    (item): item is Record<string, unknown> =>
-      Boolean(item) && typeof item === "object",
-  );
+  return getRecentMessagesData(state);
 }
 
 function isDeferredLifeDraftMessageEntry(
-  item: Record<string, unknown>,
+  item: Memory,
 ): boolean {
   const content =
     item.content && typeof item.content === "object"
@@ -2484,14 +2419,15 @@ export const lifeAction: Action & {
     "querying an overview of active LifeOps items. " +
     "These are executable LifeOps items, not profile facts or bio updates. " +
     "ALWAYS use LIFE for dynamic status questions like 'what's still left for today', 'what do i still need to do today', or 'anything else in my LifeOps list', even when the conversation already mentioned tasks, because their status may have changed after a completion, snooze, or reminder. " +
+    "Use LIFE for reminder/escalation policies about the owner's own follow-through, such as 'if I still haven't answered about those three events, bump me again with context instead of starting over,' when the request is about reminding the owner rather than modifying the calendar itself. " +
     "Do not fall back to REPLY, UPDATE_ENTITY, or UPDATE_OWNER_PROFILE when the user is asking to create or inspect a todo, habit, goal, reminder, or alarm. " +
     "DO NOT use this action for generic coaching or advice questions like 'any tips on setting better goals?' unless the user is also asking you to create, update, review, or track a concrete goal, task, reminder, or routine. " +
     "DO NOT use this action for person-specific follow-ups like 'remind me to follow up with David next week about the project' — use OWNER_RELATIONSHIP instead. " +
     "DO NOT use this action for Gmail inbox triage, email search, drafting or sending emails — use OWNER_INBOX with channel=gmail instead. " +
     "DO NOT use this action for daily briefs, unread summaries, drafts awaiting sign-off, or cross-channel inbox review — use OWNER_INBOX instead. " +
     "DO NOT use this action for calendar lookups, scheduling meetings, availability, Calendly, or travel itineraries — use OWNER_CALENDAR instead. " +
-    "DO NOT use this action for multi-device push ladders or device-wide reminder delivery — use PUBLISH_DEVICE_INTENT instead. " +
-    "DO NOT use this action for pre-event asset checklists, document-signing workflows, collecting updated ID copies, or cancellation-fee warning/escalation policies — use OWNER_INBOX, PUBLISH_DEVICE_INTENT, OWNER_CALENDAR, or LIFEOPS_COMPUTER_USE instead. " +
+    "DO NOT use this action for multi-device push ladders or device-wide reminder delivery — use INTENT_SYNC instead. " +
+    "DO NOT use this action for pre-event asset checklists, document-signing workflows, collecting updated ID copies, or cancellation-fee warning/escalation policies — use OWNER_INBOX, INTENT_SYNC, OWNER_CALENDAR, or LIFEOPS_COMPUTER_USE instead. " +
     "DO NOT use this action for browser/portal/file workflows on the owner's machine — use LIFEOPS_COMPUTER_USE instead. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action or fall back to advice-only chat when the user wants real LifeOps follow-through.",
   descriptionCompressed: "LifeOps: manage habits, goals, reminders, alarms, escalation. Create/edit/complete/snooze items. Query active status.",

@@ -52,6 +52,17 @@ describe("final-checks", () => {
     expect(res.status).toBe("passed");
   });
 
+  it("selectedAction accepts canonical owner umbrella actions for legacy delegates", async () => {
+    const ctx = ctxWith({
+      actionsCalled: [{ actionName: "OWNER_INBOX" }],
+    });
+    const res = await runFinalCheck(
+      { type: "selectedAction", actionName: ["INBOX", "CROSS_CHANNEL_SEND"] },
+      { runtime, ctx },
+    );
+    expect(res.status).toBe("passed");
+  });
+
   it("memoryWriteOccurred passes on matching table", async () => {
     const ctx = ctxWith({
       memoryWrites: [{ table: "messages", content: { text: "hi" } }],

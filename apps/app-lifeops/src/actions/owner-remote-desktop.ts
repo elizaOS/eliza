@@ -16,7 +16,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security";
 import { remoteDesktopAction } from "./remote-desktop.js";
 import { startRemoteSessionAction } from "./start-remote-session.js";
 import { revokeRemoteSessionAction } from "./revoke-remote-session.js";

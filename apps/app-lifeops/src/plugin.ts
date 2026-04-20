@@ -54,6 +54,7 @@ import {
   requestFieldFillAction,
 } from "./actions/autofill.js";
 import { dossierAction } from "./actions/dossier.js";
+import { bookTravelAction } from "./actions/book-travel.js";
 // T7f — meeting dossier (plan §6.7).
 import { generateDossierAction } from "./dossier/action.js";
 // T8a — travel-time awareness (plan §6.9).
@@ -66,6 +67,10 @@ import {
   fetchBrowserActivityAction,
   registerBrowserSessionAction,
 } from "./actions/browser-extension.js";
+import {
+  approveRequestAction,
+  rejectRequestAction,
+} from "./actions/approval.js";
 
 // LifeOps core providers
 import { inboxTriageProvider } from "./providers/inbox-triage.js";
@@ -189,20 +194,18 @@ const rawAppLifeOpsPlugin: Plugin = {
     ownerRemoteDesktopAction,
     lifeOpsComputerUseAction,
     crossChannelSendAction,
-    publishDeviceIntentAction,
+    bookTravelAction,
     intentSyncAction,
+    approveRequestAction,
+    rejectRequestAction,
     passwordManagerAction,
     requestFieldFillAction,
     addAutofillWhitelistAction,
     listAutofillWhitelistAction,
     dossierAction,
-    generateDossierAction,
-    computeTravelBufferAction,
     healthAction,
     subscriptionsAction,
     emailUnsubscribeAction,
-    registerBrowserSessionAction,
-    fetchBrowserActivityAction,
   ],
   providers: [
     lifeOpsBrowserProvider,

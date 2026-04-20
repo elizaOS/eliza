@@ -36,6 +36,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function resolveSchedulerNowIso(options: Record<string, unknown>): string | undefined {
+  const raw = options.now;
+  if (raw instanceof Date) {
+    return raw.toISOString();
+  }
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return new Date(raw).toISOString();
+  }
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    const parsed = new Date(raw);
+    if (Number.isFinite(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+  return undefined;
+}
+
 function isErrorWithCause(value: unknown): value is ErrorWithCause {
   return Boolean(value) && typeof value === "object";
 }
@@ -138,10 +155,17 @@ export async function executeLifeOpsSchedulerTask(
   options: Record<string, unknown> = {},
 ): Promise<{
   nextInterval: number;
+  now: string;
+  reminderAttempts: Awaited<
+    ReturnType<LifeOpsService["processScheduledWork"]>
+  >["reminderAttempts"];
+  workflowRuns: Awaited<
+    ReturnType<LifeOpsService["processScheduledWork"]>
+  >["workflowRuns"];
 }> {
   // WS5: route this scheduler tick through the shared LLM planner so
   // reminder / workflow dispatch decisions are LLM-extracted, not hardcoded.
-  const now = typeof options.now === "string" ? options.now : undefined;
+  const now = resolveSchedulerNowIso(options);
   const plannerContext: BackgroundJobContext = {
     jobKind: "meeting_reminder",
     subjectUserId: runtime.agentId,
@@ -166,9 +190,12 @@ export async function executeLifeOpsSchedulerTask(
   }
 
   const service = new LifeOpsService(runtime);
-  await service.processScheduledWork({ now });
+  const scheduledWork = await service.processScheduledWork({ now });
   return {
     nextInterval: resolveLifeOpsTaskIntervalMs(runtime.agentId),
+    now: scheduledWork.now,
+    reminderAttempts: scheduledWork.reminderAttempts,
+    workflowRuns: scheduledWork.workflowRuns,
   };
 }
 

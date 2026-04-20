@@ -137,7 +137,13 @@ export const scheduleFollowUpAction: Action = {
 		message: Memory,
 		_state?: State,
 	): Promise<boolean> => {
-		if (runtime.actions.some((action) => action.name === "RELATIONSHIP")) {
+		if (
+			runtime.actions.some(
+				(action) =>
+					action.name === "OWNER_RELATIONSHIP" ||
+					action.name === "RELATIONSHIP",
+			)
+		) {
 			return false;
 		}
 

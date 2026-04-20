@@ -13,7 +13,7 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess } from "@elizaos/agent/security";
 import { gmailAction } from "./gmail.js";
 import { inboxAction } from "./inbox.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
@@ -28,6 +28,7 @@ type OwnerInboxSubaction =
   | "triage"
   | "digest"
   | "respond"
+  | "needs_response"
   | "search"
   | "read_message"
   | "draft_reply"
@@ -64,6 +65,7 @@ const VALID_SUBACTIONS: readonly OwnerInboxSubaction[] = [
   "triage",
   "digest",
   "respond",
+  "needs_response",
   "search",
   "read_message",
   "draft_reply",
@@ -146,21 +148,30 @@ async function resolveOwnerInboxPlanWithLlm(args: {
   const prompt = [
     "Plan the OWNER_INBOX subaction for this request.",
     "Return ONLY valid JSON with exactly these fields:",
-    '{"subaction":"triage"|"digest"|"respond"|"search"|"read_message"|"draft_reply"|"send_reply"|"cross_channel_search"|null,"channel":"all"|"gmail"|"slack"|"discord"|"sms"|"telegram"|"whatsapp"|"imessage"|null,"shouldAct":true|false,"response":"string|null"}',
+    '{"subaction":"triage"|"digest"|"respond"|"needs_response"|"search"|"read_message"|"draft_reply"|"send_reply"|"cross_channel_search"|null,"channel":"all"|"gmail"|"slack"|"discord"|"sms"|"telegram"|"whatsapp"|"imessage"|null,"shouldAct":true|false,"response":"string|null"}',
     "",
     "OWNER_INBOX is the OWNER's single umbrella for inbox/email work.",
     "Choose channel=gmail whenever the request explicitly names Gmail or email, or when the request is about a specific email by sender, subject, unread status, drafting an email reply, or sending an email reply.",
-    "Choose channel=all for generic phrases like 'my inbox', 'inbox digest', 'daily brief', 'triage my inbox', 'what needs my attention', or replying to inbox items across channels.",
-    "Choose triage for scanning and prioritizing new items.",
-    "Choose digest for a summary / daily brief / unread overview.",
-    "Choose respond for replying to inbox items across channels when the request is not a Gmail-thread-specific draft/send.",
+    "Gmail-only structured params like messageId, senderQuery, subjectQuery, or labelQuery imply channel=gmail.",
+    "Choose channel=all for generic phrases like 'my inbox', 'inbox digest', 'triage my inbox', 'what needs my attention in my inbox', or replying to inbox items across channels.",
+    "Do NOT act when the request is a morning brief, night brief, operating picture, command center, what matters today, or a full start-of-day / end-of-day review — those belong to RUN_MORNING_CHECKIN / RUN_NIGHT_CHECKIN even when they include inbox items.",
+    "Choose triage for scanning and prioritizing new inbox items.",
+    "Choose digest for an inbox-only summary / unread overview / mailbox digest, including prioritised inbox briefs like 'show urgent blockers first and separate them from low-priority inbound'.",
+    "Choose respond for replying to inbox items across channels when the request is not a Gmail-thread-specific draft/send. Missed-call repair notes, approval-held apology drafts, and group-chat handoff suggestions belong here.",
+    "Choose needs_response for Gmail/email requests that ask which messages still need a reply.",
     "Choose search for searching messages, especially Gmail/email search by sender / subject / label / keyword.",
     "Choose read_message for reading a specific Gmail message body by message id.",
     "Choose draft_reply for drafting a reply to a specific Gmail thread or latest email from someone.",
     "Choose send_reply for actually sending a Gmail reply.",
     "Choose cross_channel_search when the user wants everything about a person/topic across all channels.",
+    "For standing inbox policies like 'if direct relaying gets messy, suggest a group chat handoff' or inbox repair workflows that are still missing channel details, keep shouldAct=true. OWNER_INBOX can store the policy and ask the minimum follow-up inside the action.",
     "Set shouldAct=false only when the request is not an inbox/email operation and a different action should handle it.",
     "When shouldAct=false, response must be a short clarifying sentence in the user's language.",
+    "",
+    'Example: "which emails need a response" -> {"subaction":"needs_response","channel":"gmail","shouldAct":true,"response":null}',
+    'Example: "find everything Alice said across my channels" -> {"subaction":"cross_channel_search","channel":"all","shouldAct":true,"response":null}',
+    'Example: "show urgent blockers first and separate them from low-priority inbound" -> {"subaction":"digest","channel":"all","shouldAct":true,"response":null}',
+    'Example: "if direct relaying gets messy here, suggest making a group chat handoff instead" -> {"subaction":"respond","channel":"all","shouldAct":true,"response":null}',
     "",
     `Current request: ${JSON.stringify(messageText(args.message))}`,
     `Resolved intent: ${JSON.stringify(args.intent)}`,
@@ -206,11 +217,29 @@ async function resolveOwnerInboxPlanWithLlm(args: {
 function missingSubactionResult(): ActionResult {
   return {
     text:
-      "missing subaction; choose triage|digest|respond|search|read_message|draft_reply|send_reply",
+      "missing subaction; choose triage|digest|respond|needs_response|search|read_message|draft_reply|send_reply|cross_channel_search",
     success: false,
     values: { success: false, error: "MISSING_SUBACTION" },
     data: { actionName: ACTION_NAME },
   };
+}
+
+function inferImplicitChannel(
+  subaction: OwnerInboxSubaction | null,
+  params: OwnerInboxParams,
+): OwnerInboxChannel | null {
+  if (
+    subaction === "needs_response" ||
+    subaction === "read_message" ||
+    subaction === "draft_reply" ||
+    subaction === "send_reply"
+  ) {
+    return "gmail";
+  }
+  if (params.messageId || params.senderQuery || params.subjectQuery || params.labelQuery) {
+    return "gmail";
+  }
+  return null;
 }
 
 function buildGmailSearchQuery(params: OwnerInboxParams): string | undefined {
@@ -319,33 +348,48 @@ export const ownerInboxAction: Action & {
     "gmail",
     "email",
     "unread summary",
+    "urgent blockers first",
+    "low-priority inbound",
+    "missed call repair",
+    "group chat handoff",
+    "approval-gated reply workflow",
   ],
   description:
     "The OWNER's inbox, across every connected messaging channel — Gmail, " +
     "Slack, Discord, SMS, Telegram, iMessage, and WhatsApp. One umbrella " +
-    "action for triage, the daily executive-assistant brief, responding to " +
+    "action for triage, inbox digests, responding to " +
     "messages, and cross-channel search. " +
-    "Subactions: triage | digest | respond | search | read_message | " +
-    "draft_reply | send_reply | cross_channel_search. " +
+    "Subactions: triage | digest | respond | needs_response | search | " +
+    "read_message | draft_reply | send_reply | cross_channel_search. " +
     "Channel param: all | gmail | slack | discord | sms | telegram | " +
     "whatsapp | imessage. Defaults to 'all'. " +
     "Gmail-specific operations — search by sender/subject/label, read a " +
-    "message body, draft or send a threaded reply — are available when " +
+    "message body, inspect reply-needed threads, draft or send a threaded " +
+    "reply — are available when " +
     "channel=gmail (use messageId + replyBody for read_message / draft_reply / " +
     "send_reply; senderQuery / subjectQuery / labelQuery for search). " +
-    "Route here when the user says 'my inbox', 'inbox digest', 'daily brief', " +
-    "'unified inbox', 'what needs my attention', 'triage my messages' — use " +
+    "Use this for inbox-shaped coordination requests like 'show the urgent blockers first and separate them from low-priority inbound', " +
+    "'repair that missed call and hold the note for my approval', or 'if direct relaying gets messy, suggest a group chat handoff'. " +
+    "Route here when the user says 'my inbox', 'inbox digest', 'mailbox digest', " +
+    "'unified inbox', 'what needs my attention in my inbox', 'triage my messages', or 'show me the unread blockers first' — use " +
     "channel=all. When the user explicitly says 'Gmail' or 'email', or asks " +
     "to search/read/draft/send a specific email reply, route here with " +
     "channel=gmail. Requests like 'draft a reply to the latest email from Sarah' " +
     "and 'send a reply to the last email from finance confirming receipt' " +
     "belong here, not in generic REPLY. When the user asks for cross-channel " +
     "search ('find everything about X across my channels'), use " +
-    "subaction=cross_channel_search. " +
+    "subaction=cross_channel_search. If the channel, recipient, or participant " +
+    "details are still missing but the request is clearly inbox-owned, still " +
+    "select OWNER_INBOX and let it ask the minimum follow-up question. " +
+    "DO NOT use this action for explicit morning or night briefings such as " +
+    "'run my morning check-in', 'give me my night check-in', 'morning review', " +
+    "'morning brief', 'night brief', 'operating picture', 'command center', " +
+    "'evening wrap-up', or 'how did today go?' — those belong to " +
+    "RUN_MORNING_CHECKIN / RUN_NIGHT_CHECKIN, even if they may include inbox items. " +
     "DO NOT use this action for the agent's own mailbox — that is AGENT_INBOX. " +
     "Admin/owner only.",
   descriptionCompressed:
-    "Owner's unified inbox (Gmail + Slack + Discord + SMS + Telegram + iMessage + WhatsApp): triage, digest, respond, search, per-Gmail read/draft/send. Admin only. Not the agent's own mailbox.",
+    "Owner's unified inbox (Gmail + Slack + Discord + SMS + Telegram + iMessage + WhatsApp): triage, digest, respond, reply-needed lookup, search, and per-Gmail read/draft/send. Admin only. Not the agent's own mailbox.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {
@@ -365,7 +409,7 @@ export const ownerInboxAction: Action & {
     const params = ((options?.parameters ?? {}) as OwnerInboxParams) ?? {};
     const body = messageText(message);
     let subaction = normalizeSubaction(params.subaction);
-    let channel = normalizeChannel(params.channel) ?? "all";
+    let channel = normalizeChannel(params.channel);
 
     if (!subaction) {
       const intent = (params.intent ?? body).trim();
@@ -396,6 +440,9 @@ export const ownerInboxAction: Action & {
         };
       }
     }
+
+    channel ??= inferImplicitChannel(subaction, params);
+    channel ??= "all";
 
     // Cross-channel search is its own delegate regardless of channel.
     if (subaction === "cross_channel_search") {
@@ -443,6 +490,16 @@ export const ownerInboxAction: Action & {
             callback,
           );
         }
+        case "needs_response":
+          return delegateTo(
+            gmailAction,
+            runtime,
+            message,
+            state,
+            { subaction: "needs_response", intent: params.intent },
+            options,
+            callback,
+          );
         case "digest":
           return delegateTo(
             gmailAction,
@@ -521,13 +578,14 @@ export const ownerInboxAction: Action & {
       case "triage":
       case "digest":
       case "respond":
+      case "needs_response":
         return delegateTo(
           inboxAction,
           runtime,
           message,
           state,
           {
-            subaction,
+            subaction: subaction === "needs_response" ? "digest" : subaction,
             intent: params.intent,
             target: params.target,
             entryId: params.entryId,
@@ -571,11 +629,11 @@ export const ownerInboxAction: Action & {
       name: "subaction",
       description:
         "Which owner-inbox operation to run. One of: triage (scan new messages), " +
-        "digest (daily summary), respond (draft/send a reply), search (within a " +
-        "channel), read_message (Gmail-only: read a full message body), " +
-        "draft_reply (Gmail-only: draft a threaded reply), send_reply " +
-        "(Gmail-only: send a threaded reply), cross_channel_search (search " +
-        "every connected channel + memory).",
+        "digest (daily summary), respond (draft/send a reply), needs_response " +
+        "(Gmail reply-needed lookup), search (within a channel), read_message " +
+        "(Gmail-only: read a full message body), draft_reply (Gmail-only: draft " +
+        "a threaded reply), send_reply (Gmail-only: send a threaded reply), " +
+        "cross_channel_search (search every connected channel + memory).",
       required: false,
       schema: {
         type: "string" as const,
@@ -674,6 +732,20 @@ export const ownerInboxAction: Action & {
   ],
 
   examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "I missed a call with the Frontier Tower team. Draft a repair note for my approval and help me reschedule it.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Drafted a repair note for Frontier Tower, held it for your approval, and prepared the reschedule follow-through.",
+        },
+      },
+    ],
     [
       {
         name: "{{name1}}",

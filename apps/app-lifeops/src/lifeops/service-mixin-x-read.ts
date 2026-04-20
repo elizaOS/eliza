@@ -106,6 +106,44 @@ function translateXReadError(
   throw error;
 }
 
+function matchesCachedXSearchQuery(
+  item: LifeOpsXFeedItem,
+  query: string,
+): boolean {
+  const terms = query
+    .toLowerCase()
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length > 0);
+  if (terms.length === 0) {
+    return false;
+  }
+  const haystack = [
+    item.authorHandle ?? "",
+    item.authorId ?? "",
+    item.text,
+    JSON.stringify(item.metadata ?? {}),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return terms.every((term) => haystack.includes(term));
+}
+
+function dedupeCachedSearchResults(
+  items: LifeOpsXFeedItem[],
+): LifeOpsXFeedItem[] {
+  const seen = new Set<string>();
+  const unique: LifeOpsXFeedItem[] = [];
+  for (const item of items) {
+    if (seen.has(item.externalTweetId)) {
+      continue;
+    }
+    seen.add(item.externalTweetId);
+    unique.push(item);
+  }
+  return unique;
+}
+
 /** @internal */
 export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
   class LifeOpsXReadServiceMixin extends Base {
@@ -114,6 +152,10 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       await this.requireXGrant();
       const credentials = toReaderCredentials();
       if (!credentials) {
+        const cached = await this.repository.listXDms(this.agentId(), { limit: 1 });
+        if (cached.length > 0) {
+          return { synced: 0 };
+        }
         fail(409, "X credentials are not configured.");
       }
       let page;
@@ -150,6 +192,14 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       await this.requireXGrant();
       const credentials = toReaderCredentials();
       if (!credentials) {
+        const cached = await this.repository.listXFeedItems(
+          this.agentId(),
+          feedType,
+          { limit: 1 },
+        );
+        if (cached.length > 0) {
+          return { synced: 0 };
+        }
         fail(409, "X credentials are not configured.");
       }
       let page;
@@ -188,13 +238,32 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       opts: XReadOpts = {},
     ): Promise<LifeOpsXFeedItem[]> {
       await this.requireXGrant();
-      const credentials = toReaderCredentials();
-      if (!credentials) {
-        fail(409, "X credentials are not configured.");
-      }
       const trimmed = (query ?? "").trim();
       if (trimmed.length === 0) {
         fail(400, "searchXPosts requires a non-empty query.");
+      }
+      const credentials = toReaderCredentials();
+      if (!credentials) {
+        const searchLimit = Math.max(opts.limit ?? 20, 20);
+        const cached = dedupeCachedSearchResults([
+          ...(await this.repository.listXFeedItems(this.agentId(), "search", {
+            limit: searchLimit,
+          })),
+          ...(await this.repository.listXFeedItems(
+            this.agentId(),
+            "home_timeline",
+            {
+              limit: searchLimit,
+            },
+          )),
+          ...(await this.repository.listXFeedItems(this.agentId(), "mentions", {
+            limit: searchLimit,
+          })),
+        ]).filter((item) => matchesCachedXSearchQuery(item, trimmed));
+        if (cached.length > 0) {
+          return cached.slice(0, opts.limit ?? cached.length);
+        }
+        fail(409, "X credentials are not configured.");
       }
       let page;
       try {

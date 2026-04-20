@@ -1,13 +1,12 @@
 import crypto from "node:crypto";
-import type {
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "@elizaos/core";
-import { ChannelType, createUniqueUuid, logger, stringToUuid } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { executeRawSql, sqlQuote, sqlText } from "../../lifeops/sql.js";
-import { blockWebsitesAction } from "../../actions/website-blocker.js";
+import {
+  startSelfControlBlock,
+  stopSelfControlBlock,
+} from "../../website-blocker/engine.ts";
+import { syncWebsiteBlockerExpiryTask } from "../../website-blocker/service.ts";
 import {
   BLOCK_RULES_TABLE,
   type BlockRule,
@@ -28,9 +27,8 @@ function nowMs(): number {
 }
 
 function newBlockRuleId(): string {
-  const maybeCrypto = (
-    globalThis as { crypto?: { randomUUID?: () => string } }
-  ).crypto;
+  const maybeCrypto = (globalThis as { crypto?: { randomUUID?: () => string } })
+    .crypto;
   if (maybeCrypto?.randomUUID) return maybeCrypto.randomUUID();
   return crypto.randomUUID();
 }
@@ -38,9 +36,7 @@ function newBlockRuleId(): string {
 function sqlBigint(value: number | null | undefined): string {
   if (value === null || value === undefined) return "NULL";
   if (!Number.isFinite(value)) {
-    throw new Error(
-      `[BlockRuleWriter] non-finite numeric: ${String(value)}`,
-    );
+    throw new Error(`[BlockRuleWriter] non-finite numeric: ${String(value)}`);
   }
   return String(Math.trunc(value));
 }
@@ -68,14 +64,10 @@ function assertCreateInput(input: CreateBlockRuleInput): void {
   }
   assertValidGateType(input.gateType);
   if (input.gateType === "until_todo" && !input.gateTodoId) {
-    throw new Error(
-      "[BlockRuleWriter] until_todo gate requires gateTodoId",
-    );
+    throw new Error("[BlockRuleWriter] until_todo gate requires gateTodoId");
   }
   if (input.gateType === "until_iso" && input.gateUntilMs === undefined) {
-    throw new Error(
-      "[BlockRuleWriter] until_iso gate requires gateUntilMs",
-    );
+    throw new Error("[BlockRuleWriter] until_iso gate requires gateUntilMs");
   }
   if (
     input.gateType === "fixed_duration" &&
@@ -87,97 +79,20 @@ function assertCreateInput(input: CreateBlockRuleInput): void {
   }
 }
 
-function makeSyntheticMessage(
-  runtime: IAgentRuntime,
-  websites: readonly string[],
-): Memory {
-  const worldId = stringToUuid(
-    `block-rule-service-world-${String(runtime.agentId)}`,
-  );
-  const roomId = stringToUuid(
-    `block-rule-service-${String(runtime.agentId)}`,
-  );
-  return {
-    id: createUniqueUuid(runtime, `block-rule-${Date.now()}`),
-    entityId: runtime.agentId,
-    agentId: runtime.agentId as UUID,
-    roomId,
-    worldId,
-    content: {
-      text: `Block ${websites.join(", ")}.`,
-      source: "agent",
-    },
-  } as Memory;
-}
-
-async function ensureSyntheticMessageContext(
-  runtime: IAgentRuntime,
-  message: Memory,
-): Promise<void> {
-  const worldId = message.worldId ?? stringToUuid(`block-rule-service-world-${String(runtime.agentId)}`);
-  const roomId = message.roomId;
-  const worldMetadata = {
-    ownerId: runtime.agentId,
-    adminIds: [runtime.agentId],
-    roles: {
-      [runtime.agentId]: "OWNER",
-    },
-  };
-
-  if (typeof runtime.ensureWorldExists === "function") {
-    await runtime.ensureWorldExists({
-      id: worldId,
-      name: "Block Rule Service",
-      agentId: runtime.agentId,
-      messageServerId: runtime.agentId,
-      metadata: worldMetadata,
-    } as Parameters<typeof runtime.ensureWorldExists>[0]);
-  }
-
-  if (typeof runtime.ensureConnection === "function") {
-    await runtime.ensureConnection({
-      entityId: runtime.agentId,
-      roomId,
-      worldId,
-      worldName: "Block Rule Service",
-      userName: "Block Rule Service",
-      name: "Block Rule Service",
-      source: "agent",
-      channelId: String(roomId),
-      type: ChannelType.DM,
-      messageServerId: runtime.agentId,
-      metadata: worldMetadata,
-    });
-  }
-
-  if (typeof runtime.ensureParticipantInRoom === "function") {
-    await runtime.ensureParticipantInRoom(runtime.agentId, roomId);
-  }
-}
-
-function computeHandlerOptionsForCreate(
+function computeDurationMinutesForCreate(
   input: CreateBlockRuleInput,
-): HandlerOptions {
-  const durationMinutes: number | null = (() => {
-    if (input.gateType === "fixed_duration") {
-      if (input.fixedDurationMs === null || input.fixedDurationMs === undefined) {
-        return null;
-      }
-      return Math.max(1, Math.round(input.fixedDurationMs / 60_000));
+): number | null {
+  if (input.gateType === "fixed_duration") {
+    if (input.fixedDurationMs === null || input.fixedDurationMs === undefined) {
+      return null;
     }
-    if (input.gateType === "until_iso" && input.gateUntilMs != null) {
-      const remaining = input.gateUntilMs - nowMs();
-      return remaining > 0 ? Math.max(1, Math.round(remaining / 60_000)) : 1;
-    }
-    return null;
-  })();
-
-  return {
-    parameters: {
-      websites: [...input.websites],
-      durationMinutes,
-    },
-  } as HandlerOptions;
+    return Math.max(1, Math.round(input.fixedDurationMs / 60_000));
+  }
+  if (input.gateType === "until_iso" && input.gateUntilMs != null) {
+    const remaining = input.gateUntilMs - nowMs();
+    return remaining > 0 ? Math.max(1, Math.round(remaining / 60_000)) : 1;
+  }
+  return null;
 }
 
 export class BlockRuleWriter {
@@ -212,30 +127,35 @@ export class BlockRuleWriter {
        )`,
     );
 
-    const message = makeSyntheticMessage(this.runtime, input.websites);
-    await ensureSyntheticMessageContext(this.runtime, message);
-    const handlerOptions = computeHandlerOptionsForCreate(input);
-    const result = await blockWebsitesAction.handler(
-      this.runtime,
-      message,
-      undefined,
-      handlerOptions,
-    );
+    const durationMinutes = computeDurationMinutesForCreate(input);
+    const activationResult = await startSelfControlBlock({
+      websites: [...input.websites],
+      durationMinutes,
+      scheduledByAgentId: agentId,
+    });
 
-    if (result && typeof result === "object" && "success" in result) {
-      const typedResult = result as { success: unknown; text?: unknown };
-      if (typedResult.success === false) {
-        // The rule is the source of truth. SelfControl activation failures
-        // (missing admin permission, unsupported platform, no helper binary)
-        // are logged but do not tear down the rule — the reconciler keeps
-        // the lifecycle and a retry on rule creation will re-attempt
-        // activation.
-        const reason =
-          typeof typedResult.text === "string"
-            ? typedResult.text
-            : "SelfControl activation returned success=false";
+    if (activationResult.success === false) {
+      // The rule is the source of truth. Activation failures
+      // (missing admin permission, unsupported platform, no helper binary)
+      // are logged but do not tear down the rule — the reconciler keeps
+      // the lifecycle and a retry on rule creation will re-attempt
+      // activation.
+      logger.warn(
+        `[BlockRuleWriter] SelfControl activation did not complete for rule ${id}: ${activationResult.error}`,
+      );
+    } else if (durationMinutes !== null) {
+      try {
+        const taskId = await syncWebsiteBlockerExpiryTask(this.runtime);
+        if (!taskId) {
+          await stopSelfControlBlock();
+          logger.warn(
+            `[BlockRuleWriter] SelfControl activation for rule ${id} rolled back because no automatic unblock task could be scheduled`,
+          );
+        }
+      } catch (error) {
+        await stopSelfControlBlock();
         logger.warn(
-          `[BlockRuleWriter] SelfControl activation did not complete for rule ${id}: ${reason}`,
+          `[BlockRuleWriter] SelfControl activation for rule ${id} rolled back because the automatic unblock task failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
@@ -288,9 +208,7 @@ export class BlockRuleWriter {
         WHERE id = ${sqlQuote(id)}
           AND agent_id = ${sqlQuote(agentId)}`,
     );
-    logger.info(
-      `[BlockRuleWriter] Released block rule ${id} (${reason})`,
-    );
+    logger.info(`[BlockRuleWriter] Released block rule ${id} (${reason})`);
   }
 
   async updateGateFulfilled(id: string, reason: string): Promise<void> {

@@ -733,17 +733,21 @@ export function normalizeLiveText(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-export async function postLiveConversationMessage(
+async function postLiveConversationMessageWithAttempts(
   runtime: StartedLifeOpsLiveRuntime,
   conversationId: string,
   text: string,
   turnName: string,
-  attempts: number = 3,
-  source?: string,
+  options: {
+    attempts: number;
+    retryDelayMs?: number;
+    source?: string;
+  },
 ): Promise<string> {
   let lastError: unknown = null;
+  const retryDelayMs = options.retryDelayMs ?? 2_000;
 
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+  for (let attempt = 1; attempt <= options.attempts; attempt += 1) {
     try {
       const response = await postConversationMessage(
         runtime.port,
@@ -751,7 +755,7 @@ export async function postLiveConversationMessage(
         {
           text,
           mode: "power",
-          ...(source ? { source } : {}),
+          ...(options.source ? { source: options.source } : {}),
         },
         undefined,
         { timeoutMs: LIVE_CONVERSATION_REQUEST_TIMEOUT_MS },
@@ -777,14 +781,57 @@ export async function postLiveConversationMessage(
       );
     }
 
-    if (attempt < attempts) {
-      await sleep(2_000);
+    if (attempt < options.attempts) {
+      await sleep(retryDelayMs);
     }
   }
 
   throw lastError instanceof Error
     ? lastError
-    : new Error(`${turnName} failed after ${attempts} attempts`);
+    : new Error(`${turnName} failed after ${options.attempts} attempts`);
+}
+
+export async function postLiveConversationMessage(
+  runtime: StartedLifeOpsLiveRuntime,
+  conversationId: string,
+  text: string,
+  turnName: string,
+  source?: string,
+): Promise<string> {
+  return await postLiveConversationMessageWithAttempts(
+    runtime,
+    conversationId,
+    text,
+    turnName,
+    {
+      attempts: 1,
+      source,
+    },
+  );
+}
+
+export async function postLiveConversationMessageWithRecovery(
+  runtime: StartedLifeOpsLiveRuntime,
+  conversationId: string,
+  text: string,
+  turnName: string,
+  options?: {
+    attempts?: number;
+    retryDelayMs?: number;
+    source?: string;
+  },
+): Promise<string> {
+  return await postLiveConversationMessageWithAttempts(
+    runtime,
+    conversationId,
+    text,
+    turnName,
+    {
+      attempts: options?.attempts ?? 3,
+      retryDelayMs: options?.retryDelayMs,
+      source: options?.source,
+    },
+  );
 }
 
 export function assertNoProviderIssue(

@@ -24,7 +24,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess } from "@elizaos/agent/security";
 import {
   createCalendlySingleUseLink,
   readCalendlyCredentialsFromEnv,
@@ -469,6 +469,12 @@ const CHANNEL_DISPATCHERS: Record<
   },
 };
 
+export async function dispatchCrossChannelSend(
+  ctx: DispatchContext,
+): Promise<ActionResult> {
+  return await CHANNEL_DISPATCHERS[ctx.channel](ctx);
+}
+
 export const crossChannelSendAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
@@ -683,7 +689,7 @@ export const crossChannelSendAction: Action & {
     }
 
     const service = new LifeOpsService(runtime);
-    return CHANNEL_DISPATCHERS[channel]({
+    return await dispatchCrossChannelSend({
       runtime,
       service,
       channel,

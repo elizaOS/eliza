@@ -116,6 +116,40 @@ function normalizeFiniteNumber(value: unknown): number | null {
   return Math.max(0, Math.min(1, value));
 }
 
+function normalizeEvidenceText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function extractEvidenceTokens(value: string): string[] {
+  const tokens = normalizeEvidenceText(value)
+    .split(/\s+/)
+    .filter((token) => token.length >= 3);
+  return [...new Set(tokens)];
+}
+
+function intentProvidesGoalTitleEvidence(intent: string, title: string): boolean {
+  const normalizedIntent = normalizeEvidenceText(intent);
+  const normalizedTitle = normalizeEvidenceText(title);
+  if (!normalizedIntent || !normalizedTitle) {
+    return false;
+  }
+  if (
+    normalizedIntent.includes(normalizedTitle) ||
+    normalizedTitle.includes(normalizedIntent)
+  ) {
+    return true;
+  }
+  const titleTokens = extractEvidenceTokens(title);
+  return (
+    titleTokens.length > 0 &&
+    titleTokens.every((token) => normalizedIntent.includes(token))
+  );
+}
+
 function normalizeRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -203,11 +237,12 @@ function buildCreatePlan(
 
 function stabilizeCreatePlan(
   plan: ExtractedGoalCreatePlan,
+  intent: string,
 ): ExtractedGoalCreatePlan {
-  if (plan.groundingState !== "ungrounded") {
+  if (plan.mode !== "respond" || plan.groundingState !== "ungrounded") {
     return plan;
   }
-  if (!plan.title && !plan.description) {
+  if (!plan.title || !intentProvidesGoalTitleEvidence(intent, plan.title)) {
     return plan;
   }
 
@@ -358,7 +393,7 @@ export async function extractGoalCreatePlanWithLlm(args: {
     const parsed = parseJSONObjectFromText(typeof raw === "string" ? raw : "");
     const plan = parsed ? buildCreatePlan(parsed) : null;
     if (plan) {
-      return stabilizeCreatePlan(plan);
+      return stabilizeCreatePlan(plan, args.intent);
     }
     const repairedRaw = await args.runtime.useModel(ModelType.TEXT_LARGE, {
       prompt: buildGoalCreateRepairPrompt({
@@ -375,7 +410,7 @@ export async function extractGoalCreatePlanWithLlm(args: {
     }
     const repairedPlan = buildCreatePlan(repairedParsed);
     return repairedPlan
-      ? stabilizeCreatePlan(repairedPlan)
+      ? stabilizeCreatePlan(repairedPlan, args.intent)
       : { ...EMPTY_GOAL_CREATE_PLAN };
   } catch {
     return { ...EMPTY_GOAL_CREATE_PLAN };

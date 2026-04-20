@@ -136,6 +136,37 @@ describe("sendPush — network error handling", () => {
     await sendPush({ topic: "custom-topic", title: "Test", message: "Hello" });
     expect(capturedUrl).toContain("/custom-topic");
   });
+
+  it("forwards click, tags, and normalized priority headers", async () => {
+    let capturedInit: RequestInit | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        capturedInit = init;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ id: "x", time: Math.floor(Date.now() / 1000) }),
+        });
+      }),
+    );
+    process.env.NTFY_BASE_URL = "https://ntfy.example.invalid";
+
+    await sendPush({
+      title: "Meeting ladder",
+      message: "Board meeting starts in 10 minutes.",
+      priority: 5,
+      tags: ["calendar", "alarm_clock"],
+      click: "milady://meeting/board-123",
+    });
+
+    expect(capturedInit?.headers).toMatchObject({
+      Title: "Meeting ladder",
+      Priority: "5",
+      Tags: "calendar,alarm_clock",
+      Click: "milady://meeting/board-123",
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

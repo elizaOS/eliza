@@ -115,6 +115,27 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     tags: ["goals", "standard"],
   },
 
+  // ─── Check-ins / owner profile ────────────────────────────────────────
+  {
+    id: "checkin-morning",
+    userMessage: "run my morning check-in",
+    expectedAction: "RUN_MORNING_CHECKIN",
+    tags: ["checkin", "standard"],
+  },
+  {
+    id: "checkin-night",
+    userMessage: "give me my night check-in",
+    expectedAction: "RUN_NIGHT_CHECKIN",
+    tags: ["checkin", "standard"],
+  },
+  {
+    id: "owner-profile-travel-prefs",
+    userMessage:
+      "remember that I prefer aisle seats, carry-on only, and moderate hotels close to the venue",
+    expectedAction: "UPDATE_OWNER_PROFILE",
+    tags: ["profile", "standard"],
+  },
+
   // ─── Calendar (OWNER_CALENDAR) ────────────────────────────────────────
   {
     id: "cal-next-event",
@@ -188,6 +209,12 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     acceptableActions: ["SEND_REPLY"],
     expectedParams: { intent: "send_reply" },
     tags: ["email", "critical"],
+  },
+  {
+    id: "email-unsubscribe-sender",
+    userMessage: "unsubscribe me from newsletters@medium.com and block them",
+    expectedAction: "EMAIL_UNSUBSCRIBE",
+    tags: ["email", "standard"],
   },
 
   // ─── Inbox (generic INBOX) ────────────────────────────────────────────
@@ -391,6 +418,38 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     acceptableActions: ["TWILIO_VOICE_CALL"],
     tags: ["voice", "standard"],
   },
+  {
+    id: "book-travel-flight",
+    userMessage:
+      "book travel for me from San Francisco to New York next Thursday and Friday",
+    expectedAction: "BOOK_TRAVEL",
+    tags: ["travel", "standard"],
+  },
+  {
+    id: "browser-manage-settings",
+    userMessage: "show me my LifeOps browser settings",
+    expectedAction: "MANAGE_LIFEOPS_BROWSER",
+    tags: ["browser", "standard"],
+  },
+  {
+    id: "autofill-password-field",
+    userMessage:
+      "fill the password field on github.com using my password manager",
+    expectedAction: "REQUEST_FIELD_FILL",
+    tags: ["browser", "standard"],
+  },
+  {
+    id: "approval-approve-request",
+    userMessage: "approve the pending travel booking request",
+    expectedAction: "APPROVE_REQUEST",
+    tags: ["approval", "standard"],
+  },
+  {
+    id: "approval-reject-request",
+    userMessage: "reject that pending approval request and say it needs changes",
+    expectedAction: "REJECT_REQUEST",
+    tags: ["approval", "standard"],
+  },
 
   // ─── Computer use ─────────────────────────────────────────────────────
   {
@@ -515,7 +574,6 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "intent-sync-broadcast-reminder",
     userMessage: "broadcast a reminder to all my devices",
     expectedAction: "INTENT_SYNC",
-    acceptableActions: ["PUBLISH_DEVICE_INTENT"],
     tags: ["intent-sync", "standard"],
   },
   {
@@ -523,7 +581,6 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     userMessage:
       "broadcast a routine reminder to my mobile titled 'Stretch break' saying 'Get up and stretch for five minutes'",
     expectedAction: "INTENT_SYNC",
-    acceptableActions: ["PUBLISH_DEVICE_INTENT"],
     expectedParams: {
       subaction: "broadcast",
       kind: "routine_reminder",

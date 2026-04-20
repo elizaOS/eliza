@@ -221,6 +221,18 @@ function formatActionSimiles(action: Action): string | null {
 	return `  aliases[${similes.length}]: ${similes.join(", ")}`;
 }
 
+function formatActionTags(action: Action): string | null {
+	const tags = [...new Set((action.tags ?? []).map((tag) => tag.trim()))].filter(
+		(tag) => tag.length > 0 && tag !== "always-include",
+	);
+
+	if (tags.length === 0) {
+		return null;
+	}
+
+	return `  tags[${tags.length}]: ${tags.join(", ")}`;
+}
+
 export function formatActionNames(actions: Action[], seed = "actions"): string {
 	if (!actions?.length) return "";
 
@@ -242,9 +254,14 @@ export function formatActions(actions: Action[], seed = "actions"): string {
 			];
 			const exampleSummary = formatActionExampleSummary(action);
 			const similes = formatActionSimiles(action);
+			const tags = formatActionTags(action);
 
 			if (similes) {
 				lines.push(similes);
+			}
+
+			if (tags) {
+				lines.push(tags);
 			}
 
 			if (action.parameters && action.parameters.length > 0) {

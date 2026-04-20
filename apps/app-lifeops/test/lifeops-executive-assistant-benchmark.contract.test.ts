@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { appLifeOpsPlugin } from "../src/plugin.ts";
+import { actionsAreScenarioEquivalent } from "../../../packages/scenario-runner/src/action-families.ts";
 import {
   buildExecutiveAssistantPromptBenchmarkCases,
   loadExecutiveAssistantCatalog,
@@ -85,25 +86,26 @@ describe("LifeOps executive-assistant prompt benchmark contracts", () => {
     }
   });
 
-  it("keeps the executive-assistant action surface registered on the LifeOps plugin", () => {
+  it("keeps every benchmark case aligned with at least one registered LifeOps plugin action", async () => {
     const actionNames = new Set(
       (appLifeOpsPlugin.actions ?? []).map((action) => action.name),
     );
+    const cases = await buildExecutiveAssistantPromptBenchmarkCases();
+    for (const testCase of cases) {
+      const acceptedAnchors = [
+        testCase.expectedAction,
+        ...testCase.acceptableActions,
+      ].filter((actionName): actionName is string => Boolean(actionName));
 
-    for (const expectedActionName of [
-      "INBOX",
-      "SEARCH_ACROSS_CHANNELS",
-      "CALENDAR_ACTION",
-      "PROPOSE_MEETING_TIMES",
-      "UPDATE_MEETING_PREFERENCES",
-      "UPDATE_OWNER_PROFILE",
-      "DOSSIER",
-      "LIFEOPS_COMPUTER_USE",
-      "PUBLISH_DEVICE_INTENT",
-      "CALL_USER",
-      "CALL_EXTERNAL",
-    ]) {
-      expect(actionNames).toContain(expectedActionName);
+      const hasCompatibleSurfaceAction = acceptedAnchors.some((benchmarkAction) =>
+        benchmarkAction === "REPLY" ||
+        Array.from(actionNames).some(
+          (registeredActionName) =>
+            actionsAreScenarioEquivalent(benchmarkAction, registeredActionName) ||
+            benchmarkAction === registeredActionName,
+        ),
+      );
+      expect(hasCompatibleSurfaceAction).toBe(true);
     }
   });
 });

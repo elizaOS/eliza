@@ -1,13 +1,25 @@
 import { CodingAgentTasksPanel as AppCodingAgentTasksPanel } from "@elizaos/app-task-coordinator";
-import { Badge, Button } from "@elizaos/ui";
+import { Button } from "@elizaos/ui";
 import {
   Activity,
   AlertTriangle,
+  BellRing,
+  Check,
+  CheckCheck,
   Eye,
   EyeOff,
+  HeartPulse,
+  type LucideIcon,
+  MessageSquare,
+  OctagonAlert,
   Play,
+  Square,
+  SquarePause,
   SquareArrowOutUpRight,
   Trash2,
+  Workflow,
+  Wrench,
+  Zap,
 } from "lucide-react";
 import { startTransition, useEffect, useMemo, useState } from "react";
 import { client } from "../../../../api";
@@ -31,20 +43,94 @@ function relativeTime(ts: number): string {
   return `${hrs}h ago`;
 }
 
-const EVENT_TYPE_COLORS: Record<string, string> = {
-  task_registered: "bg-ok/20 text-ok",
-  task_complete: "bg-ok/20 text-ok",
-  stopped: "bg-muted/20 text-muted",
-  tool_running: "bg-accent/20 text-accent",
-  blocked: "bg-warn/20 text-warn",
-  blocked_auto_resolved: "bg-ok/20 text-ok",
-  escalation: "bg-warn/20 text-warn",
-  error: "bg-danger/20 text-danger",
-  "proactive-message": "bg-accent/20 text-accent",
-  reminder: "bg-warn/20 text-warn",
-  workflow: "bg-ok/20 text-ok",
-  "check-in": "bg-accent/20 text-accent",
-  nudge: "bg-accent/20 text-accent",
+function relativeDuration(ts: number): string {
+  const delta = Math.max(1, Math.floor((Date.now() - ts) / 1000));
+  if (delta < 60) return `${delta}s`;
+  const mins = Math.floor(delta / 60);
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  return `${Math.floor(hrs / 24)}d`;
+}
+
+type EventTypeMeta = {
+  icon: LucideIcon;
+  toneClass: string;
+  label: string;
+};
+
+const DEFAULT_EVENT_TYPE_META: EventTypeMeta = {
+  icon: Activity,
+  toneClass: "bg-muted/20 text-muted",
+  label: "activity",
+};
+
+const EVENT_TYPE_META: Record<string, EventTypeMeta> = {
+  task_registered: {
+    icon: Play,
+    toneClass: "bg-ok/20 text-ok",
+    label: "task started",
+  },
+  task_complete: {
+    icon: Check,
+    toneClass: "bg-ok/20 text-ok",
+    label: "task complete",
+  },
+  stopped: {
+    icon: Square,
+    toneClass: "bg-muted/20 text-muted",
+    label: "stopped",
+  },
+  tool_running: {
+    icon: Wrench,
+    toneClass: "bg-accent/20 text-accent",
+    label: "tool running",
+  },
+  blocked: {
+    icon: SquarePause,
+    toneClass: "bg-warn/20 text-warn",
+    label: "blocked",
+  },
+  blocked_auto_resolved: {
+    icon: CheckCheck,
+    toneClass: "bg-ok/20 text-ok",
+    label: "auto resolved",
+  },
+  escalation: {
+    icon: AlertTriangle,
+    toneClass: "bg-warn/20 text-warn",
+    label: "escalation",
+  },
+  error: {
+    icon: OctagonAlert,
+    toneClass: "bg-danger/20 text-danger",
+    label: "error",
+  },
+  "proactive-message": {
+    icon: MessageSquare,
+    toneClass: "bg-accent/20 text-accent",
+    label: "proactive message",
+  },
+  reminder: {
+    icon: BellRing,
+    toneClass: "bg-warn/20 text-warn",
+    label: "reminder",
+  },
+  workflow: {
+    icon: Workflow,
+    toneClass: "bg-ok/20 text-ok",
+    label: "workflow",
+  },
+  "check-in": {
+    icon: HeartPulse,
+    toneClass: "bg-accent/20 text-accent",
+    label: "check in",
+  },
+  nudge: {
+    icon: Zap,
+    toneClass: "bg-accent/20 text-accent",
+    label: "nudge",
+  },
 };
 
 const fallbackTranslate = (
@@ -71,27 +157,32 @@ function ActivityItemsContent({ events }: { events: ActivityEvent[] }) {
 
   return (
     <div className="flex flex-col gap-0.5">
-      {events.map((event) => (
-        <div
-          key={event.id}
-          className="flex items-start gap-2 rounded px-2 py-1.5 transition-colors hover:bg-bg-hover/50"
-        >
-          <span className="mt-0.5 w-12 shrink-0 whitespace-nowrap text-2xs text-muted">
-            {relativeTime(event.timestamp)}
-          </span>
-          <Badge
-            variant="secondary"
-            className={`h-4 shrink-0 px-1.5 py-0 text-3xs ${
-              EVENT_TYPE_COLORS[event.eventType] ?? ""
-            }`}
+      {events.map((event) => {
+        const eventTypeMeta =
+          EVENT_TYPE_META[event.eventType] ?? DEFAULT_EVENT_TYPE_META;
+        const EventIcon = eventTypeMeta.icon;
+
+        return (
+          <div
+            key={event.id}
+            className="flex items-start gap-1.5 rounded-md px-1.5 py-1 transition-colors hover:bg-bg-hover/40"
           >
-            {event.eventType.replace(/_/g, " ")}
-          </Badge>
-          <span className="min-w-0 flex-1 break-words text-xs-tight text-txt">
-            {event.summary}
-          </span>
-        </div>
-      ))}
+            <span className="shrink-0 whitespace-nowrap pt-0.5 text-2xs font-medium tabular-nums text-muted">
+              {relativeDuration(event.timestamp)}
+            </span>
+            <span
+              className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md ${eventTypeMeta.toneClass}`}
+              aria-label={eventTypeMeta.label}
+              title={eventTypeMeta.label}
+            >
+              <EventIcon className="h-3 w-3" />
+            </span>
+            <span className="min-w-0 flex-1 break-words pt-0.5 text-xs-tight leading-4 text-txt">
+              {event.summary}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -150,6 +241,7 @@ function AppRunCard({
 function AppRunsWidget(_props: ChatSidebarWidgetProps) {
   const app = useApp() as ReturnType<typeof useApp> | undefined;
   const appRuns = app?.appRuns;
+  const setTab = app?.setTab ?? (() => undefined);
   const setState = app?.setState ?? (() => undefined);
   const t = app?.t ?? fallbackTranslate;
   const [runs, setRuns] = useState<AppRunSummary[]>(() =>
@@ -232,6 +324,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
         <div className="flex items-center gap-1">
           {currentRun ? (
             <Button
+              type="button"
               variant="ghost"
               size="sm"
               className="h-6 w-6 p-0"
@@ -239,7 +332,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
               onClick={() => {
                 setState("appRuns", runs);
                 setState("activeGameRunId", currentRun.runId);
-                setState("tab", "apps");
+                setTab("apps");
                 setState("appsSubTab", "games");
               }}
             >
@@ -247,13 +340,14 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
             </Button>
           ) : null}
           <Button
+            type="button"
             variant="ghost"
             size="sm"
             className="h-6 w-6 p-0"
             aria-label="Open apps"
             onClick={() => {
               setState("appRuns", runs);
-              setState("tab", "apps");
+              setTab("apps");
               setState("appsSubTab", "running");
             }}
           >

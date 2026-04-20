@@ -1,13 +1,66 @@
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
+import { resolveChatAdminEntityId } from "./chat-routes.js";
 import {
   buildPersistedAssistantContent,
   formatConversationMessageText,
   persistRecentAssistantActionCallbackHistory,
+  resolveConversationAdminEntityId,
 } from "./conversation-routes.js";
 
 describe("conversation callback history persistence", () => {
+  it("prefers the canonical runtime owner for app chat conversations", () => {
+    const state = {
+      runtime: {
+        getSetting: (key: string) =>
+          key === "ELIZA_ADMIN_ENTITY_ID"
+            ? "00000000-0000-0000-0000-000000000123"
+            : undefined,
+      },
+      config: {},
+      agentName: "Eliza",
+      adminEntityId: "00000000-0000-0000-0000-00000000f00d",
+      chatUserId: null,
+      logBuffer: [],
+      conversations: new Map(),
+      conversationRestorePromise: null,
+      deletedConversationIds: new Set(),
+      broadcastWs: null,
+    } as Parameters<typeof resolveConversationAdminEntityId>[0];
+
+    expect(resolveConversationAdminEntityId(state)).toBe(
+      "00000000-0000-0000-0000-000000000123",
+    );
+    expect(state.adminEntityId).toBe("00000000-0000-0000-0000-000000000123");
+    expect(state.chatUserId).toBe("00000000-0000-0000-0000-000000000123");
+  });
+
+  it("prefers the canonical runtime owner for compat chat routes", () => {
+    const state = {
+      runtime: {
+        getSetting: (key: string) =>
+          key === "ELIZA_ADMIN_ENTITY_ID"
+            ? "00000000-0000-0000-0000-000000000456"
+            : undefined,
+      },
+      config: {},
+      agentName: "Eliza",
+      adminEntityId: "00000000-0000-0000-0000-00000000f00d",
+      chatUserId: null,
+      logBuffer: [],
+      chatRoomId: null,
+      chatConnectionReady: null,
+      chatConnectionPromise: null,
+    } as Parameters<typeof resolveChatAdminEntityId>[0];
+
+    expect(resolveChatAdminEntityId(state)).toBe(
+      "00000000-0000-0000-0000-000000000456",
+    );
+    expect(state.adminEntityId).toBe("00000000-0000-0000-0000-000000000456");
+    expect(state.chatUserId).toBe("00000000-0000-0000-0000-000000000456");
+  });
+
   it("formats callback history without duplicating the final text", () => {
     expect(
       formatConversationMessageText("Now playing: **Track**", [

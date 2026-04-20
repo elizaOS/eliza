@@ -180,6 +180,7 @@ import {
   initSse as initSseFromChatRoutes,
   writeSseJson as writeSseJsonFromChatRoutes,
 } from "./chat-routes.js";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.js";
 import { handleCloudBillingRoute } from "./cloud-billing-routes.js";
 import { handleCloudCompatRoute } from "./cloud-compat-routes.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
@@ -1765,9 +1766,7 @@ function wireCoordinatorEventRouting(st: ServerState): boolean {
             ? await runtime.getRoom(st.chatRoomId).catch(() => null)
             : null;
           if (!st.chatUserId || !st.chatRoomId || !existingLegacyChatRoom) {
-            const adminId =
-              st.adminEntityId ??
-              (stringToUuid(`${st.agentName}-admin-entity`) as UUID);
+            const adminId = resolveClientChatAdminEntityId(st);
             st.adminEntityId = adminId;
             st.chatUserId = adminId;
             st.chatRoomId =

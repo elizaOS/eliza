@@ -40,6 +40,7 @@ import {
   isClientVisibleNoResponse,
   isNoResponsePlaceholder,
 } from "./chat-text-helpers.js";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.js";
 import {
   extractAnthropicSystemAndLastUser,
   extractCompatTextContent,
@@ -58,7 +59,6 @@ import {
   decodePathComponent,
   getErrorMessage,
   hasBlockedObjectKeyDeep,
-  isUuidLike,
   isWalletActionRequiredIntent,
   maybeAugmentChatMessageWithKnowledge,
   maybeAugmentChatMessageWithLanguage,
@@ -1445,6 +1445,10 @@ export interface ChatRouteContext extends RouteRequestContext {
   state: ChatRouteState;
 }
 
+export function resolveChatAdminEntityId(state: ChatRouteState): UUID {
+  return resolveClientChatAdminEntityId(state);
+}
+
 async function ensureCompatChatConnection(
   state: ChatRouteState,
   runtime: AgentRuntime,
@@ -1505,22 +1509,7 @@ async function ensureCompatChatConnection(
 }
 
 function ensureAdminEntityIdForChat(state: ChatRouteState): UUID {
-  if (state.adminEntityId) {
-    return state.adminEntityId;
-  }
-  const configured = state.config.agents?.defaults?.adminEntityId?.trim();
-  const nextAdminEntityId =
-    configured && isUuidLike(configured)
-      ? configured
-      : (stringToUuid(`${state.agentName}-admin-entity`) as UUID);
-  if (configured && !isUuidLike(configured)) {
-    logger.warn(
-      `[eliza-api] Invalid agents.defaults.adminEntityId "${configured}", using deterministic fallback`,
-    );
-  }
-  state.adminEntityId = nextAdminEntityId;
-  state.chatUserId = state.adminEntityId;
-  return nextAdminEntityId;
+  return resolveChatAdminEntityId(state);
 }
 
 function syncRuntimeCharacterToChatStateConfig(state: ChatRouteState): void {

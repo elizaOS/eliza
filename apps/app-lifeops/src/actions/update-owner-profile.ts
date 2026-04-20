@@ -4,7 +4,7 @@ import {
   persistConfiguredOwnerName,
   updateLifeOpsOwnerProfile,
 } from "../lifeops/owner-profile.js";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security";
 
 type OwnerProfileParameters = {
   name?: string;
@@ -26,6 +26,13 @@ export const updateOwnerProfileAction: Action & {
     "SET_OWNER_PROFILE",
     "UPDATE_USER_PROFILE",
     "SAVE_USER_PROFILE",
+    "REMEMBER_ABOUT_ME",
+    "SAVE_ABOUT_ME",
+    "SAVE_MY_LOCATION",
+    "SAVE_MY_NAME",
+    "SAVE_STABLE_FACTS",
+    "REMEMBER_MY_PREFERENCES",
+    "REMEMBER_TRAVEL_PREFERENCES",
     "SAVE_TRAVEL_PREFERENCES",
     "TRAVEL_PROFILE",
     "BOOKING_PREFERENCES",
@@ -41,9 +48,13 @@ export const updateOwnerProfileAction: Action & {
   description:
     "Silently persist stable, owner-only LifeOps profile details when the canonical owner clearly states or confirms them. " +
     "Use only for the owner, never for other contacts, and do not ask follow-up questions just to fill these fields. " +
-    "This includes durable travel-booking preferences or a reusable travel-preference checklist when the owner wants those preferences remembered for future bookings. " +
+    "This is the canonical sink for stable owner facts like preferred name, relationship status, partner name, orientation, gender, age, location, and reusable preferences. " +
+    "Travel-booking preferences are just one subtype of this owner profile memory. Examples include 'remember my name is Shaw', 'update my location to Los Angeles', " +
+    "'remember that I'm partnered', 'save my travel preferences', or 'remember I only do carry-on and moderate hotels close to the venue'. " +
+    "When the owner asks you to remember or save these stable facts, you must call this action rather than replying with a plain acknowledgement. " +
     "Do not use this for todos, goals, reminders, temporary plans, or live task state.",
-  descriptionCompressed: "Persist stable owner profile details when stated/confirmed. Owner only.",
+  descriptionCompressed:
+    "Persist stable owner facts and reusable preferences when stated or confirmed. Owner only.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {
@@ -66,7 +77,7 @@ export const updateOwnerProfileAction: Action & {
 
     if (Object.keys(patch).length === 0) {
       return {
-        text: "Tell me the reusable flight and hotel preferences you want saved, such as seat, class, luggage, hotel budget, venue distance, and whether an extra night is okay.",
+        text: "Tell me the stable owner detail you want saved, such as your preferred name, location, relationship status, or reusable travel preferences.",
         success: false,
         data: { error: "NO_FIELDS" },
       };
@@ -161,6 +172,20 @@ export const updateOwnerProfileAction: Action & {
     },
   ],
   examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Remember that my name is Shaw and I'm based in Los Angeles.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Stored your stable owner details so I can reuse them in future LifeOps workflows.",
+        },
+      },
+    ],
     [
       {
         name: "{{name1}}",

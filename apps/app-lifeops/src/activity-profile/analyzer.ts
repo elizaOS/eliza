@@ -2,7 +2,6 @@ import { getLocalDateKey, getZonedDateParts } from "../lifeops/time.js";
 import {
   type ActivityProfile,
   type ActivitySignalRecord,
-  ALL_TIME_BUCKETS,
   emptyBucketCounts,
   type PlatformActivity,
   type TimeBucket,
@@ -20,6 +19,19 @@ const BUCKET_RANGES: Array<{ bucket: TimeBucket; start: number; end: number }> =
     { bucket: "NIGHT", start: 21, end: 24 },
     // LATE_NIGHT wraps: 0-5
   ];
+
+// Buckets ordered by clock hour (00:00 → 23:59). ALL_TIME_BUCKETS lists
+// LATE_NIGHT last for legacy reasons; this constant is for callers that
+// genuinely need clock-order traversal (first/last active hour derivation).
+const CLOCK_ORDERED_TIME_BUCKETS: TimeBucket[] = [
+  "LATE_NIGHT",
+  "EARLY_MORNING",
+  "MORNING",
+  "MIDDAY",
+  "AFTERNOON",
+  "EVENING",
+  "NIGHT",
+];
 
 export function classifyTimeBucket(hour: number): TimeBucket {
   if (hour >= 0 && hour < 5) return "LATE_NIGHT";
@@ -592,8 +604,12 @@ export function analyzeMessages(
   let typicalFirstActiveHour: number | null = null;
   let typicalLastActiveHour: number | null = null;
 
-  // Walk buckets in chronological order (EARLY_MORNING first)
-  for (const bucket of ALL_TIME_BUCKETS) {
+  // Walk buckets in chronological clock order so LATE_NIGHT (00:00–05:00) is
+  // treated as the earliest part of the day, not the latest. ALL_TIME_BUCKETS
+  // lists LATE_NIGHT last for legacy reasons; iterating in that order would
+  // make a single 3 AM message overwrite typicalLastActiveHour to 3, which in
+  // turn lands GN scheduling in the past and causes it to spam every tick.
+  for (const bucket of CLOCK_ORDERED_TIME_BUCKETS) {
     if (aggregateBuckets[bucket] >= threshold) {
       const midHour = bucketMidpointHour(bucket);
       if (typicalFirstActiveHour === null) typicalFirstActiveHour = midHour;

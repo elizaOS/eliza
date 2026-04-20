@@ -40,7 +40,7 @@ import {
   loadOwnerContactsConfig,
   type OwnerContactRoutingHint,
   resolveOwnerContactWithFallback,
-} from "@elizaos/agent/config/owner-contacts";
+} from "@elizaos/agent/config";
 import { registerEscalationChannel } from "@elizaos/agent/services/escalation";
 import {
   buildNativeAppleReminderMetadata,

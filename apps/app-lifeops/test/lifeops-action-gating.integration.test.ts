@@ -95,6 +95,9 @@ describe("LifeOps plugin action gating", () => {
       "LIFE",
       "OWNER_RELATIONSHIP",
       "OWNER_SEND_MESSAGE",
+      "BOOK_TRAVEL",
+      "APPROVE_REQUEST",
+      "REJECT_REQUEST",
     ]) {
       expect(actionNames).toContain(expected);
     }
@@ -104,9 +107,14 @@ describe("LifeOps plugin action gating", () => {
       "INBOX",
       "CALENDAR_ACTION",
       "SCHEDULING",
+      "PUBLISH_DEVICE_INTENT",
       "LIST_OVERDUE_FOLLOWUPS",
       "MARK_FOLLOWUP_DONE",
       "SET_FOLLOWUP_THRESHOLD",
+      "GENERATE_DOSSIER",
+      "COMPUTE_TRAVEL_BUFFER",
+      "REGISTER_BROWSER_SESSION",
+      "FETCH_BROWSER_ACTIVITY",
     ]) {
       expect(actionNames).not.toContain(removed);
     }

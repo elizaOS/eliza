@@ -22,7 +22,7 @@ import type {
 } from "@elizaos/shared/contracts/lifeops";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import { hasContextSignalForKey } from "@elizaos/agent/actions/context-signal";
+import { hasContextSignalForKey } from "@elizaos/agent/actions";
 import {
   extractActionResultsFromState,
   extractRecentMessageEntriesFromState,
@@ -30,7 +30,7 @@ import {
   renderGroundedActionReply,
   summarizeActiveTrajectory,
   summarizeRecentActionHistory,
-} from "@elizaos/agent/actions/grounded-action-reply";
+} from "@elizaos/agent/actions";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import {
   detailArray,
@@ -669,7 +669,7 @@ function latestGmailMessageTargetContext(
 }
 
 function gmailComposeDraftFromMessageEntry(
-  entry: Record<string, unknown>,
+  entry: { content?: unknown },
 ): GmailComposeDraft | null {
   const content =
     entry.content && typeof entry.content === "object"
@@ -812,6 +812,7 @@ export async function extractGmailPlanWithLlm(
     "When shouldAct=false, provide a short natural response that asks only for what is missing.",
     "When shouldAct=false, write that response in the user's language unless they clearly asked to switch languages.",
     "For clear reply-workflow commands like 'draft a reply to John's email' or 'send that reply now', still choose the intent-level subaction even if the exact Gmail message id is not known yet. Downstream Gmail logic can clarify the target email.",
+    "Mailbox ownership (OWNER vs AGENT) is selected outside this planner. This planner only decides the Gmail subaction for the mailbox already in scope.",
     "",
     "Return a JSON object with exactly these fields:",
     "  subaction: one of the allowed subactions below, or null when this should be reply-only/no-op",
@@ -836,6 +837,8 @@ export async function extractGmailPlanWithLlm(
     "  send_reply — send a confirmed reply to an email (e.g. 'send that reply', 'email them back now')",
     "  send_batch_replies — send confirmed replies to multiple emails (e.g. 'send all those replies')",
     "  send_message — compose and send a brand-new outbound email (e.g. 'send an email to zo@iqlabs.dev, subject hello, body how are you doing today?')",
+    "Use triage only for broad inbox overviews. Use search whenever the request includes a specific sender, subject, keyword, label, or time filter.",
+    "Use needs_response only when the user is specifically asking about emails that need a reply.",
     "",
     "For search or read, extract up to 3 short Gmail-compatible queries using Gmail search operators.",
     "For draft_reply, send_reply, and draft_batch_replies, also extract Gmail-compatible queries whenever the target email is described by sender, subject, keyword, or timeframe but no explicit Gmail message id is known.",
@@ -844,17 +847,12 @@ export async function extractGmailPlanWithLlm(
     "When the user writes in another language, still infer the correct Gmail action and keep extracted subject/body wording in that language unless the user asked to translate.",
     "If the user asks whether a specific person emailed within a time window, that is search, not triage and not null.",
     "",
-    "Gmail search operators — complete reference:",
-    "  Sender/recipient: from:name  to:name  cc:name  bcc:name  deliveredto:alias@example.com",
-    '  Content: subject:word  "exact phrase"  has:attachment  filename:report.pdf  has:drive  has:document  has:spreadsheet  has:presentation  has:youtube',
-    "  Status: is:unread  is:read  is:starred  is:important  is:snoozed",
-    "  Location: in:inbox  in:sent  in:draft  in:trash  in:spam  in:anywhere  label:work  category:primary  category:social  category:promotions  category:updates  category:forums",
+    "Useful Gmail search operators:",
+    "  Sender/recipient: from:name  to:name  cc:name  bcc:name",
+    '  Content: subject:word  "exact phrase"  has:attachment  filename:report.pdf',
+    "  Status/location: is:unread  is:read  is:starred  is:important  in:inbox  in:sent  label:work  category:primary",
     "  Date/time: newer_than:7d  older_than:30d  after:2025/01/01  before:2025/12/31",
-    "  Size: size:5m  larger:10m  smaller:1m  larger_than:500k  smaller_than:2m",
-    "  Special: from:me  list:info@mailinglist.com",
-    "  Negation: -from:name  -subject:word  -label:work  -is:unread  (prefix any operator with - to exclude)",
-    "  Boolean: {term1 term2} for OR.  Combine operators: from:suran is:unread newer_than:21d",
-    "  Proximity: AROUND (not widely supported but available)",
+    "  Negation/boolean: -from:name  -subject:word  {term1 term2}",
     "",
     "Preserve sender names, email addresses, subject keywords, unread/starred/important status, attachment mentions, and time windows.",
     "Use the current local datetime to convert relative time references like today, yesterday, this week, and this month into Gmail-compatible operators.",
@@ -863,6 +861,7 @@ export async function extractGmailPlanWithLlm(
     "Examples:",
     '  "who emailed me today" → {"subaction":"search","shouldAct":true,"response":null,"queries":["newer_than:1d"]}',
     '  "did suran email me" → {"subaction":"search","shouldAct":true,"response":null,"queries":["from:suran"]}',
+    '  "did Sarah email me this week" → {"subaction":"search","shouldAct":true,"response":null,"queries":["from:sarah newer_than:7d"]}',
     '  "draft a reply to John" → {"subaction":"draft_reply","shouldAct":true,"response":null,"queries":["from:john"]}',
     '  "draft a reply to John\'s email" → {"subaction":"draft_reply","shouldAct":true,"response":null,"queries":["from:john"]}',
     '  "what about unread ones?" with recent context about a Suran email search → {"subaction":"search","shouldAct":true,"response":null,"queries":["from:suran is:unread"]}',
@@ -871,7 +870,6 @@ export async function extractGmailPlanWithLlm(
     '  "check my inbox" → {"subaction":"triage","shouldAct":true,"response":null}',
     '  "any emails from Sarah about the report" → {"subaction":"search","shouldAct":true,"response":null,"queries":["from:sarah subject:report"]}',
     '  "busca en mi correo si Suran me escribio hoy" → {"subaction":"search","shouldAct":true,"response":null,"queries":["from:suran newer_than:1d"]}',
-    '  "busca en mi correo si Suran me escribió hoy" → {"subaction":"search","shouldAct":true,"response":null,"queries":["from:suran newer_than:1d"]}',
     '  "envíale un correo a maria@example.com con asunto hola y cuerpo nos vemos mañana" → {"subaction":"send_message","shouldAct":true,"response":null,"queries":[],"to":["maria@example.com"],"subject":"hola","bodyText":"nos vemos mañana"}',
     '  "send an email to zo@iqlabs.dev, subject hello anon, body how are you doing today?" → {"subaction":"send_message","shouldAct":true,"response":null,"queries":[],"to":["zo@iqlabs.dev"],"subject":"hello anon","bodyText":"how are you doing today?"}',
     '  "can you help me with my email?" → {"subaction":null,"shouldAct":false,"response":"What do you want to do in Gmail — check inbox, search, read, or draft a reply?","queries":[]}',
@@ -1270,21 +1268,24 @@ export const gmailAction: Action & {
     "SEND_EMAIL_REPLY",
   ],
   description:
-    "Gmail-only actions through LifeOps. This action touches Gmail and nothing else. " +
+    "Gmail-only execution layer through LifeOps. This action touches Gmail and nothing else. " +
     "USE this action ONLY when the request explicitly names Gmail or email " +
     "(e.g. 'triage my Gmail', 'summarize my unread emails', 'search for emails from Sarah', " +
     "'draft a reply to the latest email from finance', 'send the email'). " +
     "Subactions: Gmail-specific triage, search by sender/subject/keyword/date/label, " +
     "read message bodies by Gmail ID, draft reply, send reply. " +
-    "DO NOT use for a cross-channel inbox digest / daily brief / unified inbox / triage across " +
-    "Slack / Discord / SMS / Telegram — that is INBOX. If the user says 'my inbox' without " +
-    "specifying Gmail (e.g. 'give me my inbox digest', 'triage my inbox', 'my daily brief'), " +
-    "route to INBOX. GMAIL_ACTION is only correct when the word Gmail or email appears, or when " +
-    "the request is about a specific email by sender/subject/body. " +
+    "DO NOT use for a cross-channel inbox digest / inbox-only daily digest / unified inbox / triage across " +
+    "Slack / Discord / SMS / Telegram — route owner inbox work to OWNER_INBOX and the agent's " +
+    "own mailbox to AGENT_INBOX. If the user says 'my inbox' without specifying Gmail (e.g. " +
+    "'give me my inbox digest', 'triage my inbox'), do not route straight to " +
+    "GMAIL_ACTION. GMAIL_ACTION is only correct once the mailbox surface is already narrowed to Gmail under OWNER_INBOX, " +
+    "or when the request is about a specific email by sender/subject/body. " +
+    "Do NOT use for morning briefs, night briefs, or broad day-start/day-end reviews that happen to mention email. " +
     "DO NOT use for venting ('I hate email') unless the user asks for a concrete Gmail operation. " +
     "DO NOT use for calendar, meetings, scheduling, habits, goals, routines, or reminders. " +
     "Provides the final grounded reply; do not pair with a speculative REPLY.",
-  descriptionCompressed: "Gmail via LifeOps: inbox triage, search, read, draft/send replies. Not for calendar or habits.",
+  descriptionCompressed:
+    "Gmail execution layer under OWNER_INBOX or AGENT_INBOX: triage, search, read, and draft/send replies.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message, state) => {
     if (looksLikeEmailVenting(messageText(message))) {

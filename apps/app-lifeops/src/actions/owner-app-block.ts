@@ -25,6 +25,8 @@ import {
 } from "./app-blocker.js";
 
 const ACTION_NAME = "OWNER_APP_BLOCK";
+const OWNER_APP_BLOCK_INTENT_RE =
+  /\b(block|blocking|blocked|unblock|unblocking|shield|app block|block apps|phone apps|focus mode|restrict apps)\b/i;
 
 type Subaction = "block" | "unblock" | "status";
 
@@ -67,7 +69,11 @@ export const ownerAppBlockAction: Action & {
 
   validate: async (runtime, message) => {
     const access = await getAppBlockerAccess(runtime, message);
-    return access.allowed;
+    return (
+      access.allowed &&
+      typeof message.content?.text === "string" &&
+      OWNER_APP_BLOCK_INTENT_RE.test(message.content.text)
+    );
   },
 
   parameters: [

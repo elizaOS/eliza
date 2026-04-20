@@ -93,8 +93,10 @@ export interface LifeOpsCalendarEventEndedFilters {
   attendeeEmailIncludesAny?: string[];
 }
 
-export type LifeOpsEventFilters =
-  | { kind: "calendar.event.ended"; filters?: LifeOpsCalendarEventEndedFilters };
+export type LifeOpsEventFilters = {
+  kind: "calendar.event.ended";
+  filters?: LifeOpsCalendarEventEndedFilters;
+};
 
 export const LIFEOPS_NEGOTIATION_STATES = [
   "initiated",
@@ -917,6 +919,17 @@ export interface LifeOpsBrowserCompanionSyncResponse {
   session: LifeOpsBrowserSession | null;
 }
 
+export const LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS = [
+  "extension_root",
+  "chrome_build",
+  "chrome_package",
+  "safari_web_extension",
+  "safari_app",
+  "safari_package",
+] as const;
+export type LifeOpsBrowserPackagePathTarget =
+  (typeof LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS)[number];
+
 export interface LifeOpsBrowserCompanionPackageStatus {
   extensionPath: string | null;
   chromeBuildPath: string | null;
@@ -956,6 +969,21 @@ export interface LifeOpsBrowserCompanionReleaseManifest {
   chrome: LifeOpsBrowserCompanionReleaseTarget;
   safari: LifeOpsBrowserCompanionReleaseTarget;
   generatedAt: string;
+}
+
+export interface OpenLifeOpsBrowserCompanionPackagePathRequest {
+  target: LifeOpsBrowserPackagePathTarget;
+  revealOnly?: boolean;
+}
+
+export interface OpenLifeOpsBrowserCompanionPackagePathResponse {
+  target: LifeOpsBrowserPackagePathTarget;
+  path: string;
+  revealOnly: boolean;
+}
+
+export interface OpenLifeOpsBrowserCompanionManagerResponse {
+  browser: LifeOpsBrowserKind;
 }
 
 export interface LifeOpsWorkflowActionBase {
@@ -1580,6 +1608,29 @@ export const LIFEOPS_GOOGLE_CONNECTOR_REASONS = [
 export type LifeOpsGoogleConnectorReason =
   (typeof LIFEOPS_GOOGLE_CONNECTOR_REASONS)[number];
 
+export const LIFEOPS_CONNECTOR_DEGRADATION_AXES = [
+  "missing-scope",
+  "rate-limited",
+  "disconnected",
+  "auth-expired",
+  "session-revoked",
+  "delivery-degraded",
+  "helper-disconnected",
+  "retry-idempotent",
+  "hold-expired",
+  "transport-offline",
+  "blocked-resume",
+] as const;
+export type LifeOpsConnectorDegradationAxis =
+  (typeof LIFEOPS_CONNECTOR_DEGRADATION_AXES)[number];
+
+export interface LifeOpsConnectorDegradation {
+  axis: LifeOpsConnectorDegradationAxis;
+  code: string;
+  message: string;
+  retryable: boolean;
+}
+
 export interface LifeOpsGoogleConnectorStatus {
   provider: "google";
   side: LifeOpsConnectorSide;
@@ -1599,6 +1650,7 @@ export interface LifeOpsGoogleConnectorStatus {
   expiresAt: string | null;
   hasRefreshToken: boolean;
   grant: LifeOpsConnectorGrant | null;
+  degradations?: LifeOpsConnectorDegradation[];
 }
 
 export interface LifeOpsXConnectorStatus {
@@ -1613,9 +1665,10 @@ export interface LifeOpsXConnectorStatus {
    * DM inbound read is supported when `x.read` capability is granted.
    * Use `syncXDms()` to pull and persist, then `getXDms()` or
    * `readXInboundDms()` to retrieve.
-   */
+  */
   dmInbound: boolean;
   grant: LifeOpsConnectorGrant | null;
+  degradations?: LifeOpsConnectorDegradation[];
 }
 
 // ---------------------------------------------------------------------------
@@ -1643,6 +1696,7 @@ export interface LifeOpsSignalConnectorStatus {
   grantedCapabilities: LifeOpsSignalCapability[];
   pairing: LifeOpsSignalPairingStatus | null;
   grant: LifeOpsConnectorGrant | null;
+  degradations?: LifeOpsConnectorDegradation[];
 }
 
 export interface LifeOpsDiscordDmPreview {
@@ -1741,6 +1795,7 @@ export interface LifeOpsDiscordConnectorStatus {
   /** Owner-side browser options for reaching the user's real Discord session. */
   browserAccess?: LifeOpsOwnerBrowserAccessStatus[];
   grant: LifeOpsConnectorGrant | null;
+  degradations?: LifeOpsConnectorDegradation[];
 }
 
 export const LIFEOPS_TELEGRAM_AUTH_STATES = [
@@ -1764,6 +1819,7 @@ export interface LifeOpsWhatsAppConnectorStatus {
   inbound: true;
   phoneNumberId?: string;
   lastCheckedAt: string;
+  degradations?: LifeOpsConnectorDegradation[];
 }
 
 export interface LifeOpsTelegramConnectorStatus {
@@ -1784,6 +1840,7 @@ export interface LifeOpsTelegramConnectorStatus {
   managedCredentialsAvailable: boolean;
   storedCredentialsAvailable: boolean;
   grant: LifeOpsConnectorGrant | null;
+  degradations?: LifeOpsConnectorDegradation[];
 }
 
 export interface LifeOpsTelegramDialogSummary {
