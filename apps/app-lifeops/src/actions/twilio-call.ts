@@ -564,7 +564,7 @@ export const callExternalAction: Action & {
     if (!to) {
       return {
         text: "Who should I call, or which saved contact/phone number should I use?",
-        success: true,
+        success: false,
         values: { success: false, error: "MISSING_RECIPIENT" },
         data: { actionName: "CALL_EXTERNAL", error: "MISSING_RECIPIENT" },
       };

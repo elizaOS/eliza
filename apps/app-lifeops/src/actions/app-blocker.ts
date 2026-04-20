@@ -302,13 +302,18 @@ export const blockAppsAction: Action & {
       !appTokens
     ) {
       return {
-        success: true,
+        success: false,
         text:
           llmPlan.response ??
           (status.platform === "ios"
             ? "Select the iPhone apps in the mobile app picker first, then I can start the block."
             : "Tell me which installed apps to block so I can match them exactly on your device."),
-        data: { noop: true },
+        values: {
+          success: false,
+          error: "PLANNER_SHOULDACT_FALSE",
+          noop: true,
+        },
+        data: { noop: true, error: "PLANNER_SHOULDACT_FALSE" },
       };
     }
 

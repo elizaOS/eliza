@@ -2764,7 +2764,7 @@ function AutomationsLayout() {
       collapsedRailAction={
         <SidebarCollapsedActionButton
           aria-label="New coordinator automation"
-          onClick={openCreateTask}
+          onClick={handleOpenCreateTask}
         >
           <Plus className="h-4 w-4" />
         </SidebarCollapsedActionButton>
@@ -2829,7 +2829,7 @@ function AutomationsLayout() {
                 variant="outline"
                 size="sm"
                 className="h-8 gap-1 px-3 text-xs font-medium"
-                onClick={openCreateTask}
+                onClick={handleOpenCreateTask}
               >
                 <SquareTerminal className="h-3.5 w-3.5" />
                 Coordinator
@@ -2838,10 +2838,19 @@ function AutomationsLayout() {
                 variant="outline"
                 size="sm"
                 className="h-8 gap-1 px-3 text-xs font-medium"
-                onClick={openCreateTrigger}
+                onClick={handleOpenCreateTrigger}
               >
                 <Clock3 className="h-3.5 w-3.5" />
                 Schedule
+              </Button>
+              <Button
+                variant={activeSubpage === "node-catalog" ? "default" : "outline"}
+                size="sm"
+                className="h-8 gap-1 px-3 text-xs font-medium"
+                onClick={() => showNodeCatalog()}
+              >
+                <Grid3x3 className="h-3.5 w-3.5" />
+                Node Catalog
               </Button>
             </div>
           </div>
@@ -2871,9 +2880,13 @@ function AutomationsLayout() {
                 onClick={() => selectItem(item)}
                 onDoubleClick={
                   item.task && !item.system
-                    ? () => ctx.openEditTask(item.task as WorkbenchTask)
+                    ? () => {
+                        showAutomationsList();
+                        ctx.openEditTask(item.task as WorkbenchTask);
+                      }
                     : item.trigger
                       ? () => {
+                          showAutomationsList();
                           ctx.openEditTrigger(item.trigger as TriggerSummary);
                           void loadTriggerRuns(
                             (item.trigger as TriggerSummary).id,
@@ -2899,11 +2912,15 @@ function AutomationsLayout() {
       mobileSidebarLabel={mobileSidebarLabel}
     >
       <div className="flex min-h-0 flex-1 flex-col">
-        {showDetailPane ? (
+        {activeSubpage === "node-catalog" || showDetailPane ? (
           <button
             type="button"
             className="mb-3 flex items-center gap-2 rounded-2xl border border-border/30 bg-bg/25 px-4 py-3 text-base font-medium text-muted hover:text-txt md:hidden"
             onClick={() => {
+              if (activeSubpage === "node-catalog") {
+                showAutomationsList();
+                return;
+              }
               setSelectedItemId(null);
               setSelectedItemKind(null);
               setEditorOpen(false);
@@ -2966,6 +2983,8 @@ function AutomationsLayout() {
               loadTriggerRuns={loadTriggerRuns}
             />
           )
+        ) : activeSubpage === "node-catalog" ? (
+          <AutomationNodeCatalogPane nodes={automationNodes} />
         ) : resolvedSelectedItem?.type === "n8n_workflow" ? (
           <WorkflowAutomationDetailPane
             automation={resolvedSelectedItem}

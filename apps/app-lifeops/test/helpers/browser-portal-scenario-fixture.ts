@@ -1,3 +1,17 @@
+/**
+ * browser-portal scenario FIXTURE — not a planner test harness.
+ *
+ * This fixture hard-bans `useModel` (see the `useModel` thunk below) and
+ * implements `handleTurn` as a lowercased regex cascade over the incoming
+ * message text (see the `needsPortal*` / `needsIdCopyEscalation` checks
+ * around L360-425). Each matched phrase returns a pre-built ActionResult.
+ *
+ * The test file that consumes this fixture
+ * (`../browser-portal.scenario.test.ts`) is therefore a regression test of
+ * THIS FIXTURE'S string-match routing, not of the real LifeOps planner.
+ * If you change the input phrases in the scenarios, you also have to update
+ * the regexes here — there is no LLM fallback.
+ */
 import type {
   Action,
   ActionResult,

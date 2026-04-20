@@ -435,6 +435,7 @@ async function resolvePerson(
           baseService.getMemoriesForCluster ??
           ((args) =>
             getClusterMemories(runtime, args.primaryEntityId, {
+              tableName: "messages",
               worldId: args.worldId,
               count: args.count,
             })),
