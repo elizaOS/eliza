@@ -45,7 +45,8 @@
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
     "test:app-state": "vitest run --config vitest.config.ts eliza/apps/app-lifeops/test/lifeops-app-state.test.ts",
-    "test:integration": "cd ../../.. && vitest run --config test/vitest/integration.config.ts eliza/apps/app-lifeops/test/life-smoke.integration.test.ts"
+    "test:integration": "cd ../../.. && vitest run --config test/vitest/integration.config.ts eliza/apps/app-lifeops/test/life-smoke.integration.test.ts",
+    "verify:live-schedule": "bun run ./scripts/verify-live-schedule-data.ts"
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
