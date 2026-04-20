@@ -1,5 +1,22 @@
+import { execSync } from "node:child_process";
+
 const STEALTH_GUARD = Symbol.for("eliza.claudeCodeStealthInstalled");
-const CLAUDE_CODE_VERSION = "2.1.92";
+// Resolve the installed claude CLI version at runtime so the user-agent header
+// tracks whatever's on disk. A hardcoded version drifts silently and Anthropic
+// rejects stale user-agents with "Invalid authentication credentials".
+function detectClaudeCodeVersion(): string {
+  try {
+    const out = execSync("claude --version", {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 2000,
+    });
+    const match = out.match(/(\d+\.\d+\.\d+)/);
+    if (match) return match[1];
+  } catch {}
+  return "2.1.114";
+}
+const CLAUDE_CODE_VERSION = detectClaudeCodeVersion();
 const CLAUDE_CODE_SYSTEM_PREFIX =
   "You are Claude Code, Anthropic's official CLI for Claude.";
 const ANTHROPIC_BETA =
