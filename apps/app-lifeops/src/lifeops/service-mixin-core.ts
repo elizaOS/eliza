@@ -23,6 +23,7 @@ import { computeAdaptiveWindowPolicy } from "./defaults.js";
 import {
   GoogleManagedClient,
 } from "./google-managed-client.js";
+import { LifeOpsScheduleSyncClient } from "./schedule-sync-client.js";
 import {
   createLifeOpsAuditEvent,
   createLifeOpsBrowserCompanionStatus,
@@ -145,6 +146,7 @@ export class LifeOpsServiceBase {
   public readonly explicitOwnerEntityIdValue: string | null;
   public readonly ownerEntityIdValue: string;
   public readonly googleManagedClient: GoogleManagedClient;
+  public readonly scheduleSyncClient: LifeOpsScheduleSyncClient;
   public ownerRoutingEntityIdPromise: Promise<string | null> | null = null;
 
   /** Cached adaptive window policy derived from the activity profile.
@@ -161,6 +163,7 @@ export class LifeOpsServiceBase {
   ) {
     this.repository = new LifeOpsRepository(runtime);
     this.googleManagedClient = new GoogleManagedClient();
+    this.scheduleSyncClient = new LifeOpsScheduleSyncClient();
     this.explicitOwnerEntityIdValue =
       normalizeOptionalString(options.ownerEntityId) ?? null;
     this.ownerEntityIdValue =
