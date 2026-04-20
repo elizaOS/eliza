@@ -299,11 +299,16 @@ export const inboxAction: Action & {
         text:
           subactionPlan.response ??
           "Tell me whether you want me to triage the inbox, show a digest, or respond to someone.",
-        success: true,
-        values: { success: true, noop: true },
+        success: false,
+        values: {
+          success: false,
+          error: "PLANNER_SHOULDACT_FALSE",
+          noop: true,
+        },
         data: {
           actionName: ACTION_NAME,
           noop: true,
+          error: "PLANNER_SHOULDACT_FALSE",
           suggestedSubaction: subactionPlan.subaction,
         },
       };
@@ -848,9 +853,20 @@ async function handleRespond(
     if (needsReply.length === 0) {
       return {
         text: "No pending inbox items need a reply right now. Use INBOX to triage for new messages.",
-        success: true,
-        values: { success: true },
-        data: { actionName: ACTION_NAME, subaction: "respond" },
+        // The respond side effect did not happen — there was nothing to reply
+        // to. Report as a structured no-op rather than a success.
+        success: false,
+        values: {
+          success: false,
+          error: "NOOP_NOTHING_TO_DO",
+          noop: true,
+        },
+        data: {
+          actionName: ACTION_NAME,
+          subaction: "respond",
+          noop: true,
+          error: "NOOP_NOTHING_TO_DO",
+        },
       };
     }
     if (needsReply.length === 1) {
@@ -873,9 +889,21 @@ async function handleRespond(
         .join("\n");
       return {
         text: `Multiple items need a reply. Which one?\n\n${itemList}\n\nSay "respond to [name/channel]" to pick one.`,
-        success: true,
-        values: { success: true, pendingCount: needsReply.length },
-        data: { actionName: ACTION_NAME, subaction: "respond" },
+        // The respond side effect did not happen — we need the user to
+        // disambiguate which item first. Report as a structured failure so
+        // downstream consumers don't treat this as a completed reply.
+        success: false,
+        values: {
+          success: false,
+          error: "DISAMBIGUATION_REQUIRED",
+          pendingCount: needsReply.length,
+        },
+        data: {
+          actionName: ACTION_NAME,
+          subaction: "respond",
+          error: "DISAMBIGUATION_REQUIRED",
+          pendingCount: needsReply.length,
+        },
       };
     }
   }
