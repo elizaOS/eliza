@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-core",
-  "version": "2.0.0-alpha.218",
+  "version": "2.0.0-alpha.222",
   "description": "Shared application core for elizaOS white-label agent apps.",
   "type": "module",
   "license": "MIT",
@@ -135,7 +135,7 @@
     "node-llama-cpp"
   ],
   "dependencies": {
-    "@capacitor/core": "8.0.2",
+    "@capacitor/core": "8.3.1",
     "@capacitor/haptics": "8.0.2",
     "@capacitor/keyboard": "8.0.3",
     "@capacitor/preferences": "^8.0.1",
