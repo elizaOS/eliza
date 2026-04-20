@@ -52,12 +52,34 @@ const DEFAULT_RUNS = 3;
 const DEFAULT_MIN_PASS = 2;
 const DEFAULT_PER_RUN_TIMEOUT_MS = 60_000;
 
+function resolveRepoRoot(start: string): string {
+  let current = start;
+  for (let i = 0; i < 32; i++) {
+    try {
+      const gitPath = path.join(current, ".git");
+      const stat = fs.statSync(gitPath, { throwIfNoEntry: false });
+      // A repo root has `.git` as a directory. Submodules have it as a file
+      // (a gitfile), which we skip so results always land at the top-level
+      // checkout no matter where vitest is invoked from.
+      if (stat && stat.isDirectory()) {
+        return current;
+      }
+    } catch {
+      // ignore
+    }
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return start;
+}
+
 function resolveReportDir(): string {
   const override = process.env.MILADY_STOCHASTIC_REPORT_DIR;
   if (override && override.trim().length > 0) {
     return override;
   }
-  return path.join(process.cwd(), ".milady");
+  return path.join(resolveRepoRoot(process.cwd()), ".milady");
 }
 
 function reportFilePath(): string {

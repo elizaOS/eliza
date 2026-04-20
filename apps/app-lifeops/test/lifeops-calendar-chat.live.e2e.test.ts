@@ -405,7 +405,7 @@ describeWithLLM("life-ops calendar chat (real LLM)", () => {
     envBackup.restore();
   });
 
-  it("returns tomorrow's events and excludes today's dentist appointment", async () => {
+  stochasticTest("returns tomorrow's events and excludes today's dentist appointment", async () => {
     const result = await callCalendarAction(
       runtime,
       "can you tell me whats on my schedule tomorrow",
@@ -428,9 +428,9 @@ describeWithLLM("life-ops calendar chat (real LLM)", () => {
 
     // Today's dentist should NOT be in tomorrow's results
     expect(responseContainsEvent(result, "Dentist appointment")).toBe(false);
-  }, 120_000);
+  }, { perRunTimeoutMs: 120_000 });
 
-  it("finds flights matching a search query", async () => {
+  stochasticTest("finds flights matching a search query", async () => {
     const result = await callCalendarAction(
       runtime,
       "can you search my calendar and tell me if i have any flights to denver?",
@@ -442,9 +442,9 @@ describeWithLLM("life-ops calendar chat (real LLM)", () => {
       responseContainsEvent(result, "Flight to Denver (WN 3677)"),
     ).toBe(true);
     expect(responseContainsEvent(result, "Dentist appointment")).toBe(false);
-  }, 120_000);
+  }, { perRunTimeoutMs: 120_000 });
 
-  it("handles a non-English calendar search question", async () => {
+  stochasticTest("handles a non-English calendar search question", async () => {
     const result = await callCalendarAction(
       runtime,
       "puedes buscar en mi calendario y decirme si tengo un vuelo a denver",
@@ -456,9 +456,9 @@ describeWithLLM("life-ops calendar chat (real LLM)", () => {
       responseContainsEvent(result, "Flight to Denver (WN 3677)"),
     ).toBe(true);
     expect(responseContainsEvent(result, "Dentist appointment")).toBe(false);
-  }, 120_000);
+  }, { perRunTimeoutMs: 120_000 });
 
-  it("answers an exact date query with the correct events", async () => {
+  stochasticTest("answers an exact date query with the correct events", async () => {
     const dateLabel = localMonthDayLabel(1);
     const result = await callCalendarAction(
       runtime,
@@ -482,5 +482,5 @@ describeWithLLM("life-ops calendar chat (real LLM)", () => {
 
     // Today's event should not
     expect(responseContainsEvent(result, "Dentist appointment")).toBe(false);
-  }, 120_000);
+  }, { perRunTimeoutMs: 120_000 });
 });

@@ -1,3 +1,4 @@
+export * from "./agent-inbox.js";
 export * from "./app-control.js";
 export * from "./eject-plugin.js";
 export * from "./get-self-status.js";

@@ -46,7 +46,7 @@ import {
   sendXDm,
 } from "../lifeops/x-poster.js";
 
-const ACTION_NAME = "CROSS_CHANNEL_SEND";
+const ACTION_NAME = "OWNER_SEND_MESSAGE";
 
 export const CROSS_CHANNEL_SEND_CHANNELS = [
   "email",
@@ -474,10 +474,10 @@ export const crossChannelSendAction: Action & {
 } = {
   name: ACTION_NAME,
   similes: [
+    "CROSS_CHANNEL_SEND",
     "SEND_MESSAGE_TO",
     "DRAFT_MESSAGE",
     "SEND_ACROSS_CHANNEL",
-    "SEND_MESSAGE",
     "POST_TO_CHANNEL",
     "POST_TO_DISCORD",
     "POST_TO_SLACK",
@@ -486,20 +486,27 @@ export const crossChannelSendAction: Action & {
     "SEND_WHATSAPP",
     "SEND_IMESSAGE",
     "SEND_SMS",
+    "OWNER_DM",
+    "OWNER_POST",
   ],
   description:
-    "Draft or send a message across any connected channel (email, telegram, " +
-    "discord, signal, sms, twilio_voice, imessage, whatsapp, notifications). Always " +
-    "drafts first; caller must re-invoke with confirmed: true to dispatch. " +
+    "OWNER-scoped message send: the OWNER asks the agent to send a message " +
+    "on the OWNER's behalf, using the OWNER's connected accounts (email, " +
+    "telegram, discord, signal, sms, twilio_voice, imessage, whatsapp, " +
+    "notifications). Always drafts first; caller must re-invoke with " +
+    "confirmed: true to dispatch. " +
     "Use this for any 'post <msg> to <channel>', 'send <msg> on <platform>', " +
-    "or 'dm <person> on <platform>' request — the channel name in the sentence " +
-    "(discord, telegram, signal, etc.) is the strongest signal. " +
+    "or 'dm <person> on <platform>' request from the owner — the channel " +
+    "name in the sentence (discord, telegram, signal, etc.) is the strongest " +
+    "signal. " +
+    "Do NOT use this for the AGENT's own outbound messages to people or the " +
+    "owner (those use AGENT_SEND_MESSAGE). " +
     "Do NOT use this for 'broadcast/push/send <X> to all my devices' or " +
     "'broadcast a reminder to my phone/desktop/watch' — device-targeted " +
-    "reminders belong to INTENT_SYNC, not CROSS_CHANNEL_SEND. " +
-    "Do NOT use SCHEDULING for channel-send requests even if the message " +
-    "mentions a meeting-like word (e.g. 'standup', 'sync'); SCHEDULING is for " +
-    "negotiating calendar proposals, not relaying chat messages.",
+    "reminders belong to INTENT_SYNC. " +
+    "Do NOT use OWNER_CALENDAR for channel-send requests even if the message " +
+    "mentions a meeting-like word (e.g. 'standup', 'sync'); OWNER_CALENDAR " +
+    "is for negotiating calendar proposals, not relaying chat messages.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
