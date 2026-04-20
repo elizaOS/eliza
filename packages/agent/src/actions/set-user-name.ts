@@ -14,7 +14,7 @@ import {
   OWNER_NAME_MAX_LENGTH,
   persistConfiguredOwnerName,
 } from "../services/owner-name.js";
-import type { Action, HandlerOptions, State } from "@elizaos/core";
+import type { Action, ActionExample, HandlerOptions, State } from "@elizaos/core";
 import {
   getValidationKeywordTerms,
   textIncludesKeywordTerm,
@@ -106,4 +106,34 @@ export const setUserNameAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "By the way, everyone calls me Sam.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Got it, Sam.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Please call me Jordan from now on.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Sure thing, Jordan.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

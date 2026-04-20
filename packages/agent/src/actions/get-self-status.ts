@@ -9,7 +9,7 @@
  * @module actions/get-self-status
  */
 
-import type { Action, HandlerOptions } from "@elizaos/core";
+import type { Action, ActionExample, HandlerOptions } from "@elizaos/core";
 import type { AwarenessRegistry } from "@elizaos/shared/awareness";
 import { getGlobalAwarenessRegistry } from "@elizaos/shared/awareness";
 
@@ -94,4 +94,34 @@ export const getSelfStatusAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "How are your plugins doing right now?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Plugin health: 12 loaded, 2 degraded (discord reconnecting, telegram rate-limited).",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Give me a full rundown of your wallet module.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Wallet module: connected address 0x12…ab, balance 0.42 ETH, 3 pending sigs.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

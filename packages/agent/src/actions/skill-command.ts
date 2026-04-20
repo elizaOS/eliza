@@ -156,6 +156,7 @@ export const skillCommandAction: Action = {
     });
   },
 
+  parameters: [],
   examples: [
     [
       {

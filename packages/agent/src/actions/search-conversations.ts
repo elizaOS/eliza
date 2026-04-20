@@ -1,5 +1,6 @@
 import type {
   Action,
+  ActionExample,
   HandlerOptions,
   IAgentRuntime,
   Memory,
@@ -234,4 +235,34 @@ export const searchConversationsAction: Action = {
       schema: { type: "number" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Find any chats where someone mentioned the offsite budget.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Search results for "offsite budget" | 4 messages found\n  1 | [slack] finance (2026-04-10) alice: the offsite budget came in under target',
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Dig up the conversation where Jill talked about the onboarding redesign.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Search results for "onboarding redesign" | 2 messages found',
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

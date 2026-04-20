@@ -1,5 +1,6 @@
 import type {
   Action,
+  ActionExample,
   HandlerOptions,
   IAgentRuntime,
   Memory,
@@ -150,4 +151,34 @@ export const sendAdminMessageAction: Action = {
       },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Let the owner know the deploy just finished cleanly.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Message sent to admin.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Alert the owner right now — the webhook is returning 500s.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Message sent to admin (URGENT).",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

@@ -262,7 +262,6 @@ export const blockWebsitesAction: Action & {
     "WEBSITE_BLOCKER",
     "WEBSITEBLOCKER",
     "START_FOCUS_BLOCK",
-    "BLOCK_SITE",
     "BLOCK_DISTRACTING_SITES",
   ],
   description:
@@ -579,7 +578,6 @@ export const requestWebsiteBlockingPermissionAction: Action = {
     "ENABLE_WEBSITE_BLOCKING",
     "ALLOW_WEBSITE_BLOCKING",
     "GRANT_WEBSITE_BLOCKING_PERMISSION",
-    "REQUEST_WEBSITE_BLOCKING_PERMISSION",
     "REQUEST_SELFCONTROL_PERMISSION",
   ],
   description:
@@ -641,9 +639,9 @@ export const unblockWebsitesAction: Action = {
   name: "UNBLOCK_WEBSITES",
   similes: [
     "SELFCONTROL_UNBLOCK_WEBSITES",
-    "UNBLOCK_WEBSITES",
     "REMOVE_WEBSITE_BLOCK",
     "STOP_BLOCKING_SITES",
+    "LIFT_WEBSITE_BLOCK",
   ],
   description:
     "Admin-only. Remove the current local website block by restoring the system hosts file entries Eliza added.",
