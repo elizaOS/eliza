@@ -18,7 +18,10 @@ import type {
  *
  * CQRS: read methods return typed shapes; write methods return void or an id.
  * Graceful degradation: if an upstream collector source is missing (e.g. no
- * meetings table yet), the collector logs once per process and returns [].
+ * meetings table yet), the collector logs once per process AND records the
+ * error message in `CheckinReport.collectorErrors.<field>`. The rows list
+ * remains `[]` but downstream renderers can now distinguish "no data" from
+ * "SQL threw" via the error field — see L22 LARP fix.
  */
 
 export const CHECKIN_REPORTS_TABLE = "life_checkin_reports";
