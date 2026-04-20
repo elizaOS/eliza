@@ -91,6 +91,17 @@ describe("Action Invocation E2E", () => {
     return false;
   }
 
+  function requireEnvironmentCapability(
+    enabled: boolean,
+    label: string,
+  ): boolean {
+    if (enabled) return true;
+    const message = `[action-e2e] SKIPPING — ${label} is unavailable in this test environment`;
+    console.warn(message);
+    expect.soft(false, message).toBe(true);
+    return false;
+  }
+
   /**
    * Creates a fresh harness (new roomId) for a single test, runs `fn`, and
    * guarantees cleanup even on failure. This is the main dogfooding pattern
@@ -283,21 +294,20 @@ describe("Action Invocation E2E", () => {
           await h.send(
             "I'm venting, not asking you to do anything: email has been overwhelming lately. Do not check inboxes, triage mail, draft, send, or take any action.",
           );
-          expectActionNotCalled(h.spy, "GMAIL_ACTION");
-          expectActionNotCalled(h.spy, "INBOX");
+          expectActionNotCalled(h.spy, "OWNER_INBOX");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "venting about calendar does not trigger CALENDAR_ACTION",
+      "venting about calendar does not trigger OWNER_CALENDAR",
       async () => {
         await withHarness(async (h) => {
           await h.send(
             "I'm just venting: my calendar has been crazy this quarter. Don't check it or schedule anything.",
           );
-          expectActionNotCalled(h.spy, "CALENDAR_ACTION");
+          expectActionNotCalled(h.spy, "OWNER_CALENDAR");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -338,6 +348,30 @@ describe("Action Invocation E2E", () => {
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
+
+    itIf(canRunLiveTests)(
+      "morning check-in request triggers RUN_MORNING_CHECKIN",
+      async () => {
+        if (!requireAction("RUN_MORNING_CHECKIN")) return;
+        await withHarness(async (h) => {
+          await h.send("Run my morning check-in.");
+          expectActionCalled(h.spy, "RUN_MORNING_CHECKIN");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "night check-in request triggers RUN_NIGHT_CHECKIN",
+      async () => {
+        if (!requireAction("RUN_NIGHT_CHECKIN")) return;
+        await withHarness(async (h) => {
+          await h.send("Give me my night check-in.");
+          expectActionCalled(h.spy, "RUN_NIGHT_CHECKIN");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
   });
 
   // ===================================================================
@@ -346,64 +380,78 @@ describe("Action Invocation E2E", () => {
 
   describe("messaging", () => {
     itIf(canRunLiveTests)(
-      "telegram request triggers CROSS_CHANNEL_SEND",
+      "telegram request triggers OWNER_SEND_MESSAGE",
       async () => {
-        if (!requireAction("CROSS_CHANNEL_SEND")) return;
+        if (!requireAction("OWNER_SEND_MESSAGE")) return;
         await withHarness(async (h) => {
           await h.send(
             "Send a telegram message to Jane saying I'm running 10 minutes late.",
           );
-          expectActionCalled(h.spy, "CROSS_CHANNEL_SEND");
+          expectActionCalled(h.spy, "OWNER_SEND_MESSAGE");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "signal request triggers CROSS_CHANNEL_SEND",
+      "signal request triggers OWNER_SEND_MESSAGE",
       async () => {
-        if (!requireAction("CROSS_CHANNEL_SEND")) return;
+        if (!requireAction("OWNER_SEND_MESSAGE")) return;
         await withHarness(async (h) => {
           await h.send(
             "Send a Signal message to Priya saying thanks for the review.",
           );
-          expectActionCalled(h.spy, "CROSS_CHANNEL_SEND");
+          expectActionCalled(h.spy, "OWNER_SEND_MESSAGE");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "email draft request triggers CROSS_CHANNEL_SEND",
+      "email draft request triggers OWNER_SEND_MESSAGE",
       async () => {
-        if (!requireAction("CROSS_CHANNEL_SEND")) return;
+        if (!requireAction("OWNER_SEND_MESSAGE")) return;
         await withHarness(async (h) => {
           await h.send("Email alice@example.com the meeting notes from today.");
-          expectAnyCompletedAction(h, ["CROSS_CHANNEL_SEND", "GMAIL_ACTION"]);
+          expectAnyCompletedAction(h, ["OWNER_SEND_MESSAGE"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "gmail triage request selects an email triage workflow",
+      "gmail triage request selects OWNER_INBOX",
       async () => {
-        if (!requireAction("GMAIL_ACTION")) return;
+        if (!requireAction("OWNER_INBOX")) return;
         await withHarness(async (h) => {
           await h.send("Triage my gmail inbox.");
-          expectAnyCompletedAction(h, ["GMAIL_ACTION", "INBOX"]);
+          expectAnyCompletedAction(h, ["OWNER_INBOX"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "generic inbox triage triggers INBOX",
+      "generic inbox triage triggers OWNER_INBOX",
       async () => {
-        if (!requireAction("INBOX")) return;
+        if (!requireAction("OWNER_INBOX")) return;
         await withHarness(async (h) => {
           await h.send("Triage my inbox.");
-          expectActionCalled(h.spy, "INBOX");
+          expectActionCalled(h.spy, "OWNER_INBOX");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "gmail send-reply request triggers OWNER_INBOX",
+      async () => {
+        if (!requireAction("OWNER_INBOX")) return;
+        await withHarness(async (h) => {
+          await h.send(
+            "Send a reply to the last email from finance confirming receipt.",
+          );
+          expectActionCalled(h.spy, "OWNER_INBOX");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -416,73 +464,62 @@ describe("Action Invocation E2E", () => {
 
   describe("calendar & scheduling", () => {
     itIf(canRunLiveTests)(
-      "show today's calendar triggers CALENDAR_ACTION",
+      "show today's calendar triggers OWNER_CALENDAR",
       async () => {
-        if (!requireAction("CALENDAR_ACTION")) return;
+        if (!requireAction("OWNER_CALENDAR")) return;
         await withHarness(async (h) => {
           await h.send("Show me my calendar for today.");
-          expectActionCalled(h.spy, "CALENDAR_ACTION");
+          expectActionCalled(h.spy, "OWNER_CALENDAR");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "schedule event triggers CALENDAR_ACTION",
+      "schedule event triggers OWNER_CALENDAR",
       async () => {
-        if (!requireAction("CALENDAR_ACTION")) return;
+        if (!requireAction("OWNER_CALENDAR")) return;
         await withHarness(async (h) => {
           await h.send("Schedule a dentist appointment next Tuesday at 3pm.");
-          expectActionCalled(h.spy, "CALENDAR_ACTION");
+          expectActionCalled(h.spy, "OWNER_CALENDAR");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "help me schedule a meeting triggers SCHEDULING",
+      "help me schedule a meeting triggers OWNER_CALENDAR",
       async () => {
-        if (!requireAction("SCHEDULING")) return;
+        if (!requireAction("OWNER_CALENDAR")) return;
         await withHarness(async (h) => {
           await h.send("Help me schedule a meeting with the design team.");
-          expectAnyCompletedAction(h, [
-            "SCHEDULING",
-            "PROPOSE_MEETING_TIMES",
-            "CALENDAR_ACTION",
-          ]);
+          expectAnyCompletedAction(h, ["OWNER_CALENDAR"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "availability question triggers CHECK_AVAILABILITY",
+      "availability question triggers OWNER_CALENDAR",
       async () => {
-        if (!requireAction("CHECK_AVAILABILITY")) return;
+        if (!requireAction("OWNER_CALENDAR")) return;
         await withHarness(async (h) => {
           await h.send("Am I free on Thursday afternoon?");
-          expectAnyCompletedAction(h, [
-            "CHECK_AVAILABILITY",
-            "CALENDAR_ACTION",
-          ]);
+          expectAnyCompletedAction(h, ["OWNER_CALENDAR"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "propose times triggers PROPOSE_MEETING_TIMES",
+      "propose times triggers OWNER_CALENDAR",
       async () => {
-        if (!requireAction("PROPOSE_MEETING_TIMES")) return;
+        if (!requireAction("OWNER_CALENDAR")) return;
         await withHarness(async (h) => {
           await h.send(
             "Propose three times for a 30 minute sync with Marco next week.",
           );
-          expectAnyCompletedAction(h, [
-            "PROPOSE_MEETING_TIMES",
-            "SCHEDULING",
-            "CALENDAR_ACTION",
-          ]);
+          expectAnyCompletedAction(h, ["OWNER_CALENDAR"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -495,29 +532,42 @@ describe("Action Invocation E2E", () => {
 
   describe("relationships", () => {
     itIf(canRunLiveTests)(
-      "add contact triggers RELATIONSHIP",
+      "add contact triggers OWNER_RELATIONSHIP",
       async () => {
-        if (!requireAction("RELATIONSHIP")) return;
+        if (!requireAction("OWNER_RELATIONSHIP")) return;
         await withHarness(async (h) => {
           await h.send(
             "Add a new contact: David Lee, david@example.com, my old coworker.",
           );
-          expectActionCalled(h.spy, "RELATIONSHIP");
+          expectActionCalled(h.spy, "OWNER_RELATIONSHIP");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "follow-up list request triggers RELATIONSHIP",
+      "follow-up list request triggers OWNER_RELATIONSHIP",
       async () => {
-        if (!requireAction("RELATIONSHIP")) return;
+        if (!requireAction("OWNER_RELATIONSHIP")) return;
         await withHarness(async (h) => {
           await h.send("Who should I follow up with this week?");
-          expectAnyCompletedAction(h, [
-            "RELATIONSHIP",
-            "LIST_OVERDUE_FOLLOWUPS",
-          ]);
+          expectAnyCompletedAction(h, ["OWNER_RELATIONSHIP"]);
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "days-since-contact request triggers OWNER_RELATIONSHIP",
+      async () => {
+        if (!requireAction("OWNER_RELATIONSHIP")) return;
+        await withHarness(async (h) => {
+          await h.send(
+            "Add David Park to my contacts. Email david@example.com and telegram @dpark.",
+          );
+          h.spy.reset();
+          await h.send("How long has it been since I talked to David Park?");
+          expectActionCalled(h.spy, "OWNER_RELATIONSHIP");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -530,26 +580,35 @@ describe("Action Invocation E2E", () => {
 
   describe("focus / blocking", () => {
     itIf(canRunLiveTests)(
-      "block websites request triggers BLOCK_WEBSITES",
+      "block websites request triggers OWNER_WEBSITE_BLOCK",
       async () => {
-        if (!requireAction("BLOCK_WEBSITES")) return;
-        if (!websiteBlockingAvailable) return;
+        if (!requireAction("OWNER_WEBSITE_BLOCK")) return;
+        if (
+          !requireEnvironmentCapability(
+            websiteBlockingAvailable,
+            "website blocking",
+          )
+        )
+          return;
         await withHarness(async (h) => {
           await h.send("Block twitter.com for exactly 90 minutes.");
-          expectActionCalled(h.spy, "BLOCK_WEBSITES");
+          expectActionCalled(h.spy, "OWNER_WEBSITE_BLOCK");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "block apps request triggers BLOCK_APPS",
+      "block apps request triggers OWNER_APP_BLOCK",
       async () => {
-        if (!requireAction("BLOCK_APPS")) return;
-        if (!appBlockingAvailable) return;
+        if (!requireAction("OWNER_APP_BLOCK")) return;
+        if (
+          !requireEnvironmentCapability(appBlockingAvailable, "app blocking")
+        )
+          return;
         await withHarness(async (h) => {
           await h.send("Block the Slack app while I focus on deep work.");
-          expectActionCalled(h.spy, "BLOCK_APPS");
+          expectActionCalled(h.spy, "OWNER_APP_BLOCK");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -565,7 +624,8 @@ describe("Action Invocation E2E", () => {
       "read DMs on X triggers X_READ",
       async () => {
         if (!requireAction("X_READ")) return;
-        if (!xReadConnected) return;
+        if (!requireEnvironmentCapability(xReadConnected, "X connector"))
+          return;
         await withHarness(async (h) => {
           await h.send("Check my twitter DMs.");
           expectActionCalled(h.spy, "X_READ");
@@ -578,7 +638,8 @@ describe("Action Invocation E2E", () => {
       "read feed on X triggers X_READ",
       async () => {
         if (!requireAction("X_READ")) return;
-        if (!xReadConnected) return;
+        if (!requireEnvironmentCapability(xReadConnected, "X connector"))
+          return;
         await withHarness(async (h) => {
           await h.send("What's on my X timeline right now?");
           expectActionCalled(h.spy, "X_READ");
@@ -594,24 +655,24 @@ describe("Action Invocation E2E", () => {
 
   describe("activity & health", () => {
     itIf(canRunLiveTests)(
-      "screen time today triggers SCREEN_TIME",
+      "screen time today triggers OWNER_SCREEN_TIME",
       async () => {
-        if (!requireAction("SCREEN_TIME")) return;
+        if (!requireAction("OWNER_SCREEN_TIME")) return;
         await withHarness(async (h) => {
           await h.send("How much screen time have I used today?");
-          expectActionCalled(h.spy, "SCREEN_TIME");
+          expectActionCalled(h.spy, "OWNER_SCREEN_TIME");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "screen time by app triggers SCREEN_TIME",
+      "screen time by app triggers OWNER_SCREEN_TIME",
       async () => {
-        if (!requireAction("SCREEN_TIME")) return;
+        if (!requireAction("OWNER_SCREEN_TIME")) return;
         await withHarness(async (h) => {
           await h.send("Break down my screen time by app this week.");
-          expectActionCalled(h.spy, "SCREEN_TIME");
+          expectActionCalled(h.spy, "OWNER_SCREEN_TIME");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -621,7 +682,8 @@ describe("Action Invocation E2E", () => {
       "health summary triggers HEALTH",
       async () => {
         if (!requireAction("HEALTH")) return;
-        if (!healthBackendAvailable) return;
+        if (!requireEnvironmentCapability(healthBackendAvailable, "health backend"))
+          return;
         await withHarness(async (h) => {
           await h.send("How did I sleep last night?");
           expectActionCalled(h.spy, "HEALTH");
@@ -636,6 +698,20 @@ describe("Action Invocation E2E", () => {
   // ===================================================================
 
   describe("meta & ops", () => {
+    itIf(canRunLiveTests)(
+      "owner profile update request triggers UPDATE_OWNER_PROFILE",
+      async () => {
+        if (!requireAction("UPDATE_OWNER_PROFILE")) return;
+        await withHarness(async (h) => {
+          await h.send(
+            "Remember that I prefer aisle seats, carry-on only, and moderate hotels close to the venue.",
+          );
+          expectActionCalled(h.spy, "UPDATE_OWNER_PROFILE");
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
     itIf(canRunLiveTests)(
       "dossier request triggers DOSSIER",
       async () => {
@@ -654,7 +730,45 @@ describe("Action Invocation E2E", () => {
         if (!requireAction("INTENT_SYNC")) return;
         await withHarness(async (h) => {
           await h.send("Broadcast a reminder to all my devices.");
-          expectAnySelectedAction(h, ["INTENT_SYNC", "PUBLISH_DEVICE_INTENT"]);
+          expectAnySelectedAction(h, ["INTENT_SYNC"]);
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "approve request prompt triggers APPROVE_REQUEST",
+      async () => {
+        if (!requireAction("APPROVE_REQUEST")) return;
+        await withHarness(async (h) => {
+          await h.send("Approve the pending travel booking request.");
+          expectAnySelectedAction(h, ["APPROVE_REQUEST"]);
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "reject request prompt triggers REJECT_REQUEST",
+      async () => {
+        if (!requireAction("REJECT_REQUEST")) return;
+        await withHarness(async (h) => {
+          await h.send(
+            "Reject that pending approval request and say it needs changes.",
+          );
+          expectAnySelectedAction(h, ["REJECT_REQUEST"]);
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "browser settings request triggers MANAGE_LIFEOPS_BROWSER",
+      async () => {
+        if (!requireAction("MANAGE_LIFEOPS_BROWSER")) return;
+        await withHarness(async (h) => {
+          await h.send("Show me my LifeOps browser settings.");
+          expectAnySelectedAction(h, ["MANAGE_LIFEOPS_BROWSER"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -670,7 +784,8 @@ describe("Action Invocation E2E", () => {
       "phone call request triggers TWILIO_VOICE_CALL",
       async () => {
         if (!requireAction("TWILIO_VOICE_CALL")) return;
-        if (!twilioConfigured) return;
+        if (!requireEnvironmentCapability(twilioConfigured, "Twilio credentials"))
+          return;
         await withHarness(async (h) => {
           await h.send("Call the dentist and reschedule my appointment.");
           expectAnySelectedAction(h, ["TWILIO_VOICE_CALL"]);
@@ -683,7 +798,13 @@ describe("Action Invocation E2E", () => {
       "password lookup request triggers PASSWORD_MANAGER",
       async () => {
         if (!requireAction("PASSWORD_MANAGER")) return;
-        if (!passwordManagerAvailable) return;
+        if (
+          !requireEnvironmentCapability(
+            passwordManagerAvailable,
+            "password manager backend",
+          )
+        )
+          return;
         await withHarness(async (h) => {
           await h.send("Look up my GitHub password.");
           expectAnySelectedAction(h, ["PASSWORD_MANAGER"]);
@@ -693,28 +814,40 @@ describe("Action Invocation E2E", () => {
     );
 
     itIf(canRunLiveTests)(
-      "remote desktop request triggers REMOTE_DESKTOP",
+      "remote desktop request triggers OWNER_REMOTE_DESKTOP",
       async () => {
-        if (!requireAction("REMOTE_DESKTOP")) return;
-        if (!remoteDesktopAvailable) return;
+        if (!requireAction("OWNER_REMOTE_DESKTOP")) return;
+        if (
+          !requireEnvironmentCapability(
+            remoteDesktopAvailable,
+            "remote desktop backend",
+          )
+        )
+          return;
         await withHarness(async (h) => {
           await h.send("Start a remote desktop session.");
-          expectAnySelectedAction(h, ["REMOTE_DESKTOP"]);
+          expectAnySelectedAction(h, ["OWNER_REMOTE_DESKTOP"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "calendly booking link request triggers CALENDLY",
+      "calendly booking link request triggers OWNER_CALENDAR",
       async () => {
-        if (!requireAction("CALENDLY")) return;
-        if (!calendlyConfigured) return;
+        if (!requireAction("OWNER_CALENDAR")) return;
+        if (
+          !requireEnvironmentCapability(
+            calendlyConfigured,
+            "Calendly credentials",
+          )
+        )
+          return;
         await withHarness(async (h) => {
           await h.send(
             "Create a single-use Calendly booking link for https://api.calendly.com/event_types/abc.",
           );
-          expectAnySelectedAction(h, ["CALENDLY"]);
+          expectAnySelectedAction(h, ["OWNER_CALENDAR"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -729,6 +862,48 @@ describe("Action Invocation E2E", () => {
             "Use computer automation on this Mac to create a new folder named Q2-Reports in ~/Desktop.",
           );
           expectAnySelectedAction(h, ["LIFEOPS_COMPUTER_USE"]);
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "email unsubscribe request triggers EMAIL_UNSUBSCRIBE",
+      async () => {
+        if (!requireAction("EMAIL_UNSUBSCRIBE")) return;
+        await withHarness(async (h) => {
+          await h.send(
+            "Unsubscribe me from newsletters@medium.com and block them.",
+          );
+          expectAnySelectedAction(h, ["EMAIL_UNSUBSCRIBE"]);
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "book travel request triggers BOOK_TRAVEL",
+      async () => {
+        if (!requireAction("BOOK_TRAVEL")) return;
+        await withHarness(async (h) => {
+          await h.send(
+            "Book travel for me from San Francisco to New York next Thursday and Friday.",
+          );
+          expectAnySelectedAction(h, ["BOOK_TRAVEL"]);
+        });
+      },
+      DEFAULT_TEST_TIMEOUT_MS,
+    );
+
+    itIf(canRunLiveTests)(
+      "field fill request triggers REQUEST_FIELD_FILL",
+      async () => {
+        if (!requireAction("REQUEST_FIELD_FILL")) return;
+        await withHarness(async (h) => {
+          await h.send(
+            "Fill the password field on github.com using my password manager.",
+          );
+          expectAnySelectedAction(h, ["REQUEST_FIELD_FILL"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -817,12 +992,12 @@ describe("Action Invocation E2E", () => {
     itIf(canRunLiveTests)(
       "extracts a 30-minute time window for a meeting schedule request",
       async () => {
-        if (!requireAction("CALENDAR_ACTION")) return;
+        if (!requireAction("OWNER_CALENDAR")) return;
         await withHarness(async (h) => {
           await h.send(
             "Create a calendar event titled 'Q4 planning with John' tomorrow at 3pm for 30 minutes.",
           );
-          expectActionCalled(h.spy, "CALENDAR_ACTION");
+          expectActionCalled(h.spy, "OWNER_CALENDAR");
           const results = await getActionResults(h.runtime, h.roomId);
           expect(
             results.length,
@@ -880,11 +1055,17 @@ describe("Action Invocation E2E", () => {
     itIf(canRunLiveTests)(
       "extracts duration for a website block request",
       async () => {
-        if (!requireAction("BLOCK_WEBSITES")) return;
-        if (!websiteBlockingAvailable) return;
+        if (!requireAction("OWNER_WEBSITE_BLOCK")) return;
+        if (
+          !requireEnvironmentCapability(
+            websiteBlockingAvailable,
+            "website blocking",
+          )
+        )
+          return;
         await withHarness(async (h) => {
           await h.send("Block twitter.com for exactly 90 minutes.");
-          expectActionCalled(h.spy, "BLOCK_WEBSITES");
+          expectActionCalled(h.spy, "OWNER_WEBSITE_BLOCK");
           const results = await getActionResults(h.runtime, h.roomId);
           expect(
             results.length,
@@ -905,13 +1086,13 @@ describe("Action Invocation E2E", () => {
     );
 
     itIf(canRunLiveTests)(
-      "chat that merely mentions calendar does not trigger CALENDAR_ACTION",
+      "chat that merely mentions calendar does not trigger OWNER_CALENDAR",
       async () => {
         await withHarness(async (h) => {
           await h.send(
             "I'm only talking about app design: the colors in my calendar app UI look nice. Don't check it or schedule anything.",
           );
-          expectActionNotCalled(h.spy, "CALENDAR_ACTION");
+          expectActionNotCalled(h.spy, "OWNER_CALENDAR");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -930,13 +1111,13 @@ describe("Action Invocation E2E", () => {
             .getCompletedCalls()
             .map((c) => normalizeActionName(c.actionName));
           const acceptable = [
-            normalizeActionName("BLOCK_WEBSITES"),
+            normalizeActionName("OWNER_WEBSITE_BLOCK"),
             normalizeActionName("LIFE"),
           ];
           const hit = completedNames.some((n) => acceptable.includes(n));
           expect(
             hit,
-            `Expected at least one of BLOCK_WEBSITES/LIFE to fire. Completed=${completedNames.join(",")}`,
+            `Expected at least one of OWNER_WEBSITE_BLOCK/LIFE to fire. Completed=${completedNames.join(",")}`,
           ).toBe(true);
         });
       },

@@ -43,13 +43,12 @@ ENV NODE_LLAMA_CPP_SKIP_DOWNLOAD=true
 RUN node -e "const fs=require('fs');\
 const KEEP=['eliza/packages/agent','eliza/packages/app-core','eliza/packages/shared','eliza/packages/ui','eliza/packages/app-core/platforms/electrobun','eliza/packages/app-core/deploy/cloud-agent-template','apps/app'];\
 const ALLOW=new Set(['@elizaos/agent','@elizaos/app-core','@elizaos/shared','@elizaos/ui','@elizaos/core']);\
+const PRUNE_FIELDS=['dependencies','devDependencies','optionalDependencies','peerDependencies','overrides'];\
 const STRIP_NAMES=/^@elizaos\/(app-|capacitor-|plugin-agent-orchestrator|plugin-cli|plugin-imessage|plugin-local-ai|plugin-pdf|plugin-wechat|steward-)/;\
-function prune(p){if(!fs.existsSync(p))return;const j=JSON.parse(fs.readFileSync(p,'utf8'));for(const s of ['dependencies','devDependencies','optionalDependencies','peerDependencies','overrides']){const d=j[s];if(!d)continue;for(const[k,v]of Object.entries(d)){const isWs=typeof v==='string'&&v.startsWith('workspace:');const isStripName=STRIP_NAMES.test(k);if((isWs&&!ALLOW.has(k))||isStripName){delete d[k];console.log('  pruned',p,s,k);}}}fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');}\
+function prune(p){if(!fs.existsSync(p))return;const j=JSON.parse(fs.readFileSync(p,'utf8'));for(const s of PRUNE_FIELDS){const d=j[s];if(!d)continue;for(const[k,v]of Object.entries(d)){const isWs=typeof v==='string'&&v.startsWith('workspace:');const isStripName=STRIP_NAMES.test(k);if((isWs&&!ALLOW.has(k))||isStripName)delete d[k];}}fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');}\
 const r=JSON.parse(fs.readFileSync('package.json','utf8'));r.workspaces=KEEP;fs.writeFileSync('package.json',JSON.stringify(r,null,2)+'\n');\
 ['package.json','apps/app/package.json','eliza/packages/agent/package.json','eliza/packages/app-core/package.json','eliza/packages/shared/package.json','eliza/packages/ui/package.json','eliza/packages/app-core/platforms/electrobun/package.json','eliza/packages/app-core/deploy/cloud-agent-template/package.json'].forEach(prune);\
-if(fs.existsSync('bun.lock'))fs.unlinkSync('bun.lock');\
-console.log('---POST-PRUNE DIAGNOSTIC---');\
-['package.json','apps/app/package.json','eliza/packages/agent/package.json','eliza/packages/app-core/package.json','eliza/packages/shared/package.json','eliza/packages/ui/package.json','eliza/packages/app-core/platforms/electrobun/package.json','eliza/packages/app-core/deploy/cloud-agent-template/package.json'].forEach(p=>{if(!fs.existsSync(p))return;const j=JSON.parse(fs.readFileSync(p,'utf8'));['dependencies','devDependencies','optionalDependencies','peerDependencies','overrides'].forEach(s=>{const d=j[s];if(!d)return;for(const[k,v]of Object.entries(d)){if(/^@elizaos\/(app-|capacitor-|plugin-agent-orchestrator|plugin-cli|plugin-imessage|plugin-local-ai|plugin-pdf|plugin-wechat|steward-)/.test(k)){console.log('  REMAINING:',p,s,k,'=',v);}}});});"
+if(fs.existsSync('bun.lock'))fs.unlinkSync('bun.lock');"
 # Drop --frozen-lockfile: bun.lock has been removed above so bun regenerates
 # fresh against the pruned workspace set.
 RUN bun install --ignore-scripts --no-progress

@@ -25,7 +25,7 @@ import {
 const spec = requireProviderSpec("ACTIONS");
 const GENERIC_CHAT_ACTIONS = new Set(["REPLY", "IGNORE", "NONE"]);
 const RELATIONSHIP_FOLLOW_UP_ACTIONS = new Set([
-	"RELATIONSHIP",
+	"OWNER_RELATIONSHIP",
 	"REPLY",
 	"IGNORE",
 	"NONE",
@@ -94,7 +94,7 @@ export const actionsProvider: Provider = {
 			looksLikeRelationshipFollowUpReminder(message);
 		const availableActions = resolvedActions.filter(Boolean) as Action[];
 		const hasRelationshipAction = availableActions.some(
-			(action) => action.name === "RELATIONSHIP",
+			(action) => action.name === "OWNER_RELATIONSHIP",
 		);
 		const actionsData = availableActions.filter((action) => {
 			if (nonActionableChatter && !GENERIC_CHAT_ACTIONS.has(action.name)) {

@@ -120,6 +120,7 @@ const ACTION_ROLE_OVERRIDES: Readonly<Record<string, RoleGate>> = {
   UNPIN_MESSAGE: "admin",
   SETUP_CREDENTIALS: "owner",
   CREATE_POLL: "admin",
+  AGENT_SEND_MESSAGE: "admin",
   SEND_MESSAGE: "admin",
   SEND_DM: "admin",
   JOIN_CHANNEL: "admin",

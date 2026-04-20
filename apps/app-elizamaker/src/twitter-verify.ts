@@ -12,7 +12,7 @@ import path from "node:path";
 import { logger } from "@elizaos/core";
 import { resolveStateDir } from "@elizaos/agent/config/paths";
 import type { VerificationResult } from "@elizaos/agent/contracts/verification";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
 
 export type { VerificationResult } from "@elizaos/agent/contracts/verification";
 

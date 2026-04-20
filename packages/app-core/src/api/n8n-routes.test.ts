@@ -567,6 +567,109 @@ describe("n8n list workflows", () => {
   });
 });
 
+// ── GET /api/n8n/workflows/:id (single workflow with full graph) ────────────
+
+describe("n8n get single workflow", () => {
+  it("returns connections and node positions from upstream", async () => {
+    const upstreamWorkflow = {
+      id: "w-graph",
+      name: "Graph Workflow",
+      active: true,
+      nodes: [
+        { id: "n1", name: "Schedule Trigger", type: "n8n-nodes-base.scheduleTrigger", position: [250, 300] },
+        { id: "n2", name: "Send Email", type: "n8n-nodes-base.gmail", position: [450, 300], parameters: { to: "test@example.com" } },
+      ],
+      connections: {
+        "Schedule Trigger": {
+          main: [[{ node: "Send Email", type: "main", index: 0 }]],
+        },
+      },
+    };
+    const fetchImpl = vi.fn(async () =>
+      mockResponse({ body: upstreamWorkflow }),
+    ) as unknown as typeof fetch;
+    const sidecar = makeSidecarStub(
+      { status: "ready", host: "http://127.0.0.1:5678" },
+      "k",
+    );
+
+    const { status, payload } = await invoke({
+      method: "GET",
+      pathname: "/api/n8n/workflows/w-graph",
+      config: { n8n: { localEnabled: true } },
+      sidecar,
+      fetchImpl,
+    });
+
+    expect(status).toBe(200);
+    const w = payload as Record<string, unknown>;
+    expect(w.id).toBe("w-graph");
+    expect(w.nodeCount).toBe(2);
+
+    const nodes = w.nodes as Array<Record<string, unknown>>;
+    expect(nodes[0]?.position).toEqual([250, 300]);
+    expect(nodes[1]?.position).toEqual([450, 300]);
+    expect((nodes[1]?.parameters as Record<string, unknown>)?.to).toBe("test@example.com");
+
+    // connections must be forwarded from upstream
+    const connections = w.connections as Record<string, unknown>;
+    expect(connections).toBeDefined();
+    expect(Object.keys(connections)).toContain("Schedule Trigger");
+
+    // Confirm the right URL was called
+    const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const [calledUrl] = calls[0] as [string];
+    expect(calledUrl).toBe("http://127.0.0.1:5678/api/v1/workflows/w-graph");
+  });
+
+  it("strips credentials from nodes even in full GET", async () => {
+    const upstreamWorkflow = {
+      id: "w-cred",
+      name: "Cred Workflow",
+      active: false,
+      nodes: [
+        {
+          id: "n1", name: "HTTP", type: "n8n-nodes-base.httpRequest",
+          position: [100, 100],
+          credentials: { api: "SECRET" },
+          parameters: { url: "https://example.com" },
+        },
+      ],
+      connections: {},
+    };
+    const fetchImpl = vi.fn(async () =>
+      mockResponse({ body: upstreamWorkflow }),
+    ) as unknown as typeof fetch;
+    const sidecar = makeSidecarStub(
+      { status: "ready", host: "http://127.0.0.1:5678" },
+      "k",
+    );
+
+    const { payload } = await invoke({
+      method: "GET",
+      pathname: "/api/n8n/workflows/w-cred",
+      config: { n8n: { localEnabled: true } },
+      sidecar,
+      fetchImpl,
+    });
+    expect(JSON.stringify(payload)).not.toContain("SECRET");
+    const nodes = (payload as Record<string, unknown>).nodes as Array<Record<string, unknown>>;
+    expect(nodes[0]?.position).toEqual([100, 100]);
+    expect((nodes[0]?.parameters as Record<string, unknown>)?.url).toBe("https://example.com");
+  });
+
+  it("returns 503 when sidecar not ready", async () => {
+    const sidecar = makeSidecarStub({ status: "stopped" });
+    const { status } = await invoke({
+      method: "GET",
+      pathname: "/api/n8n/workflows/w1",
+      config: { n8n: { localEnabled: true } },
+      sidecar,
+    });
+    expect(status).toBe(503);
+  });
+});
+
 // ── Activate / Deactivate ───────────────────────────────────────────────────
 
 describe("n8n toggle workflow", () => {

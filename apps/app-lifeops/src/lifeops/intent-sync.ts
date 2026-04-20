@@ -154,6 +154,151 @@ function rowToIntent(row: Record<string, unknown>): LifeOpsIntent {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function readMetadataString(
+  metadata: Record<string, unknown>,
+  keys: readonly string[],
+): string | null {
+  let current: unknown = metadata;
+  for (const key of keys) {
+    if (!isRecord(current)) {
+      return null;
+    }
+    current = current[key];
+  }
+  return typeof current === "string" && current.trim().length > 0
+    ? current.trim()
+    : null;
+}
+
+function readMetadataNumber(
+  metadata: Record<string, unknown>,
+  keys: readonly string[],
+): number | null {
+  let current: unknown = metadata;
+  for (const key of keys) {
+    if (!isRecord(current)) {
+      return null;
+    }
+    current = current[key];
+  }
+  if (typeof current === "number" && Number.isFinite(current)) {
+    return current;
+  }
+  if (typeof current === "string") {
+    const parsed = Number(current);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function extractIntentLadderKey(
+  metadata: Record<string, unknown>,
+): string | null {
+  return (
+    readMetadataString(metadata, ["ladderId"]) ??
+    readMetadataString(metadata, ["ladderKey"]) ??
+    readMetadataString(metadata, ["payload", "ladderId"]) ??
+    readMetadataString(metadata, ["payload", "ladderKey"])
+  );
+}
+
+function extractIntentLadderRung(
+  metadata: Record<string, unknown>,
+): number | null {
+  return (
+    readMetadataNumber(metadata, ["rungIndex"]) ??
+    readMetadataNumber(metadata, ["payload", "rungIndex"])
+  );
+}
+
+type PendingIntentRow = {
+  id: string;
+  createdAt: string;
+  metadata: Record<string, unknown>;
+};
+
+async function readPendingIntentRow(
+  runtime: IAgentRuntime,
+  intentId: string,
+): Promise<PendingIntentRow | null> {
+  const selectSql = `
+    SELECT id, created_at, metadata_json
+    FROM life_intents
+    WHERE agent_id = ${sqlText(runtime.agentId)}
+      AND id = ${sqlText(intentId)}
+      AND acknowledged_at IS NULL
+    LIMIT 1`;
+  const rows = await executeRawSql(runtime, selectSql);
+  const row = rows[0];
+  if (!row) {
+    return null;
+  }
+  return {
+    id: toText(row.id),
+    createdAt: toText(row.created_at),
+    metadata: parseJsonRecord(row.metadata_json),
+  };
+}
+
+async function suppressPendingLadderRungs(
+  runtime: IAgentRuntime,
+  currentIntent: PendingIntentRow,
+  deviceId: string,
+  acknowledgedAt: string,
+): Promise<void> {
+  const ladderKey = extractIntentLadderKey(currentIntent.metadata);
+  if (!ladderKey) {
+    return;
+  }
+  const currentRung = extractIntentLadderRung(currentIntent.metadata);
+  const selectSql = `
+    SELECT id, created_at, metadata_json
+    FROM life_intents
+    WHERE agent_id = ${sqlText(runtime.agentId)}
+      AND acknowledged_at IS NULL
+      AND id <> ${sqlText(currentIntent.id)}`;
+  const rows = await executeRawSql(runtime, selectSql);
+  const relatedIds = rows
+    .map((row) => ({
+      id: toText(row.id),
+      createdAt: toText(row.created_at),
+      metadata: parseJsonRecord(row.metadata_json),
+    }))
+    .filter((row) => {
+      if (extractIntentLadderKey(row.metadata) !== ladderKey) {
+        return false;
+      }
+      const candidateRung = extractIntentLadderRung(row.metadata);
+      if (currentRung !== null && candidateRung !== null) {
+        return candidateRung > currentRung;
+      }
+      if (currentRung !== null) {
+        return true;
+      }
+      return row.createdAt >= currentIntent.createdAt;
+    })
+    .map((row) => row.id);
+
+  if (relatedIds.length === 0) {
+    return;
+  }
+
+  const updateSql = `
+    UPDATE life_intents
+    SET acknowledged_at = ${sqlText(acknowledgedAt)},
+        acknowledged_by = ${sqlText(deviceId)}
+    WHERE agent_id = ${sqlText(runtime.agentId)}
+      AND acknowledged_at IS NULL
+      AND id IN (${relatedIds.map((id) => sqlText(id)).join(", ")})`;
+  await executeRawSql(runtime, updateSql);
+}
+
 export async function broadcastIntent(
   runtime: IAgentRuntime,
   input: BroadcastIntentInput,
@@ -279,6 +424,7 @@ export async function acknowledgeIntent(
   if (!intentId) throw new Error("intentId is required");
   if (!deviceId) throw new Error("deviceId is required");
 
+  const currentIntent = await readPendingIntentRow(runtime, intentId);
   const nowIso = new Date().toISOString();
   const updateSql = `
     UPDATE life_intents
@@ -288,6 +434,9 @@ export async function acknowledgeIntent(
       AND agent_id = ${sqlText(runtime.agentId)}
       AND acknowledged_at IS NULL`;
   await executeRawSql(runtime, updateSql);
+  if (currentIntent) {
+    await suppressPendingLadderRungs(runtime, currentIntent, deviceId, nowIso);
+  }
 }
 
 export async function pruneExpiredIntents(

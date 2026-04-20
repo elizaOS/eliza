@@ -13,6 +13,13 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../../test/helpers/real-runtime";
+import {
+  acceptCanonicalIdentityMerge,
+  assertCanonicalIdentityMerged,
+  getCanonicalIdentityGraph,
+  getCanonicalPersonDetail,
+  seedCanonicalIdentityFixture,
+} from "./helpers/lifeops-identity-merge-fixtures.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
 import { relationshipAction } from "../src/actions/relationships.js";
@@ -371,7 +378,7 @@ describe("relationships handler — real PGLite", () => {
         input &&
         "prompt" in input &&
         typeof input.prompt === "string" &&
-        input.prompt.includes("Plan the RELATIONSHIP (Rolodex) subaction")
+        input.prompt.includes("(Rolodex) subaction for this request.")
       ) {
         return [
           "The response will be in valid JSON format with exactly the required fields.",
@@ -408,5 +415,184 @@ describe("relationships handler — real PGLite", () => {
     } finally {
       runtime.useModel = originalUseModel;
     }
+  });
+
+  it("relationshipAction list_overdue_followups respects per-contact thresholds", async () => {
+    await service.upsertRelationship({
+      name: "Threshold Dana",
+      primaryChannel: "email",
+      primaryHandle: "threshold.dana@example.com",
+      email: "threshold.dana@example.com",
+      phone: null,
+      notes: "Threshold test contact.",
+      tags: ["work"],
+      relationshipType: "contact",
+      lastContactedAt: new Date(Date.now() - 16 * 24 * 60 * 60 * 1000).toISOString(),
+      metadata: { followupThresholdDays: 14 },
+    });
+    await service.upsertRelationship({
+      name: "Threshold Evan",
+      primaryChannel: "email",
+      primaryHandle: "threshold.evan@example.com",
+      email: "threshold.evan@example.com",
+      phone: null,
+      notes: "Threshold test contact.",
+      tags: ["work"],
+      relationshipType: "contact",
+      lastContactedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+      metadata: { followupThresholdDays: 14 },
+    });
+
+    const result = await relationshipAction.handler!(
+      runtime,
+      makeMessage(runtime, "Who is overdue for follow-up?") as never,
+      undefined,
+      { parameters: { subaction: "list_overdue_followups" } } as never,
+      async () => {},
+    );
+
+    expect(result?.success).toBe(true);
+    const text = String(result?.text ?? "");
+    expect(text).toContain("Threshold Dana");
+    expect(text).not.toContain("Threshold Evan");
+  });
+
+  it("relationshipAction set_followup_threshold persists a new cadence rule", async () => {
+    const rel = await service.upsertRelationship({
+      name: "Cadence Mina",
+      primaryChannel: "email",
+      primaryHandle: "cadence.mina@example.com",
+      email: "cadence.mina@example.com",
+      phone: null,
+      notes: "Cadence contact.",
+      tags: ["work"],
+      relationshipType: "contact",
+      lastContactedAt: null,
+      metadata: {},
+    });
+
+    const result = await relationshipAction.handler!(
+      runtime,
+      makeMessage(runtime, "Set Mina to every 14 days") as never,
+      undefined,
+      {
+        parameters: {
+          subaction: "set_followup_threshold",
+          relationshipId: rel.id,
+          thresholdDays: 14,
+        },
+      } as never,
+      async () => {},
+    );
+
+    expect(result?.success).toBe(true);
+    const updated = await service.getRelationship(rel.id);
+    expect(updated?.metadata.followupThresholdDays).toBe(14);
+  });
+
+  it("relationshipAction mark_followup_done updates last contact and clears pending follow-ups for that person", async () => {
+    const rel = await service.upsertRelationship({
+      name: "Frontier Tower Loop",
+      primaryChannel: "telegram",
+      primaryHandle: "@frontiertower",
+      email: null,
+      phone: null,
+      notes: "Loop closure contact.",
+      tags: ["vendor"],
+      relationshipType: "vendor",
+      lastContactedAt: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString(),
+      metadata: {},
+    });
+    const followUp = await service.createFollowUp({
+      relationshipId: rel.id,
+      dueAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      reason: "Repair the missed walkthrough and reschedule.",
+      priority: 1,
+      draft: null,
+      completedAt: null,
+      metadata: {},
+    });
+
+    const result = await relationshipAction.handler!(
+      runtime,
+      makeMessage(
+        runtime,
+        "They confirmed Thursday works. Mark the Frontier Tower Loop follow-up done and close the loop.",
+      ) as never,
+      undefined,
+      {
+        parameters: {
+          subaction: "mark_followup_done",
+          relationshipId: rel.id,
+          reason: "Thursday confirmed",
+        },
+      } as never,
+      async () => {},
+    );
+
+    expect(result?.success).toBe(true);
+    const updated = await service.getRelationship(rel.id);
+    expect(updated?.lastContactedAt).toBeTruthy();
+    const refreshedFollowUps = await service.listFollowUps({ limit: 20 });
+    expect(
+      refreshedFollowUps.find((entry) => entry.id === followUp.id)?.status,
+    ).toBe("completed");
+  });
+
+  it("relationships graph collapses a four-platform person into one canonical node after accepted merges", async () => {
+    const fixture = await seedCanonicalIdentityFixture({
+      runtime,
+      seedKey: "real-graph-merge",
+      personName: "Priya Rao Graph Merge",
+    });
+
+    const before = await (
+      await getCanonicalIdentityGraph(runtime)
+    ).getGraphSnapshot({
+      search: fixture.personName,
+      limit: 10,
+    });
+    expect(before.people).toHaveLength(4);
+
+    await acceptCanonicalIdentityMerge(runtime, fixture);
+
+    const mergedCheck = await assertCanonicalIdentityMerged({
+      runtime,
+      personName: fixture.personName,
+    });
+    expect(mergedCheck).toBeUndefined();
+
+    const after = await (
+      await getCanonicalIdentityGraph(runtime)
+    ).getGraphSnapshot({
+      search: fixture.personName,
+      limit: 10,
+    });
+    expect(after.people).toHaveLength(1);
+    expect(after.people[0]?.primaryEntityId).toBe(fixture.primaryEntityId);
+  });
+
+  it("person detail exposes all merged identities and cross-platform conversations", async () => {
+    const fixture = await seedCanonicalIdentityFixture({
+      runtime,
+      seedKey: "real-person-detail",
+      personName: "Priya Rao Detail",
+    });
+    await acceptCanonicalIdentityMerge(runtime, fixture);
+
+    const detail = await getCanonicalPersonDetail(runtime, fixture.personName);
+    expect(detail).toBeTruthy();
+    expect(detail?.memberEntityIds).toHaveLength(4);
+    expect(detail?.identities).toHaveLength(4);
+    expect(detail?.recentConversations).toHaveLength(4);
+    expect(detail?.identityEdges).toHaveLength(3);
+    const transcript =
+      detail?.recentConversations
+        .flatMap((entry) => entry.messages.map((message) => message.text))
+        .join("\n") ?? "";
+    expect(transcript).toContain("Gmail:");
+    expect(transcript).toContain("Signal:");
+    expect(transcript).toContain("Telegram:");
+    expect(transcript).toContain("WhatsApp:");
   });
 });

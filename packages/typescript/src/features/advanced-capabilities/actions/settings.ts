@@ -768,13 +768,13 @@ export const updateSettingsAction: Action = {
 		const worldSettings = worldMetadata?.settings;
 
 		if (!worldSettings) {
-			logger.error(
+			logger.debug(
 				{
 					src: "plugin:advanced-capabilities:action:settings",
 					agentId: runtime.agentId,
 					messageServerId: world?.messageServerId,
 				},
-				"No settings state found for server",
+				"No settings state found for server during validation",
 			);
 			return false;
 		}

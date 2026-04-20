@@ -96,6 +96,7 @@ describe("lifeopsPlugin shape", () => {
     expect(paths).toContain("/api/lifeops/workflows/:id");
     expect(paths).toContain("/api/lifeops/workflows/:id/run");
     expect(paths).toContain("/api/lifeops/browser/sessions/:id");
+    expect(paths).toContain("/api/lifeops/browser/sessions/:id/progress");
     expect(paths).toContain("/api/lifeops/occurrences/:id/complete");
     expect(paths).toContain("/api/lifeops/website-access/callbacks/:key/resolve");
   });

@@ -1,4 +1,5 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
+import type { LifeOpsConnectorDegradation } from "@elizaos/shared/contracts/lifeops";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import {
   readNtfyConfigFromEnv,
@@ -43,6 +44,7 @@ export interface NotificationsConnectorStatus {
   baseUrl: string | null;
   defaultTopic: string | null;
   lastCheckedAt: string;
+  degradations: LifeOpsConnectorDegradation[];
 }
 
 // ---------------------------------------------------------------------------
@@ -63,6 +65,7 @@ export function withNotifications<TBase extends Constructor<LifeOpsServiceBase>>
           baseUrl: config.baseUrl,
           defaultTopic: config.defaultTopic,
           lastCheckedAt: new Date().toISOString(),
+          degradations: [],
         };
       } catch {
         return {
@@ -71,6 +74,14 @@ export function withNotifications<TBase extends Constructor<LifeOpsServiceBase>>
           baseUrl: null,
           defaultTopic: null,
           lastCheckedAt: new Date().toISOString(),
+          degradations: [
+            {
+              axis: "transport-offline",
+              code: "notifications_unconfigured",
+              message: "Desktop/mobile push transport is not configured.",
+              retryable: false,
+            },
+          ],
         };
       }
     }

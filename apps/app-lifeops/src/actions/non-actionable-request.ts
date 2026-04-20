@@ -51,3 +51,38 @@ export function looksLikeRelationshipFollowUpRequest(text: string): boolean {
     ) && !/\bevery\b/.test(normalized)
   );
 }
+
+/**
+ * Build-an-app / coding-task requests. These share surface vocabulary with
+ * LifeOps ("make ...", "create ...", "add ...") but belong to the coding-
+ * task orchestrator's CREATE_TASK, not to LIFE's todo/habit/goal handlers.
+ *
+ * LIFE's simile list keeps CREATE_TASK/COMPLETE_TASK so LifeOps users who
+ * say "add a task: pick up laundry" still route correctly; this predicate
+ * lets LIFE's validate() decline when the prompt is clearly about shipping
+ * software so the action router falls through to the orchestrator.
+ *
+ * Narrow on purpose — false negatives (LIFE declines a LifeOps prompt by
+ * mistake) are much worse than false positives (LIFE handles a coding-ish
+ * request that the orchestrator could have handled).
+ */
+export function looksLikeCodingTaskRequest(text: string): boolean {
+  const normalized = normalizeRequestText(text);
+  // verb + technical-artifact noun (order-sensitive: verb comes first)
+  if (
+    /\b(build|make|create|write|deploy|ship|add|spin up)\b[^.]*\b(app|page|site|website|dashboard|widget|component|script|tool|api|endpoint|server|bot|cli|plugin|action|route|handler|library|module|repo)\b/.test(
+      normalized,
+    )
+  ) {
+    return true;
+  }
+  // Explicit code/PR/debug surfaces — never LifeOps.
+  if (
+    /\b(pull request|merge conflict|git (push|pull|clone|rebase)|typescript error|debug (the|this|a) (bug|error|code)|fix (the|a|this) bug)\b/.test(
+      normalized,
+    )
+  ) {
+    return true;
+  }
+  return false;
+}

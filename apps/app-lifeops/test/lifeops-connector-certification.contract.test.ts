@@ -14,13 +14,24 @@ vi.mock(
 type ConnectorCatalogScenario = {
   id: string;
   connector: string;
+  axis: string;
+  degraded?: boolean;
   providers: string[];
   actions: string[];
   capabilities: string[];
+  requiredSeedTypes?: string[];
+  requiredFinalCheckTypes?: string[];
+};
+
+type ConnectorCatalogConnector = {
+  connector: string;
+  providers: string[];
+  requiredAxes: string[];
 };
 
 type ConnectorCatalog = {
   catalogId: string;
+  connectors: ConnectorCatalogConnector[];
   scenarios: ConnectorCatalogScenario[];
 };
 
@@ -45,10 +56,18 @@ type ScenarioTurn = {
   [key: string]: unknown;
 };
 
+type ScenarioSeed = {
+  type?: string;
+  connector?: string;
+  state?: string;
+  [key: string]: unknown;
+};
+
 type TsScenario = {
   id: string;
   domain: string;
   tags?: string[];
+  seed?: ScenarioSeed[];
   turns: ScenarioTurn[];
   finalChecks?: ScenarioFinalCheck[];
 };
@@ -67,6 +86,33 @@ const CONNECTOR_CATALOG_PATH = path.join(
   "lifeops",
   "_catalogs",
   "lifeops-connector-certification.json",
+);
+const SHARED_LIFEOPS_CONTRACT_PATH = path.join(
+  REPO_ROOT,
+  "eliza",
+  "packages",
+  "shared",
+  "src",
+  "contracts",
+  "lifeops.ts",
+);
+const SHARED_LIFEOPS_EXTENSIONS_CONTRACT_PATH = path.join(
+  REPO_ROOT,
+  "eliza",
+  "packages",
+  "shared",
+  "src",
+  "contracts",
+  "lifeops-extensions.ts",
+);
+const NOTIFICATIONS_STATUS_PATH = path.join(
+  REPO_ROOT,
+  "eliza",
+  "apps",
+  "app-lifeops",
+  "src",
+  "lifeops",
+  "service-mixin-notifications.ts",
 );
 
 const ACTION_SHAPE_CHECK_TYPES = new Set([
@@ -128,6 +174,28 @@ function countCheckTypes(finalChecks: ScenarioFinalCheck[] | undefined): {
   return counts;
 }
 
+function groupByConnector<T extends { connector: string }>(
+  entries: T[],
+): Map<string, T[]> {
+  const grouped = new Map<string, T[]>();
+  for (const entry of entries) {
+    const bucket = grouped.get(entry.connector) ?? [];
+    bucket.push(entry);
+    grouped.set(entry.connector, bucket);
+  }
+  return grouped;
+}
+
+function listFinalCheckTypes(
+  finalChecks: ScenarioFinalCheck[] | undefined,
+): Set<string> {
+  return new Set((finalChecks ?? []).map((check) => String(check.type ?? "")));
+}
+
+function listSeedTypes(seed: ScenarioSeed[] | undefined): Set<string> {
+  return new Set((seed ?? []).map((step) => String(step.type ?? "")));
+}
+
 describe("LifeOps connector certification contracts", () => {
   it("keeps the connector certification catalog and scenario suite in lockstep", async () => {
     const [catalog, scenarioFiles] = await Promise.all([
@@ -166,8 +234,17 @@ describe("LifeOps connector certification contracts", () => {
       expect(scenario.id).toBe(entry.id);
       expect(scenario.domain).toBe("connector-certification");
       expect(scenario.tags).toEqual(
-        expect.arrayContaining(["connector-certification", entry.connector]),
+        expect.arrayContaining([
+          "connector-certification",
+          entry.connector,
+          `connector-certification-axis:${entry.axis}`,
+        ]),
       );
+      if (entry.degraded) {
+        expect(scenario.tags).toEqual(
+          expect.arrayContaining(["connector-certification-degraded"]),
+        );
+      }
       expect(firstTurn?.text?.length ?? 0).toBeGreaterThan(0);
       expect(typeof firstTurn?.assertTurn).toBe("function");
       expect(source).not.toContain("NotYetImplemented");
@@ -179,8 +256,9 @@ describe("LifeOps connector certification contracts", () => {
   });
 
   it("covers the required connector families from the PRD", async () => {
+    const catalog = await loadCatalog();
     const connectors = new Set(
-      (await loadCatalog()).scenarios.map((scenario) => scenario.connector),
+      catalog.connectors.map((scenario) => scenario.connector),
     );
     for (const connector of [
       "gmail",
@@ -228,5 +306,107 @@ describe("LifeOps connector certification contracts", () => {
         `${entry.id} must include at least one rubric assertion (judgeRubric final check or responseJudge on a turn)`,
       ).toBeGreaterThan(0);
     }
+  });
+
+  it("requires every connector family to cover both core and degraded certification axes", async () => {
+    const catalog = await loadCatalog();
+    const connectorEntries = groupByConnector(catalog.scenarios);
+
+    expect(
+      Array.from(connectorEntries.keys()).sort(),
+      "catalog.connectors must stay in lockstep with connector scenario families",
+    ).toEqual(catalog.connectors.map((entry) => entry.connector).sort());
+
+    for (const connector of catalog.connectors) {
+      const entries = connectorEntries.get(connector.connector) ?? [];
+      const coveredAxes = new Set(entries.map((entry) => entry.axis));
+
+      expect(
+        entries.some((entry) => entry.axis !== "core"),
+        `${connector.connector} must include at least one degraded certification axis`,
+      ).toBe(true);
+
+      for (const axis of connector.requiredAxes) {
+        expect(
+          coveredAxes.has(axis),
+          `${connector.connector} must cover required axis "${axis}"`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("requires degraded certification scenarios to declare seeded fault state and axis-specific checks", async () => {
+    const catalog = await loadCatalog();
+
+    for (const entry of catalog.scenarios.filter((scenario) => scenario.degraded)) {
+      const scenario = await loadScenario(entry.id);
+      const seed = scenario.seed ?? [];
+      const seedTypes = listSeedTypes(seed);
+      const finalCheckTypes = listFinalCheckTypes(scenario.finalChecks);
+
+      expect(
+        seed.length,
+        `${entry.id} must declare at least one degraded seed step`,
+      ).toBeGreaterThan(0);
+
+      expect(
+        seed.some((step) => step.connector === entry.connector),
+        `${entry.id} must seed a degraded state for connector "${entry.connector}"`,
+      ).toBe(true);
+
+      expect(
+        seed.some((step) => String(step.state ?? "") === entry.axis),
+        `${entry.id} must seed degraded state "${entry.axis}"`,
+      ).toBe(true);
+
+      for (const seedType of entry.requiredSeedTypes ?? []) {
+        expect(
+          seedTypes.has(seedType),
+          `${entry.id} must include seed type "${seedType}"`,
+        ).toBe(true);
+      }
+
+      for (const finalCheckType of entry.requiredFinalCheckTypes ?? []) {
+        expect(
+          finalCheckTypes.has(finalCheckType),
+          `${entry.id} must include final check type "${finalCheckType}"`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("keeps degraded connector status/auth DTOs exposed in shared contracts", async () => {
+    const [lifeopsSource, extensionsSource, notificationsSource] =
+      await Promise.all([
+        readFile(SHARED_LIFEOPS_CONTRACT_PATH, "utf8"),
+        readFile(SHARED_LIFEOPS_EXTENSIONS_CONTRACT_PATH, "utf8"),
+        readFile(NOTIFICATIONS_STATUS_PATH, "utf8"),
+      ]);
+
+    expect(lifeopsSource).toContain(
+      "export interface LifeOpsConnectorDegradation",
+    );
+
+    for (const interfaceName of [
+      "LifeOpsGoogleConnectorStatus",
+      "LifeOpsXConnectorStatus",
+      "LifeOpsSignalConnectorStatus",
+      "LifeOpsDiscordConnectorStatus",
+      "LifeOpsWhatsAppConnectorStatus",
+      "LifeOpsTelegramConnectorStatus",
+    ]) {
+      expect(lifeopsSource).toMatch(
+        new RegExp(
+          `interface ${interfaceName}[\\s\\S]*?degradations\\?: LifeOpsConnectorDegradation\\[\\];`,
+        ),
+      );
+    }
+
+    expect(extensionsSource).toMatch(
+      /interface LifeOpsIMessageConnectorStatus[\s\S]*degradations\?: LifeOpsConnectorDegradation\[\];/,
+    );
+    expect(notificationsSource).toMatch(
+      /interface NotificationsConnectorStatus[\s\S]*degradations: LifeOpsConnectorDegradation\[\];/,
+    );
   });
 });

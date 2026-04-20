@@ -26,6 +26,9 @@ function getMessageText(message: Memory): string {
   return typeof message.content?.text === "string" ? message.content.text : "";
 }
 
+const APP_BLOCK_INTENT_RE =
+  /\b(block|blocking|blocked|unblock|unblocking|shield|app block|block apps|phone apps|focus mode|restrict apps)\b/i;
+
 type BlockAppsParameters = {
   packageNames?: string[];
   appTokens?: string[];
@@ -225,7 +228,7 @@ export const blockAppsAction: Action & {
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
     const access = await getAppBlockerAccess(runtime, message);
-    return access.allowed;
+    return access.allowed && APP_BLOCK_INTENT_RE.test(getMessageText(message));
   },
   handler: async (runtime, message, state, options) => {
     const access = await getAppBlockerAccess(runtime, message);
@@ -431,7 +434,7 @@ export const unblockAppsAction: Action = {
   descriptionCompressed: "Admin: remove app block, unshield all apps.",
   validate: async (runtime, message) => {
     const access = await getAppBlockerAccess(runtime, message);
-    return access.allowed;
+    return access.allowed && APP_BLOCK_INTENT_RE.test(getMessageText(message));
   },
   handler: async (runtime, message) => {
     const access = await getAppBlockerAccess(runtime, message);
@@ -493,7 +496,7 @@ export const getAppBlockStatusAction: Action = {
   descriptionCompressed: "Admin: check if app block is active.",
   validate: async (runtime, message) => {
     const access = await getAppBlockerAccess(runtime, message);
-    return access.allowed;
+    return access.allowed && APP_BLOCK_INTENT_RE.test(getMessageText(message));
   },
   handler: async (runtime, message) => {
     const access = await getAppBlockerAccess(runtime, message);

@@ -143,16 +143,17 @@ export async function handleWebsiteBlockerRoutes(
     }
 
     const status = await getSelfControlStatus();
+    const blockedWebsites = status.blockedWebsites ?? status.websites;
     const hostBlocked =
       status.active &&
-      status.websites.some((website) => website.toLowerCase() === queriedHost);
+      blockedWebsites.some((website) => website.toLowerCase() === queriedHost);
 
     const result: WebsiteBlockerHostResponse = {
       blocked: hostBlocked,
       host: queriedHost,
       groupKey: null,
       requiredTasks: [],
-      websites: status.active ? status.websites : [],
+      websites: status.active ? blockedWebsites : [],
     };
 
     if (hostBlocked && runtime) {

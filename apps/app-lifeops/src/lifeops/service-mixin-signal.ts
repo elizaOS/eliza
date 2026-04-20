@@ -31,6 +31,10 @@ import {
   removeSignalConnectorConfig,
   upsertSignalConnectorConfig,
 } from "./signal-runtime-config.js";
+import {
+  readSignalInboundMessages,
+  readSignalLocalClientConfigFromEnv,
+} from "./signal-local-client.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 type ConnectorSetupServiceLike = {
@@ -371,8 +375,18 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
     }
 
     /**
-     * Read recent inbound Signal messages via the Signal service's memory store.
-     * Returns an empty array when the Signal service is absent or disconnected.
+     * Read recent inbound Signal messages.
+     *
+     * Primary path: the Signal service (`@elizaos/plugin-signal`) is connected
+     * and exposes a `getRecentMessages()` call on its in-memory store.
+     *
+     * Fallback path: when the service is absent or disconnected but
+     * `SIGNAL_HTTP_URL` and `SIGNAL_ACCOUNT_NUMBER` are set, reads directly
+     * from the signal-cli REST API via {@link readSignalInboundMessages}.
+     * This mirrors how `telegram-local-client.ts` reads Telegram sessions
+     * without the plugin service being active.
+     *
+     * Returns an empty array when neither path is available.
      * Does not throw — callers should check connector status separately.
      */
     async readSignalInbound(
@@ -397,29 +411,35 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
         >;
       };
       const signalService = this.runtime.getService("signal") as SignalServiceLike | null;
-
-      if (!signalService?.isServiceConnected?.()) {
-        return [];
-      }
-
       const clampedLimit = Math.min(Math.max(1, Math.floor(limit)), 100);
-      const raw = await signalService.getRecentMessages?.(clampedLimit);
-      if (!raw || raw.length === 0) {
-        return [];
+
+      // Primary path: use the Signal service's in-memory message store.
+      if (signalService?.isServiceConnected?.()) {
+        const raw = await signalService.getRecentMessages?.(clampedLimit);
+        if (!raw || raw.length === 0) {
+          return [];
+        }
+        return raw.map(
+          (entry): LifeOpsSignalInboundMessage => ({
+            id: entry.id,
+            roomId: entry.roomId,
+            channelId: entry.channelId,
+            speakerName: entry.speakerName,
+            text: entry.text,
+            createdAt: entry.createdAt,
+            isInbound: !entry.isFromAgent,
+            isGroup: entry.isGroup,
+          }),
+        );
       }
 
-      return raw.map(
-        (entry): LifeOpsSignalInboundMessage => ({
-          id: entry.id,
-          roomId: entry.roomId,
-          channelId: entry.channelId,
-          speakerName: entry.speakerName,
-          text: entry.text,
-          createdAt: entry.createdAt,
-          isInbound: !entry.isFromAgent,
-          isGroup: entry.isGroup,
-        }),
-      );
+      // Fallback path: read directly from the signal-cli REST API.
+      const localClientConfig = readSignalLocalClientConfigFromEnv();
+      if (localClientConfig) {
+        return readSignalInboundMessages(localClientConfig, clampedLimit);
+      }
+
+      return [];
     }
   }
 

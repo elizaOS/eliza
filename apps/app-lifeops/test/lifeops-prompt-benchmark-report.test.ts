@@ -5,6 +5,7 @@ import {
   buildPromptBenchmarkReport,
   casePasses,
   formatPromptBenchmarkReportMarkdown,
+  promptBenchmarkCasePasses,
   serializeAxOptimizationRows,
 } from "./helpers/lifeops-prompt-benchmark-runner.ts";
 
@@ -154,5 +155,21 @@ describe("LifeOps prompt benchmark reporting", () => {
     expect(markdown).toContain("weighted");
     expect(markdown).toContain("Null-case false positive rate");
     expect(markdown).toContain("ea.schedule.daily-time-with-jill__subtle-null");
+  });
+
+  it("treats owner umbrella actions as valid matches for legacy benchmark anchors", () => {
+    const result = {
+      ...SAMPLE_RESULTS[0],
+      case: {
+        ...SAMPLE_RESULTS[0].case,
+        expectedAction: "INBOX",
+        acceptableActions: ["CROSS_CHANNEL_SEND"],
+      },
+      actualPrimaryAction: "OWNER_INBOX",
+      actualActions: ["OWNER_INBOX"],
+      pass: false,
+    } satisfies PromptBenchmarkResult;
+
+    expect(promptBenchmarkCasePasses(result)).toBe(true);
   });
 });

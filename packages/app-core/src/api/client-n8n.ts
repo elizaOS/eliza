@@ -16,6 +16,7 @@ import type { N8nStatusResponse, N8nWorkflow } from "./client-types-chat";
 declare module "./client-base" {
   interface ElizaClient {
     getN8nStatus(): Promise<N8nStatusResponse>;
+    getN8nWorkflow(id: string): Promise<N8nWorkflow>;
     listN8nWorkflows(): Promise<N8nWorkflow[]>;
     activateN8nWorkflow(id: string): Promise<N8nWorkflow>;
     deactivateN8nWorkflow(id: string): Promise<N8nWorkflow>;
@@ -32,6 +33,13 @@ ElizaClient.prototype.getN8nStatus = async function (
   this: ElizaClient,
 ): Promise<N8nStatusResponse> {
   return this.fetch<N8nStatusResponse>("/api/n8n/status");
+};
+
+ElizaClient.prototype.getN8nWorkflow = async function (
+  this: ElizaClient,
+  id: string,
+): Promise<N8nWorkflow> {
+  return this.fetch<N8nWorkflow>(`/api/n8n/workflows/${encodeURIComponent(id)}`);
 };
 
 ElizaClient.prototype.listN8nWorkflows = async function (

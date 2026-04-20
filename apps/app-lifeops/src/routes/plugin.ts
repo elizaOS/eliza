@@ -32,25 +32,15 @@ import type { WebsiteBlockerRouteContext } from "./website-blocker-routes.js";
 // objects the LifeOps handlers expect.
 // ---------------------------------------------------------------------------
 
-function json(
-  res: http.ServerResponse,
-  data: unknown,
-  status = 200,
-): void {
+function json(res: http.ServerResponse, data: unknown, status = 200): void {
   httpSendJson(res, data, status);
 }
 
-function error(
-  res: http.ServerResponse,
-  message: string,
-  status = 400,
-): void {
+function error(res: http.ServerResponse, message: string, status = 400): void {
   httpSendJsonError(res, message, status);
 }
 
-function firstHeaderValue(
-  value: string | string[] | undefined,
-): string | null {
+function firstHeaderValue(value: string | string[] | undefined): string | null {
   if (Array.isArray(value)) {
     return firstHeaderValue(value[0]);
   }
@@ -122,7 +112,11 @@ function buildWebsiteBlockerContext(
 // All static LifeOps routes (exact-path matches)
 // ---------------------------------------------------------------------------
 
-const LIFEOPS_STATIC_ROUTES: Array<{ type: string; path: string; public?: boolean }> = [
+const LIFEOPS_STATIC_ROUTES: Array<{
+  type: string;
+  path: string;
+  public?: boolean;
+}> = [
   { type: "GET", path: "/api/lifeops/app-state" },
   { type: "PUT", path: "/api/lifeops/app-state" },
   { type: "GET", path: "/api/lifeops/calendar/feed" },
@@ -139,7 +133,11 @@ const LIFEOPS_STATIC_ROUTES: Array<{ type: string; path: string; public?: boolea
   { type: "GET", path: "/api/lifeops/connectors/google/status" },
   { type: "POST", path: "/api/lifeops/connectors/google/start" },
   { type: "POST", path: "/api/lifeops/connectors/google/preference" },
-  { type: "GET", path: "/api/lifeops/connectors/google/callback", public: true },
+  {
+    type: "GET",
+    path: "/api/lifeops/connectors/google/callback",
+    public: true,
+  },
   { type: "GET", path: "/api/lifeops/connectors/google/success", public: true },
   { type: "GET", path: "/api/lifeops/connectors/google/accounts" },
   { type: "POST", path: "/api/lifeops/connectors/google/disconnect" },
@@ -188,11 +186,14 @@ const LIFEOPS_STATIC_ROUTES: Array<{ type: string; path: string; public?: boolea
   { type: "POST", path: "/api/lifeops/browser/companions/auto-pair" },
   { type: "GET", path: "/api/lifeops/browser/companions" },
   { type: "GET", path: "/api/lifeops/browser/packages" },
+  { type: "POST", path: "/api/lifeops/browser/packages/open-path" },
   { type: "POST", path: "/api/lifeops/browser/companions/sync" },
   { type: "GET", path: "/api/lifeops/browser/tabs" },
   { type: "GET", path: "/api/lifeops/browser/current-page" },
   { type: "POST", path: "/api/lifeops/browser/sync" },
   { type: "POST", path: "/api/lifeops/browser/sessions" },
+  { type: "POST", path: "/api/lifeops/schedule/observations" },
+  { type: "GET", path: "/api/lifeops/schedule/merged-state" },
   { type: "GET", path: "/api/lifeops/overview" },
   { type: "GET", path: "/api/lifeops/seed-templates" },
   { type: "POST", path: "/api/lifeops/seed" },
@@ -226,14 +227,24 @@ const LIFEOPS_DYNAMIC_ROUTES: Array<{ type: string; path: string }> = [
   { type: "GET", path: "/api/lifeops/browser/sessions/:id" },
   // /api/lifeops/browser/sessions/:id/confirm
   { type: "POST", path: "/api/lifeops/browser/sessions/:id/confirm" },
+  // /api/lifeops/browser/sessions/:id/progress
+  { type: "POST", path: "/api/lifeops/browser/sessions/:id/progress" },
   // /api/lifeops/browser/sessions/:id/complete
   { type: "POST", path: "/api/lifeops/browser/sessions/:id/complete" },
   // /api/lifeops/browser/companions/sessions/:id/progress
-  { type: "POST", path: "/api/lifeops/browser/companions/sessions/:id/progress" },
+  {
+    type: "POST",
+    path: "/api/lifeops/browser/companions/sessions/:id/progress",
+  },
   // /api/lifeops/browser/companions/sessions/:id/complete
-  { type: "POST", path: "/api/lifeops/browser/companions/sessions/:id/complete" },
+  {
+    type: "POST",
+    path: "/api/lifeops/browser/companions/sessions/:id/complete",
+  },
   // /api/lifeops/browser/packages/:browser/build
   { type: "POST", path: "/api/lifeops/browser/packages/:browser/build" },
+  // /api/lifeops/browser/packages/:browser/open-manager
+  { type: "POST", path: "/api/lifeops/browser/packages/:browser/open-manager" },
   // /api/lifeops/browser/packages/:browser/download
   { type: "GET", path: "/api/lifeops/browser/packages/:browser/download" },
   // /api/lifeops/occurrences/:id/explanation
@@ -265,7 +276,11 @@ const WEBSITE_BLOCKER_ROUTES: Array<{ type: string; path: string }> = [
 // ---------------------------------------------------------------------------
 
 function lifeOpsRouteHandler(): Route["handler"] {
-  return async (req: unknown, res: unknown, runtime: unknown): Promise<void> => {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
     const httpRes = res as http.ServerResponse;
     const ctx = buildLifeOpsContext(
@@ -278,7 +293,11 @@ function lifeOpsRouteHandler(): Route["handler"] {
 }
 
 function websiteBlockerRouteHandler(): Route["handler"] {
-  return async (req: unknown, res: unknown, runtime: unknown): Promise<void> => {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
     const httpRes = res as http.ServerResponse;
     const ctx = buildWebsiteBlockerContext(
@@ -293,31 +312,34 @@ function websiteBlockerRouteHandler(): Route["handler"] {
 const lifeOpsPluginRoutes: Route[] = [
   // Static LifeOps routes
   ...LIFEOPS_STATIC_ROUTES.map(
-    (r) => ({
-      type: r.type as Route["type"],
-      path: r.path,
-      rawPath: true as const,
-      ...(r.public ? ({ public: true } as const) : {}),
-      handler: lifeOpsRouteHandler()!,
-    } as Route),
+    (r) =>
+      ({
+        type: r.type as Route["type"],
+        path: r.path,
+        rawPath: true as const,
+        ...(r.public ? ({ public: true } as const) : {}),
+        handler: lifeOpsRouteHandler()!,
+      }) as Route,
   ),
   // Dynamic LifeOps routes
   ...LIFEOPS_DYNAMIC_ROUTES.map(
-    (r) => ({
-      type: r.type as Route["type"],
-      path: r.path,
-      rawPath: true as const,
-      handler: lifeOpsRouteHandler()!,
-    } as Route),
+    (r) =>
+      ({
+        type: r.type as Route["type"],
+        path: r.path,
+        rawPath: true as const,
+        handler: lifeOpsRouteHandler()!,
+      }) as Route,
   ),
   // Website blocker routes
   ...WEBSITE_BLOCKER_ROUTES.map(
-    (r) => ({
-      type: r.type as Route["type"],
-      path: r.path,
-      rawPath: true as const,
-      handler: websiteBlockerRouteHandler()!,
-    } as Route),
+    (r) =>
+      ({
+        type: r.type as Route["type"],
+        path: r.path,
+        rawPath: true as const,
+        handler: websiteBlockerRouteHandler()!,
+      }) as Route,
   ),
 ];
 

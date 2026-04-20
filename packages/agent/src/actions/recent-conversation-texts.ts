@@ -1,4 +1,5 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 
 const STATE_SPEAKER_PREFIX_RE =
   /^[a-zA-Z\u00C0-\u024F\u0400-\u04FF\u3000-\u9FFF]{1,20}\s*:\s*/;
@@ -51,19 +52,12 @@ export function recentConversationTextsFromState(
   pushText(values?.recentMessages);
   pushText(stateRecord.text);
 
-  const recentMessagesData =
-    stateRecord.recentMessagesData ?? stateRecord.recentMessages;
-  if (Array.isArray(recentMessagesData)) {
-    for (const item of recentMessagesData) {
-      if (!item || typeof item !== "object") {
-        continue;
-      }
-      const content = (item as Record<string, unknown>).content;
-      if (!content || typeof content !== "object") {
-        continue;
-      }
-      pushText((content as Record<string, unknown>).text);
+  for (const item of getRecentMessagesData(state)) {
+    const content = item.content;
+    if (!content || typeof content !== "object") {
+      continue;
     }
+    pushText(content.text);
   }
 
   return dedupePreservingOrder(collected.slice(-Math.max(1, limit)));

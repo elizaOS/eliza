@@ -1,5 +1,3 @@
-
-
 import type {
   LifeOpsActiveReminderView,
   LifeOpsCadence,
@@ -10,6 +8,7 @@ import type {
   LifeOpsOccurrenceView,
   LifeOpsOverview,
   LifeOpsOverviewSection,
+  LifeOpsScheduleInsight,
 } from "@elizaos/shared/contracts/lifeops";
 import {
   Bell,
@@ -41,11 +40,15 @@ import { isApiError } from "@elizaos/app-core/api/client-types-core";
 import { useLifeOpsAppState } from "../../../../hooks/useLifeOpsAppState.js";
 import { useDiscordConnector } from "../../../../hooks/useDiscordConnector.js";
 import { useApp } from "@elizaos/app-core/state";
-import { EmptyWidgetState, WidgetSection } from "@elizaos/app-core/components/chat/widgets/shared";
+import {
+  EmptyWidgetState,
+  WidgetSection,
+} from "@elizaos/app-core/components/chat/widgets/shared";
 import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "@elizaos/app-core/components/chat/widgets/types";
+import { humanizeLifeOpsLabel } from "../../../lifeops-labels.js";
 import { GoogleGlanceSection } from "./lifeops.js";
 
 const LIFEOPS_REFRESH_INTERVAL_MS = 15_000;
@@ -900,6 +903,55 @@ function ReminderSection({
   );
 }
 
+function ScheduleSection({
+  schedule,
+}: {
+  schedule: LifeOpsScheduleInsight | null | undefined;
+}) {
+  if (!schedule) {
+    return null;
+  }
+
+  const sleepLine = schedule.isProbablySleeping
+    ? schedule.currentSleepStartedAt
+      ? `Likely asleep since ${formatDateTime(schedule.currentSleepStartedAt)}`
+      : "Likely asleep now"
+    : schedule.lastSleepEndedAt
+      ? `Last wake ${formatDateTime(schedule.lastSleepEndedAt)}${schedule.lastSleepDurationMinutes ? ` • ${schedule.lastSleepDurationMinutes}m asleep` : ""}`
+      : `Sleep ${humanizeLifeOpsLabel(schedule.sleepStatus)}`;
+  const mealLine =
+    schedule.nextMealLabel && schedule.nextMealWindowStartAt
+      ? `Next ${schedule.nextMealLabel} window ${formatDateTime(schedule.nextMealWindowStartAt)}`
+      : schedule.lastMealAt
+        ? `Last meal ${formatDateTime(schedule.lastMealAt)}`
+        : "Meal pattern calibrating";
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2 px-0.5">
+        <span className="text-muted">
+          <Moon className="h-3.5 w-3.5" />
+        </span>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+          Schedule
+        </span>
+        <Badge variant="secondary" className="text-[10px]">
+          {humanizeLifeOpsLabel(schedule.phase)}
+        </Badge>
+      </div>
+      <div className="rounded-lg border border-border/50 bg-bg/70 p-2">
+        <div className="text-xs font-semibold text-txt">{sleepLine}</div>
+        <div className="mt-1 text-xs text-muted">{mealLine}</div>
+        {schedule.nextMealLabel && schedule.nextMealConfidence > 0 ? (
+          <div className="mt-2 text-[11px] uppercase tracking-[0.08em] text-muted/80">
+            {Math.round(schedule.nextMealConfidence * 100)}% confidence
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function AgentOpsSection({
   section,
   actionState,
@@ -950,9 +1002,7 @@ function AgentOpsSection({
             section.summary.activeReminderCount}
         </Badge>
       </div>
-      <p className="px-0.5 text-xs text-muted">
-        {sectionSummary(section)}
-      </p>
+      <p className="px-0.5 text-xs text-muted">{sectionSummary(section)}</p>
       {section.occurrences
         .slice(0, MAX_SECTION_OCCURRENCES)
         .map((occurrence) => (
@@ -990,8 +1040,7 @@ function AgentOpsSection({
 
 export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
   const lifeOpsApp = useLifeOpsAppState();
-  const { agentStatus, backendConnection, startupPhase, setTab, t } =
-    useApp();
+  const { agentStatus, backendConnection, startupPhase, setTab, t } = useApp();
   const [overview, setOverview] = useState<LifeOpsOverview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1241,7 +1290,9 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
           size="sm"
           variant="ghost"
           onClick={() => setTab("lifeops")}
-          aria-label={t("lifeopsoverview.OpenView", { defaultValue: "Open LifeOps view" })}
+          aria-label={t("lifeopsoverview.OpenView", {
+            defaultValue: "Open LifeOps view",
+          })}
           className="h-6 w-6 p-0"
         >
           <SquareArrowOutUpRight className="h-3.5 w-3.5" />
@@ -1295,6 +1346,7 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
               expandedGoalId={expandedGoalId}
               onReviewGoal={onReviewGoal}
             />
+            <ScheduleSection schedule={overview?.schedule} />
             <ReminderSection reminders={ownerSection?.reminders ?? []} />
             {agentOpsSection ? (
               <AgentOpsSection
@@ -1321,9 +1373,7 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
         <GoogleGlanceSection timeZone={timeZone} />
         <DiscordMessagesGlance />
       </div>
-      {error ? (
-        <div className="mt-3 text-xs text-danger">{error}</div>
-      ) : null}
+      {error ? <div className="mt-3 text-xs text-danger">{error}</div> : null}
     </WidgetSection>
   );
 }

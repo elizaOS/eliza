@@ -275,6 +275,41 @@ async function sendChat(
   return responseText;
 }
 
+async function runReplyNeededFlow(
+  port: number,
+  title: string,
+): Promise<string> {
+  const { conversationId } = await createConversation(port, { title });
+  return await sendChat(
+    port,
+    conversationId,
+    "Which emails need a reply about venue details?",
+  );
+}
+
+async function runDraftFlow(
+  port: number,
+  title: string,
+  options?: {
+    allowProviderIssue?: boolean;
+  },
+): Promise<string> {
+  const { conversationId } = await createConversation(port, { title });
+  const searchResponse = await sendChat(
+    port,
+    conversationId,
+    "Search my email and tell me if anyone named Suran emailed me.",
+  );
+  expect(searchResponse).toMatch(/suran/i);
+
+  return await sendChat(
+    port,
+    conversationId,
+    "Draft a reply to Suran thanking him and saying next week works. Do not send it yet.",
+    options,
+  );
+}
+
 describeIf(LIVE_GMAIL_CHAT_ENABLED)("life-ops gmail live chat flows", () => {
   let server: StartedLiveServer | null = null;
 
@@ -299,66 +334,73 @@ describeIf(LIVE_GMAIL_CHAT_ENABLED)("life-ops gmail live chat flows", () => {
     expect(responseText).toMatch(/suran/i);
   }, 180_000);
 
-  it("finds reply-needed Gmail items with the real agent runtime", async () => {
-    let lastResponse = "";
-
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-      const { conversationId } = await createConversation(server?.port ?? 0, {
-        title: `gmail venue ${attempt}`,
-      });
-      lastResponse = await sendChat(
+  describe("strict single-attempt", () => {
+    it("finds reply-needed Gmail items with the real agent runtime on the first attempt", async () => {
+      const responseText = await runReplyNeededFlow(
         server?.port ?? 0,
-        conversationId,
-        "Which emails need a reply about venue details?",
+        "gmail venue strict",
       );
 
-      if (/venue|morgan/i.test(lastResponse)) {
-        return;
-      }
+      expect(responseText).toMatch(/venue|morgan/i);
+    }, 180_000);
 
-      if (attempt < 3) {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-      }
-    }
-
-    throw new Error(
-      `Reply-needed Gmail flow did not stabilize: ${lastResponse}`,
-    );
-  }, 180_000);
-
-  it("drafts a Gmail reply from prior conversation context", async () => {
-    let lastResponse = "";
-
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-      const { conversationId } = await createConversation(server?.port ?? 0, {
-        title: `gmail draft ${attempt}`,
-      });
-      const searchResponse = await sendChat(
+    it("drafts a Gmail reply from prior conversation context on the first attempt", async () => {
+      const responseText = await runDraftFlow(
         server?.port ?? 0,
-        conversationId,
-        "Search my email and tell me if anyone named Suran emailed me.",
-      );
-      expect(searchResponse).toMatch(/suran/i);
-
-      lastResponse = await sendChat(
-        server?.port ?? 0,
-        conversationId,
-        "Draft a reply to Suran thanking him and saying next week works. Do not send it yet.",
-        { allowProviderIssue: true },
+        "gmail draft strict",
       );
 
-      if (
-        !lastResponse.toLowerCase().includes("provider issue") &&
-        /next week|thank/i.test(lastResponse)
-      ) {
-        return;
+      expect(responseText).toMatch(/next week|thank/i);
+    }, 180_000);
+  });
+
+  describe("recovery coverage", () => {
+    it("recovers reply-needed Gmail lookup within three attempts when the first answer is weak", async () => {
+      let lastResponse = "";
+
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        lastResponse = await runReplyNeededFlow(
+          server?.port ?? 0,
+          `gmail venue recovery ${attempt}`,
+        );
+
+        if (/venue|morgan/i.test(lastResponse)) {
+          return;
+        }
+
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
       }
 
-      if (attempt < 3) {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-      }
-    }
+      throw new Error(
+        `Reply-needed Gmail flow did not stabilize: ${lastResponse}`,
+      );
+    }, 180_000);
 
-    throw new Error(`Gmail draft flow did not stabilize: ${lastResponse}`);
-  }, 180_000);
+    it("recovers Gmail draft creation within three attempts when the first answer is weak", async () => {
+      let lastResponse = "";
+
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        lastResponse = await runDraftFlow(
+          server?.port ?? 0,
+          `gmail draft recovery ${attempt}`,
+          { allowProviderIssue: true },
+        );
+
+        if (
+          !lastResponse.toLowerCase().includes("provider issue") &&
+          /next week|thank/i.test(lastResponse)
+        ) {
+          return;
+        }
+
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+      }
+
+      throw new Error(`Gmail draft flow did not stabilize: ${lastResponse}`);
+    }, 180_000);
+  });
 });

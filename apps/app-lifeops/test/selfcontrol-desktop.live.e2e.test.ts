@@ -207,7 +207,9 @@ async function startDesktopStack(
       CI: "1",
       ELIZA_CONFIG_PATH: configPath,
       ELIZA_DEV_ONCHAIN: "0",
+      ELIZA_DISABLE_LIFEOPS_SCHEDULER: "1",
       ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1",
+      ELIZA_DISABLE_PROACTIVE_AGENT: "1",
       ELIZA_API_PORT: String(apiPort),
       ELIZA_PORT: String(uiPort),
       ELIZA_UI_PORT: String(uiPort),
@@ -346,9 +348,11 @@ describeIf(LIVE_TESTS_ENABLED)(
         const hosts = await waitForHostsBlock(stack.hostsFilePath, [
           "x.com",
           "twitter.com",
+          "api.x.com",
         ]);
         expect(hosts).toContain("0.0.0.0 x.com");
         expect(hosts).toContain("0.0.0.0 twitter.com");
+        expect(hosts).toContain("0.0.0.0 api.x.com");
 
         const stopResponse = await req(
           stack.apiPort,
@@ -374,47 +378,48 @@ describeIf(LIVE_TESTS_ENABLED)(
     it.skipIf(!WATCH_DESKTOP_SUPPORTED)(
       "boots bun run dev:desktop:watch with the Vite renderer and blocker API",
       async () => {
-      const stack = await startDesktopStack("dev:desktop:watch");
-      startedStacks.push(stack);
+        const stack = await startDesktopStack("dev:desktop:watch");
+        startedStacks.push(stack);
 
-      const uiMarkup = await waitForTextPredicate(
-        `http://127.0.0.1:${stack.uiPort}`,
-        (text) =>
-          text.includes('<div id="root">') || text.includes("<!doctype html>"),
-      );
-      expect(uiMarkup.length).toBeGreaterThan(0);
+        const uiMarkup = await waitForTextPredicate(
+          `http://127.0.0.1:${stack.uiPort}`,
+          (text) =>
+            text.includes('<div id="root">') ||
+            text.includes("<!doctype html>"),
+        );
+        expect(uiMarkup.length).toBeGreaterThan(0);
 
-      const stackResponse = await req(stack.apiPort, "GET", "/api/dev/stack");
-      expect(stackResponse.status).toBe(200);
-      expect(stackResponse.data).toMatchObject({
-        api: {
-          listenPort: stack.apiPort,
-        },
-        desktop: {
-          rendererUrl: `http://127.0.0.1:${stack.uiPort}/`,
-          uiPort: stack.uiPort,
-          desktopApiBase: `http://127.0.0.1:${stack.apiPort}`,
-        },
-      });
+        const stackResponse = await req(stack.apiPort, "GET", "/api/dev/stack");
+        expect(stackResponse.status).toBe(200);
+        expect(stackResponse.data).toMatchObject({
+          api: {
+            listenPort: stack.apiPort,
+          },
+          desktop: {
+            rendererUrl: `http://127.0.0.1:${stack.uiPort}/`,
+            uiPort: stack.uiPort,
+            desktopApiBase: `http://127.0.0.1:${stack.apiPort}`,
+          },
+        });
 
-      const startResponse = await req(
-        stack.apiPort,
-        "PUT",
-        "/api/website-blocker",
-        {
-          websites: ["news.ycombinator.com"],
-          durationMinutes: 5,
-        },
-      );
-      expect(startResponse.status).toBe(200);
-      expect(startResponse.data).toMatchObject({
-        success: true,
-      });
+        const startResponse = await req(
+          stack.apiPort,
+          "PUT",
+          "/api/website-blocker",
+          {
+            websites: ["news.ycombinator.com"],
+            durationMinutes: 5,
+          },
+        );
+        expect(startResponse.status).toBe(200);
+        expect(startResponse.data).toMatchObject({
+          success: true,
+        });
 
-      const hosts = await waitForHostsBlock(stack.hostsFilePath, [
-        "news.ycombinator.com",
-      ]);
-      expect(hosts).toContain("0.0.0.0 news.ycombinator.com");
+        const hosts = await waitForHostsBlock(stack.hostsFilePath, [
+          "news.ycombinator.com",
+        ]);
+        expect(hosts).toContain("0.0.0.0 news.ycombinator.com");
       },
       300_000,
     );

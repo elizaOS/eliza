@@ -19,11 +19,11 @@
  *      executes locally (commandment 2).
  *
  * Routes:
- *   POST /api/cloud/duffel/offer-requests   -> /api/v1/duffel/offer-requests
- *   GET  /api/cloud/duffel/offers/:id       -> /api/v1/duffel/offers/:id
- *   POST /api/cloud/duffel/orders           -> /api/v1/duffel/orders
- *   GET  /api/cloud/duffel/orders/:id       -> /api/v1/duffel/orders/:id
- *   POST /api/cloud/duffel/payments         -> /api/v1/duffel/payments
+ *   POST /api/cloud/duffel/offer-requests   → /api/v1/duffel/offer-requests
+ *   GET  /api/cloud/duffel/offers/:id       → /api/v1/duffel/offers/:id
+ *   POST /api/cloud/duffel/orders           → /api/v1/duffel/orders
+ *   GET  /api/cloud/duffel/orders/:id       → /api/v1/duffel/orders/:id
+ *   POST /api/cloud/duffel/payments         → /api/v1/duffel/payments
  */
 
 import type http from "node:http";
@@ -111,6 +111,10 @@ async function readJsonResponse(response: Response): Promise<unknown> {
   }));
 }
 
+/**
+ * Map local relay path to upstream Cloud path. The upstream owns markup,
+ * billing, and the actual Duffel call.
+ */
 function buildUpstreamPath(localPath: string): string {
   return localPath.replace("/api/cloud/duffel", "/api/v1/duffel");
 }

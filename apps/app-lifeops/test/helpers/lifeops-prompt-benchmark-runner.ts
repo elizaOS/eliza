@@ -4,6 +4,7 @@ import type { Trajectory, TrajectoryLlmCall } from "../../../../packages/agent/s
 import { flushTrajectoryWrites } from "../../../../packages/agent/src/runtime/trajectory-storage.ts";
 import { ConversationHarness } from "../../../../packages/app-core/test/helpers/conversation-harness.ts";
 import { type LiveProviderName, selectLiveProvider } from "../../../../packages/app-core/test/helpers/live-provider.ts";
+import { actionsAreScenarioEquivalent } from "../../../../packages/scenario-runner/src/action-families.ts";
 import {
   type RealTestRuntimeResult,
 } from "../../../../packages/app-core/test/helpers/real-runtime.ts";
@@ -14,9 +15,6 @@ import type {
   PromptBenchmarkSuiteId,
   PromptBenchmarkVariantId,
 } from "./lifeops-prompt-benchmark-cases.ts";
-import {
-  actionMatchesScenarioExpectation,
-} from "../../../../packages/scenario-runner/src/action-families.ts";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const PASSIVE_ACTIONS = new Set(["REPLY", "IGNORE", "NONE", "CHOOSE_OPTION"]);
@@ -274,19 +272,36 @@ function selectPrimaryAction(actions: string[]): string | null {
   return normalized[normalized.length - 1] ?? null;
 }
 
-export function casePasses(result: PromptBenchmarkResult): boolean {
-  const actualActions = uniqueStrings([
-    result.actualPrimaryAction,
-    ...result.actualActions,
-  ]).map((actionName) => normalizeActionName(actionName));
-  const normalizedActualActions = actualActions.filter(
-    (actionName): actionName is string => actionName !== null,
-  );
+export function promptBenchmarkCasePasses(
+  result: PromptBenchmarkResult,
+): boolean {
+  const actual = normalizeActionName(result.actualPrimaryAction);
+  const actualActions = uniqueStrings(
+    result.actualActions.length > 0
+      ? result.actualActions
+      : result.actualPrimaryAction
+        ? [result.actualPrimaryAction]
+        : [],
+  )
+    .map((actionName) => normalizeActionName(actionName))
+    .filter((actionName): actionName is string => actionName !== null);
   const expected = normalizeActionName(result.case.expectedAction);
+  const acceptable = new Set(
+    result.case.acceptableActions
+      .map((actionName) => normalizeActionName(actionName))
+      .filter((actionName): actionName is string => actionName !== null),
+  );
+  const forbidden = new Set(
+    result.case.forbiddenActions
+      .map((actionName) => normalizeActionName(actionName))
+      .filter((actionName): actionName is string => actionName !== null),
+  );
 
   if (
-    normalizedActualActions.some((actionName) =>
-      actionMatchesScenarioExpectation(actionName, result.case.forbiddenActions),
+    actualActions.some((actionName) =>
+      Array.from(forbidden).some((forbiddenAction) =>
+        actionsAreScenarioEquivalent(actionName, forbiddenAction),
+      ),
     )
   ) {
     return false;
@@ -294,18 +309,25 @@ export function casePasses(result: PromptBenchmarkResult): boolean {
 
   if (expected === null) {
     return (
-      normalizedActualActions.length === 0 ||
-      normalizedActualActions.some((actionName) =>
-        actionMatchesScenarioExpectation(actionName, result.case.acceptableActions),
+      actualActions.length === 0 ||
+      actual === null ||
+      actualActions.some((actionName) =>
+        Array.from(acceptable).some((acceptableAction) =>
+          actionsAreScenarioEquivalent(actionName, acceptableAction),
+        ),
       )
     );
   }
 
-  return normalizedActualActions.some((actionName) =>
-    actionMatchesScenarioExpectation(actionName, [
-      result.case.expectedAction,
-      ...result.case.acceptableActions,
-    ].filter((candidate): candidate is string => Boolean(candidate))),
+  return (
+    actualActions.some((actionName) =>
+      actionsAreScenarioEquivalent(actionName, expected),
+    ) ||
+    actualActions.some((actionName) =>
+      Array.from(acceptable).some((acceptableAction) =>
+        actionsAreScenarioEquivalent(actionName, acceptableAction),
+      ),
+    )
   );
 }
 
@@ -358,7 +380,7 @@ async function runSinglePromptBenchmarkCase(args: {
 
     return {
       ...provisional,
-      pass: casePasses(provisional),
+      pass: promptBenchmarkCasePasses(provisional),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

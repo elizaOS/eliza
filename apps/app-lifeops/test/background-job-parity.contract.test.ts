@@ -24,7 +24,10 @@ import {
   executeProactiveTask,
   PROACTIVE_TASK_NAME,
 } from "../src/activity-profile/proactive-worker.js";
-import { reconcileFollowupsOnce } from "../src/followup/followup-tracker.js";
+import {
+  executeFollowupTrackerTick,
+  reconcileFollowupsOnce,
+} from "../src/followup/followup-tracker.js";
 import { executeLifeOpsSchedulerTask } from "../src/lifeops/runtime.js";
 import {
   APPROVAL_QUEUE_SERVICE_NAME,
@@ -110,9 +113,11 @@ function makeRuntime(opts: HarnessOptions): {
   runtime: IAgentRuntime;
   queue: InMemoryApprovalQueue;
   memories: Array<{ table: string; memory: Memory }>;
+  useModelCalls: unknown[];
 } {
   const queue = new InMemoryApprovalQueue();
   const memories: Array<{ table: string; memory: Memory }> = [];
+  const useModelCalls: unknown[] = [];
   const tasks: Task[] = opts.includeProactiveTask
     ? [
         {
@@ -191,6 +196,7 @@ function makeRuntime(opts: HarnessOptions): {
       return undefined;
     },
     async useModel(_modelType: unknown, _params: unknown) {
+      useModelCalls.push(_params);
       return JSON.stringify(opts.plannerResponse);
     },
     async sendMessageToTarget() {
@@ -198,7 +204,7 @@ function makeRuntime(opts: HarnessOptions): {
     },
   } as unknown as IAgentRuntime;
 
-  return { runtime, queue, memories };
+  return { runtime, queue, memories, useModelCalls };
 }
 
 function sensitivePlannerResponse(
@@ -291,6 +297,18 @@ describe("background-job-parity: proactive worker", () => {
     expect(skipped.length).toBeGreaterThan(0);
     expect(queue.enqueued).toHaveLength(0);
   });
+
+  test("executeProactiveTask honors an explicit logical now", async () => {
+    const fixedNow = "2026-04-19T15:00:00.000Z";
+    const { runtime, useModelCalls } = makeRuntime({
+      plannerResponse: noopPlannerResponse("still morning, too early"),
+    });
+
+    await executeProactiveTask(runtime, { now: fixedNow });
+
+    expect(useModelCalls.length).toBeGreaterThan(0);
+    expect(JSON.stringify(useModelCalls)).toContain(fixedNow);
+  });
 });
 
 describe("background-job-parity: followup tracker", () => {
@@ -313,6 +331,17 @@ describe("background-job-parity: followup tracker", () => {
       expect(req.requestedBy).toBe("background-job:followup_watchdog");
     }
   });
+
+  test("executeFollowupTrackerTick forwards explicit now into the digest", async () => {
+    const fixedNow = "2026-04-19T18:30:00.000Z";
+    const { runtime } = makeRuntime({
+      plannerResponse: sensitivePlannerResponse("60 days overdue"),
+    });
+
+    const result = await executeFollowupTrackerTick(runtime, { now: fixedNow });
+
+    expect(result.digest.generatedAt).toBe(fixedNow);
+  });
 });
 
 describe("background-job-parity: lifeops scheduler", () => {
@@ -333,5 +362,24 @@ describe("background-job-parity: lifeops scheduler", () => {
     expect(scheduler).toHaveLength(0);
     // No enqueues either.
     expect(queue.enqueued).toHaveLength(0);
+  });
+
+  test("executeLifeOpsSchedulerTask forwards explicit now into planner input", async () => {
+    const fixedNow = "2026-04-19T20:45:00.000Z";
+    const { runtime, useModelCalls } = makeRuntime({
+      plannerResponse: noopPlannerResponse("no reminders due"),
+    });
+
+    try {
+      const result = await executeLifeOpsSchedulerTask(runtime, { now: fixedNow });
+      expect(result.now).toBe(fixedNow);
+    } catch {
+      // The mock harness does not implement the full LifeOps persistence stack.
+      // Even when scheduled work crashes, the planner prompt must still carry
+      // the explicit logical clock.
+    }
+
+    expect(useModelCalls.length).toBeGreaterThan(0);
+    expect(JSON.stringify(useModelCalls)).toContain(fixedNow);
   });
 });

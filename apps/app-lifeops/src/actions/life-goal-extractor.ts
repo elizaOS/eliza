@@ -78,6 +78,14 @@ const EMPTY_GOAL_CREATE_PLAN: ExtractedGoalCreatePlan = {
   targetDomain: null,
 };
 
+const DEFAULT_PARTIAL_GOAL_MISSING_FIELDS: GoalGroundingField[] = [
+  "target_state",
+  "success_metric",
+  "time_horizon",
+  "evidence_source",
+  "support_plan",
+];
+
 const EMPTY_GOAL_UPDATE_PLAN: ExtractedGoalUpdatePlan = {
   mode: "respond",
   response: "Tell me what to change about the goal.",
@@ -106,6 +114,40 @@ function normalizeFiniteNumber(value: unknown): number | null {
     return null;
   }
   return Math.max(0, Math.min(1, value));
+}
+
+function normalizeEvidenceText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function extractEvidenceTokens(value: string): string[] {
+  const tokens = normalizeEvidenceText(value)
+    .split(/\s+/)
+    .filter((token) => token.length >= 3);
+  return [...new Set(tokens)];
+}
+
+function intentProvidesGoalTitleEvidence(intent: string, title: string): boolean {
+  const normalizedIntent = normalizeEvidenceText(intent);
+  const normalizedTitle = normalizeEvidenceText(title);
+  if (!normalizedIntent || !normalizedTitle) {
+    return false;
+  }
+  if (
+    normalizedIntent.includes(normalizedTitle) ||
+    normalizedTitle.includes(normalizedIntent)
+  ) {
+    return true;
+  }
+  const titleTokens = extractEvidenceTokens(title);
+  return (
+    titleTokens.length > 0 &&
+    titleTokens.every((token) => normalizedIntent.includes(token))
+  );
 }
 
 function normalizeRecord(value: unknown): Record<string, unknown> | null {
@@ -193,6 +235,31 @@ function buildCreatePlan(
   };
 }
 
+function stabilizeCreatePlan(
+  plan: ExtractedGoalCreatePlan,
+  intent: string,
+): ExtractedGoalCreatePlan {
+  if (plan.mode !== "respond" || plan.groundingState !== "ungrounded") {
+    return plan;
+  }
+  if (!plan.title || !intentProvidesGoalTitleEvidence(intent, plan.title)) {
+    return plan;
+  }
+
+  const missingCriticalFields = plan.missingCriticalFields.filter(
+    (field) => field !== "title",
+  );
+
+  return {
+    ...plan,
+    groundingState: "partial",
+    missingCriticalFields:
+      missingCriticalFields.length > 0
+        ? missingCriticalFields
+        : [...DEFAULT_PARTIAL_GOAL_MISSING_FIELDS],
+  };
+}
+
 function buildUpdatePlan(
   parsed: Record<string, unknown>,
 ): ExtractedGoalUpdatePlan | null {
@@ -225,6 +292,10 @@ export function buildGoalCreateExtractionPrompt(
     "The user may speak in any language and may refer to a previous goal draft or clarification exchange.",
     "A goal is only ready to save when future progress can be evaluated from evidence.",
     "Do not treat a label-only aspiration as ready just because it has a nice title.",
+    "",
+    "CRITICAL GROUNDING RULE:",
+    "  If the user names ANY goal, aspiration, outcome, or desire (even one line like 'I want X' or 'help me with X'), the groundingState is AT LEAST 'partial' — never 'ungrounded'. Always extract that phrase into the title field.",
+    "  Use 'ungrounded' ONLY for empty/vacuous inputs like 'help', 'hi', 'can you make a goal', where the user has NOT named anything to work on.",
     "A grounded goal usually includes:",
     "- the target state or outcome",
     "- what success would look like",
@@ -248,6 +319,8 @@ export function buildGoalCreateExtractionPrompt(
     "",
     "Important rules:",
     "- If the user only gives a title or vague aspiration, choose mode=respond.",
+    "- Any user-provided goal title or clear aspiration counts as partial grounding, not ungrounded.",
+    "- Use groundingState=ungrounded only when the user has not provided a usable goal title, aspiration, or target at all.",
     "- Ask for the single most important missing piece, not a questionnaire.",
     "- successCriteria and supportStrategy must be objects, not strings or arrays.",
     "- Encode measurable or observable criteria whenever possible.",
@@ -256,6 +329,12 @@ export function buildGoalCreateExtractionPrompt(
     "Examples:",
     'Input: "I want a goal called Stabilize sleep schedule."',
     'Output: {"mode":"respond","response":"What would a stabilized sleep schedule look like for you: target bedtime and wake time, or a consistency window?","title":"Stabilize sleep schedule","description":"Build a more consistent sleep schedule.","cadence":{"kind":"weekly"},"successCriteria":null,"supportStrategy":null,"groundingState":"partial","missingCriticalFields":["target_state","success_metric","time_horizon","evidence_source","support_plan"],"confidence":0.78,"evaluationSummary":null,"targetDomain":"sleep"}',
+    "",
+    'Input: "I want to get better sleep."',
+    'Output: {"mode":"respond","response":"What would better sleep look like for you: target bedtime, wake time, sleep duration, or consistency?","title":"Improve sleep","description":"Sleep more consistently and wake up feeling rested.","cadence":{"kind":"weekly"},"successCriteria":null,"supportStrategy":null,"groundingState":"partial","missingCriticalFields":["target_state","success_metric","time_horizon","evidence_source","support_plan"],"confidence":0.74,"evaluationSummary":null,"targetDomain":"sleep"}',
+    "",
+    'Input: "Can you help me make a goal?"',
+    'Output: {"mode":"respond","response":"What goal do you want to work on?","title":null,"description":null,"cadence":null,"successCriteria":null,"supportStrategy":null,"groundingState":"ungrounded","missingCriticalFields":["title","target_state","success_metric","time_horizon","evidence_source","support_plan"],"confidence":0.56,"evaluationSummary":null,"targetDomain":null}',
     "",
     'Input: "I want to stabilize my sleep schedule by being asleep by 11:30 pm and up around 7:30 am on weekdays, within 45 minutes, for the next month."',
     'Output: {"mode":"create","response":null,"title":"Stabilize sleep schedule","description":"Keep weekday sleep and wake times consistent for the next month.","cadence":{"kind":"weekly","reviewWindowDays":7},"successCriteria":{"summary":"For the next 30 days, be asleep by about 11:30 pm and awake by about 7:30 am on weekdays, staying within 45 minutes on at least 20 days.","metric":"weekday sleep schedule consistency","target":{"bedtime":"23:30","wakeTime":"07:30","allowedVarianceMinutes":45,"successDays":20,"windowDays":30},"evidenceSignals":["health.sleep","manual_checkin"]},"supportStrategy":{"summary":"Use a consistent wind-down and morning routine.","firstStep":"Pick a wind-down start time 45 to 60 minutes before bed.","suggestedSupport":["evening wind-down routine","morning wake routine","weekly sleep check-in"]},"groundingState":"grounded","missingCriticalFields":[],"confidence":0.9,"evaluationSummary":"Progress means weekday bed and wake times stay near 11:30 pm and 7:30 am over the next month.","targetDomain":"sleep"}',
@@ -314,7 +393,7 @@ export async function extractGoalCreatePlanWithLlm(args: {
     const parsed = parseJSONObjectFromText(typeof raw === "string" ? raw : "");
     const plan = parsed ? buildCreatePlan(parsed) : null;
     if (plan) {
-      return plan;
+      return stabilizeCreatePlan(plan, args.intent);
     }
     const repairedRaw = await args.runtime.useModel(ModelType.TEXT_LARGE, {
       prompt: buildGoalCreateRepairPrompt({
@@ -326,8 +405,12 @@ export async function extractGoalCreatePlanWithLlm(args: {
     const repairedParsed = parseJSONObjectFromText(
       typeof repairedRaw === "string" ? repairedRaw : "",
     );
-    return repairedParsed
-      ? (buildCreatePlan(repairedParsed) ?? { ...EMPTY_GOAL_CREATE_PLAN })
+    if (!repairedParsed) {
+      return { ...EMPTY_GOAL_CREATE_PLAN };
+    }
+    const repairedPlan = buildCreatePlan(repairedParsed);
+    return repairedPlan
+      ? stabilizeCreatePlan(repairedPlan, args.intent)
       : { ...EMPTY_GOAL_CREATE_PLAN };
   } catch {
     return { ...EMPTY_GOAL_CREATE_PLAN };

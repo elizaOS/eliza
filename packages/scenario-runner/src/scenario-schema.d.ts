@@ -24,6 +24,8 @@ declare module "@elizaos/scenario-schema" {
     actionsCalled: CapturedAction[];
     responseText?: string;
     plannerText?: string;
+    statusCode?: number;
+    responseBody?: unknown;
   };
 
   export type ScenarioCheckResult =
@@ -100,6 +102,7 @@ declare module "@elizaos/scenario-schema" {
 
   export type ScenarioContext = {
     runtime?: unknown;
+    now?: string;
     actionsCalled: CapturedAction[];
     turns?: ScenarioTurnExecution[];
     approvalRequests?: CapturedApprovalRequest[];
@@ -109,19 +112,26 @@ declare module "@elizaos/scenario-schema" {
     artifacts?: CapturedArtifact[];
   };
 
-  export type ScenarioSeedStep = {
-    type: string;
-    name?: string;
-    apply?: (ctx: ScenarioContext) => ScenarioCheckResult;
-    by?: string;
-    connector?: string;
-    provider?: string;
-    state?: string;
-    capabilities?: string[];
-    scopes?: string[];
-    limit?: number;
-    [key: string]: unknown;
-  };
+  export type ScenarioSeedStep =
+    | {
+        type: "advanceClock";
+        by: string;
+        name?: string;
+        [key: string]: unknown;
+      }
+    | {
+        type: string;
+        name?: string;
+        apply?: (ctx: ScenarioContext) => ScenarioCheckResult;
+        by?: string;
+        connector?: string;
+        provider?: string;
+        state?: string;
+        capabilities?: string[];
+        scopes?: string[];
+        limit?: number;
+        [key: string]: unknown;
+      };
 
   export type ScenarioJudgeRubric = {
     rubric: string;
@@ -133,6 +143,13 @@ declare module "@elizaos/scenario-schema" {
     kind?: string;
     name: string;
     text?: string;
+    method?: string;
+    path?: string;
+    body?: unknown;
+    expectedStatus?: number;
+    worker?: string;
+    now?: string;
+    options?: Record<string, unknown>;
     assertResponse?: ScenarioAssertResponse;
     assertTurn?: (turn: ScenarioTurnExecution) => ScenarioCheckResult;
     responseJudge?: ScenarioJudgeRubric;

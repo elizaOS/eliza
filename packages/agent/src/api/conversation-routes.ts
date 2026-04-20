@@ -43,6 +43,11 @@ import {
   writeSse,
   writeSseJson,
 } from "./chat-routes.js";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.js";
+import {
+  buildConversationRoomMetadata,
+  sanitizeConversationMetadata,
+} from "./conversation-metadata.js";
 import {
   cacheDiscordAvatarForRuntime,
   isCanonicalDiscordSource,
@@ -53,15 +58,9 @@ import {
 import { evictOldestConversation } from "./memory-bounds.js";
 import type { RouteRequestContext } from "./route-helpers.js";
 import {
-  buildConversationRoomMetadata,
-  extractConversationMetadataFromRoom,
-  sanitizeConversationMetadata,
-} from "./conversation-metadata.js";
-import {
   buildUserMessages,
   type ConversationMeta,
   getErrorMessage,
-  isUuidLike,
   resolveAppUserName,
   resolveConversationGreetingText,
   resolveWalletModeGuidanceReply,
@@ -152,29 +151,14 @@ export interface ConversationRouteContext extends RouteRequestContext {
 // Closure-lifted helpers
 // ---------------------------------------------------------------------------
 
+export function resolveConversationAdminEntityId(
+  state: ConversationRouteState,
+): UUID {
+  return resolveClientChatAdminEntityId(state);
+}
+
 function ensureAdminEntityId(state: ConversationRouteState): UUID {
-  if (state.adminEntityId) {
-    return state.adminEntityId;
-  }
-  const configuredValue = (
-    state.config as {
-      agents?: { defaults?: { adminEntityId?: string } };
-    }
-  ).agents?.defaults?.adminEntityId;
-  const configured =
-    typeof configuredValue === "string" ? configuredValue.trim() : undefined;
-  const nextAdminEntityId =
-    configured && isUuidLike(configured)
-      ? configured
-      : (stringToUuid(`${state.agentName}-admin-entity`) as UUID);
-  if (configured && !isUuidLike(configured)) {
-    logger.warn(
-      `[eliza-api] Invalid agents.defaults.adminEntityId "${configured}", using deterministic fallback`,
-    );
-  }
-  state.adminEntityId = nextAdminEntityId;
-  state.chatUserId = state.adminEntityId;
-  return nextAdminEntityId;
+  return resolveConversationAdminEntityId(state);
 }
 
 async function ensureWorldOwnershipAndRoles(
@@ -457,18 +441,11 @@ export function formatConversationMessageText(
   }
 
   const trimmedText = text.trim();
-  const visibleHistory =
-    trimmedText.length > 0 && history.at(-1) === trimmedText
-      ? history.slice(0, -1)
-      : history;
-
-  if (visibleHistory.length === 0) {
+  if (trimmedText.length > 0) {
     return text;
   }
 
-  return trimmedText.length > 0
-    ? `${visibleHistory.join("\n")}\n\n${text}`
-    : visibleHistory.join("\n");
+  return history.join("\n");
 }
 
 export function buildPersistedAssistantContent(
@@ -615,6 +592,8 @@ type ConversationRouteMessageRecord = {
   text: string;
   timestamp: number;
   source?: string;
+  actionName?: string;
+  actionCallbackHistory?: string[];
   from?: string;
   fromUserName?: string;
   avatarUrl?: string;
@@ -914,6 +893,10 @@ export async function handleConversationRoutes(
             contentSource !== "client_chat"
               ? contentSource
               : undefined;
+          const actionName =
+            typeof content.action === "string" && content.action.length > 0
+              ? content.action
+              : undefined;
           const actionCallbackHistory = normalizeActionCallbackHistory(
             content.actionCallbackHistory,
           );
@@ -926,6 +909,11 @@ export async function handleConversationRoutes(
             ),
             timestamp: m.createdAt ?? 0,
             source: normalizedSource,
+            actionName,
+            actionCallbackHistory:
+              actionCallbackHistory.length > 0
+                ? [...actionCallbackHistory]
+                : undefined,
             from:
               typeof entityName === "string" && entityName.length > 0
                 ? entityName

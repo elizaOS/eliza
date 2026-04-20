@@ -7,7 +7,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess } from "@elizaos/agent/security";
 import { LifeOpsService } from "../lifeops/service.js";
 
 const ACTION_NAME = "DOSSIER";

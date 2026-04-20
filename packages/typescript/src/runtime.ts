@@ -256,6 +256,13 @@ function isTextStreamResult(
 	);
 }
 
+function callbackContentHasVisibleOutput(content: Content): boolean {
+	if (typeof content.text === "string" && content.text.trim().length > 0) {
+		return true;
+	}
+	return Array.isArray(content.attachments) && content.attachments.length > 0;
+}
+
 export class AgentRuntime implements IAgentRuntime {
 	#conversationLength = 100 as number;
 	readonly agentId: UUID;
@@ -2483,31 +2490,14 @@ export class AgentRuntime implements IAgentRuntime {
 								action: action.name,
 								errors: validation.errors,
 							},
-							"Action parameter validation failed; skipping handler",
+							"Skipping action with invalid parameters",
 						);
-
 						if (actionPlan?.steps?.[actionIndex]) {
 							actionPlan = this.updateActionStep(actionPlan, actionIndex, {
 								status: "failed",
 								error: validation.errors.join("; "),
 							});
 						}
-
-						const actionMemory: Memory = {
-							id: uuidv4() as UUID,
-							entityId: message.entityId,
-							roomId: message.roomId,
-							worldId: message.worldId,
-							content: {
-								thought: validation.errors.join("; "),
-								source: "auto",
-								type: "action_result",
-								actionName: action.name,
-								actionStatus: "failed",
-								runId,
-							},
-						};
-						await this.createMemory(actionMemory, "messages");
 						actionIndex++;
 						continue;
 					}
@@ -2594,10 +2584,20 @@ export class AgentRuntime implements IAgentRuntime {
 				});
 
 				const storedCallbackData: Content[] = [];
+				let visibleCallbackIndex: number | null = null;
 
 				const storageCallback = async (response: Content) => {
 					// Use responseMessageId for the text response (separate from action badge)
 					response.responseId = responseMessageId;
+					if (callbackContentHasVisibleOutput(response)) {
+						if (visibleCallbackIndex === null) {
+							visibleCallbackIndex = storedCallbackData.length;
+							storedCallbackData.push(response);
+						} else {
+							storedCallbackData[visibleCallbackIndex] = response;
+						}
+						return [];
+					}
 					storedCallbackData.push(response);
 					return [];
 				};
@@ -2832,10 +2832,8 @@ export class AgentRuntime implements IAgentRuntime {
 				if (
 					callback &&
 					actionText &&
-					!storedCallbackData.some(
-						(content) =>
-							typeof content?.text === "string" &&
-							content.text.trim().length > 0,
+					!storedCallbackData.some((content) =>
+						callbackContentHasVisibleOutput(content),
 					)
 				) {
 					storedCallbackData.push({

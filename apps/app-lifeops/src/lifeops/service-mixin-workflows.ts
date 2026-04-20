@@ -10,7 +10,7 @@ import type {
   UpdateLifeOpsWorkflowRequest,
 } from "@elizaos/shared/contracts/lifeops";
 import { LIFEOPS_WORKFLOW_STATUSES } from "@elizaos/shared/contracts/lifeops";
-import { computeNextCronRunAtMs } from "@elizaos/agent/triggers/scheduling";
+import { computeNextCronRunAtMs } from "@elizaos/agent/triggers";
 import {
   createLifeOpsWorkflowDefinition,
   createLifeOpsWorkflowRun,

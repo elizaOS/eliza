@@ -32,6 +32,13 @@ export type ReminderActivityProfileSnapshot = {
   isCurrentlyActive: boolean
   /** Epoch ms when owner was last seen active across any platform. */
   lastSeenAt: number | null
+  isProbablySleeping: boolean
+  sleepConfidence: number
+  schedulePhase: string | null
+  lastSleepEndedAt: string | null
+  nextMealLabel: string | null
+  nextMealWindowStartAt: string | null
+  nextMealWindowEndAt: string | null
 }
 
 export type RuntimeOwnerContactResolution = {

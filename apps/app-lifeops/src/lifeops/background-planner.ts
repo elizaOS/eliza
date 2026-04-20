@@ -312,6 +312,58 @@ function coercePayload(
       }
       return { action, workflowId, input };
     }
+    case "book_travel": {
+      const provider = typeof record.provider === "string" ? record.provider : null;
+      const itineraryRef =
+        typeof record.itineraryRef === "string" ? record.itineraryRef : null;
+      const totalCents =
+        typeof record.totalCents === "number" && Number.isFinite(record.totalCents)
+          ? Math.round(record.totalCents)
+          : null;
+      const currency = typeof record.currency === "string" ? record.currency : null;
+      const kind =
+        record.kind === "flight" || record.kind === "hotel" || record.kind === "ground"
+          ? record.kind
+          : null;
+      const search =
+        record.search && typeof record.search === "object" && !Array.isArray(record.search)
+          ? record.search
+          : null;
+      const passengers = Array.isArray(record.passengers)
+        ? record.passengers.filter(
+            (value): value is Record<string, unknown> =>
+              Boolean(value) && typeof value === "object" && !Array.isArray(value),
+          )
+        : [];
+      const calendarSync =
+        record.calendarSync &&
+        typeof record.calendarSync === "object" &&
+        !Array.isArray(record.calendarSync)
+          ? record.calendarSync
+          : null;
+      if (!provider || !itineraryRef || totalCents === null || !currency || !kind) {
+        return null;
+      }
+      return {
+        action,
+        kind,
+        provider,
+        itineraryRef,
+        totalCents,
+        currency,
+        offerId: typeof record.offerId === "string" ? record.offerId : null,
+        offerRequestId:
+          typeof record.offerRequestId === "string" ? record.offerRequestId : null,
+        orderType:
+          record.orderType === "hold" || record.orderType === "instant"
+            ? record.orderType
+            : null,
+        search,
+        passengers,
+        calendarSync,
+        summary: typeof record.summary === "string" ? record.summary : null,
+      };
+    }
     default:
       // For schedule/modify/cancel/book/call/spend the upstream caller has
       // not yet wired structured payload extraction. We surface null so the
