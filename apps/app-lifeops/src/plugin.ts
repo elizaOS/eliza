@@ -86,6 +86,7 @@ import { generateDossierAction } from "./dossier/action.js";
 import { computeTravelBufferAction } from "./travel-time/action.js";
 import { healthAction } from "./actions/health.js";
 import { subscriptionsAction } from "./actions/subscriptions.js";
+import { emailUnsubscribeAction } from "./actions/email-unsubscribe.js";
 // T8e — browser extension bridge actions (plan §6.13).
 import {
   fetchBrowserActivityAction,
@@ -248,6 +249,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     computeTravelBufferAction,
     healthAction,
     subscriptionsAction,
+    emailUnsubscribeAction,
     registerBrowserSessionAction,
     fetchBrowserActivityAction,
   ],

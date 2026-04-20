@@ -14,12 +14,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect } from "vitest";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "./helpers/runtime.js";
 import { selectLiveProvider } from "../../../../test/helpers/live-provider";
+import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import { saveEnv } from "../../../../test/helpers/test-utils";
 import { calendarAction } from "../src/actions/calendar.js";
 import { resolveOAuthDir } from "@elizaos/agent/config/paths";

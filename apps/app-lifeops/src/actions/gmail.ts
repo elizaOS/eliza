@@ -1259,10 +1259,8 @@ export const gmailAction: Action & {
   name: "GMAIL_ACTION",
   similes: [
     "GMAIL",
-    "GMAIL_INBOX",
     "CHECK_EMAIL",
     "EMAIL_TRIAGE",
-    "TRIAGE_GMAIL_INBOX",
     "UNREAD_EMAILS",
     "EMAIL_UNREAD",
     "SEARCH_EMAIL",
@@ -1270,16 +1268,20 @@ export const gmailAction: Action & {
     "SEND_EMAIL_REPLY",
   ],
   description:
-    "Interact with Gmail through LifeOps. " +
-    "USE this action for: inbox triage and unread summaries; searching emails by sender, subject, keyword, date, or label; " +
-    "reading full email bodies by message ID; checking which emails need a reply; " +
-    "drafting reply text for one or more emails; sending confirmed replies; " +
-    "requests like 'triage my Gmail inbox', 'summarize my unread emails', 'draft a reply to the latest email from Sarah', or 'send a reply to the last email from finance'. " +
-    "If the request explicitly says Gmail, email, unread emails, sender, subject, or reply to a specific email, use GMAIL_ACTION instead of INBOX. " +
-    "DO NOT use this action when the user is only venting or making a general observation like 'I hate email' unless they actually ask you to triage, search, read, draft, or send. " +
-    "DO NOT use this action for calendar events, meetings, or scheduling — use CALENDAR_ACTION instead. " +
-    "DO NOT use this action for personal habits, goals, routines, or reminders — use LIFE instead. " +
-    "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",
+    "Gmail-only actions through LifeOps. This action touches Gmail and nothing else. " +
+    "USE this action ONLY when the request explicitly names Gmail or email " +
+    "(e.g. 'triage my Gmail', 'summarize my unread emails', 'search for emails from Sarah', " +
+    "'draft a reply to the latest email from finance', 'send the email'). " +
+    "Subactions: Gmail-specific triage, search by sender/subject/keyword/date/label, " +
+    "read message bodies by Gmail ID, draft reply, send reply. " +
+    "DO NOT use for a cross-channel inbox digest / daily brief / unified inbox / triage across " +
+    "Slack / Discord / SMS / Telegram — that is INBOX. If the user says 'my inbox' without " +
+    "specifying Gmail (e.g. 'give me my inbox digest', 'triage my inbox', 'my daily brief'), " +
+    "route to INBOX. GMAIL_ACTION is only correct when the word Gmail or email appears, or when " +
+    "the request is about a specific email by sender/subject/body. " +
+    "DO NOT use for venting ('I hate email') unless the user asks for a concrete Gmail operation. " +
+    "DO NOT use for calendar, meetings, scheduling, habits, goals, routines, or reminders. " +
+    "Provides the final grounded reply; do not pair with a speculative REPLY.",
   descriptionCompressed: "Gmail via LifeOps: inbox triage, search, read, draft/send replies. Not for calendar or habits.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message, state) => {

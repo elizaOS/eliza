@@ -299,11 +299,24 @@ export const proposeMeetingTimesAction: Action & {
     "reschedule options",
   ],
   description:
-    "Propose candidate meeting time slots to offer to another person. " +
-    "Reads the owner's calendar busy times and meeting preferences " +
-    "(preferred hours, blackout windows, travel buffer) and returns " +
-    "three available slots by default over the next seven days. Use this for bundled scheduling while traveling or when you need concrete reschedule options." +
-    " DO NOT use for small talk, weather, general conversation, or vague mentions of travel. Only fire when the user explicitly asks to propose / suggest / offer time slots to another person (e.g. 'propose three times for a meeting with Marco').",
+    "Propose concrete meeting time slots to offer to another person. This is " +
+    "the dedicated action for any 'propose N times', 'suggest N slots', " +
+    "'offer three times', 'find me three slots', 'give me a few times' request " +
+    "targeted at another person or team. It reads the owner's calendar busy " +
+    "times and meeting preferences (preferred hours, blackout windows, travel " +
+    "buffer) and returns three available slots by default over the next seven " +
+    "days. Also correct for bundled scheduling while traveling or concrete " +
+    "reschedule options. " +
+    "STRONG POSITIVE TRIGGERS — route HERE, not to CALENDAR_ACTION or SCHEDULING: " +
+    "'propose three times for a sync with <person>', 'suggest a few times for " +
+    "<person>', 'offer Marco three 30-minute slots', 'find us three options " +
+    "next week', 'give me slots to send <person>'. " +
+    "DO NOT use this for small talk, weather, or vague conversation. " +
+    "DO NOT use this to check the owner's calendar, create a calendar event, " +
+    "or view upcoming events — that is CALENDAR_ACTION. " +
+    "DO NOT use this to start a multi-turn scheduling negotiation record — " +
+    "that is SCHEDULING (subaction: start). This action just generates the " +
+    "candidate slots; SCHEDULING tracks the negotiation lifecycle around them.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (runtime, message, _state, options, callback) => {
