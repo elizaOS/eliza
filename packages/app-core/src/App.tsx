@@ -32,7 +32,6 @@ import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPan
 import { MusicPlayerGlobal } from "./components/music/MusicPlayerGlobal";
 import { AppsPageView } from "./components/pages/AppsPageView";
 import { AutomationsView } from "./components/pages/AutomationsView";
-import { NodeCatalogView } from "./components/pages/NodeCatalogView";
 import { BrowserWorkspaceView } from "./components/pages/BrowserWorkspaceView";
 import { ChatView } from "./components/pages/ChatView";
 import { ConnectorsPageView } from "./components/pages/ConnectorsPageView";
@@ -40,6 +39,7 @@ import { DatabasePageView } from "./components/pages/DatabasePageView";
 import { InventoryView } from "./components/pages/InventoryView";
 import { LogsPageView } from "./components/pages/LogsPageView";
 import { MemoryViewerView } from "./components/pages/MemoryViewerView";
+import { NodeCatalogView } from "./components/pages/NodeCatalogView";
 import { PluginsPageView } from "./components/pages/PluginsPageView";
 import { RelationshipsView } from "./components/pages/RelationshipsView";
 import { RuntimeView } from "./components/pages/RuntimeView";
