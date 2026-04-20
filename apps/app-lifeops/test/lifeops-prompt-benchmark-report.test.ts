@@ -3,6 +3,7 @@ import type { PromptBenchmarkResult } from "./helpers/lifeops-prompt-benchmark-r
 import {
   buildAxOptimizationRows,
   buildPromptBenchmarkReport,
+  casePasses,
   formatPromptBenchmarkReportMarkdown,
   serializeAxOptimizationRows,
 } from "./helpers/lifeops-prompt-benchmark-runner.ts";
@@ -84,6 +85,22 @@ const SAMPLE_RESULTS: PromptBenchmarkResult[] = [
 ];
 
 describe("LifeOps prompt benchmark reporting", () => {
+  it("treats any scenario-equivalent fired action as a pass, not just the primary exact string", () => {
+    const equivalent = {
+      ...SAMPLE_RESULTS[0],
+      case: {
+        ...SAMPLE_RESULTS[0].case,
+        expectedAction: "INBOX",
+        acceptableActions: [],
+      },
+      actualPrimaryAction: "RUN_MORNING_CHECKIN",
+      actualActions: ["RUN_MORNING_CHECKIN", "OWNER_INBOX"],
+      pass: false,
+    } satisfies PromptBenchmarkResult;
+
+    expect(casePasses(equivalent)).toBe(true);
+  });
+
   it("computes weighted accuracy, null false positives, and trajectory coverage", () => {
     const report = buildPromptBenchmarkReport({
       providerName: "groq",

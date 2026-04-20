@@ -656,6 +656,10 @@ export const updateRoleAction: Action = {
   description:
     "Assign or revoke a role using commands (/role @name ADMIN) or natural language " +
     '("alice is your boss", "bob is not your coworker"). Only OWNERs and ADMINs can manage roles.',
+  // The handler already emits the full user-facing result (success, ambiguity,
+  // permission denial). Running a post-action continuation after that causes
+  // Discord to rewrite the same message multiple times for a single role change.
+  suppressPostActionContinuation: true,
 
   validate: async (
     _runtime: IAgentRuntime,
@@ -674,6 +678,13 @@ export const updateRoleAction: Action = {
     options?: Record<string, unknown>,
     callback?: HandlerCallback,
   ) => {
+    const emitRoleUpdate = async (text: string): Promise<void> => {
+      await callback?.({
+        text,
+        action: "UPDATE_ROLE",
+      });
+    };
+
     const parsed = await resolveParsedRoleCommand({
       runtime,
       message,
@@ -681,9 +692,9 @@ export const updateRoleAction: Action = {
       options,
     });
     if (!parsed) {
-      await callback?.({
-        text: "I couldn't determine whose role to change or which role/relationship you meant.",
-      });
+      await emitRoleUpdate(
+        "I couldn't determine whose role to change or which role/relationship you meant.",
+      );
       return { success: false };
     }
 
@@ -692,9 +703,9 @@ export const updateRoleAction: Action = {
     // Resolve world
     const resolved = await resolveWorldForMessage(runtime, message);
     if (!resolved) {
-      await callback?.({
-        text: "Cannot assign roles — no world context found for this room.",
-      });
+      await emitRoleUpdate(
+        "Cannot assign roles — no world context found for this room.",
+      );
       return { success: false };
     }
 
@@ -711,9 +722,9 @@ export const updateRoleAction: Action = {
       },
     );
     if (requesterRole !== "OWNER" && requesterRole !== "ADMIN") {
-      await callback?.({
-        text: "You don't have permission to manage roles. Only OWNERs and ADMINs can assign roles.",
-      });
+      await emitRoleUpdate(
+        "You don't have permission to manage roles. Only OWNERs and ADMINs can assign roles.",
+      );
       return { success: false };
     }
 
@@ -726,19 +737,16 @@ export const updateRoleAction: Action = {
     });
     const targetEntityId = targetResolution.entityId;
     if (!targetEntityId) {
-      await callback?.({
-        text:
-          targetResolution.error ??
+      await emitRoleUpdate(
+        targetResolution.error ??
           `Could not find user "${targetName}" in this room.`,
-      });
+      );
       return { success: false };
     }
 
     // Check if target is the agent itself
     if (targetEntityId === runtime.agentId) {
-      await callback?.({
-        text: "Cannot change the agent's own role.",
-      });
+      await emitRoleUpdate("Cannot change the agent's own role.");
       return { success: false };
     }
 
@@ -757,9 +765,9 @@ export const updateRoleAction: Action = {
     if (newRole === "OWNER") {
       const canonicalOwnerId = resolveCanonicalOwnerId(runtime, metadata);
       if (!canonicalOwnerId || targetEntityId !== canonicalOwnerId) {
-        await callback?.({
-          text: "OWNER is reserved for the canonical agent owner. Use ADMIN for additional elevated users.",
-        });
+        await emitRoleUpdate(
+          "OWNER is reserved for the canonical agent owner. Use ADMIN for additional elevated users.",
+        );
         return { success: false };
       }
     }
@@ -774,18 +782,17 @@ export const updateRoleAction: Action = {
         ([id, r]) => id !== message.entityId && normalizeRole(r) === "OWNER",
       );
       if (otherOwners.length === 0) {
-        await callback?.({
-          text: "Cannot remove the last OWNER. Promote another user to OWNER first.",
-        });
+        await emitRoleUpdate(
+          "Cannot remove the last OWNER. Promote another user to OWNER first.",
+        );
         return { success: false };
       }
     }
     if (!canModifyRole(requesterRole, targetCurrentRole, newRole)) {
-      await callback?.({
-        text:
-          `Cannot change ${targetName}'s role from ${targetCurrentRole} to ${newRole}. ` +
+      await emitRoleUpdate(
+        `Cannot change ${targetName}'s role from ${targetCurrentRole} to ${newRole}. ` +
           `Your role (${requesterRole}) doesn't have sufficient permissions.`,
-      });
+      );
       return { success: false };
     }
 
@@ -806,7 +813,7 @@ export const updateRoleAction: Action = {
       responseText = `Updated ${targetName}'s role to **${newRole}**.`;
     }
 
-    await callback?.({ text: responseText });
+    await emitRoleUpdate(responseText);
 
     return {
       success: true,

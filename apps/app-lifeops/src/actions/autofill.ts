@@ -64,7 +64,9 @@ async function saveUserDomains(
   runtime: unknown,
   domains: readonly string[],
 ): Promise<void> {
-  if (!hasRuntimeCache(runtime)) return;
+  if (!hasRuntimeCache(runtime)) {
+    throw new Error("AUTOFILL_WHITELIST_CACHE_UNAVAILABLE");
+  }
   await runtime.setCache(WHITELIST_CACHE_KEY, domains);
 }
 
@@ -398,7 +400,19 @@ export const addAutofillWhitelistAction: Action = {
       };
     }
     const next = [...existingNormalized, normalized];
-    await saveUserDomains(runtime, next);
+    try {
+      await saveUserDomains(runtime, next);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      logger.warn(
+        { action: "ADD_AUTOFILL_WHITELIST", domain: normalized, detail },
+        `[ADD_AUTOFILL_WHITELIST] failed to persist ${normalized}: ${detail}`,
+      );
+      return failure("ADD_AUTOFILL_WHITELIST", "PERSISTENCE_UNAVAILABLE", {
+        domain: normalized,
+        detail,
+      });
+    }
     logger.info(
       { action: "ADD_AUTOFILL_WHITELIST", domain: normalized },
       `[ADD_AUTOFILL_WHITELIST] added ${normalized} to user whitelist`,

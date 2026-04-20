@@ -414,14 +414,16 @@ export function getSignalPairingStatusForSide(
 export function stopSignalPairing(
   agentId: string,
   side: LifeOpsConnectorSide,
-): void {
+): { readonly stopped: boolean; readonly sessionId: string | null } {
   const session = sessionForSide(agentId, side);
   if (!session) {
-    return;
+    return { stopped: false, sessionId: null };
   }
+  const sessionId = session.sessionId;
   session.pairingSession.stop();
-  pendingSignalPairingSessions.delete(session.sessionId);
-  deletePendingSignalSession(session.sessionId);
+  pendingSignalPairingSessions.delete(sessionId);
+  deletePendingSignalSession(sessionId);
+  return { stopped: true, sessionId };
 }
 
 export function readSignalLinkedDeviceInfo(

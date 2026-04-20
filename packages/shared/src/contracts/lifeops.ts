@@ -1699,6 +1699,12 @@ export type LifeOpsTelegramAuthState =
 
 export interface LifeOpsWhatsAppConnectorStatus {
   provider: "whatsapp";
+  /**
+   * `connected` here means credentials are present in env; it does NOT imply
+   * a live network probe has been performed. A live send can still fail if
+   * the token has been revoked upstream. Callers that need true liveness
+   * must catch errors from the actual send/receive methods.
+   */
   connected: boolean;
   /**
    * Inbound is always true for WhatsApp. Messages arrive via webhook push and

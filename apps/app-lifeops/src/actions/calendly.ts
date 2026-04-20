@@ -329,8 +329,11 @@ export const calendlyAction: Action = {
             credentials,
             eventTypeUri,
           );
+          const expiryText = link.expiresAt
+            ? ` (expires ${link.expiresAt})`
+            : "";
           return success(
-            `Single-use Calendly booking link: ${link.bookingUrl} (expires ${link.expiresAt})`,
+            `Single-use Calendly booking link: ${link.bookingUrl}${expiryText}`,
             { subaction, link },
           );
         }

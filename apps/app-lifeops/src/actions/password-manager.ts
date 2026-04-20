@@ -201,16 +201,20 @@ export const passwordManagerAction: Action = {
       }
       const result = await injectCredentialToClipboard(itemId, field, config);
       logger.info(
-        { action: "PASSWORD_MANAGER", subaction, itemId, field },
+        { action: "PASSWORD_MANAGER", subaction, itemId, field, fixtureMode: result.fixtureMode === true },
         `[PASSWORD_MANAGER] Copied ${field} for item ${itemId} to clipboard`,
       );
+      const fixtureSuffix = result.fixtureMode
+        ? " [fixture backend: no actual clipboard write — test/benchmark mode]"
+        : "";
       return {
-        text: `Copied ${field} for item '${itemId}' to clipboard (clears in ${result.expiresInSeconds}s).`,
+        text: `Copied ${field} for item '${itemId}' to clipboard (clears in ${result.expiresInSeconds}s).${fixtureSuffix}`,
         success: true,
         values: {
           success: true,
           field,
           expiresInSeconds: result.expiresInSeconds,
+          fixtureMode: result.fixtureMode === true,
         },
         data: {
           actionName: "PASSWORD_MANAGER",
@@ -218,6 +222,7 @@ export const passwordManagerAction: Action = {
           itemId,
           field,
           expiresInSeconds: result.expiresInSeconds,
+          fixtureMode: result.fixtureMode === true,
         },
       };
     }

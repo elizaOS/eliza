@@ -1,5 +1,9 @@
 import { v4 } from "uuid";
-import { parseActionParams } from "../actions";
+import {
+	formatActionNames,
+	formatActions,
+	parseActionParams,
+} from "../actions";
 import { createUniqueUuid } from "../entities";
 import {
 	formatTaskCompletionStatus,
@@ -375,7 +379,7 @@ export function extractPlannerActionNames(
 	})();
 }
 
-function normalizePlannerActions(
+export function normalizePlannerActions(
 	parsedXml: Record<string, unknown>,
 	runtime: IAgentRuntime,
 ): string[] {
@@ -437,7 +441,17 @@ function normalizePlannerActions(
 	return replyText.length > 0 ? ["REPLY"] : ["IGNORE"];
 }
 
-function normalizePlannerProviders(
+function parseDelimitedProviderNames(rawProviders: string): string[] {
+	return rawProviders
+		.split(/[\n,;]/)
+		.map((providerName) =>
+			providerName.replace(/^[\s"'[\](){}]+|[\s"'[\](){}]+$/g, ""),
+		)
+		.map((providerName) => unwrapPlannerIdentifier(providerName).trim())
+		.filter((providerName) => /^[A-Za-z][A-Za-z0-9_-]*$/.test(providerName));
+}
+
+export function normalizePlannerProviders(
 	parsedXml: Record<string, unknown>,
 	runtime?: IAgentRuntime,
 ): string[] {
@@ -488,13 +502,7 @@ function normalizePlannerProviders(
 				}
 			}
 
-			return rawProviders
-				.split(/[\n,;]/)
-				.map((providerName) =>
-					providerName.replace(/^[\s"'[\](){}]+|[\s"'[\](){}]+$/g, ""),
-				)
-				.map((providerName) => providerName.trim())
-				.filter((providerName) => providerName.length > 0);
+			return parseDelimitedProviderNames(rawProviders);
 		}
 
 		if (Array.isArray(rawProviders)) {
@@ -903,7 +911,6 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["SCHEDULE_RECURRING_EVENT", "CALENDAR_ACTION"],
 		["SCHEDULE_RECURRING_MEETING", "CALENDAR_ACTION"],
 		["SCHEDULE_RECURRING", "CALENDAR_ACTION"],
-		["BOOK_TRAVEL", "CALL_EXTERNAL"],
 		["CAPTURE_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
 		["CAPTURE_BOOKING_PREFERENCES", "UPDATE_OWNER_PROFILE"],
 		["SET_PREFERENCES", "UPDATE_OWNER_PROFILE"],
@@ -926,6 +933,8 @@ const PLANNER_PROVIDER_ALIASES = new Map(
 	[
 		["DOCUMENT_LOOKUP", "ATTACHMENTS"],
 		["INBOX_TRIAGE", "inboxTriage"],
+		["PENDING_DRAFTS_PROVIDER", "inboxTriage"],
+		["PENDING_DRAFTS", "inboxTriage"],
 	].map(([from, to]) => [normalizeActionIdentifier(from), to]),
 );
 
@@ -1296,6 +1305,78 @@ export function shouldEmitPlannerPreamble(
 	);
 }
 
+function ensureActionPromptState(
+	runtime: IAgentRuntime,
+	state: State,
+): State {
+	const actionNamesValue =
+		typeof state.values?.actionNames === "string"
+			? state.values.actionNames.trim()
+			: "";
+	const actionDescriptionsValue =
+		typeof state.values?.actionsWithDescriptions === "string"
+			? state.values.actionsWithDescriptions.trim()
+			: "";
+	if (actionNamesValue && actionDescriptionsValue) {
+		return state;
+	}
+
+	const providerResults =
+		typeof state.data?.providers === "object" && state.data.providers !== null
+			? (state.data.providers as Record<string, ProviderCacheEntry>)
+			: {};
+	const actionProvider = providerResults.ACTIONS;
+	const providerValues =
+		typeof actionProvider?.values === "object" && actionProvider.values !== null
+			? (actionProvider.values as Record<string, unknown>)
+			: {};
+	const providerActionNames =
+		typeof providerValues.actionNames === "string"
+			? providerValues.actionNames.trim()
+			: "";
+	const providerActionDescriptions =
+		typeof providerValues.actionsWithDescriptions === "string"
+			? providerValues.actionsWithDescriptions.trim()
+			: "";
+
+	const runtimeActions = runtime.actions ?? [];
+	const fallbackActionNames =
+		runtimeActions.length > 0
+			? `Possible response actions: ${formatActionNames(
+					runtimeActions,
+					`${runtime.agentId}:message-service-action-names`,
+				)}`
+			: "";
+	const fallbackActionDescriptions =
+		runtimeActions.length > 0
+			? `# Available Actions\n${formatActions(
+					runtimeActions,
+					`${runtime.agentId}:message-service-action-descriptions`,
+				)}`
+			: "";
+
+	const nextActionNames =
+		actionNamesValue || providerActionNames || fallbackActionNames;
+	const nextActionDescriptions =
+		actionDescriptionsValue ||
+		providerActionDescriptions ||
+		fallbackActionDescriptions;
+	if (!nextActionNames && !nextActionDescriptions) {
+		return state;
+	}
+
+	return {
+		...state,
+		values: {
+			...state.values,
+			...(nextActionNames ? { actionNames: nextActionNames } : {}),
+			...(nextActionDescriptions
+				? { actionsWithDescriptions: nextActionDescriptions }
+				: {}),
+		},
+	};
+}
+
 function callbackTextPreview(content: Content | null | undefined): string {
 	if (!content || typeof content !== "object") {
 		return "";
@@ -1363,6 +1444,21 @@ function callbackDeliveryKey(content: Content | null | undefined): string {
 		text,
 		attachments: attachmentKeys,
 	});
+}
+
+function callbackHasVisiblePayload(content: Content | null | undefined): boolean {
+	if (!content || typeof content !== "object") {
+		return false;
+	}
+
+	if (
+		typeof content.text === "string" &&
+		content.text.replace(/\s+/g, " ").trim().length > 0
+	) {
+		return true;
+	}
+
+	return Array.isArray(content.attachments) && content.attachments.length > 0;
 }
 
 function getLatestVisibleReplyText(
@@ -2020,6 +2116,7 @@ export class DefaultMessageService implements IMessageService {
 					? async (content, actionName) => {
 							const deliveryKey = callbackDeliveryKey(content);
 							const preview = callbackTextPreview(content);
+							const hasVisiblePayload = callbackHasVisiblePayload(content);
 							if (deliveryKey && deliveredCallbackKeys.has(deliveryKey)) {
 								runtime.logger.warn(
 									{
@@ -2050,33 +2147,46 @@ export class DefaultMessageService implements IMessageService {
 							if (deliveryKey) {
 								deliveredCallbackKeys.add(deliveryKey);
 							}
-							if (preview) {
+							if (hasVisiblePayload && visibleCallbackCount >= 1) {
+								runtime.logger.warn(
+									{
+										src: "service:message",
+										agentId: runtime.agentId,
+										messageId: message.id,
+										roomId: message.roomId,
+										callbackCount: visibleCallbackCount + 1,
+										action:
+											typeof (content as Record<string, unknown>)?.action ===
+											"string"
+												? String((content as Record<string, unknown>).action)
+												: actionName,
+										source:
+											typeof content.source === "string"
+												? content.source
+												: undefined,
+										firstPreview:
+											firstVisibleCallbackPreview ||
+											"[visible payload without text preview]",
+										currentPreview:
+											preview ||
+											(Array.isArray(content.attachments) &&
+											content.attachments.length > 0
+												? `[attachments:${content.attachments.length}]`
+												: "[visible payload without text preview]"),
+									},
+									"Suppressing additional visible callback reply emitted for a single turn",
+								);
+								return [];
+							}
+							if (hasVisiblePayload) {
 								visibleCallbackCount += 1;
-								if (visibleCallbackCount === 1) {
-									firstVisibleCallbackPreview = preview;
-								} else {
-									runtime.logger.warn(
-										{
-											src: "service:message",
-											agentId: runtime.agentId,
-											messageId: message.id,
-											roomId: message.roomId,
-											callbackCount: visibleCallbackCount,
-											action:
-												typeof (content as Record<string, unknown>)?.action ===
-												"string"
-													? String((content as Record<string, unknown>).action)
-													: actionName,
-											source:
-												typeof content.source === "string"
-													? content.source
-													: undefined,
-											firstPreview: firstVisibleCallbackPreview,
-											currentPreview: preview,
-										},
-										"Multiple visible callback replies emitted for a single turn",
-									);
-								}
+								firstVisibleCallbackPreview =
+									firstVisibleCallbackPreview ||
+									preview ||
+									(Array.isArray(content.attachments) &&
+									content.attachments.length > 0
+										? `[attachments:${content.attachments.length}]`
+										: "");
 							}
 
 							return actionName === undefined
@@ -4387,9 +4497,11 @@ export class DefaultMessageService implements IMessageService {
 			providerFollowup?: boolean;
 		},
 	): Promise<StrategyResult> {
-		state =
+		state = ensureActionPromptState(
+			runtime,
 			overrides?.precomposedState ??
-			(await composeStructuredResponseState(runtime, message));
+				(await composeStructuredResponseState(runtime, message)),
+		);
 
 		if (!state.values?.actionNames) {
 			runtime.logger.warn(

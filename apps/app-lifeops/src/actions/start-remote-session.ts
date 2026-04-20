@@ -139,9 +139,10 @@ export const startRemoteSessionAction: Action = {
       if (result.ingressUrl === null) {
         return {
           text: `Remote session ${result.sessionId} is authorized but the data plane is not configured (${result.reason ?? "unknown"}). Configure Tailscale (T9b) or the Eliza Cloud tunnel to complete pixel transport.`,
-          success: true,
+          success: false,
           values: {
-            success: true,
+            success: false,
+            error: "DATA_PLANE_NOT_CONFIGURED",
             sessionId: result.sessionId,
             status: result.status,
             ingressUrl: null,

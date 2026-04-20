@@ -21,6 +21,22 @@ function reportToActionData(report: CheckinReport): ProviderDataRecord {
   };
 }
 
+function formatReportText(report: CheckinReport): string {
+  const overdue = report.overdueTodos.length;
+  const meetings = report.todaysMeetings.length;
+  const wins = report.yesterdaysWins.length;
+  const prefix =
+    report.kind === "morning"
+      ? "Morning check-in"
+      : "Night check-in";
+  const parts = [
+    `${overdue} overdue todo${overdue === 1 ? "" : "s"}`,
+    `${meetings} meeting${meetings === 1 ? "" : "s"} ${report.kind === "morning" ? "today" : "logged today"}`,
+    `${wins} win${wins === 1 ? "" : "s"} ${report.kind === "morning" ? "from yesterday" : "to carry forward"}`,
+  ];
+  return `${prefix}: ${parts.join(", ")}.`;
+}
+
 export const runMorningCheckinAction: Action = {
   name: "RUN_MORNING_CHECKIN",
   similes: [
@@ -45,7 +61,7 @@ export const runMorningCheckinAction: Action = {
         typeof message.roomId === "string" ? message.roomId : undefined,
     });
     return {
-      text: "",
+      text: formatReportText(report),
       success: true,
       data: reportToActionData(report),
     };
@@ -103,7 +119,7 @@ export const runNightCheckinAction: Action = {
         typeof message.roomId === "string" ? message.roomId : undefined,
     });
     return {
-      text: "",
+      text: formatReportText(report),
       success: true,
       data: reportToActionData(report),
     };
