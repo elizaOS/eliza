@@ -158,9 +158,9 @@ export const remoteDesktopAction: Action = {
     if (!subaction) {
       return {
         text: "Missing or invalid subaction. Use one of: start, status, end, list.",
-        success: true,
+        success: false,
         values: { success: false, error: "INVALID_SUBACTION" },
-        data: { actionName: ACTION_NAME },
+        data: { actionName: ACTION_NAME, error: "INVALID_SUBACTION" },
       };
     }
 

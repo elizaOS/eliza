@@ -161,6 +161,8 @@ describe("owner schedule surfaces", () => {
           nextMealWindowEndAt: null,
         },
         nearbyReminderTitles: [],
+        timezone: "UTC",
+        definition: null,
       });
 
       expect(attempt.outcome).toBe("blocked_quiet_hours");

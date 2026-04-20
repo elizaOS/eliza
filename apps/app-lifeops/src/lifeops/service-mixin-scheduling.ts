@@ -12,6 +12,38 @@ function isoNow(): string {
   return new Date().toISOString();
 }
 
+/**
+ * Channels that a negotiation dispatch can be delivered on, resolved from
+ * the linked relationship's contact info. Ordered so that richer / more
+ * reliable channels are preferred when `primaryChannel` is ambiguous.
+ */
+const SCHEDULING_DISPATCH_CHANNELS = [
+  "email",
+  "telegram",
+  "discord",
+  "signal",
+  "whatsapp",
+  "imessage",
+  "sms",
+] as const;
+type SchedulingDispatchChannel = (typeof SCHEDULING_DISPATCH_CHANNELS)[number];
+
+type CounterpartyTarget = {
+  channel: SchedulingDispatchChannel;
+  target: string;
+  name: string;
+};
+
+function normalizeChannel(
+  value: string | null | undefined,
+): SchedulingDispatchChannel | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  return (SCHEDULING_DISPATCH_CHANNELS as readonly string[]).includes(trimmed)
+    ? (trimmed as SchedulingDispatchChannel)
+    : null;
+}
+
 /** @internal */
 export function withScheduling<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
