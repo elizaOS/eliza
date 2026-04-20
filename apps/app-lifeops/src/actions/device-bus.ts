@@ -53,6 +53,49 @@ function readPayloadString(
   return null;
 }
 
+function derivePayloadFromMessage(
+  message: Memory,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  if (Object.keys(payload).length > 0) {
+    return payload;
+  }
+
+  const text =
+    typeof message.content?.text === "string" ? message.content.text.trim() : "";
+  if (!text) {
+    return payload;
+  }
+
+  const firstSentence = text.split(/(?<=[.!?])\s+/u)[0]?.trim() ?? text;
+  const title =
+    firstSentence.length > 96
+      ? `${firstSentence.slice(0, 93).trimEnd()}...`
+      : firstSentence;
+
+  return {
+    title,
+    body: text,
+    text,
+  };
+}
+
+function buildIntentResultText(
+  prefix: string,
+  kind: string,
+  payload: Record<string, unknown>,
+): string {
+  const body =
+    readPayloadString(payload, ["body", "message", "text", "description"]) ??
+    readPayloadString(payload, ["title", "label", "subject"]);
+  if (body) {
+    return `${prefix} ${kind} intent: ${body}`;
+  }
+  return prefix === "Queued"
+    ? `Queued ${kind} intent locally for device delivery.`
+    : `Published ${kind} intent to device bus.`;
+}
+
 function mapLocalIntentKind(kind: string): "attention_request" | "routine_reminder" {
   return kind === "block" ? "attention_request" : "routine_reminder";
 }
@@ -162,7 +205,10 @@ export const publishDeviceIntentAction: Action & {
 
     const kind = normalizeKind(params.kind) ?? "reminder";
 
-    const payload = coercePayload(params.payload);
+    const payload = derivePayloadFromMessage(
+      message,
+      coercePayload(params.payload),
+    );
 
     const config = readDeviceBusConfig(runtime);
     if (!config) {
@@ -172,7 +218,7 @@ export const publishDeviceIntentAction: Action & {
       );
       const localIntent = await publishLocalFallbackIntent(runtime, kind, payload);
       return {
-        text: `Queued ${kind} intent locally for device delivery.`,
+        text: buildIntentResultText("Queued", kind, payload),
         success: true,
         values: {
           success: true,
@@ -186,6 +232,7 @@ export const publishDeviceIntentAction: Action & {
           kind,
           intentId: localIntent.id,
           transport: "local-fallback",
+          payload,
         },
       };
     }
@@ -240,7 +287,7 @@ export const publishDeviceIntentAction: Action & {
     };
 
     return {
-      text: `Published ${kind} intent to device bus.`,
+      text: buildIntentResultText("Published", kind, payload),
       success: true,
       values: {
         success: true,
@@ -252,6 +299,7 @@ export const publishDeviceIntentAction: Action & {
         kind,
         intentId: data.intentId ?? null,
         deliveredTo: data.deliveredTo ?? [],
+        payload,
       },
     };
   },

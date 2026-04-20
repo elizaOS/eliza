@@ -539,6 +539,54 @@ export async function handleLifeOpsRoutes(
     return true;
   }
 
+  if (method === "POST" && pathname === "/api/lifeops/features/toggle") {
+    if (!ctx.state.runtime) {
+      ctx.error(res, "Agent runtime is not available", 503);
+      return true;
+    }
+    const body = await readJsonBody<{
+      featureKey?: unknown;
+      enabled?: unknown;
+    }>(req, res);
+    if (!body) {
+      return true;
+    }
+    const { isLifeOpsFeatureKey } = await import(
+      "../lifeops/feature-flags.types.js"
+    );
+    if (!isLifeOpsFeatureKey(body.featureKey)) {
+      ctx.error(res, "featureKey must be a known LifeOpsFeatureKey", 400);
+      return true;
+    }
+    if (typeof body.enabled !== "boolean") {
+      ctx.error(res, "enabled must be a boolean", 400);
+      return true;
+    }
+    const { createFeatureFlagService } = await import(
+      "../lifeops/feature-flags.js"
+    );
+    const service = createFeatureFlagService(ctx.state.runtime);
+    const next = body.enabled
+      ? await service.enable(body.featureKey, "local", null)
+      : await service.disable(body.featureKey, "local", null);
+    json(res, {
+      feature: {
+        featureKey: next.featureKey,
+        enabled: next.enabled,
+        source: next.source,
+        description: next.description,
+        costsMoney: next.costsMoney,
+        enabledAt: next.enabledAt ? next.enabledAt.toISOString() : null,
+        enabledBy: next.enabledBy,
+        packageId:
+          typeof next.metadata.packageId === "string"
+            ? next.metadata.packageId
+            : null,
+      },
+    });
+    return true;
+  }
+
   if (method === "PUT" && pathname === "/api/lifeops/app-state") {
     if (!ctx.state.runtime) {
       ctx.error(res, "Agent runtime is not available", 503);
