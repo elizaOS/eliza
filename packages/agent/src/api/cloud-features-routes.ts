@@ -24,6 +24,7 @@ import type { AgentRuntime, IAgentRuntime, Service } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   ALL_FEATURE_KEYS,
+  CLOUD_LINKED_DEFAULT_ON,
   isLifeOpsFeatureKey,
   type FeatureFlagState,
   type LifeOpsFeatureKey,
@@ -207,6 +208,22 @@ async function handleSync(
   for (const row of remote.rows) {
     remoteByKey.set(row.featureKey, row);
   }
+  // Cloud-default policy: a successful sync implies the user is signed
+  // into Eliza Cloud, so we upsert rows for every feature in
+  // CLOUD_LINKED_DEFAULT_ON that did not come back explicitly disabled
+  // from upstream. This keeps `source = 'cloud'` audit-correct (the row
+  // was created by a Cloud sync) and surfaces the 5% service-fee tag in
+  // the UI, while still letting an explicit upstream `enabled: false`
+  // win for users on a plan that excludes a given capability.
+  const promotedKeys = new Set<LifeOpsFeatureKey>();
+  for (const featureKey of CLOUD_LINKED_DEFAULT_ON) {
+    if (remoteByKey.has(featureKey)) continue;
+    promotedKeys.add(featureKey);
+    await service.enable(featureKey, "cloud", null, {
+      autoProvisioned: true,
+      cloudDefault: true,
+    });
+  }
   for (const featureKey of ALL_FEATURE_KEYS) {
     const cloudRow = remoteByKey.get(featureKey);
     if (!cloudRow) continue;
@@ -220,7 +237,7 @@ async function handleSync(
     }
   }
   logger.info(
-    `[cloud-features] synced ${remote.rows.length} feature(s) from Eliza Cloud`,
+    `[cloud-features] synced ${remote.rows.length} feature(s) from Eliza Cloud (${promotedKeys.size} promoted by Cloud-default policy)`,
   );
   const list = await service.list();
   sendJson(
