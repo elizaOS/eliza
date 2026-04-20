@@ -13,10 +13,10 @@ function message(text: string): Memory {
 }
 
 /**
- * These tests verify the parse/normalize path downstream of a mocked model
- * response — NOT the LLM's judgement. `useModel` is stubbed, so anything the
- * extractor merely passes through from the stubbed JSON is tautological and
- * not worth asserting here.
+ * This file does NOT verify LLM behavior; it verifies the parse/normalize
+ * path downstream of a mocked model response. `useModel` is stubbed, so
+ * anything the extractor merely passes through from the stubbed JSON is
+ * tautological and not worth asserting here.
  *
  * Only tests that exercise real branching or field-forcing logic in
  * `extractGmailPlanWithLlm` (skipping the payload pass, forcing defaults,
