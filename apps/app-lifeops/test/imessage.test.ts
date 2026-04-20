@@ -87,7 +87,9 @@ function setExecFile(
 import {
   clearIMessageBackendCache,
   detectIMessageBackend,
+  getIMessageDeliveryStatus,
   IMessageBridgeError,
+  searchIMessages,
   sendIMessage,
 } from "../src/lifeops/imessage-bridge.js";
 import { withIMessage } from "../src/lifeops/service-mixin-imessage.js";
@@ -257,5 +259,197 @@ describe("withIMessage mixin", () => {
     // LifeOpsServiceError, so we additionally assert the negative — this
     // test documents current behavior.
     expect(LifeOpsServiceError).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ws2-parity: iMessage search + delivery status
+// ---------------------------------------------------------------------------
+
+describe("searchIMessages — imsg backend", () => {
+  test("passes query and optional chat as discrete argv entries (no shell)", async () => {
+    setExecFile(
+      (file, args) => file === "imsg" && args[0] === "--version",
+      { stdout: "imsg 2.0.0\n" },
+    );
+
+    let capturedArgs: string[] | null = null;
+    setExecFile(
+      (file, args) => {
+        if (file === "imsg" && args[0] === "search") {
+          capturedArgs = args;
+          return true;
+        }
+        return false;
+      },
+      {
+        stdout: JSON.stringify([
+          {
+            id: "msg-111",
+            fromHandle: "+15550001111",
+            text: "needle in a haystack",
+            isFromMe: false,
+            sentAt: "2026-04-17T08:00:00.000Z",
+          },
+        ]),
+      },
+    );
+
+    const results = await searchIMessages({ query: "needle" });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].id).toBe("msg-111");
+    expect(results[0].text).toBe("needle in a haystack");
+
+    // Verify argv structure: query and limit are separate entries, never shell-interpolated.
+    expect(capturedArgs).not.toBeNull();
+    expect(capturedArgs![0]).toBe("search");
+    expect(capturedArgs!).toContain("--query");
+    expect(capturedArgs![capturedArgs!.indexOf("--query") + 1]).toBe("needle");
+    expect(capturedArgs!).toContain("--json");
+  });
+
+  test("passes --chat flag when chatId scope is given", async () => {
+    setExecFile(
+      (file, args) => file === "imsg" && args[0] === "--version",
+      { stdout: "imsg 2.0.0\n" },
+    );
+
+    let capturedArgs: string[] | null = null;
+    setExecFile(
+      (file, args) => {
+        if (file === "imsg" && args[0] === "search") {
+          capturedArgs = args;
+          return true;
+        }
+        return false;
+      },
+      { stdout: JSON.stringify([]) },
+    );
+
+    await searchIMessages({ query: "hi", chatId: "iMessage;+;alice@example.com" });
+
+    expect(capturedArgs).not.toBeNull();
+    expect(capturedArgs!).toContain("--chat");
+    expect(capturedArgs![capturedArgs!.indexOf("--chat") + 1]).toBe(
+      "iMessage;+;alice@example.com",
+    );
+  });
+});
+
+describe("searchIMessages — BlueBubbles backend", () => {
+  test("POSTs to /api/v1/message/query with search field", async () => {
+    let searchBody: Record<string, unknown> | null = null;
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/api/v1/server/info")) {
+        return new Response(
+          JSON.stringify({ data: { private_api: true, helper_connected: true } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("/api/v1/message/query")) {
+        searchBody = JSON.parse(init?.body as string ?? "{}");
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                guid: "bb-msg-999",
+                text: "bluebubbles result",
+                isFromMe: true,
+                dateCreated: 1713340800000,
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not mocked", { status: 500 });
+    }) as unknown as typeof fetch;
+
+    const results = await searchIMessages(
+      { query: "bluebubbles result", limit: 5 },
+      {
+        preferredBackend: "bluebubbles",
+        bluebubblesUrl: "http://127.0.0.1:5678",
+        bluebubblesPassword: "pw",
+      },
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].id).toBe("bb-msg-999");
+    expect(results[0].text).toBe("bluebubbles result");
+
+    // Confirm the search field was passed and no regex was applied.
+    expect(searchBody).not.toBeNull();
+    expect(searchBody!.search).toBe("bluebubbles result");
+    expect(searchBody!.limit).toBe(5);
+  });
+});
+
+describe("getIMessageDeliveryStatus", () => {
+  test("imsg backend returns unknown for all IDs (no CLI delivery command)", async () => {
+    setExecFile(
+      (file, args) => file === "imsg" && args[0] === "--version",
+      { stdout: "imsg 2.0.0\n" },
+    );
+
+    const results = await getIMessageDeliveryStatus(["id-1", "id-2"]);
+
+    expect(results).toHaveLength(2);
+    for (const result of results) {
+      expect(result.status).toBe("unknown");
+      expect(result.isRead).toBeNull();
+      expect(result.isDelivered).toBeNull();
+    }
+  });
+
+  test("BlueBubbles backend fetches per-message delivery metadata", async () => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/api/v1/server/info")) {
+        return new Response(
+          JSON.stringify({ data: { private_api: true, helper_connected: true } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("/api/v1/message/read-msg")) {
+        return new Response(
+          JSON.stringify({ data: { guid: "read-msg", isRead: true, isDelivered: true } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("/api/v1/message/sent-msg")) {
+        return new Response(
+          JSON.stringify({ data: { guid: "sent-msg", isRead: false, isDelivered: true } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not mocked", { status: 500 });
+    }) as unknown as typeof fetch;
+
+    const results = await getIMessageDeliveryStatus(
+      ["read-msg", "sent-msg"],
+      {
+        preferredBackend: "bluebubbles",
+        bluebubblesUrl: "http://127.0.0.1:5678",
+        bluebubblesPassword: "pw",
+      },
+    );
+
+    expect(results).toHaveLength(2);
+    const readResult = results.find((r) => r.messageId === "read-msg");
+    expect(readResult?.status).toBe("delivered_read");
+    expect(readResult?.isRead).toBe(true);
+
+    const sentResult = results.find((r) => r.messageId === "sent-msg");
+    expect(sentResult?.status).toBe("delivered");
+    expect(sentResult?.isDelivered).toBe(true);
+  });
+
+  test("returns empty array for empty message ID list", async () => {
+    const results = await getIMessageDeliveryStatus([]);
+    expect(results).toEqual([]);
   });
 });
