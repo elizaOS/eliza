@@ -56,6 +56,16 @@ import {
 } from "./defaults.js";
 import { materializeDefinitionOccurrences } from "./engine.js";
 import { refreshLifeOpsScheduleInsight } from "./schedule-insight.js";
+import {
+  deriveLocalScheduleObservations,
+  isFreshCloudMergedState,
+  mergeScheduleObservations,
+  preferEffectiveMergedState,
+  recordsFromSyncRequest,
+  resolveScheduleDeviceIdentity,
+  SCHEDULE_CLOUD_SYNC_TTL_MS,
+  SCHEDULE_OBSERVATION_LOOKBACK_MS,
+} from "./schedule-state.js";
 import { computeDefinitionPerformance } from "./service-helpers-occurrence.js";
 import {
   createLifeOpsActivitySignal,
@@ -63,7 +73,17 @@ import {
   createLifeOpsReminderAttempt,
   createLifeOpsReminderPlan,
   createLifeOpsWebsiteAccessGrant,
+  type LifeOpsScheduleMergedStateRecord,
+  type LifeOpsScheduleObservationRecord,
 } from "./repository.js";
+import {
+  LIFEOPS_SCHEDULE_DEVICE_KINDS,
+  LIFEOPS_SCHEDULE_OBSERVATION_STATES,
+  type LifeOpsScheduleMergedState,
+  type SyncLifeOpsScheduleObservationInput,
+  type SyncLifeOpsScheduleObservationsRequest,
+  type SyncLifeOpsScheduleObservationsResponse,
+} from "./schedule-sync-contracts.js";
 import {
   fail,
   lifeOpsErrorMessage,
@@ -1444,6 +1464,368 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return createdPlan;
     }
 
+    private serializeScheduleObservationForSync(
+      observation: LifeOpsScheduleObservationRecord,
+    ): SyncLifeOpsScheduleObservationInput {
+      const metadata = isRecord(observation.metadata) ? observation.metadata : null;
+      const rawSnapshot = metadata?.snapshot;
+      const snapshot = isRecord(rawSnapshot)
+        ? { ...rawSnapshot }
+        : undefined;
+      const extraMetadata =
+        metadata && typeof metadata === "object"
+          ? Object.fromEntries(
+              Object.entries(metadata).filter(
+                ([key]) => key !== "snapshot" && key !== "source",
+              ),
+            )
+          : {};
+      return {
+        state: observation.state,
+        windowStartAt: observation.windowStartAt,
+        windowEndAt: observation.windowEndAt,
+        phase: observation.phase,
+        mealLabel: observation.mealLabel,
+        confidence: observation.confidence,
+        snapshot,
+        metadata:
+          Object.keys(extraMetadata).length > 0 ? extraMetadata : undefined,
+      };
+    }
+
+    public async refreshLocalMergedScheduleState(args?: {
+      timezone?: string | null;
+      now?: Date;
+    }): Promise<LifeOpsScheduleMergedStateRecord | null> {
+      const timezone =
+        normalizeOptionalString(args?.timezone) ?? resolveDefaultTimeZone();
+      const now = args?.now ?? new Date();
+      const insight = await refreshLifeOpsScheduleInsight({
+        runtime: this.runtime,
+        repository: this.repository,
+        agentId: this.agentId(),
+        timezone,
+        now,
+      });
+      const deviceIdentity = resolveScheduleDeviceIdentity();
+      const observations = deriveLocalScheduleObservations({
+        agentId: this.agentId(),
+        deviceId: deviceIdentity.deviceId,
+        deviceKind: deviceIdentity.deviceKind,
+        timezone,
+        observedAt: now.toISOString(),
+        insight,
+      });
+      for (const observation of observations) {
+        await this.repository.upsertScheduleObservation(observation);
+      }
+      const sinceAt = new Date(
+        now.getTime() - SCHEDULE_OBSERVATION_LOOKBACK_MS,
+      ).toISOString();
+      const recentObservations = await this.repository.listScheduleObservations(
+        this.agentId(),
+        sinceAt,
+        {
+          origin: "local_inference",
+          deviceId: deviceIdentity.deviceId,
+        },
+      );
+      const merged = mergeScheduleObservations({
+        agentId: this.agentId(),
+        scope: "local",
+        timezone,
+        now,
+        observations: recentObservations,
+      });
+      if (!merged) {
+        return await this.repository.getScheduleMergedState(
+          this.agentId(),
+          "local",
+          timezone,
+        );
+      }
+      await this.repository.upsertScheduleMergedState(merged);
+      return (
+        (await this.repository.getScheduleMergedState(
+          this.agentId(),
+          "local",
+          timezone,
+        )) ?? merged
+      );
+    }
+
+    public async ingestScheduleObservations(
+      request: SyncLifeOpsScheduleObservationsRequest,
+    ): Promise<SyncLifeOpsScheduleObservationsResponse> {
+      const deviceId = requireNonEmptyString(request?.deviceId, "deviceId");
+      const deviceKind = normalizeEnumValue(
+        request?.deviceKind,
+        "deviceKind",
+        LIFEOPS_SCHEDULE_DEVICE_KINDS,
+      );
+      const timezone = requireNonEmptyString(request?.timezone, "timezone");
+      const observedAt =
+        normalizeOptionalIsoString(request?.observedAt, "observedAt") ??
+        new Date().toISOString();
+      if (!Array.isArray(request?.observations) || request.observations.length === 0) {
+        fail(400, "observations must be a non-empty array");
+      }
+      const observations = request.observations.map((input, index) => {
+        const record = requireRecord(input, `observations[${index}]`);
+        const confidence =
+          typeof record.confidence === "string"
+            ? Number(record.confidence)
+            : record.confidence;
+        if (typeof confidence !== "number" || !Number.isFinite(confidence)) {
+          fail(400, `observations[${index}].confidence must be a number`);
+        }
+        return {
+          state: normalizeEnumValue(
+            record.state,
+            `observations[${index}].state`,
+            LIFEOPS_SCHEDULE_OBSERVATION_STATES,
+          ),
+          windowStartAt: normalizeIsoString(
+            record.windowStartAt,
+            `observations[${index}].windowStartAt`,
+          ),
+          windowEndAt: normalizeOptionalIsoString(
+            record.windowEndAt,
+            `observations[${index}].windowEndAt`,
+          ),
+          phase:
+            record.phase === undefined || record.phase === null
+              ? null
+              : requireNonEmptyString(
+                  record.phase,
+                  `observations[${index}].phase`,
+                ),
+          mealLabel:
+            record.mealLabel === undefined || record.mealLabel === null
+              ? null
+              : requireNonEmptyString(
+                  record.mealLabel,
+                  `observations[${index}].mealLabel`,
+                ),
+          confidence,
+          snapshot:
+            record.snapshot === undefined
+              ? undefined
+              : normalizeOptionalRecord(
+                  record.snapshot,
+                  `observations[${index}].snapshot`,
+                ) ?? null,
+          metadata:
+            record.metadata === undefined
+              ? undefined
+              : normalizeOptionalRecord(
+                  record.metadata,
+                  `observations[${index}].metadata`,
+                ),
+        } satisfies SyncLifeOpsScheduleObservationInput;
+      });
+      const normalizedRequest = {
+        deviceId,
+        deviceKind,
+        timezone,
+        observedAt,
+        observations,
+      } satisfies SyncLifeOpsScheduleObservationsRequest;
+      const records = recordsFromSyncRequest({
+        agentId: this.agentId(),
+        origin: "device_sync",
+        request: normalizedRequest,
+      });
+      for (const record of records) {
+        await this.repository.upsertScheduleObservation(record);
+      }
+      const now = new Date(observedAt);
+      const recentObservations = await this.repository.listScheduleObservations(
+        this.agentId(),
+        new Date(now.getTime() - SCHEDULE_OBSERVATION_LOOKBACK_MS).toISOString(),
+      );
+      const merged = mergeScheduleObservations({
+        agentId: this.agentId(),
+        scope: "cloud",
+        timezone,
+        now,
+        observations: recentObservations,
+      });
+      if (!merged) {
+        fail(409, "unable to merge schedule observations");
+      }
+      await this.repository.upsertScheduleMergedState(merged);
+      return {
+        acceptedCount: records.length,
+        mergedState: merged,
+      };
+    }
+
+    public async fetchCloudMergedScheduleState(args?: {
+      timezone?: string | null;
+    }): Promise<LifeOpsScheduleMergedStateRecord | null> {
+      const timezone =
+        normalizeOptionalString(args?.timezone) ?? resolveDefaultTimeZone();
+      const cached = await this.repository.getScheduleMergedState(
+        this.agentId(),
+        "cloud",
+        timezone,
+      );
+      if (!this.scheduleSyncClient.configured) {
+        return cached;
+      }
+      try {
+        const response = await this.scheduleSyncClient.getMergedState(
+          timezone,
+          "cloud",
+        );
+        if (!response.mergedState) {
+          return cached;
+        }
+        await this.repository.upsertScheduleMergedState(response.mergedState);
+        return (
+          (await this.repository.getScheduleMergedState(
+            this.agentId(),
+            "cloud",
+            timezone,
+          )) ?? response.mergedState
+        );
+      } catch (error) {
+        this.logLifeOpsWarn(
+          "schedule_fetch_cloud_state",
+          "[lifeops] Failed to fetch merged cloud schedule state; using cached state.",
+          { error: lifeOpsErrorMessage(error) },
+        );
+        return cached;
+      }
+    }
+
+    public async readEffectiveScheduleState(args?: {
+      timezone?: string | null;
+      now?: Date;
+    }): Promise<LifeOpsScheduleMergedStateRecord | null> {
+      const timezone =
+        normalizeOptionalString(args?.timezone) ?? resolveDefaultTimeZone();
+      const now = args?.now ?? new Date();
+      const local = await this.repository.getScheduleMergedState(
+        this.agentId(),
+        "local",
+        timezone,
+      );
+      const cloud = await this.repository.getScheduleMergedState(
+        this.agentId(),
+        "cloud",
+        timezone,
+      );
+      return preferEffectiveMergedState({
+        now,
+        local,
+        cloud,
+      });
+    }
+
+    public async refreshEffectiveScheduleState(args?: {
+      timezone?: string | null;
+      now?: Date;
+    }): Promise<LifeOpsScheduleMergedStateRecord | null> {
+      const timezone =
+        normalizeOptionalString(args?.timezone) ?? resolveDefaultTimeZone();
+      const now = args?.now ?? new Date();
+      const local = await this.refreshLocalMergedScheduleState({
+        timezone,
+        now,
+      });
+      let cloud = await this.repository.getScheduleMergedState(
+        this.agentId(),
+        "cloud",
+        timezone,
+      );
+      if (!this.scheduleSyncClient.configured) {
+        return preferEffectiveMergedState({ now, local, cloud });
+      }
+      if (!isFreshCloudMergedState(cloud, now)) {
+        const deviceIdentity = resolveScheduleDeviceIdentity();
+        const localObservations = await this.repository.listScheduleObservations(
+          this.agentId(),
+          new Date(
+            now.getTime() - SCHEDULE_OBSERVATION_LOOKBACK_MS,
+          ).toISOString(),
+          {
+            origin: "local_inference",
+            deviceId: deviceIdentity.deviceId,
+          },
+        );
+        try {
+          if (localObservations.length > 0) {
+            const response = await this.scheduleSyncClient.syncObservations({
+              deviceId: deviceIdentity.deviceId,
+              deviceKind: deviceIdentity.deviceKind,
+              timezone,
+              observedAt: now.toISOString(),
+              observations: localObservations.map((observation) =>
+                this.serializeScheduleObservationForSync(observation),
+              ),
+            });
+            await this.repository.upsertScheduleMergedState(response.mergedState);
+            cloud =
+              (await this.repository.getScheduleMergedState(
+                this.agentId(),
+                "cloud",
+                timezone,
+              )) ?? response.mergedState;
+          } else {
+            cloud = await this.fetchCloudMergedScheduleState({ timezone });
+          }
+        } catch (error) {
+          this.logLifeOpsWarn(
+            "schedule_sync",
+            "[lifeops] Failed to sync coarse schedule observations; using local state.",
+            { error: lifeOpsErrorMessage(error) },
+          );
+          if (
+            !cloud ||
+            now.getTime() - Date.parse(cloud.updatedAt) > SCHEDULE_CLOUD_SYNC_TTL_MS
+          ) {
+            cloud = await this.fetchCloudMergedScheduleState({ timezone });
+          }
+        }
+      }
+      return preferEffectiveMergedState({ now, local, cloud });
+    }
+
+    public async getScheduleMergedState(args?: {
+      timezone?: string | null;
+      scope?: "local" | "cloud" | "effective";
+      refresh?: boolean;
+      now?: Date;
+    }): Promise<LifeOpsScheduleMergedStateRecord | null> {
+      const timezone =
+        normalizeOptionalString(args?.timezone) ?? resolveDefaultTimeZone();
+      const scope = args?.scope ?? "effective";
+      if (scope === "effective") {
+        return args?.refresh
+          ? await this.refreshEffectiveScheduleState({
+              timezone,
+              now: args?.now,
+            })
+          : await this.readEffectiveScheduleState({
+              timezone,
+              now: args?.now,
+            });
+      }
+      if (scope === "local" && args?.refresh) {
+        return await this.refreshLocalMergedScheduleState({
+          timezone,
+          now: args?.now,
+        });
+      }
+      return await this.repository.getScheduleMergedState(
+        this.agentId(),
+        scope,
+        timezone,
+      );
+    }
+
     /** Max age for the cached adaptive window policy (30 minutes). */
     public static readonly ADAPTIVE_POLICY_TTL_MS = 30 * 60 * 1000;
 
@@ -1483,10 +1865,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
                 : null,
             )
           : null;
-        const schedule = await refreshLifeOpsScheduleInsight({
-          runtime: this.runtime,
-          repository: this.repository,
-          agentId: this.agentId(),
+        const schedule = await this.refreshEffectiveScheduleState({
           timezone,
           now,
         });
@@ -1697,10 +2076,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
 
     public async readReminderActivityProfileSnapshot(): Promise<ReminderActivityProfileSnapshot | null> {
       try {
-        const schedule = await refreshLifeOpsScheduleInsight({
-          runtime: this.runtime,
-          repository: this.repository,
-          agentId: this.agentId(),
+        const schedule = await this.refreshEffectiveScheduleState({
           timezone: resolveDefaultTimeZone(),
         });
         const tasks = await this.runtime.getTasks({

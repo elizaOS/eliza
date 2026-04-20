@@ -20,6 +20,7 @@ import type {
   LifeOpsRelationship,
   LifeOpsRelationshipInteraction,
   LifeOpsScheduleInsight,
+  LifeOpsScheduleMealInsight,
   LifeOpsScreenTimeDaily,
   LifeOpsScreenTimeSession,
   LifeOpsGmailMessageSummary,
@@ -62,6 +63,10 @@ import type {
   LifeOpsSubscriptionCandidate,
   LifeOpsSubscriptionCancellation,
 } from "./subscriptions-types.js";
+import type {
+  LifeOpsScheduleMergedState,
+  LifeOpsScheduleObservation,
+} from "./schedule-sync-contracts.js";
 import type {
   EmailUnsubscribeMethod,
   EmailUnsubscribeRecord,
@@ -115,6 +120,12 @@ export interface LifeOpsScheduleInsightRecord extends LifeOpsScheduleInsight {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface LifeOpsScheduleObservationRecord
+  extends LifeOpsScheduleObservation {}
+
+export interface LifeOpsScheduleMergedStateRecord
+  extends LifeOpsScheduleMergedState {}
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -1188,6 +1199,106 @@ function parseScreenTimeDaily(
   };
 }
 
+function parseScheduleObservation(
+  row: Record<string, unknown>,
+): LifeOpsScheduleObservationRecord {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    origin: toText(row.origin) as LifeOpsScheduleObservationRecord["origin"],
+    deviceId: toText(row.device_id),
+    deviceKind: toText(
+      row.device_kind,
+    ) as LifeOpsScheduleObservationRecord["deviceKind"],
+    timezone: toText(row.timezone, "UTC"),
+    observedAt: toText(row.observed_at),
+    windowStartAt: toText(row.window_start_at),
+    windowEndAt: row.window_end_at ? toText(row.window_end_at) : null,
+    state: toText(row.state) as LifeOpsScheduleObservationRecord["state"],
+    phase: row.phase
+      ? (toText(row.phase) as LifeOpsScheduleObservationRecord["phase"])
+      : null,
+    mealLabel: row.meal_label
+      ? (toText(row.meal_label) as LifeOpsScheduleObservationRecord["mealLabel"])
+      : null,
+    confidence: toNumber(row.confidence, 0),
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
+
+function parseScheduleMergedState(
+  row: Record<string, unknown>,
+): LifeOpsScheduleMergedStateRecord {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    scope: toText(row.scope) as LifeOpsScheduleMergedStateRecord["scope"],
+    mergedAt: toText(row.merged_at),
+    effectiveDayKey: toText(row.effective_day_key),
+    localDate: toText(row.local_date),
+    timezone: toText(row.timezone, "UTC"),
+    inferredAt: toText(row.inferred_at),
+    phase: toText(row.phase) as LifeOpsScheduleMergedStateRecord["phase"],
+    sleepStatus: toText(
+      row.sleep_status,
+    ) as LifeOpsScheduleMergedStateRecord["sleepStatus"],
+    isProbablySleeping: toBoolean(row.is_probably_sleeping),
+    sleepConfidence: toNumber(row.sleep_confidence, 0),
+    currentSleepStartedAt: row.current_sleep_started_at
+      ? toText(row.current_sleep_started_at)
+      : null,
+    lastSleepStartedAt: row.last_sleep_started_at
+      ? toText(row.last_sleep_started_at)
+      : null,
+    lastSleepEndedAt: row.last_sleep_ended_at
+      ? toText(row.last_sleep_ended_at)
+      : null,
+    lastSleepDurationMinutes:
+      row.last_sleep_duration_minutes !== null &&
+      row.last_sleep_duration_minutes !== undefined &&
+      row.last_sleep_duration_minutes !== ""
+      ? toNumber(row.last_sleep_duration_minutes, 0)
+      : null,
+    typicalWakeHour:
+      row.typical_wake_hour !== null &&
+      row.typical_wake_hour !== undefined &&
+      row.typical_wake_hour !== ""
+      ? toNumber(row.typical_wake_hour, 0)
+      : null,
+    typicalSleepHour:
+      row.typical_sleep_hour !== null &&
+      row.typical_sleep_hour !== undefined &&
+      row.typical_sleep_hour !== ""
+      ? toNumber(row.typical_sleep_hour, 0)
+      : null,
+    wakeAt: row.wake_at ? toText(row.wake_at) : null,
+    firstActiveAt: row.first_active_at ? toText(row.first_active_at) : null,
+    lastActiveAt: row.last_active_at ? toText(row.last_active_at) : null,
+    meals: parseJsonArray<LifeOpsScheduleMealInsight>(row.meals_json),
+    lastMealAt: row.last_meal_at ? toText(row.last_meal_at) : null,
+    nextMealLabel: row.next_meal_label
+      ? (toText(row.next_meal_label) as LifeOpsScheduleMergedStateRecord["nextMealLabel"])
+      : null,
+    nextMealWindowStartAt: row.next_meal_window_start_at
+      ? toText(row.next_meal_window_start_at)
+      : null,
+    nextMealWindowEndAt: row.next_meal_window_end_at
+      ? toText(row.next_meal_window_end_at)
+      : null,
+    nextMealConfidence: toNumber(row.next_meal_confidence, 0),
+    observationCount: toNumber(row.observation_count, 0),
+    deviceCount: toNumber(row.device_count, 0),
+    contributingDeviceKinds: parseJsonArray<
+      LifeOpsScheduleMergedStateRecord["contributingDeviceKinds"][number]
+    >(row.contributing_device_kinds_json),
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
+
 function parseSchedulingNegotiation(
   row: Record<string, unknown>,
 ): LifeOpsSchedulingNegotiation {
@@ -2090,6 +2201,68 @@ export class LifeOpsRepository {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         UNIQUE(agent_id, effective_day_key)
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_schedule_observations (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        origin TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        device_kind TEXT NOT NULL,
+        timezone TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        window_start_at TEXT NOT NULL,
+        window_end_at TEXT,
+        state TEXT NOT NULL,
+        phase TEXT,
+        meal_label TEXT,
+        confidence REAL NOT NULL DEFAULT 0,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_schedule_merged_states (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        effective_day_key TEXT NOT NULL,
+        local_date TEXT NOT NULL,
+        timezone TEXT NOT NULL,
+        merged_at TEXT NOT NULL,
+        inferred_at TEXT NOT NULL,
+        phase TEXT NOT NULL,
+        sleep_status TEXT NOT NULL,
+        is_probably_sleeping BOOLEAN NOT NULL DEFAULT FALSE,
+        sleep_confidence REAL NOT NULL DEFAULT 0,
+        current_sleep_started_at TEXT,
+        last_sleep_started_at TEXT,
+        last_sleep_ended_at TEXT,
+        last_sleep_duration_minutes INTEGER,
+        typical_wake_hour REAL,
+        typical_sleep_hour REAL,
+        wake_at TEXT,
+        first_active_at TEXT,
+        last_active_at TEXT,
+        last_meal_at TEXT,
+        next_meal_label TEXT,
+        next_meal_window_start_at TEXT,
+        next_meal_window_end_at TEXT,
+        next_meal_confidence REAL NOT NULL DEFAULT 0,
+        meals_json TEXT NOT NULL DEFAULT '[]',
+        observation_count INTEGER NOT NULL DEFAULT 0,
+        device_count INTEGER NOT NULL DEFAULT 0,
+        contributing_device_kinds_json TEXT NOT NULL DEFAULT '[]',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(agent_id, scope, timezone)
       )`,
     );
 
@@ -5391,6 +5564,177 @@ export class LifeOpsRepository {
          metadata_json = EXCLUDED.metadata_json,
          updated_at = EXCLUDED.updated_at`,
     );
+  }
+
+  async upsertScheduleObservation(
+    observation: LifeOpsScheduleObservationRecord,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_schedule_observations (
+         id, agent_id, origin, device_id, device_kind, timezone, observed_at,
+         window_start_at, window_end_at, state, phase, meal_label,
+         confidence, metadata_json, created_at, updated_at
+       ) VALUES (
+         ${sqlQuote(observation.id)},
+         ${sqlQuote(observation.agentId)},
+         ${sqlQuote(observation.origin)},
+         ${sqlQuote(observation.deviceId)},
+         ${sqlQuote(observation.deviceKind)},
+         ${sqlQuote(observation.timezone)},
+         ${sqlQuote(observation.observedAt)},
+         ${sqlQuote(observation.windowStartAt)},
+         ${sqlText(observation.windowEndAt)},
+         ${sqlQuote(observation.state)},
+         ${sqlText(observation.phase)},
+         ${sqlText(observation.mealLabel)},
+         ${sqlNumber(observation.confidence)},
+         ${sqlJson(observation.metadata)},
+         ${sqlQuote(observation.createdAt)},
+         ${sqlQuote(observation.updatedAt)}
+       )
+       ON CONFLICT(id) DO UPDATE SET
+         observed_at = EXCLUDED.observed_at,
+         window_end_at = EXCLUDED.window_end_at,
+         phase = EXCLUDED.phase,
+         meal_label = EXCLUDED.meal_label,
+         confidence = EXCLUDED.confidence,
+         metadata_json = EXCLUDED.metadata_json,
+         updated_at = EXCLUDED.updated_at`,
+    );
+  }
+
+  async listScheduleObservations(
+    agentId: string,
+    sinceAt: string,
+    opts?: {
+      origin?: LifeOpsScheduleObservationRecord["origin"];
+      deviceId?: string;
+      limit?: number;
+    },
+  ): Promise<LifeOpsScheduleObservationRecord[]> {
+    const clauses = [
+      `agent_id = ${sqlQuote(agentId)}`,
+      `observed_at >= ${sqlQuote(sinceAt)}`,
+    ];
+    if (opts?.origin) {
+      clauses.push(`origin = ${sqlQuote(opts.origin)}`);
+    }
+    if (opts?.deviceId) {
+      clauses.push(`device_id = ${sqlQuote(opts.deviceId)}`);
+    }
+    const limitClause =
+      typeof opts?.limit === "number"
+        ? `LIMIT ${sqlInteger(opts.limit)}`
+        : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_schedule_observations
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY observed_at DESC
+        ${limitClause}`,
+    );
+    return rows.map(parseScheduleObservation);
+  }
+
+  async upsertScheduleMergedState(
+    state: LifeOpsScheduleMergedStateRecord,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_schedule_merged_states (
+         id, agent_id, scope, effective_day_key, local_date, timezone,
+         merged_at, inferred_at, phase, sleep_status, is_probably_sleeping,
+         sleep_confidence, current_sleep_started_at, last_sleep_started_at,
+         last_sleep_ended_at, last_sleep_duration_minutes, typical_wake_hour,
+         typical_sleep_hour, wake_at, first_active_at, last_active_at,
+         last_meal_at, next_meal_label, next_meal_window_start_at,
+         next_meal_window_end_at, next_meal_confidence, meals_json,
+         observation_count, device_count, contributing_device_kinds_json,
+         metadata_json, created_at, updated_at
+       ) VALUES (
+         ${sqlQuote(state.id)},
+         ${sqlQuote(state.agentId)},
+         ${sqlQuote(state.scope)},
+         ${sqlQuote(state.effectiveDayKey)},
+         ${sqlQuote(state.localDate)},
+         ${sqlQuote(state.timezone)},
+         ${sqlQuote(state.mergedAt)},
+         ${sqlQuote(state.inferredAt)},
+         ${sqlQuote(state.phase)},
+         ${sqlQuote(state.sleepStatus)},
+         ${sqlBoolean(state.isProbablySleeping)},
+         ${sqlNumber(state.sleepConfidence)},
+         ${sqlText(state.currentSleepStartedAt)},
+         ${sqlText(state.lastSleepStartedAt)},
+         ${sqlText(state.lastSleepEndedAt)},
+         ${sqlInteger(state.lastSleepDurationMinutes)},
+         ${sqlNumber(state.typicalWakeHour)},
+         ${sqlNumber(state.typicalSleepHour)},
+         ${sqlText(state.wakeAt)},
+         ${sqlText(state.firstActiveAt)},
+         ${sqlText(state.lastActiveAt)},
+         ${sqlText(state.lastMealAt)},
+         ${sqlText(state.nextMealLabel)},
+         ${sqlText(state.nextMealWindowStartAt)},
+         ${sqlText(state.nextMealWindowEndAt)},
+         ${sqlNumber(state.nextMealConfidence)},
+         ${sqlJson(state.meals)},
+         ${sqlInteger(state.observationCount)},
+         ${sqlInteger(state.deviceCount)},
+         ${sqlJson(state.contributingDeviceKinds)},
+         ${sqlJson(state.metadata)},
+         ${sqlQuote(state.createdAt)},
+         ${sqlQuote(state.updatedAt)}
+       )
+       ON CONFLICT(agent_id, scope, timezone) DO UPDATE SET
+         effective_day_key = EXCLUDED.effective_day_key,
+         local_date = EXCLUDED.local_date,
+         merged_at = EXCLUDED.merged_at,
+         inferred_at = EXCLUDED.inferred_at,
+         phase = EXCLUDED.phase,
+         sleep_status = EXCLUDED.sleep_status,
+         is_probably_sleeping = EXCLUDED.is_probably_sleeping,
+         sleep_confidence = EXCLUDED.sleep_confidence,
+         current_sleep_started_at = EXCLUDED.current_sleep_started_at,
+         last_sleep_started_at = EXCLUDED.last_sleep_started_at,
+         last_sleep_ended_at = EXCLUDED.last_sleep_ended_at,
+         last_sleep_duration_minutes = EXCLUDED.last_sleep_duration_minutes,
+         typical_wake_hour = EXCLUDED.typical_wake_hour,
+         typical_sleep_hour = EXCLUDED.typical_sleep_hour,
+         wake_at = EXCLUDED.wake_at,
+         first_active_at = EXCLUDED.first_active_at,
+         last_active_at = EXCLUDED.last_active_at,
+         last_meal_at = EXCLUDED.last_meal_at,
+         next_meal_label = EXCLUDED.next_meal_label,
+         next_meal_window_start_at = EXCLUDED.next_meal_window_start_at,
+         next_meal_window_end_at = EXCLUDED.next_meal_window_end_at,
+         next_meal_confidence = EXCLUDED.next_meal_confidence,
+         meals_json = EXCLUDED.meals_json,
+         observation_count = EXCLUDED.observation_count,
+         device_count = EXCLUDED.device_count,
+         contributing_device_kinds_json = EXCLUDED.contributing_device_kinds_json,
+         metadata_json = EXCLUDED.metadata_json,
+         updated_at = EXCLUDED.updated_at`,
+    );
+  }
+
+  async getScheduleMergedState(
+    agentId: string,
+    scope: LifeOpsScheduleMergedStateRecord["scope"],
+    timezone: string,
+  ): Promise<LifeOpsScheduleMergedStateRecord | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_schedule_merged_states
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND scope = ${sqlQuote(scope)}
+          AND timezone = ${sqlQuote(timezone)}
+        LIMIT 1`,
+    );
+    return rows[0] ? parseScheduleMergedState(rows[0]) : null;
   }
 
   async listScreenTimeDaily(

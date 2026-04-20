@@ -193,6 +193,8 @@ const LIFEOPS_STATIC_ROUTES: Array<{ type: string; path: string; public?: boolea
   { type: "GET", path: "/api/lifeops/browser/current-page" },
   { type: "POST", path: "/api/lifeops/browser/sync" },
   { type: "POST", path: "/api/lifeops/browser/sessions" },
+  { type: "POST", path: "/api/lifeops/schedule/observations" },
+  { type: "GET", path: "/api/lifeops/schedule/merged-state" },
   { type: "GET", path: "/api/lifeops/overview" },
   { type: "GET", path: "/api/lifeops/seed-templates" },
   { type: "POST", path: "/api/lifeops/seed" },

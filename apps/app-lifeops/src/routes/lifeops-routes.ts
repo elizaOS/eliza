@@ -60,6 +60,10 @@ import {
   loadLifeOpsAppState,
   saveLifeOpsAppState,
 } from "../lifeops/app-state.js";
+import {
+  LIFEOPS_SCHEDULE_STATE_SCOPES,
+  type SyncLifeOpsScheduleObservationsRequest,
+} from "../lifeops/schedule-sync-contracts.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import {
   buildLifeOpsBrowserCompanionPackage,
@@ -1595,6 +1599,56 @@ export async function handleLifeOpsRoutes(
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       json(res, { session: await service.createBrowserSession(body) }, 201);
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/schedule/observations") {
+    const body = await readJsonBody<SyncLifeOpsScheduleObservationsRequest>(
+      req,
+      res,
+    );
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.ingestScheduleObservations(body));
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/schedule/merged-state") {
+    const scopeParam = url.searchParams.get("scope");
+    const scope = scopeParam?.trim() ?? "";
+    if (
+      scope.length > 0 &&
+      !LIFEOPS_SCHEDULE_STATE_SCOPES.includes(
+        scope as (typeof LIFEOPS_SCHEDULE_STATE_SCOPES)[number],
+      ) &&
+      scope !== "effective"
+    ) {
+      ctx.error(res, "scope must be local, cloud, or effective", 400);
+      return true;
+    }
+    const refreshParam = url.searchParams.get("refresh")?.trim().toLowerCase();
+    if (
+      refreshParam &&
+      refreshParam !== "1" &&
+      refreshParam !== "0" &&
+      refreshParam !== "true" &&
+      refreshParam !== "false"
+    ) {
+      ctx.error(res, "refresh must be true, false, 1, or 0", 400);
+      return true;
+    }
+    const refresh = refreshParam === "1" || refreshParam === "true";
+    return runRoute(ctx, async (service) => {
+      json(res, {
+        mergedState: await service.getScheduleMergedState({
+          timezone: url.searchParams.get("timezone"),
+          scope:
+            scope.length > 0
+              ? (scope as "local" | "cloud" | "effective")
+              : undefined,
+          refresh,
+        }),
+      });
     });
   }
 
