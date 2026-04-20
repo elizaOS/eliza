@@ -29,6 +29,7 @@ export interface ActivityAppBreakdown {
   bundleId: string;
   appName: string;
   totalMs: number;
+  sessionCount: number;
   sampleWindowTitles: string[];
 }
 
@@ -94,6 +95,7 @@ function aggregateByApp(
       bundleId: string;
       appName: string;
       totalMs: number;
+      sessionCount: number;
       titles: Set<string>;
     }
   >();
@@ -108,11 +110,13 @@ function aggregateByApp(
         bundleId: it.bundleId,
         appName: it.appName,
         totalMs: 0,
+        sessionCount: 0,
         titles: new Set<string>(),
       };
       byKey.set(key, bucket);
     }
     bucket.totalMs += durationMs;
+    bucket.sessionCount += 1;
     const redacted = redactWindowTitle(it.windowTitle, redactor);
     if (redacted !== null && redacted.length > 0 && bucket.titles.size < 5) {
       bucket.titles.add(redacted);
@@ -123,6 +127,7 @@ function aggregateByApp(
       bundleId: b.bundleId,
       appName: b.appName,
       totalMs: b.totalMs,
+      sessionCount: b.sessionCount,
       sampleWindowTitles: [...b.titles],
     }))
     .sort((a, b) => b.totalMs - a.totalMs);
@@ -132,22 +137,41 @@ function aggregateByApp(
   };
 }
 
-export async function getActivityReport(
+export async function getActivityReportBetween(
   runtime: IAgentRuntime,
   agentId: string,
-  options: ActivityReportOptions,
+  options: {
+    sinceMs: number;
+    untilMs: number;
+    limit?: number;
+    redactor?: RedactorConfig;
+  },
 ): Promise<ActivityReport> {
-  const nowMs = options.nowMs ?? Date.now();
-  const sinceMs = nowMs - options.windowMs;
+  const sinceMs = Math.max(0, Math.trunc(options.sinceMs));
+  const untilMs = Math.max(sinceMs, Math.trunc(options.untilMs));
   const redactor = options.redactor ?? resolveRedactorConfigFromEnv();
   const events = await listActivityEvents(
     runtime,
     agentId,
     new Date(sinceMs).toISOString(),
   );
-  const intervals = intervalsFromEvents(events, sinceMs, nowMs);
+  const intervals = intervalsFromEvents(events, sinceMs, untilMs);
   const { apps, totalMs } = aggregateByApp(intervals, redactor, options.limit);
-  return { sinceMs, untilMs: nowMs, totalMs, apps };
+  return { sinceMs, untilMs, totalMs, apps };
+}
+
+export async function getActivityReport(
+  runtime: IAgentRuntime,
+  agentId: string,
+  options: ActivityReportOptions,
+): Promise<ActivityReport> {
+  const nowMs = options.nowMs ?? Date.now();
+  return getActivityReportBetween(runtime, agentId, {
+    sinceMs: nowMs - options.windowMs,
+    untilMs: nowMs,
+    limit: options.limit,
+    redactor: options.redactor,
+  });
 }
 
 export async function getTimeOnApp(
