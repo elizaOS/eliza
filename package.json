@@ -121,7 +121,7 @@
     "@uniswap/sdk-core": "^5.9.0",
     "@uniswap/v3-sdk": "3.28.0",
     "@uniswap/v2-sdk": "4.20.0",
-    "@uniswap/v4-sdk": "1.14.2",
+    "@uniswap/v4-sdk": "1.30.0",
     "drizzle-orm": "^0.45.1"
   },
   "trustedDependencies": [
