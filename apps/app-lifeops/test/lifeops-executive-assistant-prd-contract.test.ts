@@ -221,10 +221,26 @@ describe("LifeOps executive-assistant PRD fixture invariants (shape-only, not be
       const firstCustomCheck = (scenario.finalChecks ?? []).find(
         (check) => check.type === "custom",
       );
-      const firstCheckResult = await firstCustomCheck?.predicate?.({
-        actionsCalled: [],
-        turns: [],
-      });
+      // Stronger-than-nothing predicate sanity check: feed the predicate an
+      // obviously-wrong context (a bogus action, a throwaway user turn, no
+      // side-effect arrays) and assert the predicate REJECTS it — i.e.
+      // returns a non-empty error string. A predicate that passes on this
+      // input is a LARP: it would also pass on any real scenario run, so
+      // the "assertion" is doing no work. This still doesn't execute the
+      // scenario; it only proves the predicate can say "no".
+      const bogusCtx = {
+        actionsCalled: [
+          { actionName: "WRONG_ACTION", parameters: {} } as unknown,
+        ],
+        turns: [{ role: "user", content: { text: "random" } } as unknown],
+        approvalRequests: [],
+        connectorDispatches: [],
+        memoryWrites: [],
+        stateTransitions: [],
+      };
+      const bogusResult = await firstCustomCheck?.predicate?.(
+        bogusCtx as Parameters<NonNullable<ScenarioFinalCheck["predicate"]>>[0],
+      );
 
       expect(scenario.id).toBe(catalogScenario.id);
       expect(scenario.domain).toBe("executive-assistant");
@@ -238,7 +254,14 @@ describe("LifeOps executive-assistant PRD fixture invariants (shape-only, not be
       expect(scenarioSource).not.toContain("NotYetImplemented");
       expect(typeof firstTurn?.assertTurn).toBe("function");
       expect(firstCustomCheck?.type).toBe("custom");
-      expect(String(firstCheckResult ?? "")).not.toContain("NotYetImplemented");
+      // A functioning predicate must produce a non-empty string error when
+      // given bogus context. `undefined` / "" would mean the predicate
+      // rubber-stamps anything.
+      expect(
+        typeof bogusResult === "string" && bogusResult.length > 0,
+        `${catalogScenario.id}: first custom predicate accepted an obviously-wrong context (WRONG_ACTION, random text) — predicate is a no-op. Result was: ${JSON.stringify(bogusResult)}`,
+      ).toBe(true);
+      expect(String(bogusResult ?? "")).not.toContain("NotYetImplemented");
       expect(catalogScenario.integrations.length).toBeGreaterThan(0);
       expect(catalogScenario.providers.length).toBeGreaterThan(0);
       expect(catalogScenario.actions.length).toBeGreaterThan(0);
