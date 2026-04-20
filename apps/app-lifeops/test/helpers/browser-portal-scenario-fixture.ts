@@ -368,6 +368,10 @@ export async function createBrowserPortalScenarioRuntime(agentId: string) {
     useModel: async () => {
       throw new Error("scenario fixtures should not invoke useModel");
     },
+    // NOTE: this is a canned string-match router, not a planner. See the
+    // file-level JSDoc above. Each branch below is pinned to a specific
+    // phrase in the companion scenario fixtures; if a new scenario prompt
+    // is added it must also be routed here or the final `throw` trips.
     handleTurn: async ({
       message,
       onResponse,
