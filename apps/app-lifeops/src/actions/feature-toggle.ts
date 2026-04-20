@@ -13,7 +13,7 @@ import { hasOwnerAccess } from "@elizaos/agent/security";
 import { createFeatureFlagService } from "../lifeops/feature-flags.js";
 import {
   ALL_FEATURE_KEYS,
-  FEATURE_DEFAULTS,
+  BASE_FEATURE_DEFAULTS,
   type LifeOpsFeatureKey,
   isLifeOpsFeatureKey,
 } from "../lifeops/feature-flags.types.js";
@@ -50,7 +50,7 @@ function trimToNull(value: unknown): string | null {
 
 function buildFeatureCatalog(): string {
   return ALL_FEATURE_KEYS.map((key) => {
-    const def = FEATURE_DEFAULTS[key];
+    const def = BASE_FEATURE_DEFAULTS[key];
     return `- ${key}: ${def.description}${def.costsMoney ? " (costs money)" : ""}`;
   }).join("\n");
 }
@@ -124,7 +124,7 @@ function buildConfirmation(
   source: string,
   reason: string | null,
 ): string {
-  const def = FEATURE_DEFAULTS[key];
+  const def = BASE_FEATURE_DEFAULTS[key];
   const verb = enabled ? "Enabled" : "Disabled";
   const tail = reason ? ` (${reason})` : "";
   const cost = def.costsMoney && enabled

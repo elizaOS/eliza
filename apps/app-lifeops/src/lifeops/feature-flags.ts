@@ -1,13 +1,14 @@
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import { type IAgentRuntime, logger, type Service } from "@elizaos/core";
 import {
   ALL_FEATURE_KEYS,
-  FEATURE_DEFAULTS,
+  BASE_FEATURE_DEFAULTS,
   type FeatureFlagChangeListener,
   type FeatureFlagService,
   type FeatureFlagSource,
   type FeatureFlagState,
   type LifeOpsFeatureKey,
   isLifeOpsFeatureKey,
+  resolveFeatureDefaults,
 } from "./feature-flags.types.js";
 import {
   executeRawSql,
@@ -22,26 +23,19 @@ import {
 /**
  * SQL-backed FeatureFlagService.
  *
- * Reads & writes the `lifeops_features` table. Schema is bootstrapped lazily
- * the first time a method runs against a given runtime, so callers do not
- * need to depend on the upstream plugin migration order.
+ * Reads & writes the `lifeops_features` table. Schema ownership lives in the
+ * app-lifeops plugin schema and is migrated up front via plugin-sql.
  *
- * Compile-time defaults (`FEATURE_DEFAULTS`) are the authority when no row
- * exists. The runtime never writes a row with `source = 'default'` —
- * absence is the canonical representation of an unmodified default
- * (Commandment 7).
+ * Compile-time defaults (`BASE_FEATURE_DEFAULTS` resolved through
+ * `resolveFeatureDefaults`) are the authority when no row exists. The
+ * runtime never writes a row with `source = 'default'` — absence is the
+ * canonical representation of an unmodified default (Commandment 7).
+ *
+ * Cloud-link awareness: when a `CLOUD_AUTH` runtime service reports the
+ * user is signed into Eliza Cloud, travel features and `cloud.duffel`
+ * default to ON. The Cloud-side billing layer applies a 5% service fee;
+ * the local code never recomputes that markup (Commandment 2).
  */
-
-const ENSURE_SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS lifeops_features (
-  feature_key TEXT PRIMARY KEY,
-  enabled BOOLEAN NOT NULL,
-  source TEXT NOT NULL,
-  enabled_at TIMESTAMPTZ,
-  enabled_by UUID,
-  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-)`;
 
 const SELECT_COLUMNS =
   "feature_key, enabled, source, enabled_at, enabled_by, metadata, created_at, updated_at";
@@ -51,9 +45,22 @@ const ALLOWED_SOURCES: ReadonlySet<FeatureFlagSource> = new Set([
   "cloud",
 ]);
 
+interface CloudAuthService extends Service {
+  isAuthenticated(): boolean;
+}
+
+function readCloudLinked(runtime: IAgentRuntime): boolean {
+  const service = runtime.getService<CloudAuthService>("CLOUD_AUTH");
+  if (!service || typeof service.isAuthenticated !== "function") {
+    return false;
+  }
+  return service.isAuthenticated() === true;
+}
+
 function rowToState(
   row: Record<string, unknown>,
   fallback: LifeOpsFeatureKey,
+  cloudLinked: boolean,
 ): FeatureFlagState {
   const featureKeyText = toText(row.feature_key);
   if (!isLifeOpsFeatureKey(featureKeyText)) {
@@ -62,7 +69,8 @@ function rowToState(
     );
   }
   const featureKey = featureKeyText;
-  const def = FEATURE_DEFAULTS[featureKey];
+  const defaults = resolveFeatureDefaults({ cloudLinked });
+  const def = defaults[featureKey];
   const sourceText = toText(row.source);
   if (!ALLOWED_SOURCES.has(sourceText as FeatureFlagSource)) {
     throw new Error(`[FeatureFlags] unknown source from db: ${sourceText}`);
@@ -93,8 +101,12 @@ function rowToState(
   };
 }
 
-function defaultState(key: LifeOpsFeatureKey): FeatureFlagState {
-  const def = FEATURE_DEFAULTS[key];
+function defaultState(
+  key: LifeOpsFeatureKey,
+  cloudLinked: boolean,
+): FeatureFlagState {
+  const defaults = resolveFeatureDefaults({ cloudLinked });
+  const def = defaults[key];
   return {
     featureKey: key,
     enabled: def.enabled,
@@ -110,16 +122,30 @@ function defaultState(key: LifeOpsFeatureKey): FeatureFlagState {
 class PgFeatureFlagService implements FeatureFlagService {
   private readonly runtime: IAgentRuntime;
   private readonly listeners = new Set<FeatureFlagChangeListener>();
-  private bootstrapped = false;
+  /**
+   * Per-request cache of the Cloud-link state. Service instances live for
+   * the runtime's lifetime; we re-resolve on every entrypoint call so that
+   * sign-in/sign-out flips are picked up without restarting the runtime.
+   * The cache exists only to dedupe within a single high-level call (e.g.
+   * `list()` resolves once even though it composes many rows).
+   */
+  private cloudLinkedSnapshot: boolean | null = null;
 
   constructor(runtime: IAgentRuntime) {
     this.runtime = runtime;
   }
 
-  private async ensureSchema(): Promise<void> {
-    if (this.bootstrapped) return;
-    await executeRawSql(this.runtime, ENSURE_SCHEMA_SQL);
-    this.bootstrapped = true;
+  private snapshotCloudLinked(): boolean {
+    if (this.cloudLinkedSnapshot !== null) {
+      return this.cloudLinkedSnapshot;
+    }
+    const linked = readCloudLinked(this.runtime);
+    this.cloudLinkedSnapshot = linked;
+    return linked;
+  }
+
+  private clearCloudSnapshot(): void {
+    this.cloudLinkedSnapshot = null;
   }
 
   async isEnabled(key: LifeOpsFeatureKey): Promise<boolean> {
@@ -128,28 +154,38 @@ class PgFeatureFlagService implements FeatureFlagService {
   }
 
   async get(key: LifeOpsFeatureKey): Promise<FeatureFlagState> {
-    await this.ensureSchema();
-    const sql = `SELECT ${SELECT_COLUMNS} FROM lifeops_features
-      WHERE feature_key = ${sqlText(key)}
-      LIMIT 1`;
-    const rows = await executeRawSql(this.runtime, sql);
-    if (rows.length === 0) {
-      return defaultState(key);
+    const cloudLinked = this.snapshotCloudLinked();
+    try {
+      const sql = `SELECT ${SELECT_COLUMNS} FROM lifeops_features
+        WHERE feature_key = ${sqlText(key)}
+        LIMIT 1`;
+      const rows = await executeRawSql(this.runtime, sql);
+      if (rows.length === 0) {
+        return defaultState(key, cloudLinked);
+      }
+      return rowToState(rows[0], key, cloudLinked);
+    } finally {
+      this.clearCloudSnapshot();
     }
-    return rowToState(rows[0], key);
   }
 
   async list(): Promise<ReadonlyArray<FeatureFlagState>> {
-    await this.ensureSchema();
-    const sql = `SELECT ${SELECT_COLUMNS} FROM lifeops_features`;
-    const rows = await executeRawSql(this.runtime, sql);
-    const byKey = new Map<LifeOpsFeatureKey, FeatureFlagState>();
-    for (const row of rows) {
-      const text = toText(row.feature_key);
-      if (!isLifeOpsFeatureKey(text)) continue;
-      byKey.set(text, rowToState(row, text));
+    const cloudLinked = this.snapshotCloudLinked();
+    try {
+      const sql = `SELECT ${SELECT_COLUMNS} FROM lifeops_features`;
+      const rows = await executeRawSql(this.runtime, sql);
+      const byKey = new Map<LifeOpsFeatureKey, FeatureFlagState>();
+      for (const row of rows) {
+        const text = toText(row.feature_key);
+        if (!isLifeOpsFeatureKey(text)) continue;
+        byKey.set(text, rowToState(row, text, cloudLinked));
+      }
+      return ALL_FEATURE_KEYS.map(
+        (key) => byKey.get(key) ?? defaultState(key, cloudLinked),
+      );
+    } finally {
+      this.clearCloudSnapshot();
     }
-    return ALL_FEATURE_KEYS.map((key) => byKey.get(key) ?? defaultState(key));
   }
 
   enable(
@@ -188,45 +224,49 @@ class PgFeatureFlagService implements FeatureFlagService {
         "[FeatureFlags] refusing to write a row with source='default'",
       );
     }
-    await this.ensureSchema();
-    const enabledAtSql = enabled
-      ? `(${sqlText(new Date().toISOString())}::timestamptz)`
-      : "NULL";
-    const enabledBySql = enabledBy ? sqlText(enabledBy) : "NULL";
-    const metadataSql = sqlJson(metadata ?? {});
-    const sql = `INSERT INTO lifeops_features (
-        feature_key, enabled, source, enabled_at, enabled_by, metadata, created_at, updated_at
-      ) VALUES (
-        ${sqlText(key)},
-        ${sqlBoolean(enabled)},
-        ${sqlText(source)},
-        ${enabledAtSql},
-        ${enabledBySql},
-        ${metadataSql},
-        now(),
-        now()
-      )
-      ON CONFLICT (feature_key) DO UPDATE SET
-        enabled = EXCLUDED.enabled,
-        source = EXCLUDED.source,
-        enabled_at = EXCLUDED.enabled_at,
-        enabled_by = EXCLUDED.enabled_by,
-        metadata = EXCLUDED.metadata,
-        updated_at = now()
-      RETURNING ${SELECT_COLUMNS}`;
-    const rows = await executeRawSql(this.runtime, sql);
-    if (rows.length === 0) {
-      throw new Error(`[FeatureFlags] upsert returned no rows for ${key}`);
+    const cloudLinked = this.snapshotCloudLinked();
+    try {
+      const enabledAtSql = enabled
+        ? `(${sqlText(new Date().toISOString())}::timestamptz)`
+        : "NULL";
+      const enabledBySql = enabledBy ? sqlText(enabledBy) : "NULL";
+      const metadataSql = sqlJson(metadata ?? {});
+      const sql = `INSERT INTO lifeops_features (
+          feature_key, enabled, source, enabled_at, enabled_by, metadata, created_at, updated_at
+        ) VALUES (
+          ${sqlText(key)},
+          ${sqlBoolean(enabled)},
+          ${sqlText(source)},
+          ${enabledAtSql},
+          ${enabledBySql},
+          ${metadataSql},
+          now(),
+          now()
+        )
+        ON CONFLICT (feature_key) DO UPDATE SET
+          enabled = EXCLUDED.enabled,
+          source = EXCLUDED.source,
+          enabled_at = EXCLUDED.enabled_at,
+          enabled_by = EXCLUDED.enabled_by,
+          metadata = EXCLUDED.metadata,
+          updated_at = now()
+        RETURNING ${SELECT_COLUMNS}`;
+      const rows = await executeRawSql(this.runtime, sql);
+      if (rows.length === 0) {
+        throw new Error(`[FeatureFlags] upsert returned no rows for ${key}`);
+      }
+      const state = rowToState(rows[0], key, cloudLinked);
+      logger.info(
+        `[FeatureFlags] ${key} ${enabled ? "enabled" : "disabled"} via ${source}` +
+          (enabledBy ? ` by ${enabledBy}` : ""),
+      );
+      for (const listener of this.listeners) {
+        listener(state);
+      }
+      return state;
+    } finally {
+      this.clearCloudSnapshot();
     }
-    const state = rowToState(rows[0], key);
-    logger.info(
-      `[FeatureFlags] ${key} ${enabled ? "enabled" : "disabled"} via ${source}` +
-        (enabledBy ? ` by ${enabledBy}` : ""),
-    );
-    for (const listener of this.listeners) {
-      listener(state);
-    }
-    return state;
   }
 }
 
@@ -248,15 +288,24 @@ export function createFeatureFlagService(
 
 /**
  * Convenience guard for action handlers. Throws `FeatureNotEnabledError`
- * when the feature is off.
+ * when the feature is off, with Cloud-aware messaging so the planner can
+ * suggest signing in to Eliza Cloud as the easiest path.
  */
 export async function requireFeatureEnabled(
   runtime: IAgentRuntime,
   key: LifeOpsFeatureKey,
 ): Promise<void> {
   const service = createFeatureFlagService(runtime);
-  if (!(await service.isEnabled(key))) {
-    const { FeatureNotEnabledError } = await import("./feature-flags.types.js");
-    throw new FeatureNotEnabledError(key);
-  }
+  if (await service.isEnabled(key)) return;
+  const { FeatureNotEnabledError } = await import("./feature-flags.types.js");
+  throw new FeatureNotEnabledError(key, {
+    cloudLinked: readCloudLinked(runtime),
+  });
 }
+
+/**
+ * Re-export of the baseline. Most callers should use
+ * `resolveFeatureDefaults({cloudLinked})` instead — this constant exists
+ * for descriptions/labels that do not vary with Cloud-link state.
+ */
+export { BASE_FEATURE_DEFAULTS } from "./feature-flags.types.js";
