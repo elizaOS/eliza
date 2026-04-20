@@ -13,7 +13,13 @@ import {
   drainLifeOpsGithubCallbacks,
 } from "../platform/lifeops-github.js";
 import { useLifeOpsAppState } from "../hooks/useLifeOpsAppState.js";
-import { ChevronDown } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronDown,
+  ListChecks,
+  Mail,
+  MessageCircle,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
 import { LifeOpsBrowserSetupPanel } from "./LifeOpsBrowserSetupPanel";
@@ -581,6 +587,9 @@ export function LifeOpsPageView() {
     ],
   );
 
+  const showEnablePrompt =
+    !lifeOpsApp.loading && !lifeOpsApp.error && !appEnabled;
+
   return (
     <div
       className="space-y-6 px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6"
@@ -610,6 +619,78 @@ export function LifeOpsPageView() {
         ) : null}
       </div>
 
+      {showEnablePrompt ? (
+        <section className="space-y-5 rounded-3xl border border-border/16 bg-card/18 px-4 py-6 sm:px-6 sm:py-7">
+          <div className="space-y-2">
+            <div className="text-base font-semibold text-txt">
+              Your personal assistant for calendar, email, and routines
+            </div>
+            <div className="text-sm leading-relaxed text-muted">
+              Enable LifeOps to let the agent triage email, manage your
+              calendar, and keep your goals and reminders on track. You pick
+              which accounts and permissions to connect after turning it on.
+            </div>
+          </div>
+
+          <ul className="grid gap-3 sm:grid-cols-2">
+            <li className="flex items-start gap-3 rounded-2xl bg-bg/36 px-3 py-3">
+              <Mail className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
+              <div>
+                <div className="text-sm font-medium text-txt">Gmail triage</div>
+                <div className="text-xs text-muted">
+                  Spot replies that need you and draft responses for review.
+                </div>
+              </div>
+            </li>
+            <li className="flex items-start gap-3 rounded-2xl bg-bg/36 px-3 py-3">
+              <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
+              <div>
+                <div className="text-sm font-medium text-txt">Calendar</div>
+                <div className="text-xs text-muted">
+                  See today and the week ahead. Create events without leaving
+                  the app.
+                </div>
+              </div>
+            </li>
+            <li className="flex items-start gap-3 rounded-2xl bg-bg/36 px-3 py-3">
+              <ListChecks className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
+              <div>
+                <div className="text-sm font-medium text-txt">
+                  Goals &amp; reminders
+                </div>
+                <div className="text-xs text-muted">
+                  Track habits, goals, and routines with gentle follow-ups.
+                </div>
+              </div>
+            </li>
+            <li className="flex items-start gap-3 rounded-2xl bg-bg/36 px-3 py-3">
+              <MessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
+              <div>
+                <div className="text-sm font-medium text-txt">Messaging</div>
+                <div className="text-xs text-muted">
+                  Connect Signal, Discord, Telegram, or iMessage so the agent
+                  can reach you.
+                </div>
+              </div>
+            </li>
+          </ul>
+
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <Button
+              size="sm"
+              className="rounded-full px-5 py-2 text-xs-tight font-semibold"
+              onClick={() => void handleSetLifeOpsEnabled(true)}
+              disabled={lifeOpsApp.loading || lifeOpsApp.saving}
+            >
+              {lifeOpsApp.saving ? "Enabling…" : "Enable LifeOps"}
+            </Button>
+            <span className="text-xs text-muted">
+              You can disable LifeOps at any time.
+            </span>
+          </div>
+        </section>
+      ) : null}
+
       {appEnabled && runtimeReady ? (
         <>
           <section className="overflow-hidden rounded-3xl border border-border/16 bg-card/18">
@@ -619,7 +700,12 @@ export function LifeOpsPageView() {
               onClick={() => setSetupOpen((current) => !current)}
               aria-expanded={setupOpen}
             >
-              <div className="text-sm font-semibold text-txt">Setup</div>
+              <div>
+                <div className="text-sm font-semibold text-txt">Setup</div>
+                <div className="mt-0.5 text-xs text-muted">
+                  Connect Google, GitHub, and messaging accounts.
+                </div>
+              </div>
               <ChevronDown
                 className={`h-4 w-4 text-muted transition-transform ${
                   setupOpen ? "rotate-180" : ""
@@ -645,17 +731,19 @@ export function LifeOpsPageView() {
         </>
       ) : null}
 
-      <div className="flex justify-end border-t border-border/16 pt-2">
-        <Button
-          variant={appEnabled ? "surfaceDestructive" : "default"}
-          size="sm"
-          className="rounded-full px-4 text-xs-tight font-semibold"
-          onClick={() => void handleSetLifeOpsEnabled(!appEnabled)}
-          disabled={lifeOpsApp.loading || lifeOpsApp.saving}
-        >
-          {appEnabled ? "Disable LifeOps" : "Enable LifeOps"}
-        </Button>
-      </div>
+      {appEnabled ? (
+        <div className="flex justify-end border-t border-border/16 pt-2">
+          <Button
+            variant="surfaceDestructive"
+            size="sm"
+            className="rounded-full px-4 text-xs-tight font-semibold"
+            onClick={() => void handleSetLifeOpsEnabled(false)}
+            disabled={lifeOpsApp.loading || lifeOpsApp.saving}
+          >
+            Disable LifeOps
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }
