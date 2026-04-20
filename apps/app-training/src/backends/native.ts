@@ -28,6 +28,7 @@ import {
 	runBootstrapFewshot,
 	runInstructionSearch,
 	runPromptEvolution,
+	scorePlannerAction,
 	type UseModelHandler,
 } from "../optimizers/index.js";
 import type { TrajectoryTrainingTask } from "../core/trajectory-task-datasets.js";
@@ -169,7 +170,9 @@ export async function runNativeBackend(
 	}
 
 	const adapter = options.adapter ?? createRuntimeAdapter(options.runtime.useModel);
-	const scorer = createPromptScorer(adapter);
+	const scorer = createPromptScorer(adapter, {
+		compare: options.task === "action_planner" ? scorePlannerAction : undefined,
+	});
 	const result = await dispatchOptimizer(options.optimizer, {
 		baselinePrompt: options.baselinePrompt,
 		dataset,

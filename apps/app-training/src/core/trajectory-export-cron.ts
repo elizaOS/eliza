@@ -21,6 +21,7 @@ import {
 	type AnonymizerLookup,
 	type FilterableTrajectory,
 } from "./privacy-filter.js";
+import { waitForService } from "./wait-for-service.js";
 
 const EXPORT_EVENT_NAME = "TRACK_C_TRAJECTORY_EXPORT";
 const DEFAULT_TRAJECTORY_LIMIT = 500;
@@ -175,10 +176,10 @@ export async function registerTrajectoryExportCron(
 		warn: () => {},
 		error: () => {},
 	};
-	const cronService = runtime.getService("CRON") as CronServiceLike | null;
+	const cronService = await waitForService<CronServiceLike>(runtime, "CRON");
 	if (!cronService || typeof cronService.createJob !== "function") {
 		log.warn(
-			"[TrajectoryExportCron] CRON service unavailable; export cron not scheduled",
+			"[TrajectoryExportCron] CRON service unavailable after 10s; export cron not scheduled",
 		);
 		return;
 	}

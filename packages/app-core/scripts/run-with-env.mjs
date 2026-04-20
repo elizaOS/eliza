@@ -38,6 +38,15 @@ if (
   env.NODE_NO_WARNINGS = "1";
 }
 
+const liveTestsEnabled =
+  env.MILADY_LIVE_TEST === "1" || env.ELIZA_LIVE_TEST === "1";
+if (liveTestsEnabled && env.LOCAL_EMBEDDING_FORCE_CPU == null) {
+  env.LOCAL_EMBEDDING_FORCE_CPU = "1";
+}
+if (liveTestsEnabled && env.ELIZA_DISABLE_LOCAL_EMBEDDINGS == null) {
+  env.ELIZA_DISABLE_LOCAL_EMBEDDINGS = "1";
+}
+
 const result = spawnSync(command, commandArgs, {
   stdio: "inherit",
   env,

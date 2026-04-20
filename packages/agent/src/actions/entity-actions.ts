@@ -1,5 +1,6 @@
 import type {
   Action,
+  ActionExample,
   HandlerOptions,
   IAgentRuntime,
   UUID,
@@ -282,6 +283,36 @@ export const searchEntityAction: Action = {
       schema: { type: "number" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Look up Jill in my contacts.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Search results for "Jill" | 2 contacts found\n  1 | Jill Park — discord, telegram — 12 facts\n  2 | Jill Summers — slack — 3 facts',
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Who do I know on Discord with the handle marco?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Search results for "marco" | 1 contact found\n  1 | Marco Pierre — discord — 4 facts',
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 // ---------------------------------------------------------------------------
@@ -430,6 +461,36 @@ export const readEntityAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Give me the full rundown on Jill Park.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "## Identity\nName: Jill Park\nPlatforms: discord, telegram\n## Facts\n- Works at Acme on the Ops team.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Show me everything you know about entity 9f1c3a22-...",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "## Identity\nName: Marco Pierre\nPlatforms: discord\n## Facts\n- Met at the 2025 offsite.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 // ---------------------------------------------------------------------------
@@ -729,4 +790,34 @@ export const linkEntityAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "My Telegram contact Jill and my Discord contact jill_park are the same person.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Proposed a link between those two entities. Confirm to apply.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Yes, go ahead and merge those two contacts — same human.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Linked the two entities. Their identities and facts now share one rolodex entry.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

@@ -88,12 +88,83 @@ function fail(
   };
 }
 
+// Validation terminates the turn cleanly: success: true at the ActionResult
+// level (so the orchestrator does not retry), but values.success: false so
+// downstream consumers see the logical failure. Carries descriptive text.
+function validationTerminate(
+  error: string,
+  text: string,
+  extra: Record<string, unknown> = {},
+): ActionResult {
+  return {
+    text,
+    success: true,
+    values: { success: false, error, ...extra },
+    data: { actionName: ACTION_NAME, error, ...extra },
+  };
+}
+
+// Parse flat key=value params that arrive as a raw string instead of nested
+// XML/JSON. Handles quoted and unquoted values.
+function parseFlatParams(raw: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const re = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s]+))/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw)) !== null) {
+    out[m[1]] = m[2] ?? m[3] ?? m[4] ?? "";
+  }
+  return out;
+}
+
+// Tolerate a wider shape: if `params` is a string (or carries a rawParams
+// blob), attempt flat parsing and merge into a typed object.
+function normalizeParams(
+  raw: unknown,
+): IntentSyncParameters & Record<string, unknown> {
+  if (typeof raw === "string") {
+    return parseFlatParams(raw);
+  }
+  if (raw && typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    const merged: Record<string, unknown> = { ...obj };
+    const rawParams = obj.rawParams ?? obj.raw;
+    if (typeof rawParams === "string") {
+      const parsed = parseFlatParams(rawParams);
+      for (const [k, v] of Object.entries(parsed)) {
+        if (merged[k] === undefined) merged[k] = v;
+      }
+    }
+    return merged as IntentSyncParameters & Record<string, unknown>;
+  }
+  return {} as IntentSyncParameters & Record<string, unknown>;
+}
+
 export const intentSyncAction: Action = {
   name: ACTION_NAME,
-  similes: ["BROADCAST_INTENT", "SYNC_INTENT", "CROSS_DEVICE_INTENT"],
+  similes: [
+    "BROADCAST_INTENT",
+    "SYNC_INTENT",
+    "CROSS_DEVICE_INTENT",
+    "BROADCAST_TO_DEVICE",
+    "PUSH_TO_MOBILE",
+    "PUSH_TO_PHONE",
+    "PUSH_TO_DESKTOP",
+    "ROUTINE_REMINDER",
+    "DEVICE_REMINDER",
+    "SEND_TO_DEVICE",
+  ],
   description:
-    "Broadcast intents across devices or acknowledge pending intents. " +
-    "Subactions: broadcast, list_pending, acknowledge, prune_expired.",
+    "Broadcast a structured device-level intent (routine_reminder, location_alert, " +
+    "task_nudge, focus_prompt, calendar_event, habit_check, etc.) to one or more " +
+    "of the owner's devices (mobile, desktop, watch, all, or a specific device id), " +
+    "or acknowledge/list/prune pending intents. Subactions: broadcast, list_pending, " +
+    "acknowledge, prune_expired. " +
+    "Use this for any 'broadcast/push/send <intent> to my phone/mobile/desktop/devices' " +
+    "request, or 'remind me on my phone to X' — the target is a device, not a chat " +
+    "channel. Do NOT use CROSS_CHANNEL_SEND for device-targeted reminders: " +
+    "CROSS_CHANNEL_SEND is for sending chat messages to another person on a " +
+    "messaging platform (email/discord/telegram/signal/etc.), while INTENT_SYNC " +
+    "pushes a structured intent record to the owner's own devices.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasAdminAccess(runtime, message),
@@ -219,15 +290,29 @@ export const intentSyncAction: Action = {
       return fail("PERMISSION_DENIED");
     }
 
-    const params =
-      ((options as HandlerOptions | undefined)?.parameters as
-        | IntentSyncParameters
-        | undefined) ?? {};
+    const rawParams = (options as HandlerOptions | undefined)?.parameters;
+    const params = normalizeParams(rawParams);
 
-    const subactionRaw = coerceString(params.subaction);
-    if (!subactionRaw) return fail("MISSING_SUBACTION");
+    let subactionRaw = coerceString(params.subaction);
+    if (!subactionRaw) {
+      // Tolerate LLMs that emit the verb in `mode` / `action` field name
+      // variants (parameter-key normalization only — not free-text inference).
+      subactionRaw =
+        coerceString((params as Record<string, unknown>).mode) ??
+        coerceString((params as Record<string, unknown>).action);
+    }
+    if (!subactionRaw) {
+      return validationTerminate(
+        "MISSING_SUBACTION",
+        "I couldn't tell whether you wanted to broadcast, list, acknowledge, or prune an intent. Please say which.",
+      );
+    }
     if (!isSubaction(subactionRaw)) {
-      return fail("UNKNOWN_SUBACTION", { subaction: subactionRaw });
+      return validationTerminate(
+        "UNKNOWN_SUBACTION",
+        `Unknown INTENT_SYNC subaction "${subactionRaw}". Expected one of: ${SUBACTIONS.join(", ")}.`,
+        { subaction: subactionRaw },
+      );
     }
     const subaction: Subaction = subactionRaw;
 
@@ -235,10 +320,31 @@ export const intentSyncAction: Action = {
       const kindRaw = coerceString(params.kind);
       const title = coerceString(params.title);
       const body = coerceString(params.body);
-      if (!kindRaw) return fail("MISSING_KIND");
-      if (!isKind(kindRaw)) return fail("UNKNOWN_KIND", { kind: kindRaw });
-      if (!title) return fail("MISSING_TITLE");
-      if (!body) return fail("MISSING_BODY");
+      if (!kindRaw) {
+        return validationTerminate(
+          "MISSING_KIND",
+          `I need an intent kind to broadcast (one of: ${LIFE_INTENT_KINDS.join(", ")}).`,
+        );
+      }
+      if (!isKind(kindRaw)) {
+        return validationTerminate(
+          "UNKNOWN_KIND",
+          `Unknown intent kind "${kindRaw}". Expected one of: ${LIFE_INTENT_KINDS.join(", ")}.`,
+          { kind: kindRaw },
+        );
+      }
+      if (!title) {
+        return validationTerminate(
+          "MISSING_TITLE",
+          "I need a short title for the intent before I can broadcast it.",
+        );
+      }
+      if (!body) {
+        return validationTerminate(
+          "MISSING_BODY",
+          "I need a body for the intent before I can broadcast it.",
+        );
+      }
 
       const targetRaw = coerceString(params.target) ?? "all";
       if (!isTarget(targetRaw)) {

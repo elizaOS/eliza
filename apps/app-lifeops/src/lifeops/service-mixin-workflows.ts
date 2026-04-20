@@ -2,6 +2,8 @@
 import type {
   CreateLifeOpsWorkflowRequest,
   LifeOpsBrowserSession,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarEventEndedFilters,
   LifeOpsWorkflowDefinition,
   LifeOpsWorkflowRecord,
   LifeOpsWorkflowRun,
@@ -61,7 +63,7 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(Bas
         return null;
       }
       const schedule = workflow.schedule;
-      if (schedule.kind === "manual") {
+      if (schedule.kind === "manual" || schedule.kind === "event") {
         return null;
       }
       if (schedule.kind === "once") {
@@ -102,19 +104,8 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(Bas
     public initializeWorkflowSchedulerState(
       workflow: LifeOpsWorkflowDefinition,
     ): LifeOpsWorkflowDefinition {
-      const nextDueAt = this.computeWorkflowNextDueAt(workflow);
       const currentState = this.readWorkflowSchedulerState(workflow);
-      const targetState: LifeOpsWorkflowSchedulerState | null =
-        workflow.triggerType !== "schedule" || workflow.schedule.kind === "manual"
-          ? null
-          : {
-              managedBy: "task_worker",
-              nextDueAt,
-              lastDueAt: null,
-              lastRunId: null,
-              lastRunStatus: null,
-              updatedAt: new Date().toISOString(),
-            };
+      const targetState = this.buildInitialSchedulerState(workflow);
       if (
         (currentState === null && targetState === null) ||
         (currentState &&
@@ -122,11 +113,48 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(Bas
           currentState.nextDueAt === targetState.nextDueAt &&
           currentState.lastDueAt === targetState.lastDueAt &&
           currentState.lastRunId === targetState.lastRunId &&
-          currentState.lastRunStatus === targetState.lastRunStatus)
+          currentState.lastRunStatus === targetState.lastRunStatus &&
+          (currentState.lastFiredEventEndAt ?? null) ===
+            (targetState.lastFiredEventEndAt ?? null) &&
+          (currentState.lastFiredEventId ?? null) ===
+            (targetState.lastFiredEventId ?? null))
       ) {
         return workflow;
       }
       return this.withWorkflowSchedulerState(workflow, targetState);
+    }
+
+    buildInitialSchedulerState(
+      workflow: LifeOpsWorkflowDefinition,
+    ): LifeOpsWorkflowSchedulerState | null {
+      if (workflow.triggerType === "manual") {
+        return null;
+      }
+      if (workflow.triggerType === "event") {
+        // Anchor the cursor at workflow creation so we never fire for events
+        // that ended before the workflow existed.
+        return {
+          managedBy: "task_worker",
+          nextDueAt: null,
+          lastDueAt: null,
+          lastRunId: null,
+          lastRunStatus: null,
+          updatedAt: new Date().toISOString(),
+          lastFiredEventEndAt: workflow.createdAt,
+          lastFiredEventId: null,
+        };
+      }
+      if (workflow.schedule.kind === "manual") {
+        return null;
+      }
+      return {
+        managedBy: "task_worker",
+        nextDueAt: this.computeWorkflowNextDueAt(workflow),
+        lastDueAt: null,
+        lastRunId: null,
+        lastRunStatus: null,
+        updatedAt: new Date().toISOString(),
+      };
     }
 
     public async runDueWorkflows(args: {
@@ -197,6 +225,135 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(Bas
               workflowId: nextWorkflow.id,
               workflowRunId: run.id,
               dueAt,
+            });
+          }
+        }
+
+        if (stateChanged) {
+          nextWorkflow = this.withWorkflowSchedulerState(
+            nextWorkflow,
+            schedulerState,
+          );
+          await this.repository.updateWorkflow(nextWorkflow);
+        }
+      }
+
+      return runs;
+    }
+
+    /**
+     * Fires event-triggered workflows for calendar events that have ended since
+     * the workflow's cursor. Uses a (end_at, id) tuple cursor per workflow so
+     * repeated invocations never re-fire for the same event.
+     */
+    public async runDueEventWorkflows(args: {
+      now: string;
+      limit: number;
+    }): Promise<LifeOpsWorkflowRun[]> {
+      const workflows = await this.repository.listWorkflows(this.agentId());
+      const runs: LifeOpsWorkflowRun[] = [];
+
+      for (const workflow of workflows) {
+        if (runs.length >= args.limit) {
+          break;
+        }
+        if (
+          workflow.status !== "active" ||
+          workflow.triggerType !== "event" ||
+          workflow.schedule.kind !== "event"
+        ) {
+          continue;
+        }
+        if (workflow.schedule.eventKind !== "calendar.event.ended") {
+          continue;
+        }
+
+        let nextWorkflow = workflow;
+        const existingState = this.readWorkflowSchedulerState(nextWorkflow);
+        let schedulerState: LifeOpsWorkflowSchedulerState =
+          existingState ?? {
+            managedBy: "task_worker",
+            nextDueAt: null,
+            lastDueAt: null,
+            lastRunId: null,
+            lastRunStatus: null,
+            updatedAt: new Date().toISOString(),
+            lastFiredEventEndAt: nextWorkflow.createdAt,
+            lastFiredEventId: null,
+          };
+        let stateChanged = existingState === null;
+
+        const remaining = args.limit - runs.length;
+        const candidates =
+          await this.repository.listCalendarEventsEndedAfterCursor({
+            agentId: this.agentId(),
+            provider: "google",
+            side: "owner",
+            cursorEndAt: schedulerState.lastFiredEventEndAt ?? null,
+            cursorEventId: schedulerState.lastFiredEventId ?? null,
+            upToIso: args.now,
+            limit: Math.max(remaining * 4, 8),
+          });
+
+        const filters =
+          workflow.schedule.filters?.kind === "calendar.event.ended"
+            ? workflow.schedule.filters.filters
+            : undefined;
+
+        for (const event of candidates) {
+          if (runs.length >= args.limit) {
+            break;
+          }
+          if (!matchesCalendarEventEndedFilters(event, filters)) {
+            // Even when skipped we advance the cursor so the workflow never
+            // re-considers this event on the next tick.
+            schedulerState = {
+              ...schedulerState,
+              lastFiredEventEndAt: event.endAt,
+              lastFiredEventId: event.id,
+              updatedAt: new Date().toISOString(),
+            };
+            stateChanged = true;
+            continue;
+          }
+          const { run, error } = await this.executeWorkflowDefinition(
+            nextWorkflow,
+            {
+              startedAt: event.endAt,
+              confirmBrowserActions: false,
+              request: {
+                scheduledExecution: false,
+                event: {
+                  kind: "calendar.event.ended",
+                  eventId: event.id,
+                  calendarId: event.calendarId,
+                  title: event.title,
+                  startAt: event.startAt,
+                  endAt: event.endAt,
+                  htmlLink: event.htmlLink,
+                },
+              },
+            },
+          );
+          runs.push(run);
+          await this.emitWorkflowRunNudge(nextWorkflow, run);
+          schedulerState = {
+            ...schedulerState,
+            lastDueAt: event.endAt,
+            lastRunId: run.id,
+            lastRunStatus: run.status,
+            lastFiredEventEndAt: event.endAt,
+            lastFiredEventId: event.id,
+            updatedAt: new Date().toISOString(),
+          };
+          stateChanged = true;
+
+          if (error) {
+            this.logLifeOpsError("workflow_event_execution", error, {
+              workflowId: nextWorkflow.id,
+              workflowRunId: run.id,
+              eventId: event.id,
+              eventEndAt: event.endAt,
             });
           }
         }
@@ -582,4 +739,61 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(Bas
   }
 
   return LifeOpsWorkflowsServiceMixin;
+}
+
+export function matchesCalendarEventEndedFilters(
+  event: LifeOpsCalendarEvent,
+  filters: LifeOpsCalendarEventEndedFilters | undefined,
+): boolean {
+  if (!filters) {
+    return true;
+  }
+  if (filters.calendarIds && filters.calendarIds.length > 0) {
+    if (!filters.calendarIds.includes(event.calendarId)) {
+      return false;
+    }
+  }
+  if (filters.titleIncludesAny && filters.titleIncludesAny.length > 0) {
+    const title = (event.title ?? "").toLowerCase();
+    const matched = filters.titleIncludesAny.some((needle) =>
+      title.includes(needle.toLowerCase()),
+    );
+    if (!matched) {
+      return false;
+    }
+  }
+  if (typeof filters.minDurationMinutes === "number") {
+    const startMs = Date.parse(event.startAt);
+    const endMs = Date.parse(event.endAt);
+    if (Number.isFinite(startMs) && Number.isFinite(endMs)) {
+      const minutes = (endMs - startMs) / 60_000;
+      if (minutes < filters.minDurationMinutes) {
+        return false;
+      }
+    }
+  }
+  if (
+    filters.attendeeEmailIncludesAny &&
+    filters.attendeeEmailIncludesAny.length > 0
+  ) {
+    const attendees = Array.isArray(event.attendees) ? event.attendees : [];
+    const matched = attendees.some((attendee) => {
+      const email =
+        typeof attendee === "object" && attendee !== null
+          ? String(
+              (attendee as { email?: unknown }).email ?? "",
+            ).toLowerCase()
+          : "";
+      if (!email) {
+        return false;
+      }
+      return filters.attendeeEmailIncludesAny!.some((needle) =>
+        email.includes(needle.toLowerCase()),
+      );
+    });
+    if (!matched) {
+      return false;
+    }
+  }
+  return true;
 }

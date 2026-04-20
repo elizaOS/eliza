@@ -157,6 +157,11 @@ async function main(): Promise<number> {
   );
 
   const startedAtIso = new Date().toISOString();
+  // Note: a single bun process can only instantiate PGLite once reliably —
+  // attempting to tear down and recreate the native binding segfaults. So the
+  // CLI always uses a single shared runtime. For true per-scenario isolation
+  // (required when testing cross-scenario state leakage), invoke the CLI
+  // once per scenario from a shell loop (see scripts/run-scenarios-isolated.mjs).
   const { runtime, providerName, cleanup } = await createScenarioRuntime();
   logger.info(`[milady-scenarios] live provider: ${providerName}`);
 

@@ -11,6 +11,7 @@
 
 import type {
   Action,
+  ActionExample,
   ActionResult,
   HandlerCallback,
   IAgentRuntime,
@@ -190,6 +191,36 @@ export const approveRequestAction: Action = {
   handler: async (runtime, message, _state, _options, callback) =>
     resolveApprovalRequest(runtime, message, "approve", callback),
   parameters: [],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Yeah, go ahead and send that draft to Marco.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Approved request req-8821.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "sounds good, do it",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Approved request req-8912.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 export const rejectRequestAction: Action = {
@@ -207,4 +238,34 @@ export const rejectRequestAction: Action = {
   handler: async (runtime, message, _state, _options, callback) =>
     resolveApprovalRequest(runtime, message, "reject", callback),
   parameters: [],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "No, don't send that. Let's hold off.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Rejected request req-8821.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Skip the one about the dinner reservation — we'll do it another day.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Rejected request req-9014.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

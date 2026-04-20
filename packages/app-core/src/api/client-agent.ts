@@ -233,6 +233,7 @@ declare module "./client-base" {
       error?: string;
     }>;
     startAgent(): Promise<AgentStatus>;
+    startAndWait(maxWaitMs?: number): Promise<AgentStatus>;
     stopAgent(): Promise<AgentStatus>;
     pauseAgent(): Promise<AgentStatus>;
     resumeAgent(): Promise<AgentStatus>;
@@ -837,6 +838,88 @@ ElizaClient.prototype.startAgent = async function (this: ElizaClient) {
     method: "POST",
   });
   return res.status;
+};
+
+ElizaClient.prototype.startAndWait = async function (
+  this: ElizaClient,
+  maxWaitMs = 30_000,
+) {
+  const t0 = Date.now();
+  console.info("[eliza][lifecycle][client] startAndWait: begin", {
+    baseUrl: this.getBaseUrl(),
+    maxWaitMs,
+  });
+  try {
+    const initial = await this.getStatus();
+    if (initial.state === "running") {
+      return initial;
+    }
+  } catch (e) {
+    console.info(
+      "[eliza][lifecycle][client] startAndWait: initial status check failed",
+      e,
+    );
+  }
+  try {
+    const started = await this.startAgent();
+    if (started.state === "running") {
+      return started;
+    }
+    console.info("[eliza][lifecycle][client] startAndWait: start accepted", {
+      state: started.state,
+    });
+  } catch (e) {
+    console.info(
+      "[eliza][lifecycle][client] startAndWait: initial start call failed",
+      e,
+    );
+  }
+  const start = Date.now();
+  const interval = 1_000;
+  let pollN = 0;
+  while (Date.now() - start < maxWaitMs) {
+    await new Promise((r) => setTimeout(r, interval));
+    pollN += 1;
+    try {
+      const status = await this.getStatus();
+      if (status.state === "running") {
+        console.info("[eliza][lifecycle][client] startAndWait: running", {
+          pollN,
+          waitedMs: Date.now() - t0,
+          port: status.port,
+        });
+        return status;
+      }
+      if (status.state === "error") {
+        return status;
+      }
+      if (pollN === 1 || pollN % 5 === 0) {
+        console.debug("[eliza][lifecycle][client] startAndWait: poll", {
+          pollN,
+          state: status.state,
+          waitedMs: Date.now() - t0,
+        });
+      }
+    } catch (pollErr) {
+      if (pollN === 1 || pollN % 5 === 0) {
+        console.debug(
+          "[eliza][lifecycle][client] startAndWait: getStatus error while polling",
+          { pollN, waitedMs: Date.now() - t0 },
+          pollErr,
+        );
+      }
+    }
+  }
+  const final = await this.getStatus();
+  console.warn(
+    "[eliza][lifecycle][client] startAndWait: timed out — returning last status",
+    {
+      state: final.state,
+      waitedMs: Date.now() - t0,
+      maxWaitMs,
+    },
+  );
+  return final;
 };
 
 ElizaClient.prototype.stopAgent = async function (this: ElizaClient) {

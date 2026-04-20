@@ -400,14 +400,20 @@ export const relationshipAction: Action & {
 } = {
   name: "RELATIONSHIP",
   similes: [
+    "RELATIONSHIPS",
     "CONTACT",
+    "CONTACTS",
     "ROLODEX",
     "FOLLOW_UP",
+    "FOLLOW_UPS",
     "LOG_INTERACTION",
     "ADD_CONTACT",
+    "DAYS_SINCE",
+    "LAST_CONTACTED",
   ],
   description:
-    "Manage contacts, relationships, and follow-ups. Subactions: list_contacts, add_contact, log_interaction, add_follow_up, complete_follow_up, follow_up_list, days_since.",
+    "Manage contacts, relationships, and follow-ups. Subactions: list_contacts, add_contact, log_interaction, add_follow_up, complete_follow_up, follow_up_list, days_since." +
+    " Use for 'remind me to follow up with <person> [when]', 'add a follow-up with <person>', 'schedule a check-in with <person>' — subaction: add_follow_up. Use for 'how long since I talked to <person>' — subaction: days_since. Use for 'who do I need to follow up with' — subaction: follow_up_list.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (

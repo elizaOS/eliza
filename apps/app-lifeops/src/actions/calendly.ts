@@ -122,9 +122,20 @@ export const calendlyAction: Action = {
     "CALENDLY_AVAILABILITY",
     "CALENDLY_UPCOMING",
     "CALENDLY_BOOKING_LINK",
+    "CALENDLY_ACTION",
+    "CALENDLY_EVENT_TYPES",
+    "CALENDLY_SCHEDULED_EVENTS",
   ],
   description:
-    "Work with Calendly: list event types, check availability, list scheduled events, generate single-use booking links. Subactions: list_event_types, availability, upcoming_events, single_use_link.",
+    "Work with Calendly specifically (calendly.com / api.calendly.com): " +
+    "list event types, check availability against a Calendly event type URI, " +
+    "list Calendly-scheduled events, generate Calendly single-use booking " +
+    "links. Subactions: list_event_types, availability, upcoming_events, " +
+    "single_use_link. " +
+    "Use this — NOT CALENDAR_ACTION — whenever the user mentions Calendly by " +
+    "name or passes a calendly.com / api.calendly.com URL. CALENDAR_ACTION " +
+    "is for Google Calendar; CALENDLY is its own third-party scheduling " +
+    "product with a separate API, event-type URIs, and booking-link flow.",
 
   validate: async (
     runtime: IAgentRuntime,

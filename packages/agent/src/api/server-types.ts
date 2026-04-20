@@ -15,10 +15,15 @@ import type { ConnectorHealthMonitor } from "./connector-health.js";
 // PluginEntry and PluginParamDef are defined here to avoid a circular dependency
 // with plugin-discovery-helpers.ts (which imports from server-helpers.ts).
 import type { RegistryService } from "./registry-service.js";
-import type {
-  Trajectory,
-  TrajectoryListResult,
-} from "../types/trajectory.js";
+
+// Canonical TrainingServiceLike / TrainingServiceWithRuntime live in
+// @elizaos/app-training. Re-export here so existing callers that imported from
+// server-types keep working without duplicating the interface.
+export type {
+  TrainingServiceLike,
+  TrainingServiceWithRuntime,
+} from "@elizaos/app-training/services/training-service-like";
+import type { TrainingServiceWithRuntime } from "@elizaos/app-training/services/training-service-like";
 
 // ---------------------------------------------------------------------------
 // Conversation metadata
@@ -128,48 +133,6 @@ export type AgentAutomationMode = "connectors-only" | "full";
 
 export type TradePermissionMode =
   import("./trade-safety.js").TradePermissionMode;
-
-export interface TrainingServiceLike {
-  getStatus(): Record<string, unknown>;
-  listTrajectories(options: {
-    limit?: number;
-    offset?: number;
-  }): Promise<TrajectoryListResult>;
-  getTrajectoryById(trajectoryId: string): Promise<Trajectory | null>;
-  listDatasets(): Record<string, unknown>[];
-  buildDataset(options: {
-    limit?: number;
-    minLlmCallsPerTrajectory?: number;
-  }): Promise<Record<string, unknown>>;
-  listJobs(): Record<string, unknown>[];
-  startTrainingJob(options: {
-    datasetId?: string;
-    maxTrajectories?: number;
-    backend?: "mlx" | "cuda" | "cpu";
-    model?: string;
-    iterations?: number;
-    batchSize?: number;
-    learningRate?: number;
-  }): Promise<Record<string, unknown>>;
-  getJob(jobId: string): Record<string, unknown> | null;
-  cancelJob(jobId: string): Promise<Record<string, unknown>>;
-  listModels(): Record<string, unknown>[];
-  importModelToOllama(
-    modelId: string,
-    body: {
-      modelName?: string;
-      baseModel?: string;
-      ollamaUrl?: string;
-    },
-  ): Promise<Record<string, unknown>>;
-  activateModel(
-    modelId: string,
-    providerModel?: string,
-  ): Promise<Record<string, unknown>>;
-  benchmarkModel(modelId: string): Promise<Record<string, unknown>>;
-  subscribe(listener: (event: unknown) => void): () => void;
-  initialize(): Promise<void>;
-}
 
 // ---------------------------------------------------------------------------
 // Plugin entry types (canonical definitions — re-exported by plugin-discovery-helpers)
@@ -282,7 +245,7 @@ export interface ServerState {
   /** App manager for launching and managing elizaOS apps. */
   appManager: AppManager;
   /** Fine-tuning/training orchestration service. */
-  trainingService: TrainingServiceLike | null;
+  trainingService: TrainingServiceWithRuntime | null;
   /** ERC-8004 registry service (null when not configured). */
   registryService: RegistryService | null;
   /** Drop/mint service (null when not configured). */

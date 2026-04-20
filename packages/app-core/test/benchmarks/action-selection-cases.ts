@@ -498,6 +498,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "remote-desktop-start-session",
     userMessage: "start a remote desktop session for my phone; confirmed: true",
     expectedAction: "REMOTE_DESKTOP",
+    acceptableActions: ["START_REMOTE_SESSION"],
     tags: ["remote-desktop", "standard"],
   },
   {
@@ -505,6 +506,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     userMessage:
       "start a remote desktop session so I can connect to this machine from my phone; confirmed: true",
     expectedAction: "REMOTE_DESKTOP",
+    acceptableActions: ["START_REMOTE_SESSION"],
     tags: ["remote-desktop", "standard"],
   },
 

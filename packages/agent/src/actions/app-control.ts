@@ -12,7 +12,7 @@
  * @module actions/app-control
  */
 
-import type { Action, Memory } from "@elizaos/core";
+import type { Action, ActionExample, Memory } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
 import {
@@ -205,6 +205,36 @@ export const launchAppAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Fire up the Shopify app.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Shopify is now running. Open it here: http://localhost:2138/#/apps/shopify",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Open the companion overlay on my screen.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Companion is now running. Open it here: http://localhost:2138/#/apps/companion",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 export const stopAppAction: Action = {
@@ -292,4 +322,34 @@ export const stopAppAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Shut down Shopify, I'm done with it for now.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "shopify has been stopped.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Close the companion overlay.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "companion has been stopped.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

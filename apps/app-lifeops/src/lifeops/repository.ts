@@ -3425,6 +3425,43 @@ export class LifeOpsRepository {
     return rows.map(parseCalendarEvent);
   }
 
+  /**
+   * Returns events whose `end_at` falls in (cursorEndAt, upToIso] OR
+   * (end_at == cursorEndAt AND id > cursorId). Ordered by (end_at, id) ascending
+   * so callers can advance a tuple cursor and never re-fire for the same event.
+   */
+  async listCalendarEventsEndedAfterCursor(args: {
+    agentId: string;
+    provider: LifeOpsConnectorGrant["provider"];
+    side?: LifeOpsConnectorSide;
+    cursorEndAt: string | null;
+    cursorEventId: string | null;
+    upToIso: string;
+    limit: number;
+  }): Promise<LifeOpsCalendarEvent[]> {
+    const sideClause = args.side ? `AND side = ${sqlQuote(args.side)}` : "";
+    let cursorClause = "";
+    if (args.cursorEndAt) {
+      cursorClause = args.cursorEventId
+        ? `AND (end_at > ${sqlQuote(args.cursorEndAt)}
+              OR (end_at = ${sqlQuote(args.cursorEndAt)} AND id > ${sqlQuote(args.cursorEventId)}))`
+        : `AND end_at > ${sqlQuote(args.cursorEndAt)}`;
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_calendar_events
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND provider = ${sqlQuote(args.provider)}
+          ${sideClause}
+          AND end_at <= ${sqlQuote(args.upToIso)}
+          ${cursorClause}
+        ORDER BY end_at ASC, id ASC
+        LIMIT ${Math.max(1, Math.floor(args.limit))}`,
+    );
+    return rows.map(parseCalendarEvent);
+  }
+
   async upsertCalendarSyncState(
     state: LifeOpsCalendarSyncState,
   ): Promise<void> {

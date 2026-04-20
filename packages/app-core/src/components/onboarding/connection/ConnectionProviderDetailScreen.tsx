@@ -1132,6 +1132,7 @@ export function ConnectionProviderDetailScreen({
           <Button
             className={onboardingPrimaryActionClass}
             style={onboardingPrimaryActionTextShadowStyle}
+            data-testid="onboarding-provider-confirm"
             disabled={isConfirmDisabled}
             onClick={(e) => {
               spawnOnboardingRipple(e.currentTarget, {
