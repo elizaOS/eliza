@@ -337,6 +337,19 @@ export const calendlyAction: Action = {
             { subaction, link },
           );
         }
+
+        default: {
+          // Exhaustiveness check — if CalendlySubaction gains a new variant,
+          // TypeScript fails to compile here. If runtime bypasses the type
+          // system (e.g. `as never`), we still return a structured failure
+          // instead of falling off the end as undefined.
+          const _exhaustive: never = subaction;
+          void _exhaustive;
+          return failure(
+            `Unknown Calendly subaction: ${String(subaction)}`,
+            "UNKNOWN_SUBACTION",
+          );
+        }
       }
     } catch (error) {
       if (error instanceof CalendlyError) {
@@ -355,7 +368,22 @@ export const calendlyAction: Action = {
           { statusCode: error.status },
         );
       }
-      throw error;
+      // Declared return type is Promise<ActionResult>; never throw arbitrary
+      // errors out of the handler. Log and return a structured failure.
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(
+        {
+          boundary: "lifeops",
+          integration: "calendly",
+          subaction,
+          err: error,
+        },
+        `[lifeops] Calendly ${subaction} unexpected error: ${message}`,
+      );
+      return failure(
+        `Calendly ${subaction} failed unexpectedly: ${message}`,
+        "CALENDLY_UNEXPECTED_ERROR",
+      );
     }
   },
 };
