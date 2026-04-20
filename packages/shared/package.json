@@ -53,7 +53,8 @@
     "./dev-settings-table": "./src/dev-settings-table.ts",
     "./dev-settings-banner-style": "./src/dev-settings-banner-style.ts",
     "./dev-settings-figlet-heading": "./src/dev-settings-figlet-heading.ts",
-    "./recent-messages-state": "./src/recent-messages-state.ts"
+    "./recent-messages-state": "./src/recent-messages-state.ts",
+    "./type-guards": "./src/type-guards.ts"
   },
   "publishConfig": {
     "access": "public",

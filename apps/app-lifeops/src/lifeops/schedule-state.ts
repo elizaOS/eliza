@@ -5,6 +5,7 @@ import type {
   LifeOpsScheduleMealLabel,
   LifeOpsSchedulePhase,
 } from "@elizaos/shared/contracts/lifeops";
+import { asRecord } from "@elizaos/shared/type-guards";
 import type { LifeOpsScheduleInsightRecord } from "./repository.js";
 import type {
   LifeOpsScheduleDeviceKind,
@@ -594,13 +595,6 @@ export function recordsFromSyncRequest(args: {
       input,
     }),
   );
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
 }
 
 function observationSnapshot(

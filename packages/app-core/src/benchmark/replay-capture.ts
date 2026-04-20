@@ -1,3 +1,4 @@
+import { asRecord } from "@elizaos/shared/type-guards";
 import z from "zod";
 
 const UnknownRecord = z.record(z.string(), z.unknown());
@@ -69,11 +70,6 @@ export const ReplayArtifactSchema = z
   .strict();
 
 export type ReplayArtifact = z.infer<typeof ReplayArtifactSchema>;
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object") return null;
-  return value as Record<string, unknown>;
-}
 
 function pickString(
   record: Record<string, unknown>,

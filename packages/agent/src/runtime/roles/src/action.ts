@@ -18,6 +18,7 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
+import { asNonEmptyString, asRecord } from "@elizaos/shared/type-guards";
 import {
   extractRoleIntentWithLlm,
   looksLikeRoleIntent,
@@ -112,16 +113,8 @@ type CandidateRecord = {
   analytics: RelationshipAnalyticsLike | null;
 };
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
 function asString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : null;
+  return asNonEmptyString(value) ?? null;
 }
 
 function normalizeEntityLookupName(raw: string): string | null {

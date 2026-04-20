@@ -13,6 +13,7 @@ import {
 } from "@elizaos/agent/api/server";
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
 import { type AgentRuntime, logger } from "@elizaos/core";
+import { asRecord } from "@elizaos/shared/type-guards";
 import { CONNECTOR_ENV_MAP } from "../config/env-vars";
 import {
   CONNECTOR_PLUGINS,
@@ -239,13 +240,6 @@ function normalizePluginId(rawName: string): string {
     .replace(/^@[^/]+\/app-/, "")
     .replace(/^@[^/]+\//, "")
     .replace(/^(plugin|app)-/, "");
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
 }
 
 function resolveCompatConfigKey(

@@ -15,4 +15,5 @@ export {
   settingsDebugCloudSummary,
 } from "./settings-debug";
 export { sanitizeSpeechText } from "./spoken-text";
+export * from "./type-guards";
 export * from "./types";

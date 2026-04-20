@@ -18,6 +18,8 @@ import {
   type IAgentRuntime,
   ModelType,
 } from "@elizaos/core";
+import { asRecord } from "@elizaos/shared/type-guards";
+export { asRecord };
 
 import {
   TRAJECTORY_STEP_SCRIPT_MAX_CHARS,
@@ -143,14 +145,6 @@ let cachedSqlRaw: ((query: string) => { queryChunks: object[] }) | null = null;
 const SCHEMA_VERSION = Date.now();
 const schemaVersions = new WeakMap<object, number>();
 
-// ---------------------------------------------------------------------------
-// Generic helpers
-// ---------------------------------------------------------------------------
-
-export function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
 
 export function toText(value: unknown, fallback = ""): string {
   if (typeof value === "string") return value;

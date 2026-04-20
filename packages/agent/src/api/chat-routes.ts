@@ -26,6 +26,7 @@ import {
 } from "@elizaos/core";
 
 import { normalizeCharacterLanguage } from "@elizaos/shared/onboarding-presets";
+import { asRecord } from "@elizaos/shared/type-guards";
 import type { ElizaConfig } from "../config/config.js";
 import { resolveTrajectoryGrouping } from "../runtime/trajectory-internals.js";
 import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.js";
@@ -159,13 +160,6 @@ function ensureMessageMemoryContent(
   return typeof content.text === "string"
     ? { ...content, text: content.text }
     : { ...content, text: "" };
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
 }
 
 function buildRuntimeActionNameLookup(

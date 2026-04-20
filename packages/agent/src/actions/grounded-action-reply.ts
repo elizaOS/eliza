@@ -7,6 +7,7 @@ import {
   parseKeyValueXml,
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
+import { asRecord } from "@elizaos/shared/type-guards";
 import { loadTrajectoryByStepId } from "../runtime/trajectory-internals.js";
 
 type GroundedReplyDomain = "lifeops" | "gmail" | "calendar";
@@ -29,13 +30,6 @@ type ActionHistoryItem = {
   text: string;
   success: boolean;
 };
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
-}
 
 function truncateText(value: string, maxLength: number): string {
   if (value.length <= maxLength) {
