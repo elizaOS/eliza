@@ -4,6 +4,11 @@
 
 import {
   Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
   FieldLabel,
   Input,
   PageLayout,
@@ -15,17 +20,23 @@ import {
   SidebarScrollRegion,
   StatusBadge,
   Textarea,
+  TooltipHint,
 } from "@elizaos/ui";
 import {
+  Calendar,
   CheckCircle2,
   Circle,
   Clock3,
+  FileText,
   GitBranch,
+  type LucideIcon,
   ListTodo,
   Mail,
   Plus,
   RefreshCw,
+  Rss,
   Settings,
+  Share2,
   Signal,
   SquareTerminal,
   Workflow,
@@ -821,7 +832,7 @@ function useAutomationsViewContext(): AutomationsViewController {
 }
 
 function FilterTabs() {
-  const { filter, setFilter, allItems } = useAutomationsViewContext();
+  const { filter, setFilter, allItems, t } = useAutomationsViewContext();
 
   const filters: Array<{
     key: AutomationFilter;
@@ -847,11 +858,17 @@ function FilterTabs() {
   ];
 
   return (
-    <div className="flex gap-1 px-1 pb-2">
+    <div
+      role="tablist"
+      aria-label={t("automations.filterTabsLabel", { defaultValue: "Filter automations" })}
+      className="flex gap-1 px-1 pb-2"
+    >
       {filters.map(({ key, label, count }) => (
         <button
           key={key}
           type="button"
+          role="tab"
+          aria-selected={filter === key}
           onClick={() => setFilter(key)}
           className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
             filter === key
@@ -865,6 +882,216 @@ function FilterTabs() {
           </span>
         </button>
       ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Workflow Templates Modal (Item 4)
+// ---------------------------------------------------------------------------
+
+interface WorkflowTemplate {
+  id: string;
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  seedPrompt: string;
+}
+
+function getWorkflowTemplates(
+  t: (key: string, options?: { defaultValue?: string }) => string,
+): WorkflowTemplate[] {
+  return [
+    {
+      id: "daily-email-digest",
+      icon: Mail,
+      title: t("automations.templates.emailDigest.title", { defaultValue: "Daily Email Digest" }),
+      description: t("automations.templates.emailDigest.desc", { defaultValue: "Summarize your inbox each morning and post to Slack." }),
+      seedPrompt: t("automations.templates.emailDigest.prompt", { defaultValue: "Every weekday at 9am, read my Gmail inbox from the last 24 hours, summarize the important messages, and post the summary to my #daily channel in Slack." }),
+    },
+    {
+      id: "slack-discord-bridge",
+      icon: Share2,
+      title: "Slack \u2194 Discord Bridge",
+      description: "Cross-post messages between Slack and Discord channels.",
+      seedPrompt: "Whenever a message is posted in the #announcements channel in Slack, forward it to the #general channel in Discord.",
+    },
+    {
+      id: "rss-to-summary",
+      icon: Rss,
+      title: "RSS to Summary",
+      description: "Poll an RSS feed and summarize new articles via email.",
+      seedPrompt: "Check my RSS feed https://example.com/feed.xml every hour. For each new article, generate a 3-sentence summary and email it to me.",
+    },
+    {
+      id: "calendar-to-slack",
+      icon: Calendar,
+      title: "Calendar to Slack",
+      description: "Post your day's agenda to Slack each morning.",
+      seedPrompt: "Every weekday at 8am, read today's events from my Google Calendar and post a formatted agenda to my #daily-standup channel in Slack.",
+    },
+    {
+      id: "github-issue-triage",
+      icon: GitBranch,
+      title: "GitHub Issue Triage",
+      description: "Auto-classify and label new GitHub issues.",
+      seedPrompt: "When a new issue is opened on my GitHub repo, classify it (bug/feature/question/docs), add the matching label, and post a welcoming comment.",
+    },
+    {
+      id: "email-to-notion",
+      icon: FileText,
+      title: "Email \u2192 Notion",
+      description: "Turn tagged emails into Notion pages.",
+      seedPrompt: "When I receive a Gmail message labeled 'Task', extract the key details and create a new page in my Notion 'Inbox' database with the subject as the title and body as content.",
+    },
+  ];
+}
+
+function WorkflowTemplatesModal({
+  open,
+  onOpenChange,
+  onSelectTemplate,
+  onSelectCustom,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSelectTemplate: (seedPrompt: string) => void;
+  onSelectCustom: () => void;
+}) {
+  const { t } = useAutomationsViewContext();
+  const templates = getWorkflowTemplates(t);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[min(calc(100vw-1.5rem),56rem)] max-w-none">
+        <DialogHeader>
+          <DialogTitle>
+            {t("automations.templatesModalTitle", { defaultValue: "Start with a template" })}
+          </DialogTitle>
+          <DialogDescription>
+            {t("automations.templatesModalSubtitle", { defaultValue: "Pick a workflow to customize, or start blank." })}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-3 sm:grid-cols-2 overflow-y-auto max-h-[min(32rem,calc(100dvh-12rem))] pr-1">
+          {templates.map((template) => {
+            const Icon = template.icon;
+            return (
+              <div
+                key={template.id}
+                className="flex flex-col gap-3 rounded-xl border border-border/40 bg-bg/30 p-4 hover:border-accent/30 hover:bg-accent/5 transition-colors"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 rounded-lg bg-accent/10 p-2 text-accent shrink-0">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="text-sm font-semibold text-txt">{template.title}</div>
+                    <p className="text-sm text-muted leading-snug">{template.description}</p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="self-end h-7 px-3 text-xs"
+                  onClick={() => onSelectTemplate(template.seedPrompt)}
+                >
+                  {t("automations.templateUseButton", { defaultValue: "Use template" })}
+                </Button>
+              </div>
+            );
+          })}
+
+          {/* 7th card: Custom / Start from scratch */}
+          <div className="flex flex-col gap-3 rounded-xl border border-dashed border-border/40 bg-transparent p-4 hover:border-accent/30 hover:bg-accent/5 transition-colors">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 rounded-lg bg-muted/10 p-2 text-muted shrink-0">
+                <Plus className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="text-sm font-semibold text-txt">
+                  {t("automations.templateCustom.title", { defaultValue: "Custom" })}
+                </div>
+                <p className="text-sm text-muted leading-snug">
+                  {t("automations.templateCustom.desc", { defaultValue: "Describe your own workflow in chat." })}
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="self-end h-7 px-3 text-xs"
+              onClick={onSelectCustom}
+            >
+              {t("automations.templateUseButton", { defaultValue: "Use template" })}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Zero-state onboarding CTA (Item 9)
+// ---------------------------------------------------------------------------
+
+function AutomationsZeroState({
+  onBrowseTemplates,
+  onNewTrigger,
+  onNewTask,
+}: {
+  onBrowseTemplates: () => void;
+  onNewTrigger: () => void;
+  onNewTask: () => void;
+}) {
+  const { t } = useAutomationsViewContext();
+
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center px-8 py-12">
+      <PagePanel variant="padded" className="w-full max-w-lg text-center space-y-5">
+        <div className="flex justify-center">
+          <div className="rounded-2xl bg-accent/10 p-4 text-accent">
+            <Zap className="h-8 w-8" />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-xl font-semibold text-txt">
+            {t("automations.zeroState.title", { defaultValue: "What would you like your agent to do?" })}
+          </h3>
+          <p className="text-sm text-muted leading-relaxed">
+            {t("automations.zeroState.subtitle", { defaultValue: "I can build workflows for you, run prompts on a schedule, or keep a checklist of tasks." })}
+          </p>
+        </div>
+        <div className="flex flex-wrap justify-center gap-2 pt-1">
+          <Button
+            variant="default"
+            size="sm"
+            className="h-8 gap-1.5 px-4 text-sm"
+            onClick={onBrowseTemplates}
+          >
+            {t("automations.zeroState.browseTemplates", { defaultValue: "Browse templates \u2192" })}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 px-3 text-sm"
+            onClick={onNewTrigger}
+          >
+            <Clock3 className="h-3.5 w-3.5" />
+            {t("automations.newTriggerButton", { defaultValue: "+ New trigger" })}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 px-3 text-sm"
+            onClick={onNewTask}
+          >
+            <SquareTerminal className="h-3.5 w-3.5" />
+            {t("automations.newTaskButton", { defaultValue: "+ New task" })}
+          </Button>
+        </div>
+      </PagePanel>
     </div>
   );
 }
@@ -2089,6 +2316,7 @@ function AutomationsLayout() {
   const [workflowOpsBusy, setWorkflowOpsBusy] = useState(false);
   const [activeWorkflowConversation, setActiveWorkflowConversation] =
     useState<Conversation | null>(null);
+  const [templatesModalOpen, setTemplatesModalOpen] = useState(false);
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
 
   const visibleItems = useMemo(() => {
@@ -2267,6 +2495,38 @@ function AutomationsLayout() {
     [createWorkflowDraft],
   );
 
+  // Open a workflow draft and seed the composer with a template prompt.
+  const handleTemplateSelected = useCallback(
+    async (seedPrompt: string) => {
+      setTemplatesModalOpen(false);
+      // Create the draft room (no initialPrompt — user will refine it).
+      await createWorkflowDraft();
+      // Emit the seed-composer event so the ChatPane can prefill the textarea.
+      window.dispatchEvent(
+        new CustomEvent("milady:automations:seed-composer", {
+          detail: { text: seedPrompt, select: true },
+        }),
+      );
+    },
+    [createWorkflowDraft],
+  );
+
+  // Open templates modal — disabled when n8n is not configured.
+  const handleNewWorkflowCTA = useCallback(() => {
+    setTemplatesModalOpen(true);
+  }, []);
+
+  // Zero-state: open trigger or task forms, switching filter first.
+  const handleZeroStateNewTrigger = useCallback(() => {
+    setFilter("scheduled");
+    openCreateTrigger();
+  }, [setFilter, openCreateTrigger]);
+
+  const handleZeroStateNewTask = useCallback(() => {
+    setFilter("coordinator");
+    openCreateTask();
+  }, [setFilter, openCreateTask]);
+
   const handleWorkflowMutated = useCallback(() => {
     void refreshAutomationsWithDraftBinding(activeWorkflowConversation);
   }, [activeWorkflowConversation, refreshAutomationsWithDraftBinding]);
@@ -2395,6 +2655,35 @@ function AutomationsLayout() {
               spellCheck={false}
               className="w-full rounded-lg border border-border/30 bg-bg/30 px-3 py-1.5 text-sm text-txt placeholder:text-muted/50 focus:border-accent/40 focus:outline-none"
             />
+
+            {/* Primary CTA: New Workflow */}
+            {n8nStatus?.mode === "disabled" || n8nStatus?.mode === "error" ? (
+              <TooltipHint
+                content={t("automations.newWorkflowDisabled", { defaultValue: "Enable Automations in Settings to create workflows" })}
+                side="right"
+              >
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="w-full h-8 gap-1.5 px-3 text-xs font-medium opacity-50 cursor-not-allowed"
+                  disabled
+                >
+                  <Workflow className="h-3.5 w-3.5" />
+                  {t("automations.newWorkflowCTA", { defaultValue: "+ New Workflow" })}
+                </Button>
+              </TooltipHint>
+            ) : (
+              <Button
+                variant="default"
+                size="sm"
+                className="w-full h-8 gap-1.5 px-3 text-xs font-medium"
+                onClick={handleNewWorkflowCTA}
+              >
+                <Workflow className="h-3.5 w-3.5" />
+                {t("automations.newWorkflowCTA", { defaultValue: "+ New Workflow" })}
+              </Button>
+            )}
+
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
@@ -2413,15 +2702,6 @@ function AutomationsLayout() {
               >
                 <Clock3 className="h-3.5 w-3.5" />
                 Schedule
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1 px-3 text-xs font-medium"
-                onClick={() => void createWorkflowDraft()}
-              >
-                <Workflow className="h-3.5 w-3.5" />
-                Workflow
               </Button>
             </div>
           </div>
@@ -2579,24 +2859,32 @@ function AutomationsLayout() {
             }}
             onPromoteToWorkflow={promoteAutomationToWorkflow}
           />
+        ) : showFirstRunEmptyState ? (
+          <AutomationsZeroState
+            onBrowseTemplates={() => setTemplatesModalOpen(true)}
+            onNewTrigger={handleZeroStateNewTrigger}
+            onNewTask={handleZeroStateNewTask}
+          />
         ) : (
           <div className="flex min-h-0 flex-1 items-center justify-center px-8 py-10 text-center">
             <div className="space-y-3">
               <h3 className="text-lg font-semibold text-txt-strong">
-                {showFirstRunEmptyState
-                  ? "Create your first automation"
-                  : "Select an automation"}
+                Select an automation
               </h3>
-              {showFirstRunEmptyState && (
-                <p className="text-sm text-muted">
-                  Build a coordinator automation, schedule recurring work, or
-                  create an n8n workflow room.
-                </p>
-              )}
             </div>
           </div>
         )}
       </div>
+
+      <WorkflowTemplatesModal
+        open={templatesModalOpen}
+        onOpenChange={setTemplatesModalOpen}
+        onSelectTemplate={(seedPrompt) => void handleTemplateSelected(seedPrompt)}
+        onSelectCustom={() => {
+          setTemplatesModalOpen(false);
+          void createWorkflowDraft();
+        }}
+      />
     </PageLayout>
   );
 }

@@ -696,8 +696,10 @@ export async function getDataPoints(
   if (backend === "healthkit") {
     const cliPath = resolveHealthKitCliPath(config);
     if (!cliPath) {
-      // Scaffolded: helper not installed — return empty read rather than throw.
-      return [];
+      throw new HealthBridgeError(
+        "HealthKit CLI helper not installed",
+        "healthkit",
+      );
     }
     return healthKitDataPoints(opts, cliPath);
   }
@@ -711,7 +713,7 @@ export async function getDataPoints(
     }
     return googleFitDataPoints(opts, token);
   }
-  return [];
+  throw new HealthBridgeError("no health backend available", "none");
 }
 
 export async function getRecentSummaries(

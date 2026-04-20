@@ -316,27 +316,22 @@ describe("background-job-parity: followup tracker", () => {
 });
 
 describe("background-job-parity: lifeops scheduler", () => {
-  test("executeLifeOpsSchedulerTask invokes planJob before scheduled work", async () => {
+  test("executeLifeOpsSchedulerTask does NOT invoke the LLM planner with an empty snapshot", async () => {
+    // Prior behavior (LARP): this function called planJob every tick with a
+    // hardcoded jobKind and an empty snapshot, wasting tokens for a result
+    // that was never used. The call was removed. This test guards against
+    // that regression.
     const { runtime, queue } = makeRuntime({
       plannerResponse: noopPlannerResponse("no reminders due"),
     });
     resetPlannerDispatchLog(runtime);
 
-    // The inner `processScheduledWork` touches real adapters; we guard by
-    // stubbing the service to a no-op via the LifeOpsService constructor
-    // falling back to empty reminder / workflow runs when the DB is absent.
-    // For this contract, we only need to observe the planner call.
-    try {
-      await executeLifeOpsSchedulerTask(runtime);
-    } catch {
-      // processScheduledWork may fail in this mock harness — the planner
-      // call must still have landed on the dispatch log.
-    }
+    await executeLifeOpsSchedulerTask(runtime);
 
     const log = readPlannerDispatchLog(runtime);
     const scheduler = log.filter((d) => d.jobKind === "meeting_reminder");
-    expect(scheduler.length).toBeGreaterThan(0);
-    // noop -> nothing enqueued
+    expect(scheduler).toHaveLength(0);
+    // No enqueues either.
     expect(queue.enqueued).toHaveLength(0);
   });
 });

@@ -683,7 +683,7 @@ export const relationshipAction: Action & {
     {
       name: "channel",
       description:
-        "Primary channel for the contact (email, telegram, discord, signal, sms, twilio_voice, imessage, whatsapp, x_dm).",
+        "Primary channel for the contact (email, telegram, discord, signal, sms, twilio_voice, imessage, whatsapp).",
       schema: { type: "string" as const },
     },
     {

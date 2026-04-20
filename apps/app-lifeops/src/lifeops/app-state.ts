@@ -51,9 +51,10 @@ export async function saveLifeOpsAppState(
   try {
     await runtime.setCache(LIFEOPS_APP_STATE_CACHE_KEY, nextState);
   } catch (error) {
-    logger.debug(
-      `[lifeops] Failed to save app state: ${error instanceof Error ? error.message : String(error)}`,
+    logger.warn(
+      `[lifeops] Failed to persist app state (enabled=${nextState.enabled}): ${error instanceof Error ? error.message : String(error)}`,
     );
+    throw error;
   }
 
   return nextState;

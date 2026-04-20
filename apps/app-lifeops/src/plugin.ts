@@ -170,6 +170,40 @@ function isDisabledByEnv(disableKey: string, enableKey?: string): boolean {
   return enableValue === "0" || enableValue === "false";
 }
 
+const LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY =
+  "eliza:lifeops:plugin:init-failures";
+
+async function recordTaskInitFailure(
+  runtime: IAgentRuntime,
+  label: string,
+  message: string,
+): Promise<void> {
+  try {
+    const existing =
+      (await runtime.getCache<Record<string, string>>(
+        LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY,
+      )) ?? {};
+    existing[label] = message;
+    await runtime.setCache(LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY, existing);
+  } catch {
+    // Cache not available; the logger.error is the primary signal.
+  }
+}
+
+/**
+ * Kick off task registration AFTER `runtime.initPromise` resolves — this step
+ * cannot be awaited inside `init()` because `init()` runs before the runtime
+ * itself has finished initializing. That means failures here are NOT fatal
+ * to plugin load; the plugin reports as "loaded" and the specific task
+ * subsystem reports as "unavailable". The failure is surfaced via the
+ * runtime cache at LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY for observability and
+ * via logger.error so ops tooling can alert on it.
+ *
+ * Prior docs in REMEDIATION_LOG.md item #8 stated that this path should
+ * "abort init after bounded retries" — that claim is NOT currently enforced
+ * because aborting here would orphan an already-loaded plugin. Do not read
+ * REMEDIATION_LOG #8 as a live contract; read this comment instead.
+ */
 function scheduleTaskEnsureAfterRuntimeInit(args: {
   runtime: IAgentRuntime;
   prefix: string;
@@ -184,8 +218,9 @@ function scheduleTaskEnsureAfterRuntimeInit(args: {
     .catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       args.runtime.logger?.error?.(
-        `${args.prefix} ${args.label} init failed after runtime initialization: ${message}`,
+        `${args.prefix} ${args.label} init failed after runtime initialization (plugin stays loaded, this subsystem is degraded): ${message}`,
       );
+      void recordTaskInitFailure(args.runtime, args.label, message);
     });
 }
 

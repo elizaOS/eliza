@@ -1,5 +1,6 @@
 import {
   Button,
+  Spinner,
   Textarea,
 } from "@elizaos/ui";
 import {
@@ -45,6 +46,30 @@ interface AutomationRoomChatPaneProps {
 const WORKFLOW_ACTION_KEYWORDS =
   /workflow|automation|cron|task|calendar|gmail|signal|telegram|discord|github|deploy|activate|deactivate|delete|create/i;
 
+// ── Custom event shapes ──────────────────────────────────────────────────────
+
+interface WorkflowGeneratingDetail {
+  workflowId?: string;
+  inProgress: boolean;
+}
+
+interface ChatToolCallDetail {
+  conversationId: string;
+  toolName: string;
+  active: boolean;
+}
+
+// ── Roving tabindex helpers ──────────────────────────────────────────────────
+
+/** Move focus to a message element by index within a container. */
+function focusMessageAt(container: HTMLElement, index: number): void {
+  const items = container.querySelectorAll<HTMLElement>('[role="article"]');
+  const target = items[index];
+  if (target) {
+    target.focus();
+  }
+}
+
 export function AutomationRoomChatPane({
   assistantLabel,
   collapsed,
@@ -64,8 +89,19 @@ export function AutomationRoomChatPane({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);
+
+  // ── Tool-call chip state ─────────────────────────────────────────────────
+  const [activeToolCall, setActiveToolCall] = useState<string | null>(null);
+
+  // ── Scroll / "new messages" state ────────────────────────────────────────
+  const [showNewMessages, setShowNewMessages] = useState(false);
+  const isAtBottomRef = useRef(true);
+  /** Timestamp of last user interaction outside the composer. */
+  const lastExternalInteractionRef = useRef(0);
+
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
   const conversationKey = useMemo(
     () =>
       JSON.stringify({
@@ -75,6 +111,7 @@ export function AutomationRoomChatPane({
     [metadata, title],
   );
 
+  // ── Conversation load ────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
 
@@ -85,6 +122,7 @@ export function AutomationRoomChatPane({
     setLoadError(null);
     setSending(false);
     setFirstTokenReceived(false);
+    setShowNewMessages(false);
 
     void (async () => {
       try {
@@ -141,17 +179,40 @@ export function AutomationRoomChatPane({
     };
   }, [conversationKey, metadata, onConversationResolved, title]);
 
+  // ── Scroll-position tracking ─────────────────────────────────────────────
   useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
-    const distanceFromBottom =
-      element.scrollHeight - element.scrollTop - element.clientHeight;
-    element.scrollTo({
-      top: element.scrollHeight,
-      behavior: distanceFromBottom < 150 ? "auto" : "smooth",
-    });
+
+    const handleScroll = () => {
+      const distanceFromBottom =
+        element.scrollHeight - element.scrollTop - element.clientHeight;
+      isAtBottomRef.current = distanceFromBottom < 60;
+      if (isAtBottomRef.current) {
+        setShowNewMessages(false);
+      }
+    };
+
+    element.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      element.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  // ── Auto-scroll / new-messages chip on content change ───────────────────
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+
+    if (isAtBottomRef.current) {
+      element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
+      setShowNewMessages(false);
+    } else {
+      setShowNewMessages(true);
+    }
   }, [messages, sending]);
 
+  // ── Composer height resize ───────────────────────────────────────────────
   useEffect(() => {
     const textarea = composerRef.current;
     if (!textarea) return;
@@ -167,6 +228,112 @@ export function AutomationRoomChatPane({
     textarea.style.overflowY =
       textarea.scrollHeight > 150 ? "auto" : "hidden";
   }, [composerRef, input]);
+
+  // ── milady:automations:workflow-generating listener ──────────────────────
+  useEffect(() => {
+    const paneWorkflowId = metadata?.workflowId ?? null;
+
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<WorkflowGeneratingDetail>).detail;
+      // Only show the chip if the event targets this pane's workflow (or is
+      // broadcast without a specific workflowId).
+      if (
+        detail.workflowId !== undefined &&
+        paneWorkflowId !== null &&
+        detail.workflowId !== paneWorkflowId
+      ) {
+        return;
+      }
+      setActiveToolCall(
+        detail.inProgress
+          ? t("chat.toolCallChip.buildingWorkflow")
+          : null,
+      );
+    };
+
+    window.addEventListener("milady:automations:workflow-generating", handler);
+    return () => {
+      window.removeEventListener(
+        "milady:automations:workflow-generating",
+        handler,
+      );
+    };
+  }, [metadata?.workflowId, t]);
+
+  // ── milady:automations:seed-composer listener ───────────────────────────
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ text: string; select?: boolean }>).detail;
+      if (!detail?.text) return;
+      setInput(detail.text);
+      window.requestAnimationFrame(() => {
+        const textarea = composerRef.current;
+        if (!textarea) return;
+        textarea.focus();
+        if (detail.select) {
+          textarea.select();
+        }
+      });
+    };
+    window.addEventListener("milady:automations:seed-composer", handler);
+    return () => {
+      window.removeEventListener("milady:automations:seed-composer", handler);
+    };
+  }, [composerRef]);
+
+  // ── milady:chat:tool-call generic listener ───────────────────────────────
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<ChatToolCallDetail>).detail;
+      if (detail.conversationId !== conversationId) {
+        return;
+      }
+      if (!detail.active) {
+        setActiveToolCall(null);
+        return;
+      }
+      // t() with a dynamic key — use the toolName key, fall back to default.
+      const specific = t(`chat.toolCallChip.${detail.toolName}`);
+      const label =
+        specific !== `chat.toolCallChip.${detail.toolName}`
+          ? specific
+          : t("chat.toolCallChip.default");
+      setActiveToolCall(label);
+    };
+
+    window.addEventListener("milady:chat:tool-call", handler);
+    return () => {
+      window.removeEventListener("milady:chat:tool-call", handler);
+    };
+  }, [conversationId, t]);
+
+  // ── Track external interactions for focus-return guard ───────────────────
+  useEffect(() => {
+    const markInteraction = (event: MouseEvent | FocusEvent) => {
+      const composer = composerRef.current;
+      if (composer && event.target instanceof Node && composer.contains(event.target)) {
+        return;
+      }
+      lastExternalInteractionRef.current = Date.now();
+    };
+
+    window.addEventListener("mousedown", markInteraction, { capture: true });
+    window.addEventListener("focusin", markInteraction, { capture: true });
+    return () => {
+      window.removeEventListener("mousedown", markInteraction, {
+        capture: true,
+      });
+      window.removeEventListener("focusin", markInteraction, { capture: true });
+    };
+  }, [composerRef]);
+
+  const scrollToBottom = useCallback(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
+    setShowNewMessages(false);
+    isAtBottomRef.current = true;
+  }, []);
 
   const handleSend = useCallback(async () => {
     const rawInput = input.trim();
@@ -253,12 +420,22 @@ export function AutomationRoomChatPane({
       );
     } finally {
       setSending(false);
+      setActiveToolCall(null);
       abortRef.current = null;
+
+      // Return focus to composer unless the user clicked away in the last 3 s.
+      const msSinceExternalInteraction =
+        Date.now() - lastExternalInteractionRef.current;
+      if (msSinceExternalInteraction > 3000) {
+        composerRef.current?.focus();
+      }
     }
   }, [
+    composerRef,
     conversationId,
     input,
     messages.length,
+    metadata,
     onAutomationMutated,
     sending,
     systemAddendum,
@@ -280,6 +457,29 @@ export function AutomationRoomChatPane({
       }
     },
     [handleSend, sending],
+  );
+
+  // ── Roving tabindex: arrow-key navigation between message bubbles ─────────
+  const handleMessageListKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (!messageListRef.current) return;
+      const items = Array.from(
+        messageListRef.current.querySelectorAll<HTMLElement>('[role="article"]'),
+      );
+      const focused = document.activeElement as HTMLElement | null;
+      const currentIndex = focused ? items.indexOf(focused) : -1;
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        const nextIndex = Math.min(currentIndex + 1, items.length - 1);
+        focusMessageAt(messageListRef.current, nextIndex);
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        const prevIndex = Math.max(currentIndex - 1, 0);
+        focusMessageAt(messageListRef.current, prevIndex);
+      }
+    },
+    [],
   );
 
   const visibleMessages = useMemo(
@@ -336,51 +536,102 @@ export function AutomationRoomChatPane({
         <ChevronUp className="h-3.5 w-3.5 text-muted" />
       </Button>
 
-      <div
-        ref={scrollRef}
-        role="log"
-        aria-live="polite"
-        aria-atomic="false"
-        className="flex flex-1 flex-col overflow-y-auto px-3 py-2"
-        style={{ maxHeight: "240px", minHeight: "80px" }}
-      >
-        {visibleMessages.length === 0 && !sending ? (
-          <div className="flex flex-1 items-center justify-center px-4 py-5 text-center">
-            <p className="text-sm text-muted">
-              {loadError ?? placeholder}
-            </p>
-          </div>
-        ) : (
-          <div className="w-full space-y-1">
-            {visibleMessages.map((message) => (
-              <div
-                key={message.id}
-                className={`rounded-lg px-3 py-2 text-sm leading-relaxed ${
+      {/* Message scroll region */}
+      <div className="relative flex flex-1 flex-col overflow-hidden">
+        <div
+          ref={scrollRef}
+          role="log"
+          aria-live="polite"
+          aria-atomic="false"
+          className="flex flex-1 flex-col overflow-y-auto px-3 py-2"
+          style={{ maxHeight: "240px", minHeight: "80px" }}
+        >
+          {visibleMessages.length === 0 && !sending ? (
+            <div className="flex flex-1 items-center justify-center px-4 py-5 text-center">
+              <p className="text-sm text-muted">
+                {loadError ?? placeholder}
+              </p>
+            </div>
+          ) : (
+            <div
+              ref={messageListRef}
+              className="w-full space-y-1"
+              onKeyDown={handleMessageListKeyDown}
+            >
+              {visibleMessages.map((message, index) => {
+                const preview = message.text.slice(0, 80);
+                const ariaLabel =
                   message.role === "user"
-                    ? "ml-8 self-end bg-accent/10 text-txt"
-                    : "mr-8 bg-bg/50 text-txt"
-                }`}
-              >
-                <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                  {message.role === "user"
-                    ? t("automations.chat.roleUser")
-                    : t("automations.chat.roleAssistant")}
+                    ? t("chat.messageAriaLabelUser", { preview })
+                    : t("chat.messageAriaLabelAgent", { preview });
+                return (
+                  <div
+                    key={message.id}
+                    role="article"
+                    // biome-ignore lint/a11y/noNoninteractiveTabindex: roving tabindex for keyboard navigation
+                    tabIndex={index === visibleMessages.length - 1 ? 0 : -1}
+                    aria-label={ariaLabel}
+                    className={`rounded-lg px-3 py-2 text-sm leading-relaxed focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/50 ${
+                      message.role === "user"
+                        ? "ml-8 self-end bg-accent/10 text-txt"
+                        : "mr-8 bg-bg/50 text-txt"
+                    }`}
+                  >
+                    <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                      {message.role === "user"
+                        ? t("automations.chat.roleUser")
+                        : t("automations.chat.roleAssistant")}
+                    </div>
+                    <div className="whitespace-pre-wrap">{message.text}</div>
+                  </div>
+                );
+              })}
+
+              {/* Typing indicator while waiting for first token */}
+              {sending && !firstTokenReceived && (
+                <div className="mr-8 rounded-lg bg-bg/50 px-3 py-2">
+                  <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                    {t("automations.chat.roleAssistant")}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted/60 [animation-delay:0ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted/60 [animation-delay:150ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted/60 [animation-delay:300ms]" />
+                  </div>
                 </div>
-                <div className="whitespace-pre-wrap">{message.text}</div>
-              </div>
-            ))}
-            {sending && !firstTokenReceived && (
-              <div className="mr-8 rounded-lg bg-bg/50 px-3 py-2">
-                <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                  {t("automations.chat.roleAssistant")}
+              )}
+
+              {/* Tool-call chip — rendered as last transcript item */}
+              {activeToolCall && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="mr-8 flex items-center gap-2 rounded-lg border border-border/30 bg-bg/30 px-3 py-1.5"
+                >
+                  <Spinner size={12} className="text-accent/70" />
+                  <span className="text-[11px] text-muted">{activeToolCall}</span>
                 </div>
-                <div className="flex items-center gap-1">
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted/60 [animation-delay:0ms]" />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted/60 [animation-delay:150ms]" />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted/60 [animation-delay:300ms]" />
-                </div>
-              </div>
-            )}
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* "New messages" chip */}
+        {showNewMessages && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="absolute bottom-2 left-1/2 z-10 -translate-x-1/2"
+          >
+            <Button
+              type="button"
+              variant="default"
+              className="h-7 gap-1.5 rounded-full px-3 text-xs shadow-md"
+              aria-label={t("chat.newMessagesChip")}
+              onClick={scrollToBottom}
+            >
+              {t("chat.newMessagesChip")}
+            </Button>
           </div>
         )}
       </div>

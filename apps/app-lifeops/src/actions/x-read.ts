@@ -10,6 +10,7 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
+  logger,
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
@@ -237,7 +238,15 @@ export const xReadAction: Action = {
     try {
       const status = await service.getXConnectorStatus();
       return Boolean(status.connected);
-    } catch {
+    } catch (error) {
+      logger.warn(
+        {
+          boundary: "lifeops",
+          component: "x-read",
+          detail: error instanceof Error ? error.message : String(error),
+        },
+        "[x-read] getXConnectorStatus failed; action validation defaulting to false",
+      );
       return false;
     }
   },

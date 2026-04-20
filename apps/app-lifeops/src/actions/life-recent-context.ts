@@ -1,4 +1,5 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 
 // Match any speaker prefix pattern: "word:" or "word word:" at the start of a line.
 // This is language-agnostic — strips any short prefix label followed by a colon,
@@ -107,7 +108,16 @@ export async function recentConversationTexts(args: {
           .filter((text) => text.length > 0)
       : [];
     return dedupePreservingOrder([...memoryTexts, ...stateTexts].slice(-limit));
-  } catch {
+  } catch (error) {
+    logger.warn(
+      {
+        boundary: "lifeops",
+        component: "life-recent-context",
+        roomId,
+        detail: error instanceof Error ? error.message : String(error),
+      },
+      "[life-recent-context] getMemories failed; falling back to state-only context",
+    );
     return stateTexts;
   }
 }

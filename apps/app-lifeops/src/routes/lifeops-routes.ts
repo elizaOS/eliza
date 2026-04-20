@@ -482,12 +482,20 @@ export async function handleLifeOpsRoutes(
       ctx.error(res, "enabled must be a boolean", 400);
       return true;
     }
-    json(
-      res,
-      await saveLifeOpsAppState(ctx.state.runtime, {
+    try {
+      const saved = await saveLifeOpsAppState(ctx.state.runtime, {
         enabled: body.enabled,
-      }),
-    );
+      });
+      json(res, saved);
+    } catch (error) {
+      ctx.error(
+        res,
+        `failed to persist LifeOps app state: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        500,
+      );
+    }
     return true;
   }
 

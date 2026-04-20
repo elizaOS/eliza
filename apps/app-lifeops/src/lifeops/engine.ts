@@ -108,6 +108,12 @@ function buildOccurrenceKey(
   return `${prefix}:${localDateKey}:${suffix}`;
 }
 
+function resolveCadenceWindowNames(cadence: LifeOpsCadence): string[] {
+  return Array.isArray((cadence as { windows?: unknown }).windows)
+    ? ((cadence as { windows: string[] }).windows)
+    : [];
+}
+
 function buildWindowOccurrence(
   definition: LifeOpsTaskDefinition,
   existing: LifeOpsOccurrence | undefined,
@@ -461,7 +467,7 @@ export function materializeDefinitionOccurrences(
       if (!definition.cadence.weekdays.includes(weekday)) {
         continue;
       }
-      for (const windowName of definition.cadence.windows) {
+      for (const windowName of resolveCadenceWindowNames(definition.cadence)) {
         const window = windowMap.get(windowName);
         if (!window) continue;
         const scheduledLocal = {
@@ -530,7 +536,7 @@ export function materializeDefinitionOccurrences(
     }
 
     if (definition.cadence.kind === "interval") {
-      const windows = definition.cadence.windows
+      const windows = resolveCadenceWindowNames(definition.cadence)
         .map((windowName) => windowMap.get(windowName))
         .filter((window): window is LifeOpsTimeWindowDefinition =>
           Boolean(window),
@@ -608,7 +614,7 @@ export function materializeDefinitionOccurrences(
       continue;
     }
 
-    for (const windowName of definition.cadence.windows) {
+    for (const windowName of resolveCadenceWindowNames(definition.cadence)) {
       const window = windowMap.get(windowName);
       if (!window) continue;
       const scheduledLocal = {

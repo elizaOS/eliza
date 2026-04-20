@@ -14,6 +14,9 @@ import type {
   PromptBenchmarkSuiteId,
   PromptBenchmarkVariantId,
 } from "./lifeops-prompt-benchmark-cases.ts";
+import {
+  actionMatchesScenarioExpectation,
+} from "../../../../packages/scenario-runner/src/action-families.ts";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const PASSIVE_ACTIONS = new Set(["REPLY", "IGNORE", "NONE", "CHOOSE_OPTION"]);
@@ -271,29 +274,39 @@ function selectPrimaryAction(actions: string[]): string | null {
   return normalized[normalized.length - 1] ?? null;
 }
 
-function casePasses(result: PromptBenchmarkResult): boolean {
-  const actual = normalizeActionName(result.actualPrimaryAction);
+export function casePasses(result: PromptBenchmarkResult): boolean {
+  const actualActions = uniqueStrings([
+    result.actualPrimaryAction,
+    ...result.actualActions,
+  ]).map((actionName) => normalizeActionName(actionName));
+  const normalizedActualActions = actualActions.filter(
+    (actionName): actionName is string => actionName !== null,
+  );
   const expected = normalizeActionName(result.case.expectedAction);
-  const acceptable = new Set(
-    result.case.acceptableActions
-      .map((actionName) => normalizeActionName(actionName))
-      .filter((actionName): actionName is string => actionName !== null),
-  );
-  const forbidden = new Set(
-    result.case.forbiddenActions
-      .map((actionName) => normalizeActionName(actionName))
-      .filter((actionName): actionName is string => actionName !== null),
-  );
 
-  if (actual && forbidden.has(actual)) {
+  if (
+    normalizedActualActions.some((actionName) =>
+      actionMatchesScenarioExpectation(actionName, result.case.forbiddenActions),
+    )
+  ) {
     return false;
   }
 
   if (expected === null) {
-    return actual === null || acceptable.has(actual);
+    return (
+      normalizedActualActions.length === 0 ||
+      normalizedActualActions.some((actionName) =>
+        actionMatchesScenarioExpectation(actionName, result.case.acceptableActions),
+      )
+    );
   }
 
-  return actual === expected || (actual !== null && acceptable.has(actual));
+  return normalizedActualActions.some((actionName) =>
+    actionMatchesScenarioExpectation(actionName, [
+      result.case.expectedAction,
+      ...result.case.acceptableActions,
+    ].filter((candidate): candidate is string => Boolean(candidate))),
+  );
 }
 
 async function runSinglePromptBenchmarkCase(args: {

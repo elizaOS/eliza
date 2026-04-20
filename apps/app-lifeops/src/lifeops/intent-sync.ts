@@ -9,16 +9,19 @@ import {
 } from "./sql.js";
 
 /**
- * Cross-device intent sync.
+ * Local intent store (formerly called "cross-device intent sync").
  *
- * An intent is a small structured message broadcast to one or more of the
- * owner's paired devices (desktop, mobile, specific device). Intents are
- * persisted locally so that each device can poll its pending queue, and
- * once acknowledged by a device they are no longer returned.
+ * An intent is a small structured message targeted at one or more of the
+ * owner's logical devices (desktop, mobile, specific device). Intents are
+ * persisted in a single local database table, and any process attached to
+ * that database polls its pending queue; once acknowledged they are no
+ * longer returned.
  *
- * This module is the agent-local store. A separate bridge (e.g. Eliza
- * Cloud device-bus) is responsible for wire-level replication across
- * devices; this table is the source of truth for the local agent.
+ * NOTE: this module is *local-only*. There is no wire-level replication
+ * across machines. Two separate agent processes running on different
+ * machines will NOT see each other's intents. A cross-device replication
+ * bridge (e.g. Eliza Cloud device-bus) is out of scope here — if/when that
+ * bridge exists, it would sit alongside this table, not inside it.
  */
 
 export const LIFE_INTENT_KINDS = [

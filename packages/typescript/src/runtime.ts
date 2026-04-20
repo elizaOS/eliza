@@ -2483,9 +2483,33 @@ export class AgentRuntime implements IAgentRuntime {
 								action: action.name,
 								errors: validation.errors,
 							},
-							"Action parameter validation incomplete; continuing to handler",
+							"Action parameter validation failed; skipping handler",
 						);
-						options.parameterErrors = validation.errors;
+
+						if (actionPlan?.steps?.[actionIndex]) {
+							actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+								status: "failed",
+								error: validation.errors.join("; "),
+							});
+						}
+
+						const actionMemory: Memory = {
+							id: uuidv4() as UUID,
+							entityId: message.entityId,
+							roomId: message.roomId,
+							worldId: message.worldId,
+							content: {
+								thought: validation.errors.join("; "),
+								source: "auto",
+								type: "action_result",
+								actionName: action.name,
+								actionStatus: "failed",
+								runId,
+							},
+						};
+						await this.createMemory(actionMemory, "messages");
+						actionIndex++;
+						continue;
 					}
 
 					if (validation.params) options.parameters = validation.params;
