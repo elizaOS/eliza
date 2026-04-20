@@ -1,5 +1,3 @@
-
-
 import type {
   LifeOpsActiveReminderView,
   LifeOpsCadence,
@@ -42,7 +40,10 @@ import { isApiError } from "@elizaos/app-core/api/client-types-core";
 import { useLifeOpsAppState } from "../../../../hooks/useLifeOpsAppState.js";
 import { useDiscordConnector } from "../../../../hooks/useDiscordConnector.js";
 import { useApp } from "@elizaos/app-core/state";
-import { EmptyWidgetState, WidgetSection } from "@elizaos/app-core/components/chat/widgets/shared";
+import {
+  EmptyWidgetState,
+  WidgetSection,
+} from "@elizaos/app-core/components/chat/widgets/shared";
 import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
@@ -1001,9 +1002,7 @@ function AgentOpsSection({
             section.summary.activeReminderCount}
         </Badge>
       </div>
-      <p className="px-0.5 text-xs text-muted">
-        {sectionSummary(section)}
-      </p>
+      <p className="px-0.5 text-xs text-muted">{sectionSummary(section)}</p>
       {section.occurrences
         .slice(0, MAX_SECTION_OCCURRENCES)
         .map((occurrence) => (
@@ -1041,8 +1040,7 @@ function AgentOpsSection({
 
 export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
   const lifeOpsApp = useLifeOpsAppState();
-  const { agentStatus, backendConnection, startupPhase, setTab, t } =
-    useApp();
+  const { agentStatus, backendConnection, startupPhase, setTab, t } = useApp();
   const [overview, setOverview] = useState<LifeOpsOverview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1292,7 +1290,9 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
           size="sm"
           variant="ghost"
           onClick={() => setTab("lifeops")}
-          aria-label={t("lifeopsoverview.OpenView", { defaultValue: "Open LifeOps view" })}
+          aria-label={t("lifeopsoverview.OpenView", {
+            defaultValue: "Open LifeOps view",
+          })}
           className="h-6 w-6 p-0"
         >
           <SquareArrowOutUpRight className="h-3.5 w-3.5" />
@@ -1373,9 +1373,7 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
         <GoogleGlanceSection timeZone={timeZone} />
         <DiscordMessagesGlance />
       </div>
-      {error ? (
-        <div className="mt-3 text-xs text-danger">{error}</div>
-      ) : null}
+      {error ? <div className="mt-3 text-xs text-danger">{error}</div> : null}
     </WidgetSection>
   );
 }

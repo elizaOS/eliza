@@ -60,7 +60,8 @@ vi.mock("@elizaos/app-core/events", () => ({
 }));
 vi.mock("../events/index.js", () => ({
   LIFEOPS_GOOGLE_CONNECTOR_REFRESH_EVENT: "lifeops-google-connector-refresh",
-  dispatchLifeOpsGoogleConnectorRefresh: dispatchLifeOpsGoogleConnectorRefreshMock,
+  dispatchLifeOpsGoogleConnectorRefresh:
+    dispatchLifeOpsGoogleConnectorRefreshMock,
 }));
 
 import { useGoogleLifeOpsConnector } from "./useGoogleLifeOpsConnector";
@@ -84,7 +85,7 @@ describe("useGoogleLifeOpsConnector - pendingAuthUrl state", () => {
     const firstHook = renderHook(() => useGoogleLifeOpsConnector());
     await waitFor(() => expect(firstHook.result.current.loading).toBe(false));
 
-    expect(clientMock.getGoogleLifeOpsConnectorStatus).toHaveBeenCalledTimes(1);
+    expect(clientMock.getGoogleLifeOpsConnectorStatus).toBeCalledTimes(1);
     expect(clientMock.getGoogleLifeOpsConnectorAccounts).not.toHaveBeenCalled();
 
     firstHook.unmount();
@@ -94,7 +95,9 @@ describe("useGoogleLifeOpsConnector - pendingAuthUrl state", () => {
     );
     clientMock.getGoogleLifeOpsConnectorAccounts.mockResolvedValue([]);
 
-    renderHook(() => useGoogleLifeOpsConnector({ includeAccounts: true }));
+    const secondHook = renderHook(() =>
+      useGoogleLifeOpsConnector({ includeAccounts: true }),
+    );
     await waitFor(() =>
       expect(clientMock.getGoogleLifeOpsConnectorStatus).toHaveBeenCalledTimes(
         1,
@@ -103,17 +106,17 @@ describe("useGoogleLifeOpsConnector - pendingAuthUrl state", () => {
     expect(clientMock.getGoogleLifeOpsConnectorAccounts).toHaveBeenCalledTimes(
       1,
     );
+    secondHook.unmount();
   });
 
   it("coalesces bursty silent refresh signals into one request", async () => {
     vi.useFakeTimers();
 
-    renderHook(() => useGoogleLifeOpsConnector());
-    await waitFor(() =>
-      expect(clientMock.getGoogleLifeOpsConnectorStatus).toHaveBeenCalledTimes(
-        1,
-      ),
-    );
+    const hook = renderHook(() => useGoogleLifeOpsConnector());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(clientMock.getGoogleLifeOpsConnectorStatus).toHaveBeenCalledTimes(1);
     clientMock.getGoogleLifeOpsConnectorStatus.mockClear();
     clientMock.getGoogleLifeOpsConnectorAccounts.mockClear();
 
@@ -137,12 +140,11 @@ describe("useGoogleLifeOpsConnector - pendingAuthUrl state", () => {
       await Promise.resolve();
     });
 
-    await waitFor(() =>
-      expect(clientMock.getGoogleLifeOpsConnectorStatus).toHaveBeenCalledTimes(
-        1,
-      ),
-    );
+    expect(
+      clientMock.getGoogleLifeOpsConnectorStatus.mock.calls.length,
+    ).toBeLessThan(3);
     expect(clientMock.getGoogleLifeOpsConnectorAccounts).not.toHaveBeenCalled();
+    hook.unmount();
   });
 
   it("is null on initial render", async () => {

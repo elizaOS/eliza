@@ -22,14 +22,11 @@ import {
   Clock3,
   GitBranch,
   ListTodo,
-  Mail,
   Plus,
   RefreshCw,
   Settings,
-  Signal,
   SquareTerminal,
   Workflow,
-  Zap,
 } from "lucide-react";
 import {
   createContext,
@@ -80,6 +77,11 @@ import {
   getAutomationBridgeConversationId,
   resolveAutomationConversation,
 } from "./automation-conversations";
+import {
+  getNodeClassLabel,
+  getNodeIcon,
+  NODE_CLASS_ORDER,
+} from "./node-catalog-icons";
 
 type AutomationFilter = "all" | "coordinator" | "workflows" | "scheduled";
 type SelectionKind = "trigger" | "task" | "workflow" | null;
@@ -102,15 +104,6 @@ const SYSTEM_TASK_NAMES = new Set([
   "TRIGGER_DISPATCH",
   "heartbeat",
 ]);
-const NODE_CLASS_ORDER = [
-  "agent",
-  "action",
-  "context",
-  "integration",
-  "trigger",
-  "flow-control",
-] as const;
-
 function createWorkflowDraftId(): string {
   return globalThis.crypto.randomUUID();
 }
@@ -212,50 +205,6 @@ function buildWorkflowCompilationPrompt(item: AutomationItem): string {
   return lines.join("\n");
 }
 
-function getNodeClassLabel(className: AutomationNodeDescriptor["class"]): string {
-  switch (className) {
-    case "agent":
-      return "Agent";
-    case "action":
-      return "Actions";
-    case "context":
-      return "Context";
-    case "integration":
-      return "Integrations";
-    case "trigger":
-      return "Triggers";
-    case "flow-control":
-      return "Flow Control";
-    default:
-      return className;
-  }
-}
-
-function getNodeIcon(node: AutomationNodeDescriptor) {
-  if (node.source === "lifeops_event") {
-    return <Zap className="h-3.5 w-3.5" />;
-  }
-  if (node.source === "lifeops") {
-    if (node.id === "lifeops:gmail") return <Mail className="h-3.5 w-3.5" />;
-    if (node.id === "lifeops:signal") return <Signal className="h-3.5 w-3.5" />;
-    if (node.id === "lifeops:github") {
-      return <GitBranch className="h-3.5 w-3.5" />;
-    }
-  }
-  if (node.class === "agent") {
-    return <SquareTerminal className="h-3.5 w-3.5" />;
-  }
-  if (node.class === "integration") {
-    return <Workflow className="h-3.5 w-3.5" />;
-  }
-  if (node.class === "context") {
-    return <Settings className="h-3.5 w-3.5" />;
-  }
-  if (node.class === "trigger") {
-    return <Clock3 className="h-3.5 w-3.5" />;
-  }
-  return <Zap className="h-3.5 w-3.5" />;
-}
 
 function useAutomationsViewController() {
   const {
@@ -1103,6 +1052,8 @@ function WorkflowRuntimeNotice({
   return null;
 }
 
+const PALETTE_MAX = 6;
+
 function AutomationNodePalette({
   nodes,
   title,
@@ -1112,14 +1063,14 @@ function AutomationNodePalette({
   title: string;
   subtitle: string;
 }) {
-  const groupedNodes = useMemo(
-    () =>
-      NODE_CLASS_ORDER.map((className) => ({
-        className,
-        nodes: nodes.filter((node) => node.class === className),
-      })).filter((group) => group.nodes.length > 0),
-    [nodes],
-  );
+  const { setTab } = useApp();
+
+  // Show enabled nodes first, then fill up to PALETTE_MAX with disabled ones.
+  const previewNodes = useMemo(() => {
+    const enabled = nodes.filter((n) => n.availability === "enabled");
+    const disabled = nodes.filter((n) => n.availability !== "enabled");
+    return [...enabled, ...disabled].slice(0, PALETTE_MAX);
+  }, [nodes]);
 
   return (
     <PagePanel variant="padded" className="space-y-4">
@@ -1143,66 +1094,69 @@ function AutomationNodePalette({
         </span>
       </div>
 
-      <div className="space-y-4">
-        {groupedNodes.map((group) => (
-          <div key={group.className} className="space-y-2">
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted">
-              {getNodeClassLabel(group.className)}
-            </div>
-            <div className="grid gap-3 xl:grid-cols-2">
-              {group.nodes.map((node) => (
-                <div
-                  key={node.id}
-                  className={`rounded-xl border px-4 py-3 ${
-                    node.availability === "enabled"
-                      ? "border-border/30 bg-bg/25"
-                      : "border-warning/20 bg-warning/5"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`mt-0.5 rounded-lg p-2 ${
-                        node.availability === "enabled"
-                          ? "bg-accent/10 text-accent"
-                          : "bg-warning/10 text-warning"
-                      }`}
-                    >
-                      {getNodeIcon(node)}
-                    </div>
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="text-sm font-semibold text-txt">
-                          {node.label}
-                        </div>
-                        <StatusBadge
-                          label={
-                            node.availability === "enabled" ? "Ready" : "Setup"
-                          }
-                          variant={
-                            node.availability === "enabled" ? "success" : "warning"
-                          }
-                          withDot
-                        />
-                        {node.ownerScoped && (
-                          <span className="rounded-full bg-bg/40 px-2 py-0.5 text-[11px] text-muted">
-                            Owner scoped
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted">{node.description}</p>
-                      {node.disabledReason && (
-                        <p className="text-xs text-warning">
-                          {node.disabledReason}
-                        </p>
-                      )}
-                    </div>
+      <div className="grid gap-3 xl:grid-cols-2">
+        {previewNodes.map((node) => (
+          <div
+            key={node.id}
+            className={`rounded-xl border px-4 py-3 ${
+              node.availability === "enabled"
+                ? "border-border/30 bg-bg/25"
+                : "border-warning/20 bg-warning/5"
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className={`mt-0.5 rounded-lg p-2 ${
+                  node.availability === "enabled"
+                    ? "bg-accent/10 text-accent"
+                    : "bg-warning/10 text-warning"
+                }`}
+              >
+                {getNodeIcon(node)}
+              </div>
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-sm font-semibold text-txt">
+                    {node.label}
                   </div>
+                  <StatusBadge
+                    label={
+                      node.availability === "enabled" ? "Ready" : "Setup"
+                    }
+                    variant={
+                      node.availability === "enabled" ? "success" : "warning"
+                    }
+                    withDot
+                  />
+                  {node.ownerScoped && (
+                    <span className="rounded-full bg-bg/40 px-2 py-0.5 text-[11px] text-muted">
+                      Owner scoped
+                    </span>
+                  )}
                 </div>
-              ))}
+                <p className="text-sm text-muted">{node.description}</p>
+                {node.disabledReason && (
+                  <p className="text-xs text-warning">
+                    {node.disabledReason}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         ))}
       </div>
+
+      {nodes.length > 0 && (
+        <div className="pt-1">
+          <button
+            type="button"
+            onClick={() => setTab("node-catalog")}
+            className="text-sm text-accent hover:underline"
+          >
+            View all {nodes.length} nodes →
+          </button>
+        </div>
+      )}
     </PagePanel>
   );
 }

@@ -160,9 +160,13 @@ export function SectionSurface({
     <div>
       <div className="flex items-center gap-2 text-muted">
         {icon}
-        <div className="text-xs font-semibold uppercase tracking-wide text-muted">{title}</div>
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted">
+          {title}
+        </div>
       </div>
-      {subtitle ? <div className="mt-1 text-xs leading-5 text-muted">{subtitle}</div> : null}
+      {subtitle ? (
+        <div className="mt-1 text-xs leading-5 text-muted">{subtitle}</div>
+      ) : null}
       <div className="mt-2 space-y-2">{children}</div>
     </div>
   );
@@ -183,7 +187,9 @@ export function SummaryMetric({
         {label}
       </div>
       <div className="mt-2 text-lg font-semibold text-txt">{value}</div>
-      {detail ? <div className="mt-1 text-xs-tight text-muted">{detail}</div> : null}
+      {detail ? (
+        <div className="mt-1 text-xs-tight text-muted">{detail}</div>
+      ) : null}
     </div>
   );
 }
@@ -194,9 +200,7 @@ export function OccurrenceList({
   occurrences: LifeOpsOccurrenceView[];
 }) {
   if (occurrences.length === 0) {
-    return (
-      <div className="py-3 text-xs text-muted/60">No active items.</div>
-    );
+    return <div className="py-3 text-xs text-muted/60">No active items.</div>;
   }
 
   return (
@@ -237,9 +241,7 @@ export function OccurrenceList({
 
 export function GoalList({ goals }: { goals: LifeOpsGoalDefinition[] }) {
   if (goals.length === 0) {
-    return (
-      <div className="py-3 text-xs text-muted/60">No active goals.</div>
-    );
+    return <div className="py-3 text-xs text-muted/60">No active goals.</div>;
   }
 
   return (
@@ -291,9 +293,7 @@ export function ReminderList({
   reminders: LifeOpsActiveReminderView[];
 }) {
   if (reminders.length === 0) {
-    return (
-      <div className="py-3 text-xs text-muted/60">No live reminders.</div>
-    );
+    return <div className="py-3 text-xs text-muted/60">No live reminders.</div>;
   }
 
   return (
@@ -309,7 +309,8 @@ export function ReminderList({
                 {reminder.title}
               </div>
               <div className="mt-1 text-xs leading-5 text-muted">
-                {reminder.stepLabel} via {humanizeLifeOpsLabel(reminder.channel)}
+                {reminder.stepLabel} via{" "}
+                {humanizeLifeOpsLabel(reminder.channel)}
               </div>
             </div>
             <Badge variant="outline" className="text-2xs">

@@ -1699,6 +1699,29 @@ export interface LifeOpsSignalConnectorStatus {
   degradations?: LifeOpsConnectorDegradation[];
 }
 
+/**
+ * A single inbound Signal message as returned by {@link readSignalInbound} and
+ * the signal-local-client reader.
+ */
+export interface LifeOpsSignalInboundMessage {
+  /** Stable message ID (from the Signal service memory store or signal-cli). */
+  id: string;
+  /** elizaOS room ID this message was placed into. */
+  roomId: string;
+  /** Signal channel ID (typically the sender's phone number or group ID). */
+  channelId: string;
+  /** Display name of the sender. */
+  speakerName: string;
+  /** Plain-text body of the message. */
+  text: string;
+  /** Unix millisecond timestamp of the message. */
+  createdAt: number;
+  /** True when the message was sent by a contact (not by the agent's account). */
+  isInbound: boolean;
+  /** True when the message was received in a group conversation. */
+  isGroup: boolean;
+}
+
 export interface LifeOpsDiscordDmPreview {
   channelId: string | null;
   href: string | null;

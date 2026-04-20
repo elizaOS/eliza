@@ -85,6 +85,29 @@ describe("final-checks", () => {
     expect(res.status).toBe("skipped-dependency-missing");
   });
 
+  it("approvalStateTransition passes when approval moved pending to approved", async () => {
+    const ctx = ctxWith({
+      stateTransitions: [
+        {
+          subject: "approval",
+          from: "pending",
+          to: "approved",
+          actionName: "BOOK_TRAVEL",
+        },
+      ],
+    });
+    const res = await runFinalCheck(
+      {
+        type: "approvalStateTransition",
+        from: "pending",
+        to: "approved",
+        actionName: "BOOK_TRAVEL",
+      },
+      { runtime, ctx },
+    );
+    expect(res.status).toBe("passed");
+  });
+
   it("browserTaskCompleted passes when action result marks completion", async () => {
     const ctx = ctxWith({
       actionsCalled: [
@@ -135,6 +158,98 @@ describe("final-checks", () => {
     });
     const res = await runFinalCheck(
       { type: "uploadedAssetExists", expected: true },
+      { runtime, ctx },
+    );
+    expect(res.status).toBe("passed");
+  });
+
+  it("draftExists passes on gmailDraft action data", async () => {
+    const ctx = ctxWith({
+      actionsCalled: [
+        {
+          actionName: "GMAIL_ACTION",
+          result: {
+            success: true,
+            data: {
+              gmailDraft: { messageId: "msg-1", subject: "Re: brief" },
+            },
+          },
+        },
+      ],
+    });
+    const res = await runFinalCheck(
+      { type: "draftExists", channel: "gmail", expected: true },
+      { runtime, ctx },
+    );
+    expect(res.status).toBe("passed");
+  });
+
+  it("messageDelivered passes on captured connector dispatch", async () => {
+    const ctx = ctxWith({
+      connectorDispatches: [
+        {
+          channel: "discord",
+          delivered: true,
+          sentAt: new Date().toISOString(),
+        },
+      ],
+    });
+    const res = await runFinalCheck(
+      { type: "messageDelivered", channel: "discord", expected: true },
+      { runtime, ctx },
+    );
+    expect(res.status).toBe("passed");
+  });
+
+  it("connectorDispatchOccurred passes on delivered cross-channel action fallback", async () => {
+    const ctx = ctxWith({
+      actionsCalled: [
+        {
+          actionName: "CROSS_CHANNEL_SEND",
+          result: {
+            success: true,
+            data: { channel: "sms", status: "sent" },
+            text: "Sent sms to +15555550101.",
+          },
+        },
+      ],
+    });
+    const res = await runFinalCheck(
+      { type: "connectorDispatchOccurred", channel: "sms" },
+      { runtime, ctx },
+    );
+    expect(res.status).toBe("passed");
+  });
+
+  it("pushEscalationOrder passes when dispatches follow the expected ladder", async () => {
+    const ctx = ctxWith({
+      connectorDispatches: [
+        { channel: "desktop", delivered: true },
+        { channel: "mobile", delivered: true },
+      ],
+    });
+    const res = await runFinalCheck(
+      {
+        type: "pushEscalationOrder",
+        channelOrder: ["desktop", "mobile"],
+      },
+      { runtime, ctx },
+    );
+    expect(res.status).toBe("passed");
+  });
+
+  it("pushAcknowledgedSync passes when INTENT_SYNC acknowledged an intent", async () => {
+    const ctx = ctxWith({
+      actionsCalled: [
+        {
+          actionName: "INTENT_SYNC",
+          parameters: { subaction: "acknowledge", intentId: "intent-1" },
+          result: { success: true, data: { intentId: "intent-1" } },
+        },
+      ],
+    });
+    const res = await runFinalCheck(
+      { type: "pushAcknowledgedSync", expected: true },
       { runtime, ctx },
     );
     expect(res.status).toBe("passed");

@@ -780,7 +780,9 @@ export function buildSelfControlManagedHostsBlock(
   ].join(lineEnding);
 }
 
-export function parseSelfControlBlockRequest(options?: HandlerOptions): {
+export function parseSelfControlBlockRequest(
+  options?: HandlerOptions,
+): {
   request: SelfControlBlockRequest | null;
   error?: string;
 } {

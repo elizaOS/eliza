@@ -85,6 +85,10 @@ export interface ConversationMessage {
   blocks?: ContentBlock[];
   /** Source channel when forwarded from another channel (e.g. "autonomy"). */
   source?: string;
+  /** Concrete action name that produced this assistant turn, when applicable. */
+  actionName?: string;
+  /** Callback/status lines emitted while the action was running. */
+  actionCallbackHistory?: string[];
   /** Username of the sender (e.g. viewer username, discord username). */
   from?: string;
   /** Connector username/handle when available. */
@@ -359,7 +363,25 @@ export interface N8nWorkflowNode {
   id: string;
   name: string;
   type: string;
+  /** Canvas position from n8n — [x, y]. Present on single-workflow GET; absent on list. */
+  position?: [number, number];
+  /** Node parameters from n8n. Present on single-workflow GET; absent on list. */
+  parameters?: Record<string, unknown>;
 }
+
+/** A single outbound connection edge from n8n's connection map. */
+export interface N8nConnection {
+  node: string;
+  type: "main";
+  index: number;
+}
+
+/**
+ * n8n connection map shape.
+ * Keys are source node names; values group edges by output type.
+ * Present on single-workflow GET only — list endpoint stays shallow.
+ */
+export type N8nConnectionMap = Record<string, { main?: N8nConnection[][] }>;
 
 export interface N8nWorkflow {
   id: string;
@@ -369,4 +391,6 @@ export interface N8nWorkflow {
   nodeCount?: number;
   nodes?: N8nWorkflowNode[];
   lastExecutionAt?: string;
+  /** Connection graph. Present on single-workflow GET; absent on list. */
+  connections?: N8nConnectionMap;
 }
