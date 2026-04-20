@@ -4,17 +4,8 @@ import { LifeOpsRepository } from "./lifeops/repository.js";
 import { manageLifeOpsBrowserAction } from "./action.ts";
 import { lifeOpsBrowserProvider } from "./provider.ts";
 import { LifeOpsBrowserPluginService } from "./service.ts";
-import {
-  blockWebsitesAction,
-  getWebsiteBlockStatusAction,
-  requestWebsiteBlockingPermissionAction,
-  unblockWebsitesAction,
-} from "./actions/website-blocker.js";
-import {
-  blockAppsAction,
-  unblockAppsAction,
-  getAppBlockStatusAction,
-} from "./actions/app-blocker.js";
+import { ownerWebsiteBlockAction } from "./actions/owner-website-block.js";
+import { ownerAppBlockAction } from "./actions/owner-app-block.js";
 import { websiteBlockerProvider } from "./providers/website-blocker.js";
 import { appBlockerProvider } from "./providers/app-blocker.js";
 import {
@@ -32,10 +23,9 @@ import {
 } from "./website-blocker/chat-integration/index.js";
 
 // LifeOps core actions (calendar, gmail, life/tasks, goals, inbox, owner profile)
-import { calendarAction } from "./actions/calendar.js";
-import { gmailAction } from "./actions/gmail.js";
+import { ownerCalendarAction } from "./actions/owner-calendar.js";
+import { ownerInboxAction } from "./actions/owner-inbox.js";
 import { xReadAction } from "./actions/x-read.js";
-import { inboxAction } from "./actions/inbox.js";
 import { lifeAction } from "./actions/life.js";
 import { updateOwnerProfileAction } from "./actions/update-owner-profile.js";
 // T9f — Morning/night check-in engine (plan §6.23).
@@ -44,26 +34,16 @@ import {
   runNightCheckinAction,
 } from "./actions/checkin.js";
 import { relationshipAction } from "./actions/relationships.js";
-import { screenTimeAction } from "./actions/screen-time.js";
-// T8d — Activity tracker (plan §6.12).
-import {
-  getActivityReportAction,
-  getTimeOnAppAction,
-  getTimeOnSiteAction,
-} from "./actions/activity-report.js";
+import { ownerScreenTimeAction } from "./actions/owner-screen-time.js";
 import { ActivityTrackerService } from "./activity-profile/activity-tracker-service.js";
 import {
   callExternalAction,
   callUserAction,
   twilioCallAction,
 } from "./actions/twilio-call.js";
-import { remoteDesktopAction } from "./actions/remote-desktop.js";
-import { startRemoteSessionAction } from "./actions/start-remote-session.js";
-import { revokeRemoteSessionAction } from "./actions/revoke-remote-session.js";
-import { listRemoteSessionsAction } from "./actions/list-remote-sessions.js";
+import { ownerRemoteDesktopAction } from "./actions/owner-remote-desktop.js";
 import { lifeOpsComputerUseAction } from "./actions/computer-use.js";
 import { crossChannelSendAction } from "./actions/cross-channel-send.js";
-import { searchAcrossChannelsAction } from "./actions/search-across-channels.js";
 import { intentSyncAction } from "./actions/intent-sync.js";
 import { publishDeviceIntentAction } from "./actions/device-bus.js";
 import { passwordManagerAction } from "./actions/password-manager.js";
@@ -72,13 +52,6 @@ import {
   listAutofillWhitelistAction,
   requestFieldFillAction,
 } from "./actions/autofill.js";
-import { calendlyAction } from "./actions/calendly.js";
-import {
-  checkAvailabilityAction,
-  proposeMeetingTimesAction,
-  schedulingAction,
-  updateMeetingPreferencesAction,
-} from "./actions/scheduling.js";
 import { dossierAction } from "./actions/dossier.js";
 // T7f — meeting dossier (plan §6.7).
 import { generateDossierAction } from "./dossier/action.js";
@@ -86,6 +59,7 @@ import { generateDossierAction } from "./dossier/action.js";
 import { computeTravelBufferAction } from "./travel-time/action.js";
 import { healthAction } from "./actions/health.js";
 import { subscriptionsAction } from "./actions/subscriptions.js";
+import { emailUnsubscribeAction } from "./actions/email-unsubscribe.js";
 // T8e — browser extension bridge actions (plan §6.13).
 import {
   fetchBrowserActivityAction,
@@ -196,50 +170,32 @@ const rawAppLifeOpsPlugin: Plugin = {
   schema: lifeOpsSchema,
   actions: [
     manageLifeOpsBrowserAction,
-    blockWebsitesAction,
-    getWebsiteBlockStatusAction,
-    requestWebsiteBlockingPermissionAction,
-    unblockWebsitesAction,
+    ownerWebsiteBlockAction,
     blockUntilTaskCompleteAction,
     listActiveBlocksAction,
     releaseBlockAction,
-    blockAppsAction,
-    unblockAppsAction,
-    getAppBlockStatusAction,
-    calendarAction,
-    gmailAction,
+    ownerAppBlockAction,
+    ownerCalendarAction,
+    ownerInboxAction,
     xReadAction,
-    inboxAction,
     lifeAction,
     updateOwnerProfileAction,
     runMorningCheckinAction,
     runNightCheckinAction,
     relationshipAction,
-    screenTimeAction,
-    getActivityReportAction,
-    getTimeOnAppAction,
-    getTimeOnSiteAction,
+    ownerScreenTimeAction,
     twilioCallAction,
     callUserAction,
     callExternalAction,
-    remoteDesktopAction,
-    startRemoteSessionAction,
-    revokeRemoteSessionAction,
-    listRemoteSessionsAction,
+    ownerRemoteDesktopAction,
     lifeOpsComputerUseAction,
     crossChannelSendAction,
-    searchAcrossChannelsAction,
     publishDeviceIntentAction,
     intentSyncAction,
     passwordManagerAction,
     requestFieldFillAction,
     addAutofillWhitelistAction,
     listAutofillWhitelistAction,
-    calendlyAction,
-    proposeMeetingTimesAction,
-    checkAvailabilityAction,
-    updateMeetingPreferencesAction,
-    schedulingAction,
     listOverdueFollowupsAction,
     markFollowupDoneAction,
     setFollowupThresholdAction,
@@ -248,6 +204,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     computeTravelBufferAction,
     healthAction,
     subscriptionsAction,
+    emailUnsubscribeAction,
     registerBrowserSessionAction,
     fetchBrowserActivityAction,
   ],
@@ -411,17 +368,10 @@ export {
 };
 
 // LifeOps core exports
-export { calendarAction } from "./actions/calendar.js";
-export { gmailAction } from "./actions/gmail.js";
-export { inboxAction } from "./actions/inbox.js";
+export { ownerCalendarAction } from "./actions/owner-calendar.js";
+export { ownerInboxAction } from "./actions/owner-inbox.js";
 export { lifeAction } from "./actions/life.js";
 export { updateOwnerProfileAction } from "./actions/update-owner-profile.js";
-export {
-  checkAvailabilityAction,
-  proposeMeetingTimesAction,
-  schedulingAction,
-  updateMeetingPreferencesAction,
-} from "./actions/scheduling.js";
 export { inboxTriageProvider } from "./providers/inbox-triage.js";
 export { lifeOpsProvider } from "./providers/lifeops.js";
 
@@ -465,7 +415,7 @@ export {
 export * from "./website-blocker/public.ts";
 
 // App blocker exports
-export { blockAppsAction, unblockAppsAction, getAppBlockStatusAction } from "./actions/app-blocker.js";
+export { ownerAppBlockAction } from "./actions/owner-app-block.js";
 export { appBlockerProvider } from "./providers/app-blocker.js";
 export {
   getAppBlockerStatus,

@@ -191,6 +191,7 @@ export const LIFEOPS_GOOGLE_CAPABILITIES = [
   "google.calendar.write",
   "google.gmail.triage",
   "google.gmail.send",
+  "google.gmail.manage",
 ] as const;
 export type LifeOpsGoogleCapability =
   (typeof LIFEOPS_GOOGLE_CAPABILITIES)[number];

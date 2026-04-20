@@ -7,6 +7,35 @@ import { runScenario } from "../../../packages/scenario-runner/src/executor.ts";
 import cancelGooglePlayScenario from "../../../../test/scenarios/browser.lifeops/subscriptions.cancel-google-play.scenario";
 import loginRequiredScenario from "../../../../test/scenarios/browser.lifeops/subscriptions.login-required.scenario";
 
+/**
+ * Stand-in for the LLM planner: extracts the parameters the SUBSCRIPTIONS
+ * handler expects from the user's message text. Kept in the test fixture so
+ * the production action stays planner-driven (no regex intent inference), and
+ * the scenario still exercises the handler end-to-end deterministically.
+ */
+function resolveSubscriptionParams(
+  text: string,
+): Record<string, unknown> {
+  const lower = text.toLowerCase();
+  const params: Record<string, unknown> = {};
+  if (lower.includes("cancel")) {
+    params.mode = "cancel";
+  } else if (lower.includes("audit")) {
+    params.mode = "audit";
+  } else if (lower.includes("status")) {
+    params.mode = "status";
+  }
+  if (lower.includes("google play")) {
+    params.serviceSlug = "google_play";
+  } else if (lower.includes("fixture login required")) {
+    params.serviceSlug = "fixture_login_required";
+  }
+  if (lower.includes("i confirm") || lower.includes("go ahead")) {
+    params.confirmed = true;
+  }
+  return params;
+}
+
 async function createScenarioRuntime(agentId: string) {
   const runtime = createLifeOpsChatTestRuntime({
     agentId,
@@ -15,9 +44,14 @@ async function createScenarioRuntime(agentId: string) {
       throw new Error("scenario tests should not invoke useModel");
     },
     handleTurn: async ({ message, onResponse, runtime, state }) => {
-      const result = await subscriptionsAction.handler(runtime, message as Memory, state, {
-        parameters: {},
-      });
+      const text =
+        (message.content as { text?: string } | undefined)?.text ?? "";
+      const result = await subscriptionsAction.handler(
+        runtime,
+        message as Memory,
+        state,
+        { parameters: resolveSubscriptionParams(text) },
+      );
       const content: Content & Record<string, unknown> = {
         text: result.text ?? "",
         actions: [subscriptionsAction.name],

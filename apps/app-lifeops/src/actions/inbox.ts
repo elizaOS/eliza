@@ -252,14 +252,22 @@ export const inboxAction: Action & {
     "unread summary",
   ],
   description:
-    "Unified inbox management: triage new messages across all channels, " +
-    "generate a daily digest summary, or draft/send a response to a triaged " +
-    "item. Use this for executive-assistant daily briefs, urgent-vs-low " +
-    "priority inbox ranking, unread summaries, drafts awaiting sign-off, " +
-    "missed-call repair follow-up, and group-chat handoff coordination. " +
-    "Examples: 'triage my inbox', 'give me my inbox digest', or 'respond to the messages that need an answer in my inbox'. " +
-    "DO NOT use this action when the user is only complaining about email or messages without asking for triage, a digest, or a reply workflow. " +
-    "If the request is explicitly Gmail or email-specific, about unread emails, or about drafting or sending a reply to a specific email, use GMAIL_ACTION instead. " +
+    "Cross-channel unified inbox — aggregates Gmail + Slack + Discord + SMS + " +
+    "Telegram + iMessage + WhatsApp into ONE inbox view. Use this for: triage " +
+    "across all channels at once, the daily executive-assistant digest, urgent-" +
+    "vs-low priority ranking across ALL messaging surfaces, unread summaries " +
+    "across multiple channels, drafts awaiting owner sign-off, missed-call " +
+    "repair follow-up, group-chat handoff coordination. " +
+    "Use this action for any request that says 'my inbox', 'inbox digest', " +
+    "'daily digest', 'daily brief', 'triage my inbox', 'unread summary', or " +
+    "'what needs my attention' — unless the user explicitly names Gmail / " +
+    "email / a specific email, in which case use GMAIL_ACTION. The word " +
+    "'inbox' alone (without 'Gmail' or 'email') belongs here, not in GMAIL_ACTION. " +
+    "DO NOT use this when the user is only venting or complaining about messages " +
+    "without asking for triage / digest / response workflow. " +
+    "DO NOT use this when the request is explicitly Gmail-only, about a specific " +
+    "email by sender / subject / body, or about drafting / sending a single email " +
+    "reply — route to GMAIL_ACTION instead. " +
     "Subactions: triage, digest, respond. Admin/owner only.",
   descriptionCompressed:
     "Unified inbox: triage messages, daily digest, draft/send responses. Admin only.",
