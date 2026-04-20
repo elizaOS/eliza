@@ -7,11 +7,20 @@
  * rows are read-only locally — the user has to remove the Cloud package to
  * deactivate them, which preserves the contract that Cloud is the source
  * of truth for managed entitlements (Commandment 4).
+ *
+ * Travel features (`travel.*`, `cloud.duffel`) get a Cloud-aware UX:
+ *  - Cloud-linked, Cloud-managed row → "Enabled via Eliza Cloud · 5%
+ *    service fee" badge and a disabled switch (managed upstream).
+ *  - Not Cloud-linked → "Sign in to Eliza Cloud to enable, or toggle on
+ *    locally (requires your own Duffel API key)" hint, and the Sync
+ *    button switches to a "Sign in to Cloud" CTA wired into the existing
+ *    `handleCloudLogin` flow from `useApp`.
  */
 
 import { Button, Switch } from "@elizaos/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
+import { useApp } from "../../state";
 
 type FeatureSource = "default" | "local" | "cloud";
 
@@ -36,6 +45,22 @@ interface SyncResponse extends FeaturesResponse {
 
 interface ToggleResponse {
   readonly feature: FeatureRowDto;
+}
+
+/** Feature keys that are Cloud-default-on when the user is signed into
+ *  Eliza Cloud. Mirrors `CLOUD_LINKED_DEFAULT_ON` in
+ *  feature-flags.types.ts; duplicated here to avoid pulling the
+ *  app-lifeops package into the React bundle. */
+const CLOUD_TRAVEL_KEYS: ReadonlySet<string> = new Set([
+  "travel.search_flight",
+  "travel.search_hotel",
+  "travel.book_flight",
+  "travel.book_hotel",
+  "cloud.duffel",
+]);
+
+function isCloudTravelKey(key: string): boolean {
+  return CLOUD_TRAVEL_KEYS.has(key);
 }
 
 function sourceBadge(source: FeatureSource): {
@@ -63,12 +88,14 @@ function sourceBadge(source: FeatureSource): {
 }
 
 export function FeatureTogglesSection() {
+  const { elizaCloudConnected, handleCloudLogin } = useApp();
   const [features, setFeatures] = useState<FeatureRowDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncedNote, setSyncedNote] = useState<string | null>(null);
+  const [signInBusy, setSignInBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -135,6 +162,48 @@ export function FeatureTogglesSection() {
     }
   }, []);
 
+  const handleSignIn = useCallback(async () => {
+    setSignInBusy(true);
+    setError(null);
+    try {
+      await handleCloudLogin();
+      // After login the cloud-features sync route will auto-promote
+      // travel keys; refresh the list to pick that up.
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSignInBusy(false);
+    }
+  }, [handleCloudLogin, load]);
+
+  const headerCta = useMemo(() => {
+    if (!elizaCloudConnected) {
+      return (
+        <Button
+          variant="outline"
+          size="sm"
+          className="!mt-0 h-9 rounded-lg"
+          onClick={() => void handleSignIn()}
+          disabled={signInBusy}
+        >
+          {signInBusy ? "Opening sign-in…" : "Sign in to Cloud"}
+        </Button>
+      );
+    }
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        className="!mt-0 h-9 rounded-lg"
+        onClick={() => void handleSync()}
+        disabled={syncing}
+      >
+        {syncing ? "Syncing…" : "Sync from Cloud"}
+      </Button>
+    );
+  }, [elizaCloudConnected, handleSignIn, handleSync, signInBusy, syncing]);
+
   return (
     <div className="border-t border-border/40 pt-4">
       <div className="flex items-center justify-between gap-3 pb-3">
@@ -145,15 +214,7 @@ export function FeatureTogglesSection() {
             or call out to a paid third party is off until you opt in.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="!mt-0 h-9 rounded-lg"
-          onClick={() => void handleSync()}
-          disabled={syncing}
-        >
-          {syncing ? "Syncing…" : "Sync from Cloud"}
-        </Button>
+        {headerCta}
       </div>
 
       {error && (
@@ -173,8 +234,12 @@ export function FeatureTogglesSection() {
         <ul className="space-y-2">
           {features.map((feature) => {
             const badge = sourceBadge(feature.source);
+            const cloudTravel = isCloudTravelKey(feature.featureKey);
             const isCloudManaged = feature.source === "cloud";
             const isBusy = busyKey === feature.featureKey;
+            const showCloudFeeTag = cloudTravel && isCloudManaged;
+            const showCloudHint =
+              cloudTravel && !elizaCloudConnected && !isCloudManaged;
             return (
               <li
                 key={feature.featureKey}
@@ -195,7 +260,12 @@ export function FeatureTogglesSection() {
                     >
                       {badge.label}
                     </span>
-                    {feature.costsMoney && (
+                    {showCloudFeeTag && (
+                      <span className="rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+                        Enabled via Eliza Cloud · 5% service fee
+                      </span>
+                    )}
+                    {feature.costsMoney && !showCloudFeeTag && (
                       <span className="rounded border border-warn/40 bg-warn/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warn">
                         Costs money
                       </span>
@@ -208,6 +278,12 @@ export function FeatureTogglesSection() {
                     <p className="text-xs-tight text-muted">
                       Managed by your Eliza Cloud package — disable it from
                       the Cloud dashboard.
+                    </p>
+                  )}
+                  {showCloudHint && (
+                    <p className="text-xs-tight text-muted">
+                      Sign in to Eliza Cloud to enable, or toggle on locally
+                      (requires your own Duffel API key).
                     </p>
                   )}
                 </div>
