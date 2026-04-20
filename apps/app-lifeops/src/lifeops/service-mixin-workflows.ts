@@ -124,7 +124,7 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(Bas
       return this.withWorkflowSchedulerState(workflow, targetState);
     }
 
-    private buildInitialSchedulerState(
+    buildInitialSchedulerState(
       workflow: LifeOpsWorkflowDefinition,
     ): LifeOpsWorkflowSchedulerState | null {
       if (workflow.triggerType === "manual") {
@@ -741,7 +741,7 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(Bas
   return LifeOpsWorkflowsServiceMixin;
 }
 
-function matchesCalendarEventEndedFilters(
+export function matchesCalendarEventEndedFilters(
   event: LifeOpsCalendarEvent,
   filters: LifeOpsCalendarEventEndedFilters | undefined,
 ): boolean {
