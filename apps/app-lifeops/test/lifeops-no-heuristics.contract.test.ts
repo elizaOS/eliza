@@ -1,3 +1,16 @@
+/**
+ * LINT-STYLE SOURCE INVARIANTS (not behavioral contracts).
+ *
+ * Every assertion in this file is `readFile(source).not.toContain(...)` or
+ * similar. These guard against regressions where old heuristic/keyword code
+ * might be reintroduced into files that should stay on the LLM-extraction
+ * path. They do NOT execute the code under test and they do NOT prove the
+ * extractor actually works.
+ *
+ * Do not add new "contract" assertions here unless they are source-level
+ * invariants. For behavioral tests, co-locate them with the module they
+ * exercise and run them through the real runtime path.
+ */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -8,7 +21,7 @@ async function readRepoFile(relativePath: string): Promise<string> {
   return readFile(path.join(REPO_ROOT, relativePath), "utf8");
 }
 
-describe("LifeOps no-heuristics architecture contracts", () => {
+describe("LifeOps no-heuristics source-level invariants (lint-style, not behavioral)", () => {
   it("keeps LIFE operation routing on the extractor path", async () => {
     const source = await readRepoFile("eliza/apps/app-lifeops/src/actions/life.ts");
     expect(source).not.toContain("export function classifyIntent");
