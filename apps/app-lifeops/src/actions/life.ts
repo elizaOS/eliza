@@ -2389,19 +2389,22 @@ export const lifeAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: "LIFE",
+  // CREATE_TASK and COMPLETE_TASK must NOT appear in similes: they are
+  // the orchestrator's primary aliases, and the collision routes coding
+  // prompts ("fix this bug") here by name match. LifeOps intent is still
+  // covered by the todo/habit/goal/reminder similes plus description.
   similes: [
     "MANAGE_LIFEOPS",
     "QUERY_LIFEOPS",
-    "CREATE_TASK",
     "CREATE_TODO",
     "ADD_TODO",
     "LIST_TODOS",
     "TODO_LIST",
+    "COMPLETE_TODO",
     "CREATE_HABIT",
     "CREATE_GOAL",
     "LIFE_CREATE_DEFINITION",
     "TRACK_HABIT",
-    "COMPLETE_TASK",
     "SET_ALARM",
     "SET_REMINDER",
     "SNOOZE_REMINDER",
@@ -2437,13 +2440,9 @@ export const lifeAction: Action & {
     if (
       looksLikeGoalAdviceOnly(text) ||
       looksLikeRelationshipFollowUpRequest(text) ||
-      // The LIFE similes list includes `CREATE_TASK` / `COMPLETE_TASK`
-      // for LifeOps users who say "add a task: pick up laundry" etc.
-      // Those names collide with the plugin-agent-orchestrator's
-      // `CREATE_TASK` (coding-task spawn action), so the LLM may emit
-      // them for a build-an-app prompt and land here by mistake. Decline
-      // so the action router falls through to the orchestrator instead
-      // of firing LifeOps for something that is not LifeOps.
+      // Coding prompts share LifeOps verbs ("make", "create", "add") so
+      // the action selector can still pick LIFE. Decline here to let
+      // plugin-agent-orchestrator's CREATE_TASK take the route.
       looksLikeCodingTaskRequest(text)
     ) {
       return false;
