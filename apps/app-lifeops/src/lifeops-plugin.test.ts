@@ -1,8 +1,30 @@
 /**
- * Tests for the LifeOps plugin route registration shape.
+ * SHAPE-ONLY TESTS — this file does NOT execute any route handler; it verifies
+ * plugin SHAPE only.
  *
- * Validates that `lifeopsPlugin` is correctly shaped and all routes are
- * properly defined, without invoking the underlying handlers.
+ * Scope verified:
+ *   - `lifeopsPlugin` is a correctly shaped Plugin object (name, routes[]).
+ *   - Every registered route has `rawPath: true`, a valid HTTP method, and a
+ *     function handler.
+ *   - A hard-coded list of expected static/dynamic paths is present.
+ *   - Every `method === ... && pathname === ...` branch discovered by regex in
+ *     `routes/lifeops-routes.ts` has a matching registered route (a "no route
+ *     was forgotten" contract check).
+ *   - The handler for `/api/lifeops/app-state` delegates to the
+ *     `handleLifeOpsRoutes` mock (delegation wiring only).
+ *
+ * Explicitly NOT verified:
+ *   - Route handler business logic (the underlying handler modules are
+ *     `vi.mock`ed at the top of the file).
+ *   - Auth / permissions / input validation on any route.
+ *   - End-to-end HTTP behavior against a real server.
+ *
+ * Regressions that would slip past this file (add a real-HTTP integration
+ * test elsewhere if you care about these):
+ *   - A handler throwing on valid input.
+ *   - An auth check that silently returns 200 instead of 401/403.
+ *   - A response body whose shape changes incompatibly.
+ *   - A regex-discovered route that exists but is wired to the wrong handler.
  */
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";

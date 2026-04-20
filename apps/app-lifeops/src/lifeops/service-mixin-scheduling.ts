@@ -49,6 +49,166 @@ export function withScheduling<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {
   class LifeOpsSchedulingServiceMixin extends Base {
+    /**
+     * Resolve the counterparty's channel + target from the relationship
+     * linked to the negotiation. Returns null if no linked relationship, and
+     * fails with `SCHEDULING_NO_COUNTERPARTY_CONTACT` if the relationship has
+     * no usable contact info.
+     */
+    async resolveCounterpartyTarget(
+      negotiation: LifeOpsSchedulingNegotiation,
+    ): Promise<CounterpartyTarget | null> {
+      if (!negotiation.relationshipId) {
+        return null;
+      }
+      const relationship = await this.repository.getRelationship(
+        this.agentId(),
+        negotiation.relationshipId,
+      );
+      if (!relationship) {
+        fail(
+          404,
+          `SCHEDULING_NO_COUNTERPARTY_CONTACT: relationship ${negotiation.relationshipId} not found for negotiation ${negotiation.id}`,
+        );
+      }
+
+      const primaryChannel = normalizeChannel(relationship.primaryChannel);
+      const primaryHandle =
+        typeof relationship.primaryHandle === "string"
+          ? relationship.primaryHandle.trim()
+          : "";
+      if (primaryChannel && primaryHandle) {
+        return {
+          channel: primaryChannel,
+          target: primaryHandle,
+          name: relationship.name,
+        };
+      }
+      const email =
+        typeof relationship.email === "string"
+          ? relationship.email.trim()
+          : "";
+      if (email) {
+        return { channel: "email", target: email, name: relationship.name };
+      }
+      const phone =
+        typeof relationship.phone === "string"
+          ? relationship.phone.trim()
+          : "";
+      if (phone) {
+        return { channel: "sms", target: phone, name: relationship.name };
+      }
+      fail(
+        409,
+        `SCHEDULING_NO_COUNTERPARTY_CONTACT: relationship ${relationship.id} has no usable contact (primaryChannel/primaryHandle, email, or phone)`,
+      );
+    }
+
+    /**
+     * Dispatch a plain message to the counterparty via an existing send
+     * path. Fails (propagates the dispatch error) so the caller does not
+     * report success when delivery actually failed.
+     */
+    async dispatchSchedulingMessage(
+      negotiation: LifeOpsSchedulingNegotiation,
+      body: string,
+      subject: string,
+    ): Promise<CounterpartyTarget> {
+      const contact = await this.resolveCounterpartyTarget(negotiation);
+      if (!contact) {
+        fail(
+          409,
+          `SCHEDULING_NO_COUNTERPARTY_CONTACT: negotiation ${negotiation.id} has no relationshipId; cannot deliver message`,
+        );
+      }
+      try {
+        switch (contact.channel) {
+          case "email": {
+            const requestUrl = new URL(
+              "http://internal.invalid/lifeops/gmail/send",
+            );
+            await this.sendGmailMessage(requestUrl, {
+              to: [contact.target],
+              subject,
+              bodyText: body,
+              confirmSend: true,
+            });
+            break;
+          }
+          case "telegram": {
+            await this.sendTelegramMessage({
+              target: contact.target,
+              message: body,
+            });
+            break;
+          }
+          case "whatsapp": {
+            await this.sendWhatsAppMessage({
+              to: contact.target,
+              text: body,
+            });
+            break;
+          }
+          case "imessage": {
+            await this.sendIMessage({
+              to: contact.target,
+              text: body,
+            });
+            break;
+          }
+          case "discord":
+          case "signal": {
+            if (typeof this.runtime.sendMessageToTarget !== "function") {
+              fail(
+                501,
+                `SCHEDULING_DISPATCH_UNAVAILABLE: runtime has no sendMessageToTarget for channel ${contact.channel}`,
+              );
+            }
+            await this.runtime.sendMessageToTarget(
+              {
+                source: contact.channel,
+                channelId: contact.target,
+              } as Parameters<
+                typeof this.runtime.sendMessageToTarget
+              >[0],
+              { text: body, source: contact.channel },
+            );
+            break;
+          }
+          case "sms": {
+            fail(
+              501,
+              `SCHEDULING_DISPATCH_UNAVAILABLE: sms dispatch for scheduling is not wired (counterparty phone=${contact.target}). Use OWNER_SEND_MESSAGE for SMS.`,
+            );
+          }
+          default: {
+            fail(
+              501,
+              `SCHEDULING_DISPATCH_UNAVAILABLE: unsupported channel ${contact.channel}`,
+            );
+          }
+        }
+      } catch (error) {
+        // Re-throw LifeOpsServiceError as-is; wrap other errors so the caller
+        // can map them to a structured failure instead of silently
+        // claiming success.
+        if (
+          error &&
+          typeof error === "object" &&
+          (error as { name?: string }).name === "LifeOpsServiceError"
+        ) {
+          throw error;
+        }
+        fail(
+          502,
+          `SCHEDULING_DISPATCH_FAILED: ${contact.channel} send to ${contact.target} failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+      return contact;
+    }
+
     async startNegotiation(input: {
       subject: string;
       relationshipId?: string | null;
@@ -81,6 +241,15 @@ export function withScheduling<TBase extends Constructor<LifeOpsServiceBase>>(
         updatedAt: now,
       };
       await this.repository.upsertSchedulingNegotiation(negotiation);
+
+      const subjectLine = `Scheduling: ${negotiation.subject}`;
+      const body =
+        `Hi,\n\nI'd like to set up "${negotiation.subject}" ` +
+        `(roughly ${negotiation.durationMinutes} minutes, ${negotiation.timezone}). ` +
+        `I'll follow up with specific proposed times shortly.\n\n` +
+        `Reference: ${negotiation.id}`;
+      await this.dispatchSchedulingMessage(negotiation, body, subjectLine);
+
       return negotiation;
     }
 
