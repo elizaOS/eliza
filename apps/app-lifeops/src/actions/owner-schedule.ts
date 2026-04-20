@@ -191,11 +191,15 @@ export const ownerScheduleAction: Action = {
         ? formatScheduleInspection(inspection)
         : formatScheduleSummary(inspection);
     const data = scheduleInspectionActionData(inspection);
-    await callback?.({ text, data });
+    // Domain shapes; the runtime callback/result accept structured data and
+    // cannot statically prove the inspection schema is JSON-safe. Cast
+    // through unknown — these fields are produced by LifeOpsService and
+    // never contain non-serializable values.
+    await callback?.({ text, data: data as unknown as Record<string, unknown> });
     return {
       text,
       success: true,
-      data,
+      data: data as unknown as ActionResult["data"],
     };
   },
 };
