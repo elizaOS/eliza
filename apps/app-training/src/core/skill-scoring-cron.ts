@@ -10,46 +10,21 @@
  * batch — we surface per-skill errors via the logger and continue.
  */
 
-import {
-  existsSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveStateDir } from "@elizaos/core";
 import { scoreSkill, type ScoreableTrajectory } from "./replay-validator.js";
+import {
+  ensureNamedCronJob,
+  registerRuntimeEventOnce,
+  type CronServiceLike,
+} from "./ensure-cron-job.js";
 import { waitForService } from "./wait-for-service.js";
 
 interface MinimalLogger {
   info: (message: string) => void;
   warn: (message: string) => void;
   error: (message: string) => void;
-}
-
-interface CronServiceLike {
-  createJob: (input: CronServiceJobInput) => Promise<unknown>;
-  // The real type lives in @elizaos/plugin-cron; we keep a structural shape
-  // here so app-training does not need to depend on the cron plugin types
-  // directly.
-}
-
-interface CronServiceJobInput {
-  name: string;
-  description?: string;
-  enabled?: boolean;
-  schedule:
-    | { kind: "cron"; expr: string; tz?: string }
-    | { kind: "every"; everyMs: number };
-  payload:
-    | { kind: "event"; eventName: string; payload?: Record<string, unknown> }
-    | { kind: "prompt"; text: string }
-    | {
-        kind: "action";
-        actionName: string;
-        params?: Record<string, unknown>;
-      };
-  metadata?: Record<string, unknown>;
 }
 
 interface RuntimeLike {
@@ -223,8 +198,8 @@ export async function runSkillScoringBatch(
 
 /**
  * Register the nightly skill-scoring cron job + event handler against the
- * agent runtime. Safe to call multiple times — the cron service itself
- * deduplicates by job name.
+ * agent runtime. Safe to call multiple times — we reuse any existing job and
+ * prune duplicate persisted registrations by name.
  *
  * Schedule defaults to "5 3 * * *" (03:05 local time) so it runs after the
  * trajectory-export cron (which runs at 03:00).
@@ -245,25 +220,31 @@ export async function registerSkillScoringCron(
     );
     return;
   }
-  if (typeof runtime.registerEvent === "function") {
-    runtime.registerEvent(SCORE_EVENT_NAME, async () => {
-      await runSkillScoringBatch(runtime);
-    });
-  }
-  await cronService.createJob({
-    name: "track-c-skill-scoring-nightly",
-    description: "Nightly evaluation of curated agent skills",
-    enabled: true,
-    schedule: {
-      kind: "cron",
-      expr: options?.schedule ?? "5 3 * * *",
-      tz: options?.tz,
-    },
-    payload: {
-      kind: "event",
-      eventName: SCORE_EVENT_NAME,
-    },
-    metadata: { trackC: true, kind: "skill-scoring" },
+  registerRuntimeEventOnce(runtime, SCORE_EVENT_NAME, async () => {
+    await runSkillScoringBatch(runtime);
   });
-  log.info("[SkillScoringCron] registered nightly skill-scoring cron");
+  const registration = await ensureNamedCronJob(
+    cronService,
+    {
+      name: "track-c-skill-scoring-nightly",
+      description: "Nightly evaluation of curated agent skills",
+      enabled: true,
+      schedule: {
+        kind: "cron",
+        expr: options?.schedule ?? "5 3 * * *",
+        tz: options?.tz,
+      },
+      payload: {
+        kind: "event",
+        eventName: SCORE_EVENT_NAME,
+      },
+      metadata: { trackC: true, kind: "skill-scoring" },
+    },
+    { log, logPrefix: "[SkillScoringCron]" },
+  );
+  log.info(
+    registration === "created"
+      ? "[SkillScoringCron] registered nightly skill-scoring cron"
+      : "[SkillScoringCron] using existing nightly skill-scoring cron",
+  );
 }

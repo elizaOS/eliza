@@ -236,7 +236,10 @@ export const xReadAction: Action = {
     const service = new LifeOpsService(runtime);
     try {
       const status = await service.getXConnectorStatus();
-      return Boolean(status.connected);
+      return Boolean(
+        status.grant &&
+          status.grantedCapabilities.includes("x.read"),
+      );
     } catch {
       return false;
     }

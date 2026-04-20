@@ -17,7 +17,7 @@ import {
   LIFEOPS_BROWSER_COMPANION_CONNECTION_STATES,
   LIFEOPS_BROWSER_KINDS,
 } from "@elizaos/shared/contracts/lifeops";
-import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
+import { getAgentEventService } from "@elizaos/agent/runtime";
 import { resolveOwnerEntityId } from "@elizaos/agent/runtime/owner-entity";
 import { computeAdaptiveWindowPolicy } from "./defaults.js";
 import {

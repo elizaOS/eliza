@@ -141,7 +141,7 @@
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-ollama": "workspace:*",
     "@elizaos/plugin-pdf": "workspace:*",
-    "@elizaos/plugin-solana": "1.2.6",
+    "@elizaos/plugin-solana": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/skills": "workspace:*",

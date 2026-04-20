@@ -43,6 +43,11 @@ import {
   writeSse,
   writeSseJson,
 } from "./chat-routes.js";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.js";
+import {
+  buildConversationRoomMetadata,
+  sanitizeConversationMetadata,
+} from "./conversation-metadata.js";
 import {
   cacheDiscordAvatarForRuntime,
   isCanonicalDiscordSource,
@@ -53,15 +58,9 @@ import {
 import { evictOldestConversation } from "./memory-bounds.js";
 import type { RouteRequestContext } from "./route-helpers.js";
 import {
-  buildConversationRoomMetadata,
-  extractConversationMetadataFromRoom,
-  sanitizeConversationMetadata,
-} from "./conversation-metadata.js";
-import {
   buildUserMessages,
   type ConversationMeta,
   getErrorMessage,
-  isUuidLike,
   resolveAppUserName,
   resolveConversationGreetingText,
   resolveWalletModeGuidanceReply,
@@ -152,29 +151,14 @@ export interface ConversationRouteContext extends RouteRequestContext {
 // Closure-lifted helpers
 // ---------------------------------------------------------------------------
 
+export function resolveConversationAdminEntityId(
+  state: ConversationRouteState,
+): UUID {
+  return resolveClientChatAdminEntityId(state);
+}
+
 function ensureAdminEntityId(state: ConversationRouteState): UUID {
-  if (state.adminEntityId) {
-    return state.adminEntityId;
-  }
-  const configuredValue = (
-    state.config as {
-      agents?: { defaults?: { adminEntityId?: string } };
-    }
-  ).agents?.defaults?.adminEntityId;
-  const configured =
-    typeof configuredValue === "string" ? configuredValue.trim() : undefined;
-  const nextAdminEntityId =
-    configured && isUuidLike(configured)
-      ? configured
-      : (stringToUuid(`${state.agentName}-admin-entity`) as UUID);
-  if (configured && !isUuidLike(configured)) {
-    logger.warn(
-      `[eliza-api] Invalid agents.defaults.adminEntityId "${configured}", using deterministic fallback`,
-    );
-  }
-  state.adminEntityId = nextAdminEntityId;
-  state.chatUserId = state.adminEntityId;
-  return nextAdminEntityId;
+  return resolveConversationAdminEntityId(state);
 }
 
 async function ensureWorldOwnershipAndRoles(

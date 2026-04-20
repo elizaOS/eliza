@@ -23,7 +23,7 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess } from "@elizaos/agent/security";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import { calendarAction } from "./calendar.js";
@@ -263,8 +263,12 @@ async function resolveOwnerCalendarPlanWithLlm(args: {
     "Choose check_availability for free/busy questions over a specific window.",
     "Choose propose_times for requests to suggest or offer a few candidate meeting slots.",
     "Choose update_preferences for durable rules like no-call hours, blackout windows, preferred hours, sleep windows, and travel buffer.",
+    "Requests that define when meetings or calls may happen, even if phrased as a standing policy like 'no calls between 11pm and 8am unless I explicitly say it's okay', are update_preferences.",
+    "Do not use OWNER_CALENDAR for reminder-only or bump-me-later policies about unanswered event decisions; those belong to reminder, inbox, or escalation actions instead.",
+    "Do not use OWNER_CALENDAR for device ringing, push-notification, or cross-device reminder behavior. Those belong to device-intent actions.",
     "Choose calendly_availability / calendly_list_event_types / calendly_upcoming / calendly_single_use_link when the request mentions Calendly by name or includes a calendly.com URL or eventTypeUri.",
     "Choose negotiate_start / negotiate_propose / negotiate_respond / negotiate_finalize / negotiate_list / negotiate_cancel for multi-turn scheduling coordination with another person or team.",
+    "Do not use OWNER_CALENDAR for morning briefs, night briefs, operating pictures, command-center views, or broad day-start/day-end reviews. Those belong to RUN_MORNING_CHECKIN / RUN_NIGHT_CHECKIN even when they include meeting context.",
     "Set shouldAct=false only when this is not a calendar/scheduling request and another action should handle it.",
     "When shouldAct=false, response must be a short clarifying sentence in the user's language.",
     "",
@@ -449,12 +453,14 @@ export const ownerCalendarAction: Action & {
     "no-call hours",
     "protected hours",
     "blackout window",
+    "meeting preferences",
+    "scheduling rules",
   ],
   description:
-    "Owner's entire calendar surface: Google Calendar (view, search, create, travel), " +
+    "Owner's calendar and scheduling surface: Google Calendar (view, search, create, travel), " +
     "Calendly (event types, availability, upcoming, booking links), availability " +
     "checks, meeting-preference updates, and multi-turn scheduling negotiation. " +
-    "This action owns every calendar-shaped request — route here instead of inventing " +
+    "This action owns concrete calendar and scheduling requests — route here instead of inventing " +
     "separate calendar/scheduling/calendly actions. " +
     "Subactions — Google Calendar: view_today, view_week, next_event, search_events, " +
     "create_event, travel_itinerary, recurring_block. Availability: check_availability, " +
@@ -471,6 +477,15 @@ export const ownerCalendarAction: Action & {
     "'offer three times' → propose_times; 'check if I'm free at <time>' / " +
     "'am I free tomorrow between 2 and 4' → check_availability; sleep windows, " +
     "no-call hours, blackout windows, preferred hours → update_preferences. " +
+    "When the user is defining when meetings or calls may be scheduled, even in " +
+    "a policy form like 'no calls between 11pm and 8am unless I explicitly say " +
+    "it's okay', this action owns the preference. Do not hand those scheduling " +
+    "rules to device reminder or phone-ring actions unless the user explicitly " +
+    "means device alerts or ringing behavior. If the user is asking to remind " +
+    "or bump them later about an unanswered decision rather than changing the " +
+    "calendar itself, another action should own it. " +
+    "Do NOT use this action for morning briefs, night briefs, operating pictures, command-center views, " +
+    "or broad day-start/day-end reviews that combine inbox, calendar, and tasks — those belong to RUN_MORNING_CHECKIN / RUN_NIGHT_CHECKIN. " +
     "This action provides the final grounded reply; do not pair it with a " +
     "speculative REPLY action.",
   descriptionCompressed:

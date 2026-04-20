@@ -2033,6 +2033,45 @@ export class RelationshipsService extends Service {
 			await this.removeContact(candidate.entityB);
 		}
 
+		const existingIdentityLink = (
+			await this.runtime.getRelationships({
+				entityIds: [candidate.entityA, candidate.entityB],
+			})
+		).find((relationship) => {
+			const samePair =
+				(relationship.sourceEntityId === candidate.entityA &&
+					relationship.targetEntityId === candidate.entityB) ||
+				(relationship.sourceEntityId === candidate.entityB &&
+					relationship.targetEntityId === candidate.entityA);
+			return samePair && Array.isArray(relationship.tags);
+		});
+		const identityMetadata: Metadata = {
+			...((existingIdentityLink?.metadata as Metadata | undefined) ?? {}),
+			...(candidate.evidence as Metadata),
+			status: "confirmed",
+			mergeCandidateId: candidateId,
+			mergeSurvivorEntityId: candidate.entityA,
+			mergeFoldedEntityId: candidate.entityB,
+			source: "relationships.acceptMerge",
+		};
+		const identityTags = Array.from(
+			new Set([...(existingIdentityLink?.tags ?? []), "identity_link"]),
+		);
+		if (existingIdentityLink) {
+			await this.runtime.updateRelationship({
+				...existingIdentityLink,
+				tags: identityTags,
+				metadata: identityMetadata,
+			});
+		} else {
+			await this.runtime.createRelationship({
+				sourceEntityId: candidate.entityA,
+				targetEntityId: candidate.entityB,
+				tags: identityTags,
+				metadata: identityMetadata,
+			});
+		}
+
 		logger.info(
 			`[RelationshipsService] Accepted merge ${candidateId}; folded ${candidate.entityB} into ${candidate.entityA}`,
 		);

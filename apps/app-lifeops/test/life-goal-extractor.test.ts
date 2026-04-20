@@ -107,6 +107,35 @@ describe("life-goal-extractor", () => {
     ]);
   });
 
+  it("does not upgrade an ungrounded plan from model-only title text", async () => {
+    const plan = await extractGoalCreatePlanWithLlm({
+      runtime: {
+        useModel: async () =>
+          JSON.stringify({
+            mode: "respond",
+            response: "What goal do you want to work on?",
+            title: "Run a marathon",
+            description: "Build a better routine.",
+            cadence: null,
+            successCriteria: null,
+            supportStrategy: null,
+            groundingState: "ungrounded",
+            missingCriticalFields: ["title", "target_state"],
+            confidence: 0.52,
+            evaluationSummary: null,
+            targetDomain: "fitness",
+          }),
+      } as AgentRuntime,
+      intent: "Can you help me make a goal?",
+      state: undefined,
+    });
+
+    expect(plan.mode).toBe("respond");
+    expect(plan.groundingState).toBe("ungrounded");
+    expect(plan.title).toBe("Run a marathon");
+    expect(plan.missingCriticalFields).toEqual(["title", "target_state"]);
+  });
+
   it("returns a structured clarification plan when no model is available for update", async () => {
     const plan = await extractGoalUpdatePlanWithLlm({
       runtime: {} as AgentRuntime,

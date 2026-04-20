@@ -4,6 +4,7 @@ import type { Trajectory, TrajectoryLlmCall } from "../../../../packages/agent/s
 import { flushTrajectoryWrites } from "../../../../packages/agent/src/runtime/trajectory-storage.ts";
 import { ConversationHarness } from "../../../../packages/app-core/test/helpers/conversation-harness.ts";
 import { type LiveProviderName, selectLiveProvider } from "../../../../packages/app-core/test/helpers/live-provider.ts";
+import { actionsAreScenarioEquivalent } from "../../../../packages/scenario-runner/src/action-families.ts";
 import {
   type RealTestRuntimeResult,
 } from "../../../../packages/app-core/test/helpers/real-runtime.ts";
@@ -271,8 +272,19 @@ function selectPrimaryAction(actions: string[]): string | null {
   return normalized[normalized.length - 1] ?? null;
 }
 
-function casePasses(result: PromptBenchmarkResult): boolean {
+export function promptBenchmarkCasePasses(
+  result: PromptBenchmarkResult,
+): boolean {
   const actual = normalizeActionName(result.actualPrimaryAction);
+  const actualActions = uniqueStrings(
+    result.actualActions.length > 0
+      ? result.actualActions
+      : result.actualPrimaryAction
+        ? [result.actualPrimaryAction]
+        : [],
+  )
+    .map((actionName) => normalizeActionName(actionName))
+    .filter((actionName): actionName is string => actionName !== null);
   const expected = normalizeActionName(result.case.expectedAction);
   const acceptable = new Set(
     result.case.acceptableActions
@@ -285,15 +297,38 @@ function casePasses(result: PromptBenchmarkResult): boolean {
       .filter((actionName): actionName is string => actionName !== null),
   );
 
-  if (actual && forbidden.has(actual)) {
+  if (
+    actualActions.some((actionName) =>
+      Array.from(forbidden).some((forbiddenAction) =>
+        actionsAreScenarioEquivalent(actionName, forbiddenAction),
+      ),
+    )
+  ) {
     return false;
   }
 
   if (expected === null) {
-    return actual === null || acceptable.has(actual);
+    return (
+      actualActions.length === 0 ||
+      actual === null ||
+      actualActions.some((actionName) =>
+        Array.from(acceptable).some((acceptableAction) =>
+          actionsAreScenarioEquivalent(actionName, acceptableAction),
+        ),
+      )
+    );
   }
 
-  return actual === expected || (actual !== null && acceptable.has(actual));
+  return (
+    actualActions.some((actionName) =>
+      actionsAreScenarioEquivalent(actionName, expected),
+    ) ||
+    actualActions.some((actionName) =>
+      Array.from(acceptable).some((acceptableAction) =>
+        actionsAreScenarioEquivalent(actionName, acceptableAction),
+      ),
+    )
+  );
 }
 
 async function runSinglePromptBenchmarkCase(args: {
@@ -345,7 +380,7 @@ async function runSinglePromptBenchmarkCase(args: {
 
     return {
       ...provisional,
-      pass: casePasses(provisional),
+      pass: promptBenchmarkCasePasses(provisional),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

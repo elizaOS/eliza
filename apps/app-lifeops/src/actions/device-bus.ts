@@ -7,7 +7,7 @@ import {
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security";
 import { broadcastIntent } from "../lifeops/intent-sync.js";
 
 /**
@@ -130,9 +130,12 @@ export const publishDeviceIntentAction: Action & {
     "cancellation fee warning",
     "workflow escalation",
     "updated id copy",
+    "important meetings",
+    "standing warning policy",
+    "cross-device escalation",
   ],
   description:
-    "Publish a cross-device intent (alarm, reminder, block, or custom) to the device bus so all paired devices can realize it. Use this for desktop+phone reminder ladders, multi-device meeting nudges, document-signing reminders, and urgent device-level escalation where the owner wants the same intent realized across paired devices. Standing 'if/when this happens, warn or remind me on my devices' policies should still use this action on the first turn.",
+    "Publish a cross-device intent (alarm, reminder, block, or custom) to the device bus so all paired devices can realize it. Use this for desktop+phone reminder ladders, multi-device meeting nudges, document-signing reminders, updated-ID interventions, cancellation-fee warnings, and urgent device-level escalation where the owner wants the same intent realized across paired devices. Standing 'if/when this happens, warn or remind me on my devices' policies should still use this action on the first turn, even when the exact reservation, workflow, or event still needs a follow-up question. Do not use this for scheduling preferences like protected sleep windows or no-call meeting hours; those belong to OWNER_CALENDAR.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {

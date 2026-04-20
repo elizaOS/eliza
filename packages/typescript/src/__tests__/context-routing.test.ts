@@ -307,12 +307,12 @@ describe("context-gated providers", () => {
 		expect(result.text).toContain("providers[0]");
 	});
 
-	it("prefers RELATIONSHIP for person-specific follow-up reminders", async () => {
+	it("prefers OWNER_RELATIONSHIP for person-specific follow-up reminders", async () => {
 		const runtime = {
 			agentId: "agent",
 			actions: [
 				{
-					name: "RELATIONSHIP",
+					name: "OWNER_RELATIONSHIP",
 					description: "relationship follow-up",
 					handler: async () => ({ success: true, text: "ok" }),
 					validate: async () => true,
@@ -350,7 +350,7 @@ describe("context-gated providers", () => {
 		);
 
 		expect(result.data?.actionsData?.map((action) => action.name)).toEqual([
-			"RELATIONSHIP",
+			"OWNER_RELATIONSHIP",
 			"REPLY",
 		]);
 	});

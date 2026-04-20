@@ -15,8 +15,8 @@ import type {
   Memory,
 } from "@elizaos/core";
 import {
-  SELFCONTROL_ACCESS_ERROR,
   getSelfControlAccess,
+  SELFCONTROL_ACCESS_ERROR,
 } from "../website-blocker/access.ts";
 import {
   blockWebsitesAction,
@@ -85,7 +85,8 @@ export const ownerWebsiteBlockAction: Action & {
   parameters: [
     {
       name: "subaction",
-      description: "Required. One of: block, unblock, status, request_permission.",
+      description:
+        "Required. One of: block, unblock, status, request_permission.",
       required: true,
       schema: { type: "string" as const },
     },
@@ -99,9 +100,9 @@ export const ownerWebsiteBlockAction: Action & {
     {
       name: "durationMinutes",
       description:
-        "How long to block, in minutes. Omit to use the default duration (60). Null for indefinite.",
+        "How long to block, in minutes. Omit for a manual block that stays active until unblocked. Null for indefinite.",
       required: false,
-      schema: { type: "number" as const, default: 60 },
+      schema: { type: "number" as const },
     },
     {
       name: "confirmed",
@@ -121,7 +122,7 @@ export const ownerWebsiteBlockAction: Action & {
       {
         name: "{{agentName}}",
         content: {
-          text: "Ready to block x.com, twitter.com for 120 minutes. Reply \"confirm\" or re-issue with confirmed: true to start the block.",
+          text: 'Ready to block x.com, twitter.com for 120 minutes. Reply "confirm" or re-issue with confirmed: true to start the block.',
           action: "OWNER_WEBSITE_BLOCK",
         },
       },
@@ -142,7 +143,9 @@ export const ownerWebsiteBlockAction: Action & {
     [
       {
         name: "{{name1}}",
-        content: { text: "Give yourself permission to block websites on this machine." },
+        content: {
+          text: "Give yourself permission to block websites on this machine.",
+        },
       },
       {
         name: "{{agentName}}",

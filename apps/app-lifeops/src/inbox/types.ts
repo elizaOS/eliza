@@ -128,6 +128,7 @@ export interface DeferredInboxDraft {
   targetRoomId?: UUID;
   targetEntityId?: UUID;
   gmailMessageId?: string;
+  approvalRequestId?: string;
   draftText: string;
   deepLink: string | null;
   channelName: string;

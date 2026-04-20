@@ -482,6 +482,12 @@ function resolveEntity(entityId: string, entities: Entity[]): UUID {
 	throw new Error(`Could not resolve entityId "${entityId}" to a valid UUID`);
 }
 
+function isValidUuid(value: string): value is UUID {
+	return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+		value,
+	);
+}
+
 function formatActionResults(actionResults: ActionResult[]): string {
 	if (actionResults.length === 0) {
 		return "No action results available.";
@@ -630,7 +636,7 @@ async function handler(
 	// Run all queries in parallel
 	const [existingRelationships, entities, knownFacts] = await Promise.all([
 		runtime.getRelationships({
-			entityIds: [message.entityId],
+			entityIds: [message.entityId, agentId],
 		}),
 		getEntityDetails({ runtime, roomId }),
 		runtime.getMemories({
@@ -795,9 +801,13 @@ async function handler(
 	// Update or create relationships
 	for (const relationship of relationshipsArray) {
 		if (!relationship.sourceEntityId || !relationship.targetEntityId) {
-			console.warn(
-				"Skipping relationship with missing entity IDs:",
-				relationship,
+			runtime.logger.debug(
+				{
+					src: "plugin:advanced-capabilities:evaluator:reflection",
+					agentId: runtime.agentId,
+					relationship,
+				},
+				"Skipping reflection relationship with missing entity ids",
 			);
 			continue;
 		}
@@ -809,14 +819,55 @@ async function handler(
 			sourceId = resolveEntity(relationship.sourceEntityId, entities);
 			target = resolveEntity(relationship.targetEntityId, entities);
 		} catch (error) {
-			console.warn("Failed to resolve relationship entities:", error);
-			console.warn("relationship:\n", relationship);
+			runtime.logger.debug(
+				{
+					src: "plugin:advanced-capabilities:evaluator:reflection",
+					agentId: runtime.agentId,
+					error: error instanceof Error ? error.message : String(error),
+					relationship,
+				},
+				"Skipping reflection relationship with unresolved entities",
+			);
 			continue; // Skip this relationship if we can't resolve the IDs
 		}
 
-		const existingRelationship = relationshipByPair.get(
-			`${sourceId}|${target}`,
-		);
+		if (!isValidUuid(sourceId) || !isValidUuid(target)) {
+			runtime.logger.debug(
+				{
+					src: "plugin:advanced-capabilities:evaluator:reflection",
+					agentId: runtime.agentId,
+					relationship,
+					sourceId,
+					target,
+				},
+				"Skipping reflection relationship with invalid resolved ids",
+			);
+			continue;
+		}
+
+		if (sourceId === target) {
+			runtime.logger.debug(
+				{
+					src: "plugin:advanced-capabilities:evaluator:reflection",
+					agentId: runtime.agentId,
+					relationship,
+					sourceId,
+				},
+				"Skipping self-referential reflection relationship",
+			);
+			continue;
+		}
+
+		let existingRelationship = relationshipByPair.get(`${sourceId}|${target}`);
+		if (!existingRelationship) {
+			existingRelationship = await runtime.getRelationship({
+				sourceEntityId: sourceId,
+				targetEntityId: target,
+			});
+			if (existingRelationship) {
+				relationshipByPair.set(`${sourceId}|${target}`, existingRelationship);
+			}
+		}
 
 		// Parse tags from comma-separated string
 		const tags = Array.isArray(relationship.tags)
@@ -842,6 +893,11 @@ async function handler(
 			);
 
 			await runtime.updateRelationship({
+				...existingRelationship,
+				tags: updatedTags,
+				metadata: updatedMetadata,
+			});
+			relationshipByPair.set(`${sourceId}|${target}`, {
 				...existingRelationship,
 				tags: updatedTags,
 				metadata: updatedMetadata,

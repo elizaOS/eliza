@@ -25,7 +25,7 @@ import {
   LIFEOPS_TIME_WINDOW_NAMES,
   LIFEOPS_WORKFLOW_TRIGGER_TYPES,
 } from "@elizaos/shared/contracts/lifeops";
-import { parseCronExpression } from "@elizaos/agent/triggers/scheduling";
+import { parseCronExpression } from "@elizaos/agent/triggers";
 import { LifeOpsServiceError } from "./service-types.js";
 import {
   fail,

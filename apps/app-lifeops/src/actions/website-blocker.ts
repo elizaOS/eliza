@@ -10,10 +10,13 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import { getSelfControlAccess, SELFCONTROL_ACCESS_ERROR } from "../website-blocker/access.ts";
+import {
+  getSelfControlAccess,
+  SELFCONTROL_ACCESS_ERROR,
+} from "../website-blocker/access.ts";
 import {
   formatWebsiteList,
-  getSelfControlPermissionState,
+  type getSelfControlPermissionState,
   getSelfControlStatus,
   parseSelfControlBlockRequest,
   requestSelfControlPermission,
@@ -129,12 +132,14 @@ function normalizeWebsiteCandidates(value: unknown): string[] {
     : typeof value === "string"
       ? value.split(/\s*\|\|\s*|,|\n/)
       : [];
-  return [...new Set(
-    values
-      .filter((item): item is string => typeof item === "string")
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0),
-  )];
+  return [
+    ...new Set(
+      values
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0),
+    ),
+  ];
 }
 
 function normalizeDurationMinutes(value: unknown): number | null | undefined {
@@ -187,7 +192,7 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
     "  confirmed: boolean",
     "  response: short natural-language reply when clarification or deferral is needed",
     "  websites: array of public website hostnames or URLs to block",
-    "  durationMinutes: positive integer for a timed block, null for an indefinite/manual block, or omit it when the default duration should apply",
+    "  durationMinutes: positive integer for a timed block, or null/omit for an indefinite/manual block",
     "",
     "Rules:",
     "- Only start a block when the user is clearly asking to block websites now.",
@@ -199,8 +204,9 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
     "- If the current request refers to previously mentioned websites, recover them from recent conversation context.",
     "- If the websites are unclear or missing, set shouldAct=false and ask the user to name the public hostnames explicitly.",
     "- Prefer bare public hostnames like x.com in the websites array.",
-    "- Use durationMinutes=null only when the user explicitly wants the block to last until manual removal.",
-    "- If the user gives an exact timed duration like 45, 90, or 135 minutes, preserve that exact duration instead of falling back to the default 60-minute block.",
+    "- If the user does not give a duration, omit durationMinutes so the block stays active until manually removed.",
+    "- Use durationMinutes=null when the user explicitly wants the block to last until manual removal.",
+    "- If the user gives an exact timed duration like 45, 90, or 135 minutes, preserve that exact duration.",
     "",
     "Examples:",
     '  {"shouldAct":true,"confirmed":true,"response":null,"websites":["x.com","twitter.com"],"durationMinutes":120}',
@@ -215,6 +221,7 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
   ].join("\n");
 
   try {
+    // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an async service call, not a React hook.
     const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
     });
@@ -272,7 +279,8 @@ export const blockWebsitesAction: Action & {
     "Always drafts first; the owner must pass confirmed: true (e.g. by replying 'confirm') to actually edit the hosts file. " +
     "If the user confirms a block in a follow-up message without repeating the hostnames, reuse that context through the action planner." +
     " DO NOT use this action when the user references apps, games, or things 'on my phone' / 'on my device' — use BLOCK_APPS for those. Do not pair this action with a speculative REPLY; this action provides the final reply itself.",
-  descriptionCompressed: "Admin: block websites via hosts file for set duration.",
+  descriptionCompressed:
+    "Admin: block websites via hosts file for set duration.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
     const access = await getSelfControlAccess(runtime, message);
@@ -420,9 +428,9 @@ export const blockWebsitesAction: Action & {
     {
       name: "durationMinutes",
       description:
-        "How long to block those websites, in minutes. Omit this to use the default duration.",
+        "How long to block those websites, in minutes. Omit this for a manual block that stays active until unblocked.",
       required: false,
-      schema: { type: "number" as const, default: 60 },
+      schema: { type: "number" as const },
     },
     {
       name: "confirmed",
@@ -441,7 +449,7 @@ export const blockWebsitesAction: Action & {
       {
         name: "{{agentName}}",
         content: {
-          text: "Ready to block x.com, twitter.com for 120 minutes. Reply \"confirm\" or re-issue with confirmed: true to start the block.",
+          text: 'Ready to block x.com, twitter.com for 120 minutes. Reply "confirm" or re-issue with confirmed: true to start the block.',
           action: "BLOCK_WEBSITES",
         },
       },

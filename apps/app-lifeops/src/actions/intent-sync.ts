@@ -6,7 +6,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess } from "@elizaos/agent/security";
 import {
   LIFE_INTENT_KINDS,
   LIFE_INTENT_PRIORITIES,
@@ -45,6 +45,12 @@ type IntentSyncParameters = {
   actionUrl?: string;
 };
 
+type NormalizedIntentSyncParameters = IntentSyncParameters &
+  Record<string, unknown> & {
+    subaction?: string;
+    kind?: string;
+  };
+
 function coerceString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
@@ -74,6 +80,19 @@ function isTarget(value: string): value is LifeOpsIntentTargetDevice {
 
 function isPriority(value: string): value is LifeOpsIntentPriority {
   return (LIFE_INTENT_PRIORITIES as readonly string[]).includes(value);
+}
+
+function looksLikeBroadcastPayload(params: NormalizedIntentSyncParameters): boolean {
+  return (
+    coerceString(params.kind) !== undefined ||
+    coerceString(params.title) !== undefined ||
+    coerceString(params.body) !== undefined ||
+    coerceString(params.target) !== undefined ||
+    coerceString(params.targetDeviceId) !== undefined ||
+    coerceString(params.priority) !== undefined ||
+    coerceString(params.actionUrl) !== undefined ||
+    coerceNumber(params.expiresInMinutes) !== undefined
+  );
 }
 
 function fail(
@@ -118,9 +137,7 @@ function parseFlatParams(raw: string): Record<string, string> {
 
 // Tolerate a wider shape: if `params` is a string (or carries a rawParams
 // blob), attempt flat parsing and merge into a typed object.
-function normalizeParams(
-  raw: unknown,
-): IntentSyncParameters & Record<string, unknown> {
+function normalizeParams(raw: unknown): NormalizedIntentSyncParameters {
   if (typeof raw === "string") {
     return parseFlatParams(raw);
   }
@@ -134,12 +151,14 @@ function normalizeParams(
         if (merged[k] === undefined) merged[k] = v;
       }
     }
-    return merged as IntentSyncParameters & Record<string, unknown>;
+    return merged as NormalizedIntentSyncParameters;
   }
-  return {} as IntentSyncParameters & Record<string, unknown>;
+  return {} as NormalizedIntentSyncParameters;
 }
 
-export const intentSyncAction: Action = {
+export const intentSyncAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: ACTION_NAME,
   similes: [
     "BROADCAST_INTENT",
@@ -168,12 +187,13 @@ export const intentSyncAction: Action = {
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasAdminAccess(runtime, message),
+  suppressPostActionContinuation: true,
 
   parameters: [
     {
       name: "subaction",
       description: `Which operation to perform. One of: ${SUBACTIONS.join(", ")}.`,
-      required: true,
+      required: false,
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
@@ -294,12 +314,20 @@ export const intentSyncAction: Action = {
     const params = normalizeParams(rawParams);
 
     let subactionRaw = coerceString(params.subaction);
+    let kindRaw = coerceString(params.kind);
     if (!subactionRaw) {
       // Tolerate LLMs that emit the verb in `mode` / `action` field name
       // variants (parameter-key normalization only — not free-text inference).
       subactionRaw =
         coerceString((params as Record<string, unknown>).mode) ??
         coerceString((params as Record<string, unknown>).action);
+    }
+    if (!subactionRaw && looksLikeBroadcastPayload(params)) {
+      subactionRaw = "broadcast";
+    }
+    if (subactionRaw && !isSubaction(subactionRaw) && isKind(subactionRaw)) {
+      kindRaw ??= subactionRaw;
+      subactionRaw = "broadcast";
     }
     if (!subactionRaw) {
       return validationTerminate(
@@ -317,7 +345,6 @@ export const intentSyncAction: Action = {
     const subaction: Subaction = subactionRaw;
 
     if (subaction === "broadcast") {
-      const kindRaw = coerceString(params.kind);
       const title = coerceString(params.title);
       const body = coerceString(params.body);
       if (!kindRaw) {

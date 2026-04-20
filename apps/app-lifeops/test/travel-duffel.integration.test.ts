@@ -10,10 +10,14 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createOrder,
+  createPayment,
   DuffelConfigError,
+  getOrder,
   readDuffelConfigFromEnv,
   searchFlights,
   getOffer,
+  type CreateDuffelOrderRequest,
   type SearchFlightsRequest,
   type DuffelOffer,
 } from "../src/lifeops/travel-adapters/duffel.js";
@@ -99,7 +103,12 @@ describe("searchFlights — network error handling", () => {
       total_amount: "299.50",
       total_currency: "USD",
       expires_at: "2025-05-01T12:00:00Z",
-      passengers: [{ type: "adult" }],
+      passengers: [{ id: "pas_123", type: "adult", given_name: "Tony", family_name: "Stark" }],
+      payment_requirements: {
+        requires_instant_payment: false,
+        price_guarantee_expires_at: "2025-05-01T18:00:00Z",
+        payment_required_by: "2025-05-02T18:00:00Z",
+      },
       slices: [
         {
           origin: { iata_code: "JFK" },
@@ -151,6 +160,8 @@ describe("searchFlights — network error handling", () => {
     expect(offer.totalCurrency).toBe("USD");
     expect(offer.passengerCount).toBe(1);
     expect(offer.cabinClass).toBe("Economy");
+    expect(offer.passengers[0]?.id).toBe("pas_123");
+    expect(offer.paymentRequirements?.requiresInstantPayment).toBe(false);
     expect(offer.slices).toHaveLength(1);
     expect(offer.slices[0].origin).toBe("JFK");
     expect(offer.slices[0].destination).toBe("LHR");
@@ -203,15 +214,189 @@ describe("getOffer — validation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// No booking method — always runs
+// Order + payment lifecycle — always runs (mocked network)
 // ---------------------------------------------------------------------------
 
-describe("booking guard", () => {
-  it("has no bookFlight or createOrder export", async () => {
-    const mod = await import("../src/lifeops/travel-adapters/duffel.js");
-    expect((mod as Record<string, unknown>).bookFlight).toBeUndefined();
-    expect((mod as Record<string, unknown>).createOrder).toBeUndefined();
-    expect((mod as Record<string, unknown>).createOffer).toBeUndefined();
+describe("createOrder", () => {
+  const baseRequest: CreateDuffelOrderRequest = {
+    selectedOffers: ["off_123"],
+    type: "hold",
+    passengers: [
+      {
+        id: "pas_123",
+        givenName: "Tony",
+        familyName: "Stark",
+        bornOn: "1980-07-24",
+        email: "tony@example.com",
+        phoneNumber: "+15551234567",
+      },
+    ],
+  };
+
+  it("posts a hold order and maps the response", async () => {
+    let capturedBody: unknown;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((_url: string, opts: RequestInit) => {
+        capturedBody = JSON.parse(opts.body as string);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: {
+              id: "ord_123",
+              booking_reference: "RZPNX8",
+              total_amount: "299.50",
+              total_currency: "USD",
+              slices: [
+                {
+                  origin: { iata_code: "JFK" },
+                  destination: { iata_code: "LHR" },
+                  duration: "PT7H30M",
+                  segments: [
+                    {
+                      origin: { iata_code: "JFK" },
+                      destination: { iata_code: "LHR" },
+                      departing_at: "2025-06-01T09:00:00",
+                      arriving_at: "2025-06-01T21:30:00",
+                      operating_carrier: { iata_code: "BA" },
+                      flight_number: "BA178",
+                      duration: "PT7H30M",
+                    },
+                  ],
+                },
+              ],
+              passengers: [{ id: "pas_123", given_name: "Tony", family_name: "Stark" }],
+              payment_status: {
+                awaiting_payment: true,
+                payment_required_by: "2025-05-02T18:00:00Z",
+                price_guarantee_expires_at: "2025-05-01T18:00:00Z",
+              },
+              documents: [],
+            },
+          }),
+        });
+      }),
+    );
+    process.env.DUFFEL_API_KEY = "fake-key";
+
+    const order = await createOrder(baseRequest);
+
+    const body = capturedBody as {
+      data: { type: string; selected_offers: string[]; passengers: Array<Record<string, unknown>> };
+    };
+    expect(body.data.type).toBe("hold");
+    expect(body.data.selected_offers).toEqual(["off_123"]);
+    expect(body.data.passengers[0]?.id).toBe("pas_123");
+    expect(order.id).toBe("ord_123");
+    expect(order.bookingReference).toBe("RZPNX8");
+    expect(order.paymentStatus?.awaitingPayment).toBe(true);
+  });
+
+  it("throws if no offer is supplied", async () => {
+    process.env.DUFFEL_API_KEY = "fake-key";
+    await expect(
+      createOrder({ ...baseRequest, selectedOffers: [] }),
+    ).rejects.toThrow(/exactly one selected offer/);
+  });
+});
+
+describe("getOrder", () => {
+  it("retrieves a held order and maps documents", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: {
+            id: "ord_123",
+            booking_reference: "RZPNX8",
+            total_amount: "299.50",
+            total_currency: "USD",
+            slices: [
+              {
+                origin: { iata_code: "JFK" },
+                destination: { iata_code: "LHR" },
+                duration: "PT7H30M",
+                segments: [
+                  {
+                    origin: { iata_code: "JFK" },
+                    destination: { iata_code: "LHR" },
+                    departing_at: "2025-06-01T09:00:00",
+                    arriving_at: "2025-06-01T21:30:00",
+                    operating_carrier: { iata_code: "BA" },
+                    flight_number: "BA178",
+                    duration: "PT7H30M",
+                  },
+                ],
+              },
+            ],
+            passengers: [{ id: "pas_123", given_name: "Tony", family_name: "Stark" }],
+            payment_status: {
+              awaiting_payment: false,
+              payment_required_by: "2025-05-02T18:00:00Z",
+              price_guarantee_expires_at: "2025-05-01T18:00:00Z",
+            },
+            documents: [
+              {
+                type: "electronic_ticket",
+                unique_identifier: "123-1230984567",
+              },
+            ],
+          },
+        }),
+      }),
+    );
+    process.env.DUFFEL_API_KEY = "fake-key";
+
+    const order = await getOrder("ord_123");
+
+    expect(order.id).toBe("ord_123");
+    expect(order.documents[0]?.uniqueIdentifier).toBe("123-1230984567");
+    expect(order.paymentStatus?.awaitingPayment).toBe(false);
+  });
+});
+
+describe("createPayment", () => {
+  it("posts a balance payment for a hold order", async () => {
+    let capturedBody: unknown;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((_url: string, opts: RequestInit) => {
+        capturedBody = JSON.parse(opts.body as string);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: {
+              id: "pay_123",
+              order_id: "ord_123",
+              status: "succeeded",
+              currency: "USD",
+              amount: "299.50",
+              type: "balance",
+              created_at: "2025-05-01T12:00:00Z",
+            },
+          }),
+        });
+      }),
+    );
+    process.env.DUFFEL_API_KEY = "fake-key";
+
+    const payment = await createPayment({
+      orderId: "ord_123",
+      amount: "299.50",
+      currency: "USD",
+    });
+
+    const body = capturedBody as {
+      data: { order_id: string; payment: { amount: string; currency: string; type: string } };
+    };
+    expect(body.data.order_id).toBe("ord_123");
+    expect(body.data.payment.type).toBe("balance");
+    expect(payment.id).toBe("pay_123");
+    expect(payment.status).toBe("succeeded");
   });
 });
 

@@ -100,7 +100,7 @@ export const readMessagesAction: Action = {
       if (entityId) {
         // Direct entity ID lookup — find person in graph
         const { getGraphService } = await import("./connector-resolver.js");
-        const graphService = getGraphService(runtime);
+        const graphService = await getGraphService(runtime);
         if (!graphService) {
           return {
             text: "Relationships service not available.",

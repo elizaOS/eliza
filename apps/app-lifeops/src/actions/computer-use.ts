@@ -16,7 +16,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security";
 
 const ACTION_NAME = "LIFEOPS_COMPUTER_USE";
 const ACTION_NAMES = {
@@ -281,6 +281,8 @@ export const lifeOpsComputerUseAction: Action & {
     "speaker portal",
     "browser workflow",
     "form filling",
+    "when i send the deck",
+    "future upload policy",
   ],
   description:
     "Control the owner's desktop (screenshots, mouse, keyboard, browser, " +
@@ -288,7 +290,9 @@ export const lifeOpsComputerUseAction: Action & {
     "portal uploads, Finder/Desktop tasks like creating folders or taking " +
     "screenshots, browser form-filling, and other on-machine workflows the " +
     "assistant should perform directly, including standing instructions like " +
-    "'when I send the file, upload it to the portal for me.' Owner-only. " +
+    "'when I send the file, upload it to the portal for me.' Select this action " +
+    "even before the file arrives when the user is delegating that future upload " +
+    "workflow; the action can hold the task and ask for portal/file details later. Owner-only. " +
     "Disabled when ELIZA_LIFEOPS_COMPUTER_USE_ENABLED=0.",
   suppressPostActionContinuation: true,
 
@@ -377,6 +381,20 @@ export const lifeOpsComputerUseAction: Action & {
       {
         name: "{{name1}}",
         content: {
+          text: "When I send over the deck, upload it to the portal for me.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Once you send the deck, I'll handle the portal upload on your machine and keep it gated behind your delivery and approval.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
           text: "Open Finder and create a new folder called Q2-Reports on my desktop.",
         },
       },
@@ -384,18 +402,6 @@ export const lifeOpsComputerUseAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "I'll handle that on your Mac with computer use.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "When I send over the deck, upload it to the portal for me." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Once you send the deck, I'll handle the portal upload on your machine and keep it gated behind your delivery and approval.",
         },
       },
     ],

@@ -10,6 +10,7 @@ import type {
   ScenarioContext,
   ScenarioFinalCheck,
 } from "@elizaos/scenario-schema";
+import { actionMatchesScenarioExpectation } from "../action-families.ts";
 import type { FinalCheckReport, FinalCheckStatus } from "../types.ts";
 
 export interface FinalCheckHandlerContext {
@@ -55,7 +56,7 @@ function matchesActionName(
   if (accepted === undefined) {
     return true;
   }
-  return toArray(accepted).includes(value);
+  return actionMatchesScenarioExpectation(value, toArray(accepted));
 }
 
 function toRecord(value: unknown): Record<string, unknown> | null {
@@ -158,7 +159,9 @@ registerFinalCheckHandler("actionCalled", (check, { ctx }) => {
     status?: string;
     minCount?: number;
   };
-  const calls = ctx.actionsCalled.filter((a) => a.actionName === actionName);
+  const calls = ctx.actionsCalled.filter((a) =>
+    actionMatchesScenarioExpectation(a.actionName, [actionName]),
+  );
   const min = typeof minCount === "number" ? minCount : 1;
   if (calls.length < min) {
     return {
@@ -181,7 +184,9 @@ registerFinalCheckHandler("actionCalled", (check, { ctx }) => {
 registerFinalCheckHandler("selectedAction", (check, { ctx }) => {
   const { actionName } = check as { actionName: string | string[] };
   const accepted = toArray(actionName);
-  const match = ctx.actionsCalled.find((a) => accepted.includes(a.actionName));
+  const match = ctx.actionsCalled.find((a) =>
+    actionMatchesScenarioExpectation(a.actionName, accepted),
+  );
   if (!match) {
     return {
       status: "failed",
@@ -199,7 +204,7 @@ registerFinalCheckHandler("selectedActionArguments", (check, { ctx }) => {
   };
   const accepted = toArray(actionName);
   const matched = ctx.actionsCalled.filter((a) =>
-    accepted.includes(a.actionName),
+    actionMatchesScenarioExpectation(a.actionName, accepted),
   );
   if (matched.length === 0) {
     return {

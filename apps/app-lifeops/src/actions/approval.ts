@@ -18,13 +18,21 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { ModelType, logger, parseJSONObjectFromText } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import {
   ApprovalNotFoundError,
+  type ApprovalQueue,
   type ApprovalRequest,
   ApprovalStateTransitionError,
 } from "../lifeops/approval-queue.types.js";
+import { executeApprovedBookTravel } from "./book-travel.js";
+import {
+  dispatchCrossChannelSend,
+  type CrossChannelSendChannel,
+} from "./cross-channel-send.js";
+import { LifeOpsService } from "../lifeops/service.js";
+import { INTERNAL_URL } from "./lifeops-google-helpers.js";
 
 type ApprovalIntent = "approve" | "reject";
 
@@ -103,6 +111,116 @@ function denied(reason: string): ActionResult {
   };
 }
 
+function approvalChannelToCrossChannelSend(
+  channel: ApprovalRequest["channel"],
+): CrossChannelSendChannel | null {
+  switch (channel) {
+    case "telegram":
+    case "discord":
+    case "imessage":
+    case "sms":
+      return channel;
+    default:
+      return null;
+  }
+}
+
+export async function executeApprovedRequest(args: {
+  runtime: IAgentRuntime;
+  queue: ApprovalQueue;
+  request: ApprovalRequest;
+  callback?: HandlerCallback;
+}): Promise<ActionResult> {
+  if (args.request.action === "book_travel") {
+    return executeApprovedBookTravel(args);
+  }
+
+  const service = new LifeOpsService(args.runtime);
+
+  if (args.request.action === "send_email") {
+    const payload = args.request.payload;
+    await args.queue.markExecuting(args.request.id);
+    if (payload.replyToMessageId) {
+      await service.sendGmailReply(INTERNAL_URL, {
+        messageId: payload.replyToMessageId,
+        bodyText: payload.body,
+        subject: payload.subject || undefined,
+        to: payload.to.length > 0 ? [...payload.to] : undefined,
+        cc: payload.cc.length > 0 ? [...payload.cc] : undefined,
+        confirmSend: true,
+      });
+    } else {
+      await service.sendGmailMessage(INTERNAL_URL, {
+        to: [...payload.to],
+        cc: [...payload.cc],
+        bcc: [...payload.bcc],
+        subject: payload.subject,
+        bodyText: payload.body,
+        confirmSend: true,
+      });
+    }
+    const done = await args.queue.markDone(args.request.id);
+    const text =
+      payload.to.length > 0
+        ? `Approved and sent email to ${payload.to.join(", ")}.`
+        : "Approved and sent the Gmail reply.";
+    await args.callback?.({ text });
+    return {
+      text,
+      success: true,
+      data: {
+        requestId: done.id,
+        state: done.state,
+        action: done.action,
+      },
+    };
+  }
+
+  if (args.request.action === "send_message") {
+    const channel = approvalChannelToCrossChannelSend(args.request.channel);
+    if (!channel) {
+      return denied("UNSUPPORTED_APPROVAL_CHANNEL");
+    }
+    await args.queue.markExecuting(args.request.id);
+    const dispatch = await dispatchCrossChannelSend({
+      runtime: args.runtime,
+      service,
+      channel,
+      target: args.request.payload.recipient,
+      body: args.request.payload.body,
+    });
+    if (!dispatch.success) {
+      return dispatch;
+    }
+    const done = await args.queue.markDone(args.request.id);
+    const text = `Approved and sent ${channel} message.`;
+    await args.callback?.({ text });
+    return {
+      text,
+      success: true,
+      data: {
+        requestId: done.id,
+        state: done.state,
+        action: done.action,
+        channel,
+      },
+    };
+  }
+
+  logger.info(`[ApprovalAction] approved ${args.request.id} without executor`);
+  const text = `Approved request ${args.request.id}.`;
+  await args.callback?.({ text });
+  return {
+    text,
+    success: true,
+    data: {
+      requestId: args.request.id,
+      state: args.request.state,
+      action: args.request.action,
+    },
+  };
+}
+
 async function resolveApprovalRequest(
   runtime: IAgentRuntime,
   message: Memory,
@@ -148,6 +266,14 @@ async function resolveApprovalRequest(
       intent === "approve"
         ? await queue.approve(extracted.requestId, resolution)
         : await queue.reject(extracted.requestId, resolution);
+    if (intent === "approve") {
+      return executeApprovedRequest({
+        runtime,
+        queue,
+        request: updated,
+        callback,
+      });
+    }
     logger.info(
       `[ApprovalAction] ${intent} ${updated.id} by ${subjectUserId}`,
     );

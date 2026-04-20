@@ -1,4 +1,4 @@
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess } from "@elizaos/agent/security";
 import type {
   IAgentRuntime,
   Memory,

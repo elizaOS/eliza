@@ -446,6 +446,7 @@ rules[20]:
 - always include a <thought> field, even for direct replies
 - actions execute in listed order
 - if replying without another grounded state/action query, REPLY goes first
+- REPLY means a direct chat reply in the current conversation only; it is not an email reply, inbox workflow, or external-channel send
 - use IGNORE or STOP only by themselves
 - include providers only when needed
 - when the user asks about uploaded files, documents, prior uploads, or knowledge-base contents, call the relevant providers before replying instead of asking the user to resend the material
@@ -712,6 +713,7 @@ Message Sender: {{senderName}} (ID: {{senderId}})
   - The sourceEntityId is the UUID of the entity initiating the interaction.
   - The targetEntityId is the UUID of the entity being interacted with.
   - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
+  - Use exact UUIDs from the entities-in-room list only. Never invent placeholders, names, handles, or email addresses in sourceEntityId or targetEntityId.
 4. It is normal to return no facts when nothing durable was learned.
 5. Always decide whether the user's task or request is actually complete right now.
   - Set \`task_completed: true\` only if the user no longer needs additional action or follow-up from you in this turn.

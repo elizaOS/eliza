@@ -4,9 +4,13 @@ import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
 import {
   checkRateLimit,
   type RateLimitConfig,
-} from "@elizaos/agent/api/rate-limiter";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+} from "@elizaos/agent/api";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
+import {
+  LIFEOPS_ACTIVITY_SIGNAL_STATES,
+  LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS,
+} from "@elizaos/shared/contracts/lifeops";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
@@ -55,7 +59,6 @@ import type {
   UpsertLifeOpsXConnectorRequest,
   VerifyLifeOpsTelegramConnectorRequest,
 } from "@elizaos/shared/contracts/lifeops";
-import { LIFEOPS_ACTIVITY_SIGNAL_STATES } from "@elizaos/shared/contracts/lifeops";
 import {
   loadLifeOpsAppState,
   saveLifeOpsAppState,
@@ -69,6 +72,8 @@ import {
   buildLifeOpsBrowserCompanionPackage,
   getLifeOpsBrowserCompanionDownloadFile,
   getLifeOpsBrowserCompanionPackageStatus,
+  openLifeOpsBrowserCompanionManager,
+  openLifeOpsBrowserCompanionPackagePath,
 } from "./lifeops-browser-packaging.js";
 
 export interface LifeOpsRouteContext {
@@ -147,6 +152,17 @@ function browserAutoPairOriginAllowed(ctx: LifeOpsRouteContext): boolean {
   return (
     originHeader.startsWith("chrome-extension://") ||
     originHeader.startsWith("safari-web-extension://")
+  );
+}
+
+function requestIsLoopback(ctx: LifeOpsRouteContext): boolean {
+  const remoteAddress = ctx.req.socket.remoteAddress?.trim().toLowerCase();
+  return (
+    remoteAddress === "127.0.0.1" ||
+    remoteAddress === "::1" ||
+    remoteAddress === "0:0:0:0:0:0:0:1" ||
+    remoteAddress === "::ffff:127.0.0.1" ||
+    remoteAddress === "::ffff:0:127.0.0.1"
   );
 }
 
@@ -347,6 +363,56 @@ async function runRoute(
       errorKind: "unhandled_error",
     });
     throw error;
+  }
+}
+
+async function runStatelessRoute(
+  ctx: LifeOpsRouteContext,
+  fn: () => Promise<void>,
+): Promise<boolean> {
+  const operation = routeOperation(ctx);
+  const span = createIntegrationTelemetrySpan({
+    boundary: "lifeops",
+    operation,
+  });
+  try {
+    await fn();
+    span.success({
+      statusCode: ctx.res.statusCode >= 400 ? ctx.res.statusCode : 200,
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof LifeOpsServiceError) {
+      logger.warn(
+        {
+          boundary: "lifeops",
+          operation,
+          statusCode: error.status,
+        },
+        `[lifeops] Route failed: ${error.message}`,
+      );
+      span.failure({
+        statusCode: error.status,
+        error,
+        errorKind: "lifeops_service_error",
+      });
+      ctx.error(ctx.res, error.message, error.status);
+      return true;
+    }
+    logger.error(
+      {
+        boundary: "lifeops",
+        operation,
+      },
+      `[lifeops] Route crashed: ${errorMessage(error)}`,
+    );
+    span.failure({
+      statusCode: 500,
+      error,
+      errorKind: "lifeops_route_crash",
+    });
+    ctx.error(ctx.res, errorMessage(error), 500);
+    return true;
   }
 }
 
@@ -1487,8 +1553,48 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "GET" && pathname === "/api/lifeops/browser/packages") {
-    return runRoute(ctx, async () => {
+    return runStatelessRoute(ctx, async () => {
       json(res, { status: getLifeOpsBrowserCompanionPackageStatus() });
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/browser/packages/open-path"
+  ) {
+    if (!requestIsLoopback(ctx)) {
+      ctx.error(
+        res,
+        "Local extension install helpers can only run on the same machine as LifeOps",
+        403,
+      );
+      return true;
+    }
+    const body = await readJsonBody<{
+      target?: string;
+      revealOnly?: boolean;
+    }>(req, res);
+    if (!body) return true;
+    if (
+      typeof body.target !== "string" ||
+      !LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS.includes(
+        body.target as (typeof LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS)[number],
+      )
+    ) {
+      ctx.error(
+        res,
+        `target must be one of: ${LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS.join(", ")}`,
+        400,
+      );
+      return true;
+    }
+    return runStatelessRoute(ctx, async () => {
+      json(
+        res,
+        await openLifeOpsBrowserCompanionPackagePath(body.target, {
+          revealOnly: body.revealOnly === true,
+        }),
+      );
     });
   }
 
@@ -1536,10 +1642,39 @@ export async function handleLifeOpsRoutes(
       ctx.error(res, "browser must be chrome or safari", 400);
       return true;
     }
-    return runRoute(ctx, async () => {
+    return runStatelessRoute(ctx, async () => {
       json(res, {
         status: await buildLifeOpsBrowserCompanionPackage(browser),
       });
+    });
+  }
+
+  const browserPackageOpenManagerMatch = pathname.match(
+    /^\/api\/lifeops\/browser\/packages\/([^/]+)\/open-manager$/,
+  );
+  if (method === "POST" && browserPackageOpenManagerMatch) {
+    if (!requestIsLoopback(ctx)) {
+      ctx.error(
+        res,
+        "Local extension install helpers can only run on the same machine as LifeOps",
+        403,
+      );
+      return true;
+    }
+    const browser = decodeMatchedPathComponent(
+      ctx,
+      browserPackageOpenManagerMatch,
+      1,
+      res,
+      "browser package target",
+    );
+    if (!browser) return true;
+    if (browser !== "chrome" && browser !== "safari") {
+      ctx.error(res, "browser must be chrome or safari", 400);
+      return true;
+    }
+    return runStatelessRoute(ctx, async () => {
+      json(res, await openLifeOpsBrowserCompanionManager(browser));
     });
   }
 
@@ -1559,7 +1694,7 @@ export async function handleLifeOpsRoutes(
       ctx.error(res, "browser must be chrome or safari", 400);
       return true;
     }
-    return runRoute(ctx, async () => {
+    return runStatelessRoute(ctx, async () => {
       const artifact = getLifeOpsBrowserCompanionDownloadFile(browser);
       res.statusCode = 200;
       res.setHeader("Content-Type", artifact.contentType);
@@ -1877,6 +2012,30 @@ export async function handleLifeOpsRoutes(
     return runRoute(ctx, async (service) => {
       json(res, {
         session: await service.confirmBrowserSession(sessionId, body),
+      });
+    });
+  }
+
+  const browserProgressMatch = pathname.match(
+    /^\/api\/lifeops\/browser\/sessions\/([^/]+)\/progress$/,
+  );
+  if (method === "POST" && browserProgressMatch) {
+    const sessionId = decodeMatchedPathComponent(
+      ctx,
+      browserProgressMatch,
+      1,
+      res,
+      "browser session id",
+    );
+    if (!sessionId) return true;
+    const body = await readJsonBody<UpdateLifeOpsBrowserSessionProgressRequest>(
+      req,
+      res,
+    );
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, {
+        session: await service.updateBrowserSessionProgress(sessionId, body),
       });
     });
   }

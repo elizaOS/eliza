@@ -28,7 +28,7 @@ import {
   getWeekdayForLocalDate,
   getZonedDateParts,
 } from "../lifeops/time.js";
-import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
+import { renderGroundedActionReply } from "@elizaos/agent/actions";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import {
   calendarReadUnavailableMessage,
@@ -413,6 +413,13 @@ function shouldDisambiguateCalendarReadPlan(
   );
 }
 
+const CALENDAR_READ_DISAMBIGUATION_RULES = [
+  "If the request combines a time window with a specific attendee, title, flight, appointment, or keyword, choose search_events, not feed.",
+  "If the request asks what is happening while the user is in a place, choose trip_window, not search_events.",
+  "If the request asks for the next or upcoming single meeting or appointment, choose next_event.",
+  "If the request asks for a schedule, agenda, or list of events over a time window, choose feed.",
+] as const;
+
 async function disambiguateCalendarReadPlanWithLlm(args: {
   runtime: IAgentRuntime;
   currentMessage: string;
@@ -428,22 +435,15 @@ async function disambiguateCalendarReadPlanWithLlm(args: {
     "next_event means only the single next upcoming meeting or appointment.",
     "search_events means find calendar events by title, attendee, location, date, or keyword, including flights and appointments.",
     "trip_window means show what is happening while the user is in a place or during a trip/stay in that place.",
-    "If the request combines a time window with a specific attendee, title, flight, appointment, place, or keyword, choose search_events, not feed.",
-    "If the request asks what is happening while the user is in a place, choose trip_window, not search_events, even though the place looks like a search key.",
-    "If the request asks for the next or upcoming single meeting or appointment, choose next_event.",
-    "If the request asks for a schedule, agenda, or list of events over a time window, choose feed.",
+    ...CALENDAR_READ_DISAMBIGUATION_RULES,
     "Use null only when the request is not asking for a calendar read lookup.",
     "If you choose trip_window, also return tripLocation when the place is recoverable from the request or recent conversation.",
     "",
     "Examples:",
     '  "What\'s on my calendar today?" -> {"subaction":"feed"}',
-    '  "今日の予定は何ですか？" -> {"subaction":"feed"}',
     '  "What\'s my next meeting?" -> {"subaction":"next_event"}',
-    '  "¿Cuál es mi próxima reunión?" -> {"subaction":"next_event"}',
     '  "meetings with Sarah this week" -> {"subaction":"search_events"}',
-    '  "find my return flight" -> {"subaction":"search_events"}',
     '  "What\'s happening while I\'m in Tokyo?" -> {"subaction":"trip_window","tripLocation":"Tokyo"}',
-    '  "東京にいる間、何がありますか？" -> {"subaction":"trip_window","tripLocation":"東京"}',
     '  "Can you help me with my calendar?" -> {"subaction":null}',
     "",
     "Return ONLY valid JSON with exactly these fields:",
@@ -490,17 +490,13 @@ async function resolveCalendarLookupBoundaryWithLlm(args: {
     "Choose exactly one subaction: next_event or search_events.",
     "next_event means the user wants only the single nearest upcoming meeting, appointment, or event.",
     "search_events means the user wants to find matching calendar events by title, attendee, place, trip, keyword, or date.",
-    "If the request asks for the next upcoming single meeting or appointment, prefer next_event even when the noun could also be searched.",
+    CALENDAR_READ_DISAMBIGUATION_RULES[2],
     "If the request contains a specific attendee, title, flight, dentist, place, date constraint, or other lookup key, choose search_events, even when it also names a time window like today, tomorrow, or this week.",
     "",
     "Examples:",
     '  "What\'s my next meeting?" -> {"subaction":"next_event"}',
-    '  "When is my next appointment?" -> {"subaction":"next_event"}',
     '  "次のミーティングはいつですか？" -> {"subaction":"next_event"}',
-    '  "¿Cuál es mi próxima reunión?" -> {"subaction":"next_event"}',
     '  "meetings with Sarah this week" -> {"subaction":"search_events"}',
-    '  "find my return flight" -> {"subaction":"search_events"}',
-    '  "when is the dentist" -> {"subaction":"search_events"}',
     '  "帰りの便を探して" -> {"subaction":"search_events"}',
     "",
     "Return ONLY valid JSON with exactly this field:",
@@ -1742,21 +1738,19 @@ export async function extractCalendarPlanWithLlm(
     "  windowLabel: optional natural-language window label",
     "",
     "Subactions and when to use each:",
-    "  feed — view the schedule over a time window (today, tomorrow, this week, a specific date). Use feed whenever the query is only a time expression with NO person/title/object to filter by (e.g. 'what's on my calendar', 'what do I have today', 'this week's agenda', 'what event do I have on April 20').",
+    "  feed — view today's, tomorrow's, or this week's schedule (e.g. 'what's on my calendar', 'what do I have today', 'this week's agenda')",
     "  next_event — check the next upcoming event only (e.g. 'what's my next meeting', 'when is my next appointment')",
-    "  search_events — find events matching a person, title, location, or object keyword — often without a time in the query (e.g. 'find my flight', 'when is the dentist', 'meetings with John'). A bare date like 'April 20' alone is NOT a search criterion; use feed for that.",
+    "  search_events — find events by title, attendee, location, or date range (e.g. 'find my flight', 'when is the dentist', 'meetings with John')",
     "  create_event — schedule a new event (e.g. 'schedule a meeting tomorrow at 3pm', 'add lunch with Sarah on Friday')",
     "  update_event — rename, reschedule, move, or edit an existing event (e.g. 'rename my meeting to standup', 'reschedule the dentist to Friday', 'move the call to 3pm')",
     "  delete_event — remove or cancel an existing event (e.g. 'delete the team meeting', 'cancel my appointment', 'remove the duplicate event')",
     "  trip_window — query what's happening during a trip or stay in a specific place (e.g. 'what's happening while I'm in Denver', 'my Tokyo itinerary')",
     "Use only the exact subaction literals listed above.",
     "Do not invent aliases like edit_event, modify_event, reschedule_event, move_event, cancel_event, remove_event, agenda, or itinerary_window.",
-    "If a request combines a time window with a specific attendee, title, flight, appointment, or keyword, choose search_events, not feed.",
-    "If a request asks what is happening while the user is in a place, choose trip_window, not search_events, even though the place may also look like a search query.",
-    "If a request asks for the next or upcoming single event, choose next_event. If it asks for a schedule, agenda, or list over a time window, choose feed.",
+    ...CALENDAR_READ_DISAMBIGUATION_RULES,
     "",
     "For feed, search_events, trip_window, update_event, or delete_event, infer an exact timeMin/timeMax window when the request names or implies a date or date range.",
-    "For search_events specifically: only set timeMin/timeMax when the user's literal words name a date, day, week, or month. Leave them null for timeless queries like 'find my flight', 'meetings with Sarah', 'flights to Denver' — a silent window can filter out the event the user is trying to find.",
+    "For search_events specifically: only set timeMin/timeMax when the user's literal words name a date, day, week, or month. Leave them null for timeless queries like 'find my flight' or 'meetings with Sarah' so the search does not silently narrow away the target event.",
     "timeMin and timeMax must be ISO 8601 datetimes that the API can use directly.",
     "windowLabel should be a short natural-language label like on monday, this weekend, next month, or tonight.",
     "For search_events, update_event, delete_event, or trip_window, extract up to 3 short search queries.",
@@ -1774,11 +1768,9 @@ export async function extractCalendarPlanWithLlm(
     '  "what\'s my next meeting" → {"subaction":"next_event","shouldAct":true,"response":null}',
     '  "schedule a meeting with Alex at 3pm" → {"subaction":"create_event","shouldAct":true,"response":null,"title":"Meeting with Alex"}',
     '  "meetings with Sarah this week" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["Sarah","this week"]}',
-    '  "flights to Denver next month" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["Denver flight","next month"]}',
     '  "find my return flight" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["return flight"]}',
     '  "what do I have while I\'m in Tokyo" → {"subaction":"trip_window","shouldAct":true,"response":null,"queries":["tokyo"],"tripLocation":"Tokyo"}',
     '  "rename my meeting to standup" → {"subaction":"update_event","shouldAct":true,"response":null,"queries":["meeting"],"title":"standup"}',
-    '  "Cambia la cita del dentista al viernes" → {"subaction":"update_event","shouldAct":true,"response":null,"queries":["cita del dentista"],"windowLabel":"el viernes"}',
     '  "delete the team meeting tomorrow" → {"subaction":"delete_event","shouldAct":true,"response":null,"queries":["team meeting"]}',
     '  "can you help me with my calendar?" → {"subaction":null,"shouldAct":false,"response":"What do you want to do on your calendar — check your schedule, find an event, or create one?","queries":[]}',
     "",
@@ -2951,7 +2943,7 @@ export const calendarAction: Action & {
     "querying travel itineraries, flights, hotel stays, trip windows, reserving recurring time blocks, and rebooking or moving calendar-backed commitments. " +
     "These are live calendar reads and writes, so do not answer them from provider context alone and do not fall back to NONE or REPLY when this action is available. " +
     "DO NOT use this action when the user is only making an observation like 'my calendar has been crazy this quarter' unless they actually ask you to inspect or change calendar state. " +
-    "DO NOT use this action for email inbox work, drafting or sending emails — use GMAIL_ACTION instead. " +
+    "DO NOT use this action for email inbox work, drafting or sending emails — use OWNER_INBOX (channel=gmail for Gmail-specific work) instead. " +
     "DO NOT use this action for personal habits, goals, routines, or reminders — use LIFE instead. " +
     "DO NOT use this action for Calendly — any request that mentions Calendly by name, or passes a calendly.com / api.calendly.com URL (including an eventTypeUri), belongs to the CALENDLY action, which is a separate product from Google Calendar. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action." +

@@ -52,7 +52,8 @@
     "./onboarding-presets": "./src/onboarding-presets.ts",
     "./dev-settings-table": "./src/dev-settings-table.ts",
     "./dev-settings-banner-style": "./src/dev-settings-banner-style.ts",
-    "./dev-settings-figlet-heading": "./src/dev-settings-figlet-heading.ts"
+    "./dev-settings-figlet-heading": "./src/dev-settings-figlet-heading.ts",
+    "./recent-messages-state": "./src/recent-messages-state.ts"
   },
   "publishConfig": {
     "access": "public",
