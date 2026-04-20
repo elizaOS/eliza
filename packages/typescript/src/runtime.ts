@@ -236,6 +236,25 @@ function resolveDynamicPromptModelType(
 	}
 }
 
+/**
+ * Resolves the default structured-output format from a setting value.
+ * Used by `dynamicPromptExecFromState` when no per-call preference is given.
+ * Accepts `toon`, `xml`, `json` (case-insensitive); anything else → TOON.
+ */
+export function resolveDefaultOutputFormat(
+	raw: unknown,
+): "XML" | "JSON" | "TOON" {
+	if (typeof raw !== "string") return "TOON";
+	switch (raw.trim().toLowerCase()) {
+		case "xml":
+			return "XML";
+		case "json":
+			return "JSON";
+		default:
+			return "TOON";
+	}
+}
+
 type ServiceResolver = (service: Service) => void;
 type ServiceRejecter = (reason: Error | string) => void;
 type ServicePromiseHandler = {
@@ -5123,7 +5142,9 @@ export class AgentRuntime implements IAgentRuntime {
 
 			// Process format options
 			const hasNestedSchema = this.schemaHasNestedStructure(schema);
-			let format: "XML" | "JSON" | "TOON" = "TOON";
+			let format: "XML" | "JSON" | "TOON" = resolveDefaultOutputFormat(
+				this.getSetting("PROMPT_OUTPUT_FORMAT"),
+			);
 			if (options.forceFormat) {
 				if (options.forceFormat === "xml" && hasNestedSchema) {
 					this.logger.warn(
