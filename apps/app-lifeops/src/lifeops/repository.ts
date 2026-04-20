@@ -19,6 +19,7 @@ import type {
   LifeOpsMessageChannel,
   LifeOpsRelationship,
   LifeOpsRelationshipInteraction,
+  LifeOpsScheduleInsight,
   LifeOpsScreenTimeDaily,
   LifeOpsScreenTimeSession,
   LifeOpsGmailMessageSummary,
@@ -102,6 +103,14 @@ export interface LifeOpsWebsiteAccessGrant {
   unlockedAt: string;
   expiresAt: string | null;
   revokedAt: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LifeOpsScheduleInsightRecord extends LifeOpsScheduleInsight {
+  id: string;
+  agentId: string;
   metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -2046,6 +2055,41 @@ export class LifeOpsRepository {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         UNIQUE(agent_id, source, identifier, date)
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_schedule_insights (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        effective_day_key TEXT NOT NULL,
+        local_date TEXT NOT NULL,
+        timezone TEXT NOT NULL,
+        inferred_at TEXT NOT NULL,
+        phase TEXT NOT NULL,
+        sleep_status TEXT NOT NULL,
+        is_probably_sleeping BOOLEAN NOT NULL DEFAULT FALSE,
+        sleep_confidence REAL NOT NULL DEFAULT 0,
+        current_sleep_started_at TEXT,
+        last_sleep_started_at TEXT,
+        last_sleep_ended_at TEXT,
+        last_sleep_duration_minutes INTEGER,
+        typical_wake_hour REAL,
+        typical_sleep_hour REAL,
+        wake_at TEXT,
+        first_active_at TEXT,
+        last_active_at TEXT,
+        last_meal_at TEXT,
+        next_meal_label TEXT,
+        next_meal_window_start_at TEXT,
+        next_meal_window_end_at TEXT,
+        next_meal_confidence REAL NOT NULL DEFAULT 0,
+        meals_json TEXT NOT NULL DEFAULT '[]',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(agent_id, effective_day_key)
       )`,
     );
 
@@ -5273,6 +5317,77 @@ export class LifeOpsRepository {
        ON CONFLICT (agent_id, source, identifier, date) DO UPDATE SET
          total_seconds = EXCLUDED.total_seconds,
          session_count = EXCLUDED.session_count,
+         metadata_json = EXCLUDED.metadata_json,
+         updated_at = EXCLUDED.updated_at`,
+    );
+  }
+
+  async upsertScheduleInsight(
+    insight: LifeOpsScheduleInsightRecord,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_schedule_insights (
+         id, agent_id, effective_day_key, local_date, timezone, inferred_at,
+         phase, sleep_status, is_probably_sleeping, sleep_confidence,
+         current_sleep_started_at, last_sleep_started_at, last_sleep_ended_at,
+         last_sleep_duration_minutes, typical_wake_hour, typical_sleep_hour,
+         wake_at, first_active_at, last_active_at, last_meal_at,
+         next_meal_label, next_meal_window_start_at, next_meal_window_end_at,
+         next_meal_confidence, meals_json, metadata_json, created_at, updated_at
+       ) VALUES (
+         ${sqlQuote(insight.id)},
+         ${sqlQuote(insight.agentId)},
+         ${sqlQuote(insight.effectiveDayKey)},
+         ${sqlQuote(insight.localDate)},
+         ${sqlQuote(insight.timezone)},
+         ${sqlQuote(insight.inferredAt)},
+         ${sqlQuote(insight.phase)},
+         ${sqlQuote(insight.sleepStatus)},
+         ${sqlBoolean(insight.isProbablySleeping)},
+         ${sqlNumber(insight.sleepConfidence)},
+         ${sqlText(insight.currentSleepStartedAt)},
+         ${sqlText(insight.lastSleepStartedAt)},
+         ${sqlText(insight.lastSleepEndedAt)},
+         ${sqlInteger(insight.lastSleepDurationMinutes)},
+         ${sqlNumber(insight.typicalWakeHour)},
+         ${sqlNumber(insight.typicalSleepHour)},
+         ${sqlText(insight.wakeAt)},
+         ${sqlText(insight.firstActiveAt)},
+         ${sqlText(insight.lastActiveAt)},
+         ${sqlText(insight.lastMealAt)},
+         ${sqlText(insight.nextMealLabel)},
+         ${sqlText(insight.nextMealWindowStartAt)},
+         ${sqlText(insight.nextMealWindowEndAt)},
+         ${sqlNumber(insight.nextMealConfidence)},
+         ${sqlJson(insight.meals)},
+         ${sqlJson(insight.metadata)},
+         ${sqlQuote(insight.createdAt)},
+         ${sqlQuote(insight.updatedAt)}
+       )
+       ON CONFLICT(agent_id, effective_day_key) DO UPDATE SET
+         local_date = EXCLUDED.local_date,
+         timezone = EXCLUDED.timezone,
+         inferred_at = EXCLUDED.inferred_at,
+         phase = EXCLUDED.phase,
+         sleep_status = EXCLUDED.sleep_status,
+         is_probably_sleeping = EXCLUDED.is_probably_sleeping,
+         sleep_confidence = EXCLUDED.sleep_confidence,
+         current_sleep_started_at = EXCLUDED.current_sleep_started_at,
+         last_sleep_started_at = EXCLUDED.last_sleep_started_at,
+         last_sleep_ended_at = EXCLUDED.last_sleep_ended_at,
+         last_sleep_duration_minutes = EXCLUDED.last_sleep_duration_minutes,
+         typical_wake_hour = EXCLUDED.typical_wake_hour,
+         typical_sleep_hour = EXCLUDED.typical_sleep_hour,
+         wake_at = EXCLUDED.wake_at,
+         first_active_at = EXCLUDED.first_active_at,
+         last_active_at = EXCLUDED.last_active_at,
+         last_meal_at = EXCLUDED.last_meal_at,
+         next_meal_label = EXCLUDED.next_meal_label,
+         next_meal_window_start_at = EXCLUDED.next_meal_window_start_at,
+         next_meal_window_end_at = EXCLUDED.next_meal_window_end_at,
+         next_meal_confidence = EXCLUDED.next_meal_confidence,
+         meals_json = EXCLUDED.meals_json,
          metadata_json = EXCLUDED.metadata_json,
          updated_at = EXCLUDED.updated_at`,
     );
