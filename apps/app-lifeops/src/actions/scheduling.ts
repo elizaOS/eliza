@@ -396,7 +396,7 @@ export const proposeMeetingTimesAction: Action & {
     });
 
     const text = formatSlotsText(slots);
-    await callback?.({ text, source: "action", action: "PROPOSE_MEETING_TIMES" });
+    await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
     return {
       text,
       success: true,
@@ -525,7 +525,7 @@ export const checkAvailabilityAction: Action = {
       ? `You're free from ${formatLocalForDisplay(windowStart.toISOString(), preferences.timeZone)} to ${formatLocalForDisplay(windowEnd.toISOString(), preferences.timeZone)}.`
       : `You have ${conflicts.length} conflict${conflicts.length === 1 ? "" : "s"} in that window: ${conflicts.map((c) => c.title || "Untitled").join(", ")}.`;
 
-    await callback?.({ text, source: "action", action: "CHECK_AVAILABILITY" });
+    await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
     return {
       text,
       success: true,
@@ -650,7 +650,7 @@ export const updateMeetingPreferencesAction: Action & {
     await callback?.({
       text,
       source: "action",
-      action: "UPDATE_MEETING_PREFERENCES",
+      action: "OWNER_CALENDAR",
     });
     return {
       text,
@@ -989,7 +989,7 @@ export const schedulingAction: Action = {
           timezone: params.timezone,
         });
         const text = `Started ${formatNegotiationSummary(neg)}.`;
-        await callback?.({ text, source: "action", action: "SCHEDULING" });
+        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return { text, success: true, data: { negotiation: neg } };
       }
 
@@ -1011,7 +1011,7 @@ export const schedulingAction: Action = {
           proposedBy: params.proposedBy ?? "agent",
         });
         const text = `Recorded ${formatProposalSummary(proposal)}.`;
-        await callback?.({ text, source: "action", action: "SCHEDULING" });
+        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return { text, success: true, data: { proposal } };
       }
 
@@ -1030,7 +1030,7 @@ export const schedulingAction: Action = {
           params.response,
         );
         const text = `Proposal ${proposal.id} is now ${proposal.status}.`;
-        await callback?.({ text, source: "action", action: "SCHEDULING" });
+        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return { text, success: true, data: { proposal } };
       }
 
@@ -1049,7 +1049,7 @@ export const schedulingAction: Action = {
           params.proposalId,
         );
         const text = `Confirmed ${formatNegotiationSummary(neg)}.`;
-        await callback?.({ text, source: "action", action: "SCHEDULING" });
+        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return { text, success: true, data: { negotiation: neg } };
       }
 
@@ -1065,7 +1065,7 @@ export const schedulingAction: Action = {
         }
         await service.cancelNegotiation(params.negotiationId, params.reason);
         const text = `Cancelled negotiation ${params.negotiationId}.`;
-        await callback?.({ text, source: "action", action: "SCHEDULING" });
+        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return {
           text,
           success: true,
@@ -1087,7 +1087,7 @@ export const schedulingAction: Action = {
         const text = proposals.length
           ? `Proposals for ${params.negotiationId}:\n${proposals.map(formatProposalSummary).join("\n")}`
           : `No proposals for ${params.negotiationId}.`;
-        await callback?.({ text, source: "action", action: "SCHEDULING" });
+        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return { text, success: true, data: { proposals } };
       }
 
@@ -1096,7 +1096,7 @@ export const schedulingAction: Action = {
       const text = active.length
         ? `Active negotiations:\n${active.map(formatNegotiationSummary).join("\n")}`
         : "No active scheduling negotiations.";
-      await callback?.({ text, source: "action", action: "SCHEDULING" });
+      await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
       return { text, success: true, data: { negotiations: active } };
     } catch (error) {
       if (error instanceof LifeOpsServiceError) {

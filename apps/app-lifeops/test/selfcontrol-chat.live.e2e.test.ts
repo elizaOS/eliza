@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../packages/app-core/test/helpers/live-provider";
 import {
@@ -364,7 +365,7 @@ describeIf(liveSelfcontrolChatEnabled)(
       }
     });
 
-    it("uses prior chat context to block websites through the real runtime", async () => {
+    stochasticTest("uses prior chat context to block websites through the real runtime", async () => {
       const pluginsResponse = await req(runtime.port, "GET", "/api/plugins");
       expect(pluginsResponse.status).toBe(200);
 
@@ -428,6 +429,6 @@ describeIf(liveSelfcontrolChatEnabled)(
       ]);
       expect(hosts).toContain("x.com");
       expect(hosts).toContain("twitter.com");
-    }, 180_000);
+    }, { perRunTimeoutMs: 180_000, label: "selfcontrol-chat/block-after-context" });
   },
 );

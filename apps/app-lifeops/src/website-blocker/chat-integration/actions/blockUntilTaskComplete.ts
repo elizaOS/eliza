@@ -136,7 +136,7 @@ export const blockUntilTaskCompleteAction: Action = {
   description:
     "Block websites until a specific todo is marked complete. Use this only when the unblock condition is finishing a task, workout, assignment, or todo, like 'block x.com until I finish my workout'. " +
     "Creates a block rule whose release is gated on todo completion. If todoName is provided with no matching active todo, the todo is created first. " +
-    "Do not use this for fixed-duration blocks like 'for 2 hours' or generic focus blocks like 'turn on social media blocking' — those are BLOCK_WEBSITES.",
+    "Do not use this for fixed-duration blocks like 'for 2 hours' or generic focus blocks like 'turn on social media blocking' — those are OWNER_WEBSITE_BLOCK.",
   descriptionCompressed:
     "Block websites until a named todo is completed.",
   validate: async () => true,

@@ -154,7 +154,7 @@ export function withEmailUnsubscribe<
   TBase extends Constructor<LifeOpsServiceBase>,
 >(Base: TBase) {
   class LifeOpsEmailUnsubscribeMixin extends Base {
-    private async requireGmailManageGrant(args: {
+    async requireGmailManageGrant(args: {
       requestUrl: URL;
       mode?: LifeOpsConnectorMode;
       side?: LifeOpsConnectorSide;
@@ -175,7 +175,7 @@ export function withEmailUnsubscribe<
       return grant;
     }
 
-    private async accessTokenForGrant(
+    async accessTokenForGrant(
       grant: LifeOpsConnectorGrant,
     ): Promise<string> {
       const tokenRef =

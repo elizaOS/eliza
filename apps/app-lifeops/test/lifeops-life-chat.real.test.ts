@@ -16,8 +16,9 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect } from "vitest";
 import { selectLiveProvider } from "../../../../test/helpers/live-provider";
+import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
@@ -65,7 +66,7 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
     await testResult.cleanup();
   });
 
-  it("creates a twice-daily brushing routine via LLM extraction", async () => {
+  stochasticTest("creates a twice-daily brushing routine via LLM extraction", async () => {
     const result = await callLifeAction(
       runtime,
       "Help me remember to brush my teeth in the morning and at night.",
@@ -81,9 +82,9 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
     });
     expect(matchingDef).toBeTruthy();
     expect(matchingDef?.definition.cadence).toBeTruthy();
-  }, 120_000);
+  }, { perRunTimeoutMs: 120_000 });
 
-  it("creates a hydration reminder via LLM extraction", async () => {
+  stochasticTest("creates a hydration reminder via LLM extraction", async () => {
     const result = await callLifeAction(
       runtime,
       "Remind me to drink water every day in the morning, afternoon, and evening.",
@@ -108,9 +109,9 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
       });
       expect(matchingDef).toBeTruthy();
     }
-  }, 120_000);
+  }, { perRunTimeoutMs: 120_000 });
 
-  it("asks for clarification instead of saving a title-only goal", async () => {
+  stochasticTest("asks for clarification instead of saving a title-only goal", async () => {
     const goalsBefore = await service.listGoals();
     const goalIdsBefore = new Set(goalsBefore.map((entry) => entry.goal.id));
 
@@ -144,9 +145,9 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
     expect(goalsAfter.map((entry) => entry.goal.id)).toEqual(
       expect.arrayContaining(Array.from(goalIdsBefore)),
     );
-  }, 120_000);
+  }, { perRunTimeoutMs: 120_000 });
 
-  it("creates a grounded goal via LLM extraction", async () => {
+  stochasticTest("creates a grounded goal via LLM extraction", async () => {
     const goalsBefore = await service.listGoals();
     const goalIdsBefore = new Set(goalsBefore.map((entry) => entry.goal.id));
     const groundedIntent =
@@ -197,9 +198,9 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
     expect(typeof goalGrounding?.summary).toBe("string");
     expect((goalGrounding?.summary as string).trim().length).toBeGreaterThan(0);
     expect(goalGrounding?.missingCriticalFields).toEqual([]);
-  }, 120_000);
+  }, { perRunTimeoutMs: 120_000 });
 
-  it("creates a one-off reminder with timezone via LLM extraction", async () => {
+  stochasticTest("creates a one-off reminder with timezone via LLM extraction", async () => {
     const result = await callLifeAction(
       runtime,
       "please set a reminder for april 17 2026 at 8pm pst to hug my wife",
@@ -214,9 +215,9 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
       return title.includes("hug") || title.includes("wife");
     });
     expect(matchingDef).toBeTruthy();
-  }, 120_000);
+  }, { perRunTimeoutMs: 120_000 });
 
-  it("returns a preview draft when not confirmed", async () => {
+  stochasticTest("returns a preview draft when not confirmed", async () => {
     const definitionsBefore = (await service.listDefinitions()).length;
 
     const result = await lifeAction.handler?.(
@@ -244,9 +245,9 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
 
     const definitionsAfter = (await service.listDefinitions()).length;
     expect(definitionsAfter).toBe(definitionsBefore);
-  }, 120_000);
+  }, { perRunTimeoutMs: 120_000 });
 
-  it("can save a routine after a preview or direct create path", async () => {
+  stochasticTest("can save a routine after a preview or direct create path", async () => {
     const previewFlowTitle = "Evening mobility preview flow";
     const definitionsBefore = (await service.listDefinitions()).length;
 
@@ -311,9 +312,9 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
       (entry) => entry.definition.title === previewFlowTitle,
     );
     expect(created).toBeTruthy();
-  }, 120_000);
+  }, { perRunTimeoutMs: 120_000 });
 
-  it("asks for clarification on a vague request without creating", async () => {
+  stochasticTest("asks for clarification on a vague request without creating", async () => {
     const definitionsBefore = (await service.listDefinitions()).length;
     const goalsBefore = (await service.listGoals()).length;
 
@@ -339,5 +340,5 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
     const goalsAfter = (await service.listGoals()).length;
     expect(definitionsAfter).toBe(definitionsBefore);
     expect(goalsAfter).toBe(goalsBefore);
-  }, 120_000);
+  }, { perRunTimeoutMs: 120_000 });
 });

@@ -251,8 +251,9 @@ async function handleRolodexSend(
 // ---------------------------------------------------------------------------
 
 export const sendMessageAction: Action = {
-  name: "SEND_MESSAGE",
+  name: "AGENT_SEND_MESSAGE",
   similes: [
+    "SEND_MESSAGE",
     "DM",
     "MESSAGE",
     "SEND_DM",
@@ -266,12 +267,16 @@ export const sendMessageAction: Action = {
     "SEND_OWNER_MESSAGE",
   ],
   description:
-    "Send a message to a person, room, or the admin/owner. " +
-    "Use 'recipient' with a person's name to resolve via the Rolodex — " +
-    "the agent will find the right platform and handle automatically. " +
-    "For admin messages, set target to 'admin' or 'owner'. " +
+    "AGENT-scoped message send: the AGENT, on its own initiative, sends a " +
+    "message to a person, room, or the admin/owner using the agent's own " +
+    "connected accounts. Use 'recipient' with a person's name to resolve via " +
+    "the Rolodex — the agent will find the right platform and handle " +
+    "automatically. For admin messages, set target to 'admin' or 'owner'. " +
     "For explicit routing, provide source + target + targetType directly. " +
-    "Supports urgency levels for admin messages (normal, important, urgent).",
+    "Supports urgency levels for admin messages (normal, important, urgent). " +
+    "Do NOT use this when the OWNER asks the agent to send a message on the " +
+    "OWNER's behalf using the OWNER's accounts — that is OWNER_SEND_MESSAGE " +
+    "(which drafts first and requires confirmed: true to dispatch).",
 
   validate: async (runtime, message, state) => {
     if (!(await hasAdminAccess(runtime, message))) return false;
