@@ -1,4 +1,4 @@
-import type { Action, HandlerOptions, IAgentRuntime, Memory, State } from "@elizaos/core";
+import type { Action, ActionExample, HandlerOptions, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { hasRoleAccess } from "../security/access.js";
 import {
@@ -148,4 +148,34 @@ export const extractPageAction: Action = {
       schema: { type: "number" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Pull the main content from https://example.com/blog/post-42 for me.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Extracted https://example.com/blog/post-42\n\n# Post 42 — a short summary of the article body.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Give me the text off this docs page: https://docs.elizaos.ai/guide",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Extracted https://docs.elizaos.ai/guide\n\n# Guide — intro paragraph and first section.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
