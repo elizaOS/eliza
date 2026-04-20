@@ -385,6 +385,16 @@ export function parseWorkflowSchedulerState(
       typeof value.updatedAt === "string" && value.updatedAt.trim().length > 0
         ? value.updatedAt
         : new Date().toISOString(),
+    lastFiredEventEndAt:
+      typeof value.lastFiredEventEndAt === "string" &&
+      value.lastFiredEventEndAt.trim().length > 0
+        ? value.lastFiredEventEndAt
+        : null,
+    lastFiredEventId:
+      typeof value.lastFiredEventId === "string" &&
+      value.lastFiredEventId.trim().length > 0
+        ? value.lastFiredEventId
+        : null,
   };
 }
 
