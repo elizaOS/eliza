@@ -142,6 +142,10 @@ async function runSubscriptionsAction(
         executor: params.executor ?? null,
         confirmed: parseConfirmed(params),
       });
+      const playbookNotImplemented =
+        summary.cancellation.status === "unsupported_surface" &&
+        typeof summary.cancellation.error === "string" &&
+        summary.cancellation.error.startsWith("PLAYBOOK_NOT_IMPLEMENTED");
       return {
         success:
           summary.cancellation.status !== "failed" &&
@@ -151,6 +155,13 @@ async function runSubscriptionsAction(
           cancellation: summary.cancellation,
           candidate: summary.candidate,
           browserTask: browserTaskData(summary),
+          ...(playbookNotImplemented
+            ? {
+                error: "PLAYBOOK_NOT_IMPLEMENTED",
+                serviceSlug: summary.cancellation.serviceSlug,
+                managementUrl: summary.cancellation.managementUrl,
+              }
+            : {}),
         },
       };
     }

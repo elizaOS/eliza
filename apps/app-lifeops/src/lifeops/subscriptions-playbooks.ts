@@ -52,7 +52,12 @@ export interface LifeOpsSubscriptionPlaybook {
   phoneOnlyMarkers: string[];
   chatOnlyMarkers: string[];
   cancellationMarkers: string[];
-  steps: SubscriptionAutomationStep[];
+  /**
+   * Concrete browser automation steps. When undefined, the service has no
+   * real click-flow implemented — the caller must report a
+   * `PLAYBOOK_NOT_IMPLEMENTED` failure rather than pretend to cancel.
+   */
+  steps?: SubscriptionAutomationStep[];
   companionSelectors?: {
     cancel?: string;
     confirm?: string;
@@ -149,10 +154,11 @@ function definePlaybook(
     chatOnlyMarkers: partial.chatOnlyMarkers ?? [],
     cancellationMarkers:
       partial.cancellationMarkers ?? GENERIC_CANCELLATION_MARKERS,
-    steps: partial.steps ?? [
-      { kind: "open", url: managementUrl },
-      { kind: "screenshot", label: `${partial.key}-opened` },
-    ],
+    // No default steps: opening the management URL + a screenshot is NOT a
+    // cancellation. Services without an explicit click-flow are handled by
+    // the caller as PLAYBOOK_NOT_IMPLEMENTED so we don't silently report
+    // fake success. See service-mixin-subscriptions.ts.
+    steps: partial.steps,
     companionSelectors: partial.companionSelectors,
   };
 }

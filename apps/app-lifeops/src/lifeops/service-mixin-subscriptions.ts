@@ -230,7 +230,7 @@ function toUserBrowserActions(
   playbook: LifeOpsSubscriptionPlaybook,
 ): CreateLifeOpsBrowserSessionRequest["actions"] {
   const actions: Array<Omit<LifeOpsBrowserAction, "id">> = [];
-  for (const step of playbook.steps) {
+  for (const step of playbook.steps ?? []) {
     switch (step.kind) {
       case "open":
       case "navigate":
@@ -328,6 +328,17 @@ function summarizeCancellationStatus(
       return `${cancellation.serviceName} can only be canceled through support chat.`;
     case "already_canceled":
       return `${cancellation.serviceName} already appears to be canceled.`;
+    case "unsupported_surface":
+      if (
+        typeof cancellation.error === "string" &&
+        cancellation.error.startsWith("PLAYBOOK_NOT_IMPLEMENTED")
+      ) {
+        return (
+          cancellation.evidenceSummary ??
+          `I can open the ${cancellation.serviceName} cancel page for you, but I haven't learned the exact click-flow yet. Want me to open the page and you finish the cancel?`
+        );
+      }
+      return `I don't have a cancellation surface for ${cancellation.serviceName} yet${cancellation.error ? `: ${cancellation.error}` : "."}`;
     case "failed":
       return `Cancellation for ${cancellation.serviceName} failed${cancellation.error ? `: ${cancellation.error}` : "."}`;
     default:
@@ -763,6 +774,29 @@ export function withSubscriptions<
         return { cancellation, candidate };
       }
 
+      if (!playbook.steps || playbook.steps.length === 0) {
+        // We know where the management page lives, but we don't have a
+        // real click-flow implemented. Do NOT pretend to cancel by
+        // opening the URL and taking a screenshot — surface the truthful
+        // "not yet implemented" state so the owner can finish it manually.
+        cancellation = {
+          ...cancellation,
+          status: "unsupported_surface",
+          error: `PLAYBOOK_NOT_IMPLEMENTED:${playbook.key}`,
+          evidenceSummary: `I can open the ${playbook.serviceName} cancel page for you, but I haven't learned the exact click-flow yet. Want me to open the page and you finish the cancel? Management URL: ${playbook.managementUrl}`,
+          managementUrl: playbook.managementUrl,
+          metadata: {
+            ...cancellation.metadata,
+            playbookNotImplemented: true,
+            managementUrl: playbook.managementUrl,
+          },
+          updatedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+        };
+        await this.repository.updateSubscriptionCancellation(cancellation);
+        return { cancellation, candidate };
+      }
+
       if (candidate?.state === "canceled") {
         cancellation = {
           ...cancellation,
@@ -839,7 +873,7 @@ export function withSubscriptions<
       };
       await this.repository.updateSubscriptionCancellation(cancellation);
 
-      for (const step of playbook.steps) {
+      for (const step of playbook.steps ?? []) {
         if ("destructive" in step && step.destructive && !confirmed) {
           cancellation = {
             ...cancellation,

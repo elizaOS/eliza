@@ -29,6 +29,12 @@ export interface RecentWin {
   readonly completedAt: string | null;
 }
 
+export interface CheckinCollectorErrors {
+  readonly overdueTodos: string | null;
+  readonly todaysMeetings: string | null;
+  readonly yesterdaysWins: string | null;
+}
+
 export interface CheckinReport {
   readonly reportId: string;
   readonly kind: CheckinKind;
@@ -37,6 +43,7 @@ export interface CheckinReport {
   readonly overdueTodos: readonly OverdueTodo[];
   readonly todaysMeetings: readonly MeetingEntry[];
   readonly yesterdaysWins: readonly RecentWin[];
+  readonly collectorErrors: CheckinCollectorErrors;
 }
 
 export interface RunCheckinRequest {

@@ -66,10 +66,15 @@ function newReportId(): string {
   return `checkin-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+interface CollectorResult<T> {
+  readonly rows: T[];
+  readonly error: string | null;
+}
+
 async function collectOverdueTodos(
   runtime: IAgentRuntime,
   now: Date,
-): Promise<OverdueTodo[]> {
+): Promise<CollectorResult<OverdueTodo>> {
   const agentId = String(runtime.agentId);
   const nowIso = now.toISOString();
   try {
@@ -87,26 +92,28 @@ async function collectOverdueTodos(
         ORDER BY occ.due_at ASC
         LIMIT 50`,
     );
-    return rows.map((row) => ({
-      id: toText(row.id),
-      title: toText(row.title) || "(untitled)",
-      dueAt: row.due_at == null ? null : toText(row.due_at),
-    }));
+    return {
+      rows: rows.map((row) => ({
+        id: toText(row.id),
+        title: toText(row.title) || "(untitled)",
+        dueAt: row.due_at == null ? null : toText(row.due_at),
+      })),
+      error: null,
+    };
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     logMissingOnce(
       "overdue-todos",
-      `overdue-todos collector unavailable (life_task_occurrences not ready): ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `overdue-todos collector unavailable (life_task_occurrences not ready): ${message}`,
     );
-    return [];
+    return { rows: [], error: message };
   }
 }
 
 async function collectTodaysMeetings(
   runtime: IAgentRuntime,
   now: Date,
-): Promise<MeetingEntry[]> {
+): Promise<CollectorResult<MeetingEntry>> {
   const agentId = String(runtime.agentId);
   const startOfDay = new Date(now);
   startOfDay.setHours(0, 0, 0, 0);
@@ -123,27 +130,29 @@ async function collectTodaysMeetings(
         ORDER BY start_at ASC
         LIMIT 50`,
     );
-    return rows.map((row) => ({
-      id: toText(row.id),
-      title: toText(row.title) || "(untitled)",
-      startAt: toText(row.start_at),
-      endAt: toText(row.end_at),
-    }));
+    return {
+      rows: rows.map((row) => ({
+        id: toText(row.id),
+        title: toText(row.title) || "(untitled)",
+        startAt: toText(row.start_at),
+        endAt: toText(row.end_at),
+      })),
+      error: null,
+    };
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     logMissingOnce(
       "todays-meetings",
-      `meetings collector unavailable (life_calendar_events not ready): ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `meetings collector unavailable (life_calendar_events not ready): ${message}`,
     );
-    return [];
+    return { rows: [], error: message };
   }
 }
 
 async function collectYesterdaysWins(
   runtime: IAgentRuntime,
   now: Date,
-): Promise<RecentWin[]> {
+): Promise<CollectorResult<RecentWin>> {
   const agentId = String(runtime.agentId);
   const startOfYesterday = new Date(now);
   startOfYesterday.setDate(startOfYesterday.getDate() - 1);
@@ -165,19 +174,22 @@ async function collectYesterdaysWins(
         ORDER BY occ.updated_at DESC
         LIMIT 50`,
     );
-    return rows.map((row) => ({
-      id: toText(row.id),
-      title: toText(row.title) || "(untitled)",
-      completedAt: row.completed_at == null ? null : toText(row.completed_at),
-    }));
+    return {
+      rows: rows.map((row) => ({
+        id: toText(row.id),
+        title: toText(row.title) || "(untitled)",
+        completedAt:
+          row.completed_at == null ? null : toText(row.completed_at),
+      })),
+      error: null,
+    };
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     logMissingOnce(
       "yesterdays-wins",
-      `yesterdays-wins collector unavailable: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `yesterdays-wins collector unavailable: ${message}`,
     );
-    return [];
+    return { rows: [], error: message };
   }
 }
 
@@ -260,9 +272,14 @@ export class CheckinService {
       kind,
       generatedAt: now.toISOString(),
       escalationLevel,
-      overdueTodos,
-      todaysMeetings,
-      yesterdaysWins,
+      overdueTodos: overdueTodos.rows,
+      todaysMeetings: todaysMeetings.rows,
+      yesterdaysWins: yesterdaysWins.rows,
+      collectorErrors: {
+        overdueTodos: overdueTodos.error,
+        todaysMeetings: todaysMeetings.error,
+        yesterdaysWins: yesterdaysWins.error,
+      },
     };
     await this.persistReport(report, now);
     return report;
