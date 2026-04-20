@@ -47,6 +47,7 @@ import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "@elizaos/app-core/components/chat/widgets/types";
+import { humanizeLifeOpsLabel } from "../../../lifeops-labels.js";
 import { GoogleGlanceSection } from "./lifeops.js";
 
 const LIFEOPS_REFRESH_INTERVAL_MS = 15_000;
@@ -916,7 +917,7 @@ function ScheduleSection({
       : "Likely asleep now"
     : schedule.lastSleepEndedAt
       ? `Last wake ${formatDateTime(schedule.lastSleepEndedAt)}${schedule.lastSleepDurationMinutes ? ` • ${schedule.lastSleepDurationMinutes}m asleep` : ""}`
-      : `Sleep ${humanize(schedule.sleepStatus)}`;
+      : `Sleep ${humanizeLifeOpsLabel(schedule.sleepStatus)}`;
   const mealLine =
     schedule.nextMealLabel && schedule.nextMealWindowStartAt
       ? `Next ${schedule.nextMealLabel} window ${formatDateTime(schedule.nextMealWindowStartAt)}`
@@ -934,7 +935,7 @@ function ScheduleSection({
           Schedule
         </span>
         <Badge variant="secondary" className="text-[10px]">
-          {humanize(schedule.phase)}
+          {humanizeLifeOpsLabel(schedule.phase)}
         </Badge>
       </div>
       <div className="rounded-lg border border-border/50 bg-bg/70 p-2">

@@ -52,6 +52,7 @@ export const updateOwnerProfileAction: Action & {
     "Travel-booking preferences are just one subtype of this owner profile memory. Examples include 'remember my name is Shaw', 'update my location to Los Angeles', " +
     "'remember that I'm partnered', 'save my travel preferences', or 'remember I only do carry-on and moderate hotels close to the venue'. " +
     "When the owner asks you to remember or save these stable facts, you must call this action rather than replying with a plain acknowledgement. " +
+    "If the owner is asking you to set up a reusable travel-preference checklist for future bookings, this action still owns the turn even before every preference value is supplied; it can ask for the missing categories while remaining the owning action. " +
     "Do not use this for todos, goals, reminders, temporary plans, or live task state.",
   descriptionCompressed:
     "Persist stable owner facts and reusable preferences when stated or confirmed. Owner only.",

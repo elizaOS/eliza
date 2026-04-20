@@ -369,7 +369,7 @@ export const ownerInboxAction: Action & {
     "channel=gmail (use messageId + replyBody for read_message / draft_reply / " +
     "send_reply; senderQuery / subjectQuery / labelQuery for search). " +
     "Use this for inbox-shaped coordination requests like 'show the urgent blockers first and separate them from low-priority inbound', " +
-    "'repair that missed call and hold the note for my approval', or 'if direct relaying gets messy, suggest a group chat handoff'. " +
+    "'repair that missed call and hold the note for my approval', 'if direct relaying gets messy, suggest a group chat handoff', or 'tell me what slides, bio, title, or portal assets I still owe before the event'. " +
     "Route here when the user says 'my inbox', 'inbox digest', 'mailbox digest', " +
     "'unified inbox', 'what needs my attention in my inbox', 'triage my messages', or 'show me the unread blockers first' — use " +
     "channel=all. When the user explicitly says 'Gmail' or 'email', or asks " +

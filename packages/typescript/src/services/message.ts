@@ -1103,6 +1103,7 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["CREATE_PREFERENCE_PROFILE", "UPDATE_OWNER_PROFILE"],
 		["FLAG_CONFLICT", "OWNER_CALENDAR"],
 		["SET_MULTI_DEVICE_MEETING_REMINDER", "PUBLISH_DEVICE_INTENT"],
+		["SET_MULTI_DEVICE_REMINDER", "PUBLISH_DEVICE_INTENT"],
 		["HANDLE_CANCELLATION_FEE", "PUBLISH_DEVICE_INTENT"],
 		["GET_ID_STATUS", "PUBLISH_DEVICE_INTENT"],
 		["REQUEST_UPLOAD", "LIFEOPS_COMPUTER_USE"],
@@ -1143,6 +1144,7 @@ function hasNonPassiveAction(
 }
 
 function shouldAttemptActionRescue(
+	runtime: Pick<IAgentRuntime, "actions">,
 	message: Memory,
 	state: State,
 	responseContent: Pick<Content, "actions" | "providers" | "text"> | null | undefined,
@@ -1163,7 +1165,10 @@ function shouldAttemptActionRescue(
 		typeof state.values?.actionNames === "string"
 			? state.values.actionNames
 			: "";
-	if (availableActionNames.trim().length === 0) {
+	if (
+		availableActionNames.trim().length === 0 &&
+		(runtime.actions?.length ?? 0) === 0
+	) {
 		return false;
 	}
 
@@ -1219,7 +1224,7 @@ function buildActionRescuePrompt(basePrompt: string, draftReply: string): string
 The previous draft stayed in prose-only mode or selected only passive reply actions.
 Re-evaluate the turn using the same available actions and providers already in context above.
 If a listed non-REPLY action owns the user's request, choose it now even when the text still needs to ask a follow-up question.
-Prefer the owning action for requests to create, store, remember, schedule, remind, upload, follow up, route, escalate, or set a standing policy.
+Prefer the owning action for requests to create, store, remember, schedule, remind, upload, follow up, route, escalate, set a standing policy, bulk-reschedule a cohort, run a morning brief, or call the owner when blocked.
 Keep REPLY/NONE only when no listed action actually owns the request.${draftSection}`;
 }
 
@@ -1241,12 +1246,17 @@ Rules:
 Examples:
 - "repair that missed call and hold the note for approval" -> OWNER_INBOX
 - "if direct relaying gets messy, suggest a group chat handoff" -> OWNER_INBOX
+- "tell me what slides, bio, title, or portal assets I still owe before the event" -> OWNER_INBOX
+- "in the morning brief, add a Pending Drafts section that lists what still needs my sign-off" -> RUN_MORNING_CHECKIN
+- "we're gonna cancel some stuff and push everything back until next month, all partnership meetings" -> OWNER_CALENDAR
 - "capture my reusable flight and hotel preferences" -> UPDATE_OWNER_PROFILE
+- "flag the conflict before my flight later and help rebook the other thing" -> OWNER_CALENDAR
 - "start booking the trip once I approve" -> BOOK_TRAVEL
 - "when I send the deck, upload it to the portal" -> LIFEOPS_COMPUTER_USE
-- "keep me on top of signing the clinic documents" -> INTENT_SYNC
-- "if the only ID on file is expired, ask me for an updated copy" -> INTENT_SYNC
-- "if missing this could trigger a cancellation fee, warn me clearly" -> INTENT_SYNC
+- "if the only ID on file is expired, ask me for an updated copy" -> PUBLISH_DEVICE_INTENT
+- "for important meetings, remind me an hour before, ten minutes before, and at start on my Mac and phone" -> PUBLISH_DEVICE_INTENT
+- "if missing this could trigger a cancellation fee, warn me clearly" -> PUBLISH_DEVICE_INTENT
+- "if you get stuck in the browser or on my computer, call me" -> CALL_USER
 
 ${draftSection}Return XML only:
 <response>
@@ -4974,7 +4984,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 
 			if (
 				!overrides?.providerFollowup &&
-				shouldAttemptActionRescue(message, state, responseContent)
+				shouldAttemptActionRescue(runtime, message, state, responseContent)
 			) {
 				const actionRescuePrompt = buildActionRescuePrompt(
 					prompt,
@@ -5072,7 +5082,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 
 			if (
 				!overrides?.providerFollowup &&
-				shouldAttemptActionRescue(message, state, responseContent)
+				shouldAttemptActionRescue(runtime, message, state, responseContent)
 			) {
 				const actionOnlyRescue = await runtime.dynamicPromptExecFromState({
 					state,
