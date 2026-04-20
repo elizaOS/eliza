@@ -961,7 +961,16 @@ export const schedulingAction: Action = {
         llmPlan.response ??
         "Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?";
       await callback?.({ text });
-      return { text, success: true, data: { noop: true } };
+      return {
+        text,
+        success: false,
+        values: {
+          success: false,
+          error: "PLANNER_SHOULDACT_FALSE",
+          noop: true,
+        },
+        data: { noop: true, error: "PLANNER_SHOULDACT_FALSE" },
+      };
     }
 
     if (!subaction) {
@@ -988,7 +997,7 @@ export const schedulingAction: Action = {
           durationMinutes: params.durationMinutes,
           timezone: params.timezone,
         });
-        const text = `Started ${formatNegotiationSummary(neg)}.`;
+        const text = `Started ${formatNegotiationSummary(neg)} and notified the counterparty.`;
         await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return { text, success: true, data: { negotiation: neg } };
       }
@@ -1004,13 +1013,17 @@ export const schedulingAction: Action = {
             data: { error: "MISSING_PROPOSAL_FIELDS" },
           };
         }
+        const proposedBy = params.proposedBy ?? "agent";
         const proposal = await service.proposeTime({
           negotiationId: params.negotiationId,
           startAt: params.startAt,
           endAt: params.endAt,
-          proposedBy: params.proposedBy ?? "agent",
+          proposedBy,
         });
-        const text = `Recorded ${formatProposalSummary(proposal)}.`;
+        const text =
+          proposedBy === "counterparty"
+            ? `Recorded ${formatProposalSummary(proposal)}.`
+            : `Recorded ${formatProposalSummary(proposal)} and sent it to the counterparty.`;
         await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return { text, success: true, data: { proposal } };
       }
@@ -1048,7 +1061,7 @@ export const schedulingAction: Action = {
           params.negotiationId,
           params.proposalId,
         );
-        const text = `Confirmed ${formatNegotiationSummary(neg)}.`;
+        const text = `Confirmed ${formatNegotiationSummary(neg)} and sent confirmation to the counterparty.`;
         await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return { text, success: true, data: { negotiation: neg } };
       }
@@ -1064,7 +1077,7 @@ export const schedulingAction: Action = {
           };
         }
         await service.cancelNegotiation(params.negotiationId, params.reason);
-        const text = `Cancelled negotiation ${params.negotiationId}.`;
+        const text = `Cancelled negotiation ${params.negotiationId} and notified the counterparty.`;
         await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return {
           text,

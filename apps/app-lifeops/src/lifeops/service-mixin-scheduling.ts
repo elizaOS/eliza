@@ -332,6 +332,22 @@ export function withScheduling<TBase extends Constructor<LifeOpsServiceBase>>(
           "proposals_sent",
         );
       }
+
+      // Only send to the counterparty when the agent or owner is the one
+      // proposing. A proposal whose `proposedBy = counterparty` came FROM
+      // them, so echoing it back would be nonsense.
+      if (input.proposedBy !== "counterparty") {
+        const subjectLine = `Scheduling: ${negotiation.subject}`;
+        const body =
+          `Proposed time for "${negotiation.subject}":\n` +
+          `  Start: ${proposal.startAt}\n` +
+          `  End:   ${proposal.endAt}\n` +
+          `  (${negotiation.durationMinutes} min, ${negotiation.timezone})\n\n` +
+          `Let me know if this works or suggest a different slot.\n\n` +
+          `Reference: ${negotiation.id} / ${proposal.id}`;
+        await this.dispatchSchedulingMessage(negotiation, body, subjectLine);
+      }
+
       return proposal;
     }
 
@@ -406,6 +422,17 @@ export function withScheduling<TBase extends Constructor<LifeOpsServiceBase>>(
         updatedAt: now,
       };
       await this.repository.upsertSchedulingNegotiation(updated);
+
+      const subjectLine = `Confirmed: ${updated.subject}`;
+      const body =
+        `Confirming "${updated.subject}":\n` +
+        `  Start: ${proposal.startAt}\n` +
+        `  End:   ${proposal.endAt}\n` +
+        `  (${updated.durationMinutes} min, ${updated.timezone})\n\n` +
+        `See you then.\n\n` +
+        `Reference: ${updated.id} / ${proposal.id}`;
+      await this.dispatchSchedulingMessage(updated, body, subjectLine);
+
       return updated;
     }
 
@@ -429,6 +456,13 @@ export function withScheduling<TBase extends Constructor<LifeOpsServiceBase>>(
         updatedAt: now,
       };
       await this.repository.upsertSchedulingNegotiation(updated);
+
+      const subjectLine = `Cancelled: ${updated.subject}`;
+      const body =
+        `Cancelling "${updated.subject}"` +
+        (reason ? ` — ${reason}.` : ".") +
+        `\n\nReference: ${updated.id}`;
+      await this.dispatchSchedulingMessage(updated, body, subjectLine);
     }
 
     async listProposals(
