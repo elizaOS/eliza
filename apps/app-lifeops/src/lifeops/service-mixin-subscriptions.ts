@@ -19,6 +19,7 @@ import {
   requireNonEmptyString,
 } from "./service-normalize.js";
 import {
+  PLAYBOOK_NOT_IMPLEMENTED_ERROR,
   findLifeOpsSubscriptionPlaybook,
   listLifeOpsSubscriptionPlaybooks,
   type LifeOpsSubscriptionPlaybook,
@@ -331,7 +332,7 @@ function summarizeCancellationStatus(
     case "unsupported_surface":
       if (
         typeof cancellation.error === "string" &&
-        cancellation.error.startsWith("PLAYBOOK_NOT_IMPLEMENTED")
+        cancellation.error.startsWith(PLAYBOOK_NOT_IMPLEMENTED_ERROR)
       ) {
         return (
           cancellation.evidenceSummary ??
@@ -782,7 +783,7 @@ export function withSubscriptions<
         cancellation = {
           ...cancellation,
           status: "unsupported_surface",
-          error: `PLAYBOOK_NOT_IMPLEMENTED:${playbook.key}`,
+          error: `${PLAYBOOK_NOT_IMPLEMENTED_ERROR}:${playbook.key}`,
           evidenceSummary: `I can open the ${playbook.serviceName} cancel page for you, but I haven't learned the exact click-flow yet. Want me to open the page and you finish the cancel? Management URL: ${playbook.managementUrl}`,
           managementUrl: playbook.managementUrl,
           metadata: {
