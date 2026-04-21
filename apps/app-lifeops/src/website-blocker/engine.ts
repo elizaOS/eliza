@@ -909,6 +909,47 @@ export function buildSelfControlManagedHostsBlock(
   ].join(lineEnding);
 }
 
+export function extractDurationMinutesFromText(text: string): number | null {
+  const match = text.match(
+    /(\d+(?:\.\d+)?)\s*(min(?:ute)?s?|hrs?|hours?)\b/i,
+  );
+  if (!match) return null;
+
+  const amount = Number.parseFloat(match[1]);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return null;
+  }
+
+  const unit = match[2].toLowerCase();
+  return unit.startsWith("h") ? Math.round(amount * 60) : Math.round(amount);
+}
+
+export function extractWebsiteTargetsFromText(text: string): string[] {
+  const matches = text.match(
+    /(?:https?:\/\/)?(?:www\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+/gi,
+  ) ?? [];
+
+  return normalizeWebsiteTargets(matches);
+}
+
+export function hasIndefiniteBlockIntent(text: string): boolean {
+  return /(indefinite|indefinitely|until\s+(?:i|we)\s+unblock|until\s+manually\s+unblocked|no\s+timer|without\s+(?:a\s+)?timer)/i.test(
+    text,
+  );
+}
+
+export function hasWebsiteBlockDeferralIntent(text: string): boolean {
+  return /(don['’]?t\s+(?:block|start)\s+(?:it|them)?\s*yet|not\s+yet|wait\s+for\s+confirmation|hold\s+off|later\b|for\s+now\s+just\s+note)/i.test(
+    text,
+  );
+}
+
+export function hasWebsiteBlockIntent(text: string): boolean {
+  return /\b(block|unblock|website\s+block(?:er|ing)?|self\s*control|focus\s+mode|focus)\b/i.test(
+    text,
+  );
+}
+
 export function parseSelfControlBlockRequest(
   options?: HandlerOptions,
 ): {
