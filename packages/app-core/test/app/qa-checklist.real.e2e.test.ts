@@ -2309,6 +2309,14 @@ async function waitForVisibleSelector(
   }, timeout);
 }
 
+async function waitForProviderOption(
+  page: Page,
+  selector: string,
+  timeout = 45_000,
+) {
+  await waitForVisibleSelector(page, selector, timeout);
+}
+
 async function typeComposerAndSend(page: Page, value: string) {
   const textareaSelector = '[data-testid="chat-composer-textarea"]';
   const sendButtonSelector = '[data-testid="chat-composer-action"]';
