@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
-import type { AgentRuntime, Content, State, Task, UUID } from "@elizaos/core";
 import { DatabaseSync } from "@elizaos/agent/test-utils/sqlite-compat";
+import type { AgentRuntime, Content, State, Task, UUID } from "@elizaos/core";
 
 type SqlQuery = {
   queryChunks?: Array<{ value?: unknown }>;
@@ -67,6 +67,24 @@ export function createLifeOpsChatTestRuntime(options: {
   useModel: AgentRuntime["useModel"];
 }): AgentRuntime {
   const sqlite = new DatabaseSync(":memory:");
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS life_browser_settings (
+      agent_id TEXT PRIMARY KEY,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      tracking_mode TEXT NOT NULL DEFAULT 'current_tab',
+      allow_browser_control INTEGER NOT NULL DEFAULT 0,
+      require_confirmation_for_account_affecting INTEGER NOT NULL DEFAULT 1,
+      incognito_enabled INTEGER NOT NULL DEFAULT 0,
+      site_access_mode TEXT NOT NULL DEFAULT 'current_site_only',
+      granted_origins_json TEXT NOT NULL DEFAULT '[]',
+      blocked_origins_json TEXT NOT NULL DEFAULT '[]',
+      max_remembered_tabs INTEGER NOT NULL DEFAULT 10,
+      pause_until TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
   let tasks: Task[] = [];
   const memoriesByRoom = new Map<string, Array<Record<string, unknown>>>();
   const roomsById = new Map<string, { id: UUID; worldId: UUID }>();
@@ -216,7 +234,10 @@ export function createLifeOpsChatTestRuntime(options: {
         roomId: String(roomId),
         count: 20,
       })) as Array<Record<string, unknown>>;
-      const recentMessages = buildRecentMessagesTranscript(runtimeArg, memories);
+      const recentMessages = buildRecentMessagesTranscript(
+        runtimeArg,
+        memories,
+      );
       const baseContent =
         message.content && typeof message.content === "object"
           ? (message.content as Record<string, unknown>)

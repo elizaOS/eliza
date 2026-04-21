@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const invokeDesktopBridgeRequestMock = vi.fn();
-const isElectrobunRuntimeMock = vi.fn();
+const { invokeDesktopBridgeRequestMock, isElectrobunRuntimeMock } = vi.hoisted(
+  () => ({
+    invokeDesktopBridgeRequestMock: vi.fn(),
+    isElectrobunRuntimeMock: vi.fn(),
+  }),
+);
 
 vi.mock("./electrobun-rpc", () => ({
   invokeDesktopBridgeRequest: invokeDesktopBridgeRequestMock,

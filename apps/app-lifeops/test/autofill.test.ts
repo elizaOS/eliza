@@ -1,9 +1,10 @@
+import { DatabaseSync } from "@elizaos/agent/test-utils/sqlite-compat";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  __internal,
   addAutofillWhitelistAction,
   listAutofillWhitelistAction,
   requestFieldFillAction,
-  __internal,
 } from "../src/actions/autofill.js";
 import {
   DEFAULT_AUTOFILL_WHITELIST,
@@ -15,6 +16,54 @@ import {
 const ORIGINAL_ENV = { ...process.env };
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000003";
+
+type SqlQuery = {
+  queryChunks?: Array<{ value?: unknown }>;
+};
+
+function extractSqlText(query: SqlQuery): string {
+  if (!Array.isArray(query.queryChunks)) return "";
+  return query.queryChunks
+    .map((chunk) => {
+      const value = chunk?.value;
+      if (Array.isArray(value)) return value.join("");
+      return String(value ?? "");
+    })
+    .join("");
+}
+
+function createFeatureEnabledDb() {
+  const sqlite = new DatabaseSync(":memory:");
+  const now = "2026-04-20T00:00:00.000Z";
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS lifeops_features (
+      feature_key TEXT PRIMARY KEY,
+      enabled INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      enabled_at TEXT,
+      enabled_by TEXT,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    INSERT INTO lifeops_features (
+      feature_key, enabled, source, enabled_at, enabled_by, metadata, created_at, updated_at
+    ) VALUES (
+      'browser.automation', 1, 'local', '${now}', NULL, '{}', '${now}', '${now}'
+    );
+  `);
+  return {
+    execute: async (query: SqlQuery) => {
+      const sql = extractSqlText(query).trim();
+      if (sql.length === 0) return [];
+      if (/^(select|pragma)\b/i.test(sql)) {
+        return sqlite.prepare(sql).all() as Array<Record<string, unknown>>;
+      }
+      sqlite.exec(sql);
+      return [];
+    },
+  };
+}
 
 function makeMessage() {
   // entityId === agentId → isAgentSelf → hasOwnerAccess returns true
@@ -43,6 +92,9 @@ function makeRuntime(initial: readonly string[] = []) {
         cache = value as unknown as readonly string[];
       }
       return true;
+    },
+    adapter: {
+      db: createFeatureEnabledDb(),
     },
   } as unknown as Parameters<
     NonNullable<typeof requestFieldFillAction.handler>

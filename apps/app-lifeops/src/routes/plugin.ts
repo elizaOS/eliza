@@ -15,17 +15,17 @@
  */
 
 import type http from "node:http";
-import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
 import {
+  readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
-  readJsonBody as httpReadJsonBody,
 } from "@elizaos/agent/api/http-helpers";
 import { decodePathComponent as httpDecodePathComponent } from "@elizaos/agent/api/server-helpers";
-import { handleLifeOpsRoutes } from "./lifeops-routes.js";
+import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
-import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
+import { handleLifeOpsRoutes } from "./lifeops-routes.js";
 import type { WebsiteBlockerRouteContext } from "./website-blocker-routes.js";
+import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
 
 // ---------------------------------------------------------------------------
 // Context builders — bridge plugin route (req, res, runtime) to the context
@@ -204,6 +204,7 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "POST", path: "/api/lifeops/definitions" },
   { type: "GET", path: "/api/lifeops/goals" },
   { type: "POST", path: "/api/lifeops/goals" },
+  { type: "POST", path: "/api/lifeops/features/toggle" },
 ];
 
 // ---------------------------------------------------------------------------
