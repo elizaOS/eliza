@@ -27,7 +27,7 @@ import type { AppRunSummary } from "../../../../api/client-types-cloud";
 import type { ActivityEvent } from "../../../../hooks/useActivityEvents";
 import { useApp } from "../../../../state";
 import type { TranslateFn } from "../../../../types";
-import { getRunAttentionReasons } from "../../../apps/RunningAppsPanel";
+import { getRunAttentionReasons } from "../../../apps/run-attention";
 import { EmptyWidgetState, WidgetSection } from "../shared";
 import type {
   ChatSidebarWidgetDefinition,

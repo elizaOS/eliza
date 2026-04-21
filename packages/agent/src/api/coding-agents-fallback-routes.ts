@@ -52,7 +52,7 @@ type AgentPreflightRecord = {
   installed?: boolean;
   installCommand?: string;
   docsUrl?: string;
-  auth?: import("./coding-agents-preflight-normalize").NormalizedPreflightAuth;
+  auth?: import("@elizaos/app-task-coordinator/api/coding-agents-preflight-normalize").NormalizedPreflightAuth;
 };
 /** CLI login hook on adapter instances. */
 type CodingAgentAdapterAuthHook = {
@@ -331,7 +331,7 @@ export async function handleCodingAgentsFallback(
         }
       }
       const { normalizePreflightAuth } = await import(
-        "./coding-agents-preflight-normalize"
+        "@elizaos/app-task-coordinator/api/coding-agents-preflight-normalize"
       );
       const normalized = rows.flatMap((item): AgentPreflightRecord[] => {
         if (!item || typeof item !== "object") return [];
@@ -640,7 +640,7 @@ export async function handleCodingAgentsFallback(
         error(res, `No auth flow available for ${agentType}`, 400);
       } else {
         const { sanitizeAuthResult } = await import(
-          "./coding-agents-auth-sanitize"
+          "@elizaos/app-task-coordinator/api/coding-agents-auth-sanitize"
         );
         json(res, sanitizeAuthResult(triggered));
       }
