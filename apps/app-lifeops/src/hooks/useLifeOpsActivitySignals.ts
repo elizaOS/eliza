@@ -338,6 +338,19 @@ export function useLifeOpsActivitySignals(enabled = true): void {
       mobileSignalsStarted = initial.enabled;
       await sendSnapshotResult(initial);
       await refreshMobileHealthSnapshot("start");
+      if (typeof mobileSignals.scheduleBackgroundRefresh === "function") {
+        try {
+          const result = await mobileSignals.scheduleBackgroundRefresh();
+          if (!result.scheduled && result.reason) {
+            console.warn(
+              "[lifeops] mobile background refresh not scheduled",
+              result.reason,
+            );
+          }
+        } catch (error) {
+          reportCaptureError(error);
+        }
+      }
       mobileHealthPoller = window.setInterval(() => {
         void refreshMobileHealthSnapshot("poll").catch(reportCaptureError);
       }, MOBILE_HEALTH_POLL_MS);

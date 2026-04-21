@@ -176,6 +176,22 @@ class MobileSignalsPlugin : Plugin() {
         }
     }
 
+    @PluginMethod
+    fun scheduleBackgroundRefresh(call: PluginCall) {
+        call.resolve(JSObject().apply {
+            put("scheduled", false)
+            put("reason", "Android mobile signals use foreground monitoring and system broadcasts instead of BGTaskScheduler.")
+        })
+    }
+
+    @PluginMethod
+    fun cancelBackgroundRefresh(call: PluginCall) {
+        call.resolve(JSObject().apply {
+            put("cancelled", false)
+            put("reason", "Android mobile signals do not register a BGTaskScheduler background refresh task.")
+        })
+    }
+
     private fun stopInternal() {
         if (receiver != null) {
             try {
@@ -270,6 +286,38 @@ class MobileSignalsPlugin : Plugin() {
         }
     }
 
+    private fun computeIdleTimeSeconds(locked: Boolean, interactive: Boolean): Long? {
+        if (!hasUsageStatsAccess()) {
+            return null
+        }
+        val lastInteractionMs = try {
+            val usageStatsManager =
+                context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+            val nowMs = System.currentTimeMillis()
+            val stats = usageStatsManager.queryUsageStats(
+                UsageStatsManager.INTERVAL_DAILY,
+                nowMs - Duration.ofDays(1).toMillis(),
+                nowMs,
+            )
+            stats.maxOfOrNull { it.lastTimeUsed } ?: 0L
+        } catch (_: Throwable) {
+            return null
+        }
+        if (lastInteractionMs <= 0) {
+            return null
+        }
+        val nowMs = System.currentTimeMillis()
+        val elapsedSeconds = ((nowMs - lastInteractionMs) / 1_000L).coerceAtLeast(0L)
+        // When the device is locked or non-interactive, treat the idle time as
+        // the elapsed time since last foreground use; otherwise rely on it as
+        // the best available proxy for input idle.
+        return if (locked || !interactive) {
+            elapsedSeconds
+        } else {
+            elapsedSeconds
+        }
+    }
+
     private fun buildSnapshot(reason: String): JSObject {
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         val keyguardManager = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
@@ -318,6 +366,7 @@ class MobileSignalsPlugin : Plugin() {
             BatteryManager.BATTERY_STATUS_CHARGING,
             BatteryManager.BATTERY_STATUS_FULL,
         )
+        val idleTimeSeconds = computeIdleTimeSeconds(locked, interactive)
 
         return JSObject().apply {
             put("source", "mobile_device")
@@ -325,7 +374,11 @@ class MobileSignalsPlugin : Plugin() {
             put("state", state)
             put("observedAt", System.currentTimeMillis())
             put("idleState", idleState)
-            put("idleTimeSeconds", null)
+            if (idleTimeSeconds != null) {
+                put("idleTimeSeconds", idleTimeSeconds)
+            } else {
+                put("idleTimeSeconds", JSONObject.NULL)
+            }
             put("onBattery", plugged == 0)
             put("metadata", JSObject().apply {
                 put("reason", reason)
