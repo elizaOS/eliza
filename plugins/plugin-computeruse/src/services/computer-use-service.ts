@@ -117,7 +117,6 @@ export class ComputerUseService extends Service {
     actionTimeoutMs: 10000,
     maxRecentActions: MAX_RECENT_ACTIONS,
     approvalMode: "full_control",
-    browserHeadless: false,
   };
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
@@ -134,7 +133,7 @@ export class ComputerUseService extends Service {
     }
 
     logger.info(
-      `[computeruse] Service started on ${currentPlatform()} (${instance.screenSize.width}x${instance.screenSize.height}) approval=${instance.getApprovalMode()}`,
+      `[computeruse] Service started — platform=${currentPlatform()} screen=${instance.screenSize.width}x${instance.screenSize.height} approval=${instance.getApprovalMode()}`,
     );
 
     return instance;
@@ -142,7 +141,6 @@ export class ComputerUseService extends Service {
 
   async stop(): Promise<void> {
     this.approvalManager.cancelAll("computer-use service stopped");
-    closeAllTerminalSessions();
     try {
       await closeBrowser();
     } catch {
@@ -244,35 +242,22 @@ export class ComputerUseService extends Service {
     }
   }
 
-  async executeDesktopAction(
-    rawParams: DesktopActionParams,
-  ): Promise<ComputerActionResult> {
-    const params = this.normalizeDesktopActionParams(rawParams);
-    const entry = this.createEntry(params.action, this.toParamsRecord(params));
+  async executeDesktopAction(params: DesktopActionParams): Promise<ComputerActionResult> {
+    const entry: ActionHistoryEntry = {
+      action: params.action,
+      timestamp: Date.now(),
+      params: this.toParamsRecord(params),
+      success: false,
+    };
 
     try {
       const approvalError = await this.awaitApproval(
-        this.desktopApprovalCommand(params.action),
+        this.getDesktopCommandName(params),
         this.toParamsRecord(params),
       );
       if (approvalError) {
-        return this.failEntry(entry, { success: false, error: approvalError });
-      }
-
-      if (params.action === "detect_elements") {
-        return this.failEntry(entry, {
-          success: false,
-          error:
-            "Element detection is not available on local machines. Use a screenshot plus model reasoning instead.",
-        });
-      }
-
-      if (params.action === "ocr") {
-        return this.failEntry(entry, {
-          success: false,
-          error:
-            "OCR is not available on local machines. Use a screenshot plus model reasoning instead.",
-        });
+        this.pushAction(entry);
+        return { success: false, error: approvalError };
       }
 
       switch (params.action) {
@@ -374,23 +359,25 @@ export class ComputerUseService extends Service {
     }
   }
 
-  async executeBrowserAction(
-    rawParams: BrowserActionParams,
-  ): Promise<BrowserActionResult> {
-    const params = this.normalizeBrowserActionParams(rawParams);
-    const entry = this.createEntry(
-      `browser_${params.action}`,
-      this.toParamsRecord(params),
-    );
+  async executeBrowserAction(params: BrowserActionParams): Promise<BrowserActionResult> {
+    const entry: ActionHistoryEntry = {
+      action: `browser_${params.action}`,
+      timestamp: Date.now(),
+      params: this.toParamsRecord(params),
+      success: false,
+    };
 
     try {
       const approvalError = await this.awaitApproval(
-        this.browserApprovalCommand(params.action),
+        this.getBrowserCommandName(params),
         this.toParamsRecord(params),
       );
       if (approvalError) {
-        return this.failEntry(entry, { success: false, error: approvalError });
+        this.pushAction(entry);
+        return { success: false, error: approvalError };
       }
+
+      let result: BrowserActionResult;
 
       switch (params.action) {
         case "open":
@@ -601,22 +588,22 @@ export class ComputerUseService extends Service {
     }
   }
 
-  async executeWindowAction(
-    rawParams: WindowActionParams,
-  ): Promise<WindowActionResult> {
-    const params = this.normalizeWindowActionParams(rawParams);
-    const entry = this.createEntry(
-      `window_${params.action}`,
-      this.toParamsRecord(params),
-    );
+  async executeWindowAction(params: WindowActionParams): Promise<WindowActionResult> {
+    const entry: ActionHistoryEntry = {
+      action: `window_${params.action}`,
+      timestamp: Date.now(),
+      params: this.toParamsRecord(params),
+      success: false,
+    };
 
     try {
       const approvalError = await this.awaitApproval(
-        this.windowApprovalCommand(params.action),
+        this.getWindowCommandName(params),
         this.toParamsRecord(params),
       );
       if (approvalError) {
-        return this.failEntry(entry, { success: false, error: approvalError });
+        this.pushAction(entry);
+        return { success: false, error: approvalError };
       }
 
       switch (params.action) {
@@ -892,6 +879,27 @@ export class ComputerUseService extends Service {
     return this.approvalManager.getSnapshot();
   }
 
+  resolveApproval(
+    id: string,
+    approved: boolean,
+    reason?: string,
+  ): ApprovalResolution | null {
+    return this.approvalManager.resolveApproval(id, approved, reason);
+  }
+
+  // ── Private ─────────────────────────────────────────────────────────────
+
+  setApprovalMode(mode: ApprovalMode): ApprovalMode {
+    const nextMode = this.approvalManager.setMode(mode);
+    this.cuConfig.approvalMode = nextMode;
+    logger.info(`[computeruse] Approval mode set to ${nextMode}`);
+    return nextMode;
+  }
+
+  getApprovalSnapshot(): ApprovalSnapshot {
+    return this.approvalManager.getSnapshot();
+  }
+
   subscribeApprovals(
     listener: (snapshot: ApprovalSnapshot) => void,
   ): () => void {
@@ -989,220 +997,29 @@ export class ComputerUseService extends Service {
     }
   }
 
-  private desktopApprovalCommand(action: DesktopActionParams["action"]): string {
-    return action === "key" ? "key_press" : action;
-  }
-
-  private browserApprovalCommand(action: BrowserActionParams["action"]): string {
-    switch (action) {
-      case "open":
-        return "browser_open";
-      case "connect":
-        return "browser_connect";
-      case "close":
-        return "browser_close";
-      case "navigate":
-        return "browser_navigate";
-      case "click":
-        return "browser_click";
-      case "type":
-        return "browser_type";
-      case "scroll":
-        return "browser_scroll";
-      case "screenshot":
-        return "browser_screenshot";
-      case "dom":
-        return "browser_get_dom";
-      case "clickables":
-        return "browser_get_clickables";
-      case "execute":
-        return "browser_execute";
-      case "state":
-        return "browser_state";
-      case "info":
-        return "browser_info";
-      case "context":
-        return "browser_get_context";
-      case "wait":
-        return "browser_wait";
-      case "list_tabs":
-        return "browser_list_tabs";
-      case "open_tab":
-        return "browser_open_tab";
-      case "close_tab":
-        return "browser_close_tab";
-      case "switch_tab":
-        return "browser_switch_tab";
-      case "get_dom":
-        return "browser_get_dom";
-      case "get_clickables":
-        return "browser_get_clickables";
+  private getDesktopCommandName(params: DesktopActionParams): string {
+    if (params.action === "key") {
+      return "key_press";
     }
+    return params.action;
   }
 
-  private windowApprovalCommand(action: WindowActionParams["action"]): string {
-    switch (action) {
+  private getBrowserCommandName(params: BrowserActionParams): string {
+    return `browser_${params.action}`;
+  }
+
+  private getWindowCommandName(params: WindowActionParams): string {
+    switch (params.action) {
       case "list":
         return "list_windows";
       case "focus":
-      case "switch":
         return "switch_to_window";
-      case "arrange":
-        return "arrange_windows";
-      case "move":
-        return "move_window";
       case "minimize":
         return "minimize_window";
       case "maximize":
         return "maximize_window";
-      case "restore":
-        return "restore_window";
       case "close":
         return "close_window";
-    }
-  }
-
-  private fileApprovalCommand(action: FileActionParams["action"]): string {
-    switch (action) {
-      case "read":
-        return "file_read";
-      case "write":
-        return "file_write";
-      case "edit":
-        return "file_edit";
-      case "append":
-        return "file_append";
-      case "delete":
-        return "file_delete";
-      case "exists":
-        return "file_exists";
-      case "list":
-        return "directory_list";
-      case "delete_directory":
-        return "directory_delete";
-      case "upload":
-        return "file_upload";
-      case "download":
-        return "file_download";
-      case "list_downloads":
-        return "file_list_downloads";
-    }
-  }
-
-  private terminalApprovalCommand(action: TerminalActionParams["action"]): string {
-    switch (action) {
-      case "connect":
-        return "terminal_connect";
-      case "execute":
-        return "terminal_execute";
-      case "read":
-        return "terminal_read";
-      case "type":
-        return "terminal_type";
-      case "clear":
-        return "terminal_clear";
-      case "close":
-        return "terminal_close";
-      case "execute_command":
-        return "execute_command";
-    }
-  }
-
-  private mapDesktopCommandToAction(command: string): DesktopActionParams["action"] {
-    switch (command) {
-      case "key_press":
-        return "key";
-      default:
-        return command as DesktopActionParams["action"];
-    }
-  }
-
-  private mapBrowserCommandToAction(command: string): BrowserActionParams["action"] {
-    const value = command.replace(/^browser_/, "");
-    switch (value) {
-      case "get_dom":
-        return "get_dom";
-      case "get_clickables":
-        return "get_clickables";
-      case "get_context":
-        return "context";
-      default:
-        return value as BrowserActionParams["action"];
-    }
-  }
-
-  private mapWindowCommandToAction(command: string): WindowActionParams["action"] {
-    switch (command) {
-      case "list_windows":
-        return "list";
-      case "switch_to_window":
-        return "switch";
-      case "arrange_windows":
-        return "arrange";
-      case "move_window":
-        return "move";
-      case "minimize_window":
-        return "minimize";
-      case "maximize_window":
-        return "maximize";
-      case "restore_window":
-        return "restore";
-      case "close_window":
-        return "close";
-      default:
-        return "list";
-    }
-  }
-
-  private mapFileCommandToAction(command: string): FileActionParams["action"] {
-    switch (command) {
-      case "file_read":
-        return "read";
-      case "file_write":
-        return "write";
-      case "file_edit":
-        return "edit";
-      case "file_append":
-        return "append";
-      case "file_delete":
-        return "delete";
-      case "file_exists":
-        return "exists";
-      case "directory_list":
-        return "list";
-      case "directory_delete":
-        return "delete_directory";
-      case "file_upload":
-        return "upload";
-      case "file_download":
-        return "download";
-      case "file_list_downloads":
-        return "list_downloads";
-      default:
-        return "read";
-    }
-  }
-
-  private mapTerminalCommandToAction(
-    command: string,
-  ): TerminalActionParams["action"] {
-    switch (command) {
-      case "terminal_connect":
-        return "connect";
-      case "terminal_execute":
-        return "execute";
-      case "terminal_read":
-        return "read";
-      case "terminal_type":
-        return "type";
-      case "terminal_clear":
-        return "clear";
-      case "terminal_close":
-        return "close";
-      case "execute_command":
-        return "execute_command";
-      default:
-        return "connect";
     }
   }
 
@@ -1213,9 +1030,11 @@ export class ComputerUseService extends Service {
     if (this.approvalManager.shouldAutoApprove(command)) {
       return null;
     }
+
     if (this.approvalManager.isDenyAll()) {
       return `Computer use is paused. "${command}" was blocked by approval mode "${this.approvalManager.getMode()}".`;
     }
+
     const decision = await this.approvalManager.requestApproval(
       command,
       parameters,
@@ -1223,142 +1042,16 @@ export class ComputerUseService extends Service {
     if (decision.approved) {
       return null;
     }
+
     if (decision.cancelled) {
       return decision.reason
         ? `Computer-use approval cancelled: ${decision.reason}`
         : `Computer-use approval cancelled for "${command}".`;
     }
+
     return decision.reason
       ? `Computer-use approval rejected: ${decision.reason}`
       : `Computer-use approval rejected for "${command}".`;
-  }
-
-  private captureScreenshotBase64(): string {
-    return captureScreenshot().toString("base64");
-  }
-
-  private shouldCaptureAfterDesktopAction(
-    action: DesktopActionParams["action"],
-  ): boolean {
-    return action !== "screenshot" && action !== "detect_elements" && action !== "ocr"
-      ? this.cuConfig.screenshotAfterAction
-      : false;
-  }
-
-  private createEntry(
-    action: string,
-    params: Record<string, unknown>,
-  ): ActionHistoryEntry {
-    return {
-      action,
-      timestamp: Date.now(),
-      params,
-      success: false,
-    };
-  }
-
-  private succeedEntry<T extends { success: boolean }>(
-    entry: ActionHistoryEntry,
-    result: T,
-  ): T {
-    entry.success = true;
-    this.pushAction(entry);
-    return result;
-  }
-
-  private failEntry<T extends { success: boolean }>(
-    entry: ActionHistoryEntry,
-    result: T,
-  ): T {
-    entry.success = false;
-    this.pushAction(entry);
-    return result;
-  }
-
-  private finishFileEntry(
-    entry: ActionHistoryEntry,
-    result: FileActionResult,
-  ): FileActionResult {
-    const normalized: FileActionResult = {
-      ...result,
-      isFile: result.isFile ?? result.is_file,
-      isDirectory: result.isDirectory ?? result.is_directory,
-      is_file: result.is_file ?? result.isFile,
-      is_directory: result.is_directory ?? result.isDirectory,
-    };
-    return normalized.success
-      ? this.succeedEntry(entry, normalized)
-      : this.failEntry(entry, normalized);
-  }
-
-  private finishTerminalEntry(
-    entry: ActionHistoryEntry,
-    result: TerminalActionResult,
-  ): TerminalActionResult {
-    const normalized: TerminalActionResult = {
-      ...result,
-      exitCode: result.exitCode ?? result.exit_code,
-      exit_code: result.exit_code ?? result.exitCode,
-      sessionId: result.sessionId ?? result.session_id,
-      session_id: result.session_id ?? result.sessionId,
-    };
-    return normalized.success
-      ? this.succeedEntry(entry, normalized)
-      : this.failEntry(entry, normalized);
-  }
-
-  private requireCoordinate(
-    coordinate: [number, number] | undefined,
-    action: string,
-  ): asserts coordinate is [number, number] {
-    if (!coordinate || coordinate.length < 2) {
-      throw new Error(`coordinate [x, y] is required for ${action}`);
-    }
-  }
-
-  private requireIdentifier(
-    value: string | undefined,
-    message: string,
-  ): string {
-    if (!value) {
-      throw new Error(message);
-    }
-    return value;
-  }
-
-  private requireWindowTarget(params: WindowActionParams): string {
-    return (
-      params.windowId ??
-      params.windowTitle ??
-      this.requireIdentifier(undefined, "windowId or windowTitle is required")
-    );
-  }
-
-  private normalizeEncoding(
-    value: string | BufferEncoding | undefined,
-  ): BufferEncoding {
-    switch (String(value ?? "utf8").toLowerCase()) {
-      case "ascii":
-        return "ascii";
-      case "base64":
-        return "base64";
-      case "hex":
-        return "hex";
-      case "latin1":
-      case "binary":
-        return "latin1";
-      case "ucs2":
-      case "ucs-2":
-      case "utf16le":
-      case "utf-16le":
-        return "utf16le";
-      default:
-        return "utf8";
-    }
-  }
-
-  private defaultDownloadsPath(): string {
-    return path.join(os.homedir(), "Downloads");
   }
 
   private toParamsRecord(value: object): Record<string, unknown> {
@@ -1410,15 +1103,6 @@ export class ComputerUseService extends Service {
       this.cuConfig.approvalMode = approvalMode;
       this.approvalManager.setMode(approvalMode);
     }
-
-    const browserHeadless = getSetting("COMPUTER_USE_BROWSER_HEADLESS");
-    if (browserHeadless !== undefined) {
-      this.cuConfig.browserHeadless =
-        browserHeadless === "true" || browserHeadless === "1";
-    }
-    setBrowserRuntimeOptions({
-      headless: this.cuConfig.browserHeadless ?? false,
-    });
   }
 
   private detectCapabilities(): PlatformCapabilities {

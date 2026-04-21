@@ -309,6 +309,34 @@ export interface ApprovalResolution {
 }
 
 export interface ComputerUseConfig {
+  /** Auto-capture screenshot after each desktop mutation (default: true) */
+  screenshotAfterAction: boolean;
+  /** Action execution timeout in ms (default: 10000) */
+  actionTimeoutMs: number;
+  /** Max recent actions to keep for provider context (default: 10) */
+  maxRecentActions: number;
+  /** Human approval mode for local computer actions */
+  approvalMode: ApprovalMode;
+}
+
+export interface ApprovalSnapshot {
+  mode: ApprovalMode;
+  pendingCount: number;
+  pendingApprovals: PendingApproval[];
+}
+
+export interface ApprovalResolution {
+  id: string;
+  command: string;
+  approved: boolean;
+  cancelled: boolean;
+  mode: ApprovalMode;
+  requestedAt: string;
+  resolvedAt: string;
+  reason?: string;
+}
+
+export interface ComputerUseConfig {
   screenshotAfterAction: boolean;
   actionTimeoutMs: number;
   maxRecentActions: number;
