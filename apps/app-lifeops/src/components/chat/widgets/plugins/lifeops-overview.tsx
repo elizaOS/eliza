@@ -48,8 +48,8 @@ import type { PropsWithChildren, ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDiscordConnector } from "../../../../hooks/useDiscordConnector.js";
 import { useLifeOpsAppState } from "../../../../hooks/useLifeOpsAppState.js";
-import { humanizeLifeOpsLabel } from "../../../lifeops-labels.js";
 import { formatMinutesDuration } from "../../../../utils/format-duration.js";
+import { humanizeLifeOpsLabel } from "../../../lifeops-labels.js";
 import { GoogleGlanceSection } from "./lifeops.js";
 
 const LIFEOPS_REFRESH_INTERVAL_MS = 15_000;
@@ -733,12 +733,12 @@ function OccurrenceRow({
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="min-w-0 truncate text-xs font-semibold text-txt">
+            <span
+              className="min-w-0 truncate text-xs font-semibold text-txt"
+              title={cadence}
+            >
               {occurrence.title}
             </span>
-            <Badge variant="secondary" className="text-[10px]">
-              {cadence}
-            </Badge>
             {occurrence.state === "snoozed" ? (
               <Badge
                 variant="secondary"
@@ -910,9 +910,7 @@ function GoalRow({
 }
 
 function ReminderRow({ reminder }: { reminder: LifeOpsActiveReminderView }) {
-  const { t } = useApp();
   const scheduledFor = formatDateTime(reminder.scheduledFor);
-  const dueAt = formatDateTime(reminder.dueAt);
   const channelIcon = reminderChannelIcon(reminder.channel);
   const channelLabel = reminder.channel.replace(/_/g, " ");
 
@@ -930,24 +928,14 @@ function ReminderRow({ reminder }: { reminder: LifeOpsActiveReminderView }) {
           {channelIcon ?? channelLabel}
         </Badge>
       </div>
-      <div className="mt-1 text-xs text-muted">{reminder.stepLabel}</div>
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.08em] text-muted/80">
-        {scheduledFor ? <span>{scheduledFor}</span> : null}
-        {dueAt ? (
-          <span>
-            {t("lifeopsoverview.dueAt", {
-              defaultValue: "Due {{time}}",
-              time: dueAt,
-            })}
-          </span>
-        ) : null}
-      </div>
+      {scheduledFor ? (
+        <div className="mt-1 text-xs text-muted">{scheduledFor}</div>
+      ) : null}
     </div>
   );
 }
 
 function OccurrenceBucketBlock({
-  title,
   icon,
   occurrences,
   actionState,
@@ -958,7 +946,6 @@ function OccurrenceBucketBlock({
   onSnoozeOccurrence,
   onExplainOccurrence,
 }: {
-  title: string;
   icon: ReactElement;
   occurrences: LifeOpsOccurrenceView[];
   actionState: string | null;
@@ -983,9 +970,6 @@ function OccurrenceBucketBlock({
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2 px-0.5">
         <span className="text-muted">{icon}</span>
-        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-          {title}
-        </span>
         <Badge variant="secondary" className="text-[10px]">
           {occurrences.length}
         </Badge>
@@ -1020,7 +1004,6 @@ function GoalSection({
   expandedGoalId: string | null;
   onReviewGoal: (goalId: string) => Promise<void>;
 }) {
-  const { t } = useApp();
   if (goals.length === 0) {
     return null;
   }
@@ -1030,11 +1013,6 @@ function GoalSection({
       <div className="flex items-center gap-2 px-0.5">
         <span className="text-muted">
           <Sparkles className="h-3.5 w-3.5" />
-        </span>
-        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-          {t("lifeopsoverview.goalsHeading", {
-            defaultValue: "Goals",
-          })}
         </span>
         <Badge variant="secondary" className="text-[10px]">
           {goals.length}
@@ -1074,7 +1052,6 @@ function DiscordPreviewRow({ preview }: { preview: LifeOpsDiscordDmPreview }) {
 }
 
 function DiscordMessagesGlance() {
-  const { t } = useApp();
   const connector = useDiscordConnector({ side: "owner" });
   const previews = connector.status?.dmInbox?.previews ?? [];
   if (!connector.status?.connected || previews.length === 0) {
@@ -1088,11 +1065,6 @@ function DiscordMessagesGlance() {
       <div className="flex items-center gap-1.5 px-0.5">
         <span className="text-muted">
           <MessageCircleMore className="h-3 w-3" />
-        </span>
-        <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
-          {t("lifeopsoverview.discord", {
-            defaultValue: "Discord",
-          })}
         </span>
       </div>
       {unreadFirst.slice(0, MAX_DISCORD_PREVIEWS).map((preview) => (
@@ -1110,7 +1082,6 @@ function ReminderSection({
 }: {
   reminders: LifeOpsActiveReminderView[];
 }) {
-  const { t } = useApp();
   if (reminders.length === 0) {
     return null;
   }
@@ -1120,11 +1091,6 @@ function ReminderSection({
       <div className="flex items-center gap-2 px-0.5">
         <span className="text-muted">
           <BellRing className="h-3.5 w-3.5" />
-        </span>
-        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-          {t("lifeopsoverview.remindersHeading", {
-            defaultValue: "Reminders",
-          })}
         </span>
       </div>
       {reminders.slice(0, MAX_SECTION_REMINDERS).map((reminder) => (
@@ -1190,8 +1156,11 @@ function ScheduleSection({
             defaultValue: "Meal pattern calibrating",
           });
   const relativeLine = (() => {
-    const { minutesSinceWake, minutesUntilBedtimeTarget, minutesSinceBedtimeTarget } =
-      schedule.relativeTime;
+    const {
+      minutesSinceWake,
+      minutesUntilBedtimeTarget,
+      minutesSinceBedtimeTarget,
+    } = schedule.relativeTime;
     if (minutesSinceWake !== null) {
       if (minutesUntilBedtimeTarget !== null) {
         return t("lifeopsoverview.relativeWakeAndBedtimeUpcoming", {
@@ -1202,7 +1171,8 @@ function ScheduleSection({
       }
       if (minutesSinceBedtimeTarget !== null) {
         return t("lifeopsoverview.relativeWakeAndBedtimePast", {
-          defaultValue: "Woke {{wakeMinutes}} ago · bedtime was {{bedMinutes}} ago",
+          defaultValue:
+            "Woke {{wakeMinutes}} ago · bedtime was {{bedMinutes}} ago",
           wakeMinutes: formatMinutesDuration(minutesSinceWake),
           bedMinutes: formatMinutesDuration(minutesSinceBedtimeTarget),
         });
@@ -1230,14 +1200,6 @@ function ScheduleSection({
         <span className="text-muted">
           <Moon className="h-3.5 w-3.5" />
         </span>
-        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-          {t("lifeopsoverview.scheduleHeading", {
-            defaultValue: "Schedule",
-          })}
-        </span>
-        <Badge variant="secondary" className="text-[10px]">
-          {translateLifeOpsLabel(schedule.phase, t)}
-        </Badge>
       </div>
       <div className="rounded-lg border border-border/50 bg-bg/70 p-2">
         <div className="text-xs font-semibold text-txt">{sleepLine}</div>
@@ -1245,16 +1207,6 @@ function ScheduleSection({
           <div className="mt-1 text-xs text-muted">{relativeLine}</div>
         ) : null}
         <div className="mt-1 text-xs text-muted">{mealLine}</div>
-        {schedule.nextMealLabel &&
-        schedule.nextMealWindowStartAt &&
-        schedule.nextMealConfidence > 0 ? (
-          <div className="mt-2 text-[11px] uppercase tracking-[0.08em] text-muted/80">
-            {t("lifeopsoverview.confidence", {
-              defaultValue: "{{count}}% confidence in next meal window",
-              count: Math.round(schedule.nextMealConfidence * 100),
-            })}
-          </div>
-        ) : null}
       </div>
     </div>
   );
@@ -1301,11 +1253,6 @@ function AgentOpsSection({
       <div className="flex items-center gap-2 px-0.5">
         <span className="text-muted">
           <Bot className="h-3.5 w-3.5" />
-        </span>
-        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-          {t("lifeopsoverview.agentOpsHeading", {
-            defaultValue: "Agent ops",
-          })}
         </span>
         <Badge variant="secondary" className="text-[10px]">
           {section.summary.activeOccurrenceCount +
@@ -1595,7 +1542,7 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
   return (
     <WidgetSection
       title={t("lifeopsoverview.title", {
-        defaultValue: "Glance",
+        defaultValue: "LifeOps",
       })}
       icon={<ListTodo className="h-4 w-4" />}
       action={
@@ -1617,9 +1564,6 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
         {hasAnyContent ? (
           <>
             <OccurrenceBucketBlock
-              title={t("lifeopsoverview.now", {
-                defaultValue: "Now",
-              })}
               icon={<ListTodo className="h-3 w-3" />}
               occurrences={ownerBuckets.now}
               actionState={actionState}
@@ -1631,9 +1575,6 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
               onExplainOccurrence={onExplainOccurrence}
             />
             <OccurrenceBucketBlock
-              title={t("lifeopsoverview.next", {
-                defaultValue: "Next",
-              })}
               icon={<Clock3 className="h-3 w-3" />}
               occurrences={ownerBuckets.next}
               actionState={actionState}
@@ -1645,9 +1586,6 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
               onExplainOccurrence={onExplainOccurrence}
             />
             <OccurrenceBucketBlock
-              title={t("lifeopsoverview.upcoming", {
-                defaultValue: "Upcoming",
-              })}
               icon={<Clock3 className="h-3 w-3" />}
               occurrences={ownerBuckets.upcoming}
               actionState={actionState}

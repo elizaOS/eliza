@@ -48,10 +48,19 @@ platform :ios do
   lane :beta do
     build
 
-    upload_to_testflight(
-      skip_waiting_for_build_processing: true,
-      apple_id: ENV["APP_STORE_APP_ID"]
-    )
+    if ENV["APP_STORE_APP_ID"].to_s.strip.empty?
+      UI.important(
+        "APP_STORE_APP_ID not set. Skipping TestFlight upload — the signed " \
+        "IPA is still produced at build/Milady.ipa. Set the App Store " \
+        "Connect numeric app id (e.g. 6502835663) as a repo secret to " \
+        "enable TestFlight delivery."
+      )
+    else
+      upload_to_testflight(
+        skip_waiting_for_build_processing: true,
+        apple_id: ENV["APP_STORE_APP_ID"]
+      )
+    end
   end
 
   desc "Submit to App Store for review"
