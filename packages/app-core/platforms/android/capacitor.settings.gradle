@@ -11,6 +11,9 @@ project(':capacitor-keyboard').projectDir = new File('../node_modules/@capacitor
 include ':capacitor-preferences'
 project(':capacitor-preferences').projectDir = new File('../node_modules/@capacitor/preferences/android')
 
+include ':llama-cpp-capacitor'
+project(':llama-cpp-capacitor').projectDir = new File('../node_modules/llama-cpp-capacitor/android')
+
 include ':elizaos-capacitor-agent'
 project(':elizaos-capacitor-agent').projectDir = new File('../../../eliza/packages/native-plugins/agent/android')
 

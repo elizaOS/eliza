@@ -12,6 +12,7 @@ dependencies {
     implementation project(':capacitor-app')
     implementation project(':capacitor-keyboard')
     implementation project(':capacitor-preferences')
+    implementation project(':llama-cpp-capacitor')
     implementation project(':elizaos-capacitor-agent')
     implementation project(':elizaos-capacitor-camera')
     implementation project(':elizaos-capacitor-canvas')
