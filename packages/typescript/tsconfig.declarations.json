@@ -12,8 +12,8 @@
 		"incremental": false,
 		"skipLibCheck": true,
 		"paths": {
-			"@elizaos/core": ["./index.node.ts"],
-			"@elizaos/core/*": ["./*"]
+			"@elizaos/core": ["./src/index.node.ts"],
+			"@elizaos/core/*": ["./src/*"]
 		}
 	},
 	"include": ["src/index.ts", "src/index.node.ts", "src/index.browser.ts"],
