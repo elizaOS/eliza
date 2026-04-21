@@ -174,6 +174,18 @@ export interface MobileSignalsSnapshotResult {
   healthSnapshot: MobileSignalsHealthSnapshot | null;
 }
 
+export interface MobileSignalsBackgroundRefreshResult {
+  scheduled: boolean;
+  identifier?: string;
+  earliestBeginInSeconds?: number;
+  reason?: string;
+}
+
+export interface MobileSignalsCancelBackgroundRefreshResult {
+  cancelled: boolean;
+  reason?: string;
+}
+
 export interface MobileSignalsPlugin {
   checkPermissions(): Promise<MobileSignalsPermissionStatus>;
   requestPermissions(): Promise<MobileSignalsPermissionStatus>;
@@ -185,6 +197,8 @@ export interface MobileSignalsPlugin {
   ): Promise<MobileSignalsStartResult>;
   stopMonitoring(): Promise<MobileSignalsStopResult>;
   getSnapshot(): Promise<MobileSignalsSnapshotResult>;
+  scheduleBackgroundRefresh(): Promise<MobileSignalsBackgroundRefreshResult>;
+  cancelBackgroundRefresh(): Promise<MobileSignalsCancelBackgroundRefreshResult>;
   addListener(
     eventName: "signal",
     listenerFunc: (event: MobileSignalsSignal) => void,

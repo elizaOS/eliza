@@ -319,6 +319,26 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
       healthSnapshot: buildHealthSnapshot("snapshot"),
     };
   }
+
+  async scheduleBackgroundRefresh(): Promise<{
+    scheduled: boolean;
+    reason: string;
+  }> {
+    return {
+      scheduled: false,
+      reason: "Web fallback cannot schedule native background refresh tasks.",
+    };
+  }
+
+  async cancelBackgroundRefresh(): Promise<{
+    cancelled: boolean;
+    reason: string;
+  }> {
+    return {
+      cancelled: false,
+      reason: "Web fallback has no native background refresh task to cancel.",
+    };
+  }
 }
 
 export const __internal = {
