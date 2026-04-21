@@ -844,6 +844,10 @@ export interface LifeOpsBrowserCompanionPairingResponse {
   pairingToken: string;
 }
 
+/** Body for POST /api/lifeops/browser/companions/auto-pair (same shape as pairing). */
+export type CreateLifeOpsBrowserCompanionAutoPairRequest =
+  CreateLifeOpsBrowserCompanionPairingRequest;
+
 export interface UpdateLifeOpsBrowserSessionProgressRequest {
   currentActionIndex?: number;
   result?: Record<string, unknown>;
