@@ -30,13 +30,24 @@ html.eliza-electrobun-frameless [data-window-titlebar="true"] {
   -webkit-app-region: drag;
 }
 
+html.eliza-electrobun-frameless [data-no-window-drag="true"],
+html.eliza-electrobun-frameless [data-no-window-drag="true"] *,
+html.eliza-electrobun-frameless [data-no-window-drag="true"]::before,
+html.eliza-electrobun-frameless [data-no-window-drag="true"]::after,
+html.eliza-electrobun-frameless [data-no-camera-drag="true"],
+html.eliza-electrobun-frameless [data-no-camera-drag="true"] *,
+html.eliza-electrobun-frameless [data-no-camera-drag="true"]::before,
+html.eliza-electrobun-frameless [data-no-camera-drag="true"]::after {
+  -webkit-app-region: no-drag;
+}
+
 html.eliza-electrobun-frameless [data-window-titlebar-padding] {
   padding-inline-start: max(
     env(safe-area-inset-left, 0px),
     var(--eliza-macos-frame-left-inset)
   );
   padding-inline-end: 0.75rem;
-  padding-top: calc(max(env(safe-area-inset-top, 0px), 0px) + 0.75rem);
+  padding-top: max(env(safe-area-inset-top, 0px), 0px);
 }
 
 html.eliza-electrobun-frameless a,
@@ -70,9 +81,7 @@ html.eliza-electrobun-frameless [role="textbox"],
 html.eliza-electrobun-frameless [role="searchbox"],
 html.eliza-electrobun-frameless [contenteditable="true"],
 html.eliza-electrobun-frameless [aria-haspopup],
-html.eliza-electrobun-frameless [data-shell-scroll-region="true"],
-html.eliza-electrobun-frameless [data-no-window-drag="true"],
-html.eliza-electrobun-frameless [data-no-camera-drag="true"] {
+html.eliza-electrobun-frameless [data-shell-scroll-region="true"] {
   -webkit-app-region: no-drag;
 }
 
