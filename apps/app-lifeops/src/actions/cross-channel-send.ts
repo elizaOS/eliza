@@ -70,6 +70,7 @@ export const CROSS_CHANNEL_SEND_CHANNELS = [
   "whatsapp",
   "notifications",
   "calendly",
+  "x_dm",
 ] as const;
 export type CrossChannelSendChannel = (typeof CROSS_CHANNEL_SEND_CHANNELS)[number];
 

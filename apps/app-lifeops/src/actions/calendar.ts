@@ -3920,6 +3920,7 @@ export const calendarAction: Action & {
 
       if (subaction === "search_events") {
         let queriesForSearch = searchQueries;
+        const currentMessageText = messageText(message);
         const recentConversation = (
           await collectRecentConversationTexts({
             runtime,
@@ -3929,11 +3930,11 @@ export const calendarAction: Action & {
           })
         ).join("\n");
         if (queriesForSearch.length === 0) {
-          queriesForSearch = await recoverCalendarSearchQueriesWithLlm({
+          queriesForSearch = await inferCalendarSearchQueriesWithLlm({
             runtime,
-            currentMessage: currentMessageText,
+            message,
+            state,
             intent,
-            recentConversation,
           });
           if (queriesForSearch.length === 0) {
             const groundedFromFeed = await groundCalendarSearchMatchesWithLlm(
