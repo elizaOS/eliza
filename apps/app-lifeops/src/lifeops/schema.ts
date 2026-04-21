@@ -1,21 +1,21 @@
 /**
  * LifeOps Drizzle schema.
  *
- * Tables are created and migrated via the elizaOS plugin-migration system
- * when the plugin's `schema` field is populated. Indexes are intentionally
- * NOT declared here — the runtime migrator does not emit `CREATE INDEX IF
- * NOT EXISTS`, which would collide with pre-existing production databases
- * that already received indexes from the prior manual DDL path.
+ * Tables and indexes are created and migrated via the elizaOS
+ * plugin-migration system when the plugin's `schema` field is populated.
  */
 
+import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
   integer,
+  index,
   jsonb,
   pgTable,
   real,
   text,
+  timestamp,
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -30,6 +30,787 @@ import {
 // `repository.ts` (bootstrapSchema + 50+ queries). Do that in one atomic
 // pass or the app will split-brain between `app_lifeops.*` and `public.*`.
 // ---------------------------------------------------------------------------
+
+export const lifeConnectorGrants = pgTable(
+  "life_connector_grants",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    provider: text("provider").notNull(),
+    side: text("side").notNull().default("owner"),
+    identityJson: text("identity_json").notNull().default("{}"),
+    identityEmail: text("identity_email"),
+    grantedScopesJson: text("granted_scopes_json").notNull().default("[]"),
+    capabilitiesJson: text("capabilities_json").notNull().default("[]"),
+    tokenRef: text("token_ref"),
+    mode: text("mode").notNull().default("oauth"),
+    executionTarget: text("execution_target").notNull().default("local"),
+    sourceOfTruth: text("source_of_truth").notNull().default("local_storage"),
+    preferredByAgent: boolean("preferred_by_agent").notNull().default(false),
+    cloudConnectionId: text("cloud_connection_id"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    lastRefreshAt: text("last_refresh_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [unique().on(t.agentId, t.provider, t.side, t.mode, t.identityEmail)],
+);
+
+export const lifeTaskDefinitions = pgTable(
+  "life_task_definitions",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    domain: text("domain").notNull().default("user_lifeops"),
+    subjectType: text("subject_type").notNull().default("owner"),
+    subjectId: text("subject_id").notNull(),
+    visibilityScope: text("visibility_scope")
+      .notNull()
+      .default("owner_agent_admin"),
+    contextPolicy: text("context_policy").notNull().default("explicit_only"),
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    originalIntent: text("original_intent").notNull().default(""),
+    timezone: text("timezone").notNull().default("UTC"),
+    status: text("status").notNull().default("active"),
+    priority: integer("priority").notNull().default(3),
+    cadenceJson: text("cadence_json").notNull().default("{}"),
+    windowPolicyJson: text("window_policy_json").notNull().default("{}"),
+    progressionRuleJson: text("progression_rule_json").notNull().default("{}"),
+    websiteAccessJson: text("website_access_json"),
+    reminderPlanId: text("reminder_plan_id"),
+    goalId: text("goal_id"),
+    source: text("source").notNull().default("manual"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("idx_life_task_definitions_agent_status").on(t.agentId, t.status),
+    index("idx_life_task_definitions_subject").on(
+      t.agentId,
+      t.domain,
+      t.subjectType,
+      t.subjectId,
+      t.status,
+    ),
+  ],
+);
+
+export const lifeTaskOccurrences = pgTable(
+  "life_task_occurrences",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    domain: text("domain").notNull().default("user_lifeops"),
+    subjectType: text("subject_type").notNull().default("owner"),
+    subjectId: text("subject_id").notNull(),
+    visibilityScope: text("visibility_scope").notNull().default("owner_agent_admin"),
+    contextPolicy: text("context_policy").notNull().default("explicit_only"),
+    definitionId: text("definition_id").notNull(),
+    occurrenceKey: text("occurrence_key").notNull(),
+    scheduledAt: text("scheduled_at"),
+    dueAt: text("due_at"),
+    relevanceStartAt: text("relevance_start_at").notNull(),
+    relevanceEndAt: text("relevance_end_at").notNull(),
+    windowName: text("window_name"),
+    state: text("state").notNull().default("pending"),
+    snoozedUntil: text("snoozed_until"),
+    completionPayloadJson: text("completion_payload_json"),
+    derivedTargetJson: text("derived_target_json"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.definitionId, t.occurrenceKey),
+    index("idx_life_task_occurrences_agent_state_start").on(
+      t.agentId,
+      t.state,
+      t.relevanceStartAt,
+    ),
+    index("idx_life_task_occurrences_subject").on(
+      t.agentId,
+      t.domain,
+      t.subjectType,
+      t.subjectId,
+      t.state,
+      t.relevanceStartAt,
+    ),
+    index("idx_life_task_occurrences_definition").on(
+      t.definitionId,
+      t.relevanceStartAt,
+    ),
+  ],
+);
+
+export const lifeGoalDefinitions = pgTable(
+  "life_goal_definitions",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    domain: text("domain").notNull().default("user_lifeops"),
+    subjectType: text("subject_type").notNull().default("owner"),
+    subjectId: text("subject_id").notNull(),
+    visibilityScope: text("visibility_scope")
+      .notNull()
+      .default("owner_agent_admin"),
+    contextPolicy: text("context_policy").notNull().default("explicit_only"),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    cadenceJson: text("cadence_json"),
+    supportStrategyJson: text("support_strategy_json")
+      .notNull()
+      .default("{}"),
+    successCriteriaJson: text("success_criteria_json")
+      .notNull()
+      .default("{}"),
+    status: text("status").notNull().default("active"),
+    reviewState: text("review_state").notNull().default("pending"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("idx_life_goal_definitions_agent_status").on(t.agentId, t.status),
+    index("idx_life_goal_definitions_subject").on(
+      t.agentId,
+      t.domain,
+      t.subjectType,
+      t.subjectId,
+      t.status,
+    ),
+  ],
+);
+
+export const lifeGoalLinks = pgTable(
+  "life_goal_links",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    goalId: text("goal_id").notNull(),
+    linkedType: text("linked_type").notNull(),
+    linkedId: text("linked_id").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.goalId, t.linkedType, t.linkedId),
+    index("idx_life_goal_links_goal").on(t.goalId),
+    index("idx_life_goal_links_linked").on(t.linkedType, t.linkedId),
+  ],
+);
+
+export const lifeReminderPlans = pgTable(
+  "life_reminder_plans",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    ownerType: text("owner_type").notNull(),
+    ownerId: text("owner_id").notNull(),
+    stepsJson: text("steps_json").notNull().default("[]"),
+    mutePolicyJson: text("mute_policy_json").notNull().default("{}"),
+    quietHoursJson: text("quiet_hours_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [index("idx_life_reminder_plans_owner").on(t.agentId, t.ownerType, t.ownerId)],
+);
+
+export const lifeReminderAttempts = pgTable(
+  "life_reminder_attempts",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    planId: text("plan_id").notNull(),
+    ownerType: text("owner_type").notNull(),
+    ownerId: text("owner_id").notNull(),
+    occurrenceId: text("occurrence_id"),
+    channel: text("channel").notNull(),
+    stepIndex: integer("step_index").notNull().default(0),
+    scheduledFor: text("scheduled_for").notNull(),
+    attemptedAt: text("attempted_at"),
+    outcome: text("outcome").notNull().default("pending"),
+    connectorRef: text("connector_ref"),
+    deliveryMetadataJson: text("delivery_metadata_json")
+      .notNull()
+      .default("{}"),
+  },
+  (t) => [index("idx_life_reminder_attempts_plan").on(t.planId, t.ownerType, t.ownerId)],
+);
+
+export const lifeAuditEvents = pgTable(
+  "life_audit_events",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    eventType: text("event_type").notNull(),
+    ownerType: text("owner_type").notNull(),
+    ownerId: text("owner_id").notNull(),
+    reason: text("reason").notNull().default(""),
+    inputsJson: text("inputs_json").notNull().default("{}"),
+    decisionJson: text("decision_json").notNull().default("{}"),
+    actor: text("actor").notNull().default("agent"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("idx_life_audit_events_owner").on(t.agentId, t.ownerType, t.ownerId, t.createdAt)],
+);
+
+export const lifeSubscriptionAudits = pgTable("life_subscription_audits", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  source: text("source").notNull().default("gmail"),
+  queryWindowDays: integer("query_window_days").notNull().default(180),
+  status: text("status").notNull().default("completed"),
+  totalCandidates: integer("total_candidates").notNull().default(0),
+  activeCandidates: integer("active_candidates").notNull().default(0),
+  canceledCandidates: integer("canceled_candidates").notNull().default(0),
+  uncertainCandidates: integer("uncertain_candidates").notNull().default(0),
+  summary: text("summary").notNull().default(""),
+  metadataJson: text("metadata_json").notNull().default("{}"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const lifeSubscriptionCandidates = pgTable(
+  "life_subscription_candidates",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    auditId: text("audit_id").notNull(),
+    serviceSlug: text("service_slug").notNull(),
+    serviceName: text("service_name").notNull(),
+    provider: text("provider").notNull().default("unknown"),
+    cadence: text("cadence").notNull().default("unknown"),
+    state: text("state").notNull().default("uncertain"),
+    confidence: real("confidence").notNull().default(0),
+    annualCostEstimateUsd: real("annual_cost_estimate_usd"),
+    managementUrl: text("management_url"),
+    latestEvidenceAt: text("latest_evidence_at"),
+    evidenceJson: text("evidence_json").notNull().default("[]"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [unique().on(t.agentId, t.auditId, t.serviceSlug)],
+);
+
+export const lifeSubscriptionCancellations = pgTable("life_subscription_cancellations", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  auditId: text("audit_id"),
+  candidateId: text("candidate_id"),
+  serviceSlug: text("service_slug").notNull(),
+  serviceName: text("service_name").notNull(),
+  executor: text("executor").notNull().default("agent_browser"),
+  status: text("status").notNull().default("draft"),
+  confirmed: boolean("confirmed").notNull().default(false),
+  currentStep: text("current_step"),
+  browserSessionId: text("browser_session_id"),
+  evidenceSummary: text("evidence_summary"),
+  artifactCount: integer("artifact_count").notNull().default(0),
+  managementUrl: text("management_url"),
+  error: text("error"),
+  metadataJson: text("metadata_json").notNull().default("{}"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  finishedAt: text("finished_at"),
+});
+
+export const lifeEmailUnsubscribes = pgTable("life_email_unsubscribes", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  senderEmail: text("sender_email").notNull(),
+  senderDisplay: text("sender_display").notNull().default(""),
+  senderDomain: text("sender_domain"),
+  listId: text("list_id"),
+  method: text("method").notNull().default("manual_only"),
+  status: text("status").notNull().default("failed"),
+  httpStatusCode: integer("http_status_code"),
+  httpFinalUrl: text("http_final_url"),
+  filterCreated: boolean("filter_created").notNull().default(false),
+  filterId: text("filter_id"),
+  threadsTrashed: integer("threads_trashed").notNull().default(0),
+  errorMessage: text("error_message"),
+  metadataJson: text("metadata_json").notNull().default("{}"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const lifeActivitySignals = pgTable(
+  "life_activity_signals",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    source: text("source").notNull(),
+    platform: text("platform").notNull().default(""),
+    state: text("state").notNull(),
+    observedAt: text("observed_at").notNull(),
+    idleState: text("idle_state"),
+    idleTimeSeconds: integer("idle_time_seconds"),
+    onBattery: boolean("on_battery"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("idx_life_activity_signals_agent").on(t.agentId, t.observedAt)],
+);
+
+export const lifeChannelPolicies = pgTable(
+  "life_channel_policies",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    channelType: text("channel_type").notNull(),
+    channelRef: text("channel_ref").notNull(),
+    privacyClass: text("privacy_class").notNull().default("private"),
+    allowReminders: boolean("allow_reminders").notNull().default(true),
+    allowEscalation: boolean("allow_escalation").notNull().default(false),
+    allowPosts: boolean("allow_posts").notNull().default(false),
+    requireConfirmationForActions: boolean("require_confirmation_for_actions")
+      .notNull()
+      .default(true),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.channelType, t.channelRef),
+    index("idx_life_channel_policies_agent").on(t.agentId, t.channelType),
+  ],
+);
+
+export const lifeWebsiteAccessGrants = pgTable(
+  "life_website_access_grants",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    groupKey: text("group_key").notNull(),
+    definitionId: text("definition_id").notNull(),
+    occurrenceId: text("occurrence_id"),
+    websitesJson: text("websites_json").notNull().default("[]"),
+    unlockMode: text("unlock_mode").notNull().default("fixed_duration"),
+    unlockDurationMinutes: integer("unlock_duration_minutes"),
+    callbackKey: text("callback_key"),
+    unlockedAt: text("unlocked_at").notNull(),
+    expiresAt: text("expires_at"),
+    revokedAt: text("revoked_at"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("idx_life_website_access_grants_group").on(
+      t.agentId,
+      t.groupKey,
+      t.revokedAt,
+      t.expiresAt,
+    ),
+  ],
+);
+
+export const lifeCalendarEvents = pgTable(
+  "life_calendar_events",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    provider: text("provider").notNull().default("google"),
+    side: text("side").notNull().default("owner"),
+    calendarId: text("calendar_id").notNull(),
+    externalEventId: text("external_event_id").notNull(),
+    grantId: text("grant_id"),
+    title: text("title").notNull().default(""),
+    description: text("description").notNull().default(""),
+    location: text("location").notNull().default(""),
+    status: text("status").notNull().default(""),
+    startAt: text("start_at").notNull(),
+    endAt: text("end_at").notNull(),
+    isAllDay: boolean("is_all_day").notNull().default(false),
+    timezone: text("timezone"),
+    htmlLink: text("html_link"),
+    conferenceLink: text("conference_link"),
+    organizerJson: text("organizer_json"),
+    attendeesJson: text("attendees_json").notNull().default("[]"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    syncedAt: text("synced_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [unique().on(t.agentId, t.provider, t.side, t.calendarId, t.externalEventId)],
+);
+
+export const lifeCalendarSyncStates = pgTable(
+  "life_calendar_sync_states",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    provider: text("provider").notNull().default("google"),
+    side: text("side").notNull().default("owner"),
+    calendarId: text("calendar_id").notNull(),
+    grantId: text("grant_id"),
+    windowStartAt: text("window_start_at").notNull(),
+    windowEndAt: text("window_end_at").notNull(),
+    syncedAt: text("synced_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [unique().on(t.agentId, t.provider, t.side, t.calendarId)],
+);
+
+export const lifeGmailMessages = pgTable(
+  "life_gmail_messages",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    provider: text("provider").notNull().default("google"),
+    side: text("side").notNull().default("owner"),
+    externalMessageId: text("external_message_id").notNull(),
+    grantId: text("grant_id"),
+    threadId: text("thread_id").notNull().default(""),
+    subject: text("subject").notNull().default(""),
+    fromDisplay: text("from_display").notNull().default(""),
+    fromEmail: text("from_email"),
+    replyTo: text("reply_to"),
+    toJson: text("to_json").notNull().default("[]"),
+    ccJson: text("cc_json").notNull().default("[]"),
+    snippet: text("snippet").notNull().default(""),
+    receivedAt: text("received_at").notNull(),
+    isUnread: boolean("is_unread").notNull().default(true),
+    isImportant: boolean("is_important").notNull().default(false),
+    likelyReplyNeeded: boolean("likely_reply_needed").notNull().default(false),
+    triageScore: integer("triage_score").notNull().default(0),
+    triageReason: text("triage_reason").notNull().default(""),
+    labelIdsJson: text("label_ids_json").notNull().default("[]"),
+    htmlLink: text("html_link"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    syncedAt: text("synced_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [unique().on(t.agentId, t.provider, t.side, t.externalMessageId)],
+);
+
+export const lifeGmailSyncStates = pgTable(
+  "life_gmail_sync_states",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    provider: text("provider").notNull().default("google"),
+    side: text("side").notNull().default("owner"),
+    mailbox: text("mailbox").notNull(),
+    grantId: text("grant_id"),
+    maxResults: integer("max_results").notNull().default(0),
+    syncedAt: text("synced_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [unique().on(t.agentId, t.provider, t.side, t.mailbox)],
+);
+
+export const lifeWorkflowDefinitions = pgTable(
+  "life_workflow_definitions",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    domain: text("domain").notNull().default("user_lifeops"),
+    subjectType: text("subject_type").notNull().default("owner"),
+    subjectId: text("subject_id").notNull(),
+    visibilityScope: text("visibility_scope")
+      .notNull()
+      .default("owner_agent_admin"),
+    contextPolicy: text("context_policy").notNull().default("explicit_only"),
+    title: text("title").notNull(),
+    triggerType: text("trigger_type").notNull(),
+    scheduleJson: text("schedule_json").notNull().default("{}"),
+    actionPlanJson: text("action_plan_json").notNull().default("{}"),
+    permissionPolicyJson: text("permission_policy_json")
+      .notNull()
+      .default("{}"),
+    status: text("status").notNull().default("active"),
+    createdBy: text("created_by").notNull().default("agent"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("idx_life_workflow_definitions_agent").on(t.agentId, t.status, t.updatedAt),
+    index("idx_life_workflow_definitions_subject").on(
+      t.agentId,
+      t.domain,
+      t.subjectType,
+      t.subjectId,
+      t.status,
+      t.updatedAt,
+    ),
+  ],
+);
+
+export const lifeWorkflowRuns = pgTable(
+  "life_workflow_runs",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    workflowId: text("workflow_id").notNull(),
+    startedAt: text("started_at").notNull(),
+    finishedAt: text("finished_at"),
+    status: text("status").notNull().default("running"),
+    resultJson: text("result_json").notNull().default("{}"),
+    auditRef: text("audit_ref"),
+  },
+  (t) => [index("idx_life_workflow_runs_workflow").on(t.agentId, t.workflowId, t.startedAt)],
+);
+
+export const lifeBrowserCompanions = pgTable(
+  "life_browser_companions",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    browser: text("browser").notNull(),
+    profileId: text("profile_id").notNull(),
+    profileLabel: text("profile_label").notNull().default(""),
+    label: text("label").notNull().default(""),
+    extensionVersion: text("extension_version"),
+    connectionState: text("connection_state").notNull().default("disconnected"),
+    permissionsJson: text("permissions_json").notNull().default("{}"),
+    pairingTokenHash: text("pairing_token_hash"),
+    pendingPairingTokenHashesJson: text("pending_pairing_token_hashes_json")
+      .notNull()
+      .default("[]"),
+    lastSeenAt: text("last_seen_at"),
+    pairedAt: text("paired_at"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.browser, t.profileId),
+    index("idx_life_browser_companions_agent").on(t.agentId, t.browser, t.updatedAt),
+  ],
+);
+
+export const lifeBrowserSettings = pgTable("life_browser_settings", {
+  agentId: text("agent_id").primaryKey(),
+  enabled: boolean("enabled").notNull().default(false),
+  trackingMode: text("tracking_mode").notNull().default("current_tab"),
+  allowBrowserControl: boolean("allow_browser_control").notNull().default(false),
+  requireConfirmationForAccountAffecting: boolean(
+    "require_confirmation_for_account_affecting",
+  )
+    .notNull()
+    .default(true),
+  incognitoEnabled: boolean("incognito_enabled").notNull().default(false),
+  siteAccessMode: text("site_access_mode").notNull().default("current_site_only"),
+  grantedOriginsJson: text("granted_origins_json").notNull().default("[]"),
+  blockedOriginsJson: text("blocked_origins_json").notNull().default("[]"),
+  maxRememberedTabs: integer("max_remembered_tabs").notNull().default(10),
+  pauseUntil: text("pause_until"),
+  metadataJson: text("metadata_json").notNull().default("{}"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const lifeBrowserSessions = pgTable(
+  "life_browser_sessions",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    domain: text("domain").notNull().default("user_lifeops"),
+    subjectType: text("subject_type").notNull().default("owner"),
+    subjectId: text("subject_id").notNull(),
+    visibilityScope: text("visibility_scope")
+      .notNull()
+      .default("owner_agent_admin"),
+    contextPolicy: text("context_policy").notNull().default("explicit_only"),
+    workflowId: text("workflow_id"),
+    browser: text("browser"),
+    companionId: text("companion_id"),
+    profileId: text("profile_id"),
+    windowId: text("window_id"),
+    tabId: text("tab_id"),
+    title: text("title").notNull().default(""),
+    status: text("status").notNull().default("pending"),
+    actionsJson: text("actions_json").notNull().default("[]"),
+    currentActionIndex: integer("current_action_index").notNull().default(0),
+    awaitingConfirmationForActionId: text("awaiting_confirmation_for_action_id"),
+    resultJson: text("result_json").notNull().default("{}"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    finishedAt: text("finished_at"),
+  },
+  (t) => [
+    index("idx_life_browser_sessions_agent").on(t.agentId, t.status, t.updatedAt),
+    index("idx_life_browser_sessions_subject").on(
+      t.agentId,
+      t.domain,
+      t.subjectType,
+      t.subjectId,
+      t.status,
+      t.updatedAt,
+    ),
+  ],
+);
+
+export const lifeBrowserTabs = pgTable(
+  "life_browser_tabs",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    companionId: text("companion_id"),
+    browser: text("browser").notNull(),
+    profileId: text("profile_id").notNull(),
+    windowId: text("window_id").notNull(),
+    tabId: text("tab_id").notNull(),
+    url: text("url").notNull().default(""),
+    title: text("title").notNull().default(""),
+    activeInWindow: boolean("active_in_window").notNull().default(false),
+    focusedWindow: boolean("focused_window").notNull().default(false),
+    focusedActive: boolean("focused_active").notNull().default(false),
+    incognito: boolean("incognito").notNull().default(false),
+    faviconUrl: text("favicon_url"),
+    lastSeenAt: text("last_seen_at").notNull(),
+    lastFocusedAt: text("last_focused_at"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.browser, t.profileId, t.windowId, t.tabId),
+    index("idx_life_browser_tabs_agent").on(
+      t.agentId,
+      t.focusedActive,
+      t.activeInWindow,
+      t.lastSeenAt,
+    ),
+  ],
+);
+
+export const lifeBrowserPageContexts = pgTable(
+  "life_browser_page_contexts",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    browser: text("browser").notNull(),
+    profileId: text("profile_id").notNull(),
+    windowId: text("window_id").notNull(),
+    tabId: text("tab_id").notNull(),
+    url: text("url").notNull().default(""),
+    title: text("title").notNull().default(""),
+    selectionText: text("selection_text"),
+    mainText: text("main_text"),
+    headingsJson: text("headings_json").notNull().default("[]"),
+    linksJson: text("links_json").notNull().default("[]"),
+    formsJson: text("forms_json").notNull().default("[]"),
+    capturedAt: text("captured_at").notNull(),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+  },
+  (t) => [
+    unique().on(t.agentId, t.browser, t.profileId, t.windowId, t.tabId),
+    index("idx_life_browser_page_contexts_agent").on(t.agentId, t.capturedAt),
+  ],
+);
+
+export const lifeEscalationStates = pgTable(
+  "life_escalation_states",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    reason: text("reason").notNull().default(""),
+    text: text("text").notNull().default(""),
+    currentStep: integer("current_step").notNull().default(0),
+    channelsSentJson: text("channels_sent_json").notNull().default("[]"),
+    startedAt: text("started_at").notNull(),
+    lastSentAt: text("last_sent_at").notNull(),
+    resolved: boolean("resolved").notNull().default(false),
+    resolvedAt: text("resolved_at"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [index("idx_life_escalation_states_agent_resolved").on(t.agentId, t.resolved)],
+);
+
+export const lifeInboxTriageEntries = pgTable("life_inbox_triage_entries", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  source: text("source").notNull(),
+  sourceRoomId: text("source_room_id"),
+  sourceEntityId: text("source_entity_id"),
+  sourceMessageId: text("source_message_id"),
+  channelName: text("channel_name").notNull(),
+  channelType: text("channel_type").notNull(),
+  deepLink: text("deep_link"),
+  classification: text("classification").notNull(),
+  urgency: text("urgency").notNull().default("low"),
+  confidence: real("confidence").notNull().default(0.5),
+  snippet: text("snippet").notNull().default(""),
+  senderName: text("sender_name"),
+  threadContext: text("thread_context"),
+  triageReasoning: text("triage_reasoning"),
+  suggestedResponse: text("suggested_response"),
+  draftResponse: text("draft_response"),
+  autoReplied: boolean("auto_replied").notNull().default(false),
+  resolved: boolean("resolved").notNull().default(false),
+  resolvedAt: text("resolved_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const lifeInboxTriageExamples = pgTable("life_inbox_triage_examples", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  source: text("source").notNull(),
+  snippet: text("snippet").notNull().default(""),
+  classification: text("classification").notNull(),
+  ownerAction: text("owner_action").notNull(),
+  ownerClassification: text("owner_classification"),
+  contextJson: text("context_json").notNull().default("{}"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const lifeIntents = pgTable("life_intents", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  kind: text("kind").notNull(),
+  target: text("target").notNull(),
+  targetDeviceId: text("target_device_id"),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  actionUrl: text("action_url"),
+  priority: text("priority").notNull(),
+  createdAt: text("created_at").notNull(),
+  expiresAt: text("expires_at"),
+  acknowledgedAt: text("acknowledged_at"),
+  acknowledgedBy: text("acknowledged_by"),
+  metadataJson: text("metadata_json"),
+});
+
+export const lifeCheckinReports = pgTable("life_checkin_reports", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  kind: text("kind").notNull(),
+  generatedAt: text("generated_at").notNull(),
+  generatedAtMs: bigint("generated_at_ms", { mode: "number" }).notNull(),
+  escalationLevel: integer("escalation_level").notNull(),
+  payloadJson: text("payload_json").notNull(),
+  acknowledgedAt: text("acknowledged_at"),
+});
+
+export const lifeopsFeaturesTable = pgTable("lifeops_features", {
+  featureKey: text("feature_key").primaryKey(),
+  enabled: boolean("enabled").notNull(),
+  source: text("source").notNull(),
+  enabledAt: timestamp("enabled_at", { withTimezone: true, mode: "date" }),
+  enabledBy: uuid("enabled_by"),
+  metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+  createdAt: timestamp("created_at", {
+    withTimezone: true,
+    mode: "date",
+  })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", {
+    withTimezone: true,
+    mode: "date",
+  })
+    .notNull()
+    .defaultNow(),
+});
 
 export const lifeRelationships = pgTable(
   "life_relationships",
@@ -346,18 +1127,52 @@ export const lifeBlockRules = pgTable("life_block_rules", {
 // ---------------------------------------------------------------------------
 
 export const lifeOpsSchema = {
+  lifeConnectorGrants,
+  lifeTaskDefinitions,
+  lifeTaskOccurrences,
+  lifeGoalDefinitions,
+  lifeGoalLinks,
+  lifeReminderPlans,
+  lifeReminderAttempts,
+  lifeAuditEvents,
+  lifeSubscriptionAudits,
+  lifeSubscriptionCandidates,
+  lifeSubscriptionCancellations,
+  lifeEmailUnsubscribes,
+  lifeActivitySignals,
+  lifeChannelPolicies,
+  lifeWebsiteAccessGrants,
+  lifeCalendarEvents,
+  lifeCalendarSyncStates,
+  lifeGmailMessages,
+  lifeGmailSyncStates,
+  lifeWorkflowDefinitions,
+  lifeWorkflowRuns,
+  lifeBrowserCompanions,
+  lifeBrowserSettings,
+  lifeBrowserSessions,
+  lifeBrowserTabs,
+  lifeBrowserPageContexts,
+  lifeEscalationStates,
   lifeRelationships,
   lifeRelationshipInteractions,
   lifeFollowUps,
+  lifeInboxTriageEntries,
+  lifeInboxTriageExamples,
   lifeXDms,
   lifeXFeedItems,
   lifeXSyncStates,
   lifeScreenTimeSessions,
   lifeScreenTimeDaily,
   lifeScheduleInsights,
+  lifeScheduleObservations,
+  lifeScheduleMergedStates,
   lifeActivityEvents,
   lifeSchedulingNegotiations,
   lifeSchedulingProposals,
   lifeDossiers,
   lifeBlockRules,
+  lifeIntents,
+  lifeCheckinReports,
+  lifeopsFeaturesTable,
 } as const;

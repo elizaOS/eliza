@@ -1,7 +1,7 @@
 const ACTION_UMBRELLA_DELEGATES = new Map<string, ReadonlySet<string>>([
 	[
 		"OWNER_INBOX",
-		new Set(["INBOX", "GMAIL_ACTION"]),
+		new Set(["INBOX", "GMAIL_ACTION", "SEND_EMAIL", "SEND_MESSAGE"]),
 	],
 	[
 		"OWNER_CALENDAR",
@@ -12,11 +12,22 @@ const ACTION_UMBRELLA_DELEGATES = new Map<string, ReadonlySet<string>>([
 			"UPDATE_MEETING_PREFERENCES",
 			"CALENDLY",
 			"SCHEDULING",
+			"SCHEDULE_EVENT",
+			"MODIFY_EVENT",
+			"CANCEL_EVENT",
 		]),
 	],
 	[
 		"OWNER_SEND_MESSAGE",
-		new Set(["CROSS_CHANNEL_SEND"]),
+		new Set(["CROSS_CHANNEL_SEND", "SEND_MESSAGE"]),
+	],
+	[
+		"CALL_USER",
+		new Set(["MAKE_CALL"]),
+	],
+	[
+		"CALL_EXTERNAL",
+		new Set(["MAKE_CALL"]),
 	],
 	[
 		"OWNER_RELATIONSHIP",

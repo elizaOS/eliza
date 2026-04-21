@@ -104,6 +104,39 @@ describe("TravelTimeService", () => {
     expect(capturedUrl).toContain("key=test-key");
   });
 
+  it("computes a buffer directly from a created event object", async () => {
+    const fetchImpl: TravelTimeFetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: "OK",
+        rows: [
+          {
+            elements: [
+              {
+                status: "OK",
+                duration: { value: 600, text: "10 mins" },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    const service = new TravelTimeService(runtime, {
+      calendar: makeCalendar([makeEvent({})]),
+      fetchImpl,
+      getApiKey: () => "test-key",
+    });
+    const result = await service.computeBufferForEvent(
+      { location: "Tartine Bakery, San Francisco" },
+      "100 Main St, San Francisco",
+    );
+    expect(result.method).toBe("maps-api");
+    expect(result.bufferMinutes).toBe(10);
+    expect(result.originAddress).toBe("100 Main St, San Francisco");
+    expect(result.destinationAddress).toBe("Tartine Bakery, San Francisco");
+  });
+
   it("returns fallback-fixed when GOOGLE_MAPS_API_KEY is absent", async () => {
     const service = new TravelTimeService(runtime, {
       calendar: makeCalendar([makeEvent({})]),

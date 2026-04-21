@@ -219,7 +219,7 @@ export async function executeApprovedRequest(args: {
   }
 
   logger.info(`[ApprovalAction] approved ${args.request.id} without executor`);
-  const text = `Approved request ${args.request.id}.`;
+  const text = "Approved.";
   await args.callback?.({ text });
   return {
     text,

@@ -51,6 +51,39 @@ const TIME_ZONE_ALIASES: Record<string, string> = {
 
 const IANA_TIME_ZONE_PATTERN = /\b([A-Za-z]+(?:\/[A-Za-z0-9_+-]+)+)\b/g;
 
+function supportedTimeZoneValues(): string[] {
+  const valuesFn = (
+    Intl as typeof Intl & {
+      supportedValuesOf?: (key: string) => string[];
+    }
+  ).supportedValuesOf;
+  if (typeof valuesFn !== "function") {
+    return [];
+  }
+  try {
+    return valuesFn("timeZone");
+  } catch {
+    return [];
+  }
+}
+
+const TIME_ZONE_CITY_ALIASES = (() => {
+  const map = new Map<string, string>();
+  for (const timeZone of supportedTimeZoneValues()) {
+    const parts = timeZone.split("/");
+    const city = parts[parts.length - 1]?.replace(/_/g, " ").trim();
+    if (!city) {
+      continue;
+    }
+    const key = canonicalizeTimeZoneAliasKey(city);
+    if (!key || map.has(key)) {
+      continue;
+    }
+    map.set(key, timeZone);
+  }
+  return map;
+})();
+
 function canonicalizeTimeZoneAliasKey(value: string): string {
   return value
     .trim()
@@ -111,6 +144,39 @@ export function extractExplicitTimeZoneFromText(
       const normalized = normalizeExplicitTimeZoneToken(alias);
       if (normalized) {
         return normalized;
+      }
+    }
+  }
+
+  return null;
+}
+
+export function inferTimeZoneFromLocationText(
+  value: string | null | undefined,
+): string | null {
+  const explicit = extractExplicitTimeZoneFromText(value);
+  if (explicit) {
+    return explicit;
+  }
+
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+
+  const tokens = canonicalizeTimeZoneAliasKey(value)
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+  if (tokens.length === 0) {
+    return null;
+  }
+
+  for (let size = Math.min(3, tokens.length); size >= 1; size -= 1) {
+    for (let index = 0; index <= tokens.length - size; index += 1) {
+      const phrase = tokens.slice(index, index + size).join(" ");
+      const alias = TIME_ZONE_CITY_ALIASES.get(phrase);
+      if (alias && isValidTimeZone(alias)) {
+        return alias;
       }
     }
   }

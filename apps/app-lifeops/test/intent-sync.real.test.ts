@@ -12,6 +12,7 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../../test/helpers/real-runtime";
+import { appLifeOpsPlugin } from "../src/plugin.js";
 import {
   acknowledgeIntent,
   broadcastIntent,
@@ -36,10 +37,11 @@ describe("intent-sync — real PGLite", () => {
   let testResult: RealTestRuntimeResult;
 
   beforeAll(async () => {
-    testResult = await createRealTestRuntime({ characterName: AGENT_ID });
+    testResult = await createRealTestRuntime({
+      characterName: AGENT_ID,
+      plugins: [appLifeOpsPlugin],
+    });
     runtime = testResult.runtime;
-    // intent-sync ensures its own table on first call; no schema bootstrap
-    // needed for life_intents specifically.
   }, 180_000);
 
   afterAll(async () => {

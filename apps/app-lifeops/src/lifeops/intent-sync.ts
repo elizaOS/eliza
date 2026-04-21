@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   executeRawSql,
-  getRuntimeDb,
   parseJsonRecord,
   sqlText,
   toText,
@@ -77,38 +76,6 @@ export interface BroadcastIntentInput {
   priority?: LifeOpsIntentPriority;
   expiresInMinutes?: number;
   metadata?: Record<string, unknown>;
-}
-
-const CREATE_TABLE_SQL = `
-CREATE TABLE IF NOT EXISTS life_intents (
-  id TEXT PRIMARY KEY,
-  agent_id TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  target TEXT NOT NULL,
-  target_device_id TEXT,
-  title TEXT NOT NULL,
-  body TEXT NOT NULL,
-  action_url TEXT,
-  priority TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  expires_at TEXT,
-  acknowledged_at TEXT,
-  acknowledged_by TEXT,
-  metadata_json TEXT
-)`;
-
-const CREATE_INDEX_SQL = `
-CREATE INDEX IF NOT EXISTS idx_life_intents_agent_kind
-  ON life_intents(agent_id, kind)`;
-
-const ensuredDatabases = new WeakSet<object>();
-
-async function ensureIntentsTable(runtime: IAgentRuntime): Promise<void> {
-  const db = getRuntimeDb(runtime) as unknown as object;
-  if (ensuredDatabases.has(db)) return;
-  await executeRawSql(runtime, CREATE_TABLE_SQL);
-  await executeRawSql(runtime, CREATE_INDEX_SQL);
-  ensuredDatabases.add(db);
 }
 
 function assertKnownKind(kind: string): LifeOpsIntentKind {
@@ -303,8 +270,6 @@ export async function broadcastIntent(
   runtime: IAgentRuntime,
   input: BroadcastIntentInput,
 ): Promise<LifeOpsIntent> {
-  await ensureIntentsTable(runtime);
-
   const kind = assertKnownKind(input.kind);
   const target = assertKnownTarget(input.target ?? "all");
   if (target === "specific" && !input.targetDeviceId) {
@@ -373,8 +338,6 @@ export async function receivePendingIntents(
     limit?: number;
   },
 ): Promise<LifeOpsIntent[]> {
-  await ensureIntentsTable(runtime);
-
   const device = opts?.device;
   if (device !== undefined) {
     assertKnownTarget(device);
@@ -420,7 +383,6 @@ export async function acknowledgeIntent(
   intentId: string,
   deviceId: string,
 ): Promise<void> {
-  await ensureIntentsTable(runtime);
   if (!intentId) throw new Error("intentId is required");
   if (!deviceId) throw new Error("deviceId is required");
 
@@ -442,7 +404,6 @@ export async function acknowledgeIntent(
 export async function pruneExpiredIntents(
   runtime: IAgentRuntime,
 ): Promise<{ pruned: number }> {
-  await ensureIntentsTable(runtime);
   const nowIso = new Date().toISOString();
 
   const countSql = `

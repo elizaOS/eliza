@@ -139,6 +139,106 @@ describe("screen-time handler — real PGLite", () => {
     expect(summary.items.length).toBe(2);
   });
 
+  it("getScreenTimeWeeklyAverageByApp returns structured per-day averages", async () => {
+    const now = Date.now();
+    const weekStart = now - 6 * 24 * 60 * 60_000;
+
+    for (let day = 0; day < 7; day += 1) {
+      const dayStart = weekStart + day * 24 * 60 * 60_000;
+      await service.recordScreenTimeEvent({
+        source: "app",
+        identifier: "com.weekly.VSCode",
+        displayName: "VS Code",
+        startAt: new Date(dayStart + 30 * 60_000).toISOString(),
+        endAt: new Date(dayStart + 90 * 60_000).toISOString(),
+        durationSeconds: 60 * 60,
+        metadata: {},
+      });
+      await service.recordScreenTimeEvent({
+        source: "app",
+        identifier: "com.weekly.Safari",
+        displayName: "Safari",
+        startAt: new Date(dayStart + 150 * 60_000).toISOString(),
+        endAt: new Date(dayStart + 180 * 60_000).toISOString(),
+        durationSeconds: 30 * 60,
+        metadata: {},
+      });
+    }
+
+    const weeklyAverage = await service.getScreenTimeWeeklyAverageByApp({
+      since: new Date(now - 7 * 24 * 60 * 60_000).toISOString(),
+      until: new Date(now).toISOString(),
+      daysInWindow: 7,
+      topN: 10,
+    });
+
+    expect(weeklyAverage.daysInWindow).toBe(7);
+    expect(weeklyAverage.totalSeconds).toBe(7 * 90 * 60);
+    const vscode = weeklyAverage.items.find(
+      (item) => item.identifier === "com.weekly.VSCode",
+    );
+    const safari = weeklyAverage.items.find(
+      (item) => item.identifier === "com.weekly.Safari",
+    );
+    expect(vscode?.averageSecondsPerDay).toBe(60 * 60);
+    expect(vscode?.averageMinutesPerDay).toBe(60);
+    expect(safari?.averageSecondsPerDay).toBe(30 * 60);
+    expect(safari?.averageMinutesPerDay).toBe(30);
+  });
+
+  it("SCREEN_TIME weekly_average_by_app returns structured action data", async () => {
+    const now = Date.now();
+    const weekStart = now - 6 * 24 * 60 * 60_000;
+
+    for (let day = 0; day < 7; day += 1) {
+      const dayStart = weekStart + day * 24 * 60 * 60_000;
+      await service.recordScreenTimeEvent({
+        source: "app",
+        identifier: "com.action.VSCode",
+        displayName: "VS Code",
+        startAt: new Date(dayStart + 15 * 60_000).toISOString(),
+        endAt: new Date(dayStart + 75 * 60_000).toISOString(),
+        durationSeconds: 60 * 60,
+        metadata: {},
+      });
+    }
+
+    const result = await screenTimeAction.handler!(
+      runtime,
+      makeMessage(runtime, "What's my weekly average per app?") as never,
+      undefined,
+      {
+        parameters: {
+          subaction: "weekly_average_by_app",
+          sinceDays: 7,
+        },
+      },
+      async () => undefined,
+    );
+
+    expect(result.success).toBe(true);
+    const data = result.data as
+      | {
+          subaction?: string;
+          weeklyAverage?: {
+            daysInWindow?: number;
+            items?: Array<{
+              identifier?: string;
+              averageSecondsPerDay?: number;
+            }>;
+          };
+        }
+      | undefined;
+    expect(data?.subaction).toBe("weekly_average_by_app");
+    const weeklyAverage = data?.weeklyAverage;
+    expect(weeklyAverage?.daysInWindow).toBe(7);
+    expect(
+      weeklyAverage?.items?.find(
+        (item) => item.identifier === "com.action.VSCode",
+      )?.averageSecondsPerDay,
+    ).toBe(60 * 60);
+  });
+
   it("syncBrowserState persists website focus windows into screen time summaries", async () => {
     const startAt = new Date(Date.now() - 10 * 60_000).toISOString();
     const endAt = new Date(Date.now() - 6 * 60_000).toISOString();

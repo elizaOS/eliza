@@ -40,19 +40,29 @@ vi.mock("@elizaos/app-lifeops/routes/lifeops-routes", () => ({
   }),
 }));
 
-vi.mock("@elizaos/app-lifeops/lifeops/runtime", () => ({
-  executeLifeOpsSchedulerTask: vi.fn(
-    async (_runtime: AgentRuntime, options: Record<string, unknown>) => {
-      tickCalls.push(options);
-      return {
-        nextInterval: 60_000,
-        now: String(options.now),
-        reminderAttempts: [],
-        workflowRuns: [{ id: "wf-run-1" }],
-      };
-    },
-  ),
-}));
+vi.mock("@elizaos/app-lifeops/lifeops/runtime", () => {
+  return {
+    LIFEOPS_TASK_NAME: "LIFEOPS_SCHEDULER",
+    LIFEOPS_TASK_TAGS: ["queue", "repeat", "lifeops"],
+    LIFEOPS_TASK_INTERVAL_MS: 60_000,
+    LIFEOPS_TASK_JITTER_MS: 10_000,
+    ensureRuntimeAgentRecord: vi.fn(async () => undefined),
+    ensureLifeOpsSchedulerTask: vi.fn(async () => "mock-lifeops-task"),
+    registerLifeOpsTaskWorker: vi.fn(() => undefined),
+    resolveLifeOpsTaskIntervalMs: vi.fn(() => 60_000),
+    executeLifeOpsSchedulerTask: vi.fn(
+      async (_runtime: AgentRuntime, options: Record<string, unknown>) => {
+        tickCalls.push(options);
+        return {
+          nextInterval: 60_000,
+          now: String(options.now),
+          reminderAttempts: [],
+          workflowRuns: [{ id: "wf-run-1" }],
+        };
+      },
+    ),
+  };
+});
 
 describe("scenario-runner executor", () => {
   beforeEach(() => {

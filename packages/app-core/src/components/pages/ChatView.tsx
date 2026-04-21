@@ -272,7 +272,10 @@ export function ChatView({
     [setState],
   );
 
-  const agentName = characterData?.name || agentStatus?.agentName || "Agent";
+  const agentName =
+    characterData?.name ||
+    agentStatus?.agentName ||
+    t("chat.agentType", { defaultValue: "Agent" });
   const msgs = conversationMessages;
   const visibleMsgs = useMemo(
     () =>
@@ -554,7 +557,12 @@ export function ChatView({
           name: img.name,
           src: `data:${img.mimeType};base64,${img.data}`,
         }))}
-        removeLabel={(item) => `Remove image ${item.name}`}
+        removeLabel={(item) =>
+          t("chat.removeImage", {
+            defaultValue: "Remove image {{name}}",
+            name: item.name,
+          })
+        }
         onRemove={(id) => removeImage(Number(id))}
       />
       {voiceLatency ? (
@@ -570,8 +578,8 @@ export function ChatView({
           {voiceLatency.firstSegmentCached == null
             ? "—"
             : voiceLatency.firstSegmentCached
-              ? "cached"
-              : "uncached"}
+              ? t("chat.cached", { defaultValue: "cached" })
+              : t("chat.uncached", { defaultValue: "uncached" })}
         </div>
       ) : null}
       <input
@@ -805,7 +813,7 @@ function InboxChatPanel({
   const sourceLabel = activeInboxChat.source
     ? activeInboxChat.source.charAt(0).toUpperCase() +
       activeInboxChat.source.slice(1)
-    : "Channel";
+    : t("inboxview.channel", { defaultValue: "Channel" });
 
   const handleReplySend = useCallback(async () => {
     const text = replyText.trim();
@@ -881,7 +889,10 @@ function InboxChatPanel({
         ) : activeInboxChat.avatarUrl ? (
           <img
             src={activeInboxChat.avatarUrl}
-            alt={`${activeInboxChat.title} avatar`}
+            alt={t("inboxview.avatarAlt", {
+              defaultValue: "{{title}} avatar",
+              title: activeInboxChat.title,
+            })}
             className="h-8 w-8 shrink-0 rounded-full border border-border/35 object-cover shadow-[0_10px_18px_-16px_rgba(15,23,42,0.45)]"
           />
         ) : null}

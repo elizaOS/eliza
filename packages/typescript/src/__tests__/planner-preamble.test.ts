@@ -18,15 +18,35 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { shouldEmitPlannerPreamble } from "../services/message.ts";
+import {
+	shouldEmitPlannerPreamble,
+	stripReplyWhenActionOwnsTurn,
+} from "../services/message.ts";
 
 const runtime = {
 	actions: [
 		{ name: "INBOX" },
 		{ name: "GMAIL_ACTION" },
 		{ name: "BLOCK_WEBSITES", suppressPostActionContinuation: true },
-	],
-} as Parameters<typeof shouldEmitPlannerPreamble>[0];
+			{
+				name: "OWNER_CALENDAR",
+				similes: ["UPDATE_MEETING_PREFERENCES"],
+				suppressPostActionContinuation: true,
+			},
+			{
+				name: "CALL_USER",
+				similes: ["CALL_IF_STUCK"],
+				suppressPostActionContinuation: true,
+			},
+			{ name: "SLOW_BACKGROUND_LOOKUP" },
+		],
+		logger: {
+			info() {},
+			warn() {},
+			debug() {},
+			error() {},
+		},
+	} as Parameters<typeof shouldEmitPlannerPreamble>[0];
 
 describe("shouldEmitPlannerPreamble", () => {
 	it("emits when first action is a non-terminal action and text is present", () => {
@@ -135,5 +155,34 @@ describe("shouldEmitPlannerPreamble", () => {
 				actions: ["BLOCK_WEBSITES"],
 			}),
 		).toBe(false);
+	});
+
+	it("does not emit when a suppressed action is selected by simile", () => {
+		expect(
+			shouldEmitPlannerPreamble(runtime, {
+				text: "I've added a blackout window to your calendar preferences.",
+				actions: ["UPDATE_MEETING_PREFERENCES"],
+			}),
+		).toBe(false);
+	});
+});
+
+describe("stripReplyWhenActionOwnsTurn", () => {
+	it("drops REPLY when mixed with a turn-owning action", () => {
+		expect(
+			stripReplyWhenActionOwnsTurn(runtime, ["REPLY", "CALL_USER"]),
+		).toEqual(["CALL_USER"]);
+	});
+
+	it("drops REPLY when the turn-owning action is selected by simile", () => {
+		expect(
+			stripReplyWhenActionOwnsTurn(runtime, ["REPLY", "CALL_IF_STUCK"]),
+		).toEqual(["CALL_IF_STUCK"]);
+	});
+
+	it("keeps REPLY when paired with a non-owning background action", () => {
+		expect(
+			stripReplyWhenActionOwnsTurn(runtime, ["REPLY", "SLOW_BACKGROUND_LOOKUP"]),
+		).toEqual(["REPLY", "SLOW_BACKGROUND_LOOKUP"]);
 	});
 });

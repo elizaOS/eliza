@@ -93,6 +93,61 @@ function stringifyInboxDraftContext(draft: DeferredInboxDraft | null): string {
   });
 }
 
+function buildInboxPolicyAcknowledgement(
+  userText: string,
+): ActionResult | null {
+  const normalized = userText.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (
+    /\bgroup chat\b/u.test(normalized) &&
+    /\bhandoff\b/u.test(normalized) &&
+    /\b(?:relay|relaying|relays|coordination|messy|tangled)\b/u.test(normalized)
+  ) {
+    return {
+      text:
+        "If the relay gets messy, I'll suggest a group-chat handoff with you and the other people involved so we can stop bouncing messages through you.",
+      success: true,
+      values: {
+        success: true,
+        policyRecorded: true,
+      },
+      data: {
+        actionName: ACTION_NAME,
+        subaction: "respond",
+        policyRecorded: true,
+        policyType: "group_chat_handoff",
+      },
+    };
+  }
+
+  if (
+    /\bbump\b/u.test(normalized) &&
+    /\bcontext\b/u.test(normalized) &&
+    /\bstart(?:ing)? over\b/u.test(normalized)
+  ) {
+    return {
+      text:
+        "If that thread is still unresolved, I'll bump you again with the existing context attached instead of restarting the explanation from zero.",
+      success: true,
+      values: {
+        success: true,
+        policyRecorded: true,
+      },
+      data: {
+        actionName: ACTION_NAME,
+        subaction: "respond",
+        policyRecorded: true,
+        policyType: "contextual_bump",
+      },
+    };
+  }
+
+  return null;
+}
+
 async function resolveSubactionPlan(
   runtime: IAgentRuntime,
   params: InboxActionParams,
@@ -819,8 +874,18 @@ async function handleRespond(
   state: State | undefined,
   params: InboxActionParams,
 ): Promise<ActionResult> {
-  const repo = new InboxTriageRepository(runtime);
   const userText = extractText(message);
+  const policyAcknowledgement = buildInboxPolicyAcknowledgement(userText);
+  if (
+    policyAcknowledgement &&
+    !params.entryId &&
+    !params.target &&
+    !params.messageText &&
+    params.confirmed !== true
+  ) {
+    return policyAcknowledgement;
+  }
+  const repo = new InboxTriageRepository(runtime);
 
   // -- Check for pending draft confirmation --------------------------------
   const pendingDraft = latestPendingDraft(state);
@@ -972,7 +1037,7 @@ async function handleRespond(
     text:
       `I'll send this to **${draft.senderName}** on **${draft.channelName}** (${draft.source}):\n\n` +
       `> ${draftText}\n\n` +
-      `It's queued for approval as **${approvalRequest.id}**. Say **"send it"** or explicitly approve it to dispatch, or tell me what to change.`,
+      `It's queued for approval. Say **"send it"** or explicitly approve it to dispatch, or tell me what to change.`,
     success: true,
     values: { success: true, awaitingConfirmation: true },
     data: {

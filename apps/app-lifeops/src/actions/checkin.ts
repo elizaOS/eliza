@@ -18,6 +18,8 @@ function reportToActionData(report: CheckinReport): ProviderDataRecord {
     overdueTodos: report.overdueTodos,
     todaysMeetings: report.todaysMeetings,
     yesterdaysWins: report.yesterdaysWins,
+    habitSummaries: report.habitSummaries,
+    habitEscalationLevel: report.habitEscalationLevel,
     collectorErrors: {
       overdueTodos: report.collectorErrors.overdueTodos,
       todaysMeetings: report.collectorErrors.todaysMeetings,
@@ -61,8 +63,18 @@ function formatCheckinReportText(report: CheckinReport): string {
   const winsPart = winsErr
     ? `wins ${winsLabel} (unavailable: ${winsErr})`
     : `${wins} win${wins === 1 ? "" : "s"} ${winsLabel}`;
+  const habitPart =
+    report.habitSummaries.length === 0
+      ? "0 tracked habits"
+      : `${report.habitSummaries.length} tracked habit${report.habitSummaries.length === 1 ? "" : "s"}${report.habitEscalationLevel > 0 ? `, missed-streak escalation ${report.habitEscalationLevel}` : ""}`;
+  const pausedHabit = report.habitSummaries.find((habit) => habit.isPaused);
+  const pausedPart = pausedHabit
+    ? pausedHabit.pauseUntil
+      ? `, paused ${pausedHabit.title} until ${pausedHabit.pauseUntil}`
+      : `, paused ${pausedHabit.title}`
+    : "";
 
-  return `${prefix}: ${[overduePart, meetingsPart, winsPart].join(", ")}.`;
+  return `${prefix}: ${[overduePart, meetingsPart, winsPart, habitPart + pausedPart].join(", ")}.`;
 }
 
 export const runMorningCheckinAction: Action & {

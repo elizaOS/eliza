@@ -281,7 +281,7 @@ function buildApprovalText(request: ApprovalRequest): string {
       : payload?.orderType === "instant"
         ? "book immediately"
         : "book";
-  return `Queued travel approval ${request.id} for ${route}. Once you approve, I will ${orderType}, complete payment, and sync the itinerary to your calendar. Current quote: ${total}.`;
+  return `Queued travel approval for ${route}. Once you approve, I will ${orderType}, complete payment, and sync the itinerary to your calendar. Current quote: ${total}.`;
 }
 
 export async function executeApprovedBookTravel(args: {
@@ -367,6 +367,7 @@ export const bookTravelAction: Action = {
   ],
   description:
     "Search, prepare, and approval-gate real travel booking. Use for flight or hotel booking requests that should become a real booking after explicit approval, with calendar sync once completed. This action still owns the turn when the owner is asking you to prepare the booking package now and hold it for approval, or when some itinerary details still need a follow-up before the approval queue entry can be finalized.",
+  suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, state, options, callback) => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -506,7 +507,7 @@ export const bookTravelAction: Action = {
         reason: `Top up ${paymentRequired.amount} ${paymentRequired.asset} on ${paymentRequired.network} to book travel`,
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       });
-      const text = `Eliza Cloud needs a top-up before I can quote this trip: ${paymentRequired.amount} ${paymentRequired.asset} on ${paymentRequired.network}. Queued approval ${request.id} so you can review and pay together.`;
+      const text = `Eliza Cloud needs a top-up before I can quote this trip: ${paymentRequired.amount} ${paymentRequired.asset} on ${paymentRequired.network}. I queued it for approval so you can review and pay together.`;
       if (callback) {
         await callback({ text });
       }

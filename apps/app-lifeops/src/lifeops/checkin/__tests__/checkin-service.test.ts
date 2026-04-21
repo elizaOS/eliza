@@ -16,11 +16,23 @@ interface CheckinTestHarness {
 }
 
 const BOOTSTRAP_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS life_checkin_reports (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    generated_at TEXT NOT NULL,
+    generated_at_ms BIGINT NOT NULL,
+    escalation_level INTEGER NOT NULL,
+    payload_json TEXT NOT NULL,
+    acknowledged_at TEXT
+  )`,
   `CREATE TABLE IF NOT EXISTS life_task_definitions (
     id TEXT PRIMARY KEY,
     agent_id TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'task',
     title TEXT NOT NULL,
     status TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS life_task_occurrences (
@@ -108,5 +120,69 @@ describe("CheckinService", () => {
     expect(await service.getEscalationLevel()).toBe(1);
     await service.recordCheckinAcknowledgement({ reportId: first.reportId });
     expect(await service.getEscalationLevel()).toBe(0);
+  });
+
+  it("runMorningCheckin reports habit missed streaks and respects pause windows", async () => {
+    const agentId = String(harness.runtime.agentId);
+    const now = new Date();
+    const firstDue = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString();
+    const secondDue = new Date(now.getTime() - 26 * 60 * 60 * 1000).toISOString();
+    const pausedUntil = new Date(now.getTime() + 6 * 60 * 60 * 1000).toISOString();
+    const createdAt = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+    await harness.execute(
+      `INSERT INTO life_task_definitions (id, agent_id, kind, title, status, metadata_json, created_at)
+       VALUES ('def-habit', '${agentId}', 'habit', 'Stretch', 'active', '{"pauseUntil":"${pausedUntil}"}', '${createdAt}')`,
+    );
+    await harness.execute(
+      `INSERT INTO life_task_occurrences (id, agent_id, definition_id, due_at, state, created_at, updated_at)
+       VALUES ('occ-habit-1', '${agentId}', 'def-habit', '${firstDue}', 'pending', '${createdAt}', '${createdAt}')`,
+    );
+    await harness.execute(
+      `INSERT INTO life_task_occurrences (id, agent_id, definition_id, due_at, state, created_at, updated_at)
+       VALUES ('occ-habit-2', '${agentId}', 'def-habit', '${secondDue}', 'pending', '${createdAt}', '${createdAt}')`,
+    );
+
+    const service = new CheckinService(harness.runtime);
+    const report = await service.runMorningCheckin({ now });
+
+    expect(report.habitEscalationLevel).toBe(0);
+    expect(report.habitSummaries).toHaveLength(1);
+    expect(report.habitSummaries[0]).toMatchObject({
+      title: "Stretch",
+      isPaused: true,
+    });
+    expect(report.overdueTodos).toEqual([]);
+  });
+
+  it("runMorningCheckin escalates when a habit misses multiple consecutive windows", async () => {
+    const agentId = String(harness.runtime.agentId);
+    const now = new Date();
+    const firstDue = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString();
+    const secondDue = new Date(now.getTime() - 26 * 60 * 60 * 1000).toISOString();
+    const createdAt = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+    await harness.execute(
+      `INSERT INTO life_task_definitions (id, agent_id, kind, title, status, created_at)
+       VALUES ('def-habit-missed', '${agentId}', 'habit', 'Stretch', 'active', '${createdAt}')`,
+    );
+    await harness.execute(
+      `INSERT INTO life_task_occurrences (id, agent_id, definition_id, due_at, state, created_at, updated_at)
+       VALUES ('occ-habit-missed-1', '${agentId}', 'def-habit-missed', '${firstDue}', 'pending', '${createdAt}', '${createdAt}')`,
+    );
+    await harness.execute(
+      `INSERT INTO life_task_occurrences (id, agent_id, definition_id, due_at, state, created_at, updated_at)
+       VALUES ('occ-habit-missed-2', '${agentId}', 'def-habit-missed', '${secondDue}', 'pending', '${createdAt}', '${createdAt}')`,
+    );
+
+    const service = new CheckinService(harness.runtime);
+    const report = await service.runMorningCheckin({ now });
+
+    expect(report.habitEscalationLevel).toBe(2);
+    expect(report.habitSummaries).toHaveLength(1);
+    expect(report.habitSummaries[0]).toMatchObject({
+      title: "Stretch",
+      missedOccurrenceStreak: 2,
+      isPaused: false,
+    });
+    expect(report.overdueTodos).toHaveLength(2);
   });
 });
