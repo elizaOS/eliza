@@ -15,9 +15,23 @@ export type MobileSignalsHealthSource = "healthkit" | "health_connect";
 
 export interface MobileSignalsScreenTimeStatus {
   supported: boolean;
+  requirements: {
+    entitlements: {
+      familyControls: string;
+      appAndWebsiteUsage: string;
+    };
+    frameworks: string[];
+    deviceActivityReportExtension: boolean;
+    deviceActivityMonitorExtension: boolean;
+  };
   entitlements: {
     familyControls: boolean;
     appAndWebsiteUsage: boolean;
+  };
+  provisioning: {
+    satisfied: boolean;
+    inspected: "code-signature" | "not-inspectable";
+    reason: string | null;
   };
   authorization: {
     status: "approved" | "denied" | "not-determined" | "unavailable";
@@ -57,7 +71,7 @@ export interface MobileSignalsHealthSnapshot {
   idleTimeSeconds: number | null;
   onBattery: boolean | null;
   healthSource: MobileSignalsHealthSource;
-  screenTime?: MobileSignalsScreenTimeStatus;
+  screenTime: MobileSignalsScreenTimeStatus;
   permissions: {
     sleep: boolean;
     biometrics: boolean;
@@ -124,7 +138,7 @@ export interface MobileSignalsPermissionStatus {
   status: "granted" | "denied" | "not-determined" | "not-applicable";
   canRequest: boolean;
   reason?: string;
-  screenTime?: MobileSignalsScreenTimeStatus;
+  screenTime: MobileSignalsScreenTimeStatus;
   permissions: {
     sleep: boolean;
     biometrics: boolean;

@@ -33,6 +33,8 @@ import java.time.Instant
 import org.json.JSONObject
 
 private const val HEALTH_CONNECT_PACKAGE = "com.google.android.apps.healthdata"
+private const val FAMILY_CONTROLS_ENTITLEMENT = "com.apple.developer.family-controls"
+private const val APP_AND_WEBSITE_USAGE_ENTITLEMENT = "com.apple.developer.family-controls.app-and-website-usage"
 
 @CapacitorPlugin(name = "MobileSignals")
 class MobileSignalsPlugin : Plugin() {
@@ -223,6 +225,7 @@ class MobileSignalsPlugin : Plugin() {
             if (statusReason != null) {
                 put("reason", statusReason)
             }
+            put("screenTime", buildScreenTimeStatus())
             put("permissions", JSObject().apply {
                 put("sleep", sleepGranted)
                 put("biometrics", biometricsGranted)
@@ -474,6 +477,7 @@ class MobileSignalsPlugin : Plugin() {
             put("idleTimeSeconds", JSONObject.NULL)
             put("onBattery", plugged == 0)
             put("healthSource", source)
+            put("screenTime", buildScreenTimeStatus())
             put("permissions", permissions)
             put("sleep", sleep)
             put("biometrics", biometrics)
@@ -482,6 +486,41 @@ class MobileSignalsPlugin : Plugin() {
                 put("reason", reason)
                 put("healthSource", source)
             })
+        }
+    }
+
+    private fun buildScreenTimeStatus(
+        reason: String = "iOS Screen Time requires FamilyControls and DeviceActivity; Android uses Health Connect signals.",
+    ): JSObject {
+        return JSObject().apply {
+            put("supported", false)
+            put("requirements", JSObject().apply {
+                put("entitlements", JSObject().apply {
+                    put("familyControls", FAMILY_CONTROLS_ENTITLEMENT)
+                    put("appAndWebsiteUsage", APP_AND_WEBSITE_USAGE_ENTITLEMENT)
+                })
+                put("frameworks", listOf("FamilyControls", "DeviceActivity"))
+                put("deviceActivityReportExtension", false)
+                put("deviceActivityMonitorExtension", false)
+            })
+            put("entitlements", JSObject().apply {
+                put("familyControls", false)
+                put("appAndWebsiteUsage", false)
+            })
+            put("provisioning", JSObject().apply {
+                put("satisfied", false)
+                put("inspected", "not-inspectable")
+                put("reason", reason)
+            })
+            put("authorization", JSObject().apply {
+                put("status", "unavailable")
+                put("canRequest", false)
+            })
+            put("reportAvailable", false)
+            put("coarseSummaryAvailable", false)
+            put("thresholdEventsAvailable", false)
+            put("rawUsageExportAvailable", false)
+            put("reason", reason)
         }
     }
 

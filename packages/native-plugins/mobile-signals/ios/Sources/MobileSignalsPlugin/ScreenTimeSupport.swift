@@ -1,27 +1,45 @@
 import FamilyControls
+import DeviceActivity
 import Foundation
 import Security
 
 enum ScreenTimeSupport {
     private static let familyControlsEntitlement = "com.apple.developer.family-controls"
     private static let appAndWebsiteUsageEntitlement = "com.apple.developer.family-controls.app-and-website-usage"
+    private static let requiredFrameworks = ["FamilyControls", "DeviceActivity"]
 
     static func buildStatus(reasonOverride: String? = nil) -> [String: Any] {
         let familyControlsEnabled = entitlementIsEnabled(familyControlsEntitlement)
         let appAndWebsiteUsageEnabled = entitlementIsEnabled(appAndWebsiteUsageEntitlement)
         let authorizationStatus = authorizationStatusString()
+        let provisioningSatisfied = familyControlsEnabled && appAndWebsiteUsageEnabled
 
         let reason = reasonOverride ?? derivedReason(
             familyControlsEnabled: familyControlsEnabled,
             appAndWebsiteUsageEnabled: appAndWebsiteUsageEnabled,
             authorizationStatus: authorizationStatus
         )
+        let provisioningReason: Any = provisioningSatisfied ? NSNull() : reason
 
         return [
-            "supported": familyControlsEnabled && appAndWebsiteUsageEnabled,
+            "supported": provisioningSatisfied,
+            "requirements": [
+                "entitlements": [
+                    "familyControls": familyControlsEntitlement,
+                    "appAndWebsiteUsage": appAndWebsiteUsageEntitlement,
+                ],
+                "frameworks": requiredFrameworks,
+                "deviceActivityReportExtension": false,
+                "deviceActivityMonitorExtension": false,
+            ],
             "entitlements": [
                 "familyControls": familyControlsEnabled,
                 "appAndWebsiteUsage": appAndWebsiteUsageEnabled,
+            ],
+            "provisioning": [
+                "satisfied": provisioningSatisfied,
+                "inspected": "code-signature",
+                "reason": provisioningReason,
             ],
             "authorization": [
                 "status": authorizationStatus,

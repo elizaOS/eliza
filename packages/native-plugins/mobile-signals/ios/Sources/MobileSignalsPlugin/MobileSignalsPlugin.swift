@@ -186,6 +186,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                     "sleep": false,
                     "biometrics": false,
                 ],
+                "screenTime": ScreenTimeSupport.buildStatus(),
             ]
         }
 
