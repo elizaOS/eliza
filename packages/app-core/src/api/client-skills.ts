@@ -208,6 +208,7 @@ declare module "./client-base" {
       findingCount: number;
     }>;
     listApps(): Promise<RegistryAppInfo[]>;
+    listCatalogApps(): Promise<RegistryAppInfo[]>;
     searchApps(query: string): Promise<RegistryAppInfo[]>;
     listInstalledApps(): Promise<InstalledAppInfo[]>;
     listAppRuns(): Promise<AppRunSummary[]>;
@@ -816,6 +817,10 @@ ElizaClient.prototype.acknowledgeSkill = async function (
 
 ElizaClient.prototype.listApps = async function (this: ElizaClient) {
   return this.fetch("/api/apps");
+};
+
+ElizaClient.prototype.listCatalogApps = async function (this: ElizaClient) {
+  return this.fetch("/api/catalog/apps");
 };
 
 ElizaClient.prototype.searchApps = async function (this: ElizaClient, query) {
