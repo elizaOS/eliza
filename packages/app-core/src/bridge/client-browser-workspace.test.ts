@@ -3,16 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const invokeDesktopBridgeRequestMock = vi.fn();
 const isElectrobunRuntimeMock = vi.fn();
 
-vi.mock("../bridge/electrobun-rpc", () => ({
+vi.mock("./electrobun-rpc", () => ({
   invokeDesktopBridgeRequest: invokeDesktopBridgeRequestMock,
 }));
 
-vi.mock("../bridge/electrobun-runtime", () => ({
+vi.mock("./electrobun-runtime", () => ({
   isElectrobunRuntime: isElectrobunRuntimeMock,
 }));
 
-import { ElizaClient } from "./client-base";
-import "./client-browser-workspace";
+import { ElizaClient } from "../api/client-base";
+import "../api/client-browser-workspace";
 
 describe("client-browser-workspace", () => {
   beforeEach(() => {
