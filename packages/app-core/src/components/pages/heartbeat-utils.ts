@@ -12,6 +12,8 @@ import type {
   TriggerWakeMode,
   UpdateTriggerRequest,
 } from "../../api/client";
+
+export type TriggerKind = "text" | "workflow";
 import type { TranslateFn as AppTranslateFn } from "../../types";
 import { formatDurationMs } from "../../utils/format";
 import { CronExpressionParser } from "cron-parser";

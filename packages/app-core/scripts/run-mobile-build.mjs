@@ -592,14 +592,16 @@ function patchAndroidGradle() {
     }
   }
 
-  // Raise minSdkVersion to 26 (required by native plugins)
+  // Keep generated Android projects aligned with current Capacitor/AndroidX requirements.
   const varsPath = path.join(androidDir, "variables.gradle");
   if (fs.existsSync(varsPath)) {
     const vars = fs.readFileSync(varsPath, "utf8");
-    const patched = vars.replace(/minSdkVersion\s*=\s*\d+/, "minSdkVersion = 26");
+    const patched = vars
+      .replace(/minSdkVersion\s*=\s*\d+/, "minSdkVersion = 26")
+      .replace(/compileSdkVersion\s*=\s*\d+/, "compileSdkVersion = 36");
     if (patched !== vars) {
       fs.writeFileSync(varsPath, patched, "utf8");
-      console.log("[mobile-build] Raised minSdkVersion to 26.");
+      console.log("[mobile-build] Patched Android SDK versions.");
     }
   }
 }

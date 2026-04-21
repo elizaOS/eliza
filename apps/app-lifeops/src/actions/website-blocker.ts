@@ -528,20 +528,21 @@ export const blockWebsitesAction: Action & {
           ? heuristicWebsites
           : ((llmPlan?.websites.length ?? 0) > 0
             ? llmPlan?.websites
-            : recoveredWebsites);
+            : recoveredWebsites) ?? [];
 
+    const plannedWebsitesSafe: readonly string[] = plannedWebsites ?? [];
     if (llmPlan?.shouldAct === false && trustedExplicitWebsites.length === 0) {
       return {
         success: false,
         text:
           llmPlan.response ??
-          (plannedWebsites.length > 0
-            ? `I noted ${formatWebsiteList(plannedWebsites)} and will wait for your confirmation before blocking them.`
+          (plannedWebsitesSafe.length > 0
+            ? `I noted ${formatWebsiteList(plannedWebsitesSafe)} and will wait for your confirmation before blocking them.`
             : "I noted those websites and will wait for your confirmation before blocking them."),
         data: {
           deferred: true,
           noop: true,
-          websites: plannedWebsites,
+          websites: [...plannedWebsitesSafe],
         },
       };
     }
@@ -549,7 +550,7 @@ export const blockWebsitesAction: Action & {
     const parsed = parseSelfControlBlockRequest({
       parameters: {
         websites:
-          plannedWebsites.length > 0 ? plannedWebsites : null,
+          plannedWebsitesSafe.length > 0 ? [...plannedWebsitesSafe] : null,
         durationMinutes:
           explicitDurationMinutes !== undefined
             ? explicitDurationMinutes
@@ -568,7 +569,8 @@ export const blockWebsitesAction: Action & {
       };
     }
 
-    const confirmed = coerceConfirmedFlag(params?.confirmed);
+    const confirmed =
+      coerceConfirmedFlag(params?.confirmed) || llmPlan?.confirmed === true;
     if (!confirmed) {
       const websitesLabel = formatWebsiteList(parsed.request.websites);
       const durationLabel =

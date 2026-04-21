@@ -37,6 +37,7 @@ export type {
   ModelAssignments,
   ModelBucket,
   ModelHubSnapshot,
+  ProviderStatus,
   PublicRegistration,
   RoutingPolicy,
   RoutingPreferences,
@@ -64,6 +65,7 @@ declare module "./client-base" {
     clearLocalInferenceActive(): Promise<ActiveModelState>;
     uninstallLocalInferenceModel(id: string): Promise<{ removed: boolean }>;
     getLocalInferenceDeviceStatus(): Promise<DeviceBridgeStatus>;
+    getLocalInferenceProviders(): Promise<{ providers: ProviderStatus[] }>;
     getLocalInferenceAssignments(): Promise<{
       assignments: ModelAssignments;
     }>;
@@ -183,6 +185,12 @@ ElizaClient.prototype.getLocalInferenceDeviceStatus = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/local-inference/device");
+};
+
+ElizaClient.prototype.getLocalInferenceProviders = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/local-inference/providers");
 };
 
 ElizaClient.prototype.getLocalInferenceAssignments = async function (

@@ -43,6 +43,29 @@ export interface LifeOpsXService {
     request: UpsertLifeOpsXConnectorRequest,
   ): Promise<LifeOpsXConnectorStatus>;
   createXPost(request: CreateLifeOpsXPostRequest): Promise<LifeOpsXPostResponse>;
+  getXDmDigest(opts?: {
+    limit?: number;
+    conversationId?: string;
+  }): Promise<{
+    generatedAt: string;
+    conversationId: string | null;
+    unreadCount: number;
+    readCount: number;
+    repliedCount: number;
+    recent: LifeOpsXDm[];
+  }>;
+  curateXDms(request: {
+    messageIds?: string[];
+    conversationId?: string;
+    markRead?: boolean;
+    markReplied?: boolean;
+  }): Promise<{ curated: number }>;
+  sendXDirectMessage(request: {
+    participantId: string;
+    text: string;
+    confirmSend?: boolean;
+    mode?: LifeOpsConnectorMode;
+  }): Promise<{ ok: boolean; status: number | null; error?: string }>;
 }
 
 type LifeOpsXConnectorCapability =

@@ -3,6 +3,7 @@
  */
 
 import { Keyboard } from "@capacitor/keyboard";
+import { MessagesSquare } from "lucide-react";
 
 import "./components/chat/chat-source-registration";
 import { FineTuningView } from "@elizaos/app-training/ui/FineTuningView";

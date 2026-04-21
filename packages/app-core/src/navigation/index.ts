@@ -2,6 +2,8 @@
  * Navigation — tabs + onboarding.
  */
 
+/// <reference types="vite/client" />
+
 import type { LucideIcon } from "lucide-react";
 import {
   Clock3,

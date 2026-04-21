@@ -32,13 +32,6 @@ import {
 } from "@elizaos/app-steward/routes/steward-bridge";
 import { logger } from "@elizaos/core";
 
-import {
-  type CompatRuntimeState,
-  getConfiguredCompatAgentName,
-  isLoopbackRemoteAddress,
-  readCompatJsonBody,
-} from "./compat-route-shared";
-
 const STEWARD_POLICY_TYPES = new Set<StewardPolicyRule["type"]>([
   "spending-limit",
   "approved-addresses",

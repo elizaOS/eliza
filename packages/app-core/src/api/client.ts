@@ -220,12 +220,13 @@ import "./client-agent";
 import "./client-automations";
 import "./client-browser-workspace";
 import "./client-chat";
-import "./client-computeruse";
-import "./client-wallet";
 import "./client-cloud";
-import "./client-skills";
-
+import "./client-computeruse";
+import "./client-lifeops";
 import "./client-local-inference";
+import "./client-n8n";
+import "./client-skills";
+import "./client-wallet";
 import "@elizaos/app-vincent/client";
 
 // ---------------------------------------------------------------------------

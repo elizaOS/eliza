@@ -23,6 +23,18 @@ import { broadcastIntent } from "../lifeops/intent-sync.js";
 const DEVICE_BUS_URL_ENV = "MILADY_DEVICE_BUS_URL";
 const DEVICE_BUS_TOKEN_ENV = "MILADY_DEVICE_BUS_TOKEN";
 
+function buildIntentResultText(
+  action: string,
+  kind: string,
+  payload: Record<string, unknown>,
+): string {
+  const title =
+    typeof payload.title === "string" && payload.title.trim().length > 0
+      ? payload.title.trim()
+      : kind;
+  return `${action} ${kind}: ${title}`;
+}
+
 const KNOWN_KINDS = ["alarm", "reminder", "block"] as const;
 type KnownKind = (typeof KNOWN_KINDS)[number];
 

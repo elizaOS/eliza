@@ -18,6 +18,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.js";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.js";
 import type {
   CoordinationLLMResponse,
   PTYService,

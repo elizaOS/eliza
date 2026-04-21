@@ -95,6 +95,55 @@ export interface LifeOpsGoalService {
   ): Promise<LifeOpsOccurrenceExplanation>;
   getOverview(now?: Date): Promise<LifeOpsOverview>;
   listChannelPolicies(): Promise<LifeOpsChannelPolicy[]>;
+  buildGoalExperienceLoop(
+    reference: {
+      goalId?: string | null;
+      title: string;
+      description?: string | null;
+      successCriteria?: Record<string, unknown> | null;
+    },
+    now?: Date,
+  ): Promise<LifeOpsGoalExperienceLoop>;
+  reviewGoalsForWeek(now?: Date): Promise<LifeOpsWeeklyGoalReview>;
+}
+
+const GOAL_SIMILARITY_STOP_WORDS = new Set([
+  "and",
+  "the",
+  "for",
+  "with",
+  "that",
+  "this",
+  "from",
+  "before",
+  "after",
+  "goal",
+  "goals",
+]);
+
+function tokenizeGoalText(text: string | null | undefined): string[] {
+  const raw = typeof text === "string" ? text : "";
+  return raw
+    .toLowerCase()
+    .split(/[^a-z0-9]+/u)
+    .filter(
+      (token) => token.length >= 3 && !GOAL_SIMILARITY_STOP_WORDS.has(token),
+    );
+}
+
+function buildGoalSimilarityTokens(args: {
+  title: string;
+  description?: string | null;
+  successCriteria?: Record<string, unknown> | null;
+}): string[] {
+  const tokens = [
+    ...tokenizeGoalText(args.title),
+    ...tokenizeGoalText(args.description),
+    ...tokenizeGoalText(
+      args.successCriteria ? JSON.stringify(args.successCriteria) : "",
+    ),
+  ];
+  return [...new Set(tokens)];
 }
 
 export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(

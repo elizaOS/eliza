@@ -354,6 +354,17 @@ export const inboxAction: Action & {
     const params = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as InboxActionParams;
     const userText = extractText(message);
+    const policyAcknowledgement = buildInboxPolicyAcknowledgement(userText);
+    if (
+      policyAcknowledgement &&
+      (params.subaction === "respond" || params.subaction === undefined) &&
+      !params.entryId &&
+      !params.target &&
+      !params.messageText &&
+      params.confirmed !== true
+    ) {
+      return policyAcknowledgement;
+    }
     const subactionPlan = await resolveSubactionPlan(
       runtime,
       params,

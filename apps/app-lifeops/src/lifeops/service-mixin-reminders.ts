@@ -41,6 +41,8 @@ import {
   startSelfControlBlock,
   stopSelfControlBlock,
 } from "../website-blocker/engine.js";
+import { readProfileFromMetadata } from "../activity-profile/profile-metadata.js";
+import type { ActivityProfile } from "../activity-profile/types.js";
 import {
   buildNativeAppleReminderMetadata,
   createNativeAppleReminderLikeItem,
@@ -103,7 +105,7 @@ import type {
   LifeOpsServiceBase,
   MixinClass,
 } from "./service-mixin-core.js";
-import { addMinutes } from "./time.js";
+import { addMinutes, getZonedDateParts } from "./time.js";
 import {
   readTwilioCredentialsFromEnv,
   sendTwilioSms,
@@ -144,6 +146,67 @@ export function applyEnforcementOverrides(
   }
   const forceVoice = state.twilioVoiceAvailable && state.minutesPastStart > 20;
   return { delayMinutes: delay, forceVoice };
+}
+
+type AdaptiveWindowProfile = Pick<
+  ActivityProfile,
+  | "typicalWakeHour"
+  | "typicalFirstActiveHour"
+  | "typicalLastActiveHour"
+  | "typicalSleepHour"
+>;
+
+function normalizeHour(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function hourFromIso(
+  value: string | null | undefined,
+  timezone: string,
+): number | null {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    return null;
+  }
+  const parts = getZonedDateParts(date, timezone);
+  return parts.hour + parts.minute / 60;
+}
+
+function buildAdaptiveWindowProfile(args: {
+  profile: ActivityProfile | null;
+  schedule: LifeOpsScheduleMergedStateRecord | null;
+  timeZone: string;
+}): AdaptiveWindowProfile | null {
+  const scheduleWakeHour =
+    normalizeHour(args.schedule?.typicalWakeHour) ??
+    hourFromIso(
+      args.schedule?.wakeAt ?? args.schedule?.firstActiveAt,
+      args.timeZone,
+    );
+  const scheduleFirstActiveHour =
+    hourFromIso(args.schedule?.firstActiveAt, args.timeZone) ??
+    scheduleWakeHour;
+  const scheduleLastActiveHour = hourFromIso(
+    args.schedule?.lastActiveAt,
+    args.timeZone,
+  );
+  const scheduleSleepHour = normalizeHour(args.schedule?.typicalSleepHour);
+
+  const adaptiveProfile: AdaptiveWindowProfile = {
+    typicalWakeHour: scheduleWakeHour ?? args.profile?.typicalWakeHour ?? null,
+    typicalFirstActiveHour:
+      scheduleFirstActiveHour ?? args.profile?.typicalFirstActiveHour ?? null,
+    typicalLastActiveHour:
+      scheduleLastActiveHour ?? args.profile?.typicalLastActiveHour ?? null,
+    typicalSleepHour: scheduleSleepHour ?? args.profile?.typicalSleepHour ?? null,
+  };
+
+  return Object.values(adaptiveProfile).some((value) => value !== null)
+    ? adaptiveProfile
+    : null;
 }
 
 /**
@@ -299,6 +362,9 @@ export interface LifeOpsReminderService {
   acknowledgeReminder(
     request: AcknowledgeLifeOpsReminderRequest,
   ): Promise<{ ok: true }>;
+  ingestScheduleObservations(
+    request: SyncLifeOpsScheduleObservationsRequest,
+  ): Promise<SyncLifeOpsScheduleObservationsResponse>;
 }
 
 // ---------------------------------------------------------------------------
