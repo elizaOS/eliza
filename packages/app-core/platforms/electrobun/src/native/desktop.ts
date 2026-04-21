@@ -76,10 +76,14 @@ import {
 } from "./mac-window-effects";
 import {
   linuxSysfsOnBattery,
+  parseLinuxLockedHintOutput,
   parseMacOsHidIdleTimeOutput,
   parseMacOsPowerSourceOutput,
   parseMacOsSessionLockedOutput,
+  parseWindowsIdleTimeOutput,
+  parseWindowsLockStateOutput,
   parseWindowsPowerLineOutput,
+  parseXprintidleOutput,
 } from "./power-state";
 import { checkWebGpuSupport } from "./webgpu-browser-support";
 
@@ -138,6 +142,9 @@ const RELEASE_NOTES_PARTITION = getBrandConfig().releaseNotesPartition;
 const MACOS_IDLE_THRESHOLD_SECONDS = 60;
 const MACOS_CGSESSION_PATH =
   "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession";
+const LINUX_IDLE_THRESHOLD_SECONDS = 60;
+const WINDOWS_IDLE_THRESHOLD_SECONDS = 60;
+const POWER_STATE_PROBE_TIMEOUT_MS = 1_500;
 
 let activeDesktopManager: DesktopManager | null = null;
 let nativeContextMenuEventsInstalled = false;
@@ -156,6 +163,63 @@ async function readProcessStdout(argv: string[]): Promise<string> {
   await proc.exited;
   return text;
 }
+
+async function readProcessStdoutSafe(
+  argv: string[],
+  timeoutMs = POWER_STATE_PROBE_TIMEOUT_MS,
+): Promise<string | null> {
+  try {
+    const proc = Bun.spawn(argv, {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const timer = setTimeout(() => {
+      try {
+        proc.kill();
+      } catch {
+        // already exited
+      }
+    }, timeoutMs);
+    const text = await new Response(proc.stdout).text();
+    await proc.exited;
+    clearTimeout(timer);
+    if (typeof proc.exitCode === "number" && proc.exitCode !== 0) {
+      return null;
+    }
+    return text;
+  } catch {
+    return null;
+  }
+}
+
+async function readLinuxLockedHint(): Promise<boolean | null> {
+  const sessionId = process.env.XDG_SESSION_ID?.trim();
+  if (!sessionId) {
+    return null;
+  }
+  const output = await readProcessStdoutSafe([
+    "loginctl",
+    "show-session",
+    sessionId,
+    "-p",
+    "LockedHint",
+  ]);
+  return output ? parseLinuxLockedHintOutput(output) : null;
+}
+
+const WINDOWS_IDLE_POWERSHELL_SCRIPT = [
+  "Add-Type -Namespace W -Name U32 -MemberDefinition @'",
+  "  [DllImport(\"user32.dll\")] public static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);",
+  "  [StructLayout(LayoutKind.Sequential)] public struct LASTINPUTINFO {",
+  "    public uint cbSize; public uint dwTime;",
+  "  }",
+  "'@;",
+  "$info = New-Object W.U32+LASTINPUTINFO;",
+  "$info.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf($info);",
+  "[void][W.U32]::GetLastInputInfo([ref]$info);",
+  "[int]($env:COMPUTERNAME | Out-Null);",
+  "[int][System.Environment]::TickCount - [int]$info.dwTime",
+].join(" ");
 
 // ============================================================================
 // DesktopManager
@@ -1181,33 +1245,71 @@ X-GNOME-Autostart-enabled=true
         };
       }
       if (process.platform === "linux") {
+        const idleOutput = await readProcessStdoutSafe(["xprintidle"]);
+        const idleTime =
+          idleOutput !== null ? (parseXprintidleOutput(idleOutput) ?? 0) : 0;
+        const locked = await readLinuxLockedHint();
+        const idleState =
+          locked === true
+            ? "locked"
+            : idleOutput === null
+              ? "unknown"
+              : idleTime >= LINUX_IDLE_THRESHOLD_SECONDS
+                ? "idle"
+                : locked === false
+                  ? "active"
+                  : "active";
         return {
           onBattery: linuxSysfsOnBattery(),
-          idleState: "unknown",
-          idleTime: 0,
+          idleState,
+          idleTime,
         };
       }
       if (process.platform === "win32") {
-        const proc = Bun.spawn(
-          [
-            "powershell",
-            "-NoProfile",
-            "-NoLogo",
-            "-Command",
-            "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SystemInformation]::PowerStatus.PowerLineStatus.ToString()",
-          ],
-          { stdout: "pipe", stderr: "ignore" },
-        );
-        const text = await new Response(proc.stdout).text();
-        await proc.exited;
-        const parsed = parseWindowsPowerLineOutput(text);
-        if (parsed.known) {
-          return {
-            onBattery: parsed.onBattery,
-            idleState: "unknown",
-            idleTime: 0,
-          };
-        }
+        const batteryOutput = await readProcessStdoutSafe([
+          "powershell",
+          "-NoProfile",
+          "-NoLogo",
+          "-Command",
+          "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SystemInformation]::PowerStatus.PowerLineStatus.ToString()",
+        ]);
+        const batteryParsed = batteryOutput
+          ? parseWindowsPowerLineOutput(batteryOutput)
+          : { onBattery: false, known: false };
+        const idleOutput = await readProcessStdoutSafe([
+          "powershell",
+          "-NoProfile",
+          "-NoLogo",
+          "-Command",
+          WINDOWS_IDLE_POWERSHELL_SCRIPT,
+        ]);
+        const idleTime =
+          idleOutput !== null
+            ? (parseWindowsIdleTimeOutput(idleOutput) ?? 0)
+            : 0;
+        const lockOutput = await readProcessStdoutSafe([
+          "powershell",
+          "-NoProfile",
+          "-NoLogo",
+          "-Command",
+          "(Get-Process logonui -ErrorAction SilentlyContinue).Count",
+        ]);
+        const locked = lockOutput
+          ? parseWindowsLockStateOutput(lockOutput)
+          : null;
+        const idleState =
+          locked === true
+            ? "locked"
+            : idleOutput === null
+              ? "unknown"
+              : idleTime >= WINDOWS_IDLE_THRESHOLD_SECONDS
+                ? "idle"
+                : "active";
+        return {
+          onBattery: batteryParsed.known ? batteryParsed.onBattery : false,
+          idleState,
+          idleTime,
+        };
       }
     } catch {
       // Fall through to stub below

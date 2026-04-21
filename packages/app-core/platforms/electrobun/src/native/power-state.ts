@@ -116,3 +116,80 @@ export function parseMacOsSessionLockedOutput(output: string): boolean | null {
   }
   return (match[2] ?? "0") === "1";
 }
+
+/**
+ * `xprintidle` prints idle time in milliseconds (one integer per line).
+ * Returns seconds, or `null` when the output cannot be parsed.
+ */
+export function parseXprintidleOutput(output: string): number | null {
+  const line = output.trim().split(/\r?\n/).pop() ?? "";
+  const match = line.match(/^(\d+)$/);
+  if (!match) {
+    return null;
+  }
+  const idleMs = Number.parseInt(match[1] ?? "", 10);
+  if (!Number.isFinite(idleMs) || idleMs < 0) {
+    return null;
+  }
+  return Math.floor(idleMs / 1_000);
+}
+
+/**
+ * Parses `loginctl show-session <id> -p LockedHint` output (`LockedHint=yes`).
+ * Returns null when the field is absent so callers can fall back.
+ */
+export function parseLinuxLockedHintOutput(output: string): boolean | null {
+  const match = output.match(/LockedHint\s*=\s*(yes|no|true|false)/i);
+  if (!match) {
+    return null;
+  }
+  const value = (match[1] ?? "").toLowerCase();
+  return value === "yes" || value === "true";
+}
+
+/**
+ * Parses PowerShell output from `User32::GetLastInputInfo` wrapped by the
+ * snippet below. The script is expected to print a single integer representing
+ * idle time in milliseconds on its last non-empty line.
+ */
+export function parseWindowsIdleTimeOutput(output: string): number | null {
+  const line =
+    output
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0)
+      .pop() ?? "";
+  const match = line.match(/^(\d+)$/);
+  if (!match) {
+    return null;
+  }
+  const idleMs = Number.parseInt(match[1] ?? "", 10);
+  if (!Number.isFinite(idleMs) || idleMs < 0) {
+    return null;
+  }
+  return Math.floor(idleMs / 1_000);
+}
+
+/**
+ * Parses the output of:
+ *   powershell -Command "(Get-Process logonui -ErrorAction SilentlyContinue).Count"
+ * A non-zero count is an authoritative signal that the lock screen is active
+ * on modern Windows.
+ */
+export function parseWindowsLockStateOutput(output: string): boolean | null {
+  const line =
+    output
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0)
+      .pop() ?? "";
+  const match = line.match(/^(\d+)$/);
+  if (!match) {
+    return null;
+  }
+  const count = Number.parseInt(match[1] ?? "", 10);
+  if (!Number.isFinite(count)) {
+    return null;
+  }
+  return count > 0;
+}
