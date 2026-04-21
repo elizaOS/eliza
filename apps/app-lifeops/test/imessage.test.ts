@@ -226,6 +226,41 @@ describe("sendIMessage", () => {
     );
     expect(urls.some((u) => u.includes("/api/v1/message/text"))).toBe(true);
   });
+
+  test("bluebubbles backend rejects malformed JSON responses with bridge context", async () => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/api/v1/server/info")) {
+        return new Response(
+          JSON.stringify({
+            data: { private_api: true, helper_connected: true },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("/api/v1/message/text")) {
+        return new Response("not json", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not mocked", { status: 500 });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      sendIMessage(
+        { to: "iMessage;-;+15551112222", text: "hi from bb" },
+        {
+          preferredBackend: "bluebubbles",
+          bluebubblesUrl: "http://127.0.0.1:1234",
+          bluebubblesPassword: "pw",
+        },
+      ),
+    ).rejects.toMatchObject({
+      backend: "bluebubbles",
+      message: "BlueBubbles /api/v1/message/text returned non-JSON body",
+    });
+  });
 });
 
 describe("withIMessage mixin", () => {
