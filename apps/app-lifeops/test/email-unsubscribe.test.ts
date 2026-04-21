@@ -1,7 +1,8 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   extractListUnsubscribeOptions,
   parseMailtoUnsubscribe,
+  performGmailHttpUnsubscribe,
   type GmailSubscriptionMessageHeaders,
 } from "../src/lifeops/email-unsubscribe-gmail.js";
 
@@ -87,5 +88,48 @@ describe("parseMailtoUnsubscribe", () => {
   test("rejects non-mailto URIs", () => {
     expect(parseMailtoUnsubscribe("https://example.com/unsub")).toBeNull();
     expect(parseMailtoUnsubscribe("")).toBeNull();
+  });
+});
+
+describe("performGmailHttpUnsubscribe", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test("does not fall back to GET when one-click POST fails at the network layer", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(new TypeError("network down"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      performGmailHttpUnsubscribe({
+        url: "https://unsubscribe.acme.example/u?id=abc",
+        preferOneClickPost: true,
+      }),
+    ).rejects.toThrow("network down");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
+  });
+
+  test("uses GET only when one-click POST is not requested", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(null, {
+        status: 204,
+        statusText: "No Content",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await performGmailHttpUnsubscribe({
+      url: "https://unsubscribe.acme.example/u?id=abc",
+      preferOneClickPost: false,
+    });
+
+    expect(result.method).toBe("GET");
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "GET" });
   });
 });

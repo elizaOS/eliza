@@ -54,9 +54,7 @@ export async function fetchChatMessages(
   if (allRoomIds.length === 0) return [];
 
   const roomIds = allRoomIds.slice(0, MAX_ROOMS_SCANNED) as UUID[];
-  const rooms = await Promise.all(
-    roomIds.map((id) => runtime.getRoom(id).catch(() => null)),
-  );
+  const rooms = await Promise.all(roomIds.map((id) => runtime.getRoom(id)));
   const sourceRooms: Room[] = [];
   for (const room of rooms) {
     if (!room) continue;
@@ -96,9 +94,7 @@ export async function fetchChatMessages(
         .filter((worldId): worldId is UUID => Boolean(worldId)),
     ),
   ];
-  const worlds = await Promise.all(
-    worldIds.map((id) => runtime.getWorld(id).catch(() => null)),
-  );
+  const worlds = await Promise.all(worldIds.map((id) => runtime.getWorld(id)));
   const worldMap = new Map<string, World>();
   for (const world of worlds) {
     if (world) {

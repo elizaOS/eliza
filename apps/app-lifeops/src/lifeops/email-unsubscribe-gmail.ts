@@ -261,16 +261,14 @@ export async function performGmailHttpUnsubscribe(args: {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: "List-Unsubscribe=One-Click",
       redirect: "follow",
-    }).catch(() => null);
-    if (postResponse) {
-      return {
-        ok: postResponse.ok,
-        status: postResponse.status,
-        statusText: postResponse.statusText,
-        method: "POST",
-        finalUrl: postResponse.url || args.url,
-      };
-    }
+    });
+    return {
+      ok: postResponse.ok,
+      status: postResponse.status,
+      statusText: postResponse.statusText,
+      method: "POST",
+      finalUrl: postResponse.url || args.url,
+    };
   }
   const getResponse = await fetch(args.url, {
     method: "GET",
