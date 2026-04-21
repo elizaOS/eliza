@@ -1,26 +1,28 @@
-import { useEffect, useRef } from "react";
+import { client } from "@elizaos/app-core/api";
+import { isApiError } from "@elizaos/app-core/api/client-types-core";
+import { isElectrobunRuntime } from "@elizaos/app-core/bridge/electrobun-runtime";
+import {
+  getMobileSignalsPlugin,
+  type MobileSignalsHealthSnapshot,
+  type MobileSignalsSignal,
+  type MobileSignalsSnapshot,
+} from "@elizaos/app-core/bridge/native-plugins";
+import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "@elizaos/app-core/events";
+import { isNative } from "@elizaos/app-core/platform";
+import { loadDesktopWorkspaceSnapshot } from "@elizaos/app-core/utils/desktop-workspace";
 import type {
   CaptureLifeOpsActivitySignalRequest,
   LifeOpsActivitySignal,
 } from "@elizaos/shared/contracts/lifeops";
-import { client } from "@elizaos/app-core/api";
-import { isApiError } from "@elizaos/app-core/api/client-types-core";
-import { isElectrobunRuntime } from "@elizaos/app-core/bridge/electrobun-runtime";
-import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "@elizaos/app-core/events";
-import { isNative } from "@elizaos/app-core/platform";
-import { loadDesktopWorkspaceSnapshot } from "@elizaos/app-core/utils/desktop-workspace";
-import {
-  getMobileSignalsPlugin,
-  type MobileSignalsSnapshot,
-  type MobileSignalsHealthSnapshot,
-  type MobileSignalsSignal,
-} from "@elizaos/app-core/bridge/native-plugins";
+import { useEffect, useRef } from "react";
 
 const APP_SIGNAL_DEDUP_WINDOW_MS = 5_000;
 const RUNTIME_READY_POLL_MS = 5_000;
 const PAGE_HEARTBEAT_MS = 60_000;
 const DESKTOP_POWER_POLL_MS = 60_000;
-const MOBILE_HEALTH_POLL_MS = 30 * 60_000;
+// Health sleep data drives wake detection; five-minute polling keeps morning
+// anchors timely without running while mobile monitoring is stopped.
+const MOBILE_HEALTH_POLL_MS = 5 * 60_000;
 
 type SignalFingerprint = {
   fingerprint: string;

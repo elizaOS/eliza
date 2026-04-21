@@ -229,30 +229,21 @@ describe("run-mobile-build", () => {
     });
 
     if (!iosTemplateRoot || !androidTemplateRoot) {
-      throw new Error("Expected platform templates to exist for iOS and Android.");
+      throw new Error(
+        "Expected platform templates to exist for iOS and Android.",
+      );
     }
 
     const iosPodfile = fs.readFileSync(
-      path.join(
-        iosTemplateRoot,
-        "App",
-        "Podfile",
-      ),
+      path.join(iosTemplateRoot, "App", "Podfile"),
       "utf8",
     );
     const androidSettings = fs.readFileSync(
-      path.join(
-        androidTemplateRoot,
-        "capacitor.settings.gradle",
-      ),
+      path.join(androidTemplateRoot, "capacitor.settings.gradle"),
       "utf8",
     );
     const androidBuild = fs.readFileSync(
-      path.join(
-        androidTemplateRoot,
-        "app",
-        "capacitor.build.gradle",
-      ),
+      path.join(androidTemplateRoot, "app", "capacitor.build.gradle"),
       "utf8",
     );
 
@@ -267,6 +258,45 @@ describe("run-mobile-build", () => {
     expect(androidSettings).not.toContain("capacitor-status-bar");
 
     expect(androidBuild).not.toContain("capacitor-status-bar");
+  });
+
+  it("keeps llama.cpp Capacitor native wiring in shipped templates", () => {
+    const repoRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+    const iosTemplateRoot = resolvePlatformTemplateRoot("ios", {
+      repoRootValue: repoRoot,
+    });
+    const androidTemplateRoot = resolvePlatformTemplateRoot("android", {
+      repoRootValue: repoRoot,
+    });
+
+    if (!iosTemplateRoot || !androidTemplateRoot) {
+      throw new Error(
+        "Expected platform templates to exist for iOS and Android.",
+      );
+    }
+
+    const iosPodfile = fs.readFileSync(
+      path.join(iosTemplateRoot, "App", "Podfile"),
+      "utf8",
+    );
+    const androidSettings = fs.readFileSync(
+      path.join(androidTemplateRoot, "capacitor.settings.gradle"),
+      "utf8",
+    );
+    const androidBuild = fs.readFileSync(
+      path.join(androidTemplateRoot, "app", "capacitor.build.gradle"),
+      "utf8",
+    );
+
+    expect(iosPodfile).toContain("LlamaCppCapacitor");
+    expect(iosPodfile).toContain("llama-cpp-capacitor");
+    expect(androidSettings).toContain("include ':llama-cpp-capacitor'");
+    expect(androidSettings).toContain(
+      "node_modules/llama-cpp-capacitor/android",
+    );
+    expect(androidBuild).toContain(
+      "implementation project(':llama-cpp-capacitor')",
+    );
   });
 
   it("forces CocoaPods refreshes when the synced files include the iOS Podfile", () => {

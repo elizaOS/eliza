@@ -27,6 +27,9 @@ const ENV_KEYS = [
 
 describe("provider snapshot (real env-state readers)", () => {
   let saved: Record<string, string | undefined>;
+  let savedCapacitor:
+    | { isNativePlatform?: () => boolean; getPlatform?: () => string }
+    | undefined;
   let tmpState: string;
 
   beforeEach(async () => {
@@ -36,6 +39,22 @@ describe("provider snapshot (real env-state readers)", () => {
       saved[k] = process.env[k];
       delete process.env[k];
     }
+    savedCapacitor = (
+      globalThis as {
+        Capacitor?: {
+          isNativePlatform?: () => boolean;
+          getPlatform?: () => string;
+        };
+      }
+    ).Capacitor;
+    delete (
+      globalThis as {
+        Capacitor?: {
+          isNativePlatform?: () => boolean;
+          getPlatform?: () => string;
+        };
+      }
+    ).Capacitor;
     process.env.ELIZA_STATE_DIR = tmpState;
   });
 
@@ -46,6 +65,25 @@ describe("provider snapshot (real env-state readers)", () => {
       } else {
         process.env[k] = v;
       }
+    }
+    if (savedCapacitor) {
+      (
+        globalThis as {
+          Capacitor?: {
+            isNativePlatform?: () => boolean;
+            getPlatform?: () => string;
+          };
+        }
+      ).Capacitor = savedCapacitor;
+    } else {
+      delete (
+        globalThis as {
+          Capacitor?: {
+            isNativePlatform?: () => boolean;
+            getPlatform?: () => string;
+          };
+        }
+      ).Capacitor;
     }
     await fs.rm(tmpState, { recursive: true, force: true });
   });
@@ -103,6 +141,30 @@ describe("provider snapshot (real env-state readers)", () => {
     expect(
       snap.find((s) => s.id === "milady-device-bridge")?.enableState.enabled,
     ).toBe(true);
+  });
+
+  it("capacitor-llama is enabled only inside a native Capacitor runtime", async () => {
+    let snap = await snapshotProviders();
+    expect(
+      snap.find((s) => s.id === "capacitor-llama")?.enableState.enabled,
+    ).toBe(false);
+
+    (
+      globalThis as {
+        Capacitor?: {
+          isNativePlatform?: () => boolean;
+          getPlatform?: () => string;
+        };
+      }
+    ).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => "ios",
+    };
+
+    snap = await snapshotProviders();
+    const provider = snap.find((s) => s.id === "capacitor-llama");
+    expect(provider?.enableState.enabled).toBe(true);
+    expect(provider?.enableState.reason).toContain("Native Capacitor");
   });
 
   it("local is enabled only when a GGUF exists under the state dir", async () => {

@@ -26,6 +26,11 @@ const MERGE_ACTIVITY_GAP_MS = 5 * 60 * 1_000;
 const COMPLETED_SLEEP_GAP_MIN_MS = 3 * 60 * 60 * 1_000;
 const MEAL_GAP_MIN_MS = 15 * 60 * 1_000;
 const MEAL_GAP_MAX_MS = 90 * 60 * 1_000;
+// An activate event with no follow-up event within this window is treated as
+// an implicit deactivate. This stops a single lingering frontmost app from
+// masking hours of system sleep — macOS does not fire NSWorkspace deactivate
+// on sleep, lock, or screen off, so we bound the window explicitly.
+const ACTIVITY_EVENT_MAX_WINDOW_MS = 20 * 60 * 1_000;
 
 type MealCandidate = {
   label: LifeOpsScheduleMealLabel;
@@ -118,6 +123,29 @@ function intervalDurationMs(startMs: number, endMs: number | null, nowMs: number
   return Math.max(0, safeEndMs - startMs);
 }
 
+function firstActiveAfterWake(
+  windows: LifeOpsActivityWindow[],
+  wakeAtMs: number | null,
+): number | null {
+  if (windows.length === 0) {
+    return null;
+  }
+  if (wakeAtMs === null) {
+    return windows[0]?.startMs ?? null;
+  }
+  const startedAfterWake = windows.find((window) => window.startMs >= wakeAtMs);
+  if (startedAfterWake) {
+    return startedAfterWake.startMs;
+  }
+  // A window spanning the wake time should report the wake itself as the first
+  // active moment — the window's startMs may fall inside the preceding sleep
+  // (e.g. a frontmost app that was never deactivated).
+  const spansWake = windows.find(
+    (window) => window.startMs < wakeAtMs && window.endMs > wakeAtMs,
+  );
+  return spansWake ? wakeAtMs : null;
+}
+
 function windowsFromActivityEvents(
   events: Awaited<ReturnType<typeof listActivityEvents>>,
   nowMs: number,
@@ -136,11 +164,14 @@ function windowsFromActivityEvents(
     if (!Number.isFinite(startMs)) {
       continue;
     }
-    const nextMs =
+    const nextTimestamp = timestamps[index + 1];
+    const hasNext =
       index + 1 < timestamps.length &&
-      Number.isFinite(timestamps[index + 1] ?? Number.NaN)
-        ? (timestamps[index + 1] as number)
-        : nowMs;
+      typeof nextTimestamp === "number" &&
+      Number.isFinite(nextTimestamp);
+    const rawNextMs = hasNext ? (nextTimestamp as number) : nowMs;
+    const cap = startMs + ACTIVITY_EVENT_MAX_WINDOW_MS;
+    const nextMs = rawNextMs > cap ? cap : rawNextMs;
     if (nextMs <= startMs) {
       continue;
     }
@@ -430,10 +461,7 @@ function analyzeLifeOpsScheduleInsight(args: {
     sleepCycle.lastSleepEndedAt !== null
       ? Date.parse(sleepCycle.lastSleepEndedAt)
       : null;
-  const firstActiveAtMs =
-    wakeAtMs !== null
-      ? (mergedWindows.find((window) => window.endMs > wakeAtMs)?.startMs ?? null)
-      : (mergedWindows[0]?.startMs ?? null);
+  const firstActiveAtMs = firstActiveAfterWake(mergedWindows, wakeAtMs);
   const lastActiveAtMs =
     mergedWindows.length > 0 ? mergedWindows[mergedWindows.length - 1]!.endMs : null;
   const meals = inferMealCandidates({
@@ -595,6 +623,12 @@ export async function inspectLifeOpsSchedule(args: {
     },
   };
 }
+
+export const __internal = {
+  windowsFromActivityEvents,
+  firstActiveAfterWake,
+  ACTIVITY_EVENT_MAX_WINDOW_MS,
+};
 
 export async function refreshLifeOpsScheduleInsight(args: {
   runtime: IAgentRuntime;

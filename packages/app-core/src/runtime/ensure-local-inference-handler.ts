@@ -43,6 +43,8 @@ type RuntimeWithModelRegistration = AgentRuntime & {
 };
 
 const LOCAL_INFERENCE_PROVIDER = "milady-local-inference";
+const DEVICE_BRIDGE_PROVIDER = "milady-device-bridge";
+const CAPACITOR_LLAMA_PROVIDER = "capacitor-llama";
 /** Below default plugin priority (0) so cloud/direct providers win unless the user prefers local. */
 const LOCAL_INFERENCE_PRIORITY = -1;
 
@@ -248,6 +250,12 @@ export async function ensureLocalInferenceHandler(
     return;
   }
 
+  const provider = capacitorRegistered
+    ? CAPACITOR_LLAMA_PROVIDER
+    : deviceBridgeEnabled
+      ? DEVICE_BRIDGE_PROVIDER
+      : LOCAL_INFERENCE_PROVIDER;
+
   const slots: Array<
     [(typeof ModelType)[keyof typeof ModelType], AgentModelSlot]
   > = [
@@ -259,7 +267,7 @@ export async function ensureLocalInferenceHandler(
       runtimeWithRegistration.registerModel(
         modelType,
         makeHandler(slot),
-        LOCAL_INFERENCE_PROVIDER,
+        provider,
         LOCAL_INFERENCE_PRIORITY,
       );
     } catch (err) {
@@ -272,7 +280,7 @@ export async function ensureLocalInferenceHandler(
   }
 
   logger.info(
-    `[local-inference] Registered local llama.cpp handler for TEXT_SMALL / TEXT_LARGE at priority ${LOCAL_INFERENCE_PRIORITY}`,
+    `[local-inference] Registered ${provider} llama.cpp handler for TEXT_SMALL / TEXT_LARGE at priority ${LOCAL_INFERENCE_PRIORITY}`,
   );
 
   // Install the top-priority router AFTER everything else has registered.
