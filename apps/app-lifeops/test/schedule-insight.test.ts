@@ -108,4 +108,72 @@ describe("lifeops schedule insight inference", () => {
     expect(insight.sleepConfidence).toBeGreaterThanOrEqual(0.9);
     expect(insight.phase).toBe("sleeping");
   });
+
+  it("reports the first post-wake window as firstActiveAt, not a pre-sleep window", () => {
+    const timezone = "UTC";
+    const nowMs = Date.parse("2026-04-19T13:00:00.000Z");
+    // An activate event late last night is followed by another activate 9
+    // hours later — before the fix, `window.endMs > wakeAtMs` made the
+    // lingering pre-sleep window spuriously count as "first active after
+    // wake". After the fix we either skip it or anchor on wake itself.
+    const insight = inferLifeOpsScheduleInsight({
+      nowMs,
+      timezone,
+      windows: [
+        {
+          startMs: Date.parse("2026-04-18T22:45:00.000Z"),
+          endMs: Date.parse("2026-04-19T07:40:00.000Z"),
+          source: "app",
+        },
+        {
+          startMs: Date.parse("2026-04-19T07:45:00.000Z"),
+          endMs: Date.parse("2026-04-19T08:30:00.000Z"),
+          source: "app",
+        },
+      ],
+      signals: [
+        {
+          id: "health-overnight",
+          agentId: "agent-1",
+          source: "mobile_health",
+          platform: "mobile_app",
+          state: "idle",
+          observedAt: "2026-04-19T07:35:00.000Z",
+          idleState: "locked",
+          idleTimeSeconds: null,
+          onBattery: false,
+          health: {
+            source: "healthkit",
+            permissions: { sleep: true, biometrics: false },
+            sleep: {
+              available: true,
+              isSleeping: false,
+              asleepAt: "2026-04-18T23:15:00.000Z",
+              awakeAt: "2026-04-19T07:30:00.000Z",
+              durationMinutes: 495,
+              stage: null,
+            },
+            biometrics: {
+              sampleAt: null,
+              heartRateBpm: null,
+              restingHeartRateBpm: null,
+              heartRateVariabilityMs: null,
+              respiratoryRate: null,
+              bloodOxygenPercent: null,
+            },
+            warnings: [],
+          },
+          metadata: {},
+          createdAt: "2026-04-19T07:35:00.000Z",
+        } satisfies LifeOpsActivitySignal,
+      ],
+    });
+
+    expect(insight.wakeAt).toBe("2026-04-19T07:30:00.000Z");
+    const firstActive = insight.firstActiveAt;
+    expect(firstActive).not.toBeNull();
+    expect(Date.parse(firstActive as string)).toBeGreaterThanOrEqual(
+      Date.parse("2026-04-19T07:30:00.000Z"),
+    );
+  });
 });
