@@ -269,7 +269,7 @@ function PendingAuthBanner({
 function GithubRow({ github }: { github: GithubSetupState }) {
   const { t } = useApp();
   return (
-    <div className="space-y-2 border-t border-border/12 pt-3">
+    <div className="space-y-2 pt-2">
       <div className="flex flex-wrap items-center gap-2">
         <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
           <GitBranch className="h-4 w-4 shrink-0" />
@@ -358,7 +358,7 @@ function GoogleConnectorSideCard({
   const preferredGrantId = status?.grant?.id ?? null;
 
   return (
-    <section className="space-y-3 rounded-3xl border border-border/16 bg-card/18 px-4 py-4">
+    <section className="space-y-3 space-y-3 px-4 py-4">
       <div className="flex items-center justify-between gap-3">
         <div className="text-sm font-semibold text-txt">
           {sideTitle(side, t)}
@@ -396,7 +396,7 @@ function GoogleConnectorSideCard({
             label: modeLabel(mode, t),
             disabled: controlDisabled,
           }))}
-          className="border-border/28 bg-card/24 p-0.5"
+          className="bg-bg/40 p-0.5"
           buttonClassName="min-h-8 px-3 py-1.5 text-xs"
         />
         {!status?.connected ? (
@@ -579,7 +579,7 @@ export function LifeOpsSettingsSection({
       </div>
 
       {githubError ? (
-        <div className="rounded-2xl bg-danger/10 px-3 py-2 text-xs text-danger">
+        <div className="py-1 text-xs text-muted">
           {githubError}
         </div>
       ) : null}
