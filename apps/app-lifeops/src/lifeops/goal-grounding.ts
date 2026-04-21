@@ -62,6 +62,13 @@ function asStringArray(value: unknown): string[] {
     .filter((entry) => entry.length > 0);
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
 export function buildGoalGroundingMetadata(args: {
   confidence?: number | null;
   evidenceSignals?: string[];
