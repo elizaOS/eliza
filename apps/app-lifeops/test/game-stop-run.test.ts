@@ -45,7 +45,7 @@ describe("app-scape stopRun", () => {
     await expect(scapeStopRun({ runtime })).resolves.toBeUndefined();
   });
 
-  test("swallows errors from service.stop so the run is still removed", async () => {
+  test("propagates service.stop errors to the app-manager boundary", async () => {
     const serviceStop = vi.fn(async () => {
       throw new Error("boom");
     });
@@ -53,7 +53,7 @@ describe("app-scape stopRun", () => {
       agentId: AGENT_ID,
       getService: vi.fn(() => ({ stop: serviceStop })),
     };
-    await expect(scapeStopRun({ runtime })).resolves.toBeUndefined();
+    await expect(scapeStopRun({ runtime })).rejects.toThrow("boom");
     expect(serviceStop).toHaveBeenCalledOnce();
   });
 
@@ -94,7 +94,7 @@ describe("app-2004scape stopRun", () => {
     ).resolves.toBeUndefined();
   });
 
-  test("swallows errors from service.stop", async () => {
+  test("propagates service.stop errors to the app-manager boundary", async () => {
     const serviceStop = vi.fn(async () => {
       throw new Error("boom");
     });
@@ -104,7 +104,8 @@ describe("app-2004scape stopRun", () => {
     };
     await expect(
       twoThousandFourStopRun({ runtime }),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow("boom");
+    expect(serviceStop).toHaveBeenCalledOnce();
   });
 });
 

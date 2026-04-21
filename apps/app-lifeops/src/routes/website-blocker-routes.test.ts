@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
+import { LifeOpsRepository } from "../lifeops/repository.js";
 import {
   resetSelfControlStatusCache,
   setSelfControlPluginConfig,
@@ -100,6 +101,49 @@ describe("website-blocker route host checks", () => {
       false,
     );
 
+    await stopSelfControlBlock(config);
+    resetSelfControlStatusCache();
+  });
+
+  it("fails explicitly when blocked-host required task lookup fails", async () => {
+    const { config } = await createHostsConfig();
+    setSelfControlPluginConfig(config);
+    await startSelfControlBlock(
+      { websites: ["example.com"], durationMinutes: null },
+      config,
+    );
+    const listDefinitions = vi
+      .spyOn(LifeOpsRepository.prototype, "listActiveDefinitions")
+      .mockRejectedValueOnce(new Error("db offline"));
+    const json = vi.fn();
+    const error = vi.fn();
+    const context: WebsiteBlockerRouteContext = {
+      req: {
+        url: "/api/website-blocker?host=example.com",
+      } as never,
+      res: {} as never,
+      method: "GET",
+      pathname: "/api/website-blocker",
+      runtime: {
+        agentId: "00000000-0000-0000-0000-000000000000",
+      } as never,
+      readJsonBody: vi.fn(),
+      json,
+      error,
+    };
+
+    const handled = await handleWebsiteBlockerRoutes(context);
+
+    expect(handled).toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "Failed to resolve required tasks for blocked host: db offline",
+      500,
+    );
+    expect(json).not.toHaveBeenCalled();
+    expect(listDefinitions).toHaveBeenCalledOnce();
+
+    listDefinitions.mockRestore();
     await stopSelfControlBlock(config);
     resetSelfControlStatusCache();
   });

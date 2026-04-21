@@ -847,15 +847,7 @@ export async function stopRun(ctx: {
   if (!service) {
     return;
   }
-  try {
-    await service.stop();
-  } catch (err) {
-    // Swallow — app-manager logs a warning and the run is still removed.
-    const message = err instanceof Error ? err.message : String(err);
-    console.warn(
-      `[app-scape] stopRun: game service stop failed: ${message}`,
-    );
-  }
+  await service.stop();
 }
 
 export async function collectLaunchDiagnostics(_ctx: {

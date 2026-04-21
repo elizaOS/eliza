@@ -1,6 +1,33 @@
 import type http from "node:http";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleLifeOpsRoutes, type LifeOpsRouteContext } from "./lifeops-routes.js";
+
+const serviceSpies = vi.hoisted(() => ({
+  getXDmDigest: vi.fn(),
+  syncBrowserCompanion: vi.fn(),
+}));
+
+vi.mock("../lifeops/service.js", () => {
+  class LifeOpsServiceError extends Error {
+    status: number;
+
+    constructor(status: number, message: string) {
+      super(message);
+      this.name = "LifeOpsServiceError";
+      this.status = status;
+    }
+  }
+
+  class LifeOpsService {
+    getXDmDigest = serviceSpies.getXDmDigest;
+    syncBrowserCompanion = serviceSpies.syncBrowserCompanion;
+  }
+
+  return {
+    LifeOpsService,
+    LifeOpsServiceError,
+  };
+});
 
 const runtime = {
   agentId: "00000000-0000-0000-0000-000000000000",
@@ -14,12 +41,18 @@ function createContext(
   context: LifeOpsRouteContext;
   error: ReturnType<typeof vi.fn>;
   json: ReturnType<typeof vi.fn>;
+  readJsonBody: ReturnType<typeof vi.fn>;
 } {
   const url = new URL(path, "http://localhost");
   const json = vi.fn();
   const error = vi.fn();
+  const readJsonBody = vi.fn(async () => ({}));
   const context: LifeOpsRouteContext = {
-    req: {} as http.IncomingMessage,
+    req: {
+      url: `${url.pathname}${url.search}`,
+      headers: {},
+      socket: { remoteAddress: "127.0.0.1" },
+    } as unknown as http.IncomingMessage,
     res: {} as http.ServerResponse,
     method,
     pathname: url.pathname,
@@ -30,13 +63,23 @@ function createContext(
     },
     json,
     error,
-    readJsonBody: vi.fn(async () => ({})),
+    readJsonBody,
     decodePathComponent: (raw) => decodeURIComponent(raw),
     ...overrides,
   };
 
-  return { context, error, json };
+  return {
+    context,
+    error,
+    json,
+    readJsonBody: context.readJsonBody as ReturnType<typeof vi.fn>,
+  };
 }
+
+afterEach(() => {
+  serviceSpies.getXDmDigest.mockReset();
+  serviceSpies.syncBrowserCompanion.mockReset();
+});
 
 describe("LifeOps route validation", () => {
   it("rejects malformed positive integer query values", async () => {
@@ -157,6 +200,94 @@ describe("LifeOps route validation", () => {
       "messageIds must be an array of strings",
       400,
     );
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("rejects X DM digest limits above the route maximum before service dispatch", async () => {
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/x/dms/digest?limit=101",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "limit must be less than or equal to 100",
+      400,
+    );
+    expect(json).not.toHaveBeenCalled();
+    expect(serviceSpies.getXDmDigest).not.toHaveBeenCalled();
+  });
+
+  it("rejects browser auto-pair requests from unrelated origins before reading a body", async () => {
+    const { context, error, json, readJsonBody } = createContext(
+      "POST",
+      "/api/lifeops/browser/companions/auto-pair",
+    );
+    context.req.headers = { origin: "https://attacker.example" };
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "browser auto-pair must come from the LifeOps app or a browser extension",
+      403,
+    );
+    expect(readJsonBody).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("rejects local browser package path helpers from non-loopback clients before reading a body", async () => {
+    const { context, error, json, readJsonBody } = createContext(
+      "POST",
+      "/api/lifeops/browser/packages/open-path",
+    );
+    context.req.socket = { remoteAddress: "192.0.2.10" } as never;
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "Local extension install helpers can only run on the same machine as LifeOps",
+      403,
+    );
+    expect(readJsonBody).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid browser package build targets at the route boundary", async () => {
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/browser/packages/firefox/build",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "browser must be chrome or safari",
+      400,
+    );
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("requires browser companion auth headers before sync dispatch", async () => {
+    const { context, error, json, readJsonBody } = createContext(
+      "POST",
+      "/api/lifeops/browser/companions/sync",
+      { readJsonBody: vi.fn(async () => ({ tabs: [] })) },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "Missing X-LifeOps-Browser-Companion-Id header",
+      401,
+    );
+    expect(readJsonBody).toHaveBeenCalledOnce();
+    expect(serviceSpies.syncBrowserCompanion).not.toHaveBeenCalled();
     expect(json).not.toHaveBeenCalled();
   });
 });
