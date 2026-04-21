@@ -1,7 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
 import { Preferences } from "@capacitor/preferences";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { logger } from "./logger";
 
 /**
@@ -29,6 +29,8 @@ export function useNavigation(): NavState {
   const [view, setView] = useState<ViewName>(DEFAULT_VIEW);
   const [stack, setStack] = useState<ViewName[]>([DEFAULT_VIEW]);
   const [ready, setReady] = useState(false);
+  const stackRef = useRef(stack);
+  stackRef.current = stack;
 
   useEffect(() => {
     void (async () => {
@@ -71,15 +73,19 @@ export function useNavigation(): NavState {
   const pop = useCallback((fallback: ViewName) => {
     logger.info("[navigation] pop", { fallback });
     triggerHaptic();
-    setStack((current) => {
-      if (current.length <= 1) {
-        setView(fallback);
-        return [fallback];
-      }
-      const next = current.slice(0, -1);
-      setView(next[next.length - 1]);
-      return next;
-    });
+    const current = stackRef.current;
+    let nextStack: ViewName[];
+    let nextView: ViewName;
+    if (current.length <= 1) {
+      nextStack = [fallback];
+      nextView = fallback;
+    } else {
+      nextStack = current.slice(0, -1);
+      nextView = nextStack[nextStack.length - 1];
+    }
+    stackRef.current = nextStack;
+    setStack(nextStack);
+    setView(nextView);
   }, []);
 
   return useMemo(() => ({ view, ready, push, pop }), [view, ready, push, pop]);
