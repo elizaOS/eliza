@@ -13,6 +13,23 @@ export type MobileSignalsState =
 
 export type MobileSignalsHealthSource = "healthkit" | "health_connect";
 
+export interface MobileSignalsScreenTimeStatus {
+  supported: boolean;
+  entitlements: {
+    familyControls: boolean;
+    appAndWebsiteUsage: boolean;
+  };
+  authorization: {
+    status: "approved" | "denied" | "not-determined" | "unavailable";
+    canRequest: boolean;
+  };
+  reportAvailable: boolean;
+  coarseSummaryAvailable: boolean;
+  thresholdEventsAvailable: boolean;
+  rawUsageExportAvailable: false;
+  reason: string | null;
+}
+
 export interface MobileSignalsHealthSleepSnapshot {
   available: boolean;
   isSleeping: boolean;
@@ -40,6 +57,7 @@ export interface MobileSignalsHealthSnapshot {
   idleTimeSeconds: number | null;
   onBattery: boolean | null;
   healthSource: MobileSignalsHealthSource;
+  screenTime?: MobileSignalsScreenTimeStatus;
   permissions: {
     sleep: boolean;
     biometrics: boolean;
@@ -106,6 +124,7 @@ export interface MobileSignalsPermissionStatus {
   status: "granted" | "denied" | "not-determined" | "not-applicable";
   canRequest: boolean;
   reason?: string;
+  screenTime?: MobileSignalsScreenTimeStatus;
   permissions: {
     sleep: boolean;
     biometrics: boolean;

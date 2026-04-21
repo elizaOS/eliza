@@ -470,8 +470,9 @@ const MAC_TRAFFIC_LIGHTS_Y = 12;
 /** Left inset of the drag strip so it clears the traffic lights. */
 const MAC_NATIVE_DRAG_REGION_X = 92;
 /**
- * Native titlebar drag band height. The native layer keeps resize bands thin
- * separately, while this can cover the web titlebar and pass through buttons.
+ * Native titlebar drag height. The native layer keeps resize bands thin
+ * separately and only installs drag views in safe title/empty zones so
+ * titlebar buttons continue to receive clicks.
  */
 const MAC_NATIVE_DRAG_REGION_HEIGHT = 38;
 
@@ -680,6 +681,15 @@ function sendToActiveRenderer(message: string, payload?: unknown): void {
       message,
     );
   }
+}
+
+function shouldRestoreWindowBeforeMenuAction(
+  action: string | undefined,
+): boolean {
+  if (!action || action.startsWith("focus-window:")) {
+    return false;
+  }
+  return action !== "quit";
 }
 
 /**
@@ -1521,7 +1531,7 @@ async function setupUpdater(): Promise<void> {
     const handleApplicationMenuAction = async (
       action: string | undefined,
     ): Promise<void> => {
-      if (!currentWindow && action && !action.startsWith("focus-window:")) {
+      if (!currentWindow && shouldRestoreWindowBeforeMenuAction(action)) {
         await restoreWindow();
       }
       if (action === "check-for-updates") {

@@ -30,6 +30,10 @@ export interface WebsiteBlockerStatus {
   hostsFilePath: string | null;
   endsAt: string | null;
   websites: string[];
+  requestedWebsites: string[];
+  blockedWebsites: string[];
+  allowedWebsites: string[];
+  matchMode: "exact" | "subdomain";
   canUnblockEarly: boolean;
   requiresElevation: boolean;
   engine: WebsiteBlockerEngine;

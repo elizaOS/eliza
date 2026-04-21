@@ -3,8 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  buildSelfControlBlockPolicy,
   buildSelfControlManagedHostsBlock,
   isWebsiteBlockSinkholeAddress,
+  isWebsiteBlockedByPolicy,
   parseResolvedAddressesFromDscacheutilOutput,
   reconcileSelfControlBlockState,
   type SelfControlPluginConfig,
@@ -172,14 +174,21 @@ describe("website blocker engine", () => {
       "x.com",
       "www.x.com",
       "mobile.x.com",
-      "api.x.com",
       "twitter.com",
+      "www.twitter.com",
+      "mobile.twitter.com",
       "t.co",
       "abs.twimg.com",
       "pbs.twimg.com",
       "video.twimg.com",
+      "ton.twimg.com",
+      "platform.twitter.com",
+      "tweetdeck.twitter.com",
     ]) {
       expect(hosts).toContain(`0.0.0.0 ${hostname}`);
+    }
+    for (const hostname of ["api.x.com", "api.twitter.com"]) {
+      expect(hosts).not.toContain(`0.0.0.0 ${hostname}`);
     }
 
     const status = await reconcileSelfControlBlockState(config);
@@ -190,11 +199,70 @@ describe("website blocker engine", () => {
         "x.com",
         "www.x.com",
         "mobile.x.com",
-        "api.x.com",
         "twitter.com",
+        "www.twitter.com",
+        "mobile.twitter.com",
         "t.co",
+        "abs.twimg.com",
+        "pbs.twimg.com",
+        "video.twimg.com",
+        "ton.twimg.com",
+        "platform.twitter.com",
+        "tweetdeck.twitter.com",
       ]),
     );
+    expect(status.blockedWebsites).not.toEqual(
+      expect.arrayContaining(["api.x.com", "api.twitter.com"]),
+    );
+    expect(status.allowedWebsites).toEqual(
+      expect.arrayContaining(["api.x.com", "api.twitter.com"]),
+    );
+    expect(status.matchMode).toBe("exact");
+
+    const policy = buildSelfControlBlockPolicy(["x.com"]);
+    expect(isWebsiteBlockedByPolicy(policy, "x.com")).toBe(true);
+    expect(isWebsiteBlockedByPolicy(policy, "www.twitter.com")).toBe(true);
+    expect(isWebsiteBlockedByPolicy(policy, "api.x.com")).toBe(false);
+    expect(isWebsiteBlockedByPolicy(policy, "api.twitter.com")).toBe(false);
+    expect(isWebsiteBlockedByPolicy(policy, "news.google.com")).toBe(false);
+
+    const stopResult = await stopSelfControlBlock(config);
+    expect(stopResult.success).toBe(true);
+  });
+
+  it("keeps Google News scoped to news.google.com while preserving Google auth hosts", async () => {
+    const { config, hostsFilePath } = await createHostsConfig();
+
+    const result = await startSelfControlBlock(
+      {
+        websites: ["news.google.com"],
+        durationMinutes: null,
+      },
+      config,
+    );
+
+    expect(result).toEqual({
+      success: true,
+      endsAt: null,
+    });
+
+    const hosts = await readFile(hostsFilePath, "utf8");
+    expect(hosts).toContain("0.0.0.0 news.google.com");
+    expect(hosts).not.toContain("0.0.0.0 accounts.google.com");
+    expect(hosts).not.toContain("0.0.0.0 oauth2.googleapis.com");
+    expect(hosts).not.toContain("0.0.0.0 openidconnect.googleapis.com");
+    expect(hosts).not.toContain("0.0.0.0 www.googleapis.com");
+
+    const policy = buildSelfControlBlockPolicy(["news.google.com"]);
+    expect(isWebsiteBlockedByPolicy(policy, "news.google.com")).toBe(true);
+    expect(isWebsiteBlockedByPolicy(policy, "accounts.google.com")).toBe(false);
+    expect(isWebsiteBlockedByPolicy(policy, "oauth2.googleapis.com")).toBe(
+      false,
+    );
+    expect(
+      isWebsiteBlockedByPolicy(policy, "openidconnect.googleapis.com"),
+    ).toBe(false);
+    expect(isWebsiteBlockedByPolicy(policy, "www.googleapis.com")).toBe(false);
 
     const stopResult = await stopSelfControlBlock(config);
     expect(stopResult.success).toBe(true);
