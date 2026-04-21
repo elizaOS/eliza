@@ -271,7 +271,9 @@ describe("background-job-parity: proactive worker", () => {
     });
     resetPlannerDispatchLog(runtime);
 
-    await executeProactiveTask(runtime);
+    await expect(executeProactiveTask(runtime)).rejects.toThrow(
+      /runtime database adapter unavailable/,
+    );
 
     const log = readPlannerDispatchLog(runtime);
     const dispatches = log.filter((d) => d.jobKind === "daily_brief");
@@ -288,7 +290,9 @@ describe("background-job-parity: proactive worker", () => {
     });
     resetPlannerDispatchLog(runtime);
 
-    await executeProactiveTask(runtime);
+    await expect(executeProactiveTask(runtime)).rejects.toThrow(
+      /runtime database adapter unavailable/,
+    );
 
     const log = readPlannerDispatchLog(runtime);
     const skipped = log.filter(

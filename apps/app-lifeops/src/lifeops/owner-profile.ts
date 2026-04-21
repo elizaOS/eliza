@@ -224,7 +224,7 @@ export async function readLifeOpsOwnerProfile(
 ): Promise<LifeOpsOwnerProfile> {
   const [configuredName, task] = await Promise.all([
     fetchConfiguredOwnerName(),
-    readLifeOpsSchedulerTask(runtime).catch(() => null),
+    readLifeOpsSchedulerTask(runtime),
   ]);
   const metadata = isRecord(task?.metadata) ? task.metadata : null;
   return resolveLifeOpsOwnerProfile(metadata, configuredName);
@@ -352,7 +352,7 @@ function resolveMeetingPreferences(
 export async function readLifeOpsMeetingPreferences(
   runtime: IAgentRuntime,
 ): Promise<LifeOpsMeetingPreferences> {
-  const task = await readLifeOpsSchedulerTask(runtime).catch(() => null);
+  const task = await readLifeOpsSchedulerTask(runtime);
   const metadata = isRecord(task?.metadata) ? task.metadata : null;
   return resolveMeetingPreferences(metadata);
 }
@@ -365,7 +365,7 @@ export async function updateLifeOpsMeetingPreferences(
   if (Object.keys(normalizedPatch).length === 0) return null;
 
   const taskId = await ensureLifeOpsSchedulerTask(runtime);
-  const task = await readLifeOpsSchedulerTask(runtime).catch(() => null);
+  const task = await readLifeOpsSchedulerTask(runtime);
   const metadata =
     isRecord(task?.metadata) && task.id === taskId
       ? task.metadata
@@ -394,7 +394,7 @@ export async function updateLifeOpsOwnerProfile(
   const taskId = await ensureLifeOpsSchedulerTask(runtime);
   const [configuredName, task] = await Promise.all([
     fetchConfiguredOwnerName(),
-    readLifeOpsSchedulerTask(runtime).catch(() => null),
+    readLifeOpsSchedulerTask(runtime),
   ]);
 
   const metadata =

@@ -84,4 +84,79 @@ describe("LifeOps route validation", () => {
     expect(error).toHaveBeenCalledWith(context.res, "sessionId is required", 400);
     expect(json).not.toHaveBeenCalled();
   });
+
+  it("rejects non-string iMessage recipients at the route boundary", async () => {
+    const readJsonBody = vi.fn(async () => ({ to: 1, text: "hi" }));
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/connectors/imessage/send",
+      { readJsonBody },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(context.res, "to is required", 400);
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-string iMessage attachment paths", async () => {
+    const readJsonBody = vi.fn(async () => ({
+      to: "+15551112222",
+      text: "hi",
+      attachmentPaths: ["/tmp/a.txt", 1],
+    }));
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/connectors/imessage/send",
+      { readJsonBody },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "attachmentPaths must be an array of strings",
+      400,
+    );
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("rejects string booleans for X DM curation", async () => {
+    const readJsonBody = vi.fn(async () => ({
+      messageIds: ["dm-1"],
+      markRead: "false",
+    }));
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/x/dms/curate",
+      { readJsonBody },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "markRead must be a boolean",
+      400,
+    );
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("rejects scalar messageIds for X DM curation", async () => {
+    const readJsonBody = vi.fn(async () => ({ messageIds: "abc" }));
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/x/dms/curate",
+      { readJsonBody },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "messageIds must be an array of strings",
+      400,
+    );
+    expect(json).not.toHaveBeenCalled();
+  });
 });

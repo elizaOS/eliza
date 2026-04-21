@@ -34,6 +34,7 @@ export class ActivityTrackerService extends Service {
   private handle: ActivityCollectorHandle | null = null;
   private mode: ActivityTrackerMode = "disabled-non-darwin";
   private writeFailures = 0;
+  private writeQueue: Promise<void> = Promise.resolve();
 
   static override async start(
     runtime: IAgentRuntime,
@@ -48,6 +49,7 @@ export class ActivityTrackerService extends Service {
       await this.handle.stop();
       this.handle = null;
     }
+    await this.writeQueue;
   }
 
   getMode(): ActivityTrackerMode {
@@ -78,7 +80,7 @@ export class ActivityTrackerService extends Service {
     try {
       this.handle = startActivityCollector({
         onEvent: (event) => {
-          void this.persistEvent(event);
+          this.enqueueEvent(event);
         },
         onFatal: (reason) => {
           this.mode = "failed";
@@ -101,6 +103,13 @@ export class ActivityTrackerService extends Service {
         "[activity-tracker] Failed to start macOS collector; reports will be empty until resolved.",
       );
     }
+  }
+
+  private enqueueEvent(event: ActivityCollectorEvent): void {
+    this.writeQueue = this.writeQueue.then(
+      () => this.persistEvent(event),
+      () => this.persistEvent(event),
+    );
   }
 
   private async persistEvent(event: ActivityCollectorEvent): Promise<void> {

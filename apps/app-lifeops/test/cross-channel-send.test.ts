@@ -1,11 +1,31 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  readXPosterCredentialsFromEnv,
+  sendXDm,
+} from "../src/lifeops/x-poster.js";
 import {
   crossChannelSendAction,
   dispatchCrossChannelSend,
 } from "../src/actions/cross-channel-send.js";
 
+vi.mock("../src/lifeops/x-poster.js", () => ({
+  readXPosterCredentialsFromEnv: vi.fn(() => null),
+  sendXDm: vi.fn(),
+}));
+
 const SAME_ID = "00000000-0000-0000-0000-000000000001";
+const fakeXCredentials = {
+  apiKey: "key",
+  apiSecretKey: "secret",
+  accessToken: "token",
+  accessTokenSecret: "token-secret",
+};
+
+beforeEach(() => {
+  vi.mocked(readXPosterCredentialsFromEnv).mockReturnValue(null);
+  vi.mocked(sendXDm).mockReset();
+});
 
 function makeRuntime() {
   return { agentId: SAME_ID } as unknown as Parameters<
@@ -252,5 +272,48 @@ describe("dispatchCrossChannelSend", () => {
     expect(result.success).toBe(false);
     expect(result.values?.error).toBe("relay offline");
     expect(result.data?.actionName).toBe("OWNER_SEND_MESSAGE");
+  });
+
+  test("x_dm dispatcher fails when the X API reports delivery failure", async () => {
+    vi.mocked(readXPosterCredentialsFromEnv).mockReturnValue(fakeXCredentials);
+    vi.mocked(sendXDm).mockResolvedValue({
+      ok: false,
+      status: 403,
+      error: "Forbidden",
+      category: "auth",
+    });
+
+    const result = await dispatchCrossChannelSend({
+      runtime: fakeRuntime,
+      service: {} as DispatchService,
+      channel: "x_dm",
+      target: "12345",
+      body: "ping",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.values?.success).toBe(false);
+    expect(result.values?.error).toBe("Forbidden");
+    expect(result.values?.channel).toBe("x_dm");
+  });
+
+  test("x_dm dispatcher requires a DM event id for success", async () => {
+    vi.mocked(readXPosterCredentialsFromEnv).mockReturnValue(fakeXCredentials);
+    vi.mocked(sendXDm).mockResolvedValue({
+      ok: true,
+      status: 201,
+      category: "success",
+    });
+
+    const result = await dispatchCrossChannelSend({
+      runtime: fakeRuntime,
+      service: {} as DispatchService,
+      channel: "x_dm",
+      target: "12345",
+      body: "ping",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.values?.error).toBe("X DM API did not return a DM event id.");
   });
 });

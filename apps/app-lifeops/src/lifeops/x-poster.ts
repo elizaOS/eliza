@@ -14,7 +14,7 @@ export interface XPostResult {
   status: number | null;
   postId?: string;
   error?: string;
-  category: "success" | "auth" | "rate_limit" | "network" | "unknown";
+  category: "success" | "auth" | "rate_limit" | "network" | "invalid" | "unknown";
 }
 
 function getXBaseUrl(): string {
@@ -98,6 +98,100 @@ function classifyStatus(status: number): XPostResult["category"] {
   return "unknown";
 }
 
+type XApiError = {
+  detail?: string;
+  message?: string;
+};
+
+type XPostPayload = {
+  data?: { id?: string };
+  errors?: XApiError[];
+  title?: string;
+  detail?: string;
+};
+
+type XDmPayload = {
+  data?: { dm_conversation_id?: string; dm_event_id?: string };
+  errors?: XApiError[];
+  title?: string;
+  detail?: string;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function readStringField(
+  record: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = record[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function readXApiErrors(value: unknown): XApiError[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const errors = value
+    .filter(isRecord)
+    .map((record) => ({
+      detail: readStringField(record, "detail"),
+      message: readStringField(record, "message"),
+    }))
+    .filter((error) => error.detail || error.message);
+
+  return errors.length > 0 ? errors : undefined;
+}
+
+function readXErrorPayloadFields(record: Record<string, unknown>): Pick<
+  XPostPayload,
+  "detail" | "errors" | "title"
+> {
+  return {
+    detail: readStringField(record, "detail"),
+    errors: readXApiErrors(record.errors),
+    title: readStringField(record, "title"),
+  };
+}
+
+function parseXPostPayload(rawPayload: unknown): XPostPayload | null {
+  if (!isRecord(rawPayload)) {
+    return null;
+  }
+
+  const data = isRecord(rawPayload.data)
+    ? { id: readStringField(rawPayload.data, "id") }
+    : undefined;
+
+  return {
+    ...readXErrorPayloadFields(rawPayload),
+    data,
+  };
+}
+
+function parseXDmPayload(rawPayload: unknown): XDmPayload | null {
+  if (!isRecord(rawPayload)) {
+    return null;
+  }
+
+  const data = isRecord(rawPayload.data)
+    ? {
+        dm_conversation_id: readStringField(
+          rawPayload.data,
+          "dm_conversation_id",
+        ),
+        dm_event_id: readStringField(rawPayload.data, "dm_event_id"),
+      }
+    : undefined;
+
+  return {
+    ...readXErrorPayloadFields(rawPayload),
+    data,
+  };
+}
+
 export function readXPosterCredentialsFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): XPosterCredentials | null {
@@ -148,20 +242,30 @@ export async function postToX(args: {
       body: JSON.stringify({ text }),
       signal: AbortSignal.timeout(12_000),
     });
-    const payload = (await response.json().catch(() => ({}))) as {
-      data?: { id?: string };
-      errors?: Array<{ detail?: string; message?: string }>;
-      title?: string;
-      detail?: string;
-    };
+    let payload: XPostPayload | null = null;
+    try {
+      payload = parseXPostPayload(await response.json());
+    } catch {
+      payload = null;
+    }
     const category = classifyStatus(response.status);
+
+    if (response.ok && !payload) {
+      span.failure({ statusCode: response.status, errorKind: "invalid" });
+      return {
+        ok: false,
+        status: response.status,
+        error: "X post API returned invalid JSON.",
+        category: "invalid",
+      };
+    }
 
     if (!response.ok) {
       const errorMessage =
-        payload.errors?.[0]?.detail ??
-        payload.errors?.[0]?.message ??
-        payload.detail ??
-        payload.title ??
+        payload?.errors?.[0]?.detail ??
+        payload?.errors?.[0]?.message ??
+        payload?.detail ??
+        payload?.title ??
         `HTTP ${response.status}`;
       logger.warn(
         {
@@ -185,13 +289,24 @@ export async function postToX(args: {
       };
     }
 
+    const postId = payload?.data?.id;
+    if (!postId) {
+      span.failure({ statusCode: response.status, errorKind: "invalid" });
+      return {
+        ok: false,
+        status: response.status,
+        error: "X post API response did not include data.id.",
+        category: "invalid",
+      };
+    }
+
     span.success({
       statusCode: response.status,
     });
     return {
       ok: true,
       status: response.status,
-      postId: payload.data?.id,
+      postId,
       category,
     };
   } catch (error) {
@@ -224,7 +339,7 @@ export interface XDmResult {
   dmConversationId?: string;
   dmEventId?: string;
   error?: string;
-  category: "success" | "auth" | "rate_limit" | "network" | "unknown";
+  category: "success" | "auth" | "rate_limit" | "network" | "invalid" | "unknown";
 }
 
 function getXDmUrl(participantId: string): string {
@@ -274,32 +389,53 @@ export async function sendXDm(args: {
       signal: AbortSignal.timeout(12_000),
     });
 
-    const payload = (await response.json().catch(() => ({}))) as {
-      data?: { dm_conversation_id?: string; dm_event_id?: string };
-      errors?: Array<{ detail?: string; message?: string }>;
-      title?: string;
-      detail?: string;
-    };
+    let payload: XDmPayload | null = null;
+    try {
+      payload = parseXDmPayload(await response.json());
+    } catch {
+      payload = null;
+    }
 
     const category = classifyStatus(response.status);
 
+    if (response.ok && !payload) {
+      span.failure({ statusCode: response.status, errorKind: "invalid" });
+      return {
+        ok: false,
+        status: response.status,
+        error: "X DM API returned invalid JSON.",
+        category: "invalid",
+      };
+    }
+
     if (!response.ok) {
       const errorMessage =
-        payload.errors?.[0]?.detail ??
-        payload.errors?.[0]?.message ??
-        payload.detail ??
-        payload.title ??
+        payload?.errors?.[0]?.detail ??
+        payload?.errors?.[0]?.message ??
+        payload?.detail ??
+        payload?.title ??
         `HTTP ${response.status}`;
       span.failure({ statusCode: response.status, errorKind: category });
       return { ok: false, status: response.status, error: errorMessage, category };
+    }
+
+    const dmEventId = payload?.data?.dm_event_id;
+    if (!dmEventId) {
+      span.failure({ statusCode: response.status, errorKind: "invalid" });
+      return {
+        ok: false,
+        status: response.status,
+        error: "X DM API response did not include data.dm_event_id.",
+        category: "invalid",
+      };
     }
 
     span.success({ statusCode: response.status });
     return {
       ok: true,
       status: response.status,
-      dmConversationId: payload.data?.dm_conversation_id,
-      dmEventId: payload.data?.dm_event_id,
+      dmConversationId: payload?.data?.dm_conversation_id,
+      dmEventId,
       category: "success",
     };
   } catch (error) {
