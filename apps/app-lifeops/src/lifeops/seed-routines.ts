@@ -37,6 +37,23 @@ export const ROUTINE_SEED_TEMPLATES: RoutineSeedTemplate[] = [
     },
   },
   {
+    key: "invisalign",
+    title: "Invisalign",
+    description: "Weekday after-lunch tray check",
+    category: "health",
+    request: {
+      kind: "habit",
+      title: "Invisalign",
+      cadence: {
+        kind: "weekly",
+        weekdays: [1, 2, 3, 4, 5],
+        windows: ["afternoon"],
+      },
+      priority: 3,
+      originalIntent: "weekday after-lunch Invisalign check",
+    },
+  },
+  {
     key: "drink_water",
     title: "Drink water",
     description: "Stay hydrated throughout the day",
@@ -56,20 +73,20 @@ export const ROUTINE_SEED_TEMPLATES: RoutineSeedTemplate[] = [
   },
   {
     key: "stretch",
-    title: "Stretch break",
-    description: "Short stretch breaks during the day",
+    title: "Stretch",
+    description: "Short stretch breaks in the afternoon and evening",
     category: "health",
     request: {
       kind: "habit",
-      title: "Stretch break",
+      title: "Stretch",
       cadence: {
         kind: "interval",
-        everyMinutes: 240,
-        windows: ["morning", "afternoon"],
+        everyMinutes: 360,
+        windows: ["afternoon", "evening"],
         maxOccurrencesPerDay: 2,
       },
       priority: 2,
-      originalIntent: "stretch breaks during the day",
+      originalIntent: "stretch twice daily in the afternoon and evening",
     },
   },
   {

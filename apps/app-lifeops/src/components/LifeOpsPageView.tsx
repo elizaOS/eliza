@@ -27,6 +27,12 @@ import {
 } from "../platform/lifeops-github.js";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
 import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
+import {
+  LifeOpsProfilePanel,
+  LifeOpsSchedulePanel,
+  LifeOpsStretchPanel,
+  LifeOpsXPanel,
+} from "./LifeOpsOperationalPanels";
 import { LifeOpsWorkspaceView } from "./LifeOpsWorkspaceView";
 import { MessagingConnectorGrid } from "./MessagingConnectorCards";
 import { PermissionsPanel } from "./PermissionsPanel";
@@ -889,6 +895,12 @@ export function LifeOpsPageView() {
                   githubError={githubError}
                 />
                 <MessagingConnectorGrid />
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <LifeOpsSchedulePanel />
+                  <LifeOpsXPanel />
+                  <LifeOpsProfilePanel />
+                  <LifeOpsStretchPanel />
+                </div>
               </div>
             ) : null}
           </section>

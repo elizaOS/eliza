@@ -67,6 +67,10 @@ class WebsiteBlockerPlugin : Plugin() {
                 put("active", false)
                 put("endsAt", null)
                 put("websites", JSArray())
+                put("requestedWebsites", JSArray())
+                put("blockedWebsites", JSArray())
+                put("allowedWebsites", JSArray())
+                put("matchMode", "exact")
                 put("canUnblockEarly", true)
                 put("requiresElevation", permissionRequiresConsent())
             })
@@ -208,7 +212,11 @@ class WebsiteBlockerPlugin : Plugin() {
                 "endsAt",
                 saved?.endsAtEpochMs?.let { Instant.ofEpochMilli(it).toString() },
             )
-            put("websites", JSArray(saved?.websites ?: emptyList<String>()))
+            put("websites", JSArray(saved?.requestedWebsites ?: emptyList<String>()))
+            put("requestedWebsites", JSArray(saved?.requestedWebsites ?: emptyList<String>()))
+            put("blockedWebsites", JSArray(saved?.blockedWebsites ?: emptyList<String>()))
+            put("allowedWebsites", JSArray(saved?.allowedWebsites ?: emptyList<String>()))
+            put("matchMode", saved?.matchMode ?: "exact")
             put("canUnblockEarly", true)
             put("requiresElevation", permissionRequiresConsent())
             put("engine", "vpn-dns")

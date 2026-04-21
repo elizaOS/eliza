@@ -33,6 +33,7 @@ const specGroups = [
   [
     "test/ui-smoke/apps-session.spec.ts",
     "test/ui-smoke/browser-workspace.spec.ts",
+    "test/ui-smoke/titlebar-navigation.spec.ts",
   ],
   // ui-smoke.spec.ts, settings-chat-companion.spec.ts, computer-use.spec.ts
   // expect settings-shell testId + specific capability toggles that have been
