@@ -10,7 +10,11 @@ import { LayoutGrid, SquareArrowOutUpRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
-import { getAppEmoji, getAppShortName } from "../apps/helpers";
+import {
+  getAppEmoji,
+  getAppShortName,
+  isHiddenFromAppsView,
+} from "../apps/helpers";
 import {
   getInternalToolApps,
   getInternalToolAppTargetTab,
@@ -71,7 +75,9 @@ export function AppsSection() {
           (app, index, items) =>
             items.findIndex((c) => c.name === app.name) === index,
         );
-        if (!cancelled) setCatalogApps(all);
+        if (!cancelled) {
+          setCatalogApps(all.filter((app) => !isHiddenFromAppsView(app.name)));
+        }
       } catch {
         // Silently fail — the main apps view handles errors
       }
