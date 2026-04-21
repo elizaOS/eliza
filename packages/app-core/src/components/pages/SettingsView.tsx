@@ -40,9 +40,9 @@ import { useApp } from "../../state";
 import { WidgetHost } from "../../widgets";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
+import { FeatureTogglesSection } from "../settings/FeatureTogglesSection";
 import { LearnedSkillsPanel } from "../settings/LearnedSkills";
 import { MediaSettingsSection } from "../settings/MediaSettingsSection";
-import { FeatureTogglesSection } from "../settings/FeatureTogglesSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
 import { TrainingSettingsPanel } from "../settings/TrainingSettings";
@@ -186,8 +186,8 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   },
   {
     id: "feature-toggles",
-    label: "Features",
-    description: "Opt in to LifeOps capabilities like flight booking, push, and browser automation.",
+    label: "settings.sections.features.label",
+    description: "settings.sections.features.desc",
     keywords: [
       "feature",
       "toggle",
@@ -534,10 +534,38 @@ function CapabilitiesSection() {
                 />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="full_control">Full Control</SelectItem>
-                <SelectItem value="smart_approve">Smart Approve</SelectItem>
-                <SelectItem value="approve_all">Review Every Action</SelectItem>
-                <SelectItem value="off">Pause Computer Use</SelectItem>
+                <SelectItem value="full_control">
+                  {t(
+                    "settings.sections.capabilities.computerUseModeOption.fullControl",
+                    {
+                      defaultValue: "Full Control",
+                    },
+                  )}
+                </SelectItem>
+                <SelectItem value="smart_approve">
+                  {t(
+                    "settings.sections.capabilities.computerUseModeOption.smartApprove",
+                    {
+                      defaultValue: "Smart Approve",
+                    },
+                  )}
+                </SelectItem>
+                <SelectItem value="approve_all">
+                  {t(
+                    "settings.sections.capabilities.computerUseModeOption.reviewEveryAction",
+                    {
+                      defaultValue: "Review Every Action",
+                    },
+                  )}
+                </SelectItem>
+                <SelectItem value="off">
+                  {t(
+                    "settings.sections.capabilities.computerUseModeOption.pauseComputerUse",
+                    {
+                      defaultValue: "Pause Computer Use",
+                    },
+                  )}
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1169,8 +1197,13 @@ export function SettingsView({
       {visibleSectionIds.has("feature-toggles") && (
         <SettingsSection
           id="feature-toggles"
-          title="Features"
-          description="Opt in to LifeOps capabilities like flight booking, push, and browser automation."
+          title={t("settings.sections.features.label", {
+            defaultValue: "Features",
+          })}
+          description={t("settings.sections.features.desc", {
+            defaultValue:
+              "Opt in to LifeOps capabilities like flight booking, push, and browser automation.",
+          })}
           ref={registerContentItem("feature-toggles")}
         >
           <FeatureTogglesSection />

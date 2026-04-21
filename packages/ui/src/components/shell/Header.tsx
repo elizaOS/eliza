@@ -7,55 +7,57 @@ import { CloudStatusBadge } from "@elizaos/app-core/components/cloud/CloudStatus
 import { LanguageDropdown } from "@elizaos/app-core/components/shared/LanguageDropdown";
 import { ThemeToggle } from "@elizaos/app-core/components/shared/ThemeToggle";
 import { useBranding } from "@elizaos/app-core/config/branding";
+import { useMediaQuery } from "@elizaos/app-core/hooks";
 import { getTabGroups, type TabGroup } from "@elizaos/app-core/navigation";
 import {
   isDetachedWindowShell,
   resolveWindowShellRoute,
 } from "@elizaos/app-core/platform/window-shell";
 import { useApp } from "@elizaos/app-core/state";
-import { ListTodo, Menu, X } from "lucide-react";
+import { ListTodo, Settings } from "lucide-react";
 import type { ReactNode, PointerEvent as ReactPointerEvent } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { Button } from "../ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "../ui/dialog";
-import {
-  HEADER_BUTTON_STYLE,
-  HEADER_ICON_BUTTON_CLASSNAME,
-  ShellHeaderControls,
-} from "./ShellHeaderControls";
+import { HEADER_BUTTON_STYLE } from "./ShellHeaderControls";
+
+const MOBILE_HEADER_MEDIA_QUERY = "(max-width: 639px)";
+const DESKTOP_LABEL_COLLAPSE_MEDIA_QUERY = "(max-width: 1380px)";
 
 const NAV_LABEL_I18N_KEY: Record<string, string> = {
-  Chat: "nav.chat",
-  LifeOps: "nav.lifeops",
-  Browser: "nav.browser",
-  Companion: "nav.companion",
-  Stream: "nav.stream",
-  Character: "nav.character",
-  Wallet: "nav.wallet",
-  Knowledge: "nav.knowledge",
-  Connectors: "nav.social",
   Apps: "nav.apps",
   Automations: "nav.automations",
-  Settings: "nav.settings",
+  Browser: "nav.browser",
+  Character: "nav.character",
+  Chat: "nav.chat",
+  Companion: "nav.companion",
+  Connectors: "nav.social",
   Heartbeats: "nav.heartbeats",
+  Knowledge: "nav.knowledge",
+  LifeOps: "nav.lifeops",
+  Settings: "nav.settings",
+  Stream: "nav.stream",
+  Wallet: "nav.wallet",
 };
 
 const NAV_DESCRIPTION_I18N_KEY: Record<string, string> = {
-  Chat: "nav.description.chat",
   Apps: "nav.description.apps",
-  Character: "nav.description.character",
-  Wallet: "nav.description.wallet",
-  Browser: "nav.description.browser",
-  Stream: "nav.description.stream",
   Automations: "nav.description.automations",
+  Browser: "nav.description.browser",
+  Character: "nav.description.character",
+  Chat: "nav.description.chat",
   Settings: "nav.description.settings",
+  Stream: "nav.description.stream",
+  Wallet: "nav.description.wallet",
 };
+
+const TOPBAR_NAV_BUTTON_CLASSNAME =
+  "group relative inline-flex h-[2.375rem] min-h-[2.375rem] shrink-0 items-center gap-2 rounded-md border border-transparent px-2.5 text-xs font-medium text-muted transition-colors duration-150 hover:text-txt after:absolute after:inset-x-2.5 after:bottom-0 after:h-[3px] after:rounded-t-full after:bg-accent/70 after:opacity-0 after:transition-opacity after:duration-150 hover:after:opacity-55";
+const TOPBAR_NAV_BUTTON_ACTIVE_CLASSNAME = "text-accent after:opacity-100";
+const TOPBAR_ICON_BUTTON_CLASSNAME =
+  "relative inline-flex h-[2.375rem] w-[2.375rem] min-h-[2.375rem] min-w-[2.375rem] shrink-0 items-center justify-center rounded-md border border-transparent bg-transparent text-muted transition-colors duration-150 hover:text-txt after:absolute after:inset-x-2 after:bottom-0 after:h-[3px] after:rounded-t-full after:bg-accent/70 after:opacity-0 after:transition-opacity after:duration-150 hover:after:opacity-55";
+const TOPBAR_ICON_BUTTON_ACTIVE_CLASSNAME = "text-accent after:opacity-100";
+const MOBILE_BOTTOM_NAV_BUTTON_CLASSNAME =
+  "relative inline-flex min-w-0 flex-1 items-center justify-center rounded-[0.85rem] px-2 py-2.5 text-muted transition-colors duration-150 after:absolute after:inset-x-3 after:bottom-[0.15rem] after:h-[2px] after:rounded-full after:bg-accent/60 after:opacity-0 after:transition-opacity after:duration-150";
 
 interface HeaderProps {
   mobileLeft?: ReactNode;
@@ -65,19 +67,6 @@ interface HeaderProps {
   tasksEventsPanelOpen?: boolean;
   onToggleTasksPanel?: () => void;
 }
-
-const HEADER_NAV_BUTTON_BASE_CLASSNAME =
-  "relative z-10 min-h-touch shrink-0 rounded-xl border border-transparent px-3 py-2.5 text-xs transition-all duration-200 after:pointer-events-none after:absolute after:bottom-0 after:left-3 after:right-3 after:h-[2px] after:rounded-full after:opacity-0 after:transition-opacity after:duration-200 md:px-3.5 md:after:left-3.5 md:after:right-3.5 xl:px-4 xl:after:left-4 xl:after:right-4";
-const HEADER_NAV_BUTTON_ACTIVE_CLASSNAME =
-  "border-transparent bg-transparent text-txt font-semibold shadow-none ring-0 hover:bg-transparent after:bg-accent/35 after:opacity-100";
-const HEADER_NAV_BUTTON_INACTIVE_CLASSNAME =
-  "text-muted hover:bg-transparent hover:text-txt after:bg-accent/35 hover:after:opacity-100";
-const HEADER_MOBILE_NAV_BUTTON_BASE_CLASSNAME =
-  "flex min-h-[48px] w-full rounded-xl border px-3 py-3 text-sm font-medium transition-all duration-200";
-const HEADER_MOBILE_NAV_BUTTON_ACTIVE_CLASSNAME =
-  "border-accent/30 bg-accent/12 text-txt shadow-[0_2px_10px_rgba(3,5,10,0.08)] ring-1 ring-inset ring-accent/18 dark:shadow-[0_0_0_1px_rgba(var(--accent-rgb),0.14),0_0_14px_rgba(var(--accent-rgb),0.14)]";
-const HEADER_MOBILE_NAV_BUTTON_INACTIVE_CLASSNAME =
-  "border-transparent bg-transparent text-txt hover:border-border/45 hover:bg-bg-hover/70";
 
 function shouldShowMacDesktopTitleBar(): boolean {
   if (!isElectrobunRuntime()) return false;
@@ -99,32 +88,35 @@ export function Header({
 }: HeaderProps) {
   const branding = useBranding();
   const {
-    elizaCloudEnabled,
+    browserEnabled,
+    chatLastUsage,
+    conversationMessages,
+    elizaCloudAuthRejected,
     elizaCloudConnected,
     elizaCloudCredits,
     elizaCloudCreditsCritical,
-    elizaCloudCreditsLow,
-    elizaCloudAuthRejected,
     elizaCloudCreditsError,
-    tab,
-    setTab,
-    setState,
-    plugins,
-    browserEnabled,
-    walletEnabled,
+    elizaCloudCreditsLow,
+    elizaCloudEnabled,
     loadDropStatus,
-    uiLanguage,
+    plugins,
+    setState,
+    setTab,
     setUiLanguage,
-    uiTheme,
     setUiTheme,
-    conversationMessages,
-    chatLastUsage,
+    tab,
     t,
+    uiLanguage,
+    uiTheme,
+    walletEnabled,
   } = useApp();
 
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const mobileMenuPortalContainer =
-    typeof document !== "undefined" ? document.body : undefined;
+  const isMobileViewport = useMediaQuery(MOBILE_HEADER_MEDIA_QUERY);
+  const collapseDesktopNavLabels = useMediaQuery(
+    DESKTOP_LABEL_COLLAPSE_MEDIA_QUERY,
+  );
+  const showMacDesktopTitleBar = shouldShowMacDesktopTitleBar();
+  const showCloudStatus = !hideCloudCredits && !isMobileViewport;
   const stopHeaderPointerPropagation = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       event.stopPropagation();
@@ -136,6 +128,48 @@ export function Header({
     void loadDropStatus();
   }, [loadDropStatus]);
 
+  useEffect(() => {
+    setState("chatMode", "power");
+  }, [setState]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    if (showMacDesktopTitleBar) {
+      document.documentElement.classList.add(
+        "eliza-electrobun-custom-titlebar",
+      );
+    } else {
+      document.documentElement.classList.remove(
+        "eliza-electrobun-custom-titlebar",
+      );
+    }
+
+    return () => {
+      document.documentElement.classList.remove(
+        "eliza-electrobun-custom-titlebar",
+      );
+    };
+  }, [showMacDesktopTitleBar]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    if (isMobileViewport) {
+      document.documentElement.classList.add("eliza-mobile-bottom-nav");
+    } else {
+      document.documentElement.classList.remove("eliza-mobile-bottom-nav");
+    }
+
+    return () => {
+      document.documentElement.classList.remove("eliza-mobile-bottom-nav");
+    };
+  }, [isMobileViewport]);
+
   const streamingEnabled = useMemo(
     () =>
       plugins.some(
@@ -145,69 +179,47 @@ export function Header({
   );
   const tabGroups = useMemo(
     () => getTabGroups(streamingEnabled, walletEnabled, browserEnabled),
-    [streamingEnabled, walletEnabled, browserEnabled],
+    [browserEnabled, streamingEnabled, walletEnabled],
   );
-  const activeTabGroup = useMemo(
-    () =>
-      tabGroups.find((group) => group.tabs.includes(tab)) ??
-      tabGroups[0] ??
-      null,
-    [tab, tabGroups],
+  const settingsTabGroup = useMemo(
+    () => tabGroups.find((group) => group.label === "Settings") ?? null,
+    [tabGroups],
   );
+  const primaryDesktopGroups = useMemo(
+    () => tabGroups.filter((group) => group.label !== "Settings"),
+    [tabGroups],
+  );
+
   const localizeTabGroup = useCallback(
     (group: TabGroup) => ({
-      label: t(NAV_LABEL_I18N_KEY[group.label] ?? group.label, {
-        defaultValue: group.label,
-      }),
       description:
         group.description && NAV_DESCRIPTION_I18N_KEY[group.label]
           ? t(NAV_DESCRIPTION_I18N_KEY[group.label], {
               defaultValue: group.description,
             })
           : group.description,
+      label: t(NAV_LABEL_I18N_KEY[group.label] ?? group.label, {
+        defaultValue: group.label,
+      }),
     }),
     [t],
   );
 
-  // Outside the companion overlay the shell is always in desktop/native mode.
-  // The mode-selector pill only appears inside the companion overlay header.
-  const activeShellView = "desktop" as const;
-  const showNavigationMenu = true;
-  const showCloudStatus = !hideCloudCredits;
-  const headerFrameClassName = "";
-  const headerShellClassName =
-    "border-transparent bg-transparent shadow-none ring-0 backdrop-blur-none";
-  const showMacDesktopTitleBar = shouldShowMacDesktopTitleBar();
-
-  useEffect(() => {
-    if (!showMacDesktopTitleBar || typeof document === "undefined") {
-      return;
-    }
-
-    document.documentElement.classList.add("eliza-electrobun-custom-titlebar");
-    return () => {
-      document.documentElement.classList.remove(
-        "eliza-electrobun-custom-titlebar",
-      );
-    };
-  }, [showMacDesktopTitleBar]);
-
-  const openCloudBilling = () => {
+  const openCloudBilling = useCallback(() => {
     setState("cloudDashboardView", "billing");
     setTab("settings");
-    setMobileMenuOpen(false);
-  };
+  }, [setState, setTab]);
 
   const chatInferenceNotice = useMemo(() => {
     if (tab !== "chat") return null;
     return resolveCompanionInferenceNotice({
-      elizaCloudConnected,
+      chatLastUsageModel: chatLastUsage?.model,
       elizaCloudAuthRejected,
+      elizaCloudConnected,
       elizaCloudCreditsError,
       elizaCloudEnabled,
-      chatLastUsageModel: chatLastUsage?.model,
       hasInterruptedAssistant: (conversationMessages ?? []).some(
-        (m) => m.role === "assistant" && m.interrupted,
+        (message) => message.role === "assistant" && message.interrupted,
       ),
       t,
     });
@@ -228,181 +240,179 @@ export function Header({
       setState("cloudDashboardView", "billing");
     }
     setTab("settings");
-    setMobileMenuOpen(false);
   }, [chatInferenceNotice, setState, setTab]);
 
-  const renderMobileMenuThemeToggle = () => (
-    <div
-      data-testid="header-theme-toggle-mobile"
-      className="flex items-center justify-end"
+  const settingsButtonLabel = settingsTabGroup
+    ? localizeTabGroup(settingsTabGroup).label
+    : t("nav.settings", { defaultValue: "Settings" });
+  const isSettingsActive = settingsTabGroup?.tabs.includes(tab) ?? false;
+
+  const desktopTaskToggle = onToggleTasksPanel ? (
+    <Button
+      size="icon"
+      variant="ghost"
+      className={`${TOPBAR_ICON_BUTTON_CLASSNAME} ${
+        tasksEventsPanelOpen ? TOPBAR_ICON_BUTTON_ACTIVE_CLASSNAME : ""
+      }`}
+      onClick={onToggleTasksPanel}
+      onPointerDown={stopHeaderPointerPropagation}
+      aria-label={t("taskseventspanel.Title", {
+        defaultValue: "Tasks & Events",
+      })}
+      aria-pressed={tasksEventsPanelOpen}
+      style={HEADER_BUTTON_STYLE}
+      data-testid="header-tasks-events-toggle"
+      data-no-camera-drag="true"
     >
-      <ThemeToggle
-        uiTheme={uiTheme}
-        setUiTheme={setUiTheme}
-        t={t}
-        className="!h-11 !w-11 !min-h-11 !min-w-11"
-      />
+      <ListTodo className="pointer-events-none h-4 w-4" />
+    </Button>
+  ) : null;
+
+  const rightDesktopControls = (
+    <div
+      className="flex min-w-0 items-center justify-end gap-1.5"
+      data-no-camera-drag="true"
+    >
+      {pageRightExtras}
+      {desktopTaskToggle}
+      {chatInferenceNotice ? (
+        <InferenceCloudAlertButton
+          notice={chatInferenceNotice}
+          onClick={handleChatInferenceAlertClick}
+        />
+      ) : null}
+      {showCloudStatus ? (
+        <CloudStatusBadge
+          connected={elizaCloudConnected}
+          credits={elizaCloudCredits}
+          creditsLow={elizaCloudCreditsLow}
+          creditsCritical={elizaCloudCreditsCritical}
+          authRejected={elizaCloudAuthRejected}
+          creditsError={elizaCloudCreditsError}
+          t={t}
+          onClick={openCloudBilling}
+          dataTestId="header-cloud-status"
+        />
+      ) : null}
+      <div className="max-[860px]:hidden">
+        <LanguageDropdown
+          uiLanguage={uiLanguage}
+          setUiLanguage={setUiLanguage}
+          t={t}
+          variant="titlebar"
+        />
+      </div>
+      <div className="max-[860px]:hidden">
+        <ThemeToggle
+          uiTheme={uiTheme}
+          setUiTheme={setUiTheme}
+          t={t}
+          variant="titlebar"
+        />
+      </div>
+      <Button
+        size="icon"
+        variant="ghost"
+        className={`${TOPBAR_ICON_BUTTON_CLASSNAME} ${
+          isSettingsActive ? TOPBAR_ICON_BUTTON_ACTIVE_CLASSNAME : ""
+        }`}
+        onClick={() => setTab(settingsTabGroup?.tabs[0] ?? "settings")}
+        onPointerDown={stopHeaderPointerPropagation}
+        aria-label={settingsButtonLabel}
+        title={settingsButtonLabel}
+        style={HEADER_BUTTON_STYLE}
+        data-testid="header-settings-button"
+        data-no-camera-drag="true"
+      >
+        <Settings className="pointer-events-none h-4 w-4" />
+      </Button>
     </div>
   );
-
-  const renderMobileMenuLanguageDropdown = () => (
-    <div data-testid="header-language-dropdown-mobile" className="shrink-0">
-      <LanguageDropdown
-        uiLanguage={uiLanguage}
-        setUiLanguage={setUiLanguage}
-        t={t}
-        menuPlacement="top-end"
-        triggerClassName="!h-11 !min-h-11 !rounded-xl !px-3.5"
-      />
-    </div>
-  );
-
-  useEffect(() => {
-    setState("chatMode", "power");
-  }, [setState]);
 
   return (
     <>
       <header
-        className="sticky top-0 z-20 w-full select-none overflow-visible"
+        className="sticky top-0 z-30 w-full select-none border-b border-border/50 bg-bg/88 shadow-[0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl"
         style={{ WebkitUserSelect: "none", userSelect: "none" }}
         data-no-camera-drag="true"
       >
-        {showMacDesktopTitleBar ? (
-          <div className="px-2 pt-2" data-window-titlebar-container>
-            <div
-              className="pointer-events-auto"
-              data-window-titlebar="true"
-              data-testid="desktop-window-titlebar"
-            >
-              <div
-                className="grid min-h-11 w-full grid-cols-[var(--eliza-macos-titlebar-side-width,88px)_1fr_var(--eliza-macos-titlebar-side-width,88px)] items-center rounded-[18px] border border-border/50 bg-bg/82 px-2 shadow-[0_10px_28px_rgba(2,8,23,0.08)] backdrop-blur-xl"
-                data-window-titlebar-inner
-              >
-                <div aria-hidden="true" />
+        <div
+          className={showMacDesktopTitleBar ? "pointer-events-auto" : undefined}
+          data-window-titlebar={showMacDesktopTitleBar ? "true" : undefined}
+          data-testid={
+            showMacDesktopTitleBar ? "desktop-window-titlebar" : undefined
+          }
+        >
+          <div
+            className="grid min-h-[2.375rem] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-3"
+            data-window-titlebar-padding={
+              showMacDesktopTitleBar ? "true" : undefined
+            }
+          >
+            {isMobileViewport ? (
+              <>
                 <div
-                  className="pointer-events-none truncate px-3 text-center text-sm font-medium text-txt/92"
-                  data-testid="desktop-window-titlebar-label"
+                  className="flex min-w-0 items-center justify-start gap-2"
+                  data-no-camera-drag="true"
+                >
+                  {mobileLeft}
+                </div>
+                <div
+                  className="pointer-events-none truncate px-2 text-sm font-medium tracking-[0.01em] text-txt/94"
+                  data-testid={
+                    showMacDesktopTitleBar
+                      ? "desktop-window-titlebar-label"
+                      : undefined
+                  }
                 >
                   {branding.appName}
                 </div>
-                <div aria-hidden="true" />
-              </div>
-            </div>
-          </div>
-        ) : null}
-        <div className="py-1 ps-2 pe-2" data-header-toolbar-padding>
-          <div
-            className={`pointer-events-auto relative mx-auto w-full rounded-[20px] border bg-clip-padding transition-all sm:rounded-[22px] ${headerFrameClassName} ${headerShellClassName}`}
-            data-testid="header-glass-shell"
-          >
-            <ShellHeaderControls
-              activeShellView={activeShellView}
-              onShellViewChange={() => {
-                /* pill hidden — no-op */
-              }}
-              showShellViewToggle={false}
-              uiLanguage={uiLanguage}
-              setUiLanguage={setUiLanguage}
-              uiTheme={uiTheme}
-              setUiTheme={setUiTheme}
-              t={t}
-              languageDropdownClassName="hidden sm:inline-flex"
-              languageDropdownWrapperTestId="header-language-dropdown-desktop"
-              themeToggleWrapperClassName="hidden sm:flex"
-              themeToggleWrapperTestId="header-theme-toggle-desktop"
-              rightExtras={
-                <>
-                  {pageRightExtras}
-                  {onToggleTasksPanel ? (
-                    <Button
-                      size="icon"
-                      variant={tasksEventsPanelOpen ? "default" : "outline"}
-                      className={HEADER_ICON_BUTTON_CLASSNAME}
-                      onClick={onToggleTasksPanel}
-                      onPointerDown={stopHeaderPointerPropagation}
-                      aria-label={t("taskseventspanel.Title", {
-                        defaultValue: "Tasks & Events",
-                      })}
-                      aria-pressed={tasksEventsPanelOpen}
-                      style={HEADER_BUTTON_STYLE}
-                      data-testid="header-tasks-events-toggle"
-                      data-no-camera-drag="true"
-                    >
-                      <ListTodo className="pointer-events-none w-4 h-4" />
-                    </Button>
-                  ) : null}
-                  {mobileLeft ? (
-                    <div className="shrink-0 sm:hidden">{mobileLeft}</div>
-                  ) : null}
-                  {chatInferenceNotice ? (
-                    <InferenceCloudAlertButton
-                      notice={chatInferenceNotice}
-                      onClick={handleChatInferenceAlertClick}
-                    />
-                  ) : null}
-                  {showCloudStatus ? (
-                    <CloudStatusBadge
-                      connected={elizaCloudConnected}
-                      credits={elizaCloudCredits}
-                      creditsLow={elizaCloudCreditsLow}
-                      creditsCritical={elizaCloudCreditsCritical}
-                      authRejected={elizaCloudAuthRejected}
-                      creditsError={elizaCloudCreditsError}
-                      t={t}
-                      onClick={openCloudBilling}
-                      dataTestId="header-cloud-status"
-                    />
-                  ) : null}
-                </>
-              }
-              trailingExtras={
-                showNavigationMenu ? (
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    className={`sm:hidden ${HEADER_ICON_BUTTON_CLASSNAME}`}
-                    onClick={() => setMobileMenuOpen(true)}
-                    onPointerDown={stopHeaderPointerPropagation}
-                    aria-label={t("aria.openNavMenu")}
-                    aria-expanded={mobileMenuOpen}
-                    style={HEADER_BUTTON_STYLE}
-                    data-no-camera-drag="true"
-                  >
-                    <Menu className="pointer-events-none w-5 h-5" />
-                  </Button>
-                ) : null
-              }
-            >
-              {showNavigationMenu ? (
-                <nav
-                  className="scrollbar-hide hidden flex-1 items-center justify-start gap-1.5 overflow-x-auto whitespace-nowrap sm:flex"
+                <div
+                  className="flex min-w-0 items-center justify-end gap-2"
                   data-no-camera-drag="true"
                 >
-                  {tabGroups.map((group: TabGroup) => {
+                  {pageRightExtras}
+                  {desktopTaskToggle}
+                </div>
+              </>
+            ) : (
+              <>
+                <nav
+                  className="scrollbar-hide flex min-w-0 items-center gap-1 overflow-x-auto pr-2"
+                  aria-label={t("aria.navMenu")}
+                  data-no-camera-drag="true"
+                >
+                  {primaryDesktopGroups.map((group) => {
                     const primaryTab = group.tabs[0];
                     const isActive = group.tabs.includes(tab);
                     const localizedGroup = localizeTabGroup(group);
+
                     return (
                       <Button
                         variant="ghost"
                         key={group.label}
                         data-testid={`header-nav-button-${primaryTab}`}
-                        className={`${HEADER_NAV_BUTTON_BASE_CLASSNAME} ${
-                          isActive
-                            ? HEADER_NAV_BUTTON_ACTIVE_CLASSNAME
-                            : HEADER_NAV_BUTTON_INACTIVE_CLASSNAME
+                        className={`${TOPBAR_NAV_BUTTON_CLASSNAME} ${
+                          isActive ? TOPBAR_NAV_BUTTON_ACTIVE_CLASSNAME : ""
                         }`}
                         onClick={() => setTab(primaryTab)}
                         onPointerDown={stopHeaderPointerPropagation}
-                        title={localizedGroup.description}
+                        aria-label={localizedGroup.label}
+                        title={
+                          collapseDesktopNavLabels
+                            ? localizedGroup.label
+                            : (localizedGroup.description ??
+                              localizedGroup.label)
+                        }
                         style={HEADER_BUTTON_STYLE}
                         data-no-camera-drag="true"
                       >
-                        <group.icon className="pointer-events-none h-3.5 w-3.5 shrink-0" />
+                        <group.icon className="pointer-events-none h-4 w-4 shrink-0" />
                         <span
                           data-testid={`header-nav-label-${primaryTab}`}
-                          className="pointer-events-none inline"
+                          className={`pointer-events-none truncate ${
+                            collapseDesktopNavLabels ? "hidden" : "inline"
+                          }`}
                         >
                           {localizedGroup.label}
                         </span>
@@ -410,102 +420,59 @@ export function Header({
                     );
                   })}
                 </nav>
-              ) : null}
-            </ShellHeaderControls>
+                <div
+                  className="pointer-events-none truncate px-4 text-sm font-medium tracking-[0.01em] text-txt/94"
+                  data-testid={
+                    showMacDesktopTitleBar
+                      ? "desktop-window-titlebar-label"
+                      : undefined
+                  }
+                >
+                  {branding.appName}
+                </div>
+                {rightDesktopControls}
+              </>
+            )}
           </div>
         </div>
       </header>
 
-      {showNavigationMenu ? (
-        <Dialog open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-          <DialogContent
-            container={mobileMenuPortalContainer}
-            showCloseButton={false}
-            className="fixed left-auto right-0 top-0 z-[240] flex h-[100dvh] w-[min(22rem,88vw)] max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-l border-border/60 bg-bg/98 p-0 shadow-[0_24px_70px_rgba(2,8,23,0.34)] backdrop-blur-2xl data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right max-sm:!bottom-0 max-sm:!left-auto max-sm:!right-0 max-sm:!top-0 max-sm:!max-h-[100dvh] max-sm:!w-[min(22rem,88vw)] max-sm:!translate-x-0 max-sm:!translate-y-0 max-sm:!rounded-none max-sm:data-[state=closed]:slide-out-to-right max-sm:data-[state=open]:slide-in-from-right sm:hidden"
+      {isMobileViewport ? (
+        <div className="fixed inset-x-0 bottom-0 z-40 px-2 pb-[max(var(--safe-area-bottom,0px),0.5rem)] pt-2 sm:hidden">
+          <nav
+            className="scrollbar-hide flex items-stretch gap-1 overflow-x-auto rounded-[1rem] border border-border/60 bg-card/90 px-1.5 py-1.5 shadow-[0_18px_50px_rgba(2,8,23,0.22)] backdrop-blur-2xl"
+            aria-label={t("aria.navMenu")}
+            data-testid="header-mobile-bottom-nav"
+            data-no-camera-drag="true"
           >
-            <DialogHeader className="border-b border-border/50 px-4 py-3 text-left">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
-                    {t("aria.navMenu")}
-                  </div>
-                  <DialogTitle className="truncate text-sm font-medium text-txt">
-                    {activeTabGroup
-                      ? localizeTabGroup(activeTabGroup).label
-                      : t("aria.navMenu")}
-                  </DialogTitle>
-                  <DialogDescription className="sr-only">
-                    {t("header.MobileNavigationDescription", {
-                      defaultValue: "Navigate between sections",
-                    })}
-                  </DialogDescription>
-                </div>
+            {tabGroups.map((group) => {
+              const primaryTab = group.tabs[0];
+              const isActive = group.tabs.includes(tab);
+              const localizedGroup = localizeTabGroup(group);
+
+              return (
                 <Button
-                  variant="outline"
-                  size="icon"
-                  className={`shrink-0 ${HEADER_ICON_BUTTON_CLASSNAME}`}
-                  onClick={() => setMobileMenuOpen(false)}
+                  variant="ghost"
+                  key={group.label}
+                  className={`${MOBILE_BOTTOM_NAV_BUTTON_CLASSNAME} ${
+                    isActive
+                      ? "text-accent after:opacity-100"
+                      : "hover:text-txt"
+                  }`}
+                  onClick={() => setTab(primaryTab)}
                   onPointerDown={stopHeaderPointerPropagation}
-                  aria-label={t("aria.closeNavMenu")}
+                  aria-label={localizedGroup.label}
+                  title={localizedGroup.label}
                   style={HEADER_BUTTON_STYLE}
                   data-no-camera-drag="true"
                 >
-                  <X className="pointer-events-none h-4 w-4" />
+                  <group.icon className="pointer-events-none h-4.5 w-4.5 shrink-0" />
+                  <span className="sr-only">{localizedGroup.label}</span>
                 </Button>
-              </div>
-            </DialogHeader>
-            <div className="flex flex-1 flex-col px-3 py-3">
-              <div className="flex-1 overflow-y-auto pr-1">
-                <div className="flex flex-col gap-1">
-                  {tabGroups.map((group: TabGroup, index) => {
-                    const primaryTab = group.tabs[0];
-                    const isActive = group.tabs.includes(tab);
-                    const localizedGroup = localizeTabGroup(group);
-                    return (
-                      <Button
-                        variant={isActive ? "default" : "ghost"}
-                        key={group.label}
-                        className={`${HEADER_MOBILE_NAV_BUTTON_BASE_CLASSNAME} ${
-                          isActive
-                            ? HEADER_MOBILE_NAV_BUTTON_ACTIVE_CLASSNAME
-                            : HEADER_MOBILE_NAV_BUTTON_INACTIVE_CLASSNAME
-                        }`}
-                        style={{
-                          ...HEADER_BUTTON_STYLE,
-                          animationDelay: `${index * 50}ms`,
-                        }}
-                        onPointerDown={stopHeaderPointerPropagation}
-                        onClick={() => {
-                          setTab(primaryTab);
-                          setMobileMenuOpen(false);
-                        }}
-                        data-no-camera-drag="true"
-                      >
-                        <group.icon className="pointer-events-none h-4 w-4 shrink-0" />
-                        <div className="pointer-events-none flex-1 text-left">
-                          <div className="font-medium">
-                            {localizedGroup.label}
-                          </div>
-                          {localizedGroup.description && (
-                            <div className="text-xs-tight text-muted mt-0.5">
-                              {localizedGroup.description}
-                            </div>
-                          )}
-                        </div>
-                      </Button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="mt-3 flex flex-col gap-3 border-t border-border/50 pt-3">
-                <div className="flex items-center justify-end gap-2">
-                  {renderMobileMenuLanguageDropdown()}
-                  {renderMobileMenuThemeToggle()}
-                </div>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+              );
+            })}
+          </nav>
+        </div>
       ) : null}
     </>
   );

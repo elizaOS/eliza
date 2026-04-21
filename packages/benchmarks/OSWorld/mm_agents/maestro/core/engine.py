@@ -829,14 +829,8 @@ class LMMEngineAWSBedrock(LMMEngine):
         self.claude_model_map = {
             "claude-opus-4-7": "anthropic.claude-opus-4-7",
             "claude-sonnet-4-6": "anthropic.claude-sonnet-4-6",
-            "claude-sonnet-4-6": "anthropic.claude-sonnet-4-6-v1:0",
-            "claude-sonnet-4-6": "anthropic.claude-sonnet-4-6-v2:0",
-            "claude-sonnet-4-6": "anthropic.claude-sonnet-4-6-v2:0",
-            "claude-sonnet-4-6": "anthropic.claude-sonnet-4-6-v1:0",
             "claude-3-5-haiku": "anthropic.claude-3-5-haiku-20241022-v1:0",
             "claude-haiku-4-5-20251001": "anthropic.claude-haiku-4-5-20251001-v1:0",
-            "claude-sonnet-4-6": "anthropic.claude-sonnet-4-6-v1:0",
-            "claude-opus-4-7": "anthropic.claude-opus-4-7-v1:0",
         }
 
         # Get the actual Bedrock model ID

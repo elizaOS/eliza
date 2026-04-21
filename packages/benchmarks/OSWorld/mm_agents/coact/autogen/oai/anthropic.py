@@ -34,7 +34,7 @@ import autogen
 
 config_list = [
     {
-        "model": "anthropic.claude-sonnet-4-6-v1:0",
+        "model": "anthropic.claude-sonnet-4-6",
         "aws_access_key":<accessKey>,
         "aws_secret_key":<secretKey>,
         "aws_session_token":<sessionTok>,
@@ -56,7 +56,7 @@ Install the `anthropic` package by running `pip install anthropic[vertex]`.
 import autogen
 config_list = [
     {
-        "model": "claude-sonnet-4-6-v1:0",
+        "model": "<current-vertex-claude-model-id>",
         "gcp_project_id": "dummy_project_id",
         "gcp_region": "us-west-2",
         "gcp_auth_token": "dummy_auth_token",
@@ -65,7 +65,7 @@ config_list = [
 ]
 
 assistant = autogen.AssistantAgent("assistant", llm_config={"config_list": config_list})
-```python
+```
 """
 
 from __future__ import annotations
@@ -97,10 +97,7 @@ with optional_import_block():
 
 ANTHROPIC_PRICING_1k = {
     "claude-sonnet-4-6": (0.003, 0.015),
-    "claude-sonnet-4-6": (0.003, 0.015),
     "claude-3-5-haiku-20241022": (0.0008, 0.004),
-    "claude-sonnet-4-6": (0.003, 0.015),
-    "claude-sonnet-4-6": (0.003, 0.015),
     "claude-opus-4-7": (0.015, 0.075),
     "claude-haiku-4-5-20251001": (0.00025, 0.00125),
     "claude-2.1": (0.008, 0.024),
