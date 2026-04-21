@@ -24,6 +24,13 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
         let warnings: [String]
     }
 
+    private struct SleepEpisode {
+        let startDate: Date
+        let endDate: Date
+        let durationMinutes: Double
+        let latestStageValue: Int
+    }
+
     private var monitoring = false
     private var observers: [NSObjectProtocol] = []
     private let healthStore = HKHealthStore()
@@ -498,21 +505,20 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                 return
             }
 
-            let latestSleep = categories.last(where: { Self.isSleepSample($0.value) })
+            let latestEpisode = Self.latestSleepEpisode(from: categories)
             let latestAwake = categories.last(where: { $0.value == HKCategoryValueSleepAnalysis.awake.rawValue })
-            let isSleeping = latestSleep != nil && (latestAwake == nil || latestSleep!.startDate > latestAwake!.endDate)
-            let asleepAt = latestSleep?.startDate
-            let awakeAt = isSleeping ? nil : latestAwake?.endDate ?? latestAwake?.startDate
-            let durationMinutes: Double? = {
-                if let sleep = latestSleep {
-                    return sleep.endDate.timeIntervalSince(sleep.startDate) / 60.0
-                }
-                if let asleepAt, let awakeAt {
-                    return awakeAt.timeIntervalSince(asleepAt) / 60.0
-                }
-                return nil
-            }()
-            let stage = latestSleep.map { Self.sleepStageName(for: $0.value) } ?? (isSleeping ? "sleeping" : "awake")
+            let now = Date()
+            let sleepFreshnessWindow: TimeInterval = 15 * 60
+            let isSleeping =
+                latestEpisode != nil &&
+                latestEpisode!.endDate >= now.addingTimeInterval(-sleepFreshnessWindow) &&
+                (latestAwake == nil || latestAwake!.endDate <= latestEpisode!.endDate)
+            let asleepAt = latestEpisode?.startDate
+            let awakeAt = isSleeping ? nil : latestEpisode?.endDate
+            let durationMinutes = latestEpisode?.durationMinutes
+            let stage = latestEpisode.map { episode in
+                isSleeping ? Self.sleepStageName(for: episode.latestStageValue) : "awake"
+            } ?? "awake"
             completion(
                 HealthCapture(
                     source: "healthkit",
@@ -654,6 +660,49 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     private static func isSleepSample(_ value: Int) -> Bool {
         value != HKCategoryValueSleepAnalysis.awake.rawValue &&
         value != HKCategoryValueSleepAnalysis.inBed.rawValue
+    }
+
+    private static func latestSleepEpisode(from categories: [HKCategorySample]) -> SleepEpisode? {
+        let sleepSamples = categories
+            .filter { isSleepSample($0.value) }
+            .sorted { left, right in left.startDate < right.startDate }
+        guard let first = sleepSamples.first else {
+            return nil
+        }
+
+        let maxStageGap: TimeInterval = 90 * 60
+        var episodes: [SleepEpisode] = []
+        var episodeStart = first.startDate
+        var episodeEnd = first.endDate
+        var episodeDuration = first.endDate.timeIntervalSince(first.startDate) / 60.0
+        var latestStageValue = first.value
+
+        for sample in sleepSamples.dropFirst() {
+            if sample.startDate.timeIntervalSince(episodeEnd) <= maxStageGap {
+                episodeEnd = max(episodeEnd, sample.endDate)
+                episodeDuration += sample.endDate.timeIntervalSince(sample.startDate) / 60.0
+                latestStageValue = sample.value
+                continue
+            }
+            episodes.append(SleepEpisode(
+                startDate: episodeStart,
+                endDate: episodeEnd,
+                durationMinutes: episodeDuration,
+                latestStageValue: latestStageValue
+            ))
+            episodeStart = sample.startDate
+            episodeEnd = sample.endDate
+            episodeDuration = sample.endDate.timeIntervalSince(sample.startDate) / 60.0
+            latestStageValue = sample.value
+        }
+
+        episodes.append(SleepEpisode(
+            startDate: episodeStart,
+            endDate: episodeEnd,
+            durationMinutes: episodeDuration,
+            latestStageValue: latestStageValue
+        ))
+        return episodes.sorted { left, right in left.endDate < right.endDate }.last
     }
 
     private static func sleepStageName(for value: Int) -> String {
