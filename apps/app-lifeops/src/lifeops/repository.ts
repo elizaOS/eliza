@@ -59,6 +59,23 @@ import type {
   LifeOpsSubscriptionCancellation,
   LifeOpsSubscriptionCandidate,
 } from "./subscriptions-types.js";
+import type {
+  EmailUnsubscribeMethod,
+  EmailUnsubscribeRecord,
+  EmailUnsubscribeStatus,
+} from "./email-unsubscribe-types.js";
+import type {
+  LifeOpsScheduleMergedState,
+  LifeOpsScheduleObservation,
+} from "./schedule-sync-contracts.js";
+import type {
+  LifeOpsXDm,
+  LifeOpsXFeedItem,
+  LifeOpsXFeedType,
+  LifeOpsXSyncState,
+} from "@elizaos/shared/contracts/lifeops-extensions";
+import { lifeOpsSchema } from "./schema.js";
+import { refreshLifeOpsRelativeTime } from "./relative-time.js";
 
 type BrowserCompanionCredential = {
   companion: LifeOpsBrowserCompanionStatus;

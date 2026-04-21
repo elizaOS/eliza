@@ -34,6 +34,10 @@ import {
   createCalendlySingleUseLink,
   readCalendlyCredentialsFromEnv,
 } from "../lifeops/calendly-client.js";
+import {
+  FeatureNotEnabledError,
+  type LifeOpsFeatureKey,
+} from "../lifeops/feature-flags.types.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
   readTwilioCredentialsFromEnv,

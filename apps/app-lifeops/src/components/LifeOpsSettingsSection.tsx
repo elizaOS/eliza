@@ -1,16 +1,19 @@
-import { Badge, Button, SegmentedControl, useApp } from "@elizaos/app-core";
-import type {
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-} from "@elizaos/app-lifeops/contracts";
 import {
+  Badge,
   Button,
   SegmentedControl,
   useApp,
-  useGoogleLifeOpsConnector,
 } from "@elizaos/app-core";
-import { Plug2 } from "lucide-react";
+import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector";
+import type {
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+  LifeOpsGoogleCapability,
+} from "@elizaos/app-lifeops/contracts";
+import { Copy, ExternalLink, GitBranch, Plug2 } from "lucide-react";
+import { useCallback, useState } from "react";
 import { LifeOpsBrowserSetupPanel } from "./LifeOpsBrowserSetupPanel";
+import { MobileSignalsSetupCard } from "./MobileSignalsSetupCard";
 
 const MAX_GOOGLE_ACCOUNTS_PER_SIDE = 6;
 const VISIBLE_CONNECTOR_MODES = ["cloud_managed", "local"] as const;

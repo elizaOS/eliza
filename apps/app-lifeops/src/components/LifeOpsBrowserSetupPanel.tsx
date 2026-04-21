@@ -26,15 +26,6 @@ import {
   type LifeOpsBrowserTrackingMode,
 } from "@elizaos/app-lifeops/contracts";
 import {
-  Badge,
-  Button,
-  Input,
-  Label,
-  SegmentedControl,
-  Switch,
-  Textarea,
-} from "@elizaos/app-core";
-import {
   Copy,
   Download,
   FolderOpen,
