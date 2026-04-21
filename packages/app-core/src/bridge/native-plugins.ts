@@ -74,6 +74,37 @@ export interface MobileSignalsSnapshot {
   metadata: Record<string, unknown>;
 }
 
+export interface MobileSignalsScreenTimeStatus {
+  supported: boolean;
+  requirements: {
+    entitlements: {
+      familyControls: string;
+      appAndWebsiteUsage: string;
+    };
+    frameworks: string[];
+    deviceActivityReportExtension: boolean;
+    deviceActivityMonitorExtension: boolean;
+  };
+  entitlements: {
+    familyControls: boolean;
+    appAndWebsiteUsage: boolean;
+  };
+  provisioning: {
+    satisfied: boolean;
+    inspected: "code-signature" | "not-inspectable";
+    reason: string | null;
+  };
+  authorization: {
+    status: "approved" | "denied" | "not-determined" | "unavailable";
+    canRequest: boolean;
+  };
+  reportAvailable: boolean;
+  coarseSummaryAvailable: boolean;
+  thresholdEventsAvailable: boolean;
+  rawUsageExportAvailable: false;
+  reason: string | null;
+}
+
 export interface MobileSignalsHealthSnapshot {
   source: "mobile_health";
   platform: "ios" | "android" | "web";
@@ -83,6 +114,7 @@ export interface MobileSignalsHealthSnapshot {
   idleTimeSeconds: number | null;
   onBattery: boolean | null;
   healthSource: "healthkit" | "health_connect";
+  screenTime: MobileSignalsScreenTimeStatus;
   permissions: {
     sleep: boolean;
     biometrics: boolean;
@@ -179,6 +211,7 @@ export interface MobileSignalsPluginLike extends NativePlugin {
     status: "granted" | "denied" | "not-determined" | "not-applicable";
     canRequest: boolean;
     reason?: string;
+    screenTime: MobileSignalsScreenTimeStatus;
     permissions: {
       sleep: boolean;
       biometrics: boolean;
@@ -188,6 +221,7 @@ export interface MobileSignalsPluginLike extends NativePlugin {
     status: "granted" | "denied" | "not-determined" | "not-applicable";
     canRequest: boolean;
     reason?: string;
+    screenTime: MobileSignalsScreenTimeStatus;
     permissions: {
       sleep: boolean;
       biometrics: boolean;

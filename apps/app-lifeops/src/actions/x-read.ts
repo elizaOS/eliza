@@ -239,7 +239,7 @@ export const xReadAction: Action = {
       const status = await service.getXConnectorStatus();
       return Boolean(
         status.grant &&
-          status.grantedCapabilities.includes("x.read"),
+          (status.feedRead || status.dmRead || status.grantedCapabilities.includes("x.read")),
       );
     } catch (error) {
       logger.warn(

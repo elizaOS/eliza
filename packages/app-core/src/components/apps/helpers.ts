@@ -39,6 +39,17 @@ export const APP_CATALOG_SECTION_LABELS: Record<AppCatalogSectionKey, string> =
     other: "Other",
   };
 
+export const APPS_VIEW_HIDDEN_APP_NAMES = [
+  "@elizaos/app-browser",
+  "@elizaos/app-form",
+  "@elizaos/app-knowledge",
+  "@elizaos/app-task-coordinator",
+] as const;
+
+const APPS_VIEW_HIDDEN_APP_NAME_SET = new Set<string>(
+  APPS_VIEW_HIDDEN_APP_NAMES,
+);
+
 const APP_CATALOG_SECTION_ORDER: readonly AppCatalogSectionKey[] = [
   "favorites",
   "games",
@@ -73,6 +84,10 @@ interface AppsCatalogFilterOptions {
   showActiveOnly?: boolean;
 }
 
+export function isHiddenFromAppsView(appName: string): boolean {
+  return APPS_VIEW_HIDDEN_APP_NAME_SET.has(appName);
+}
+
 export function isCuratedGameApp(
   app: Pick<RegistryAppInfo, "category" | "name">,
 ): boolean {
@@ -87,6 +102,9 @@ export function shouldShowAppInAppsView(
     : Boolean(import.meta.env.PROD),
 ): boolean {
   void isProd;
+  if (isHiddenFromAppsView(app.name)) {
+    return false;
+  }
   return isInternalToolApp(app.name) || isCuratedGameApp(app);
 }
 
@@ -184,13 +202,6 @@ export function getAppCatalogSectionKey(
     app.name === "@elizaos/app-elizamaker"
   ) {
     return "finance";
-  }
-
-  if (
-    app.name === "@elizaos/app-knowledge" ||
-    app.name === "@elizaos/app-form"
-  ) {
-    return "other";
   }
 
   if (isInternalToolApp(app.name)) {

@@ -198,7 +198,12 @@ export const LIFEOPS_GOOGLE_CAPABILITIES = [
 export type LifeOpsGoogleCapability =
   (typeof LIFEOPS_GOOGLE_CAPABILITIES)[number];
 
-export const LIFEOPS_X_CAPABILITIES = ["x.read", "x.write"] as const;
+export const LIFEOPS_X_CAPABILITIES = [
+  "x.read",
+  "x.write",
+  "x.dm.read",
+  "x.dm.write",
+] as const;
 export type LifeOpsXCapability = (typeof LIFEOPS_X_CAPABILITIES)[number];
 
 export const LIFEOPS_SIGNAL_CAPABILITIES = [
@@ -1238,6 +1243,44 @@ export type LifeOpsScheduleSleepStatus =
   | "likely_missed"
   | "unknown";
 
+export type LifeOpsSleepCycleEvidenceSource = "health" | "activity_gap";
+export type LifeOpsSleepCycleType = "nap" | "overnight" | "unknown";
+
+export interface LifeOpsSleepCycleEvidence {
+  startAt: string;
+  endAt: string | null;
+  source: LifeOpsSleepCycleEvidenceSource;
+  confidence: number;
+}
+
+export interface LifeOpsSleepCycle {
+  cycleType: LifeOpsSleepCycleType;
+  sleepStatus: LifeOpsScheduleSleepStatus;
+  isProbablySleeping: boolean;
+  sleepConfidence: number;
+  currentSleepStartedAt: string | null;
+  lastSleepStartedAt: string | null;
+  lastSleepEndedAt: string | null;
+  lastSleepDurationMinutes: number | null;
+  evidence: LifeOpsSleepCycleEvidence[];
+}
+
+export type LifeOpsDayBoundaryAnchor =
+  | "start_of_day"
+  | "end_of_day"
+  | "before_sleep";
+
+export interface LifeOpsDayBoundary {
+  effectiveDayKey: string;
+  localDate: string;
+  timezone: string;
+  anchor: LifeOpsDayBoundaryAnchor;
+  startOfDayAt: string;
+  endOfDayAt: string;
+  beforeSleepAt: string | null;
+  confidence: number;
+}
+
 export type LifeOpsScheduleMealLabel = "breakfast" | "lunch" | "dinner";
 
 export type LifeOpsScheduleMealSource =
@@ -1661,6 +1704,10 @@ export interface LifeOpsXConnectorStatus {
   grantedScopes: string[];
   identity: Record<string, unknown> | null;
   hasCredentials: boolean;
+  feedRead: boolean;
+  feedWrite: boolean;
+  dmRead: boolean;
+  dmWrite: boolean;
   /**
    * DM inbound read is supported when `x.read` capability is granted.
    * Use `syncXDms()` to pull and persist, then `getXDms()` or
