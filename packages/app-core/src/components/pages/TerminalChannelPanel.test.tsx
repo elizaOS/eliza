@@ -15,6 +15,17 @@ vi.mock("@elizaos/app-task-coordinator", () => ({
   },
 }));
 
+vi.mock("@elizaos/app-task-coordinator/CodingAgentControlChip", () => ({
+  CodingAgentControlChip: () => null,
+}));
+
+vi.mock("@elizaos/app-task-coordinator/PtyConsoleBase", () => ({
+  PtyConsoleBase: (props: Record<string, unknown>) => {
+    ptyConsoleBaseProps(props);
+    return <div data-testid="pty-console-base">pty</div>;
+  },
+}));
+
 // ChatView.tsx has transitive imports that reach into the state layer and
 // pull in the broader app context. We stub the heavy siblings that
 // TerminalChannelPanel doesn't need to keep this test focused.

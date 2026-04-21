@@ -278,7 +278,9 @@ function buildApprovalText(request: ApprovalRequest): string {
   return `Queued travel approval for ${route}. Once you approve, I will ${orderType}, complete payment, and sync the itinerary to your calendar. Current quote: ${total}.`;
 }
 
-export const bookTravelAction: Action = {
+export const bookTravelAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "BOOK_TRAVEL",
   similes: [
     "TRAVEL_BOOKING",
@@ -293,6 +295,7 @@ export const bookTravelAction: Action = {
   ],
   description:
     "Search, prepare, and approval-gate real travel booking. Use for flight or hotel booking requests that should become a real booking after explicit approval, with calendar sync once completed. This action still owns the turn when the owner is asking you to prepare the booking package now and hold it for approval, when they say you can start booking if it is good with them, or when some itinerary details still need a follow-up before the approval queue entry can be finalized.",
+  suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, state, options, callback) => {
     if (!(await hasOwnerAccess(runtime, message))) {

@@ -107,6 +107,26 @@ function fail(
   };
 }
 
+function normalizeParams(
+  raw: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!raw || typeof raw !== "object") return {};
+  return raw;
+}
+
+function validationTerminate(
+  error: string,
+  message: string,
+  extra: Record<string, unknown> = {},
+): ActionResult {
+  return {
+    text: message,
+    success: false,
+    values: { success: false, error, ...extra },
+    data: { actionName: ACTION_NAME, error, message, ...extra },
+  };
+}
+
 export const intentSyncAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
@@ -137,7 +157,6 @@ export const intentSyncAction: Action & {
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasAdminAccess(runtime, message),
-  suppressPostActionContinuation: true,
 
   parameters: [
     {
