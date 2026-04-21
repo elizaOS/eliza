@@ -1,18 +1,29 @@
 /**
- * LifeOps Dashboard section — today's timeline + next-up reminders + schedule strip.
+ * LifeOps Overview section — landing page.
+ *
+ * Shows summary metrics, today's schedule, next-up reminders, and "Jump to"
+ * cards that deep-link into the other sections (Reminders / Calendar /
+ * Messages / Setup). This is the default landing when LifeOps is enabled.
  */
 import { client, useApp } from "@elizaos/app-core";
 import type {
   LifeOpsActiveReminderView,
   LifeOpsOverview,
 } from "@elizaos/shared/contracts/lifeops";
-import { Bell, CalendarDays, Loader2, RefreshCw } from "lucide-react";
+import {
+  Bell,
+  CalendarDays,
+  Loader2,
+  MessageSquare,
+  RefreshCw,
+  Settings2,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
 import { useLifeOpsSelection } from "./LifeOpsSelectionContext.js";
 import { LifeOpsSetupGate, useLifeOpsSetupGate } from "./LifeOpsSetupGate.js";
 
-interface LifeOpsDashboardSectionProps {
+interface LifeOpsOverviewSectionProps {
   onNavigate: (section: LifeOpsSection) => void;
 }
 
@@ -68,9 +79,30 @@ function ReminderRow({
   );
 }
 
-export function LifeOpsDashboardSection({
+interface JumpCardProps {
+  icon: React.ReactNode;
+  label: string;
+  hint: string;
+  onClick: () => void;
+}
+
+function JumpCard({ icon, label, hint, onClick }: JumpCardProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col items-start gap-1.5 rounded-2xl border border-border/16 bg-card/18 px-3 py-3 text-left transition-colors hover:border-accent/40 hover:bg-card/24"
+    >
+      <span className="text-muted">{icon}</span>
+      <span className="text-sm font-medium text-txt">{label}</span>
+      <span className="text-xs text-muted">{hint}</span>
+    </button>
+  );
+}
+
+export function LifeOpsOverviewSection({
   onNavigate,
-}: LifeOpsDashboardSectionProps) {
+}: LifeOpsOverviewSectionProps) {
   const { t } = useApp();
   const { select } = useLifeOpsSelection();
   const { dismissed, dismiss } = useLifeOpsSetupGate();
@@ -89,7 +121,7 @@ export function LifeOpsDashboardSection({
       setError(
         cause instanceof Error
           ? cause.message
-          : t("lifeopsdashboard.loadFailed", {
+          : t("lifeopsoverviewsection.loadFailed", {
               defaultValue: "Failed to load overview.",
             }),
       );
@@ -107,11 +139,11 @@ export function LifeOpsDashboardSection({
   }
 
   return (
-    <div className="space-y-6" data-testid="lifeops-dashboard">
+    <div className="space-y-6" data-testid="lifeops-overview">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-txt">
-          {t("lifeopsdashboard.title", {
-            defaultValue: "Dashboard",
+          {t("lifeopsoverviewsection.title", {
+            defaultValue: "Overview",
           })}
         </h2>
         <button
@@ -137,7 +169,7 @@ export function LifeOpsDashboardSection({
       {loading && !overview ? (
         <div className="flex items-center gap-2 py-6 text-xs text-muted">
           <Loader2 className="h-4 w-4 animate-spin" />
-          {t("lifeopsdashboard.loading", {
+          {t("lifeopsoverviewsection.loading", {
             defaultValue: "Loading overview…",
           })}
         </div>
@@ -149,7 +181,7 @@ export function LifeOpsDashboardSection({
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="space-y-1 rounded-2xl border border-border/16 bg-card/18 px-3 py-3">
               <div className="text-2xs font-semibold uppercase tracking-wide text-muted">
-                {t("lifeopsdashboard.activeItems", {
+                {t("lifeopsoverviewsection.activeItems", {
                   defaultValue: "Active",
                 })}
               </div>
@@ -159,7 +191,7 @@ export function LifeOpsDashboardSection({
             </div>
             <div className="space-y-1 rounded-2xl border border-border/16 bg-card/18 px-3 py-3">
               <div className="text-2xs font-semibold uppercase tracking-wide text-muted">
-                {t("lifeopsdashboard.overdue", {
+                {t("lifeopsoverviewsection.overdue", {
                   defaultValue: "Overdue",
                 })}
               </div>
@@ -169,7 +201,7 @@ export function LifeOpsDashboardSection({
             </div>
             <div className="space-y-1 rounded-2xl border border-border/16 bg-card/18 px-3 py-3">
               <div className="text-2xs font-semibold uppercase tracking-wide text-muted">
-                {t("lifeopsdashboard.reminders", {
+                {t("lifeopsoverviewsection.reminders", {
                   defaultValue: "Reminders",
                 })}
               </div>
@@ -179,7 +211,7 @@ export function LifeOpsDashboardSection({
             </div>
             <div className="space-y-1 rounded-2xl border border-border/16 bg-card/18 px-3 py-3">
               <div className="text-2xs font-semibold uppercase tracking-wide text-muted">
-                {t("lifeopsdashboard.goals", {
+                {t("lifeopsoverviewsection.goals", {
                   defaultValue: "Goals",
                 })}
               </div>
@@ -189,12 +221,56 @@ export function LifeOpsDashboardSection({
             </div>
           </div>
 
+          {/* Jump-to-section cards */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <JumpCard
+              icon={<Bell className="h-4 w-4" />}
+              label={t("lifeopsoverviewsection.jumpReminders", {
+                defaultValue: "Reminders",
+              })}
+              hint={t("lifeopsoverviewsection.jumpRemindersHint", {
+                defaultValue: `${overview.summary.activeReminderCount} active`,
+              })}
+              onClick={() => onNavigate("reminders")}
+            />
+            <JumpCard
+              icon={<CalendarDays className="h-4 w-4" />}
+              label={t("lifeopsoverviewsection.jumpCalendar", {
+                defaultValue: "Calendar",
+              })}
+              hint={t("lifeopsoverviewsection.jumpCalendarHint", {
+                defaultValue: "Today's events",
+              })}
+              onClick={() => onNavigate("calendar")}
+            />
+            <JumpCard
+              icon={<MessageSquare className="h-4 w-4" />}
+              label={t("lifeopsoverviewsection.jumpMessages", {
+                defaultValue: "Messages",
+              })}
+              hint={t("lifeopsoverviewsection.jumpMessagesHint", {
+                defaultValue: "Unified inbox",
+              })}
+              onClick={() => onNavigate("messages")}
+            />
+            <JumpCard
+              icon={<Settings2 className="h-4 w-4" />}
+              label={t("lifeopsoverviewsection.jumpSetup", {
+                defaultValue: "Setup",
+              })}
+              hint={t("lifeopsoverviewsection.jumpSetupHint", {
+                defaultValue: "Accounts & permissions",
+              })}
+              onClick={() => onNavigate("setup")}
+            />
+          </div>
+
           {/* Schedule strip */}
           {overview.schedule ? (
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted">
                 <CalendarDays className="h-3.5 w-3.5" />
-                {t("lifeopsdashboard.schedule", {
+                {t("lifeopsoverviewsection.schedule", {
                   defaultValue: "Schedule",
                 })}
               </div>
@@ -222,7 +298,7 @@ export function LifeOpsDashboardSection({
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted">
                   <Bell className="h-3.5 w-3.5" />
-                  {t("lifeopsdashboard.nextUp", {
+                  {t("lifeopsoverviewsection.nextUp", {
                     defaultValue: "Next up",
                   })}
                 </div>
@@ -251,7 +327,7 @@ export function LifeOpsDashboardSection({
             </div>
           ) : (
             <div className="rounded-2xl border border-border/12 bg-card/12 px-4 py-6 text-center text-xs text-muted">
-              {t("lifeopsdashboard.noReminders", {
+              {t("lifeopsoverviewsection.noReminders", {
                 defaultValue: "No upcoming reminders.",
               })}
             </div>

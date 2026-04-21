@@ -2,8 +2,8 @@ import { TooltipHint } from "@elizaos/app-core";
 import {
   Bell,
   CalendarDays,
-  Inbox,
   LayoutDashboard,
+  MessageSquare,
   Settings2,
 } from "lucide-react";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
@@ -16,19 +16,9 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   {
-    id: "dashboard",
-    label: "Dashboard",
+    id: "overview",
+    label: "Overview",
     icon: <LayoutDashboard className="h-5 w-5" />,
-  },
-  {
-    id: "calendar",
-    label: "Calendar",
-    icon: <CalendarDays className="h-5 w-5" />,
-  },
-  {
-    id: "inbox",
-    label: "Inbox",
-    icon: <Inbox className="h-5 w-5" />,
   },
   {
     id: "reminders",
@@ -36,8 +26,18 @@ const NAV_ITEMS: NavItem[] = [
     icon: <Bell className="h-5 w-5" />,
   },
   {
-    id: "settings",
-    label: "Settings",
+    id: "calendar",
+    label: "Calendar",
+    icon: <CalendarDays className="h-5 w-5" />,
+  },
+  {
+    id: "messages",
+    label: "Messages",
+    icon: <MessageSquare className="h-5 w-5" />,
+  },
+  {
+    id: "setup",
+    label: "Setup",
     icon: <Settings2 className="h-5 w-5" />,
   },
 ];

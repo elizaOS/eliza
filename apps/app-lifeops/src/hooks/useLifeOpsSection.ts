@@ -1,18 +1,18 @@
 import { useCallback, useState } from "react";
 
 export type LifeOpsSection =
-  | "dashboard"
-  | "calendar"
-  | "inbox"
+  | "overview"
+  | "setup"
   | "reminders"
-  | "settings";
+  | "calendar"
+  | "messages";
 
 export const LIFEOPS_SECTIONS: LifeOpsSection[] = [
-  "dashboard",
-  "calendar",
-  "inbox",
+  "overview",
+  "setup",
   "reminders",
-  "settings",
+  "calendar",
+  "messages",
 ];
 
 function isLifeOpsSection(value: unknown): value is LifeOpsSection {
@@ -24,7 +24,7 @@ function isLifeOpsSection(value: unknown): value is LifeOpsSection {
 export function useLifeOpsSection(initial?: string | null) {
   const resolved: LifeOpsSection = isLifeOpsSection(initial)
     ? initial
-    : "dashboard";
+    : "overview";
   const [section, setSection] = useState<LifeOpsSection>(resolved);
 
   const navigate = useCallback((next: LifeOpsSection) => {
