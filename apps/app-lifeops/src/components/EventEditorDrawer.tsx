@@ -1,0 +1,455 @@
+/**
+ * EventEditorDrawer — right-side drawer for editing a LifeOps calendar event.
+ *
+ * Opens over the main pane (not the chat panel). Fields: title, startAt, endAt,
+ * notes, reminders (minutesBefore multi-input), linked goal dropdown.
+ *
+ * Actions: Save, Delete (with confirm), Close.
+ *
+ * While the drawer is open, the SelectionContext holds { eventId } so the chat
+ * placeholder becomes context-aware.
+ *
+ * TODO: updateLifeOpsCalendarEvent and deleteLifeOpsCalendarEvent are Stream C
+ * contracts — stubs below will be replaced when Stream C lands.
+ */
+
+import {
+  Button,
+  ConfirmDialog,
+  Dialog,
+  DialogContent,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Textarea,
+  client,
+  useApp,
+} from "@elizaos/app-core";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsGoalRecord,
+} from "@elizaos/shared/contracts/lifeops";
+import { X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+
+// ---------------------------------------------------------------------------
+// Stream C contract stubs — remove when updateLifeOpsCalendarEvent lands.
+// ---------------------------------------------------------------------------
+
+type CalendarEventPatch = {
+  title?: string;
+  startAt?: string;
+  endAt?: string;
+  description?: string;
+  minutesBefore?: number[];
+};
+
+async function updateCalendarEvent(
+  eventId: string,
+  patch: CalendarEventPatch,
+): Promise<{ event: LifeOpsCalendarEvent }> {
+  // TODO: replace with client.updateLifeOpsCalendarEvent(eventId, patch) when
+  // Stream C lands.
+  if (
+    "updateLifeOpsCalendarEvent" in client &&
+    typeof (client as Record<string, unknown>).updateLifeOpsCalendarEvent ===
+      "function"
+  ) {
+    return (
+      client as unknown as {
+        updateLifeOpsCalendarEvent: (
+          id: string,
+          patch: CalendarEventPatch,
+        ) => Promise<{ event: LifeOpsCalendarEvent }>;
+      }
+    ).updateLifeOpsCalendarEvent(eventId, patch);
+  }
+  throw new Error(
+    "updateLifeOpsCalendarEvent not yet available — Stream C pending",
+  );
+}
+
+async function deleteCalendarEvent(eventId: string): Promise<void> {
+  // TODO: replace with client.deleteLifeOpsCalendarEvent(eventId) when
+  // Stream C lands.
+  if (
+    "deleteLifeOpsCalendarEvent" in client &&
+    typeof (client as Record<string, unknown>).deleteLifeOpsCalendarEvent ===
+      "function"
+  ) {
+    return (
+      client as unknown as {
+        deleteLifeOpsCalendarEvent: (id: string) => Promise<void>;
+      }
+    ).deleteLifeOpsCalendarEvent(eventId);
+  }
+  throw new Error(
+    "deleteLifeOpsCalendarEvent not yet available — Stream C pending",
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function toLocalInputValue(isoString: string | null): string {
+  if (!isoString) {
+    return "";
+  }
+  const parsed = Date.parse(isoString);
+  if (!Number.isFinite(parsed)) {
+    return "";
+  }
+  // datetime-local input expects "YYYY-MM-DDTHH:mm"
+  return new Date(parsed).toISOString().slice(0, 16);
+}
+
+function fromLocalInputValue(localValue: string): string | null {
+  if (!localValue) {
+    return null;
+  }
+  const parsed = new Date(localValue);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+export interface EventEditorDrawerProps {
+  open: boolean;
+  event: LifeOpsCalendarEvent | null;
+  goals?: LifeOpsGoalRecord[];
+  onClose: () => void;
+  onSaved?: (event: LifeOpsCalendarEvent) => void;
+  onDeleted?: (eventId: string) => void;
+}
+
+export function EventEditorDrawer({
+  open,
+  event,
+  goals = [],
+  onClose,
+  onSaved,
+  onDeleted,
+}: EventEditorDrawerProps) {
+  const { setActionNotice, t } = useApp();
+  const [title, setTitle] = useState("");
+  const [startAt, setStartAt] = useState("");
+  const [endAt, setEndAt] = useState("");
+  const [notes, setNotes] = useState("");
+  const [linkedGoalId, setLinkedGoalId] = useState<string>("");
+  const [reminders, setReminders] = useState<string>(""); // comma-separated minutesBefore
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Populate form when event changes.
+  useEffect(() => {
+    if (!event) {
+      return;
+    }
+    setTitle(event.title);
+    setStartAt(toLocalInputValue(event.startAt));
+    setEndAt(toLocalInputValue(event.endAt));
+    setNotes(event.description ?? "");
+    setLinkedGoalId("");
+    setReminders("");
+    setError(null);
+  }, [event]);
+
+  const handleSave = useCallback(async () => {
+    if (!event) {
+      return;
+    }
+    const patch: CalendarEventPatch = {};
+    if (title.trim() && title.trim() !== event.title) {
+      patch.title = title.trim();
+    }
+    const nextStartAt = fromLocalInputValue(startAt);
+    if (nextStartAt && nextStartAt !== event.startAt) {
+      patch.startAt = nextStartAt;
+    }
+    const nextEndAt = fromLocalInputValue(endAt);
+    if (nextEndAt && nextEndAt !== event.endAt) {
+      patch.endAt = nextEndAt;
+    }
+    if (notes.trim() !== (event.description ?? "")) {
+      patch.description = notes.trim();
+    }
+    const minutesBefore = reminders
+      .split(",")
+      .map((s) => Number(s.trim()))
+      .filter((n) => Number.isFinite(n) && n >= 0);
+    if (minutesBefore.length > 0) {
+      patch.minutesBefore = minutesBefore;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await updateCalendarEvent(event.id, patch);
+      setActionNotice(
+        t("eventEditor.saved", {
+          defaultValue: "Event saved.",
+        }),
+        "success",
+        2400,
+      );
+      onSaved?.(result.event);
+      onClose();
+    } catch (cause) {
+      setError(
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : t("eventEditor.saveFailed", {
+              defaultValue: "Could not save the event.",
+            }),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    endAt,
+    event,
+    notes,
+    onClose,
+    onSaved,
+    reminders,
+    setActionNotice,
+    startAt,
+    t,
+    title,
+  ]);
+
+  const handleDelete = useCallback(async () => {
+    if (!event) {
+      return;
+    }
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteCalendarEvent(event.id);
+      setActionNotice(
+        t("eventEditor.deleted", {
+          defaultValue: "Event deleted.",
+        }),
+        "success",
+        2400,
+      );
+      onDeleted?.(event.id);
+      onClose();
+    } catch (cause) {
+      setError(
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : t("eventEditor.deleteFailed", {
+              defaultValue: "Could not delete the event.",
+            }),
+      );
+    } finally {
+      setDeleting(false);
+      setConfirmDeleteOpen(false);
+    }
+  }, [event, onClose, onDeleted, setActionNotice, t]);
+
+  if (!event) {
+    return null;
+  }
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+        <DialogContent
+          className="fixed bottom-0 right-0 top-0 m-0 h-full w-full max-w-sm translate-x-0 translate-y-0 overflow-y-auto rounded-l-2xl rounded-r-none border-l border-t-0 border-border/16 bg-bg p-0 shadow-xl duration-200 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-right-full sm:w-96"
+          data-testid="event-editor-drawer"
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-border/12 px-5 py-4">
+            <div>
+              <div className="text-sm font-semibold text-txt">
+                {t("eventEditor.title", {
+                  defaultValue: "Edit event",
+                })}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={t("common.close", { defaultValue: "Close" })}
+              className="rounded-full p-1.5 text-muted transition-colors hover:bg-bg-hover/40 hover:text-txt"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="space-y-4 px-5 py-5">
+            {error ? (
+              <div className="rounded-2xl bg-danger/10 px-3 py-2 text-xs text-danger">
+                {error}
+              </div>
+            ) : null}
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted">
+                {t("common.title", { defaultValue: "Title" })}
+              </label>
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder={t("eventEditor.titlePlaceholder", {
+                  defaultValue: "Event title",
+                })}
+                aria-label={t("eventEditor.titleAria", {
+                  defaultValue: "Event title",
+                })}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted">
+                  {t("eventEditor.startAt", { defaultValue: "Start" })}
+                </label>
+                <Input
+                  type="datetime-local"
+                  value={startAt}
+                  onChange={(e) => setStartAt(e.target.value)}
+                  aria-label={t("eventEditor.startAtAria", {
+                    defaultValue: "Start time",
+                  })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted">
+                  {t("eventEditor.endAt", { defaultValue: "End" })}
+                </label>
+                <Input
+                  type="datetime-local"
+                  value={endAt}
+                  onChange={(e) => setEndAt(e.target.value)}
+                  aria-label={t("eventEditor.endAtAria", {
+                    defaultValue: "End time",
+                  })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted">
+                {t("eventEditor.notes", { defaultValue: "Notes" })}
+              </label>
+              <Textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder={t("eventEditor.notesPlaceholder", {
+                  defaultValue: "Add notes…",
+                })}
+                className="min-h-20"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted">
+                {t("eventEditor.reminders", {
+                  defaultValue: "Reminders (minutes before, comma-separated)",
+                })}
+              </label>
+              <Input
+                value={reminders}
+                onChange={(e) => setReminders(e.target.value)}
+                placeholder={t("eventEditor.remindersPlaceholder", {
+                  defaultValue: "e.g. 10, 30, 60",
+                })}
+                aria-label={t("eventEditor.remindersAria", {
+                  defaultValue: "Reminder minutes before event",
+                })}
+              />
+            </div>
+
+            {goals.length > 0 ? (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted">
+                  {t("eventEditor.linkedGoal", {
+                    defaultValue: "Linked goal",
+                  })}
+                </label>
+                <Select value={linkedGoalId} onValueChange={setLinkedGoalId}>
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={t("eventEditor.noGoal", {
+                        defaultValue: "No goal",
+                      })}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">
+                      {t("eventEditor.noGoal", { defaultValue: "No goal" })}
+                    </SelectItem>
+                    {goals.map((g) => (
+                      <SelectItem key={g.goal.id} value={g.goal.id}>
+                        {g.goal.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 border-t border-border/12 px-5 py-4">
+            <Button
+              variant="surfaceDestructive"
+              size="sm"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={deleting || saving}
+              onClick={() => setConfirmDeleteOpen(true)}
+            >
+              {t("common.delete", { defaultValue: "Delete" })}
+            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-xl px-3 text-xs font-semibold"
+                onClick={onClose}
+                disabled={saving}
+              >
+                {t("common.cancel", { defaultValue: "Cancel" })}
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 rounded-xl px-3 text-xs font-semibold"
+                disabled={saving || !title.trim()}
+                onClick={() => void handleSave()}
+              >
+                {saving
+                  ? t("common.saving", { defaultValue: "Saving…" })
+                  : t("common.save", { defaultValue: "Save" })}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title={t("eventEditor.confirmDeleteTitle", {
+          defaultValue: "Delete event?",
+        })}
+        message={t("eventEditor.confirmDeleteDescription", {
+          defaultValue:
+            "This will delete the event from your calendar. This cannot be undone.",
+        })}
+        confirmLabel={t("common.delete", { defaultValue: "Delete" })}
+        cancelLabel={t("common.cancel", { defaultValue: "Cancel" })}
+        variant="danger"
+        onConfirm={() => void handleDelete()}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
+    </>
+  );
+}
