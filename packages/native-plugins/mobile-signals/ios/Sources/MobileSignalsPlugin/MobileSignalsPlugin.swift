@@ -10,6 +10,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "startMonitoring", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stopMonitoring", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getSnapshot", returnType: CAPPluginReturnPromise),
@@ -73,22 +74,65 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc public override func requestPermissions(_ call: CAPPluginCall) {
         let types = requestedHealthTypes()
         guard !types.isEmpty else {
-            call.resolve(buildPermissionResult(
+            resolvePermissionAfterScreenTimeRequest(
+                call,
                 status: "not-applicable",
                 canRequest: false,
                 reason: "HealthKit sleep and biometric types are unavailable on this device."
-            ))
+            )
             return
         }
 
         healthStore.requestAuthorization(toShare: nil, read: Set(types)) { [weak self] success, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                var result = self.buildPermissionResult()
-                if !success, let error {
-                    result["reason"] = "HealthKit permission request failed: \(error.localizedDescription)"
-                }
-                call.resolve(result)
+                let healthReason = !success
+                    ? "HealthKit permission request failed: \(error?.localizedDescription ?? "unknown error")"
+                    : nil
+                self.resolvePermissionAfterScreenTimeRequest(
+                    call,
+                    reason: healthReason
+                )
+            }
+        }
+    }
+
+    @objc func openSettings(_ call: CAPPluginCall) {
+        let target = call.getString("target") ?? "app"
+        let reason: String?
+        let actualTarget: String
+        let urlString: String
+
+        if target == "notification", #available(iOS 16.0, *) {
+            actualTarget = "notification"
+            urlString = UIApplication.openNotificationSettingsURLString
+            reason = nil
+        } else {
+            actualTarget = "app"
+            urlString = UIApplication.openSettingsURLString
+            reason = target == "app" || target == "health" || target == "localNetwork"
+                ? nil
+                : "iOS only supports stable public deep links to this app's Settings screen."
+        }
+
+        guard let url = URL(string: urlString) else {
+            call.resolve([
+                "opened": false,
+                "target": target,
+                "actualTarget": actualTarget,
+                "reason": "Unable to build iOS settings URL.",
+            ])
+            return
+        }
+
+        DispatchQueue.main.async {
+            UIApplication.shared.open(url, options: [:]) { opened in
+                call.resolve([
+                    "opened": opened,
+                    "target": target,
+                    "actualTarget": actualTarget,
+                    "reason": opened ? (reason ?? NSNull()) : "iOS declined to open Settings.",
+                ])
             }
         }
     }
@@ -184,6 +228,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
         canRequest overrideCanRequest: Bool? = nil,
         reason overrideReason: String? = nil
     ) -> [String: Any] {
+        let screenTimeStatus = ScreenTimeSupport.buildStatus()
         guard HKHealthStore.isHealthDataAvailable() else {
             return [
                 "status": overrideStatus ?? "not-applicable",
@@ -193,7 +238,12 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                     "sleep": false,
                     "biometrics": false,
                 ],
-                "screenTime": ScreenTimeSupport.buildStatus(),
+                "screenTime": screenTimeStatus,
+                "setupActions": buildSetupActions(
+                    healthStatus: overrideStatus ?? "not-applicable",
+                    healthCanRequest: overrideCanRequest ?? false,
+                    screenTimeStatus: screenTimeStatus
+                ),
             ]
         }
 
@@ -228,10 +278,98 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             "status": status,
             "canRequest": overrideCanRequest ?? (status != "granted" && hasRequestedTypes),
             "reason": overrideReason ?? NSNull(),
-            "screenTime": ScreenTimeSupport.buildStatus(),
+            "screenTime": screenTimeStatus,
+            "setupActions": buildSetupActions(
+                healthStatus: status,
+                healthCanRequest: overrideCanRequest ?? (status != "granted" && hasRequestedTypes),
+                screenTimeStatus: screenTimeStatus
+            ),
             "permissions": [
                 "sleep": sleepGranted,
                 "biometrics": biometricGranted,
+            ],
+        ]
+    }
+
+    private func resolvePermissionAfterScreenTimeRequest(
+        _ call: CAPPluginCall,
+        status: String? = nil,
+        canRequest: Bool? = nil,
+        reason: String? = nil
+    ) {
+        ScreenTimeSupport.requestAuthorizationIfAvailable { [weak self] screenTimeReason in
+            guard let self = self else { return }
+            var result = self.buildPermissionResult(
+                status: status,
+                canRequest: canRequest,
+                reason: reason
+            )
+            if let screenTimeReason {
+                if let existingReason = result["reason"] as? String, !existingReason.isEmpty {
+                    result["reason"] = "\(existingReason) \(screenTimeReason)"
+                } else {
+                    result["reason"] = screenTimeReason
+                }
+            }
+            call.resolve(result)
+        }
+    }
+
+    private func buildSetupActions(
+        healthStatus: String,
+        healthCanRequest: Bool,
+        screenTimeStatus: [String: Any]
+    ) -> [[String: Any]] {
+        let healthReady = healthStatus == "granted"
+        let authorization = screenTimeStatus["authorization"] as? [String: Any] ?? [:]
+        let screenTimeAuthStatus = authorization["status"] as? String ?? "unavailable"
+        let screenTimeCanRequest = authorization["canRequest"] as? Bool ?? false
+        let screenTimeSupported = screenTimeStatus["supported"] as? Bool ?? false
+        let screenTimeReady = screenTimeAuthStatus == "approved"
+        let screenTimeReason = screenTimeStatus["reason"] ?? NSNull()
+
+        return [
+            [
+                "id": "health_permissions",
+                "label": "HealthKit",
+                "status": healthReady
+                    ? "ready"
+                    : (healthStatus == "not-applicable" ? "unavailable" : "needs-action"),
+                "canRequest": healthCanRequest,
+                "canOpenSettings": true,
+                "settingsTarget": "health",
+                "reason": healthReady
+                    ? NSNull()
+                    : "Grant Health read access for sleep, heart rate, HRV, respiratory rate, and oxygen saturation.",
+            ],
+            [
+                "id": "screen_time_authorization",
+                "label": "Screen Time",
+                "status": screenTimeReady
+                    ? "ready"
+                    : (screenTimeSupported ? "needs-action" : "unavailable"),
+                "canRequest": screenTimeCanRequest,
+                "canOpenSettings": true,
+                "settingsTarget": "screenTime",
+                "reason": screenTimeReady ? NSNull() : screenTimeReason,
+            ],
+            [
+                "id": "local_network",
+                "label": "Local Network",
+                "status": "needs-action",
+                "canRequest": false,
+                "canOpenSettings": true,
+                "settingsTarget": "localNetwork",
+                "reason": "Allow Local Network when this phone sends data to a Mac or LAN agent.",
+            ],
+            [
+                "id": "notification_settings",
+                "label": "Notifications",
+                "status": "needs-action",
+                "canRequest": false,
+                "canOpenSettings": true,
+                "settingsTarget": "notification",
+                "reason": "Open notification settings if reminders or telemetry prompts are muted.",
             ],
         ]
     }
