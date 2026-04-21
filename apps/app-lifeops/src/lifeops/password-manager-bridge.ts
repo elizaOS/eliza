@@ -123,7 +123,7 @@ function isFixturePasswordManagerEnabled(): boolean {
   const explicit = process.env.MILADY_TEST_PASSWORD_MANAGER_BACKEND;
   if (isFalsyEnv(explicit)) return false;
   if (isTruthyEnv(explicit)) return true;
-  return process.env.MILADY_BENCHMARK_USE_MOCKS === "1";
+  return false;
 }
 
 function listItemsViaFixture(): PasswordManagerItem[] {
@@ -580,7 +580,7 @@ export async function injectCredentialToClipboard(
   if (backend === "fixture") {
     logger.warn(
       { itemId, field, boundary: "lifeops", component: "password-manager-bridge" },
-      "[password-manager-bridge] fixture backend active: NO actual clipboard write performed. Set MILADY_TEST_PASSWORD_MANAGER_BACKEND/MILADY_BENCHMARK_USE_MOCKS to 0 for real injection.",
+      "[password-manager-bridge] fixture backend active: NO actual clipboard write performed. Set MILADY_TEST_PASSWORD_MANAGER_BACKEND=0 for real injection.",
     );
     return { ok: true, expiresInSeconds: CLIPBOARD_TTL_SECONDS, fixtureMode: true };
   }

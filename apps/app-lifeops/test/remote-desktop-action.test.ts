@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { remoteDesktopAction } from "../src/actions/remote-desktop.js";
 import {
+  detectRemoteDesktopBackend,
   endRemoteSession,
   listActiveSessions,
 } from "../src/lifeops/remote-desktop.js";
 
 const SAME_ID = "00000000-0000-0000-0000-000000000001";
 const ORIGINAL_MOCK_ENV = process.env.MILADY_TEST_REMOTE_DESKTOP_BACKEND;
+const ORIGINAL_BENCHMARK_ENV = process.env.MILADY_BENCHMARK_USE_MOCKS;
 
 function makeRuntime() {
   return { agentId: SAME_ID } as unknown as Parameters<
@@ -41,9 +43,25 @@ afterEach(async () => {
   } else {
     process.env.MILADY_TEST_REMOTE_DESKTOP_BACKEND = ORIGINAL_MOCK_ENV;
   }
+  if (ORIGINAL_BENCHMARK_ENV === undefined) {
+    delete process.env.MILADY_BENCHMARK_USE_MOCKS;
+  } else {
+    process.env.MILADY_BENCHMARK_USE_MOCKS = ORIGINAL_BENCHMARK_ENV;
+  }
 });
 
 describe("remoteDesktopAction", () => {
+  test("benchmark mock mode does not fabricate a remote desktop backend", async () => {
+    delete process.env.MILADY_TEST_REMOTE_DESKTOP_BACKEND;
+    process.env.MILADY_BENCHMARK_USE_MOCKS = "1";
+
+    const backend = await detectRemoteDesktopBackend({
+      preferredBackend: "none",
+    });
+
+    expect(backend).toBe("none");
+  });
+
   test("start without confirmed=true returns confirmation prompt without opening a session", async () => {
     const result = await remoteDesktopAction.handler!(
       makeRuntime(),
