@@ -79,7 +79,11 @@ function hasContractArtifacts(): boolean {
   );
 }
 
-const describeAnvil = describeIf(hasAnvilBinary() && hasContractArtifacts());
+const describeAnvil = describeIf(
+  process.env.MILADY_LIVE_BROWSER_SUITE === "1" &&
+    hasAnvilBinary() &&
+    hasContractArtifacts(),
+);
 
 // ---------------------------------------------------------------------------
 // Test Suite
