@@ -5,6 +5,7 @@ import type {
   TypingMode,
 } from "@elizaos/core";
 import type { InboxTriageConfig } from "../contracts/inbox.js";
+export type { InboxTriageConfig } from "../contracts/inbox.js";
 import type { MemorySearchConfig } from "./types.tools.js";
 
 // --- Sandbox types (merged from types.sandbox.ts) ---

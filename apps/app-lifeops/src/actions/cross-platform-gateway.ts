@@ -3,7 +3,6 @@ import type {
   ActionResult,
   IAgentRuntime,
   Memory,
-  Role,
   State,
   UUID,
 } from "@elizaos/core";
