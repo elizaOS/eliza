@@ -8,11 +8,13 @@
     "./package.json": "./package.json",
     ".": "./src/index.ts",
     "./pty-status-dots": "./src/pty-status-dots.ts",
+    "./register-slots": "./src/register-slots.ts",
     "./api/*": "./src/api/*.ts",
     "./evals/*": "./src/evals/*.ts",
     "./*": "./src/*"
   },
   "dependencies": {
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",

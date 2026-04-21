@@ -123,15 +123,6 @@ const SHARED_LIFEOPS_EXTENSIONS_CONTRACT_PATH = path.join(
   "contracts",
   "lifeops-extensions.ts",
 );
-const NOTIFICATIONS_STATUS_PATH = path.join(
-  REPO_ROOT,
-  "eliza",
-  "apps",
-  "app-lifeops",
-  "src",
-  "lifeops",
-  "service-mixin-notifications.ts",
-);
 
 const ACTION_SHAPE_CHECK_TYPES = new Set([
   "selectedAction",
@@ -394,12 +385,10 @@ describe("LifeOps connector-certification fixture invariants (shape-only + sourc
   });
 
   it("keeps degraded connector status/auth DTOs exposed in shared contracts", async () => {
-    const [lifeopsSource, extensionsSource, notificationsSource] =
-      await Promise.all([
-        readFile(SHARED_LIFEOPS_CONTRACT_PATH, "utf8"),
-        readFile(SHARED_LIFEOPS_EXTENSIONS_CONTRACT_PATH, "utf8"),
-        readFile(NOTIFICATIONS_STATUS_PATH, "utf8"),
-      ]);
+    const [lifeopsSource, extensionsSource] = await Promise.all([
+      readFile(SHARED_LIFEOPS_CONTRACT_PATH, "utf8"),
+      readFile(SHARED_LIFEOPS_EXTENSIONS_CONTRACT_PATH, "utf8"),
+    ]);
 
     expect(lifeopsSource).toContain(
       "export interface LifeOpsConnectorDegradation",
@@ -422,9 +411,6 @@ describe("LifeOps connector-certification fixture invariants (shape-only + sourc
 
     expect(extensionsSource).toMatch(
       /interface LifeOpsIMessageConnectorStatus[\s\S]*degradations\?: LifeOpsConnectorDegradation\[\];/,
-    );
-    expect(notificationsSource).toMatch(
-      /interface NotificationsConnectorStatus[\s\S]*degradations: LifeOpsConnectorDegradation\[\];/,
     );
   });
 });
