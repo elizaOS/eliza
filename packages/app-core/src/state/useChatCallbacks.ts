@@ -760,6 +760,16 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       const previousMessages = conversationMessagesRef.current;
       const previousCutoffTs = companionMessageCutoffTs;
 
+      if (!title && previousConversationId) {
+        const hasUserMessage = previousMessages.some(
+          (message) => message.role === "user",
+        );
+        if (!hasUserMessage) {
+          resetConversationDraftState();
+          return;
+        }
+      }
+
       send.interruptActiveChatPipeline();
       resetConversationDraftState();
 

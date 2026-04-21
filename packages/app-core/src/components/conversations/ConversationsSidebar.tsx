@@ -623,11 +623,19 @@ export function ConversationsSidebar({
         isManageConnectionsActive ? "text-txt" : "text-muted hover:text-txt"
       }`}
     >
-      <Settings2 className="h-3.5 w-3.5" aria-hidden />
+      {isManageConnectionsActive ? (
+        <X className="h-3.5 w-3.5" aria-hidden />
+      ) : (
+        <Settings2 className="h-3.5 w-3.5" aria-hidden />
+      )}
       <span>
-        {t("conversations.manageConnections", {
-          defaultValue: "Manage",
-        })}
+        {isManageConnectionsActive
+          ? t("conversations.doneManagingConnections", {
+              defaultValue: "Done",
+            })
+          : t("conversations.manageConnections", {
+              defaultValue: "Manage",
+            })}
       </span>
     </button>
   );
@@ -715,6 +723,16 @@ export function ConversationsSidebar({
         collapseButtonAriaLabel={t("conversations.closePanel")}
         expandButtonAriaLabel={t("aria.expandChatsPanel")}
         header={undefined}
+        headerClassName={
+          !mobile && !isGameModal
+            ? "!px-2 !pt-1.5 !pb-1.5"
+            : undefined
+        }
+        collapseButtonClassName={
+          !mobile && !isGameModal
+            ? "!h-7 !w-7 !border-0 !bg-transparent !shadow-none hover:!bg-bg-muted/60"
+            : undefined
+        }
         collapseButtonLeading={
           <div className="flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
             <MessagesSquare className="h-3.5 w-3.5" aria-hidden />
@@ -849,12 +867,7 @@ export function ConversationsSidebar({
                 {manageConnectionsButton}
               </div>
             ) : (
-              <div className="flex items-center justify-between gap-2 px-1 pb-1">
-                <span className="text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
-                  {t("conversations.connectors", {
-                    defaultValue: "Connectors",
-                  })}
-                </span>
+              <div className="flex items-center justify-end gap-2 px-1 pb-1">
                 {manageConnectionsButton}
               </div>
             )}
