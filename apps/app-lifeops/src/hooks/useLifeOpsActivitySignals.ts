@@ -20,7 +20,11 @@ const APP_SIGNAL_DEDUP_WINDOW_MS = 5_000;
 const RUNTIME_READY_POLL_MS = 5_000;
 const PAGE_HEARTBEAT_MS = 60_000;
 const DESKTOP_POWER_POLL_MS = 60_000;
-const MOBILE_HEALTH_POLL_MS = 30 * 60_000;
+// Health data drives wake detection: a 30-minute poll loses 30 minutes of
+// morning fidelity. 5 minutes strikes a balance between battery and the wake
+// signal — the expensive HealthKit work is already gated by monitoring being
+// active, so this does not fire when the app is backgrounded on iOS.
+const MOBILE_HEALTH_POLL_MS = 5 * 60_000;
 
 type SignalFingerprint = {
   fingerprint: string;

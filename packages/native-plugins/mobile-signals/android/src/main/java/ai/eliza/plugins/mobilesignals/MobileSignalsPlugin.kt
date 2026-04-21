@@ -387,7 +387,13 @@ class MobileSignalsPlugin : Plugin() {
 
         val latestSleep = sleepSessions.maxByOrNull { it.startTime }
         val sleepIsAvailable = latestSleep != null
-        val sleepIsSleeping = latestSleep?.endTime?.isAfter(now) == true || latestSleep?.endTime == null
+        // Treat a sleep session as still in progress only when it ends in the
+        // future or very recently. Older sessions describe a completed sleep
+        // that has already been woken up from, and must not be reported as
+        // "sleeping now". Matches the iOS freshness window.
+        val sleepFreshnessWindow = Duration.ofMinutes(15)
+        val sleepIsSleeping = latestSleep != null &&
+            latestSleep.endTime.isAfter(now.minus(sleepFreshnessWindow))
         val sleepAsleepAt = latestSleep?.startTime?.toEpochMilli()
         val sleepAwakeAt = if (sleepIsSleeping) null else latestSleep?.endTime?.toEpochMilli()
         val sleepDurationMinutes = latestSleep?.let {
