@@ -369,7 +369,7 @@ export const ChatMessage = memo(function ChatMessage({
       id={getChatMessageAnchorId(message.id)}
       className={`flex items-start gap-2 sm:gap-3 ${
         isRightAligned ? "justify-end" : "justify-start"
-      } ${isGrouped ? "mt-1" : "mt-4"}`}
+      } ${isGrouped ? "mt-0.5" : "mt-1.5"}`}
       data-testid="chat-message"
       data-role={message.role}
       onMouseEnter={supportsHover ? () => setShowActions(true) : undefined}
@@ -427,9 +427,7 @@ export const ChatMessage = memo(function ChatMessage({
         <ChatBubble
           tone={isUser ? "user" : "assistant"}
           source={normalizedSource}
-          className={`relative group rounded-2xl px-4 py-3 text-[15px] leading-[1.7] whitespace-pre-wrap break-words ${
-            isRightAligned ? "rounded-br-sm" : "rounded-bl-sm"
-          }`}
+          className={`relative group pl-3 pr-1 py-1.5 text-[15px] leading-[1.7] whitespace-pre-wrap break-words`}
           style={{ fontFamily: "var(--font-chat)" }}
         >
           {showReplyReference ? (

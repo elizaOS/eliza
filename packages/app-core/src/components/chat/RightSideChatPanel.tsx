@@ -263,20 +263,20 @@ export function RightSideChatPanel({
         {collapsed ? (
           <button
             type="button"
-            className="mx-auto flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-card/60 hover:text-txt"
+            className="mx-auto flex h-8 w-8 items-center justify-center text-muted hover:text-txt"
             aria-label="Expand panel"
             onClick={() => setCollapsed(false)}
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-5 w-5" />
           </button>
         ) : (
           <button
             type="button"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-card/60 hover:text-txt"
+            className="flex h-8 w-8 items-center justify-center text-muted hover:text-txt"
             aria-label="Collapse panel"
             onClick={() => setCollapsed(true)}
           >
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className="h-5 w-5" />
           </button>
         )}
       </div>

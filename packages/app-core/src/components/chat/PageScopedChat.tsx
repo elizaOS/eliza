@@ -444,10 +444,10 @@ export function PageScopedChat({
                     key={message.id}
                     tabIndex={index === visibleMessages.length - 1 ? 0 : -1}
                     aria-label={ariaLabel}
-                    className={`rounded-lg px-3 py-2 text-sm leading-relaxed focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/50 ${
+                    className={`pl-3 py-1.5 text-sm leading-relaxed focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/50 ${
                       message.role === "user"
-                        ? "ml-8 self-end bg-accent/10 text-txt"
-                        : "mr-8 bg-bg/50 text-txt"
+                        ? "ml-8 self-end border-l-2 border-accent/60 text-txt-strong"
+                        : "mr-8 text-txt"
                     }`}
                   >
                     <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
@@ -466,7 +466,7 @@ export function PageScopedChat({
 
               {/* Typing indicator while waiting for first token */}
               {sending && !firstTokenReceived && (
-                <div className="mr-8 rounded-lg bg-bg/50 px-3 py-2">
+                <div className="mr-8 pl-3 py-1.5">
                   <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
                     {t("automations.chat.roleAssistant", {
                       defaultValue: "Assistant",

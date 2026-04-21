@@ -196,17 +196,17 @@ export function ChatComposer({
     >
       {!isGameModal && !hideAttachButton ? (
         <Button
-          variant={chatPendingImagesCount > 0 ? "surfaceAccent" : "surface"}
+          variant="ghost"
           size="icon"
-          className={`h-[46px] w-[46px] shrink-0 ${
-            chatPendingImagesCount > 0 ? "ring-1 ring-inset ring-accent/25" : ""
+          className={`h-8 w-8 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt ${
+            chatPendingImagesCount > 0 ? "text-accent hover:text-accent" : ""
           }`}
           onClick={onAttachImage}
           aria-label={t("aria.attachImage")}
           title={t("chatview.AttachImage")}
           disabled={isComposerLocked}
         >
-          <Paperclip className="h-4 w-4" />
+          <Paperclip className="h-5 w-5" />
         </Button>
       ) : null}
 
@@ -221,7 +221,7 @@ export function ChatComposer({
 
       {showVoiceButton ? (
         <Button
-          variant={isGameModal ? "ghost" : defaultMicButtonVariant}
+          variant="ghost"
           size="icon"
           className={
             isGameModal
@@ -230,7 +230,7 @@ export function ChatComposer({
                     ? "animate-pulse select-none rounded-full border border-border/28 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_82%,transparent),color-mix(in_srgb,var(--bg)_66%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_16px_26px_-24px_rgba(15,23,42,0.16)] ring-1 ring-inset ring-white/8 backdrop-blur-md transition-all duration-300 active:scale-95 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_18px_28px_-24px_rgba(0,0,0,0.3)]"
                     : "select-none rounded-full border border-transparent bg-transparent text-muted-strong shadow-none ring-0 backdrop-blur-none transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_74%,transparent),color-mix(in_srgb,var(--bg)_58%,transparent))] hover:text-txt active:scale-95"
                 } ${isComposerLocked ? "opacity-50" : ""}`
-              : "h-[46px] w-[46px] shrink-0"
+              : `h-8 w-8 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt ${voice.isListening ? "text-accent hover:text-accent" : ""}`
           }
           onClick={handleMicClick}
           onPointerDown={handleMicPointerDown}
@@ -260,7 +260,7 @@ export function ChatComposer({
           }
           disabled={isComposerLocked}
         >
-          <Mic className={isGameModal ? "h-5 w-5" : "h-4 w-4"} />
+          <Mic className="h-5 w-5" />
         </Button>
       ) : null}
 
@@ -349,7 +349,7 @@ export function ChatComposer({
         </Button>
       ) : (
         <Button
-          variant={isGameModal ? "default" : "surfaceAccent"}
+          variant={isGameModal ? "default" : "ghost"}
           data-testid="chat-composer-action"
           size="icon"
           className={
@@ -359,14 +359,14 @@ export function ChatComposer({
                     ? "select-none rounded-full border border-border/28 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_82%,transparent),color-mix(in_srgb,var(--bg)_66%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_16px_26px_-24px_rgba(15,23,42,0.16)] ring-1 ring-inset ring-white/8 backdrop-blur-md transition-all duration-300 active:scale-95 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_18px_28px_-24px_rgba(0,0,0,0.3)]"
                     : "select-none rounded-full border border-transparent bg-transparent text-muted-strong shadow-none ring-0 backdrop-blur-none transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_74%,transparent),color-mix(in_srgb,var(--bg)_58%,transparent))] hover:text-txt active:scale-95 opacity-80"
                 }`
-              : "ml-1 flex items-center justify-center rounded-full transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0 border-accent/26 disabled:ring-0"
+              : "ml-1 h-8 w-8 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt transition-colors select-none active:scale-95 disabled:ring-0 disabled:opacity-40"
           }
           onClick={onSend}
           disabled={isComposerLocked || (!hasDraft && !chatSending)}
           title={actionButtonLabel}
           aria-label={actionButtonLabel}
         >
-          <Send className={isGameModal ? "h-4.5 w-4.5" : "h-4 w-4"} />
+          <Send className={isGameModal ? "h-4.5 w-4.5" : "h-5 w-5"} />
         </Button>
       )}
     </div>
