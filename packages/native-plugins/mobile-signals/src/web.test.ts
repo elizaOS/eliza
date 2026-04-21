@@ -72,7 +72,9 @@ describe("MobileSignalsWeb Screen Time status", () => {
     const snapshot = await plugin.getSnapshot();
     expect(snapshot.healthSnapshot?.screenTime).toEqual(permissions.screenTime);
 
-    await expect(plugin.openSettings({ target: "usageAccess" })).resolves.toEqual({
+    await expect(
+      plugin.openSettings({ target: "usageAccess" }),
+    ).resolves.toEqual({
       opened: false,
       target: "usageAccess",
       actualTarget: "app",
