@@ -52,14 +52,14 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { WebSocketServer } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 import { CharacterSchema } from "../config/zod-schema.js";
 import {
   type ElizaConfig,
   loadElizaConfig,
   saveElizaConfig,
 } from "../config/config.js";
-import { resolveStateDir } from "../config/paths.js";
+import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
 import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.js";
 import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
 import { TxService } from "@elizaos/app-steward/api/tx-service";

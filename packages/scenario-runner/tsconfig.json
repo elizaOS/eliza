@@ -6,7 +6,6 @@
     "allowImportingTsExtensions": true,
     "strict": true,
     "noImplicitAny": true,
-    "noUncheckedIndexedAccess": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
