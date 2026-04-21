@@ -4,7 +4,7 @@ import { extractParam, extractParamInt } from "./param-parser.js";
 
 export const withdrawItem: Action = {
   name: "WITHDRAW_ITEM",
-  description: "Withdraw an item from the bank by name, optionally specifying a count (defaults to 1)"
+  description: "Withdraw an item from the bank by name, optionally specifying a count (defaults to 1)",
   descriptionCompressed: "Withdraw item from bank.",
   similes: ["TAKE_FROM_BANK"],
   examples: [],

@@ -4,7 +4,7 @@ import { extractParam } from "./param-parser.js";
 
 export const equipItem: Action = {
   name: "EQUIP_ITEM",
-  description: "Equip an item from inventory by name"
+  description: "Equip an item from inventory by name",
   descriptionCompressed: "Equip inventory item.",
   similes: ["WEAR_ITEM", "WIELD_ITEM"],
   examples: [],

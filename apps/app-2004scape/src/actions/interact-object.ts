@@ -4,7 +4,7 @@ import { extractParam } from "./param-parser.js";
 
 export const interactObject: Action = {
   name: "INTERACT_OBJECT",
-  description: "Interact with a world object by name, with an optional interaction option"
+  description: "Interact with a world object by name, with an optional interaction option",
   descriptionCompressed: "Interact with world object.",
   similes: ["USE_OBJECT", "CLICK_OBJECT"],
   examples: [],

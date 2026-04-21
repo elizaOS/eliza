@@ -4,7 +4,7 @@ import { extractParam } from "./param-parser.js";
 
 export const openShop: Action = {
   name: "OPEN_SHOP",
-  description: "Open a shop by talking to a shopkeeper NPC"
+  description: "Open a shop by talking to a shopkeeper NPC",
   descriptionCompressed: "Open shop via shopkeeper.",
   similes: ["TRADE_WITH_NPC", "BROWSE_SHOP"],
   examples: [],

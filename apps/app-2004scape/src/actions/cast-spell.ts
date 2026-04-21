@@ -4,7 +4,7 @@ import { extractParam, extractParamInt } from "./param-parser.js";
 
 export const castSpell: Action = {
   name: "CAST_SPELL",
-  description: "Cast a spell by ID, optionally targeting an NPC"
+  description: "Cast a spell by ID, optionally targeting an NPC",
   descriptionCompressed: "Cast spell by ID, opt. target NPC.",
   similes: ["USE_MAGIC", "CAST"],
   examples: [],

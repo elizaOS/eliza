@@ -4,7 +4,7 @@ import { extractParamInt } from "./param-parser.js";
 
 export const navigateDialog: Action = {
   name: "NAVIGATE_DIALOG",
-  description: "Select a dialog option by number (1-based) during an NPC conversation"
+  description: "Select a dialog option by number (1-based) during an NPC conversation",
   descriptionCompressed: "Select NPC dialog option by number.",
   similes: ["SELECT_DIALOG", "CHOOSE_OPTION", "DIALOG_OPTION"],
   examples: [],

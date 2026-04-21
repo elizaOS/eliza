@@ -4,7 +4,7 @@ import { extractParam } from "./param-parser.js";
 
 export const attackNpc: Action = {
   name: "ATTACK_NPC",
-  description: "Attack a nearby NPC by name"
+  description: "Attack a nearby NPC by name",
   descriptionCompressed: "Attack nearby NPC by name.",
   similes: ["FIGHT_NPC", "MELEE_NPC"],
   examples: [],

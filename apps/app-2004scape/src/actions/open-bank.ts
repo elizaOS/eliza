@@ -2,7 +2,7 @@ import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from "@eli
 
 export const openBank: Action = {
   name: "OPEN_BANK",
-  description: "Open the nearest bank booth or banker NPC"
+  description: "Open the nearest bank booth or banker NPC",
   descriptionCompressed: "Open nearest bank.",
   similes: ["USE_BANK", "ACCESS_BANK"],
   examples: [],

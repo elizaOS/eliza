@@ -2,7 +2,7 @@ import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from "@eli
 
 export const fletchLogs: Action = {
   name: "FLETCH_LOGS",
-  description: "Use a knife on logs in inventory to fletch them"
+  description: "Use a knife on logs in inventory to fletch them",
   descriptionCompressed: "Fletch logs with knife.",
   similes: ["FLETCHING", "CARVE_LOGS"],
   examples: [],
