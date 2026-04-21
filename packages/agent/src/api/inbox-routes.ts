@@ -1622,6 +1622,13 @@ interface InboxChat {
   worldId?: string;
   /** User-facing world/server label for filters and grouped headers. */
   worldLabel: string;
+  /**
+   * Normalized room kind. "DM" for 1:1 direct messages the connector
+   * exposes as private chats; other platform-specific strings (GROUP,
+   * CHANNEL, VOICE, …) for everything else. Optional because not every
+   * connector tags rooms.
+   */
+  roomType?: string;
   /** Display title — contact name for 1:1 chats, group name otherwise. */
   title: string;
   /** Best-effort avatar URL for direct chats when the connector exposes one. */
@@ -1889,6 +1896,7 @@ async function loadInboxChats(
       transportSource: entry.source,
       ...(worldId ? { worldId } : {}),
       worldLabel: resolveInboxWorldLabel(room, world),
+      ...(roomType ? { roomType } : {}),
       title,
       avatarUrl: isDiscordConnectorSource(entry.source)
         ? await cacheInboxDiscordAvatar(

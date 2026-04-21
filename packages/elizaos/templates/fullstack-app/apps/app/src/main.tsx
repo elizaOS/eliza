@@ -43,10 +43,14 @@ import {
   shouldInstallMainWindowOnboardingPatches,
   syncDetachedShellLocation,
 } from "@elizaos/app-core/platform";
-import { LifeOpsActivitySignalsEffect } from "@elizaos/app-lifeops/components/LifeOpsActivitySignalsEffect";
 import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "@elizaos/app-lifeops/platform";
+import { LifeOpsActivitySignalsEffect } from "@elizaos/app-lifeops/components/LifeOpsActivitySignalsEffect";
 // Side-effect: register LifeOps sidebar widgets into the app-core widget registry.
 import "@elizaos/app-lifeops/widgets";
+// Side-effect: register coding-agent (task-coordinator) slots so app-core
+// slot wrappers (CodingAgentControlChip, PtyConsoleBase, etc.) render the
+// real components instead of nulls.
+import "@elizaos/app-task-coordinator/register-slots";
 // Side-effect: register game operator surfaces + detail extensions.
 import "@elizaos/app-babylon/ui";
 import "@elizaos/app-scape/ui";

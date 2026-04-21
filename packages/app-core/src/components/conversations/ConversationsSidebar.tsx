@@ -37,6 +37,7 @@ import {
   useState,
 } from "react";
 import { client } from "../../api";
+import type { PluginInfo } from "../../api/client-types-config";
 import { useApp } from "../../state";
 import { usePtySessions } from "../../state/PtySessionsContext";
 import {
@@ -44,6 +45,7 @@ import {
   iconImageSource,
   resolveIcon,
 } from "../pages/plugin-list-utils";
+import { getBrandIcon } from "./brand-icons";
 import { ConversationRenameDialog } from "./ConversationRenameDialog";
 import {
   ALL_CONNECTORS_SOURCE_SCOPE,
@@ -72,6 +74,7 @@ interface InboxChatRow {
   canSend?: boolean;
   id: string;
   lastMessageAt: number;
+  roomType?: string;
   source: string;
   transportSource?: string;
   title: string;
@@ -127,17 +130,56 @@ function selectLabel(option: {
       <span className="inline-flex items-center gap-1.5">
         <Icon className="h-3.5 w-3.5 shrink-0" />
         <span>{option.label}</span>
-        <span className="text-muted">({option.count})</span>
       </span>
     );
   }
-  return `${option.label} (${option.count})`;
+  return option.label;
 }
 
-function renderSourceScopeIcon(option: {
-  icon?: React.ComponentType<{ className?: string }>;
-  value: string;
-}) {
+function renderPluginIcon(plugin: PluginInfo): React.ReactNode | null {
+  const icon = resolveIcon(plugin);
+  if (!icon) return null;
+  if (typeof icon === "string") {
+    const src = iconImageSource(icon);
+    return src ? (
+      <img
+        src={src}
+        alt=""
+        aria-hidden
+        className="h-4 w-4 shrink-0 object-contain"
+      />
+    ) : (
+      <span aria-hidden className="text-sm leading-none">
+        {icon}
+      </span>
+    );
+  }
+  const IconComponent = icon;
+  return <IconComponent className="h-4 w-4" />;
+}
+
+function renderSourceScopeIcon(
+  option: {
+    icon?: React.ComponentType<{ className?: string }>;
+    value: string;
+  },
+  plugins: PluginInfo[],
+) {
+  if (option.value === ELIZA_SOURCE_SCOPE) {
+    return <MessagesSquare className="h-4 w-4" />;
+  }
+  if (option.value === TERMINAL_SOURCE_SCOPE) {
+    return <TerminalIcon className="h-4 w-4" />;
+  }
+  const Brand = getBrandIcon(option.value);
+  if (Brand) {
+    return <Brand className="h-4 w-4" />;
+  }
+  const plugin = plugins.find((p) => p.id === option.value);
+  if (plugin) {
+    const rendered = renderPluginIcon(plugin);
+    if (rendered) return rendered;
+  }
   const Icon = option.icon ?? MessagesSquare;
   return <Icon className="h-4 w-4" />;
 }
@@ -196,6 +238,7 @@ export function ConversationsSidebar({
             canSend: chat.canSend,
             id: chat.id,
             lastMessageAt: chat.lastMessageAt,
+            roomType: chat.roomType,
             source: chat.source,
             transportSource: chat.transportSource,
             title: chat.title,
@@ -382,12 +425,11 @@ export function ConversationsSidebar({
   const isGameModal = variant === "game-modal";
   const isManageConnectionsActive = tab === "connectors";
 
-  // Load plugins when manage mode activates
+  // Plugins supply the scope-chip icons, so load them eagerly (not only
+  // when the user opens the manage panel).
   useEffect(() => {
-    if (isManageConnectionsActive) {
-      void ensurePluginsLoaded();
-    }
-  }, [isManageConnectionsActive, ensurePluginsLoaded]);
+    void ensurePluginsLoaded();
+  }, [ensurePluginsLoaded]);
 
   const connectorPlugins = useMemo(
     () =>
@@ -420,6 +462,8 @@ export function ConversationsSidebar({
   );
 
   const renderConnectorIcon = useCallback((plugin: (typeof plugins)[0]) => {
+    const Brand = getBrandIcon(plugin.id);
+    if (Brand) return <Brand className="h-4 w-4" />;
     const icon = resolveIcon(plugin);
     if (!icon) return <span className="text-sm">🧩</span>;
     if (typeof icon === "string") {
@@ -458,11 +502,11 @@ export function ConversationsSidebar({
     <button
       type="button"
       onClick={handleNewChat}
-      className="inline-flex items-center gap-1 self-end bg-transparent p-0 text-xs font-medium text-muted hover:text-txt"
+      className="inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] bg-transparent px-1 text-2xs font-semibold uppercase tracking-[0.12em] text-muted transition-colors hover:text-txt"
     >
       <Plus className="h-3.5 w-3.5" aria-hidden />
       <span>
-        {t("conversations.newChatShort", { defaultValue: "New chat" })}
+        {t("conversations.newChatShort", { defaultValue: "New" })}
       </span>
     </button>
   );
@@ -470,11 +514,11 @@ export function ConversationsSidebar({
     <button
       type="button"
       onClick={() => void spawnShell()}
-      className="inline-flex items-center gap-1 self-end bg-transparent p-0 text-xs font-medium text-muted hover:text-txt"
+      className="inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] bg-transparent px-1 text-2xs font-semibold uppercase tracking-[0.12em] text-muted transition-colors hover:text-txt"
     >
       <Plus className="h-3.5 w-3.5" aria-hidden />
       <span>
-        {t("conversations.newTerminalShort", { defaultValue: "New terminal" })}
+        {t("conversations.newTerminalShort", { defaultValue: "New" })}
       </span>
     </button>
   );
@@ -607,6 +651,11 @@ export function ConversationsSidebar({
         contentIdentity={
           mobile ? "chat-mobile" : isGameModal ? "chat-modal" : "chat"
         }
+        className={
+          !mobile && !isGameModal
+            ? "!mt-0 !h-full !bg-none !bg-transparent !rounded-none !border-0 !border-r !border-r-border/30 !shadow-none !backdrop-blur-none !ring-0"
+            : undefined
+        }
         collapseButtonTestId="chat-sidebar-collapse-toggle"
         expandButtonTestId="chat-sidebar-expand-toggle"
         collapseButtonAriaLabel={t("conversations.closePanel")}
@@ -702,104 +751,102 @@ export function ConversationsSidebar({
         data-no-window-drag=""
         aria-label={t("conversations.chats")}
       >
-        <SidebarScrollRegion variant={isGameModal ? "game-modal" : "default"}>
+        <SidebarScrollRegion
+          variant={isGameModal ? "game-modal" : "default"}
+          className={isGameModal ? undefined : "px-1 pb-2 pt-0"}
+        >
           <SidebarPanel
             variant={isGameModal ? "game-modal" : "default"}
             className={
-              isGameModal ? undefined : "bg-transparent p-0 shadow-none"
+              isGameModal ? undefined : "bg-transparent gap-0 p-0 shadow-none"
             }
           >
-            {!isManageConnectionsActive ? (
-              <div className="mb-2 flex items-center gap-1 px-1.5">
-                {sidebarModel.sourceOptions.map((option) => {
-                  if (option.value === ALL_CONNECTORS_SOURCE_SCOPE) return null;
-                  const isActive = sidebarModel.sourceScope === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      aria-label={option.label}
-                      title={option.label}
-                      onClick={() => {
-                        setSourceScope(option.value);
-                        setWorldScope(ALL_WORLDS_SCOPE);
-                      }}
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] bg-transparent transition-colors ${
-                        isActive
-                          ? "text-txt"
-                          : "text-muted hover:text-txt"
-                      }`}
-                    >
-                      {renderSourceScopeIcon(option)}
-                    </button>
-                  );
-                })}
-                <button
-                  type="button"
-                  aria-label={t("conversations.manageConnections", {
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
+                {isManageConnectionsActive
+                  ? t("conversations.connectors", {
+                      defaultValue: "Connectors",
+                    })
+                  : t("conversations.filterScope", {
+                      defaultValue: "Channels",
+                    })}
+              </span>
+              <button
+                type="button"
+                data-testid="chat-sidebar-manage-toggle"
+                aria-pressed={isManageConnectionsActive}
+                onClick={handleManageConnections}
+                className={`inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] bg-transparent px-1 text-2xs font-semibold uppercase tracking-[0.12em] transition-colors ${
+                  isManageConnectionsActive
+                    ? "text-txt"
+                    : "text-muted hover:text-txt"
+                }`}
+              >
+                <Settings2 className="h-3.5 w-3.5" aria-hidden />
+                <span>
+                  {t("conversations.manageConnections", {
                     defaultValue: "Manage",
-                  })}
-                  title={t("conversations.manageConnections", {
-                    defaultValue: "Manage",
-                  })}
-                  onClick={handleManageConnections}
-                  className={`ml-auto inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt ${
-                    isManageConnectionsActive ? "text-txt" : ""
-                  }`}
-                >
-                  <Settings2 className="h-4 w-4" />
-                </button>
-              </div>
-            ) : (
-              <div className="mb-2 flex items-center justify-between gap-2 px-1.5">
-                <span className="text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
-                  {t("conversations.connectors", {
-                    defaultValue: "Connectors",
                   })}
                 </span>
-                <button
-                  type="button"
-                  aria-label={t("conversations.manageConnections", {
-                    defaultValue: "Manage",
+              </button>
+            </div>
+
+            {!isManageConnectionsActive ? (
+              <div className="flex items-center gap-0.5">
+                <div className="flex flex-wrap items-center gap-0.5">
+                  {sidebarModel.sourceOptions.map((option) => {
+                    if (option.value === ALL_CONNECTORS_SOURCE_SCOPE)
+                      return null;
+                    const isActive =
+                      sidebarModel.sourceScope === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        aria-label={option.label}
+                        title={option.label}
+                        onClick={() => {
+                          setSourceScope(option.value);
+                          setWorldScope(ALL_WORLDS_SCOPE);
+                        }}
+                        className={`inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] bg-transparent transition-colors ${
+                          isActive ? "text-txt" : "text-muted hover:text-txt"
+                        }`}
+                      >
+                        {renderSourceScopeIcon(option, plugins)}
+                      </button>
+                    );
                   })}
-                  onClick={handleManageConnections}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-txt"
-                >
-                  <Settings2 className="h-4 w-4" />
-                </button>
-              </div>
-            )}
-
-            {!isManageConnectionsActive &&
-            (showNewChatAction || showNewTerminalAction) ? (
-              <div className="mb-1 flex justify-end px-1.5">
-                {showNewTerminalAction ? newTerminalAction : newChatAction}
-              </div>
-            ) : null}
-
-            {!isManageConnectionsActive && sidebarModel.showWorldFilter ? (
-              <div className="mb-2 px-1.5">
-                <Select
-                  value={sidebarModel.worldScope}
-                  onValueChange={setWorldScope}
-                >
-                  <SelectTrigger
-                    className="h-8 rounded-sm border-transparent bg-transparent shadow-none [&>span]:flex [&>span]:items-center [&>span]:gap-1.5 [&>span]:truncate"
-                    aria-label={t("conversations.filterWorld", {
-                      defaultValue: "Server / world",
-                    })}
-                  >
-                    <Globe className="h-3.5 w-3.5 shrink-0 text-muted" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sidebarModel.worldOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {selectLabel(option)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                </div>
+                {sidebarModel.showWorldFilter ? (
+                  <div className="ml-auto min-w-0 max-w-[60%]">
+                    <Select
+                      value={sidebarModel.worldScope}
+                      onValueChange={setWorldScope}
+                    >
+                      <SelectTrigger
+                        className="h-6 min-h-0 gap-1 rounded-[var(--radius-sm)] border-transparent bg-transparent px-1 text-2xs font-medium uppercase tracking-[0.08em] text-muted shadow-none hover:text-txt [&>span]:flex [&>span]:min-w-0 [&>span]:items-center [&>span]:gap-1.5 [&>span]:truncate"
+                        aria-label={t("conversations.filterWorld", {
+                          defaultValue: "Server / world",
+                        })}
+                      >
+                        <Globe className="h-3.5 w-3.5 shrink-0" />
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="min-w-[18rem] max-w-[24rem]">
+                        {sidebarModel.worldOptions.map((option) => (
+                          <SelectItem
+                            key={option.value}
+                            value={option.value}
+                            className="[&>span:last-child]:min-w-0 [&>span:last-child]:max-w-full [&>span:last-child]:truncate [&>span:last-child]:whitespace-nowrap"
+                          >
+                            {selectLabel(option)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -871,22 +918,36 @@ export function ConversationsSidebar({
                 )}
               </div>
             ) : displaySections.length === 0 ? (
-              <SidebarContent.EmptyState
-                variant={isGameModal ? "game-modal" : "default"}
-                className={
-                  !isGameModal ? "border-border/50 bg-bg/35" : undefined
-                }
-              >
-                {emptyStateLabel}
-              </SidebarContent.EmptyState>
+              <>
+                {showNewChatAction || showNewTerminalAction ? (
+                  <div className="mb-1 flex justify-end px-1.5">
+                    {showNewTerminalAction ? newTerminalAction : newChatAction}
+                  </div>
+                ) : null}
+                <SidebarContent.EmptyState
+                  variant={isGameModal ? "game-modal" : "default"}
+                  className={
+                    !isGameModal ? "border-border/50 bg-bg/35" : undefined
+                  }
+                >
+                  {emptyStateLabel}
+                </SidebarContent.EmptyState>
+              </>
             ) : (
-              <div className="-mx-1.5 space-y-3">
-                {displaySections.map((section) => (
-                  <section key={section.key} className="space-y-0.5">
-                    <SidebarContent.SectionHeader className="mb-0 px-3 pt-1 pb-0.5">
+              <div className="mt-0.5 space-y-1">
+                {displaySections.map((section, sectionIndex) => (
+                  <section key={section.key} className="space-y-0">
+                    <SidebarContent.SectionHeader className="mb-0 px-2.5 pt-0 pb-0">
                       <SidebarContent.SectionLabel className="text-muted/80">
                         {section.label}
                       </SidebarContent.SectionLabel>
+                      {sectionIndex === 0 &&
+                      !isManageConnectionsActive &&
+                      (showNewChatAction || showNewTerminalAction)
+                        ? showNewTerminalAction
+                          ? newTerminalAction
+                          : newChatAction
+                        : null}
                     </SidebarContent.SectionHeader>
 
                     <div className="space-y-0">

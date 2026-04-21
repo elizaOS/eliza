@@ -23,6 +23,7 @@ import {
   useState,
 } from "react";
 import { subscribeDesktopBridgeEvent } from "./bridge/electrobun-rpc";
+import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
 import { CharacterEditor } from "./components/character/CharacterEditor";
@@ -93,20 +94,30 @@ function TabScrollView({
   className?: string;
 }) {
   return (
-    <div
-      data-shell-scroll-region="true"
-      className={`flex-1 min-h-0 min-w-0 w-full overflow-y-auto ${className}`}
-    >
-      {children}
-    </div>
+    <AppWorkspaceChrome
+      testId="tab-scroll-view"
+      main={
+        <div
+          data-shell-scroll-region="true"
+          className={`flex-1 min-h-0 min-w-0 w-full overflow-y-auto ${className}`}
+        >
+          {children}
+        </div>
+      }
+    />
   );
 }
 
 function TabContentView({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden">
-      {children}
-    </div>
+    <AppWorkspaceChrome
+      testId="tab-content-view"
+      main={
+        <div className="flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden">
+          {children}
+        </div>
+      }
+    />
   );
 }
 
@@ -122,19 +133,13 @@ function ViewRouter({
       case "chat":
         return <ChatView />;
       case "lifeops":
-        return LifeOpsPageView ? (
-          <TabScrollView>
-            <LifeOpsPageView />
-          </TabScrollView>
-        ) : (
-          <ChatView />
-        );
+        // LifeOpsPageView owns its own AppWorkspaceChrome (nav rail + main
+        // + right chat), so don't double-wrap.
+        return LifeOpsPageView ? <LifeOpsPageView /> : <ChatView />;
       case "browser":
-        return (
-          <TabContentView>
-            <BrowserWorkspaceView />
-          </TabContentView>
-        );
+        // BrowserWorkspaceView owns its own AppWorkspaceChrome, so don't
+        // double-wrap.
+        return <BrowserWorkspaceView />;
       case "companion":
         // Companion is now an app — redirect /companion URL to chat
         return <ChatView />;

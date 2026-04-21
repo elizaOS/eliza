@@ -7,7 +7,6 @@ import {
   resolveOwnerContactWithFallback,
 } from "@elizaos/agent/config";
 import { registerEscalationChannel } from "@elizaos/agent/services/escalation";
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
@@ -33,16 +32,15 @@ import type {
   SetLifeOpsReminderPreferenceRequest,
   UpsertLifeOpsChannelPolicyRequest,
 } from "@elizaos/app-lifeops/contracts";
-import {
-  LIFEOPS_CHANNEL_TYPES,
-} from "@elizaos/app-lifeops/contracts";
+import { LIFEOPS_CHANNEL_TYPES } from "@elizaos/app-lifeops/contracts";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import { readProfileFromMetadata } from "../activity-profile/profile-metadata.js";
+import type { ActivityProfile } from "../activity-profile/types.js";
 import {
   getSelfControlStatus,
   startSelfControlBlock,
   stopSelfControlBlock,
 } from "../website-blocker/engine.js";
-import { readProfileFromMetadata } from "../activity-profile/profile-metadata.js";
-import type { ActivityProfile } from "../activity-profile/types.js";
 import {
   buildNativeAppleReminderMetadata,
   createNativeAppleReminderLikeItem,
@@ -92,7 +90,11 @@ import {
   type SyncLifeOpsScheduleObservationsResponse,
 } from "./schedule-sync-contracts.js";
 import { computeDefinitionPerformance } from "./service-helpers-occurrence.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 import {
   fail,
   lifeOpsErrorMessage,
@@ -100,11 +102,7 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
-import type {
-  Constructor,
-  LifeOpsServiceBase,
-  MixinClass,
-} from "./service-mixin-core.js";
+import { normalizeHealthSignal } from "./service-normalize-health.js";
 import { addMinutes, getZonedDateParts } from "./time.js";
 import {
   readTwilioCredentialsFromEnv,
@@ -201,7 +199,8 @@ function buildAdaptiveWindowProfile(args: {
       scheduleFirstActiveHour ?? args.profile?.typicalFirstActiveHour ?? null,
     typicalLastActiveHour:
       scheduleLastActiveHour ?? args.profile?.typicalLastActiveHour ?? null,
-    typicalSleepHour: scheduleSleepHour ?? args.profile?.typicalSleepHour ?? null,
+    typicalSleepHour:
+      scheduleSleepHour ?? args.profile?.typicalSleepHour ?? null,
   };
 
   return Object.values(adaptiveProfile).some((value) => value !== null)
@@ -338,9 +337,10 @@ export interface LifeOpsReminderService {
     phoneNumber: string;
     policies: LifeOpsChannelPolicy[];
   }>;
-  processReminders(
-    request?: { now?: string; limit?: number },
-  ): Promise<LifeOpsReminderProcessingResult>;
+  processReminders(request?: {
+    now?: string;
+    limit?: number;
+  }): Promise<LifeOpsReminderProcessingResult>;
   processScheduledWork(request?: {
     now?: string;
     reminderLimit?: number;
@@ -956,17 +956,6 @@ function buildActiveCalendarEventReminders(
     }
   }
   return rows;
-}
-
-function normalizeHealthSignal(
-  value: unknown,
-  field: string,
-): Record<string, unknown> {
-  if (value === undefined || value === null) return {};
-  if (typeof value !== "object" || Array.isArray(value)) {
-    fail(400, `${field} must be an object`);
-  }
-  return { ...value } as Record<string, unknown>;
 }
 
 function normalizeActivitySignalSource(value: unknown, field: string): string {

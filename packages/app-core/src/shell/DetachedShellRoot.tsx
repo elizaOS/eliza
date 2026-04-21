@@ -1,5 +1,5 @@
-import { CodingAgentSettingsSection } from "@elizaos/app-task-coordinator";
 import type { JSX } from "react";
+import { CodingAgentSettingsSection } from "../app-shell/task-coordinator-slots.js";
 import { ConversationsSidebar } from "../components/conversations/ConversationsSidebar";
 import { BrowserWorkspaceView } from "../components/pages/BrowserWorkspaceView";
 import { ChatView } from "../components/pages/ChatView";
