@@ -30,6 +30,7 @@ import { withStatus } from "./service-mixin-status.js";
 import { withSubscriptions } from "./service-mixin-subscriptions.js";
 import { withTelegram } from "./service-mixin-telegram.js";
 import { withTravel } from "./service-mixin-travel.js";
+import { withUnifiedInbox } from "./service-mixin-unified-inbox.js";
 import { withWhatsApp } from "./service-mixin-whatsapp.js";
 import { withWorkflows } from "./service-mixin-workflows.js";
 import { withX } from "./service-mixin-x.js";
@@ -44,30 +45,34 @@ import { withXRead } from "./service-mixin-x-read.js";
  * Definitions, Goals) → connectors (X, Telegram, Discord, Signal).
  */
 export class LifeOpsServiceComposedBase extends withStatus(
-  withHealth(
-    withDossier(
-      withScheduling(
-        withScreenTime(
-          withWhatsApp(
-            withRelationships(
-              withIMessage(
-                withSignal(
-                  withDiscord(
-                    withTelegram(
-                      withXRead(
-                        withX(
-                          withGoals(
-                            withDefinitions(
-                              withWorkflows(
-                                withSubscriptions(
-                                  withEmailUnsubscribe(
-                                    withBrowser(
-                                      withReminders(
-                                        withGmail(
-                                          withDrive(
-                                            withTravel(
-                                              withCalendar(
-                                                withGoogle(LifeOpsServiceBase),
+  withUnifiedInbox(
+    withHealth(
+      withDossier(
+        withScheduling(
+          withScreenTime(
+            withWhatsApp(
+              withRelationships(
+                withIMessage(
+                  withSignal(
+                    withDiscord(
+                      withTelegram(
+                        withXRead(
+                          withX(
+                            withGoals(
+                              withDefinitions(
+                                withWorkflows(
+                                  withSubscriptions(
+                                    withEmailUnsubscribe(
+                                      withBrowser(
+                                        withReminders(
+                                          withGmail(
+                                            withDrive(
+                                              withTravel(
+                                                withCalendar(
+                                                  withGoogle(
+                                                    LifeOpsServiceBase,
+                                                  ),
+                                                ),
                                               ),
                                             ),
                                           ),
