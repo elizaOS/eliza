@@ -7,7 +7,6 @@
  */
 
 export { agentUrl, apnsEnabled, isDev } from "./env";
-export { forwardIntent } from "./intent-bridge";
 export { logger } from "./logger";
 export {
   MiladyIntent,
