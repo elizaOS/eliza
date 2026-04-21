@@ -1,0 +1,30 @@
+{
+  "id": "vincent",
+  "name": "Vincent",
+  "description": "Lit Protocol's agent-permissioned execution environment.",
+  "npmName": "@elizaos/app-vincent",
+  "source": "bundled",
+  "tags": [],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "hero-card",
+    "icon": "LockKeyhole",
+    "group": "Curated",
+    "groupOrder": 6,
+    "actions": [
+      "launch",
+      "configure"
+    ]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "app",
+  "subtype": "tool",
+  "launch": {
+    "type": "server-launch",
+    "capabilities": [],
+    "curatedSlug": "vincent"
+  }
+}

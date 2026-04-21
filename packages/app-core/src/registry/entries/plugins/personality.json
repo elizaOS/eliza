@@ -1,0 +1,42 @@
+{
+  "id": "personality",
+  "name": "Personality",
+  "description": "ElizaOS plugin for agent self-modification and character evolution",
+  "npmName": "@elizaos/plugin-personality",
+  "version": "2.0.0-alpha.4",
+  "source": "bundled",
+  "tags": [
+    "personality",
+    "character-evolution",
+    "self-modification"
+  ],
+  "config": {
+    "ADMIN_USERS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Users",
+      "help": "Comma-separated admin user list",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Target",
+    "group": "gaming",
+    "groupOrder": 11,
+    "actions": [
+      "enable",
+      "configure"
+    ]
+  },
+  "resources": {
+    "homepage": "https://elizaos.ai",
+    "repository": "https://github.com/elizaos/elizaos"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "gaming"
+}
