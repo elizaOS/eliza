@@ -590,6 +590,11 @@ export class ComputerUseService extends Service {
             message: `Switched to tab ${tabId}.`,
           });
         }
+        default:
+          return this.failEntry(entry, {
+            success: false,
+            error: `Unknown browser action: ${(params as { action: string }).action}`,
+          });
       }
     } catch (error) {
       return this.failEntry(entry, {
@@ -673,6 +678,11 @@ export class ComputerUseService extends Service {
           return this.succeedEntry(entry, {
             success: true,
             message: "Window closed.",
+          });
+        default:
+          return this.failEntry(entry, {
+            success: false,
+            error: `Unknown window action: ${(params as { action: string }).action}`,
           });
       }
     } catch (error) {
