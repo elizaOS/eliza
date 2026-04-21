@@ -1,5 +1,5 @@
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
@@ -178,6 +178,8 @@ describe("owner schedule surfaces", () => {
     const fixture = await createFixture("lifeops-owner-schedule-agent");
     try {
       await seedScheduleTelemetry(fixture.service);
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-04-19T13:00:00.000Z"));
 
       const result = await ownerScheduleAction.handler!(
         fixture.runtime,
@@ -193,6 +195,7 @@ describe("owner schedule surfaces", () => {
         /(?:last inferred wake|likely asleep)/,
       );
     } finally {
+      vi.useRealTimers();
       await fixture.cleanup();
     }
   });
