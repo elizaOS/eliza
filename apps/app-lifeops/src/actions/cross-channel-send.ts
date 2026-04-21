@@ -712,6 +712,22 @@ const CHANNEL_DISPATCHERS: Record<
         participantId: target,
         text: body,
       });
+      if (!result.ok) {
+        return buildDispatchFailure({
+          channel,
+          target,
+          body,
+          error: result.error ?? "Failed to send X DM.",
+        });
+      }
+      if (!result.dmEventId) {
+        return buildDispatchFailure({
+          channel,
+          target,
+          body,
+          error: "X DM API did not return a DM event id.",
+        });
+      }
       return {
         text: `Sent X DM to ${target}.`,
         success: true,

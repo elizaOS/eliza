@@ -316,6 +316,21 @@ function parseConnectorModeQuery(
   return normalized;
 }
 
+function parseConnectorModeInput(
+  value: unknown,
+): LifeOpsConnectorMode | undefined {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    throw new LifeOpsServiceError(
+      400,
+      `mode must be one of: ${LIFEOPS_CONNECTOR_MODES.join(", ")}`,
+    );
+  }
+  return parseConnectorModeQuery(value);
+}
+
 function parseConnectorSideQuery(
   value: string | null,
 ): LifeOpsConnectorSide | undefined {
@@ -377,6 +392,79 @@ function parseBooleanQuery(
     return false;
   }
   throw new LifeOpsServiceError(400, `${field} must be a boolean`);
+}
+
+function requireBodyString(
+  body: Record<string, unknown>,
+  field: string,
+): string {
+  const value = body[field];
+  if (typeof value !== "string") {
+    throw new LifeOpsServiceError(400, `${field} is required`);
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new LifeOpsServiceError(400, `${field} is required`);
+  }
+  return trimmed;
+}
+
+function parseOptionalBodyString(
+  body: Record<string, unknown>,
+  field: string,
+): string | undefined {
+  const value = body[field];
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    throw new LifeOpsServiceError(400, `${field} must be a string`);
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function parseOptionalBodyBoolean(
+  body: Record<string, unknown>,
+  field: string,
+): boolean | undefined {
+  const value = body[field];
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== "boolean") {
+    throw new LifeOpsServiceError(400, `${field} must be a boolean`);
+  }
+  return value;
+}
+
+function parseOptionalBodyStringArray(
+  body: Record<string, unknown>,
+  field: string,
+): string[] | undefined {
+  const value = body[field];
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    throw new LifeOpsServiceError(400, `${field} must be an array of strings`);
+  }
+  const parsed = value.map((entry) => {
+    if (typeof entry !== "string") {
+      throw new LifeOpsServiceError(
+        400,
+        `${field} must be an array of strings`,
+      );
+    }
+    return entry.trim();
+  });
+  if (parsed.some((entry) => entry.length === 0)) {
+    throw new LifeOpsServiceError(
+      400,
+      `${field} must be an array of non-empty strings`,
+    );
+  }
+  return parsed;
 }
 
 function parseActivitySignalStates(
@@ -1155,47 +1243,32 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/x/dms/curate") {
-    const body = await readJsonBody<{
-      messageIds?: string[];
-      conversationId?: string;
-      markRead?: boolean;
-      markReplied?: boolean;
-    }>(req, res);
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(res, await service.curateXDms(body));
+      json(
+        res,
+        await service.curateXDms({
+          messageIds: parseOptionalBodyStringArray(body, "messageIds"),
+          conversationId: parseOptionalBodyString(body, "conversationId"),
+          markRead: parseOptionalBodyBoolean(body, "markRead"),
+          markReplied: parseOptionalBodyBoolean(body, "markReplied"),
+        }),
+      );
     });
   }
 
   if (method === "POST" && pathname === "/api/lifeops/x/dms/send") {
-    const body = await readJsonBody<{
-      participantId?: string;
-      text?: string;
-      confirmSend?: boolean;
-      mode?: LifeOpsConnectorMode;
-    }>(req, res);
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
-    if (
-      typeof body.participantId !== "string" ||
-      body.participantId.trim().length === 0
-    ) {
-      json(res, { ok: false, error: "participantId is required" }, 400);
-      return true;
-    }
-    if (typeof body.text !== "string" || body.text.trim().length === 0) {
-      json(res, { ok: false, error: "text is required" }, 400);
-      return true;
-    }
-    const participantId = body.participantId.trim();
-    const text = body.text.trim();
     return runRoute(ctx, async (service) => {
       json(
         res,
         await service.sendXDirectMessage({
-          participantId,
-          text,
-          confirmSend: body.confirmSend,
-          mode: body.mode,
+          participantId: requireBodyString(body, "participantId"),
+          text: requireBodyString(body, "text"),
+          confirmSend: parseOptionalBodyBoolean(body, "confirmSend"),
+          mode: parseConnectorModeInput(body.mode),
         }),
         201,
       );
@@ -1246,27 +1319,18 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/connectors/imessage/send"
   ) {
-    const body = await readJsonBody<SendLifeOpsIMessageRequest>(req, res);
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
-    const to = body.to?.trim();
-    const text = body.text?.trim();
-    if (!to) {
-      ctx.error(res, "to is required", 400);
-      return true;
-    }
-    if (!text) {
-      ctx.error(res, "text is required", 400);
-      return true;
-    }
     return runRoute(ctx, async (service) => {
       json(
         res,
         await service.sendIMessage({
-          to,
-          text,
-          attachmentPaths: Array.isArray(body.attachmentPaths)
-            ? body.attachmentPaths
-            : undefined,
+          to: requireBodyString(body, "to"),
+          text: requireBodyString(body, "text"),
+          attachmentPaths: parseOptionalBodyStringArray(
+            body,
+            "attachmentPaths",
+          ),
         }),
         201,
       );

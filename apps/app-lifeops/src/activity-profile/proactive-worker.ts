@@ -278,241 +278,223 @@ export async function executeProactiveTask(
   const now = resolveExecutionNow(options);
   const timezone = resolveDefaultTimeZone();
 
+  const ownerEntityId = await resolveOwnerEntityId(runtime);
+  if (!ownerEntityId) {
+    return { nextInterval: PROACTIVE_TASK_INTERVAL_MS };
+  }
+
+  // WS5: Route this tick through the shared LLM planner. The planner
+  // decides whether any action is warranted and whether it requires
+  // human approval. We invoke it up-front so every proactive tick is
+  // observable via `planJob` and so sensitive actions are always
+  // enqueued into the WS6 approval queue.
+  const plannerContext: BackgroundJobContext = {
+    jobKind: "daily_brief",
+    subjectUserId: ownerEntityId,
+    snapshot: {
+      now: now.toISOString(),
+      timezone,
+    },
+    availableChannels: ["internal"],
+    trigger: "proactive_tick",
+  };
   try {
-    const ownerEntityId = await resolveOwnerEntityId(runtime);
-    if (!ownerEntityId) {
-      return { nextInterval: PROACTIVE_TASK_INTERVAL_MS };
-    }
-
-    // WS5: Route this tick through the shared LLM planner. The planner
-    // decides whether any action is warranted and whether it requires
-    // human approval. We invoke it up-front so every proactive tick is
-    // observable via `planJob` and so sensitive actions are always
-    // enqueued into the WS6 approval queue.
-    const plannerContext: BackgroundJobContext = {
-      jobKind: "daily_brief",
-      subjectUserId: ownerEntityId,
-      snapshot: {
-        now: now.toISOString(),
-        timezone,
-      },
-      availableChannels: ["internal"],
-      trigger: "proactive_tick",
-    };
-    try {
-      const plan = await planJob(runtime, plannerContext);
-      await enqueueIfSensitive(runtime, plannerContext, plan);
-    } catch (error) {
-      if (error instanceof BackgroundPlannerError) {
-        logger.warn(
-          `[proactive] background planner unavailable — ${error.message}`,
-        );
-      } else {
-        throw error;
-      }
-    }
-
-    const tasks = await runtime.getTasks({
-      agentIds: [runtime.agentId],
-      tags: [...PROACTIVE_TASK_TAGS],
-    });
-    const task = tasks.find(isProactiveTask);
-    if (!task?.id) {
-      return { nextInterval: PROACTIVE_TASK_INTERVAL_MS };
-    }
-
-    const metadata = isRecord(task.metadata) ? task.metadata : {};
-    const currentProfile = readProfileFromMetadata(metadata);
-    let profile: ActivityProfile | null;
-    if (profileNeedsRebuild(currentProfile, now)) {
-      logger.info("[proactive] Building full activity profile");
-      profile = await buildActivityProfile(
-        runtime,
-        ownerEntityId,
-        timezone,
-        now,
-      );
-    } else if (currentProfile) {
-      profile = await refreshCurrentState(
-        runtime,
-        ownerEntityId,
-        currentProfile,
-        now,
+    const plan = await planJob(runtime, plannerContext);
+    await enqueueIfSensitive(runtime, plannerContext, plan);
+  } catch (error) {
+    if (error instanceof BackgroundPlannerError) {
+      logger.warn(
+        `[proactive] background planner unavailable — ${error.message}`,
       );
     } else {
-      profile = null;
+      throw error;
+    }
+  }
+
+  const tasks = await runtime.getTasks({
+    agentIds: [runtime.agentId],
+    tags: [...PROACTIVE_TASK_TAGS],
+  });
+  const task = tasks.find(isProactiveTask);
+  if (!task?.id) {
+    return { nextInterval: PROACTIVE_TASK_INTERVAL_MS };
+  }
+
+  const metadata = isRecord(task.metadata) ? task.metadata : {};
+  const currentProfile = readProfileFromMetadata(metadata);
+  let profile: ActivityProfile | null;
+  if (profileNeedsRebuild(currentProfile, now)) {
+    logger.info("[proactive] Building full activity profile");
+    profile = await buildActivityProfile(runtime, ownerEntityId, timezone, now);
+  } else if (currentProfile) {
+    profile = await refreshCurrentState(
+      runtime,
+      ownerEntityId,
+      currentProfile,
+      now,
+    );
+  } else {
+    profile = null;
+  }
+
+  if (!profile) {
+    return { nextInterval: PROACTIVE_TASK_INTERVAL_MS };
+  }
+
+  const todayStr = resolveEffectiveDayKey(profile, timezone, now);
+  let firedLog = readFiredLogFromMetadata(metadata, todayStr);
+  const { occurrences, calendarEvents, goals } = await fetchPlannerContext(
+    runtime,
+    timezone,
+    now,
+  );
+  // NOTE: planGm/planGn apply their own time-of-day gating today; the
+  // canonical source of truth for morning/night enforcement windows is
+  // `src/lifeops/enforcement-windows.ts` (getCurrentEnforcementWindow).
+  // If planner gating is ever consolidated, switch these helpers to use
+  // that utility so the reminder pipeline and the proactive worker agree.
+  const gmAction = planGm(
+    profile,
+    occurrences,
+    calendarEvents,
+    firedLog,
+    timezone,
+    now,
+  );
+  const gnAction = planGn(profile, firedLog, timezone, now);
+  const nudgeActions = planNudges(
+    profile,
+    occurrences,
+    calendarEvents,
+    firedLog,
+    timezone,
+    now,
+  );
+  const downtimeActions = planDowntimeNudges(
+    profile,
+    occurrences,
+    calendarEvents,
+    firedLog,
+    timezone,
+    now,
+  );
+  const goalCheckInActions = planGoalCheckIns(
+    profile,
+    goals,
+    firedLog,
+    timezone,
+    now,
+  );
+
+  const seedingAction = await planSeedingOffer(runtime, profile, firedLog, now);
+
+  const allActions = [
+    seedingAction,
+    gmAction,
+    gnAction,
+    ...nudgeActions,
+    ...downtimeActions,
+    ...goalCheckInActions,
+  ].filter(
+    (action): action is ProactiveAction =>
+      action !== null && action.status === "pending",
+  );
+
+  const ownerContacts = loadOwnerContactsConfig({
+    boundary: "activity_profile",
+    operation: "owner_contacts_config",
+    message:
+      "[proactive] Failed to load owner contacts config; proactive messages cannot route to owner channels until config is available.",
+  });
+  for (const action of allActions) {
+    if (action.scheduledFor > now.getTime()) {
+      continue;
+    }
+    // Defensive: don't dispatch stale actions (e.g. a GN whose target
+    // hour resolved to the past). Without this guard a single planner
+    // miscomputation will fire every PROACTIVE_TASK_INTERVAL_MS.
+    const ageMs = now.getTime() - action.scheduledFor;
+    if (ageMs > STALE_ACTION_THRESHOLD_MS) {
+      logger.warn(
+        `[proactive] Skipping stale ${action.kind} (scheduledFor was ${Math.round(ageMs / 60000)} min ago)`,
+      );
+      continue;
     }
 
-    if (!profile) {
-      return { nextInterval: PROACTIVE_TASK_INTERVAL_MS };
-    }
-
-    const todayStr = resolveEffectiveDayKey(profile, timezone, now);
-    let firedLog = readFiredLogFromMetadata(metadata, todayStr);
-    const { occurrences, calendarEvents, goals } = await fetchPlannerContext(
-      runtime,
-      timezone,
-      now,
-    );
-    // NOTE: planGm/planGn apply their own time-of-day gating today; the
-    // canonical source of truth for morning/night enforcement windows is
-    // `src/lifeops/enforcement-windows.ts` (getCurrentEnforcementWindow).
-    // If planner gating is ever consolidated, switch these helpers to use
-    // that utility so the reminder pipeline and the proactive worker agree.
-    const gmAction = planGm(
-      profile,
-      occurrences,
-      calendarEvents,
-      firedLog,
-      timezone,
-      now,
-    );
-    const gnAction = planGn(profile, firedLog, timezone, now);
-    const nudgeActions = planNudges(
-      profile,
-      occurrences,
-      calendarEvents,
-      firedLog,
-      timezone,
-      now,
-    );
-    const downtimeActions = planDowntimeNudges(
-      profile,
-      occurrences,
-      calendarEvents,
-      firedLog,
-      timezone,
-      now,
-    );
-    const goalCheckInActions = planGoalCheckIns(
-      profile,
-      goals,
-      firedLog,
-      timezone,
-      now,
-    );
-
-    const seedingAction = await planSeedingOffer(
-      runtime,
-      profile,
-      firedLog,
-      now,
-    );
-
-    const allActions = [
-      seedingAction,
-      gmAction,
-      gnAction,
-      ...nudgeActions,
-      ...downtimeActions,
-      ...goalCheckInActions,
-    ].filter(
-      (action): action is ProactiveAction =>
-        action !== null && action.status === "pending",
-    );
-
-    const ownerContacts = loadOwnerContactsConfig({
-      boundary: "activity_profile",
-      operation: "owner_contacts_config",
-      message:
-        "[proactive] Failed to load owner contacts config; proactive messages cannot route to owner channels until config is available.",
+    const resolvedTarget = resolveProactiveOwnerContact({
+      targetPlatform: action.targetPlatform,
+      ownerEntityId,
+      ownerContacts,
     });
-    for (const action of allActions) {
-      if (action.scheduledFor > now.getTime()) {
-        continue;
-      }
-      // Defensive: don't dispatch stale actions (e.g. a GN whose target
-      // hour resolved to the past). Without this guard a single planner
-      // miscomputation will fire every PROACTIVE_TASK_INTERVAL_MS.
-      const ageMs = now.getTime() - action.scheduledFor;
-      if (ageMs > STALE_ACTION_THRESHOLD_MS) {
-        logger.warn(
-          `[proactive] Skipping stale ${action.kind} (scheduledFor was ${Math.round(ageMs / 60000)} min ago)`,
-        );
-        continue;
-      }
+    const contact = resolvedTarget?.contact;
+    if (!resolvedTarget || !contact) {
+      logger.warn(
+        `[proactive] No owner contact for platform ${action.targetPlatform}, skipping ${action.kind}`,
+      );
+      continue;
+    }
 
-      const resolvedTarget = resolveProactiveOwnerContact({
-        targetPlatform: action.targetPlatform,
-        ownerEntityId,
-        ownerContacts,
-      });
-      const contact = resolvedTarget?.contact;
-      if (!resolvedTarget || !contact) {
-        logger.warn(
-          `[proactive] No owner contact for platform ${action.targetPlatform}, skipping ${action.kind}`,
-        );
-        continue;
-      }
+    if (!contact.entityId && !contact.channelId && !contact.roomId) {
+      logger.warn(
+        `[proactive] No owner contact for platform ${action.targetPlatform}, skipping ${action.kind}`,
+      );
+      continue;
+    }
 
-      if (!contact.entityId && !contact.channelId && !contact.roomId) {
-        logger.warn(
-          `[proactive] No owner contact for platform ${action.targetPlatform}, skipping ${action.kind}`,
-        );
-        continue;
-      }
-
-      try {
-        if (resolvedTarget.source === "client_chat") {
-          if (emitProactiveAssistantEvent(runtime, action)) {
-            firedLog = recordFiredAction(firedLog, todayStr, action);
-            if (action.kind === "onboarding_seed") {
-              try {
-                await new LifeOpsService(runtime).markSeedingOffered();
-              } catch (err) {
-                logger.warn(
-                  `[proactive] Failed to record onboarding seed offer audit: ${err}`,
-                );
-              }
+    try {
+      if (resolvedTarget.source === "client_chat") {
+        if (emitProactiveAssistantEvent(runtime, action)) {
+          firedLog = recordFiredAction(firedLog, todayStr, action);
+          if (action.kind === "onboarding_seed") {
+            try {
+              await new LifeOpsService(runtime).markSeedingOffered();
+            } catch (err) {
+              logger.warn(
+                `[proactive] Failed to record onboarding seed offer audit: ${err}`,
+              );
             }
-            logger.info(
-              `[proactive] Emitted ${action.kind} as assistant event`,
-            );
-            continue;
           }
-          logger.warn(
-            `[proactive] AGENT_EVENT emit unavailable for ${action.kind}; skipping in-app proactive delivery`,
-          );
+          logger.info(`[proactive] Emitted ${action.kind} as assistant event`);
           continue;
         }
-
-        await runtime.sendMessageToTarget(
-          {
-            source: resolvedTarget.source,
-            entityId: contact.entityId as UUID | undefined,
-            channelId: contact.channelId,
-            roomId: contact.roomId as UUID | undefined,
-          } as Parameters<typeof runtime.sendMessageToTarget>[0],
-          buildProactiveDeliveryContent(action, resolvedTarget.source),
+        logger.warn(
+          `[proactive] AGENT_EVENT emit unavailable for ${action.kind}; skipping in-app proactive delivery`,
         );
-        firedLog = recordFiredAction(firedLog, todayStr, action);
-        if (action.kind === "onboarding_seed") {
-          try {
-            await new LifeOpsService(runtime).markSeedingOffered();
-          } catch (err) {
-            logger.warn(
-              `[proactive] Failed to record onboarding seed offer audit: ${err}`,
-            );
-          }
-        }
-        logger.info(
-          `[proactive] Fired ${action.kind} on ${resolvedTarget.source}`,
-        );
-      } catch (err) {
-        logger.warn(`[proactive] Failed to send ${action.kind}: ${err}`);
+        continue;
       }
-    }
 
-    await runtime.updateTask(task.id, {
-      metadata: {
-        ...metadata,
-        activityProfile: profile,
-        firedActionsLog: firedLog,
-      },
-    });
-  } catch (err) {
-    logger.error(`[proactive] Worker error: ${err}`);
+      await runtime.sendMessageToTarget(
+        {
+          source: resolvedTarget.source,
+          entityId: contact.entityId as UUID | undefined,
+          channelId: contact.channelId,
+          roomId: contact.roomId as UUID | undefined,
+        } as Parameters<typeof runtime.sendMessageToTarget>[0],
+        buildProactiveDeliveryContent(action, resolvedTarget.source),
+      );
+      firedLog = recordFiredAction(firedLog, todayStr, action);
+      if (action.kind === "onboarding_seed") {
+        try {
+          await new LifeOpsService(runtime).markSeedingOffered();
+        } catch (err) {
+          logger.warn(
+            `[proactive] Failed to record onboarding seed offer audit: ${err}`,
+          );
+        }
+      }
+      logger.info(`[proactive] Fired ${action.kind} on ${resolvedTarget.source}`);
+    } catch (err) {
+      logger.warn(`[proactive] Failed to send ${action.kind}: ${err}`);
+    }
   }
+
+  await runtime.updateTask(task.id, {
+    metadata: {
+      ...metadata,
+      activityProfile: profile,
+      firedActionsLog: firedLog,
+    },
+  });
 
   return { nextInterval: PROACTIVE_TASK_INTERVAL_MS };
 }
