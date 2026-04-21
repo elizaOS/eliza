@@ -6,7 +6,6 @@
     "declaration": true,
     "declarationMap": true,
     "esModuleInterop": true,
-    "ignoreDeprecations": "6.0",
     "noEmit": false,
     "outDir": "./dist",
     "resolveJsonModule": true,
