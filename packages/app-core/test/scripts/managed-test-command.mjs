@@ -16,6 +16,7 @@ const REPO_TEST_PROCESS_MARKERS = [
   "bun run test",
   "bun run test:integration",
   "bun run test:e2e",
+  "bun run test:e2e:all",
   "bun run test:orchestrator:integration",
 ];
 
