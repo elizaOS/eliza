@@ -101,3 +101,4 @@ export * from "./shell/ShortcutsOverlay";
 export * from "./shell/StartupFailureView";
 export * from "./shell/StartupShell";
 export * from "./shell/SystemWarningBanner";
+export * from "./workspace/AppWorkspaceChrome";
