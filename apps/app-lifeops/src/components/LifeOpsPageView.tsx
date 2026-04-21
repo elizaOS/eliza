@@ -481,13 +481,15 @@ function LifeOpsWorkspaceInner() {
           ? agentsResult.value.data
           : [];
       const entries = await Promise.all(
-        agents.map(async (agent) => ({
-          agent,
-          github: await client
-            .getCloudCompatAgentManagedGithub(agent.agent_id)
-            .then((response) => response.data)
-            .catch(() => null),
-        })),
+        agents.map(async (agent) => {
+          const github = await client.getCloudCompatAgentManagedGithub(
+            agent.agent_id,
+          );
+          return {
+            agent,
+            github: github.data,
+          };
+        }),
       );
       setOwnerGithubConnections(connections);
       setAgentGithubEntries(entries);

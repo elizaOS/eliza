@@ -497,9 +497,16 @@ async function bluebubblesRequest<T>(
     );
   }
 
-  const body = (await response.json().catch(() => null)) as
-    | BlueBubblesResponse<T>
-    | null;
+  let body: BlueBubblesResponse<T>;
+  try {
+    body = (await response.json()) as BlueBubblesResponse<T>;
+  } catch (error) {
+    throw new IMessageBridgeError(
+      `BlueBubbles ${pathname} returned non-JSON body`,
+      "bluebubbles",
+      error,
+    );
+  }
   if (!body || typeof body !== "object") {
     throw new IMessageBridgeError(
       `BlueBubbles ${pathname} returned non-JSON body`,
