@@ -1,3 +1,4 @@
+import { isPrivateIpAddress } from "@elizaos/core";
 import React, {
   type PointerEvent as ReactPointerEvent,
   type TouchEvent as ReactTouchEvent,
@@ -25,23 +26,69 @@ type ConnState = "connecting" | "open" | "closed" | "error";
 const PULL_TO_REFRESH_THRESHOLD_PX = 80;
 
 /**
- * Builds the noVNC viewer URL from a pairing payload.
- * The ingress hosts noVNC at `/vnc` and the input WS at `/input`.
+ * Reject obviously unsafe companion ingress URLs before they are used as an
+ * iframe `src` or WebSocket endpoint (phishing / token exfiltration).
  */
-function buildViewerUrl(payload: PairingPayload): string {
-  const baseUrl = payload.ingressUrl
-    .replace(/^wss:\/\//, "https://")
-    .replace(/^ws:\/\//, "http://")
-    .replace(/\/input\/?$/, "");
-  const separator = baseUrl.includes("?") ? "&" : "?";
-  return `${baseUrl}/vnc${separator}token=${encodeURIComponent(
-    payload.sessionToken,
-  )}&agent=${encodeURIComponent(payload.agentId)}`;
+function assertSafeCompanionIngressUrl(ingressUrl: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(ingressUrl);
+  } catch {
+    throw new Error("Companion ingress URL is not a valid absolute URL");
+  }
+  const protocol = parsed.protocol.toLowerCase();
+  if (protocol !== "wss:" && protocol !== "ws:") {
+    throw new Error("Companion ingress must use wss: or ws: (WebSocket) URL");
+  }
+  if (parsed.hostname.length === 0) {
+    throw new Error("Companion ingress URL is missing a host");
+  }
+  if (parsed.username !== "" || parsed.password !== "") {
+    throw new Error("Companion ingress URL must not embed credentials");
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (host === "169.254.169.254" || host === "metadata.google.internal") {
+    throw new Error("Companion ingress host is not allowed");
+  }
+  if (protocol === "ws:") {
+    const allowPlaintextWs =
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "::1" ||
+      isPrivateIpAddress(host);
+    if (!allowPlaintextWs) {
+      throw new Error(
+        "ws:// is only allowed on localhost or private networks; use wss:// for this host",
+      );
+    }
+  }
+  return parsed;
 }
 
-function buildInputUrl(payload: PairingPayload): string {
-  if (/\/input\/?$/.test(payload.ingressUrl)) return payload.ingressUrl;
-  return payload.ingressUrl.replace(/\/?$/, "/input");
+/**
+ * Builds the noVNC viewer URL from a validated pairing ingress URL.
+ * The ingress hosts noVNC at `/vnc` and the input WS at `/input`.
+ * Uses the URL API so `/vnc` is joined on pathname, not appended after `?query`
+ * (e.g. `wss://host/path/input?k=v` would otherwise yield `...?k=v/vnc`).
+ */
+function buildViewerUrl(ingressUrl: URL, payload: PairingPayload): string {
+  const viewerUrl = new URL(ingressUrl.toString());
+  viewerUrl.protocol = ingressUrl.protocol === "wss:" ? "https:" : "http:";
+  viewerUrl.pathname = ingressUrl.pathname.replace(/\/input\/?$/, "") || "/";
+  viewerUrl.pathname = viewerUrl.pathname.replace(/\/$/, "") + "/vnc";
+  viewerUrl.searchParams.set("token", payload.sessionToken);
+  viewerUrl.searchParams.set("agent", payload.agentId);
+  viewerUrl.hash = "";
+  return viewerUrl.toString();
+}
+
+function buildInputUrl(ingressUrl: URL): string {
+  const inputUrl = new URL(ingressUrl.toString());
+  if (!/\/input\/?$/.test(inputUrl.pathname)) {
+    inputUrl.pathname = inputUrl.pathname.replace(/\/$/, "") + "/input";
+  }
+  inputUrl.hash = "";
+  return inputUrl.toString();
 }
 
 export function RemoteSession({
@@ -51,16 +98,36 @@ export function RemoteSession({
   const [connState, setConnState] = useState<ConnState>("connecting");
   const [reconnectNonce, setReconnectNonce] = useState(0);
   const [pullPx, setPullPx] = useState(0);
+  const pullPxRef = useRef(0);
   const clientRef = useRef<SessionClient | null>(null);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const pointersRef = useRef<Map<number, TouchSample[]>>(new Map());
   const gestureStartRef = useRef<number | null>(null);
+  // Scratch accumulator for multi-finger gestures. Not useState to avoid
+  // re-renders on every pointer event.
+  const completedPointersRef = useRef<TouchSample[][]>([]);
 
-  const viewerUrl = useMemo(() => buildViewerUrl(payload), [payload]);
-  const inputUrl = useMemo(() => buildInputUrl(payload), [payload]);
+  const sessionEndpoints = useMemo(() => {
+    try {
+      const ingressUrl = assertSafeCompanionIngressUrl(payload.ingressUrl);
+      return {
+        ok: true as const,
+        viewerUrl: buildViewerUrl(ingressUrl, payload),
+        inputUrl: buildInputUrl(ingressUrl),
+      };
+    } catch (cause: unknown) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      logger.error("[RemoteSession] rejected ingress URL", { message });
+      return { ok: false as const, error: message };
+    }
+  }, [payload]);
 
   // Connect/reconnect whenever the nonce changes.
   useEffect(() => {
+    if (!sessionEndpoints.ok) {
+      setConnState("error");
+      return;
+    }
     const client = new SessionClient();
     clientRef.current = client;
 
@@ -77,7 +144,7 @@ export function RemoteSession({
       agentId: payload.agentId,
       attempt: reconnectNonce,
     });
-    client.connect(inputUrl, payload.sessionToken);
+    client.connect(sessionEndpoints.inputUrl, payload.sessionToken);
 
     return () => {
       offState();
@@ -85,7 +152,7 @@ export function RemoteSession({
       client.close();
       clientRef.current = null;
     };
-  }, [inputUrl, payload.agentId, payload.sessionToken, reconnectNonce]);
+  }, [payload.agentId, payload.sessionToken, reconnectNonce, sessionEndpoints]);
 
   const reconnect = useCallback(() => {
     logger.info("[RemoteSession] reconnect requested", {});
@@ -131,9 +198,12 @@ export function RemoteSession({
         const first = samples[0];
         const last = samples[samples.length - 1];
         if (first.y < 40 && last.y > first.y) {
-          setPullPx(
-            Math.min(last.y - first.y, PULL_TO_REFRESH_THRESHOLD_PX * 2),
+          const next = Math.min(
+            last.y - first.y,
+            PULL_TO_REFRESH_THRESHOLD_PX * 2,
           );
+          pullPxRef.current = next;
+          setPullPx(next);
         }
       }
     },
@@ -163,11 +233,14 @@ export function RemoteSession({
 
       // Pull-to-refresh: if user pulled far enough, reconnect rather than
       // emit a drag.
-      if (pullPx >= PULL_TO_REFRESH_THRESHOLD_PX) {
+      const pull = pullPxRef.current;
+      if (pull >= PULL_TO_REFRESH_THRESHOLD_PX) {
+        pullPxRef.current = 0;
         setPullPx(0);
         reconnect();
         return;
       }
+      pullPxRef.current = 0;
       setPullPx(0);
 
       const events = touchToInput({ pointers, ended: true });
@@ -175,12 +248,8 @@ export function RemoteSession({
       if (client === null) return;
       for (const ev of events) client.sendInput(ev);
     },
-    [pullPx, reconnect],
+    [reconnect],
   );
-
-  // Scratch accumulator for multi-finger gestures. Not useState to avoid
-  // re-renders on every pointer event.
-  const completedPointersRef = useRef<TouchSample[][]>([]);
 
   // Block default iOS touch behaviours on the input surface.
   const onTouchStart = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
@@ -193,8 +262,17 @@ export function RemoteSession({
         <button type="button" onClick={onExit} style={styles.back}>
           Exit
         </button>
-        <span style={styles.status}>{statusLabel(connState)}</span>
-        <button type="button" onClick={reconnect} style={styles.reconnect}>
+        <span style={styles.status}>
+          {!sessionEndpoints.ok
+            ? sessionEndpoints.error
+            : statusLabel(connState)}
+        </span>
+        <button
+          type="button"
+          onClick={reconnect}
+          disabled={!sessionEndpoints.ok}
+          style={styles.reconnect}
+        >
           Reconnect
         </button>
       </header>
@@ -216,14 +294,17 @@ export function RemoteSession({
       <div style={styles.viewerShell}>
         <iframe
           title="Remote desktop"
-          src={viewerUrl}
+          src={sessionEndpoints.ok ? sessionEndpoints.viewerUrl : "about:blank"}
           style={styles.iframe}
           allow="clipboard-read; clipboard-write"
           sandbox="allow-scripts allow-same-origin allow-forms"
         />
         <div
           ref={surfaceRef}
-          style={styles.inputSurface}
+          style={{
+            ...styles.inputSurface,
+            pointerEvents: sessionEndpoints.ok ? "auto" : "none",
+          }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}

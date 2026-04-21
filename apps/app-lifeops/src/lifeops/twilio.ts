@@ -1,4 +1,3 @@
-import { calculateTwilioSmsBilling, type TwilioSmsBillingBreakdown } from "@elizaos/billing";
 import { logger } from "@elizaos/core";
 import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
 
@@ -6,6 +5,23 @@ export interface TwilioCredentials {
   accountSid: string;
   authToken: string;
   fromPhoneNumber: string;
+}
+
+/** Local estimate for SMS metering (Cloud `@elizaos/billing` is not wired in this workspace). */
+export interface TwilioSmsBillingBreakdown {
+  segments: number;
+  costUsd: number;
+}
+
+function calculateTwilioSmsBilling(
+  body: string,
+  costPerSegmentUsd: number,
+): TwilioSmsBillingBreakdown {
+  const segments = Math.max(1, Math.ceil(body.length / 160));
+  return {
+    segments,
+    costUsd: segments * costPerSegmentUsd,
+  };
 }
 
 export interface TwilioDeliveryResult {

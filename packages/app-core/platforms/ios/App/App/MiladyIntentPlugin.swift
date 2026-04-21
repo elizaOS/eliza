@@ -4,7 +4,7 @@ import UserNotifications
 
 /// MiladyIntentPlugin — native bridge for the phone-companion surface.
 ///
-/// Exposes three methods to the JS layer:
+/// Exposes four methods to the JS layer:
 ///   - `scheduleAlarm({ timeIso, title, body })`
 ///       Schedules a local `UNUserNotificationCenter` notification at the
 ///       provided ISO-8601 time with a critical-alert sound.
@@ -15,7 +15,11 @@ import UserNotifications
 ///       Time helper, etc.). Only the `alarm` branch is wired in T8c;
 ///       other branches return `accepted: false` with a reason string.
 ///   - `getPairingStatus()`
-///       Reads the pairing record from the shared keychain.
+///       Reads the pairing record from `UserDefaults.standard` (keys below).
+///       There is no keychain path yet — keep this aligned with `setPairingStatus`.
+///   - `setPairingStatus({ deviceId, agentUrl })`
+///       Persists the same keys after a QR handshake or `session.start` push so
+///       cold launches can restore `paired: true` via `getPairingStatus`.
 @objc(MiladyIntentPlugin)
 public class MiladyIntentPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "MiladyIntentPlugin"
@@ -24,6 +28,7 @@ public class MiladyIntentPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "scheduleAlarm", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "receiveIntent", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getPairingStatus", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setPairingStatus", returnType: CAPPluginReturnPromise),
     ]
 
     private static let pairingDeviceIdKey = "com.milady.companion.pairing.deviceId"
@@ -155,5 +160,19 @@ public class MiladyIntentPlugin: CAPPlugin, CAPBridgedPlugin {
             "agentUrl": agentUrl as Any,
             "deviceId": deviceId as Any,
         ])
+    }
+
+    /// Writes the pairing record read by `getPairingStatus`. `deviceId` is the
+    /// paired agent id from the QR / push payload; `agentUrl` is the ingress URL.
+    @objc public func setPairingStatus(_ call: CAPPluginCall) {
+        guard let deviceId = call.getString("deviceId"),
+              let agentUrl = call.getString("agentUrl") else {
+            call.reject("setPairingStatus requires deviceId and agentUrl")
+            return
+        }
+        let defaults = UserDefaults.standard
+        defaults.set(deviceId, forKey: MiladyIntentPlugin.pairingDeviceIdKey)
+        defaults.set(agentUrl, forKey: MiladyIntentPlugin.pairingAgentUrlKey)
+        call.resolve(["ok": true])
     }
 }
