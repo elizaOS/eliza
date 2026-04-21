@@ -42,7 +42,8 @@ export async function computeCreateEventTravelBuffer(args: {
   const service = new TravelTimeService(args.runtime, {
     calendar: args.calendar,
   });
-  return service.computeBufferForEvent(args.event, {
-    originAddress: args.travelIntent.originAddress,
-  });
+  return service.computeBufferForEvent(
+    args.event,
+    args.travelIntent.originAddress,
+  );
 }

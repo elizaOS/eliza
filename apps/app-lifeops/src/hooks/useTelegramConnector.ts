@@ -135,17 +135,16 @@ export function useTelegramConnector(
   const cancelAuth = useCallback(async () => {
     try {
       setActionPending(true);
-      const nextStatus = await client.cancelTelegramAuth({ side, provider: "telegram" });
-      setStatus(nextStatus);
-      setAuthState(nextStatus.authState);
+      await client.cancelTelegramAuth({ side, provider: "telegram" });
       setError(null);
       setVerification(null);
+      void refresh();
     } catch (cause) {
       setError(formatError(cause, "Telegram auth cancellation failed."));
     } finally {
       setActionPending(false);
     }
-  }, [side]);
+  }, [side, refresh]);
 
   const disconnect = useCallback(async () => {
     try {

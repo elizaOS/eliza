@@ -1,4 +1,3 @@
-import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 import type { Memory } from "../../../types/memory.ts";
 import type { State } from "../../../types/state.ts";
 import {

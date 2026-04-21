@@ -1128,6 +1128,7 @@ type LifeReplyScenario =
   | "captured_phone"
   | "configured_escalation"
   | "overview"
+  | "weekly_goal_review"
   | "service_error";
 
 function buildRuleBasedLifeReply(args: {

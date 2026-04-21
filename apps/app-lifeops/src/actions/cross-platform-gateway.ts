@@ -3,6 +3,7 @@ import type {
   ActionResult,
   IAgentRuntime,
   Memory,
+  Role,
   State,
   UUID,
 } from "@elizaos/core";
@@ -236,7 +237,7 @@ async function ensureWorld(
     roles: {
       [args.ownerId]: "OWNER",
       [runtime.agentId]: "ADMIN",
-    },
+    } as Record<string, Role>,
     roleSources: {
       [args.ownerId]: "owner",
       [runtime.agentId]: "agent",
@@ -259,6 +260,9 @@ async function ensureWorld(
   if (existing) {
     await runtime.updateWorld?.({
       id: args.worldId,
+      name: args.worldName,
+      agentId: runtime.agentId,
+      messageServerId: args.ownerId,
       metadata,
     });
     return;
