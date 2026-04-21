@@ -370,6 +370,31 @@ static CGFloat elizaChromeDepthPoints(NSWindow *window, double hostHeightHint) {
 	return MAX(18.0, MIN(38.0, round(d)));
 }
 
+static NSArray<NSValue *> *elizaTitlebarDragPassthroughRects(CGFloat width,
+															 CGFloat height) {
+	NSMutableArray<NSValue *> *rects = [NSMutableArray arrayWithCapacity:2];
+	const CGFloat leftControlsWidth = width <= 1380.0 ? 280.0 : 640.0;
+	const CGFloat rightControlsWidth = 320.0;
+
+	if (leftControlsWidth > 0.0) {
+		[rects addObject:[NSValue
+							 valueWithRect:NSMakeRect(0.0,
+													  0.0,
+													  MIN(leftControlsWidth, width),
+													  height)]];
+	}
+
+	if (width > rightControlsWidth) {
+		[rects addObject:[NSValue
+							 valueWithRect:NSMakeRect(width - rightControlsWidth,
+													  0.0,
+													  rightControlsWidth,
+													  height)]];
+	}
+
+	return rects;
+}
+
 static NSVisualEffectView *findVibrancyView(NSView *contentView) {
 	for (NSView *subview in [contentView subviews]) {
 		if ([subview isKindOfClass:[NSVisualEffectView class]] &&
@@ -660,6 +685,24 @@ extern "C" bool setWindowTrafficLightsPosition(void *windowPtr, double x,
 			[button setNeedsDisplay:YES];
 			currentX += spacing;
 		}
+
+		ElizaInactiveTrafficLightsOverlayView *overlay =
+			ensureInactiveTrafficLightsOverlay(buttonContainer);
+		NSRect overlayFrame =
+			NSUnionRect(NSUnionRect(closeButton.frame, minimizeButton.frame),
+						zoomButton.frame);
+		[overlay setFrame:overlayFrame];
+		NSMutableArray<NSValue *> *dotRects = [NSMutableArray arrayWithCapacity:3];
+		for (NSButton *button in buttons) {
+			NSRect localRect = NSOffsetRect(button.frame,
+										   -overlayFrame.origin.x,
+										   -overlayFrame.origin.y);
+			[dotRects addObject:[NSValue valueWithRect:localRect]];
+		}
+		[overlay setDotRects:dotRects];
+		[overlay setHidden:!inactive];
+		[overlay setNeedsDisplay:YES];
+		[buttonContainer addSubview:overlay positioned:NSWindowAbove relativeTo:nil];
 
 		[buttonContainer setNeedsLayout:YES];
 		[buttonContainer layoutSubtreeIfNeeded];
