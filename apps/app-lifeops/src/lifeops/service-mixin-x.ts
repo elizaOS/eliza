@@ -16,6 +16,7 @@ import {
   fail,
   normalizeEnumValue,
   normalizeOptionalBoolean,
+  normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
 import {
@@ -24,7 +25,7 @@ import {
 import {
   normalizeOptionalRecord,
 } from "./service-helpers-misc.js";
-import { postToX, readXPosterCredentialsFromEnv } from "./x-poster.js";
+import { postToX, readXPosterCredentialsFromEnv, sendXDm } from "./x-poster.js";
 import type {
   Constructor,
   LifeOpsServiceBase,
@@ -32,6 +33,9 @@ import type {
 } from "./service-mixin-core.js";
 
 export interface LifeOpsXService {
+  resolveXGrant(
+    requestedMode?: LifeOpsConnectorMode,
+  ): Promise<LifeOpsConnectorGrant | null>;
   getXConnectorStatus(
     requestedMode?: LifeOpsConnectorMode,
   ): Promise<LifeOpsXConnectorStatus>;
@@ -58,11 +62,53 @@ function normalizeXCapabilityRequest(value: unknown): LifeOpsXConnectorCapabilit
   return [...new Set(capabilities)];
 }
 
+function createSyntheticXGrant(
+  agentId: string,
+  mode: LifeOpsConnectorMode,
+): LifeOpsConnectorGrant {
+  return createLifeOpsConnectorGrant({
+    agentId,
+    provider: "x",
+    identity: {},
+    grantedScopes: [],
+    capabilities: [...LIFEOPS_X_CAPABILITIES],
+    tokenRef: null,
+    mode,
+    metadata: { source: "env" },
+    lastRefreshAt: new Date().toISOString(),
+  });
+}
+
+function resolveXCapabilities(
+  capabilities: readonly string[] | undefined,
+  hasCredentials: boolean,
+): LifeOpsXConnectorCapability[] {
+  if (capabilities && capabilities.length > 0) {
+    return capabilities
+      .filter((capability): capability is LifeOpsXConnectorCapability =>
+        LIFEOPS_X_CAPABILITIES.includes(
+          capability as LifeOpsXConnectorCapability,
+        ),
+      );
+  }
+  return hasCredentials ? [...LIFEOPS_X_CAPABILITIES] : [];
+}
+
+function capabilitySummary(capabilities: readonly string[]) {
+  const set = new Set(capabilities);
+  return {
+    feedRead: set.has("x.read"),
+    feedWrite: set.has("x.write"),
+    dmRead: set.has("x.dm.read"),
+    dmWrite: set.has("x.dm.write"),
+  };
+}
+
 export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsXService> {
   return class extends Base {
-    async getXConnectorStatus(
+    async resolveXGrant(
       requestedMode?: LifeOpsConnectorMode,
     ): Promise<LifeOpsConnectorGrant | null> {
       const mode =
