@@ -1,7 +1,7 @@
 import type * as React from "react";
 
 import { cn } from "../../../lib/utils";
-import { getChatSourceMeta, normalizeChatSourceKey } from "./chat-source";
+import { normalizeChatSourceKey } from "./chat-source";
 
 export type ChatBubbleTone = "assistant" | "user";
 
@@ -23,15 +23,11 @@ export function ChatBubble({
   ...props
 }: ChatBubbleProps) {
   const normalizedSource = normalizeChatSourceKey(source) ?? undefined;
-  const sourceBorderClass = normalizedSource
-    ? getChatSourceMeta(normalizedSource).borderClassName
-    : null;
   return (
     <div
       className={cn(
         "relative whitespace-pre-wrap break-words",
         tone === "user" ? "text-txt-strong" : "text-txt",
-        sourceBorderClass ? `border-2 ${sourceBorderClass}` : null,
         className,
       )}
       data-chat-source={normalizedSource ?? undefined}

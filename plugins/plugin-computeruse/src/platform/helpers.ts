@@ -78,6 +78,9 @@ export function validateInt(val: unknown): number {
   if (val === null || val === undefined) {
     throw new Error(`Invalid numeric value: ${String(val)}`);
   }
+  if (typeof val === "string" && val.trim().length === 0) {
+    throw new Error(`Invalid numeric value: ${String(val)}`);
+  }
   const n = Number(val);
   if (!Number.isFinite(n)) {
     throw new Error(`Invalid numeric value: ${String(val)}`);
