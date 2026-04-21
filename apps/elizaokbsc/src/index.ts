@@ -164,6 +164,7 @@ async function main(): Promise<void> {
     ],
     settings: {
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      ALLOW_NO_DATABASE: "true",
       ...(hasMoltbook
         ? {
             MOLTBOOK_API_KEY: process.env.MOLTBOOK_API_KEY,
