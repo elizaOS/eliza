@@ -6,7 +6,7 @@ import { logger } from "./logger";
  *
  * On a real device, method calls are routed to `MiladyIntentPlugin.swift`
  * which talks to `UNUserNotificationCenter`, the device-bus subscriber,
- * and the pairing store. On web (Vite dev / vitest) the fallback below is
+ * and `UserDefaults` for pairing persistence. On web (Vite dev / vitest) the fallback below is
  * used — it does not simulate success. It reports `paired: false`, logs
  * each invocation, and rejects native-only calls so dev builds cannot
  * appear to "work" without iOS.
@@ -40,10 +40,18 @@ export interface PairingStatus {
   deviceId: string | null;
 }
 
+export interface SetPairingStatusOptions {
+  /** Paired agent id from the QR / push payload (stored under `pairingDeviceIdKey` on iOS). */
+  deviceId: string;
+  /** Session ingress URL (stored under `pairingAgentUrlKey` on iOS). */
+  agentUrl: string;
+}
+
 export interface MiladyIntentPlugin {
   scheduleAlarm(options: ScheduleAlarmOptions): Promise<ScheduleAlarmResult>;
   receiveIntent(intent: ReceiveIntentPayload): Promise<ReceiveIntentResult>;
   getPairingStatus(): Promise<PairingStatus>;
+  setPairingStatus(options: SetPairingStatusOptions): Promise<{ ok: boolean }>;
 }
 
 /**
@@ -83,6 +91,22 @@ export class MiladyIntentWeb extends WebPlugin implements MiladyIntentPlugin {
       agentUrl: null,
       deviceId: null,
     };
+  }
+
+  async setPairingStatus(
+    options: SetPairingStatusOptions,
+  ): Promise<{ ok: boolean }> {
+    logger.debug("[MiladyIntentWeb] setPairingStatus (no-op on web)", {
+      deviceIdLength: options.deviceId.length,
+      agentUrlHost: (() => {
+        try {
+          return new URL(options.agentUrl).host;
+        } catch {
+          return "invalid-url";
+        }
+      })(),
+    });
+    return { ok: true };
   }
 }
 

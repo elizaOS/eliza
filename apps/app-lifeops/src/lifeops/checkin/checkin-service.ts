@@ -5,6 +5,7 @@ import {
   computeMissedOccurrenceStreak,
   computeOccurrenceStreaks,
 } from "../service-helpers-occurrence.js";
+import type { LifeOpsOccurrence } from "@elizaos/shared/contracts/lifeops";
 import type {
   CheckinKind,
   CheckinReport,
@@ -133,7 +134,7 @@ function buildHabitSummary(args: {
       return left.updatedAtMs - right.updatedAtMs;
     });
   const streakInput = dueOccurrences.map((occurrence) => ({
-    state: occurrence.state,
+    state: occurrence.state as LifeOpsOccurrence["state"],
   }));
   const completedStreak = computeOccurrenceStreaks(streakInput);
   const missedStreak = computeMissedOccurrenceStreak(streakInput);

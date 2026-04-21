@@ -39,17 +39,30 @@ export function Pairing({
       return;
     }
     setStatus({ kind: "scanning" });
-    logger.info("[Pairing] scanBarcode start", {});
-    const result = await CapacitorBarcodeScanner.scanBarcode({
-      hint: CapacitorBarcodeScannerTypeHint.QR_CODE,
-      scanInstructions: "Point the camera at the code on your Mac",
-    });
-    const payload = decodePairingPayload(result.ScanResult);
-    logger.info("[Pairing] pairing payload decoded", {
-      agentId: payload.agentId,
-    });
-    setStatus({ kind: "idle" });
-    onPaired(payload);
+    try {
+      logger.info("[Pairing] scanBarcode start", {});
+      const result = await CapacitorBarcodeScanner.scanBarcode({
+        hint: CapacitorBarcodeScannerTypeHint.QR_CODE,
+        scanInstructions: "Point the camera at the code on your Mac",
+      });
+      const payload = decodePairingPayload(result.ScanResult);
+      logger.info("[Pairing] pairing payload decoded", {
+        agentId: payload.agentId,
+      });
+      onPaired(payload);
+      setStatus({ kind: "idle" });
+    } catch (err) {
+      logger.warn("[Pairing] scan or decode failed", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+      setStatus({
+        kind: "error",
+        message:
+          err instanceof Error && err.message.length > 0
+            ? err.message
+            : "Could not read the QR code. Try again or enter the code below.",
+      });
+    }
   }, [onPaired]);
 
   const submitManual = useCallback(

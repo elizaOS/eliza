@@ -368,8 +368,12 @@ function BrowserCompanionRow({
   onOpenTarget: (
     target: LifeOpsBrowserPackagePathTarget,
     revealOnly?: boolean,
-  ) => Promise<unknown>;
-  onOpenManager: (browser: LifeOpsBrowserKind) => Promise<unknown>;
+    options?: { silent?: boolean },
+  ) => Promise<void | { path: string | null; opened: boolean }>;
+  onOpenManager: (
+    browser: LifeOpsBrowserKind,
+    options?: { silent?: boolean },
+  ) => Promise<void | boolean>;
 }) {
   const browserLabel = browser === "chrome" ? "Chrome" : "Safari";
   const distributionLabel = releaseBadgeLabel(browser, releaseManifest);

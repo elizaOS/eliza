@@ -43,7 +43,7 @@
  */
 
 import type http from "node:http";
-import type { AgentRuntime, Service } from "@elizaos/core";
+import type { IAgentRuntime, Service } from "@elizaos/core";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import type { CloudProxyConfigLike } from "../types/config-like.js";
@@ -52,7 +52,7 @@ import { resolveCloudApiKey } from "./wallet-rpc.js";
 
 export interface TravelProviderRelayRouteState {
   config: CloudProxyConfigLike;
-  runtime?: AgentRuntime | null;
+  runtime?: IAgentRuntime | null;
 }
 
 const PROXY_TIMEOUT_MS = 30_000;

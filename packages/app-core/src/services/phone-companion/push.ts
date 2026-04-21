@@ -124,9 +124,21 @@ function handleNotification(
     options.onError?.(error);
     return;
   }
-  const payload = decodePairingPayload(encoded);
-  logger.info("[push] session.start intent received", {
-    agentId: payload.agentId,
-  });
-  options.onIntent({ kind: "session-start", payload });
+  try {
+    const payload = decodePairingPayload(encoded);
+    logger.info("[push] session.start intent received", {
+      agentId: payload.agentId,
+    });
+    options.onIntent({ kind: "session-start", payload });
+  } catch (cause) {
+    const error =
+      cause instanceof Error
+        ? cause
+        : new Error("[push] failed to decode session.start pairing payload");
+    logger.error("[push] failed to decode session.start pairing payload", {
+      error: error.message,
+      encodedLength: encoded.length,
+    });
+    options.onError?.(error);
+  }
 }

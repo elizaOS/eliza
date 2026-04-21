@@ -111,10 +111,12 @@ export class SessionClient {
     this.socket = socket;
 
     socket.addEventListener("open", () => {
+      if (this.socket !== socket) return;
       logger.info("[SessionClient] open", {});
       this.setState("open");
     });
     socket.addEventListener("close", (event: CloseEvent) => {
+      if (this.socket !== socket) return;
       logger.info("[SessionClient] close", {
         code: event.code,
         clean: event.wasClean,
@@ -122,11 +124,13 @@ export class SessionClient {
       this.setState("closed");
     });
     socket.addEventListener("error", () => {
+      if (this.socket !== socket) return;
       const err = new Error("SessionClient WebSocket error");
       logger.error("[SessionClient] error", { message: err.message });
       for (const listener of this.listeners.error) listener(err);
     });
     socket.addEventListener("message", (event: MessageEvent) => {
+      if (this.socket !== socket) return;
       for (const listener of this.listeners.message) listener(event.data);
     });
   }
@@ -170,8 +174,14 @@ export class SessionClient {
 }
 
 function appendToken(ingressUrl: string, token: string): string {
-  const separator = ingressUrl.includes("?") ? "&" : "?";
-  return `${ingressUrl}${separator}token=${encodeURIComponent(token)}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(ingressUrl);
+  } catch {
+    throw new Error("SessionClient: ingress URL is not a valid absolute URL");
+  }
+  parsed.searchParams.set("token", token);
+  return parsed.toString();
 }
 
 function safeHost(url: string): string {
@@ -236,13 +246,20 @@ export function touchToInput(
 }
 
 function isTap(samples: readonly TouchSample[], tapSlopPx: number): boolean {
+  if (samples.length === 0) return false;
   const first = samples[0];
-  const last = lastSample(samples);
-  return distance(first.x, first.y, last.x, last.y) <= tapSlopPx;
+  let maxDist = 0;
+  for (const s of samples) {
+    const d = distance(first.x, first.y, s.x, s.y);
+    if (d > maxDist) maxDist = d;
+  }
+  return maxDist <= tapSlopPx;
 }
 
 function lastSample(samples: readonly TouchSample[]): TouchSample {
-  return samples[samples.length - 1];
+  const s = samples[samples.length - 1];
+  if (!s) throw new Error("lastSample called with empty array");
+  return s;
 }
 
 function distance(x1: number, y1: number, x2: number, y2: number): number {

@@ -1060,6 +1060,27 @@ interface StrategyResult {
 }
 
 /**
+ * True when a plugin registered at least one core text delegate (chat / planning).
+ * Embeddings-only (local-ai) and TTS do not count — without a matching delegate,
+ * `dynamicPromptExecFromState` can fail with "No handler found for delegate type".
+ */
+export function hasTextGenerationHandler(runtime: IAgentRuntime): boolean {
+	const keys: Array<keyof typeof ModelType | string> = [
+		ModelType.TEXT_LARGE,
+		ModelType.TEXT_SMALL,
+		ModelType.TEXT_MEDIUM,
+		ModelType.TEXT_NANO,
+		ModelType.TEXT_MEGA,
+		ModelType.ACTION_PLANNER,
+		ModelType.RESPONSE_HANDLER,
+	];
+	for (const k of keys) {
+		if (runtime.getModel(String(k))) return true;
+	}
+	return false;
+}
+
+/**
  * Tracks the latest response ID per agent+room to handle message superseding
  */
 const latestResponseIds = new Map<string, Map<string, string>>();
@@ -3280,6 +3301,46 @@ export class DefaultMessageService implements IMessageService {
 				"parallel_with_should_respond",
 				parallelHookCtx,
 			);
+		} else if (!hasTextGenerationHandler(runtime)) {
+			await runtime.applyPipelineHooks(
+				"parallel_with_should_respond",
+				parallelHookCtx,
+			);
+			// Skip LLM should-respond classification when no text delegate is
+			// registered — `dynamicPromptExecFromState` would throw "No handler found".
+			// Still apply the same non-LLM gates as `runNonAutonomousShouldRespondClassify`:
+			// only respond for DM / mention / reply / whitelisted source / etc. Ambiguous
+			// group traffic that would need the classifier must not auto-reply with
+			// NO_LLM_PROVIDER_REPLY (channel flood).
+			const checkShouldRespondEnabled = runtime.isCheckShouldRespondEnabled();
+			const responseDecision = this.shouldRespond(
+				runtime,
+				message,
+				room ?? undefined,
+				mentionContext,
+			);
+			if (!checkShouldRespondEnabled) {
+				shouldRespondToMessage = true;
+			} else if (responseDecision.skipEvaluation) {
+				routedDecision = parseContextRoutingMetadata(
+					responseDecision as unknown as Record<string, unknown>,
+				);
+				setContextRoutingMetadata(message, routedDecision);
+				shouldRespondToMessage = responseDecision.shouldRespond;
+			} else {
+				runtime.logger.debug(
+					{
+						src: "service:message",
+						agentId: runtime.agentId,
+						reason: responseDecision.reason,
+					},
+					"No text-generation handler: skipping message that requires LLM should-respond",
+				);
+				shouldRespondToMessage = false;
+			}
+			terminalDecision = null;
+			dualPressureLog = null;
+			shouldRespondClassifierAction = null;
 		} else {
 			const [classifyOutcome] = await Promise.all([
 				this.runNonAutonomousShouldRespondClassify(

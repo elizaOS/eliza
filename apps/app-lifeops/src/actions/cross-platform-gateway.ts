@@ -3,6 +3,7 @@ import type {
   ActionResult,
   IAgentRuntime,
   Memory,
+  Role,
   State,
   UUID,
 } from "@elizaos/core";
@@ -241,9 +242,9 @@ async function ensureWorld(
   const metadata = {
     ownership: { ownerId: args.ownerId },
     roles: {
-      [args.ownerId]: Role.OWNER,
-      [runtime.agentId]: Role.ADMIN,
-    },
+      [args.ownerId]: "OWNER",
+      [runtime.agentId]: "ADMIN",
+    } as Record<string, Role>,
     roleSources: {
       [args.ownerId]: "owner",
       [runtime.agentId]: "agent",
@@ -271,13 +272,10 @@ async function ensureWorld(
     await runtime.updateWorld?.({
       ...existing,
       id: args.worldId,
-      name: existing.name ?? args.worldName,
-      agentId: existing.agentId ?? runtime.agentId,
-      messageServerId: existing.messageServerId ?? args.ownerId,
-      metadata: {
-        ...currentMetadata,
-        ...metadata,
-      },
+      name: args.worldName,
+      agentId: runtime.agentId,
+      messageServerId: args.ownerId,
+      metadata,
     });
     return;
   }

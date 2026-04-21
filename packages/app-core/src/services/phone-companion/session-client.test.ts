@@ -79,7 +79,8 @@ describe("SessionClient", () => {
       return new MockWebSocket(url) as unknown as WebSocket;
     });
     client.connect("wss://example/input", "tok 1&2");
-    expect(captured).toBe("wss://example/input?token=tok%201%262");
+    // `URLSearchParams` uses application/x-www-form-urlencoded encoding (`+` for space).
+    expect(captured).toBe("wss://example/input?token=tok+1%262");
 
     const client2 = new SessionClient((url) => {
       captured = url;
